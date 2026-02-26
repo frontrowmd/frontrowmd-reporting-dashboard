@@ -508,7 +508,7 @@ function buildSlackSummary(label, channels, ga4, hs, prevChannels, prevGa4, prev
   const cpdVal  = (s, d) => d > 0 ? `$${Math.round(s / d).toLocaleString()}` : '—';
 
   const lines = [];
-  lines.push(`*⚡ EXECUTIVE SUMMARY — ${label.toUpperCase()}${dateRange ? `  (${dateRange})` : ''}*`);
+  lines.push(`*⚡ EXECUTIVE SUMMARY — ${label.toUpperCase()}*`);
   lines.push('```');
 
   lines.push('WEBSITE PERFORMANCE');
