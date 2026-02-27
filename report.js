@@ -373,11 +373,12 @@ async function fetchAllHubSpotData(windows) {
       // Too early = demo given but too early to close
       if (status.includes('too early')) tooEarly++;
 
-      // No Show / Canceled — demo was scheduled but didn't happen
-      if (status === 'no show' || status === 'no-show' ||
+      // No Show / Canceled / Rescheduled — demo was scheduled but didn't happen
+      // Uses includes() to catch variant phrasing from HubSpot dropdown options
+      if (status.includes('no show') ||
+          status === 'no-show' ||
           status === 'cancelled' || status === 'canceled' ||
-          status === 'no show / cancelled' || status === 'no show / canceled' ||
-          status === 'rescheduled') noShowCanceled++;
+          status.includes('rescheduled')) noShowCanceled++;
 
       // Blank status — demo_given__status not set at all
       if (!rawStatus) blankStatus++;
@@ -387,6 +388,10 @@ async function fetchAllHubSpotData(windows) {
       if (status === 'not qualified after demo' ||
           status === 'not qualified after the demo') notQualAfterDemoCount++;
     }
+
+    // DEBUG: log all unique demo_given__status values so we can verify matching
+    const uniqueStatuses = [...new Set(deals.map(d => d.properties?.demo_given__status || '(blank)'))].sort();
+    if (key === 'mtd') console.log('[DEBUG] All demo_given__status values in MTD window:\n  ' + uniqueStatuses.join('\n  '));
 
     const denom = demoGivenCount - notQualAfterDemoCount;
     const pctDemosWon = denom > 0 ? ((dealsWon / denom) * 100).toFixed(1) + '%' : 'N/A';
