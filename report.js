@@ -277,7 +277,8 @@ function toMs(dateStr, endOfDay = false) {
 // Date dimensions:
 //   demosBooked  = contacts in list 289 (ILS segment) by date_demo_booked (DATE property)
 //   demosToOccur = deals with date_demo_booked in window
-//   demosHappened, dealsWon, dq breakdown = deals with date_demo_booked in window (status fields)
+//   demosHappened, dq breakdown = deals with date_demo_booked in window (status fields)
+//   dealsWon = deals with dealstage=closedwon AND closedate in window
 async function fetchAllHubSpotData(windows) {
   const mtd = windows.mtd;
   const gteMs = toMs(mtd.from);
@@ -304,14 +305,26 @@ async function fetchAllHubSpotData(windows) {
   // date_demo_booked is a DATE-type property: must use YYYY-MM-DD strings, not ms.
   // Fetch from prev window start to cover both current and prev sub-windows.
   const prevFrom = windows.prev ? windows.prev.from : windows.mtd.from;
+  // Two filterGroups (OR): deals with date_demo_booked in range,
+  // OR No Show/No Showed deals by hs_createdate (those often lack date_demo_booked)
   const allDeals = await hsSearch('deals', {
-    filterGroups: [{ filters: [
-      { propertyName: 'date_demo_booked', operator: 'GTE', value: toMs(prevFrom) },
-      { propertyName: 'date_demo_booked', operator: 'LTE', value: toMs(mtd.to, true) },
-    ]}],
-    properties: ['date_demo_booked', 'demo_given_date', 'demo_given__status', 'dealstage', 'amount', 'closedate']
+    filterGroups: [
+      { filters: [
+        { propertyName: 'date_demo_booked', operator: 'GTE', value: toMs(prevFrom) },
+        { propertyName: 'date_demo_booked', operator: 'LTE', value: toMs(mtd.to, true) },
+      ]},
+      { filters: [
+        { propertyName: 'demo_given__status', operator: 'IN', values: ['No Show', 'No Showed'] },
+        { propertyName: 'hs_createdate',      operator: 'GTE', value: String(toMs(prevFrom)) },
+        { propertyName: 'hs_createdate',      operator: 'LTE', value: String(toMs(mtd.to, true)) },
+      ]},
+    ],
+    properties: ['date_demo_booked', 'demo_given_date', 'demo_given__status', 'dealstage', 'amount', 'closedate', 'hs_createdate']
   });
-  console.log('  INFO allDeals: ' + allDeals.length + ' | range: ' + prevFrom + ' to ' + mtd.to);
+  // Dedup in case a deal matched both filterGroups (has date_demo_booked AND is No Show)
+  const allDealsMap = new Map(allDeals.map(d => [d.id, d]));
+  const allDealsDeduped = [...allDealsMap.values()];
+  console.log('  INFO allDeals: ' + allDealsDeduped.length + ' (raw: ' + allDeals.length + ') | range: ' + prevFrom + ' to ' + mtd.to);
   await sleep(1500);
 
   // ── 4. Fetch closed won deals by closedate for MRR ────────────────────────
@@ -340,64 +353,68 @@ async function fetchAllHubSpotData(windows) {
     );
 
     // All pipeline metrics: deals filtered by date_demo_booked
-    const deals = allDeals.filter(d =>
-      inWin(dateMs(d.properties?.date_demo_booked))
-    );
+    // For No Show / No Showed deals that lack date_demo_booked, fall back to hs_createdate
+    const deals = allDealsDeduped.filter(d => {
+      const bookedMs  = dateMs(d.properties?.date_demo_booked);
+      const createdMs = d.properties?.hs_createdate ? parseInt(d.properties.hs_createdate) : null;
+      const status    = (d.properties?.demo_given__status || '').trim();
+      const noBookedDate = !d.properties?.date_demo_booked;
+      if (noBookedDate && (status === 'No Show' || status === 'No Showed')) {
+        return createdMs !== null && inWin(createdMs);
+      }
+      return inWin(bookedMs);
+    });
 
     // Count each metric from that same deal set
     let demosToOccur = deals.length;
     let demosHappened = 0, dealsWon = 0;
     let notQualAfterDemo = 0, disqualifiedBeforeDemo = 0, tooEarly = 0;
-    let noShowCanceled = 0, blankStatus = 0;
+    let rescheduled = 0, canceled = 0, blankStatus = 0;
     let demoGivenCount = 0, notQualAfterDemoCount = 0;
 
     for (const deal of deals) {
       const rawStatus = (deal.properties?.demo_given__status || '').trim();
-      const status = rawStatus.toLowerCase();
-      const stage  = (deal.properties?.dealstage || '').toLowerCase();
 
-      // Demos Happened: status starts with "demo given" (covers all Demo Given variants)
-      if (status.startsWith('demo given')) demosHappened++;
-
-      if (stage === 'closedwon') dealsWon++;
-
-      // Disqualified BEFORE demo = meeting cancelled before it happened
-      if (status === 'disqualified, meeting cancelled' ||
-          status === 'disqualified before demo' ||
-          status === 'not qualified before demo') disqualifiedBeforeDemo++;
-
-      // Not qualified AFTER demo
-      if (status === 'not qualified after demo' ||
-          status === 'not qualified after the demo') notQualAfterDemo++;
-
-      // Too early = demo given but too early to close
-      if (status.includes('too early')) tooEarly++;
-
-      // No Show / Canceled / Rescheduled — demo was scheduled but didn't happen
-      // Uses includes() to catch variant phrasing from HubSpot dropdown options
-      if (status.includes('no show') ||
-          status === 'no-show' ||
-          status === 'cancelled' || status === 'canceled' ||
-          status.includes('rescheduled')) noShowCanceled++;
-
-      // Blank status — demo_given__status not set at all
-      if (!rawStatus) blankStatus++;
-
-      // For % Demos Won calc: demos that happened (demo given*)
-      if (status.startsWith('demo given')) demoGivenCount++;
-      if (status === 'not qualified after demo' ||
-          status === 'not qualified after the demo') notQualAfterDemoCount++;
+      // Exact matches against real HubSpot stored values
+      if (rawStatus === 'Demo Given' || rawStatus === 'Demo Given at Rescheduled time') {
+        // Demo Given (both scheduled and rescheduled count as demo happened)
+        demosHappened++;
+        demoGivenCount++;
+      } else if (rawStatus === 'Demo Given, Qualified Company, too early') {
+        // Too Early
+        tooEarly++;
+        demosHappened++;
+        demoGivenCount++;
+      } else if (rawStatus === 'Disqualified, Meeting Cancelled') {
+        // Disqualified Before Demo
+        disqualifiedBeforeDemo++;
+      } else if (rawStatus === 'Not Qualified after the demo') {
+        // Not Qualified After Demo
+        notQualAfterDemo++;
+        notQualAfterDemoCount++;
+        demosHappened++;
+        demoGivenCount++;
+      } else if (rawStatus === 'No Show') {
+        // Rescheduled (HubSpot label: "No Show / Rescheduled meeting")
+        rescheduled++;
+      } else if (rawStatus === 'No Showed') {
+        // Canceled (HubSpot label: "No Show / Cancelled")
+        canceled++;
+      } else {
+        // Blank or unrecognized
+        blankStatus++;
+      }
     }
 
-    // DEBUG: log all unique demo_given__status values so we can verify matching
-    const uniqueStatuses = [...new Set(deals.map(d => d.properties?.demo_given__status || '(blank)'))].sort();
-    if (key === 'mtd') console.log('[DEBUG] All demo_given__status values in MTD window:\n  ' + uniqueStatuses.join('\n  '));
+
+    // Closed Won by closedate (matches HubSpot's closed won view)
+    const closedWon = allClosedWon.filter(d => inWin(isoMs(d.properties?.closedate)));
+    // Use closedate-based count — demo_booked-based count misses deals
+    // whose demo was booked in a prior month but closed in this window
+    dealsWon = closedWon.length;
 
     const denom = demoGivenCount - notQualAfterDemoCount;
     const pctDemosWon = denom > 0 ? ((dealsWon / denom) * 100).toFixed(1) + '%' : 'N/A';
-
-    // MRR from closed won by closedate (separate window)
-    const closedWon = allClosedWon.filter(d => inWin(isoMs(d.properties?.closedate)));
 
     result[key] = {
       demosBooked:           contactsBooked.length,
@@ -408,7 +425,8 @@ async function fetchAllHubSpotData(windows) {
       notQualAfterDemo,
       disqualifiedBeforeDemo,
       tooEarly,
-      noShowCanceled,
+      rescheduled,
+      canceled,
       blankStatus,
       newMRR: closedWon.reduce((s, d) => s + (parseFloat(d.properties?.amount) || 0), 0),
     };
@@ -560,7 +578,7 @@ function buildSlackSummary(label, channels, ga4, hs, prevChannels, prevGa4, prev
 // ── Detailed Section ──────────────────────────────────────────────────────────
 function buildSection(label, channels, hs) {
   const { demosBooked, demosToOccur, demosHappened, dealsWon, pctDemosWon,
-          notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, newMRR } = hs;
+          notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, rescheduled, canceled, blankStatus, newMRR } = hs;
 
   const paidChannels = [
     { lbl: '📘 Meta / Facebook', ...channels.meta },
@@ -593,14 +611,17 @@ function buildSection(label, channels, hs) {
   lines.push('\n── DEMO PIPELINE ────────────────────────────────────────');
   lines.push(`  Demos Booked           ${String(demosBooked).padStart(8)}  (contacts in Meeting Booked list, by date_demo_booked)`);
   lines.push(`  Demos to Occur         ${String(demosToOccur).padStart(8)}  (deals by date_demo_booked)`);
-  lines.push(`  Demos Happened         ${String(demosHappened).padStart(8)}  (deals where demo_given__status starts with "Demo Given")`);
-  lines.push(`  Deals Won              ${String(dealsWon).padStart(8)}  (deals by date_demo_booked, closedwon)`);
+  lines.push(`  Demo Given             ${String(demosHappened).padStart(8)}  (Demo Given + Demo Given at Rescheduled time + Too Early + Not Qual After)`);
+  lines.push(`  Deals Won              ${String(dealsWon).padStart(8)}  (deals by closedate, closedwon)`);
   lines.push(`  % Demos Won            ${String(pctDemosWon).padStart(8)}`);
 
   lines.push('\n── DISQUALIFICATION ─────────────────────────────────────');
   lines.push(`  Not Qual. After Demo   ${String(notQualAfterDemo).padStart(8)}`);
   lines.push(`  Disq. Before Demo      ${String(disqualifiedBeforeDemo).padStart(8)}`);
   lines.push(`  Too Early              ${String(tooEarly).padStart(8)}`);
+  lines.push(`  Rescheduled            ${String(rescheduled).padStart(8)}`);
+  lines.push(`  Canceled               ${String(canceled).padStart(8)}`);
+  lines.push(`  Blank Status           ${String(blankStatus).padStart(8)}`);
 
   lines.push('\n── REVENUE ──────────────────────────────────────────────');
   lines.push(`  New MRR (Closed Won)   ${fmt$(newMRR).padStart(8)}`);
@@ -616,9 +637,10 @@ function buildDashboard(windowedChannels, hubspotData, prevWindowedChannels, pre
 
   function buildWin(channels, ga4, hs, ga4Sources, ga4PrevSources) {
     const { demosBooked, demosToOccur, demosHappened, dealsWon, pctDemosWon,
-            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, newMRR } = hs;
+            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, rescheduled, canceled, blankStatus, newMRR } = hs;
     const pipeline = { demosToOccur, demosHappened, dealsWon, pctDemosWon,
-                       notQualAfterDemo, disqualifiedBeforeDemo, tooEarly };
+                       notQualAfterDemo, disqualifiedBeforeDemo, tooEarly,
+                       rescheduled, canceled, blankStatus };
     const metaCTR  = channels.meta.ctrAvg != null
       ? (channels.meta.ctrAvg * 100).toFixed(2) + '%' : null;
     return { channels, ga4, demosBooked, pipeline, newMRR, metaCTR,
@@ -814,7 +836,7 @@ function buildIntelligence(allCurrentData, allPrevData, windows) {
 
   // ── 4. PIPELINE HEALTH ─────────────────────────────────────────────────────
   const { demosBooked, demosToOccur, demosHappened, dealsWon,
-          notQualAfterDemo, disqualifiedBeforeDemo, tooEarly } = hs;
+          notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, rescheduled, canceled, blankStatus } = hs;
   const { demosToOccur: pDemosToOccur, demosHappened: pDemosHappened,
           dealsWon: pDealsWon, disqualifiedBeforeDemo: pDisqBefore,
           notQualAfterDemo: pNotQualAfter } = pHs;
@@ -1351,9 +1373,10 @@ async function fetchCustomWindow(from, to) {
 
   function buildWin(ch, g4, h, ga4Sources, ga4PrevSources) {
     const { demosBooked, demosToOccur, demosHappened, dealsWon, pctDemosWon,
-            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, newMRR } = h;
+            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, rescheduled, canceled, blankStatus, newMRR } = h;
     const pipeline = { demosToOccur, demosHappened, dealsWon, pctDemosWon,
-                       notQualAfterDemo, disqualifiedBeforeDemo, tooEarly };
+                       notQualAfterDemo, disqualifiedBeforeDemo, tooEarly,
+                       rescheduled, canceled, blankStatus };
     const metaCTR  = ch.meta.ctrAvg != null
       ? (ch.meta.ctrAvg * 100).toFixed(2) + '%' : null;
     return { channels: ch, ga4: g4, demosBooked, pipeline, newMRR, metaCTR,
