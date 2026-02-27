@@ -579,61 +579,92 @@ function buildDemoQualityChart() {
     const disqBefore  = pp.disqualifiedBeforeDemo || 0;
     const disqAfter   = pp.notQualAfterDemo       || 0;
     const tooEarly    = pp.tooEarly               || 0;
-    const total       = qualified + disqBefore + disqAfter + tooEarly;
-    return { label: wLabels[w], qualified, disqBefore, disqAfter, tooEarly, total };
+    const noShow      = pp.noShowCanceled         || 0;
+    const blank       = pp.blankStatus            || 0;
+    // total = all categorized demos (bar width denominator); blank counted separately
+    const total       = qualified + disqBefore + disqAfter + tooEarly + noShow;
+    return { label: wLabels[w], qualified, disqBefore, disqAfter, tooEarly, noShow, blank, total };
   });
 
-  const maxVal = Math.max(...winData.map(w => w.total), 1);
+  const maxVal = Math.max(...winData.map(w => w.total + w.blank), 1);
 
-  const stackColors = { qualified:'#2E7D52', disqBefore:'#B8860B', disqAfter:'#C0392B', tooEarly:'#aab8c2' };
-  const stackLabels = { qualified:'Qualified', disqBefore:'Disq. Before', disqAfter:'Disq. After', tooEarly:'Too Early' };
-  const stackKeys   = ['qualified','disqBefore','disqAfter','tooEarly'];
+  const stackColors = {
+    qualified:  '#2E7D52',
+    disqBefore: '#B8860B',
+    disqAfter:  '#C0392B',
+    tooEarly:   '#aab8c2',
+    noShow:     '#7B5EA7',
+    blank:      '#c0c8d0'
+  };
+  const stackLabels = {
+    qualified:  'Qualified',
+    disqBefore: 'Disq. Before',
+    disqAfter:  'Disq. After',
+    tooEarly:   'Too Early',
+    noShow:     'No Show / Canceled',
+    blank:      'Status Blank'
+  };
+  const stackKeys     = ['qualified','disqBefore','disqAfter','tooEarly','noShow'];
+  const allStackKeys  = [...stackKeys, 'blank'];
+
+  const pctFmt = (n, d) => d > 0 ? Math.round(n / d * 100) + '%' : '—';
 
   const bars = winData.map(w => {
+    // Bar uses total (excluding blank) as denominator for width; maxVal includes blank for scale
     let offsetPct = 0;
     const segments = stackKeys.map(k => {
       if (w[k] === 0) return '';
       const segWidthPct = (w[k] / maxVal * 100);
       const segLeft = offsetPct;
       offsetPct += segWidthPct;
-
-      // Show count inside segment if wide enough (>6%), otherwise skip inline label
       const showInline = segWidthPct > 6;
       const countLabel = showInline
         ? `<div style="position:absolute;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:rgba(255,255,255,0.92);pointer-events:none;white-space:nowrap">${w[k]}</div>`
         : '';
-
       return `<div style="position:absolute;left:${segLeft.toFixed(2)}%;width:${segWidthPct.toFixed(2)}%;height:100%;background:${stackColors[k]};transition:width 0.8s ease" title="${stackLabels[k]}: ${w[k]}">${countLabel}</div>`;
     }).join('');
 
-    // Stat pills below bar: show count for each category
-    const pills = stackKeys
-      .filter(k => w[k] > 0)
-      .map(k => `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:${stackColors[k]};font-weight:700;background:${stackColors[k]}18;border-radius:4px;padding:2px 7px">
-        <span style="width:7px;height:7px;border-radius:50%;background:${stackColors[k]};display:inline-block;flex-shrink:0"></span>
-        ${stackLabels[k]}: <strong>${w[k]}</strong></span>`).join('');
+    // Blank status shown as a lighter trailing segment
+    const blankWidthPct = (w.blank / maxVal * 100);
+    const blankSeg = w.blank > 0
+      ? `<div style="position:absolute;left:${offsetPct.toFixed(2)}%;width:${blankWidthPct.toFixed(2)}%;height:100%;background:${stackColors.blank};opacity:0.5;border-left:1px dashed #aaa;transition:width 0.8s ease" title="Status Blank: ${w.blank}"></div>`
+      : '';
 
-    const qualPct = w.total > 0 ? Math.round(w.qualified / w.total * 100) : 0;
+    // Pills: all categories with count + % of total
+    const grandTotal = w.total + w.blank;
+    const pills = allStackKeys
+      .filter(k => w[k] > 0)
+      .map(k => {
+        const pct = pctFmt(w[k], grandTotal);
+        const isBlank = k === 'blank';
+        return `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:${stackColors[k]};font-weight:700;background:${stackColors[k]}18;border-radius:4px;padding:2px 7px;${isBlank?'opacity:0.75':''}">
+          <span style="width:7px;height:7px;border-radius:50%;background:${stackColors[k]};display:inline-block;flex-shrink:0"></span>
+          ${stackLabels[k]}: <strong>${w[k]}</strong> <span style="font-weight:400;color:#8a9aaa">(${pct})</span></span>`;
+      }).join('');
+
+    const qualPct = grandTotal > 0 ? Math.round(w.qualified / grandTotal * 100) : 0;
+    const totalLabel = grandTotal > 0 ? `<span style="font-size:10px;font-weight:400;color:#8a9aaa"> / ${grandTotal} total</span>` : '';
+
     return `
       <div style="padding:10px 0;border-bottom:1px solid var(--card-border)">
-        <div style="display:grid;grid-template-columns:110px 1fr 52px;align-items:center;gap:12px;margin-bottom:8px">
+        <div style="display:grid;grid-template-columns:110px 1fr 70px;align-items:center;gap:12px;margin-bottom:8px">
           <div style="font-size:12px;font-weight:700;color:var(--deep-navy)">${w.label}</div>
-          <div style="position:relative;height:22px;background:rgba(212,230,239,0.35);border-radius:4px;overflow:hidden">${segments}</div>
-          <div style="font-size:13px;font-weight:700;color:#2E7D52;text-align:right">${qualPct}%<span style="font-size:9px;font-weight:400;color:#8a9aaa;display:block;text-align:right">qual.</span></div>
+          <div style="position:relative;height:22px;background:rgba(212,230,239,0.35);border-radius:4px;overflow:hidden">${segments}${blankSeg}</div>
+          <div style="font-size:13px;font-weight:700;color:#2E7D52;text-align:right">${qualPct}%${totalLabel}<span style="font-size:9px;font-weight:400;color:#8a9aaa;display:block;text-align:right">qual.</span></div>
         </div>
         <div style="padding-left:122px;display:flex;gap:6px;flex-wrap:wrap">${pills}</div>
       </div>`;
   }).join('');
 
-  const legend = stackKeys.map(k => `
-    <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--mid-navy)">
-      <span style="width:10px;height:10px;border-radius:2px;background:${stackColors[k]};display:inline-block;flex-shrink:0"></span>
+  const legend = allStackKeys.map(k => `
+    <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--mid-navy)${k==='blank'?';opacity:0.7':''}">
+      <span style="width:10px;height:10px;border-radius:2px;background:${stackColors[k]};display:inline-block;flex-shrink:0${k==='blank'?';opacity:0.5':''}"></span>
       ${stackLabels[k]}</span>`).join('');
 
   return `
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px">${legend}</div>
     ${bars}
-    <div style="margin-top:10px;font-size:10px;color:#8a9aaa;font-style:italic">Qualified = Demo Happened minus post-demo disqualifications. Bar width scales to total volume.</div>`;
+    <div style="margin-top:10px;font-size:10px;color:#8a9aaa;font-style:italic">Qualified = Demo Happened minus post-demo disqualifications. % of total shown per category. Status Blank = contacts where demo_given__status is not set.</div>`;
 }
 
 const fmt$ = n => '$' + Number(n).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,',');
