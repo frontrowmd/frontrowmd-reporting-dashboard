@@ -26,25 +26,39 @@ function getWindows() {
   const dayBefore    = new Date(yest);    dayBefore.setDate(yest.getDate() - 1);
   const prev7Start   = new Date(weekAgo); prev7Start.setDate(weekAgo.getDate() - 7);
   const prev7End     = new Date(weekAgo); prev7End.setDate(weekAgo.getDate() - 1);
+
+  // MTD previous: same number of days into prior month (apples-to-apples comparison)
+  // e.g. if today is Feb 26, MTD = Feb 1–25 (25 days), prev MTD = Jan 1–25
+  const mtdDays = Math.floor((yest - mtdStart) / 86400000); // days elapsed in current month (excl today)
   const prevMtdStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const prevMtdEnd   = new Date(now.getFullYear(), now.getMonth(), 0);
+  const prevMtdEnd   = new Date(now.getFullYear(), now.getMonth() - 1, 1 + mtdDays);
+
+  // Last Month window (full prior calendar month)
+  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastMonthEnd   = new Date(now.getFullYear(), now.getMonth(), 0); // last day of prior month
+  // Prior to last month (same day count, for delta comparison)
+  const prevLastMonthStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+  const prevLastMonthEnd   = new Date(now.getFullYear(), now.getMonth() - 1, 0); // last day of month before last
 
   // Windsor data is capped at yesterday — labels reflect actual data window
   const fmt = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const fmtM = d => d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const yestStr    = fmt(yest);
   const weekAgoStr = fmt(weekAgo);
   const mtdStartStr = fmt(mtdStart);
 
   return {
     current: {
-      yesterday: { from: toDateStr(yest),     to: toDateStr(yest), label: `Yesterday (${yestStr})` },
-      rolling7:  { from: toDateStr(weekAgo),  to: toDateStr(now),  label: `Last 7 Days (${weekAgoStr}–${yestStr})` },
-      mtd:       { from: toDateStr(mtdStart), to: toDateStr(now),  label: `Month to Date (${mtdStartStr}–${yestStr})` },
+      yesterday:  { from: toDateStr(yest),          to: toDateStr(yest),         label: `Yesterday (${yestStr})` },
+      rolling7:   { from: toDateStr(weekAgo),        to: toDateStr(now),          label: `Last 7 Days (${weekAgoStr}–${yestStr})` },
+      mtd:        { from: toDateStr(mtdStart),       to: toDateStr(now),          label: `Month to Date (${mtdStartStr}–${yestStr})` },
+      lastMonth:  { from: toDateStr(lastMonthStart), to: toDateStr(lastMonthEnd), label: fmtM(lastMonthStart) },
     },
     previous: {
-      yesterday: { from: toDateStr(dayBefore),    to: toDateStr(dayBefore),  label: 'Day Before' },
-      rolling7:  { from: toDateStr(prev7Start),   to: toDateStr(prev7End),   label: `Prior 7 Days (${fmt(prev7Start)}–${fmt(prev7End)})` },
-      mtd:       { from: toDateStr(prevMtdStart), to: toDateStr(prevMtdEnd), label: `Prior Month (${fmt(prevMtdStart)}–${fmt(prevMtdEnd)})` },
+      yesterday:  { from: toDateStr(dayBefore),         to: toDateStr(dayBefore),        label: 'Day Before' },
+      rolling7:   { from: toDateStr(prev7Start),        to: toDateStr(prev7End),         label: `Prior 7 Days (${fmt(prev7Start)}–${fmt(prev7End)})` },
+      mtd:        { from: toDateStr(prevMtdStart),      to: toDateStr(prevMtdEnd),       label: `${fmt(prevMtdStart)}–${fmt(prevMtdEnd)} (same days)` },
+      lastMonth:  { from: toDateStr(prevLastMonthStart),to: toDateStr(prevLastMonthEnd), label: fmtM(prevLastMonthStart) },
     },
   };
 }
@@ -81,7 +95,7 @@ async function fetchWindsorDemos(dateFrom, dateTo) {
   if (dateFrom > dateTo) return { meta: {spend:0,clicks:0,impressions:0,demos:0,ctr:[]}, linkedin:{spend:0,clicks:0,impressions:0,demos:0}, tiktok:{spend:0,clicks:0,impressions:0,demos:0}, google:{spend:0,clicks:0,impressions:0,demos:0,_raw:0}, youtube:{spend:0,clicks:0,impressions:0,demos:0,_raw:0} };
 
   const fields = [
-    'date','datasource','campaign_name','spend','clicks','impressions','ctr',
+    'date','datasource','campaign_name','conversion_name','spend','clicks','impressions','ctr',
     'conversions','externalwebsiteconversions','conversions_submit_application_total',
     'all_conversions'
   ].join(',');
@@ -132,10 +146,15 @@ async function fetchWindsorDemos(dateFrom, dateTo) {
     }
     // LinkedIn
     else if (/linkedin/.test(src)) {
+      const convName = (row.conversion_name || '').toLowerCase();
+      const isHubspotConv = convName.includes('hubspot');
       result.linkedin.spend       += row.spend || 0;
       result.linkedin.clicks      += row.clicks || 0;
       result.linkedin.impressions += row.impressions || 0;
-      result.linkedin.demos       += row.externalwebsiteconversions || 0;
+      // Only count conversions NOT named with "hubspot" (those are internal tracking, not real demos)
+      if (!isHubspotConv) {
+        result.linkedin.demos     += row.externalwebsiteconversions || 0;
+      }
     }
     // TikTok
     else if (/tiktok/.test(src)) {
@@ -275,58 +294,51 @@ function toMs(dateStr, endOfDay = false) {
 
 // ── HubSpot: fetch all data for the widest window, slice per sub-window ────────
 // Date dimensions:
-//   demosBooked   = contacts in list 289 (ILS segment) by date_demo_booked (DATE property)
-//   demosToOccur  = deals with date_demo_booked in window
-//   demosHappened = deals with date_demo_booked in window (status fields)
-//   dealsWon      = deals with closedate in window (closedwon stage)
-//   newMRR        = sum of deal amounts with closedate in window (closedwon stage)
+//   demosBooked  = contacts in list 289 (ILS segment) by date_demo_booked (DATE property)
+//   demosToOccur = deals with date_demo_booked in window
+//   demosHappened, dealsWon, dq breakdown = deals with date_demo_booked in window (status fields)
 async function fetchAllHubSpotData(windows) {
   const mtd = windows.mtd;
+  const gteMs = toMs(mtd.from);
+  const lteMs = toMs(mtd.to, true);
   const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-  // Compute the earliest start and latest end across ALL sub-windows (including prev/rolling7/yesterday)
-  // so that a single wide fetch covers every sub-window we'll slice later.
-  const allWinDates = Object.values(windows).map(w => w.from);
-  const allWinEnds  = Object.values(windows).map(w => w.to);
-  const widestFrom  = allWinDates.reduce((a, b) => a < b ? a : b);
-  const widestTo    = allWinEnds.reduce((a, b) => a > b ? a : b);
 
   // ── 1. Fetch contacts added to list 289 (Meeting Booked) ────────────────────
   // Use date_demo_booked (DATE property, YYYY-MM-DD) on contacts in list 289.
   // This matches the HubSpot UI segment count.
+  const listFetchFrom = windows.prev ? windows.prev.from : windows.mtd.from;
   // ilsListIds is rejected by HubSpot CRM search API (/crm/v3/objects/search).
   // Query contacts by date_demo_booked directly — equivalent to list 289 membership by date.
   const allBookedContacts = await hsSearch('contacts', {
     filterGroups: [{ filters: [
-      { propertyName: 'date_demo_booked', operator: 'GTE', value: toMs(widestFrom) },
-      { propertyName: 'date_demo_booked', operator: 'LTE', value: toMs(widestTo, true) },
+      { propertyName: 'date_demo_booked', operator: 'GTE', value: toMs(listFetchFrom) },
+      { propertyName: 'date_demo_booked', operator: 'LTE', value: toMs(mtd.to, true) },
     ]}],
     properties: ['date_demo_booked']
   });
-  console.log('  INFO allBookedContacts: ' + allBookedContacts.length + ' | range: ' + widestFrom + ' to ' + widestTo);
+  console.log('  INFO allBookedContacts: ' + allBookedContacts.length + ' | range: ' + listFetchFrom + ' to ' + mtd.to);
   await sleep(1500);
 
-  // ── 2. Fetch all deals with date_demo_booked in range (for pipeline/funnel metrics) ──
+  // ── 3. Fetch all deals with date_demo_booked in range ────────────────────────
   // date_demo_booked is a DATE-type property: must use YYYY-MM-DD strings, not ms.
+  // Fetch from prev window start to cover both current and prev sub-windows.
+  const prevFrom = windows.prev ? windows.prev.from : windows.mtd.from;
   const allDeals = await hsSearch('deals', {
     filterGroups: [{ filters: [
-      { propertyName: 'date_demo_booked', operator: 'GTE', value: toMs(widestFrom) },
-      { propertyName: 'date_demo_booked', operator: 'LTE', value: toMs(widestTo, true) },
+      { propertyName: 'date_demo_booked', operator: 'GTE', value: toMs(prevFrom) },
+      { propertyName: 'date_demo_booked', operator: 'LTE', value: toMs(mtd.to, true) },
     ]}],
     properties: ['date_demo_booked', 'demo_given_date', 'demo_given__status', 'dealstage', 'amount', 'closedate']
   });
-  console.log('  INFO allDeals: ' + allDeals.length + ' | range: ' + widestFrom + ' to ' + widestTo);
+  console.log('  INFO allDeals: ' + allDeals.length + ' | range: ' + prevFrom + ' to ' + mtd.to);
   await sleep(1500);
 
-  // ── 3. Fetch closed won deals by closedate for dealsWon count + MRR ─────────
-  // dealsWon and MRR must use closedate (not date_demo_booked) because a deal
-  // closed this week may have been booked weeks ago and would be missed otherwise.
-  // Use widestFrom/widestTo to cover all sub-windows (yesterday, rolling7, mtd, and their prev periods).
+  // ── 4. Fetch closed won deals by closedate for MRR ────────────────────────
   const allClosedWon = await hsSearch('deals', {
     filterGroups: [{ filters: [
       { propertyName: 'dealstage', operator: 'EQ',  value: 'closedwon' },
-      { propertyName: 'closedate', operator: 'GTE', value: toMs(widestFrom) },
-      { propertyName: 'closedate', operator: 'LTE', value: toMs(widestTo, true) },
+      { propertyName: 'closedate', operator: 'GTE', value: gteMs },
+      { propertyName: 'closedate', operator: 'LTE', value: lteMs },
     ]}],
     properties: ['amount', 'closedate']
   });
@@ -351,17 +363,25 @@ async function fetchAllHubSpotData(windows) {
       inWin(dateMs(d.properties?.date_demo_booked))
     );
 
-    // Pipeline metrics from deals filtered by date_demo_booked
+    // Count each metric from that same deal set
     let demosToOccur = deals.length;
-    let demosHappened = 0;
+    let demosHappened = 0, dealsWon = 0;
     let notQualAfterDemo = 0, disqualifiedBeforeDemo = 0, tooEarly = 0;
+    let noShowCanceled = 0, blankStatus = 0;
     let demoGivenCount = 0, notQualAfterDemoCount = 0;
 
     for (const deal of deals) {
-      const status = (deal.properties?.demo_given__status || '').toLowerCase().trim();
+      const rawStatus = (deal.properties?.demo_given__status || '').trim();
+      const status = rawStatus.toLowerCase();
+      const stage  = (deal.properties?.dealstage || '').toLowerCase();
+
+      // Blank/missing demo_given_status
+      if (!rawStatus) blankStatus++;
 
       // Demos Happened: status starts with "demo given" (covers all Demo Given variants)
       if (status.startsWith('demo given')) demosHappened++;
+
+      if (stage === 'closedwon') dealsWon++;
 
       // Disqualified BEFORE demo = meeting cancelled before it happened
       if (status === 'disqualified, meeting cancelled' ||
@@ -375,19 +395,23 @@ async function fetchAllHubSpotData(windows) {
       // Too early = demo given but too early to close
       if (status.includes('too early')) tooEarly++;
 
+      // No Show / Canceled — demo never happened but not formally disqualified before
+      if (status === 'no show' || status === 'no-show' ||
+          status === 'cancelled' || status === 'canceled' ||
+          status === 'no show / cancelled' || status === 'no show / canceled' ||
+          status === 'rescheduled') noShowCanceled++;
+
       // For % Demos Won calc: demos that happened (demo given*)
       if (status.startsWith('demo given')) demoGivenCount++;
       if (status === 'not qualified after demo' ||
           status === 'not qualified after the demo') notQualAfterDemoCount++;
     }
 
-    // dealsWon and MRR: use closedate-based set (not date_demo_booked)
-    // This correctly captures deals closed in the window regardless of when they were booked.
-    const closedWon = allClosedWon.filter(d => inWin(isoMs(d.properties?.closedate)));
-    const dealsWon  = closedWon.length;
-
     const denom = demoGivenCount - notQualAfterDemoCount;
     const pctDemosWon = denom > 0 ? ((dealsWon / denom) * 100).toFixed(1) + '%' : 'N/A';
+
+    // MRR from closed won by closedate (separate window)
+    const closedWon = allClosedWon.filter(d => inWin(isoMs(d.properties?.closedate)));
 
     result[key] = {
       demosBooked:           contactsBooked.length,
@@ -398,6 +422,8 @@ async function fetchAllHubSpotData(windows) {
       notQualAfterDemo,
       disqualifiedBeforeDemo,
       tooEarly,
+      noShowCanceled,
+      blankStatus,
       newMRR: closedWon.reduce((s, d) => s + (parseFloat(d.properties?.amount) || 0), 0),
     };
   }
@@ -508,7 +534,7 @@ function buildSlackSummary(label, channels, ga4, hs, prevChannels, prevGa4, prev
   const cpdVal  = (s, d) => d > 0 ? `$${Math.round(s / d).toLocaleString()}` : '—';
 
   const lines = [];
-  lines.push(`*⚡ EXECUTIVE SUMMARY — ${label.toUpperCase()}*`);
+  lines.push(`*⚡ EXECUTIVE SUMMARY — ${label.toUpperCase()}${dateRange ? `  (${dateRange})` : ''}*`);
   lines.push('```');
 
   lines.push('WEBSITE PERFORMANCE');
@@ -604,9 +630,9 @@ function buildDashboard(windowedChannels, hubspotData, prevWindowedChannels, pre
 
   function buildWin(channels, ga4, hs, ga4Sources, ga4PrevSources) {
     const { demosBooked, demosToOccur, demosHappened, dealsWon, pctDemosWon,
-            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, newMRR } = hs;
+            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, noShowCanceled, blankStatus, newMRR } = hs;
     const pipeline = { demosToOccur, demosHappened, dealsWon, pctDemosWon,
-                       notQualAfterDemo, disqualifiedBeforeDemo, tooEarly };
+                       notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, noShowCanceled, blankStatus };
     const metaCTR  = channels.meta.ctrAvg != null
       ? (channels.meta.ctrAvg * 100).toFixed(2) + '%' : null;
     return { channels, ga4, demosBooked, pipeline, newMRR, metaCTR,
@@ -1109,9 +1135,10 @@ async function main() {
     ...winKeys.map(k => Promise.all([fetchWindsorDemos(prevWindows[k].from, prevWindows[k].to), fetchGA4(prevWindows[k].from, prevWindows[k].to)])),
   ]);
 
-  // Split allWindsor: first 3 = current, next 3 = previous
-  const windowedChannels     = allWindsor.slice(0, 3);
-  const prevWindowedChannels = allWindsor.slice(3, 6);
+  // Split allWindsor: first N = current, next N = previous
+  const N = winKeys.length;
+  const windowedChannels     = allWindsor.slice(0, N);
+  const prevWindowedChannels = allWindsor.slice(N, N * 2);
 
   // GA4 source breakdown (per-window, current + previous, non-blocking)
   const ga4SourcesByWindow = {};
@@ -1339,9 +1366,9 @@ async function fetchCustomWindow(from, to) {
 
   function buildWin(ch, g4, h, ga4Sources, ga4PrevSources) {
     const { demosBooked, demosToOccur, demosHappened, dealsWon, pctDemosWon,
-            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, newMRR } = h;
+            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, noShowCanceled, blankStatus, newMRR } = h;
     const pipeline = { demosToOccur, demosHappened, dealsWon, pctDemosWon,
-                       notQualAfterDemo, disqualifiedBeforeDemo, tooEarly };
+                       notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, noShowCanceled, blankStatus };
     const metaCTR  = ch.meta.ctrAvg != null
       ? (ch.meta.ctrAvg * 100).toFixed(2) + '%' : null;
     return { channels: ch, ga4: g4, demosBooked, pipeline, newMRR, metaCTR,
