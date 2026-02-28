@@ -130,12 +130,12 @@ async function fetchWindsorDemos(dateFrom, dateTo) {
       result.meta.demos       += row.conversions_submit_application_total || 0;
       if (row.ctr != null) result.meta.ctr.push(row.ctr);
     }
-    // LinkedIn
+    // LinkedIn — demos counted separately via second fetch to filter conversion types
     else if (/linkedin/.test(src)) {
       result.linkedin.spend       += row.spend || 0;
       result.linkedin.clicks      += row.clicks || 0;
       result.linkedin.impressions += row.impressions || 0;
-      result.linkedin.demos       += row.externalwebsiteconversions || 0;
+      // demos intentionally NOT summed here — see LinkedIn demo fix below
     }
     // TikTok
     else if (/tiktok/.test(src)) {
@@ -173,6 +173,33 @@ async function fetchWindsorDemos(dateFrom, dateTo) {
     : null;
 
   console.log(`  INFO spend split — Google Search: $${result.google.spend.toFixed(2)}  YouTube: $${result.youtube.spend.toFixed(2)}  (${dateFrom} → ${dateTo})`);
+
+  // ── LinkedIn demo fix: separate fetch with conversion_name to filter out pipeline events ──
+  // Adding conversion_name to the main fields zeros out LinkedIn spend, so we fetch demos separately.
+  // Only "Demo Request Thank You Page" and "Demo Request" are actual demo bookings.
+  // Excluded: "HubSpot - Opportunity", "HubSpot - Sales Qualified Lead", "Demo Scheduled"
+  try {
+    const liFields = 'date,datasource,conversion_name,externalwebsiteconversions';
+    const liRows = [];
+    for (let i = 0; i < days.length; i += 5) {
+      const batch = days.slice(i, i + 5);
+      const batchResults = await Promise.all(batch.map(day => windsorFetch(day, day, liFields)));
+      liRows.push(...batchResults.flat());
+      if (i + 5 < days.length) await sleep(300);
+    }
+    let liDemos = 0;
+    for (const row of liRows) {
+      if (!/linkedin/i.test(row.datasource || '')) continue;
+      const convName = (row.conversion_name || '').toLowerCase();
+      if (convName.includes('demo request')) {
+        liDemos += row.externalwebsiteconversions || 0;
+      }
+    }
+    result.linkedin.demos = liDemos;
+    console.log(`  ✅ LinkedIn demos (filtered): ${liDemos} [${dateFrom} → ${dateTo}]`);
+  } catch (e) {
+    console.log(`  ⚠️  LinkedIn demo fetch failed, falling back to 0: ${e.message}`);
+  }
 
   return result;
 }
@@ -277,8 +304,7 @@ function toMs(dateStr, endOfDay = false) {
 // Date dimensions:
 //   demosBooked  = contacts in list 289 (ILS segment) by date_demo_booked (DATE property)
 //   demosToOccur = deals with date_demo_booked in window
-//   demosHappened, dq breakdown = deals with date_demo_booked in window (status fields)
-//   dealsWon = deals with dealstage=closedwon AND closedate in window
+//   demosHappened, dealsWon, dq breakdown = deals with date_demo_booked in window (status fields)
 async function fetchAllHubSpotData(windows) {
   const mtd = windows.mtd;
   const gteMs = toMs(mtd.from);
@@ -374,6 +400,9 @@ async function fetchAllHubSpotData(windows) {
 
     for (const deal of deals) {
       const rawStatus = (deal.properties?.demo_given__status || '').trim();
+      const stage     = (deal.properties?.dealstage || '').toLowerCase();
+
+      if (stage === 'closedwon') dealsWon++;
 
       // Exact matches against real HubSpot stored values
       if (rawStatus === 'Demo Given' || rawStatus === 'Demo Given at Rescheduled time') {
@@ -407,14 +436,11 @@ async function fetchAllHubSpotData(windows) {
     }
 
 
-    // Closed Won by closedate (matches HubSpot's closed won view)
-    const closedWon = allClosedWon.filter(d => inWin(isoMs(d.properties?.closedate)));
-    // Use closedate-based count — demo_booked-based count misses deals
-    // whose demo was booked in a prior month but closed in this window
-    dealsWon = closedWon.length;
-
     const denom = demoGivenCount - notQualAfterDemoCount;
     const pctDemosWon = denom > 0 ? ((dealsWon / denom) * 100).toFixed(1) + '%' : 'N/A';
+
+    // MRR from closed won by closedate (separate window)
+    const closedWon = allClosedWon.filter(d => inWin(isoMs(d.properties?.closedate)));
 
     result[key] = {
       demosBooked:           contactsBooked.length,
@@ -428,6 +454,7 @@ async function fetchAllHubSpotData(windows) {
       rescheduled,
       canceled,
       blankStatus,
+      closedDeals: closedWon.length,
       newMRR: closedWon.reduce((s, d) => s + (parseFloat(d.properties?.amount) || 0), 0),
     };
   }
@@ -612,7 +639,7 @@ function buildSection(label, channels, hs) {
   lines.push(`  Demos Booked           ${String(demosBooked).padStart(8)}  (contacts in Meeting Booked list, by date_demo_booked)`);
   lines.push(`  Demos to Occur         ${String(demosToOccur).padStart(8)}  (deals by date_demo_booked)`);
   lines.push(`  Demo Given             ${String(demosHappened).padStart(8)}  (Demo Given + Demo Given at Rescheduled time + Too Early + Not Qual After)`);
-  lines.push(`  Deals Won              ${String(dealsWon).padStart(8)}  (deals by closedate, closedwon)`);
+  lines.push(`  Deals Won              ${String(dealsWon).padStart(8)}  (deals by date_demo_booked, closedwon)`);
   lines.push(`  % Demos Won            ${String(pctDemosWon).padStart(8)}`);
 
   lines.push('\n── DISQUALIFICATION ─────────────────────────────────────');
@@ -637,10 +664,10 @@ function buildDashboard(windowedChannels, hubspotData, prevWindowedChannels, pre
 
   function buildWin(channels, ga4, hs, ga4Sources, ga4PrevSources) {
     const { demosBooked, demosToOccur, demosHappened, dealsWon, pctDemosWon,
-            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, rescheduled, canceled, blankStatus, newMRR } = hs;
+            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, rescheduled, canceled, blankStatus, closedDeals, newMRR } = hs;
     const pipeline = { demosToOccur, demosHappened, dealsWon, pctDemosWon,
                        notQualAfterDemo, disqualifiedBeforeDemo, tooEarly,
-                       rescheduled, canceled, blankStatus };
+                       rescheduled, canceled, blankStatus, closedDeals };
     const metaCTR  = channels.meta.ctrAvg != null
       ? (channels.meta.ctrAvg * 100).toFixed(2) + '%' : null;
     return { channels, ga4, demosBooked, pipeline, newMRR, metaCTR,
@@ -1373,10 +1400,10 @@ async function fetchCustomWindow(from, to) {
 
   function buildWin(ch, g4, h, ga4Sources, ga4PrevSources) {
     const { demosBooked, demosToOccur, demosHappened, dealsWon, pctDemosWon,
-            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, rescheduled, canceled, blankStatus, newMRR } = h;
+            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, rescheduled, canceled, blankStatus, closedDeals, newMRR } = h;
     const pipeline = { demosToOccur, demosHappened, dealsWon, pctDemosWon,
                        notQualAfterDemo, disqualifiedBeforeDemo, tooEarly,
-                       rescheduled, canceled, blankStatus };
+                       rescheduled, canceled, blankStatus, closedDeals };
     const metaCTR  = ch.meta.ctrAvg != null
       ? (ch.meta.ctrAvg * 100).toFixed(2) + '%' : null;
     return { channels: ch, ga4: g4, demosBooked, pipeline, newMRR, metaCTR,
