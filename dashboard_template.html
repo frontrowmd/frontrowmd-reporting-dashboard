@@ -507,7 +507,7 @@ function buildCustomRangeUI() {
         </div>
         <div id="custom-status" style="margin-top:12px;font-size:13px;color:#8a9aaa"></div>
         <div style="margin-top:8px;font-size:12px;color:var(--soft-teal);font-style:italic">
-          Report takes ~1–2 minutes to generate. You'll be redirected when it's ready.
+          Report takes ~1–2 minutes to generate. Opens in a new tab when ready.
         </div>
       </div>
     </div>
@@ -583,8 +583,8 @@ async function fetchCustomRange() {
             if (newTimestamp && newTimestamp !== baselineTimestamp) {
               // New custom.html detected — success!
               clearInterval(timerInterval);
-              status.innerHTML = '<span style="color:#2E7D52">✅ Report ready! Redirecting…</span>';
-              setTimeout(() => { window.location.href = customUrl; }, 1000);
+              status.innerHTML = `<span style="color:#2E7D52">✅ Report ready! <a href="${customUrl}" target="_blank" style="color:var(--soft-teal);text-decoration:underline;font-weight:700">Open Custom Report →</a></span>`;
+              window.open(customUrl, '_blank');
               return;
             }
           }
@@ -712,9 +712,13 @@ function buildSpendPacingSection(ch, pacingPct) {
 }
 
 // ── Demo Quality Trend (3-window grouped bars) ─────────────────
-function buildDemoQualityChart() {
-  const windows  = ['yesterday','rolling7','mtd'];
-  const wLabels  = {yesterday:'Yesterday',rolling7:'Last 7 Days',mtd:'Month to Date'};
+function buildDemoQualityChart(tabKey) {
+  // In custom-only mode, show a single bar for the custom window
+  const isCustom = tabKey === 'custom' || (!DATA.windows.yesterday && DATA.windows.custom);
+  const windows  = isCustom ? ['custom'] : ['yesterday','rolling7','mtd'];
+  const wLabels  = isCustom
+    ? { custom: DATA.windows.custom?.label || 'Custom Range' }
+    : { yesterday:'Yesterday', rolling7:'Last 7 Days', mtd:'Month to Date' };
 
   const winData = windows.map(w => {
     const pp = DATA.windows[w]?.pipeline || {};
@@ -1692,7 +1696,7 @@ function buildPanel(key, d) {
     <div class="sl">Demo Quality Trend <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">Qualified vs. Disqualified across time windows</span></div>
     <div class="chart-card" style="margin-bottom:32px">
       <div class="chart-title">Demo Quality — Yesterday vs Last 7 Days vs MTD</div>
-      ${buildDemoQualityChart()}
+      ${buildDemoQualityChart(key)}
     </div>
 
     <div class="sl">Intelligence Report <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">vs ${prevLabel}</span></div>
