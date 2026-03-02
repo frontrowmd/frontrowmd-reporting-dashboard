@@ -439,12 +439,14 @@
     <button class="tab" onclick="switchTab('rolling7',this)" id="tab-btn-rolling7">Last 7 Days</button>
     <button class="tab" onclick="switchTab('mtd',this)" id="tab-btn-mtd">Month to Date</button>
     <button class="tab" onclick="switchTab('paidmedia',this)">Paid Media Analysis</button>
+    <button class="tab" onclick="switchTab('custom',this)" id="tab-btn-custom">Custom Range</button>
   </div>
 
   <div id="panel-yesterday" class="panel active"></div>
   <div id="panel-rolling7"  class="panel"></div>
   <div id="panel-mtd"       class="panel"></div>
   <div id="panel-paidmedia" class="panel"></div>
+  <div id="panel-custom" class="panel"></div>
 
   <footer>
     <div class="footer-logo">
@@ -466,6 +468,108 @@ function switchTab(key, btn) {
   // Build paid media panel on first view
   if (key === 'paidmedia' && !document.getElementById('panel-paidmedia').innerHTML.trim()) {
     document.getElementById('panel-paidmedia').innerHTML = buildPaidMediaPanel();
+  }
+  // Build custom range picker on first view
+  if (key === 'custom' && !document.getElementById('custom-range-ui')) {
+    document.getElementById('panel-custom').innerHTML = buildCustomRangeUI();
+  }
+}
+
+// ── Custom Range Tab ───────────────────────────────────────────
+const CUSTOM_API_BASE = 'http://localhost:3001';
+
+function buildCustomRangeUI() {
+  // Default: last 7 days ending yesterday
+  const yd = new Date(); yd.setDate(yd.getDate() - 1);
+  const wk = new Date(yd); wk.setDate(wk.getDate() - 6);
+  const toISO = d => d.toISOString().slice(0,10);
+  return `
+    <div id="custom-range-ui" style="margin-bottom:32px">
+      <div class="chart-card" style="padding:28px 32px">
+        <div class="chart-title" style="margin-bottom:16px">Custom Date Range</div>
+        <div style="display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap">
+          <div>
+            <label style="display:block;font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--soft-teal);margin-bottom:6px">From</label>
+            <input type="date" id="custom-from" value="${toISO(wk)}" max="${toISO(yd)}"
+              style="font-family:'Libre Baskerville',Georgia,serif;font-size:14px;padding:10px 16px;border:1.5px solid var(--card-border);border-radius:8px;color:var(--deep-navy);background:#fff;outline:none;cursor:pointer">
+          </div>
+          <div>
+            <label style="display:block;font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--soft-teal);margin-bottom:6px">To</label>
+            <input type="date" id="custom-to" value="${toISO(yd)}" max="${toISO(yd)}"
+              style="font-family:'Libre Baskerville',Georgia,serif;font-size:14px;padding:10px 16px;border:1.5px solid var(--card-border);border-radius:8px;color:var(--deep-navy);background:#fff;outline:none;cursor:pointer">
+          </div>
+          <button onclick="fetchCustomRange()" id="custom-fetch-btn"
+            style="font-family:'Libre Baskerville',Georgia,serif;font-size:14px;font-weight:700;padding:12px 28px;border-radius:50px;border:none;background:var(--deep-navy);color:#fff;cursor:pointer;transition:all 0.2s ease;white-space:nowrap">
+            Generate Report
+          </button>
+        </div>
+        <div id="custom-status" style="margin-top:12px;font-size:13px;color:#8a9aaa"></div>
+        <div id="custom-server-note" style="margin-top:8px;font-size:12px;color:var(--soft-teal);font-style:italic">
+          Requires the local API server: <code style="background:rgba(114,164,191,0.1);padding:2px 6px;border-radius:4px;font-size:11px">node report.js --serve</code>
+        </div>
+      </div>
+    </div>
+    <div id="custom-results"></div>`;
+}
+
+async function fetchCustomRange() {
+  const from = document.getElementById('custom-from').value;
+  const to   = document.getElementById('custom-to').value;
+  const btn  = document.getElementById('custom-fetch-btn');
+  const status = document.getElementById('custom-status');
+  const results = document.getElementById('custom-results');
+
+  if (!from || !to) { status.innerHTML = '<span style="color:#C0392B">Please select both dates.</span>'; return; }
+  if (from > to)    { status.innerHTML = '<span style="color:#C0392B">From date must be before To date.</span>'; return; }
+
+  btn.disabled = true;
+  btn.style.opacity = '0.6';
+  btn.textContent = 'Fetching…';
+  status.innerHTML = '<span style="color:var(--soft-teal)">⏳ Pulling data from Windsor.ai, HubSpot & GA4… this may take 15–30 seconds.</span>';
+  results.innerHTML = '';
+
+  try {
+    const res = await fetch(`${CUSTOM_API_BASE}/custom?from=${from}&to=${to}`);
+    const json = await res.json();
+
+    if (!json.ok) {
+      status.innerHTML = `<span style="color:#C0392B">Error: ${json.error}</span>`;
+      return;
+    }
+
+    // Map server response into the same shape buildPanel expects
+    const w = json.window;
+    const panelData = {
+      channels: w.channels,
+      ga4: w.ga4,
+      demosBooked: w.demosBooked,
+      pipeline: w.pipeline,
+      newMRR: w.newMRR,
+      metaCTR: w.metaCTR,
+      ga4Sources: w.ga4Sources || [],
+      ga4PrevSources: w.ga4PrevSources || [],
+      prevLabel: w.prevLabel,
+      prev: w.prev,
+      intelligence: null,
+    };
+
+    // Store in DATA.windows so sparklines can reference it (they look up DATA.windows[key])
+    DATA.windows.custom = panelData;
+
+    const label = w.label || `${from} to ${to}`;
+    status.innerHTML = `<span style="color:#2E7D52">✅ Showing <strong>${label}</strong> vs <strong>${w.prevLabel}</strong></span>`;
+    results.innerHTML = buildPanel('custom', panelData);
+
+  } catch(e) {
+    if (e.message.includes('Failed to fetch') || e.message.includes('NetworkError')) {
+      status.innerHTML = '<span style="color:#C0392B">Cannot connect to local API server. Make sure <code style="background:rgba(239,68,68,0.1);padding:2px 6px;border-radius:4px;font-size:11px">node report.js --serve</code> is running.</span>';
+    } else {
+      status.innerHTML = `<span style="color:#C0392B">Error: ${e.message}</span>`;
+    }
+  } finally {
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.textContent = 'Generate Report';
   }
 }
 
