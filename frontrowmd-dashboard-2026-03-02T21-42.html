@@ -1,0 +1,1992 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="FrontrowMD_Favicon.png">
+<title>FrontrowMD — Marketing Performance Dashboard</title>
+<link rel="icon" type="image/png" href="Graphic_Gems___blue_background_-_square.png">
+<link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --midnight:    #020F18;
+    --deep-navy:   #172C45;
+    --mid-navy:    #1D4053;
+    --soft-teal:   #72A4BF;
+    --white:       #FFFFFF;
+    --card-bg:     rgba(114,164,191,0.08);
+    --card-border: #D4E6EF;
+    --teal-10:     rgba(114,164,191,0.10);
+    --grad-dark:   linear-gradient(135deg,#020F18 0%,#1D4053 50%,#72A4BF 100%);
+    --grad-light:  linear-gradient(135deg,#F5F7FA 0%,#EBF3F8 60%,#D8ECF5 100%);
+    --shadow-sm:   0 2px 12px rgba(23,44,69,0.06);
+    --shadow-md:   0 4px 16px rgba(2,15,24,0.12);
+    --shadow-hov:  0 8px 24px rgba(23,44,69,0.12);
+    --warn-bg:     #FFF8E1; --warn-tx: #B8860B;
+    --good-bg:     rgba(26,107,58,0.08); --good-tx: #1A6B3A;
+    --danger-bg:   rgba(192,57,43,0.07); --danger-tx: #C0392B;
+    --up:   #1A6B3A; --up-bg:   rgba(26,107,58,0.10);
+    --down: #C0392B; --down-bg: rgba(192,57,43,0.09);
+    --flat: #5a7a8a; --flat-bg: rgba(90,122,138,0.09);
+    --radius:14px; --pill:50px;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--grad-light);color:var(--midnight);font-family:'Libre Baskerville',Georgia,serif;font-size:14px;line-height:1.65;min-height:100vh;}
+  body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;background-image:repeating-linear-gradient(45deg,transparent,transparent 20px,rgba(114,164,191,0.04) 20px,rgba(114,164,191,0.04) 22px);}
+  .wrap{max-width:1360px;margin:0 auto;padding:0 40px 80px;position:relative;z-index:1;}
+
+  /* HEADER */
+  header{background:var(--grad-dark);margin:0 0 48px;padding:36px 48px 32px;display:flex;align-items:center;justify-content:space-between;position:relative;overflow:hidden;width:100%;max-width:none;}
+  header::after{content:'';position:absolute;right:0;top:0;bottom:0;width:340px;background:radial-gradient(ellipse at right center,rgba(114,164,191,0.12) 0%,transparent 70%);pointer-events:none;}
+  .logo-img{height:40px;width:auto;display:block;}
+  .logo-fallback{font-size:18px;font-weight:400;color:rgba(255,255,255,0.85);letter-spacing:0.02em;display:flex;align-items:center;gap:8px;}
+  .logo-fallback strong{font-weight:700;color:var(--white);}
+  h1{font-size:clamp(22px,2.8vw,34px);font-weight:700;color:var(--white);line-height:1.2;margin-top:14px;}
+  h1 em{font-style:normal;color:var(--soft-teal);}
+  .header-right{text-align:right;position:relative;z-index:1;flex-shrink:0;}
+  .gen-label{font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.4);margin-bottom:4px;}
+  .gen-time{font-size:14px;color:rgba(255,255,255,0.85);}
+  .ds-pills{display:flex;gap:6px;justify-content:flex-end;margin-top:12px;flex-wrap:wrap;}
+  .ds-pill{font-size:10px;letter-spacing:0.06em;padding:4px 12px;border-radius:var(--pill);border:1px solid rgba(114,164,191,0.35);color:rgba(255,255,255,0.6);}
+
+  /* TABS */
+  .tabs{display:flex;gap:6px;margin-bottom:36px;}
+  .tab{font-family:'Libre Baskerville',Georgia,serif;font-size:13px;padding:10px 26px;border-radius:var(--pill);cursor:pointer;border:1.5px solid var(--card-border);background:transparent;color:var(--mid-navy);transition:all 0.2s ease;}
+  .tab:hover{border-color:var(--soft-teal);background:var(--teal-10);}
+  .tab.active{background:var(--deep-navy);color:var(--white);border-color:var(--deep-navy);font-weight:700;}
+  .tab:focus{outline:2px solid var(--soft-teal);outline-offset:2px;}
+
+  /* PANELS */
+  .panel{display:none;}
+  .panel.active{display:block;animation:fadeUp 0.3s ease;}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+
+  /* SECTION LABEL */
+  .sl{font-size:10px;font-weight:700;letter-spacing:0.22em;text-transform:uppercase;color:var(--soft-teal);margin-bottom:16px;display:flex;align-items:center;gap:14px;}
+  .sl::after{content:'';flex:1;height:1px;background:var(--card-border);}
+
+  /* DELTA BADGE */
+  .delta{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:700;padding:2px 8px;border-radius:var(--pill);margin-top:6px;}
+  .delta-up  {background:var(--up-bg);  color:var(--up);}
+  .delta-down{background:var(--down-bg);color:var(--down);}
+  .delta-flat{background:var(--flat-bg);color:var(--flat);}
+  .delta-sub {font-size:10px;font-weight:400;opacity:0.7;margin-left:2px;}
+
+  /* DARK STAT CARDS */
+  .stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:32px;}
+  .stat-card{background:linear-gradient(135deg,var(--deep-navy),var(--mid-navy));border-radius:var(--radius);padding:24px 28px;color:var(--white);box-shadow:var(--shadow-md);position:relative;overflow:hidden;}
+  .stat-card::after{content:'';position:absolute;right:-10px;bottom:-10px;width:80px;height:80px;border-radius:50%;background:rgba(114,164,191,0.08);}
+  .sc-label{font-size:10px;letter-spacing:0.18em;text-transform:uppercase;color:rgba(114,164,191,0.75);margin-bottom:8px;}
+  .sc-value{font-size:36px;font-weight:700;line-height:1;}
+  .sc-sub{font-size:12px;color:rgba(255,255,255,0.45);margin-top:6px;font-style:italic;}
+  .sc-delta{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:700;padding:2px 8px;border-radius:var(--pill);margin-top:8px;}
+  .sc-delta-up  {background:rgba(26,107,58,0.25); color:#7ecda0;}
+  .sc-delta-down{background:rgba(192,57,43,0.25); color:#f09090;}
+  .sc-delta-flat{background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.5);}
+
+  /* KPI GRID */
+  .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:32px;}
+  .kpi{background:var(--white);border:1px solid var(--card-border);border-radius:var(--radius);padding:22px 24px;box-shadow:var(--shadow-sm);position:relative;overflow:hidden;transition:transform 0.2s ease,box-shadow 0.2s ease;}
+  .kpi:hover{transform:translateY(-2px);box-shadow:var(--shadow-hov);}
+  .kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--kpi-stripe,var(--soft-teal));}
+  .kpi-label{font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--soft-teal);margin-bottom:10px;}
+  .kpi-value{font-size:30px;font-weight:700;color:var(--deep-navy);line-height:1;}
+  .kpi-sub{font-size:11px;color:#8a9aaa;margin-top:6px;font-style:italic;}
+  .kpi-navy{--kpi-stripe:var(--deep-navy);}
+  .kpi-good{--kpi-stripe:#2E7D52;}
+
+  /* WEBSITE FUNNEL (mini inline funnel inside KPI section) */
+  .wf-wrap{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;align-items:center;gap:0;margin-bottom:32px;}
+  .wf-node{background:var(--white);border:1px solid var(--card-border);border-radius:var(--radius);padding:20px 22px;box-shadow:var(--shadow-sm);position:relative;overflow:hidden;transition:transform 0.2s ease,box-shadow 0.2s ease;}
+  .wf-node:hover{transform:translateY(-2px);box-shadow:var(--shadow-hov);}
+  .wf-node::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--soft-teal);}
+  .wf-label{font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--soft-teal);margin-bottom:8px;}
+  .wf-value{font-size:28px;font-weight:700;color:var(--deep-navy);line-height:1;}
+  .wf-rate{display:inline-flex;align-items:center;gap:5px;margin-top:8px;font-size:11px;font-weight:700;color:var(--soft-teal);background:rgba(114,164,191,0.10);border-radius:4px;padding:3px 8px;border:1px solid rgba(114,164,191,0.18);}
+  .wf-rate-lbl{font-weight:400;color:#8a9aaa;font-size:10px;margin-left:2px;}
+  .wf-arrow{display:flex;align-items:center;justify-content:center;padding:0 6px;}
+  .wf-arrow-icon{width:40px;height:40px;color:var(--soft-teal);font-size:28px;display:flex;align-items:center;justify-content:center;font-weight:900;opacity:0.85;}
+
+  /* CHART CARDS */
+  .charts-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:32px;}
+  .chart-card{background:var(--white);border:1px solid var(--card-border);border-radius:var(--radius);padding:28px;box-shadow:var(--shadow-sm);transition:transform 0.2s ease,box-shadow 0.2s ease;}
+  .chart-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-hov);}
+  .chart-title{font-size:10px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:var(--soft-teal);margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid var(--card-border);display:flex;align-items:center;justify-content:space-between;}
+  .chart-title-meta{font-size:11px;letter-spacing:0.04em;color:#8a9aaa;font-weight:400;text-transform:none;}
+
+  /* SPEND SUMMARY STRIP */
+  .spend-summary{display:flex;gap:0;margin-bottom:20px;border:1px solid var(--card-border);border-radius:10px;overflow:hidden;}
+  .ss-item{flex:1;padding:14px 18px;}
+  .ss-item+.ss-item{border-left:1px solid var(--card-border);}
+  .ss-label{font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--soft-teal);margin-bottom:4px;}
+  .ss-value{font-size:20px;font-weight:700;color:var(--deep-navy);line-height:1;}
+  .ss-sub{font-size:10px;color:#8a9aaa;margin-top:4px;font-style:italic;}
+
+  /* BAR CHART */
+  .bar-chart{display:flex;flex-direction:column;gap:12px;}
+  .bar-row{display:flex;align-items:center;gap:12px;}
+  .bar-name{font-size:12px;color:var(--mid-navy);width:110px;flex-shrink:0;text-align:right;}
+  .bar-track{flex:1;height:8px;background:var(--card-bg);border-radius:4px;overflow:hidden;}
+  .bar-fill{height:100%;border-radius:4px;transition:width 0.8s cubic-bezier(0.16,1,0.3,1);}
+  .bar-val{font-size:12px;font-weight:700;color:var(--deep-navy);width:74px;flex-shrink:0;}
+
+  /* DONUT */
+  .donut-wrap{display:flex;align-items:center;gap:24px;margin-bottom:22px;}
+  .donut-legend{display:flex;flex-direction:column;gap:10px;flex:1;}
+  .leg-item{display:flex;align-items:center;gap:10px;font-size:12px;}
+  .leg-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+  .leg-name{color:var(--mid-navy);flex:1;}
+  .leg-pct{font-weight:700;color:var(--deep-navy);}
+
+  /* CPD TABLE */
+  .cpd-table{width:100%;border-collapse:collapse;}
+  .cpd-table th{font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--soft-teal);text-align:left;padding:0 12px 12px 0;border-bottom:1px solid var(--card-border);}
+  .cpd-table th:not(:first-child){text-align:right;padding-left:12px;}
+  .cpd-table td{padding:10px 12px 10px 0;border-bottom:1px solid rgba(212,230,239,0.5);font-size:13px;vertical-align:top;color:var(--mid-navy);}
+  .cpd-table td:not(:first-child){text-align:right;font-weight:700;color:var(--deep-navy);padding-left:12px;}
+  .cpd-table tr:last-child td{border-bottom:none;}
+  .badge{display:inline-block;font-size:11px;padding:3px 10px;border-radius:var(--pill);}
+  .badge-warn{background:var(--warn-bg);color:var(--warn-tx);}
+  .badge-good{background:var(--good-bg);color:var(--good-tx);}
+  .badge-na{background:var(--card-bg);color:#8a9aaa;}
+
+  /* FUNNEL — log scale so visitors don't dwarf demos */
+  .funnel{display:flex;flex-direction:column;gap:0;}
+  .funnel-step{display:grid;grid-template-columns:140px 1fr 110px;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid rgba(212,230,239,0.4);}
+  .funnel-step:last-child{border-bottom:none;}
+  .funnel-name{font-size:12px;color:var(--mid-navy);text-align:right;line-height:1.4;}
+  .funnel-track{background:var(--card-bg);border-radius:6px;height:36px;position:relative;overflow:hidden;}
+  .funnel-bar{height:100%;border-radius:6px;transition:width 0.9s cubic-bezier(0.16,1,0.3,1);display:flex;align-items:center;padding-left:12px;box-sizing:border-box;}
+  .funnel-bar-label{font-size:13px;font-weight:700;color:#fff;white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,0.15);}
+  .funnel-cvr-col{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:3px;}
+  .funnel-cvr-val{font-size:13px;font-weight:700;color:var(--deep-navy);}
+  .funnel-cvr-lbl{font-size:10px;color:#8a9aaa;font-style:italic;}
+  .funnel-connector{text-align:center;font-size:20px;font-weight:900;color:var(--soft-teal);padding:1px 0;grid-column:1/-1;opacity:0.8;line-height:1.2;}
+  .funnel-scale-note{font-size:10px;color:#8a9aaa;font-style:italic;text-align:right;margin-bottom:8px;}
+
+  /* PAID MEDIA TAB */
+  .pm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px;margin-bottom:32px;}
+  .pm-card{background:rgba(114,164,191,0.06);border:1px solid var(--card-border);border-radius:12px;padding:20px;transition:all 0.2s ease;}
+  .pm-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(23,44,69,0.08);}
+  .pm-card-header{display:flex;align-items:center;gap:10px;margin-bottom:16px;}
+  .pm-card-icon{font-size:20px;}
+  .pm-card-name{font-size:14px;font-weight:700;color:var(--deep-navy);}
+  .pm-card-spend{font-size:22px;font-weight:700;color:var(--deep-navy);margin-bottom:4px;}
+  .pm-card-rows{display:flex;flex-direction:column;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--card-border);}
+  .pm-card-row{display:flex;justify-content:space-between;align-items:center;}
+  .pm-card-row-label{font-size:11px;color:#8a9aaa;text-transform:uppercase;letter-spacing:0.06em;}
+  .pm-card-row-val{font-size:13px;font-weight:700;color:var(--deep-navy);}
+  .pm-card-row-delta{font-size:11px;margin-left:6px;}
+  .pm-summary-row{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px;}
+  .pm-summary-cell{background:linear-gradient(135deg,#172C45,#1D4053);border-radius:12px;padding:20px;color:#fff;text-align:center;}
+  .pm-summary-cell .psc-label{font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--soft-teal);margin-bottom:6px;}
+  .pm-summary-cell .psc-val{font-size:24px;font-weight:700;}
+  .pm-summary-cell .psc-sub{font-size:11px;color:var(--soft-teal);margin-top:4px;font-weight:400;}
+  .pm-summary-cell .psc-delta{font-size:11px;margin-top:4px;opacity:0.8;}
+  /* Force dark-mode aware delta pills inside dark summary cards */
+  .pm-summary-cell .delta     {background:rgba(255,255,255,0.10);color:rgba(255,255,255,0.85);}
+  .pm-summary-cell .delta-up  {background:rgba(26,107,58,0.35);  color:#7ecda0;}
+  .pm-summary-cell .delta-down{background:rgba(192,57,43,0.35);  color:#f09090;}
+  .pm-summary-cell .delta-flat{background:rgba(255,255,255,0.10);color:rgba(255,255,255,0.5);}
+
+  /* PIPELINE */
+  .pl-grid{display:flex;flex-direction:column;gap:12px;}
+  .pl-row{display:flex;align-items:center;gap:12px;}
+  .pl-name{font-size:12px;color:var(--mid-navy);width:150px;flex-shrink:0;}
+  .pl-track{flex:1;background:var(--card-bg);border-radius:4px;height:10px;overflow:hidden;}
+  .pl-fill{height:100%;border-radius:4px;transition:width 0.8s cubic-bezier(0.16,1,0.3,1);}
+  .pl-val{font-size:13px;font-weight:700;color:var(--deep-navy);width:38px;text-align:right;flex-shrink:0;}
+
+  /* SOURCE BREAKDOWN */
+  .src-grid{display:flex;flex-direction:column;gap:10px;padding:4px 0;}
+  .src-row{display:grid;grid-template-columns:180px 1fr 48px 40px 70px;align-items:center;gap:12px;}
+  .src-name{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mid-navy);font-weight:600;}
+  .src-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+  .src-bar-wrap{min-width:0;}
+  .src-bar-track{background:var(--card-bg);border-radius:4px;height:10px;overflow:hidden;}
+  .src-bar-fill{height:100%;border-radius:4px;transition:width 0.8s cubic-bezier(0.16,1,0.3,1);}
+  .src-count{font-size:13px;font-weight:700;color:var(--deep-navy);text-align:right;}
+  .src-pct{font-size:11px;color:#8a9aaa;text-align:right;}
+  .src-delta{text-align:right;}
+
+  /* INTELLIGENCE SECTION */
+  .intel-summary-bar{display:flex;gap:8px;margin-bottom:22px;flex-wrap:wrap;}
+  .intel-summary-pill{display:flex;align-items:center;gap:7px;padding:7px 16px;border-radius:50px;font-size:12px;font-weight:700;border:1px solid;}
+  .intel-summary-pill .isp-count{font-size:18px;font-weight:700;line-height:1;}
+
+  .isp-alert{background:rgba(192,57,43,0.08);border-color:rgba(192,57,43,0.25);color:#b5392a;}
+  .isp-weak {background:#FFF8E1;border-color:rgba(184,134,11,0.3);color:#9a7a0a;}
+  .isp-opp  {background:rgba(26,138,138,0.07);border-color:rgba(26,138,138,0.25);color:#1a6b6b;}
+  .isp-win  {background:rgba(26,107,58,0.07);border-color:rgba(26,107,58,0.25);color:#1A6B3A;}
+
+  .intel-category{margin-bottom:26px;}
+  .intel-category:last-child{margin-bottom:0;}
+  .intel-cat-label{display:flex;align-items:center;gap:10px;font-size:10px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;margin-bottom:11px;}
+  .intel-cat-label::after{content:'';flex:1;height:1px;}
+  .intel-cat-alert .intel-cat-label{color:#b5392a;}
+  .intel-cat-alert .intel-cat-label::after{background:rgba(192,57,43,0.2);}
+  .intel-cat-weak  .intel-cat-label{color:#9a7a0a;}
+  .intel-cat-weak  .intel-cat-label::after{background:rgba(184,134,11,0.2);}
+  .intel-cat-opp   .intel-cat-label{color:#1a6b6b;}
+  .intel-cat-opp   .intel-cat-label::after{background:rgba(26,107,107,0.2);}
+  .intel-cat-win   .intel-cat-label{color:#1A6B3A;}
+  .intel-cat-win   .intel-cat-label::after{background:rgba(26,107,58,0.2);}
+
+  .intel-cards{display:flex;flex-direction:column;gap:9px;}
+  .intel-card{display:grid;grid-template-columns:24px 1fr;gap:12px;padding:15px 20px;border-radius:12px;border-left:3px solid;box-shadow:var(--shadow-sm);transition:transform 0.15s ease,box-shadow 0.15s ease;}
+  .intel-card:hover{transform:translateY(-1px);box-shadow:var(--shadow-md);}
+  .intel-cat-alert .intel-card{border-color:#b5392a;background:rgba(192,57,43,0.05);}
+  .intel-cat-weak  .intel-card{border-color:#B8860B;background:#FFFDF2;}
+  .intel-cat-opp   .intel-card{border-color:#1a8a8a;background:rgba(26,138,138,0.05);}
+  .intel-cat-win   .intel-card{border-color:#2E7D52;background:rgba(26,107,58,0.05);}
+  .intel-icon{font-size:15px;padding-top:1px;}
+  .intel-title{font-size:13px;font-weight:700;color:var(--deep-navy);margin-bottom:4px;line-height:1.35;}
+  .intel-desc{font-size:12px;color:var(--mid-navy);line-height:1.6;}
+  .intel-action{display:inline-flex;align-items:flex-start;gap:5px;margin-top:7px;font-size:11px;font-weight:700;padding:4px 12px;border-radius:50px;}
+  .intel-cat-alert .intel-action{background:rgba(192,57,43,0.1);color:#b5392a;}
+  .intel-cat-weak  .intel-action{background:rgba(184,134,11,0.12);color:#9a7a0a;}
+  .intel-cat-opp   .intel-action{background:rgba(26,138,138,0.1);color:#1a6b6b;}
+  .intel-cat-win   .intel-action{background:rgba(26,107,58,0.1);color:#1A6B3A;}
+  .intel-empty{padding:20px;text-align:center;color:#8a9aaa;font-style:italic;font-size:13px;}
+
+  /* SPARKLINE on stat cards */
+  .sc-sparkline{position:absolute;bottom:0;left:0;right:0;height:42px;opacity:0.25;pointer-events:none;}
+  .sc-sparkline-overlay{position:absolute;bottom:0;left:0;right:0;height:42px;pointer-events:none;}
+
+  /* SHOW RATE KPI card — light bg with dark text for all states */
+  .kpi-show-rate{grid-column:1/-1;border:none;}
+  /* Critical: light red bg, dark red text */
+  .kpi-show-rate-danger{background:#FEF2F2;border:1.5px solid #FECACA;}
+  .kpi-show-rate-danger .sr-value{color:#991B1B;}
+  .kpi-show-rate-danger .sr-label{color:#7F1D1D;}
+  .kpi-show-rate-danger .sr-sub{color:#B91C1C;}
+  .kpi-show-rate-danger .sr-count{color:#6B2121;}
+  .kpi-show-rate-danger .sr-status{color:#B91C1C;}
+  .kpi-show-rate-danger .sr-target{color:#9B3333;}
+  /* Warning: light amber bg, dark amber text */
+  .kpi-show-rate-warn{background:#FFFBEB;border:1.5px solid #FDE68A;}
+  .kpi-show-rate-warn .sr-value{color:#78350F;}
+  .kpi-show-rate-warn .sr-label{color:#92400E;}
+  .kpi-show-rate-warn .sr-sub{color:#B45309;}
+  .kpi-show-rate-warn .sr-count{color:#6B4712;}
+  .kpi-show-rate-warn .sr-status{color:#92400E;}
+  .kpi-show-rate-warn .sr-target{color:#A16207;}
+  /* Good: light green bg, dark green text */
+  .kpi-show-rate-good{background:#F0FDF4;border:1.5px solid #BBF7D0;}
+  .kpi-show-rate-good .sr-value{color:#14532D;}
+  .kpi-show-rate-good .sr-label{color:#166534;}
+  .kpi-show-rate-good .sr-sub{color:#15803D;}
+  .kpi-show-rate-good .sr-count{color:#1A5C35;}
+  .kpi-show-rate-good .sr-status{color:#166534;}
+  .kpi-show-rate-good .sr-target{color:#16a34a;}
+
+  /* PACING BAR */
+  .pacing-bar-wrap{margin:10px 0 0;display:flex;flex-direction:column;gap:5px;}
+  .pacing-bar-track{height:6px;background:rgba(255,255,255,0.15);border-radius:3px;overflow:hidden;position:relative;}
+  .pacing-bar-fill{height:100%;border-radius:3px;transition:width 0.8s ease;}
+  .pacing-bar-marker{position:absolute;top:-3px;width:2px;height:12px;background:rgba(255,255,255,0.7);border-radius:1px;}
+  .pacing-bar-labels{display:flex;justify-content:space-between;font-size:10px;color:rgba(255,255,255,0.45);}
+
+  /* DATA WARNING BANNER */
+  .data-warn-banner{display:flex;align-items:flex-start;gap:10px;padding:12px 16px;background:rgba(184,134,11,0.08);border:1px solid rgba(184,134,11,0.25);border-radius:10px;margin-bottom:20px;font-size:12px;color:#9a7a0a;line-height:1.5;}
+  .data-warn-banner-icon{font-size:16px;flex-shrink:0;margin-top:1px;}
+
+  /* MRR TREND BARS */
+  .mrr-trend-bar{display:flex;align-items:flex-end;gap:4px;height:48px;margin-top:10px;}
+  .mrr-trend-bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;}
+  .mrr-trend-bar-fill{width:100%;border-radius:3px 3px 0 0;transition:height 0.6s ease;background:rgba(114,164,191,0.5);min-height:3px;}
+  .mrr-trend-bar-fill.current{background:var(--soft-teal);}
+  .mrr-trend-bar-label{font-size:8px;color:rgba(255,255,255,0.4);text-align:center;white-space:nowrap;overflow:hidden;width:100%;}
+
+  /* SCATTER PLOT */
+  .scatter-wrap{position:relative;margin-top:8px;}
+
+
+  /* FOOTER */
+  footer{margin-top:56px;padding-top:24px;border-top:1px solid var(--card-border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;}
+  .footer-logo{font-size:13px;color:var(--mid-navy);display:flex;align-items:center;gap:8px;}
+  .footer-logo .teal{color:var(--soft-teal);}
+  .footer-meta{font-size:11px;color:#8a9aaa;font-style:italic;}
+
+  /* ═══════════════════════════════════════════════
+     MOBILE RESPONSIVE — full overrides ≤ 768px
+  ═══════════════════════════════════════════════ */
+
+  @media (max-width: 768px) {
+    .wrap { padding: 0 16px 60px; }
+
+    /* Header */
+    header { margin: 0 0 32px; padding: 24px 20px 20px; flex-direction: column; align-items: flex-start; gap: 16px; }
+    header::after { display: none; }
+    h1 { font-size: 22px; margin-top: 10px; }
+    .header-right { text-align: left; width: 100%; }
+    .ds-pills { justify-content: flex-start; }
+    .ds-pill { font-size: 9px; padding: 3px 10px; }
+
+    /* Tabs — horizontal scroll */
+    .tabs { gap: 6px; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; flex-wrap: nowrap; }
+    .tab { font-size: 12px; padding: 8px 18px; white-space: nowrap; flex-shrink: 0; }
+
+    /* Stat cards — 2x2 grid on tablet */
+    .stat-row { grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+    .sc-value { font-size: 28px; }
+
+    /* KPI grid — 2 columns */
+    .kpi-grid { grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+    .kpi { padding: 16px 18px; }
+    .kpi-value { font-size: 24px; }
+    .kpi-show-rate { grid-column: 1 / -1; }
+
+    /* Website funnel — stack vertically */
+    .wf-wrap { grid-template-columns: 1fr; gap: 0; }
+    .wf-arrow { transform: rotate(90deg); padding: 4px 0; }
+    .wf-node { padding: 16px 18px; }
+    .wf-value { font-size: 24px; }
+
+    /* Charts — single column */
+    .charts-row { grid-template-columns: 1fr; gap: 10px; margin-bottom: 20px; }
+    .chart-card { padding: 20px 16px; }
+
+    /* Spend summary strip — 2×2 grid on mobile */
+    .spend-summary { flex-wrap: wrap; }
+    .ss-item { flex: 1 1 50%; min-width: 0; }
+    .ss-item:nth-child(odd) { border-left: none; }
+    .ss-item:nth-child(n+3) { border-top: 1px solid var(--card-border); }
+    .ss-value { font-size: 16px; }
+
+    /* Bar chart labels shorter */
+    .bar-name { width: 80px; font-size: 11px; }
+
+    /* CPD table — hide % of booked col on very small screens */
+    .cpd-table th:nth-child(4),
+    .cpd-table td:nth-child(4) { display: none; }
+    .cpd-table th, .cpd-table td { padding: 8px 8px 8px 0; font-size: 12px; }
+
+    /* Funnel steps */
+    .funnel-step { grid-template-columns: 90px 1fr 80px; gap: 10px; }
+    .funnel-name { font-size: 11px; }
+
+    /* Pipeline */
+    .pl-name { width: 120px; font-size: 11px; }
+
+    /* Source breakdown */
+    .src-row { grid-template-columns: 120px 1fr 36px 34px; }
+    .src-delta { display: none; }
+    .src-name { font-size: 11px; }
+
+    /* Intel cards */
+    .intel-card { grid-template-columns: 20px 1fr; gap: 8px; padding: 12px 14px; }
+
+    /* Paid media grid */
+    .pm-grid { grid-template-columns: 1fr; gap: 14px; }
+    .pm-summary-row { grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    /* Budget pacing section */
+    /* narrow the pacing rows: drop budget column */
+    /* already uses inline grid — compress on mobile via JS not needed, just allow overflow */
+
+    /* Footer */
+    footer { flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 40px; }
+
+    /* Section labels */
+    .sl { font-size: 9px; letter-spacing: 0.16em; margin-bottom: 12px; }
+  }
+
+  @media (max-width: 480px) {
+    /* Very small phones */
+    .stat-row { grid-template-columns: 1fr; }
+    .kpi-grid { grid-template-columns: 1fr; }
+    .kpi-value { font-size: 26px; }
+    .pm-summary-row { grid-template-columns: 1fr; }
+    .tab { font-size: 11px; padding: 7px 14px; }
+    .wf-value { font-size: 22px; }
+    .funnel-step { grid-template-columns: 72px 1fr 60px; gap: 8px; }
+    .funnel-cvr-val { font-size: 12px; }
+
+    /* Demo quality / pacing: allow horizontal scroll on tiny screens */
+    .chart-card { overflow-x: auto; }
+  }
+</style>
+</head>
+<body>
+
+  <header>
+    <div style="position:relative;z-index:1">
+      <div>
+        <img src="FrontrowMD_White_Logo.png" alt="frontrowMD" class="logo-img"
+             onerror="this.style.display='none';document.getElementById('logo-fallback').style.display='flex'">
+        <div id="logo-fallback" class="logo-fallback" style="display:none">
+          <span>☤</span><span>frontrow<strong>MD</strong></span>
+        </div>
+      </div>
+      <h1>Marketing <em>Performance</em> Dashboard</h1>
+    </div>
+    <div class="header-right">
+      <div class="gen-label">Generated</div>
+      <div class="gen-time" id="gen-time"></div>
+      <div class="ds-pills">
+        <span class="ds-pill">Windsor.ai</span>
+        <span class="ds-pill">HubSpot CRM</span>
+        <span class="ds-pill">Google Analytics 4</span>
+      </div>
+    </div>
+  </header>
+
+<div class="wrap">
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('yesterday',this)" id="tab-btn-yesterday">Yesterday</button>
+    <button class="tab" onclick="switchTab('rolling7',this)" id="tab-btn-rolling7">Last 7 Days</button>
+    <button class="tab" onclick="switchTab('mtd',this)" id="tab-btn-mtd">Month to Date</button>
+    <button class="tab" onclick="switchTab('ytd',this)" id="tab-btn-ytd">Year to Date</button>
+    <button class="tab" onclick="switchTab('custom',this)" id="tab-btn-custom">Custom Range</button>
+  </div>
+
+  <div id="panel-yesterday" class="panel active"></div>
+  <div id="panel-rolling7"  class="panel"></div>
+  <div id="panel-mtd"       class="panel"></div>
+  <div id="panel-ytd"       class="panel"></div>
+  <div id="panel-custom" class="panel"></div>
+
+  <footer>
+    <div class="footer-logo">
+      <img src="FrontrowMD_Navy_Blue_Logo.png" alt="frontrowMD" style="height:36px;width:auto;display:block"
+           onerror="this.outerHTML='<span style=\'font-size:14px;color:var(--mid-navy);font-weight:700\'>frontrow<span style=\'color:var(--soft-teal)\'>MD</span></span>'">
+    </div>
+    <div class="footer-meta" id="footer-file"></div>
+  </footer>
+</div>
+
+<script>
+const DATA = {"generatedAt":"Mar 2, 2026, 1:42 PM","filename":"frontrowmd-report-2026-03-02T21-42.txt","windows":{"yesterday":{"channels":{"meta":{"spend":2848.38,"clicks":707,"impressions":37220,"demos":5,"ctr":[0.019],"ctrAvg":0.019},"linkedin":{"spend":764.9744,"clicks":1161,"impressions":66020,"demos":0},"tiktok":{"spend":441.64,"clicks":657,"impressions":137770,"demos":3},"google":{"spend":505.08570000000003,"clicks":125,"impressions":1821,"demos":1,"_raw":1},"youtube":{"spend":698.3291,"clicks":855,"impressions":28793,"demos":0,"_raw":0}},"ga4":{"users":2412,"demoButtonClicks":196,"meetingBooked":13},"demosBooked":0,"pipeline":{"demosToOccur":0,"demosHappened":0,"dealsWon":0,"pctDemosWon":"N/A","notQualAfterDemo":0,"disqualifiedBeforeDemo":0,"tooEarly":0,"rescheduled":0,"canceled":0,"blankStatus":0,"closedDeals":1},"newMRR":1699,"metaCTR":"1.90%","ga4Sources":[{"label":"Unknown","meetingBooked":13,"demoButtonClicks":196,"users":2412}],"ga4PrevSources":[{"label":"Unknown","meetingBooked":12,"demoButtonClicks":213,"users":1720}],"label":"Yesterday (Mar 1)","prev":{"channels":{"meta":{"spend":2728.54,"clicks":545,"impressions":39824,"demos":7,"ctr":[0.0137],"ctrAvg":0.0137},"linkedin":{"spend":720.13,"clicks":247,"impressions":35283,"demos":0},"tiktok":{"spend":399.67,"clicks":507,"impressions":120674,"demos":2},"google":{"spend":413.2946,"clicks":107,"impressions":1481,"demos":0,"_raw":0},"youtube":{"spend":588.3954,"clicks":825,"impressions":23473,"demos":0,"_raw":0}},"ga4":{"users":1720,"demoButtonClicks":213,"meetingBooked":12},"demosBooked":0,"pipeline":{"demosToOccur":0,"demosHappened":0,"dealsWon":0,"pctDemosWon":"N/A","notQualAfterDemo":0,"disqualifiedBeforeDemo":0,"tooEarly":0,"rescheduled":0,"canceled":0,"blankStatus":0,"closedDeals":0},"newMRR":0,"metaCTR":"1.37%","ga4Sources":[{"label":"Unknown","meetingBooked":12,"demoButtonClicks":213,"users":1720}],"ga4PrevSources":[]},"prevLabel":"Day Before","noPrev":false},"rolling7":{"channels":{"meta":{"spend":18616.680000000004,"clicks":4068,"impressions":250648,"demos":58,"ctr":[0.0181,0.0153,0.0151,0.0148,0.0164,0.0137,0.019],"ctrAvg":0.016057142857142857},"linkedin":{"spend":5325.6444,"clicks":2947,"impressions":298067,"demos":3},"tiktok":{"spend":5370.99,"clicks":6941,"impressions":1591067,"demos":21},"google":{"spend":3759.8071000000004,"clicks":1015,"impressions":13054,"demos":9,"_raw":8.325399999999998},"youtube":{"spend":4631.1905,"clicks":4430,"impressions":183096,"demos":0,"_raw":0}},"ga4":{"users":16880,"demoButtonClicks":1421,"meetingBooked":142},"demosBooked":0,"pipeline":{"demosToOccur":122,"demosHappened":47,"dealsWon":3,"pctDemosWon":"26.1%","notQualAfterDemo":1,"disqualifiedBeforeDemo":24,"tooEarly":16,"rescheduled":2,"canceled":16,"blankStatus":33,"closedDeals":12},"newMRR":19992,"metaCTR":"1.61%","ga4Sources":[{"label":"Unknown","meetingBooked":142,"demoButtonClicks":1421,"users":16880}],"ga4PrevSources":[{"label":"Unknown","meetingBooked":135,"demoButtonClicks":1938,"users":37020}],"label":"Last 7 Days (Feb 23–Mar 1)","prev":{"channels":{"meta":{"spend":17080.27,"clicks":4512,"impressions":364885,"demos":55,"ctr":[0.0132,0.0106,0.0149,0.0113,0.0111,0.0143,0.0131],"ctrAvg":0.012642857142857141},"linkedin":{"spend":6479.43,"clicks":2949,"impressions":358483,"demos":12},"tiktok":{"spend":6363.27,"clicks":22547,"impressions":3374194,"demos":29},"google":{"spend":3787.7942,"clicks":989,"impressions":11792,"demos":25,"_raw":24.4095},"youtube":{"spend":5945.5011,"clicks":4149,"impressions":764575,"demos":0,"_raw":0}},"ga4":{"users":37020,"demoButtonClicks":1938,"meetingBooked":135},"demosBooked":0,"pipeline":{"demosToOccur":106,"demosHappened":61,"dealsWon":9,"pctDemosWon":"25.9%","notQualAfterDemo":3,"disqualifiedBeforeDemo":19,"tooEarly":10,"rescheduled":7,"canceled":14,"blankStatus":5,"closedDeals":15},"newMRR":25986,"metaCTR":"1.26%","ga4Sources":[{"label":"Unknown","meetingBooked":135,"demoButtonClicks":1938,"users":37020}],"ga4PrevSources":[]},"prevLabel":"Prior 7 Days (Feb 16–Feb 22)","noPrev":false},"mtd":{"channels":{"meta":{"spend":2848.38,"clicks":707,"impressions":37220,"demos":5,"ctr":[0.019],"ctrAvg":0.019},"linkedin":{"spend":764.9744,"clicks":1161,"impressions":66020,"demos":0},"tiktok":{"spend":441.64,"clicks":657,"impressions":137770,"demos":3},"google":{"spend":505.08570000000003,"clicks":125,"impressions":1821,"demos":1,"_raw":1},"youtube":{"spend":698.3291,"clicks":855,"impressions":28793,"demos":0,"_raw":0}},"ga4":{"users":2412,"demoButtonClicks":196,"meetingBooked":13},"demosBooked":0,"pipeline":{"demosToOccur":18,"demosHappened":3,"dealsWon":0,"pctDemosWon":"33.3%","notQualAfterDemo":0,"disqualifiedBeforeDemo":3,"tooEarly":1,"rescheduled":0,"canceled":1,"blankStatus":11,"closedDeals":1},"newMRR":1699,"metaCTR":"1.90%","ga4Sources":[{"label":"Unknown","meetingBooked":13,"demoButtonClicks":196,"users":2412}],"ga4PrevSources":[{"label":"Unknown","meetingBooked":512,"demoButtonClicks":5181,"users":87701}],"label":"Month to Date (Mar 1–Mar 1)","prev":{"channels":{"meta":{"spend":62740.380000000005,"clicks":13453,"impressions":966449,"demos":208,"ctr":[0.0171,0.0183,0.0132,0.0183,0.0173,0.0144,0.0123,0.0139,0.0122,0.014,0.0126,0.0142,0.0152,0.0124,0.0182,0.0132,0.0106,0.0149,0.0113,0.0111,0.0143,0.0131,0.0181,0.0153,0.0151,0.0148,0.0164,0.0137],"ctrAvg":0.014482142857142855},"linkedin":{"spend":30811.899999999998,"clicks":17906,"impressions":2168382,"demos":25},"tiktok":{"spend":14638.3,"clicks":45358,"impressions":6814344,"demos":59},"google":{"spend":8958.805399999997,"clicks":2745,"impressions":29801,"demos":50,"_raw":49.42779999999999},"youtube":{"spend":10257.211699999998,"clicks":8809,"impressions":949622,"demos":0,"_raw":0}},"ga4":{"users":87701,"demoButtonClicks":5181,"meetingBooked":512},"demosBooked":0,"pipeline":{"demosToOccur":356,"demosHappened":167,"dealsWon":24,"pctDemosWon":"21.5%","notQualAfterDemo":9,"disqualifiedBeforeDemo":70,"tooEarly":30,"rescheduled":18,"canceled":71,"blankStatus":30,"closedDeals":34},"newMRR":74570,"metaCTR":"1.45%","ga4Sources":[{"label":"Unknown","meetingBooked":512,"demoButtonClicks":5181,"users":87701}],"ga4PrevSources":[]},"prevLabel":"Prior Month (Feb 1–Feb 28)","noPrev":false},"ytd":{"channels":{"meta":{"spend":108131.80000000002,"clicks":22019,"impressions":1491845,"demos":437,"ctr":[0.0143,0.0127,0.0127,0.0173,0.012,0.0131,0.0144,0.0214,0.012,0.0138,0.0143,0.0174,0.0123,0.0127,0.014,0.0108,0.0126,0.0141,0.0127,0.0132,0.017,0.0248,0.0239,0.023,0.0207,0.023,0.0218,0.0197,0.0206,0.0199,0.0162,0.0171,0.0183,0.0132,0.0183,0.0173,0.0144,0.0123,0.0139,0.0122,0.014,0.0126,0.0142,0.0152,0.0124,0.0182,0.0132,0.0106,0.0149,0.0113,0.0111,0.0143,0.0131,0.0181,0.0153,0.0151,0.0148,0.0164,0.0137,0.019],"ctrAvg":0.015548333333333332},"linkedin":{"spend":61024.511300000006,"clicks":44879,"impressions":5263747,"demos":49},"tiktok":{"spend":15079.94,"clicks":46015,"impressions":6952114,"demos":62},"google":{"spend":10530.433900000002,"clicks":5290,"impressions":78076,"demos":64,"_raw":63.94279999999999},"youtube":{"spend":10955.540799999999,"clicks":9664,"impressions":978415,"demos":0,"_raw":0}},"ga4":{"users":112816,"demoButtonClicks":7124,"meetingBooked":859},"demosBooked":0,"pipeline":{"demosToOccur":722,"demosHappened":270,"dealsWon":44,"pctDemosWon":"25.2%","notQualAfterDemo":12,"disqualifiedBeforeDemo":93,"tooEarly":33,"rescheduled":40,"canceled":91,"blankStatus":228,"closedDeals":65},"newMRR":132040,"metaCTR":"1.55%","ga4Sources":[{"label":"Unknown","meetingBooked":859,"demoButtonClicks":7124,"users":112816}],"ga4PrevSources":[{"label":"Unknown","meetingBooked":6,"demoButtonClicks":59,"users":1070}],"label":"Year to Date (Jan 1–Mar 1)","prev":{"channels":{"meta":{"spend":1010.55,"clicks":215,"impressions":15090,"demos":4,"ctr":[0.0143],"ctrAvg":0.0143},"linkedin":{"spend":209.06,"clicks":279,"impressions":17979,"demos":0},"tiktok":{"spend":0,"clicks":0,"impressions":0,"demos":0},"google":{"spend":28.514200000000002,"clicks":93,"impressions":1802,"demos":0,"_raw":0},"youtube":{"spend":0,"clicks":0,"impressions":0,"demos":0,"_raw":0}},"ga4":{"users":1070,"demoButtonClicks":59,"meetingBooked":6},"demosBooked":0,"pipeline":{"demosToOccur":6,"demosHappened":0,"dealsWon":0,"pctDemosWon":"N/A","notQualAfterDemo":0,"disqualifiedBeforeDemo":0,"tooEarly":0,"rescheduled":0,"canceled":0,"blankStatus":6,"closedDeals":0},"newMRR":0,"metaCTR":"1.43%","ga4Sources":[{"label":"Unknown","meetingBooked":6,"demoButtonClicks":59,"users":1070}],"ga4PrevSources":[]},"prevLabel":"N/A","noPrev":true}}};
+
+function switchTab(key, btn) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('panel-' + key).classList.add('active');
+  btn.classList.add('active');
+  // Build custom range picker on first view
+  if (key === 'custom' && !document.getElementById('custom-range-ui')) {
+    document.getElementById('panel-custom').innerHTML = buildCustomRangeUI();
+  }
+}
+
+// ── Custom Range Tab ───────────────────────────────────────────
+// Configuration — update WORKER_URL and PAGES_BASE to match your deployment
+const CUSTOM_WORKER_URL = "https://frontrowmd-launcher.alex-5b6.workers.dev/"; // Cloudflare Worker URL — injected by report.js
+const CUSTOM_PAGES_BASE = "https://frontrowmd.github.io/frontrowmd-reporting-dashboard"; // GitHub Pages base URL — injected by report.js
+
+function buildCustomRangeUI() {
+  // Default: last 7 days ending yesterday
+  const yd = new Date(); yd.setDate(yd.getDate() - 1);
+  const wk = new Date(yd); wk.setDate(wk.getDate() - 6);
+  const toISO = d => d.toISOString().slice(0,10);
+
+  const presetBtnStyle = `font-family:'Libre Baskerville',Georgia,serif;font-size:12px;font-weight:600;padding:8px 18px;border-radius:50px;border:1.5px solid var(--card-border);background:#fff;color:var(--deep-navy);cursor:pointer;transition:all 0.2s ease;white-space:nowrap`;
+
+  return `
+    <div id="custom-range-ui" style="margin-bottom:32px">
+      <div class="chart-card" style="padding:28px 32px">
+        <div class="chart-title" style="margin-bottom:16px">Custom Date Range</div>
+        <div style="margin-bottom:16px">
+          <label style="display:block;font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--soft-teal);margin-bottom:8px">Quick Select</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button onclick="applyPreset('ytd')" style="${presetBtnStyle}">YTD</button>
+            <button onclick="applyPreset('qtd')" style="${presetBtnStyle}">QTD</button>
+            <button onclick="applyPreset('lastMonth')" style="${presetBtnStyle}">Last Month</button>
+            <button onclick="applyPreset('lastQuarter')" style="${presetBtnStyle}">Last Quarter</button>
+            <button onclick="applyPreset('last90')" style="${presetBtnStyle}">Last 90 Days</button>
+          </div>
+        </div>
+        <div style="display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap">
+          <div>
+            <label style="display:block;font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--soft-teal);margin-bottom:6px">From</label>
+            <input type="date" id="custom-from" value="${toISO(wk)}" max="${toISO(yd)}"
+              style="font-family:'Libre Baskerville',Georgia,serif;font-size:14px;padding:10px 16px;border:1.5px solid var(--card-border);border-radius:8px;color:var(--deep-navy);background:#fff;outline:none;cursor:pointer">
+          </div>
+          <div>
+            <label style="display:block;font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--soft-teal);margin-bottom:6px">To</label>
+            <input type="date" id="custom-to" value="${toISO(yd)}" max="${toISO(yd)}"
+              style="font-family:'Libre Baskerville',Georgia,serif;font-size:14px;padding:10px 16px;border:1.5px solid var(--card-border);border-radius:8px;color:var(--deep-navy);background:#fff;outline:none;cursor:pointer">
+          </div>
+          <button onclick="fetchCustomRange()" id="custom-fetch-btn"
+            style="font-family:'Libre Baskerville',Georgia,serif;font-size:14px;font-weight:700;padding:12px 28px;border-radius:50px;border:none;background:var(--deep-navy);color:#fff;cursor:pointer;transition:all 0.2s ease;white-space:nowrap">
+            Generate Report
+          </button>
+        </div>
+        <div id="custom-status" style="margin-top:12px;font-size:13px;color:#8a9aaa"></div>
+        <div style="margin-top:8px;font-size:12px;color:var(--soft-teal);font-style:italic">
+          Report takes ~1–2 minutes to generate. Opens in a new tab when ready.
+        </div>
+      </div>
+    </div>
+    <div id="custom-results"></div>`;
+}
+
+function applyPreset(preset) {
+  const now = new Date();
+  const yd  = new Date(now); yd.setDate(yd.getDate() - 1);
+  const toISO = d => d.toISOString().slice(0,10);
+  let from, to;
+
+  switch (preset) {
+    case 'ytd':
+      from = new Date(now.getFullYear(), 0, 1);
+      to   = yd;
+      break;
+    case 'qtd': {
+      const qMonth = Math.floor(now.getMonth() / 3) * 3;
+      from = new Date(now.getFullYear(), qMonth, 1);
+      to   = yd;
+      break;
+    }
+    case 'lastMonth': {
+      const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      from = lm;
+      to   = new Date(now.getFullYear(), now.getMonth(), 0); // last day of prev month
+      break;
+    }
+    case 'lastQuarter': {
+      const curQ = Math.floor(now.getMonth() / 3);
+      const prevQ = curQ === 0 ? 3 : curQ - 1;
+      const prevQYear = curQ === 0 ? now.getFullYear() - 1 : now.getFullYear();
+      from = new Date(prevQYear, prevQ * 3, 1);
+      to   = new Date(prevQYear, prevQ * 3 + 3, 0); // last day of quarter
+      break;
+    }
+    case 'last90':
+      from = new Date(yd); from.setDate(from.getDate() - 89);
+      to   = yd;
+      break;
+  }
+
+  document.getElementById('custom-from').value = toISO(from);
+  document.getElementById('custom-to').value   = toISO(to);
+
+  // Highlight the selected preset button
+  const btns = document.querySelectorAll('#custom-range-ui button[onclick^="applyPreset"]');
+  btns.forEach(b => {
+    b.style.background = '#fff';
+    b.style.color = 'var(--deep-navy)';
+    b.style.borderColor = 'var(--card-border)';
+  });
+  const activeBtn = [...btns].find(b => b.getAttribute('onclick').includes(preset));
+  if (activeBtn) {
+    activeBtn.style.background = 'var(--deep-navy)';
+    activeBtn.style.color = '#fff';
+    activeBtn.style.borderColor = 'var(--deep-navy)';
+  }
+}
+
+async function fetchCustomRange() {
+  const from = document.getElementById('custom-from').value;
+  const to   = document.getElementById('custom-to').value;
+  const btn  = document.getElementById('custom-fetch-btn');
+  const status = document.getElementById('custom-status');
+
+  if (!from || !to) { status.innerHTML = '<span style="color:#C0392B">Please select both dates.</span>'; return; }
+  if (from > to)    { status.innerHTML = '<span style="color:#C0392B">From date must be before To date.</span>'; return; }
+
+  btn.disabled = true;
+  btn.style.opacity = '0.6';
+  btn.textContent = 'Triggering…';
+  status.innerHTML = '<span style="color:var(--soft-teal)">⏳ Triggering report generation…</span>';
+
+  try {
+    // Step 1: Trigger the GitHub Actions workflow via Cloudflare Worker
+    const res = await fetch(CUSTOM_WORKER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent: 'agent6', custom_from: from, custom_to: to }),
+    });
+    const json = await res.json();
+
+    if (!json.ok) {
+      status.innerHTML = `<span style="color:#C0392B">Error: ${json.error}</span>`;
+      btn.disabled = false; btn.style.opacity = '1'; btn.textContent = 'Generate Report';
+      return;
+    }
+
+    // Step 2: Poll GitHub Pages for custom.html with a cache-busting parameter
+    status.innerHTML = '<span style="color:var(--soft-teal)">⏳ Report triggered — waiting for build to complete… <span id="custom-timer">0</span>s</span>';
+    btn.textContent = 'Building…';
+
+    const customUrl = CUSTOM_PAGES_BASE + '/custom.html';
+    const startTime = Date.now();
+    const maxWait = 180000; // 3 minutes
+    const pollInterval = 5000; // 5 seconds
+
+    // Get the current version timestamp before polling (to detect new deploy)
+    let baselineTimestamp = null;
+    try {
+      const baseRes = await fetch(customUrl + '?t=' + Date.now(), { cache: 'no-store' });
+      if (baseRes.ok) {
+        const baseText = await baseRes.text();
+        const match = baseText.match(/Generated[^<]*?(\w{3}\s+\d{1,2},\s+\d{4}[^<]*?\d{1,2}:\d{2}\s*[AP]M)/i);
+        if (match) baselineTimestamp = match[1];
+      }
+    } catch(e) { /* no existing custom.html — that's fine */ }
+
+    const timerEl = document.getElementById('custom-timer');
+    const timerInterval = setInterval(() => {
+      if (timerEl) timerEl.textContent = Math.round((Date.now() - startTime) / 1000);
+    }, 1000);
+
+    const pollForResult = async () => {
+      while (Date.now() - startTime < maxWait) {
+        await new Promise(r => setTimeout(r, pollInterval));
+
+        try {
+          const pollRes = await fetch(customUrl + '?t=' + Date.now(), { cache: 'no-store' });
+          if (pollRes.ok) {
+            const pollText = await pollRes.text();
+            // Check if this is a NEW deploy by comparing generated timestamp
+            const match = pollText.match(/Generated[^<]*?(\w{3}\s+\d{1,2},\s+\d{4}[^<]*?\d{1,2}:\d{2}\s*[AP]M)/i);
+            const newTimestamp = match ? match[1] : null;
+
+            if (newTimestamp && newTimestamp !== baselineTimestamp) {
+              // New custom.html detected — success!
+              clearInterval(timerInterval);
+              status.innerHTML = `<span style="color:#2E7D52">✅ Report ready! <a href="${customUrl}" target="_blank" style="color:var(--soft-teal);text-decoration:underline;font-weight:700">Open Custom Report →</a></span>`;
+              window.open(customUrl, '_blank');
+              return;
+            }
+          }
+        } catch(e) { /* keep polling */ }
+      }
+
+      // Timeout
+      clearInterval(timerInterval);
+      status.innerHTML = `<span style="color:#B8860B">⏱️ Build is taking longer than expected. <a href="${customUrl}" target="_blank" style="color:var(--soft-teal);text-decoration:underline">Check manually</a> in a minute, or check <a href="https://github.com/${json.owner}/${json.repo}/actions" target="_blank" style="color:var(--soft-teal);text-decoration:underline">GitHub Actions</a> for status.</span>`;
+    };
+
+    await pollForResult();
+
+  } catch(e) {
+    status.innerHTML = `<span style="color:#C0392B">Error: ${e.message}</span>`;
+  } finally {
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.textContent = 'Generate Report';
+  }
+}
+
+// ── Sparkline SVG (mini 7-point line) ──────────────────────────
+function buildSparkline(points, w=140, h=36, color='rgba(255,255,255,0.6)') {
+  if (!points || points.length < 2) return '';
+  const min = Math.min(...points), max = Math.max(...points);
+  const range = max - min || 1;
+  const px = (i) => (i / (points.length - 1)) * w;
+  const py = (v) => h - ((v - min) / range) * (h * 0.8) - h * 0.1;
+  const d = points.map((v,i) => `${i===0?'M':'L'}${px(i).toFixed(1)},${py(v).toFixed(1)}`).join(' ');
+  return `<svg width="${w}" height="${h}" style="position:absolute;bottom:0;left:0;right:0;width:100%;opacity:0.3;pointer-events:none" preserveAspectRatio="none" viewBox="0 0 ${w} ${h}">
+    <defs><linearGradient id="sparkgrad" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="${color}" stop-opacity="0.4"/><stop offset="100%" stop-color="${color}" stop-opacity="0"/></linearGradient></defs>
+    <path d="${d} L${w},${h} L0,${h} Z" fill="url(#sparkgrad)"/>
+    <path d="${d}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+}
+
+// ── Budget Pacing ──────────────────────────────────────────────
+// Monthly budget targets — update these when budgets change
+const MONTHLY_BUDGETS = {
+  meta:     60000,
+  linkedin: 35000,
+  google:    5000,
+  tiktok:    5000,
+  youtube:   5000,
+};
+
+function buildPacingBar(spendMTD, monthlyBudget, pacingPct) {
+  if (!monthlyBudget) return '';
+  const pct   = Math.min((spendMTD / monthlyBudget) * 100, 120);
+  const color = pct > 105 ? '#C0392B' : pct > 95 ? '#B8860B' : '#72A4BF';
+  const label = pct > 105 ? 'Over budget' : pct > 95 ? 'On pace' : 'Under-pacing';
+  return `<div class="pacing-bar-wrap">
+    <div class="pacing-bar-track">
+      <div class="pacing-bar-fill" style="width:${Math.min(pct,100).toFixed(1)}%;background:${color}"></div>
+      <div class="pacing-bar-marker" style="left:${pacingPct.toFixed(1)}%"></div>
+    </div>
+    <div class="pacing-bar-labels">
+      <span>${label} — ${fmt$(spendMTD)} / ${fmt$(monthlyBudget)}</span>
+      <span>${pct.toFixed(0)}% of budget</span>
+    </div>
+  </div>`;
+}
+
+// ── Spend Pacing by Channel (MTD only) ────────────────────────
+function buildSpendPacingSection(ch, pacingPct) {
+  const chOrder = ['meta','linkedin','tiktok','google','youtube'];
+  const names   = {meta:'Meta',linkedin:'LinkedIn',tiktok:'TikTok',google:'Google Ads',youtube:'YouTube'};
+  const colors  = {meta:'#4d8aaa',linkedin:'#172C45',tiktok:'#72A4BF',google:'#9bbfd4',youtube:'#bfd0da'};
+
+  const totalBudget = Object.values(MONTHLY_BUDGETS).reduce((s,v)=>s+v,0);
+  const totalSpend  = chOrder.reduce((s,k)=>s+(ch[k]?.spend||0),0);
+  const totalPct    = totalBudget > 0 ? (totalSpend / totalBudget) * 100 : 0;
+  const totalColor  = totalPct > pacingPct + 10 ? '#C0392B' : totalPct < pacingPct - 10 ? '#B8860B' : '#2E7D52';
+
+  const rows = chOrder.map(k => {
+    const budget  = MONTHLY_BUDGETS[k] || 0;
+    const spend   = ch[k]?.spend || 0;
+    if (!budget && !spend) return '';
+    const pct     = budget > 0 ? (spend / budget) * 100 : null;
+    const isOver  = pct !== null && pct > pacingPct + 10;
+    const isUnder = pct !== null && pct < pacingPct - 10;
+    const barColor = isOver ? '#C0392B' : isUnder ? '#B8860B' : colors[k];
+    const status   = pct === null ? '' : isOver ? 'over' : isUnder ? 'under' : 'on pace';
+    const statusColor = isOver ? '#C0392B' : isUnder ? '#B8860B' : '#15803D';
+
+    return `
+      <div style="display:grid;grid-template-columns:88px 1fr 62px 54px 58px;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--card-border)">
+        <div style="font-size:12px;font-weight:700;color:var(--deep-navy)">${names[k]}</div>
+        <div style="position:relative;height:8px;background:rgba(212,230,239,0.45);border-radius:4px;overflow:visible">
+          <div style="height:100%;border-radius:4px;width:${Math.min(pct??0,100).toFixed(1)}%;background:${barColor};transition:width 0.8s ease;position:relative"></div>
+          <!-- Expected pacing marker -->
+          <div style="position:absolute;top:-3px;left:${pacingPct.toFixed(1)}%;width:2px;height:14px;background:rgba(23,44,69,0.25);border-radius:1px"></div>
+        </div>
+        <div style="font-size:12px;font-weight:700;color:var(--deep-navy);text-align:right">${fmt$(spend)}</div>
+        <div style="font-size:11px;color:#8a9aaa;text-align:right">${budget>0?fmt$(budget):''}</div>
+        <div style="font-size:10px;font-weight:700;color:${statusColor};text-align:right;text-transform:uppercase;letter-spacing:0.04em">${status}</div>
+      </div>`;
+  }).join('');
+
+  return `
+    <div style="margin-bottom:6px">
+      <div style="display:grid;grid-template-columns:88px 1fr 62px 54px 58px;gap:10px;padding-bottom:6px">
+        <div></div>
+        <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--soft-teal)">Pacing</div>
+        <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--soft-teal);text-align:right">Spent</div>
+        <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--soft-teal);text-align:right">Budget</div>
+        <div></div>
+      </div>
+      ${rows}
+    </div>
+    <div style="margin-top:12px;padding:10px 14px;background:rgba(114,164,191,0.07);border-radius:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div style="font-size:12px;color:var(--mid-navy)">
+        <span style="font-weight:700">Total: ${fmt$(totalSpend)}</span>
+        <span style="color:#8a9aaa;margin:0 6px">/</span>
+        <span style="color:#8a9aaa">${fmt$(totalBudget)} budget</span>
+      </div>
+      <div style="font-size:11px;color:#8a9aaa">
+        ${Math.round(pacingPct)}% through month
+        <span style="margin:0 5px">·</span>
+        <span style="font-weight:700;color:${totalColor}">${totalPct.toFixed(0)}% of budget spent</span>
+      </div>
+    </div>
+    <div style="margin-top:8px;font-size:10px;color:#8a9aaa;font-style:italic">Vertical marker = expected spend at today's date. Green = on pace ±10%.</div>`;
+}
+
+// ── Demo Quality Trend (3-window grouped bars) ─────────────────
+function buildDemoQualityChart(tabKey) {
+  // In custom-only mode, show a single bar for the custom window
+  const isCustom = tabKey === 'custom' || tabKey === 'ytd' || (!DATA.windows.yesterday && DATA.windows.custom);
+  const windows  = isCustom ? [tabKey] : ['yesterday','rolling7','mtd'];
+  const wLabels  = isCustom
+    ? { [tabKey]: DATA.windows[tabKey]?.label || tabKey }
+    : { yesterday:'Yesterday', rolling7:'Last 7 Days', mtd:'Month to Date' };
+
+  const winData = windows.map(w => {
+    const pp = DATA.windows[w]?.pipeline || {};
+    const demosHappened = pp.demosHappened           || 0;
+    const disqBefore  = pp.disqualifiedBeforeDemo  || 0;
+    const rescheduled = pp.rescheduled             || 0;
+    const canceled    = pp.canceled                || 0;
+    const tooEarly    = pp.tooEarly                || 0;
+    const disqAfter   = pp.notQualAfterDemo        || 0;
+    const blank       = pp.blankStatus             || 0;
+    // demosHappened already includes tooEarly + disqAfter — subtract to get pure Demo Given
+    const demoGiven   = demosHappened - tooEarly - disqAfter;
+    const total       = demoGiven + disqBefore + rescheduled + canceled + tooEarly + disqAfter;
+    return { label: wLabels[w], demoGiven, disqBefore, rescheduled, canceled, tooEarly, disqAfter, blank, total };
+  });
+
+  const maxVal = Math.max(...winData.map(w => w.total + w.blank), 1);
+
+  const stackColors = {
+    demoGiven:   '#1D4053',
+    tooEarly:    '#aab8c2',
+    disqAfter:   '#C0392B',
+    disqBefore:  '#B8860B',
+    rescheduled: '#9b7fd4',
+    canceled:    '#d47f7f',
+    blank:       '#c0c8d0'
+  };
+  const stackLabels = {
+    demoGiven:   'Qual. Demo Given',
+    tooEarly:    'Too Early',
+    disqAfter:   'Not Qualified After Demo',
+    disqBefore:  'Disq. Before Demo',
+    rescheduled: 'Rescheduled',
+    canceled:    'Canceled',
+    blank:       'Blank'
+  };
+  const stackKeys    = ['demoGiven','tooEarly','disqAfter','disqBefore','rescheduled','canceled'];
+  const allStackKeys = [...stackKeys, 'blank'];
+
+  const pctFmt = (n, d) => d > 0 ? Math.round(n / d * 100) + '%' : '—';
+
+  const bars = winData.map(w => {
+    // Bar uses total (excluding blank) as denominator for width; maxVal includes blank for scale
+    let offsetPct = 0;
+    const segments = stackKeys.map(k => {
+      if (w[k] === 0) return '';
+      const segWidthPct = (w[k] / maxVal * 100);
+      const segLeft = offsetPct;
+      offsetPct += segWidthPct;
+      const showInline = segWidthPct > 6;
+      const countLabel = showInline
+        ? `<div style="position:absolute;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:rgba(255,255,255,0.92);pointer-events:none;white-space:nowrap">${w[k]}</div>`
+        : '';
+      return `<div style="position:absolute;left:${segLeft.toFixed(2)}%;width:${segWidthPct.toFixed(2)}%;height:100%;background:${stackColors[k]};transition:width 0.8s ease" title="${stackLabels[k]}: ${w[k]}">${countLabel}</div>`;
+    }).join('');
+
+    // Blank status shown as a lighter trailing segment
+    const blankWidthPct = (w.blank / maxVal * 100);
+    const blankSeg = w.blank > 0
+      ? `<div style="position:absolute;left:${offsetPct.toFixed(2)}%;width:${blankWidthPct.toFixed(2)}%;height:100%;background:${stackColors.blank};opacity:0.5;border-left:1px dashed #aaa;transition:width 0.8s ease" title="Status Blank: ${w.blank}"></div>`
+      : '';
+
+    // Pills: all categories with count + % of total
+    const grandTotal = w.total + w.blank;
+    const pills = allStackKeys
+      .filter(k => w[k] > 0)
+      .map(k => {
+        const pct = pctFmt(w[k], grandTotal);
+        const isBlank = k === 'blank';
+        return `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:${stackColors[k]};font-weight:700;background:${stackColors[k]}18;border-radius:4px;padding:2px 7px;${isBlank?'opacity:0.75':''}">
+          <span style="width:7px;height:7px;border-radius:50%;background:${stackColors[k]};display:inline-block;flex-shrink:0"></span>
+          ${stackLabels[k]}: <strong>${w[k]}</strong> <span style="font-weight:400;color:#8a9aaa">(${pct})</span></span>`;
+      }).join('');
+
+    const qualPct = grandTotal > 0 ? Math.round(w.demoGiven / grandTotal * 100) : 0;
+    const totalLabel = grandTotal > 0 ? `<span style="font-size:10px;font-weight:400;color:#8a9aaa"> / ${grandTotal} total</span>` : '';
+
+    return `
+      <div style="padding:10px 0;border-bottom:1px solid var(--card-border)">
+        <div style="display:grid;grid-template-columns:110px 1fr 70px;align-items:center;gap:12px;margin-bottom:8px">
+          <div style="font-size:12px;font-weight:700;color:var(--deep-navy)">${w.label}</div>
+          <div style="position:relative;height:22px;background:rgba(212,230,239,0.35);border-radius:4px;overflow:hidden">${segments}${blankSeg}</div>
+          <div style="font-size:13px;font-weight:700;color:#1D4053;text-align:right">${qualPct}%${totalLabel}<span style="font-size:9px;font-weight:400;color:#8a9aaa;display:block;text-align:right">given</span></div>
+        </div>
+        <div style="padding-left:122px;display:flex;gap:6px;flex-wrap:wrap">${pills}</div>
+      </div>`;
+  }).join('');
+
+  const legend = allStackKeys.map(k => `
+    <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--mid-navy)${k==='blank'?';opacity:0.7':''}">
+      <span style="width:10px;height:10px;border-radius:2px;background:${stackColors[k]};display:inline-block;flex-shrink:0${k==='blank'?';opacity:0.5':''}"></span>
+      ${stackLabels[k]}</span>`).join('');
+
+  return `
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px">${legend}</div>
+    ${bars}
+    <div style="margin-top:10px;font-size:10px;color:#8a9aaa;font-style:italic">% of total shown per category. Blank = contacts where demo_given__status is not set.</div>`;
+}
+
+const fmt$ = n => '$' + Number(n).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+const fmtN = n => Number(Math.round(n)).toLocaleString();
+const fmtP = (a,b) => b > 0 ? (a/b*100).toFixed(1)+'%' : 'N/A';
+const cpdNum = (s,d) => d > 0 ? s/d : null;
+const cpd$  = (s,d) => { const v=cpdNum(s,d); return v?fmt$(v):'N/A'; };
+
+const CH_COLORS = {meta:'#172C45',linkedin:'#1D4053',google:'#72A4BF',tiktok:'#4d8aaa',youtube:'#9bbfd4'};
+const CH_LABELS = {meta:'Meta / Facebook',linkedin:'LinkedIn',google:'Google Ads',tiktok:'TikTok',youtube:'YouTube'};
+const CH_ICONS  = {meta:'📘',linkedin:'💼',google:'🔍',tiktok:'🎵',youtube:'▶️'};
+
+// Source breakdown colour palette — cycles through brand + accent tones
+const SRC_COLORS = ['#172C45','#1D4053','#72A4BF','#4d8aaa','#2d6a8a','#9bbfd4','#7a95a8','#B8860B','#5a7a8a','#3a5a6a'];
+
+// ── Delta helpers ──────────────────────────────────────────────
+function deltaNum(curr, prev) {
+  if (prev === null || prev === undefined) return null;
+  if (prev === 0) return curr === 0 ? 0 : null; // show flat 0% only when both are 0; hide when prev=0, curr>0 (no meaningful %)
+  return (curr - prev) / Math.abs(prev);
+}
+function deltaBadge(curr, prev, { invert=false }={}) {
+  const d = deltaNum(curr, prev);
+  if (d === null) return `<span class="delta delta-flat">— %</span>`;
+  const pct = (d * 100).toFixed(1);
+  const isUp   = d > 0.005;
+  const isDown = d < -0.005;
+  let cls, arrow;
+  if (isUp)        { cls = invert ? 'delta-down' : 'delta-up';   arrow = '▲'; }
+  else if (isDown) { cls = invert ? 'delta-up'   : 'delta-down'; arrow = '▼'; }
+  else             { cls = 'delta-flat'; arrow = '—'; }
+  const sign = d > 0 ? '+' : '';
+  return `<span class="delta ${cls}">${arrow} ${sign}${pct}%</span>`;
+}
+function scDelta(curr, prev, { invert=false }={}) {
+  const d = deltaNum(curr, prev);
+  if (d === null) return `<span class="sc-delta sc-delta-flat">— %</span>`;
+  const pct = (d * 100).toFixed(1);
+  const isUp   = d > 0.005;
+  const isDown = d < -0.005;
+  let cls, arrow;
+  if (isUp)        { cls = invert ? 'sc-delta-down' : 'sc-delta-up';   arrow = '▲'; }
+  else if (isDown) { cls = invert ? 'sc-delta-up'   : 'sc-delta-down'; arrow = '▼'; }
+  else             { cls = 'sc-delta-flat'; arrow = '—'; }
+  const sign = d > 0 ? '+' : '';
+  return `<span class="sc-delta ${cls}">${arrow} ${sign}${pct}%</span>`;
+}
+function parsePct(str) {
+  if (!str || str === 'N/A') return null;
+  return parseFloat(str) / 100;
+}
+
+// ── Donut SVG ──────────────────────────────────────────────────
+function buildDonut(slices, size=130, stroke=22) {
+  const r=(size-stroke)/2, cx=size/2, cy=size/2, circ=2*Math.PI*r;
+  const total=slices.reduce((s,sl)=>s+sl.value,0);
+  let offset=0, paths='';
+  slices.forEach(sl=>{
+    if(!sl.value) return;
+    const dash=(sl.value/total)*circ, gap=circ-dash;
+    paths+=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${sl.color}" stroke-width="${stroke}" stroke-dasharray="${dash} ${gap}" stroke-dashoffset="${-offset}" transform="rotate(-90 ${cx} ${cy})"/>`;
+    offset+=dash;
+  });
+  return `<svg width="${size}" height="${size}" style="flex-shrink:0">${paths}</svg>`;
+}
+
+// ── Intelligence Engine ─────────────────────────────────────────
+function buildIntelligence(d, p) {
+  const ch=d.channels, ga=d.ga4, pp=d.pipeline;
+  const pch=p.channels, pga=p.ga4, ppp=p.pipeline;
+  const F={alerts:[],weaknesses:[],opportunities:[],wins:[]};
+
+  const pct=(a,b)=>b>0?(a/b)*100:null;
+  const chg=(c,v)=>v>0?((c-v)/v)*100:null;
+  const fD=n=>'$'+Number(n).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+  const fP=(n,d=1)=>n!==null?n.toFixed(d)+'%':'N/A';
+  const ar=n=>n>0?'↑':'↓';
+  const ab=n=>Math.abs(n).toFixed(1);
+
+  // ── Data quality (always surface) ───────────────────────────
+  ['meta','google','tiktok','linkedin'].forEach(k=>{
+    if(ch[k].spend===0) F.alerts.push({
+      title:`${CH_LABELS[k]} — $0 spend recorded`,
+      desc:'No spend data received from Windsor.ai.',
+      action:'Verify campaign status and Windsor.ai connector sync.'
+    });
+  });
+  ['meta','google','tiktok'].forEach(k=>{
+    if(ch[k].spend>200&&ch[k].demos===0) F.alerts.push({
+      title:`${CH_LABELS[k]} — spend recorded, 0 demos`,
+      desc:`${fD(ch[k].spend)} spent with no attributed demos.`,
+      action:'Conversion tracking may be misconfigured in Windsor.ai. Check field mapping.'
+    });
+  });
+
+  // ── 1. CPD per channel ───────────────────────────────────────
+  const chArr=[
+    {name:'Meta',k:'meta'},{name:'TikTok',k:'tiktok'},
+    {name:'Google Ads',k:'google'},{name:'LinkedIn',k:'linkedin'}
+  ].map(c=>({...c,
+    spend:ch[c.k].spend,demos:ch[c.k].demos,
+    pSpend:pch[c.k].spend,pDemos:pch[c.k].demos,
+    cpd:ch[c.k].demos>0?ch[c.k].spend/ch[c.k].demos:null,
+    pCpd:pch[c.k].demos>0?pch[c.k].spend/pch[c.k].demos:null,
+  }));
+
+  // Best vs worst CPD gap (direct-response only)
+  const drArr=chArr.filter(c=>c.name!=='LinkedIn'&&c.cpd!==null);
+  if(drArr.length>=2){
+    const best=drArr.reduce((a,b)=>a.cpd<b.cpd?a:b);
+    const worst=drArr.reduce((a,b)=>a.cpd>b.cpd?a:b);
+    const gap=((worst.cpd-best.cpd)/best.cpd)*100;
+    if(gap>40){
+      const addDemos=Math.round(worst.spend*0.2/best.cpd);
+      F.opportunities.push({
+        title:`CPD Efficiency Gap — ${best.name} is ${gap.toFixed(0)}% cheaper than ${worst.name}`,
+        desc:`${best.name} ${fD(best.cpd)}/demo vs ${worst.name} ${fD(worst.cpd)}/demo.`,
+        action:`Shifting 20% of ${worst.name} budget (${fD(worst.spend*0.2)}) to ${best.name} could yield ~${addDemos} additional demos.`
+      });
+    }
+  }
+
+  // CPD trend + absolute thresholds per channel
+  chArr.filter(c=>c.name!=='LinkedIn').forEach(c=>{
+    if(c.cpd===null) return;
+    if(c.cpd>500) F.alerts.push({
+      title:`High CPD — ${c.name} at ${fD(c.cpd)}/demo`,
+      desc:'Above $500 direct-response threshold.',
+      action:'Review targeting and creative mix immediately.'
+    });
+    if(c.pCpd!==null){
+      const d2=chg(c.cpd,c.pCpd);
+      if(d2>25) F.weaknesses.push({
+        title:`CPD Spike — ${c.name}: ${fD(c.pCpd)} → ${fD(c.cpd)}/demo`,
+        desc:`${ar(d2)}${ab(d2)}% increase vs prior period.`,
+        action:'Investigate creative fatigue, audience saturation, or bid drift.'
+      });
+      else if(d2<-20) F.wins.push({
+        title:`CPD Improving — ${c.name}: ${fD(c.pCpd)} → ${fD(c.cpd)}/demo`,
+        desc:`${ar(d2)}${ab(d2)}% more efficient vs prior period.`,action:''
+      });
+    }
+  });
+
+  // LinkedIn CPD
+  const li=chArr.find(c=>c.name==='LinkedIn');
+  if(li&&li.cpd!==null){
+    if(li.cpd>600) F.alerts.push({
+      title:`LinkedIn CPD Critical — ${fD(li.cpd)}/demo`,
+      desc:`Spending ${fD(li.spend)} for ${Math.round(li.demos)} demos.`,
+      action:'Audit audience targeting, bid strategy, creative format. Test document ads and thought-leadership content.'
+    });
+    else if(li.cpd>400) F.weaknesses.push({
+      title:`LinkedIn CPD High — ${fD(li.cpd)}/demo`,
+      desc:'B2B SaaS benchmark is $200–350/demo.',
+      action:'Layer targeting: job title + company size + seniority. Exclude companies <10 employees.'
+    });
+    if(li.pCpd!==null){
+      const d2=chg(li.cpd,li.pCpd);
+      if(d2>20) F.weaknesses.push({
+        title:`LinkedIn Efficiency Declining — ${ar(d2)}${ab(d2)}% (${fD(li.pCpd)} → ${fD(li.cpd)})`,
+        desc:'Cost per demo rising month over month.',
+        action:'Check audience overlap across campaigns. Review creative frequency cap. Rotate audience lists.'
+      });
+    }
+  }
+
+  // ── 2. Spend concentration ───────────────────────────────────
+  const totalSpend=chArr.reduce((s,c)=>s+c.spend,0);
+  chArr.forEach(c=>{
+    const s=pct(c.spend,totalSpend);
+    if(s!==null&&s>55) F.weaknesses.push({
+      title:`Channel Concentration — ${c.name} is ${fP(s)} of budget`,
+      desc:`${fD(c.spend)} of ${fD(totalSpend)} total spend on one channel.`,
+      action:'Single-channel dependency. A policy change or CPM spike would collapse pipeline. Diversify spend.'
+    });
+  });
+
+  // ── 3. Funnel leakage ────────────────────────────────────────
+  const clickRate=pct(ga.demoButtonClicks,ga.users);
+  const bookRate=pct(ga.meetingBooked,ga.demoButtonClicks);
+  const cvr=pct(ga.meetingBooked,ga.users);
+  const pCvr=pct(pga.meetingBooked,pga.users);
+
+  if(clickRate!==null){
+    if(clickRate<3) F.weaknesses.push({
+      title:`Low Visitor-to-CTA Rate — ${fP(clickRate)} of visitors click the demo button`,
+      desc:`Only ${Math.round(ga.demoButtonClicks).toLocaleString()} clicks from ${Math.round(ga.users).toLocaleString()} visitors.`,
+      action:'Test above-the-fold headline clarity, CTA button placement, and page load speed. Target: 5%+.'
+    });
+    else if(clickRate>6) F.wins.push({
+      title:`Strong CTA Click Rate — ${fP(clickRate)} visitor-to-CTA`,
+      desc:'Page messaging is resonating with incoming traffic quality.',action:''
+    });
+  }
+  if(bookRate!==null){
+    if(bookRate<5) F.alerts.push({
+      title:`Critical Booking Drop-Off — only ${fP(bookRate)} of CTA clicks book`,
+      desc:`Losing ~${Math.round(ga.demoButtonClicks*(1-bookRate/100))} potential bookings at the scheduling step.`,
+      action:'Test: embed Calendly inline vs redirect, reduce required fields, show next available slot immediately.'
+    });
+    else if(bookRate<15) F.weaknesses.push({
+      title:`Booking Friction — ${fP(bookRate)} click-to-book`,
+      desc:`~${Math.round(ga.demoButtonClicks*(1-bookRate/100))} clicks not converting to booked demos.`,
+      action:'A/B test scheduling page: urgency copy, social proof, fewer required fields.'
+    });
+    else if(bookRate>25) F.wins.push({
+      title:`High Booking Conversion — ${fP(bookRate)} of CTA clicks book`,
+      desc:'Scheduling experience is working well. Protect this step.',action:''
+    });
+  }
+  if(cvr!==null&&pCvr!==null){
+    const d2=chg(cvr,pCvr);
+    if(d2<-15) F.alerts.push({
+      title:`Website CVR Declining — ${fP(pCvr,2)} → ${fP(cvr,2)}`,
+      desc:`${ar(d2)}${ab(d2)}% vs prior period.`,
+      action:'Could be: traffic quality drop, landing page regression, or scheduling tool issue. Segment by source to isolate.'
+    });
+    else if(d2>15) F.wins.push({
+      title:`CVR Improving — ${fP(pCvr,2)} → ${fP(cvr,2)}`,
+      desc:`${ar(d2)}${ab(d2)}% vs prior period. Landing page or traffic quality improving.`,action:''
+    });
+  }
+
+  // ── 4. Pipeline health ───────────────────────────────────────
+  const {demosToOccur,demosHappened,dealsWon,closedDeals,notQualAfterDemo,disqualifiedBeforeDemo,tooEarly}=pp;
+  const {demosToOccur:pDTO,demosHappened:pDH,dealsWon:pDW,closedDeals:pCD,disqualifiedBeforeDemo:pDqB,notQualAfterDemo:pNQA}=ppp;
+
+  const showRate=pct(demosHappened,demosToOccur);
+  if(showRate!==null){
+    if(showRate<60) F.alerts.push({
+      title:`Critical Show Rate — only ${fP(showRate)} of booked demos happen`,
+      desc:`${demosToOccur-demosHappened} no-shows or cancellations (${demosHappened}/${demosToOccur}).`,
+      action:'Add: 24hr + 1hr SMS reminder, confirmation email with prep materials, AE personal outreach day-of.'
+    });
+    else if(showRate<78) F.weaknesses.push({
+      title:`Show Rate Below Target — ${fP(showRate)} (target: 80%+)`,
+      desc:`${demosHappened}/${demosToOccur} demos occurring.`,
+      action:'Review reminder sequence timing. Add a 2hr pre-demo email with 3 questions to answer before the call.'
+    });
+    else F.wins.push({
+      title:`Solid Show Rate — ${fP(showRate)} of booked demos happen`,
+      desc:`${demosHappened}/${demosToOccur} demos occurring. Reminder sequence is working.`,action:''
+    });
+  }
+
+  const dqBR=pct(disqualifiedBeforeDemo,demosToOccur);
+  const pDqBR=pct(pDqB,pDTO);
+  if(dqBR!==null){
+    if(dqBR>25) F.alerts.push({
+      title:`High Pre-Demo Disqualification — ${fP(dqBR)} cancelled before demo`,
+      desc:`${disqualifiedBeforeDemo}/${demosToOccur} deals disqualified before occurring.`,
+      action:'Add ICP filters to booking form: "How long has your brand been selling?" and "Monthly ad spend?" Disqualify pre-launch brands at scheduling, not after.'
+    });
+    else if(dqBR>12) F.weaknesses.push({
+      title:`Pre-Demo Disq Elevated — ${disqualifiedBeforeDemo} cancelled (${fP(dqBR)})`,
+      desc:'Leads aren\'t passing intake review.',
+      action:'Add 1–2 qualifying questions to Calendly page. Review recent disq reasons for patterns.'
+    });
+  }
+  if(dqBR!==null&&pDqBR!==null){
+    const d2=chg(dqBR,pDqBR);
+    if(d2>30) F.weaknesses.push({
+      title:`Pre-Demo Disq Worsening — ${fP(pDqBR)} → ${fP(dqBR)}`,
+      desc:`${ar(d2)}${ab(d2)}% change vs prior period.`,
+      action:'Targeting may be drifting toward unqualified audiences. Cross-reference campaign launches with disq spike timing.'
+    });
+  }
+
+  const dqAR=pct(notQualAfterDemo,demosHappened);
+  if(dqAR!==null&&dqAR>25) F.weaknesses.push({
+    title:`High Post-Demo Disqualification — ${fP(dqAR)} of demos result in "Not Qualified"`,
+    desc:`${notQualAfterDemo}/${demosHappened} demos not converting.`,
+    action:'Discovery questions aren\'t surfacing disqualifiers early. Add a pre-demo questionnaire. Review top disq reasons with sales weekly.'
+  });
+
+  if(tooEarly>0){
+    const ter=pct(tooEarly,demosHappened);
+    const estFW=Math.round(tooEarly*(closedDeals/Math.max(demosHappened,1)));
+    if(ter!==null&&ter>15) F.opportunities.push({
+      title:`Large Nurture Pipeline — ${tooEarly} deals marked "Too Early" (${fP(ter)})`,
+      desc:`At current close rates, ~${estFW} of these could close with proper follow-up.`,
+      action:'Add all to 30/60/90-day email sequence immediately. This is warm, paid-for pipeline being abandoned.'
+    });
+    else F.opportunities.push({
+      title:`Nurture Pipeline — ${tooEarly} deals marked "Too Early"`,
+      desc:'Warm prospects who need more time before closing.',
+      action:'Ensure all have follow-up tasks at 30 and 60 days. Don\'t let warm pipeline go cold.'
+    });
+  }
+
+  const closeRate=pct(closedDeals,demosHappened);
+  const pCloseRate=pct(pCD,pDH);
+  if(closeRate!==null){
+    if(closeRate<10) F.weaknesses.push({
+      title:`Low Close Rate — ${fP(closeRate)} demo-to-close`,
+      desc:`${closedDeals}/${demosHappened} demos converting to closed won.`,
+      action:'Review: proposals sent same-day? Urgency/deadline present? Analyze objection patterns. Add a follow-up call 48hrs post-demo.'
+    });
+    else if(closeRate>20) F.wins.push({
+      title:`Strong Close Rate — ${fP(closeRate)} demo-to-close`,
+      desc:`${closedDeals}/${demosHappened} demos closing. Sales team converting well.`,action:''
+    });
+    if(pCloseRate!==null){
+      const d2=chg(closeRate,pCloseRate);
+      if(d2<-20) F.weaknesses.push({
+        title:`Close Rate Declining — ${fP(pCloseRate)} → ${fP(closeRate)}`,
+        desc:`${ar(d2)}${ab(d2)}% vs prior period.`,
+        action:'Check: pricing pushback, proposal quality, follow-up speed post-demo.'
+      });
+      else if(d2>20) F.wins.push({
+        title:`Close Rate Improving — ${fP(pCloseRate)} → ${fP(closeRate)}`,
+        desc:`${ar(d2)}${ab(d2)}% vs prior period. Sales execution improving.`,action:''
+      });
+    }
+  }
+
+  // ── 5. Revenue velocity ──────────────────────────────────────
+  const mrrPD=demosHappened>0?d.newMRR/demosHappened:null;
+  const pMrrPD=pDH>0?p.newMRR/pDH:null;
+  if(mrrPD!==null&&pMrrPD!==null){
+    const d2=chg(mrrPD,pMrrPD);
+    if(d2<-20) F.weaknesses.push({
+      title:`Deal Size Shrinking — MRR/demo ${fD(pMrrPD)} → ${fD(mrrPD)}`,
+      desc:`${ar(d2)}${ab(d2)}% decline in average deal value.`,
+      action:'Targeting changes may be pulling in smaller companies. Review new traffic sources and audience composition.'
+    });
+    else if(d2>20) F.wins.push({
+      title:`Deal Size Growing — MRR/demo ${fD(pMrrPD)} → ${fD(mrrPD)}`,
+      desc:`${ar(d2)}${ab(d2)}% larger deals closing. Larger accounts in pipeline.`,action:''
+    });
+  }
+  if(d.newMRR>0&&p.newMRR>0){
+    const d2=chg(d.newMRR,p.newMRR);
+    if(d2>20) F.wins.push({
+      title:`Strong MRR Growth — ${fD(d.newMRR)} vs ${fD(p.newMRR)} prior`,
+      desc:`${ar(d2)}${ab(d2)}% revenue growth period over period.`,action:''
+    });
+    else if(d2<-15) F.alerts.push({
+      title:`MRR Declining — ${fD(d.newMRR)} vs ${fD(p.newMRR)} prior period`,
+      desc:`${ar(d2)}${ab(d2)}% revenue drop.`,
+      action:'Diagnose: is pipeline volume, close rate, or deal size declining? Each has a different fix.'
+    });
+  }
+
+  // ── 6. Meta creative health ──────────────────────────────────
+  if(ch.meta.ctrAvg!=null){
+    const ctr=ch.meta.ctrAvg;
+    const pCtr=pch.meta.ctrAvg;
+    if(ctr<0.008) F.weaknesses.push({
+      title:`Meta CTR Low — ${(ctr*100).toFixed(2)}%`,
+      desc:'Below 0.8% average CTR signals creative fatigue or audience mismatch.',
+      action:'Refresh top 3 highest-spend creatives. Test UGC-style vs polished. Try new hook angles: pain-point vs aspirational outcome.'
+    });
+    else if(ctr>0.018) F.wins.push({
+      title:`Strong Meta CTR — ${(ctr*100).toFixed(2)}%`,
+      desc:'Creative is resonating. Scale top performers before fatigue sets in.',action:''
+    });
+    if(pCtr!=null){
+      const d2=chg(ctr,pCtr);
+      if(d2<-20) F.weaknesses.push({
+        title:`Meta CTR Declining — ${(pCtr*100).toFixed(2)}% → ${(ctr*100).toFixed(2)}%`,
+        desc:`${ar(d2)}${ab(d2)}% drop. Audience has seen your ads too many times.`,
+        action:'Rotate creative immediately. TikTok-native style content is converting for wellness brands right now.'
+      });
+    }
+  }
+
+  // ── 7. Pipeline volume trend ─────────────────────────────────
+  if(demosToOccur>0&&pDTO>0){
+    const d2=chg(demosToOccur,pDTO);
+    if(d2>20) F.wins.push({
+      title:`Pipeline Growing — ${demosToOccur} demos vs ${pDTO} prior`,
+      desc:`${ar(d2)}${ab(d2)}% growth. Demand is accelerating.`,action:''
+    });
+    else if(d2<-15) F.alerts.push({
+      title:`Pipeline Contracting — ${demosToOccur} demos vs ${pDTO} prior`,
+      desc:`${ar(d2)}${ab(d2)}% drop in pipeline volume.`,
+      action:'Check CPD trend and budget allocation. If spend held steady, efficiency dropped. If spend dropped, budget was cut.'
+    });
+  }
+
+  // ── 8. YouTube untracked spend ───────────────────────────────
+  const ytShare=pct(ch.youtube.spend,totalSpend);
+  if(ytShare!==null&&ytShare>8&&ch.youtube.demos===0) F.weaknesses.push({
+    title:`YouTube: Untracked ROI — ${fD(ch.youtube.spend)} (${ytShare.toFixed(0)}% of budget)`,
+    desc:'0 demos attributed to YouTube in Windsor.ai.',
+    action:'YouTube is brand-awareness only here. If brand lift isn\'t being measured, consider reallocating to direct-response channels.'
+  });
+
+  // ── 9. Overall CPD trend ─────────────────────────────────────
+  const drS=ch.meta.spend+ch.tiktok.spend+ch.google.spend;
+  const drD=ch.meta.demos+ch.tiktok.demos+ch.google.demos;
+  const pDrS=pch.meta.spend+pch.tiktok.spend+pch.google.spend;
+  const pDrD=pch.meta.demos+pch.tiktok.demos+pch.google.demos;
+  const oCPD=drD>0?drS/drD:null, pOCPD=pDrD>0?pDrS/pDrD:null;
+  if(oCPD!==null&&pOCPD!==null){
+    const d2=chg(oCPD,pOCPD);
+    if(d2>20) F.weaknesses.push({
+      title:`Overall CPD Rising — ${fD(pOCPD)} → ${fD(oCPD)}/demo`,
+      desc:`${ar(d2)}${ab(d2)}% worse vs prior period. Across-the-board efficiency loss.`,
+      action:'Likely causes: creative fatigue, seasonal CPM increase, or audience exhaustion. Check top-spend ad frequency.'
+    });
+    else if(d2<-15) F.wins.push({
+      title:`Overall CPD Improving — ${fD(pOCPD)} → ${fD(oCPD)}/demo`,
+      desc:`${ar(d2)}${ab(d2)}% better vs prior period. Media efficiency gaining across all channels.`,action:''
+    });
+  }
+
+  return F;
+}
+
+// ── Render Intelligence HTML ────────────────────────────────────
+function renderIntelligence(F, prevLabel) {
+  const CATS=[
+    {key:'alerts',       label:'🚨  Alerts — Requires Immediate Attention', cls:'intel-cat-alert', icon:'🚨', pillCls:'isp-alert', pillLabel:'Alerts'},
+    {key:'weaknesses',   label:'⚠️  Weaknesses — Underperformance to Address', cls:'intel-cat-weak', icon:'⚠️', pillCls:'isp-weak', pillLabel:'Weaknesses'},
+    {key:'opportunities',label:'🎯  Opportunities — Actionable Upside',        cls:'intel-cat-opp',  icon:'🎯', pillCls:'isp-opp',  pillLabel:'Opportunities'},
+    {key:'wins',         label:'✅  Wins — What\'s Working',                   cls:'intel-cat-win',  icon:'✅', pillCls:'isp-win',  pillLabel:'Wins'},
+  ];
+  const total=CATS.reduce((s,c)=>s+F[c.key].length,0);
+  if(total===0) return '<div class="intel-empty">No significant signals detected. All metrics within normal ranges.</div>';
+
+  const pillsHTML=CATS.filter(c=>F[c.key].length>0).map(c=>`
+    <div class="intel-summary-pill ${c.pillCls}">
+      <span class="isp-count">${F[c.key].length}</span>
+      <span>${c.icon} ${c.pillLabel}</span>
+    </div>`).join('');
+
+  const catsHTML=CATS.filter(c=>F[c.key].length>0).map(cat=>`
+    <div class="intel-category ${cat.cls}">
+      <div class="intel-cat-label">${cat.label}</div>
+      <div class="intel-cards">
+        ${F[cat.key].map(f=>`
+          <div class="intel-card">
+            <div class="intel-icon">${cat.icon}</div>
+            <div>
+              <div class="intel-title">${f.title}</div>
+              ${f.desc?`<div class="intel-desc">${f.desc}</div>`:''}
+              ${f.action?`<div class="intel-action">→ ${f.action}</div>`:''}
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>`).join('');
+
+  return `<div class="intel-summary-bar">${pillsHTML}</div>${catsHTML}`;
+}
+
+// ── Build panel ────────────────────────────────────────────────
+function buildPanel(key, d) {
+  const noPrev = !!d.noPrev;
+  const ch=d.channels, ga=d.ga4, pp=d.pipeline;
+  const p=d.prev, pch=p.channels, pga=p.ga4, ppp=p.pipeline;
+  const prevLabel= noPrev ? '' : (d.prevLabel||'prior period');
+  const vsLabel  = noPrev ? '' : `vs ${prevLabel}`;
+
+  // Local wrappers: suppress deltas when noPrev (YTD)
+  const db = noPrev ? () => '' : (a, b, opts) => deltaBadge(a, b, opts);
+  const sd = noPrev ? () => '' : (a, b, opts) => scDelta(a, b, opts);
+
+  // Direct-response spend/demos (excl LI + YT)
+  const drSpend=ch.meta.spend+ch.google.spend+ch.tiktok.spend;
+  const drDemos=ch.meta.demos+ch.google.demos+ch.tiktok.demos;
+  const pdrSpend=pch.meta.spend+pch.google.spend+pch.tiktok.spend;
+  const pdrDemos=pch.meta.demos+pch.google.demos+pch.tiktok.demos;
+
+  // All-channel totals (all 5 channels)
+  const chKeys=['meta','linkedin','google','tiktok','youtube'];
+  const allSpend=chKeys.reduce((s,k)=>s+ch[k].spend,0);
+  const allDemos=chKeys.reduce((s,k)=>s+ch[k].demos,0);
+  const pallSpend=chKeys.reduce((s,k)=>s+pch[k].spend,0);
+  const pallDemos=chKeys.reduce((s,k)=>s+pch[k].demos,0);
+
+  // Demos % Paid Source: paid ad demos (all 5 channels) / total HubSpot demos booked
+  const paidDemos   = (ch.meta.demos||0)+(ch.google.demos||0)+(ch.tiktok.demos||0)+(ch.youtube.demos||0)+(ch.linkedin.demos||0);
+  const ppaidDemos  = (pch.meta.demos||0)+(pch.google.demos||0)+(pch.tiktok.demos||0)+(pch.youtube.demos||0)+(pch.linkedin.demos||0);
+  const paidSrcPct  = d.demosBooked > 0 ? (paidDemos  / d.demosBooked  * 100) : null;
+  const ppaidSrcPct = p.demosBooked > 0 ? (ppaidDemos / p.demosBooked  * 100) : null;
+  const paidSrcStr  = paidSrcPct  !== null ? paidSrcPct.toFixed(1)  + '%' : '—';
+
+  // Intelligence
+  const intelHTML=renderIntelligence(buildIntelligence(d,p), prevLabel);
+
+  // Dark stat cards with sparklines + pacing bar on spend card
+  // Build simple 3-window sparkline points: yesterday → rolling7 → mtd (per-day spend)
+  const sparkWins = ['yesterday','rolling7','mtd'];
+  const allChKeys = ['meta','linkedin','google','tiktok','youtube'];
+  const spendPts  = sparkWins.map(w => {
+    const sw = DATA.windows[w];
+    if (!sw) return 0;
+    const days = w === 'yesterday' ? 1 : w === 'rolling7' ? 7 : (new Date().getDate() - 1 || 1);
+    const s = allChKeys.reduce((sum,k)=>sum+(sw.channels?.[k]?.spend||0),0);
+    return s / days;
+  });
+  const mrrPts   = sparkWins.map(w => DATA.windows[w]?.newMRR || 0);
+  const cpdPts   = sparkWins.map(w => {
+    const sw = DATA.windows[w];
+    if (!sw) return 0;
+    const s = allChKeys.reduce((sum,k)=>sum+(sw.channels?.[k]?.spend||0),0);
+    const demos = allChKeys.reduce((sum,k)=>sum+(sw.channels?.[k]?.demos||0),0);
+    return demos > 0 ? s / demos : 0;
+  });
+  const dealsPts = sparkWins.map(w => DATA.windows[w]?.pipeline?.closedDeals || 0);
+
+
+  // Pacing: days through month
+  const today = new Date();
+  const daysInMonth = new Date(today.getFullYear(), today.getMonth()+1, 0).getDate();
+  const dayOfMonth  = today.getDate() - 1; // completed days (yesterday)
+  const pacingPct   = (dayOfMonth / daysInMonth) * 100;
+  const totalBudget = Object.values(MONTHLY_BUDGETS).reduce((s,v)=>s+v,0);
+  const drBudget    = MONTHLY_BUDGETS.meta + MONTHLY_BUDGETS.google + MONTHLY_BUDGETS.tiktok;
+  const totalMTDSpend = Object.keys(MONTHLY_BUDGETS).reduce((s,k) => s + (ch[k]?.spend||0), 0);
+
+  const statHTML=`
+    <div class="stat-row">
+      <div class="stat-card" style="position:relative;overflow:hidden">
+        <div class="sc-label">Closed Deals</div>
+        <div class="sc-value">${fmtN(pp.closedDeals)}</div>
+        <div class="sc-sub">Closed won this period</div>
+        ${sd(pp.closedDeals, ppp.closedDeals)}
+        ${buildSparkline(dealsPts)}
+      </div>
+      <div class="stat-card" style="position:relative;overflow:hidden">
+        <div class="sc-label">New MRR</div>
+        <div class="sc-value">${fmt$(d.newMRR)}</div>
+        <div class="sc-sub">Closed won this period</div>
+        <div style="font-size:11px;color:rgba(114,164,191,0.85);margin-top:2px;font-weight:600">${d.newMRR > 0 ? fmt$(d.newMRR * 12) + ' ARR Generated' : ''}</div>
+        ${sd(d.newMRR, p.newMRR)}
+        ${buildSparkline(mrrPts)}
+      </div>
+      <div class="stat-card" style="position:relative;overflow:hidden">
+        <div class="sc-label">Total Ad Spend</div>
+        <div class="sc-value">${fmt$(allSpend)}</div>
+        <div class="sc-sub">All 5 channels</div>
+        ${sd(allSpend, pallSpend, {invert:true})}
+        ${buildPacingBar(allSpend, totalBudget, pacingPct)}
+        ${key === 'mtd' ? buildSparkline(spendPts) : ''}
+      </div>
+      <div class="stat-card" style="position:relative;overflow:hidden">
+        <div class="sc-label">Blended CPD</div>
+        <div class="sc-value">${cpd$(allSpend,allDemos)}</div>
+        <div class="sc-sub">All 5 channels</div>
+        ${sd(cpdNum(allSpend,allDemos)||0, cpdNum(pallSpend,pallDemos)||0, {invert:true})}
+        ${buildSparkline(cpdPts)}
+      </div>
+    </div>`;
+
+  // ── Website Funnel (3 nodes + arrows) ──────────────────────────────────────
+  const wfVisitors   = Math.round(ga.users);
+  const wfClicks     = Math.round(ga.demoButtonClicks);
+  const wfBooked     = d.demosBooked;
+  const pwfVisitors  = Math.round(pga.users);
+  const pwfClicks    = Math.round(pga.demoButtonClicks);
+  const pwfBooked    = p.demosBooked;
+
+  const wfClickRate  = wfVisitors  > 0 ? (wfClicks  / wfVisitors  * 100).toFixed(2) + '%' : 'N/A';
+  const wfBookRate   = wfClicks    > 0 ? (wfBooked  / wfClicks    * 100).toFixed(2) + '%' : 'N/A';
+  const wfCVR        = wfVisitors  > 0 ? (wfBooked  / wfVisitors  * 100).toFixed(2) + '%' : 'N/A';
+
+  // Previous-period rates (numeric) for delta badges on funnel conversion rates
+  const wfClickRateN = wfVisitors  > 0 ? (wfClicks / wfVisitors * 100) : 0;
+  const wfBookRateN  = wfClicks    > 0 ? (wfBooked / wfClicks   * 100) : 0;
+  const wfCVRN       = wfVisitors  > 0 ? (wfBooked / wfVisitors * 100) : 0;
+  const pwfClickRateN= pwfVisitors > 0 ? (pwfClicks / pwfVisitors * 100) : 0;
+  const pwfBookRateN = pwfClicks   > 0 ? (pwfBooked / pwfClicks   * 100) : 0;
+  const pwfCVRN      = pwfVisitors > 0 ? (pwfBooked / pwfVisitors * 100) : 0;
+
+  const wfArrow = `<div class="wf-arrow"><div class="wf-arrow-icon">➜</div></div>`;
+  const wfFunnelHTML = `
+    <div class="wf-wrap">
+      <div class="wf-node">
+        <div class="wf-label">Website Visitors</div>
+        <div class="wf-value">${fmtN(wfVisitors)}</div>
+        <div><span class="wf-rate">${wfClickRate}<span class="wf-rate-lbl">click demo btn</span></span> ${db(wfClickRateN, pwfClickRateN)}</div>
+        ${db(wfVisitors, pwfVisitors)}
+      </div>
+      ${wfArrow}
+      <div class="wf-node">
+        <div class="wf-label">Demo Button Clicks</div>
+        <div class="wf-value">${fmtN(wfClicks)}</div>
+        <div><span class="wf-rate">${wfBookRate}<span class="wf-rate-lbl">actually book</span></span> ${db(wfBookRateN, pwfBookRateN)}</div>
+        ${db(wfClicks, pwfClicks)}
+      </div>
+      ${wfArrow}
+      <div class="wf-node">
+        <div class="wf-label">Demos Booked</div>
+        <div class="wf-value">${fmtN(wfBooked)}</div>
+        <div><span class="wf-rate">${wfCVR}<span class="wf-rate-lbl">website CVR</span></span> ${db(wfCVRN, pwfCVRN)}</div>
+        ${db(wfBooked, pwfBooked)}
+      </div>
+    </div>`;
+
+  // Show Rate — compute and style
+  const showRateVal = pp.demosToOccur > 0 ? (pp.demosHappened / pp.demosToOccur * 100) : null;
+  const pShowRateVal= ppp.demosToOccur > 0 ? (ppp.demosHappened / ppp.demosToOccur * 100) : null;
+  const showRateCls = showRateVal === null ? 'kpi-show-rate-good' : showRateVal < 60 ? 'kpi-show-rate-danger' : showRateVal < 78 ? 'kpi-show-rate-warn' : 'kpi-show-rate-good';
+  const showRateStatus = showRateVal === null ? '' : showRateVal < 60 ? '🚨 Critical — add 24hr + 1hr SMS reminders immediately' : showRateVal < 78 ? '⚠️ Below 80% target — review reminder sequence timing' : '✅ On target — reminder sequence is working';
+  const srBarColor = showRateVal === null ? '#BBF7D0' : showRateVal < 60 ? '#EF4444' : showRateVal < 78 ? '#F59E0B' : '#22C55E';
+  const srBarBg    = showRateVal === null ? 'rgba(0,0,0,0.06)' : showRateVal < 60 ? 'rgba(239,68,68,0.15)' : showRateVal < 78 ? 'rgba(245,158,11,0.15)' : 'rgba(34,197,94,0.15)';
+
+  const showRateHTML = showRateVal !== null ? `
+    <div class="kpi kpi-show-rate ${showRateCls}" style="grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:32px;padding:22px 28px;border-radius:14px">
+      <div style="flex:1;min-width:0">
+        <div class="sr-label" style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px">Demo Show Rate</div>
+        <div style="display:flex;align-items:baseline;gap:16px;flex-wrap:wrap">
+          <div class="sr-value" style="font-size:40px;font-weight:700;line-height:1;font-family:'Libre Baskerville',Georgia,serif">${showRateVal.toFixed(1)}%</div>
+          <div class="sr-count" style="font-size:14px;font-weight:400">${pp.demosHappened} of ${pp.demosToOccur} demos occurred</div>
+        </div>
+        <div class="sr-status" style="font-size:12px;margin-top:8px;font-weight:600">${showRateStatus}</div>
+      </div>
+      <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:8px">
+        ${pShowRateVal ? db(showRateVal, pShowRateVal) : ''}
+        <div>
+          <div class="sr-target" style="font-size:10px;text-align:right;margin-bottom:5px;font-weight:600">Target: 80%+</div>
+          <div style="width:180px;height:8px;background:${srBarBg};border-radius:4px;overflow:hidden;position:relative">
+            <div style="height:100%;border-radius:4px;width:${Math.min(showRateVal,100).toFixed(1)}%;background:${srBarColor};transition:width 0.8s ease"></div>
+            <div style="position:absolute;top:0;left:80%;width:2px;height:100%;background:currentColor;opacity:0.3"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;width:180px;margin-top:4px">
+            <span class="sr-target" style="font-size:9px">0%</span>
+            <span class="sr-target" style="font-size:9px">80%</span>
+            <span class="sr-target" style="font-size:9px">100%</span>
+          </div>
+        </div>
+      </div>
+    </div>` : '';
+
+  // Qual. Demo Given % — qualified demos (happened minus tooEarly and notQualAfterDemo) / demosHappened
+  const qualDemoGiven = pp.demosToOccur > 0 ? ((pp.demosHappened - (pp.tooEarly||0) - (pp.notQualAfterDemo||0)) / pp.demosToOccur * 100) : null;
+  const pQualDemoGiven = ppp.demosToOccur > 0 ? ((ppp.demosHappened - (ppp.tooEarly||0) - (ppp.notQualAfterDemo||0)) / ppp.demosToOccur * 100) : null;
+  const qualDemoStr = qualDemoGiven !== null ? qualDemoGiven.toFixed(1) + '%' : '—';
+
+  // KPIs with delta badges
+  const kpis=[
+    {label:'Demos % Paid Source', value:paidSrcStr,                      sub:'Paid ads ÷ total demos booked', cls:'kpi-navy',
+      delta: paidSrcPct !== null ? db(paidSrcPct, ppaidSrcPct) : ''},
+    {label:'Meta CTR',           value:d.metaCTR||'N/A',                sub:'Avg across campaigns',          cls:'',
+      delta: db(parsePct(d.metaCTR)||0, parsePct(p.metaCTR)||0)},
+    {label:'Qual. Demo Given %', value:qualDemoStr,                      sub:'Happened − too early − not qual', cls:'kpi-good',
+      delta: qualDemoGiven !== null && pQualDemoGiven !== null ? db(qualDemoGiven, pQualDemoGiven) : ''},
+    {label:'Close Rate',         value:pp.pctDemosWon,                  sub:'Demos given → closed won',      cls:'kpi-good',
+      delta: db(parsePct(pp.pctDemosWon)||0, parsePct(ppp.pctDemosWon)||0)},
+  ];
+  const kpiHTML=kpis.map(k=>`
+    <div class="kpi ${k.cls}">
+      <div class="kpi-label">${k.label}</div>
+      <div class="kpi-value">${k.value}</div>
+      <div class="kpi-sub">${k.sub}</div>
+      ${k.delta}
+    </div>`).join('') + showRateHTML;
+
+  // Spend donut + bars
+  const drKeys=['meta','google','tiktok'];
+  const spendSlices=chKeys.map(k=>({label:CH_LABELS[k],value:ch[k].spend,color:CH_COLORS[k]})).filter(s=>s.value>0);
+  const donutSVG=buildDonut(spendSlices);
+  const legendHTML=spendSlices.map(s=>`
+    <div class="leg-item">
+      <div class="leg-dot" style="background:${s.color}"></div>
+      <div class="leg-name">${s.label}</div>
+      <div class="leg-pct">${fmtP(s.value,allSpend)}</div>
+    </div>`).join('');
+
+  const sorted=chKeys.map(k=>({key:k,...ch[k]})).sort((a,b)=>b.spend-a.spend);
+  const maxSpend=sorted[0]?.spend||1;
+  const spendSummaryHTML=`
+    <div class="spend-summary">
+      <div class="ss-item">
+        <div class="ss-label">Total Spend</div>
+        <div class="ss-value">${fmt$(allSpend)}</div>
+        <div class="ss-sub">All Channels</div>
+        ${sd(allSpend, pallSpend, {invert:true})}
+      </div>
+      <div class="ss-item">
+        <div class="ss-label">Avg CPD</div>
+        <div class="ss-value">${cpd$(allSpend,allDemos)}</div>
+        <div class="ss-sub">All Channels</div>
+        ${sd(cpdNum(allSpend,allDemos)||0, cpdNum(pallSpend,pallDemos)||0, {invert:true})}
+      </div>
+      <div class="ss-item">
+        <div class="ss-label">Total Demos</div>
+        <div class="ss-value">${fmtN(allDemos)}</div>
+        <div class="ss-sub">All Channels</div>
+        ${sd(allDemos, pallDemos)}
+      </div>
+    </div>
+    <div class="spend-summary" style="border-top:1px solid #D4E6EF;padding-top:12px;">
+      <div class="ss-item">
+        <div class="ss-label">Total Spend</div>
+        <div class="ss-value">${fmt$(drSpend)}</div>
+        <div class="ss-sub">Excl. LinkedIn + YouTube</div>
+        ${sd(drSpend, pdrSpend, {invert:true})}
+      </div>
+      <div class="ss-item">
+        <div class="ss-label">Avg CPD</div>
+        <div class="ss-value">${cpd$(drSpend,drDemos)}</div>
+        <div class="ss-sub">Excl. LinkedIn + YouTube</div>
+        ${sd(cpdNum(drSpend,drDemos)||0, cpdNum(pdrSpend,pdrDemos)||0, {invert:true})}
+      </div>
+      <div class="ss-item">
+        <div class="ss-label">Total Demos</div>
+        <div class="ss-value">${fmtN(drDemos)}</div>
+        <div class="ss-sub">Excl. LinkedIn + YouTube</div>
+        ${sd(drDemos, pdrDemos)}
+      </div>
+    </div>`;
+  const barsHTML=sorted.map(c=>`
+    <div class="bar-row">
+      <div class="bar-name">${CH_ICONS[c.key]} ${CH_LABELS[c.key]}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(c.spend/maxSpend*100).toFixed(1)}%;background:${CH_COLORS[c.key]}"></div></div>
+      <div class="bar-val">${fmt$(c.spend)}</div>
+    </div>`).join('');
+
+  // CPD table — with % of total booked demos attribution
+  const cpdRows=sorted.map(c=>{
+    const pk  = pch[c.key] || { spend:0, demos:0 };
+    const v   = cpdNum(c.spend, c.demos);
+    const pv  = cpdNum(pk.spend, pk.demos);
+    const badge = v===null ? '<span class="badge badge-na">N/A</span>'
+                : v>600    ? `<span class="badge badge-warn">${fmt$(v)}</span>`
+                :             `<span class="badge badge-good">${fmt$(v)}</span>`;
+    const dbVal = (v!==null && pv!==null)
+      ? db(v, pv, {invert:true})
+      : '<span style="color:#c0c8d0;font-size:10px">—</span>';
+    const pctBooked = d.demosBooked > 0 && c.demos > 0
+      ? `<span style="font-size:11px;color:var(--soft-teal);font-weight:700">${(c.demos/d.demosBooked*100).toFixed(0)}%</span>`
+      : '<span style="color:#c0c8d0;font-size:10px">—</span>';
+    return `<tr>
+      <td>${CH_ICONS[c.key]} ${CH_LABELS[c.key]}</td>
+      <td>${fmt$(c.spend)}</td>
+      <td>${fmtN(c.demos)}</td>
+      <td style="text-align:center">${pctBooked}</td>
+      <td>${badge}</td>
+      <td style="white-space:nowrap">${dbVal}</td>
+    </tr>`;
+  }).join('');
+
+  // Funnel — each step uses its own correct HubSpot date field
+  const fSteps=[
+    {name:'Website Visitors',  val:Math.round(ga.users),             prev:Math.round(pga.users),              color:'#9bbfd4'},
+    {name:'Clicked Demo',      val:Math.round(ga.demoButtonClicks),  prev:Math.round(pga.demoButtonClicks),   color:'#72A4BF'},
+    {name:'Demos Booked',      val:d.demosBooked,                    prev:p.demosBooked,                      color:'#4d8aaa'},
+    {name:'Demos to Occur',    val:pp.demosToOccur,                  prev:ppp.demosToOccur,                   color:'#2d6a8a'},
+    {name:'Demo Happened',     val:pp.demosHappened,                 prev:ppp.demosHappened,                  color:'#1D4053'},
+    {name:'Closed Won',        val:pp.closedDeals,                   prev:ppp.closedDeals,                    color:'#172C45'},
+  ];
+    // Log scale so Website Visitors (10k+) doesn't flatten Demos (5-30) to nothing
+  const logScale = v => Math.log10(Math.max(v, 1) + 1);
+  const maxLog   = Math.max(...fSteps.map(s => logScale(s.val)), 1);
+  const logPct   = v => Math.max((logScale(v) / maxLog) * 100, 8);
+
+  const funnelHTML = '<div class="funnel-scale-note">Bar width uses log scale — labels show exact values</div>'
+    + fSteps.map((s,i) => {
+    const pct = logPct(s.val);
+    const dbVal  = db(s.val, s.prev);
+    // Conversion rate TO this step from previous
+    const stepCVR = i > 0 && fSteps[i-1].val > 0
+      ? (s.val / fSteps[i-1].val * 100).toFixed(1) + '%'
+      : null;
+    const connectorHTML = i < fSteps.length - 1 ? `
+      <div class="funnel-connector" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:3px 0">
+        <span style="color:rgba(114,164,191,0.4);font-size:14px">▼</span>
+        ${fSteps[i+1] && fSteps[i].val > 0 ? `<span style="font-size:11px;font-weight:700;color:var(--soft-teal);background:rgba(114,164,191,0.10);border-radius:50px;padding:2px 10px;border:1px solid rgba(114,164,191,0.2)">${(fSteps[i+1].val/fSteps[i].val*100).toFixed(1)}% →</span>` : ''}
+      </div>` : '';
+    return `
+      <div class="funnel-step">
+        <div class="funnel-name">${s.name}</div>
+        <div style="flex:1">
+          <div class="funnel-track">
+            <div class="funnel-bar" style="width:${pct.toFixed(1)}%;background:${s.color}">
+              <span class="funnel-bar-label">${fmtN(s.val)}</span>
+            </div>
+          </div>
+        </div>
+        <div class="funnel-cvr-col">
+          ${i===0
+            ? '<span class="funnel-cvr-val">\u2014</span>'
+            : `<span class="funnel-cvr-val">${fmtP(s.val,fSteps[i-1].val)}</span><span class="funnel-cvr-lbl">from prev.</span>`
+          }
+          ${dbVal}
+        </div>
+      </div>
+      ${connectorHTML}`;
+  }).join('');
+
+  // Pipeline — ordered per spec
+  const plRows=[
+    {name:'Demos Booked',              val:d.demosBooked,              prev:p.demosBooked,              color:'#72A4BF', note:'Meeting Booked list, by createdate'},
+    {name:'Demos to Occur',            val:pp.demosToOccur,            prev:ppp.demosToOccur,           color:'#4d8aaa', note:'deals by date_demo_booked'},
+    {name:'Disq. Before Demo',         val:pp.disqualifiedBeforeDemo,  prev:ppp.disqualifiedBeforeDemo, color:'#B8860B', invert:true, pctOf:pp.demosToOccur},
+    {name:'Rescheduled',               val:pp.rescheduled||0,          prev:ppp.rescheduled||0,         color:'#9b7fd4', invert:true, pctOf:pp.demosToOccur},
+    {name:'Canceled',                  val:pp.canceled||0,             prev:ppp.canceled||0,            color:'#d47f7f', invert:true, pctOf:pp.demosToOccur},
+    {name:'Qual. Demo Given',          val:(pp.demosHappened||0)-(pp.tooEarly||0)-(pp.notQualAfterDemo||0), prev:(ppp.demosHappened||0)-(ppp.tooEarly||0)-(ppp.notQualAfterDemo||0), color:'#1D4053', pctOf:pp.demosToOccur},
+    {name:'Too Early',                 val:pp.tooEarly,                prev:ppp.tooEarly,               color:'#aab8c2', invert:true, pctOf:pp.demosToOccur},
+    {name:'Not Qualified After Demo',  val:pp.notQualAfterDemo,        prev:ppp.notQualAfterDemo,       color:'#C0392B', invert:true, pctOf:pp.demosToOccur},
+    {name:'Blank',                     val:pp.blankStatus||0,          prev:ppp.blankStatus||0,         color:'#c8d0d8', invert:true, pctOf:pp.demosToOccur},
+  ];
+  const maxPL2=Math.max(d.demosBooked,1);
+  const plHTML=plRows.map(r=>`
+    <div class="pl-row">
+      <div class="pl-name">${r.name}${r.note?`<span style="display:block;font-size:9px;color:#8a9aaa;font-style:italic">${r.note}</span>`:''}</div>
+      <div class="pl-track"><div class="pl-fill" style="width:${Math.min((r.val/maxPL2)*100,100).toFixed(1)}%;background:${r.color}"></div></div>
+      <div class="pl-val">${fmtN(r.val)}${r.pctOf>0?`<span style="font-size:10px;font-weight:400;color:#8a9aaa;margin-left:4px">${Math.round(r.val/r.pctOf*100)}%</span>`:''}</div>
+      ${db(r.val, r.prev, {invert: !!r.invert})}
+    </div>`).join('');
+
+  const dqHTML = ''; // Removed — disq counts + % are shown inline in the pipeline rows above
+
+  // MRR trend sparkline (last 3 windows as proxy bars)
+  const mrrWindows = ['yesterday','rolling7','mtd'];
+  const mrrTrendBars = mrrWindows.map(w => {
+    const val = DATA.windows[w]?.newMRR || 0;
+    return { val, label: w === 'yesterday' ? 'Yest' : w === 'rolling7' ? 'L7' : 'MTD' };
+  });
+  const mrrMax = Math.max(...mrrTrendBars.map(b=>b.val), 1);
+  const mrrTrendHTML = mrrMax > 0 ? `
+    <div style="margin-top:12px">
+      <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:rgba(114,164,191,0.7);margin-bottom:6px">MRR Trend (Daily Avg)</div>
+      <div style="display:flex;align-items:flex-end;gap:4px;height:40px">
+        ${mrrTrendBars.map((b,i) => {
+          const h = Math.max((b.val/mrrMax)*36, 3);
+          return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px">
+            <div style="font-size:8px;color:rgba(255,255,255,0.4)">${b.val>0?fmt$(Math.round(b.val/1000))+'k':''}</div>
+            <div style="width:100%;height:${h.toFixed(0)}px;border-radius:3px 3px 0 0;background:${i===2?'rgba(114,164,191,0.7)':'rgba(114,164,191,0.3)'}"></div>
+            <div style="font-size:8px;color:rgba(255,255,255,0.35)">${b.label}</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : '';
+
+  const html = `
+    ${statHTML}
+
+    <div class="sl">Website Funnel ${vsLabel ? `<span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">${vsLabel}</span>` : ''}</div>
+    ${wfFunnelHTML}
+
+    <div class="sl">Key Performance Indicators ${vsLabel ? `<span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">${vsLabel}</span>` : ''}</div>
+    <div class="kpi-grid">${kpiHTML}</div>
+
+    <div class="sl">Spend &amp; Cost Efficiency</div>
+    <div class="charts-row">
+      <div class="chart-card">
+        <div class="chart-title">Ad Spend by Channel</div>
+        ${spendSummaryHTML}
+        <div class="donut-wrap">${donutSVG}<div class="donut-legend">${legendHTML}</div></div>
+        <div class="bar-chart">${barsHTML}</div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Cost Per Demo by Channel ${vsLabel ? `<span class="chart-title-meta">${vsLabel}</span>` : ''}</div>
+        <table class="cpd-table">
+          <thead><tr><th>Channel</th><th>Spend</th><th>Ad Demos</th><th style="text-align:center">% of Booked</th><th>CPD</th><th>${vsLabel || ""}</th></tr></thead>
+          <tbody>${cpdRows}</tbody>
+          <tfoot><tr style="border-top:2px solid var(--card-border)">
+            <td style="font-weight:700;font-size:12px">Total (all channels)</td>
+            <td style="font-weight:700">${fmt$(sorted.reduce((s,c)=>s+c.spend,0))}</td>
+            <td style="font-weight:700">${fmtN(sorted.reduce((s,c)=>s+c.demos,0))}</td>
+            <td style="text-align:center;font-weight:700;font-size:11px;color:var(--soft-teal)">${d.demosBooked>0?Math.round(sorted.reduce((s,c)=>s+c.demos,0)/d.demosBooked*100)+'%':'—'}</td>
+            <td style="font-weight:700">${allDemos>0?fmt$(allSpend/allDemos):'N/A'}</td>
+            <td style="font-size:11px;color:#8a9aaa;font-style:italic">${fmtN(d.demosBooked)} total booked</td>
+          </tr></tfoot>
+        </table>
+      </div>
+    </div>
+
+    ${key === 'mtd' ? `
+    <div class="sl">Budget Pacing <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">Month to Date — all channels</span></div>
+    <div class="chart-card" style="margin-bottom:32px">
+      <div class="chart-title">MTD Spend vs. Monthly Budget</div>
+      ${buildSpendPacingSection(ch, pacingPct)}
+    </div>` : ''}
+
+    ${buildPaidMediaInline(ch, pch, prevLabel)}
+
+    <div class="sl">Demo Pipeline</div>
+    <div class="charts-row">
+      <div class="chart-card">
+        <div class="chart-title">Conversion Funnel ${vsLabel ? `<span class="chart-title-meta">step-to-step CVR ${vsLabel}</span>` : ''}</div>
+        <div class="funnel">${funnelHTML}</div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Pipeline Breakdown ${vsLabel ? `<span class="chart-title-meta">${vsLabel}</span>` : ''}</div>
+        <div class="pl-grid">${plHTML}</div>
+        ${dqHTML}
+      </div>
+    </div>
+
+    <div class="sl">Demo Quality Trend <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">Qualified vs. Disqualified across time windows</span></div>
+    <div class="chart-card" style="margin-bottom:32px">
+      <div class="chart-title">Demo Quality — Yesterday vs Last 7 Days vs MTD</div>
+      ${buildDemoQualityChart(key)}
+    </div>
+
+    <div class="sl">Intelligence Report ${vsLabel ? `<span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">${vsLabel}</span>` : ''}</div>
+    <div style="margin-bottom:32px">${intelHTML}</div>
+  `;
+
+  return html;
+}
+
+// ── Paid Media Inline (for embedding in custom range panel) ────
+function buildPaidMediaInline(ch, pch, prevLabel) {
+  const channels = ['meta','linkedin','google','tiktok','youtube'];
+  const chMeta = {
+    meta:     { icon: '📘', name: 'Meta / Facebook' },
+    linkedin: { icon: '💼', name: 'LinkedIn' },
+    google:   { icon: '🔍', name: 'Google Ads' },
+    tiktok:   { icon: '🎵', name: 'TikTok' },
+    youtube:  { icon: '▶️',  name: 'YouTube' },
+  };
+  const db = (curr, prev, invert=false) => deltaBadge(curr, prev, { invert });
+
+  // Channel detail cards
+  const cardsHTML = channels.map(k => {
+    const c  = ch[k]  || { spend:0, demos:0, clicks:0, impressions:0, ctrAvg:null };
+    const pc = pch[k] || { spend:0, demos:0, clicks:0, impressions:0, ctrAvg:null };
+    const cpdV  = cpdNum(c.spend, c.demos);
+    const pcpdV = cpdNum(pc.spend, pc.demos);
+    const ctr   = c.ctrAvg  != null ? (c.ctrAvg * 100).toFixed(2) + '%' : '—';
+    const pctr  = pc.ctrAvg != null ? pc.ctrAvg : null;
+
+    return `
+      <div class="pm-card">
+        <div class="pm-card-header">
+          <span class="pm-card-icon">${chMeta[k].icon}</span>
+          <span class="pm-card-name">${chMeta[k].name}</span>
+        </div>
+        <div class="pm-card-spend">${fmt$(c.spend)}<span style="font-size:12px;font-weight:400;color:#8a9aaa;margin-left:6px">spend</span></div>
+        <div class="pm-card-rows">
+          <div class="pm-card-row">
+            <span class="pm-card-row-label">Demos</span>
+            <span class="pm-card-row-val">${fmtN(c.demos)} ${db(c.demos, pc.demos)}</span>
+          </div>
+          <div class="pm-card-row">
+            <span class="pm-card-row-label">CPD</span>
+            <span class="pm-card-row-val">${cpdV ? fmt$(cpdV) : '—'} ${cpdV&&pcpdV ? db(cpdV, pcpdV, true) : ''}</span>
+          </div>
+          <div class="pm-card-row">
+            <span class="pm-card-row-label">CTR</span>
+            <span class="pm-card-row-val">${ctr} ${c.ctrAvg&&pctr ? db(c.ctrAvg, pctr) : ''}</span>
+          </div>
+          <div class="pm-card-row">
+            <span class="pm-card-row-label">Clicks</span>
+            <span class="pm-card-row-val">${fmtN(c.clicks)} ${db(c.clicks, pc.clicks)}</span>
+          </div>
+          <div class="pm-card-row">
+            <span class="pm-card-row-label">Impressions</span>
+            <span class="pm-card-row-val">${fmtN(c.impressions)} ${db(c.impressions, pc.impressions)}</span>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+
+  // Summary + Channel efficiency chart
+  const totalSpend = channels.reduce((s,k) => s + (ch[k]?.spend||0), 0);
+  const totalDemos = channels.reduce((s,k) => s + (ch[k]?.demos||0), 0);
+  const pTotalSpend = channels.reduce((s,k) => s + (pch[k]?.spend||0), 0);
+  const pTotalDemos = channels.reduce((s,k) => s + (pch[k]?.demos||0), 0);
+  const drSpend  = (ch.meta?.spend||0) + (ch.google?.spend||0) + (ch.tiktok?.spend||0);
+  const drDemos  = (ch.meta?.demos||0) + (ch.google?.demos||0) + (ch.tiktok?.demos||0);
+  const pDrSpend = (pch.meta?.spend||0) + (pch.google?.spend||0) + (pch.tiktok?.spend||0);
+  const pDrDemos = (pch.meta?.demos||0) + (pch.google?.demos||0) + (pch.tiktok?.demos||0);
+
+  const summaryHTML = `
+    <div class="pm-summary-row">
+      <div class="pm-summary-cell">
+        <div class="psc-label">Total Spend</div>
+        <div class="psc-val">${fmt$(totalSpend)}</div>
+        <div class="psc-sub">All Channels</div>
+        ${db(totalSpend, pTotalSpend, true)}
+      </div>
+      <div class="pm-summary-cell">
+        <div class="psc-label">Avg CPD</div>
+        <div class="psc-val">${cpd$(totalSpend, totalDemos)}</div>
+        <div class="psc-sub">All Channels</div>
+        ${db(cpdNum(totalSpend,totalDemos)||0, cpdNum(pTotalSpend,pTotalDemos)||0, true)}
+      </div>
+      <div class="pm-summary-cell">
+        <div class="psc-label">Total Demos</div>
+        <div class="psc-val">${fmtN(totalDemos)}</div>
+        <div class="psc-sub">All Channels</div>
+        ${db(totalDemos, pTotalDemos)}
+      </div>
+    </div>
+    <div class="pm-summary-row" style="margin-bottom:32px">
+      <div class="pm-summary-cell">
+        <div class="psc-label">Total Spend</div>
+        <div class="psc-val">${fmt$(drSpend)}</div>
+        <div class="psc-sub">Excl. LinkedIn + YouTube</div>
+        ${db(drSpend, pDrSpend, true)}
+      </div>
+      <div class="pm-summary-cell">
+        <div class="psc-label">Avg CPD</div>
+        <div class="psc-val">${cpd$(drSpend, drDemos)}</div>
+        <div class="psc-sub">Excl. LinkedIn + YouTube</div>
+        ${db(cpdNum(drSpend,drDemos)||0, cpdNum(pDrSpend,pDrDemos)||0, true)}
+      </div>
+      <div class="pm-summary-cell">
+        <div class="psc-label">Total Demos</div>
+        <div class="psc-val">${fmtN(drDemos)}</div>
+        <div class="psc-sub">Excl. LinkedIn + YouTube</div>
+        ${db(drDemos, pDrDemos)}
+      </div>
+    </div>`;
+  const effChannels = channels.filter(k => (ch[k]?.spend||0) > 0);
+  const maxCPD   = Math.max(...effChannels.filter(k=>(ch[k]?.demos||0)>0).map(k=>ch[k].spend/ch[k].demos), 1);
+  const maxDemos = Math.max(...effChannels.map(k=>ch[k]?.demos||0), 1);
+
+  const effRows = effChannels.map(k => {
+    const c   = ch[k];
+    const cpd = c.demos > 0 ? c.spend / c.demos : null;
+    const cpdPct  = cpd  ? (cpd  / maxCPD)   * 100 : 0;
+    const demoPct = maxDemos > 0 ? (c.demos / maxDemos) * 100 : 0;
+    const cpdColor= cpd && cpd > 500 ? '#C0392B' : cpd && cpd > 350 ? '#B8860B' : CH_COLORS[k];
+    return `
+      <div style="display:grid;grid-template-columns:100px 1fr 60px 1fr 50px;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--card-border)">
+        <div style="font-size:12px;font-weight:700;color:var(--deep-navy);white-space:nowrap">${CH_ICONS[k]} ${CH_LABELS[k].split(' ')[0]}</div>
+        <div style="position:relative;height:8px;background:rgba(212,230,239,0.4);border-radius:4px;overflow:hidden">
+          <div style="position:absolute;left:0;top:0;height:100%;width:${cpdPct.toFixed(1)}%;background:${cpdColor};border-radius:4px;transition:width 0.8s ease"></div>
+        </div>
+        <div style="font-size:12px;font-weight:700;color:${cpdColor};text-align:right">${cpd?fmt$(Math.round(cpd)):'—'}</div>
+        <div style="position:relative;height:8px;background:rgba(212,230,239,0.4);border-radius:4px;overflow:hidden">
+          <div style="position:absolute;left:0;top:0;height:100%;width:${demoPct.toFixed(1)}%;background:${CH_COLORS[k]};border-radius:4px;opacity:0.6;transition:width 0.8s ease"></div>
+        </div>
+        <div style="font-size:12px;font-weight:700;color:var(--mid-navy);text-align:right">${fmtN(c.demos)}</div>
+      </div>`;
+  }).join('');
+
+  const effHTML = effRows ? `
+    <div style="display:grid;grid-template-columns:100px 1fr 60px 1fr 50px;gap:10px;padding-bottom:6px;margin-bottom:2px">
+      <div></div>
+      <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--soft-teal)">Cost per Demo</div>
+      <div></div>
+      <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--soft-teal)">Demo Volume</div>
+      <div></div>
+    </div>
+    ${effRows}
+    <div style="display:grid;grid-template-columns:100px 1fr 60px 1fr 50px;align-items:center;gap:10px;padding:12px 0 8px 0;border-top:2px solid var(--soft-teal);margin-top:4px">
+      <div style="font-size:12px;font-weight:700;color:var(--deep-navy)">All Channels</div>
+      <div></div>
+      <div style="font-size:13px;font-weight:700;color:var(--deep-navy);text-align:right">${totalDemos > 0 ? fmt$(Math.round(totalSpend/totalDemos)) : '—'}</div>
+      <div></div>
+      <div style="font-size:13px;font-weight:700;color:var(--mid-navy);text-align:right">${fmtN(totalDemos)}</div>
+    </div>
+    <div style="margin-top:12px;font-size:11px;color:#8a9aaa;font-style:italic">Lower CPD bar = more efficient. Longer demo bar = higher volume.</div>` : '';
+
+  return `
+    <div class="sl">Paid Media Summary ${prevLabel ? `<span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">vs ${prevLabel}</span>` : ''}</div>
+    ${summaryHTML}
+
+    <div class="sl">Channel Performance ${prevLabel ? `<span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">vs ${prevLabel}</span>` : ''}</div>
+    <div class="pm-grid">${cardsHTML}</div>
+
+    <div class="chart-card" style="margin-bottom:32px">
+      <div class="chart-title">Channel Efficiency <span class="chart-title-meta">CPD vs Demo Volume</span></div>
+      ${effHTML}
+    </div>`;
+}
+
+
+
+// Init
+document.getElementById('gen-time').textContent = DATA.generatedAt;
+document.getElementById('footer-file').textContent = DATA.filename ? `Source: ${DATA.filename}` : '';
+const WINDOW_KEYS = ['yesterday','rolling7','mtd','ytd'];
+
+// Detect custom-only mode (generated by --custom-from/--custom-to)
+const isCustomOnly = DATA.windows.custom && !DATA.windows.yesterday;
+
+if (isCustomOnly) {
+  // Show only the Custom Range tab (Paid Media is merged inline)
+  document.querySelectorAll('.tab').forEach(t => t.style.display = 'none');
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+
+  // Show and activate the custom tab button
+  const customBtn = document.getElementById('tab-btn-custom');
+  if (customBtn) {
+    customBtn.style.display = '';
+    customBtn.classList.add('active');
+    const customLabel = DATA.windows.custom?.label || 'Custom Range';
+    customBtn.textContent = customLabel;
+  }
+
+  // Build custom panel content (includes Paid Media inline)
+  const customPanel = document.getElementById('panel-custom');
+  customPanel.classList.add('active');
+  const d = DATA.windows.custom;
+  const label = d.label || 'Custom Range';
+  const prevLabel = d.prevLabel || 'prior period';
+  customPanel.innerHTML = `
+    <div style="margin-bottom:24px">
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <h2 style="font-family:'Libre Baskerville',Georgia,serif;color:var(--deep-navy);font-size:24px;font-weight:700;margin:0">Custom Report: ${label}</h2>
+        <span style="font-size:13px;color:var(--soft-teal);font-weight:600">vs ${prevLabel}</span>
+      </div>
+    </div>` + buildPanel('custom', d);
+} else {
+  // Standard mode — build all three time window panels
+  WINDOW_KEYS.forEach(key => {
+    const btn = document.getElementById('tab-btn-' + key);
+    if (btn && DATA.windows[key]?.label) btn.textContent = DATA.windows[key].label;
+  });
+
+  Object.entries(DATA.windows).forEach(([key,d]) => {
+    const el = document.getElementById('panel-' + key);
+    if (el && WINDOW_KEYS.includes(key)) el.innerHTML = buildPanel(key, d);
+  });
+}
+</script>
+</body>
+</html>
