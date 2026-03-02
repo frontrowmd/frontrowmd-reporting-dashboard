@@ -372,7 +372,11 @@ async function fetchAllHubSpotData(windows) {
     const winTo   = new Date(win.to   + 'T23:59:59.999Z').getTime();
 
     function inWin(ms) { return ms >= winFrom && ms <= winTo; }
-    function dateMs(str) { return str ? new Date(str + 'T00:00:00.000Z').getTime() : NaN; }
+    function dateMs(str) {
+      if (!str) return NaN;
+      if (/^\d+$/.test(str)) return parseInt(str);
+      return new Date(str + 'T00:00:00.000Z').getTime();
+    }
     function isoMs(str)  { return str ? new Date(str).getTime() : NaN; }
 
     // Demos Booked: contacts in list 289 with date_demo_booked in window

@@ -1336,9 +1336,9 @@ function buildPanel(key, d) {
   const prevLabel= noPrev ? '' : (d.prevLabel||'prior period');
   const vsLabel  = noPrev ? '' : `vs ${prevLabel}`;
 
-  // Wrap deltaBadge to return '' when noPrev
-  const _origDeltaBadge = deltaBadge;
-  if (noPrev) { deltaBadge = () => ''; }
+  // Local wrappers: suppress deltas when noPrev (YTD)
+  const db = noPrev ? () => '' : (a, b, opts) => deltaBadge(a, b, opts);
+  const sd = noPrev ? () => '' : (a, b, opts) => scDelta(a, b, opts);
 
   // Direct-response spend/demos (excl LI + YT)
   const drSpend=ch.meta.spend+ch.google.spend+ch.tiktok.spend;
@@ -1400,7 +1400,7 @@ function buildPanel(key, d) {
         <div class="sc-label">Closed Deals</div>
         <div class="sc-value">${fmtN(pp.closedDeals)}</div>
         <div class="sc-sub">Closed won this period</div>
-        ${scDelta(pp.closedDeals, ppp.closedDeals)}
+        ${sd(pp.closedDeals, ppp.closedDeals)}
         ${buildSparkline(dealsPts)}
       </div>
       <div class="stat-card" style="position:relative;overflow:hidden">
@@ -1408,14 +1408,14 @@ function buildPanel(key, d) {
         <div class="sc-value">${fmt$(d.newMRR)}</div>
         <div class="sc-sub">Closed won this period</div>
         <div style="font-size:11px;color:rgba(114,164,191,0.85);margin-top:2px;font-weight:600">${d.newMRR > 0 ? fmt$(d.newMRR * 12) + ' ARR Generated' : ''}</div>
-        ${scDelta(d.newMRR, p.newMRR)}
+        ${sd(d.newMRR, p.newMRR)}
         ${buildSparkline(mrrPts)}
       </div>
       <div class="stat-card" style="position:relative;overflow:hidden">
         <div class="sc-label">Total Ad Spend</div>
         <div class="sc-value">${fmt$(allSpend)}</div>
         <div class="sc-sub">All 5 channels</div>
-        ${scDelta(allSpend, pallSpend, {invert:true})}
+        ${sd(allSpend, pallSpend, {invert:true})}
         ${buildPacingBar(allSpend, totalBudget, pacingPct)}
         ${key === 'mtd' ? buildSparkline(spendPts) : ''}
       </div>
@@ -1423,7 +1423,7 @@ function buildPanel(key, d) {
         <div class="sc-label">Blended CPD</div>
         <div class="sc-value">${cpd$(allSpend,allDemos)}</div>
         <div class="sc-sub">All 5 channels</div>
-        ${scDelta(cpdNum(allSpend,allDemos)||0, cpdNum(pallSpend,pallDemos)||0, {invert:true})}
+        ${sd(cpdNum(allSpend,allDemos)||0, cpdNum(pallSpend,pallDemos)||0, {invert:true})}
         ${buildSparkline(cpdPts)}
       </div>
     </div>`;
@@ -1454,22 +1454,22 @@ function buildPanel(key, d) {
       <div class="wf-node">
         <div class="wf-label">Website Visitors</div>
         <div class="wf-value">${fmtN(wfVisitors)}</div>
-        <div><span class="wf-rate">${wfClickRate}<span class="wf-rate-lbl">click demo btn</span></span> ${deltaBadge(wfClickRateN, pwfClickRateN)}</div>
-        ${deltaBadge(wfVisitors, pwfVisitors)}
+        <div><span class="wf-rate">${wfClickRate}<span class="wf-rate-lbl">click demo btn</span></span> ${db(wfClickRateN, pwfClickRateN)}</div>
+        ${db(wfVisitors, pwfVisitors)}
       </div>
       ${wfArrow}
       <div class="wf-node">
         <div class="wf-label">Demo Button Clicks</div>
         <div class="wf-value">${fmtN(wfClicks)}</div>
-        <div><span class="wf-rate">${wfBookRate}<span class="wf-rate-lbl">actually book</span></span> ${deltaBadge(wfBookRateN, pwfBookRateN)}</div>
-        ${deltaBadge(wfClicks, pwfClicks)}
+        <div><span class="wf-rate">${wfBookRate}<span class="wf-rate-lbl">actually book</span></span> ${db(wfBookRateN, pwfBookRateN)}</div>
+        ${db(wfClicks, pwfClicks)}
       </div>
       ${wfArrow}
       <div class="wf-node">
         <div class="wf-label">Demos Booked</div>
         <div class="wf-value">${fmtN(wfBooked)}</div>
-        <div><span class="wf-rate">${wfCVR}<span class="wf-rate-lbl">website CVR</span></span> ${deltaBadge(wfCVRN, pwfCVRN)}</div>
-        ${deltaBadge(wfBooked, pwfBooked)}
+        <div><span class="wf-rate">${wfCVR}<span class="wf-rate-lbl">website CVR</span></span> ${db(wfCVRN, pwfCVRN)}</div>
+        ${db(wfBooked, pwfBooked)}
       </div>
     </div>`;
 
@@ -1492,7 +1492,7 @@ function buildPanel(key, d) {
         <div class="sr-status" style="font-size:12px;margin-top:8px;font-weight:600">${showRateStatus}</div>
       </div>
       <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:8px">
-        ${pShowRateVal ? deltaBadge(showRateVal, pShowRateVal) : ''}
+        ${pShowRateVal ? db(showRateVal, pShowRateVal) : ''}
         <div>
           <div class="sr-target" style="font-size:10px;text-align:right;margin-bottom:5px;font-weight:600">Target: 80%+</div>
           <div style="width:180px;height:8px;background:${srBarBg};border-radius:4px;overflow:hidden;position:relative">
@@ -1516,13 +1516,13 @@ function buildPanel(key, d) {
   // KPIs with delta badges
   const kpis=[
     {label:'Demos % Paid Source', value:paidSrcStr,                      sub:'Paid ads ÷ total demos booked', cls:'kpi-navy',
-      delta: paidSrcPct !== null ? deltaBadge(paidSrcPct, ppaidSrcPct) : ''},
+      delta: paidSrcPct !== null ? db(paidSrcPct, ppaidSrcPct) : ''},
     {label:'Meta CTR',           value:d.metaCTR||'N/A',                sub:'Avg across campaigns',          cls:'',
-      delta: deltaBadge(parsePct(d.metaCTR)||0, parsePct(p.metaCTR)||0)},
+      delta: db(parsePct(d.metaCTR)||0, parsePct(p.metaCTR)||0)},
     {label:'Qual. Demo Given %', value:qualDemoStr,                      sub:'Happened − too early − not qual', cls:'kpi-good',
-      delta: qualDemoGiven !== null && pQualDemoGiven !== null ? deltaBadge(qualDemoGiven, pQualDemoGiven) : ''},
+      delta: qualDemoGiven !== null && pQualDemoGiven !== null ? db(qualDemoGiven, pQualDemoGiven) : ''},
     {label:'Close Rate',         value:pp.pctDemosWon,                  sub:'Demos given → closed won',      cls:'kpi-good',
-      delta: deltaBadge(parsePct(pp.pctDemosWon)||0, parsePct(ppp.pctDemosWon)||0)},
+      delta: db(parsePct(pp.pctDemosWon)||0, parsePct(ppp.pctDemosWon)||0)},
   ];
   const kpiHTML=kpis.map(k=>`
     <div class="kpi ${k.cls}">
@@ -1551,19 +1551,19 @@ function buildPanel(key, d) {
         <div class="ss-label">Total Spend</div>
         <div class="ss-value">${fmt$(allSpend)}</div>
         <div class="ss-sub">All Channels</div>
-        ${scDelta(allSpend, pallSpend, {invert:true})}
+        ${sd(allSpend, pallSpend, {invert:true})}
       </div>
       <div class="ss-item">
         <div class="ss-label">Avg CPD</div>
         <div class="ss-value">${cpd$(allSpend,allDemos)}</div>
         <div class="ss-sub">All Channels</div>
-        ${scDelta(cpdNum(allSpend,allDemos)||0, cpdNum(pallSpend,pallDemos)||0, {invert:true})}
+        ${sd(cpdNum(allSpend,allDemos)||0, cpdNum(pallSpend,pallDemos)||0, {invert:true})}
       </div>
       <div class="ss-item">
         <div class="ss-label">Total Demos</div>
         <div class="ss-value">${fmtN(allDemos)}</div>
         <div class="ss-sub">All Channels</div>
-        ${scDelta(allDemos, pallDemos)}
+        ${sd(allDemos, pallDemos)}
       </div>
     </div>
     <div class="spend-summary" style="border-top:1px solid #D4E6EF;padding-top:12px;">
@@ -1571,19 +1571,19 @@ function buildPanel(key, d) {
         <div class="ss-label">Total Spend</div>
         <div class="ss-value">${fmt$(drSpend)}</div>
         <div class="ss-sub">Excl. LinkedIn + YouTube</div>
-        ${scDelta(drSpend, pdrSpend, {invert:true})}
+        ${sd(drSpend, pdrSpend, {invert:true})}
       </div>
       <div class="ss-item">
         <div class="ss-label">Avg CPD</div>
         <div class="ss-value">${cpd$(drSpend,drDemos)}</div>
         <div class="ss-sub">Excl. LinkedIn + YouTube</div>
-        ${scDelta(cpdNum(drSpend,drDemos)||0, cpdNum(pdrSpend,pdrDemos)||0, {invert:true})}
+        ${sd(cpdNum(drSpend,drDemos)||0, cpdNum(pdrSpend,pdrDemos)||0, {invert:true})}
       </div>
       <div class="ss-item">
         <div class="ss-label">Total Demos</div>
         <div class="ss-value">${fmtN(drDemos)}</div>
         <div class="ss-sub">Excl. LinkedIn + YouTube</div>
-        ${scDelta(drDemos, pdrDemos)}
+        ${sd(drDemos, pdrDemos)}
       </div>
     </div>`;
   const barsHTML=sorted.map(c=>`
@@ -1602,7 +1602,7 @@ function buildPanel(key, d) {
                 : v>600    ? `<span class="badge badge-warn">${fmt$(v)}</span>`
                 :             `<span class="badge badge-good">${fmt$(v)}</span>`;
     const db = (v!==null && pv!==null)
-      ? deltaBadge(v, pv, {invert:true})
+      ? db(v, pv, {invert:true})
       : '<span style="color:#c0c8d0;font-size:10px">—</span>';
     const pctBooked = d.demosBooked > 0 && c.demos > 0
       ? `<span style="font-size:11px;color:var(--soft-teal);font-weight:700">${(c.demos/d.demosBooked*100).toFixed(0)}%</span>`
@@ -1634,7 +1634,7 @@ function buildPanel(key, d) {
   const funnelHTML = '<div class="funnel-scale-note">Bar width uses log scale — labels show exact values</div>'
     + fSteps.map((s,i) => {
     const pct = logPct(s.val);
-    const db  = deltaBadge(s.val, s.prev);
+    const db  = db(s.val, s.prev);
     // Conversion rate TO this step from previous
     const stepCVR = i > 0 && fSteps[i-1].val > 0
       ? (s.val / fSteps[i-1].val * 100).toFixed(1) + '%'
@@ -1683,7 +1683,7 @@ function buildPanel(key, d) {
       <div class="pl-name">${r.name}${r.note?`<span style="display:block;font-size:9px;color:#8a9aaa;font-style:italic">${r.note}</span>`:''}</div>
       <div class="pl-track"><div class="pl-fill" style="width:${Math.min((r.val/maxPL2)*100,100).toFixed(1)}%;background:${r.color}"></div></div>
       <div class="pl-val">${fmtN(r.val)}${r.pctOf>0?`<span style="font-size:10px;font-weight:400;color:#8a9aaa;margin-left:4px">${Math.round(r.val/r.pctOf*100)}%</span>`:''}</div>
-      ${deltaBadge(r.val, r.prev, {invert: !!r.invert})}
+      ${db(r.val, r.prev, {invert: !!r.invert})}
     </div>`).join('');
 
   const dqHTML = ''; // Removed — disq counts + % are shown inline in the pipeline rows above
@@ -1776,8 +1776,6 @@ function buildPanel(key, d) {
     <div style="margin-bottom:32px">${intelHTML}</div>
   `;
 
-  // Restore original deltaBadge
-  if (noPrev) { deltaBadge = _origDeltaBadge; }
   return html;
 }
 
