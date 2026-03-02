@@ -1706,16 +1706,21 @@ function buildPanel(key, d) {
 
 // ── Paid Media Analysis Panel ──────────────────────────────────
 function buildPaidMediaPanel() {
-  // Aggregate across all windows for a full picture — use MTD as primary, show all windows
-  const windows = ['yesterday','rolling7','mtd'];
-  const wLabels = { yesterday: 'Yesterday', rolling7: 'Last 7 Days', mtd: 'Month to Date' };
+  // Detect custom-only mode
+  const isCustomOnly = DATA.windows.custom && !DATA.windows.yesterday;
+  const windows = isCustomOnly ? ['custom'] : ['yesterday','rolling7','mtd'];
+  const wLabels = isCustomOnly
+    ? { custom: DATA.windows.custom?.label || 'Custom Range' }
+    : { yesterday: 'Yesterday', rolling7: 'Last 7 Days', mtd: 'Month to Date' };
   const channels = ['meta','linkedin','google','tiktok','youtube'];
 
-  // Use MTD as the primary window for the channel cards
-  const mtd  = DATA.windows.mtd;
-  const pmtd = DATA.windows.mtd.prev;
-  const ch   = mtd.channels;
-  const pch  = pmtd.channels;
+  // Use MTD (or custom) as the primary window for the channel cards
+  const primaryKey = isCustomOnly ? 'custom' : 'mtd';
+  const primary  = DATA.windows[primaryKey];
+  const pPrimary = primary.prev;
+  const ch   = primary.channels;
+  const pch  = pPrimary.channels;
+  const primaryLabel = isCustomOnly ? (DATA.windows.custom?.prevLabel || 'prior period') : 'Prior Month';
 
   const totalSpend = channels.reduce((s,k) => s + (ch[k]?.spend||0), 0);
   const totalDemos = channels.reduce((s,k) => s + (ch[k]?.demos||0), 0);
@@ -1931,15 +1936,15 @@ function buildPaidMediaPanel() {
       <div></div>
       <div style="font-size:13px;font-weight:700;color:var(--mid-navy);text-align:right">${fmtN(totalDemos)}</div>
     </div>
-    <div style="margin-top:12px;font-size:11px;color:#8a9aaa;font-style:italic">Lower CPD bar = more efficient. Longer demo bar = higher volume. MTD data.</div>` : '';
+    <div style="margin-top:12px;font-size:11px;color:#8a9aaa;font-style:italic">Lower CPD bar = more efficient. Longer demo bar = higher volume. ${isCustomOnly ? wLabels.custom : 'MTD'} data.</div>` : '';
 
   const scatterSVG = effHTML;
 
   return `
-    <div class="sl">Paid Media Summary <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">Month to Date vs Prior Month</span></div>
+    <div class="sl">Paid Media Summary <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">${isCustomOnly ? wLabels.custom + ' vs ' + primaryLabel : 'Month to Date vs Prior Month'}</span></div>
     ${summaryHTML}
 
-    <div class="sl">Channel Performance <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">Month to Date — with prior month deltas</span></div>
+    <div class="sl">Channel Performance <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">${isCustomOnly ? wLabels.custom + ' — with prior period deltas' : 'Month to Date — with prior month deltas'}</span></div>
     <div class="pm-grid">${cardsHTML}</div>
 
     <div class="charts-row" style="margin-bottom:32px">
@@ -1951,13 +1956,13 @@ function buildPaidMediaPanel() {
         </table>
       </div>
       <div class="chart-card">
-        <div class="chart-title">Channel Efficiency (MTD) <span class="chart-title-meta">CPD vs Demo Volume</span></div>
+        <div class="chart-title">Channel Efficiency (${isCustomOnly ? wLabels.custom : 'MTD'}) <span class="chart-title-meta">CPD vs Demo Volume</span></div>
         ${scatterSVG}
       </div>
     </div>
 
-    <div class="sl">Intelligence Report <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">Month to Date vs Prior Month</span></div>
-    ${DATA.windows.mtd?.intelligence ? renderIntelligence(DATA.windows.mtd.intelligence, 'Prior Month') : '<div style="font-size:13px;color:#8a9aaa;font-style:italic">No intelligence data available.</div>'}
+    <div class="sl">Intelligence Report <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">${isCustomOnly ? wLabels.custom + ' vs ' + primaryLabel : 'Month to Date vs Prior Month'}</span></div>
+    ${DATA.windows[primaryKey]?.intelligence ? renderIntelligence(DATA.windows[primaryKey].intelligence, primaryLabel) : '<div style="font-size:13px;color:#8a9aaa;font-style:italic">No intelligence data available.</div>'}
   `;
 }
 
@@ -1970,9 +1975,25 @@ const WINDOW_KEYS = ['yesterday','rolling7','mtd'];
 const isCustomOnly = DATA.windows.custom && !DATA.windows.yesterday;
 
 if (isCustomOnly) {
-  // Hide standard tabs, show only the custom result
+  // Show only Custom Range and Paid Media Analysis tabs
   document.querySelectorAll('.tab').forEach(t => t.style.display = 'none');
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+
+  // Show and activate the custom tab button
+  const customBtn = document.getElementById('tab-btn-custom');
+  if (customBtn) {
+    customBtn.style.display = '';
+    customBtn.classList.add('active');
+    const customLabel = DATA.windows.custom?.label || 'Custom Range';
+    customBtn.textContent = customLabel;
+  }
+
+  // Show the paid media tab button
+  document.querySelectorAll('.tab').forEach(t => {
+    if (t.textContent.trim() === 'Paid Media Analysis') t.style.display = '';
+  });
+
+  // Build custom panel content
   const customPanel = document.getElementById('panel-custom');
   customPanel.classList.add('active');
   const d = DATA.windows.custom;
@@ -1985,6 +2006,9 @@ if (isCustomOnly) {
         <span style="font-size:13px;color:var(--soft-teal);font-weight:600">vs ${prevLabel}</span>
       </div>
     </div>` + buildPanel('custom', d);
+
+  // Pre-build paid media panel so it's ready when clicked
+  document.getElementById('panel-paidmedia').innerHTML = buildPaidMediaPanel();
 } else {
   // Standard mode — build all three time window panels
   WINDOW_KEYS.forEach(key => {
