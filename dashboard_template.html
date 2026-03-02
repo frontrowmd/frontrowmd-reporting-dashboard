@@ -35,7 +35,7 @@
   .wrap{max-width:1360px;margin:0 auto;padding:0 40px 80px;position:relative;z-index:1;}
 
   /* HEADER */
-  header{background:var(--grad-dark);margin:0 -40px 48px;padding:36px 48px 32px;display:flex;align-items:center;justify-content:space-between;position:relative;overflow:hidden;}
+  header{background:var(--grad-dark);margin:0 0 48px;padding:36px 48px 32px;display:flex;align-items:center;justify-content:space-between;position:relative;overflow:hidden;width:100%;max-width:none;}
   header::after{content:'';position:absolute;right:0;top:0;bottom:0;width:340px;background:radial-gradient(ellipse at right center,rgba(114,164,191,0.12) 0%,transparent 70%);pointer-events:none;}
   .logo-img{height:40px;width:auto;display:block;}
   .logo-fallback{font-size:18px;font-weight:400;color:rgba(255,255,255,0.85);letter-spacing:0.02em;display:flex;align-items:center;gap:8px;}
@@ -72,7 +72,7 @@
   .delta-sub {font-size:10px;font-weight:400;opacity:0.7;margin-left:2px;}
 
   /* DARK STAT CARDS */
-  .stat-row{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:32px;}
+  .stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:32px;}
   .stat-card{background:linear-gradient(135deg,var(--deep-navy),var(--mid-navy));border-radius:var(--radius);padding:24px 28px;color:var(--white);box-shadow:var(--shadow-md);position:relative;overflow:hidden;}
   .stat-card::after{content:'';position:absolute;right:-10px;bottom:-10px;width:80px;height:80px;border-radius:50%;background:rgba(114,164,191,0.08);}
   .sc-label{font-size:10px;letter-spacing:0.18em;text-transform:uppercase;color:rgba(114,164,191,0.75);margin-bottom:8px;}
@@ -84,7 +84,7 @@
   .sc-delta-flat{background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.5);}
 
   /* KPI GRID */
-  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:14px;margin-bottom:32px;}
+  .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:32px;}
   .kpi{background:var(--white);border:1px solid var(--card-border);border-radius:var(--radius);padding:22px 24px;box-shadow:var(--shadow-sm);position:relative;overflow:hidden;transition:transform 0.2s ease,box-shadow 0.2s ease;}
   .kpi:hover{transform:translateY(-2px);box-shadow:var(--shadow-hov);}
   .kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--kpi-stripe,var(--soft-teal));}
@@ -176,10 +176,11 @@
   .pm-card-row-label{font-size:11px;color:#8a9aaa;text-transform:uppercase;letter-spacing:0.06em;}
   .pm-card-row-val{font-size:13px;font-weight:700;color:var(--deep-navy);}
   .pm-card-row-delta{font-size:11px;margin-left:6px;}
-  .pm-summary-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:32px;}
+  .pm-summary-row{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px;}
   .pm-summary-cell{background:linear-gradient(135deg,#172C45,#1D4053);border-radius:12px;padding:20px;color:#fff;text-align:center;}
   .pm-summary-cell .psc-label{font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--soft-teal);margin-bottom:6px;}
   .pm-summary-cell .psc-val{font-size:24px;font-weight:700;}
+  .pm-summary-cell .psc-sub{font-size:11px;color:var(--soft-teal);margin-top:4px;font-weight:400;}
   .pm-summary-cell .psc-delta{font-size:11px;margin-top:4px;opacity:0.8;}
   /* Force dark-mode aware delta pills inside dark summary cards */
   .pm-summary-cell .delta     {background:rgba(255,255,255,0.10);color:rgba(255,255,255,0.85);}
@@ -314,7 +315,7 @@
     .wrap { padding: 0 16px 60px; }
 
     /* Header */
-    header { margin: 0 -16px 32px; padding: 24px 20px 20px; flex-direction: column; align-items: flex-start; gap: 16px; }
+    header { margin: 0 0 32px; padding: 24px 20px 20px; flex-direction: column; align-items: flex-start; gap: 16px; }
     header::after { display: none; }
     h1 { font-size: 22px; margin-top: 10px; }
     .header-right { text-align: left; width: 100%; }
@@ -325,8 +326,8 @@
     .tabs { gap: 6px; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; flex-wrap: nowrap; }
     .tab { font-size: 12px; padding: 8px 18px; white-space: nowrap; flex-shrink: 0; }
 
-    /* Stat cards — single column */
-    .stat-row { grid-template-columns: 1fr; gap: 10px; margin-bottom: 20px; }
+    /* Stat cards — 2x2 grid on tablet */
+    .stat-row { grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
     .sc-value { font-size: 28px; }
 
     /* KPI grid — 2 columns */
@@ -392,6 +393,7 @@
 
   @media (max-width: 480px) {
     /* Very small phones */
+    .stat-row { grid-template-columns: 1fr; }
     .kpi-grid { grid-template-columns: 1fr; }
     .kpi-value { font-size: 26px; }
     .pm-summary-row { grid-template-columns: 1fr; }
@@ -406,12 +408,11 @@
 </style>
 </head>
 <body>
-<div class="wrap">
 
   <header>
     <div style="position:relative;z-index:1">
       <div>
-        <img src="FrontrowMD__White__Logo.png" alt="frontrowMD" class="logo-img"
+        <img src="FrontrowMD_White_Logo.png" alt="frontrowMD" class="logo-img"
              onerror="this.style.display='none';document.getElementById('logo-fallback').style.display='flex'">
         <div id="logo-fallback" class="logo-fallback" style="display:none">
           <span>☤</span><span>frontrow<strong>MD</strong></span>
@@ -430,6 +431,8 @@
     </div>
   </header>
 
+<div class="wrap">
+
   <div class="tabs">
     <button class="tab active" onclick="switchTab('yesterday',this)" id="tab-btn-yesterday">Yesterday</button>
     <button class="tab" onclick="switchTab('rolling7',this)" id="tab-btn-rolling7">Last 7 Days</button>
@@ -444,7 +447,7 @@
 
   <footer>
     <div class="footer-logo">
-      <img src="FrontrowMD__Navy_Blue__Logo.png" alt="frontrowMD" style="height:36px;width:auto;display:block"
+      <img src="FrontrowMD_Navy_Blue_Logo.png" alt="frontrowMD" style="height:36px;width:auto;display:block"
            onerror="this.outerHTML='<span style=\'font-size:14px;color:var(--mid-navy);font-weight:700\'>frontrow<span style=\'color:var(--soft-teal)\'>MD</span></span>'">
     </div>
     <div class="footer-meta" id="footer-file"></div>
@@ -576,13 +579,15 @@ function buildDemoQualityChart() {
 
   const winData = windows.map(w => {
     const pp = DATA.windows[w]?.pipeline || {};
-    const demoGiven   = pp.demosHappened           || 0;
+    const demosHappened = pp.demosHappened           || 0;
     const disqBefore  = pp.disqualifiedBeforeDemo  || 0;
     const rescheduled = pp.rescheduled             || 0;
     const canceled    = pp.canceled                || 0;
     const tooEarly    = pp.tooEarly                || 0;
     const disqAfter   = pp.notQualAfterDemo        || 0;
     const blank       = pp.blankStatus             || 0;
+    // demosHappened already includes tooEarly + disqAfter — subtract to get pure Demo Given
+    const demoGiven   = demosHappened - tooEarly - disqAfter;
     const total       = demoGiven + disqBefore + rescheduled + canceled + tooEarly + disqAfter;
     return { label: wLabels[w], demoGiven, disqBefore, rescheduled, canceled, tooEarly, disqAfter, blank, total };
   });
@@ -591,23 +596,23 @@ function buildDemoQualityChart() {
 
   const stackColors = {
     demoGiven:   '#1D4053',
+    tooEarly:    '#aab8c2',
+    disqAfter:   '#C0392B',
     disqBefore:  '#B8860B',
     rescheduled: '#9b7fd4',
     canceled:    '#d47f7f',
-    tooEarly:    '#aab8c2',
-    disqAfter:   '#C0392B',
     blank:       '#c0c8d0'
   };
   const stackLabels = {
-    demoGiven:   'Demo Given',
-    disqBefore:  'Disqualified Before Demo',
-    rescheduled: 'Rescheduled',
-    canceled:    'Canceled',
+    demoGiven:   'Qual. Demo Given',
     tooEarly:    'Too Early',
     disqAfter:   'Not Qualified After Demo',
+    disqBefore:  'Disq. Before Demo',
+    rescheduled: 'Rescheduled',
+    canceled:    'Canceled',
     blank:       'Blank'
   };
-  const stackKeys    = ['demoGiven','disqBefore','rescheduled','canceled','tooEarly','disqAfter'];
+  const stackKeys    = ['demoGiven','tooEarly','disqAfter','disqBefore','rescheduled','canceled'];
   const allStackKeys = [...stackKeys, 'blank'];
 
   const pctFmt = (n, d) => d > 0 ? Math.round(n / d * 100) + '%' : '—';
@@ -691,7 +696,7 @@ function deltaNum(curr, prev) {
 }
 function deltaBadge(curr, prev, { invert=false }={}) {
   const d = deltaNum(curr, prev);
-  if (d === null) return '';
+  if (d === null) return `<span class="delta delta-flat">— %</span>`;
   const pct = (d * 100).toFixed(1);
   const isUp   = d > 0.005;
   const isDown = d < -0.005;
@@ -704,7 +709,7 @@ function deltaBadge(curr, prev, { invert=false }={}) {
 }
 function scDelta(curr, prev, { invert=false }={}) {
   const d = deltaNum(curr, prev);
-  if (d === null) return '';
+  if (d === null) return `<span class="sc-delta sc-delta-flat">— %</span>`;
   const pct = (d * 100).toFixed(1);
   const isUp   = d > 0.005;
   const isDown = d < -0.005;
@@ -893,8 +898,8 @@ function buildIntelligence(d, p) {
   }
 
   // ── 4. Pipeline health ───────────────────────────────────────
-  const {demosToOccur,demosHappened,dealsWon,notQualAfterDemo,disqualifiedBeforeDemo,tooEarly}=pp;
-  const {demosToOccur:pDTO,demosHappened:pDH,dealsWon:pDW,disqualifiedBeforeDemo:pDqB,notQualAfterDemo:pNQA}=ppp;
+  const {demosToOccur,demosHappened,dealsWon,closedDeals,notQualAfterDemo,disqualifiedBeforeDemo,tooEarly}=pp;
+  const {demosToOccur:pDTO,demosHappened:pDH,dealsWon:pDW,closedDeals:pCD,disqualifiedBeforeDemo:pDqB,notQualAfterDemo:pNQA}=ppp;
 
   const showRate=pct(demosHappened,demosToOccur);
   if(showRate!==null){
@@ -946,7 +951,7 @@ function buildIntelligence(d, p) {
 
   if(tooEarly>0){
     const ter=pct(tooEarly,demosHappened);
-    const estFW=Math.round(tooEarly*(dealsWon/Math.max(demosHappened,1)));
+    const estFW=Math.round(tooEarly*(closedDeals/Math.max(demosHappened,1)));
     if(ter!==null&&ter>15) F.opportunities.push({
       title:`Large Nurture Pipeline — ${tooEarly} deals marked "Too Early" (${fP(ter)})`,
       desc:`At current close rates, ~${estFW} of these could close with proper follow-up.`,
@@ -959,17 +964,17 @@ function buildIntelligence(d, p) {
     });
   }
 
-  const closeRate=pct(dealsWon,demosHappened);
-  const pCloseRate=pct(pDW,pDH);
+  const closeRate=pct(closedDeals,demosHappened);
+  const pCloseRate=pct(pCD,pDH);
   if(closeRate!==null){
     if(closeRate<10) F.weaknesses.push({
       title:`Low Close Rate — ${fP(closeRate)} demo-to-close`,
-      desc:`${dealsWon}/${demosHappened} demos converting to closed won.`,
+      desc:`${closedDeals}/${demosHappened} demos converting to closed won.`,
       action:'Review: proposals sent same-day? Urgency/deadline present? Analyze objection patterns. Add a follow-up call 48hrs post-demo.'
     });
     else if(closeRate>20) F.wins.push({
       title:`Strong Close Rate — ${fP(closeRate)} demo-to-close`,
-      desc:`${dealsWon}/${demosHappened} demos closing. Sales team converting well.`,action:''
+      desc:`${closedDeals}/${demosHappened} demos closing. Sales team converting well.`,action:''
     });
     if(pCloseRate!==null){
       const d2=chg(closeRate,pCloseRate);
@@ -1128,10 +1133,16 @@ function buildPanel(key, d) {
   const pdrSpend=pch.meta.spend+pch.google.spend+pch.tiktok.spend;
   const pdrDemos=pch.meta.demos+pch.google.demos+pch.tiktok.demos;
 
-  // Demos % Paid Source: paid ad demos (all channels excl LinkedIn) / total HubSpot demos booked
-  // Mirrors Looker Studio: SUM(paid conversions excl googleanalytics|linkedin) / SUM(hubspot_meeting_booked)
-  const paidDemos   = (ch.meta.demos||0)+(ch.google.demos||0)+(ch.tiktok.demos||0)+(ch.youtube.demos||0);
-  const ppaidDemos  = (pch.meta.demos||0)+(pch.google.demos||0)+(pch.tiktok.demos||0)+(pch.youtube.demos||0);
+  // All-channel totals (all 5 channels)
+  const chKeys=['meta','linkedin','google','tiktok','youtube'];
+  const allSpend=chKeys.reduce((s,k)=>s+ch[k].spend,0);
+  const allDemos=chKeys.reduce((s,k)=>s+ch[k].demos,0);
+  const pallSpend=chKeys.reduce((s,k)=>s+pch[k].spend,0);
+  const pallDemos=chKeys.reduce((s,k)=>s+pch[k].demos,0);
+
+  // Demos % Paid Source: paid ad demos (all 5 channels) / total HubSpot demos booked
+  const paidDemos   = (ch.meta.demos||0)+(ch.google.demos||0)+(ch.tiktok.demos||0)+(ch.youtube.demos||0)+(ch.linkedin.demos||0);
+  const ppaidDemos  = (pch.meta.demos||0)+(pch.google.demos||0)+(pch.tiktok.demos||0)+(pch.youtube.demos||0)+(pch.linkedin.demos||0);
   const paidSrcPct  = d.demosBooked > 0 ? (paidDemos  / d.demosBooked  * 100) : null;
   const ppaidSrcPct = p.demosBooked > 0 ? (ppaidDemos / p.demosBooked  * 100) : null;
   const paidSrcStr  = paidSrcPct  !== null ? paidSrcPct.toFixed(1)  + '%' : '—';
@@ -1142,21 +1153,23 @@ function buildPanel(key, d) {
   // Dark stat cards with sparklines + pacing bar on spend card
   // Build simple 3-window sparkline points: yesterday → rolling7 → mtd (per-day spend)
   const sparkWins = ['yesterday','rolling7','mtd'];
+  const allChKeys = ['meta','linkedin','google','tiktok','youtube'];
   const spendPts  = sparkWins.map(w => {
     const sw = DATA.windows[w];
     if (!sw) return 0;
     const days = w === 'yesterday' ? 1 : w === 'rolling7' ? 7 : (new Date().getDate() - 1 || 1);
-    const s = (sw.channels?.meta?.spend||0)+(sw.channels?.google?.spend||0)+(sw.channels?.tiktok?.spend||0);
+    const s = allChKeys.reduce((sum,k)=>sum+(sw.channels?.[k]?.spend||0),0);
     return s / days;
   });
   const mrrPts   = sparkWins.map(w => DATA.windows[w]?.newMRR || 0);
   const cpdPts   = sparkWins.map(w => {
     const sw = DATA.windows[w];
     if (!sw) return 0;
-    const s = (sw.channels?.meta?.spend||0)+(sw.channels?.google?.spend||0)+(sw.channels?.tiktok?.spend||0);
-    const demos = (sw.channels?.meta?.demos||0)+(sw.channels?.google?.demos||0)+(sw.channels?.tiktok?.demos||0);
+    const s = allChKeys.reduce((sum,k)=>sum+(sw.channels?.[k]?.spend||0),0);
+    const demos = allChKeys.reduce((sum,k)=>sum+(sw.channels?.[k]?.demos||0),0);
     return demos > 0 ? s / demos : 0;
   });
+  const dealsPts = sparkWins.map(w => DATA.windows[w]?.pipeline?.closedDeals || 0);
 
 
   // Pacing: days through month
@@ -1171,12 +1184,11 @@ function buildPanel(key, d) {
   const statHTML=`
     <div class="stat-row">
       <div class="stat-card" style="position:relative;overflow:hidden">
-        <div class="sc-label">Total Ad Spend</div>
-        <div class="sc-value">${fmt$(drSpend)}</div>
-        <div class="sc-sub">Excl. LinkedIn + YouTube</div>
-        ${scDelta(drSpend, pdrSpend, {invert:true})}
-        ${buildPacingBar(drSpend, drBudget, pacingPct)}
-        ${buildSparkline(spendPts)}
+        <div class="sc-label">Closed Deals</div>
+        <div class="sc-value">${fmtN(pp.closedDeals)}</div>
+        <div class="sc-sub">Closed won this period</div>
+        ${scDelta(pp.closedDeals, ppp.closedDeals)}
+        ${buildSparkline(dealsPts)}
       </div>
       <div class="stat-card" style="position:relative;overflow:hidden">
         <div class="sc-label">New MRR</div>
@@ -1186,10 +1198,18 @@ function buildPanel(key, d) {
         ${buildSparkline(mrrPts)}
       </div>
       <div class="stat-card" style="position:relative;overflow:hidden">
+        <div class="sc-label">Total Ad Spend</div>
+        <div class="sc-value">${fmt$(allSpend)}</div>
+        <div class="sc-sub">All 5 channels</div>
+        ${scDelta(allSpend, pallSpend, {invert:true})}
+        ${buildPacingBar(allSpend, totalBudget, pacingPct)}
+        ${key === 'mtd' ? buildSparkline(spendPts) : ''}
+      </div>
+      <div class="stat-card" style="position:relative;overflow:hidden">
         <div class="sc-label">Blended CPD</div>
-        <div class="sc-value">${cpd$(drSpend,drDemos)}</div>
-        <div class="sc-sub">Excl. LinkedIn + YouTube</div>
-        ${scDelta(cpdNum(drSpend,drDemos)||0, cpdNum(pdrSpend,pdrDemos)||0, {invert:true})}
+        <div class="sc-value">${cpd$(allSpend,allDemos)}</div>
+        <div class="sc-sub">All 5 channels</div>
+        ${scDelta(cpdNum(allSpend,allDemos)||0, cpdNum(pallSpend,pallDemos)||0, {invert:true})}
         ${buildSparkline(cpdPts)}
       </div>
     </div>`;
@@ -1206,27 +1226,35 @@ function buildPanel(key, d) {
   const wfBookRate   = wfClicks    > 0 ? (wfBooked  / wfClicks    * 100).toFixed(2) + '%' : 'N/A';
   const wfCVR        = wfVisitors  > 0 ? (wfBooked  / wfVisitors  * 100).toFixed(2) + '%' : 'N/A';
 
+  // Previous-period rates (numeric) for delta badges on funnel conversion rates
+  const wfClickRateN = wfVisitors  > 0 ? (wfClicks / wfVisitors * 100) : 0;
+  const wfBookRateN  = wfClicks    > 0 ? (wfBooked / wfClicks   * 100) : 0;
+  const wfCVRN       = wfVisitors  > 0 ? (wfBooked / wfVisitors * 100) : 0;
+  const pwfClickRateN= pwfVisitors > 0 ? (pwfClicks / pwfVisitors * 100) : 0;
+  const pwfBookRateN = pwfClicks   > 0 ? (pwfBooked / pwfClicks   * 100) : 0;
+  const pwfCVRN      = pwfVisitors > 0 ? (pwfBooked / pwfVisitors * 100) : 0;
+
   const wfArrow = `<div class="wf-arrow"><div class="wf-arrow-icon">➜</div></div>`;
   const wfFunnelHTML = `
     <div class="wf-wrap">
       <div class="wf-node">
         <div class="wf-label">Website Visitors</div>
         <div class="wf-value">${fmtN(wfVisitors)}</div>
-        <div><span class="wf-rate">${wfClickRate}<span class="wf-rate-lbl">click demo btn</span></span></div>
+        <div><span class="wf-rate">${wfClickRate}<span class="wf-rate-lbl">click demo btn</span></span> ${deltaBadge(wfClickRateN, pwfClickRateN)}</div>
         ${deltaBadge(wfVisitors, pwfVisitors)}
       </div>
       ${wfArrow}
       <div class="wf-node">
         <div class="wf-label">Demo Button Clicks</div>
         <div class="wf-value">${fmtN(wfClicks)}</div>
-        <div><span class="wf-rate">${wfBookRate}<span class="wf-rate-lbl">actually book</span></span></div>
+        <div><span class="wf-rate">${wfBookRate}<span class="wf-rate-lbl">actually book</span></span> ${deltaBadge(wfBookRateN, pwfBookRateN)}</div>
         ${deltaBadge(wfClicks, pwfClicks)}
       </div>
       ${wfArrow}
       <div class="wf-node">
         <div class="wf-label">Demos Booked</div>
         <div class="wf-value">${fmtN(wfBooked)}</div>
-        <div><span class="wf-rate">${wfCVR}<span class="wf-rate-lbl">website CVR</span></span></div>
+        <div><span class="wf-rate">${wfCVR}<span class="wf-rate-lbl">website CVR</span></span> ${deltaBadge(wfCVRN, pwfCVRN)}</div>
         ${deltaBadge(wfBooked, pwfBooked)}
       </div>
     </div>`;
@@ -1266,16 +1294,19 @@ function buildPanel(key, d) {
       </div>
     </div>` : '';
 
+  // Qual. Demo Given % — qualified demos (happened minus tooEarly and notQualAfterDemo) / demosHappened
+  const qualDemoGiven = pp.demosToOccur > 0 ? ((pp.demosHappened - (pp.tooEarly||0) - (pp.notQualAfterDemo||0)) / pp.demosToOccur * 100) : null;
+  const pQualDemoGiven = ppp.demosToOccur > 0 ? ((ppp.demosHappened - (ppp.tooEarly||0) - (ppp.notQualAfterDemo||0)) / ppp.demosToOccur * 100) : null;
+  const qualDemoStr = qualDemoGiven !== null ? qualDemoGiven.toFixed(1) + '%' : '—';
+
   // KPIs with delta badges
   const kpis=[
     {label:'Demos % Paid Source', value:paidSrcStr,                      sub:'Paid ads ÷ total demos booked', cls:'kpi-navy',
       delta: paidSrcPct !== null ? deltaBadge(paidSrcPct, ppaidSrcPct) : ''},
-    {label:'CPD (excl. LI+YT)',  value:cpd$(drSpend,drDemos),           sub:'Meta + Google + TikTok',        cls:'kpi-navy',
-      delta: deltaBadge(cpdNum(drSpend,drDemos)||0, cpdNum(pdrSpend,pdrDemos)||0, {invert:true})},
     {label:'Meta CTR',           value:d.metaCTR||'N/A',                sub:'Avg across campaigns',          cls:'',
       delta: deltaBadge(parsePct(d.metaCTR)||0, parsePct(p.metaCTR)||0)},
-    {label:'Closed Deals',       value:fmtN(pp.dealsWon),               sub:'Closed won this period',        cls:'kpi-good',
-      delta: deltaBadge(pp.dealsWon, ppp.dealsWon)},
+    {label:'Qual. Demo Given %', value:qualDemoStr,                      sub:'Happened − too early − not qual', cls:'kpi-good',
+      delta: qualDemoGiven !== null && pQualDemoGiven !== null ? deltaBadge(qualDemoGiven, pQualDemoGiven) : ''},
     {label:'Close Rate',         value:pp.pctDemosWon,                  sub:'Demos given → closed won',      cls:'kpi-good',
       delta: deltaBadge(parsePct(pp.pctDemosWon)||0, parsePct(ppp.pctDemosWon)||0)},
   ];
@@ -1287,8 +1318,7 @@ function buildPanel(key, d) {
       ${k.delta}
     </div>`).join('') + showRateHTML;
 
-  // Spend donut + bars — excl LI+YT for totals
-  const chKeys=['meta','linkedin','google','tiktok','youtube'];
+  // Spend donut + bars
   const drKeys=['meta','google','tiktok'];
   const spendSlices=chKeys.map(k=>({label:CH_LABELS[k],value:ch[k].spend,color:CH_COLORS[k]})).filter(s=>s.value>0);
   const donutSVG=buildDonut(spendSlices);
@@ -1296,7 +1326,7 @@ function buildPanel(key, d) {
     <div class="leg-item">
       <div class="leg-dot" style="background:${s.color}"></div>
       <div class="leg-name">${s.label}</div>
-      <div class="leg-pct">${fmtP(s.value,drSpend)}</div>
+      <div class="leg-pct">${fmtP(s.value,allSpend)}</div>
     </div>`).join('');
 
   const sorted=chKeys.map(k=>({key:k,...ch[k]})).sort((a,b)=>b.spend-a.spend);
@@ -1305,18 +1335,41 @@ function buildPanel(key, d) {
     <div class="spend-summary">
       <div class="ss-item">
         <div class="ss-label">Total Spend</div>
+        <div class="ss-value">${fmt$(allSpend)}</div>
+        <div class="ss-sub">All Channels</div>
+        ${scDelta(allSpend, pallSpend, {invert:true})}
+      </div>
+      <div class="ss-item">
+        <div class="ss-label">Avg CPD</div>
+        <div class="ss-value">${cpd$(allSpend,allDemos)}</div>
+        <div class="ss-sub">All Channels</div>
+        ${scDelta(cpdNum(allSpend,allDemos)||0, cpdNum(pallSpend,pallDemos)||0, {invert:true})}
+      </div>
+      <div class="ss-item">
+        <div class="ss-label">Total Demos</div>
+        <div class="ss-value">${fmtN(allDemos)}</div>
+        <div class="ss-sub">All Channels</div>
+        ${scDelta(allDemos, pallDemos)}
+      </div>
+    </div>
+    <div class="spend-summary" style="border-top:1px solid #D4E6EF;padding-top:12px;">
+      <div class="ss-item">
+        <div class="ss-label">Total Spend</div>
         <div class="ss-value">${fmt$(drSpend)}</div>
         <div class="ss-sub">Excl. LinkedIn + YouTube</div>
+        ${scDelta(drSpend, pdrSpend, {invert:true})}
       </div>
       <div class="ss-item">
         <div class="ss-label">Avg CPD</div>
         <div class="ss-value">${cpd$(drSpend,drDemos)}</div>
         <div class="ss-sub">Excl. LinkedIn + YouTube</div>
+        ${scDelta(cpdNum(drSpend,drDemos)||0, cpdNum(pdrSpend,pdrDemos)||0, {invert:true})}
       </div>
       <div class="ss-item">
         <div class="ss-label">Total Demos</div>
         <div class="ss-value">${fmtN(drDemos)}</div>
         <div class="ss-sub">Excl. LinkedIn + YouTube</div>
+        ${scDelta(drDemos, pdrDemos)}
       </div>
     </div>`;
   const barsHTML=sorted.map(c=>`
@@ -1357,7 +1410,7 @@ function buildPanel(key, d) {
     {name:'Demos Booked',      val:d.demosBooked,                    prev:p.demosBooked,                      color:'#4d8aaa'},
     {name:'Demos to Occur',    val:pp.demosToOccur,                  prev:ppp.demosToOccur,                   color:'#2d6a8a'},
     {name:'Demo Happened',     val:pp.demosHappened,                 prev:ppp.demosHappened,                  color:'#1D4053'},
-    {name:'Closed Won',        val:pp.dealsWon,                      prev:ppp.dealsWon,                       color:'#172C45'},
+    {name:'Closed Won',        val:pp.closedDeals,                   prev:ppp.closedDeals,                    color:'#172C45'},
   ];
     // Log scale so Website Visitors (10k+) doesn't flatten Demos (5-30) to nothing
   const logScale = v => Math.log10(Math.max(v, 1) + 1);
@@ -1402,10 +1455,10 @@ function buildPanel(key, d) {
   const plRows=[
     {name:'Demos Booked',              val:d.demosBooked,              prev:p.demosBooked,              color:'#72A4BF', note:'Meeting Booked list, by createdate'},
     {name:'Demos to Occur',            val:pp.demosToOccur,            prev:ppp.demosToOccur,           color:'#4d8aaa', note:'deals by date_demo_booked'},
-    {name:'Disqualified Before Demo',  val:pp.disqualifiedBeforeDemo,  prev:ppp.disqualifiedBeforeDemo, color:'#B8860B', invert:true, pctOf:pp.demosToOccur},
+    {name:'Disq. Before Demo',         val:pp.disqualifiedBeforeDemo,  prev:ppp.disqualifiedBeforeDemo, color:'#B8860B', invert:true, pctOf:pp.demosToOccur},
     {name:'Rescheduled',               val:pp.rescheduled||0,          prev:ppp.rescheduled||0,         color:'#9b7fd4', invert:true, pctOf:pp.demosToOccur},
     {name:'Canceled',                  val:pp.canceled||0,             prev:ppp.canceled||0,            color:'#d47f7f', invert:true, pctOf:pp.demosToOccur},
-    {name:'Demo Given',                val:pp.demosHappened,           prev:ppp.demosHappened,          color:'#1D4053', note:'Demo Given + Rescheduled time'},
+    {name:'Qual. Demo Given',          val:(pp.demosHappened||0)-(pp.tooEarly||0)-(pp.notQualAfterDemo||0), prev:(ppp.demosHappened||0)-(ppp.tooEarly||0)-(ppp.notQualAfterDemo||0), color:'#1D4053', pctOf:pp.demosToOccur},
     {name:'Too Early',                 val:pp.tooEarly,                prev:ppp.tooEarly,               color:'#aab8c2', invert:true, pctOf:pp.demosToOccur},
     {name:'Not Qualified After Demo',  val:pp.notQualAfterDemo,        prev:ppp.notQualAfterDemo,       color:'#C0392B', invert:true, pctOf:pp.demosToOccur},
     {name:'Blank',                     val:pp.blankStatus||0,          prev:ppp.blankStatus||0,         color:'#c8d0d8', invert:true, pctOf:pp.demosToOccur},
@@ -1470,7 +1523,8 @@ function buildPanel(key, d) {
             <td style="font-weight:700">${fmt$(sorted.reduce((s,c)=>s+c.spend,0))}</td>
             <td style="font-weight:700">${fmtN(sorted.reduce((s,c)=>s+c.demos,0))}</td>
             <td style="text-align:center;font-weight:700;font-size:11px;color:var(--soft-teal)">${d.demosBooked>0?Math.round(sorted.reduce((s,c)=>s+c.demos,0)/d.demosBooked*100)+'%':'—'}</td>
-            <td colspan="2" style="font-size:11px;color:#8a9aaa;font-style:italic">${fmtN(d.demosBooked)} total booked</td>
+            <td style="font-weight:700">${allDemos>0?fmt$(allSpend/allDemos):'N/A'}</td>
+            <td style="font-size:11px;color:#8a9aaa;font-style:italic">${fmtN(d.demosBooked)} total booked</td>
           </tr></tfoot>
         </table>
       </div>
@@ -1530,29 +1584,48 @@ function buildPaidMediaPanel() {
   // Use the global deltaBadge() — same pill style as all other tabs
   const db = (curr, prev, invert=false) => deltaBadge(curr, prev, { invert });
 
-  // Summary row (MTD)
+  // Summary rows (MTD) — Row 1: All Channels, Row 2: Excl. LI+YT
   const pTotalSpend = channels.reduce((s,k)=>s+(pch[k]?.spend||0),0);
+  const pTotalDemos = channels.reduce((s,k)=>s+(pch[k]?.demos||0),0);
   const summaryHTML = `
     <div class="pm-summary-row">
       <div class="pm-summary-cell">
-        <div class="psc-label">Total Spend (MTD)</div>
+        <div class="psc-label">Total Spend</div>
         <div class="psc-val">${fmt$(totalSpend)}</div>
+        <div class="psc-sub">All Channels</div>
         ${db(totalSpend, pTotalSpend, true)}
       </div>
       <div class="pm-summary-cell">
-        <div class="psc-label">DR Spend (ex LI+YT)</div>
+        <div class="psc-label">Avg CPD</div>
+        <div class="psc-val">${cpd$(totalSpend, totalDemos)}</div>
+        <div class="psc-sub">All Channels</div>
+        ${db(cpdNum(totalSpend,totalDemos)||0, cpdNum(pTotalSpend,pTotalDemos)||0, true)}
+      </div>
+      <div class="pm-summary-cell">
+        <div class="psc-label">Total Demos</div>
+        <div class="psc-val">${fmtN(totalDemos)}</div>
+        <div class="psc-sub">All Channels</div>
+        ${db(totalDemos, pTotalDemos)}
+      </div>
+    </div>
+    <div class="pm-summary-row" style="margin-bottom:32px">
+      <div class="pm-summary-cell">
+        <div class="psc-label">Total Spend</div>
         <div class="psc-val">${fmt$(drSpend)}</div>
+        <div class="psc-sub">Excl. LinkedIn + YouTube</div>
         ${db(drSpend, pDrSpend, true)}
       </div>
       <div class="pm-summary-cell">
-        <div class="psc-label">Total Demos (ex LI+YT)</div>
-        <div class="psc-val">${fmtN(drDemos)}</div>
-        ${db(drDemos, pDrDemos)}
+        <div class="psc-label">Avg CPD</div>
+        <div class="psc-val">${cpd$(drSpend, drDemos)}</div>
+        <div class="psc-sub">Excl. LinkedIn + YouTube</div>
+        ${db(cpdNum(drSpend,drDemos)||0, cpdNum(pDrSpend,pDrDemos)||0, true)}
       </div>
       <div class="pm-summary-cell">
-        <div class="psc-label">Blended CPD (ex LI+YT)</div>
-        <div class="psc-val">${cpd$(drSpend, drDemos)}</div>
-        ${db(cpdNum(drSpend,drDemos)||0, cpdNum(pDrSpend,pDrDemos)||0, true)}
+        <div class="psc-label">Total Demos</div>
+        <div class="psc-val">${fmtN(drDemos)}</div>
+        <div class="psc-sub">Excl. LinkedIn + YouTube</div>
+        ${db(drDemos, pDrDemos)}
       </div>
     </div>`;
 
@@ -1624,22 +1697,49 @@ function buildPaidMediaPanel() {
 
   // CPD comparison table — clean: one row per channel, CPD + spend per window, no stacking
   const cpdTableRows = channels.map(k => {
-    return `<tr>
-      <td style="font-weight:700">${CH_ICONS[k]} ${chMeta[k].name}</td>
+    // CPD row
+    const cpdRow = `<tr>
+      <td style="font-weight:700;padding-bottom:2px;border-bottom:none">${CH_ICONS[k]} ${chMeta[k].name}</td>
       ${windows.map(w => {
         const c  = DATA.windows[w]?.channels?.[k];
         const pc = DATA.windows[w]?.prev?.channels?.[k];
         const v  = c  ? cpdNum(c.spend,  c.demos)  : null;
         const pv = pc ? cpdNum(pc.spend, pc.demos) : null;
-        const spendV = c?.spend || 0;
-        if (!v && !spendV) return `<td style="text-align:right;color:#c0c8d0;font-size:12px">—</td>`;
+        if (!v && !(c?.spend||0)) return `<td style="text-align:right;color:#c0c8d0;font-size:12px;padding-bottom:2px;border-bottom:none">—</td>`;
         const cpdStr = v ? `<span style="font-weight:700;font-size:13px;color:${v>500?'#C0392B':v>350?'#B8860B':'var(--deep-navy)'}">${fmt$(v)}</span>` : `<span style="color:#c0c8d0">—</span>`;
         const cpdDlt = (v !== null && pv !== null) ? `<span style="margin-left:4px">${db(v, pv, true)}</span>` : '';
-        const spendStr = spendV > 0 ? `<div style="font-size:11px;color:#8a9aaa;margin-top:2px">${fmt$(spendV)}</div>` : '';
-        return `<td style="text-align:right"><div style="display:inline-flex;flex-direction:column;align-items:flex-end">${cpdStr}${cpdDlt}${spendStr}</div></td>`;
+        return `<td style="text-align:right;padding-bottom:2px;border-bottom:none">${cpdStr}${cpdDlt}</td>`;
       }).join('')}
     </tr>`;
+    // Spend sub-row
+    const spendRow = `<tr>
+      <td style="font-size:10px;color:#8a9aaa;padding-top:0;padding-bottom:10px;border-bottom:1px solid rgba(212,230,239,0.5)">Spend</td>
+      ${windows.map(w => {
+        const spendV = DATA.windows[w]?.channels?.[k]?.spend || 0;
+        return `<td style="text-align:right;font-size:11px;color:#8a9aaa;font-weight:400;padding-top:0;padding-bottom:10px;border-bottom:1px solid rgba(212,230,239,0.5)">${spendV > 0 ? fmt$(spendV) : '—'}</td>`;
+      }).join('')}
+    </tr>`;
+    return cpdRow + spendRow;
   }).join('');
+
+  // Totals row for CPD table
+  const cpdTotalsRow = `<tr style="border-top:2px solid var(--soft-teal)">
+    <td style="font-weight:700;padding-top:12px;color:var(--deep-navy)">All Channels</td>
+    ${windows.map(w => {
+      const wCh = DATA.windows[w]?.channels || {};
+      const tSpend = channels.reduce((s,k) => s + (wCh[k]?.spend||0), 0);
+      const tDemos = channels.reduce((s,k) => s + (wCh[k]?.demos||0), 0);
+      const tCpd = cpdNum(tSpend, tDemos);
+      const pwCh = DATA.windows[w]?.prev?.channels || {};
+      const ptSpend = channels.reduce((s,k) => s + (pwCh[k]?.spend||0), 0);
+      const ptDemos = channels.reduce((s,k) => s + (pwCh[k]?.demos||0), 0);
+      const ptCpd = cpdNum(ptSpend, ptDemos);
+      const cpdStr = tCpd ? `<span style="font-weight:700;font-size:13px;color:var(--deep-navy)">${fmt$(tCpd)}</span>` : '—';
+      const cpdDlt = (tCpd && ptCpd) ? `<span style="margin-left:4px">${db(tCpd, ptCpd, true)}</span>` : '';
+      const demosStr = `<div style="font-size:11px;color:#8a9aaa;margin-top:2px">${fmtN(tDemos)} demos</div>`;
+      return `<td style="text-align:right;padding-top:12px"><div style="display:inline-flex;flex-direction:column;align-items:flex-end">${cpdStr}${cpdDlt}${demosStr}</div></td>`;
+    }).join('')}
+  </tr>`;
 
   // CPD trend line chart — all channels across all 3 windows
   const channelDataByWindow = {};
@@ -1681,6 +1781,13 @@ function buildPaidMediaPanel() {
       <div></div>
     </div>
     ${effRows}
+    <div style="display:grid;grid-template-columns:100px 1fr 60px 1fr 50px;align-items:center;gap:10px;padding:12px 0 8px 0;border-top:2px solid var(--soft-teal);margin-top:4px">
+      <div style="font-size:12px;font-weight:700;color:var(--deep-navy)">All Channels</div>
+      <div></div>
+      <div style="font-size:13px;font-weight:700;color:var(--deep-navy);text-align:right">${totalDemos > 0 ? fmt$(Math.round(totalSpend/totalDemos)) : '—'}</div>
+      <div></div>
+      <div style="font-size:13px;font-weight:700;color:var(--mid-navy);text-align:right">${fmtN(totalDemos)}</div>
+    </div>
     <div style="margin-top:12px;font-size:11px;color:#8a9aaa;font-style:italic">Lower CPD bar = more efficient. Longer demo bar = higher volume. MTD data.</div>` : '';
 
   const scatterSVG = effHTML;
@@ -1697,7 +1804,7 @@ function buildPaidMediaPanel() {
         <div class="chart-title">CPD by Channel &amp; Window</div>
         <table class="cpd-table">
           <thead><tr><th>Channel</th>${windows.map(w=>`<th>${wLabels[w]}<br><span style="font-size:9px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">+/- vs prior</span></th>`).join('')}</tr></thead>
-          <tbody>${cpdTableRows}</tbody>
+          <tbody>${cpdTableRows}${cpdTotalsRow}</tbody>
         </table>
       </div>
       <div class="chart-card">
@@ -1705,6 +1812,9 @@ function buildPaidMediaPanel() {
         ${scatterSVG}
       </div>
     </div>
+
+    <div class="sl">Intelligence Report <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">Month to Date vs Prior Month</span></div>
+    ${DATA.windows.mtd?.intelligence ? renderIntelligence(DATA.windows.mtd.intelligence, 'Prior Month') : '<div style="font-size:13px;color:#8a9aaa;font-style:italic">No intelligence data available.</div>'}
   `;
 }
 

@@ -130,12 +130,12 @@ async function fetchWindsorDemos(dateFrom, dateTo) {
       result.meta.demos       += row.conversions_submit_application_total || 0;
       if (row.ctr != null) result.meta.ctr.push(row.ctr);
     }
-    // LinkedIn — demos counted separately via second fetch to filter conversion types
+    // LinkedIn (demos overridden below via separate conversion_name fetch)
     else if (/linkedin/.test(src)) {
       result.linkedin.spend       += row.spend || 0;
       result.linkedin.clicks      += row.clicks || 0;
       result.linkedin.impressions += row.impressions || 0;
-      // demos intentionally NOT summed here — see LinkedIn demo fix below
+      result.linkedin.demos       += row.externalwebsiteconversions || 0; // overridden below
     }
     // TikTok
     else if (/tiktok/.test(src)) {
@@ -168,38 +168,34 @@ async function fetchWindsorDemos(dateFrom, dateTo) {
   result.google.demos  = Math.ceil(result.google._raw);
   result.youtube.demos = Math.ceil(result.youtube._raw);
 
+  // ── LinkedIn demos: separate fetch with conversion_name filter ──
+  // The main fetch uses externalwebsiteconversions which includes pipeline events
+  // (HubSpot - Opportunity, HubSpot - SQL, Demo Scheduled). Fetching with
+  // conversion_name lets us filter to only actual demo booking events.
+  const liFields = 'date,datasource,conversion_name,externalwebsiteconversions';
+  const liRows = [];
+  for (let i = 0; i < days.length; i += 5) {
+    const batch = days.slice(i, i + 5);
+    const batchResults = await Promise.all(batch.map(day => windsorFetch(day, day, liFields)));
+    liRows.push(...batchResults.flat());
+    if (i + 5 < days.length) await sleep(300);
+  }
+  let liDemosFiltered = 0;
+  for (const row of liRows) {
+    if (!/linkedin/.test((row.datasource || '').toLowerCase())) continue;
+    const convName = (row.conversion_name || '').toLowerCase();
+    if (convName.includes('demo request')) {
+      liDemosFiltered += row.externalwebsiteconversions || 0;
+    }
+  }
+  console.log(`  🔍 LinkedIn demos [${dateFrom}→${dateTo}]: raw=${result.linkedin.demos} → filtered=${liDemosFiltered} (conversion_name contains "demo request")`);
+  result.linkedin.demos = liDemosFiltered;
+
   result.meta.ctrAvg = result.meta.ctr.length > 0
     ? result.meta.ctr.reduce((a, b) => a + b, 0) / result.meta.ctr.length
     : null;
 
   console.log(`  INFO spend split — Google Search: $${result.google.spend.toFixed(2)}  YouTube: $${result.youtube.spend.toFixed(2)}  (${dateFrom} → ${dateTo})`);
-
-  // ── LinkedIn demo fix: separate fetch with conversion_name to filter out pipeline events ──
-  // Adding conversion_name to the main fields zeros out LinkedIn spend, so we fetch demos separately.
-  // Only "Demo Request Thank You Page" and "Demo Request" are actual demo bookings.
-  // Excluded: "HubSpot - Opportunity", "HubSpot - Sales Qualified Lead", "Demo Scheduled"
-  try {
-    const liFields = 'date,datasource,conversion_name,externalwebsiteconversions';
-    const liRows = [];
-    for (let i = 0; i < days.length; i += 5) {
-      const batch = days.slice(i, i + 5);
-      const batchResults = await Promise.all(batch.map(day => windsorFetch(day, day, liFields)));
-      liRows.push(...batchResults.flat());
-      if (i + 5 < days.length) await sleep(300);
-    }
-    let liDemos = 0;
-    for (const row of liRows) {
-      if (!/linkedin/i.test(row.datasource || '')) continue;
-      const convName = (row.conversion_name || '').toLowerCase();
-      if (convName.includes('demo request')) {
-        liDemos += row.externalwebsiteconversions || 0;
-      }
-    }
-    result.linkedin.demos = liDemos;
-    console.log(`  ✅ LinkedIn demos (filtered): ${liDemos} [${dateFrom} → ${dateTo}]`);
-  } catch (e) {
-    console.log(`  ⚠️  LinkedIn demo fetch failed, falling back to 0: ${e.message}`);
-  }
 
   return result;
 }
@@ -306,43 +302,45 @@ function toMs(dateStr, endOfDay = false) {
 //   demosToOccur = deals with date_demo_booked in window
 //   demosHappened, dealsWon, dq breakdown = deals with date_demo_booked in window (status fields)
 async function fetchAllHubSpotData(windows) {
-  const mtd = windows.mtd;
-  const gteMs = toMs(mtd.from);
-  const lteMs = toMs(mtd.to, true);
+  // Compute widest date range across ALL windows (not just mtd)
+  // This is critical when called with prevWindows where yesterday/rolling7 may be
+  // in a different month than mtd (e.g., prev-yesterday is Feb 25 but prev-mtd is Jan).
+  let earliest = null, latest = null;
+  for (const win of Object.values(windows)) {
+    if (!earliest || win.from < earliest) earliest = win.from;
+    if (!latest   || win.to   > latest)   latest   = win.to;
+  }
+  const gteMs = toMs(earliest);
+  const lteMs = toMs(latest, true);
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
   // ── 1. Fetch contacts added to list 289 (Meeting Booked) ────────────────────
   // Use date_demo_booked (DATE property, YYYY-MM-DD) on contacts in list 289.
   // This matches the HubSpot UI segment count.
-  const listFetchFrom = windows.prev ? windows.prev.from : windows.mtd.from;
-  // ilsListIds is rejected by HubSpot CRM search API (/crm/v3/objects/search).
-  // Query contacts by date_demo_booked directly — equivalent to list 289 membership by date.
   const allBookedContacts = await hsSearch('contacts', {
     filterGroups: [{ filters: [
-      { propertyName: 'date_demo_booked', operator: 'GTE', value: toMs(listFetchFrom) },
-      { propertyName: 'date_demo_booked', operator: 'LTE', value: toMs(mtd.to, true) },
+      { propertyName: 'date_demo_booked', operator: 'GTE', value: gteMs },
+      { propertyName: 'date_demo_booked', operator: 'LTE', value: lteMs },
     ]}],
     properties: ['date_demo_booked']
   });
-  console.log('  INFO allBookedContacts: ' + allBookedContacts.length + ' | range: ' + listFetchFrom + ' to ' + mtd.to);
+  console.log('  INFO allBookedContacts: ' + allBookedContacts.length + ' | range: ' + earliest + ' to ' + latest);
   await sleep(1500);
 
   // ── 3. Fetch all deals with date_demo_booked in range ────────────────────────
   // date_demo_booked is a DATE-type property: must use YYYY-MM-DD strings, not ms.
-  // Fetch from prev window start to cover both current and prev sub-windows.
-  const prevFrom = windows.prev ? windows.prev.from : windows.mtd.from;
   // Two filterGroups (OR): deals with date_demo_booked in range,
   // OR No Show/No Showed deals by hs_createdate (those often lack date_demo_booked)
   const allDeals = await hsSearch('deals', {
     filterGroups: [
       { filters: [
-        { propertyName: 'date_demo_booked', operator: 'GTE', value: toMs(prevFrom) },
-        { propertyName: 'date_demo_booked', operator: 'LTE', value: toMs(mtd.to, true) },
+        { propertyName: 'date_demo_booked', operator: 'GTE', value: gteMs },
+        { propertyName: 'date_demo_booked', operator: 'LTE', value: lteMs },
       ]},
       { filters: [
         { propertyName: 'demo_given__status', operator: 'IN', values: ['No Show', 'No Showed'] },
-        { propertyName: 'hs_createdate',      operator: 'GTE', value: String(toMs(prevFrom)) },
-        { propertyName: 'hs_createdate',      operator: 'LTE', value: String(toMs(mtd.to, true)) },
+        { propertyName: 'hs_createdate',      operator: 'GTE', value: String(gteMs) },
+        { propertyName: 'hs_createdate',      operator: 'LTE', value: String(lteMs) },
       ]},
     ],
     properties: ['date_demo_booked', 'demo_given_date', 'demo_given__status', 'dealstage', 'amount', 'closedate', 'hs_createdate']
@@ -350,7 +348,7 @@ async function fetchAllHubSpotData(windows) {
   // Dedup in case a deal matched both filterGroups (has date_demo_booked AND is No Show)
   const allDealsMap = new Map(allDeals.map(d => [d.id, d]));
   const allDealsDeduped = [...allDealsMap.values()];
-  console.log('  INFO allDeals: ' + allDealsDeduped.length + ' (raw: ' + allDeals.length + ') | range: ' + prevFrom + ' to ' + mtd.to);
+  console.log('  INFO allDeals: ' + allDealsDeduped.length + ' (raw: ' + allDeals.length + ') | range: ' + earliest + ' to ' + latest);
   await sleep(1500);
 
   // ── 4. Fetch closed won deals by closedate for MRR ────────────────────────
@@ -436,11 +434,12 @@ async function fetchAllHubSpotData(windows) {
     }
 
 
-    const denom = demoGivenCount - notQualAfterDemoCount;
-    const pctDemosWon = denom > 0 ? ((dealsWon / denom) * 100).toFixed(1) + '%' : 'N/A';
-
-    // MRR from closed won by closedate (separate window)
+    // MRR + closedDeals from closed won by closedate (separate window)
     const closedWon = allClosedWon.filter(d => inWin(isoMs(d.properties?.closedate)));
+    const closedDeals = closedWon.length;
+
+    const denom = demoGivenCount - notQualAfterDemoCount;
+    const pctDemosWon = denom > 0 ? ((closedDeals / denom) * 100).toFixed(1) + '%' : 'N/A';
 
     result[key] = {
       demosBooked:           contactsBooked.length,
@@ -454,7 +453,7 @@ async function fetchAllHubSpotData(windows) {
       rescheduled,
       canceled,
       blankStatus,
-      closedDeals: closedWon.length,
+      closedDeals,
       newMRR: closedWon.reduce((s, d) => s + (parseFloat(d.properties?.amount) || 0), 0),
     };
   }
@@ -862,10 +861,10 @@ function buildIntelligence(allCurrentData, allPrevData, windows) {
   }
 
   // ── 4. PIPELINE HEALTH ─────────────────────────────────────────────────────
-  const { demosBooked, demosToOccur, demosHappened, dealsWon,
+  const { demosBooked, demosToOccur, demosHappened, dealsWon, closedDeals,
           notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, rescheduled, canceled, blankStatus } = hs;
   const { demosToOccur: pDemosToOccur, demosHappened: pDemosHappened,
-          dealsWon: pDealsWon, disqualifiedBeforeDemo: pDisqBefore,
+          dealsWon: pDealsWon, closedDeals: pClosedDeals, disqualifiedBeforeDemo: pDisqBefore,
           notQualAfterDemo: pNotQualAfter } = pHs;
 
   // Show rate (booked \u2192 happened)
@@ -927,7 +926,7 @@ function buildIntelligence(allCurrentData, allPrevData, windows) {
   const tooEarlyRate = pct(tooEarly, demosHappened);
   if (tooEarly > 0) {
     if (tooEarlyRate !== null && tooEarlyRate > 15) {
-      const estimatedFutureWins = Math.round(tooEarly * (dealsWon / Math.max(demosHappened, 1)));
+      const estimatedFutureWins = Math.round(tooEarly * (closedDeals / Math.max(demosHappened, 1)));
       findings.opportunities.push(
         `LARGE NURTURE PIPELINE — ${tooEarlyRate.toFixed(0)}% of demos (${tooEarly}) marked "Too Early to Close."\n` +
         `    \u2192 At current close rates, ${estimatedFutureWins} of these could close. Add to 30/60/90-day email sequence immediately. This is warm, paid-for pipeline being abandoned.`
@@ -940,17 +939,17 @@ function buildIntelligence(allCurrentData, allPrevData, windows) {
   }
 
   // Close rate
-  const closeRate  = pct(dealsWon, demosHappened);
-  const pCloseRate = pct(pDealsWon, pDemosHappened);
+  const closeRate  = pct(closedDeals, demosHappened);
+  const pCloseRate = pct(pClosedDeals, pDemosHappened);
   if (closeRate !== null) {
     if (closeRate < 10) {
       findings.weaknesses.push(
-        `LOW CLOSE RATE — ${fmtPct(closeRate)} demo-to-close (${dealsWon}/${demosHappened}).\n` +
+        `LOW CLOSE RATE — ${fmtPct(closeRate)} demo-to-close (${closedDeals}/${demosHappened}).\n` +
         `    \u2192 Review: Are proposals sent same-day? Is there a clear urgency/deadline? Analyze objection patterns in lost deals. Consider adding a follow-up call 48hrs post-demo.`
       );
     } else if (closeRate > 20) {
       findings.wins.push(
-        `STRONG CLOSE RATE — ${fmtPct(closeRate)} of demos close (${dealsWon}/${demosHappened}). Sales team is converting well.`
+        `STRONG CLOSE RATE — ${fmtPct(closeRate)} of demos close (${closedDeals}/${demosHappened}). Sales team is converting well.`
       );
     }
   }
