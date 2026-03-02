@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="FrontrowMD_Favicon.png">
 <title>FrontrowMD — Marketing Performance Dashboard</title>
-<link rel="icon" type="image/png" href="Graphic_Gems___blue_background_-_square.png">
 <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -406,9 +405,45 @@
     /* Demo quality / pacing: allow horizontal scroll on tiny screens */
     .chart-card { overflow-x: auto; }
   }
+  /* PASSWORD GATE */
+  #pw-overlay{position:fixed;inset:0;z-index:9999;background:var(--grad-light);display:flex;align-items:center;justify-content:center;transition:opacity 0.4s ease;}
+  #pw-overlay.hidden{opacity:0;pointer-events:none;}
+  #pw-overlay::before{content:'';position:fixed;inset:0;pointer-events:none;background-image:repeating-linear-gradient(45deg,transparent,transparent 20px,rgba(114,164,191,0.04) 20px,rgba(114,164,191,0.04) 22px);}
+  .pw-card{position:relative;z-index:1;background:white;border:1px solid var(--card-border);border-radius:16px;padding:48px 40px;width:100%;max-width:420px;box-shadow:0 8px 32px rgba(23,44,69,0.10);text-align:center;}
+  .pw-logo{height:36px;width:auto;margin:0 auto 24px;display:block;}
+  .pw-logo-fallback{font-size:18px;color:var(--deep-navy);font-weight:400;margin-bottom:24px;display:flex;align-items:center;justify-content:center;gap:8px;}
+  .pw-logo-fallback strong{font-weight:700;}
+  .pw-title{font-family:'Libre Baskerville',Georgia,serif;font-size:22px;font-weight:700;color:var(--deep-navy);margin-bottom:6px;}
+  .pw-sub{font-size:13px;color:var(--mid-navy);margin-bottom:28px;line-height:1.5;}
+  .pw-input{width:100%;font-family:'Libre Baskerville',Georgia,serif;font-size:14px;padding:14px 20px;border-radius:var(--pill);border:1.5px solid var(--card-border);outline:none;color:var(--deep-navy);transition:border-color 0.2s ease;margin-bottom:16px;}
+  .pw-input:focus{border-color:var(--soft-teal);box-shadow:0 0 0 3px rgba(114,164,191,0.15);}
+  .pw-input.pw-error{border-color:#C0392B;box-shadow:0 0 0 3px rgba(192,57,43,0.1);}
+  .pw-btn{width:100%;font-family:'Libre Baskerville',Georgia,serif;font-size:15px;font-weight:700;padding:14px 28px;border-radius:var(--pill);border:none;background:var(--deep-navy);color:white;cursor:pointer;transition:all 0.2s ease;}
+  .pw-btn:hover{background:var(--midnight);transform:translateY(-1px);box-shadow:0 4px 12px rgba(23,44,69,0.2);}
+  .pw-err-msg{font-size:12px;color:#C0392B;margin-top:12px;min-height:18px;}
+  #main-content{display:none;}
 </style>
 </head>
 <body>
+
+  <!-- Password Gate -->
+  <div id="pw-overlay">
+    <div class="pw-card">
+      <img src="FrontrowMD_Navy_Blue_Logo.png" alt="frontrowMD" class="pw-logo"
+           onerror="this.style.display='none';document.getElementById('pw-logo-fb').style.display='flex'">
+      <div id="pw-logo-fb" class="pw-logo-fallback" style="display:none">
+        <span>☤</span><span>frontrow<strong>MD</strong></span>
+      </div>
+      <div class="pw-title">Marketing Dashboard</div>
+      <div class="pw-sub">Enter the team password to view the dashboard.</div>
+      <input type="password" id="pw-input" class="pw-input" placeholder="Password" autocomplete="off"
+             onkeydown="if(event.key==='Enter')checkPw()">
+      <button class="pw-btn" onclick="checkPw()">View Dashboard →</button>
+      <div class="pw-err-msg" id="pw-err"></div>
+    </div>
+  </div>
+
+  <div id="main-content">
 
   <header>
     <div style="position:relative;z-index:1">
@@ -458,6 +493,38 @@
     <div class="footer-meta" id="footer-file"></div>
   </footer>
 </div>
+</div><!-- /main-content -->
+
+<script>
+// Password gate — simple hash comparison
+function checkPw() {
+  const input = document.getElementById('pw-input');
+  const err   = document.getElementById('pw-err');
+  // Simple hash to avoid plaintext in source
+  const hash = s => { let h=0; for(let i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0;} return h; };
+  const EXPECTED = -1746057480; // hash of password
+  if (hash(input.value) === EXPECTED) {
+    sessionStorage.setItem('pw_ok','1');
+    unlockDashboard();
+  } else {
+    input.classList.add('pw-error');
+    err.textContent = 'Incorrect password. Please try again.';
+    input.value = '';
+    input.focus();
+    setTimeout(() => input.classList.remove('pw-error'), 1500);
+  }
+}
+function unlockDashboard() {
+  const overlay = document.getElementById('pw-overlay');
+  const main    = document.getElementById('main-content');
+  overlay.classList.add('hidden');
+  main.style.display = '';
+  setTimeout(() => overlay.remove(), 500);
+}
+// Auto-unlock if already authenticated this session
+if (sessionStorage.getItem('pw_ok') === '1') { unlockDashboard(); }
+else { document.getElementById('pw-input').focus(); }
+</script>
 
 <script>
 const DATA = "__DASHBOARD_DATA__";

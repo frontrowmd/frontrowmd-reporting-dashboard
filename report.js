@@ -1319,6 +1319,14 @@ async function deployToGitHub(dashPath) {
     console.log(`  ↑ committed FrontrowMD_Favicon.png`);
   }
 
+  // Commit the navy blue logo (used on password page + footer)
+  const navyLogoPath = path.join(__dirname, 'FrontrowMD_Navy_Blue_Logo.png');
+  if (fs.existsSync(navyLogoPath)) {
+    const navyLogoBytes = fs.readFileSync(navyLogoPath);
+    await upsertFile('FrontrowMD_Navy_Blue_Logo.png', navyLogoBytes, `Navy logo ${today}`);
+    console.log(`  ↑ committed FrontrowMD_Navy_Blue_Logo.png`);
+  }
+
   const liveUrl = `https://${GITHUB_OWNER}.github.io/${GITHUB_REPO}/${dashName}`;
   console.log(`✅  Deployed to GitHub Pages: ${liveUrl}`);
   return liveUrl;
@@ -1671,11 +1679,10 @@ if (args.includes('--serve')) {
     // Deploy to GitHub Pages first so we have the URL for both Slack + email
     const dashUrl = await deployToGitHub(dashname);
 
-    // Slack — exec summaries only with +/- deltas, plus dashboard link
-    const urlLine   = dashUrl ? `\n📊 *Full dashboard:* ${dashUrl}\n` : '';
-    const slackText = slackSections.join('\n\n');
+    // Slack — title + dashboard link only
+    const urlLine   = dashUrl ? `\n📊 Full dashboard: ${dashUrl}` : '';
     await postToSlack(
-      `*FrontrowMD Marketing Dashboard — ${today}*${urlLine}\n\n${slackText}`
+      `*FrontrowMD Marketing Dashboard — ${today}*${urlLine}`
     );
 
     // Email — branded button with live URL (or attachment fallback)
