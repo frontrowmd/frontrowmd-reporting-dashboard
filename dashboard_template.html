@@ -438,12 +438,14 @@
     <button class="tab active" onclick="switchTab('yesterday',this)" id="tab-btn-yesterday">Yesterday</button>
     <button class="tab" onclick="switchTab('rolling7',this)" id="tab-btn-rolling7">Last 7 Days</button>
     <button class="tab" onclick="switchTab('mtd',this)" id="tab-btn-mtd">Month to Date</button>
+    <button class="tab" onclick="switchTab('ytd',this)" id="tab-btn-ytd">Year to Date</button>
     <button class="tab" onclick="switchTab('custom',this)" id="tab-btn-custom">Custom Range</button>
   </div>
 
   <div id="panel-yesterday" class="panel active"></div>
   <div id="panel-rolling7"  class="panel"></div>
   <div id="panel-mtd"       class="panel"></div>
+  <div id="panel-ytd"       class="panel"></div>
   <div id="panel-custom" class="panel"></div>
 
   <footer>
@@ -776,10 +778,10 @@ function buildSpendPacingSection(ch, pacingPct) {
 // ── Demo Quality Trend (3-window grouped bars) ─────────────────
 function buildDemoQualityChart(tabKey) {
   // In custom-only mode, show a single bar for the custom window
-  const isCustom = tabKey === 'custom' || (!DATA.windows.yesterday && DATA.windows.custom);
-  const windows  = isCustom ? ['custom'] : ['yesterday','rolling7','mtd'];
+  const isCustom = tabKey === 'custom' || tabKey === 'ytd' || (!DATA.windows.yesterday && DATA.windows.custom);
+  const windows  = isCustom ? [tabKey] : ['yesterday','rolling7','mtd'];
   const wLabels  = isCustom
-    ? { custom: DATA.windows.custom?.label || 'Custom Range' }
+    ? { [tabKey]: DATA.windows[tabKey]?.label || tabKey }
     : { yesterday:'Yesterday', rolling7:'Last 7 Days', mtd:'Month to Date' };
 
   const winData = windows.map(w => {
@@ -1328,9 +1330,15 @@ function renderIntelligence(F, prevLabel) {
 
 // ── Build panel ────────────────────────────────────────────────
 function buildPanel(key, d) {
+  const noPrev = !!d.noPrev;
   const ch=d.channels, ga=d.ga4, pp=d.pipeline;
   const p=d.prev, pch=p.channels, pga=p.ga4, ppp=p.pipeline;
-  const prevLabel=d.prevLabel||'prior period';
+  const prevLabel= noPrev ? '' : (d.prevLabel||'prior period');
+  const vsLabel  = noPrev ? '' : `vs ${prevLabel}`;
+
+  // Wrap deltaBadge to return '' when noPrev
+  const _origDeltaBadge = deltaBadge;
+  if (noPrev) { deltaBadge = () => ''; }
 
   // Direct-response spend/demos (excl LI + YT)
   const drSpend=ch.meta.spend+ch.google.spend+ch.tiktok.spend;
@@ -1399,6 +1407,7 @@ function buildPanel(key, d) {
         <div class="sc-label">New MRR</div>
         <div class="sc-value">${fmt$(d.newMRR)}</div>
         <div class="sc-sub">Closed won this period</div>
+        <div style="font-size:11px;color:rgba(114,164,191,0.85);margin-top:2px;font-weight:600">${d.newMRR > 0 ? fmt$(d.newMRR * 12) + ' ARR Generated' : ''}</div>
         ${scDelta(d.newMRR, p.newMRR)}
         ${buildSparkline(mrrPts)}
       </div>
@@ -1701,13 +1710,13 @@ function buildPanel(key, d) {
       </div>
     </div>` : '';
 
-  return `
+  const html = `
     ${statHTML}
 
-    <div class="sl">Website Funnel <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">vs ${prevLabel}</span></div>
+    <div class="sl">Website Funnel ${vsLabel ? `<span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">${vsLabel}</span>` : ''}</div>
     ${wfFunnelHTML}
 
-    <div class="sl">Key Performance Indicators <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">vs ${prevLabel}</span></div>
+    <div class="sl">Key Performance Indicators ${vsLabel ? `<span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">${vsLabel}</span>` : ''}</div>
     <div class="kpi-grid">${kpiHTML}</div>
 
     <div class="sl">Spend &amp; Cost Efficiency</div>
@@ -1719,9 +1728,9 @@ function buildPanel(key, d) {
         <div class="bar-chart">${barsHTML}</div>
       </div>
       <div class="chart-card">
-        <div class="chart-title">Cost Per Demo by Channel <span class="chart-title-meta">vs ${prevLabel}</span></div>
+        <div class="chart-title">Cost Per Demo by Channel ${vsLabel ? `<span class="chart-title-meta">${vsLabel}</span>` : ''}</div>
         <table class="cpd-table">
-          <thead><tr><th>Channel</th><th>Spend</th><th>Ad Demos</th><th style="text-align:center">% of Booked</th><th>CPD</th><th>vs ${prevLabel}</th></tr></thead>
+          <thead><tr><th>Channel</th><th>Spend</th><th>Ad Demos</th><th style="text-align:center">% of Booked</th><th>CPD</th><th>${vsLabel || ""}</th></tr></thead>
           <tbody>${cpdRows}</tbody>
           <tfoot><tr style="border-top:2px solid var(--card-border)">
             <td style="font-weight:700;font-size:12px">Total (all channels)</td>
@@ -1747,11 +1756,11 @@ function buildPanel(key, d) {
     <div class="sl">Demo Pipeline</div>
     <div class="charts-row">
       <div class="chart-card">
-        <div class="chart-title">Conversion Funnel <span class="chart-title-meta">step-to-step CVR vs ${prevLabel}</span></div>
+        <div class="chart-title">Conversion Funnel ${vsLabel ? `<span class="chart-title-meta">step-to-step CVR ${vsLabel}</span>` : ''}</div>
         <div class="funnel">${funnelHTML}</div>
       </div>
       <div class="chart-card">
-        <div class="chart-title">Pipeline Breakdown <span class="chart-title-meta">vs ${prevLabel}</span></div>
+        <div class="chart-title">Pipeline Breakdown ${vsLabel ? `<span class="chart-title-meta">${vsLabel}</span>` : ''}</div>
         <div class="pl-grid">${plHTML}</div>
         ${dqHTML}
       </div>
@@ -1763,9 +1772,13 @@ function buildPanel(key, d) {
       ${buildDemoQualityChart(key)}
     </div>
 
-    <div class="sl">Intelligence Report <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">vs ${prevLabel}</span></div>
+    <div class="sl">Intelligence Report ${vsLabel ? `<span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">${vsLabel}</span>` : ''}</div>
     <div style="margin-bottom:32px">${intelHTML}</div>
   `;
+
+  // Restore original deltaBadge
+  if (noPrev) { deltaBadge = _origDeltaBadge; }
+  return html;
 }
 
 // ── Paid Media Inline (for embedding in custom range panel) ────
@@ -1915,10 +1928,10 @@ function buildPaidMediaInline(ch, pch, prevLabel) {
     <div style="margin-top:12px;font-size:11px;color:#8a9aaa;font-style:italic">Lower CPD bar = more efficient. Longer demo bar = higher volume.</div>` : '';
 
   return `
-    <div class="sl">Paid Media Summary <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">vs ${prevLabel}</span></div>
+    <div class="sl">Paid Media Summary ${prevLabel ? `<span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">vs ${prevLabel}</span>` : ''}</div>
     ${summaryHTML}
 
-    <div class="sl">Channel Performance <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">vs ${prevLabel}</span></div>
+    <div class="sl">Channel Performance ${prevLabel ? `<span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">vs ${prevLabel}</span>` : ''}</div>
     <div class="pm-grid">${cardsHTML}</div>
 
     <div class="chart-card" style="margin-bottom:32px">
@@ -1932,7 +1945,7 @@ function buildPaidMediaInline(ch, pch, prevLabel) {
 // Init
 document.getElementById('gen-time').textContent = DATA.generatedAt;
 document.getElementById('footer-file').textContent = DATA.filename ? `Source: ${DATA.filename}` : '';
-const WINDOW_KEYS = ['yesterday','rolling7','mtd'];
+const WINDOW_KEYS = ['yesterday','rolling7','mtd','ytd'];
 
 // Detect custom-only mode (generated by --custom-from/--custom-to)
 const isCustomOnly = DATA.windows.custom && !DATA.windows.yesterday;

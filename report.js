@@ -21,6 +21,7 @@ function getWindows() {
   const yest     = new Date(now); yest.setDate(now.getDate() - 1);
   const weekAgo  = new Date(now); weekAgo.setDate(now.getDate() - 7);
   const mtdStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const ytdStart = new Date(now.getFullYear(), 0, 1);
 
   // Previous periods
   const dayBefore    = new Date(yest);    dayBefore.setDate(yest.getDate() - 1);
@@ -34,17 +35,20 @@ function getWindows() {
   const yestStr    = fmt(yest);
   const weekAgoStr = fmt(weekAgo);
   const mtdStartStr = fmt(mtdStart);
+  const ytdStartStr = fmt(ytdStart);
 
   return {
     current: {
       yesterday: { from: toDateStr(yest),     to: toDateStr(yest), label: `Yesterday (${yestStr})` },
       rolling7:  { from: toDateStr(weekAgo),  to: toDateStr(now),  label: `Last 7 Days (${weekAgoStr}–${yestStr})` },
       mtd:       { from: toDateStr(mtdStart), to: toDateStr(now),  label: `Month to Date (${mtdStartStr}–${yestStr})` },
+      ytd:       { from: toDateStr(ytdStart), to: toDateStr(now),  label: `Year to Date (${ytdStartStr}–${yestStr})` },
     },
     previous: {
       yesterday: { from: toDateStr(dayBefore),    to: toDateStr(dayBefore),  label: 'Day Before' },
       rolling7:  { from: toDateStr(prev7Start),   to: toDateStr(prev7End),   label: `Prior 7 Days (${fmt(prev7Start)}–${fmt(prev7End)})` },
       mtd:       { from: toDateStr(prevMtdStart), to: toDateStr(prevMtdEnd), label: `Prior Month (${fmt(prevMtdStart)}–${fmt(prevMtdEnd)})` },
+      ytd:       { from: toDateStr(ytdStart),     to: toDateStr(ytdStart),   label: 'N/A' },
     },
   };
 }
@@ -686,6 +690,7 @@ function buildDashboard(windowedChannels, hubspotData, prevWindowedChannels, pre
       label: windows[key].label,
       prev: buildWin(prevChannels, prevGa4, prevHubspotData[key], ga4PSrc, []),
       prevLabel: prevWindows[key].label,
+      noPrev: key === 'ytd',
     };
   }
 
@@ -1179,9 +1184,10 @@ async function main() {
     ...winKeys.map(k => Promise.all([fetchWindsorDemos(prevWindows[k].from, prevWindows[k].to), fetchGA4(prevWindows[k].from, prevWindows[k].to)])),
   ]);
 
-  // Split allWindsor: first 3 = current, next 3 = previous
-  const windowedChannels     = allWindsor.slice(0, 3);
-  const prevWindowedChannels = allWindsor.slice(3, 6);
+  // Split allWindsor: first N = current, next N = previous
+  const n = winKeys.length;
+  const windowedChannels     = allWindsor.slice(0, n);
+  const prevWindowedChannels = allWindsor.slice(n, n * 2);
 
   // GA4 source breakdown (per-window, current + previous, non-blocking)
   const ga4SourcesByWindow = {};
