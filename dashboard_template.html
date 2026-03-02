@@ -1601,7 +1601,7 @@ function buildPanel(key, d) {
     const badge = v===null ? '<span class="badge badge-na">N/A</span>'
                 : v>600    ? `<span class="badge badge-warn">${fmt$(v)}</span>`
                 :             `<span class="badge badge-good">${fmt$(v)}</span>`;
-    const db = (v!==null && pv!==null)
+    const dbVal = (v!==null && pv!==null)
       ? db(v, pv, {invert:true})
       : '<span style="color:#c0c8d0;font-size:10px">—</span>';
     const pctBooked = d.demosBooked > 0 && c.demos > 0
@@ -1613,7 +1613,7 @@ function buildPanel(key, d) {
       <td>${fmtN(c.demos)}</td>
       <td style="text-align:center">${pctBooked}</td>
       <td>${badge}</td>
-      <td style="white-space:nowrap">${db}</td>
+      <td style="white-space:nowrap">${dbVal}</td>
     </tr>`;
   }).join('');
 
@@ -1634,7 +1634,7 @@ function buildPanel(key, d) {
   const funnelHTML = '<div class="funnel-scale-note">Bar width uses log scale — labels show exact values</div>'
     + fSteps.map((s,i) => {
     const pct = logPct(s.val);
-    const db  = db(s.val, s.prev);
+    const dbVal  = db(s.val, s.prev);
     // Conversion rate TO this step from previous
     const stepCVR = i > 0 && fSteps[i-1].val > 0
       ? (s.val / fSteps[i-1].val * 100).toFixed(1) + '%'
@@ -1659,7 +1659,7 @@ function buildPanel(key, d) {
             ? '<span class="funnel-cvr-val">\u2014</span>'
             : `<span class="funnel-cvr-val">${fmtP(s.val,fSteps[i-1].val)}</span><span class="funnel-cvr-lbl">from prev.</span>`
           }
-          ${db}
+          ${dbVal}
         </div>
       </div>
       ${connectorHTML}`;
