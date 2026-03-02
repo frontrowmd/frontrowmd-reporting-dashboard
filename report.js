@@ -302,7 +302,7 @@ function toMs(dateStr, endOfDay = false) {
 
 // ── HubSpot: fetch all data for the widest window, slice per sub-window ────────
 // Date dimensions:
-//   demosBooked  = contacts in list 289 (ILS segment) by date_demo_booked (DATE property)
+//   demosBooked  = contacts created in window with date_demo_booked populated (when they booked)
 //   demosToOccur = deals with date_demo_booked in window
 //   demosHappened, dealsWon, dq breakdown = deals with date_demo_booked in window (status fields)
 async function fetchAllHubSpotData(windows) {
@@ -318,15 +318,16 @@ async function fetchAllHubSpotData(windows) {
   const lteMs = toMs(latest, true);
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-  // ── 1. Fetch contacts added to list 289 (Meeting Booked) ────────────────────
-  // Use date_demo_booked (DATE property, YYYY-MM-DD) on contacts in list 289.
-  // This matches the HubSpot UI segment count.
+  // ── 1. Fetch contacts that booked demos (by creation date) ─────────────────
+  // Demos Booked = contacts created in range that have date_demo_booked filled in.
+  // This counts "when did they book" not "when is the demo scheduled for."
   const allBookedContacts = await hsSearch('contacts', {
     filterGroups: [{ filters: [
-      { propertyName: 'date_demo_booked', operator: 'GTE', value: gteMs },
-      { propertyName: 'date_demo_booked', operator: 'LTE', value: lteMs },
+      { propertyName: 'hs_createdate',     operator: 'GTE', value: String(gteMs) },
+      { propertyName: 'hs_createdate',     operator: 'LTE', value: String(lteMs) },
+      { propertyName: 'date_demo_booked',  operator: 'HAS_PROPERTY' },
     ]}],
-    properties: ['date_demo_booked']
+    properties: ['date_demo_booked', 'hs_createdate']
   });
   console.log('  INFO allBookedContacts: ' + allBookedContacts.length + ' | range: ' + earliest + ' to ' + latest);
   await sleep(1500);
@@ -379,10 +380,11 @@ async function fetchAllHubSpotData(windows) {
     }
     function isoMs(str)  { return str ? new Date(str).getTime() : NaN; }
 
-    // Demos Booked: contacts in list 289 with date_demo_booked in window
-    const contactsBooked = allBookedContacts.filter(c =>
-      inWin(dateMs(c.properties?.date_demo_booked))
-    );
+    // Demos Booked: contacts created in window with date_demo_booked populated
+    const contactsBooked = allBookedContacts.filter(c => {
+      const created = c.properties?.hs_createdate ? parseInt(c.properties.hs_createdate) : NaN;
+      return inWin(created);
+    });
 
     // All pipeline metrics: deals filtered by date_demo_booked
     // For No Show / No Showed deals that lack date_demo_booked, fall back to hs_createdate
@@ -643,7 +645,7 @@ function buildSection(label, channels, hs) {
   lines.push(`  Cost Per Demo          ${cpd(drSpend, drDemos).padStart(8)}`);
 
   lines.push('\n── DEMO PIPELINE ────────────────────────────────────────');
-  lines.push(`  Demos Booked           ${String(demosBooked).padStart(8)}  (contacts in Meeting Booked list, by date_demo_booked)`);
+  lines.push(`  Demos Booked           ${String(demosBooked).padStart(8)}  (contacts created in window with date_demo_booked set)`);
   lines.push(`  Demos to Occur         ${String(demosToOccur).padStart(8)}  (deals by date_demo_booked)`);
   lines.push(`  Demo Given             ${String(demosHappened).padStart(8)}  (Demo Given + Demo Given at Rescheduled time + Too Early + Not Qual After)`);
   lines.push(`  Deals Won              ${String(dealsWon).padStart(8)}  (deals by date_demo_booked, closedwon)`);
