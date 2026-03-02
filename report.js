@@ -691,7 +691,17 @@ function buildDashboard(windowedChannels, hubspotData, prevWindowedChannels, pre
 
   const data = JSON.stringify({ generatedAt, filename: txtFilename, windows: dashWindows })
     .replace(/<\/script>/gi, '<\/script>');
-  const template = fs.readFileSync(__dirname + '/dashboard_template.html', 'utf8');
+  let template = fs.readFileSync(__dirname + '/dashboard_template.html', 'utf8');
+
+  // Inject custom range config: Cloudflare Worker URL and GitHub Pages base
+  const workerUrl = process.env.WORKER_URL || '';
+  const pagesBase = (GITHUB_OWNER && GITHUB_REPO)
+    ? `https://${GITHUB_OWNER}.github.io/${GITHUB_REPO}`
+    : '';
+  template = template
+    .replace("'__WORKER_URL__'", JSON.stringify(workerUrl))
+    .replace("'__PAGES_BASE__'", JSON.stringify(pagesBase));
+
   return template.replace('"__DASHBOARD_DATA__"', data);
 }
 
@@ -1546,6 +1556,78 @@ if (args.includes('--serve')) {
   // No report run — just start the API and keep it alive for dashboard queries
   console.log('🖥️  Server-only mode. No report will be generated.');
   startServer();
+
+} else if (args.find(a => a.startsWith('--custom-from'))) {
+  // Custom range mode: node report.js --custom-from=YYYY-MM-DD --custom-to=YYYY-MM-DD
+  // Used by GitHub Actions when triggered from the dashboard Custom Range tab.
+  // Generates a custom.html dashboard and deploys it to GitHub Pages.
+  const fromArg = args.find(a => a.startsWith('--custom-from'));
+  const toArg   = args.find(a => a.startsWith('--custom-to'));
+  const customFrom = fromArg ? fromArg.split('=')[1] : null;
+  const customTo   = toArg   ? toArg.split('=')[1]   : null;
+
+  if (!customFrom || !customTo || !/^\d{4}-\d{2}-\d{2}$/.test(customFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(customTo)) {
+    console.error('❌  Usage: node report.js --custom-from=YYYY-MM-DD --custom-to=YYYY-MM-DD');
+    process.exit(1);
+  }
+
+  (async () => {
+    try {
+      console.log(`\n🔧  Custom range mode: ${customFrom} → ${customTo}`);
+      const windowData = await fetchCustomWindow(customFrom, customTo);
+
+      // Build a dashboard HTML with this single custom window
+      const generatedAt = new Date().toLocaleString('en-US', {
+        timeZone: 'America/Los_Angeles', dateStyle: 'medium', timeStyle: 'short'
+      });
+      const customDashWindows = {
+        custom: {
+          ...windowData,
+          label: windowData.label,
+          prev: windowData.prev,
+          prevLabel: windowData.prevLabel,
+        }
+      };
+      const data = JSON.stringify({ generatedAt, filename: `custom-${customFrom}-to-${customTo}`, windows: customDashWindows })
+        .replace(/<\/script>/gi, '<\\/script>');
+      let template = fs.readFileSync(__dirname + '/dashboard_template.html', 'utf8');
+
+      // Inject custom range config
+      const workerUrl = process.env.WORKER_URL || '';
+      const pagesBase = (GITHUB_OWNER && GITHUB_REPO)
+        ? `https://${GITHUB_OWNER}.github.io/${GITHUB_REPO}`
+        : '';
+      template = template
+        .replace("'__WORKER_URL__'", JSON.stringify(workerUrl))
+        .replace("'__PAGES_BASE__'", JSON.stringify(pagesBase));
+
+      const customHTML = template.replace('"__DASHBOARD_DATA__"', data);
+
+      // Write to disk
+      const customFilename = 'custom.html';
+      fs.writeFileSync(customFilename, customHTML);
+      console.log(`  ✅ Wrote ${customFilename}`);
+
+      // Deploy to GitHub Pages
+      const customUrl = await deployToGitHub(customFilename);
+      if (customUrl) {
+        console.log(`  📊 Custom dashboard live at: ${customUrl}`);
+      }
+
+      // Send Slack notification
+      const label = `${customFrom} to ${customTo}`;
+      const prevLabel = windowData.prevLabel || 'prior period';
+      const urlLine = customUrl ? `\n📊 *Dashboard:* ${customUrl}\n` : '';
+      await postToSlack(`*FrontrowMD Custom Report — ${label}*\n_Compared to: ${prevLabel}_${urlLine}`);
+
+      console.log(`\n✅  Custom range report complete.`);
+      process.exit(0);
+    } catch (err) {
+      console.error('\n❌  Fatal error in custom range mode:');
+      console.error(err);
+      process.exit(1);
+    }
+  })();
 
 } else {
   // Normal mode: run the report AND start the server in the background

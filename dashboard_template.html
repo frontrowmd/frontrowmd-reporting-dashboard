@@ -476,7 +476,9 @@ function switchTab(key, btn) {
 }
 
 // ── Custom Range Tab ───────────────────────────────────────────
-const CUSTOM_API_BASE = 'http://localhost:3001';
+// Configuration — update WORKER_URL and PAGES_BASE to match your deployment
+const CUSTOM_WORKER_URL = '__WORKER_URL__'; // Cloudflare Worker URL — injected by report.js
+const CUSTOM_PAGES_BASE = '__PAGES_BASE__'; // GitHub Pages base URL — injected by report.js
 
 function buildCustomRangeUI() {
   // Default: last 7 days ending yesterday
@@ -504,8 +506,8 @@ function buildCustomRangeUI() {
           </button>
         </div>
         <div id="custom-status" style="margin-top:12px;font-size:13px;color:#8a9aaa"></div>
-        <div id="custom-server-note" style="margin-top:8px;font-size:12px;color:var(--soft-teal);font-style:italic">
-          Requires the local API server: <code style="background:rgba(114,164,191,0.1);padding:2px 6px;border-radius:4px;font-size:11px">node report.js --serve</code>
+        <div style="margin-top:8px;font-size:12px;color:var(--soft-teal);font-style:italic">
+          Report takes ~1–2 minutes to generate. You'll be redirected when it's ready.
         </div>
       </div>
     </div>
@@ -517,55 +519,87 @@ async function fetchCustomRange() {
   const to   = document.getElementById('custom-to').value;
   const btn  = document.getElementById('custom-fetch-btn');
   const status = document.getElementById('custom-status');
-  const results = document.getElementById('custom-results');
 
   if (!from || !to) { status.innerHTML = '<span style="color:#C0392B">Please select both dates.</span>'; return; }
   if (from > to)    { status.innerHTML = '<span style="color:#C0392B">From date must be before To date.</span>'; return; }
 
   btn.disabled = true;
   btn.style.opacity = '0.6';
-  btn.textContent = 'Fetching…';
-  status.innerHTML = '<span style="color:var(--soft-teal)">⏳ Pulling data from Windsor.ai, HubSpot & GA4… this may take 15–30 seconds.</span>';
-  results.innerHTML = '';
+  btn.textContent = 'Triggering…';
+  status.innerHTML = '<span style="color:var(--soft-teal)">⏳ Triggering report generation…</span>';
 
   try {
-    const res = await fetch(`${CUSTOM_API_BASE}/custom?from=${from}&to=${to}`);
+    // Step 1: Trigger the GitHub Actions workflow via Cloudflare Worker
+    const res = await fetch(CUSTOM_WORKER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent: 'agent6', custom_from: from, custom_to: to }),
+    });
     const json = await res.json();
 
     if (!json.ok) {
       status.innerHTML = `<span style="color:#C0392B">Error: ${json.error}</span>`;
+      btn.disabled = false; btn.style.opacity = '1'; btn.textContent = 'Generate Report';
       return;
     }
 
-    // Map server response into the same shape buildPanel expects
-    const w = json.window;
-    const panelData = {
-      channels: w.channels,
-      ga4: w.ga4,
-      demosBooked: w.demosBooked,
-      pipeline: w.pipeline,
-      newMRR: w.newMRR,
-      metaCTR: w.metaCTR,
-      ga4Sources: w.ga4Sources || [],
-      ga4PrevSources: w.ga4PrevSources || [],
-      prevLabel: w.prevLabel,
-      prev: w.prev,
-      intelligence: null,
+    // Step 2: Poll GitHub Pages for custom.html with a cache-busting parameter
+    status.innerHTML = '<span style="color:var(--soft-teal)">⏳ Report triggered — waiting for build to complete… <span id="custom-timer">0</span>s</span>';
+    btn.textContent = 'Building…';
+
+    const customUrl = CUSTOM_PAGES_BASE + '/custom.html';
+    const startTime = Date.now();
+    const maxWait = 180000; // 3 minutes
+    const pollInterval = 5000; // 5 seconds
+
+    // Get the current version timestamp before polling (to detect new deploy)
+    let baselineTimestamp = null;
+    try {
+      const baseRes = await fetch(customUrl + '?t=' + Date.now(), { cache: 'no-store' });
+      if (baseRes.ok) {
+        const baseText = await baseRes.text();
+        const match = baseText.match(/Generated[^<]*?(\w{3}\s+\d{1,2},\s+\d{4}[^<]*?\d{1,2}:\d{2}\s*[AP]M)/i);
+        if (match) baselineTimestamp = match[1];
+      }
+    } catch(e) { /* no existing custom.html — that's fine */ }
+
+    const timerEl = document.getElementById('custom-timer');
+    const timerInterval = setInterval(() => {
+      if (timerEl) timerEl.textContent = Math.round((Date.now() - startTime) / 1000);
+    }, 1000);
+
+    const pollForResult = async () => {
+      while (Date.now() - startTime < maxWait) {
+        await new Promise(r => setTimeout(r, pollInterval));
+
+        try {
+          const pollRes = await fetch(customUrl + '?t=' + Date.now(), { cache: 'no-store' });
+          if (pollRes.ok) {
+            const pollText = await pollRes.text();
+            // Check if this is a NEW deploy by comparing generated timestamp
+            const match = pollText.match(/Generated[^<]*?(\w{3}\s+\d{1,2},\s+\d{4}[^<]*?\d{1,2}:\d{2}\s*[AP]M)/i);
+            const newTimestamp = match ? match[1] : null;
+
+            if (newTimestamp && newTimestamp !== baselineTimestamp) {
+              // New custom.html detected — success!
+              clearInterval(timerInterval);
+              status.innerHTML = '<span style="color:#2E7D52">✅ Report ready! Redirecting…</span>';
+              setTimeout(() => { window.location.href = customUrl; }, 1000);
+              return;
+            }
+          }
+        } catch(e) { /* keep polling */ }
+      }
+
+      // Timeout
+      clearInterval(timerInterval);
+      status.innerHTML = `<span style="color:#B8860B">⏱️ Build is taking longer than expected. <a href="${customUrl}" target="_blank" style="color:var(--soft-teal);text-decoration:underline">Check manually</a> in a minute, or check <a href="https://github.com/${json.owner}/${json.repo}/actions" target="_blank" style="color:var(--soft-teal);text-decoration:underline">GitHub Actions</a> for status.</span>`;
     };
 
-    // Store in DATA.windows so sparklines can reference it (they look up DATA.windows[key])
-    DATA.windows.custom = panelData;
-
-    const label = w.label || `${from} to ${to}`;
-    status.innerHTML = `<span style="color:#2E7D52">✅ Showing <strong>${label}</strong> vs <strong>${w.prevLabel}</strong></span>`;
-    results.innerHTML = buildPanel('custom', panelData);
+    await pollForResult();
 
   } catch(e) {
-    if (e.message.includes('Failed to fetch') || e.message.includes('NetworkError')) {
-      status.innerHTML = '<span style="color:#C0392B">Cannot connect to local API server. Make sure <code style="background:rgba(239,68,68,0.1);padding:2px 6px;border-radius:4px;font-size:11px">node report.js --serve</code> is running.</span>';
-    } else {
-      status.innerHTML = `<span style="color:#C0392B">Error: ${e.message}</span>`;
-    }
+    status.innerHTML = `<span style="color:#C0392B">Error: ${e.message}</span>`;
   } finally {
     btn.disabled = false;
     btn.style.opacity = '1';
@@ -1928,16 +1962,37 @@ document.getElementById('gen-time').textContent = DATA.generatedAt;
 document.getElementById('footer-file').textContent = DATA.filename ? `Source: ${DATA.filename}` : '';
 const WINDOW_KEYS = ['yesterday','rolling7','mtd'];
 
-// Update tab button labels with date ranges from DATA
-WINDOW_KEYS.forEach(key => {
-  const btn = document.getElementById('tab-btn-' + key);
-  if (btn && DATA.windows[key]?.label) btn.textContent = DATA.windows[key].label;
-});
+// Detect custom-only mode (generated by --custom-from/--custom-to)
+const isCustomOnly = DATA.windows.custom && !DATA.windows.yesterday;
 
-Object.entries(DATA.windows).forEach(([key,d]) => {
-  const el = document.getElementById('panel-' + key);
-  if (el && WINDOW_KEYS.includes(key)) el.innerHTML = buildPanel(key, d);
-});
+if (isCustomOnly) {
+  // Hide standard tabs, show only the custom result
+  document.querySelectorAll('.tab').forEach(t => t.style.display = 'none');
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  const customPanel = document.getElementById('panel-custom');
+  customPanel.classList.add('active');
+  const d = DATA.windows.custom;
+  const label = d.label || 'Custom Range';
+  const prevLabel = d.prevLabel || 'prior period';
+  customPanel.innerHTML = `
+    <div style="margin-bottom:24px">
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <h2 style="font-family:'Libre Baskerville',Georgia,serif;color:var(--deep-navy);font-size:24px;font-weight:700;margin:0">Custom Report: ${label}</h2>
+        <span style="font-size:13px;color:var(--soft-teal);font-weight:600">vs ${prevLabel}</span>
+      </div>
+    </div>` + buildPanel('custom', d);
+} else {
+  // Standard mode — build all three time window panels
+  WINDOW_KEYS.forEach(key => {
+    const btn = document.getElementById('tab-btn-' + key);
+    if (btn && DATA.windows[key]?.label) btn.textContent = DATA.windows[key].label;
+  });
+
+  Object.entries(DATA.windows).forEach(([key,d]) => {
+    const el = document.getElementById('panel-' + key);
+    if (el && WINDOW_KEYS.includes(key)) el.innerHTML = buildPanel(key, d);
+  });
+}
 </script>
 </body>
 </html>
