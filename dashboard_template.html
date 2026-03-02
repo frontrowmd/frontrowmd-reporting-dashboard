@@ -438,14 +438,12 @@
     <button class="tab active" onclick="switchTab('yesterday',this)" id="tab-btn-yesterday">Yesterday</button>
     <button class="tab" onclick="switchTab('rolling7',this)" id="tab-btn-rolling7">Last 7 Days</button>
     <button class="tab" onclick="switchTab('mtd',this)" id="tab-btn-mtd">Month to Date</button>
-    <button class="tab" onclick="switchTab('paidmedia',this)">Paid Media Analysis</button>
     <button class="tab" onclick="switchTab('custom',this)" id="tab-btn-custom">Custom Range</button>
   </div>
 
   <div id="panel-yesterday" class="panel active"></div>
   <div id="panel-rolling7"  class="panel"></div>
   <div id="panel-mtd"       class="panel"></div>
-  <div id="panel-paidmedia" class="panel"></div>
   <div id="panel-custom" class="panel"></div>
 
   <footer>
@@ -465,10 +463,6 @@ function switchTab(key, btn) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('panel-' + key).classList.add('active');
   btn.classList.add('active');
-  // Build paid media panel on first view
-  if (key === 'paidmedia' && !document.getElementById('panel-paidmedia').innerHTML.trim()) {
-    document.getElementById('panel-paidmedia').innerHTML = buildPaidMediaPanel();
-  }
   // Build custom range picker on first view
   if (key === 'custom' && !document.getElementById('custom-range-ui')) {
     document.getElementById('panel-custom').innerHTML = buildCustomRangeUI();
@@ -1748,7 +1742,7 @@ function buildPanel(key, d) {
       ${buildSpendPacingSection(ch, pacingPct)}
     </div>` : ''}
 
-    ${key === 'custom' ? buildPaidMediaInline(ch, pch, prevLabel) : ''}
+    ${buildPaidMediaInline(ch, pch, prevLabel)}
 
     <div class="sl">Demo Pipeline</div>
     <div class="charts-row">
@@ -1933,267 +1927,7 @@ function buildPaidMediaInline(ch, pch, prevLabel) {
     </div>`;
 }
 
-// ── Paid Media Analysis Panel ──────────────────────────────────
-function buildPaidMediaPanel() {
-  // Detect custom-only mode
-  const isCustomOnly = DATA.windows.custom && !DATA.windows.yesterday;
-  const windows = isCustomOnly ? ['custom'] : ['yesterday','rolling7','mtd'];
-  const wLabels = isCustomOnly
-    ? { custom: DATA.windows.custom?.label || 'Custom Range' }
-    : { yesterday: 'Yesterday', rolling7: 'Last 7 Days', mtd: 'Month to Date' };
-  const channels = ['meta','linkedin','google','tiktok','youtube'];
 
-  // Use MTD (or custom) as the primary window for the channel cards
-  const primaryKey = isCustomOnly ? 'custom' : 'mtd';
-  const primary  = DATA.windows[primaryKey];
-  const pPrimary = primary.prev;
-  const ch   = primary.channels;
-  const pch  = pPrimary.channels;
-  const primaryLabel = isCustomOnly ? (DATA.windows.custom?.prevLabel || 'prior period') : 'Prior Month';
-
-  const totalSpend = channels.reduce((s,k) => s + (ch[k]?.spend||0), 0);
-  const totalDemos = channels.reduce((s,k) => s + (ch[k]?.demos||0), 0);
-  const drSpend    = (ch.meta?.spend||0) + (ch.google?.spend||0) + (ch.tiktok?.spend||0);
-  const drDemos    = (ch.meta?.demos||0) + (ch.google?.demos||0) + (ch.tiktok?.demos||0);
-  const pDrSpend   = (pch.meta?.spend||0) + (pch.google?.spend||0) + (pch.tiktok?.spend||0);
-  const pDrDemos   = (pch.meta?.demos||0) + (pch.google?.demos||0) + (pch.tiktok?.demos||0);
-
-  // Use the global deltaBadge() — same pill style as all other tabs
-  const db = (curr, prev, invert=false) => deltaBadge(curr, prev, { invert });
-
-  // Summary rows (MTD) — Row 1: All Channels, Row 2: Excl. LI+YT
-  const pTotalSpend = channels.reduce((s,k)=>s+(pch[k]?.spend||0),0);
-  const pTotalDemos = channels.reduce((s,k)=>s+(pch[k]?.demos||0),0);
-  const summaryHTML = `
-    <div class="pm-summary-row">
-      <div class="pm-summary-cell">
-        <div class="psc-label">Total Spend</div>
-        <div class="psc-val">${fmt$(totalSpend)}</div>
-        <div class="psc-sub">All Channels</div>
-        ${db(totalSpend, pTotalSpend, true)}
-      </div>
-      <div class="pm-summary-cell">
-        <div class="psc-label">Avg CPD</div>
-        <div class="psc-val">${cpd$(totalSpend, totalDemos)}</div>
-        <div class="psc-sub">All Channels</div>
-        ${db(cpdNum(totalSpend,totalDemos)||0, cpdNum(pTotalSpend,pTotalDemos)||0, true)}
-      </div>
-      <div class="pm-summary-cell">
-        <div class="psc-label">Total Demos</div>
-        <div class="psc-val">${fmtN(totalDemos)}</div>
-        <div class="psc-sub">All Channels</div>
-        ${db(totalDemos, pTotalDemos)}
-      </div>
-    </div>
-    <div class="pm-summary-row" style="margin-bottom:32px">
-      <div class="pm-summary-cell">
-        <div class="psc-label">Total Spend</div>
-        <div class="psc-val">${fmt$(drSpend)}</div>
-        <div class="psc-sub">Excl. LinkedIn + YouTube</div>
-        ${db(drSpend, pDrSpend, true)}
-      </div>
-      <div class="pm-summary-cell">
-        <div class="psc-label">Avg CPD</div>
-        <div class="psc-val">${cpd$(drSpend, drDemos)}</div>
-        <div class="psc-sub">Excl. LinkedIn + YouTube</div>
-        ${db(cpdNum(drSpend,drDemos)||0, cpdNum(pDrSpend,pDrDemos)||0, true)}
-      </div>
-      <div class="pm-summary-cell">
-        <div class="psc-label">Total Demos</div>
-        <div class="psc-val">${fmtN(drDemos)}</div>
-        <div class="psc-sub">Excl. LinkedIn + YouTube</div>
-        ${db(drDemos, pDrDemos)}
-      </div>
-    </div>`;
-
-  // Channel cards
-  const chMeta = {
-    meta:     { icon: '📘', name: 'Meta / Facebook' },
-    linkedin: { icon: '💼', name: 'LinkedIn' },
-    google:   { icon: '🔍', name: 'Google Ads' },
-    tiktok:   { icon: '🎵', name: 'TikTok' },
-    youtube:  { icon: '▶️',  name: 'YouTube' },
-  };
-
-  const cardsHTML = channels.map(k => {
-    const c  = ch[k]  || { spend:0, demos:0, clicks:0, impressions:0, ctrAvg:null };
-    const pc = pch[k] || { spend:0, demos:0, clicks:0, impressions:0, ctrAvg:null };
-    const cpdV  = cpdNum(c.spend, c.demos);
-    const pcpdV = cpdNum(pc.spend, pc.demos);
-    const ctr   = c.ctrAvg  != null ? (c.ctrAvg * 100).toFixed(2)  + '%' : '—';
-    const pctr  = pc.ctrAvg != null ? pc.ctrAvg : null;
-
-    // Cross-window spend comparison bars
-    const windowBarsHTML = windows.map(w => {
-      const ws = DATA.windows[w]?.channels?.[k]?.spend || 0;
-      const maxWS = Math.max(...windows.map(ww => DATA.windows[ww]?.channels?.[k]?.spend || 0), 1);
-      return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-        <div style="font-size:10px;color:#8a9aaa;width:64px;flex-shrink:0">${wLabels[w]}</div>
-        <div style="flex:1;background:var(--card-bg);border-radius:4px;height:8px;overflow:hidden">
-          <div style="height:100%;border-radius:4px;background:${CH_COLORS[k]};width:${(ws/maxWS*100).toFixed(1)}%;transition:width 0.8s ease"></div>
-        </div>
-        <div style="font-size:11px;font-weight:700;color:var(--deep-navy);width:54px;text-align:right;flex-shrink:0">${fmt$(ws)}</div>
-      </div>`;
-    }).join('');
-
-    return `
-      <div class="pm-card">
-        <div class="pm-card-header">
-          <span class="pm-card-icon">${chMeta[k].icon}</span>
-          <span class="pm-card-name">${chMeta[k].name}</span>
-        </div>
-        <div class="pm-card-spend">${fmt$(c.spend)}<span style="font-size:12px;font-weight:400;color:#8a9aaa;margin-left:6px">MTD spend</span></div>
-        <div class="pm-card-rows">
-          <div class="pm-card-row">
-            <span class="pm-card-row-label">Demos</span>
-            <span class="pm-card-row-val">${fmtN(c.demos)} ${db(c.demos, pc.demos)}</span>
-          </div>
-          <div class="pm-card-row">
-            <span class="pm-card-row-label">CPD</span>
-            <span class="pm-card-row-val">${cpdV ? fmt$(cpdV) : '—'} ${cpdV&&pcpdV ? db(cpdV, pcpdV, true) : ''}</span>
-          </div>
-          <div class="pm-card-row">
-            <span class="pm-card-row-label">CTR</span>
-            <span class="pm-card-row-val">${ctr} ${c.ctrAvg&&pctr ? db(c.ctrAvg, pctr) : ''}</span>
-          </div>
-          <div class="pm-card-row">
-            <span class="pm-card-row-label">Clicks</span>
-            <span class="pm-card-row-val">${fmtN(c.clicks)} ${db(c.clicks, pc.clicks)}</span>
-          </div>
-          <div class="pm-card-row">
-            <span class="pm-card-row-label">Impressions</span>
-            <span class="pm-card-row-val">${fmtN(c.impressions)} ${db(c.impressions, pc.impressions)}</span>
-          </div>
-        </div>
-        <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--card-border)">
-          <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--soft-teal);margin-bottom:8px">Spend by Window</div>
-          ${windowBarsHTML}
-        </div>
-      </div>`;
-  }).join('');
-
-  // CPD comparison table — clean: one row per channel, CPD + spend per window, no stacking
-  const cpdTableRows = channels.map(k => {
-    // CPD row
-    const cpdRow = `<tr>
-      <td style="font-weight:700;padding-bottom:2px;border-bottom:none">${CH_ICONS[k]} ${chMeta[k].name}</td>
-      ${windows.map(w => {
-        const c  = DATA.windows[w]?.channels?.[k];
-        const pc = DATA.windows[w]?.prev?.channels?.[k];
-        const v  = c  ? cpdNum(c.spend,  c.demos)  : null;
-        const pv = pc ? cpdNum(pc.spend, pc.demos) : null;
-        if (!v && !(c?.spend||0)) return `<td style="text-align:right;color:#c0c8d0;font-size:12px;padding-bottom:2px;border-bottom:none">—</td>`;
-        const cpdStr = v ? `<span style="font-weight:700;font-size:13px;color:${v>500?'#C0392B':v>350?'#B8860B':'var(--deep-navy)'}">${fmt$(v)}</span>` : `<span style="color:#c0c8d0">—</span>`;
-        const cpdDlt = (v !== null && pv !== null) ? `<span style="margin-left:4px">${db(v, pv, true)}</span>` : '';
-        return `<td style="text-align:right;padding-bottom:2px;border-bottom:none">${cpdStr}${cpdDlt}</td>`;
-      }).join('')}
-    </tr>`;
-    // Spend sub-row
-    const spendRow = `<tr>
-      <td style="font-size:10px;color:#8a9aaa;padding-top:0;padding-bottom:10px;border-bottom:1px solid rgba(212,230,239,0.5)">Spend</td>
-      ${windows.map(w => {
-        const spendV = DATA.windows[w]?.channels?.[k]?.spend || 0;
-        return `<td style="text-align:right;font-size:11px;color:#8a9aaa;font-weight:400;padding-top:0;padding-bottom:10px;border-bottom:1px solid rgba(212,230,239,0.5)">${spendV > 0 ? fmt$(spendV) : '—'}</td>`;
-      }).join('')}
-    </tr>`;
-    return cpdRow + spendRow;
-  }).join('');
-
-  // Totals row for CPD table
-  const cpdTotalsRow = `<tr style="border-top:2px solid var(--soft-teal)">
-    <td style="font-weight:700;padding-top:12px;color:var(--deep-navy)">All Channels</td>
-    ${windows.map(w => {
-      const wCh = DATA.windows[w]?.channels || {};
-      const tSpend = channels.reduce((s,k) => s + (wCh[k]?.spend||0), 0);
-      const tDemos = channels.reduce((s,k) => s + (wCh[k]?.demos||0), 0);
-      const tCpd = cpdNum(tSpend, tDemos);
-      const pwCh = DATA.windows[w]?.prev?.channels || {};
-      const ptSpend = channels.reduce((s,k) => s + (pwCh[k]?.spend||0), 0);
-      const ptDemos = channels.reduce((s,k) => s + (pwCh[k]?.demos||0), 0);
-      const ptCpd = cpdNum(ptSpend, ptDemos);
-      const cpdStr = tCpd ? `<span style="font-weight:700;font-size:13px;color:var(--deep-navy)">${fmt$(tCpd)}</span>` : '—';
-      const cpdDlt = (tCpd && ptCpd) ? `<span style="margin-left:4px">${db(tCpd, ptCpd, true)}</span>` : '';
-      const demosStr = `<div style="font-size:11px;color:#8a9aaa;margin-top:2px">${fmtN(tDemos)} demos</div>`;
-      return `<td style="text-align:right;padding-top:12px"><div style="display:inline-flex;flex-direction:column;align-items:flex-end">${cpdStr}${cpdDlt}${demosStr}</div></td>`;
-    }).join('')}
-  </tr>`;
-
-  // CPD trend line chart — all channels across all 3 windows
-  const channelDataByWindow = {};
-  windows.forEach(w => { channelDataByWindow[w] = DATA.windows[w]?.channels || {}; });
-
-  // Channel efficiency chart
-  // Replace scatter (broke when Meta demos >> others) with a clear bar layout
-  const effChannels = channels.filter(k => (ch[k]?.spend||0) > 0);
-  const maxCPD  = Math.max(...effChannels.filter(k=>(ch[k]?.demos||0)>0).map(k=>ch[k].spend/ch[k].demos), 1);
-  const maxDemos= Math.max(...effChannels.map(k=>ch[k]?.demos||0), 1);
-  const chColors= {meta:'#4d8aaa',linkedin:'#1D4053',google:'#9bbfd4',tiktok:'#72A4BF',youtube:'#bfd0da'};
-
-  const effRows = effChannels.map(k => {
-    const c   = ch[k];
-    const cpd = c.demos > 0 ? c.spend / c.demos : null;
-    const cpdPct  = cpd  ? (cpd  / maxCPD)   * 100 : 0;
-    const demoPct = maxDemos > 0 ? (c.demos / maxDemos) * 100 : 0;
-    const cpdColor= cpd && cpd > 500 ? '#C0392B' : cpd && cpd > 350 ? '#B8860B' : chColors[k];
-    return `
-      <div style="display:grid;grid-template-columns:100px 1fr 60px 1fr 50px;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--card-border)">
-        <div style="font-size:12px;font-weight:700;color:var(--deep-navy);white-space:nowrap">${CH_ICONS[k]} ${CH_LABELS[k].split(' ')[0]}</div>
-        <div style="position:relative;height:8px;background:rgba(212,230,239,0.4);border-radius:4px;overflow:hidden">
-          <div style="position:absolute;left:0;top:0;height:100%;width:${cpdPct.toFixed(1)}%;background:${cpdColor};border-radius:4px;transition:width 0.8s ease"></div>
-        </div>
-        <div style="font-size:12px;font-weight:700;color:${cpdColor};text-align:right">${cpd?fmt$(Math.round(cpd)):'—'}</div>
-        <div style="position:relative;height:8px;background:rgba(212,230,239,0.4);border-radius:4px;overflow:hidden">
-          <div style="position:absolute;left:0;top:0;height:100%;width:${demoPct.toFixed(1)}%;background:${chColors[k]};border-radius:4px;opacity:0.6;transition:width 0.8s ease"></div>
-        </div>
-        <div style="font-size:12px;font-weight:700;color:var(--mid-navy);text-align:right">${fmtN(c.demos)}</div>
-      </div>`;
-  }).join('');
-
-  const effHTML = effRows ? `
-    <div style="display:grid;grid-template-columns:100px 1fr 60px 1fr 50px;gap:10px;padding-bottom:6px;margin-bottom:2px">
-      <div></div>
-      <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--soft-teal)">Cost per Demo</div>
-      <div></div>
-      <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--soft-teal)">Demo Volume</div>
-      <div></div>
-    </div>
-    ${effRows}
-    <div style="display:grid;grid-template-columns:100px 1fr 60px 1fr 50px;align-items:center;gap:10px;padding:12px 0 8px 0;border-top:2px solid var(--soft-teal);margin-top:4px">
-      <div style="font-size:12px;font-weight:700;color:var(--deep-navy)">All Channels</div>
-      <div></div>
-      <div style="font-size:13px;font-weight:700;color:var(--deep-navy);text-align:right">${totalDemos > 0 ? fmt$(Math.round(totalSpend/totalDemos)) : '—'}</div>
-      <div></div>
-      <div style="font-size:13px;font-weight:700;color:var(--mid-navy);text-align:right">${fmtN(totalDemos)}</div>
-    </div>
-    <div style="margin-top:12px;font-size:11px;color:#8a9aaa;font-style:italic">Lower CPD bar = more efficient. Longer demo bar = higher volume. ${isCustomOnly ? wLabels.custom : 'MTD'} data.</div>` : '';
-
-  const scatterSVG = effHTML;
-
-  return `
-    <div class="sl">Paid Media Summary <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">${isCustomOnly ? wLabels.custom + ' vs ' + primaryLabel : 'Month to Date vs Prior Month'}</span></div>
-    ${summaryHTML}
-
-    <div class="sl">Channel Performance <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">${isCustomOnly ? wLabels.custom + ' — with prior period deltas' : 'Month to Date — with prior month deltas'}</span></div>
-    <div class="pm-grid">${cardsHTML}</div>
-
-    <div class="charts-row" style="margin-bottom:32px">
-      <div class="chart-card">
-        <div class="chart-title">CPD by Channel &amp; Window</div>
-        <table class="cpd-table">
-          <thead><tr><th>Channel</th>${windows.map(w=>`<th>${wLabels[w]}<br><span style="font-size:9px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">+/- vs prior</span></th>`).join('')}</tr></thead>
-          <tbody>${cpdTableRows}${cpdTotalsRow}</tbody>
-        </table>
-      </div>
-      <div class="chart-card">
-        <div class="chart-title">Channel Efficiency (${isCustomOnly ? wLabels.custom : 'MTD'}) <span class="chart-title-meta">CPD vs Demo Volume</span></div>
-        ${scatterSVG}
-      </div>
-    </div>
-
-    <div class="sl">Intelligence Report <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">${isCustomOnly ? wLabels.custom + ' vs ' + primaryLabel : 'Month to Date vs Prior Month'}</span></div>
-    ${DATA.windows[primaryKey]?.intelligence ? renderIntelligence(DATA.windows[primaryKey].intelligence, primaryLabel) : '<div style="font-size:13px;color:#8a9aaa;font-style:italic">No intelligence data available.</div>'}
-  `;
-}
 
 // Init
 document.getElementById('gen-time').textContent = DATA.generatedAt;
