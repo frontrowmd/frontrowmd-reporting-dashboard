@@ -438,6 +438,7 @@
     <button class="tab active" onclick="switchTab('yesterday',this)" id="tab-btn-yesterday">Yesterday</button>
     <button class="tab" onclick="switchTab('rolling7',this)" id="tab-btn-rolling7">Last 7 Days</button>
     <button class="tab" onclick="switchTab('mtd',this)" id="tab-btn-mtd">Month to Date</button>
+    <button class="tab" onclick="switchTab('lastmonth',this)" id="tab-btn-lastmonth">Last Month</button>
     <button class="tab" onclick="switchTab('ytd',this)" id="tab-btn-ytd">Year to Date</button>
     <button class="tab" onclick="switchTab('custom',this)" id="tab-btn-custom">Custom Range</button>
   </div>
@@ -445,6 +446,7 @@
   <div id="panel-yesterday" class="panel active"></div>
   <div id="panel-rolling7"  class="panel"></div>
   <div id="panel-mtd"       class="panel"></div>
+  <div id="panel-lastmonth" class="panel"></div>
   <div id="panel-ytd"       class="panel"></div>
   <div id="panel-custom" class="panel"></div>
 
@@ -778,7 +780,7 @@ function buildSpendPacingSection(ch, pacingPct) {
 // ── Demo Quality Trend (3-window grouped bars) ─────────────────
 function buildDemoQualityChart(tabKey) {
   // In custom-only mode, show a single bar for the custom window
-  const isCustom = tabKey === 'custom' || tabKey === 'ytd' || (!DATA.windows.yesterday && DATA.windows.custom);
+  const isCustom = tabKey === 'custom' || tabKey === 'ytd' || tabKey === 'lastmonth' || (!DATA.windows.yesterday && DATA.windows.custom);
   const windows  = isCustom ? [tabKey] : ['yesterday','rolling7','mtd'];
   const wLabels  = isCustom
     ? { [tabKey]: DATA.windows[tabKey]?.label || tabKey }
@@ -1416,7 +1418,7 @@ function buildPanel(key, d) {
         <div class="sc-value">${fmt$(allSpend)}</div>
         <div class="sc-sub">All 5 channels</div>
         ${sd(allSpend, pallSpend, {invert:true})}
-        ${buildPacingBar(allSpend, totalBudget, pacingPct)}
+        ${key !== 'ytd' ? buildPacingBar(allSpend, totalBudget, key === 'lastmonth' ? 100 : pacingPct) : ''}
         ${key === 'mtd' ? buildSparkline(spendPts) : ''}
       </div>
       <div class="stat-card" style="position:relative;overflow:hidden">
@@ -1744,14 +1746,14 @@ function buildPanel(key, d) {
       </div>
     </div>
 
-    ${key === 'mtd' ? `
-    <div class="sl">Budget Pacing <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">Month to Date — all channels</span></div>
+    ${(key === 'mtd' || key === 'lastmonth') ? `
+    <div class="sl">Budget Pacing <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">${key === 'lastmonth' ? 'Last Month — all channels' : 'Month to Date — all channels'}</span></div>
     <div class="chart-card" style="margin-bottom:32px">
-      <div class="chart-title">MTD Spend vs. Monthly Budget</div>
-      ${buildSpendPacingSection(ch, pacingPct)}
+      <div class="chart-title">${key === 'lastmonth' ? 'Last Month' : 'MTD'} Spend vs. Monthly Budget</div>
+      ${buildSpendPacingSection(ch, key === 'lastmonth' ? 100 : pacingPct)}
     </div>` : ''}
 
-    ${buildPaidMediaInline(ch, pch, prevLabel)}
+    ${buildPaidMediaInline(ch, pch, prevLabel, noPrev)}
 
     <div class="sl">Demo Pipeline</div>
     <div class="charts-row">
@@ -1766,9 +1768,9 @@ function buildPanel(key, d) {
       </div>
     </div>
 
-    <div class="sl">Demo Quality Trend <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">Qualified vs. Disqualified across time windows</span></div>
+    <div class="sl">Demo Quality Trend <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">Qualified vs. Disqualified${(key === 'ytd' || key === 'lastmonth') ? '' : ' across time windows'}</span></div>
     <div class="chart-card" style="margin-bottom:32px">
-      <div class="chart-title">Demo Quality — Yesterday vs Last 7 Days vs MTD</div>
+      <div class="chart-title">Demo Quality${(key === 'ytd' || key === 'lastmonth') ? '' : ' — Yesterday vs Last 7 Days vs MTD'}</div>
       ${buildDemoQualityChart(key)}
     </div>
 
@@ -1780,7 +1782,7 @@ function buildPanel(key, d) {
 }
 
 // ── Paid Media Inline (for embedding in custom range panel) ────
-function buildPaidMediaInline(ch, pch, prevLabel) {
+function buildPaidMediaInline(ch, pch, prevLabel, noPrev) {
   const channels = ['meta','linkedin','google','tiktok','youtube'];
   const chMeta = {
     meta:     { icon: '📘', name: 'Meta / Facebook' },
@@ -1789,7 +1791,7 @@ function buildPaidMediaInline(ch, pch, prevLabel) {
     tiktok:   { icon: '🎵', name: 'TikTok' },
     youtube:  { icon: '▶️',  name: 'YouTube' },
   };
-  const db = (curr, prev, invert=false) => deltaBadge(curr, prev, { invert });
+  const db = noPrev ? () => '' : (curr, prev, invert=false) => deltaBadge(curr, prev, { invert });
 
   // Channel detail cards
   const cardsHTML = channels.map(k => {
@@ -1943,7 +1945,7 @@ function buildPaidMediaInline(ch, pch, prevLabel) {
 // Init
 document.getElementById('gen-time').textContent = DATA.generatedAt;
 document.getElementById('footer-file').textContent = DATA.filename ? `Source: ${DATA.filename}` : '';
-const WINDOW_KEYS = ['yesterday','rolling7','mtd','ytd'];
+const WINDOW_KEYS = ['yesterday','rolling7','mtd','lastmonth','ytd'];
 
 // Detect custom-only mode (generated by --custom-from/--custom-to)
 const isCustomOnly = DATA.windows.custom && !DATA.windows.yesterday;

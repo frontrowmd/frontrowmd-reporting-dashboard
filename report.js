@@ -30,25 +30,34 @@ function getWindows() {
   const prevMtdStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const prevMtdEnd   = new Date(now.getFullYear(), now.getMonth(), 0);
 
+  // Last month = full previous calendar month; its prior = the month before that
+  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastMonthEnd   = new Date(now.getFullYear(), now.getMonth(), 0);
+  const prevLMStart    = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+  const prevLMEnd      = new Date(now.getFullYear(), now.getMonth() - 1, 0);
+
   // Windsor data is capped at yesterday — labels reflect actual data window
   const fmt = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   const yestStr    = fmt(yest);
   const weekAgoStr = fmt(weekAgo);
   const mtdStartStr = fmt(mtdStart);
   const ytdStartStr = fmt(ytdStart);
+  const lmLabel     = lastMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
   return {
     current: {
-      yesterday: { from: toDateStr(yest),     to: toDateStr(yest), label: `Yesterday (${yestStr})` },
-      rolling7:  { from: toDateStr(weekAgo),  to: toDateStr(now),  label: `Last 7 Days (${weekAgoStr}–${yestStr})` },
-      mtd:       { from: toDateStr(mtdStart), to: toDateStr(now),  label: `Month to Date (${mtdStartStr}–${yestStr})` },
-      ytd:       { from: toDateStr(ytdStart), to: toDateStr(now),  label: `Year to Date (${ytdStartStr}–${yestStr})` },
+      yesterday:  { from: toDateStr(yest),           to: toDateStr(yest), label: `Yesterday (${yestStr})` },
+      rolling7:   { from: toDateStr(weekAgo),        to: toDateStr(now),  label: `Last 7 Days (${weekAgoStr}–${yestStr})` },
+      mtd:        { from: toDateStr(mtdStart),       to: toDateStr(now),  label: `Month to Date (${mtdStartStr}–${yestStr})` },
+      lastmonth:  { from: toDateStr(lastMonthStart), to: toDateStr(lastMonthEnd), label: `Last Month (${lmLabel})` },
+      ytd:        { from: toDateStr(ytdStart),       to: toDateStr(now),  label: `Year to Date (${ytdStartStr}–${yestStr})` },
     },
     previous: {
-      yesterday: { from: toDateStr(dayBefore),    to: toDateStr(dayBefore),  label: 'Day Before' },
-      rolling7:  { from: toDateStr(prev7Start),   to: toDateStr(prev7End),   label: `Prior 7 Days (${fmt(prev7Start)}–${fmt(prev7End)})` },
-      mtd:       { from: toDateStr(prevMtdStart), to: toDateStr(prevMtdEnd), label: `Prior Month (${fmt(prevMtdStart)}–${fmt(prevMtdEnd)})` },
-      ytd:       { from: toDateStr(ytdStart),     to: toDateStr(ytdStart),   label: 'N/A' },
+      yesterday:  { from: toDateStr(dayBefore),    to: toDateStr(dayBefore),  label: 'Day Before' },
+      rolling7:   { from: toDateStr(prev7Start),   to: toDateStr(prev7End),   label: `Prior 7 Days (${fmt(prev7Start)}–${fmt(prev7End)})` },
+      mtd:        { from: toDateStr(prevMtdStart), to: toDateStr(prevMtdEnd), label: `Prior Month (${fmt(prevMtdStart)}–${fmt(prevMtdEnd)})` },
+      lastmonth:  { from: toDateStr(prevLMStart),  to: toDateStr(prevLMEnd),  label: `${prevLMStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}` },
+      ytd:        { from: toDateStr(ytdStart),     to: toDateStr(ytdStart),   label: 'N/A' },
     },
   };
 }
@@ -302,7 +311,7 @@ function toMs(dateStr, endOfDay = false) {
 
 // ── HubSpot: fetch all data for the widest window, slice per sub-window ────────
 // Date dimensions:
-//   demosBooked  = contacts created in window with date_demo_booked populated (when they booked)
+//   demosBooked  = contacts with date_demo_booked in window
 //   demosToOccur = deals with date_demo_booked in window
 //   demosHappened, dealsWon, dq breakdown = deals with date_demo_booked in window (status fields)
 async function fetchAllHubSpotData(windows) {
@@ -318,20 +327,17 @@ async function fetchAllHubSpotData(windows) {
   const lteMs = toMs(latest, true);
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-  // ── 1. Fetch contacts with date_demo_booked set ─────────────────────────────
-  // We query by date_demo_booked range to limit results to demo contacts only,
-  // but SLICE by hs_createdate (when they booked, not when demo is scheduled).
-  // Extend date_demo_booked LTE by 60 days to capture contacts who booked recently
-  // but have demos scheduled in the future.
-  const extendedLteMs = String(new Date(latest + 'T23:59:59.999Z').getTime() + 60 * 86400000);
+  // ── 1. Fetch contacts with date_demo_booked in range ────────────────────────
+  // date_demo_booked is the date the demo booking was made.
+  // Query and slice both use date_demo_booked.
   const allBookedContacts = await hsSearch('contacts', {
     filterGroups: [{ filters: [
       { propertyName: 'date_demo_booked', operator: 'GTE', value: gteMs },
-      { propertyName: 'date_demo_booked', operator: 'LTE', value: extendedLteMs },
+      { propertyName: 'date_demo_booked', operator: 'LTE', value: lteMs },
     ]}],
-    properties: ['date_demo_booked', 'hs_createdate']
+    properties: ['date_demo_booked']
   });
-  console.log('  INFO allBookedContacts: ' + allBookedContacts.length + ' | range: ' + earliest + ' to ' + latest + ' (demo_booked extended +60d)');
+  console.log('  INFO allBookedContacts: ' + allBookedContacts.length + ' | range: ' + earliest + ' to ' + latest);
   await sleep(1500);
 
   // ── 3. Fetch all deals with date_demo_booked in range ────────────────────────
@@ -382,11 +388,10 @@ async function fetchAllHubSpotData(windows) {
     }
     function isoMs(str)  { return str ? new Date(str).getTime() : NaN; }
 
-    // Demos Booked: contacts created in window with date_demo_booked populated
-    const contactsBooked = allBookedContacts.filter(c => {
-      const created = c.properties?.hs_createdate ? parseInt(c.properties.hs_createdate) : NaN;
-      return inWin(created);
-    });
+    // Demos Booked: contacts with date_demo_booked falling in window
+    const contactsBooked = allBookedContacts.filter(c =>
+      inWin(dateMs(c.properties?.date_demo_booked))
+    );
 
     // All pipeline metrics: deals filtered by date_demo_booked
     // For No Show / No Showed deals that lack date_demo_booked, fall back to hs_createdate
@@ -647,7 +652,7 @@ function buildSection(label, channels, hs) {
   lines.push(`  Cost Per Demo          ${cpd(drSpend, drDemos).padStart(8)}`);
 
   lines.push('\n── DEMO PIPELINE ────────────────────────────────────────');
-  lines.push(`  Demos Booked           ${String(demosBooked).padStart(8)}  (contacts created in window with date_demo_booked set)`);
+  lines.push(`  Demos Booked           ${String(demosBooked).padStart(8)}  (contacts by date_demo_booked)`);
   lines.push(`  Demos to Occur         ${String(demosToOccur).padStart(8)}  (deals by date_demo_booked)`);
   lines.push(`  Demo Given             ${String(demosHappened).padStart(8)}  (Demo Given + Demo Given at Rescheduled time + Too Early + Not Qual After)`);
   lines.push(`  Deals Won              ${String(dealsWon).padStart(8)}  (deals by date_demo_booked, closedwon)`);
@@ -1227,8 +1232,9 @@ async function main() {
   }
 
   // Intelligence analysis (MTD vs prior month)
-  const intlCurr = { mtd: { channels: windowedChannels[2][0], ga4: windowedChannels[2][1], hs: hubspotData.mtd } };
-  const intlPrev = { mtd: { channels: prevWindowedChannels[2][0], ga4: prevWindowedChannels[2][1], hs: prevHubspotData.mtd } };
+  const mtdIdx = winKeys.indexOf('mtd');
+  const intlCurr = { mtd: { channels: windowedChannels[mtdIdx][0], ga4: windowedChannels[mtdIdx][1], hs: hubspotData.mtd } };
+  const intlPrev = { mtd: { channels: prevWindowedChannels[mtdIdx][0], ga4: prevWindowedChannels[mtdIdx][1], hs: prevHubspotData.mtd } };
   const intelligenceSection = buildIntelligence(intlCurr, intlPrev, { current: windows, previous: prevWindows });
 
   const report = buildReport(execSections, detailSections, intelligenceSection);
