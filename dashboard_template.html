@@ -1680,6 +1680,8 @@ function buildPanel(key, d) {
       ${buildSpendPacingSection(ch, pacingPct)}
     </div>` : ''}
 
+    ${key === 'custom' ? buildPaidMediaInline(ch, pch, prevLabel) : ''}
+
     <div class="sl">Demo Pipeline</div>
     <div class="charts-row">
       <div class="chart-card">
@@ -1702,6 +1704,114 @@ function buildPanel(key, d) {
     <div class="sl">Intelligence Report <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">vs ${prevLabel}</span></div>
     <div style="margin-bottom:32px">${intelHTML}</div>
   `;
+}
+
+// ── Paid Media Inline (for embedding in custom range panel) ────
+function buildPaidMediaInline(ch, pch, prevLabel) {
+  const channels = ['meta','linkedin','google','tiktok','youtube'];
+  const chMeta = {
+    meta:     { icon: '📘', name: 'Meta / Facebook' },
+    linkedin: { icon: '💼', name: 'LinkedIn' },
+    google:   { icon: '🔍', name: 'Google Ads' },
+    tiktok:   { icon: '🎵', name: 'TikTok' },
+    youtube:  { icon: '▶️',  name: 'YouTube' },
+  };
+  const db = (curr, prev, invert=false) => deltaBadge(curr, prev, { invert });
+
+  // Channel detail cards
+  const cardsHTML = channels.map(k => {
+    const c  = ch[k]  || { spend:0, demos:0, clicks:0, impressions:0, ctrAvg:null };
+    const pc = pch[k] || { spend:0, demos:0, clicks:0, impressions:0, ctrAvg:null };
+    const cpdV  = cpdNum(c.spend, c.demos);
+    const pcpdV = cpdNum(pc.spend, pc.demos);
+    const ctr   = c.ctrAvg  != null ? (c.ctrAvg * 100).toFixed(2) + '%' : '—';
+    const pctr  = pc.ctrAvg != null ? pc.ctrAvg : null;
+
+    return `
+      <div class="pm-card">
+        <div class="pm-card-header">
+          <span class="pm-card-icon">${chMeta[k].icon}</span>
+          <span class="pm-card-name">${chMeta[k].name}</span>
+        </div>
+        <div class="pm-card-spend">${fmt$(c.spend)}<span style="font-size:12px;font-weight:400;color:#8a9aaa;margin-left:6px">spend</span></div>
+        <div class="pm-card-rows">
+          <div class="pm-card-row">
+            <span class="pm-card-row-label">Demos</span>
+            <span class="pm-card-row-val">${fmtN(c.demos)} ${db(c.demos, pc.demos)}</span>
+          </div>
+          <div class="pm-card-row">
+            <span class="pm-card-row-label">CPD</span>
+            <span class="pm-card-row-val">${cpdV ? fmt$(cpdV) : '—'} ${cpdV&&pcpdV ? db(cpdV, pcpdV, true) : ''}</span>
+          </div>
+          <div class="pm-card-row">
+            <span class="pm-card-row-label">CTR</span>
+            <span class="pm-card-row-val">${ctr} ${c.ctrAvg&&pctr ? db(c.ctrAvg, pctr) : ''}</span>
+          </div>
+          <div class="pm-card-row">
+            <span class="pm-card-row-label">Clicks</span>
+            <span class="pm-card-row-val">${fmtN(c.clicks)} ${db(c.clicks, pc.clicks)}</span>
+          </div>
+          <div class="pm-card-row">
+            <span class="pm-card-row-label">Impressions</span>
+            <span class="pm-card-row-val">${fmtN(c.impressions)} ${db(c.impressions, pc.impressions)}</span>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+
+  // Channel efficiency chart
+  const totalSpend = channels.reduce((s,k) => s + (ch[k]?.spend||0), 0);
+  const totalDemos = channels.reduce((s,k) => s + (ch[k]?.demos||0), 0);
+  const effChannels = channels.filter(k => (ch[k]?.spend||0) > 0);
+  const maxCPD   = Math.max(...effChannels.filter(k=>(ch[k]?.demos||0)>0).map(k=>ch[k].spend/ch[k].demos), 1);
+  const maxDemos = Math.max(...effChannels.map(k=>ch[k]?.demos||0), 1);
+
+  const effRows = effChannels.map(k => {
+    const c   = ch[k];
+    const cpd = c.demos > 0 ? c.spend / c.demos : null;
+    const cpdPct  = cpd  ? (cpd  / maxCPD)   * 100 : 0;
+    const demoPct = maxDemos > 0 ? (c.demos / maxDemos) * 100 : 0;
+    const cpdColor= cpd && cpd > 500 ? '#C0392B' : cpd && cpd > 350 ? '#B8860B' : CH_COLORS[k];
+    return `
+      <div style="display:grid;grid-template-columns:100px 1fr 60px 1fr 50px;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--card-border)">
+        <div style="font-size:12px;font-weight:700;color:var(--deep-navy);white-space:nowrap">${CH_ICONS[k]} ${CH_LABELS[k].split(' ')[0]}</div>
+        <div style="position:relative;height:8px;background:rgba(212,230,239,0.4);border-radius:4px;overflow:hidden">
+          <div style="position:absolute;left:0;top:0;height:100%;width:${cpdPct.toFixed(1)}%;background:${cpdColor};border-radius:4px;transition:width 0.8s ease"></div>
+        </div>
+        <div style="font-size:12px;font-weight:700;color:${cpdColor};text-align:right">${cpd?fmt$(Math.round(cpd)):'—'}</div>
+        <div style="position:relative;height:8px;background:rgba(212,230,239,0.4);border-radius:4px;overflow:hidden">
+          <div style="position:absolute;left:0;top:0;height:100%;width:${demoPct.toFixed(1)}%;background:${CH_COLORS[k]};border-radius:4px;opacity:0.6;transition:width 0.8s ease"></div>
+        </div>
+        <div style="font-size:12px;font-weight:700;color:var(--mid-navy);text-align:right">${fmtN(c.demos)}</div>
+      </div>`;
+  }).join('');
+
+  const effHTML = effRows ? `
+    <div style="display:grid;grid-template-columns:100px 1fr 60px 1fr 50px;gap:10px;padding-bottom:6px;margin-bottom:2px">
+      <div></div>
+      <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--soft-teal)">Cost per Demo</div>
+      <div></div>
+      <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--soft-teal)">Demo Volume</div>
+      <div></div>
+    </div>
+    ${effRows}
+    <div style="display:grid;grid-template-columns:100px 1fr 60px 1fr 50px;align-items:center;gap:10px;padding:12px 0 8px 0;border-top:2px solid var(--soft-teal);margin-top:4px">
+      <div style="font-size:12px;font-weight:700;color:var(--deep-navy)">All Channels</div>
+      <div></div>
+      <div style="font-size:13px;font-weight:700;color:var(--deep-navy);text-align:right">${totalDemos > 0 ? fmt$(Math.round(totalSpend/totalDemos)) : '—'}</div>
+      <div></div>
+      <div style="font-size:13px;font-weight:700;color:var(--mid-navy);text-align:right">${fmtN(totalDemos)}</div>
+    </div>
+    <div style="margin-top:12px;font-size:11px;color:#8a9aaa;font-style:italic">Lower CPD bar = more efficient. Longer demo bar = higher volume.</div>` : '';
+
+  return `
+    <div class="sl">Channel Performance <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">vs ${prevLabel}</span></div>
+    <div class="pm-grid">${cardsHTML}</div>
+
+    <div class="chart-card" style="margin-bottom:32px">
+      <div class="chart-title">Channel Efficiency <span class="chart-title-meta">CPD vs Demo Volume</span></div>
+      ${effHTML}
+    </div>`;
 }
 
 // ── Paid Media Analysis Panel ──────────────────────────────────
@@ -1975,7 +2085,7 @@ const WINDOW_KEYS = ['yesterday','rolling7','mtd'];
 const isCustomOnly = DATA.windows.custom && !DATA.windows.yesterday;
 
 if (isCustomOnly) {
-  // Show only Custom Range and Paid Media Analysis tabs
+  // Show only the Custom Range tab (Paid Media is merged inline)
   document.querySelectorAll('.tab').forEach(t => t.style.display = 'none');
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
 
@@ -1988,12 +2098,7 @@ if (isCustomOnly) {
     customBtn.textContent = customLabel;
   }
 
-  // Show the paid media tab button
-  document.querySelectorAll('.tab').forEach(t => {
-    if (t.textContent.trim() === 'Paid Media Analysis') t.style.display = '';
-  });
-
-  // Build custom panel content
+  // Build custom panel content (includes Paid Media inline)
   const customPanel = document.getElementById('panel-custom');
   customPanel.classList.add('active');
   const d = DATA.windows.custom;
@@ -2006,9 +2111,6 @@ if (isCustomOnly) {
         <span style="font-size:13px;color:var(--soft-teal);font-weight:600">vs ${prevLabel}</span>
       </div>
     </div>` + buildPanel('custom', d);
-
-  // Pre-build paid media panel so it's ready when clicked
-  document.getElementById('panel-paidmedia').innerHTML = buildPaidMediaPanel();
 } else {
   // Standard mode — build all three time window panels
   WINDOW_KEYS.forEach(key => {
