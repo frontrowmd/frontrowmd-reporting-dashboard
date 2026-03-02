@@ -318,18 +318,20 @@ async function fetchAllHubSpotData(windows) {
   const lteMs = toMs(latest, true);
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-  // ── 1. Fetch contacts that booked demos (by creation date) ─────────────────
-  // Demos Booked = contacts created in range that have date_demo_booked filled in.
-  // This counts "when did they book" not "when is the demo scheduled for."
+  // ── 1. Fetch contacts with date_demo_booked set ─────────────────────────────
+  // We query by date_demo_booked range to limit results to demo contacts only,
+  // but SLICE by hs_createdate (when they booked, not when demo is scheduled).
+  // Extend date_demo_booked LTE by 60 days to capture contacts who booked recently
+  // but have demos scheduled in the future.
+  const extendedLteMs = String(new Date(latest + 'T23:59:59.999Z').getTime() + 60 * 86400000);
   const allBookedContacts = await hsSearch('contacts', {
     filterGroups: [{ filters: [
-      { propertyName: 'hs_createdate',     operator: 'GTE', value: String(gteMs) },
-      { propertyName: 'hs_createdate',     operator: 'LTE', value: String(lteMs) },
-      { propertyName: 'date_demo_booked',  operator: 'HAS_PROPERTY' },
+      { propertyName: 'date_demo_booked', operator: 'GTE', value: gteMs },
+      { propertyName: 'date_demo_booked', operator: 'LTE', value: extendedLteMs },
     ]}],
     properties: ['date_demo_booked', 'hs_createdate']
   });
-  console.log('  INFO allBookedContacts: ' + allBookedContacts.length + ' | range: ' + earliest + ' to ' + latest);
+  console.log('  INFO allBookedContacts: ' + allBookedContacts.length + ' | range: ' + earliest + ' to ' + latest + ' (demo_booked extended +60d)');
   await sleep(1500);
 
   // ── 3. Fetch all deals with date_demo_booked in range ────────────────────────
