@@ -1311,6 +1311,14 @@ async function deployToGitHub(dashPath) {
     console.log(`  ↑ committed White_Graphic_Logo.png`);
   }
 
+  // Commit the favicon if it lives in the project folder
+  const faviconPath = path.join(__dirname, 'FrontrowMD_Favicon.png');
+  if (fs.existsSync(faviconPath)) {
+    const faviconBytes = fs.readFileSync(faviconPath);
+    await upsertFile('FrontrowMD_Favicon.png', faviconBytes, `Favicon ${today}`);
+    console.log(`  ↑ committed FrontrowMD_Favicon.png`);
+  }
+
   const liveUrl = `https://${GITHUB_OWNER}.github.io/${GITHUB_REPO}/${dashName}`;
   console.log(`✅  Deployed to GitHub Pages: ${liveUrl}`);
   return liveUrl;
