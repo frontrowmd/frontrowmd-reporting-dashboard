@@ -31,7 +31,7 @@
   }
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
   body{background:var(--grad-light);color:var(--midnight);font-family:'Libre Baskerville',Georgia,serif;font-size:14px;line-height:1.65;min-height:100vh;}
-  body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;background-image:repeating-linear-gradient(45deg,transparent,transparent 20px,rgba(114,164,191,0.04) 20px,rgba(114,164,191,0.04) 22px);}
+  body::before{display:none;}
   .wrap{max-width:1360px;margin:0 auto;padding:0 40px 80px;position:relative;z-index:1;}
 
   /* HEADER */
@@ -50,7 +50,8 @@
 
   /* TABS */
   .tabs{display:flex;gap:6px;margin-bottom:36px;}
-  .tab{font-family:'Libre Baskerville',Georgia,serif;font-size:13px;padding:10px 26px;border-radius:var(--pill);cursor:pointer;border:1.5px solid var(--card-border);background:transparent;color:var(--mid-navy);transition:all 0.2s ease;}
+  .tab{font-family:'Libre Baskerville',Georgia,serif;font-size:13px;padding:10px 26px;border-radius:20px;cursor:pointer;border:1.5px solid var(--card-border);background:transparent;color:var(--mid-navy);transition:all 0.2s ease;display:inline-flex;flex-direction:column;align-items:center;line-height:1.3;}
+  .tab .tab-date{font-size:10px;font-weight:400;opacity:0.65;margin-top:1px;}
   .tab:hover{border-color:var(--soft-teal);background:var(--teal-10);}
   .tab.active{background:var(--deep-navy);color:var(--white);border-color:var(--deep-navy);font-weight:700;}
   .tab:focus{outline:2px solid var(--soft-teal);outline-offset:2px;}
@@ -324,7 +325,7 @@
 
     /* Tabs — horizontal scroll */
     .tabs { gap: 6px; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; flex-wrap: nowrap; }
-    .tab { font-size: 12px; padding: 8px 18px; white-space: nowrap; flex-shrink: 0; }
+    .tab { font-size: 12px; padding: 8px 18px; flex-shrink: 0; }
 
     /* Stat cards — 2x2 grid on tablet */
     .stat-row { grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
@@ -408,7 +409,7 @@
   /* PASSWORD GATE */
   #pw-overlay{position:fixed;inset:0;z-index:9999;background:var(--grad-light);display:flex;align-items:center;justify-content:center;transition:opacity 0.4s ease;}
   #pw-overlay.hidden{opacity:0;pointer-events:none;}
-  #pw-overlay::before{content:'';position:fixed;inset:0;pointer-events:none;background-image:repeating-linear-gradient(45deg,transparent,transparent 20px,rgba(114,164,191,0.04) 20px,rgba(114,164,191,0.04) 22px);}
+  #pw-overlay::before{display:none;}
   .pw-card{position:relative;z-index:1;background:white;border:1px solid var(--card-border);border-radius:16px;padding:48px 40px;width:100%;max-width:420px;box-shadow:0 8px 32px rgba(23,44,69,0.10);text-align:center;}
   .pw-logo{height:36px;width:auto;margin:0 auto 24px;display:block;}
   .pw-logo-fallback{font-size:18px;color:var(--deep-navy);font-weight:400;margin-bottom:24px;display:flex;align-items:center;justify-content:center;gap:8px;}
@@ -518,7 +519,7 @@ function unlockDashboard() {
   const overlay = document.getElementById('pw-overlay');
   const main    = document.getElementById('main-content');
   overlay.classList.add('hidden');
-  main.style.display = '';
+  main.style.display = 'block';
   setTimeout(() => overlay.remove(), 500);
 }
 // Auto-unlock if already authenticated this session
@@ -2048,7 +2049,15 @@ if (isCustomOnly) {
   // Standard mode — build all three time window panels
   WINDOW_KEYS.forEach(key => {
     const btn = document.getElementById('tab-btn-' + key);
-    if (btn && DATA.windows[key]?.label) btn.textContent = DATA.windows[key].label;
+    if (btn && DATA.windows[key]?.label) {
+      const label = DATA.windows[key].label;
+      const match = label.match(/^(.+?)\s*\((.+)\)$/);
+      if (match) {
+        btn.innerHTML = `${match[1]}<span class="tab-date">${match[2]}</span>`;
+      } else {
+        btn.textContent = label;
+      }
+    }
   });
 
   Object.entries(DATA.windows).forEach(([key,d]) => {
