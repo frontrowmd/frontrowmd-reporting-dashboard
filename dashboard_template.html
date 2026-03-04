@@ -165,7 +165,7 @@
   .funnel-scale-note{font-size:10px;color:#8a9aaa;font-style:italic;text-align:right;margin-bottom:8px;}
 
   /* PAID MEDIA TAB */
-  .pm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px;margin-bottom:32px;}
+  .pm-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:20px;margin-bottom:32px;}
   .pm-card{background:rgba(114,164,191,0.06);border:1px solid var(--card-border);border-radius:12px;padding:20px;transition:all 0.2s ease;}
   .pm-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(23,44,69,0.08);}
   .pm-card-header{display:flex;align-items:center;gap:10px;margin-bottom:16px;}
@@ -761,7 +761,7 @@ function buildSparkline(points, w=140, h=36, color='rgba(255,255,255,0.6)') {
 const BUDGET_BY_MONTH = {
   '2026-01': { meta: 45000, linkedin: 30000, google: 5000, tiktok: 5000,  youtube: 5000 },
   '2026-02': { meta: 70000, linkedin: 30000, google: 5000, tiktok: 10000, youtube: 5000 },
-  '2026-03': { meta: 50000, linkedin: 15000, google: 5000, tiktok: 10000, youtube: 0 },
+  '2026-03': { meta: 80000, linkedin: 20000, google: 20000, tiktok: 30000, youtube: 0 },
 };
 // Fallback: latest month's budget for any month not explicitly listed
 const BUDGET_FALLBACK = BUDGET_BY_MONTH['2026-03'];
