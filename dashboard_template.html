@@ -1583,15 +1583,24 @@ function buildPanel(key, d) {
   const pQualDemoGiven = ppp.demosToOccur > 0 ? ((ppp.demosHappened - (ppp.tooEarly||0) - (ppp.notQualAfterDemo||0)) / ppp.demosToOccur * 100) : null;
   const qualDemoStr = qualDemoGiven !== null ? qualDemoGiven.toFixed(1) + '%' : '—';
 
+  // Avg Deal Cycle Time
+  const avgCycleDays = pp.avgDealCycleDays;
+  const pAvgCycleDays = ppp.avgDealCycleDays;
+  const avgCycleStr = avgCycleDays !== null ? avgCycleDays + ' days' : '—';
+
   // KPIs with delta badges
+  const qualNumer = pp.demosHappened - (pp.tooEarly||0) - (pp.notQualAfterDemo||0);
+  const closeDenom = pp.demosHappened - (pp.notQualAfterDemo||0);
   const kpis=[
-    {label:'Demos % Paid Source', value:paidSrcStr,                      sub:'Paid ads ÷ total demos booked', cls:'kpi-navy',
+    {label:'Demos % Paid Source', value:paidSrcStr,                      sub:`${fmtN(paidDemos)} paid ÷ ${fmtN(d.demosBooked)} booked`, cls:'kpi-navy',
       delta: paidSrcPct !== null ? db(paidSrcPct, ppaidSrcPct) : ''},
     {label:'Meta CTR',           value:d.metaCTR||'N/A',                sub:'Avg across campaigns',          cls:'',
       delta: db(parsePct(d.metaCTR)||0, parsePct(p.metaCTR)||0)},
-    {label:'Qual. Demo Given %', value:qualDemoStr,                      sub:'Happened − too early − not qual', cls:'kpi-good',
+    {label:'Qual. Demo Given %', value:qualDemoStr,                      sub:`${fmtN(qualNumer)} qual ÷ ${fmtN(pp.demosToOccur)} scheduled`, cls:'kpi-good',
       delta: qualDemoGiven !== null && pQualDemoGiven !== null ? db(qualDemoGiven, pQualDemoGiven) : ''},
-    {label:'Close Rate',         value:pp.pctDemosWon,                  sub:'Demos given → closed won',      cls:'kpi-good',
+    {label:'Avg Deal Cycle',     value:avgCycleStr,                      sub:`${fmtN(pp.closedDeals)} closed deals avg`, cls:'',
+      delta: avgCycleDays !== null && pAvgCycleDays !== null ? db(avgCycleDays, pAvgCycleDays, {invert:true}) : ''},
+    {label:'Close Rate',         value:pp.pctDemosWon,                  sub:`${fmtN(pp.closedDeals)} won ÷ ${fmtN(closeDenom)} qual demos`,      cls:'kpi-good',
       delta: db(parsePct(pp.pctDemosWon)||0, parsePct(ppp.pctDemosWon)||0)},
   ];
   const kpiHTML=kpis.map(k=>`
@@ -1795,7 +1804,6 @@ function buildPanel(key, d) {
         <div class="chart-title">Ad Spend by Channel</div>
         ${spendSummaryHTML}
         <div class="donut-wrap">${donutSVG}<div class="donut-legend">${legendHTML}</div></div>
-        <div class="bar-chart">${barsHTML}</div>
       </div>
       <div class="chart-card">
         <div class="chart-title">Cost Per Demo by Channel ${vsLabel ? `<span class="chart-title-meta">${vsLabel}</span>` : ''}</div>
@@ -1996,16 +2004,8 @@ function buildPaidMediaInline(ch, pch, prevLabel, noPrev) {
     <div style="margin-top:12px;font-size:11px;color:#8a9aaa;font-style:italic">Lower CPD bar = more efficient. Longer demo bar = higher volume.</div>` : '';
 
   return `
-    <div class="sl">Paid Media Summary ${prevLabel ? `<span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">vs ${prevLabel}</span>` : ''}</div>
-    ${summaryHTML}
-
     <div class="sl">Channel Performance ${prevLabel ? `<span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">vs ${prevLabel}</span>` : ''}</div>
-    <div class="pm-grid">${cardsHTML}</div>
-
-    <div class="chart-card" style="margin-bottom:32px">
-      <div class="chart-title">Channel Efficiency <span class="chart-title-meta">CPD vs Demo Volume</span></div>
-      ${effHTML}
-    </div>`;
+    <div class="pm-grid">${cardsHTML}</div>`;
 }
 
 

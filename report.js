@@ -458,6 +458,19 @@ async function fetchAllHubSpotData(windows) {
     const denom = demoGivenCount - notQualAfterDemoCount;
     const pctDemosWon = denom > 0 ? ((closedDeals / denom) * 100).toFixed(1) + '%' : 'N/A';
 
+    // Avg deal cycle time: closedate minus createdate for closed-won deals
+    const cycleDays = closedWon
+      .map(d => {
+        const close = d.properties?.closedate ? parseInt(d.properties.closedate) : NaN;
+        const create = d.properties?.hs_createdate ? parseInt(d.properties.hs_createdate) : NaN;
+        if (isNaN(close) || isNaN(create) || close <= create) return null;
+        return (close - create) / (1000 * 60 * 60 * 24);
+      })
+      .filter(v => v !== null);
+    const avgDealCycleDays = cycleDays.length > 0
+      ? Math.round(cycleDays.reduce((s, v) => s + v, 0) / cycleDays.length)
+      : null;
+
     result[key] = {
       demosBooked:           contactsBooked.length,
       demosToOccur,
@@ -471,6 +484,7 @@ async function fetchAllHubSpotData(windows) {
       canceled,
       blankStatus,
       closedDeals,
+      avgDealCycleDays,
       newMRR: closedWon.reduce((s, d) => s + (parseFloat(d.properties?.amount) || 0), 0),
     };
   }
@@ -680,10 +694,10 @@ function buildDashboard(windowedChannels, hubspotData, prevWindowedChannels, pre
 
   function buildWin(channels, ga4, hs, ga4Sources, ga4PrevSources) {
     const { demosBooked, demosToOccur, demosHappened, dealsWon, pctDemosWon,
-            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, rescheduled, canceled, blankStatus, closedDeals, newMRR } = hs;
+            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays, newMRR } = hs;
     const pipeline = { demosToOccur, demosHappened, dealsWon, pctDemosWon,
                        notQualAfterDemo, disqualifiedBeforeDemo, tooEarly,
-                       rescheduled, canceled, blankStatus, closedDeals };
+                       rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays };
     const metaCTR  = channels.meta.ctrAvg != null
       ? (channels.meta.ctrAvg * 100).toFixed(2) + '%' : null;
     return { channels, ga4, demosBooked, pipeline, newMRR, metaCTR,
