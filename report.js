@@ -371,7 +371,7 @@ async function fetchAllHubSpotData(windows) {
       { propertyName: 'closedate', operator: 'GTE', value: gteMs },
       { propertyName: 'closedate', operator: 'LTE', value: lteMs },
     ]}],
-    properties: ['amount', 'closedate']
+    properties: ['amount', 'closedate', 'hs_createdate']
   });
 
   // ── Slice per window ──────────────────────────────────────────────────────
@@ -461,8 +461,8 @@ async function fetchAllHubSpotData(windows) {
     // Avg deal cycle time: closedate minus createdate for closed-won deals
     const cycleDays = closedWon
       .map(d => {
-        const close = d.properties?.closedate ? parseInt(d.properties.closedate) : NaN;
-        const create = d.properties?.hs_createdate ? parseInt(d.properties.hs_createdate) : NaN;
+        const close = isoMs(d.properties?.closedate);
+        const create = isoMs(d.properties?.hs_createdate);
         if (isNaN(close) || isNaN(create) || close <= create) return null;
         return (close - create) / (1000 * 60 * 60 * 24);
       })
