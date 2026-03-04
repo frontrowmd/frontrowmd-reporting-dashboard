@@ -1,5 +1,6 @@
 require('dotenv').config();
 const fetch = (...args) => import('node-fetch').then(({default: f}) => f(...args));
+process.env.TZ = 'America/New_York';
 const fs = require('fs');
 
 const WINDSOR_KEY    = process.env.WINDSOR_API_KEY;
@@ -715,6 +716,8 @@ function buildDashboard(windowedChannels, hubspotData, prevWindowedChannels, pre
     dashWindows[key] = {
       ...buildWin(channels, ga4, hubspotData[key], ga4Src, ga4PSrc),
       label: windows[key].label,
+      from: windows[key].from,
+      to: windows[key].to,
       prev: buildWin(prevChannels, prevGa4, prevHubspotData[key], ga4PSrc, []),
       prevLabel: prevWindows[key].label,
       noPrev: key === 'ytd',
@@ -1459,10 +1462,10 @@ async function fetchCustomWindow(from, to) {
 
   function buildWin(ch, g4, h, ga4Sources, ga4PrevSources) {
     const { demosBooked, demosToOccur, demosHappened, dealsWon, pctDemosWon,
-            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, rescheduled, canceled, blankStatus, closedDeals, newMRR } = h;
+            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays, newMRR } = h;
     const pipeline = { demosToOccur, demosHappened, dealsWon, pctDemosWon,
                        notQualAfterDemo, disqualifiedBeforeDemo, tooEarly,
-                       rescheduled, canceled, blankStatus, closedDeals };
+                       rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays };
     const metaCTR  = ch.meta.ctrAvg != null
       ? (ch.meta.ctrAvg * 100).toFixed(2) + '%' : null;
     return { channels: ch, ga4: g4, demosBooked, pipeline, newMRR, metaCTR,
@@ -1477,6 +1480,8 @@ async function fetchCustomWindow(from, to) {
     ...current,
     prev: previous,
     prevLabel,
+    from,
+    to,
     dateFrom: from,
     dateTo: to,
     label,

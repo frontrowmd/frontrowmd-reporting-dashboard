@@ -757,14 +757,21 @@ function buildSparkline(points, w=140, h=36, color='rgba(255,255,255,0.6)') {
 }
 
 // ── Budget Pacing ──────────────────────────────────────────────
-// Monthly budget targets — update these when budgets change
-const MONTHLY_BUDGETS = {
-  meta:     60000,
-  linkedin: 35000,
-  google:    5000,
-  tiktok:    5000,
-  youtube:   5000,
+// Monthly budget targets by month — update when budgets change
+const BUDGET_BY_MONTH = {
+  '2026-01': { meta: 45000, linkedin: 30000, google: 5000, tiktok: 5000,  youtube: 5000 },
+  '2026-02': { meta: 70000, linkedin: 30000, google: 5000, tiktok: 10000, youtube: 5000 },
+  '2026-03': { meta: 50000, linkedin: 15000, google: 5000, tiktok: 10000, youtube: 0 },
 };
+// Fallback: latest month's budget for any month not explicitly listed
+const BUDGET_FALLBACK = BUDGET_BY_MONTH['2026-03'];
+
+function getBudgetsForMonth(dateStr) {
+  // dateStr like '2026-03-01' or key like 'mtd'/'lastmonth'
+  if (!dateStr) return BUDGET_FALLBACK;
+  const ym = dateStr.slice(0, 7); // '2026-03'
+  return BUDGET_BY_MONTH[ym] || BUDGET_FALLBACK;
+}
 
 function buildPacingBar(spendMTD, monthlyBudget, pacingPct) {
   if (!monthlyBudget) return '';
@@ -784,7 +791,8 @@ function buildPacingBar(spendMTD, monthlyBudget, pacingPct) {
 }
 
 // ── Spend Pacing by Channel (MTD only) ────────────────────────
-function buildSpendPacingSection(ch, pacingPct) {
+function buildSpendPacingSection(ch, pacingPct, monthBudgets) {
+  const MONTHLY_BUDGETS = monthBudgets;
   const chOrder = ['meta','linkedin','tiktok','google','youtube'];
   const names   = {meta:'Meta',linkedin:'LinkedIn',tiktok:'TikTok',google:'Google Ads',youtube:'YouTube'};
   const colors  = {meta:'#4d8aaa',linkedin:'#172C45',tiktok:'#72A4BF',google:'#9bbfd4',youtube:'#bfd0da'};
@@ -1460,9 +1468,10 @@ function buildPanel(key, d) {
   const daysInMonth = new Date(today.getFullYear(), today.getMonth()+1, 0).getDate();
   const dayOfMonth  = today.getDate() - 1; // completed days (yesterday)
   const pacingPct   = (dayOfMonth / daysInMonth) * 100;
-  const totalBudget = Object.values(MONTHLY_BUDGETS).reduce((s,v)=>s+v,0);
-  const drBudget    = MONTHLY_BUDGETS.meta + MONTHLY_BUDGETS.google + MONTHLY_BUDGETS.tiktok;
-  const totalMTDSpend = Object.keys(MONTHLY_BUDGETS).reduce((s,k) => s + (ch[k]?.spend||0), 0);
+  const totalBudget = Object.values(getBudgetsForMonth(d.from)).reduce((s,v)=>s+v,0);
+  const MONTHLY_BUDGETS_THIS = getBudgetsForMonth(d.from);
+  const drBudget    = MONTHLY_BUDGETS_THIS.meta + MONTHLY_BUDGETS_THIS.google + MONTHLY_BUDGETS_THIS.tiktok;
+  const totalMTDSpend = Object.keys(MONTHLY_BUDGETS_THIS).reduce((s,k) => s + (ch[k]?.spend||0), 0);
 
   const statHTML=`
     <div class="stat-row">
@@ -1826,7 +1835,7 @@ function buildPanel(key, d) {
     <div class="sl">Budget Pacing <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">${key === 'lastmonth' ? 'Last Month — all channels' : 'Month to Date — all channels'}</span></div>
     <div class="chart-card" style="margin-bottom:32px">
       <div class="chart-title">${key === 'lastmonth' ? 'Last Month' : 'MTD'} Spend vs. Monthly Budget</div>
-      ${buildSpendPacingSection(ch, key === 'lastmonth' ? 100 : pacingPct)}
+      ${buildSpendPacingSection(ch, key === 'lastmonth' ? 100 : pacingPct, getBudgetsForMonth(d.from))}
     </div>` : ''}
 
     ${buildPaidMediaInline(ch, pch, prevLabel, noPrev)}
