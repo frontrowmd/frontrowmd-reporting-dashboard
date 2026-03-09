@@ -160,9 +160,6 @@
   .funnel-drop{display:flex;align-items:center;justify-content:center;gap:8px;padding:2px 0;position:relative;width:100%;}
   .funnel-drop-line{width:1px;height:14px;background:rgba(114,164,191,0.3);}
   .funnel-drop-badge{font-size:10px;font-weight:700;color:var(--soft-teal);background:rgba(114,164,191,0.08);border-radius:50px;padding:2px 10px;border:1px solid rgba(114,164,191,0.15);}
-  .funnel-side{position:absolute;top:50%;transform:translateY(-50%);font-size:12px;display:flex;flex-direction:column;align-items:flex-start;gap:2px;}
-  .funnel-side-left{right:calc(100% + 12px);align-items:flex-end;}
-  .funnel-side-right{left:calc(100% + 12px);}
   .funnel-cvr-val{font-size:12px;font-weight:700;color:var(--deep-navy);}
   .funnel-cvr-lbl{font-size:9px;color:#8a9aaa;font-style:italic;}
   .funnel-scale-note{font-size:10px;color:#8a9aaa;font-style:italic;text-align:center;margin-bottom:10px;}
@@ -403,7 +400,6 @@
     .pm-summary-row { grid-template-columns: 1fr; }
     .tab { font-size: 11px; padding: 7px 14px; }
     .wf-value { font-size: 22px; }
-    .funnel-side{display:none;}
     .funnel-bar-wrap{min-width:90%!important;}
 
     /* Demo quality / pacing: allow horizontal scroll on tiny screens */
@@ -1056,87 +1052,81 @@ function buildOwnerBreakdownTable(pp) {
   const owners = pp.ownerBreakdown || [];
   if (!owners.length) return '';
 
-  const statusCols = [
-    { key: 'demoGiven',  label: 'Qual. Demo Given', color: '#1D4053' },
-    { key: 'tooEarly',   label: 'Too Early',        color: '#aab8c2' },
-    { key: 'notQual',    label: 'Not Qual',         color: '#C0392B' },
-    { key: 'disqBefore', label: 'Disq. Before',     color: '#B8860B' },
-    { key: 'rescheduled',label: 'Rescheduled',       color: '#9b7fd4' },
-    { key: 'canceled',   label: 'Canceled',          color: '#d47f7f' },
-    { key: 'closedWon',  label: 'Closed Won',        color: '#172C45' },
-  ];
+  const stackColors = {
+    demoGiven:   '#1D4053',
+    tooEarly:    '#aab8c2',
+    notQual:     '#C0392B',
+    disqBefore:  '#B8860B',
+    rescheduled: '#9b7fd4',
+    canceled:    '#d47f7f',
+    blank:       '#c0c8d0'
+  };
+  const stackLabels = {
+    demoGiven:   'Qual. Demo Given',
+    tooEarly:    'Too Early',
+    notQual:     'Not Qualified After Demo',
+    disqBefore:  'Disq. Before Demo',
+    rescheduled: 'Rescheduled',
+    canceled:    'Canceled',
+    blank:       'Blank'
+  };
+  const stackKeys = ['demoGiven','tooEarly','notQual','disqBefore','rescheduled','canceled','blank'];
 
-  const thStyle = 'padding:8px 12px;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--white);text-align:center';
+  const pctFmt = (n, d) => d > 0 ? Math.round(n / d * 100) + '%' : '—';
 
-  const rows = owners.map((o, i) => {
-    const total = o.demoGiven + o.tooEarly + o.notQual + o.disqBefore + o.rescheduled + o.canceled + o.blank;
+  // Find max total across all owners for consistent bar scale
+  const maxVal = Math.max(...owners.map(o => {
+    return stackKeys.reduce((s, k) => s + (o[k] || 0), 0);
+  }), 1);
+
+  const bars = owners.map(o => {
+    const total = stackKeys.reduce((s, k) => s + (o[k] || 0), 0);
     if (total === 0) return '';
-    const rowBg = i % 2 === 0 ? 'rgba(212,230,239,0.12)' : 'transparent';
-    const qualRate = total > 0 ? ((o.demoGiven / total) * 100).toFixed(0) : 0;
 
-    const cells = statusCols.map(col => {
-      const val = o[col.key] || 0;
-      const pct = total > 0 ? ((val / total) * 100).toFixed(0) : 0;
-      if (val === 0) return `<td style="padding:8px 12px;text-align:center;font-size:11px;color:#c0c8d0">—</td>`;
-      return `<td style="padding:8px 12px;text-align:center">
-        <span style="font-size:13px;font-weight:700;color:${col.color}">${val}</span>
-        <span style="font-size:10px;color:#8a9aaa;margin-left:2px">(${pct}%)</span>
-      </td>`;
+    const qualPct = total > 0 ? Math.round(o.demoGiven / total * 100) : 0;
+
+    let offsetPct = 0;
+    const segments = stackKeys.map(k => {
+      if ((o[k] || 0) === 0) return '';
+      const segWidthPct = (o[k] / maxVal * 100);
+      const segLeft = offsetPct;
+      offsetPct += segWidthPct;
+      const showInline = segWidthPct > 6;
+      const countLabel = showInline
+        ? `<div style="position:absolute;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:rgba(255,255,255,0.92);pointer-events:none;white-space:nowrap">${o[k]}</div>`
+        : '';
+      return `<div style="position:absolute;left:${segLeft.toFixed(2)}%;width:${segWidthPct.toFixed(2)}%;height:100%;background:${stackColors[k]};transition:width 0.8s ease${k === 'blank' ? ';opacity:0.5' : ''}" title="${stackLabels[k]}: ${o[k]}">${countLabel}</div>`;
     }).join('');
 
-    return `<tr style="background:${rowBg}">
-      <td style="padding:8px 12px;font-weight:600;color:var(--deep-navy);font-size:12px;white-space:nowrap">${o.name}</td>
-      <td style="padding:8px 12px;text-align:center;font-size:13px;font-weight:700;color:var(--mid-navy)">${total}</td>
-      ${cells}
-      <td style="padding:8px 12px;text-align:center">
-        <div style="display:flex;align-items:center;gap:4px;justify-content:center">
-          <div style="width:40px;height:4px;background:rgba(0,0,0,0.06);border-radius:2px;overflow:hidden"><div style="height:100%;width:${qualRate}%;background:#1D4053;border-radius:2px"></div></div>
-          <span style="font-size:11px;font-weight:700;color:var(--deep-navy)">${qualRate}%</span>
+    const pills = stackKeys
+      .filter(k => (o[k] || 0) > 0)
+      .map(k => {
+        const pct = pctFmt(o[k], total);
+        return `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:${stackColors[k]};font-weight:700;background:${stackColors[k]}18;border-radius:4px;padding:2px 7px${k === 'blank' ? ';opacity:0.75' : ''}">
+          <span style="width:7px;height:7px;border-radius:50%;background:${stackColors[k]};display:inline-block;flex-shrink:0"></span>
+          ${stackLabels[k]}: <strong>${o[k]}</strong> <span style="font-weight:400;color:#8a9aaa">(${pct})</span></span>`;
+      }).join('');
+
+    return `
+      <div style="padding:10px 0;border-bottom:1px solid var(--card-border)">
+        <div style="display:grid;grid-template-columns:110px 1fr 70px;align-items:center;gap:12px;margin-bottom:8px">
+          <div style="font-size:12px;font-weight:700;color:var(--deep-navy)">${o.name}</div>
+          <div style="position:relative;height:22px;background:rgba(212,230,239,0.35);border-radius:4px;overflow:hidden">${segments}</div>
+          <div style="font-size:13px;font-weight:700;color:#1D4053;text-align:right">${qualPct}%<span style="font-size:10px;font-weight:400;color:#8a9aaa;display:block;text-align:right">qual</span></div>
         </div>
-      </td>
-    </tr>`;
+        <div style="padding-left:122px;display:flex;gap:6px;flex-wrap:wrap">${pills}</div>
+      </div>`;
   }).join('');
 
-  // Totals
-  const totals = owners.reduce((t, o) => {
-    statusCols.forEach(c => { t[c.key] = (t[c.key] || 0) + (o[c.key] || 0); });
-    t.total += o.demoGiven + o.tooEarly + o.notQual + o.disqBefore + o.rescheduled + o.canceled + o.blank;
-    return t;
-  }, { total: 0 });
-  const totalQualRate = totals.total > 0 ? ((totals.demoGiven / totals.total) * 100).toFixed(0) : 0;
-
-  const totalCells = statusCols.map(col => {
-    const val = totals[col.key] || 0;
-    const pct = totals.total > 0 ? ((val / totals.total) * 100).toFixed(0) : 0;
-    return `<td style="padding:8px 12px;text-align:center;font-weight:700;font-size:12px;color:${col.color}">${val} <span style="font-size:10px;color:#8a9aaa;font-weight:400">(${pct}%)</span></td>`;
-  }).join('');
+  const legend = stackKeys.map(k => `
+    <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--mid-navy)${k === 'blank' ? ';opacity:0.7' : ''}">
+      <span style="width:10px;height:10px;border-radius:2px;background:${stackColors[k]};display:inline-block;flex-shrink:0${k === 'blank' ? ';opacity:0.5' : ''}"></span>
+      ${stackLabels[k]}</span>`).join('');
 
   return `
-    <table style="width:100%;border-collapse:separate;border-spacing:0;font-family:'Inter',system-ui,sans-serif;border-radius:8px;overflow:hidden;border:1px solid var(--card-border)">
-      <thead>
-        <tr style="background:var(--deep-navy)">
-          <th style="${thStyle};text-align:left;border-radius:8px 0 0 0">Deal Owner</th>
-          <th style="${thStyle}">Total</th>
-          ${statusCols.map(c => `<th style="${thStyle}">${c.label}</th>`).join('')}
-          <th style="${thStyle};border-radius:0 8px 0 0">Qual %</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-      <tfoot>
-        <tr style="background:rgba(23,44,69,0.05);border-top:2px solid var(--soft-teal)">
-          <td style="padding:8px 12px;font-weight:700;font-size:12px;color:var(--deep-navy)">All Owners</td>
-          <td style="padding:8px 12px;text-align:center;font-weight:700;font-size:12px;color:var(--mid-navy)">${totals.total}</td>
-          ${totalCells}
-          <td style="padding:8px 12px;text-align:center">
-            <div style="display:flex;align-items:center;gap:4px;justify-content:center">
-              <div style="width:40px;height:4px;background:rgba(0,0,0,0.06);border-radius:2px;overflow:hidden"><div style="height:100%;width:${totalQualRate}%;background:#1D4053;border-radius:2px"></div></div>
-              <span style="font-size:11px;font-weight:700;color:var(--deep-navy)">${totalQualRate}%</span>
-            </div>
-          </td>
-        </tr>
-      </tfoot>
-    </table>
-    <div style="margin-top:10px;font-size:10px;color:#8a9aaa;font-style:italic">Breakdown by HubSpot deal owner. Qual % = Qualified Demo Given ÷ Total Demos assigned to that owner.</div>`;
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px">${legend}</div>
+    ${bars}
+    <div style="margin-top:10px;font-size:10px;color:#8a9aaa;font-style:italic">Breakdown by HubSpot deal owner. Qual % = Qualified Demo Given ÷ Total Demos assigned to that owner. Blank = demo_given__status not set.</div>`;
 }
 
 const fmt$ = n => '$' + Number(n).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,',');
@@ -1897,14 +1887,10 @@ function buildPanel(key, d) {
   const funnelHTML = '<div class="funnel-scale-note">Bar width proportional (log scale) — labels show exact values</div>'
     + fSteps.map((s,i) => {
     const pct = logPct(s.val);
-    const dbVal  = db(s.val, s.prev);
-    const stepCVR = i > 0 && fSteps[i-1].val > 0
-      ? (s.val / fSteps[i-1].val * 100).toFixed(1) + '%'
-      : null;
-    const dropHTML = i < fSteps.length - 1 ? `
+    const dropHTML = i < fSteps.length - 1 && fSteps[i].val > 0 ? `
       <div class="funnel-drop">
         <div class="funnel-drop-line"></div>
-        ${fSteps[i].val > 0 ? `<span class="funnel-drop-badge">${(fSteps[i+1].val/fSteps[i].val*100).toFixed(1)}%</span>` : ''}
+        <span class="funnel-drop-badge">${(fSteps[i+1].val/fSteps[i].val*100).toFixed(1)}%</span>
         <div class="funnel-drop-line"></div>
       </div>` : '';
     return `
@@ -1914,11 +1900,6 @@ function buildPanel(key, d) {
             <span class="funnel-bar-name">${s.name}</span>
             <span class="funnel-bar-val">${fmtN(s.val)}</span>
           </div>
-          ${i > 0 ? `<div class="funnel-side funnel-side-right">
-            <span class="funnel-cvr-val">${stepCVR || '—'}</span>
-            <span class="funnel-cvr-lbl">from prev.</span>
-            ${dbVal}
-          </div>` : `<div class="funnel-side funnel-side-right">${dbVal}</div>`}
         </div>
       </div>
       ${dropHTML}`;
