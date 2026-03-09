@@ -312,6 +312,25 @@ function toMs(dateStr, endOfDay = false) {
 
 // ── HubSpot: fetch all data for the widest window, slice per sub-window ────────
 // Date dimensions:
+// ── HubSpot Owners lookup ─────────────────────────────────────────────────────
+async function fetchHubSpotOwners() {
+  const owners = {};
+  let after = '';
+  for (let page = 0; page < 10; page++) {
+    const url = `https://api.hubapi.com/crm/v3/owners?limit=100${after ? '&after=' + after : ''}`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${HUBSPOT_TOKEN}` } });
+    if (!res.ok) { console.warn('  WARN owners fetch:', res.status); break; }
+    const data = await res.json();
+    for (const o of (data.results || [])) {
+      const name = [o.firstName, o.lastName].filter(Boolean).join(' ') || o.email || o.id;
+      owners[o.id] = name;
+    }
+    if (data.paging?.next?.after) { after = data.paging.next.after; } else break;
+  }
+  console.log(`  INFO owners fetched: ${Object.keys(owners).length}`);
+  return owners;
+}
+
 //   demosBooked  = contacts with date_demo_booked in window
 //   demosToOccur = deals with date_demo_booked in window
 //   demosHappened, dealsWon, dq breakdown = deals with date_demo_booked in window (status fields)
@@ -357,7 +376,7 @@ async function fetchAllHubSpotData(windows) {
         { propertyName: 'hs_createdate',      operator: 'LTE', value: String(lteMs) },
       ]},
     ],
-    properties: ['date_demo_booked', 'demo_given_date', 'demo_given__status', 'dealstage', 'amount', 'closedate', 'hs_createdate']
+    properties: ['date_demo_booked', 'demo_given_date', 'demo_given__status', 'dealstage', 'amount', 'closedate', 'hs_createdate', 'hubspot_owner_id']
   });
   // Dedup in case a deal matched both filterGroups (has date_demo_booked AND is No Show)
   const allDealsMap = new Map(allDeals.map(d => [d.id, d]));
@@ -374,6 +393,9 @@ async function fetchAllHubSpotData(windows) {
     ]}],
     properties: ['amount', 'closedate', 'hs_createdate']
   });
+
+  // ── Fetch owner names ─────────────────────────────────────────────────────
+  const ownerNames = await fetchHubSpotOwners();
 
   // ── Slice per window ──────────────────────────────────────────────────────
   const result = {};
@@ -472,6 +494,30 @@ async function fetchAllHubSpotData(windows) {
       ? Math.round(cycleDays.reduce((s, v) => s + v, 0) / cycleDays.length)
       : null;
 
+    // ── Owner breakdown: group deals by hubspot_owner_id ──────────────────
+    const ownerMap = {};
+    for (const deal of deals) {
+      const ownerId = deal.properties?.hubspot_owner_id || 'unassigned';
+      const name = ownerId === 'unassigned' ? 'Unassigned' : (ownerNames[ownerId] || `Owner ${ownerId}`);
+      if (!ownerMap[ownerId]) {
+        ownerMap[ownerId] = { name, demoGiven: 0, tooEarly: 0, notQual: 0, disqBefore: 0, rescheduled: 0, canceled: 0, blank: 0, closedWon: 0 };
+      }
+      const o = ownerMap[ownerId];
+      const rawStatus = (deal.properties?.demo_given__status || '').trim();
+      const stage = (deal.properties?.dealstage || '').toLowerCase();
+      if (rawStatus === 'Demo Given' || rawStatus === 'Demo Given at Rescheduled time') {
+        o.demoGiven++;
+        if (stage === 'closedwon') o.closedWon++;
+      } else if (rawStatus === 'Demo Given, Qualified Company, too early') { o.tooEarly++;
+      } else if (rawStatus === 'Not Qualified after the demo') { o.notQual++;
+      } else if (rawStatus === 'Disqualified, Meeting Cancelled') { o.disqBefore++;
+      } else if (rawStatus === 'No Show') { o.rescheduled++;
+      } else if (rawStatus === 'No Showed') { o.canceled++;
+      } else { o.blank++; }
+    }
+    const ownerBreakdown = Object.values(ownerMap)
+      .sort((a, b) => (b.demoGiven + b.tooEarly + b.notQual + b.disqBefore + b.rescheduled + b.canceled + b.blank) - (a.demoGiven + a.tooEarly + a.notQual + a.disqBefore + a.rescheduled + a.canceled + a.blank));
+
     result[key] = {
       demosBooked:           contactsBooked.length,
       demosToOccur,
@@ -486,6 +532,7 @@ async function fetchAllHubSpotData(windows) {
       blankStatus,
       closedDeals,
       avgDealCycleDays,
+      ownerBreakdown,
       newMRR: closedWon.reduce((s, d) => s + (parseFloat(d.properties?.amount) || 0), 0),
     };
   }
@@ -803,10 +850,10 @@ function buildDashboard(windowedChannels, hubspotData, prevWindowedChannels, pre
 
   function buildWin(channels, ga4, hs, ga4Sources, ga4PrevSources) {
     const { demosBooked, demosToOccur, demosHappened, dealsWon, pctDemosWon,
-            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays, newMRR } = hs;
+            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays, ownerBreakdown, newMRR } = hs;
     const pipeline = { demosToOccur, demosHappened, dealsWon, pctDemosWon,
                        notQualAfterDemo, disqualifiedBeforeDemo, tooEarly,
-                       rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays };
+                       rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays, ownerBreakdown: ownerBreakdown || [] };
     const metaCTR  = channels.meta.ctrAvg != null
       ? (channels.meta.ctrAvg * 100).toFixed(2) + '%' : null;
     return { channels, ga4, demosBooked, pipeline, newMRR, metaCTR,
@@ -1571,10 +1618,10 @@ async function fetchCustomWindow(from, to) {
 
   function buildWin(ch, g4, h, ga4Sources, ga4PrevSources) {
     const { demosBooked, demosToOccur, demosHappened, dealsWon, pctDemosWon,
-            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays, newMRR } = h;
+            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays, ownerBreakdown, newMRR } = h;
     const pipeline = { demosToOccur, demosHappened, dealsWon, pctDemosWon,
                        notQualAfterDemo, disqualifiedBeforeDemo, tooEarly,
-                       rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays };
+                       rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays, ownerBreakdown: ownerBreakdown || [] };
     const metaCTR  = ch.meta.ctrAvg != null
       ? (ch.meta.ctrAvg * 100).toFixed(2) + '%' : null;
     return { channels: ch, ga4: g4, demosBooked, pipeline, newMRR, metaCTR,
