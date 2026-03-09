@@ -1112,7 +1112,7 @@ function buildOwnerBreakdownTable(pp) {
         <div style="display:grid;grid-template-columns:110px 1fr 70px;align-items:center;gap:12px;margin-bottom:8px">
           <div style="font-size:12px;font-weight:700;color:var(--deep-navy)">${o.name}</div>
           <div style="position:relative;height:22px;background:rgba(212,230,239,0.35);border-radius:4px;overflow:hidden">${segments}</div>
-          <div style="font-size:13px;font-weight:700;color:#1D4053;text-align:right">${qualPct}%<span style="font-size:10px;font-weight:400;color:#8a9aaa;display:block;text-align:right">qual</span></div>
+          <div style="text-align:right"><span style="font-size:14px;font-weight:700;color:var(--deep-navy)">${total}</span><span style="font-size:10px;font-weight:400;color:#8a9aaa;display:block">deals</span><span style="font-size:12px;font-weight:700;color:#1D4053">${qualPct}%</span><span style="font-size:10px;font-weight:400;color:#8a9aaa"> qual</span></div>
         </div>
         <div style="padding-left:122px;display:flex;gap:6px;flex-wrap:wrap">${pills}</div>
       </div>`;
@@ -1887,6 +1887,7 @@ function buildPanel(key, d) {
   const funnelHTML = '<div class="funnel-scale-note">Bar width proportional (log scale) — labels show exact values</div>'
     + fSteps.map((s,i) => {
     const pct = logPct(s.val);
+    const dbVal = db(s.val, s.prev);
     const dropHTML = i < fSteps.length - 1 && fSteps[i].val > 0 ? `
       <div class="funnel-drop">
         <div class="funnel-drop-line"></div>
@@ -1901,6 +1902,7 @@ function buildPanel(key, d) {
             <span class="funnel-bar-val">${fmtN(s.val)}</span>
           </div>
         </div>
+        ${dbVal ? `<div style="margin-top:2px;text-align:center">${dbVal}</div>` : ''}
       </div>
       ${dropHTML}`;
   }).join('');
