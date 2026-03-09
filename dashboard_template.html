@@ -761,7 +761,7 @@ function buildSparkline(points, w=140, h=36, color='rgba(255,255,255,0.6)') {
 const BUDGET_BY_MONTH = {
   '2026-01': { meta: 45000, linkedin: 30000, google: 5000, tiktok: 5000,  youtube: 5000 },
   '2026-02': { meta: 70000, linkedin: 30000, google: 5000, tiktok: 10000, youtube: 5000 },
-  '2026-03': { meta: 80000, linkedin: 20000, google: 20000, tiktok: 30000, youtube: 0 },
+  '2026-03': { meta: 100000, linkedin: 20000, google: 0, tiktok: 30000, youtube: 0 },
 };
 // Fallback: latest month's budget for any month not explicitly listed
 const BUDGET_FALLBACK = BUDGET_BY_MONTH['2026-03'];
@@ -857,10 +857,10 @@ function buildSpendPacingSection(ch, pacingPct, monthBudgets) {
 function buildDemoQualityChart(tabKey) {
   // In custom-only mode, show a single bar for the custom window
   const isCustom = tabKey === 'custom' || tabKey === 'ytd' || tabKey === 'lastmonth' || (!DATA.windows.yesterday && DATA.windows.custom);
-  const windows  = isCustom ? [tabKey] : ['yesterday','rolling7','mtd'];
+  const windows  = isCustom ? [tabKey] : ['yesterday','rolling7','mtd','lastmonth'];
   const wLabels  = isCustom
     ? { [tabKey]: DATA.windows[tabKey]?.label || tabKey }
-    : { yesterday:'Yesterday', rolling7:'Last 7 Days', mtd:'Month to Date' };
+    : { yesterday:'Yesterday', rolling7:'Last 7 Days', mtd:'Month to Date', lastmonth:'Last Month' };
 
   const winData = windows.map(w => {
     const pp = DATA.windows[w]?.pipeline || {};
@@ -1855,7 +1855,7 @@ function buildPanel(key, d) {
 
     <div class="sl">Demo Quality Trend <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">Qualified vs. Disqualified${(key === 'ytd' || key === 'lastmonth') ? '' : ' across time windows'}</span></div>
     <div class="chart-card" style="margin-bottom:32px">
-      <div class="chart-title">Demo Quality${(key === 'ytd' || key === 'lastmonth') ? '' : ' — Yesterday vs Last 7 Days vs MTD'}</div>
+      <div class="chart-title">Demo Quality${(key === 'ytd' || key === 'lastmonth') ? '' : ' — Yesterday vs Last 7 Days vs MTD vs Last Month'}</div>
       ${buildDemoQualityChart(key)}
     </div>
 
