@@ -495,26 +495,26 @@ async function fetchAllHubSpotData(windows) {
 
 
 // ── Demo Cohort Analysis ──────────────────────────────────────────────────────
-// Fetches deals by demo_given_date for last 3 completed months + current month.
-// Groups into monthly cohorts to track: how many demos happened in month X,
+// Fetches deals by date_demo_booked for last 3 completed months + current month.
+// Groups into monthly cohorts to track: how many qualified demos happened in month X,
 // and what has happened to those deals since (closed, still open, etc.)
 async function fetchDemoCohorts() {
   const now = new Date();
   // Go back 3 completed months + current month
   const cohortStart = new Date(now.getFullYear(), now.getMonth() - 3, 1);
-  const cohortEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 0); // end of current month
+  const cohortEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
   const gteMs = toMs(toDateStr(cohortStart));
   const lteMs = toMs(toDateStr(cohortEnd), true);
 
-  console.log(`  Cohort query: demo_given_date ${toDateStr(cohortStart)} → ${toDateStr(cohortEnd)}`);
+  console.log(`  Cohort query: date_demo_booked ${toDateStr(cohortStart)} → ${toDateStr(cohortEnd)}`);
 
   const deals = await hsSearch('deals', {
     filterGroups: [{ filters: [
-      { propertyName: 'demo_given_date', operator: 'GTE', value: gteMs },
-      { propertyName: 'demo_given_date', operator: 'LTE', value: lteMs },
+      { propertyName: 'date_demo_booked', operator: 'GTE', value: gteMs },
+      { propertyName: 'date_demo_booked', operator: 'LTE', value: lteMs },
     ]}],
-    properties: ['demo_given_date', 'demo_given__status', 'dealstage', 'closedate', 'hs_createdate', 'amount']
+    properties: ['date_demo_booked', 'demo_given__status', 'dealstage', 'closedate', 'hs_createdate', 'amount']
   });
 
   console.log(`  Cohort deals fetched: ${deals.length}`);
@@ -522,7 +522,7 @@ async function fetchDemoCohorts() {
   // Build month buckets
   const buckets = {};
   for (let m = new Date(cohortStart); m <= now; m = new Date(m.getFullYear(), m.getMonth() + 1, 1)) {
-    const ym = toDateStr(m).slice(0, 7); // '2026-01'
+    const ym = toDateStr(m).slice(0, 7);
     buckets[ym] = {
       month: ym,
       label: m.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
@@ -532,34 +532,46 @@ async function fetchDemoCohorts() {
       stillOpen: 0,
       notQualified: 0,
       tooEarly: 0,
-      revenue: 0,
+      mrr: 0,
       cycleDays: [],
     };
   }
 
-  const DEMO_HAPPENED = ['Demo Given', 'Demo Given at Rescheduled time', 'Demo Given, Qualified Company, too early', 'Not Qualified after the demo'];
+  // Qualified demo statuses only — excludes Too Early and Not Qualified
+  const QUALIFIED_DEMO = ['Demo Given', 'Demo Given at Rescheduled time'];
+  // All statuses where a demo actually happened (for bucket assignment)
+  const ALL_DEMO_HAPPENED = ['Demo Given', 'Demo Given at Rescheduled time', 'Demo Given, Qualified Company, too early', 'Not Qualified after the demo'];
 
   for (const deal of deals) {
-    const demoDate = deal.properties?.demo_given_date;
-    if (!demoDate) continue;
+    const bookedDate = deal.properties?.date_demo_booked;
+    if (!bookedDate) continue;
 
     const status = (deal.properties?.demo_given__status || '').trim();
-    if (!DEMO_HAPPENED.includes(status)) continue;
+    if (!ALL_DEMO_HAPPENED.includes(status)) continue;
 
-    // Determine which month bucket
-    const ym = demoDate.slice(0, 7);
+    const ym = bookedDate.slice(0, 7);
     if (!buckets[ym]) continue;
 
     const b = buckets[ym];
-    b.demosGiven++;
-
     const stage = (deal.properties?.dealstage || '').toLowerCase();
+
+    // Too Early and Not Qualified go into their own columns only
+    if (status === 'Demo Given, Qualified Company, too early') {
+      b.tooEarly++;
+      continue;
+    }
+    if (status === 'Not Qualified after the demo') {
+      b.notQualified++;
+      continue;
+    }
+
+    // Qualified demos only from here
+    b.demosGiven++;
 
     if (stage === 'closedwon') {
       b.closedWon++;
-      b.revenue += parseFloat(deal.properties?.amount) || 0;
+      b.mrr += parseFloat(deal.properties?.amount) || 0;
 
-      // Cycle time: closedate minus createdate
       const closeMs  = deal.properties?.closedate    ? new Date(deal.properties.closedate).getTime()    : NaN;
       const createMs = deal.properties?.hs_createdate ? new Date(deal.properties.hs_createdate).getTime() : NaN;
       if (!isNaN(closeMs) && !isNaN(createMs) && closeMs > createMs) {
@@ -567,16 +579,11 @@ async function fetchDemoCohorts() {
       }
     } else if (stage === 'closedlost') {
       b.closedLost++;
-    } else if (status === 'Not Qualified after the demo') {
-      b.notQualified++;
-    } else if (status === 'Demo Given, Qualified Company, too early') {
-      b.tooEarly++;
     } else {
       b.stillOpen++;
     }
   }
 
-  // Compute summary metrics per bucket
   const cohorts = Object.values(buckets).map(b => ({
     month: b.month,
     label: b.label,
@@ -588,10 +595,10 @@ async function fetchDemoCohorts() {
     tooEarly: b.tooEarly,
     closeRate: b.demosGiven > 0 ? ((b.closedWon / b.demosGiven) * 100).toFixed(1) : null,
     avgCycleDays: b.cycleDays.length > 0 ? Math.round(b.cycleDays.reduce((s, v) => s + v, 0) / b.cycleDays.length) : null,
-    revenue: b.revenue,
+    mrr: b.mrr,
   }));
 
-  console.log(`  Cohorts built: ${cohorts.map(c => `${c.label}: ${c.demosGiven} demos, ${c.closedWon} won`).join(' | ')}`);
+  console.log(`  Cohorts built: ${cohorts.map(c => `${c.label}: ${c.demosGiven} qual demos, ${c.closedWon} won`).join(' | ')}`);
   return cohorts;
 }
 
