@@ -494,6 +494,107 @@ async function fetchAllHubSpotData(windows) {
 }
 
 
+// ── Demo Cohort Analysis ──────────────────────────────────────────────────────
+// Fetches deals by demo_given_date for last 3 completed months + current month.
+// Groups into monthly cohorts to track: how many demos happened in month X,
+// and what has happened to those deals since (closed, still open, etc.)
+async function fetchDemoCohorts() {
+  const now = new Date();
+  // Go back 3 completed months + current month
+  const cohortStart = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+  const cohortEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 0); // end of current month
+
+  const gteMs = toMs(toDateStr(cohortStart));
+  const lteMs = toMs(toDateStr(cohortEnd), true);
+
+  console.log(`  Cohort query: demo_given_date ${toDateStr(cohortStart)} → ${toDateStr(cohortEnd)}`);
+
+  const deals = await hsSearch('deals', {
+    filterGroups: [{ filters: [
+      { propertyName: 'demo_given_date', operator: 'GTE', value: gteMs },
+      { propertyName: 'demo_given_date', operator: 'LTE', value: lteMs },
+    ]}],
+    properties: ['demo_given_date', 'demo_given__status', 'dealstage', 'closedate', 'hs_createdate', 'amount']
+  });
+
+  console.log(`  Cohort deals fetched: ${deals.length}`);
+
+  // Build month buckets
+  const buckets = {};
+  for (let m = new Date(cohortStart); m <= now; m = new Date(m.getFullYear(), m.getMonth() + 1, 1)) {
+    const ym = toDateStr(m).slice(0, 7); // '2026-01'
+    buckets[ym] = {
+      month: ym,
+      label: m.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+      demosGiven: 0,
+      closedWon: 0,
+      closedLost: 0,
+      stillOpen: 0,
+      notQualified: 0,
+      tooEarly: 0,
+      revenue: 0,
+      cycleDays: [],
+    };
+  }
+
+  const DEMO_HAPPENED = ['Demo Given', 'Demo Given at Rescheduled time', 'Demo Given, Qualified Company, too early', 'Not Qualified after the demo'];
+
+  for (const deal of deals) {
+    const demoDate = deal.properties?.demo_given_date;
+    if (!demoDate) continue;
+
+    const status = (deal.properties?.demo_given__status || '').trim();
+    if (!DEMO_HAPPENED.includes(status)) continue;
+
+    // Determine which month bucket
+    const ym = demoDate.slice(0, 7);
+    if (!buckets[ym]) continue;
+
+    const b = buckets[ym];
+    b.demosGiven++;
+
+    const stage = (deal.properties?.dealstage || '').toLowerCase();
+
+    if (stage === 'closedwon') {
+      b.closedWon++;
+      b.revenue += parseFloat(deal.properties?.amount) || 0;
+
+      // Cycle time: closedate minus createdate
+      const closeMs  = deal.properties?.closedate    ? new Date(deal.properties.closedate).getTime()    : NaN;
+      const createMs = deal.properties?.hs_createdate ? new Date(deal.properties.hs_createdate).getTime() : NaN;
+      if (!isNaN(closeMs) && !isNaN(createMs) && closeMs > createMs) {
+        b.cycleDays.push((closeMs - createMs) / (1000 * 60 * 60 * 24));
+      }
+    } else if (stage === 'closedlost') {
+      b.closedLost++;
+    } else if (status === 'Not Qualified after the demo') {
+      b.notQualified++;
+    } else if (status === 'Demo Given, Qualified Company, too early') {
+      b.tooEarly++;
+    } else {
+      b.stillOpen++;
+    }
+  }
+
+  // Compute summary metrics per bucket
+  const cohorts = Object.values(buckets).map(b => ({
+    month: b.month,
+    label: b.label,
+    demosGiven: b.demosGiven,
+    closedWon: b.closedWon,
+    closedLost: b.closedLost,
+    stillOpen: b.stillOpen,
+    notQualified: b.notQualified,
+    tooEarly: b.tooEarly,
+    closeRate: b.demosGiven > 0 ? ((b.closedWon / b.demosGiven) * 100).toFixed(1) : null,
+    avgCycleDays: b.cycleDays.length > 0 ? Math.round(b.cycleDays.reduce((s, v) => s + v, 0) / b.cycleDays.length) : null,
+    revenue: b.revenue,
+  }));
+
+  console.log(`  Cohorts built: ${cohorts.map(c => `${c.label}: ${c.demosGiven} demos, ${c.closedWon} won`).join(' | ')}`);
+  return cohorts;
+}
+
 // ── Formatting ────────────────────────────────────────────────────────────────
 function fmt$(n)   { return '$' + Number(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
 function fmtN(n)   { return Number(n).toLocaleString(); }
@@ -688,7 +789,7 @@ function buildSection(label, channels, hs) {
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
-function buildDashboard(windowedChannels, hubspotData, prevWindowedChannels, prevHubspotData, winKeys, windows, prevWindows, txtFilename, ga4SourcesByWindow, ga4PrevSourcesByWindow) {
+function buildDashboard(windowedChannels, hubspotData, prevWindowedChannels, prevHubspotData, winKeys, windows, prevWindows, txtFilename, ga4SourcesByWindow, ga4PrevSourcesByWindow, demoCohorts) {
   const generatedAt = new Date().toLocaleString('en-US', {
     timeZone: 'America/Los_Angeles', dateStyle: 'medium', timeStyle: 'short'
   });
@@ -724,7 +825,7 @@ function buildDashboard(windowedChannels, hubspotData, prevWindowedChannels, pre
     };
   }
 
-  const data = JSON.stringify({ generatedAt, filename: txtFilename, windows: dashWindows })
+  const data = JSON.stringify({ generatedAt, filename: txtFilename, windows: dashWindows, demoCohorts: demoCohorts || [] })
     .replace(/<\/script>/gi, '<\/script>');
   let template = fs.readFileSync(__dirname + '/dashboard_template.html', 'utf8');
 
@@ -1207,6 +1308,7 @@ async function main() {
   // Fetch HubSpot sequentially to avoid secondly rate limits, Windsor in parallel
   const hubspotData     = await fetchAllHubSpotData(windows);
   const prevHubspotData = await fetchAllHubSpotData(prevWindows);
+  const demoCohorts     = await fetchDemoCohorts();
 
   // Windsor + GA4 can all fire in parallel (no rate limit issues)
   const allWindsor = await Promise.all([
@@ -1263,7 +1365,7 @@ async function main() {
   fs.writeFileSync(filename, report);
   console.log(`📄  Report saved to: ${filename}`);
 
-  const dashboard = buildDashboard(windowedChannels, hubspotData, prevWindowedChannels, prevHubspotData, winKeys, windows, prevWindows, filename, ga4SourcesByWindow, ga4PrevSourcesByWindow);
+  const dashboard = buildDashboard(windowedChannels, hubspotData, prevWindowedChannels, prevHubspotData, winKeys, windows, prevWindows, filename, ga4SourcesByWindow, ga4PrevSourcesByWindow, demoCohorts);
   fs.writeFileSync(dashname, dashboard);
   console.log(`📊  Dashboard saved to: ${dashname}\n`);
 
@@ -1643,7 +1745,8 @@ if (args.includes('--serve')) {
           prevLabel: windowData.prevLabel,
         }
       };
-      const data = JSON.stringify({ generatedAt, filename: `custom-${customFrom}-to-${customTo}`, windows: customDashWindows })
+      const customCohorts = await fetchDemoCohorts();
+      const data = JSON.stringify({ generatedAt, filename: `custom-${customFrom}-to-${customTo}`, windows: customDashWindows, demoCohorts: customCohorts })
         .replace(/<\/script>/gi, '<\\/script>');
       let template = fs.readFileSync(__dirname + '/dashboard_template.html', 'utf8');
 

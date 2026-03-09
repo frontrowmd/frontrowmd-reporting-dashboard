@@ -960,6 +960,85 @@ function buildDemoQualityChart(tabKey) {
     <div style="margin-top:10px;font-size:10px;color:#8a9aaa;font-style:italic">% of total shown per category. Blank = contacts where demo_given__status is not set.</div>`;
 }
 
+// ── Demo Cohort Performance Table ──────────────────────────────
+function buildDemoCohortTable() {
+  const cohorts = DATA.demoCohorts || [];
+  if (!cohorts.length) return '';
+
+  const rows = cohorts.map((c, i) => {
+    const closeRate = c.closeRate !== null ? c.closeRate + '%' : '—';
+    const cycleDays = c.avgCycleDays !== null ? c.avgCycleDays + 'd' : '—';
+    const revenue   = c.revenue > 0 ? fmt$(c.revenue) : '—';
+    const isLatest  = i === cohorts.length - 1;
+    const rowBg     = i % 2 === 0 ? 'rgba(212,230,239,0.18)' : 'transparent';
+
+    // Close rate color
+    const crNum = parseFloat(c.closeRate);
+    const crColor = isNaN(crNum) ? '#8a9aaa' : crNum >= 25 ? '#2E7D52' : crNum >= 15 ? '#B8860B' : '#C0392B';
+
+    // Still open badge
+    const openBadge = c.stillOpen > 0
+      ? `<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;background:rgba(114,164,191,0.15);color:var(--soft-teal);border-radius:4px;padding:2px 6px;font-weight:600">${c.stillOpen} in pipeline</span>`
+      : '<span style="font-size:11px;color:#8a9aaa">—</span>';
+
+    return `<tr style="background:${rowBg}">
+      <td style="padding:10px 14px;font-weight:700;color:var(--deep-navy);font-size:13px;white-space:nowrap">${c.label}${isLatest ? ' <span style="font-size:9px;font-weight:400;color:var(--soft-teal);vertical-align:middle">(current)</span>' : ''}</td>
+      <td style="padding:10px 14px;text-align:center;font-size:13px;font-weight:700;color:var(--mid-navy)">${c.demosGiven}</td>
+      <td style="padding:10px 14px;text-align:center;font-size:13px;font-weight:700;color:#1D4053">${c.closedWon}</td>
+      <td style="padding:10px 14px;text-align:center;font-size:13px;font-weight:700;color:${crColor}">${closeRate}<div style="font-size:9px;font-weight:400;color:#8a9aaa">${c.closedWon} won ÷ ${c.demosGiven} demos</div></td>
+      <td style="padding:10px 14px;text-align:center;font-size:13px;font-weight:600;color:var(--mid-navy)">${cycleDays}</td>
+      <td style="padding:10px 14px;text-align:center">${openBadge}</td>
+      <td style="padding:10px 14px;text-align:center;font-size:11px;color:#8a9aaa">${c.notQualified}</td>
+      <td style="padding:10px 14px;text-align:center;font-size:11px;color:#8a9aaa">${c.tooEarly}</td>
+      <td style="padding:10px 14px;text-align:right;font-size:13px;font-weight:700;color:var(--deep-navy)">${revenue}</td>
+    </tr>`;
+  }).join('');
+
+  // Totals row
+  const totals = cohorts.reduce((t, c) => ({
+    demos: t.demos + c.demosGiven,
+    won: t.won + c.closedWon,
+    lost: t.lost + c.closedLost,
+    open: t.open + c.stillOpen,
+    nq: t.nq + c.notQualified,
+    te: t.te + c.tooEarly,
+    rev: t.rev + c.revenue,
+  }), { demos: 0, won: 0, lost: 0, open: 0, nq: 0, te: 0, rev: 0 });
+  const totalCR = totals.demos > 0 ? ((totals.won / totals.demos) * 100).toFixed(1) + '%' : '—';
+
+  return `
+    <table style="width:100%;border-collapse:collapse;font-family:'Libre Baskerville',Georgia,serif">
+      <thead>
+        <tr style="border-bottom:2px solid var(--soft-teal)">
+          <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--soft-teal)">Cohort Month</th>
+          <th style="padding:10px 14px;text-align:center;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--soft-teal)">Demos Given</th>
+          <th style="padding:10px 14px;text-align:center;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--soft-teal)">Closed Won</th>
+          <th style="padding:10px 14px;text-align:center;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--soft-teal)">Close Rate</th>
+          <th style="padding:10px 14px;text-align:center;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--soft-teal)">Avg Cycle</th>
+          <th style="padding:10px 14px;text-align:center;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--soft-teal)">Still Open</th>
+          <th style="padding:10px 14px;text-align:center;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--soft-teal)">Not Qual</th>
+          <th style="padding:10px 14px;text-align:center;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--soft-teal)">Too Early</th>
+          <th style="padding:10px 14px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--soft-teal)">Revenue</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+      <tfoot>
+        <tr style="border-top:2px solid var(--card-border)">
+          <td style="padding:10px 14px;font-weight:700;font-size:12px;color:var(--deep-navy)">All Cohorts</td>
+          <td style="padding:10px 14px;text-align:center;font-weight:700;font-size:12px;color:var(--mid-navy)">${totals.demos}</td>
+          <td style="padding:10px 14px;text-align:center;font-weight:700;font-size:12px;color:#1D4053">${totals.won}</td>
+          <td style="padding:10px 14px;text-align:center;font-weight:700;font-size:12px;color:var(--deep-navy)">${totalCR}</td>
+          <td style="padding:10px 14px;text-align:center;font-size:11px;color:#8a9aaa">—</td>
+          <td style="padding:10px 14px;text-align:center"><span style="font-size:10px;background:rgba(114,164,191,0.15);color:var(--soft-teal);border-radius:4px;padding:2px 6px;font-weight:600">${totals.open} in pipeline</span></td>
+          <td style="padding:10px 14px;text-align:center;font-size:11px;color:#8a9aaa">${totals.nq}</td>
+          <td style="padding:10px 14px;text-align:center;font-size:11px;color:#8a9aaa">${totals.te}</td>
+          <td style="padding:10px 14px;text-align:right;font-weight:700;font-size:12px;color:var(--deep-navy)">${totals.rev > 0 ? fmt$(totals.rev) : '—'}</td>
+        </tr>
+      </tfoot>
+    </table>
+    <div style="margin-top:10px;font-size:10px;color:#8a9aaa;font-style:italic">Cohort = all demos that happened in that month, tracked forward to their current deal status. Close Rate and Avg Cycle reflect deals won at any point since the demo.</div>`;
+}
+
 const fmt$ = n => '$' + Number(n).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,',');
 const fmtN = n => Number(Math.round(n)).toLocaleString();
 const fmtP = (a,b) => b > 0 ? (a/b*100).toFixed(1)+'%' : 'N/A';
@@ -1857,6 +1936,12 @@ function buildPanel(key, d) {
     <div class="chart-card" style="margin-bottom:32px">
       <div class="chart-title">Demo Quality${(key === 'ytd' || key === 'lastmonth') ? '' : ' — Yesterday vs Last 7 Days vs MTD vs Last Month'}</div>
       ${buildDemoQualityChart(key)}
+    </div>
+
+    <div class="sl">Demo Cohort Performance <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">Demos given by month — tracked to current outcome</span></div>
+    <div class="chart-card" style="margin-bottom:32px">
+      <div class="chart-title">Closed Demo Outcomes by Monthly Cohort</div>
+      ${buildDemoCohortTable()}
     </div>
 
     <div class="sl">Intelligence Report ${vsLabel ? `<span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">${vsLabel}</span>` : ''}</div>
