@@ -312,6 +312,18 @@ function toMs(dateStr, endOfDay = false) {
   return String(new Date(dateStr + (endOfDay ? 'T23:59:59.999' : 'T00:00:00.000')).getTime());
 }
 
+// ── UTM → Channel mapping ─────────────────────────────────────────────────────
+function mapChannel(utmSource, utmMedium) {
+  const src = (utmSource || '').toLowerCase().trim();
+  const med = (utmMedium || '').toLowerCase().trim();
+  if (['fb', 'ig', 'facebook', 'instagram', 'meta'].includes(src)) return 'meta';
+  if (src === 'google' && (med === 'cpc' || med === 'paid')) return 'google';
+  if (src === 'linkedin') return 'linkedin';
+  if (['tiktok', 'tik_tok', 'tt', 'tiktok_ads'].includes(src)) return 'tiktok';
+  if (src === 'youtube') return 'youtube';
+  return null; // unattributed
+}
+
 // ── HubSpot: fetch all data for the widest window, slice per sub-window ────────
 // Date dimensions:
 // ── HubSpot Owners lookup ─────────────────────────────────────────────────────
@@ -378,7 +390,7 @@ async function fetchAllHubSpotData(windows) {
         { propertyName: 'hs_createdate',      operator: 'LTE', value: String(lteMs) },
       ]},
     ],
-    properties: ['date_demo_booked', 'demo_given_date', 'demo_given__status', 'dealstage', 'amount', 'closedate', 'hs_createdate', 'hubspot_owner_id']
+    properties: ['date_demo_booked', 'demo_given_date', 'demo_given__status', 'dealstage', 'amount', 'closedate', 'hs_createdate', 'hubspot_owner_id', 'utm_source', 'utm_medium']
   });
   // Dedup in case a deal matched both filterGroups (has date_demo_booked AND is No Show)
   const allDealsMap = new Map(allDeals.map(d => [d.id, d]));
@@ -393,7 +405,7 @@ async function fetchAllHubSpotData(windows) {
       { propertyName: 'closedate', operator: 'GTE', value: gteMs },
       { propertyName: 'closedate', operator: 'LTE', value: lteMs },
     ]}],
-    properties: ['amount', 'closedate', 'hs_createdate']
+    properties: ['amount', 'closedate', 'hs_createdate', 'utm_source', 'utm_medium']
   });
 
   // ── Fetch owner names ─────────────────────────────────────────────────────
@@ -520,6 +532,39 @@ async function fetchAllHubSpotData(windows) {
     const ownerBreakdown = Object.values(ownerMap)
       .sort((a, b) => (b.demoGiven + b.tooEarly + b.notQual + b.disqBefore + b.rescheduled + b.canceled + b.blank) - (a.demoGiven + a.tooEarly + a.notQual + a.disqBefore + a.rescheduled + a.canceled + a.blank));
 
+    // ── Channel attribution: group deals by UTM source → channel ────────────
+    const chAttr = {};
+    const CH_KEYS = ['meta','linkedin','google','tiktok','youtube'];
+    CH_KEYS.forEach(k => { chAttr[k] = { qualified: 0, tooEarly: 0, notQual: 0, disqBefore: 0, noShow: 0, canceled: 0, blank: 0 }; });
+    for (const deal of deals) {
+      const ch = mapChannel(deal.properties?.utm_source, deal.properties?.utm_medium);
+      if (!ch || !chAttr[ch]) continue;
+      const rawStatus = (deal.properties?.demo_given__status || '').trim();
+      if (rawStatus === 'Demo Given' || rawStatus === 'Demo Given at Rescheduled time') { chAttr[ch].qualified++;
+      } else if (rawStatus === 'Demo Given, Qualified Company, too early') { chAttr[ch].tooEarly++;
+      } else if (rawStatus === 'Not Qualified after the demo') { chAttr[ch].notQual++;
+      } else if (rawStatus === 'Disqualified, Meeting Cancelled') { chAttr[ch].disqBefore++;
+      } else if (rawStatus === 'No Show') { chAttr[ch].noShow++;
+      } else if (rawStatus === 'No Showed') { chAttr[ch].canceled++;
+      } else { chAttr[ch].blank++; }
+    }
+
+    // ── Channel closed won / MRR from closedWon deals ───────────────────────
+    const chWon = {};
+    CH_KEYS.forEach(k => { chWon[k] = { closedWon: 0, mrr: 0 }; });
+    for (const deal of closedWon) {
+      const ch = mapChannel(deal.properties?.utm_source, deal.properties?.utm_medium);
+      if (!ch || !chWon[ch]) continue;
+      chWon[ch].closedWon++;
+      chWon[ch].mrr += parseFloat(deal.properties?.amount) || 0;
+    }
+
+    // Merge into channelAttribution
+    const channelAttribution = {};
+    CH_KEYS.forEach(k => {
+      channelAttribution[k] = { ...chAttr[k], ...chWon[k] };
+    });
+
     result[key] = {
       demosBooked:           contactsBooked.length,
       demosToOccur,
@@ -535,6 +580,7 @@ async function fetchAllHubSpotData(windows) {
       closedDeals,
       avgDealCycleDays,
       ownerBreakdown,
+      channelAttribution,
       newMRR: closedWon.reduce((s, d) => s + (parseFloat(d.properties?.amount) || 0), 0),
     };
   }
@@ -852,13 +898,13 @@ function buildDashboard(windowedChannels, hubspotData, prevWindowedChannels, pre
 
   function buildWin(channels, ga4, hs, ga4Sources, ga4PrevSources) {
     const { demosBooked, demosToOccur, demosHappened, dealsWon, pctDemosWon,
-            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays, ownerBreakdown, newMRR } = hs;
+            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays, ownerBreakdown, channelAttribution, newMRR } = hs;
     const pipeline = { demosToOccur, demosHappened, dealsWon, pctDemosWon,
                        notQualAfterDemo, disqualifiedBeforeDemo, tooEarly,
                        rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays, ownerBreakdown: ownerBreakdown || [] };
     const metaCTR  = channels.meta.ctrAvg != null
       ? (channels.meta.ctrAvg * 100).toFixed(2) + '%' : null;
-    return { channels, ga4, demosBooked, pipeline, newMRR, metaCTR,
+    return { channels, ga4, demosBooked, pipeline, channelAttribution: channelAttribution || {}, newMRR, metaCTR,
              ga4Sources: ga4Sources || [],
              ga4PrevSources: ga4PrevSources || [] };
   }
@@ -1620,13 +1666,13 @@ async function fetchCustomWindow(from, to) {
 
   function buildWin(ch, g4, h, ga4Sources, ga4PrevSources) {
     const { demosBooked, demosToOccur, demosHappened, dealsWon, pctDemosWon,
-            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays, ownerBreakdown, newMRR } = h;
+            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays, ownerBreakdown, channelAttribution, newMRR } = h;
     const pipeline = { demosToOccur, demosHappened, dealsWon, pctDemosWon,
                        notQualAfterDemo, disqualifiedBeforeDemo, tooEarly,
                        rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays, ownerBreakdown: ownerBreakdown || [] };
     const metaCTR  = ch.meta.ctrAvg != null
       ? (ch.meta.ctrAvg * 100).toFixed(2) + '%' : null;
-    return { channels: ch, ga4: g4, demosBooked, pipeline, newMRR, metaCTR,
+    return { channels: ch, ga4: g4, demosBooked, pipeline, channelAttribution: channelAttribution || {}, newMRR, metaCTR,
              ga4Sources: ga4Sources || [],
              ga4PrevSources: ga4PrevSources || [] };
   }

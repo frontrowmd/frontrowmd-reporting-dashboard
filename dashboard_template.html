@@ -73,7 +73,7 @@
   .delta-sub {font-size:10px;font-weight:400;opacity:0.7;margin-left:2px;}
 
   /* DARK STAT CARDS */
-  .stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:32px;}
+  .stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px;}
   .stat-card{background:linear-gradient(135deg,var(--deep-navy),var(--mid-navy));border-radius:var(--radius);padding:24px 28px;color:var(--white);box-shadow:var(--shadow-md);position:relative;overflow:hidden;}
   .stat-card::after{content:'';position:absolute;right:-10px;bottom:-10px;width:80px;height:80px;border-radius:50%;background:rgba(114,164,191,0.08);}
   .sc-label{font-size:10px;letter-spacing:0.18em;text-transform:uppercase;color:rgba(114,164,191,0.75);margin-bottom:8px;}
@@ -1642,6 +1642,26 @@ function buildPanel(key, d) {
   const drBudget    = MONTHLY_BUDGETS_THIS.meta + MONTHLY_BUDGETS_THIS.google + MONTHLY_BUDGETS_THIS.tiktok;
   const totalMTDSpend = Object.keys(MONTHLY_BUDGETS_THIS).reduce((s,k) => s + (ch[k]?.spend||0), 0);
 
+  // ── Compute new metrics for stat cards ──────────────────────────────────────
+  const ca = d.channelAttribution || {};
+  const pca = p.channelAttribution || {};
+  const totalQualDemos = chKeys.reduce((s,k) => s + (ca[k]?.qualified || 0), 0);
+  const ptotalQualDemos = chKeys.reduce((s,k) => s + (pca[k]?.qualified || 0), 0);
+  const cpqd = totalQualDemos > 0 ? allSpend / totalQualDemos : null;
+  const pcpqd = ptotalQualDemos > 0 ? pallSpend / ptotalQualDemos : null;
+  const roas = allSpend > 0 ? d.newMRR / allSpend : null;
+  const proas = pallSpend > 0 ? p.newMRR / pallSpend : null;
+
+  // Show Rate — compute early for stat cards
+  const showRateVal = pp.demosToOccur > 0 ? (pp.demosHappened / pp.demosToOccur * 100) : null;
+  const pShowRateVal= ppp.demosToOccur > 0 ? (ppp.demosHappened / ppp.demosToOccur * 100) : null;
+
+  // Qual Demo Given % — compute early for stat cards
+  const qualDemoGiven = pp.demosToOccur > 0 ? ((pp.demosHappened - (pp.tooEarly||0) - (pp.notQualAfterDemo||0)) / pp.demosToOccur * 100) : null;
+  const pQualDemoGiven = ppp.demosToOccur > 0 ? ((ppp.demosHappened - (ppp.tooEarly||0) - (ppp.notQualAfterDemo||0)) / ppp.demosToOccur * 100) : null;
+  const qualDemoStr = qualDemoGiven !== null ? qualDemoGiven.toFixed(1) + '%' : '—';
+  const qualNumer = pp.demosHappened - (pp.tooEarly||0) - (pp.notQualAfterDemo||0);
+
   const statHTML=`
     <div class="stat-row">
       <div class="stat-card" style="position:relative;overflow:hidden">
@@ -1668,11 +1688,57 @@ function buildPanel(key, d) {
         ${key === 'mtd' ? buildSparkline(spendPts) : ''}
       </div>
       <div class="stat-card" style="position:relative;overflow:hidden">
+        <div class="sc-label">ROAS</div>
+        <div class="sc-value">${roas !== null ? roas.toFixed(2) + 'x' : '—'}</div>
+        <div class="sc-sub">MRR ÷ Ad Spend</div>
+        ${roas !== null && proas !== null ? sd(roas, proas) : ''}
+      </div>
+    </div>
+    <div class="stat-row">
+      <div class="stat-card" style="position:relative;overflow:hidden">
+        <div class="sc-label">Demos to Occur</div>
+        <div class="sc-value">${fmtN(pp.demosToOccur)}</div>
+        <div class="sc-sub">Scheduled this period</div>
+        ${sd(pp.demosToOccur, ppp.demosToOccur)}
+      </div>
+      <div class="stat-card" style="position:relative;overflow:hidden">
+        <div class="sc-label">Qual. Demo Given %</div>
+        <div class="sc-value">${qualDemoStr}</div>
+        <div class="sc-sub">${fmtN(qualNumer)} qual ÷ ${fmtN(pp.demosToOccur)} scheduled</div>
+        ${qualDemoGiven !== null && pQualDemoGiven !== null ? sd(qualDemoGiven, pQualDemoGiven) : ''}
+      </div>
+      <div class="stat-card" style="position:relative;overflow:hidden">
         <div class="sc-label">Blended CPD</div>
         <div class="sc-value">${cpd$(allSpend,allDemos)}</div>
         <div class="sc-sub">All 5 channels</div>
         ${sd(cpdNum(allSpend,allDemos)||0, cpdNum(pallSpend,pallDemos)||0, {invert:true})}
         ${buildSparkline(cpdPts)}
+      </div>
+      <div class="stat-card" style="position:relative;overflow:hidden">
+        <div class="sc-label">CPQD</div>
+        <div class="sc-value">${cpqd !== null ? fmt$(cpqd) : '—'}</div>
+        <div class="sc-sub">Spend ÷ ${fmtN(totalQualDemos)} qual demos</div>
+        ${cpqd !== null && pcpqd !== null ? sd(cpqd, pcpqd, {invert:true}) : ''}
+      </div>
+    </div>
+    <div class="stat-row" style="grid-template-columns:repeat(3,1fr);margin-bottom:32px">
+      <div class="stat-card" style="position:relative;overflow:hidden">
+        <div class="sc-label">Demo Show Rate</div>
+        <div class="sc-value">${showRateVal !== null ? showRateVal.toFixed(1) + '%' : '—'}</div>
+        <div class="sc-sub">${fmtN(pp.demosHappened)} of ${fmtN(pp.demosToOccur)} occurred</div>
+        ${showRateVal !== null && pShowRateVal !== null ? sd(showRateVal, pShowRateVal) : ''}
+      </div>
+      <div class="stat-card" style="position:relative;overflow:hidden">
+        <div class="sc-label">Demos % Paid Source</div>
+        <div class="sc-value">${paidSrcStr}</div>
+        <div class="sc-sub">${fmtN(paidDemos)} paid ÷ ${fmtN(d.demosBooked)} booked</div>
+        ${paidSrcPct !== null ? sd(paidSrcPct, ppaidSrcPct) : ''}
+      </div>
+      <div class="stat-card" style="position:relative;overflow:hidden">
+        <div class="sc-label">Meta CTR</div>
+        <div class="sc-value">${d.metaCTR || 'N/A'}</div>
+        <div class="sc-sub">Avg across campaigns</div>
+        ${sd(parsePct(d.metaCTR)||0, parsePct(p.metaCTR)||0)}
       </div>
     </div>`;
 
@@ -1721,9 +1787,7 @@ function buildPanel(key, d) {
       </div>
     </div>`;
 
-  // Show Rate — compute and style
-  const showRateVal = pp.demosToOccur > 0 ? (pp.demosHappened / pp.demosToOccur * 100) : null;
-  const pShowRateVal= ppp.demosToOccur > 0 ? (ppp.demosHappened / ppp.demosToOccur * 100) : null;
+  // Show Rate — styling (values computed earlier)
   const showRateCls = showRateVal === null ? 'kpi-show-rate-good' : showRateVal < 60 ? 'kpi-show-rate-danger' : showRateVal < 78 ? 'kpi-show-rate-warn' : 'kpi-show-rate-good';
   const showRateStatus = showRateVal === null ? '' : showRateVal < 60 ? '🚨 Critical — add 24hr + 1hr SMS reminders immediately' : showRateVal < 78 ? '⚠️ Below 80% target — review reminder sequence timing' : '✅ On target — reminder sequence is working';
   const srBarColor = showRateVal === null ? '#BBF7D0' : showRateVal < 60 ? '#EF4444' : showRateVal < 78 ? '#F59E0B' : '#22C55E';
@@ -1756,18 +1820,12 @@ function buildPanel(key, d) {
       </div>
     </div>` : '';
 
-  // Qual. Demo Given % — qualified demos (happened minus tooEarly and notQualAfterDemo) / demosHappened
-  const qualDemoGiven = pp.demosToOccur > 0 ? ((pp.demosHappened - (pp.tooEarly||0) - (pp.notQualAfterDemo||0)) / pp.demosToOccur * 100) : null;
-  const pQualDemoGiven = ppp.demosToOccur > 0 ? ((ppp.demosHappened - (ppp.tooEarly||0) - (ppp.notQualAfterDemo||0)) / ppp.demosToOccur * 100) : null;
-  const qualDemoStr = qualDemoGiven !== null ? qualDemoGiven.toFixed(1) + '%' : '—';
-
   // Avg Deal Cycle Time
   const avgCycleDays = pp.avgDealCycleDays;
   const pAvgCycleDays = ppp.avgDealCycleDays;
   const avgCycleStr = avgCycleDays !== null ? avgCycleDays + ' days' : '—';
 
-  // KPIs with delta badges
-  const qualNumer = pp.demosHappened - (pp.tooEarly||0) - (pp.notQualAfterDemo||0);
+  // KPIs with delta badges (values computed earlier)
   const closeDenom = pp.demosHappened - (pp.notQualAfterDemo||0);
   const kpis=[
     {label:'Demos % Paid Source', value:paidSrcStr,                      sub:`${fmtN(paidDemos)} paid ÷ ${fmtN(d.demosBooked)} booked`, cls:'kpi-navy',
@@ -1856,17 +1914,27 @@ function buildPanel(key, d) {
                 :             `<span class="badge badge-good">${fmt$(v)}</span>`;
     const dbVal = (v!==null && pv!==null)
       ? db(v, pv, {invert:true})
-      : '<span style="color:#c0c8d0;font-size:10px">—</span>';
-    const pctBooked = d.demosBooked > 0 && c.demos > 0
-      ? `<span style="font-size:11px;color:var(--soft-teal);font-weight:700">${(c.demos/d.demosBooked*100).toFixed(0)}%</span>`
-      : '<span style="color:#c0c8d0;font-size:10px">—</span>';
+      : '';
+    // Channel attribution data
+    const attr = ca[c.key] || {};
+    const qualDemos = attr.qualified || 0;
+    const chCpqd = qualDemos > 0 ? c.spend / qualDemos : null;
+    const chWon = (ca[c.key]?.closedWon || 0);  // closed won from channelAttribution is demo-based
+    // Use closedWon query attribution for MRR
+    const cwData = d.channelAttribution?.[c.key] || {};
+    const chClosedWon = cwData.closedWon || 0;
+    const chMrr = cwData.mrr || 0;
+    const chRoas = c.spend > 0 && chMrr > 0 ? (chMrr / c.spend).toFixed(2) + 'x' : '—';
     return `<tr>
       <td>${CH_ICONS[c.key]} ${CH_LABELS[c.key]}</td>
       <td>${fmt$(c.spend)}</td>
       <td>${fmtN(c.demos)}</td>
-      <td style="text-align:center">${pctBooked}</td>
-      <td>${badge}</td>
-      <td style="white-space:nowrap">${dbVal}</td>
+      <td style="text-align:center;font-weight:600;color:var(--deep-navy)">${qualDemos > 0 ? fmtN(qualDemos) : '<span style="color:#c0c8d0">—</span>'}</td>
+      <td style="white-space:nowrap">${badge} ${dbVal}</td>
+      <td>${chCpqd !== null ? fmt$(chCpqd) : '<span style="color:#c0c8d0;font-size:10px">—</span>'}</td>
+      <td style="text-align:center;font-weight:700;color:var(--deep-navy)">${chClosedWon > 0 ? fmtN(chClosedWon) : '<span style="color:#c0c8d0">—</span>'}</td>
+      <td style="text-align:right;font-weight:700">${chMrr > 0 ? fmt$(chMrr) : '<span style="color:#c0c8d0">—</span>'}</td>
+      <td style="text-align:right;font-weight:700;color:${chRoas !== '—' ? 'var(--deep-navy)' : '#c0c8d0'}">${chRoas}</td>
     </tr>`;
   }).join('');
 
@@ -1968,29 +2036,31 @@ function buildPanel(key, d) {
         ${spendSummaryHTML}
         <div class="donut-wrap">${donutSVG}<div class="donut-legend">${legendHTML}</div></div>
       </div>
+      ${(key === 'mtd' || key === 'lastmonth') ? `
       <div class="chart-card">
-        <div class="chart-title">Cost Per Demo by Channel ${vsLabel ? `<span class="chart-title-meta">${vsLabel}</span>` : ''}</div>
-        <table class="cpd-table">
-          <thead><tr><th>Channel</th><th>Spend</th><th>Ad Demos</th><th style="text-align:center">% of Booked</th><th>CPD</th><th>${vsLabel || ""}</th></tr></thead>
-          <tbody>${cpdRows}</tbody>
-          <tfoot><tr style="border-top:2px solid var(--card-border)">
-            <td style="font-weight:700;font-size:12px">Total (all channels)</td>
-            <td style="font-weight:700">${fmt$(sorted.reduce((s,c)=>s+c.spend,0))}</td>
-            <td style="font-weight:700">${fmtN(sorted.reduce((s,c)=>s+c.demos,0))}</td>
-            <td style="text-align:center;font-weight:700;font-size:11px;color:var(--soft-teal)">${d.demosBooked>0?Math.round(sorted.reduce((s,c)=>s+c.demos,0)/d.demosBooked*100)+'%':'—'}</td>
-            <td style="font-weight:700">${allDemos>0?fmt$(allSpend/allDemos):'N/A'}</td>
-            <td style="font-size:11px;color:#8a9aaa;font-style:italic">${fmtN(d.demosBooked)} total booked</td>
-          </tr></tfoot>
-        </table>
-      </div>
+        <div class="chart-title">${key === 'lastmonth' ? 'Last Month' : 'MTD'} Spend vs. Monthly Budget</div>
+        ${buildSpendPacingSection(ch, key === 'lastmonth' ? 100 : pacingPct, getBudgetsForMonth(d.from))}
+      </div>` : ''}
     </div>
 
-    ${(key === 'mtd' || key === 'lastmonth') ? `
-    <div class="sl">Budget Pacing <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">${key === 'lastmonth' ? 'Last Month — all channels' : 'Month to Date — all channels'}</span></div>
     <div class="chart-card" style="margin-bottom:32px">
-      <div class="chart-title">${key === 'lastmonth' ? 'Last Month' : 'MTD'} Spend vs. Monthly Budget</div>
-      ${buildSpendPacingSection(ch, key === 'lastmonth' ? 100 : pacingPct, getBudgetsForMonth(d.from))}
-    </div>` : ''}
+      <div class="chart-title">Cost Per Demo by Channel ${vsLabel ? `<span class="chart-title-meta">${vsLabel}</span>` : ''}</div>
+      <table class="cpd-table">
+        <thead><tr><th>Channel</th><th>Spend</th><th>Ad Demos</th><th style="text-align:center">Qualified</th><th>CPD</th><th>CPQD</th><th style="text-align:center">Closed Won</th><th style="text-align:right">MRR</th><th style="text-align:right">ROAS</th></tr></thead>
+        <tbody>${cpdRows}</tbody>
+        <tfoot><tr style="border-top:2px solid var(--card-border)">
+          <td style="font-weight:700;font-size:12px">Total</td>
+          <td style="font-weight:700">${fmt$(sorted.reduce((s,c)=>s+c.spend,0))}</td>
+          <td style="font-weight:700">${fmtN(sorted.reduce((s,c)=>s+c.demos,0))}</td>
+          <td style="text-align:center;font-weight:700;color:var(--deep-navy)">${fmtN(totalQualDemos)}</td>
+          <td style="font-weight:700">${allDemos>0?fmt$(allSpend/allDemos):'N/A'}</td>
+          <td style="font-weight:700">${totalQualDemos>0?fmt$(allSpend/totalQualDemos):'N/A'}</td>
+          <td style="text-align:center;font-weight:700;color:var(--deep-navy)">${fmtN(chKeys.reduce((s,k)=>(s+(d.channelAttribution?.[k]?.closedWon||0)),0))}</td>
+          <td style="text-align:right;font-weight:700">${fmt$(chKeys.reduce((s,k)=>(s+(d.channelAttribution?.[k]?.mrr||0)),0))}</td>
+          <td style="text-align:right;font-weight:700;color:var(--deep-navy)">${roas !== null ? roas.toFixed(2) + 'x' : '—'}</td>
+        </tr></tfoot>
+      </table>
+    </div>
 
     ${buildPaidMediaInline(ch, pch, prevLabel, noPrev)}
 
