@@ -16,7 +16,7 @@ on:
         required: false
         default: ''
   schedule:
-    - cron: '0 17 * * 1-5'  # 9:00 AM PST weekdays (UTC 17:00)
+    - cron: '30 16 * * 1-5'  # 8:30 AM PST weekdays (UTC 16:30)
 
 jobs:
   run-report:
