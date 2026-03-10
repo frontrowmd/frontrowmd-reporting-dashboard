@@ -307,7 +307,9 @@ async function hsSearch(objectType, body) {
 }
 
 function toMs(dateStr, endOfDay = false) {
-  return String(new Date(dateStr + (endOfDay ? 'T23:59:59.999Z' : 'T00:00:00.000Z')).getTime());
+  // Use Eastern Time boundaries (process.env.TZ = 'America/New_York')
+  // No 'Z' suffix = JS parses in local TZ (which is ET due to TZ env var)
+  return String(new Date(dateStr + (endOfDay ? 'T23:59:59.999' : 'T00:00:00.000')).getTime());
 }
 
 // ── HubSpot: fetch all data for the widest window, slice per sub-window ────────
@@ -400,14 +402,14 @@ async function fetchAllHubSpotData(windows) {
   // ── Slice per window ──────────────────────────────────────────────────────
   const result = {};
   for (const [key, win] of Object.entries(windows)) {
-    const winFrom = new Date(win.from + 'T00:00:00.000Z').getTime();
-    const winTo   = new Date(win.to   + 'T23:59:59.999Z').getTime();
+    const winFrom = new Date(win.from + 'T00:00:00.000').getTime();
+    const winTo   = new Date(win.to   + 'T23:59:59.999').getTime();
 
     function inWin(ms) { return ms >= winFrom && ms <= winTo; }
     function dateMs(str) {
       if (!str) return NaN;
       if (/^\d+$/.test(str)) return parseInt(str);
-      return new Date(str + 'T00:00:00.000Z').getTime();
+      return new Date(str + 'T00:00:00.000').getTime();
     }
     function isoMs(str)  { return str ? new Date(str).getTime() : NaN; }
 
@@ -1582,8 +1584,8 @@ async function sendEmail(subject, dashPath, dashUrl) {
 // The "previous" window is the same-length period immediately before.
 async function fetchCustomWindow(from, to) {
   // Calculate previous period (same length, immediately before)
-  const fromD  = new Date(from + 'T00:00:00Z');
-  const toD    = new Date(to   + 'T23:59:59Z');
+  const fromD  = new Date(from + 'T00:00:00');
+  const toD    = new Date(to   + 'T23:59:59');
   const dayMs  = 24 * 60 * 60 * 1000;
   const rangeMs = toD - fromD + dayMs;              // inclusive length in ms
   const pToD   = new Date(fromD.getTime() - dayMs);
