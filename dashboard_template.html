@@ -75,6 +75,9 @@
   /* DARK STAT CARDS */
   .stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px;}
   .stat-card{background:linear-gradient(135deg,var(--deep-navy),var(--mid-navy));border-radius:var(--radius);padding:24px 28px;color:var(--white);box-shadow:var(--shadow-md);position:relative;overflow:hidden;}
+  .stat-row-secondary .stat-card{background:linear-gradient(135deg,#1D4053,#2a5a70);box-shadow:var(--shadow-sm);padding:20px 24px;}
+  .stat-row-secondary .sc-value{font-size:28px;}
+  .stat-row-secondary .sc-label{opacity:0.7;}
   .stat-card::after{content:'';position:absolute;right:-10px;bottom:-10px;width:80px;height:80px;border-radius:50%;background:rgba(114,164,191,0.08);}
   .sc-label{font-size:10px;letter-spacing:0.18em;text-transform:uppercase;color:rgba(114,164,191,0.75);margin-bottom:8px;}
   .sc-value{font-family:'Libre Baskerville',Georgia,serif;font-size:36px;font-weight:700;line-height:1;}
@@ -1647,8 +1650,9 @@ function buildPanel(key, d) {
   const pca = p.channelAttribution || {};
   const totalQualDemos = chKeys.reduce((s,k) => s + (ca[k]?.qualified || 0), 0);
   const ptotalQualDemos = chKeys.reduce((s,k) => s + (pca[k]?.qualified || 0), 0);
-  const cpqd = totalQualDemos > 0 ? allSpend / totalQualDemos : null;
-  const pcpqd = ptotalQualDemos > 0 ? pallSpend / ptotalQualDemos : null;
+  const cpqd = qualNumer > 0 ? allSpend / qualNumer : null;
+  const pQualNumer = ppp.demosHappened - (ppp.tooEarly||0) - (ppp.notQualAfterDemo||0);
+  const pcpqd = pQualNumer > 0 ? pallSpend / pQualNumer : null;
   const roas = allSpend > 0 ? d.newMRR / allSpend : null;
   const proas = pallSpend > 0 ? p.newMRR / pallSpend : null;
 
@@ -1694,7 +1698,7 @@ function buildPanel(key, d) {
         ${roas !== null && proas !== null ? sd(roas, proas) : ''}
       </div>
     </div>
-    <div class="stat-row">
+    <div class="stat-row stat-row-secondary">
       <div class="stat-card" style="position:relative;overflow:hidden">
         <div class="sc-label">Demos to Occur</div>
         <div class="sc-value">${fmtN(pp.demosToOccur)}</div>
@@ -1715,13 +1719,13 @@ function buildPanel(key, d) {
         ${buildSparkline(cpdPts)}
       </div>
       <div class="stat-card" style="position:relative;overflow:hidden">
-        <div class="sc-label">CPQD</div>
+        <div class="sc-label">Total CPQD</div>
         <div class="sc-value">${cpqd !== null ? fmt$(cpqd) : '—'}</div>
-        <div class="sc-sub">Spend ÷ ${fmtN(totalQualDemos)} qual demos</div>
+        <div class="sc-sub">Spend ÷ ${fmtN(qualNumer)} qual demos given</div>
         ${cpqd !== null && pcpqd !== null ? sd(cpqd, pcpqd, {invert:true}) : ''}
       </div>
     </div>
-    <div class="stat-row" style="grid-template-columns:repeat(3,1fr);margin-bottom:32px">
+    <div class="stat-row stat-row-secondary" style="grid-template-columns:repeat(3,1fr);margin-bottom:32px">
       <div class="stat-card" style="position:relative;overflow:hidden">
         <div class="sc-label">Demo Show Rate</div>
         <div class="sc-value">${showRateVal !== null ? showRateVal.toFixed(1) + '%' : '—'}</div>
@@ -2026,14 +2030,10 @@ function buildPanel(key, d) {
     <div class="sl">Website Funnel ${vsLabel ? `<span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">${vsLabel}</span>` : ''}</div>
     ${wfFunnelHTML}
 
-    <div class="sl">Key Performance Indicators ${vsLabel ? `<span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">${vsLabel}</span>` : ''}</div>
-    <div class="kpi-grid">${kpiHTML}</div>
-
     <div class="sl">Spend &amp; Cost Efficiency</div>
     <div class="charts-row">
       <div class="chart-card">
         <div class="chart-title">Ad Spend by Channel</div>
-        ${spendSummaryHTML}
         <div class="donut-wrap">${donutSVG}<div class="donut-legend">${legendHTML}</div></div>
       </div>
       ${(key === 'mtd' || key === 'lastmonth') ? `
