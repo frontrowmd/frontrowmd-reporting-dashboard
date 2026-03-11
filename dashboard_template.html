@@ -1112,10 +1112,19 @@ function buildOwnerBreakdownTable(pp) {
 
     return `
       <div style="padding:10px 0;border-bottom:1px solid var(--card-border)">
-        <div style="display:grid;grid-template-columns:110px 1fr 70px;align-items:center;gap:12px;margin-bottom:8px">
+        <div style="display:grid;grid-template-columns:110px 1fr 120px;align-items:center;gap:12px;margin-bottom:8px">
           <div style="font-size:12px;font-weight:700;color:var(--deep-navy)">${o.name}</div>
           <div style="position:relative;height:22px;background:rgba(212,230,239,0.35);border-radius:4px;overflow:hidden">${segments}</div>
-          <div style="text-align:right"><span style="font-size:14px;font-weight:700;color:var(--deep-navy)">${total}</span><span style="font-size:10px;font-weight:400;color:#8a9aaa;display:block">deals</span><span style="font-size:12px;font-weight:700;color:#1D4053">${qualPct}%</span><span style="font-size:10px;font-weight:400;color:#8a9aaa"> qual</span></div>
+          <div>
+            <div style="display:flex;align-items:baseline;gap:4px;margin-bottom:4px">
+              <span style="font-size:16px;font-weight:700;color:var(--deep-navy)">${qualPct}%</span>
+              <span style="font-size:11px;color:#8a9aaa;font-weight:400">/ ${total}</span>
+            </div>
+            <div style="width:100%;height:6px;background:rgba(0,0,0,0.06);border-radius:3px;overflow:hidden">
+              <div style="height:100%;width:${qualPct}%;background:${qualPct >= 50 ? '#1D4053' : qualPct >= 30 ? '#B8860B' : '#C0392B'};border-radius:3px;transition:width 0.8s ease"></div>
+            </div>
+            <div style="font-size:9px;color:#8a9aaa;margin-top:2px">total given</div>
+          </div>
         </div>
         <div style="padding-left:122px;display:flex;gap:6px;flex-wrap:wrap">${pills}</div>
       </div>`;
@@ -1129,7 +1138,71 @@ function buildOwnerBreakdownTable(pp) {
   return `
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px">${legend}</div>
     ${bars}
-    <div style="margin-top:10px;font-size:10px;color:#8a9aaa;font-style:italic">Breakdown by HubSpot deal owner. Qual % = Qualified Demo Given ÷ Total Demos assigned to that owner. Blank = demo_given__status not set.</div>`;
+    <div style="margin-top:10px;font-size:10px;color:#8a9aaa;font-style:italic">Breakdown by HubSpot deal owner. Qual % = Qualified Demo Given ÷ Total Demos assigned to that owner. Blank = demo_given__status not set.</div>
+
+    ${(() => {
+      const wonOwners = owners.filter(o => o.closedWon > 0).sort((a,b) => b.closedWon - a.closedWon);
+      if (!wonOwners.length) return '';
+      const maxWon = wonOwners[0].closedWon;
+      const wonBars = wonOwners.map(o => {
+        const pct = (o.closedWon / maxWon * 100).toFixed(1);
+        return `<div style="display:grid;grid-template-columns:110px 1fr 50px;align-items:center;gap:12px;padding:6px 0">
+          <div style="font-size:12px;font-weight:600;color:var(--deep-navy);text-align:right">${o.name}</div>
+          <div style="height:18px;background:rgba(212,230,239,0.35);border-radius:4px;overflow:hidden">
+            <div style="height:100%;width:${pct}%;background:#172C45;border-radius:4px;transition:width 0.8s ease"></div>
+          </div>
+          <div style="font-size:13px;font-weight:700;color:var(--deep-navy)">${o.closedWon}</div>
+        </div>`;
+      }).join('');
+      return `<div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--card-border)">
+        <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--soft-teal);margin-bottom:12px">Deals Won by Owner</div>
+        ${wonBars}
+      </div>`;
+    })()}`;
+}
+
+// ── Demo Quality by Day of Week ────────────────────────────────
+function buildDOWChart(pp) {
+  const dow = pp.dowBreakdown || [];
+  if (!dow.length || dow.every(d => d.demoGiven + d.tooEarly + d.notQual + d.disqBefore + d.rescheduled + d.canceled + d.blank === 0)) return '';
+
+  const stackColors = {
+    demoGiven: '#1D4053', tooEarly: '#aab8c2', notQual: '#C0392B',
+    disqBefore: '#B8860B', rescheduled: '#9b7fd4', canceled: '#d47f7f', blank: '#c0c8d0'
+  };
+  const stackLabels = {
+    demoGiven: 'Qual. Demo Given', tooEarly: 'Too Early', notQual: 'Not Qual',
+    disqBefore: 'Disq. Before', rescheduled: 'Rescheduled', canceled: 'Canceled', blank: 'Blank'
+  };
+  const stackKeys = ['demoGiven','tooEarly','notQual','disqBefore','rescheduled','canceled','blank'];
+  // Reorder Mon-Sun for display
+  const ordered = [1,2,3,4,5,6,0].map(i => dow[i] || { day: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][i], demoGiven:0, tooEarly:0, notQual:0, disqBefore:0, rescheduled:0, canceled:0, blank:0 });
+  const maxVal = Math.max(...ordered.map(d => stackKeys.reduce((s,k) => s + (d[k]||0), 0)), 1);
+
+  const bars = ordered.map(d => {
+    const total = stackKeys.reduce((s,k) => s + (d[k]||0), 0);
+    const barHeight = total > 0 ? Math.max((total / maxVal) * 140, 8) : 0;
+    const segments = stackKeys.map(k => {
+      if ((d[k]||0) === 0) return '';
+      const segPct = (d[k] / total * 100).toFixed(1);
+      return `<div style="width:100%;height:${segPct}%;background:${stackColors[k]}" title="${stackLabels[k]}: ${d[k]}"></div>`;
+    }).join('');
+    return `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1">
+      <div style="font-size:11px;font-weight:700;color:var(--deep-navy)">${total || ''}</div>
+      <div style="width:32px;height:${barHeight.toFixed(0)}px;border-radius:4px 4px 0 0;overflow:hidden;display:flex;flex-direction:column">${segments}</div>
+      <div style="font-size:10px;font-weight:600;color:var(--mid-navy)">${d.day}</div>
+    </div>`;
+  }).join('');
+
+  const legend = stackKeys.filter(k => ordered.some(d => (d[k]||0) > 0)).map(k => `
+    <span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--mid-navy)">
+      <span style="width:8px;height:8px;border-radius:2px;background:${stackColors[k]};display:inline-block"></span>
+      ${stackLabels[k]}</span>`).join('');
+
+  return `
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px">${legend}</div>
+    <div style="display:flex;align-items:flex-end;gap:8px;padding:0 16px;min-height:180px">${bars}</div>
+    <div style="margin-top:8px;font-size:10px;color:#8a9aaa;font-style:italic">Demo quality breakdown by day of week (based on date_demo_booked).</div>`;
 }
 
 const fmt$ = n => '$' + Number(n).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,',');
@@ -1860,6 +1933,16 @@ function buildPanel(key, d) {
       <div class="leg-pct">${fmtP(s.value,allSpend)}</div>
     </div>`).join('');
 
+  // Demos donut
+  const demoSlices=chKeys.map(k=>({label:CH_LABELS[k],value:ch[k].demos,color:CH_COLORS[k]})).filter(s=>s.value>0);
+  const demoDonutSVG=buildDonut(demoSlices);
+  const demoLegendHTML=demoSlices.map(s=>`
+    <div class="leg-item">
+      <div class="leg-dot" style="background:${s.color}"></div>
+      <div class="leg-name">${s.label}</div>
+      <div class="leg-pct">${fmtP(s.value,allDemos)}</div>
+    </div>`).join('');
+
   const sorted=chKeys.map(k=>({key:k,...ch[k]})).sort((a,b)=>b.spend-a.spend);
   const maxSpend=sorted[0]?.spend||1;
   const spendSummaryHTML=`
@@ -1910,7 +1993,19 @@ function buildPanel(key, d) {
       <div class="bar-val">${fmt$(c.spend)}</div>
     </div>`).join('');
 
-  // CPD table — with % of total booked demos attribution
+  // Mini delta helper for small subtext
+  const miniDelta = (curr, prev, opts) => {
+    if (curr == null || prev == null || prev === 0) return '';
+    const pctChg = ((curr - prev) / Math.abs(prev)) * 100;
+    const invert = opts?.invert;
+    const isUp = pctChg > 0;
+    const isGood = invert ? !isUp : isUp;
+    const color = Math.abs(pctChg) < 1 ? '#8a9aaa' : isGood ? '#2E7D52' : '#C0392B';
+    const arrow = isUp ? '▲' : '▼';
+    return `<div style="font-size:9px;color:${color};font-weight:600;margin-top:1px">${arrow}${Math.abs(pctChg).toFixed(0)}%</div>`;
+  };
+
+  // CPD table — with full attribution + delta subtexts
   const cpdRows=sorted.map(c=>{
     const pk  = pch[c.key] || { spend:0, demos:0 };
     const v   = cpdNum(c.spend, c.demos);
@@ -1918,29 +2013,32 @@ function buildPanel(key, d) {
     const badge = v===null ? '<span class="badge badge-na">N/A</span>'
                 : v>600    ? `<span class="badge badge-warn">${fmt$(v)}</span>`
                 :             `<span class="badge badge-good">${fmt$(v)}</span>`;
-    const dbVal = (v!==null && pv!==null)
-      ? db(v, pv, {invert:true})
-      : '';
     // Channel attribution data
     const attr = ca[c.key] || {};
+    const pattr = pca[c.key] || {};
     const qualDemos = attr.qualified || 0;
+    const pQualDemos = pattr.qualified || 0;
     const chCpqd = qualDemos > 0 ? c.spend / qualDemos : null;
-    const chWon = (ca[c.key]?.closedWon || 0);  // closed won from channelAttribution is demo-based
-    // Use closedWon query attribution for MRR
+    const pChCpqd = pQualDemos > 0 ? pk.spend / pQualDemos : null;
     const cwData = d.channelAttribution?.[c.key] || {};
+    const pcwData = p.channelAttribution?.[c.key] || {};
     const chClosedWon = cwData.closedWon || 0;
+    const pChClosedWon = pcwData.closedWon || 0;
     const chMrr = cwData.mrr || 0;
-    const chRoas = c.spend > 0 && chMrr > 0 ? (chMrr / c.spend).toFixed(2) + 'x' : '—';
+    const pChMrr = pcwData.mrr || 0;
+    const chRoas = c.spend > 0 && chMrr > 0 ? chMrr / c.spend : null;
+    const pChRoas = pk.spend > 0 && pChMrr > 0 ? pChMrr / pk.spend : null;
+    const roasStr = chRoas !== null ? chRoas.toFixed(2) + 'x' : '—';
     return `<tr>
       <td>${CH_ICONS[c.key]} ${CH_LABELS[c.key]}</td>
-      <td>${fmt$(c.spend)}</td>
-      <td>${fmtN(c.demos)}</td>
-      <td style="text-align:center;font-weight:600;color:var(--deep-navy)">${qualDemos > 0 ? fmtN(qualDemos) : '<span style="color:#c0c8d0">—</span>'}</td>
-      <td style="white-space:nowrap">${badge} ${dbVal}</td>
-      <td>${chCpqd !== null ? fmt$(chCpqd) : '<span style="color:#c0c8d0;font-size:10px">—</span>'}</td>
-      <td style="text-align:center;font-weight:700;color:var(--deep-navy)">${chClosedWon > 0 ? fmtN(chClosedWon) : '<span style="color:#c0c8d0">—</span>'}</td>
-      <td style="text-align:right;font-weight:700">${chMrr > 0 ? fmt$(chMrr) : '<span style="color:#c0c8d0">—</span>'}</td>
-      <td style="text-align:right;font-weight:700;color:${chRoas !== '—' ? 'var(--deep-navy)' : '#c0c8d0'}">${chRoas}</td>
+      <td>${fmt$(c.spend)}${noPrev ? '' : miniDelta(c.spend, pk.spend)}</td>
+      <td>${fmtN(c.demos)}${noPrev ? '' : miniDelta(c.demos, pk.demos)}</td>
+      <td style="text-align:center">${qualDemos > 0 ? `<span style="font-weight:600;color:var(--deep-navy)">${fmtN(qualDemos)}</span>` : '<span style="color:#c0c8d0">—</span>'}${noPrev ? '' : miniDelta(qualDemos, pQualDemos)}</td>
+      <td style="white-space:nowrap">${badge}${noPrev ? '' : miniDelta(v, pv, {invert:true})}</td>
+      <td>${chCpqd !== null ? fmt$(chCpqd) : '<span style="color:#c0c8d0">—</span>'}${noPrev ? '' : miniDelta(chCpqd, pChCpqd, {invert:true})}</td>
+      <td style="text-align:center">${chClosedWon > 0 ? `<span style="font-weight:700;color:var(--deep-navy)">${fmtN(chClosedWon)}</span>` : '<span style="color:#c0c8d0">—</span>'}${noPrev ? '' : miniDelta(chClosedWon, pChClosedWon)}</td>
+      <td style="text-align:right">${chMrr > 0 ? `<span style="font-weight:700">${fmt$(chMrr)}</span>` : '<span style="color:#c0c8d0">—</span>'}${noPrev ? '' : miniDelta(chMrr, pChMrr)}</td>
+      <td style="text-align:right">${roasStr !== '—' ? `<span style="font-weight:700;color:var(--deep-navy)">${roasStr}</span>` : '<span style="color:#c0c8d0">—</span>'}${noPrev ? '' : miniDelta(chRoas, pChRoas)}</td>
     </tr>`;
   }).join('');
 
@@ -2033,19 +2131,8 @@ function buildPanel(key, d) {
     ${wfFunnelHTML}
 
     <div class="sl">Spend &amp; Cost Efficiency</div>
-    <div class="charts-row">
-      <div class="chart-card">
-        <div class="chart-title">Ad Spend by Channel</div>
-        <div class="donut-wrap">${donutSVG}<div class="donut-legend">${legendHTML}</div></div>
-      </div>
-      ${(key === 'mtd' || key === 'lastmonth') ? `
-      <div class="chart-card">
-        <div class="chart-title">${key === 'lastmonth' ? 'Last Month' : 'MTD'} Spend vs. Monthly Budget</div>
-        ${buildSpendPacingSection(ch, key === 'lastmonth' ? 100 : pacingPct, getBudgetsForMonth(d.from))}
-      </div>` : ''}
-    </div>
 
-    <div class="chart-card" style="margin-bottom:32px">
+    <div class="chart-card" style="margin-bottom:14px">
       <div class="chart-title">Cost Per Demo by Channel ${vsLabel ? `<span class="chart-title-meta">${vsLabel}</span>` : ''}</div>
       <table class="cpd-table">
         <thead><tr><th>Channel</th><th>Spend</th><th>Ad Demos</th><th style="text-align:center">Qualified</th><th>CPD</th><th>CPQD</th><th style="text-align:center">Closed Won</th><th style="text-align:right">MRR</th><th style="text-align:right">ROAS</th></tr></thead>
@@ -2063,6 +2150,25 @@ function buildPanel(key, d) {
         </tr></tfoot>
       </table>
     </div>
+
+    <div class="chart-card" style="margin-bottom:14px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:32px;align-items:start">
+        <div>
+          <div class="chart-title">Ad Spend by Channel</div>
+          <div class="donut-wrap">${donutSVG}<div class="donut-legend">${legendHTML}</div></div>
+        </div>
+        <div>
+          <div class="chart-title">Demos by Channel</div>
+          <div class="donut-wrap">${demoDonutSVG}<div class="donut-legend">${demoLegendHTML}</div></div>
+        </div>
+      </div>
+    </div>
+
+    ${(key === 'mtd' || key === 'lastmonth') ? `
+    <div class="chart-card" style="margin-bottom:32px">
+      <div class="chart-title">${key === 'lastmonth' ? 'Last Month' : 'MTD'} Spend vs. Monthly Budget</div>
+      ${buildSpendPacingSection(ch, key === 'lastmonth' ? 100 : pacingPct, getBudgetsForMonth(d.from))}
+    </div>` : ''}
 
     ${buildPaidMediaInline(ch, pch, prevLabel, noPrev)}
 
@@ -2083,6 +2189,11 @@ function buildPanel(key, d) {
     <div class="chart-card" style="margin-bottom:32px">
       <div class="chart-title">Demo Quality${(key === 'ytd' || key === 'lastmonth') ? '' : ' — Yesterday vs Last 7 Days vs MTD vs Last Month'}</div>
       ${buildDemoQualityChart(key)}
+    </div>
+
+    <div class="chart-card" style="margin-bottom:32px">
+      <div class="chart-title">Demo Quality by Day of Week</div>
+      ${buildDOWChart(pp)}
     </div>
 
     <div class="sl">Demo Quality by Deal Owner <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">Status breakdown per rep</span></div>
@@ -2114,7 +2225,15 @@ function buildPaidMediaInline(ch, pch, prevLabel, noPrev) {
     tiktok:   { icon: '🎵', name: 'TikTok' },
     youtube:  { icon: '▶️',  name: 'YouTube' },
   };
-  const db = noPrev ? () => '' : (curr, prev, invert=false) => deltaBadge(curr, prev, { invert });
+  const db = noPrev ? () => '' : (curr, prev, invert=false) => {
+    if (curr == null || prev == null || prev === 0) return '';
+    const pctChg = ((curr - prev) / Math.abs(prev)) * 100;
+    const isUp = pctChg > 0;
+    const isGood = invert ? !isUp : isUp;
+    const color = Math.abs(pctChg) < 1 ? '#8a9aaa' : isGood ? '#2E7D52' : '#C0392B';
+    const arrow = isUp ? '▲' : '▼';
+    return `<span style="font-size:9px;color:${color};font-weight:600;margin-left:4px">${arrow}${Math.abs(pctChg).toFixed(0)}%</span>`;
+  };
 
   // Channel detail cards
   const cardsHTML = channels.map(k => {

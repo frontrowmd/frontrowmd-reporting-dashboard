@@ -532,6 +532,23 @@ async function fetchAllHubSpotData(windows) {
     const ownerBreakdown = Object.values(ownerMap)
       .sort((a, b) => (b.demoGiven + b.tooEarly + b.notQual + b.disqBefore + b.rescheduled + b.canceled + b.blank) - (a.demoGiven + a.tooEarly + a.notQual + a.disqBefore + a.rescheduled + a.canceled + a.blank));
 
+    // ── Day-of-week breakdown ───────────────────────────────────────────────
+    const DOW_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const dowMap = DOW_NAMES.map(d => ({ day: d, demoGiven: 0, tooEarly: 0, notQual: 0, disqBefore: 0, rescheduled: 0, canceled: 0, blank: 0 }));
+    for (const deal of deals) {
+      const bookedStr = deal.properties?.date_demo_booked;
+      if (!bookedStr) continue;
+      const dayIdx = new Date(bookedStr + 'T12:00:00').getDay(); // 0=Sun
+      const rawStatus = (deal.properties?.demo_given__status || '').trim();
+      if (rawStatus === 'Demo Given' || rawStatus === 'Demo Given at Rescheduled time') { dowMap[dayIdx].demoGiven++;
+      } else if (rawStatus === 'Demo Given, Qualified Company, too early') { dowMap[dayIdx].tooEarly++;
+      } else if (rawStatus === 'Not Qualified after the demo') { dowMap[dayIdx].notQual++;
+      } else if (rawStatus === 'Disqualified, Meeting Cancelled') { dowMap[dayIdx].disqBefore++;
+      } else if (rawStatus === 'No Show') { dowMap[dayIdx].rescheduled++;
+      } else if (rawStatus === 'No Showed') { dowMap[dayIdx].canceled++;
+      } else { dowMap[dayIdx].blank++; }
+    }
+
     // ── Channel attribution: group deals by UTM source → channel ────────────
     const chAttr = {};
     const CH_KEYS = ['meta','linkedin','google','tiktok','youtube'];
@@ -581,6 +598,7 @@ async function fetchAllHubSpotData(windows) {
       avgDealCycleDays,
       ownerBreakdown,
       channelAttribution,
+      dowBreakdown: dowMap,
       newMRR: closedWon.reduce((s, d) => s + (parseFloat(d.properties?.amount) || 0), 0),
     };
   }
@@ -898,10 +916,10 @@ function buildDashboard(windowedChannels, hubspotData, prevWindowedChannels, pre
 
   function buildWin(channels, ga4, hs, ga4Sources, ga4PrevSources) {
     const { demosBooked, demosToOccur, demosHappened, dealsWon, pctDemosWon,
-            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays, ownerBreakdown, channelAttribution, newMRR } = hs;
+            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays, ownerBreakdown, channelAttribution, dowBreakdown, newMRR } = hs;
     const pipeline = { demosToOccur, demosHappened, dealsWon, pctDemosWon,
                        notQualAfterDemo, disqualifiedBeforeDemo, tooEarly,
-                       rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays, ownerBreakdown: ownerBreakdown || [] };
+                       rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays, ownerBreakdown: ownerBreakdown || [], dowBreakdown: dowBreakdown || [] };
     const metaCTR  = channels.meta.ctrAvg != null
       ? (channels.meta.ctrAvg * 100).toFixed(2) + '%' : null;
     return { channels, ga4, demosBooked, pipeline, channelAttribution: channelAttribution || {}, newMRR, metaCTR,
@@ -1666,10 +1684,10 @@ async function fetchCustomWindow(from, to) {
 
   function buildWin(ch, g4, h, ga4Sources, ga4PrevSources) {
     const { demosBooked, demosToOccur, demosHappened, dealsWon, pctDemosWon,
-            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays, ownerBreakdown, channelAttribution, newMRR } = h;
+            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays, ownerBreakdown, channelAttribution, dowBreakdown, newMRR } = h;
     const pipeline = { demosToOccur, demosHappened, dealsWon, pctDemosWon,
                        notQualAfterDemo, disqualifiedBeforeDemo, tooEarly,
-                       rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays, ownerBreakdown: ownerBreakdown || [] };
+                       rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays, ownerBreakdown: ownerBreakdown || [], dowBreakdown: dowBreakdown || [] };
     const metaCTR  = ch.meta.ctrAvg != null
       ? (ch.meta.ctrAvg * 100).toFixed(2) + '%' : null;
     return { channels: ch, ga4: g4, demosBooked, pipeline, channelAttribution: channelAttribution || {}, newMRR, metaCTR,
