@@ -942,10 +942,19 @@ function buildDemoQualityChart(tabKey) {
 
     return `
       <div style="padding:10px 0;border-bottom:1px solid var(--card-border)">
-        <div style="display:grid;grid-template-columns:110px 1fr 70px;align-items:center;gap:12px;margin-bottom:8px">
+        <div style="display:grid;grid-template-columns:110px 1fr 120px;align-items:center;gap:12px;margin-bottom:8px">
           <div style="font-size:12px;font-weight:700;color:var(--deep-navy)">${w.label}</div>
           <div style="position:relative;height:22px;background:rgba(212,230,239,0.35);border-radius:4px;overflow:hidden">${segments}${blankSeg}</div>
-          <div style="font-size:13px;font-weight:700;color:#1D4053;text-align:right">${qualPct}%${totalLabel}<span style="font-size:9px;font-weight:400;color:#8a9aaa;display:block;text-align:right">given</span></div>
+          <div>
+            <div style="display:flex;align-items:baseline;gap:4px;margin-bottom:4px">
+              <span style="font-size:16px;font-weight:700;color:var(--deep-navy)">${qualPct}%</span>
+              <span style="font-size:11px;color:#8a9aaa;font-weight:400">/ ${grandTotal}</span>
+            </div>
+            <div style="width:100%;height:6px;background:rgba(0,0,0,0.06);border-radius:3px;overflow:hidden">
+              <div style="height:100%;width:${qualPct}%;background:${qualPct >= 50 ? '#1D4053' : qualPct >= 30 ? '#B8860B' : '#C0392B'};border-radius:3px;transition:width 0.8s ease"></div>
+            </div>
+            <div style="font-size:9px;color:#8a9aaa;margin-top:2px">total given</div>
+          </div>
         </div>
         <div style="padding-left:122px;display:flex;gap:6px;flex-wrap:wrap">${pills}</div>
       </div>`;
@@ -1175,34 +1184,56 @@ function buildDOWChart(pp) {
     disqBefore: 'Disq. Before', rescheduled: 'Rescheduled', canceled: 'Canceled', blank: 'Blank'
   };
   const stackKeys = ['demoGiven','tooEarly','notQual','disqBefore','rescheduled','canceled','blank'];
-  // Reorder Mon-Sun for display
-  const ordered = [1,2,3,4,5,6,0].map(i => dow[i] || { day: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][i], demoGiven:0, tooEarly:0, notQual:0, disqBefore:0, rescheduled:0, canceled:0, blank:0 });
-  const maxVal = Math.max(...ordered.map(d => stackKeys.reduce((s,k) => s + (d[k]||0), 0)), 1);
+  // Weekdays only: Mon(1) - Fri(5)
+  const dayNames = { 1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday', 5: 'Friday' };
+  const weekdays = [1,2,3,4,5].map(i => dow[i] || { day: dayNames[i], demoGiven:0, tooEarly:0, notQual:0, disqBefore:0, rescheduled:0, canceled:0, blank:0 });
+  const maxVal = Math.max(...weekdays.map(d => stackKeys.reduce((s,k) => s + (d[k]||0), 0)), 1);
 
-  const bars = ordered.map(d => {
+  const pctFmt = (n, d) => d > 0 ? Math.round(n / d * 100) + '%' : '—';
+
+  const bars = weekdays.map(d => {
     const total = stackKeys.reduce((s,k) => s + (d[k]||0), 0);
-    const barHeight = total > 0 ? Math.max((total / maxVal) * 140, 8) : 0;
+    if (total === 0) return `<div style="display:grid;grid-template-columns:90px 1fr 50px;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid rgba(212,230,239,0.3)">
+      <div style="font-size:12px;font-weight:600;color:var(--mid-navy)">${d.day}</div>
+      <div style="height:20px;background:rgba(212,230,239,0.2);border-radius:4px"></div>
+      <div style="font-size:11px;color:#c0c8d0;text-align:right">0</div>
+    </div>`;
+
+    let offsetPct = 0;
     const segments = stackKeys.map(k => {
       if ((d[k]||0) === 0) return '';
-      const segPct = (d[k] / total * 100).toFixed(1);
-      return `<div style="width:100%;height:${segPct}%;background:${stackColors[k]}" title="${stackLabels[k]}: ${d[k]}"></div>`;
+      const segW = (d[k] / maxVal * 100);
+      const segLeft = offsetPct;
+      offsetPct += segW;
+      const showCount = segW > 5;
+      return `<div style="position:absolute;left:${segLeft.toFixed(2)}%;width:${segW.toFixed(2)}%;height:100%;background:${stackColors[k]}${k === 'blank' ? ';opacity:0.5' : ''}" title="${stackLabels[k]}: ${d[k]}">${showCount ? `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:rgba(255,255,255,0.9)">${d[k]}</div>` : ''}</div>`;
     }).join('');
-    return `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1">
-      <div style="font-size:11px;font-weight:700;color:var(--deep-navy)">${total || ''}</div>
-      <div style="width:32px;height:${barHeight.toFixed(0)}px;border-radius:4px 4px 0 0;overflow:hidden;display:flex;flex-direction:column">${segments}</div>
-      <div style="font-size:10px;font-weight:600;color:var(--mid-navy)">${d.day}</div>
+
+    const qualPct = total > 0 ? Math.round(d.demoGiven / total * 100) : 0;
+
+    const pills = stackKeys.filter(k => (d[k]||0) > 0).map(k =>
+      `<span style="font-size:9px;color:${stackColors[k]};font-weight:600">${stackLabels[k]}: ${d[k]} (${pctFmt(d[k], total)})</span>`
+    ).join(' · ');
+
+    return `<div style="padding:8px 0;border-bottom:1px solid rgba(212,230,239,0.3)">
+      <div style="display:grid;grid-template-columns:90px 1fr 50px;align-items:center;gap:12px;margin-bottom:4px">
+        <div style="font-size:12px;font-weight:600;color:var(--deep-navy)">${d.day}</div>
+        <div style="position:relative;height:20px;background:rgba(212,230,239,0.2);border-radius:4px;overflow:hidden">${segments}</div>
+        <div style="text-align:right"><span style="font-size:13px;font-weight:700;color:var(--deep-navy)">${total}</span></div>
+      </div>
+      <div style="padding-left:102px;font-size:9px;color:#8a9aaa">${pills}</div>
     </div>`;
   }).join('');
 
-  const legend = stackKeys.filter(k => ordered.some(d => (d[k]||0) > 0)).map(k => `
+  const legend = stackKeys.filter(k => weekdays.some(d => (d[k]||0) > 0)).map(k => `
     <span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--mid-navy)">
       <span style="width:8px;height:8px;border-radius:2px;background:${stackColors[k]};display:inline-block"></span>
       ${stackLabels[k]}</span>`).join('');
 
   return `
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px">${legend}</div>
-    <div style="display:flex;align-items:flex-end;gap:8px;padding:0 16px;min-height:180px">${bars}</div>
-    <div style="margin-top:8px;font-size:10px;color:#8a9aaa;font-style:italic">Demo quality breakdown by day of week (based on date_demo_booked).</div>`;
+    ${bars}
+    <div style="margin-top:8px;font-size:10px;color:#8a9aaa;font-style:italic">Weekday breakdown based on date_demo_booked. Weekends excluded.</div>`;
 }
 
 const fmt$ = n => '$' + Number(n).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,',');
@@ -2155,10 +2186,12 @@ function buildPanel(key, d) {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:32px;align-items:start">
         <div>
           <div class="chart-title">Ad Spend by Channel</div>
+          <div style="font-size:22px;font-weight:700;color:var(--deep-navy);margin-bottom:12px;font-family:'Libre Baskerville',Georgia,serif">${fmt$(allSpend)}</div>
           <div class="donut-wrap">${donutSVG}<div class="donut-legend">${legendHTML}</div></div>
         </div>
         <div>
           <div class="chart-title">Demos by Channel</div>
+          <div style="font-size:22px;font-weight:700;color:var(--deep-navy);margin-bottom:12px;font-family:'Libre Baskerville',Georgia,serif">${fmtN(allDemos)} <span style="font-size:13px;font-weight:400;color:#8a9aaa">demos</span></div>
           <div class="donut-wrap">${demoDonutSVG}<div class="donut-legend">${demoLegendHTML}</div></div>
         </div>
       </div>

@@ -16,7 +16,12 @@ const GITHUB_OWNER     = process.env.GITHUB_OWNER;   // your GitHub username
 const GITHUB_REPO      = process.env.GITHUB_REPO;    // e.g. frontrowmd-dashboard
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
-function toDateStr(d) { return d.toISOString().split('T')[0]; }
+function toDateStr(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 function getWindows() {
   const now      = new Date();
   const yest     = new Date(now); yest.setDate(now.getDate() - 1);
@@ -90,7 +95,7 @@ async function windsorFetch(dateFrom, dateTo, fields, extra = '', attempt = 1) {
 async function fetchWindsorDemos(dateFrom, dateTo) {
   // Windsor doesn't return data for today (incomplete day) — cap at yesterday
   const yest = new Date(); yest.setDate(yest.getDate() - 1);
-  const yesterdayStr = yest.toISOString().slice(0, 10);
+  const yesterdayStr = toDateStr(yest);
   if (dateTo > yesterdayStr) dateTo = yesterdayStr;
   if (dateFrom > dateTo) return { meta: {spend:0,clicks:0,impressions:0,demos:0,ctr:[]}, linkedin:{spend:0,clicks:0,impressions:0,demos:0}, tiktok:{spend:0,clicks:0,impressions:0,demos:0}, google:{spend:0,clicks:0,impressions:0,demos:0,_raw:0}, youtube:{spend:0,clicks:0,impressions:0,demos:0,_raw:0} };
 
@@ -103,7 +108,7 @@ async function fetchWindsorDemos(dateFrom, dateTo) {
   // Windsor truncates rows for multi-day ranges — fetch day-by-day in small batches
   const days = [];
   for (let d = new Date(dateFrom); d <= new Date(dateTo); d.setDate(d.getDate() + 1)) {
-    days.push(d.toISOString().slice(0, 10));
+    days.push(toDateStr(d));
   }
   const allDayRows = [];
   for (let i = 0; i < days.length; i += 5) {
@@ -217,7 +222,7 @@ async function fetchWindsorDemos(dateFrom, dateTo) {
 // ── Windsor: GA4 ─────────────────────────────────────────────────────────────
 async function fetchGA4(dateFrom, dateTo) {
   const yest = new Date(); yest.setDate(yest.getDate() - 1);
-  const yesterdayStr = yest.toISOString().slice(0, 10);
+  const yesterdayStr = toDateStr(yest);
   if (dateTo > yesterdayStr) dateTo = yesterdayStr;
   if (dateFrom > dateTo) return { users: 0, demoButtonClicks: 0, meetingBooked: 0 };
   const fields = 'datasource,users,sessions,conversions_click_schedule_demo_button,conversions_hubspot_meeting_booked';
@@ -237,7 +242,7 @@ async function fetchGA4(dateFrom, dateTo) {
 // sorted by meetingBooked desc. Uses sessionDefaultChannelGrouping dimension.
 async function fetchGA4Sources(dateFrom, dateTo) {
   const yest = new Date(); yest.setDate(yest.getDate() - 1);
-  const yesterdayStr = yest.toISOString().slice(0, 10);
+  const yesterdayStr = toDateStr(yest);
   if (dateTo > yesterdayStr) dateTo = yesterdayStr;
   if (dateFrom > dateTo) return [];
   const fields = 'datasource,sessionDefaultChannelGrouping,session_source,conversions_hubspot_meeting_booked,conversions_click_schedule_demo_button,users';
@@ -1535,7 +1540,7 @@ async function deployToGitHub(dashPath) {
     if (!putRes.ok) throw new Error(`GitHub upsert failed (${filename}): ${putRes.status} ${await putRes.text()}`);
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toDateStr(new Date());
 
   // Commit the dashboard HTML
   const dashBytes = fs.readFileSync(dashPath);
