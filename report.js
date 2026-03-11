@@ -410,7 +410,7 @@ async function fetchAllHubSpotData(windows) {
       { propertyName: 'closedate', operator: 'GTE', value: gteMs },
       { propertyName: 'closedate', operator: 'LTE', value: lteMs },
     ]}],
-    properties: ['amount', 'closedate', 'hs_createdate', 'utm_source', 'utm_medium']
+    properties: ['amount', 'closedate', 'hs_createdate', 'utm_source', 'utm_medium', 'hubspot_owner_id']
   });
 
   // ── Fetch owner names ─────────────────────────────────────────────────────
@@ -513,6 +513,17 @@ async function fetchAllHubSpotData(windows) {
       ? Math.round(cycleDays.reduce((s, v) => s + v, 0) / cycleDays.length)
       : null;
 
+    // ── Closed Won by Owner (from closedate-based query) ─────────────────
+    const cwByOwnerMap = {};
+    for (const deal of closedWon) {
+      const ownerId = deal.properties?.hubspot_owner_id || 'unassigned';
+      const name = ownerId === 'unassigned' ? 'Unassigned' : (ownerNames[ownerId] || `Owner ${ownerId}`);
+      if (!cwByOwnerMap[ownerId]) cwByOwnerMap[ownerId] = { name, closedWon: 0, mrr: 0 };
+      cwByOwnerMap[ownerId].closedWon++;
+      cwByOwnerMap[ownerId].mrr += parseFloat(deal.properties?.amount) || 0;
+    }
+    const closedWonByOwner = Object.values(cwByOwnerMap).sort((a, b) => b.closedWon - a.closedWon);
+
     // ── Owner breakdown: group deals by hubspot_owner_id ──────────────────
     const ownerMap = {};
     for (const deal of deals) {
@@ -602,6 +613,7 @@ async function fetchAllHubSpotData(windows) {
       closedDeals,
       avgDealCycleDays,
       ownerBreakdown,
+      closedWonByOwner,
       channelAttribution,
       dowBreakdown: dowMap,
       newMRR: closedWon.reduce((s, d) => s + (parseFloat(d.properties?.amount) || 0), 0),
@@ -921,10 +933,10 @@ function buildDashboard(windowedChannels, hubspotData, prevWindowedChannels, pre
 
   function buildWin(channels, ga4, hs, ga4Sources, ga4PrevSources) {
     const { demosBooked, demosToOccur, demosHappened, dealsWon, pctDemosWon,
-            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays, ownerBreakdown, channelAttribution, dowBreakdown, newMRR } = hs;
+            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays, ownerBreakdown, closedWonByOwner, channelAttribution, dowBreakdown, newMRR } = hs;
     const pipeline = { demosToOccur, demosHappened, dealsWon, pctDemosWon,
                        notQualAfterDemo, disqualifiedBeforeDemo, tooEarly,
-                       rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays, ownerBreakdown: ownerBreakdown || [], dowBreakdown: dowBreakdown || [] };
+                       rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays, ownerBreakdown: ownerBreakdown || [], closedWonByOwner: closedWonByOwner || [], dowBreakdown: dowBreakdown || [] };
     const metaCTR  = channels.meta.ctrAvg != null
       ? (channels.meta.ctrAvg * 100).toFixed(2) + '%' : null;
     return { channels, ga4, demosBooked, pipeline, channelAttribution: channelAttribution || {}, newMRR, metaCTR,
@@ -1689,10 +1701,10 @@ async function fetchCustomWindow(from, to) {
 
   function buildWin(ch, g4, h, ga4Sources, ga4PrevSources) {
     const { demosBooked, demosToOccur, demosHappened, dealsWon, pctDemosWon,
-            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays, ownerBreakdown, channelAttribution, dowBreakdown, newMRR } = h;
+            notQualAfterDemo, disqualifiedBeforeDemo, tooEarly, rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays, ownerBreakdown, closedWonByOwner, channelAttribution, dowBreakdown, newMRR } = h;
     const pipeline = { demosToOccur, demosHappened, dealsWon, pctDemosWon,
                        notQualAfterDemo, disqualifiedBeforeDemo, tooEarly,
-                       rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays, ownerBreakdown: ownerBreakdown || [], dowBreakdown: dowBreakdown || [] };
+                       rescheduled, canceled, blankStatus, closedDeals, avgDealCycleDays, ownerBreakdown: ownerBreakdown || [], closedWonByOwner: closedWonByOwner || [], dowBreakdown: dowBreakdown || [] };
     const metaCTR  = ch.meta.ctrAvg != null
       ? (ch.meta.ctrAvg * 100).toFixed(2) + '%' : null;
     return { channels: ch, ga4: g4, demosBooked, pipeline, channelAttribution: channelAttribution || {}, newMRR, metaCTR,

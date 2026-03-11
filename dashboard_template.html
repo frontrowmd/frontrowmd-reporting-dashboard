@@ -973,90 +973,68 @@ function buildDemoQualityChart(tabKey) {
 
 // ── Demo Cohort Performance Table ──────────────────────────────
 function buildDemoCohortTable() {
-  const cohorts = DATA.demoCohorts || [];
+  const allCohorts = DATA.demoCohorts || [];
+  // Filter to 2026 only
+  const cohorts = allCohorts.filter(c => c.month >= '2026-01');
   if (!cohorts.length) return '';
 
   const pctOf = (n, total) => total > 0 ? (n / total * 100).toFixed(0) + '%' : '—';
+  const maxDemos = Math.max(...cohorts.map(c => c.demosGiven), 1);
 
   const rows = cohorts.map((c, i) => {
     const closeRate = c.closeRate !== null ? c.closeRate + '%' : '—';
     const cycleDays = c.avgCycleDays !== null ? c.avgCycleDays + 'd' : '—';
     const mrr       = c.mrr > 0 ? fmt$(c.mrr) : '—';
     const isLatest  = i === cohorts.length - 1;
-    const rowBg     = i % 2 === 0 ? 'rgba(212,230,239,0.12)' : 'transparent';
-
-    // Close rate color + mini bar
     const crNum = parseFloat(c.closeRate);
     const crColor = isNaN(crNum) ? '#8a9aaa' : crNum >= 25 ? '#2E7D52' : crNum >= 15 ? '#B8860B' : '#C0392B';
-    const crBarWidth = isNaN(crNum) ? 0 : Math.min(crNum, 100);
-    const crBar = !isNaN(crNum) ? `<div style="margin-top:4px;width:100%;height:4px;background:rgba(0,0,0,0.06);border-radius:2px;overflow:hidden"><div style="height:100%;width:${crBarWidth}%;background:${crColor};border-radius:2px"></div></div>` : '';
+    const barW = c.demosGiven > 0 ? (c.demosGiven / maxDemos * 100).toFixed(1) : 0;
+    const monthShort = c.label.replace(' 2026', '');
 
-    // Cohort total for percentage calculations (qual demos + notQual + tooEarly)
-    const cohortTotal = c.demosGiven + c.notQualified + c.tooEarly;
-
-    // Still open badge
-    const openBadge = c.stillOpen > 0
-      ? `<span style="font-size:12px;font-weight:700;color:var(--soft-teal)">${c.stillOpen}</span><span style="font-size:10px;color:#8a9aaa;margin-left:3px">(${pctOf(c.stillOpen, c.demosGiven)})</span>`
-      : '<span style="font-size:11px;color:#c0c8d0">—</span>';
-
-    return `<tr style="background:${rowBg};transition:background 0.15s">
-      <td style="padding:12px 16px;font-weight:700;color:var(--deep-navy);font-size:13px;white-space:nowrap;border-left:3px solid ${isLatest ? 'var(--soft-teal)' : 'transparent'}">${c.label}${isLatest ? ' <span style="font-size:9px;font-weight:600;color:var(--soft-teal);background:rgba(114,164,191,0.12);padding:2px 6px;border-radius:3px;vertical-align:middle">current</span>' : ''}</td>
-      <td style="padding:12px 16px;text-align:center;font-size:14px;font-weight:700;color:var(--mid-navy)">${c.demosGiven}</td>
-      <td style="padding:12px 16px;text-align:center;font-size:14px;font-weight:700;color:#1D4053">${c.closedWon}</td>
-      <td style="padding:12px 16px;text-align:center"><span style="font-size:14px;font-weight:700;color:${crColor}">${closeRate}</span>${crBar}</td>
-      <td style="padding:12px 16px;text-align:center;font-size:14px;font-weight:600;color:var(--mid-navy)">${cycleDays}</td>
-      <td style="padding:12px 16px;text-align:center">${openBadge}</td>
-      <td style="padding:12px 16px;text-align:center"><span style="font-size:12px;font-weight:600;color:#8a9aaa">${c.notQualified}</span>${c.notQualified > 0 ? `<span style="font-size:10px;color:#aab8c2;margin-left:3px">(${pctOf(c.notQualified, cohortTotal)})</span>` : ''}</td>
-      <td style="padding:12px 16px;text-align:center"><span style="font-size:12px;font-weight:600;color:#8a9aaa">${c.tooEarly}</span>${c.tooEarly > 0 ? `<span style="font-size:10px;color:#aab8c2;margin-left:3px">(${pctOf(c.tooEarly, cohortTotal)})</span>` : ''}</td>
-      <td style="padding:12px 16px;text-align:right;font-size:13px;font-weight:700;color:var(--deep-navy)">${mrr}</td>
-    </tr>`;
+    return `
+      <div style="padding:14px 0;border-bottom:1px solid rgba(212,230,239,0.3)${isLatest ? ';border-left:3px solid var(--soft-teal);padding-left:12px' : ''}">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:14px;font-weight:700;color:var(--deep-navy)">${monthShort}</span>
+            ${isLatest ? '<span style="font-size:9px;font-weight:600;color:var(--soft-teal);background:rgba(114,164,191,0.12);padding:2px 6px;border-radius:3px">current</span>' : ''}
+          </div>
+          <div style="display:flex;gap:16px;align-items:center">
+            <span style="font-size:11px;color:#8a9aaa">${fmtN(c.demosGiven)} qual demos</span>
+          </div>
+        </div>
+        <div style="height:12px;background:rgba(212,230,239,0.2);border-radius:6px;overflow:hidden;margin-bottom:10px;position:relative">
+          <div style="height:100%;width:${barW}%;background:linear-gradient(90deg,#172C45,#1D4053);border-radius:6px;transition:width 0.8s ease"></div>
+        </div>
+        <div style="display:flex;gap:20px;flex-wrap:wrap;font-size:12px">
+          <div><span style="color:#8a9aaa">Closed Won</span> <span style="font-weight:700;color:#1D4053">${c.closedWon}</span></div>
+          <div><span style="color:#8a9aaa">Close Rate</span> <span style="font-weight:700;color:${crColor}">${closeRate}</span></div>
+          <div><span style="color:#8a9aaa">Avg Cycle</span> <span style="font-weight:600;color:var(--mid-navy)">${cycleDays}</span></div>
+          <div><span style="color:#8a9aaa">Still Open</span> <span style="font-weight:700;color:var(--soft-teal)">${c.stillOpen}</span>${c.demosGiven > 0 ? ` <span style="font-size:10px;color:#aab8c2">(${pctOf(c.stillOpen, c.demosGiven)})</span>` : ''}</div>
+          <div><span style="color:#8a9aaa">Not Qual</span> <span style="font-weight:600;color:#8a9aaa">${c.notQualified}</span></div>
+          <div><span style="color:#8a9aaa">Too Early</span> <span style="font-weight:600;color:#8a9aaa">${c.tooEarly}</span></div>
+          <div><span style="color:#8a9aaa">MRR</span> <span style="font-weight:700;color:var(--deep-navy)">${mrr}</span></div>
+        </div>
+      </div>`;
   }).join('');
 
   // Totals
   const totals = cohorts.reduce((t, c) => ({
-    demos: t.demos + c.demosGiven,
-    won: t.won + c.closedWon,
-    open: t.open + c.stillOpen,
-    nq: t.nq + c.notQualified,
-    te: t.te + c.tooEarly,
-    mrr: t.mrr + c.mrr,
+    demos: t.demos + c.demosGiven, won: t.won + c.closedWon, open: t.open + c.stillOpen,
+    nq: t.nq + c.notQualified, te: t.te + c.tooEarly, mrr: t.mrr + c.mrr,
   }), { demos: 0, won: 0, open: 0, nq: 0, te: 0, mrr: 0 });
   const totalCR = totals.demos > 0 ? ((totals.won / totals.demos) * 100).toFixed(1) + '%' : '—';
-  const grandTotal = totals.demos + totals.nq + totals.te;
-
-  const thStyle = 'padding:10px 16px;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--white)';
 
   return `
-    <table style="width:100%;border-collapse:separate;border-spacing:0;font-family:'Inter',system-ui,sans-serif;border-radius:8px;overflow:hidden;border:1px solid var(--card-border)">
-      <thead>
-        <tr style="background:var(--deep-navy)">
-          <th style="${thStyle};text-align:left;border-radius:8px 0 0 0">Cohort</th>
-          <th style="${thStyle};text-align:center">Qual. Demo Given</th>
-          <th style="${thStyle};text-align:center">Closed Won</th>
-          <th style="${thStyle};text-align:center">Close Rate</th>
-          <th style="${thStyle};text-align:center">Avg Cycle</th>
-          <th style="${thStyle};text-align:center">Still Open</th>
-          <th style="${thStyle};text-align:center">Not Qual</th>
-          <th style="${thStyle};text-align:center">Too Early</th>
-          <th style="${thStyle};text-align:right;border-radius:0 8px 0 0">MRR</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-      <tfoot>
-        <tr style="background:rgba(23,44,69,0.05);border-top:2px solid var(--soft-teal)">
-          <td style="padding:12px 16px;font-weight:700;font-size:12px;color:var(--deep-navy)">All Cohorts</td>
-          <td style="padding:12px 16px;text-align:center;font-weight:700;font-size:13px;color:var(--mid-navy)">${totals.demos}</td>
-          <td style="padding:12px 16px;text-align:center;font-weight:700;font-size:13px;color:#1D4053">${totals.won}</td>
-          <td style="padding:12px 16px;text-align:center;font-weight:700;font-size:13px;color:var(--deep-navy)">${totalCR}</td>
-          <td style="padding:12px 16px;text-align:center;font-size:11px;color:#8a9aaa">—</td>
-          <td style="padding:12px 16px;text-align:center"><span style="font-size:12px;font-weight:700;color:var(--soft-teal)">${totals.open}</span><span style="font-size:10px;color:#8a9aaa;margin-left:3px">(${pctOf(totals.open, totals.demos)})</span></td>
-          <td style="padding:12px 16px;text-align:center"><span style="font-size:12px;font-weight:600;color:#8a9aaa">${totals.nq}</span><span style="font-size:10px;color:#aab8c2;margin-left:3px">(${pctOf(totals.nq, grandTotal)})</span></td>
-          <td style="padding:12px 16px;text-align:center"><span style="font-size:12px;font-weight:600;color:#8a9aaa">${totals.te}</span><span style="font-size:10px;color:#aab8c2;margin-left:3px">(${pctOf(totals.te, grandTotal)})</span></td>
-          <td style="padding:12px 16px;text-align:right;font-weight:700;font-size:13px;color:var(--deep-navy)">${totals.mrr > 0 ? fmt$(totals.mrr) : '—'}</td>
-        </tr>
-      </tfoot>
-    </table>
-    <div style="margin-top:10px;font-size:10px;color:#8a9aaa;font-style:italic">Cohort = qualified demos booked that month, tracked forward to current deal status. Close Rate and Avg Cycle reflect deals won at any point since the demo.</div>`;
+    ${rows}
+    <div style="padding:12px 0;display:flex;gap:20px;flex-wrap:wrap;font-size:12px;border-top:2px solid var(--soft-teal);margin-top:4px">
+      <div style="font-weight:700;color:var(--deep-navy)">All 2026</div>
+      <div><span style="color:#8a9aaa">Qual Demos</span> <span style="font-weight:700;color:var(--mid-navy)">${totals.demos}</span></div>
+      <div><span style="color:#8a9aaa">Won</span> <span style="font-weight:700;color:#1D4053">${totals.won}</span></div>
+      <div><span style="color:#8a9aaa">Close Rate</span> <span style="font-weight:700;color:var(--deep-navy)">${totalCR}</span></div>
+      <div><span style="color:#8a9aaa">Open</span> <span style="font-weight:700;color:var(--soft-teal)">${totals.open}</span></div>
+      <div><span style="color:#8a9aaa">MRR</span> <span style="font-weight:700;color:var(--deep-navy)">${totals.mrr > 0 ? fmt$(totals.mrr) : '—'}</span></div>
+    </div>
+    <div style="margin-top:8px;font-size:10px;color:#8a9aaa;font-style:italic">Cohort = qualified demos booked that month, tracked forward to current deal status. Close Rate and Avg Cycle reflect deals won at any point since the demo.</div>`;
 }
 
 // ── Demo Quality by Deal Owner ─────────────────────────────────
@@ -1150,21 +1128,21 @@ function buildOwnerBreakdownTable(pp) {
     <div style="margin-top:10px;font-size:10px;color:#8a9aaa;font-style:italic">Breakdown by HubSpot deal owner. Qual % = Qualified Demo Given ÷ Total Demos assigned to that owner. Blank = demo_given__status not set.</div>
 
     ${(() => {
-      const wonOwners = owners.filter(o => o.closedWon > 0).sort((a,b) => b.closedWon - a.closedWon);
+      const wonOwners = pp.closedWonByOwner || [];
       if (!wonOwners.length) return '';
       const maxWon = wonOwners[0].closedWon;
       const wonBars = wonOwners.map(o => {
         const pct = (o.closedWon / maxWon * 100).toFixed(1);
-        return `<div style="display:grid;grid-template-columns:110px 1fr 50px;align-items:center;gap:12px;padding:6px 0">
+        return `<div style="display:grid;grid-template-columns:110px 1fr 90px;align-items:center;gap:12px;padding:6px 0">
           <div style="font-size:12px;font-weight:600;color:var(--deep-navy);text-align:right">${o.name}</div>
           <div style="height:18px;background:rgba(212,230,239,0.35);border-radius:4px;overflow:hidden">
             <div style="height:100%;width:${pct}%;background:#172C45;border-radius:4px;transition:width 0.8s ease"></div>
           </div>
-          <div style="font-size:13px;font-weight:700;color:var(--deep-navy)">${o.closedWon}</div>
+          <div style="text-align:right"><span style="font-size:13px;font-weight:700;color:var(--deep-navy)">${o.closedWon}</span> <span style="font-size:10px;color:#8a9aaa">${o.mrr > 0 ? fmt$(o.mrr) : ''}</span></div>
         </div>`;
       }).join('');
       return `<div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--card-border)">
-        <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--soft-teal);margin-bottom:12px">Deals Won by Owner</div>
+        <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--soft-teal);margin-bottom:12px">Deals Won by Owner <span style="font-weight:400;color:#8a9aaa;text-transform:none;letter-spacing:0">(closed in this period)</span></div>
         ${wonBars}
       </div>`;
     })()}`;
