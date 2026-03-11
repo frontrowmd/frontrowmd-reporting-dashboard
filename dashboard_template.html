@@ -974,45 +974,86 @@ function buildDemoQualityChart(tabKey) {
 // ── Demo Cohort Performance Table ──────────────────────────────
 function buildDemoCohortTable() {
   const allCohorts = DATA.demoCohorts || [];
-  // Filter to 2026 only
   const cohorts = allCohorts.filter(c => c.month >= '2026-01');
   if (!cohorts.length) return '';
 
-  const pctOf = (n, total) => total > 0 ? (n / total * 100).toFixed(0) + '%' : '—';
-  const maxDemos = Math.max(...cohorts.map(c => c.demosGiven), 1);
+  const pctOf = (n, total) => total > 0 ? (n / total * 100).toFixed(0) : 0;
 
-  const rows = cohorts.map((c, i) => {
-    const closeRate = c.closeRate !== null ? c.closeRate + '%' : '—';
-    const cycleDays = c.avgCycleDays !== null ? c.avgCycleDays + 'd' : '—';
-    const mrr       = c.mrr > 0 ? fmt$(c.mrr) : '—';
-    const isLatest  = i === cohorts.length - 1;
+  const outcomeColors = {
+    closedWon:  { color: '#172C45', label: 'Closed Won' },
+    stillOpen:  { color: '#72A4BF', label: 'Still Open' },
+    notQual:    { color: '#C0392B', label: 'Not Qualified' },
+    tooEarly:   { color: '#B8860B', label: 'Too Early' },
+  };
+  const outcomeKeys = ['closedWon','stillOpen','notQual','tooEarly'];
+
+  const legend = outcomeKeys.map(k => `
+    <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--mid-navy)">
+      <span style="width:10px;height:10px;border-radius:2px;background:${outcomeColors[k].color};display:inline-block"></span>
+      ${outcomeColors[k].label}</span>`).join('');
+
+  const cards = cohorts.map((c, i) => {
+    const isLatest = i === cohorts.length - 1;
+    const monthShort = c.label.replace(' 2026', '');
+    const total = c.demosGiven + c.notQualified + c.tooEarly;
     const crNum = parseFloat(c.closeRate);
     const crColor = isNaN(crNum) ? '#8a9aaa' : crNum >= 25 ? '#2E7D52' : crNum >= 15 ? '#B8860B' : '#C0392B';
-    const barW = c.demosGiven > 0 ? (c.demosGiven / maxDemos * 100).toFixed(1) : 0;
-    const monthShort = c.label.replace(' 2026', '');
+
+    // Outcome stacked bar (proportional to this cohort's total)
+    const outcomes = [
+      { key: 'closedWon', val: c.closedWon },
+      { key: 'stillOpen', val: c.stillOpen },
+      { key: 'notQual',   val: c.notQualified },
+      { key: 'tooEarly',  val: c.tooEarly },
+    ];
+    const barTotal = outcomes.reduce((s, o) => s + o.val, 0) || 1;
+    let barOffset = 0;
+    const barSegments = outcomes.map(o => {
+      if (o.val === 0) return '';
+      const w = (o.val / barTotal * 100);
+      const left = barOffset;
+      barOffset += w;
+      const showLabel = w > 8;
+      return `<div style="position:absolute;left:${left.toFixed(1)}%;width:${w.toFixed(1)}%;height:100%;background:${outcomeColors[o.key].color}" title="${outcomeColors[o.key].label}: ${o.val} (${pctOf(o.val, barTotal)}%)">
+        ${showLabel ? `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff">${o.val}</div>` : ''}
+      </div>`;
+    }).join('');
 
     return `
-      <div style="padding:14px 0;border-bottom:1px solid rgba(212,230,239,0.3)${isLatest ? ';border-left:3px solid var(--soft-teal);padding-left:12px' : ''}">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <div style="display:flex;align-items:center;gap:8px">
-            <span style="font-size:14px;font-weight:700;color:var(--deep-navy)">${monthShort}</span>
-            ${isLatest ? '<span style="font-size:9px;font-weight:600;color:var(--soft-teal);background:rgba(114,164,191,0.12);padding:2px 6px;border-radius:3px">current</span>' : ''}
+      <div style="background:${isLatest ? 'rgba(114,164,191,0.06)' : '#fff'};border:1px solid ${isLatest ? 'var(--soft-teal)' : 'var(--card-border)'};border-radius:12px;padding:20px 24px;${isLatest ? 'border-left:4px solid var(--soft-teal);' : ''}">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-family:'Libre Baskerville',Georgia,serif;font-size:18px;font-weight:700;color:var(--deep-navy)">${monthShort}</span>
+            ${isLatest ? '<span style="font-size:9px;font-weight:600;color:var(--soft-teal);background:rgba(114,164,191,0.15);padding:3px 8px;border-radius:4px">current</span>' : ''}
           </div>
-          <div style="display:flex;gap:16px;align-items:center">
-            <span style="font-size:11px;color:#8a9aaa">${fmtN(c.demosGiven)} qual demos</span>
+          <span style="font-size:12px;color:#8a9aaa">${fmtN(c.demosGiven)} qual demos</span>
+        </div>
+
+        <div style="position:relative;height:24px;background:rgba(212,230,239,0.2);border-radius:6px;overflow:hidden;margin-bottom:16px">${barSegments}</div>
+
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+          <div style="text-align:center">
+            <div style="font-size:22px;font-weight:700;color:#172C45;font-family:'Libre Baskerville',Georgia,serif">${c.closedWon}</div>
+            <div style="font-size:10px;color:#8a9aaa;margin-top:2px">Closed Won</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:22px;font-weight:700;color:${crColor};font-family:'Libre Baskerville',Georgia,serif">${c.closeRate !== null ? c.closeRate + '%' : '—'}</div>
+            <div style="font-size:10px;color:#8a9aaa;margin-top:2px">Close Rate</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:22px;font-weight:700;color:var(--soft-teal);font-family:'Libre Baskerville',Georgia,serif">${c.stillOpen}</div>
+            <div style="font-size:10px;color:#8a9aaa;margin-top:2px">Still Open <span style="color:#aab8c2">(${pctOf(c.stillOpen, c.demosGiven)}%)</span></div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:22px;font-weight:700;color:var(--deep-navy);font-family:'Libre Baskerville',Georgia,serif">${c.mrr > 0 ? fmt$(c.mrr) : '—'}</div>
+            <div style="font-size:10px;color:#8a9aaa;margin-top:2px">MRR</div>
           </div>
         </div>
-        <div style="height:12px;background:rgba(212,230,239,0.2);border-radius:6px;overflow:hidden;margin-bottom:10px;position:relative">
-          <div style="height:100%;width:${barW}%;background:linear-gradient(90deg,#172C45,#1D4053);border-radius:6px;transition:width 0.8s ease"></div>
-        </div>
-        <div style="display:flex;gap:20px;flex-wrap:wrap;font-size:12px">
-          <div><span style="color:#8a9aaa">Closed Won</span> <span style="font-weight:700;color:#1D4053">${c.closedWon}</span></div>
-          <div><span style="color:#8a9aaa">Close Rate</span> <span style="font-weight:700;color:${crColor}">${closeRate}</span></div>
-          <div><span style="color:#8a9aaa">Avg Cycle</span> <span style="font-weight:600;color:var(--mid-navy)">${cycleDays}</span></div>
-          <div><span style="color:#8a9aaa">Still Open</span> <span style="font-weight:700;color:var(--soft-teal)">${c.stillOpen}</span>${c.demosGiven > 0 ? ` <span style="font-size:10px;color:#aab8c2">(${pctOf(c.stillOpen, c.demosGiven)})</span>` : ''}</div>
-          <div><span style="color:#8a9aaa">Not Qual</span> <span style="font-weight:600;color:#8a9aaa">${c.notQualified}</span></div>
-          <div><span style="color:#8a9aaa">Too Early</span> <span style="font-weight:600;color:#8a9aaa">${c.tooEarly}</span></div>
-          <div><span style="color:#8a9aaa">MRR</span> <span style="font-weight:700;color:var(--deep-navy)">${mrr}</span></div>
+
+        <div style="display:flex;gap:16px;margin-top:12px;padding-top:10px;border-top:1px solid rgba(212,230,239,0.3);font-size:11px;color:#8a9aaa">
+          <span>Avg Cycle: <strong style="color:var(--mid-navy)">${c.avgCycleDays !== null ? c.avgCycleDays + 'd' : '—'}</strong></span>
+          <span>Not Qual: <strong style="color:#8a9aaa">${c.notQualified}</strong></span>
+          <span>Too Early: <strong style="color:#8a9aaa">${c.tooEarly}</strong></span>
         </div>
       </div>`;
   }).join('');
@@ -1025,16 +1066,17 @@ function buildDemoCohortTable() {
   const totalCR = totals.demos > 0 ? ((totals.won / totals.demos) * 100).toFixed(1) + '%' : '—';
 
   return `
-    ${rows}
-    <div style="padding:12px 0;display:flex;gap:20px;flex-wrap:wrap;font-size:12px;border-top:2px solid var(--soft-teal);margin-top:4px">
-      <div style="font-weight:700;color:var(--deep-navy)">All 2026</div>
-      <div><span style="color:#8a9aaa">Qual Demos</span> <span style="font-weight:700;color:var(--mid-navy)">${totals.demos}</span></div>
-      <div><span style="color:#8a9aaa">Won</span> <span style="font-weight:700;color:#1D4053">${totals.won}</span></div>
-      <div><span style="color:#8a9aaa">Close Rate</span> <span style="font-weight:700;color:var(--deep-navy)">${totalCR}</span></div>
-      <div><span style="color:#8a9aaa">Open</span> <span style="font-weight:700;color:var(--soft-teal)">${totals.open}</span></div>
-      <div><span style="color:#8a9aaa">MRR</span> <span style="font-weight:700;color:var(--deep-navy)">${totals.mrr > 0 ? fmt$(totals.mrr) : '—'}</span></div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">${legend}</div>
+    <div style="display:flex;flex-direction:column;gap:14px">${cards}</div>
+    <div style="display:flex;gap:20px;flex-wrap:wrap;font-size:12px;padding:14px 0;border-top:2px solid var(--soft-teal);margin-top:16px">
+      <span style="font-weight:700;color:var(--deep-navy)">2026 Total</span>
+      <span style="color:#8a9aaa">Qual Demos <strong style="color:var(--mid-navy)">${totals.demos}</strong></span>
+      <span style="color:#8a9aaa">Won <strong style="color:#172C45">${totals.won}</strong></span>
+      <span style="color:#8a9aaa">Close Rate <strong style="color:var(--deep-navy)">${totalCR}</strong></span>
+      <span style="color:#8a9aaa">Open <strong style="color:var(--soft-teal)">${totals.open}</strong></span>
+      <span style="color:#8a9aaa">MRR <strong style="color:var(--deep-navy)">${totals.mrr > 0 ? fmt$(totals.mrr) : '—'}</strong></span>
     </div>
-    <div style="margin-top:8px;font-size:10px;color:#8a9aaa;font-style:italic">Cohort = qualified demos booked that month, tracked forward to current deal status. Close Rate and Avg Cycle reflect deals won at any point since the demo.</div>`;
+    <div style="font-size:10px;color:#8a9aaa;font-style:italic">Cohort = qualified demos booked that month, tracked forward to current deal status. The stacked bar shows what happened to each cohort's demos. Close Rate and Avg Cycle reflect deals won at any point since the demo.</div>`;
 }
 
 // ── Demo Quality by Deal Owner ─────────────────────────────────
