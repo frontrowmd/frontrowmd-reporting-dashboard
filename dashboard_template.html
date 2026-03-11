@@ -1650,21 +1650,23 @@ function buildPanel(key, d) {
   const pca = p.channelAttribution || {};
   const totalQualDemos = chKeys.reduce((s,k) => s + (ca[k]?.qualified || 0), 0);
   const ptotalQualDemos = chKeys.reduce((s,k) => s + (pca[k]?.qualified || 0), 0);
-  const cpqd = qualNumer > 0 ? allSpend / qualNumer : null;
-  const pQualNumer = ppp.demosHappened - (ppp.tooEarly||0) - (ppp.notQualAfterDemo||0);
-  const pcpqd = pQualNumer > 0 ? pallSpend / pQualNumer : null;
   const roas = allSpend > 0 ? d.newMRR / allSpend : null;
   const proas = pallSpend > 0 ? p.newMRR / pallSpend : null;
 
-  // Show Rate — compute early for stat cards
+  // Show Rate
   const showRateVal = pp.demosToOccur > 0 ? (pp.demosHappened / pp.demosToOccur * 100) : null;
   const pShowRateVal= ppp.demosToOccur > 0 ? (ppp.demosHappened / ppp.demosToOccur * 100) : null;
 
-  // Qual Demo Given % — compute early for stat cards
+  // Qual Demo Given %
   const qualDemoGiven = pp.demosToOccur > 0 ? ((pp.demosHappened - (pp.tooEarly||0) - (pp.notQualAfterDemo||0)) / pp.demosToOccur * 100) : null;
   const pQualDemoGiven = ppp.demosToOccur > 0 ? ((ppp.demosHappened - (ppp.tooEarly||0) - (ppp.notQualAfterDemo||0)) / ppp.demosToOccur * 100) : null;
   const qualDemoStr = qualDemoGiven !== null ? qualDemoGiven.toFixed(1) + '%' : '—';
   const qualNumer = pp.demosHappened - (pp.tooEarly||0) - (pp.notQualAfterDemo||0);
+
+  // CPQD (must come after qualNumer)
+  const cpqd = qualNumer > 0 ? allSpend / qualNumer : null;
+  const pQualNumer = ppp.demosHappened - (ppp.tooEarly||0) - (ppp.notQualAfterDemo||0);
+  const pcpqd = pQualNumer > 0 ? pallSpend / pQualNumer : null;
 
   const statHTML=`
     <div class="stat-row">
