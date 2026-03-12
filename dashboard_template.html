@@ -1703,6 +1703,156 @@ function renderIntelligence(F, prevLabel) {
 }
 
 // ── Build panel ────────────────────────────────────────────────
+// ── Trend Charts (Daily Time Series) ──────────────────────────────────────────
+
+function buildDailyDemosChart(daily) {
+  if (!daily || !daily.length) return '';
+  const maxDemos = Math.max(...daily.map(d => d.demosBooked), 1);
+  const barW = Math.max(Math.floor(100 / daily.length) - 1, 4);
+  const statusColors = { qualified: '#1D4053', tooEarly: '#aab8c2', notQual: '#C0392B', disqBefore: '#B8860B', noShow: '#9b7fd4', canceled: '#d47f7f', blank: '#c0c8d0' };
+  const statusKeys = ['qualified','tooEarly','notQual','disqBefore','noShow','canceled','blank'];
+
+  const bars = daily.map(d => {
+    const total = d.demosBooked;
+    const h = total > 0 ? Math.max((total / maxDemos) * 120, 4) : 0;
+    let offset = 0;
+    const segs = statusKeys.map(k => {
+      if (!d[k]) return '';
+      const segH = (d[k] / maxDemos) * 120;
+      const bottom = offset;
+      offset += segH;
+      return `<div style="position:absolute;bottom:${bottom.toFixed(1)}px;width:100%;height:${segH.toFixed(1)}px;background:${statusColors[k]}" title="${k}: ${d[k]}"></div>`;
+    }).join('');
+    const dayLabel = new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const isWeekend = [0,6].includes(new Date(d.date + 'T12:00:00').getDay());
+    return `<div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px">
+      <div style="font-size:9px;font-weight:700;color:var(--deep-navy)">${total || ''}</div>
+      <div style="position:relative;width:${barW}px;max-width:20px;height:120px">
+        <div style="position:absolute;bottom:0;width:100%;height:${h.toFixed(0)}px;border-radius:3px 3px 0 0;overflow:hidden">${segs}</div>
+      </div>
+      <div style="font-size:8px;color:${isWeekend ? '#c0c8d0' : '#8a9aaa'};writing-mode:vertical-lr;transform:rotate(180deg);height:24px;overflow:hidden">${dayLabel}</div>
+    </div>`;
+  }).join('');
+
+  return `<div style="display:flex;align-items:flex-end;gap:2px;padding:8px 0;min-height:160px;overflow-x:auto">${bars}</div>`;
+}
+
+function buildFunnelTrendChart(daily) {
+  if (!daily || !daily.length) return '';
+  const maxVisitors = Math.max(...daily.map(d => d.visitors), 1);
+  const maxClicks = Math.max(...daily.map(d => d.demoClicks), 1);
+  const maxBooked = Math.max(...daily.map(d => d.demosBooked), 1);
+  const chartH = 100;
+  const chartW = 100;
+
+  const makePath = (data, key, max, color, dashed) => {
+    if (max === 0) return '';
+    const pts = data.map((d, i) => {
+      const x = (i / Math.max(data.length - 1, 1)) * chartW;
+      const y = chartH - (d[key] / max * chartH);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+    return `<polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="2" ${dashed ? 'stroke-dasharray="4,3"' : ''} stroke-linejoin="round" stroke-linecap="round"/>`;
+  };
+
+  // Normalize all to same scale (visitors as primary)
+  const allMax = maxVisitors;
+  const paths = [
+    makePath(daily, 'visitors', allMax, '#72A4BF', false),
+    makePath(daily, 'demoClicks', allMax, '#1D4053', false),
+    makePath(daily, 'demosBooked', allMax, '#172C45', true),
+  ].join('');
+
+  // X-axis labels
+  const step = Math.max(Math.floor(daily.length / 6), 1);
+  const labels = daily.filter((_, i) => i % step === 0 || i === daily.length - 1).map(d => {
+    const x = (daily.indexOf(d) / Math.max(daily.length - 1, 1)) * chartW;
+    const label = new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return `<text x="${x.toFixed(1)}" y="${chartH + 14}" text-anchor="middle" fill="#8a9aaa" font-size="9" font-family="Inter,system-ui,sans-serif">${label}</text>`;
+  }).join('');
+
+  return `
+    <div style="display:flex;gap:16px;margin-bottom:8px;font-size:11px">
+      <span style="display:flex;align-items:center;gap:4px"><span style="width:16px;height:2px;background:#72A4BF;display:inline-block"></span>Visitors</span>
+      <span style="display:flex;align-items:center;gap:4px"><span style="width:16px;height:2px;background:#1D4053;display:inline-block"></span>Demo Clicks</span>
+      <span style="display:flex;align-items:center;gap:4px"><span style="width:16px;height:2px;background:#172C45;border-top:2px dashed #172C45;display:inline-block"></span>Demos Booked</span>
+    </div>
+    <svg viewBox="0 0 ${chartW} ${chartH + 20}" preserveAspectRatio="none" style="width:100%;height:140px">${paths}${labels}</svg>
+    <div style="display:flex;justify-content:space-between;font-size:10px;color:#8a9aaa;margin-top:4px">
+      <span>Peak visitors: ${fmtN(maxVisitors)}</span>
+      <span>Peak clicks: ${fmtN(maxClicks)}</span>
+      <span>Peak booked: ${fmtN(maxBooked)}</span>
+    </div>`;
+}
+
+function buildSpendCpdTrendChart(daily) {
+  if (!daily || !daily.length) return '';
+  const maxSpend = Math.max(...daily.map(d => d.spend), 1);
+  const chartH = 100;
+  const chartW = 100;
+
+  // Compute daily CPD and qual %
+  const enriched = daily.map(d => {
+    const cpd = d.windsorDemos > 0 ? d.spend / d.windsorDemos : null;
+    const qualPct = d.demosBooked > 0 ? (d.qualified / d.demosBooked * 100) : null;
+    return { ...d, cpd, qualPct };
+  });
+
+  const validCpd = enriched.filter(d => d.cpd !== null);
+  const maxCpd = validCpd.length > 0 ? Math.max(...validCpd.map(d => d.cpd)) : 1;
+  const validQual = enriched.filter(d => d.qualPct !== null);
+
+  // Spend bars
+  const barW = Math.max(Math.floor(chartW / daily.length) - 0.5, 1.5);
+  const spendBars = enriched.map((d, i) => {
+    const x = (i / Math.max(daily.length, 1)) * chartW;
+    const h = (d.spend / maxSpend) * chartH;
+    return `<rect x="${x.toFixed(1)}" y="${(chartH - h).toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" fill="rgba(114,164,191,0.3)" rx="1"/>`;
+  }).join('');
+
+  // CPD line
+  const cpdPts = enriched.map((d, i) => {
+    if (d.cpd === null) return null;
+    const x = (i / Math.max(daily.length - 1, 1)) * chartW;
+    const y = chartH - (d.cpd / maxCpd * chartH * 0.9);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).filter(Boolean);
+  const cpdLine = cpdPts.length > 1 ? `<polyline points="${cpdPts.join(' ')}" fill="none" stroke="#C0392B" stroke-width="2" stroke-linejoin="round"/>` : '';
+
+  // Qual % line
+  const qualPts = enriched.map((d, i) => {
+    if (d.qualPct === null) return null;
+    const x = (i / Math.max(daily.length - 1, 1)) * chartW;
+    const y = chartH - (d.qualPct / 100 * chartH);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).filter(Boolean);
+  const qualLine = qualPts.length > 1 ? `<polyline points="${qualPts.join(' ')}" fill="none" stroke="#2E7D52" stroke-width="2" stroke-linejoin="round" stroke-dasharray="4,3"/>` : '';
+
+  // X labels
+  const step = Math.max(Math.floor(daily.length / 6), 1);
+  const labels = daily.filter((_, i) => i % step === 0 || i === daily.length - 1).map(d => {
+    const x = (daily.indexOf(d) / Math.max(daily.length - 1, 1)) * chartW;
+    const label = new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return `<text x="${x.toFixed(1)}" y="${chartH + 14}" text-anchor="middle" fill="#8a9aaa" font-size="9" font-family="Inter,system-ui,sans-serif">${label}</text>`;
+  }).join('');
+
+  const avgCpd = validCpd.length > 0 ? (validCpd.reduce((s,d) => s+d.cpd, 0) / validCpd.length) : 0;
+  const avgQual = validQual.length > 0 ? (validQual.reduce((s,d) => s+d.qualPct, 0) / validQual.length) : 0;
+
+  return `
+    <div style="display:flex;gap:16px;margin-bottom:8px;font-size:11px">
+      <span style="display:flex;align-items:center;gap:4px"><span style="width:12px;height:8px;background:rgba(114,164,191,0.3);display:inline-block;border-radius:2px"></span>Spend</span>
+      <span style="display:flex;align-items:center;gap:4px"><span style="width:16px;height:2px;background:#C0392B;display:inline-block"></span>CPD</span>
+      <span style="display:flex;align-items:center;gap:4px"><span style="width:16px;height:2px;background:#2E7D52;border-top:2px dashed #2E7D52;display:inline-block"></span>Qual %</span>
+    </div>
+    <svg viewBox="0 0 ${chartW} ${chartH + 20}" preserveAspectRatio="none" style="width:100%;height:140px">${spendBars}${cpdLine}${qualLine}${labels}</svg>
+    <div style="display:flex;justify-content:space-between;font-size:10px;color:#8a9aaa;margin-top:4px">
+      <span>Total: ${fmt$(daily.reduce((s,d) => s+d.spend, 0))}</span>
+      <span>Avg CPD: ${avgCpd > 0 ? fmt$(avgCpd) : '—'}</span>
+      <span>Avg Qual %: ${avgQual > 0 ? avgQual.toFixed(0) + '%' : '—'}</span>
+    </div>`;
+}
+
 function buildPanel(key, d) {
   const noPrev = !!d.noPrev;
   const ch=d.channels, ga=d.ga4, pp=d.pipeline;
@@ -2222,6 +2372,29 @@ function buildPanel(key, d) {
       <div class="chart-title">${key === 'lastmonth' ? 'Last Month' : 'MTD'} Spend vs. Monthly Budget</div>
       ${buildSpendPacingSection(ch, key === 'lastmonth' ? 100 : pacingPct, getBudgetsForMonth(d.from))}
     </div>` : ''}
+
+    ${(() => {
+      const daily = (DATA.dailyTimeSeries || {})[key];
+      if (!daily || !daily.length) return '';
+      return `
+        <div class="sl">Daily Trends <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">${d.label}</span></div>
+
+        <div class="charts-row">
+          <div class="chart-card">
+            <div class="chart-title">Demos Booked by Day</div>
+            ${buildDailyDemosChart(daily)}
+          </div>
+          <div class="chart-card">
+            <div class="chart-title">Website Funnel Trend</div>
+            ${buildFunnelTrendChart(daily)}
+          </div>
+        </div>
+
+        <div class="chart-card" style="margin-bottom:32px">
+          <div class="chart-title">Spend vs. CPD vs. Qualified Demo %</div>
+          ${buildSpendCpdTrendChart(daily)}
+        </div>`;
+    })()}
 
     ${buildPaidMediaInline(ch, pch, prevLabel, noPrev)}
 

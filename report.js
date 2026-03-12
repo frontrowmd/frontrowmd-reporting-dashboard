@@ -318,6 +318,87 @@ function toMs(dateStr, endOfDay = false) {
   return String(new Date(dateStr + (endOfDay ? 'T23:59:59.999' : 'T00:00:00.000')).getTime());
 }
 
+// ── Daily Time Series (for MTD/Last Month charts) ─────────────────────────────
+async function fetchDailyTimeSeries(dateFrom, dateTo, allDeals) {
+  const yest = new Date(); yest.setDate(yest.getDate() - 1);
+  const yesterdayStr = toDateStr(yest);
+  if (dateTo > yesterdayStr) dateTo = yesterdayStr;
+  if (dateFrom > dateTo) return [];
+
+  console.log(`  Daily time series: ${dateFrom} → ${dateTo}`);
+
+  // 1. Windsor daily spend per channel
+  let windsorDaily = [];
+  try {
+    const fields = 'date,datasource,spend,clicks,impressions,conversions_hubspot_meeting_booked';
+    windsorDaily = await windsorFetch(dateFrom, dateTo, fields);
+  } catch(e) { console.warn('  WARN daily Windsor:', e.message); }
+
+  // 2. GA4 daily visitors/clicks
+  let ga4Daily = [];
+  try {
+    const ga4Fields = 'date,datasource,users,conversions_click_schedule_demo_button,conversions_hubspot_meeting_booked';
+    ga4Daily = await windsorFetch(dateFrom, dateTo, ga4Fields, '&connectors=googleanalytics4');
+  } catch(e) { console.warn('  WARN daily GA4:', e.message); }
+
+  // Build day map
+  const dayMap = {};
+  const start = new Date(dateFrom + 'T12:00:00');
+  const end = new Date(dateTo + 'T12:00:00');
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const ds = toDateStr(d);
+    dayMap[ds] = {
+      date: ds,
+      spend: 0, windsorDemos: 0, clicks: 0, impressions: 0,
+      visitors: 0, demoClicks: 0, ga4Booked: 0,
+      demosBooked: 0, qualified: 0, tooEarly: 0, notQual: 0, disqBefore: 0,
+      noShow: 0, canceled: 0, blank: 0,
+    };
+  }
+
+  // Aggregate Windsor spend
+  const CH_MAP = { facebook: 'meta', google_ads: 'google', linkedin: 'linkedin', tiktok: 'tiktok', youtube: 'youtube' };
+  for (const row of windsorDaily) {
+    const ds = row.date;
+    if (!dayMap[ds]) continue;
+    if (row.datasource === 'googleanalytics4') continue;
+    dayMap[ds].spend += row.spend || 0;
+    dayMap[ds].windsorDemos += row.conversions_hubspot_meeting_booked || 0;
+    dayMap[ds].clicks += row.clicks || 0;
+    dayMap[ds].impressions += row.impressions || 0;
+  }
+
+  // Aggregate GA4
+  for (const row of ga4Daily) {
+    const ds = row.date;
+    if (!dayMap[ds] || row.datasource !== 'googleanalytics4') continue;
+    dayMap[ds].visitors += row.users || 0;
+    dayMap[ds].demoClicks += row.conversions_click_schedule_demo_button || 0;
+    dayMap[ds].ga4Booked += row.conversions_hubspot_meeting_booked || 0;
+  }
+
+  // Aggregate HubSpot deals by day
+  const QUAL_STATUS = ['Demo Given', 'Demo Given at Rescheduled time'];
+  for (const deal of allDeals) {
+    const bookedStr = deal.properties?.date_demo_booked;
+    if (!bookedStr || !dayMap[bookedStr]) continue;
+    const d = dayMap[bookedStr];
+    d.demosBooked++;
+    const status = (deal.properties?.demo_given__status || '').trim();
+    if (QUAL_STATUS.includes(status)) d.qualified++;
+    else if (status === 'Demo Given, Qualified Company, too early') d.tooEarly++;
+    else if (status === 'Not Qualified after the demo') d.notQual++;
+    else if (status === 'Disqualified, Meeting Cancelled') d.disqBefore++;
+    else if (status === 'No Show') d.noShow++;
+    else if (status === 'No Showed') d.canceled++;
+    else d.blank++;
+  }
+
+  const result = Object.values(dayMap).sort((a, b) => a.date.localeCompare(b.date));
+  console.log(`  Daily series: ${result.length} days, ${result.reduce((s,d) => s + d.demosBooked, 0)} total demos`);
+  return result;
+}
+
 // ── UTM → Channel mapping ─────────────────────────────────────────────────────
 function mapChannel(utmSource, utmMedium) {
   const src = (utmSource || '').toLowerCase().trim();
@@ -621,6 +702,7 @@ async function fetchAllHubSpotData(windows) {
     };
   }
 
+  result._rawDeals = allDealsDeduped;
   return result;
 }
 
@@ -963,7 +1045,7 @@ function buildDashboard(windowedChannels, hubspotData, prevWindowedChannels, pre
     };
   }
 
-  const data = JSON.stringify({ generatedAt, filename: txtFilename, windows: dashWindows, demoCohorts: demoCohorts || [] })
+  const data = JSON.stringify({ generatedAt, filename: txtFilename, windows: dashWindows, demoCohorts: demoCohorts || [], dailyTimeSeries: { mtd: dailyMTD || [], lastmonth: dailyLastMonth || [] } })
     .replace(/<\/script>/gi, '<\/script>');
   let template = fs.readFileSync(__dirname + '/dashboard_template.html', 'utf8');
 
@@ -1447,6 +1529,14 @@ async function main() {
   const hubspotData     = await fetchAllHubSpotData(windows);
   const prevHubspotData = await fetchAllHubSpotData(prevWindows);
   const demoCohorts     = await fetchDemoCohorts();
+
+  // Fetch daily time series for MTD and Last Month (for trend charts)
+  console.log('\n── Fetching daily time series for trend charts ──');
+  const rawDeals = hubspotData._rawDeals || [];
+  const [dailyMTD, dailyLastMonth] = await Promise.all([
+    fetchDailyTimeSeries(windows.mtd.from, windows.mtd.to, rawDeals),
+    fetchDailyTimeSeries(windows.lastmonth.from, windows.lastmonth.to, rawDeals),
+  ]);
 
   // Windsor + GA4 can all fire in parallel (no rate limit issues)
   const allWindsor = await Promise.all([
