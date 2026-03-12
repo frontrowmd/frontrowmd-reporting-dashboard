@@ -1783,51 +1783,52 @@ function buildFunnelTrendChart(daily) {
   const W = 520, H = 200, ML = 44, MR = 10, MT = 16, MB = 40;
   const pw = W - ML - MR, ph = H - MT - MB;
 
-  const maxV = Math.max(...daily.map(d => d.visitors), 1);
-  const ticks = yTicks(maxV, 4);
-  const yMax = ticks[ticks.length - 1] || maxV;
+  // Compute daily conversion rates
+  const enriched = daily.map(d => ({
+    ...d,
+    clickRate: d.visitors > 0 ? (d.demoClicks / d.visitors * 100) : null,
+    bookRate: d.demoClicks > 0 ? (d.demosBooked / d.demoClicks * 100) : null,
+  }));
+
+  const validCR = enriched.filter(d => d.clickRate !== null);
+  const validBR = enriched.filter(d => d.bookRate !== null);
+  const maxRate = Math.max(
+    ...validCR.map(d => d.clickRate),
+    ...validBR.map(d => d.bookRate),
+    5 // minimum 5% scale
+  );
+  const ticks = yTicks(Math.ceil(maxRate), 4);
+  const yMax = ticks[ticks.length - 1] || maxRate;
 
   // Y grid
   const yGrid = ticks.map(v => {
     const y = MT + ph - (v / yMax * ph);
     return `<line x1="${ML}" y1="${y.toFixed(1)}" x2="${W-MR}" y2="${y.toFixed(1)}" stroke="rgba(212,230,239,0.4)" stroke-width="1"/>
-      <text x="${ML-6}" y="${(y+3).toFixed(1)}" text-anchor="end" fill="#8a9aaa" font-size="10" font-family="Inter,system-ui,sans-serif">${fmtShort(v)}</text>`;
+      <text x="${ML-6}" y="${(y+3).toFixed(1)}" text-anchor="end" fill="#8a9aaa" font-size="10" font-family="Inter,system-ui,sans-serif">${v}%</text>`;
   }).join('');
 
-  const makeLine = (key, color, dashed, width) => {
-    const pts = daily.map((d, i) => {
-      const x = ML + (i / Math.max(daily.length - 1, 1)) * pw;
-      const y = MT + ph - ((d[key] || 0) / yMax * ph);
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    });
-    return `<polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="${width||2}" ${dashed ? 'stroke-dasharray="6,4"' : ''} stroke-linejoin="round" stroke-linecap="round"/>`;
-  };
-
-  // Area fill for visitors
-  const areaFill = (() => {
-    const pts = daily.map((d, i) => {
-      const x = ML + (i / Math.max(daily.length - 1, 1)) * pw;
-      const y = MT + ph - ((d.visitors || 0) / yMax * ph);
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    });
-    const baseline = `${(ML + pw).toFixed(1)},${(MT+ph).toFixed(1)} ${ML.toFixed(1)},${(MT+ph).toFixed(1)}`;
-    return `<polygon points="${pts.join(' ')} ${baseline}" fill="rgba(114,164,191,0.08)"/>`;
-  })();
-
-  const lines = [
-    areaFill,
-    makeLine('visitors', '#72A4BF', false, 2),
-    makeLine('demoClicks', '#1D4053', false, 2),
-    makeLine('demosBooked', '#172C45', true, 2),
-  ].join('');
-
-  // Dots on demos booked line
-  const dots = daily.map((d, i) => {
-    if (!d.demosBooked) return '';
+  // Click rate area + line
+  const crPts = enriched.map((d, i) => {
     const x = ML + (i / Math.max(daily.length - 1, 1)) * pw;
-    const y = MT + ph - (d.demosBooked / yMax * ph);
-    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="#172C45"/>`;
-  }).join('');
+    const y = d.clickRate !== null ? MT + ph - (d.clickRate / yMax * ph) : MT + ph;
+    return { x, y, val: d.clickRate };
+  });
+  const crArea = `<polygon points="${crPts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')} ${(ML+pw).toFixed(1)},${(MT+ph).toFixed(1)} ${ML.toFixed(1)},${(MT+ph).toFixed(1)}" fill="rgba(114,164,191,0.12)"/>`;
+  const crLine = `<polyline points="${crPts.filter(p => p.val !== null).map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}" fill="none" stroke="#72A4BF" stroke-width="2.5" stroke-linejoin="round"/>`;
+  const crDots = crPts.filter(p => p.val !== null).map(p =>
+    `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.5" fill="#72A4BF"><title>Click Rate: ${p.val.toFixed(1)}%</title></circle>`
+  ).join('');
+
+  // Book rate line + dots
+  const brPts = enriched.map((d, i) => {
+    const x = ML + (i / Math.max(daily.length - 1, 1)) * pw;
+    const y = d.bookRate !== null ? MT + ph - (d.bookRate / yMax * ph) : null;
+    return { x, y, val: d.bookRate };
+  }).filter(p => p.y !== null);
+  const brLine = brPts.length > 1 ? `<polyline points="${brPts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}" fill="none" stroke="#172C45" stroke-width="2.5" stroke-linejoin="round" stroke-dasharray="6,4"/>` : '';
+  const brDots = brPts.map(p =>
+    `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.5" fill="#172C45"><title>Book Rate: ${p.val.toFixed(1)}%</title></circle>`
+  ).join('');
 
   // X labels
   const labelStep = daily.length > 14 ? 3 : daily.length > 7 ? 2 : 1;
@@ -1837,25 +1838,22 @@ function buildFunnelTrendChart(daily) {
     return `<text x="${x.toFixed(1)}" y="${H - 8}" text-anchor="middle" fill="#8a9aaa" font-size="9" font-family="Inter,system-ui,sans-serif">${dayLabel(d.date)}</text>`;
   }).join('');
 
-  const totalV = daily.reduce((s,d) => s + d.visitors, 0);
-  const totalC = daily.reduce((s,d) => s + d.demoClicks, 0);
-  const totalB = daily.reduce((s,d) => s + d.demosBooked, 0);
+  const avgCR = validCR.length > 0 ? (validCR.reduce((s,d) => s+d.clickRate, 0) / validCR.length) : 0;
+  const avgBR = validBR.length > 0 ? (validBR.reduce((s,d) => s+d.bookRate, 0) / validBR.length) : 0;
 
   return `
     <div style="display:flex;gap:16px;margin-bottom:8px;font-size:11px">
-      <span style="display:flex;align-items:center;gap:4px"><span style="width:16px;height:2px;background:#72A4BF;display:inline-block"></span>Visitors</span>
-      <span style="display:flex;align-items:center;gap:4px"><span style="width:16px;height:2px;background:#1D4053;display:inline-block"></span>Demo Clicks</span>
-      <span style="display:flex;align-items:center;gap:4px"><span style="width:16px;height:0;border-top:2px dashed #172C45;display:inline-block"></span>Demos Booked</span>
+      <span style="display:flex;align-items:center;gap:4px"><span style="width:16px;height:2px;background:#72A4BF;display:inline-block"></span>Click Rate (visitor → click)</span>
+      <span style="display:flex;align-items:center;gap:4px"><span style="width:16px;height:0;border-top:2px dashed #172C45;display:inline-block"></span>Book Rate (click → booked)</span>
     </div>
     <svg viewBox="0 0 ${W} ${H}" style="width:100%;max-height:220px">
       ${yGrid}
       <line x1="${ML}" y1="${MT}" x2="${ML}" y2="${MT+ph}" stroke="rgba(212,230,239,0.5)" stroke-width="1"/>
-      ${lines}${dots}${xLabels}
+      ${crArea}${crLine}${crDots}${brLine}${brDots}${xLabels}
     </svg>
     <div style="display:flex;justify-content:space-between;font-size:10px;color:#8a9aaa;margin-top:4px">
-      <span>Visitors: ${fmtN(totalV)}</span>
-      <span>Clicks: ${fmtN(totalC)}</span>
-      <span>Booked: ${fmtN(totalB)}</span>
+      <span>Avg click rate: ${avgCR.toFixed(1)}%</span>
+      <span>Avg book rate: ${avgBR.toFixed(1)}%</span>
     </div>`;
 }
 
@@ -1864,10 +1862,10 @@ function buildSpendCpdTrendChart(daily) {
   const W = 700, H = 220, ML = 50, MR = 50, MT = 16, MB = 40;
   const pw = W - ML - MR, ph = H - MT - MB;
 
-  // Enrich data
+  // CPD uses HubSpot demosBooked (not Windsor)
   const enriched = daily.map(d => ({
     ...d,
-    cpd: d.windsorDemos > 0 ? d.spend / d.windsorDemos : null,
+    cpd: d.demosBooked > 0 ? d.spend / d.demosBooked : null,
     qualPct: d.demosBooked > 0 ? (d.qualified / d.demosBooked * 100) : null,
   }));
 
@@ -1883,7 +1881,7 @@ function buildSpendCpdTrendChart(daily) {
   const barW = Math.max(Math.floor(pw / daily.length) - 3, 8);
   const barGap = (pw - barW * daily.length) / daily.length;
 
-  // Left Y axis (Spend) gridlines
+  // Left Y axis (Spend)
   const yGridL = spendTicks.map(v => {
     const y = MT + ph - (v / spendMax * ph);
     return `<line x1="${ML}" y1="${y.toFixed(1)}" x2="${W-MR}" y2="${y.toFixed(1)}" stroke="rgba(212,230,239,0.3)" stroke-width="1"/>
@@ -1914,7 +1912,7 @@ function buildSpendCpdTrendChart(daily) {
   const cpdLine = cpdPts.length > 1 ? `<polyline points="${cpdPts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}" fill="none" stroke="#C0392B" stroke-width="2" stroke-linejoin="round"/>` : '';
   const cpdDots = cpdPts.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="#C0392B"><title>CPD: $${Math.round(p.val)}</title></circle>`).join('');
 
-  // Qual % line (0-100 scale, mapped to chart height)
+  // Qual % line (0-100 mapped to chart)
   const qualPts = enriched.map((d, i) => {
     if (d.qualPct === null) return null;
     const x = ML + i * (barW + barGap) + barGap / 2 + barW / 2;
@@ -1932,8 +1930,7 @@ function buildSpendCpdTrendChart(daily) {
     return `<text x="${x.toFixed(1)}" y="${H - 8}" text-anchor="middle" fill="#8a9aaa" font-size="9" font-family="Inter,system-ui,sans-serif">${dayLabel(d.date)}</text>`;
   }).join('');
 
-  // Axis labels
-  const leftLabel = `<text x="${10}" y="${MT + ph/2}" text-anchor="middle" fill="#8a9aaa" font-size="9" font-family="Inter,system-ui,sans-serif" transform="rotate(-90 10 ${MT + ph/2})">Spend ($)</text>`;
+  const leftLabel = `<text x="10" y="${MT + ph/2}" text-anchor="middle" fill="#8a9aaa" font-size="9" font-family="Inter,system-ui,sans-serif" transform="rotate(-90 10 ${MT + ph/2})">Spend ($)</text>`;
   const rightLabel = `<text x="${W-6}" y="${MT + ph/2}" text-anchor="middle" fill="#C0392B" font-size="9" font-family="Inter,system-ui,sans-serif" transform="rotate(90 ${W-6} ${MT + ph/2})">CPD ($)</text>`;
 
   const avgCpd = validCpd.length > 0 ? (validCpd.reduce((s,d) => s+d.cpd, 0) / validCpd.length) : 0;
@@ -1942,9 +1939,9 @@ function buildSpendCpdTrendChart(daily) {
 
   return `
     <div style="display:flex;gap:16px;margin-bottom:8px;font-size:11px">
-      <span style="display:flex;align-items:center;gap:4px"><span style="width:12px;height:8px;background:rgba(114,164,191,0.25);display:inline-block;border-radius:2px"></span>Spend (left axis)</span>
-      <span style="display:flex;align-items:center;gap:4px"><span style="width:16px;height:2px;background:#C0392B;display:inline-block"></span>CPD (right axis)</span>
-      <span style="display:flex;align-items:center;gap:4px"><span style="width:16px;height:0;border-top:2px dashed #2E7D52;display:inline-block"></span>Qual % (0–100)</span>
+      <span style="display:flex;align-items:center;gap:4px"><span style="width:12px;height:8px;background:rgba(114,164,191,0.25);display:inline-block;border-radius:2px"></span>Spend (left)</span>
+      <span style="display:flex;align-items:center;gap:4px"><span style="width:16px;height:2px;background:#C0392B;display:inline-block"></span>CPD (right)</span>
+      <span style="display:flex;align-items:center;gap:4px"><span style="width:16px;height:0;border-top:2px dashed #2E7D52;display:inline-block"></span>Qual %</span>
     </div>
     <svg viewBox="0 0 ${W} ${H}" style="width:100%;max-height:240px">
       ${yGridL}${yGridR}
@@ -1958,6 +1955,77 @@ function buildSpendCpdTrendChart(daily) {
       <span>Avg CPD: ${avgCpd > 0 ? fmt$(avgCpd) : '—'}</span>
       <span>Avg Qual %: ${avgQual > 0 ? avgQual.toFixed(0) + '%' : '—'}</span>
     </div>`;
+}
+
+function buildChannelMixChart(daily) {
+  if (!daily || !daily.length) return '';
+  const W = 700, H = 200, ML = 50, MR = 10, MT = 16, MB = 40;
+  const pw = W - ML - MR, ph = H - MT - MB;
+
+  const channels = [
+    { key: 'meta', color: '#3b5998', label: 'Meta' },
+    { key: 'tiktok', color: '#69C9D0', label: 'TikTok' },
+    { key: 'linkedin', color: '#0077B5', label: 'LinkedIn' },
+    { key: 'google', color: '#34A853', label: 'Google' },
+    { key: 'youtube', color: '#FF0000', label: 'YouTube' },
+  ];
+
+  // Compute stacked totals per day
+  const maxTotal = Math.max(...daily.map(d => d.spend), 1);
+  const ticks = yTicks(maxTotal, 4);
+  const yMax = ticks[ticks.length - 1] || maxTotal;
+
+  // Y grid
+  const yGrid = ticks.map(v => {
+    const y = MT + ph - (v / yMax * ph);
+    return `<line x1="${ML}" y1="${y.toFixed(1)}" x2="${W-MR}" y2="${y.toFixed(1)}" stroke="rgba(212,230,239,0.3)" stroke-width="1"/>
+      <text x="${ML-6}" y="${(y+3).toFixed(1)}" text-anchor="end" fill="#8a9aaa" font-size="9" font-family="Inter,system-ui,sans-serif">$${fmtShort(v)}</text>`;
+  }).join('');
+
+  // Build stacked areas (bottom to top)
+  const areas = channels.map((ch, ci) => {
+    // Bottom edge = sum of all channels below this one
+    const bottomPts = daily.map((d, i) => {
+      const x = ML + (i / Math.max(daily.length - 1, 1)) * pw;
+      let below = 0;
+      for (let j = 0; j < ci; j++) below += (d.chSpend || {})[channels[j].key] || 0;
+      const y = MT + ph - (below / yMax * ph);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+    // Top edge = bottom + this channel
+    const topPts = daily.map((d, i) => {
+      const x = ML + (i / Math.max(daily.length - 1, 1)) * pw;
+      let below = 0;
+      for (let j = 0; j <= ci; j++) below += (d.chSpend || {})[channels[j].key] || 0;
+      const y = MT + ph - (below / yMax * ph);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+    const points = topPts.join(' ') + ' ' + bottomPts.reverse().join(' ');
+    return `<polygon points="${points}" fill="${ch.color}" opacity="0.55"/>`;
+  }).join('');
+
+  // X labels
+  const labelStep = daily.length > 14 ? 3 : daily.length > 7 ? 2 : 1;
+  const xLabels = daily.map((d, i) => {
+    if (i % labelStep !== 0 && i !== daily.length - 1) return '';
+    const x = ML + (i / Math.max(daily.length - 1, 1)) * pw;
+    return `<text x="${x.toFixed(1)}" y="${H - 8}" text-anchor="middle" fill="#8a9aaa" font-size="9" font-family="Inter,system-ui,sans-serif">${dayLabel(d.date)}</text>`;
+  }).join('');
+
+  const legend = channels.map(ch => {
+    const total = daily.reduce((s, d) => s + ((d.chSpend || {})[ch.key] || 0), 0);
+    return `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--mid-navy)">
+      <span style="width:10px;height:10px;border-radius:2px;background:${ch.color};opacity:0.7;display:inline-block"></span>
+      ${ch.label} <strong>${fmt$(total)}</strong></span>`;
+  }).join('');
+
+  return `
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px">${legend}</div>
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;max-height:220px">
+      ${yGrid}
+      <line x1="${ML}" y1="${MT}" x2="${ML}" y2="${MT+ph}" stroke="rgba(212,230,239,0.5)" stroke-width="1"/>
+      ${areas}${xLabels}
+    </svg>`;
 }
 
 function buildPanel(key, d) {
@@ -2492,14 +2560,20 @@ function buildPanel(key, d) {
             ${buildDailyDemosChart(daily)}
           </div>
           <div class="chart-card">
-            <div class="chart-title">Website Funnel Trend</div>
+            <div class="chart-title">Conversion Rates Trend</div>
             ${buildFunnelTrendChart(daily)}
           </div>
         </div>
 
-        <div class="chart-card" style="margin-bottom:32px">
-          <div class="chart-title">Spend vs. CPD vs. Qualified Demo %</div>
-          ${buildSpendCpdTrendChart(daily)}
+        <div class="charts-row">
+          <div class="chart-card">
+            <div class="chart-title">Spend vs. CPD vs. Qualified Demo %</div>
+            ${buildSpendCpdTrendChart(daily)}
+          </div>
+          <div class="chart-card">
+            <div class="chart-title">Channel Spend Mix</div>
+            ${buildChannelMixChart(daily)}
+          </div>
         </div>`;
     })()}
 

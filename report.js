@@ -353,6 +353,7 @@ async function fetchDailyTimeSeries(dateFrom, dateTo, allDeals) {
       visitors: 0, demoClicks: 0, ga4Booked: 0,
       demosBooked: 0, qualified: 0, tooEarly: 0, notQual: 0, disqBefore: 0,
       noShow: 0, canceled: 0, blank: 0,
+      chSpend: { meta: 0, google: 0, linkedin: 0, tiktok: 0, youtube: 0 },
     };
   }
 
@@ -366,6 +367,8 @@ async function fetchDailyTimeSeries(dateFrom, dateTo, allDeals) {
     dayMap[ds].windsorDemos += row.conversions_hubspot_meeting_booked || 0;
     dayMap[ds].clicks += row.clicks || 0;
     dayMap[ds].impressions += row.impressions || 0;
+    const ch = CH_MAP[row.datasource];
+    if (ch && dayMap[ds].chSpend[ch] !== undefined) dayMap[ds].chSpend[ch] += row.spend || 0;
   }
 
   // Aggregate GA4
