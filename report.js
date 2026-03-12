@@ -1009,7 +1009,7 @@ function buildSection(label, channels, hs) {
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
-function buildDashboard(windowedChannels, hubspotData, prevWindowedChannels, prevHubspotData, winKeys, windows, prevWindows, txtFilename, ga4SourcesByWindow, ga4PrevSourcesByWindow, demoCohorts) {
+function buildDashboard(windowedChannels, hubspotData, prevWindowedChannels, prevHubspotData, winKeys, windows, prevWindows, txtFilename, ga4SourcesByWindow, ga4PrevSourcesByWindow, demoCohorts, dailyMTD, dailyLastMonth) {
   const generatedAt = new Date().toLocaleString('en-US', {
     timeZone: 'America/Los_Angeles', dateStyle: 'medium', timeStyle: 'short'
   });
@@ -1593,7 +1593,7 @@ async function main() {
   fs.writeFileSync(filename, report);
   console.log(`📄  Report saved to: ${filename}`);
 
-  const dashboard = buildDashboard(windowedChannels, hubspotData, prevWindowedChannels, prevHubspotData, winKeys, windows, prevWindows, filename, ga4SourcesByWindow, ga4PrevSourcesByWindow, demoCohorts);
+  const dashboard = buildDashboard(windowedChannels, hubspotData, prevWindowedChannels, prevHubspotData, winKeys, windows, prevWindows, filename, ga4SourcesByWindow, ga4PrevSourcesByWindow, demoCohorts, dailyMTD, dailyLastMonth);
   fs.writeFileSync(dashname, dashboard);
   console.log(`📊  Dashboard saved to: ${dashname}\n`);
 
