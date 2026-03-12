@@ -1862,12 +1862,24 @@ function buildSpendCpdTrendChart(daily) {
   const W = 700, H = 220, ML = 50, MR = 50, MT = 16, MB = 40;
   const pw = W - ML - MR, ph = H - MT - MB;
 
-  // CPD uses HubSpot demosBooked (not Windsor)
-  const enriched = daily.map(d => ({
-    ...d,
-    cpd: d.demosBooked > 0 ? d.spend / d.demosBooked : null,
-    qualPct: d.demosBooked > 0 ? (d.qualified / d.demosBooked * 100) : null,
-  }));
+  // 3-day rolling average for CPD and Qual% (smooths weekend spikes)
+  const enriched = daily.map((d, i) => {
+    // Gather 3-day window: i-1, i, i+1 (or fewer at edges)
+    const windowStart = Math.max(0, i - 1);
+    const windowEnd = Math.min(daily.length - 1, i + 1);
+    let wSpend = 0, wDemos = 0, wQual = 0;
+    for (let j = windowStart; j <= windowEnd; j++) {
+      wSpend += daily[j].spend;
+      wDemos += daily[j].demosBooked;
+      wQual += daily[j].qualified;
+    }
+    return {
+      ...d,
+      cpd: wDemos > 0 ? wSpend / wDemos : null,
+      qualPct: wDemos > 0 ? (wQual / wDemos * 100) : null,
+      rawCpd: d.demosBooked > 0 ? d.spend / d.demosBooked : null,
+    };
+  });
 
   const maxSpend = Math.max(...enriched.map(d => d.spend), 1);
   const spendTicks = yTicks(maxSpend, 4);
@@ -1910,7 +1922,7 @@ function buildSpendCpdTrendChart(daily) {
     return { x, y, val: d.cpd };
   }).filter(Boolean);
   const cpdLine = cpdPts.length > 1 ? `<polyline points="${cpdPts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}" fill="none" stroke="#C0392B" stroke-width="2" stroke-linejoin="round"/>` : '';
-  const cpdDots = cpdPts.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="#C0392B"><title>CPD: $${Math.round(p.val)}</title></circle>`).join('');
+  const cpdDots = cpdPts.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="#C0392B"><title>CPD (3d avg): $${Math.round(p.val)}</title></circle>`).join('');
 
   // Qual % line (0-100 mapped to chart)
   const qualPts = enriched.map((d, i) => {
@@ -1920,7 +1932,7 @@ function buildSpendCpdTrendChart(daily) {
     return { x, y, val: d.qualPct };
   }).filter(Boolean);
   const qualLine = qualPts.length > 1 ? `<polyline points="${qualPts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}" fill="none" stroke="#2E7D52" stroke-width="2" stroke-linejoin="round" stroke-dasharray="6,4"/>` : '';
-  const qualDots = qualPts.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="#2E7D52"><title>Qual: ${p.val.toFixed(0)}%</title></circle>`).join('');
+  const qualDots = qualPts.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="#2E7D52"><title>Qual (3d avg): ${p.val.toFixed(0)}%</title></circle>`).join('');
 
   // X labels
   const labelStep = daily.length > 14 ? 3 : daily.length > 7 ? 2 : 1;
@@ -1933,15 +1945,17 @@ function buildSpendCpdTrendChart(daily) {
   const leftLabel = `<text x="10" y="${MT + ph/2}" text-anchor="middle" fill="#8a9aaa" font-size="9" font-family="Inter,system-ui,sans-serif" transform="rotate(-90 10 ${MT + ph/2})">Spend ($)</text>`;
   const rightLabel = `<text x="${W-6}" y="${MT + ph/2}" text-anchor="middle" fill="#C0392B" font-size="9" font-family="Inter,system-ui,sans-serif" transform="rotate(90 ${W-6} ${MT + ph/2})">CPD ($)</text>`;
 
-  const avgCpd = validCpd.length > 0 ? (validCpd.reduce((s,d) => s+d.cpd, 0) / validCpd.length) : 0;
-  const validQual = enriched.filter(d => d.qualPct !== null);
-  const avgQual = validQual.length > 0 ? (validQual.reduce((s,d) => s+d.qualPct, 0) / validQual.length) : 0;
+  const totalSpendAll = daily.reduce((s,d) => s+d.spend, 0);
+  const totalDemosAll = daily.reduce((s,d) => s+d.demosBooked, 0);
+  const totalQualAll = daily.reduce((s,d) => s+d.qualified, 0);
+  const avgCpd = totalDemosAll > 0 ? totalSpendAll / totalDemosAll : 0;
+  const avgQual = totalDemosAll > 0 ? (totalQualAll / totalDemosAll * 100) : 0;
 
   return `
     <div style="display:flex;gap:16px;margin-bottom:8px;font-size:11px">
       <span style="display:flex;align-items:center;gap:4px"><span style="width:12px;height:8px;background:rgba(114,164,191,0.25);display:inline-block;border-radius:2px"></span>Spend (left)</span>
-      <span style="display:flex;align-items:center;gap:4px"><span style="width:16px;height:2px;background:#C0392B;display:inline-block"></span>CPD (right)</span>
-      <span style="display:flex;align-items:center;gap:4px"><span style="width:16px;height:0;border-top:2px dashed #2E7D52;display:inline-block"></span>Qual %</span>
+      <span style="display:flex;align-items:center;gap:4px"><span style="width:16px;height:2px;background:#C0392B;display:inline-block"></span>CPD 3-day avg (right)</span>
+      <span style="display:flex;align-items:center;gap:4px"><span style="width:16px;height:0;border-top:2px dashed #2E7D52;display:inline-block"></span>Qual % 3-day avg</span>
     </div>
     <svg viewBox="0 0 ${W} ${H}" style="width:100%;max-height:240px">
       ${yGridL}${yGridR}
@@ -1951,7 +1965,7 @@ function buildSpendCpdTrendChart(daily) {
       ${spendBars}${cpdLine}${cpdDots}${qualLine}${qualDots}${xLabels}
     </svg>
     <div style="display:flex;justify-content:space-between;font-size:10px;color:#8a9aaa;margin-top:4px">
-      <span>Total spend: ${fmt$(daily.reduce((s,d) => s+d.spend, 0))}</span>
+      <span>Total spend: ${fmt$(totalSpendAll)}</span>
       <span>Avg CPD: ${avgCpd > 0 ? fmt$(avgCpd) : '—'}</span>
       <span>Avg Qual %: ${avgQual > 0 ? avgQual.toFixed(0) + '%' : '—'}</span>
     </div>`;
@@ -2118,7 +2132,7 @@ function buildPanel(key, d) {
   const pcpqd = ptotalQualDemos > 0 ? pallSpend / ptotalQualDemos : null;
 
   const statHTML=`
-    <div class="stat-row">
+    <div class="stat-row" style="grid-template-columns:repeat(5,1fr)">
       <div class="stat-card" style="position:relative;overflow:hidden">
         <div class="sc-label">Closed Deals</div>
         <div class="sc-value">${fmtN(pp.closedDeals)}</div>
@@ -2148,20 +2162,6 @@ function buildPanel(key, d) {
         <div class="sc-sub">MRR ÷ Ad Spend</div>
         ${roas !== null && proas !== null ? sd(roas, proas) : ''}
       </div>
-    </div>
-    <div class="stat-row stat-row-secondary">
-      <div class="stat-card" style="position:relative;overflow:hidden">
-        <div class="sc-label">Demos to Occur</div>
-        <div class="sc-value">${fmtN(pp.demosToOccur)}</div>
-        <div class="sc-sub">Scheduled this period</div>
-        ${sd(pp.demosToOccur, ppp.demosToOccur)}
-      </div>
-      <div class="stat-card" style="position:relative;overflow:hidden">
-        <div class="sc-label">Qual. Demo Given %</div>
-        <div class="sc-value">${qualDemoStr}</div>
-        <div class="sc-sub">${fmtN(qualNumer)} qual ÷ ${fmtN(pp.demosToOccur)} scheduled</div>
-        ${qualDemoGiven !== null && pQualDemoGiven !== null ? sd(qualDemoGiven, pQualDemoGiven) : ''}
-      </div>
       <div class="stat-card" style="position:relative;overflow:hidden">
         <div class="sc-label">Blended CPD</div>
         <div class="sc-value">${cpd$(allSpend,allDemos)}</div>
@@ -2169,20 +2169,8 @@ function buildPanel(key, d) {
         ${sd(cpdNum(allSpend,allDemos)||0, cpdNum(pallSpend,pallDemos)||0, {invert:true})}
         ${buildSparkline(cpdPts)}
       </div>
-      <div class="stat-card" style="position:relative;overflow:hidden">
-        <div class="sc-label">Total CPQD</div>
-        <div class="sc-value">${cpqd !== null ? fmt$(cpqd) : '—'}</div>
-        <div class="sc-sub">Spend ÷ ${fmtN(totalQualDemos)} attributed qual demos</div>
-        ${cpqd !== null && pcpqd !== null ? sd(cpqd, pcpqd, {invert:true}) : ''}
-      </div>
     </div>
     <div class="stat-row stat-row-secondary" style="grid-template-columns:repeat(3,1fr);margin-bottom:32px">
-      <div class="stat-card" style="position:relative;overflow:hidden">
-        <div class="sc-label">Demo Show Rate</div>
-        <div class="sc-value">${showRateVal !== null ? showRateVal.toFixed(1) + '%' : '—'}</div>
-        <div class="sc-sub">${fmtN(pp.demosHappened)} of ${fmtN(pp.demosToOccur)} occurred</div>
-        ${showRateVal !== null && pShowRateVal !== null ? sd(showRateVal, pShowRateVal) : ''}
-      </div>
       <div class="stat-card" style="position:relative;overflow:hidden">
         <div class="sc-label">Demos % Paid Source</div>
         <div class="sc-value">${paidSrcStr}</div>
@@ -2190,10 +2178,16 @@ function buildPanel(key, d) {
         ${paidSrcPct !== null ? sd(paidSrcPct, ppaidSrcPct) : ''}
       </div>
       <div class="stat-card" style="position:relative;overflow:hidden">
-        <div class="sc-label">Meta CTR</div>
-        <div class="sc-value">${d.metaCTR || 'N/A'}</div>
-        <div class="sc-sub">Avg across campaigns</div>
-        ${sd(parsePct(d.metaCTR)||0, parsePct(p.metaCTR)||0)}
+        <div class="sc-label">Demo Show Rate</div>
+        <div class="sc-value">${showRateVal !== null ? showRateVal.toFixed(1) + '%' : '—'}</div>
+        <div class="sc-sub">${fmtN(pp.demosHappened)} of ${fmtN(pp.demosToOccur)} occurred</div>
+        ${showRateVal !== null && pShowRateVal !== null ? sd(showRateVal, pShowRateVal) : ''}
+      </div>
+      <div class="stat-card" style="position:relative;overflow:hidden">
+        <div class="sc-label">Qual. Demo Given %</div>
+        <div class="sc-value">${qualDemoStr}</div>
+        <div class="sc-sub">${fmtN(qualNumer)} qual ÷ ${fmtN(pp.demosToOccur)} scheduled</div>
+        ${qualDemoGiven !== null && pQualDemoGiven !== null ? sd(qualDemoGiven, pQualDemoGiven) : ''}
       </div>
     </div>`;
 
@@ -2506,6 +2500,35 @@ function buildPanel(key, d) {
     <div class="sl">Website Funnel ${vsLabel ? `<span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">${vsLabel}</span>` : ''}</div>
     ${wfFunnelHTML}
 
+    ${(() => {
+      const daily = (DATA.dailyTimeSeries || {})[key];
+      if (!daily || !daily.length) return '';
+      return `
+        <div class="sl">Daily Trends <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">${d.label}</span></div>
+
+        <div class="charts-row">
+          <div class="chart-card">
+            <div class="chart-title">Demos Booked by Day</div>
+            ${buildDailyDemosChart(daily)}
+          </div>
+          <div class="chart-card">
+            <div class="chart-title">Conversion Rates Trend</div>
+            ${buildFunnelTrendChart(daily)}
+          </div>
+        </div>
+
+        <div class="charts-row">
+          <div class="chart-card">
+            <div class="chart-title">Spend vs. CPD vs. Qualified Demo %</div>
+            ${buildSpendCpdTrendChart(daily)}
+          </div>
+          <div class="chart-card">
+            <div class="chart-title">Channel Spend Mix</div>
+            ${buildChannelMixChart(daily)}
+          </div>
+        </div>`;
+    })()}
+
     <div class="sl">Spend &amp; Cost Efficiency</div>
 
     <div class="chart-card" style="margin-bottom:14px">
@@ -2547,35 +2570,6 @@ function buildPanel(key, d) {
       <div class="chart-title">${key === 'lastmonth' ? 'Last Month' : 'MTD'} Spend vs. Monthly Budget</div>
       ${buildSpendPacingSection(ch, key === 'lastmonth' ? 100 : pacingPct, getBudgetsForMonth(d.from))}
     </div>` : ''}
-
-    ${(() => {
-      const daily = (DATA.dailyTimeSeries || {})[key];
-      if (!daily || !daily.length) return '';
-      return `
-        <div class="sl">Daily Trends <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">${d.label}</span></div>
-
-        <div class="charts-row">
-          <div class="chart-card">
-            <div class="chart-title">Demos Booked by Day</div>
-            ${buildDailyDemosChart(daily)}
-          </div>
-          <div class="chart-card">
-            <div class="chart-title">Conversion Rates Trend</div>
-            ${buildFunnelTrendChart(daily)}
-          </div>
-        </div>
-
-        <div class="charts-row">
-          <div class="chart-card">
-            <div class="chart-title">Spend vs. CPD vs. Qualified Demo %</div>
-            ${buildSpendCpdTrendChart(daily)}
-          </div>
-          <div class="chart-card">
-            <div class="chart-title">Channel Spend Mix</div>
-            ${buildChannelMixChart(daily)}
-          </div>
-        </div>`;
-    })()}
 
     ${buildPaidMediaInline(ch, pch, prevLabel, noPrev)}
 
