@@ -1787,10 +1787,10 @@ function buildPanel(key, d) {
   const qualDemoStr = qualDemoGiven !== null ? qualDemoGiven.toFixed(1) + '%' : '—';
   const qualNumer = pp.demosHappened - (pp.tooEarly||0) - (pp.notQualAfterDemo||0);
 
-  // CPQD (must come after qualNumer)
-  const cpqd = qualNumer > 0 ? allSpend / qualNumer : null;
+  // CPQD: ad spend ÷ UTM-attributed qualified demos (directly maps spend to paid outcomes)
+  const cpqd = totalQualDemos > 0 ? allSpend / totalQualDemos : null;
   const pQualNumer = ppp.demosHappened - (ppp.tooEarly||0) - (ppp.notQualAfterDemo||0);
-  const pcpqd = pQualNumer > 0 ? pallSpend / pQualNumer : null;
+  const pcpqd = ptotalQualDemos > 0 ? pallSpend / ptotalQualDemos : null;
 
   const statHTML=`
     <div class="stat-row">
@@ -1847,7 +1847,7 @@ function buildPanel(key, d) {
       <div class="stat-card" style="position:relative;overflow:hidden">
         <div class="sc-label">Total CPQD</div>
         <div class="sc-value">${cpqd !== null ? fmt$(cpqd) : '—'}</div>
-        <div class="sc-sub">Spend ÷ ${fmtN(qualNumer)} qual demos given</div>
+        <div class="sc-sub">Spend ÷ ${fmtN(totalQualDemos)} attributed qual demos</div>
         ${cpqd !== null && pcpqd !== null ? sd(cpqd, pcpqd, {invert:true}) : ''}
       </div>
     </div>
@@ -2190,14 +2190,14 @@ function buildPanel(key, d) {
         <tbody>${cpdRows}</tbody>
         <tfoot><tr style="border-top:2px solid var(--card-border)">
           <td style="font-weight:700;font-size:12px">Total</td>
-          <td style="font-weight:700">${fmt$(sorted.reduce((s,c)=>s+c.spend,0))}</td>
-          <td style="font-weight:700">${fmtN(sorted.reduce((s,c)=>s+c.demos,0))}</td>
-          <td style="text-align:center;font-weight:700;color:var(--deep-navy)">${fmtN(totalQualDemos)}</td>
-          <td style="font-weight:700">${allDemos>0?fmt$(allSpend/allDemos):'N/A'}</td>
-          <td style="font-weight:700">${totalQualDemos>0?fmt$(allSpend/totalQualDemos):'N/A'}</td>
-          <td style="text-align:center;font-weight:700;color:var(--deep-navy)">${fmtN(chKeys.reduce((s,k)=>(s+(d.channelAttribution?.[k]?.closedWon||0)),0))}</td>
-          <td style="text-align:right;font-weight:700">${fmt$(chKeys.reduce((s,k)=>(s+(d.channelAttribution?.[k]?.mrr||0)),0))}</td>
-          <td style="text-align:right;font-weight:700;color:var(--deep-navy)">${roas !== null ? roas.toFixed(2) + 'x' : '—'}</td>
+          <td style="font-weight:700">${fmt$(allSpend)}${noPrev ? '' : miniDelta(allSpend, pallSpend)}</td>
+          <td style="font-weight:700">${fmtN(allDemos)}${noPrev ? '' : miniDelta(allDemos, pallDemos)}</td>
+          <td style="text-align:center;font-weight:700;color:var(--deep-navy)">${fmtN(totalQualDemos)}${d.demosBooked > 0 ? `<div style="font-size:9px;color:#8a9aaa;font-weight:400">${(totalQualDemos/d.demosBooked*100).toFixed(0)}% of booked</div>` : ''}${noPrev ? '' : miniDelta(totalQualDemos, ptotalQualDemos)}</td>
+          <td style="font-weight:700">${allDemos>0?fmt$(allSpend/allDemos):'N/A'}${noPrev ? '' : miniDelta(cpdNum(allSpend,allDemos), cpdNum(pallSpend,pallDemos), {invert:true})}</td>
+          <td style="font-weight:700">${totalQualDemos>0?fmt$(allSpend/totalQualDemos):'N/A'}${noPrev ? '' : miniDelta(totalQualDemos>0?allSpend/totalQualDemos:null, ptotalQualDemos>0?pallSpend/ptotalQualDemos:null, {invert:true})}</td>
+          <td style="text-align:center;font-weight:700;color:var(--deep-navy)">${fmtN(chKeys.reduce((s,k)=>(s+(d.channelAttribution?.[k]?.closedWon||0)),0))}${noPrev ? '' : miniDelta(chKeys.reduce((s,k)=>(s+(d.channelAttribution?.[k]?.closedWon||0)),0), chKeys.reduce((s,k)=>(s+(p.channelAttribution?.[k]?.closedWon||0)),0))}</td>
+          <td style="text-align:right;font-weight:700">${fmt$(chKeys.reduce((s,k)=>(s+(d.channelAttribution?.[k]?.mrr||0)),0))}${noPrev ? '' : miniDelta(chKeys.reduce((s,k)=>(s+(d.channelAttribution?.[k]?.mrr||0)),0), chKeys.reduce((s,k)=>(s+(p.channelAttribution?.[k]?.mrr||0)),0))}</td>
+          <td style="text-align:right;font-weight:700;color:var(--deep-navy)">${roas !== null ? roas.toFixed(2) + 'x' : '—'}${noPrev ? '' : miniDelta(roas, proas)}</td>
         </tr></tfoot>
       </table>
     </div>

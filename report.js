@@ -34,7 +34,8 @@ function getWindows() {
   const prev7Start   = new Date(weekAgo); prev7Start.setDate(weekAgo.getDate() - 7);
   const prev7End     = new Date(weekAgo); prev7End.setDate(weekAgo.getDate() - 1);
   const prevMtdStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const prevMtdEnd   = new Date(now.getFullYear(), now.getMonth(), 0);
+  // Same day-of-month as yesterday in prior month (e.g., Mar 1-11 compares to Feb 1-11)
+  const prevMtdEnd   = new Date(now.getFullYear(), now.getMonth() - 1, yest.getDate());
 
   // Last month = full previous calendar month; its prior = the month before that
   const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
