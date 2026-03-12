@@ -380,12 +380,15 @@ async function fetchDailyTimeSeries(dateFrom, dateTo, allDeals) {
     dayMap[ds].ga4Booked += row.conversions_hubspot_meeting_booked || 0;
   }
 
-  // Aggregate HubSpot deals by day
+  // Aggregate HubSpot deals by day — use hs_createdate (when the demo was booked/scheduled)
   const QUAL_STATUS = ['Demo Given', 'Demo Given at Rescheduled time'];
   for (const deal of allDeals) {
-    const bookedStr = deal.properties?.date_demo_booked;
-    if (!bookedStr || !dayMap[bookedStr]) continue;
-    const d = dayMap[bookedStr];
+    const createStr = deal.properties?.hs_createdate;
+    if (!createStr) continue;
+    const createDate = new Date(createStr);
+    const dayStr = `${createDate.getFullYear()}-${String(createDate.getMonth()+1).padStart(2,'0')}-${String(createDate.getDate()).padStart(2,'0')}`;
+    if (!dayMap[dayStr]) continue;
+    const d = dayMap[dayStr];
     d.demosBooked++;
     const status = (deal.properties?.demo_given__status || '').trim();
     if (QUAL_STATUS.includes(status)) d.qualified++;
