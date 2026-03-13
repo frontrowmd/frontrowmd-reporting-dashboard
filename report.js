@@ -1015,7 +1015,7 @@ function buildSection(label, channels, hs) {
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
-function buildDashboard(windowedChannels, hubspotData, prevWindowedChannels, prevHubspotData, winKeys, windows, prevWindows, txtFilename, ga4SourcesByWindow, ga4PrevSourcesByWindow, demoCohorts, dailyMTD, dailyLastMonth) {
+function buildDashboard(windowedChannels, hubspotData, prevWindowedChannels, prevHubspotData, winKeys, windows, prevWindows, txtFilename, ga4SourcesByWindow, ga4PrevSourcesByWindow, demoCohorts) {
   const generatedAt = new Date().toLocaleString('en-US', {
     timeZone: 'America/Los_Angeles', dateStyle: 'medium', timeStyle: 'short'
   });
@@ -1051,7 +1051,7 @@ function buildDashboard(windowedChannels, hubspotData, prevWindowedChannels, pre
     };
   }
 
-  const data = JSON.stringify({ generatedAt, filename: txtFilename, windows: dashWindows, demoCohorts: demoCohorts || [], dailyTimeSeries: { mtd: dailyMTD || [], lastmonth: dailyLastMonth || [] } })
+  const data = JSON.stringify({ generatedAt, filename: txtFilename, windows: dashWindows, demoCohorts: demoCohorts || [] })
     .replace(/<\/script>/gi, '<\/script>');
   let template = fs.readFileSync(__dirname + '/dashboard_template.html', 'utf8');
 
@@ -1536,14 +1536,6 @@ async function main() {
   const prevHubspotData = await fetchAllHubSpotData(prevWindows);
   const demoCohorts     = await fetchDemoCohorts();
 
-  // Fetch daily time series for MTD and Last Month (for trend charts)
-  console.log('\n── Fetching daily time series for trend charts ──');
-  const rawDeals = hubspotData._rawDeals || [];
-  const [dailyMTD, dailyLastMonth] = await Promise.all([
-    fetchDailyTimeSeries(windows.mtd.from, windows.mtd.to, rawDeals),
-    fetchDailyTimeSeries(windows.lastmonth.from, windows.lastmonth.to, rawDeals),
-  ]);
-
   // Windsor + GA4 can all fire in parallel (no rate limit issues)
   const allWindsor = await Promise.all([
     ...winKeys.map(k => Promise.all([fetchWindsorDemos(windows[k].from, windows[k].to), fetchGA4(windows[k].from, windows[k].to)])),
@@ -1599,7 +1591,7 @@ async function main() {
   fs.writeFileSync(filename, report);
   console.log(`📄  Report saved to: ${filename}`);
 
-  const dashboard = buildDashboard(windowedChannels, hubspotData, prevWindowedChannels, prevHubspotData, winKeys, windows, prevWindows, filename, ga4SourcesByWindow, ga4PrevSourcesByWindow, demoCohorts, dailyMTD, dailyLastMonth);
+  const dashboard = buildDashboard(windowedChannels, hubspotData, prevWindowedChannels, prevHubspotData, winKeys, windows, prevWindows, filename, ga4SourcesByWindow, ga4PrevSourcesByWindow, demoCohorts);
   fs.writeFileSync(dashname, dashboard);
   console.log(`📊  Dashboard saved to: ${dashname}\n`);
 

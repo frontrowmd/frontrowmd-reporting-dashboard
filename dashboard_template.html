@@ -2491,35 +2491,6 @@ function buildPanel(key, d) {
     <div class="sl">Website Funnel ${vsLabel ? `<span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">${vsLabel}</span>` : ''}</div>
     ${wfFunnelHTML}
 
-    ${(() => {
-      const daily = (DATA.dailyTimeSeries || {})[key];
-      if (!daily || !daily.length) return '';
-      return `
-        <div class="sl">Daily Trends <span style="font-size:10px;color:#8a9aaa;font-weight:400;letter-spacing:0;text-transform:none">${d.label}</span></div>
-
-        <div class="charts-row">
-          <div class="chart-card">
-            <div class="chart-title">Demos Booked by Day</div>
-            ${buildDailyDemosChart(daily)}
-          </div>
-          <div class="chart-card">
-            <div class="chart-title">Conversion Rates Trend</div>
-            ${buildFunnelTrendChart(daily)}
-          </div>
-        </div>
-
-        <div class="charts-row">
-          <div class="chart-card">
-            <div class="chart-title">Spend vs. CPD vs. Qualified Demo %</div>
-            ${buildSpendCpdTrendChart(daily)}
-          </div>
-          <div class="chart-card">
-            <div class="chart-title">Channel Spend Mix</div>
-            ${buildChannelMixChart(daily)}
-          </div>
-        </div>`;
-    })()}
-
     <div class="sl">Spend &amp; Cost Efficiency</div>
 
     <div class="chart-card" style="margin-bottom:14px">
