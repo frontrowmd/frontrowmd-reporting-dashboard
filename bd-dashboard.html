@@ -165,8 +165,8 @@ function renderBD(){
   var attrSorted=Object.entries(attrData).sort(function(a,b){if(_bdAttrDim==='_webTraffic')return (_wtO[a[0]]||99)-(_wtO[b[0]]||99);return b[1]-a[1];});
   if(_bdHideBlanks){attrSorted=attrSorted.filter(function(e){var k=e[0].toLowerCase();return k!=='(none)'&&k!==''&&k!=='none';});}
   var attrVisTotal=0,attrVisMRR=0;for(var avt=0;avt<attrSorted.length;avt++){attrVisTotal+=attrSorted[avt][1];attrVisMRR+=attrMRR[attrSorted[avt][0]]||0;}
-  var attrMax=attrSorted.length?attrSorted[0][1]:1;
-  var attrColors=Object.assign({},BD_STAGE_COLORS,BD_STATUS_COLORS,BD_PKG_COLORS,BD_REP_CMAP,{'(none)':'#9CA3AF','Unassigned':'#9CA3AF','Closed Won':'#16A34A','Decision Maker':'#7C3AED','Contract Sent':'#1565C0','Churned':'#DC2626','Churned (Onb)':'#DC2626'});
+  var attrMax=1;for(var ami=0;ami<attrSorted.length;ami++){if(attrSorted[ami][1]>attrMax)attrMax=attrSorted[ami][1];}
+  var attrColors=Object.assign({},BD_STAGE_COLORS,BD_STATUS_COLORS,BD_PKG_COLORS,BD_REP_CMAP,{'Pre-launch':'#9CA3AF','0-10K':'#72A4BF','10-25K':'#1D4053','25-50K':'#172C45','50-100K':'#0EA5E9','100-200K':'#7C3AED','200-500K':'#16A34A','500K+':'#F59E0B','(none)':'#9CA3AF','Unassigned':'#9CA3AF','Closed Won':'#16A34A','Decision Maker':'#7C3AED','Contract Sent':'#1565C0','Churned':'#DC2626','Churned (Onb)':'#DC2626'});
   h+='<div style="border-top:2px solid var(--border);margin:24px 0 20px"></div>';
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:20px;position:relative">';
   h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap"><div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">Deal Attribution</div><div style="font-size:10px;color:var(--grey);margin-left:4px">'+attrVisTotal+' deals \u00b7 '+f$(attrVisMRR)+' MRR'+(_bdHideBlanks&&attrVisTotal<sharedFiltered.length?' ('+sharedFiltered.length+' total)':'')+'</div><div style="flex:1"></div>';
