@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FrontrowMD — Marketing Dashboard</title>
+<link rel="icon" href="https://raw.githubusercontent.com/frontrowmd/frontrowmd-reporting-dashboard/main/White_Graphic_Logo.png">
+<link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--midnight:#020F18;--navy:#172C45;--mid-navy:#1D4053;--teal:#72A4BF;--teal-8:rgba(114,164,191,.08);--teal-15:rgba(114,164,191,.15);--teal-30:rgba(114,164,191,.30);--border:#D4E6EF;--light-bg:#F5F7FA;--lighter:#EBF3F8;--lightest:#D8ECF5;--white:#FFF;--red:#EF4444;--green:#10B981;--yellow:#F59E0B;--purple:#7C3AED;--grey:#9CA3AF;--font-h:'Libre Baskerville',Georgia,serif;--font-b:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;--sidebar-w:260px}
+html,body{height:100%}body{font-family:var(--font-b);font-size:15px;color:var(--navy);background:linear-gradient(135deg,var(--light-bg),var(--lighter) 60%,var(--lightest));line-height:1.6}
+
+/* ═══ Login Gate ═══ */
+#gate{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:var(--midnight);background-image:
+  linear-gradient(rgba(114,164,191,.03) 1px,transparent 1px),
+  linear-gradient(90deg,rgba(114,164,191,.03) 1px,transparent 1px);
+  background-size:40px 40px}
+.gbox{background:rgba(23,44,69,.5);backdrop-filter:blur(12px);border:1px solid rgba(114,164,191,.15);border-radius:20px;padding:48px 40px;width:400px;text-align:center;box-shadow:0 24px 80px rgba(2,15,24,.5)}
+.gbox .field{position:relative;margin-bottom:16px}
+.gbox input{width:100%;padding:16px 48px 16px 20px;background:rgba(2,15,24,.6);border:1.5px solid rgba(114,164,191,.2);border-radius:12px;font-size:15px;font-family:var(--font-b);color:var(--white);outline:none;transition:border-color .2s}
+.gbox input::placeholder{color:rgba(114,164,191,.4)}
+.gbox input:focus{border-color:var(--teal)}
+.gbox .lock{position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:16px;color:rgba(114,164,191,.3)}
+.gbox button{width:100%;padding:16px;background:linear-gradient(135deg,var(--teal),#5E8CA8);color:var(--white);border:none;border-radius:50px;cursor:pointer;font-family:var(--font-h);font-size:15px;font-weight:700;transition:all .2s;box-shadow:0 4px 20px rgba(114,164,191,.25)}
+.gbox button:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(114,164,191,.35)}
+.gbox button:disabled{opacity:.7;cursor:not-allowed;transform:none}
+.gerr{color:#FCA5A5;font-size:13px;margin-top:12px;display:none}
+
+#app{display:none;height:100vh}#app.active{display:flex}
+.sidebar{width:var(--sidebar-w);min-width:var(--sidebar-w);background:linear-gradient(180deg,var(--midnight),var(--navy));color:var(--white);display:flex;flex-direction:column;z-index:10}
+.sh{padding:24px 20px 20px;border-bottom:1px solid rgba(114,164,191,.15);display:flex;align-items:center;gap:12px}
+.sh img{height:24px}
+.slogo{font-family:var(--font-h);font-size:17px;white-space:nowrap}.slogo strong{font-weight:700}
+.snav{padding:16px 12px;flex:1}
+.ni{display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:10px;cursor:pointer;color:rgba(255,255,255,.6);font-size:14px;font-weight:500;transition:all .2s;margin-bottom:4px;white-space:nowrap}
+.ni:hover{background:rgba(114,164,191,.1);color:var(--white)}.ni.active{background:rgba(114,164,191,.2);color:var(--white)}
+.ni .ic{font-size:18px;min-width:24px;text-align:center}
+.sf{padding:16px 20px;border-top:1px solid rgba(114,164,191,.15);font-size:11px;color:rgba(255,255,255,.35)}
+
+.main{flex:1;overflow-y:auto;display:flex;flex-direction:column}
+.topbar{padding:20px 32px 16px;background:var(--white);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:5}
+.ttl{font-family:var(--font-h);font-size:22px;font-weight:700;color:var(--navy)}
+.flt{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}
+.fb{padding:8px 20px;border-radius:50px;border:1.5px solid var(--navy);background:transparent;color:var(--navy);cursor:pointer;font-family:var(--font-h);font-size:13px;transition:all .2s}
+.fb:hover{background:var(--teal-8)}.fb.active{background:var(--navy);color:var(--white)}
+.rfb{padding:8px 16px;border-radius:50px;border:1.5px solid var(--teal);background:transparent;color:var(--teal);cursor:pointer;font-family:var(--font-h);font-size:12px;font-weight:700;margin-left:auto;transition:all .2s}
+.rfb:hover{background:var(--teal);color:var(--white)}.rfb.loading{opacity:.5;pointer-events:none}
+.cr{display:none;align-items:center;gap:8px;margin-left:8px}.cr.vis{display:flex}
+.cr input[type="date"]{padding:6px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px}
+.cr button{padding:6px 16px;border-radius:50px;background:var(--teal);color:white;border:none;cursor:pointer;font-size:13px;font-family:var(--font-h);font-weight:700}
+.dqb{background:#FEF3C7;border:1px solid #F59E0B;border-radius:10px;padding:12px 20px;margin:16px 32px 0;font-size:13px;color:#92400E;display:none;align-items:center;gap:8px}.dqb.vis{display:flex}
+.ld{display:flex;align-items:center;justify-content:center;flex:1;padding:80px}
+.sp{width:40px;height:40px;border:3px solid var(--teal-30);border-top-color:var(--navy);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.lt{margin-left:16px;font-family:var(--font-h);color:var(--navy);font-size:15px}
+.pg{display:none;padding:32px;flex:1}.pg.active{display:block}
+.sec{margin-bottom:40px}
+.st{font-family:var(--font-h);font-size:18px;font-weight:700;color:var(--navy);margin-bottom:16px;padding-bottom:8px;border-bottom:2px solid var(--teal-30)}
+.tg{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
+.tile{background:var(--white);border:1px solid var(--border);border-radius:12px;padding:20px 24px;transition:all .2s}
+.tile:hover{box-shadow:0 4px 16px rgba(23,44,69,.08);transform:translateY(-1px)}
+.tile.hero{background:linear-gradient(135deg,var(--navy),var(--mid-navy));color:var(--white);border:none}
+.tile.hero .tlbl{color:var(--teal)}.tile.hero .tval{color:var(--white)}.tile.hero .tdef{color:rgba(255,255,255,.5)}.tile.hero .tcalc{color:rgba(255,255,255,.7)}
+.tile.hero .tc .lbl{color:rgba(255,255,255,.45)}.tile.hero .tc .val{color:rgba(255,255,255,.85)}
+.tile.hero .tc .d.up{color:#6EE7B7}.tile.hero .tc .d.dn{color:#FCA5A5}
+.tile.accent{border-left:4px solid var(--teal);background:linear-gradient(135deg,var(--white),var(--teal-8))}
+.tile.sm-teal{background:linear-gradient(135deg,rgba(114,164,191,.08),rgba(114,164,191,.15));border:1px solid rgba(114,164,191,.2);padding:14px 18px}
+.tile.sm-teal .tval{font-size:20px}
+.tile.sm-teal .tcomps{gap:2px}.tile.sm-teal .tc{font-size:10px}
+.tlbl{font-family:var(--font-h);font-size:11px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+.tval{font-family:var(--font-h);font-size:26px;font-weight:700;color:var(--navy);margin-bottom:2px}
+.tdef{font-size:10px;color:var(--grey);margin-bottom:2px;line-height:1.3;font-style:italic}
+.tcalc{font-size:10px;color:var(--mid-navy);margin-bottom:8px;font-weight:500}
+.tcomps{display:flex;flex-direction:column;gap:3px}
+.tc{font-size:10px;color:#64748B;line-height:1.4}
+.tc .lbl{color:var(--grey)}.tc .val{font-weight:600;color:var(--navy)}
+.tc .d{font-weight:600;font-size:10px}.tc .d.up{color:#059669}.tc .d.dn{color:#DC2626}.tc .d.n{color:var(--mid-navy)}
+.pbar{margin-top:8px}.pbg{height:6px;background:var(--teal-15);border-radius:50px;overflow:hidden}
+.pf{height:100%;border-radius:50px;transition:width .5s}.pf.ok{background:var(--green)}.pf.over{background:var(--red)}.pf.under{background:var(--yellow)}
+.pl{font-size:10px;color:var(--grey);margin-top:3px}
+.cw{background:var(--white);border:1px solid var(--border);border-radius:12px;padding:20px}
+.dbc-bar{width:100%;max-width:40px;border-radius:5px 5px 0 0;position:relative;min-height:3px;background:var(--navy)}
+.dbc-bar.wknd{background:transparent;border:2px dashed var(--navy);border-bottom:none}
+.dbc-cnt{font-size:9px;font-weight:700;color:var(--navy);position:absolute;top:-14px;left:50%;transform:translateX(-50%)}
+.dbc-lbl{font-size:9px;color:var(--grey);font-family:var(--font-h)}
+.dbc-legend{display:flex;gap:16px;font-size:10px;color:var(--grey);margin-top:10px}
+.dbc-legend div{display:flex;align-items:center;gap:4px}
+.dbc-legend .sw{width:14px;height:10px;border-radius:2px}.dbc-legend .sw.s{background:var(--navy)}.dbc-legend .sw.d{border:2px dashed var(--navy);background:transparent}
+.fr{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.fl{font-size:12px;font-weight:500;min-width:170px;color:var(--navy)}
+.fbbg{flex:1;height:24px;background:var(--teal-8);border-radius:5px;overflow:hidden;display:flex}
+.fseg{height:100%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;color:white}.fseg span{padding:0 3px;white-space:nowrap}
+.fseg.unattr{background:repeating-linear-gradient(45deg,#e5e7eb,#e5e7eb 3px,#f3f4f6 3px,#f3f4f6 6px) !important;color:var(--grey)}
+.tbl-grn{background:rgba(16,185,129,.06)}.tbl-ylw{background:rgba(245,158,11,.06)}
+.ctbl{width:100%;border-collapse:separate;border-spacing:0;font-size:12px}
+.ctbl th{font-family:var(--font-h);font-size:10px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.04em;padding:8px 10px;text-align:left;border-bottom:2px solid var(--border);position:sticky;top:0;background:var(--white);z-index:1}
+.ctbl td{padding:8px 10px;border-bottom:1px solid var(--teal-8);color:var(--navy)}
+.ctbl tr:hover td{background:var(--teal-8)}.ctbl .n{text-align:right;font-variant-numeric:tabular-nums}
+.ctbl .sub{display:block;font-size:9px;color:var(--grey);font-weight:400}
+.ctbl .dtxt{font-size:9px;font-weight:600;display:block}.ctbl .dtxt.up{color:#059669}.ctbl .dtxt.dn{color:#DC2626}
+.tw{background:var(--white);border:1px solid var(--border);border-radius:12px;overflow:auto;max-height:660px}
+input[type="range"]{-webkit-appearance:none;cursor:pointer}
+input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;background:var(--navy);border-radius:50%;border:3px solid var(--white);box-shadow:0 2px 6px rgba(2,15,24,.2);cursor:pointer}
+/* Insights */
+.ins-header{display:flex;align-items:center;gap:16px;margin-bottom:24px;padding-bottom:20px;border-bottom:2px solid var(--teal-30)}
+.ins-header-text{flex:1}
+.ins-header h2{font-family:var(--font-h);font-size:22px;font-weight:700;color:var(--navy);margin-bottom:4px}
+.ins-header .ins-period{font-size:12px;color:var(--grey)}
+.ins-badges{display:flex;gap:8px}
+.ins-badge{padding:6px 14px;border-radius:50px;font-family:var(--font-h);font-size:12px;font-weight:700;display:flex;align-items:center;gap:5px}
+.ins-badge.b-win{background:#ECFDF5;color:#065F46}.ins-badge.b-alert{background:#FEF2F2;color:#991B1B}.ins-badge.b-warn{background:#FFFBEB;color:#92400E}
+.ins-summary{font-size:14px;line-height:1.7;color:var(--navy);padding:20px 24px;background:linear-gradient(135deg,var(--navy),var(--mid-navy));color:rgba(255,255,255,.9);border-radius:12px;margin-bottom:24px}
+.ins-summary strong{color:var(--white)}
+.ins-sec{background:var(--white);border:1px solid var(--border);border-radius:14px;padding:24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(23,44,69,.04)}
+.ins-title{font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--teal-15);display:flex;align-items:center;gap:8px}
+.ins-item{padding:14px 16px;border-radius:10px;margin-bottom:8px;font-size:13px;line-height:1.6;display:flex;gap:12px;transition:transform .15s}
+.ins-item:hover{transform:translateX(2px)}
+.ins-item .ins-icon{font-size:16px;min-width:22px;text-align:center;padding-top:1px}
+.ins-item .ins-body{flex:1}
+.ins-item .ins-metric{font-weight:600;color:var(--navy)}
+.ins-item .ins-action{display:block;margin-top:6px;font-size:12px;font-weight:500;color:var(--mid-navy);padding:6px 10px;background:rgba(114,164,191,.08);border-radius:6px;border:1px solid var(--teal)}
+.ins-item.alert{background:#FEF2F2;border-left:4px solid #EF4444}
+.ins-item.alert .ins-action{background:rgba(239,68,68,.06);border-color:#EF4444}
+.ins-item.warning{background:#FFFBEB;border-left:4px solid #F59E0B}
+.ins-item.warning .ins-action{background:rgba(245,158,11,.06);border-color:#F59E0B}
+.ins-item.win{background:#ECFDF5;border-left:4px solid #10B981}
+.ins-item.win .ins-action{background:rgba(16,185,129,.06);border-color:#10B981}
+.ins-item.info{background:var(--teal-8);border-left:4px solid var(--teal)}
+.ins-item.neutral{background:var(--light-bg);border-left:4px solid var(--grey)}
+.ins-filters{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.ins-fpill{padding:5px 14px;border-radius:50px;font-family:var(--font-h);font-size:11px;font-weight:700;cursor:pointer;border:1.5px solid var(--border);background:var(--white);color:var(--grey);transition:all .15s}
+.ins-fpill:hover{border-color:var(--teal);color:var(--navy)}
+.ins-fpill.active{background:var(--navy);color:var(--white);border-color:var(--navy)}
+.ins-fpill .ins-fc{font-weight:400;opacity:.7;margin-left:3px}
+
+/* Hamburger button */
+.hamburger{display:none;background:none;border:none;cursor:pointer;padding:4px;flex-direction:column;gap:5px;z-index:20}
+.hamburger span{display:block;width:22px;height:2px;background:var(--navy);border-radius:2px;transition:all .2s}
+.sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(2,15,24,.5);z-index:9}
+
+/* Progress bar */
+.prgw{max-width:280px;margin:12px auto 0}
+.prgbar{height:6px;background:var(--teal-15);border-radius:50px;overflow:hidden}
+.prgfill{height:100%;background:linear-gradient(90deg,var(--teal),var(--navy));border-radius:50px;transition:width .5s ease}
+.prglbl{font-size:11px;color:var(--grey);margin-top:6px;font-family:var(--font-b)}
+
+@media(max-width:900px){
+  .hamburger{display:flex}
+  .sidebar{position:fixed;left:0;top:0;height:100%;transform:translateX(-100%);transition:transform .25s ease;z-index:15;width:280px;min-width:280px}
+  .sidebar.open{transform:translateX(0)}
+  .sidebar-overlay.open{display:block}
+  .tg{grid-template-columns:1fr 1fr}
+  .topbar{padding:16px 20px 12px}
+  .pg{padding:20px}
+  .tw{max-height:none}
+  .ctbl{font-size:11px}.ctbl th,.ctbl td{padding:6px 8px}
+}
+@media(max-width:600px){
+  .tg{grid-template-columns:1fr}
+  .ttl{font-size:18px}
+  .flt{gap:6px}
+  .fb{padding:6px 14px;font-size:12px}
+  .tile{padding:16px 18px}
+  .tval{font-size:22px}
+  .gbox{width:90%;padding:32px 24px}
+  .pg{padding:16px}
+}
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <div class="gbox">
+    <div style="text-align:center;margin-bottom:28px"><img src="https://raw.githubusercontent.com/frontrowmd/frontrowmd-reporting-dashboard/main/FrontrowMD_White_Logo.png" alt="frontrowMD" style="height:36px"></div>
+    <div class="field"><input type="password" id="pw" placeholder="Team password" autocomplete="off"><div class="lock">🔒</div></div>
+    <button id="loginBtn" onclick="doLogin()">Log In →</button>
+    <div class="gerr" id="gerr">Incorrect password.</div>
+  </div>
+</div>
+
+<div id="app"><div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+  <nav class="sidebar">
+    <div class="sh"><img src="https://raw.githubusercontent.com/frontrowmd/frontrowmd-reporting-dashboard/main/FrontrowMD_White_Logo.png" alt="frontrowMD" style="height:36px"></div>
+    <div class="snav">
+      <div class="ni active" onclick="switchPage('dashboard')" data-page="dashboard"><span class="ic">📊</span><span>Executive Dashboard</span></div>
+      <div class="ni" onclick="switchPage('analyzer')" data-page="analyzer"><span class="ic">🔬</span><span>Paid Ads Analyzer</span></div>
+      <div class="ni" onclick="switchPage('signup')" data-page="signup"><span class="ic">📋</span><span>Sign-Up Rate</span></div>
+      <div class="ni" onclick="switchPage('insights')" data-page="insights"><span class="ic">💡</span><span>Insights</span></div>
+      <div class="ni" onclick="switchPage('calculator')" data-page="calculator"><span class="ic">🧮</span><span>ARR Calculator</span></div>
+    </div><div class="sf"><span id="fts">Loading...</span></div>
+  </nav>
+  <div class="main">
+    <div class="topbar"><div style="display:flex;align-items:center;gap:12px"><button class="hamburger" id="hamburger" onclick="toggleSidebar()"><span></span><span></span><span></span></button><div class="ttl" id="ptitle" style="margin-bottom:0">Executive Dashboard</div></div><div class="flt" id="filters"></div></div>
+    <div class="dqb" id="dqb">⚠️ Some data sources may not have fully loaded. <button class="rfb" onclick="refreshData()" style="margin-left:8px;padding:6px 14px">Refresh</button></div>
+    <div class="ld" id="loading"><div style="text-align:center"><div class="sp" style="margin:0 auto 16px"></div><div class="lt" id="loadText">Fetching live data...</div><div class="prgw" id="prgWrap" style="display:none"><div class="prgbar"><div class="prgfill" id="prgFill"></div></div><div class="prglbl" id="prgLbl">Connecting...</div></div></div></div>
+    <div class="pg" id="page-dashboard">
+      <div id="date-header" style="margin-bottom:24px"></div>
+      <div class="sec"><div class="st">Executive Summary</div><div class="tg" id="t-exec"></div></div>
+      <div class="sec"><div class="st">ARR / ROAS</div><div class="tg" id="t-mrr"></div></div>
+      <div class="sec"><div class="st">Web Performance</div><div class="tg" id="t-web"></div></div>
+      <div class="sec"><div class="st">Ad Spend</div><div class="tg" id="t-spend"></div></div>
+      <div class="sec"><div class="st">Cost Per Demo</div><div class="tg" id="t-cpd"></div></div>
+      <div class="sec"><div class="st">Cost Per Qualified Demo</div><div class="tg" id="t-cpqd"></div></div>
+      <div class="sec"><div class="st">Cost Per Demo — By Channel</div><div class="tw" id="cpd-tbl"></div></div>
+      <div class="sec" id="sec-daily"><div class="st">Demos Booked Per Day</div><div class="cw" id="daily-wrap"></div></div>
+      <div class="sec"><div class="st">Demo Quality</div><div id="funnel-all"></div><div id="funnel-reps" style="margin-top:12px"></div></div>
+    </div>
+    <div class="pg" id="page-calculator"><div class="sec">
+      <div class="st">ARR Calculator</div>
+      <p style="color:var(--grey);font-size:14px;margin-bottom:28px">Model churn-adjusted annual revenue and return on ad spend.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;max-width:900px;align-items:stretch">
+        <div style="display:flex;flex-direction:column;gap:20px">
+          <div style="background:var(--white);border:1px solid var(--border);border-radius:16px;padding:28px;flex:1;display:flex;flex-direction:column">
+            <div style="font-family:var(--font-h);font-size:11px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.05em;margin-bottom:16px">Period Data</div>
+            <div style="font-size:11px;color:var(--grey);margin-bottom:4px" id="cPL">—</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+              <div><div style="font-size:10px;color:var(--grey);margin-bottom:2px">MRR</div><div style="font-family:var(--font-h);font-size:24px;font-weight:700;color:var(--navy)" id="cMRR">$0</div></div>
+              <div><div style="font-size:10px;color:var(--grey);margin-bottom:2px">Ad Spend</div><div style="font-family:var(--font-h);font-size:24px;font-weight:700;color:var(--navy)" id="cAdSp">$0</div></div>
+            </div>
+            <div style="font-size:11px;color:var(--grey);margin-bottom:16px" id="cMRRsub">from closed-won deals and ad platforms in this period</div>
+            <div style="border-top:1px solid var(--border);padding-top:16px;flex:1;display:flex;flex-direction:column">
+              <label style="font-size:13px;color:var(--navy);display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:500;margin-bottom:14px">
+                <input type="checkbox" id="cCustomToggle" onchange="updCalc()" style="accent-color:var(--teal);width:16px;height:16px"> Override with custom values</label>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <div>
+                  <div style="font-size:10px;color:var(--grey);margin-bottom:4px">Custom MRR</div>
+                  <div style="position:relative"><span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:14px;font-weight:600;color:var(--grey);pointer-events:none">$</span>
+                    <input type="number" id="cCustomMRR" placeholder="MRR" disabled style="width:100%;padding:10px 12px 10px 26px;border:2px solid var(--border);border-radius:10px;font-size:15px;font-family:var(--font-b);color:var(--navy);outline:none;transition:border-color .2s,background .2s;background:var(--light-bg)" oninput="updCalc()"></div>
+                </div>
+                <div>
+                  <div style="font-size:10px;color:var(--grey);margin-bottom:4px">Custom Ad Spend</div>
+                  <div style="position:relative"><span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:14px;font-weight:600;color:var(--grey);pointer-events:none">$</span>
+                    <input type="number" id="cCustomSpend" placeholder="Spend" disabled style="width:100%;padding:10px 12px 10px 26px;border:2px solid var(--border);border-radius:10px;font-size:15px;font-family:var(--font-b);color:var(--navy);outline:none;transition:border-color .2s,background .2s;background:var(--light-bg)" oninput="updCalc()"></div>
+                </div>
+              </div>
+              <div style="font-size:10px;color:var(--grey);margin-top:8px" id="cCustomHint">Enable the toggle to enter custom values</div></div>
+          </div>
+          <div style="background:var(--white);border:1px solid var(--border);border-radius:16px;padding:28px">
+            <div style="font-family:var(--font-h);font-size:11px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Monthly Churn Rate</div>
+            <div style="font-size:11px;color:var(--grey);margin-bottom:16px">Estimated % of customers lost per month</div>
+            <div style="display:flex;align-items:center;gap:16px">
+              <input type="range" id="churn" min="0" max="10" step="0.25" value="0" style="flex:1;height:8px;background:linear-gradient(90deg,var(--teal) 0%,var(--teal-30) 0%);border-radius:50px;outline:none">
+              <div style="font-family:var(--font-h);font-size:28px;font-weight:700;color:var(--navy);min-width:80px;text-align:right" id="chD">0.00%</div></div>
+            <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--grey);margin-top:4px"><span>0%</span><span>5%</span><span>10%</span></div></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:20px">
+          <div style="background:linear-gradient(135deg,var(--navy),var(--mid-navy));border-radius:16px;padding:28px;color:var(--white);flex:1;display:flex;flex-direction:column">
+            <div style="font-family:var(--font-h);font-size:11px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.05em;margin-bottom:20px">Results</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+              <div><div style="font-size:12px;color:rgba(255,255,255,.5)">Using MRR</div><div style="font-family:var(--font-h);font-size:22px;font-weight:700" id="cUsing">$0</div></div>
+              <div><div style="font-size:12px;color:rgba(255,255,255,.5)">Using Ad Spend</div><div style="font-family:var(--font-h);font-size:22px;font-weight:700" id="cSP">$0</div></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+              <div><div style="font-size:11px;color:rgba(255,255,255,.5)">Effective Months</div><div style="font-family:var(--font-h);font-size:20px;font-weight:700" id="cEM">10.5</div></div>
+              <div><div style="font-size:11px;color:rgba(255,255,255,.5)">Churn Rate</div><div style="font-family:var(--font-h);font-size:20px;font-weight:700" id="cChurnDisp">2.50%</div></div></div>
+            <div style="border-top:1px solid rgba(114,164,191,.2);padding-top:16px;flex:1"><div style="font-size:11px;color:rgba(255,255,255,.5)">Churn-Adjusted ARR</div><div style="font-family:var(--font-h);font-size:32px;font-weight:700" id="cARR">$0</div><div style="font-size:10px;color:rgba(255,255,255,.4)" id="cAS">adjusted for estimated 2.50% monthly churn</div></div>
+          </div>
+          <div style="background:linear-gradient(135deg,var(--teal),#5E8CA8);border-radius:16px;padding:28px;color:var(--white)">
+            <div style="font-family:var(--font-h);font-size:11px;font-weight:700;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Return on Ad Spend</div>
+            <div style="font-family:var(--font-h);font-size:48px;font-weight:700;line-height:1.1" id="cROAS">—</div>
+            <div style="font-size:11px;color:rgba(255,255,255,.6);margin-top:8px" id="cROASsub">Churn-Adjusted ARR ÷ Total Ad Spend</div></div>
+        </div>
+      </div>
+    </div></div>
+    <div class="pg" id="page-signup"><div class="sec"><div class="st">Sign-Up Rate by Cohort</div><div style="font-size:13px;color:var(--grey);margin-bottom:16px">Deals created during each month and their current outcome as of today.</div><div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;padding:12px 16px;background:var(--white);border:1px solid var(--border);border-radius:10px;max-width:400px"><span style="font-size:12px;color:var(--grey);white-space:nowrap">Churn:</span><input type="range" id="suChurn" min="0" max="10" step="0.25" value="0" style="flex:1;height:6px;background:linear-gradient(90deg,var(--teal) 0%,var(--teal-30) 0%);border-radius:50px"><span id="suChD" style="font-family:var(--font-h);font-weight:700;color:var(--navy);min-width:50px;font-size:14px">0.00%</span></div><div id="signup-c"></div></div></div>
+    <div class="pg" id="page-analyzer">
+      <div id="az-date-header" style="margin-bottom:16px"></div>
+      <div style="display:flex;gap:6px;margin-bottom:24px;flex-wrap:wrap" id="az-tabs"></div>
+      <div id="az-match" style="font-size:11px;color:var(--grey);margin-bottom:20px"></div>
+      <div id="az-content"></div>
+    </div>
+    <div class="pg" id="page-insights"><div id="insights-c"></div></div>
+  </div>
+</div>
+
+<script>
+const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
+let PW='';
+const S={dashboard:{win:'mtd',data:null},calculator:{win:'mtd',data:null},signup:{win:null,data:null},analyzer:{win:'mtd',data:null,tab:'overview'},insights:{win:'mtd',data:null}};let AP='dashboard';
+const f$=v=>v==null?'—':'$'+Math.round(v).toLocaleString();
+const fN=v=>v==null?'—':Math.round(v).toLocaleString();
+const fP=(v,d=1)=>v==null?'—':v.toFixed(d)+'%';
+const T={dashboard:'Executive Dashboard',calculator:'ARR Calculator',signup:'Sign-Up Rate',analyzer:'Paid Ads Analyzer',insights:'Insights'};
+const W=[{k:'7d',l:'Last 7 Days'},{k:'mtd',l:'Month to Date'},{k:'lastMonth',l:'Last Month'},{k:'ytd',l:'Year to Date'},{k:'allTime',l:'All Time'},{k:'custom',l:'Custom'}];
+const AZ_TABS=[{k:'overview',l:'Overview'},{k:'meta',l:'Meta'},{k:'google',l:'Google'},{k:'linkedin',l:'LinkedIn'},{k:'tiktok',l:'TikTok'},{k:'youtube',l:'YouTube'}];
+function effM(cr){return cr>0?(1-Math.pow(1-cr,12))/cr:12;}
+
+// Churn state
+let _churnPct=0;
+function getChurnRate(){return _churnPct/100;}
+function churnBg(v){return `linear-gradient(90deg,var(--teal) ${v*10}%,var(--teal-30) ${v*10}%)`;}
+function syncSliders(){
+  const v=_churnPct,bg=churnBg(v);
+  ['churn','dashChurn','suChurn','azChurn'].forEach(id=>{const el=document.getElementById(id);if(el){el.value=v;el.style.background=bg;}});
+  ['chD','dashChD','suChD','azChD'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=v.toFixed(2)+'%';});
+}
+
+let _lmLabel='Last mo';
+function mkT(label,val,fmt,def,calc,tile,cls,inv,extra){
+  let v;if(fmt==='$')v=f$(val);else if(fmt==='%')v=fP(val);else if(fmt==='%2')v=fP(val,2);else v=fN(val);
+  let c='';
+  if(tile?.sameTimePrior){const p=tile.sameTimePrior,raw=p.nominalDelta>0?'up':p.nominalDelta<0?'dn':'n',dir=inv?(raw==='up'?'dn':raw==='dn'?'up':'n'):raw,sg=p.nominalDelta>0?'+':'';let pv,dv;if(fmt==='$'){pv=f$(p.value);dv=`${sg}${f$(p.nominalDelta)}`;}else if(fmt==='%'||fmt==='%2'){pv=fP(p.value);dv=`${sg}${fP(p.nominalDelta)}`;}else{pv=fN(p.value);dv=`${sg}${fN(p.nominalDelta)}`;}const ps=p.percentDelta!=null?` (${sg}${p.percentDelta.toFixed(1)}%)`:'';c+=`<div class="tc"><span class="lbl">Prior: </span><span class="val">${pv}</span> <span class="d ${dir}">${dv}${ps}</span></div>`;}
+  if(tile?.lastMonth){const lm=tile.lastMonth,lv=lm.value;let lmv;if(fmt==='$')lmv=f$(lv);else if(fmt==='%'||fmt==='%2')lmv=fP(lv);else lmv=fN(lv);let ld='';if(lm.nominalDelta!=null){const raw2=lm.nominalDelta>0?'up':lm.nominalDelta<0?'dn':'n',dir2=inv?(raw2==='up'?'dn':raw2==='dn'?'up':'n'):raw2,sg2=lm.nominalDelta>0?'+':'';let dv2;if(fmt==='$')dv2=`${sg2}${f$(lm.nominalDelta)}`;else if(fmt==='%'||fmt==='%2')dv2=`${sg2}${fP(lm.nominalDelta)}`;else dv2=`${sg2}${fN(lm.nominalDelta)}`;const ps2=lm.percentDelta!=null?` (${sg2}${lm.percentDelta.toFixed(1)}%)`:'';ld=` <span class="d ${dir2}">${dv2}${ps2}</span>`;}c+=`<div class="tc"><span class="lbl">${_lmLabel}: </span><span class="val">${lmv}</span>${ld}</div>`;}
+  return `<div class="tile${cls?' '+cls:''}"><div class="tlbl">${label}</div><div class="tval">${v}</div>${def?`<div class="tdef">${def}</div>`:''}${calc?`<div class="tcalc">${calc}</div>`:''}${extra||''}<div class="tcomps">${c}</div></div>`;
+}
+function pac(sp,bud){if(!bud)return'';const p=(sp/bud)*100,c2=p>105?'over':p>85?'ok':'under',l=p>105?'Over budget':p>95?'On pace':'Under-pacing';return`<div class="pbar"><div class="pbg"><div class="pf ${c2}" style="width:${Math.min(p,100)}%"></div></div><div class="pl">${l} — ${f$(sp)} / ${f$(bud)} (${p.toFixed(0)}%)</div></div>`;}
+function dtxt(cur,prior,inv){if(prior==null||prior===0)return'';const d2=cur-prior,p=(d2/prior)*100,s=d2>0?'+':'',raw=d2>0?'up':d2<0?'dn':'n',c2=inv?(raw==='up'?'dn':raw==='dn'?'up':'n'):raw;return`<span class="dtxt ${c2}">${s}${p.toFixed(0)}%</span>`;}
+function roasCard(label,val,tile){const v=val!=null?val.toFixed(2)+'x':'—';let c2='';if(tile?.sameTimePrior){const p=tile.sameTimePrior,dir=p.nominalDelta>0?'up':p.nominalDelta<0?'dn':'n',sg=p.nominalDelta>0?'+':'';c2+=`<div class="tc"><span class="lbl">Prior: </span><span class="val">${p.value!=null?p.value.toFixed(2)+'x':'—'}</span> <span class="d ${dir}">${sg}${p.nominalDelta!=null?p.nominalDelta.toFixed(2):''}x</span></div>`;}if(tile?.lastMonth){const lm2=tile.lastMonth;let ld2='';if(lm2.nominalDelta!=null){const dir2=lm2.nominalDelta>0?'up':lm2.nominalDelta<0?'dn':'n',sg2=lm2.nominalDelta>0?'+':'';ld2=` <span class="d ${dir2}">${sg2}${lm2.nominalDelta.toFixed(2)}x</span>`;}c2+=`<div class="tc"><span class="lbl">${_lmLabel}: </span><span class="val">${lm2.value!=null?lm2.value.toFixed(2)+'x':'—'}</span>${ld2}</div>`;}return`<div class="tile accent"><div class="tlbl">${label}</div><div class="tval" id="dashRoasV">${v}</div><div class="tdef">Churn-Adjusted ARR ÷ Total Ad Spend</div><div class="tcomps" id="dashRoasC">${c2}</div></div>`;}
+
+// Auth
+async function doLogin(){
+  const pw=document.getElementById('pw').value;if(!pw)return;PW=pw;
+  const btn=document.getElementById('loginBtn');
+  btn.disabled=true;btn.innerHTML='<span class="sp" style="width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:8px"></span>Signing in...';
+  document.getElementById('gerr').style.display='none';
+  try{
+    const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw,window:'mtd'})});
+    if(r.status===401){document.getElementById('gerr').style.display='block';btn.disabled=false;btn.textContent='Log In →';return;}
+    const d=await r.json();for(const k of Object.keys(S)){if(k!=='analyzer'&&k!=='insights')S[k].data=d;}
+    document.getElementById('gate').style.display='none';document.getElementById('app').classList.add('active');
+    document.getElementById('loading').style.display='none';
+    document.getElementById('prgWrap').style.display='none';
+    bldF();renderPage();
+  }catch(e){
+    document.getElementById('gerr').textContent='Connection error. Try again.';document.getElementById('gerr').style.display='block';
+    btn.disabled=false;btn.textContent='Log In →';
+  }
+}
+document.getElementById('pw').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+
+// Filters
+function bldF(){const s=S[AP];if(AP==='signup'){document.getElementById('filters').innerHTML='<span style="font-size:13px;color:var(--grey)">Fixed cohorts — independent of time filters</span>';return;}let h='';for(const w of W)h+=`<button class="fb${s.win===w.k?' active':''}" data-w="${w.k}" onclick="selW('${w.k}')">${w.l}</button>`;h+=`<div class="cr${s.win==='custom'?' vis':''}" id="cr"><input type="date" id="cf"><span style="color:var(--grey)">→</span><input type="date" id="ct"><button onclick="goC()">Go</button></div>`;h+=`<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>`;document.getElementById('filters').innerHTML=h;}
+async function selW(w){S[AP].win=w;document.querySelectorAll('#filters .fb').forEach(b=>b.classList.toggle('active',b.dataset.w===w));const cr=document.getElementById('cr');if(cr)cr.classList.toggle('vis',w==='custom');if(w==='custom')return;await fd(w);}
+async function goC(){const f=document.getElementById('cf').value,t=document.getElementById('ct').value;if(!f||!t)return;await fd('custom',f,t);}
+async function fd(w,from,to){
+  if(AP==='insights')return fdInsights(w,from,to);
+  const ldEl=document.getElementById('loading');
+  ldEl.style.display='flex';
+  document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));
+  document.getElementById('dqb').classList.remove('vis');
+  const isAz=AP==='analyzer';
+  const url=isAz?AZ_API:API;
+  const pw2=document.getElementById('prgWrap'),pf=document.getElementById('prgFill'),pl=document.getElementById('prgLbl'),lt=document.getElementById('loadText');
+  const pgTitle=T[AP]||'data';
+  if(pw2){pw2.style.display='block';if(pf)pf.style.width='0%';}
+  if(lt)lt.textContent='Loading '+pgTitle+'...';
+  const steps=isAz?['Fetching Windsor ad data...','Fetching HubSpot pipeline...','Processing campaigns...','Building attribution...','Rendering dashboard...']:['Connecting to APIs...','Fetching ad spend data...','Fetching HubSpot pipeline...','Processing metrics...','Rendering dashboard...'];
+  let si=0;
+  if(pf)pf.style.width='8%';
+  if(pl)pl.textContent=steps[0];
+  const iv=setInterval(()=>{si++;const pct=Math.min(10+si*16,90);if(pf)pf.style.width=pct+'%';if(pl)pl.textContent=steps[Math.min(si,steps.length-1)];},2500);
+  const b={password:PW,window:w};if(from)b.from=from;if(to)b.to=to;
+  try{
+    const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
+    const d=await r.json();
+    clearInterval(iv);
+    if(r.ok&&!d.error){
+      S[AP].data=d;
+      if(pf)pf.style.width='100%';if(pl)pl.textContent='Complete!';
+      await new Promise(ok=>setTimeout(ok,250));
+    } else {
+      console.error('API error:',r.status,d);
+      if(pl)pl.textContent='Error: '+(d.detail||d.error||'Unknown');if(pf)pf.style.width='0%';
+      await new Promise(ok=>setTimeout(ok,1500));
+    }
+  }catch(e){console.error(e);clearInterval(iv);if(pl)pl.textContent='Connection error';await new Promise(ok=>setTimeout(ok,1000));}
+  finally{ldEl.style.display='none';if(pw2)pw2.style.display='none';}
+  renderPage();
+}
+async function refreshData(){const btn=document.getElementById('rfb');if(btn){btn.classList.add('loading');btn.textContent='↻ Refreshing...';}await fd(S[AP].win||'mtd');if(btn){btn.classList.remove('loading');btn.textContent='↻ Refresh';}}
+
+// Nav
+function toggleSidebar(){document.querySelector('.sidebar').classList.toggle('open');document.getElementById('sidebarOverlay').classList.toggle('open');}
+function switchPage(pg){AP=pg;document.querySelectorAll('.ni').forEach(n=>n.classList.toggle('active',n.dataset.page===pg));document.getElementById('ptitle').textContent=T[pg];document.getElementById('dqb').classList.remove('vis');
+  // Close sidebar on mobile
+  document.querySelector('.sidebar').classList.remove('open');document.getElementById('sidebarOverlay').classList.remove('open');
+  bldF();if(!S[pg].data){if(pg==='signup')fd('mtd');else if(pg==='insights')fdInsights(S[pg].win||'mtd');else fd(S[pg].win);return;}renderPage();}
+function renderPage(){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));if(AP==='dashboard')renderDash();else if(AP==='calculator')updCalc();else if(AP==='signup')renderSignUp();else if(AP==='analyzer')renderAnalyzer();else if(AP==='insights')renderInsights();document.getElementById('page-'+AP).classList.add('active');const d=S[AP].data;if(d){const ts=d.meta?.generatedAt;if(ts)document.getElementById('fts').textContent='Updated '+new Date(ts).toLocaleString();if(d.meta?.dataQuality&&!d.meta.dataQuality.complete)document.getElementById('dqb').classList.add('vis');}}
+
+// ═══════════════ EXECUTIVE DASHBOARD ═══════════════
+function renderDash(){
+  const d=S.dashboard.data;if(!d||d.error)return;
+  _lmLabel=d.meta?.windowType==='7d'?'Same time last mo':'Last mo';
+  const ad=d.adSpend,em=d.executiveSummary._meta||{},wm=d.webPerformance._meta||{};
+  const isMTD=d.period.label==='Month to Date'||d.period.label==='Last Month';
+  const cr=getChurnRate(),eM=effM(cr),crPct=(cr*100).toFixed(2);
+
+  // Date range header
+  const fmtD=s=>{const p=s.split('-');return new Date(p[0],p[1]-1,p[2]).toLocaleDateString('en-US',{month:'long',day:'numeric'});};
+  const fmtDY=s=>{const p=s.split('-');return new Date(p[0],p[1]-1,p[2]).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});};
+  let dh=`<div style="font-family:var(--font-h);font-size:20px;font-weight:700;color:var(--navy)">${d.period.label}: ${d.period.from.slice(0,4)!==d.period.to.slice(0,4)?fmtDY(d.period.from):fmtD(d.period.from)} – ${fmtDY(d.period.to)}</div>`;
+  if(d.priorPeriod)dh+=`<div style="font-size:12px;color:var(--grey);margin-top:4px">vs. Prior: ${fmtD(d.priorPeriod.from)} – ${fmtD(d.priorPeriod.to)}</div>`;
+  if(d.priorMonthPeriod&&d.meta?.windowType==='7d')dh+=`<div style="font-size:12px;color:var(--grey);margin-top:2px">vs. Same time last mo: ${fmtD(d.priorMonthPeriod.from)} – ${fmtD(d.priorMonthPeriod.to)}</div>`;
+  document.getElementById('date-header').innerHTML=dh;
+
+  document.getElementById('t-exec').innerHTML=
+    mkT('Total New Demos Scheduled',d.demoTracking.totalScheduled?.value,'#','Contacts created with date_demo_booked set',fN(d.demoTracking.totalScheduled?.value)+' contacts',d.demoTracking.totalScheduled,'hero')+
+    mkT('Total CPD',d.executiveSummary.totalCpd?.value,'$','Total Ad Spend ÷ Total Demos',f$(em.totalSpend)+' ÷ '+fN(em.totalWD)+' demos',d.executiveSummary.totalCpd,'hero',true)+
+    mkT('Qual. Demo Given %',d.executiveSummary.qualDemoGivenPct?.value,'%','(Happened − Too Early − Not Qual) ÷ To Occur',null,d.executiveSummary.qualDemoGivenPct,'hero')+
+    mkT('Total CPQD',d.executiveSummary.totalCpqd?.value,'$','Total Ad Spend ÷ Total Qualified',f$(em.totalSpend)+' ÷ '+fN(em.totalQual)+' qual',d.executiveSummary.totalCpqd,'hero',true);
+
+  const mrr=d.mrrArr.mrr?.value||0,adjARR=mrr*eM,cSpend=ad.total.value||0,cROAS=cSpend>0?adjARR/cSpend:null;
+  const pMRR=d.mrrArr.mrr?.sameTimePrior?.value,pSpend=ad.total.sameTimePrior?.value,pROAS=(pMRR!=null&&pSpend>0)?(pMRR*eM)/pSpend:null;
+  const pmMRR=d.mrrArr.mrr?.lastMonth?.value,pmSpend=ad.total.lastMonth?.value,pmROAS=(pmMRR!=null&&pmSpend>0)?(pmMRR*eM)/pmSpend:null;
+  const roasTile={value:cROAS};if(pROAS!=null&&cROAS!=null){const nd=cROAS-pROAS;roasTile.sameTimePrior={value:pROAS,nominalDelta:Math.round(nd*100)/100,percentDelta:pROAS!==0?Math.round(((cROAS-pROAS)/pROAS)*10000)/100:null};}if(pmROAS!=null&&cROAS!=null){const nd2=cROAS-pmROAS;roasTile.lastMonth={value:pmROAS,nominalDelta:Math.round(nd2*100)/100,percentDelta:pmROAS!==0?Math.round(((cROAS-pmROAS)/pmROAS)*10000)/100:null};}else if(pmROAS!=null)roasTile.lastMonth={value:pmROAS};
+
+  // ARR card: slider is INSIDE the tile but value spans have IDs for live update
+  const arrCard=`<div class="tile"><div class="tlbl">Churn-Adjusted ARR</div><div class="tval" id="dashArrV">${f$(adjARR)}</div><div class="tdef" id="dashArrDef">MRR × ${eM.toFixed(1)} eff. months</div><div class="tcalc" id="dashArrCalc">${f$(mrr)} × ${eM.toFixed(1)}</div><div style="display:flex;align-items:center;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)"><span style="font-size:10px;color:var(--grey);white-space:nowrap">Churn:</span><input type="range" id="dashChurn" min="0" max="10" step="0.25" value="${crPct}" style="flex:1;height:6px;background:${churnBg(_churnPct)};border-radius:50px"><span style="font-family:var(--font-h);font-weight:700;color:var(--navy);font-size:12px;min-width:42px" id="dashChD">${crPct}%</span></div></div>`;
+
+  document.getElementById('t-mrr').innerHTML=
+    mkT('Closed Deals Won',d.mrrArr.dealCount?.value,'#','Deals closedwon by closedate',null,d.mrrArr.dealCount,'accent')+
+    mkT('MRR',mrr,'$','Sum of amount on closed-won deals',fN(d.mrrArr.dealCount?.value)+' deals • Avg cycle: '+(d.mrrArr.avgCycleDays!=null?d.mrrArr.avgCycleDays.toFixed(0)+' days':'N/A'),d.mrrArr.mrr)+
+    arrCard+roasCard('ROAS',cROAS,roasTile);
+
+  document.getElementById('t-web').innerHTML=mkT('Website Visitors',d.webPerformance.visitors?.value,'#','Unique users (GA4)',null,d.webPerformance.visitors)+mkT('Website CVR',d.webPerformance.cvr?.value,'%2','Demos Booked ÷ Visitors × 100',fN(wm.demosBooked)+' ÷ '+fN(wm.users),d.webPerformance.cvr);
+
+  let sp='';
+  sp+=mkT('Total Ad Spend',ad.total.value,'$',null,fN(ad.total.windsorDemos)+' demos',ad.total,'accent',true,isMTD?pac(ad.total.value,ad.totalBudget):'');
+  for(const[ch,info]of Object.entries(ad.channels)){
+    const pv=info.priorSpend,pmv=info.priorMonthSpend;
+    const fakeTile={value:info.spend};
+    if(pv!=null){const nd=info.spend-pv;fakeTile.sameTimePrior={value:pv,nominalDelta:Math.round(nd*100)/100,percentDelta:pv!==0?Math.round(((info.spend-pv)/pv)*10000)/100:null};}
+    if(pmv!=null)fakeTile.lastMonth={value:pmv};
+    sp+=mkT(info.label,info.spend,'$',null,fN(info.windsorDemos)+' demos'+(info.ctr>0?' • CTR '+fP(info.ctr):''),fakeTile,null,true,isMTD?pac(info.spend,info.budget):'');
+  }
+  document.getElementById('t-spend').innerHTML=sp;
+
+  const cm=d.costPerDemo.total._meta||{};let cpd=mkT('Total CPD',d.costPerDemo.total?.value,'$','Ad Spend ÷ Demos',f$(cm.spend)+' ÷ '+fN(cm.demos)+' demos',d.costPerDemo.total,'accent',true);for(const[ch,t]of Object.entries(d.costPerDemo.channels)){const m=t._meta||{};cpd+=mkT('CPD — '+t.label,t?.value,'$',t?.definition,f$(m.spend)+' ÷ '+fN(m.demos)+' demos',t,null,true);}document.getElementById('t-cpd').innerHTML=cpd;
+
+  const qm=d.costPerQualifiedDemo.total._meta||{};let cpqd=mkT('Total CPQD',d.costPerQualifiedDemo.total?.value,'$','Ad Spend ÷ UTM Qualified Demos',f$(qm.spend)+' ÷ '+fN(qm.qualifiedDemos)+' qual',d.costPerQualifiedDemo.total,'accent',true);for(const[ch,t]of Object.entries(d.costPerQualifiedDemo.channels)){const m=t._meta||{};cpqd+=mkT('CPQD — '+t.label,t?.value,'$',t?.definition,f$(m.spend)+' ÷ '+fN(m.qualifiedDemos)+' qual',t,null,true);}document.getElementById('t-cpqd').innerHTML=cpqd;
+
+  renderCPDTable(d);document.getElementById('sec-daily').style.display=d.isAllTime?'none':'block';if(!d.isAllTime)renderDemosPerDay(d);renderFunnel(d);
+}
+
+// Lightweight churn update — only touches ARR/ROAS values, not the slider
+function updateDashChurn(){
+  const d=S.dashboard.data;if(!d)return;
+  const ad=d.adSpend,cr=getChurnRate(),eM=effM(cr),crPct=(cr*100).toFixed(2);
+  const mrr=d.mrrArr.mrr?.value||0,adjARR=mrr*eM,cSpend=ad.total?.value||0,cROAS=cSpend>0?adjARR/cSpend:null;
+  const pMRR=d.mrrArr.mrr?.sameTimePrior?.value,pSpend=ad.total?.sameTimePrior?.value,pROAS=(pMRR!=null&&pSpend>0)?(pMRR*eM)/pSpend:null;
+  const pmMRR=d.mrrArr.mrr?.lastMonth?.value,pmSpend=ad.total?.lastMonth?.value,pmROAS=(pmMRR!=null&&pmSpend>0)?(pmMRR*eM)/pmSpend:null;
+  const el=id=>document.getElementById(id);
+  if(el('dashArrV'))el('dashArrV').textContent=f$(adjARR);
+  if(el('dashArrDef'))el('dashArrDef').textContent='MRR × '+eM.toFixed(1)+' eff. months';
+  if(el('dashArrCalc'))el('dashArrCalc').textContent=f$(mrr)+' × '+eM.toFixed(1);
+  if(el('dashRoasV'))el('dashRoasV').textContent=cROAS!=null?cROAS.toFixed(2)+'x':'—';
+  // Rebuild ROAS prior/lastmo
+  let rc='';
+  if(pROAS!=null&&cROAS!=null){const nd=cROAS-pROAS,dir=nd>0?'up':nd<0?'dn':'n',sg=nd>0?'+':'';rc+=`<div class="tc"><span class="lbl">Prior: </span><span class="val">${pROAS.toFixed(2)}x</span> <span class="d ${dir}">${sg}${nd.toFixed(2)}x</span></div>`;}
+  if(pmROAS!=null){let ld3='';if(cROAS!=null){const nd3=cROAS-pmROAS,dir3=nd3>0?'up':nd3<0?'dn':'n',sg3=nd3>0?'+':'';ld3=` <span class="d ${dir3}">${sg3}${nd3.toFixed(2)}x</span>`;}rc+=`<div class="tc"><span class="lbl">${_lmLabel}: </span><span class="val">${pmROAS.toFixed(2)}x</span>${ld3}</div>`;}
+  if(el('dashRoasC'))el('dashRoasC').innerHTML=rc;
+  renderCPDTable(d);
+}
+
+
+function renderCPDTable(d){
+  var ad=d.adSpend,cr=getChurnRate(),eM=effM(cr);
+  var tblR='',sumSp=0,sumD=0,sumQ=0,sumNA=0,sumCW=0,sumCWmrr=0;
+  var pSumSp=0,pSumD=0,pSumQ=0,pSumNA=0,pSumCW=0,pSumCWmrr=0,hasPrior=false;
+  for(var k in ad.channels){var info=ad.channels[k];
+    var wD=info.windsorDemos||0,q=info.qualified||0,na=wD-q;
+    var cpd2=wD>0?info.spend/wD:null,cpqd2=q>0?info.spend/q:null;
+    var cw=info.closedWon||0,cwMRR=info.closedWonMRR||0,arr2=cwMRR*eM,roas2=info.spend>0?arr2/info.spend:null;
+    var pSp=info.priorSpend,pWD=info.priorWindsorDemos,pQ=info.priorQualified,pCW=info.priorClosedWon,pCWmrr=info.priorClosedWonMRR;
+    var pCpd=(pWD!=null&&pWD>0&&pSp!=null)?pSp/pWD:null;
+    var pCpqd=(pQ!=null&&pQ>0&&pSp!=null)?pSp/pQ:null;
+    var pArr=(pCWmrr!=null)?pCWmrr*eM:null;
+    var pNA=(pWD!=null&&pQ!=null)?pWD-pQ:null;
+    var qPct=wD>0?((q/wD)*100).toFixed(0)+'%':'';
+    var naPct=wD>0?((na/wD)*100).toFixed(0)+'%':'';
+    var cwPct=wD>0?((cw/wD)*100).toFixed(0)+'%':'';
+    sumSp+=info.spend;sumD+=wD;sumQ+=q;sumNA+=na;sumCW+=cw;sumCWmrr+=cwMRR;
+    if(pSp!=null){hasPrior=true;pSumSp+=(pSp||0);pSumD+=(pWD||0);pSumQ+=(pQ||0);pSumNA+=(pNA||0);pSumCW+=(pCW||0);pSumCWmrr+=(pCWmrr||0);}
+    tblR+='<tr><td>'+info.label+'</td><td class="n">'+f$(info.spend)+' '+dtxt(info.spend,pSp,true)+'</td><td class="n">'+fN(wD)+' '+dtxt(wD,pWD)+'</td><td class="n tbl-grn">'+(cpd2!=null?f$(cpd2):'\u2014')+' '+dtxt(cpd2,pCpd,true)+'</td><td class="n">'+fN(q)+'<span class="sub">'+qPct+'</span>'+dtxt(q,pQ)+'</td><td class="n tbl-ylw">'+(cpqd2!=null?f$(cpqd2):'\u2014')+' '+dtxt(cpqd2,pCpqd,true)+'</td><td class="n">'+fN(na)+'<span class="sub">'+naPct+'</span>'+dtxt(na,pNA)+'</td><td class="n tbl-ylw">'+fN(cw)+'<span class="sub">'+cwPct+'</span>'+dtxt(cw,pCW)+'</td><td class="n tbl-ylw">'+f$(arr2)+' '+dtxt(arr2,pArr)+'</td><td class="n tbl-ylw">'+(roas2!=null?roas2.toFixed(2)+'x':'\u2014')+'</td></tr>';
+  }
+  var tQPct=sumD>0?((sumQ/sumD)*100).toFixed(0)+'%':'',tNAPct=sumD>0?((sumNA/sumD)*100).toFixed(0)+'%':'',tCWPct=sumD>0?((sumCW/sumD)*100).toFixed(0)+'%':'';
+  var sCPD=sumD>0?sumSp/sumD:null,sCPQD=sumQ>0?sumSp/sumQ:null,sARR=sumCWmrr*eM,sROAS=sumSp>0?sARR/sumSp:null;
+  var psCPD=hasPrior&&pSumD>0?pSumSp/pSumD:null,psCPQD=hasPrior&&pSumQ>0?pSumSp/pSumQ:null,psARR=hasPrior?pSumCWmrr*eM:null;
+  tblR+='<tr style="font-weight:700;background:var(--teal-8)"><td>Total</td><td class="n">'+f$(sumSp)+' '+(hasPrior?dtxt(sumSp,pSumSp,true):'')+'</td><td class="n">'+fN(sumD)+' '+(hasPrior?dtxt(sumD,pSumD):'')+'</td><td class="n tbl-grn">'+(sCPD!=null?f$(sCPD):'\u2014')+' '+dtxt(sCPD,psCPD,true)+'</td><td class="n">'+fN(sumQ)+'<span class="sub">'+tQPct+'</span>'+(hasPrior?dtxt(sumQ,pSumQ):'')+'</td><td class="n tbl-ylw">'+(sCPQD!=null?f$(sCPQD):'\u2014')+' '+dtxt(sCPQD,psCPQD,true)+'</td><td class="n">'+fN(sumNA)+'<span class="sub">'+tNAPct+'</span></td><td class="n tbl-ylw">'+fN(sumCW)+'<span class="sub">'+tCWPct+'</span>'+(hasPrior?dtxt(sumCW,pSumCW):'')+'</td><td class="n tbl-ylw">'+f$(sARR)+' '+dtxt(sARR,psARR)+'</td><td class="n tbl-ylw">'+(sROAS!=null?sROAS.toFixed(2)+'x':'\u2014')+'</td></tr>';
+  var legend='<div style="font-size:10px;color:var(--grey);margin-top:8px;display:flex;gap:16px;align-items:center"><div style="display:flex;align-items:center;gap:4px"><div style="width:12px;height:12px;border-radius:2px;background:rgba(16,185,129,.12)"></div>Windsor data</div><div style="display:flex;align-items:center;gap:4px"><div style="width:12px;height:12px;border-radius:2px;background:rgba(245,158,11,.12)"></div>May not be 100% accurate due to data hygiene lag in HubSpot</div></div>';
+  document.getElementById('cpd-tbl').innerHTML='<table class="ctbl"><thead><tr><th>Channel</th><th class="n">Spend</th><th class="n">Demos</th><th class="n tbl-grn">CPD</th><th class="n">Qualified</th><th class="n tbl-ylw">CPQD</th><th class="n">Unattr.</th><th class="n tbl-ylw">Won</th><th class="n tbl-ylw">ARR</th><th class="n tbl-ylw">ROAS</th></tr></thead><tbody>'+tblR+'</tbody></table>'+legend;
+}
+function renderDemosPerDay(d){
+  const sByDay=d.demoTracking.scheduledByDay||{};const days=Object.entries(sByDay).sort((a,b)=>a[0].localeCompare(b[0])).map(([date,count])=>({date,count}));const total=days.reduce((s,x)=>s+x.count,0),numDays=days.length||1,avg=total/numDays;
+  const priorTotal=d.demoTracking.totalScheduled?.sameTimePrior?.value;const priorPeriod=d.priorPeriod;let priorDays=null;if(priorPeriod){const f2=new Date(priorPeriod.from+'T00:00:00Z'),t2=new Date(priorPeriod.to+'T00:00:00Z');priorDays=Math.round((t2-f2)/86400000)+1;}const priorAvg=priorTotal!=null&&priorDays?priorTotal/priorDays:null;
+  const totalDelta=priorTotal!=null&&priorTotal>0?((total-priorTotal)/priorTotal*100):null;const totalDeltaQ=priorTotal!=null?total-priorTotal:null;const avgDelta=priorAvg!=null&&priorAvg>0?((avg-priorAvg)/priorAvg*100):null;
+  let h='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">';
+  h+=`<div class="tile accent"><div class="tlbl">Demos Booked</div><div class="tval">${fN(total)}</div><div class="tcomps">${totalDelta!=null?`<div class="tc"><span class="d ${totalDelta>=0?'up':'dn'}">${totalDelta>=0?'+':''}${totalDelta.toFixed(1)}% (${totalDeltaQ>=0?'+':''}${totalDeltaQ})</span> <span class="lbl">vs prior</span></div>`:''}</div></div>`;
+  h+=`<div class="tile"><div class="tlbl">Daily Avg</div><div class="tval">${avg.toFixed(1)}</div><div class="tcomps">${avgDelta!=null?`<div class="tc"><span class="d ${avgDelta>=0?'up':'dn'}">${avgDelta>=0?'+':''}${avgDelta.toFixed(1)}%</span> <span class="lbl">vs prior</span></div>`:''}</div></div>`;h+='</div>';
+  if(!days.length){h+='<div style="color:var(--grey);font-size:12px">No daily data</div>';document.getElementById('daily-wrap').innerHTML=h;return;}
+  const mx=Math.max(...days.map(x=>x.count),1),avgTop=160*(1-avg/mx);
+  h+='<div style="position:relative">';
+  h+=`<div style="position:absolute;left:0;right:0;top:${avgTop}px;border-top:2px dashed var(--teal);z-index:2;pointer-events:none"><div style="position:absolute;right:0;top:-14px;font-size:9px;font-weight:600;color:var(--teal);font-family:var(--font-h)">Avg: ${avg.toFixed(1)}</div></div>`;
+  h+='<div style="display:flex;gap:4px">';
+  for(const dy of days){const dt2=new Date(dy.date+'T12:00:00'),dow=dt2.getDay(),isW=dow===0||dow===6;const barH=(dy.count/mx)*100;const lbl=dt2.toLocaleDateString('en-US',{month:'short',day:'numeric'});const dowL=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dow];
+    h+=`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px"><div style="width:100%;height:160px;display:flex;align-items:flex-end;justify-content:center"><div class="dbc-bar${isW?' wknd':''}" style="height:${barH}%;width:100%;max-width:40px;position:relative"><div class="dbc-cnt">${dy.count}</div></div></div><div class="dbc-lbl">${lbl}</div><div class="dbc-lbl">${dowL}</div></div>`;}
+  h+='</div></div>';
+  h+='<div class="dbc-legend"><div><div class="sw s"></div>Weekday</div><div><div class="sw d"></div>Weekend</div><div style="display:flex;align-items:center;gap:4px"><div style="width:14px;border-top:2px dashed var(--teal)"></div>Daily Avg</div></div>';
+  document.getElementById('daily-wrap').innerHTML=h;
+}
+
+function renderFunnel(d){
+  const f=d.qualityFunnel,{colors,categories:cats,labels}=f;
+  let lg='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">';for(const c of cats)lg+=`<div style="display:flex;align-items:center;gap:3px;font-size:10px"><div style="width:10px;height:10px;border-radius:2px;background:${colors[c]}"></div>${labels[c]}</div>`;lg+='</div>';
+  function bar(lbl,data){if(!data||data.total===0)return`<div class="fr"><div class="fl">${lbl}</div><div style="color:var(--grey);font-size:11px">No data</div></div>`;let s='';for(const c of cats){const p=data[c]?.pct||0,ct=data[c]?.count||0;if(!p)continue;s+=`<div class="fseg" style="width:${p}%;background:${colors[c]}"><span>${p.toFixed(0)}% (${ct})</span></div>`;}return`<div class="fr"><div class="fl">${lbl}</div><div class="fbbg">${s}</div></div>`;}
+  const dt=d.demoTracking,pm=d.demoTracking.demosPaidPct,pmM=pm?._meta||{};
+  let metrics='<div class="tg" style="margin-bottom:16px">';
+  metrics+=mkT('Demos Booked',dt.totalScheduled?.value,'#','Contacts by createdate',null,dt.totalScheduled);
+  metrics+=mkT('Demos to Occur',dt.demosToOccur?.value,'#','Deals by date_demo_booked',null,dt.demosToOccur);
+  metrics+=mkT('Demos Happened',dt.demosHappened?.value,'#',null,null,dt.demosHappened);
+  metrics+=mkT('No Show Rate',dt.noShowRate?.value,'%','No Shows ÷ (Qual + Too Early + No Shows + Blanks)',null,dt.noShowRate,null,true);
+  metrics+=mkT('Qual. Demo Given',dt.qualifiedOccurred?.value,'#',null,null,dt.qualifiedOccurred,'accent');
+  metrics+=mkT('Blanks',dt.blanks?.value,'#','BD hasn\'t updated',null,dt.blanks);
+  metrics+=mkT('% Paid Source',pm?.value,'%','Demos ÷ Booked',fN(pmM.windsorDemos)+' ÷ '+fN(pmM.demosBooked),pm);
+  metrics+='</div>';
+  let h2=`<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:20px">${metrics}${lg}`;
+  h2+=bar(`Overall (${f.overall.total} demos)`,f.overall);if(f.priorOverall)h2+=bar(`Prior Period (${f.priorOverall.total})`,f.priorOverall);h2+='</div>';
+  document.getElementById('funnel-all').innerHTML=h2;
+  let rh='';for(const[,r]of Object.entries(f.byRep))rh+=`<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px 18px;margin-bottom:6px">${bar(r.name+' ('+r.total+')',r)}</div>`;
+  document.getElementById('funnel-reps').innerHTML=rh||'<div style="color:var(--grey);font-size:12px">No per-rep data</div>';
+}
+
+// ═══════════════ SIGN-UP RATE ═══════════════
+function renderSignUp(){
+  const d=S.signup.data||S.dashboard.data;if(!d||d.error)return;
+  const s=d.signUpRate;if(!s||!s.cohorts){document.getElementById('signup-c').innerHTML='<div style="color:var(--grey)">No data</div>';return;}
+  const cr=getChurnRate(),eM=effM(cr),crPct=(cr*100).toFixed(2);
+  const pctSub=(n,total)=>total>0?`<span class="sub">${((n/total)*100).toFixed(0)}% of qual</span>`:'';
+  let h='';
+
+  // ── All Time By Rep Summary ──
+  if(s.allTimeByRep&&s.allTimeByRep.length){
+    const reps=s.allTimeByRep;
+    let tQ=0,tW=0,tL=0,tP=0,tMRR=0,tCyc=[];
+    let rows='';
+    for(const r of reps){
+      tQ+=r.qualified;tW+=r.won;tL+=r.lost;tP+=r.pending;tMRR+=r.mrr;
+      if(r.avgCycleDays!=null)tCyc.push(r.avgCycleDays);
+      const rARR=r.mrr*eM;
+      const pPct=r.qualified>0?((r.pending/r.qualified)*100).toFixed(0)+'%':'0%';
+      rows+=`<tr><td>${r.name}</td><td class="n">${r.won}</td><td class="n">${fP(r.signUpRate)}</td><td class="n">${r.avgCycleDays!=null?Math.round(r.avgCycleDays)+' days':'—'}</td><td class="n">${r.pending}<span class="sub">${pPct}</span></td><td class="n">${f$(rARR)}</td></tr>`;
+    }
+    const tRate=tQ>0?(tW/tQ*100):0,tARR=tMRR*eM,tAvg=tCyc.length?Math.round(tCyc.reduce((a,b)=>a+b,0)/tCyc.length):null;
+    const tPPct=tQ>0?((tP/tQ)*100).toFixed(0)+'%':'0%';
+    rows+=`<tr style="font-weight:700;background:var(--teal-8)"><td>Total</td><td class="n">${tW}</td><td class="n">${fP(tRate)}</td><td class="n">${tAvg!=null?tAvg+' days':'—'}</td><td class="n">${tP}<span class="sub">${tPPct}</span></td><td class="n">${f$(tARR)}</td></tr>`;
+    const pendPct=tQ>0?(tP/tQ)*100:0;
+    h+=`<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:24px"><div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);margin-bottom:4px">All Time by Rep</div><div style="font-size:11px;color:var(--grey);margin-bottom:12px">All closed-won deals since January 2024 — Sign-Up Rate uses qualified demos as denominator — adjusted for ${crPct}% churn</div>`;
+    h+=`<div class="tg" style="margin-bottom:14px">`;
+    h+=mkT('Deals Won',tW,'#','All closedwon deals',null,null);
+    h+=mkT('Sign-Up Rate',tRate,'%','Won ÷ qualified demos',tW+' won / '+tQ+' qualified',null,'accent');
+    h+=mkT('ARR',tARR,'$','Adjusted for '+crPct+'% churn',f$(tMRR)+' × '+eM.toFixed(1),null);
+    h+=mkT('Deals Pending',pendPct,'%','Qualified demos still in pipeline',fN(tP)+' deals',null);
+    if(tAvg!=null)h+=mkT('Avg Cycle',tAvg,'#','Create to close','days',null);
+    h+=`</div>`;
+    h+=`<div class="tw"><table class="ctbl"><thead><tr><th>Rep</th><th class="n">Won</th><th class="n">Win Rate</th><th class="n">Avg Cycle</th><th class="n">Pending</th><th class="n">ARR</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  }
+
+  h+='<div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);margin-bottom:12px">Monthly Cohorts</div>';
+  for(const c of s.cohorts){
+    const arr=c.mrr*eM,gapPct=c.demosGiven>0?((c.dataGaps/c.demosGiven)*100):0;
+    let cards='<div class="tg" style="margin-bottom:12px">';
+    cards+=mkT('Deals Won',c.closedWon,'#',null,c.closedWon+' of '+c.demosGiven+' qualified',null);
+    cards+=mkT('Sign-Up Rate',c.closeRate,'%',c.closedWon+' of '+c.demosGiven+' qualified',null,null,'accent');
+    cards+=mkT('ARR',arr,'$','Adjusted for '+crPct+'% churn',f$(c.mrr)+' × '+eM.toFixed(1),null);
+    cards+=mkT('Deals Pending',gapPct,'%','Deals still open',fN(c.dataGaps)+' deals',null);
+    cards+=(c.avgCycleDays!=null?mkT('Avg Cycle',Math.round(c.avgCycleDays),'#',null,'days',null):'');
+    cards+='</div>';
+    if(c.tooEarly>0||c.notQualified>0)cards+=`<div style="font-size:11px;color:var(--grey);margin-bottom:12px">Also: ${c.tooEarly} Too Early, ${c.notQualified} Not Qualified (excluded from qualified count)</div>`;
+    let rows='',tQ=0,tTE=0,tNQ=0,tL=0,tW=0,tMRR=0;
+    for(const[,r]of Object.entries(c.byRep)){
+      const rARR=r.mrr*eM,q=r.demosGiven;
+      tQ+=q;tTE+=r.tooEarly;tNQ+=r.notQualified;tL+=r.closedLost;tW+=r.closedWon;tMRR+=r.mrr;
+      rows+=`<tr><td>${r.name}</td><td class="n">${q}</td><td class="n">${r.tooEarly}${pctSub(r.tooEarly,q)}</td><td class="n">${r.notQualified}${pctSub(r.notQualified,q)}</td><td class="n">${r.closedLost}${pctSub(r.closedLost,q)}</td><td class="n">${r.closedWon}</td><td class="n">${fP(r.signUpRate)}</td><td class="n">${f$(rARR)}</td></tr>`;
+    }
+    const tRate=tQ>0?(tW/tQ*100):0,tARR=tMRR*eM;
+    rows+=`<tr style="font-weight:700;background:var(--teal-8)"><td>Total</td><td class="n">${tQ}</td><td class="n">${tTE}${pctSub(tTE,tQ)}</td><td class="n">${tNQ}${pctSub(tNQ,tQ)}</td><td class="n">${tL}${pctSub(tL,tQ)}</td><td class="n">${tW}</td><td class="n">${fP(tRate)}</td><td class="n">${f$(tARR)}</td></tr>`;
+    h+=`<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:12px"><div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy);margin-bottom:3px">${c.period.label}</div><div style="font-size:11px;color:var(--grey);margin-bottom:10px">${c.period.from} to ${c.period.to}</div>${cards}<div class="tw"><table class="ctbl"><thead><tr><th>Rep</th><th class="n">Qual</th><th class="n">Too Early</th><th class="n">Not Qual</th><th class="n">Lost</th><th class="n">Won</th><th class="n">Win Rate</th><th class="n">ARR</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  }document.getElementById('signup-c').innerHTML=h;
+}
+
+// ═══════════════ INSIGHTS ENGINE ═══════════════
+const BENCHMARKS={
+  cpd:{meta:450,linkedin:2250,tiktok:450,google:160,youtube:null},
+  qualifiedPct:50, noShowRate:20, signUpRate:33, pacingTolerance:6
+};
+
+async function fdInsights(w,from,to){
+  const ldEl=document.getElementById('loading');
+  ldEl.style.display='flex';
+  document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));
+  const pw2=document.getElementById('prgWrap'),pf=document.getElementById('prgFill'),pl=document.getElementById('prgLbl'),lt=document.getElementById('loadText');
+  if(pw2)pw2.style.display='block';if(lt)lt.textContent='Loading Insights...';
+  const steps=['Fetching executive data...','Fetching ad analyzer data...','Running analysis engine...','Generating insights...','Rendering report...'];
+  let si=0;if(pf)pf.style.width='5%';if(pl)pl.textContent=steps[0];
+  const iv=setInterval(()=>{si++;const pct=Math.min(8+si*17,90);if(pf)pf.style.width=pct+'%';if(pl)pl.textContent=steps[Math.min(si,steps.length-1)];},2800);
+  const b={password:PW,window:w};if(from)b.from=from;if(to)b.to=to;
+  try{
+    const [r1,r2]=await Promise.all([
+      fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}),
+      fetch(AZ_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)})
+    ]);
+    const [d1,d2]=await Promise.all([r1.json(),r2.json()]);
+    clearInterval(iv);
+    if(!d1.error&&!d2.error){
+      S.insights.data={exec:d1,az:d2,win:w};S.insights.win=w;
+      if(pf)pf.style.width='100%';if(pl)pl.textContent='Complete!';
+      await new Promise(ok=>setTimeout(ok,250));
+    } else {
+      console.error('Insights API error:',d1.error,d2.error);
+      if(pl)pl.textContent='Error loading data';
+      await new Promise(ok=>setTimeout(ok,1500));
+    }
+  }catch(e){console.error(e);clearInterval(iv);}
+  finally{ldEl.style.display='none';if(pw2)pw2.style.display='none';}
+  renderPage();
+}
+
+function renderInsights(){
+  const raw=S.insights.data;if(!raw||!raw.exec||!raw.az)return;
+  const d=raw.exec,az=raw.az,w=raw.win;
+  const cr=getChurnRate(),eM=effM(cr);
+  const B=BENCHMARKS,findings=[];
+  const add=(cat,sev,text,action,ch)=>findings.push({cat,sev,text,action:action||null,ch:ch||null});
+  const pD=(cur,prior)=>prior>0?((cur-prior)/prior*100):null;
+  const is7d=w==='7d',isMTD=w==='mtd'||w==='lastMonth';
+
+  // ── 1. Budget Pacing ──
+  if(isMTD&&d.adSpend){
+    const ad=d.adSpend;
+    if(ad.totalBudget>0){
+      const pct=(ad.total.value/ad.totalBudget)*100;
+      const now=new Date(),dom=now.getDate()-1,dim=new Date(now.getFullYear(),now.getMonth()+1,0).getDate(),expected=(dom/dim)*100;
+      const diff=pct-expected;
+      if(Math.abs(diff)<=B.pacingTolerance) add('pacing','win','Total budget is <span class="ins-metric">on pace</span> at '+pct.toFixed(0)+'% spent (expected '+expected.toFixed(0)+'%).');
+      else if(diff>B.pacingTolerance) add('pacing','warning','Total budget is <span class="ins-metric">over-pacing</span> at '+pct.toFixed(0)+'% spent vs '+expected.toFixed(0)+'% expected — '+diff.toFixed(0)+'% ahead of pace.','Review daily spend caps and consider reducing budgets on over-pacing channels.');
+      else add('pacing','warning','Total budget is <span class="ins-metric">under-pacing</span> at '+pct.toFixed(0)+'% spent vs '+expected.toFixed(0)+'% expected — '+Math.abs(diff).toFixed(0)+'% behind pace.','Check for paused campaigns or delivery issues. Consider increasing daily budgets.');
+    }
+    for(const[ch,info]of Object.entries(ad.channels)){
+      if(!info.budget||!info.spend)continue;
+      const pct2=(info.spend/info.budget)*100;
+      const now2=new Date(),dom2=now2.getDate()-1,dim2=new Date(now2.getFullYear(),now2.getMonth()+1,0).getDate(),exp2=(dom2/dim2)*100;
+      const diff2=pct2-exp2;
+      if(diff2>B.pacingTolerance*2) add('pacing','alert',ch+' is <span class="ins-metric">significantly over-pacing</span> at '+pct2.toFixed(0)+'% — '+Math.abs(diff2).toFixed(0)+'% ahead of expected pace.','Reduce daily budget or pause lowest-performing campaigns to avoid exhausting budget before month end.');
+      else if(diff2<-B.pacingTolerance*2) add('pacing','warning',ch+' is <span class="ins-metric">significantly under-pacing</span> at '+pct2.toFixed(0)+'% — '+Math.abs(diff2).toFixed(0)+'% behind expected pace.','Check for paused or rejected ads. Increase budgets on top-performing campaigns to catch up.');
+    }
+  }
+
+  // ── 2. Cost Efficiency (CPD vs targets) ──
+  if(d.costPerDemo){
+    const total=d.costPerDemo.total;
+    if(total?.value!=null){
+      const p=total.sameTimePrior;
+      if(p?.percentDelta!=null){
+        if(p.percentDelta<-10) add('cost','win','Blended CPD improved <span class="ins-metric">'+Math.abs(p.percentDelta).toFixed(0)+'%</span> vs prior period ('+f$(total.value)+' vs '+f$(p.value)+').');
+        else if(p.percentDelta>15) add('cost','alert','Blended CPD increased <span class="ins-metric">'+p.percentDelta.toFixed(0)+'%</span> vs prior period ('+f$(total.value)+' vs '+f$(p.value)+').','Investigate channel mix shifts and creative fatigue. Check if high-CPD channels took a larger share of spend.');
+      }
+    }
+    for(const[ch,t]of Object.entries(d.costPerDemo.channels)){
+      const target=B.cpd[ch];if(!target||!t?.value)continue;
+      const diff3=((t.value-target)/target)*100;
+      if(diff3<=-15) add('cost','win',t.label+' CPD is <span class="ins-metric">'+Math.abs(diff3).toFixed(0)+'% below target</span> at '+f$(t.value)+' (target: '+f$(target)+').');
+      else if(diff3>=25) add('cost','alert',t.label+' CPD is <span class="ins-metric">'+diff3.toFixed(0)+'% above target</span> at '+f$(t.value)+' (target: '+f$(target)+').','Pause underperforming campaigns, refresh creatives, or adjust bid strategy.');
+      else if(diff3>=10) add('cost','warning',t.label+' CPD trending <span class="ins-metric">'+diff3.toFixed(0)+'% above target</span> at '+f$(t.value)+' (target: '+f$(target)+').','Monitor closely. Review recent campaign changes and audience targeting.');
+    }
+  }
+
+  // ── 3. Demo Quality ──
+  if(d.demoTracking){
+    const dt=d.demoTracking;
+    const qPct=d.executiveSummary?.qualDemoGivenPct?.value;
+    if(qPct!=null){
+      if(qPct>=B.qualifiedPct) add('quality','win','Qualified demo rate is <span class="ins-metric">'+fP(qPct)+'</span>, meeting the '+B.qualifiedPct+'% target.');
+      else if(qPct<B.qualifiedPct*0.7) add('quality','alert','Qualified demo rate is <span class="ins-metric">'+fP(qPct)+'</span>, significantly below the '+B.qualifiedPct+'% target.','Review lead qualification criteria and ad targeting. Consider adding pre-qualification questions to the booking form.');
+      else add('quality','warning','Qualified demo rate is <span class="ins-metric">'+fP(qPct)+'</span>, below the '+B.qualifiedPct+'% target ('+Math.abs(qPct-B.qualifiedPct).toFixed(0)+'% gap).','Analyze disqualification reasons by channel. Tighten targeting on channels with lowest qual rates.');
+    }
+    const nsr=dt.noShowRate?.value;
+    if(nsr!=null){
+      if(nsr<=B.noShowRate) add('quality','win','No-show rate is <span class="ins-metric">'+fP(nsr)+'</span>, within the '+B.noShowRate+'% target.');
+      else add('quality','warning','No-show rate is <span class="ins-metric">'+fP(nsr)+'</span>, above the '+B.noShowRate+'% target.','Implement automated reminder sequences (email + SMS). Consider adding confirmation steps before booking.');
+    }
+    const blanks=dt.blanks?.value;
+    if(blanks!=null&&blanks>3) add('quality','info','<span class="ins-metric">'+fN(blanks)+' deals</span> have blank demo status — BD hasn\'t updated outcome yet. This impacts reporting accuracy.');
+  }
+
+  // ── 4. Campaign Performance (from Analyzer) ──
+  if(az.channels){
+    const today=new Date();
+    for(const ch of ['meta','google','linkedin','tiktok','youtube']){
+      const c=az.channels[ch];if(!c||!c.campaigns)continue;
+      const chLabel=ch.charAt(0).toUpperCase()+ch.slice(1);
+      const camps=c.campaigns.filter(x=>x.spend>50);
+      if(!camps.length)continue;
+
+      // Top-performing campaigns (lowest CPD with demos > 0)
+      const withDemos=camps.filter(x=>x.demos>0);
+      if(withDemos.length>=1){
+        const topCamp=[...withDemos].sort((a,b)=>(a.cpd||Infinity)-(b.cpd||Infinity))[0];
+        const target=B.cpd[ch];
+        if(topCamp.cpd!=null&&(!target||topCamp.cpd<=target)){
+          const daysNote=topCamp.activeDays?' (active '+topCamp.activeDays+' days)':'';
+          add('campaign','win',chLabel+' campaign "<span class="ins-metric">'+topCamp.name+'</span>" is top performer at '+f$(topCamp.cpd)+' CPD with '+fN(topCamp.demos)+' demos'+daysNote+(target?' — target: '+f$(target):'')+'.',null,ch);
+        }
+      }
+
+      // Efficiency gaps
+      if(withDemos.length>=2){
+        const sorted=[...withDemos].sort((a,b)=>(a.cpd||Infinity)-(b.cpd||Infinity));
+        const best=sorted[0],worst=sorted[sorted.length-1];
+        if(best.cpd!=null&&worst.cpd!=null&&worst.cpd>best.cpd*2){
+          add('campaign','info',chLabel+' campaign efficiency gap: "<span class="ins-metric">'+best.name+'</span>" at '+f$(best.cpd)+' CPD vs "'+worst.name+'" at '+f$(worst.cpd)+'.','Shift budget from the high-CPD campaign to the efficient one.',ch);
+        }
+      }
+
+      // Zero-demo campaigns — each listed individually
+      const zeroDemos=camps.filter(x=>x.demos===0&&x.spend>200);
+      for(const zc of zeroDemos){
+        const statusNote=zc.status&&zc.status!=='ACTIVE'?' (currently '+zc.status.toLowerCase()+')':'';
+        add('campaign','alert',chLabel+' campaign "<span class="ins-metric">'+zc.name+'</span>" spent '+f$(zc.spend)+' with zero demos'+statusNote+'.','Pause and investigate before reactivating.',ch);
+      }
+
+      // Newly launched campaigns (≤7 days old)
+      const recentStart=camps.filter(x=>{
+        if(!x.firstDate||x.status!=='ACTIVE')return false;
+        return Math.round((today-new Date(x.firstDate+'T12:00:00Z'))/86400000)<=7;
+      });
+      for(const nc of recentStart){
+        const age=Math.round((today-new Date(nc.firstDate+'T12:00:00Z'))/86400000);
+        add('campaign','info',chLabel+' campaign "<span class="ins-metric">'+nc.name+'</span>" is newly active ('+age+' day'+(age!==1?'s':'')+' old). Spent '+f$(nc.spend)+' with '+(nc.demos||0)+' demos so far.','Monitor closely — too early to evaluate performance.',ch);
+      }
+
+      // Inactive campaigns with significant spend
+      const inactive=camps.filter(x=>x.status&&x.status!=='ACTIVE'&&x.spend>500).sort((a,b)=>b.spend-a.spend);
+      for(const ic of inactive){
+        const label=ic.status?ic.status.toLowerCase():'inactive';
+        add('campaign','info',chLabel+' campaign "<span class="ins-metric">'+ic.name+'</span>" is currently <strong>'+label+'</strong> — spent '+f$(ic.spend)+(ic.activeDays?' over '+ic.activeDays+' days':'')+' before deactivation.',null,ch);
+      }
+    }
+  }
+
+  // ── 5. Creative Performance (from Analyzer) ──
+  if(az.channels){
+    for(const ch of ['meta','google','linkedin','tiktok','youtube']){
+      const c=az.channels[ch];if(!c||!c.creatives)continue;
+      const chLabel=ch.charAt(0).toUpperCase()+ch.slice(1);
+      const crs=c.creatives.filter(x=>x.spend>100);
+      if(!crs.length)continue;
+      const withDemos2=crs.filter(x=>x.demos>0);
+      if(withDemos2.length>=1){
+        const sorted2=[...withDemos2].sort((a,b)=>(a.cpd||Infinity)-(b.cpd||Infinity));
+        const best2=sorted2[0];
+        add('creative','win',chLabel+' top creative: "<span class="ins-metric">'+best2.name+'</span>" driving demos at '+f$(best2.cpd)+' CPD with '+fP(best2.ctr)+' CTR.',null,ch);
+      }
+      // High impressions + low CTR = fatigue signal
+      const fatigued=crs.filter(x=>x.impressions>10000&&x.ctr<0.8);
+      for(const fc of fatigued){
+        add('creative','warning',chLabel+' creative "<span class="ins-metric">'+fc.name+'</span>" has '+fN(fc.impressions)+' impressions but only '+fP(fc.ctr)+' CTR — possible fatigue.','Refresh this creative with new hooks, visuals, or copy angles.',ch);
+      }
+      // Zero demos
+      const zeroCreatives=crs.filter(x=>x.demos===0&&x.spend>300);
+      for(const zr of zeroCreatives){
+        add('creative','alert',chLabel+' creative "<span class="ins-metric">'+zr.name+'</span>" spent '+f$(zr.spend)+' with zero demos.','Pause or replace this creative with a tested variation.',ch);
+      }
+    }
+  }
+
+  // ── 6. Revenue & Close Rate ──
+  if(d.mrrArr){
+    const mrr=d.mrrArr.mrr?.value,pMrr=d.mrrArr.mrr?.sameTimePrior;
+    if(mrr!=null&&pMrr?.percentDelta!=null){
+      if(pMrr.percentDelta>20) add('revenue','win','MRR increased <span class="ins-metric">'+pMrr.percentDelta.toFixed(0)+'%</span> vs prior period ('+f$(mrr)+' vs '+f$(pMrr.value)+').');
+      else if(pMrr.percentDelta<-20) add('revenue','alert','MRR decreased <span class="ins-metric">'+Math.abs(pMrr.percentDelta).toFixed(0)+'%</span> vs prior period ('+f$(mrr)+' vs '+f$(pMrr.value)+').','Review pipeline velocity and close rates. Check if demo volume or quality dropped in the prior month feeding this window.');
+    }
+    const adjArr=mrr!=null?mrr*eM:null;
+    const totalSpend=d.adSpend?.total?.value;
+    if(adjArr!=null&&totalSpend>0){
+      const roas=adjArr/totalSpend;
+      if(roas>=2) add('revenue','win','ROAS is <span class="ins-metric">'+roas.toFixed(2)+'x</span> — strong return on ad investment.');
+      else if(roas<1) add('revenue','alert','ROAS is <span class="ins-metric">'+roas.toFixed(2)+'x</span> — spending more than earning back.','Optimize channel mix toward highest-ROAS channels. Focus on improving close rate and average deal size.');
+    }
+  }
+  if(d.signUpRate?.cohorts?.length){
+    const latest=d.signUpRate.cohorts[0];
+    if(latest.closeRate!=null){
+      if(latest.closeRate>=B.signUpRate) add('revenue','win','Latest cohort sign-up rate is <span class="ins-metric">'+fP(latest.closeRate)+'</span>, meeting the '+B.signUpRate+'% target ('+latest.period.label+').');
+      else add('revenue','warning','Latest cohort sign-up rate is <span class="ins-metric">'+fP(latest.closeRate)+'</span>, below the '+B.signUpRate+'% target ('+latest.period.label+', '+Math.abs(latest.closeRate-B.signUpRate).toFixed(0)+'% gap).','Analyze lost deals for common objections. Coach reps on closing techniques and follow-up cadence.');
+    }
+  }
+
+  // ── 7. Anomalies (>25% swings vs prior) ──
+  function checkAnomaly(label,tile,fmt2,inv2){
+    if(!tile?.sameTimePrior?.percentDelta)return;
+    const p=tile.sameTimePrior.percentDelta;
+    if(Math.abs(p)<25)return;
+    const dir=p>0?'increased':'decreased';
+    let v1,v2;
+    if(fmt2==='$'){v1=f$(tile.value);v2=f$(tile.sameTimePrior.value);}
+    else if(fmt2==='%'){v1=fP(tile.value);v2=fP(tile.sameTimePrior.value);}
+    else{v1=fN(tile.value);v2=fN(tile.sameTimePrior.value);}
+    const good=inv2?(p<0):(p>0);
+    add('anomaly',good?'win':'alert','<span class="ins-metric">'+label+'</span> '+dir+' '+Math.abs(p).toFixed(0)+'% vs prior period ('+v1+' vs '+v2+').');
+  }
+  checkAnomaly('Demos Booked',d.demoTracking?.totalScheduled,'#',false);
+  checkAnomaly('Website Visitors',d.webPerformance?.visitors,'#',false);
+  checkAnomaly('Website CVR',d.webPerformance?.cvr,'%',false);
+
+  // ── Build executive summary ──
+  const alerts=findings.filter(f2=>f2.sev==='alert').length;
+  const wins=findings.filter(f2=>f2.sev==='win').length;
+  const warnings=findings.filter(f2=>f2.sev==='warning').length;
+  let summary='<strong>'+d.period.label+'</strong> analysis identified <strong>'+findings.length+' insights</strong>: ';
+  if(alerts) summary+=alerts+' alert'+(alerts>1?'s':'')+', ';
+  if(warnings) summary+=warnings+' warning'+(warnings>1?'s':'')+', ';
+  if(wins) summary+=wins+' win'+(wins>1?'s':'')+', ';
+  summary=summary.replace(/, $/,'. ');
+  if(alerts===0&&wins>0) summary+='Overall performance is strong with no critical issues.';
+  else if(alerts>2) summary+='Several areas need immediate attention.';
+  else if(alerts>0) summary+='Review flagged alerts for optimization opportunities.';
+
+  // ── Render ──
+  const sevIcon={win:'✅',alert:'🚨',warning:'⚠️',info:'💡',neutral:'📊'};
+  const sevOrder={win:0,alert:1,warning:2,info:3,neutral:4};
+  const sortItems=(items)=>{
+    const sorted=[...items];
+    sorted.sort((a,b)=>{
+      const sa=sevOrder[a.sev]??4, sb=sevOrder[b.sev]??4;
+      return sa-sb;
+    });
+    return sorted;
+  };
+  const sections=[
+    {key:'quality',title:'🎯 Demo Quality & Pipeline',items:sortItems(findings.filter(f2=>f2.cat==='quality'))},
+    {key:'cost',title:'💰 Cost Efficiency',items:sortItems(findings.filter(f2=>f2.cat==='cost'))},
+    {key:'pacing',title:'📊 Budget Pacing',items:sortItems(findings.filter(f2=>f2.cat==='pacing'))},
+    {key:'campaign',title:'📈 Campaign Performance',items:sortItems(findings.filter(f2=>f2.cat==='campaign'))},
+    {key:'creative',title:'🎨 Creative Performance',items:sortItems(findings.filter(f2=>f2.cat==='creative'))},
+    {key:'revenue',title:'💵 Revenue & Close Rate',items:sortItems(findings.filter(f2=>f2.cat==='revenue'))},
+    {key:'anomaly',title:'⚡ Anomalies',items:sortItems(findings.filter(f2=>f2.cat==='anomaly'))},
+  ];
+
+  const fmtD2=s=>{const p2=s.split('-');return new Date(p2[0],p2[1]-1,p2[2]).toLocaleDateString('en-US',{month:'long',day:'numeric'});};
+  const fmtDY2=s=>{const p2=s.split('-');return new Date(p2[0],p2[1]-1,p2[2]).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});};
+  const fromStr=d.period.from.slice(0,4)!==d.period.to.slice(0,4)?fmtDY2(d.period.from):fmtD2(d.period.from);
+  let h2='<div class="ins-header"><div class="ins-header-text"><h2>Insights</h2><div class="ins-period">'+d.period.label+': '+fromStr+' \u2013 '+fmtDY2(d.period.to)+'</div></div><div class="ins-badges">';
+  if(wins)h2+='<div class="ins-badge b-win">\u2705 '+wins+' Win'+(wins>1?'s':'')+'</div>';
+  if(alerts)h2+='<div class="ins-badge b-alert">\ud83d\udea8 '+alerts+' Alert'+(alerts>1?'s':'')+'</div>';
+  if(warnings)h2+='<div class="ins-badge b-warn">\u26a0\ufe0f '+warnings+' Warning'+(warnings>1?'s':'')+'</div>';
+  h2+='</div></div>';
+  h2+='<div class="ins-summary">'+summary+'</div>';
+  for(const sec of sections){
+    if(!sec.items.length)continue;
+    const hasChannels=sec.key==='campaign'||sec.key==='creative';
+    h2+='<div class="ins-sec" id="ins-sec-'+sec.key+'"><div class="ins-title">'+sec.title+' <span style="font-size:11px;font-weight:400;color:var(--grey);margin-left:auto">'+sec.items.length+' finding'+(sec.items.length>1?'s':'')+'</span></div>';
+    if(hasChannels){
+      const chSet=new Set(sec.items.map(i=>i.ch).filter(Boolean));
+      if(chSet.size>1){
+        h2+='<div class="ins-filters"><div class="ins-fpill active" onclick="insFilter(\''+sec.key+'\',null,this)">All<span class="ins-fc">('+sec.items.length+')</span></div>';
+        for(const fc of ['meta','google','linkedin','tiktok','youtube']){
+          if(!chSet.has(fc))continue;
+          const cnt=sec.items.filter(i=>i.ch===fc).length;
+          h2+='<div class="ins-fpill" onclick="insFilter(\''+sec.key+'\',\''+fc+'\',this)">'+fc.charAt(0).toUpperCase()+fc.slice(1)+'<span class="ins-fc">('+cnt+')</span></div>';
+        }
+        h2+='</div>';
+      }
+    }
+    for(const it of sec.items){
+      h2+='<div class="ins-item '+it.sev+'"'+(it.ch?' data-ch="'+it.ch+'"':'')+'><div class="ins-icon">'+sevIcon[it.sev]+'</div><div class="ins-body">'+it.text+(it.action?'<span class="ins-action">\u2794 '+it.action+'</span>':'')+'</div></div>';
+    }
+    h2+='</div>';
+  }
+  if(!findings.length) h2+='<div style="color:var(--grey);text-align:center;padding:40px;font-family:var(--font-h)">No significant findings for this period.</div>';
+  document.getElementById('insights-c').innerHTML=h2;
+}
+function insFilter(secKey,ch,btn){
+  const sec=document.getElementById('ins-sec-'+secKey);if(!sec)return;
+  sec.querySelectorAll('.ins-fpill').forEach(p=>p.classList.remove('active'));
+  btn.classList.add('active');
+  sec.querySelectorAll('.ins-item').forEach(el=>{
+    if(!ch) el.style.display='';
+    else el.style.display=(el.dataset.ch===ch||!el.dataset.ch)?'':'none';
+  });
+}
+
+// ═══════════════ CHURN SLIDERS ═══════════════
+document.getElementById('churn').addEventListener('input',function(){_churnPct=parseFloat(this.value);syncSliders();updCalc();updateDashChurn();});
+document.addEventListener('input',function(e){
+  if(e.target.id==='dashChurn'){_churnPct=parseFloat(e.target.value);syncSliders();updCalc();updateDashChurn();}
+  if(e.target.id==='suChurn'){_churnPct=parseFloat(e.target.value);syncSliders();updCalc();renderSignUp();}
+  if(e.target.id==='azChurn'){_churnPct=parseFloat(e.target.value);syncSliders();updCalc();updateAzChurn();}
+});
+
+// ═══════════════ ARR CALCULATOR ═══════════════
+function updCalc(){const d=S.calculator.data;if(!d||d.error)return;
+  const cp=_churnPct,cr=cp/100,eM2=effM(cr);
+  const isCustom=document.getElementById('cCustomToggle').checked;
+  const ci=document.getElementById('cCustomMRR'),cs=document.getElementById('cCustomSpend');
+  ci.disabled=!isCustom;cs.disabled=!isCustom;
+  if(isCustom){
+    ci.style.borderColor='var(--teal)';ci.style.background='var(--white)';
+    cs.style.borderColor='var(--teal)';cs.style.background='var(--white)';
+    document.getElementById('cCustomHint').textContent='Custom values used for calculations below';
+    document.getElementById('cCustomHint').style.color='var(--teal)';
+  }else{
+    ci.style.borderColor='var(--border)';ci.style.background='var(--light-bg)';
+    cs.style.borderColor='var(--border)';cs.style.background='var(--light-bg)';
+    document.getElementById('cCustomHint').textContent='Enable the toggle to enter custom values';
+    document.getElementById('cCustomHint').style.color='var(--grey)';
+  }
+  const periodMRR=d.mrrArr.mrr?.value||0;
+  const periodSpend=d.adSpend.total?.value||0;
+  const mrr=isCustom&&ci.value?parseFloat(ci.value):periodMRR;
+  const sp=isCustom&&cs.value?parseFloat(cs.value):periodSpend;
+  const arr=mrr*eM2,roas=sp>0?arr/sp:null;
+  document.getElementById('cMRR').textContent=f$(periodMRR);
+  document.getElementById('cAdSp').textContent=f$(periodSpend);
+  document.getElementById('cMRRsub').textContent=isCustom?'from data (overridden by custom below)':'from closed-won deals and ad platforms in this period';
+  document.getElementById('cPL').textContent=d.period.label+': '+d.period.from+' to '+d.period.to;
+  document.getElementById('cUsing').textContent=f$(mrr);
+  document.getElementById('cEM').textContent=eM2.toFixed(1);
+  const ccd=document.getElementById('cChurnDisp');if(ccd)ccd.textContent=cp.toFixed(2)+'%';
+  document.getElementById('cARR').textContent=f$(arr);
+  document.getElementById('cAS').textContent='adjusted for estimated '+cp.toFixed(2)+'% monthly churn';
+  document.getElementById('cSP').textContent=f$(sp);
+  document.getElementById('cROAS').textContent=roas!=null?roas.toFixed(2)+'x':'—';
+  document.getElementById('cROASsub').textContent=roas!=null?f$(arr)+' ÷ '+f$(sp):'Churn-Adjusted ARR ÷ Total Ad Spend';
+}
+
+
+// ═══════════════ PAID CHANNEL ANALYZER ═══════════════
+function switchAzTab(t){S.analyzer.tab=t;renderAnalyzer();}
+window.switchAzTab=switchAzTab;
+
+function azHeat(vals,v,inv){
+  if(v==null||v===0||!vals.length)return'';
+  const pos=vals.filter(x=>x>0);if(!pos.length)return'';
+  const mx=Math.max(...pos);if(mx===0)return'';
+  const pct=Math.min(v/mx,1);
+  const r=inv?Math.round(200*pct+50):Math.round(50+200*(1-pct));
+  const g=inv?Math.round(50+200*(1-pct)):Math.round(200*pct+50);
+  return `background:rgba(${r},${g},60,${0.06+pct*0.18})`;
+}
+
+function azTile(v,pv,pmv){
+  const t={value:v};
+  if(pv!=null){const nd=v-pv;t.sameTimePrior={value:pv,nominalDelta:r2(nd),percentDelta:pv!==0?r2((nd/pv)*100):null};}
+  if(pmv!=null)t.lastMonth={value:pmv};
+  return t;
+}
+
+function renderAnalyzer(){
+  const d=S.analyzer.data;if(!d||d.error||!d.channels)return;
+  _lmLabel=d.meta?.windowType==='7d'?'Same time last mo':'Last mo';
+  const cr=getChurnRate(),eM=effM(cr),crPct=(cr*100).toFixed(2);
+  const tab=S.analyzer.tab||'overview';
+  const isMTD=d.period?.label==='Month to Date'||d.period?.label==='Last Month';
+  const fmtD=s=>{const p=s.split('-');return new Date(p[0],p[1]-1,p[2]).toLocaleDateString('en-US',{month:'long',day:'numeric'});};
+  const fmtDY=s=>{const p=s.split('-');return new Date(p[0],p[1]-1,p[2]).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});};
+  let dh='<div style="font-family:var(--font-h);font-size:20px;font-weight:700;color:var(--navy)">'+d.period.label+': '+(d.period.from.slice(0,4)!==d.period.to.slice(0,4)?fmtDY(d.period.from):fmtD(d.period.from))+' \u2013 '+fmtDY(d.period.to)+'</div>';
+  if(d.priorPeriod)dh+='<div style="font-size:12px;color:var(--grey);margin-top:4px">vs. Prior: '+fmtD(d.priorPeriod.from)+' \u2013 '+fmtD(d.priorPeriod.to)+'</div>';
+  if(d.priorMonthPeriod&&d.meta?.windowType==='7d')dh+='<div style="font-size:12px;color:var(--grey);margin-top:2px">vs. Same time last mo: '+fmtD(d.priorMonthPeriod.from)+' \u2013 '+fmtD(d.priorMonthPeriod.to)+'</div>';
+  document.getElementById('az-date-header').innerHTML=dh;
+  let th='';for(const t of AZ_TABS)th+='<button class="fb'+(tab===t.k?' active':'')+'" onclick="switchAzTab(\''+t.k+'\')">'+t.l+'</button>';
+  document.getElementById('az-tabs').innerHTML=th;
+  const mr=d.matchRate||{};
+  document.getElementById('az-match').innerHTML=mr.pct!=null?'Attribution match rate: <strong>'+mr.pct+'%</strong> ('+fN(mr.attributed)+' of '+fN(mr.windsorDemos)+' demos matched to HubSpot UTMs)':'';
+  if(tab==='overview') renderAzOverview(d,cr,eM,crPct,isMTD);
+  else renderAzChannel(d,tab,cr,eM,crPct,isMTD);
+}
+
+function updateAzChurn(){
+  const d=S.analyzer.data;if(!d||!d.channels)return;
+  const cr=getChurnRate(),eM=effM(cr);
+  const o=d.overview;
+  const arr=o.closedWonMRR*eM,roas=o.adSpend>0?arr/o.adSpend:null;
+  const pArr=o.priorClosedWonMRR!=null?o.priorClosedWonMRR*eM:null;
+  const pmArr=o.pmClosedWonMRR!=null?o.pmClosedWonMRR*eM:null;
+  const pRoas=pArr!=null&&o.priorAdSpend>0?pArr/o.priorAdSpend:null;
+  const pmRoas=pmArr!=null&&o.pmAdSpend>0?pmArr/o.pmAdSpend:null;
+  const el=id=>document.getElementById(id);
+  if(el('azArrV'))el('azArrV').textContent=f$(arr);
+  if(el('azArrDef'))el('azArrDef').textContent='MRR \u00d7 '+eM.toFixed(1)+' eff months';
+  if(el('azArrCalc'))el('azArrCalc').textContent=f$(o.closedWonMRR)+' \u00d7 '+eM.toFixed(1);
+  if(el('azRoasV'))el('azRoasV').textContent=roas!=null?roas.toFixed(2)+'x':'\u2014';
+  let rc='';
+  if(pRoas!=null&&roas!=null){const nd=roas-pRoas,dir=nd>0?'up':nd<0?'dn':'n',sg=nd>0?'+':'';rc+='<div class="tc"><span class="lbl">Prior: </span><span class="val">'+pRoas.toFixed(2)+'x</span> <span class="d '+dir+'">'+sg+nd.toFixed(2)+'x</span></div>';}
+  if(pmRoas!=null)rc+=(function(){var nd4=roas!=null?roas-pmRoas:null,dir4=nd4>0?'up':nd4<0?'dn':'n',sg4=nd4>0?'+':'',dl4=nd4!=null?' <span class="d '+dir4+'">'+sg4+nd4.toFixed(2)+'x</span>':'';return '<div class="tc"><span class="lbl">'+_lmLabel+': </span><span class="val">'+pmRoas.toFixed(2)+'x</span>'+dl4+'</div>';}());
+  if(el('azRoasC'))el('azRoasC').innerHTML=rc;
+  renderAzTable(d,cr,eM);
+}
+
+function renderAzOverview(d,cr,eM,crPct,isMTD){
+  const o=d.overview,ch=d.channels;
+  const arr=o.closedWonMRR*eM,roas=o.adSpend>0?arr/o.adSpend:null;
+  const pArr=o.priorClosedWonMRR!=null?o.priorClosedWonMRR*eM:null;
+  const pmArr=o.pmClosedWonMRR!=null?o.pmClosedWonMRR*eM:null;
+  const pRoas=pArr!=null&&o.priorAdSpend>0?pArr/o.priorAdSpend:null;
+  const pmRoas=pmArr!=null&&o.pmAdSpend>0?pmArr/o.pmAdSpend:null;
+
+  // Row 1: Ad Spend, Attributed ARR, ROAS, Closed Won
+  var r1='<div class="tg" style="margin-bottom:16px">';
+  r1+=mkT('Ad Spend',o.adSpend,'$',null,null,azTile(o.adSpend,o.priorAdSpend,o.pmAdSpend),null,true);
+  // ARR hero tile with churn slider
+  var arrPrior='';if(pArr!=null)arrPrior+='<div class="tc"><span class="lbl" style="color:rgba(255,255,255,.45)">Prior: </span><span class="val" style="color:rgba(255,255,255,.85)">'+f$(pArr)+'</span></div>';
+  if(pmArr!=null){var nd5=arr-pmArr,dir5=nd5>0?'up':nd5<0?'dn':'n',sg5=nd5>0?'+':'';arrPrior+='<div class="tc"><span class="lbl" style="color:rgba(255,255,255,.45)">'+_lmLabel+': </span><span class="val" style="color:rgba(255,255,255,.85)">'+f$(pmArr)+'</span> <span class="d '+dir5+'">'+sg5+f$(nd5)+'</span></div>';}
+  r1+='<div class="tile hero"><div class="tlbl">Attributed ARR</div><div class="tval" id="azArrV" style="color:var(--white)">'+f$(arr)+'</div><div class="tdef" id="azArrDef" style="color:rgba(255,255,255,.5)">MRR \u00d7 '+eM.toFixed(1)+' eff months</div><div class="tcalc" id="azArrCalc" style="color:rgba(255,255,255,.7)">'+f$(o.closedWonMRR)+' \u00d7 '+eM.toFixed(1)+'</div><div class="tcomps">'+arrPrior+'</div><div style="display:flex;align-items:center;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid rgba(114,164,191,.2)"><span style="font-size:10px;color:rgba(255,255,255,.4);white-space:nowrap">Churn:</span><input type="range" id="azChurn" min="0" max="10" step="0.25" value="'+crPct+'" style="flex:1;height:6px;background:'+churnBg(_churnPct)+';border-radius:50px"><span style="font-family:var(--font-h);font-weight:700;color:var(--white);font-size:12px;min-width:42px" id="azChD">'+crPct+'%</span></div></div>';
+  // ROAS card
+  var roasC='';
+  if(pRoas!=null&&roas!=null){var nd=roas-pRoas,dir=nd>0?'up':nd<0?'dn':'n',sg=nd>0?'+':'';roasC+='<div class="tc"><span class="lbl">Prior: </span><span class="val">'+pRoas.toFixed(2)+'x</span> <span class="d '+dir+'">'+sg+nd.toFixed(2)+'x</span></div>';}
+  if(pmRoas!=null)roasC+=(function(){var nd4=roas!=null?roas-pmRoas:null,dir4=nd4>0?'up':nd4<0?'dn':'n',sg4=nd4>0?'+':'',dl4=nd4!=null?' <span class="d '+dir4+'">'+sg4+nd4.toFixed(2)+'x</span>':'';return '<div class="tc"><span class="lbl">'+_lmLabel+': </span><span class="val">'+pmRoas.toFixed(2)+'x</span>'+dl4+'</div>';}());
+  r1+='<div class="tile accent"><div class="tlbl">ROAS</div><div class="tval" id="azRoasV">'+(roas!=null?roas.toFixed(2)+'x':'\u2014')+'</div><div class="tdef">Churn-Adjusted ARR \u00f7 Total Ad Spend</div><div class="tcomps" id="azRoasC">'+roasC+'</div></div>';
+  r1+=mkT('Closed Won',o.closedWon,'#','Attributed to ad spend',null,azTile(o.closedWon,o.priorClosedWon,o.pmClosedWon));
+  r1+='</div>';
+
+  // Row 2: Ad Demos (accent), Blended CPD, Qualified %, Blended CPQD
+  var pCpd=o.priorAdDemos>0?o.priorAdSpend/o.priorAdDemos:null, pmCpd=o.pmAdDemos>0?o.pmAdSpend/o.pmAdDemos:null;
+  var pCpqd=o.priorQualified>0?o.priorAdSpend/o.priorQualified:null, pmCpqd=o.pmQualified>0?o.pmAdSpend/o.pmQualified:null;
+  var pQPct=o.priorAdDemos>0?(o.priorQualified/o.priorAdDemos)*100:null, pmQPct=o.pmAdDemos>0?(o.pmQualified/o.pmAdDemos)*100:null;
+  var r2h='<div class="tg" style="margin-bottom:24px">';
+  r2h+=mkT('Ad Demos',o.adDemos,'#',null,null,azTile(o.adDemos,o.priorAdDemos,o.pmAdDemos),'accent');
+  r2h+=mkT('Blended CPD',o.cpd,'$',null,null,azTile(o.cpd,pCpd,pmCpd),'accent',true);
+  r2h+=mkT('Qualified %',o.qualifiedPct,'%',null,null,azTile(o.qualifiedPct,pQPct,pmQPct));
+  r2h+=mkT('Blended CPQD',o.cpqd,'$',null,null,azTile(o.cpqd,pCpqd,pmCpqd),null,true);
+  r2h+='</div>';
+
+  // Budget pacing (Total first)
+  var bpc='';
+  if(isMTD){
+    bpc='<div class="sec"><div class="st">MTD Budget Pacing</div><div class="tg">';
+    var tBud=0,tSp=0;for(var k in ch){tBud+=ch[k].budget;tSp+=ch[k].spend;}
+    bpc+=mkT('Total',tSp,'$',null,fP((tSp/(tBud||1))*100)+' of '+f$(tBud),null,'accent',false,pac(tSp,tBud));
+    for(var k in ch)bpc+=mkT(ch[k].label,ch[k].spend,'$',null,fP((ch[k].spend/(ch[k].budget||1))*100)+' of '+f$(ch[k].budget),null,null,false,pac(ch[k].spend,ch[k].budget));
+    bpc+='</div></div>';
+  }
+
+  var tbl='<div class="sec"><div class="st">Demo Quality by Channel</div><div class="tw" id="az-tbl"></div></div>';
+  document.getElementById('az-content').innerHTML=r1+r2h+bpc+tbl;
+  renderAzTable(d,cr,eM);
+}
+
+
+function renderAzTable(d,cr,eM){
+  var ch=d.channels;
+  var tblR='',sumS=0,sumD=0,sumQ=0,sumNA=0,sumCW=0,sumMRR=0;
+  var pSumS=0,pSumD=0,pSumQ=0,pSumNA=0,pSumCW=0,pSumMRR=0,hasPrior=false;
+  for(var k in ch){var c=ch[k];
+    var q=c.qualified||0,wD=c.demos||0,na=c.unattributed||0;
+    var cpd2=wD>0?c.spend/wD:null,cpqd2=q>0?c.spend/q:null;
+    var a2=c.closedWonMRR*eM,roas2=c.spend>0?a2/c.spend:null;
+    var pS=c.priorSpend,pD=c.priorDemos,pQ=c.priorQualified,pCW=c.priorClosedWon,pMRR=c.priorClosedWonMRR;
+    var pCpd2=(pD!=null&&pD>0&&pS!=null)?pS/pD:null;
+    var pCpqd2=(pQ!=null&&pQ>0&&pS!=null)?pS/pQ:null;
+    var pArr2=(pMRR!=null)?pMRR*eM:null;
+    var qP=wD>0?((q/wD)*100).toFixed(0)+'%':'';
+    var naP=wD>0?((na/wD)*100).toFixed(0)+'%':'';
+    var cwP=wD>0?((c.closedWon/wD)*100).toFixed(0)+'%':'';
+    sumS+=c.spend;sumD+=wD;sumQ+=q;sumNA+=na;sumCW+=c.closedWon;sumMRR+=c.closedWonMRR;
+    if(pS!=null){hasPrior=true;pSumS+=(pS||0);pSumD+=(pD||0);pSumQ+=(pQ||0);pSumCW+=(pCW||0);pSumMRR+=(pMRR||0);}
+    tblR+='<tr><td>'+c.label+'</td><td class="n">'+f$(c.spend)+' '+dtxt(c.spend,pS,true)+'</td><td class="n">'+fN(wD)+' '+dtxt(wD,pD)+'</td><td class="n tbl-grn">'+(cpd2!=null?f$(cpd2):'\u2014')+' '+dtxt(cpd2,pCpd2,true)+'</td><td class="n">'+fN(q)+'<span class="sub">'+qP+'</span>'+dtxt(q,pQ)+'</td><td class="n tbl-ylw">'+(cpqd2!=null?f$(cpqd2):'\u2014')+' '+dtxt(cpqd2,pCpqd2,true)+'</td><td class="n">'+fN(na)+'<span class="sub">'+naP+'</span></td><td class="n tbl-ylw">'+fN(c.closedWon)+'<span class="sub">'+cwP+'</span>'+dtxt(c.closedWon,pCW)+'</td><td class="n tbl-ylw">'+f$(a2)+' '+dtxt(a2,pArr2)+'</td><td class="n tbl-ylw">'+(roas2!=null?roas2.toFixed(2)+'x':'\u2014')+'</td></tr>';
+  }
+  var tCpd=sumD>0?sumS/sumD:null,tCpqd=sumQ>0?sumS/sumQ:null,tArr=sumMRR*eM,tRoas=sumS>0?tArr/sumS:null;
+  var tQP=sumD>0?((sumQ/sumD)*100).toFixed(0)+'%':'',tNAP=sumD>0?((sumNA/sumD)*100).toFixed(0)+'%':'',tCWP=sumD>0?((sumCW/sumD)*100).toFixed(0)+'%':'';
+  var pTCpd=hasPrior&&pSumD>0?pSumS/pSumD:null,pTCpqd=hasPrior&&pSumQ>0?pSumS/pSumQ:null,pTArr=hasPrior?pSumMRR*eM:null;
+  tblR+='<tr style="font-weight:700;background:var(--teal-8)"><td>Total</td><td class="n">'+f$(sumS)+' '+(hasPrior?dtxt(sumS,pSumS,true):'')+'</td><td class="n">'+fN(sumD)+' '+(hasPrior?dtxt(sumD,pSumD):'')+'</td><td class="n tbl-grn">'+(tCpd!=null?f$(tCpd):'\u2014')+' '+dtxt(tCpd,pTCpd,true)+'</td><td class="n">'+fN(sumQ)+'<span class="sub">'+tQP+'</span>'+(hasPrior?dtxt(sumQ,pSumQ):'')+'</td><td class="n tbl-ylw">'+(tCpqd!=null?f$(tCpqd):'\u2014')+' '+dtxt(tCpqd,pTCpqd,true)+'</td><td class="n">'+fN(sumNA)+'<span class="sub">'+tNAP+'</span></td><td class="n tbl-ylw">'+fN(sumCW)+'<span class="sub">'+tCWP+'</span>'+(hasPrior?dtxt(sumCW,pSumCW):'')+'</td><td class="n tbl-ylw">'+f$(tArr)+' '+dtxt(tArr,pTArr)+'</td><td class="n tbl-ylw">'+(tRoas!=null?tRoas.toFixed(2)+'x':'\u2014')+'</td></tr>';
+  var legend='<div style="font-size:10px;color:var(--grey);margin-top:8px;display:flex;gap:16px;align-items:center"><div style="display:flex;align-items:center;gap:4px"><div style="width:12px;height:12px;border-radius:2px;background:rgba(16,185,129,.12)"></div>Windsor data</div><div style="display:flex;align-items:center;gap:4px"><div style="width:12px;height:12px;border-radius:2px;background:rgba(245,158,11,.12)"></div>May not be 100% accurate due to data hygiene lag in HubSpot</div></div>';
+  var el=document.getElementById('az-tbl');
+  if(el)el.innerHTML='<table class="ctbl"><thead><tr><th>Channel</th><th class="n">Spend</th><th class="n">Demos</th><th class="n tbl-grn">CPD</th><th class="n">Qualified</th><th class="n tbl-ylw">CPQD</th><th class="n">Unattr.</th><th class="n tbl-ylw">Won</th><th class="n tbl-ylw">ARR</th><th class="n tbl-ylw">ROAS</th></tr></thead><tbody>'+tblR+'</tbody></table>'+legend;
+}
+
+function renderAzChannel(d,chKey,cr,eM,crPct,isMTD){
+  var c=d.channels[chKey];if(!c){document.getElementById('az-content').innerHTML='<div style="color:var(--grey)">No data for this channel</div>';return;}
+  var cpd2=c.demos>0?c.spend/c.demos:null,cpqd2=c.qualified>0?c.spend/c.qualified:null;
+  var arr2=c.closedWonMRR*eM,roas2=c.spend>0?arr2/c.spend:null;
+  var pCpd=c.priorDemos>0?c.priorSpend/c.priorDemos:null,pmCpd=c.pmDemos>0?c.pmSpend/c.pmDemos:null;
+  var pCpqd=c.priorQualified>0?c.priorSpend/c.priorQualified:null,pmCpqd=c.pmQualified>0?c.pmSpend/c.pmQualified:null;
+  var pQPct=c.priorDemos>0?(c.priorQualified/c.priorDemos)*100:null,pmQPct=c.pmDemos>0?(c.pmQualified/c.pmDemos)*100:null;
+  var pArr=c.priorClosedWonMRR!=null?c.priorClosedWonMRR*eM:null,pmArr=c.pmClosedWonMRR!=null?c.pmClosedWonMRR*eM:null;
+
+  // Row 1: Ad Spend, ARR, ROAS, Closed Won
+  var h='<div class="tg" style="margin-bottom:16px">';
+  h+=mkT('Ad Spend',c.spend,'$',null,null,azTile(c.spend,c.priorSpend,c.pmSpend),null,true);
+  h+=mkT('ARR',arr2,'$','Churn-adjusted',f$(c.closedWonMRR)+' \u00d7 '+eM.toFixed(1),azTile(arr2,pArr,pmArr));
+  var pRoas=pArr!=null&&c.priorSpend>0?pArr/c.priorSpend:null;
+  var pmRoas=pmArr!=null&&c.pmSpend>0?pmArr/c.pmSpend:null;
+  var roasC='';
+  if(pRoas!=null&&roas2!=null){var nd2=roas2-pRoas,dir2=nd2>0?'up':nd2<0?'dn':'n',sg2=nd2>0?'+':'';roasC+='<div class="tc"><span class="lbl">Prior: </span><span class="val">'+pRoas.toFixed(2)+'x</span> <span class="d '+dir2+'">'+sg2+nd2.toFixed(2)+'x</span></div>';}
+  if(pmRoas!=null){var nd6=roas2!=null?roas2-pmRoas:null,dir6=nd6>0?'up':nd6<0?'dn':'n',sg6=nd6>0?'+':'',dl6=nd6!=null?' <span class="d '+dir6+'">'+sg6+nd6.toFixed(2)+'x</span>':'';roasC+='<div class="tc"><span class="lbl">'+_lmLabel+': </span><span class="val">'+pmRoas.toFixed(2)+'x</span>'+dl6+'</div>';}
+  h+='<div class="tile accent"><div class="tlbl">ROAS</div><div class="tval">'+(roas2!=null?roas2.toFixed(2)+'x':'\u2014')+'</div><div class="tdef">ARR \u00f7 Ad Spend</div><div class="tcomps">'+roasC+'</div></div>';
+  h+=mkT('Closed Won',c.closedWon,'#','Attributed to ad spend',null,azTile(c.closedWon,c.priorClosedWon,c.pmClosedWon));
+  h+='</div>';
+
+  // Row 2: Ad Demos, CPD, Qualified %, CPQD
+  h+='<div class="tg" style="margin-bottom:16px">';
+  h+=mkT('Ad Demos',c.demos,'#',null,null,azTile(c.demos,c.priorDemos,c.pmDemos),'accent');
+  h+=mkT('CPD',cpd2,'$',null,null,azTile(cpd2,pCpd,pmCpd),'accent',true);
+  h+=mkT('Qualified %',c.qualifiedPct,'%',null,null,azTile(c.qualifiedPct,pQPct,pmQPct));
+  h+=mkT('CPQD',cpqd2,'$',null,null,azTile(cpqd2,pCpqd,pmCpqd),null,true);
+  h+='</div>';
+
+  // Row 3: CTR, Impressions, Clicks, Retargeting %
+  h+='<div class="tg" style="margin-bottom:24px">';
+  h+=mkT('CTR',c.ctr,'%',null,null,azTile(c.ctr,c.priorCtr,c.pmCtr),'sm-teal');
+  h+=mkT('Impressions',c.impressions,'#',null,null,azTile(c.impressions,c.priorImpressions,c.pmImpressions),'sm-teal');
+  h+=mkT('Clicks',c.clicks,'#',null,null,azTile(c.clicks,c.priorClicks,c.pmClicks),'sm-teal');
+  h+=mkT('Retargeting %',c.retargetPct||0,'%',null,fN(c.retargetDemos||0)+' of '+fN(c.demos)+' demos',azTile(c.retargetPct||0,c.priorRetargetPct,c.pmRetargetPct),'sm-teal');
+  h+='</div>';
+
+  // Budget pacing
+  if(isMTD)h+='<div class="sec"><div class="st">MTD Budget Pacing</div>'+pac(c.spend,c.budget)+'</div>';
+
+  // Shared table builder for campaigns and creatives (fixed CPD heatmap)
+  function buildTbl(title,items,showThumb){
+    if(!items||!items.length)return'<div class="sec"><div class="st">'+title+'</div><div style="color:var(--grey);font-size:12px;padding:16px">No data available</div></div>';
+    var list=[].concat(items).sort(function(a,b){var ac=a.demos>0?a.spend/a.demos:null,bc=b.demos>0?b.spend/b.demos:null;if(ac==null&&bc==null)return b.spend-a.spend;if(ac==null)return 1;if(bc==null)return-1;return bc-ac;});
+    var dV=list.map(function(x){return x.demos;});
+    var cpdV=list.map(function(x){return x.demos>0?x.spend/x.demos:0;});
+    var qV=list.map(function(x){return x.qualified;});
+    var teV=list.map(function(x){return x.tooEarly;});
+    var nqV=list.map(function(x){return x.notQualAfter;});
+    var dbV=list.map(function(x){return x.disqualifiedBefore;});
+    var rsV=list.map(function(x){return x.rescheduled;});
+    var cnV=list.map(function(x){return x.canceled;});
+    var hasF=c.hasFrequency;
+    var rows='';for(var i=0;i<list.length;i++){var it=list[i];
+      var cpd3=it.demos>0?it.spend/it.demos:null;
+      var nm=it.name.length>50?it.name.slice(0,47)+'...':it.name;
+      var thumbCell='';
+      if(showThumb){
+        if(it.thumbnail){thumbCell='<td style="width:44px;padding:4px"><img src="'+it.thumbnail+'" style="width:40px;height:40px;object-fit:cover;border-radius:4px;display:block" onerror="this.style.display=\'none\'"></td>';}
+        else{thumbCell='<td style="width:44px;padding:4px"><div style="width:40px;height:40px;border-radius:4px;background:var(--teal-8);display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--grey)">\u25B6</div></td>';}
+      }
+      rows+='<tr>'+thumbCell+'<td title="'+it.name+'">'+nm+'</td><td class="n">'+f$(it.spend)+'</td><td class="n">'+fN(it.impressions)+'</td><td class="n">'+fN(it.clicks)+'</td><td class="n">'+fP(it.ctr)+'</td>'+(hasF?'<td class="n">'+(it.frequency!=null?it.frequency.toFixed(1):'\u2014')+'</td>':'');
+      rows+='<td class="n" style="'+azHeat(dV,it.demos,false)+'">'+fN(it.demos)+'</td>';
+      rows+='<td class="n" style="'+azHeat(cpdV,cpd3,true)+'">'+(cpd3!=null?f$(cpd3):'\u2014')+'</td>';
+      rows+='<td class="n" style="'+azHeat(qV,it.qualified,false)+'">'+fN(it.qualified)+'</td>';
+      rows+='<td class="n" style="'+azHeat(teV,it.tooEarly,true)+'">'+fN(it.tooEarly)+'</td>';
+      rows+='<td class="n" style="'+azHeat(nqV,it.notQualAfter,true)+'">'+fN(it.notQualAfter)+'</td>';
+      rows+='<td class="n" style="'+azHeat(dbV,it.disqualifiedBefore,true)+'">'+fN(it.disqualifiedBefore)+'</td>';
+      rows+='<td class="n" style="'+azHeat(rsV,it.rescheduled,true)+'">'+fN(it.rescheduled)+'</td>';
+      rows+='<td class="n" style="'+azHeat(cnV,it.canceled,true)+'">'+fN(it.canceled)+'</td></tr>';
+    }
+    var thThumb=showThumb?'<th style="width:44px"></th>':'';
+    return '<div class="sec"><div class="st">'+title+'</div><div class="tw"><table class="ctbl"><thead><tr>'+thThumb+'<th>Name</th><th class="n">Spend</th><th class="n">Impr.</th><th class="n">Clicks</th><th class="n">CTR</th>'+(hasF?'<th class="n">Freq.</th>':'')+'<th class="n">Demos</th><th class="n">CPD</th><th class="n">Qual</th><th class="n">Too Early</th><th class="n">Not Qual</th><th class="n">DQ Before</th><th class="n">Resch.</th><th class="n">Canceled</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+  }
+
+  h+=buildTbl('Campaigns by Demos',c.campaigns);
+  if(c.creatives===null) h+='<div class="sec"><div class="st">Creatives by Demos</div><div style="color:var(--grey);font-size:12px;padding:16px">Creative data unavailable \u2014 ad_name queries may have timed out</div></div>';
+  else h+=buildTbl('Creatives by Demos',c.creatives,true);
+
+  // Demo Quality Attribution bars (flex-grow based, with unattributed striped segment)
+  var cats=d.funnelOrder||[],colors=d.funnelColors||{},labels=d.funnelLabels||{};
+  var lg='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">';
+  for(var ci2=0;ci2<cats.length;ci2++)lg+='<div style="display:flex;align-items:center;gap:3px;font-size:10px"><div style="width:10px;height:10px;border-radius:2px;background:'+(colors[cats[ci2]]||'#ccc')+'"></div>'+(labels[cats[ci2]]||cats[ci2])+'</div>';
+  lg+='<div style="display:flex;align-items:center;gap:3px;font-size:10px"><div style="width:10px;height:10px;border-radius:2px;background:repeating-linear-gradient(45deg,#e5e7eb,#e5e7eb 2px,#f3f4f6 2px,#f3f4f6 4px)"></div>Unattributed</div>';
+  lg+='</div>';
+  function dqBar(lbl,data,windsorDemos){
+    if(!data||data.total===0)return'<div class="fr"><div class="fl">'+lbl+'</div><div style="color:var(--grey);font-size:11px">No data</div></div>';
+    var totalForBar=windsorDemos||data.total;
+    var unattr=Math.max(0,(windsorDemos||0)-data.total);
+    var s='';for(var j=0;j<cats.length;j++){var cnt=data[cats[j]]?.count||0;if(!cnt)continue;var flx=cnt;s+='<div class="fseg" style="flex:'+flx+';background:'+(colors[cats[j]]||'#ccc')+'"><span>'+((cnt/totalForBar)*100).toFixed(0)+'% ('+cnt+')</span></div>';}
+    if(unattr>0)s+='<div class="fseg unattr" style="flex:'+unattr+'"><span>'+((unattr/totalForBar)*100).toFixed(0)+'% ('+unattr+')</span></div>';
+    return '<div class="fr"><div class="fl">'+lbl+'</div><div class="fbbg">'+s+'</div></div>';
+  }
+  var dq=c.demoQuality,pdq=c.priorDemoQuality,pmdq=c.pmDemoQuality;
+  h+='<div class="sec"><div class="st">Demo Quality Attribution</div><div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:20px">'+lg;
+  h+=dqBar('Current ('+(c.demos||0)+' demos)',dq,c.demos);
+  if(pdq)h+=dqBar('Prior Period ('+(c.priorDemos||pdq.total||0)+')',pdq,c.priorDemos);
+  if(pmdq)h+=dqBar('Last Month ('+(c.pmDemos||pmdq.total||0)+')',pmdq,c.pmDemos);
+  h+='</div></div>';
+
+  document.getElementById('az-content').innerHTML=h;
+}
+function r2(n){return Math.round(n*100)/100;}
+</script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+name: Weekly Pipeline Report
+
+on:
+  schedule:
+    # Friday 4:00 PM Pacific = 23:00 UTC (during PDT) / 00:00 Sat UTC (during PST)
+    # Using 23:00 UTC for PDT (March-November)
+    - cron: '0 23 * * 5'  # Friday only
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  weekly-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run Weekly Pipeline Report
+        env:
+          WINDSOR_API_KEY: ${{ secrets.WINDSOR_API_KEY }}
+          HUBSPOT_TOKEN: ${{ secrets.HUBSPOT_TOKEN }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
+        run: node weekly-pipeline.js

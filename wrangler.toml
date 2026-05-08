@@ -1,0 +1,16 @@
+name = "frontrowmd-dashboard-api"
+main = "dist/worker.js"
+compatibility_date = "2024-01-01"
+no_bundle = true
+
+# Secrets (set via: wrangler secret put SECRET_NAME)
+# TEAM_PASSWORD
+# WINDSOR_API_KEY
+# HUBSPOT_TOKEN
+
+# KV namespace for content persistence
+# Create with: npx wrangler kv namespace create CONTENT_STORE
+# Then paste the id below
+[[kv_namespaces]]
+binding = "CONTENT_STORE"
+id = "15173a7248cc4ce187596152580b37f1"

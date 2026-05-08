@@ -1,0 +1,33 @@
+name: Morning Intelligence Brief
+
+on:
+  schedule:
+    # 7:00 AM Pacific = 14:00 UTC (during PDT) / 15:00 UTC (during PST)
+    # Using 14:00 UTC for PDT (March-November)
+    - cron: '0 14 * * 1-5'  # Weekdays only
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  morning-brief:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run Morning Brief
+        env:
+          WINDSOR_API_KEY: ${{ secrets.WINDSOR_API_KEY }}
+          HUBSPOT_TOKEN: ${{ secrets.HUBSPOT_TOKEN }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
+        run: node morning-brief.js
