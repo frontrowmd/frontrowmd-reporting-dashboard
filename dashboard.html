@@ -1578,22 +1578,59 @@ function renderDemoQuality(){try{
   var pruneRate=pruneDenom>0?(cancelledBeforeDemoCount/pruneDenom*100).toFixed(1):'0';
   var lowTrafficPct=lowTrafficDenom>0?(lowTrafficContacts/lowTrafficDenom*100).toFixed(1):'0';
 
-  // KPI Row 1: Count cards
-  h+='<div class="tg" style="margin-bottom:12px">';
-  var totalNewSched=(d.demoTracking&&d.demoTracking.totalScheduled&&d.demoTracking.totalScheduled.value)||0;
-  h+='<div class="tile hero"><div class="tlbl">Total New Demos Scheduled</div><div class="tval" style="font-size:28px">'+fN(totalNewSched)+'</div><div class="tdef">Contacts created with date_demo_booked set</div></div>';
-  h+='<div class="tile hero"><div class="tlbl">Demos to Occur</div><div class="tval" style="font-size:28px">'+total+'</div><div class="tdef">'+_eqWinLbl+'</div></div>';
-  h+='<div class="tile hero"><div class="tlbl">Demos Happened</div><div class="tval" style="font-size:28px">'+demosHappened+'</div><div class="tdef">'+(total?(demosHappened/total*100).toFixed(1):'0')+'% of demos to occur</div></div>';
-  h+='<div class="tile '+(staleScheduledCount>0?'warn':'hero')+'"><div class="tlbl">Pending Attendance</div><div class="tval" style="font-size:28px">'+staleScheduledCount+'</div><div class="tdef">Scheduled — pending with date in past</div></div>';
-  h+='<div class="tile '+(pendingQualCount>0?'warn':'hero')+'"><div class="tlbl">Pending Qual</div><div class="tval" style="font-size:28px">'+pendingQualCount+'</div><div class="tdef">Not yet evaluated with date in past</div></div>';
+  // Top section — Primary outcome / Volume / Quality cards (mirror Executive Overview)
+  // Pulls worker-side aggregates from d.executiveSummary + d.demoTracking so the metrics
+  // match the Overview page exactly. Local counters above (qualRate/noShowRate/etc.) are
+  // retained for downstream sections that may still reference them.
+  var qmetaC=(d.demoTracking&&d.demoTracking._qualMeta)||{};
+  var ltmetaC=(d.executiveSummary&&d.executiveSummary.lowTrafficPct&&d.executiveSummary.lowTrafficPct._meta)||{};
+  var esMC=(d.executiveSummary&&d.executiveSummary._meta)||{};
+  var demosHeldFullC=esMC.demosHeldCount||0;
+  var demosHeldScaleC=esMC.demosHeldScaleCount||0;
+  var demosHeldScaleCPV=esMC.pDemosHeldScaleCount==null?null:esMC.pDemosHeldScaleCount;
+  var demosHeldScaleCLMV=esMC.pmDemosHeldScaleCount==null?null:esMC.pmDemosHeldScaleCount;
+  var totalSchedCard=(d.demoTracking&&d.demoTracking.totalScheduled&&d.demoTracking.totalScheduled.value)||0;
+  var totalSchedCardPV=d.demoTracking&&d.demoTracking.totalScheduled&&d.demoTracking.totalScheduled.sameTimePrior&&d.demoTracking.totalScheduled.sameTimePrior.value;
+  var totalSchedCardLMV=d.demoTracking&&d.demoTracking.totalScheduled&&d.demoTracking.totalScheduled.lastMonth&&d.demoTracking.totalScheduled.lastMonth.value;
+  var tqdC=d.executiveSummary&&d.executiveSummary.totalQualifiedDemos;
+  var tqdCurC=(tqdC&&tqdC.value)||0,tqdPriorC=tqdC&&tqdC.sameTimePrior&&tqdC.sameTimePrior.value,tqdLmC=tqdC&&tqdC.lastMonth&&tqdC.lastMonth.value;
+  var demosToOccurC=(d.demoTracking&&d.demoTracking.demosToOccur&&d.demoTracking.demosToOccur.value)||0;
+  var demosToOccurCPV=d.demoTracking&&d.demoTracking.demosToOccur&&d.demoTracking.demosToOccur.sameTimePrior&&d.demoTracking.demosToOccur.sameTimePrior.value;
+  var demosToOccurCLMV=d.demoTracking&&d.demoTracking.demosToOccur&&d.demoTracking.demosToOccur.lastMonth&&d.demoTracking.demosToOccur.lastMonth.value;
+  var lowTrafficPctC=d.executiveSummary&&d.executiveSummary.lowTrafficPct&&d.executiveSummary.lowTrafficPct.value;
+  var lowTrafficPctCPV=d.executiveSummary&&d.executiveSummary.lowTrafficPct&&d.executiveSummary.lowTrafficPct.sameTimePrior&&d.executiveSummary.lowTrafficPct.sameTimePrior.value;
+  var lowTrafficPctCLMV=d.executiveSummary&&d.executiveSummary.lowTrafficPct&&d.executiveSummary.lowTrafficPct.lastMonth&&d.executiveSummary.lowTrafficPct.lastMonth.value;
+  var qualRateC=d.executiveSummary&&d.executiveSummary.qualificationRate&&d.executiveSummary.qualificationRate.value;
+  var qualRateCPV=d.executiveSummary&&d.executiveSummary.qualificationRate&&d.executiveSummary.qualificationRate.sameTimePrior&&d.executiveSummary.qualificationRate.sameTimePrior.value;
+  var qualRateCLMV=d.executiveSummary&&d.executiveSummary.qualificationRate&&d.executiveSummary.qualificationRate.lastMonth&&d.executiveSummary.qualificationRate.lastMonth.value;
+  var noShowC=d.demoTracking&&d.demoTracking.noShowRate&&d.demoTracking.noShowRate.value;
+  var noShowCPV=d.demoTracking&&d.demoTracking.noShowRate&&d.demoTracking.noShowRate.sameTimePrior&&d.demoTracking.noShowRate.sameTimePrior.value;
+  var noShowCLMV=d.demoTracking&&d.demoTracking.noShowRate&&d.demoTracking.noShowRate.lastMonth&&d.demoTracking.noShowRate.lastMonth.value;
+  var pruneC=d.executiveSummary&&d.executiveSummary.pruneRate&&d.executiveSummary.pruneRate.value;
+  var pruneCPV=d.executiveSummary&&d.executiveSummary.pruneRate&&d.executiveSummary.pruneRate.sameTimePrior&&d.executiveSummary.pruneRate.sameTimePrior.value;
+  var pruneCLMV=d.executiveSummary&&d.executiveSummary.pruneRate&&d.executiveSummary.pruneRate.lastMonth&&d.executiveSummary.pruneRate.lastMonth.value;
+
+  // Render helpers (mirror Overview's renderDash inline helpers)
+  function nfmtC(n,fmt,dec){if(n==null)return '—';var s=n>=0?'+':'-';var a=Math.abs(n);var dc=dec!=null?dec:1;if(fmt==='$')return s+'$'+Math.round(a).toLocaleString();if(fmt==='#')return s+Math.round(a).toLocaleString();if(fmt==='%')return s+a.toFixed(dc)+'%';if(fmt==='x')return s+a.toFixed(2)+'x';return s+a.toFixed(dc);}
+  function dfmtC(cur,prev,fmt,inv,dec){if(cur==null||prev==null)return '<span style="color:var(--grey)">—</span>';var nd=cur-prev;var pd=prev!==0?((cur-prev)/prev)*100:null;var arrow=nd>=0?'↑':'↓';var positive=nd>0;var good=inv?!positive:positive;var color=nd===0?'var(--grey)':(good?'var(--green)':'var(--red)');var nStr=nfmtC(nd,fmt,dec);var pStr=pd!=null?'('+(pd>=0?'+':'')+pd.toFixed(1)+'%)':'';return '<span style="color:'+color+';font-weight:600">'+arrow+' '+nStr+' '+pStr+'</span>';}
+  function deltaBlockC(cur,priorV,lmV,fmt,inv,dec){return '<div style="display:flex;justify-content:flex-start;align-items:baseline;font-size:11px;line-height:1.7;gap:8px"><span style="color:var(--grey);flex-shrink:0;min-width:42px">vs prior</span>'+dfmtC(cur,priorV,fmt,inv,dec)+'</div><div style="display:flex;justify-content:flex-start;align-items:baseline;font-size:11px;line-height:1.7;gap:8px"><span style="color:var(--grey);flex-shrink:0;min-width:42px">vs LM</span>'+dfmtC(cur,lmV,fmt,inv,dec)+'</div>';}
+  function panelOpenC(label,dotColor){return '<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border)"><div style="width:6px;height:6px;background:'+dotColor+';border-radius:50%"></div><div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy)">'+label+'</div></div>';}
+  function statRowC(label,def,valueHTML,calcText,cur,priorV,lmV,fmt,opts){opts=opts||{};var valColor=opts.color||'var(--navy)';var calcSpan=calcText?'<div style="font-size:11px;color:var(--grey)">'+calcText+'</div>':'';var extraSpan=opts.extra?'<div style="font-size:11px;color:var(--grey);margin:4px 0 6px">'+opts.extra+'</div>':'';var mb=opts.noMargin?'0':'10px';var bgCol='var(--white)',borderCol='var(--border)',extraStyle='';if(opts.highlighted){bgCol='linear-gradient(135deg,rgba(114,164,191,.05) 0%,rgba(114,164,191,.10) 100%)';borderCol='#A6CDDB';extraStyle='box-shadow:inset 3px 0 0 var(--teal);';}if(opts.dangerIf!=null&&typeof cur==='number'&&cur>opts.dangerIf){borderCol='#FCA5A5';extraStyle+='box-shadow:inset 3px 0 0 var(--red);';}if(opts.warnIf!=null&&typeof cur==='number'&&cur>opts.warnIf){bgCol='linear-gradient(135deg,rgba(245,158,11,.05) 0%,rgba(245,158,11,.10) 100%)';borderCol='#FCD34D';extraStyle+='box-shadow:inset 3px 0 0 #F59E0B;';}return '<div class="stat-card" style="background:'+bgCol+';border:1px solid '+borderCol+';border-radius:8px;padding:12px;margin-bottom:'+mb+';transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease;'+extraStyle+'"><div style="font-family:var(--font-h);font-size:11px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">'+label+'</div><div style="font-size:11px;color:var(--grey);line-height:1.4;margin-bottom:6px">'+def+'</div><div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px"><div style="font-family:var(--font-h);font-size:22px;font-weight:700;line-height:1;color:'+valColor+'">'+valueHTML+'</div>'+calcSpan+'</div>'+extraSpan+deltaBlockC(cur,priorV,lmV,fmt,opts.inv,opts.dec)+'</div>';}
+
+  // Primary outcome card (full width)
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px"><div style="font-family:var(--font-h);font-size:11px;color:var(--grey);margin-bottom:10px;padding:0 6px;text-transform:uppercase;letter-spacing:.08em">Primary outcome</div>'+statRowC('New demos scheduled','Contacts created with date_demo_booked set',fN(totalSchedCard),null,totalSchedCard,totalSchedCardPV,totalSchedCardLMV,'#',{highlighted:true})+statRowC('Demos held (excl. pre-launch)','Demo Given orig + resched, excluding pre-launch brands',fN(demosHeldScaleC),null,demosHeldScaleC,demosHeldScaleCPV,demosHeldScaleCLMV,'#',{highlighted:true})+statRowC('Qualified demos','Deals where demo_qualification_outcome = Qualified',fN(tqdCurC),null,tqdCurC,tqdPriorC,tqdLmC,'#',{noMargin:true})+'</div>';
+  // Volume + Quality side-by-side
+  h+='<div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:12px;margin-bottom:20px">';
+  h+=panelOpenC('Volume','#3B82F6');
+  h+=statRowC('Demos supposed to happen','Demos held + No shows + Pruned',fN(qmetaC.pruneDenom||0),fN((qmetaC.demoGivenOrigCount||0)+(qmetaC.demoGivenReschedCount||0))+' held + '+fN(qmetaC.noShowCount||0)+' no-show + '+fN(qmetaC.cancelledBeforeDemoCount||0)+' pruned',qmetaC.pruneDenom||0,qmetaC.pruneDenomPrior,qmetaC.pruneDenomLastMonth,'#');
+  h+=statRowC('Demos to occur','Deals by date_demo_booked in window',fN(demosToOccurC),null,demosToOccurC,demosToOccurCPV,demosToOccurCLMV,'#');
+  h+=statRowC('% Pre-launch demos','Pre-launch ÷ New demos scheduled',lowTrafficPctC!=null?lowTrafficPctC.toFixed(1)+'%':'—',fN(ltmetaC.lowTraffic||0)+' ÷ '+fN(ltmetaC.totalScheduled||0),lowTrafficPctC,lowTrafficPctCPV,lowTrafficPctCLMV,'%',{inv:true,warnIf:30,noMargin:true});
   h+='</div>';
-  // KPI Row 2: percentage cards (DQ removed — redundant with Qual Rate)
-  h+='<div class="tg" style="margin-bottom:20px">';
-  h+='<div class="tile hero"><div class="tlbl">Total Qualified Demos</div><div class="tval" style="font-size:28px">'+qualifiedRawCount+'</div><div class="tdef">demo_qualification_outcome = Qualified</div></div>';
-  h+='<div class="tile '+(parseFloat(noShowRate)>20?'warn':'hero')+'"><div class="tlbl">No Show Rate</div><div class="tval" style="font-size:28px">'+noShowRate+'%</div><div class="tdef">'+catNoShow+' / '+noShowDenom+' · NS ÷ (Given orig + Given resched + NS)</div></div>';
-  h+='<div class="tile hero"><div class="tlbl">Qualification Rate</div><div class="tval" style="font-size:28px">'+qualRate+'%</div><div class="tdef">'+qualifiedRawCount+' / '+qualRateDenom+' · Qualified ÷ (Qual + Disqual)</div></div>';
-  h+='<div class="tile '+(parseFloat(lowTrafficPct)>30?'warn':'hero')+'"><div class="tlbl">% Pre-Launch Demos</div><div class="tval" style="font-size:28px">'+lowTrafficPct+'%</div><div class="tdef">'+fN(lowTrafficContacts)+' of '+fN(lowTrafficDenom)+' new demos scheduled</div></div>';
-  h+='<div class="tile hero"><div class="tlbl">Prune Rate</div><div class="tval" style="font-size:28px">'+pruneRate+'%</div><div class="tdef">'+cancelledBeforeDemoCount+' / '+pruneDenom+' · Cancelled ÷ Settled outcomes</div></div>';
+  h+=panelOpenC('Quality','#1D9E75');
+  h+=statRowC('Prune rate','Cancelled before demo ÷ all settled outcomes',pruneC!=null?pruneC.toFixed(1)+'%':'—',fN(qmetaC.cancelledBeforeDemoCount||0)+' ÷ '+fN(qmetaC.pruneDenom||0),pruneC,pruneCPV,pruneCLMV,'%',{inv:true,warnIf:20});
+  h+=statRowC('No-show rate','No Show ÷ (Demo Given orig + resched + No Show)',noShowC!=null?noShowC.toFixed(1)+'%':'—',fN(qmetaC.noShowCount||0)+' ÷ '+fN(qmetaC.noShowDenom||0),noShowC,noShowCPV,noShowCLMV,'%',{inv:true,warnIf:20});
+  h+=statRowC('Qualification rate','Qualified ÷ Demos Held',qualRateC!=null?qualRateC.toFixed(1)+'%':'—',fN(qmetaC.qualifiedRawCount||0)+' ÷ '+fN(demosHeldFullC),qualRateC,qualRateCPV,qualRateCLMV,'%',{noMargin:true});
+  h+='</div>';
   h+='</div>';
 
   // Demos by Rep (matches Pre-Demo format; bars based on full-window deals)
