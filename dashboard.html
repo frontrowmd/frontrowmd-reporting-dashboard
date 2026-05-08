@@ -1061,13 +1061,13 @@ function renderOverviewOutcomeBreakdown(d){
       var reschN=brd['Demo Given (rescheduled)']||0;
       var nsN=brd['No Show']||0;
       var cancN=brd['Cancelled before demo']||0;
-      var heldN=origN+reschN; // v15: Demos Held = orig + resched (no-show excluded)
       var noShowDenom=origN+reschN+nsN;        // matches Quality No-show rate denom
       var pruneDenom=origN+reschN+nsN+cancN;   // matches Quality Prune rate denom
-      var qN=qod['Qualified']||0;
+      var qN=qod['Qualified']||0,dqN=qod['Disqualified']||0;
+      var qualDenom=qN+dqN;
       var pruneRate=pruneDenom>0?Math.round((cancN/pruneDenom)*100):0;
       var noShowRate=noShowDenom>0?Math.round((nsN/noShowDenom)*100):0;
-      var qualRate=heldN>0?Math.round((qN/heldN)*100):0;
+      var qualRate=qualDenom>0?Math.round((qN/qualDenom)*100):0;
       // Row container
       h+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:'+(bi===0?'14':'10')+'px'+(bi===0?';padding-bottom:14px;border-bottom:1px solid var(--border)':'')+'">';
       h+='<div style="width:140px;font-size:12px;color:var(--navy);text-align:right;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+br.label+'">'+br.label+'</div>';
@@ -1088,7 +1088,7 @@ function renderOverviewOutcomeBreakdown(d){
       h+='<div style="display:flex;gap:4px;flex-shrink:0">';
       h+='<div class="ov-outc-kpi" data-tip="Cancelled before demo ÷ (orig + resched + noShow + cancelled) — '+cancN+'/'+pruneDenom+'" style="text-align:center;padding:2px 6px;background:rgba(234,88,12,.06);border:1px solid rgba(234,88,12,.15);border-radius:4px;width:54px;box-sizing:border-box;cursor:default;transition:opacity .15s"><div style="font-size:11px;font-weight:700;color:#EA580C">'+pruneRate+'%</div><div style="font-size:7px;color:#EA580C;text-transform:uppercase;letter-spacing:.3px">Prune</div></div>';
       h+='<div class="ov-outc-kpi" data-tip="No Show ÷ (orig + resched + noShow) — '+nsN+'/'+noShowDenom+'" style="text-align:center;padding:2px 6px;background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.15);border-radius:4px;width:54px;box-sizing:border-box;cursor:default;transition:opacity .15s"><div style="font-size:11px;font-weight:700;color:#DC2626">'+noShowRate+'%</div><div style="font-size:7px;color:#DC2626;text-transform:uppercase;letter-spacing:.3px">NoShow</div></div>';
-      h+='<div class="ov-outc-kpi" data-tip="Qualified ÷ Demos Held (orig + resched) — '+qN+'/'+heldN+'" style="text-align:center;padding:2px 6px;background:rgba(22,163,74,.06);border:1px solid rgba(22,163,74,.15);border-radius:4px;width:54px;box-sizing:border-box;cursor:default;transition:opacity .15s"><div style="font-size:11px;font-weight:700;color:#16A34A">'+qualRate+'%</div><div style="font-size:7px;color:#16A34A;text-transform:uppercase;letter-spacing:.3px">Qual</div></div>';
+      h+='<div class="ov-outc-kpi" data-tip="Qualified ÷ (Qualified + Disqualified) — '+qN+'/'+qualDenom+'" style="text-align:center;padding:2px 6px;background:rgba(22,163,74,.06);border:1px solid rgba(22,163,74,.15);border-radius:4px;width:54px;box-sizing:border-box;cursor:default;transition:opacity .15s"><div style="font-size:11px;font-weight:700;color:#16A34A">'+qualRate+'%</div><div style="font-size:7px;color:#16A34A;text-transform:uppercase;letter-spacing:.3px">Qual</div></div>';
       h+='</div></div>';
     }
     h+='</div>'; // close #ov-outcome-bars
