@@ -2387,9 +2387,9 @@ const BD_DEAL_PROPS = [
 async function fetchBDData(env) {
   const hsToken = env.HUBSPOT_TOKEN;
   const deals = await hsSearch(hsToken, 'deals', [
-    { filters: [{ propertyName: 'dealstage', operator: 'IN', values: ['closedwon','decisionmakerboughtin','contractsent','3453925110'] }] },
+    { filters: [{ propertyName: 'dealstage', operator: 'IN', values: ['appointmentscheduled','1084214349','decisionmakerboughtin','contractsent','closedwon','closedlost','3453957850','3453925110','1062974581','3517067985'] }] },
   ], BD_DEAL_PROPS);
-  console.log(`BD: ${deals.length} closed-won deals`);
+  console.log(`BD: ${deals.length} deals across all stages`);
 
   const ownerMap = {};
   try {
