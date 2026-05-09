@@ -167,7 +167,10 @@ function renderBD(){
   if(_bdHideBlanks){attrSorted=attrSorted.filter(function(e){var k=e[0].toLowerCase();return k!=='(none)'&&k!==''&&k!=='none';});}
   var attrVisTotal=0,attrVisMRR=0;for(var avt=0;avt<attrSorted.length;avt++){attrVisTotal+=attrSorted[avt][1];attrVisMRR+=attrMRR[attrSorted[avt][0]]||0;}
   var attrMax=1;for(var ami=0;ami<attrSorted.length;ami++){if(attrSorted[ami][1]>attrMax)attrMax=attrSorted[ami][1];}
-  var attrColors=Object.assign({},BD_STAGE_COLORS,BD_STATUS_COLORS,BD_PKG_COLORS,BD_REP_CMAP,{'Pre-launch':'#9CA3AF','0-10K':'#72A4BF','10-25K':'#1D4053','25-50K':'#172C45','50-100K':'#0EA5E9','100-200K':'#7C3AED','200-500K':'#16A34A','500K+':'#F59E0B','(none)':'#9CA3AF','Unassigned':'#9CA3AF','Closed Won':'#16A34A','Decision Maker':'#7C3AED','Contract Sent':'#1565C0','Churned':'#DC2626','Churned (Onb)':'#DC2626'});
+  // Derive stage-label → color map from BD_STAGE_LABELS + BD_STAGE_COLORS so the
+  // Deal Attribution bars match the table's stage badge colors exactly.
+  var bdStageLabelColors={};Object.keys(BD_STAGE_LABELS).forEach(function(k){bdStageLabelColors[BD_STAGE_LABELS[k]]=BD_STAGE_COLORS[k]||'#72A4BF';});
+  var attrColors=Object.assign({},BD_STAGE_COLORS,BD_STATUS_COLORS,BD_PKG_COLORS,BD_REP_CMAP,bdStageLabelColors,{'Pre-launch':'#9CA3AF','0-10K':'#72A4BF','10-25K':'#1D4053','25-50K':'#172C45','50-100K':'#0EA5E9','100-200K':'#7C3AED','200-500K':'#16A34A','500K+':'#F59E0B','(none)':'#9CA3AF','Unassigned':'#9CA3AF'});
   h+='<div style="border-top:2px solid var(--border);margin:24px 0 20px"></div>';
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:20px;position:relative">';
   h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap"><div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">Deal Attribution</div><div style="font-size:10px;color:var(--grey);margin-left:4px">'+attrVisTotal+' deals \u00b7 '+f$(attrVisMRR)+' MRR'+(_bdHideBlanks&&attrVisTotal<sharedFiltered.length?' ('+sharedFiltered.length+' total)':'')+'</div><div style="flex:1"></div>';
@@ -178,10 +181,24 @@ function renderBD(){
   h+='<div class="attr-row" data-label="'+ak+'" data-count="'+ac+'" data-pct="'+apct+'" data-mrr="'+Math.round(aMrr)+'" style="display:flex;align-items:center;gap:12px;margin-bottom:10px;cursor:pointer"><div style="width:120px;flex-shrink:0;font-size:12px;font-weight:600;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right" title="'+ak+'">'+ak+'</div><div style="flex:1;min-width:0;background:rgba(114,164,191,.06);border-radius:6px;height:28px;position:relative"><div style="height:100%;border-radius:6px;background:'+barC+';width:'+bw2+'%;min-width:4px;transition:width .3s"></div></div><div style="width:180px;flex-shrink:0;font-size:12px;color:var(--navy);white-space:nowrap;text-align:right;font-weight:500"><span style="color:var(--grey);font-weight:400">'+ac+'</span> <span style="color:var(--grey);font-weight:400">('+apct+'%)</span> <span style="font-weight:600">'+f$(aMrr)+'</span></div></div>';}
   h+='</div><div id="bd-attr-tip" class="float-tip"></div></div>';
   // Summary Card
+  // sfStatusFilled = denominator for % Paused / % Churned (deals with brand_status field filled).
+  // sfDaysCount = sample size for Avg Days to Close, restricted to Closed-Won deals only.
   var sfTotal=sharedFiltered.length,sfTotalAmt=0,sfPaused=0,sfChurned=0,sfPausedMRR=0,sfChurnedMRR=0;
-  var sfDaysSum=0,sfDaysCount=0;
-  sharedFiltered.forEach(function(dd){sfTotalAmt+=dd.amount;if(dd.brand_status==='Paused'){sfPaused++;sfPausedMRR+=dd.amount;}if(dd.dealstage==='3453925110'||dd.dealstage==='3517067985'){sfChurned++;sfChurnedMRR+=dd.amount;}
-    if(dd.createdate&&dd.closedate){var t1=new Date(dd.createdate).getTime(),t2=new Date(dd.closedate).getTime();if(!isNaN(t1)&&!isNaN(t2)&&t2>=t1){sfDaysSum+=(t2-t1)/86400000;sfDaysCount++;}}});
+  var sfDaysSum=0,sfDaysCount=0,sfStatusFilled=0;
+  sharedFiltered.forEach(function(dd){
+    sfTotalAmt+=dd.amount;
+    // Universe for % Paused / % Churned = deals with brand_status filled
+    if(dd.brand_status){
+      sfStatusFilled++;
+      if(dd.brand_status==='Paused'){sfPaused++;sfPausedMRR+=dd.amount;}
+      if(dd.dealstage==='3453925110'||dd.dealstage==='3517067985'){sfChurned++;sfChurnedMRR+=dd.amount;}
+    }
+    // Avg Days to Close: Closed-Won only, with both createdate and closedate present
+    if(dd.dealstage==='closedwon'&&dd.createdate&&dd.closedate){
+      var t1=new Date(dd.createdate).getTime(),t2=new Date(dd.closedate).getTime();
+      if(!isNaN(t1)&&!isNaN(t2)&&t2>=t1){sfDaysSum+=(t2-t1)/86400000;sfDaysCount++;}
+    }
+  });
   var sfAvgDays=sfDaysCount?Math.round(sfDaysSum/sfDaysCount):null;
   var sfAvgACV=sfTotal?(sfTotalAmt/sfTotal):0;
   h+='<div style="display:flex;gap:12px;margin-bottom:16px">';
@@ -189,9 +206,9 @@ function renderBD(){
   h+='<div class="tile hero" style="flex:1"><div class="tlbl">Total ARR</div><div class="tval" style="font-size:22px">'+f$(sfTotalAmt*12)+'</div><div class="tdef">MRR \u00d7 12</div></div>';
   h+='<div class="tile hero" style="flex:1"><div class="tlbl">Total MRR</div><div class="tval" style="font-size:22px">'+f$(sfTotalAmt)+'</div><div class="tdef">Sum of amount</div></div>';
   h+='<div class="tile hero" style="flex:1"><div class="tlbl">Avg ACV</div><div class="tval" style="font-size:22px">'+f$(sfAvgACV)+'</div><div class="tdef">MRR \u00f7 deals</div></div>';
-  h+='<div class="tile hero" style="flex:1"><div class="tlbl">Avg Days to Close</div><div class="tval" style="font-size:22px">'+(sfAvgDays==null?'\u2014':sfAvgDays)+'</div><div class="tdef">'+sfDaysCount+' of '+sfTotal+' with both dates</div></div>';
-  h+='<div class="tile '+(sfTotal&&sfPaused/sfTotal>.15?'warn':'hero')+'" style="flex:1"><div class="tlbl">% Paused</div><div class="tval" style="font-size:22px">'+(sfTotal?(sfPaused/sfTotal*100).toFixed(1):0)+'%</div><div class="tdef">'+sfPaused+' deals \u00b7 '+f$(sfPausedMRR)+' MRR</div></div>';
-  h+='<div class="tile '+(sfTotal&&sfChurned/sfTotal>.2?'warn':'hero')+'" style="flex:1"><div class="tlbl">% Churned</div><div class="tval" style="font-size:22px">'+(sfTotal?(sfChurned/sfTotal*100).toFixed(1):0)+'%</div><div class="tdef">'+sfChurned+' deals \u00b7 '+f$(sfChurnedMRR)+' MRR</div></div>';
+  h+='<div class="tile hero" style="flex:1"><div class="tlbl">Avg Days to Close</div><div class="tval" style="font-size:22px">'+(sfAvgDays==null?'\u2014':sfAvgDays)+'</div><div class="tdef">(closedate \u2212 createdate) \u00f7 '+sfDaysCount+' Closed-Won deals</div></div>';
+  h+='<div class="tile '+(sfStatusFilled&&sfPaused/sfStatusFilled>.15?'warn':'hero')+'" style="flex:1"><div class="tlbl">% Paused</div><div class="tval" style="font-size:22px">'+(sfStatusFilled?(sfPaused/sfStatusFilled*100).toFixed(1):0)+'%</div><div class="tdef">'+sfPaused+' \u00f7 '+sfStatusFilled+' brands w/ status \u00b7 '+f$(sfPausedMRR)+' MRR</div></div>';
+  h+='<div class="tile '+(sfStatusFilled&&sfChurned/sfStatusFilled>.2?'warn':'hero')+'" style="flex:1"><div class="tlbl">% Churned</div><div class="tval" style="font-size:22px">'+(sfStatusFilled?(sfChurned/sfStatusFilled*100).toFixed(1):0)+'%</div><div class="tdef">Churned dealstage '+sfChurned+' \u00f7 '+sfStatusFilled+' brands w/ status \u00b7 '+f$(sfChurnedMRR)+' MRR</div></div>';
   h+='</div>';
   // Filters
   var uniqBS={},uniqStage={},uniqPkg={};
