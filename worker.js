@@ -2386,9 +2386,11 @@ const BD_DEAL_PROPS = [
 
 async function fetchBDData(env) {
   const hsToken = env.HUBSPOT_TOKEN;
+  // hsSearch defaults to maxPages=10 → 2000 deals. We bump to 50 (10k cap, matches hsSearch's hard cap)
+  // since BD pulls every late-funnel/won/churned deal across all time.
   const deals = await hsSearch(hsToken, 'deals', [
     { filters: [{ propertyName: 'dealstage', operator: 'IN', values: ['appointmentscheduled','1084214349','decisionmakerboughtin','contractsent','closedwon','closedlost','3453957850','3453925110','1062974581','3517067985'] }] },
-  ], BD_DEAL_PROPS);
+  ], BD_DEAL_PROPS, 200, [{ propertyName: 'hs_createdate', direction: 'ASCENDING' }], 50);
   console.log(`BD: ${deals.length} deals across all stages`);
 
   const ownerMap = {};
