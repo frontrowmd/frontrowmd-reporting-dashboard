@@ -1008,7 +1008,8 @@ function renderIrfan(){
   const tCpd=es.trueCpd?.value;const tCpdPV=es.trueCpd?.sameTimePrior?.value;const tCpdLMV=es.trueCpd?.lastMonth?.value;
   const tCpqd=es.totalTrueCpqd?.value;const tCpqdPV=es.totalTrueCpqd?.sameTimePrior?.value;const tCpqdLMV=es.totalTrueCpqd?.lastMonth?.value;
   const pruneRate=es.pruneRate?.value;const prunePV=es.pruneRate?.sameTimePrior?.value;const pruneLMV=es.pruneRate?.lastMonth?.value;
-  const noShowRate=dt.noShowRate?.value;const noShowPV=dt.noShowRate?.sameTimePrior?.value;const noShowLMV=dt.noShowRate?.lastMonth?.value;
+  // KPI #4 uses scale-tier no-show rate (non-pre-launch only) from new worker field.
+  const noShowRate=dt.noShowRateScale?.value;const noShowPV=dt.noShowRateScale?.sameTimePrior?.value;const noShowLMV=dt.noShowRateScale?.lastMonth?.value;
 
   // Local helpers — small inline delta line "↑ +N (+X.X%)" for tile footers
   function _irNfmt(n,fmt,dec){if(n==null)return '—';var s=n>=0?'+':'-';var a=Math.abs(n);var dc=dec!=null?dec:1;if(fmt==='$')return s+'$'+Math.round(a).toLocaleString();if(fmt==='%')return s+a.toFixed(dc)+'%';return s+Math.round(a).toLocaleString();}
@@ -1021,9 +1022,9 @@ function renderIrfan(){
   h+='<div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);margin-bottom:10px">Daily Trend & Web-Traffic Mix</div>';
   h+='<div style="display:grid;grid-template-columns:1.6fr 1fr;gap:16px;margin-bottom:28px">';
   // 1a — Demos per day (excl. pre-launch). Renders into #irfan-daily-wrap below.
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Demos Scheduled per Day</div><div style="font-size:11px;color:var(--grey);margin-bottom:14px">Average line excludes pre-launch brands</div><div id="irfan-daily-wrap"></div><div style="font-size:11px;color:#D97706;margin-top:8px;font-style:italic">⚠ Showing total per day for now — needs <code>scheduled.byDayScale</code> from worker to filter out pre-launch per bar.</div></div>';
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Demos Scheduled per Day</div><div style="font-size:11px;color:var(--grey);margin-bottom:14px">Excludes pre-launch brands · average line shows daily mean</div><div id="irfan-daily-wrap"></div></div>';
   // 1b — Web-traffic distribution pie
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Demos by Web-Traffic Range</div><div style="font-size:11px;color:var(--grey);margin-bottom:14px">% of scheduled demos in each tier</div><div style="display:flex;align-items:center;justify-content:center;min-height:240px;color:var(--grey);font-size:12px;font-style:italic;padding:20px;text-align:center">⚠ Placeholder — needs <code>scheduled.byWebTraffic</code> aggregation from worker.<br>Will render a pie chart in fixed tier order (Pre-launch → 500K+) clockwise.</div></div>';
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Demos by Web-Traffic Range</div><div style="font-size:11px;color:var(--grey);margin-bottom:14px">% of scheduled demos in each tier · ordered Pre-launch → 500K+ clockwise</div><div id="irfan-wt-pie"></div></div>';
   h+='</div>';
 
   // ═══════ Section 2 — KPI Tiles ═══════
@@ -1035,8 +1036,8 @@ function renderIrfan(){
   h+=`<div class="tile hero" style="border-left:3px solid var(--teal)"><div class="tlbl">True CPQD</div><div class="tval">${tCpqd!=null?f$(tCpqd):'—'}</div><div class="tdef" style="margin-top:4px">Ad spend ÷ Demos held excl. pre-launch</div>${_irTileFooter(tCpqd,tCpqdPV,tCpqdLMV,'$',true)}</div>`;
   // 2.3 % Pruned upfront
   h+=`<div class="tile ${pruneRate!=null&&pruneRate>20?'warn':'hero'}"><div class="tlbl">% Pruned (upfront)</div><div class="tval">${pruneRate!=null?pruneRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">Cancelled before demo ÷ all settled outcomes</div>${_irTileFooter(pruneRate,prunePV,pruneLMV,'%',true)}</div>`;
-  // 2.4 No-show rate — currently full, not scale-tier
-  h+=`<div class="tile ${noShowRate!=null&&noShowRate>20?'warn':'hero'}"><div class="tlbl">No-Show Rate</div><div class="tval">${noShowRate!=null?noShowRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">No Show ÷ (Demo Given orig + resched + No Show)</div><div style="font-size:10px;color:#D97706;margin-top:6px;font-style:italic">⚠ Includes pre-launch — non-pre-launch version pending worker support</div></div>`;
+  // 2.4 No-show rate — scale tier (excludes pre-launch)
+  h+=`<div class="tile ${noShowRate!=null&&noShowRate>20?'warn':'hero'}"><div class="tlbl">No-Show Rate</div><div class="tval">${noShowRate!=null?noShowRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">No Show ÷ (Demo Given orig + resched + No Show), excl. pre-launch</div>${_irTileFooter(noShowRate,noShowPV,noShowLMV,'%',true)}</div>`;
   // 2.5 Placeholder
   h+='<div class="tile" style="border:1.5px dashed #FCD34D;background:rgba(245,158,11,.04)"><div class="tlbl" style="color:#D97706">% Unqualified (Brand Fit)</div><div class="tval" style="color:#D97706">—</div><div class="tdef" style="margin-top:4px;color:#92400E">% who answered both schedule-demo questions and gave a non-qualified "best fits your brand" response</div><div style="font-size:10px;color:#D97706;margin-top:6px;font-style:italic">⚠ Placeholder — data source not yet wired</div></div>';
   h+='</div>';
@@ -1056,12 +1057,13 @@ function renderIrfan(){
 
   // Render daily chart into #irfan-daily-wrap (simplified version of renderDemosPerDay)
   _renderIrfanDaily(d);
+  _renderIrfanWtPie(d);
 }
 
-// Per-day demos bar chart for Irfan Dashboard. Same structure as renderDemosPerDay
-// but writes to #irfan-daily-wrap and skips the surrounding stat tiles.
+// Per-day demos bar chart for Irfan Dashboard — uses scheduledByDayScale
+// (non-pre-launch per-day counts) so both bars and the average line exclude pre-launch.
 function _renderIrfanDaily(d){
-  const sByDay=d.demoTracking?.scheduledByDay||{};
+  const sByDay=d.demoTracking?.scheduledByDayScale||{};
   const days=Object.entries(sByDay).sort((a,b)=>a[0].localeCompare(b[0])).map(([date,count])=>({date,count}));
   const target=document.getElementById('irfan-daily-wrap');if(!target)return;
   if(!days.length){target.innerHTML='<div style="color:var(--grey);font-size:12px;padding:20px 0">No daily data</div>';return;}
@@ -1074,6 +1076,33 @@ function _renderIrfanDaily(d){
     h+=`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px"><div style="width:100%;height:180px;display:flex;align-items:flex-end;justify-content:center"><div class="dbc-bar${isW?' wknd':''}" title="${dowL}, ${lbl}: ${dy.count}" style="height:${barH}%;width:100%;max-width:48px;position:relative"><div class="dbc-cnt">${dy.count}</div></div></div><div class="dbc-lbl dow">${dowL}</div><div class="dbc-lbl">${lbl}</div></div>`;}
   h+='</div></div>';
   target.innerHTML=h;
+}
+
+// Web-traffic-tier pie chart for Irfan Dashboard. Segments in fixed chronological
+// order clockwise: Pre-launch → 0-10K → ... → 500K+. Each tier gets the same
+// color as the BD Dashboard and Demo Quality web-traffic palette.
+const IRFAN_WT_LABELS={'Pre-launch / just launching':'Pre-launch','0-10K monthly web visitors':'0-10K','10-25K monthly web visitors':'10-25K','25-50K monthly web visitors':'25-50K','50-100K monthly web visitors':'50-100K','100-200K monthly web visitors':'100-200K','200-500K monthly web visitors':'200-500K','500K+ monthly web visitors':'500K+'};
+const IRFAN_WT_ORDER=['Pre-launch','0-10K','10-25K','25-50K','50-100K','100-200K','200-500K','500K+'];
+const IRFAN_WT_COLORS={'Pre-launch':'#9CA3AF','0-10K':'#72A4BF','10-25K':'#1D4053','25-50K':'#172C45','50-100K':'#0EA5E9','100-200K':'#7C3AED','200-500K':'#16A34A','500K+':'#F59E0B','(none)':'#E5E7EB'};
+function _renderIrfanWtPie(d){
+  const target=document.getElementById('irfan-wt-pie');if(!target)return;
+  const raw=d.demoTracking?.scheduledByWebTraffic||{};
+  // Normalize raw HubSpot values → short tier labels
+  const buckets={};for(const key in raw){const lbl=IRFAN_WT_LABELS[key]||(key==='(none)'?'(none)':key);buckets[lbl]=(buckets[lbl]||0)+raw[key];}
+  // Order: tiers in fixed sequence first; '(none)' or anything else trailing
+  const segs=[];let total=0;
+  for(const t of IRFAN_WT_ORDER){if(buckets[t]){segs.push({label:t,count:buckets[t]});total+=buckets[t];delete buckets[t];}}
+  for(const k of Object.keys(buckets)){segs.push({label:k,count:buckets[k]});total+=buckets[k];}
+  if(!total){target.innerHTML='<div style="color:var(--grey);font-size:12px;padding:40px 0;text-align:center">No web-traffic data</div>';return;}
+  // SVG pie — radius 90, viewBox 240x240
+  const cx=120,cy=120,r=90;let cum=0;let paths='';
+  for(const s of segs){const frac=s.count/total;const a0=cum*2*Math.PI-Math.PI/2;const a1=(cum+frac)*2*Math.PI-Math.PI/2;cum+=frac;const x0=cx+r*Math.cos(a0),y0=cy+r*Math.sin(a0);const x1=cx+r*Math.cos(a1),y1=cy+r*Math.sin(a1);const large=frac>0.5?1:0;const col=IRFAN_WT_COLORS[s.label]||'#9CA3AF';
+    if(frac>=0.9999){paths+=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${col}"/>`;}
+    else paths+=`<path d="M ${cx} ${cy} L ${x0.toFixed(2)} ${y0.toFixed(2)} A ${r} ${r} 0 ${large} 1 ${x1.toFixed(2)} ${y1.toFixed(2)} Z" fill="${col}"/>`;}
+  let legend='<div style="display:flex;flex-direction:column;gap:6px;font-size:11px;color:var(--navy)">';
+  for(const s of segs){const pct=(s.count/total*100).toFixed(1);const col=IRFAN_WT_COLORS[s.label]||'#9CA3AF';legend+=`<div style="display:flex;align-items:center;gap:6px;white-space:nowrap"><span style="display:inline-block;width:10px;height:10px;background:${col};border-radius:2px;flex-shrink:0"></span><span style="font-weight:600;min-width:62px">${s.label}</span><span style="color:var(--grey)">${s.count}</span><span style="color:var(--grey);font-variant-numeric:tabular-nums">${pct}%</span></div>`;}
+  legend+='</div>';
+  target.innerHTML=`<div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;justify-content:center"><svg viewBox="0 0 240 240" style="width:200px;height:200px;flex-shrink:0">${paths}<circle cx="${cx}" cy="${cy}" r="40" fill="var(--white)"/><text x="${cx}" y="${cy-4}" text-anchor="middle" style="font-family:var(--font-h);font-size:18px;font-weight:700;fill:var(--navy)">${total}</text><text x="${cx}" y="${cy+12}" text-anchor="middle" style="font-size:10px;fill:var(--grey)">demos</text></svg>${legend}</div>`;
 }
 
 // Lightweight churn update — only touches ARR/ROAS values, not the slider

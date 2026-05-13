@@ -507,6 +507,8 @@ function processGA4(rows) {
 // ---------------------------------------------------------------------------
 function processScheduledContacts(contacts) {
   const byDay = {};
+  const byDayScale = {};    // per-day count excluding pre-launch (Irfan Dashboard daily chart)
+  const byWebTraffic = {};  // count by raw web-traffic tier value (dashboard maps to display labels)
   let lowTrafficCount = 0;
   // Set of normalized company names + email domains flagged as Pre-launch.
   // Used downstream by processPipelineDeals to compute the scale-tier QDG count.
@@ -519,9 +521,14 @@ function processScheduledContacts(contacts) {
     const et = new Date(d.getTime() + o * 3600000);
     const ds = fmt(et);
     byDay[ds] = (byDay[ds]||0) + 1;
-    const wt = (c.properties?.average_monthly_web_traffic || '').toLowerCase();
+    const wtRaw = c.properties?.average_monthly_web_traffic || '';
+    const wt = wtRaw.toLowerCase();
     const isLow = wt.includes('pre-launch');
-    if (isLow) {
+    const tierKey = wtRaw || '(none)';
+    byWebTraffic[tierKey] = (byWebTraffic[tierKey]||0) + 1;
+    if (!isLow) {
+      byDayScale[ds] = (byDayScale[ds]||0) + 1;
+    } else {
       lowTrafficCount++;
       const company = (c.properties?.company || '').trim().toLowerCase();
       if (company) lowTrafficCompanies.add(company);
@@ -535,7 +542,7 @@ function processScheduledContacts(contacts) {
       }
     }
   }
-  return { total: contacts.length, byDay, lowTrafficCount, lowTrafficCompanies };
+  return { total: contacts.length, byDay, byDayScale, byWebTraffic, lowTrafficCount, lowTrafficCompanies };
 }
 
 // ---------------------------------------------------------------------------
@@ -701,6 +708,10 @@ function processPipelineDeals(deals, winFromUTC, winToUTC, winFromET, winToET, l
   // No Show Rate = No Show / (Demo Given Orig + Demo Given Resched + No Show) — new field model
   const noShowDenom = demoGivenOrigCount + demoGivenReschedCount + noShowCount;
   const noShowRate = noShowDenom > 0 ? (noShowCount / noShowDenom) * 100 : 0;
+  // Scale-tier No Show Rate — same formula but restricted to non-pre-launch demos.
+  // Counters tracked at lines 638/642 already exclude pre-launch via the isLow check.
+  const noShowDenomScale = demoGivenScaleCount + noShowScaleCount;
+  const noShowRateScale = noShowDenomScale > 0 ? (noShowScaleCount / noShowDenomScale) * 100 : 0;
 
   // Prune Rate = Cancelled before demo / (Demo Given Orig + Demo Given Resched + No Show + Cancelled before demo)
   // Denominator: demos with any settled outcome (excludes still-pending so pending demos don't deflate the rate).
@@ -718,7 +729,7 @@ function processPipelineDeals(deals, winFromUTC, winToUTC, winFromET, winToET, l
     totalExtended, demoGivenOrigCount, demoGivenReschedCount, demoGivenScaleCount, noShowScaleCount,
     qualifiedRawCount, disqualifiedRawCount, notYetEvalCount, qualifiedRawScaleCount,
     staleScheduledCount, cancelledBeforeDemoCount, pruneDenom,
-    demoShowRate, qualificationRate, disqualificationRate, noShowRate, noShowDenom, pruneRate,
+    demoShowRate, qualificationRate, disqualificationRate, noShowRate, noShowDenom, noShowRateScale, noShowDenomScale, pruneRate,
     byCategory: byCat, byRep, byChannel, byDay, byStage,
     stageOrder: STAGES,
   };
@@ -1176,6 +1187,7 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
     qualifiedOccurred: buildTile(c.pipeline.qualifiedCount, p.pipeline?.qualifiedCount??null, pm.pipeline?.qualifiedCount??null, 'Deals where demo was given AND outcome = Qualified'),
     demoShowRate: buildTile(c.pipeline.demoShowRate, p.pipeline?.demoShowRate??null, pm.pipeline?.demoShowRate??null, 'Demos Happened ÷ Demos to Occur × 100'),
     noShowRate: buildTile(c.pipeline.noShowRate, p.pipeline?.noShowRate??null, pm.pipeline?.noShowRate??null, 'No Show ÷ (Demo Given orig + Demo Given resched + No Show)'),
+    noShowRateScale: buildTile(c.pipeline.noShowRateScale, p.pipeline?.noShowRateScale??null, pm.pipeline?.noShowRateScale??null, 'No Show ÷ (Demo Given orig + Demo Given resched + No Show), excluding pre-launch'),
     _qualMeta: {
       qualCount: c.pipeline.qualifiedCount||0, reschCount: c.pipeline.rescheduledCount||0,
       tooEarlyCount: c.pipeline.tooEarlyByCat||0, tooSmallCount: c.pipeline.tooSmallByCat||0, prunedCount: c.pipeline.prunedByCat||0,
@@ -1209,6 +1221,8 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
     ),
     dailyChart: c.pipeline.byDay,
     scheduledByDay: c.scheduled.byDay,
+    scheduledByDayScale: c.scheduled.byDayScale,
+    scheduledByWebTraffic: c.scheduled.byWebTraffic,
   };
   demoTracking.demosPaidPct._meta = { windsorDemos: c.adSpend.total.windsorDemos, demosBooked: c.scheduled.total };
 
@@ -1319,7 +1333,7 @@ function buildPeriodData(period, windsorRows, linkedInDemos, ga4Rows, scheduledC
   const scheduled = processScheduledContacts(scheduledContacts);
   const pipeline = processPipelineDeals(pipelineDeals, winFromUTC, winToUTC, winFromET, winToET, scheduled.lowTrafficCompanies);
   // Strip the Set from scheduled — it doesn't serialize and isn't needed downstream
-  const scheduledOut = { total: scheduled.total, byDay: scheduled.byDay, lowTrafficCount: scheduled.lowTrafficCount };
+  const scheduledOut = { total: scheduled.total, byDay: scheduled.byDay, byDayScale: scheduled.byDayScale, byWebTraffic: scheduled.byWebTraffic, lowTrafficCount: scheduled.lowTrafficCount };
   return {
     period,
     adSpend: processAdSpend(windsorRows, linkedInDemos),
