@@ -1070,8 +1070,9 @@ function renderIrfan(){
   h+=`<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Signed Deals — Last 2 Weeks by Web Traffic</div><div style="font-size:11px;color:var(--grey);margin-bottom:14px">${_ir14Range} · ${fN(_ir14.totalSignedLast14||0)} signed · ${_ir14.totalSignedLast14MRR?f$(_ir14.totalSignedLast14MRR)+' MRR':''}</div><div id="irfan-signed14-pie"></div></div>`;
   h+='</div>';
 
-  // Meta Campaign + Creative tables — share the analyzer payload (S.analyzer.data)
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:24px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Meta — Campaign & Creative Tables</div><div style="font-size:11px;color:var(--grey);margin-bottom:14px">Mirrored from the Paid Ads Dashboard for at-a-glance tracking</div><div style="display:flex;align-items:center;justify-content:center;min-height:120px;color:var(--grey);font-size:12px;font-style:italic;padding:20px;text-align:center">⚠ Placeholder — these tables live on the Paid Ads Dashboard (renderAzChannel). To embed here we need to either (a) fetch /api/analyzer data in parallel when Irfan loads, or (b) extract the table renderers into reusable functions that take a Meta channel data shape.</div></div>';
+  // Meta Campaign + Creative tables — read-only, pulled from S.analyzer.data.
+  // Fetched lazily by _renderIrfanMetaTables if the analyzer payload isn't loaded yet.
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:24px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Meta — Campaign & Creative Tables</div><div style="font-size:11px;color:var(--grey);margin-bottom:14px">Top by spend · sourced from the Paid Ads Dashboard payload</div><div id="irfan-meta-tables"></div></div>';
 
   document.getElementById('irfan-c').innerHTML=h;
 
@@ -1079,6 +1080,86 @@ function renderIrfan(){
   _renderIrfanDaily(d);
   _renderIrfanWtPie(d);
   _renderIrfanSignedLast14Pie(d);
+  _renderIrfanMetaTablesLoader();
+}
+
+// Lazily load Meta campaign+creative data for Irfan. Caches per-window on
+// S.irfan.metaCache so we don't re-fetch on every Irfan render, and so we
+// don't clobber S.analyzer's own state. Falls back to S.analyzer.data if the
+// user happens to have just visited the analyzer for the same window.
+function _renderIrfanMetaTablesLoader(){
+  const target=document.getElementById('irfan-meta-tables');if(!target)return;
+  const irfWin=S.irfan?.win||'mtd';
+  if(!S.irfan.metaCache)S.irfan.metaCache={};
+  // Hit cache from prior Irfan fetch for this window
+  if(S.irfan.metaCache[irfWin]){_renderIrfanMetaTables({channels:{meta:S.irfan.metaCache[irfWin]}});return;}
+  // Reuse analyzer's already-loaded payload if same window
+  if(S.analyzer?.data?.channels?.meta&&S.analyzer.win===irfWin){
+    S.irfan.metaCache[irfWin]=S.analyzer.data.channels.meta;
+    _renderIrfanMetaTables(S.analyzer.data);return;
+  }
+  target.innerHTML='<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px"><span class="sp" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle"></span> Loading Meta campaign + creative data…</div>';
+  fetch(AZ_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:PW,window:irfWin})})
+    .then(r=>r.json())
+    .then(ad=>{
+      if(ad&&!ad.error&&ad.channels?.meta){
+        S.irfan.metaCache[irfWin]=ad.channels.meta;
+        // Only render if user is still on Irfan and on the same window
+        if(AP==='irfan'&&(S.irfan?.win||'mtd')===irfWin)_renderIrfanMetaTables(ad);
+      } else {
+        target.innerHTML='<div style="padding:24px;text-align:center;color:var(--red);font-size:12px">Failed to load analyzer data: '+(ad?.detail||ad?.error||'unknown')+'</div>';
+      }
+    })
+    .catch(e=>{console.error('Irfan analyzer fetch failed:',e);target.innerHTML='<div style="padding:24px;text-align:center;color:var(--red);font-size:12px">Failed to load analyzer data: '+e.message+'</div>';});
+}
+
+// Read-only simplified Meta Campaign + Ad Creative tables for the Irfan Dashboard.
+// Mirrors the Paid Ads Dashboard's per-channel tables but strips filters/sort/expand
+// controls — top 25 of each by spend, sorted desc.
+function _renderIrfanMetaTables(d){
+  const target=document.getElementById('irfan-meta-tables');if(!target)return;
+  const meta=d&&d.channels&&d.channels.meta;
+  if(!meta){target.innerHTML='<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px">No Meta data available for this window</div>';return;}
+  const camps=(meta.campaigns||[]).filter(c=>c.spend>0).sort((a,b)=>b.spend-a.spend).slice(0,25);
+  const cres=(meta.creatives||[]).filter(c=>c.spend>0).sort((a,b)=>b.spend-a.spend).slice(0,25);
+  function _statusBadge(st,sp){const a=st==='ACTIVE'||(!st&&sp>0);const p=st==='PAUSED'||st==='COMPLETED'||st==='REMOVED'||(!st&&sp===0);const col=a?'#16A34A':(p?'#9CA3AF':'#64748B');const lbl=a?'Active':(p?'Paused':(st||'—'));return '<span style="display:inline-block;font-size:9px;font-weight:700;color:'+col+';background:'+col+'15;padding:2px 8px;border-radius:99px">'+lbl+'</span>';}
+  function _tableHTML(title,rows,extraCols){
+    let h='<div style="margin-bottom:16px"><div style="font-family:var(--font-h);font-size:12px;font-weight:700;color:var(--navy);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em">'+title+' <span style="font-weight:400;color:var(--grey);font-size:11px;text-transform:none;letter-spacing:0">(top '+rows.length+' by spend)</span></div>';
+    h+='<div style="overflow-x:auto"><table style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr style="border-bottom:1.5px solid var(--border);color:var(--grey)">';
+    h+='<th style="text-align:left;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em">Name</th>';
+    if(extraCols.indexOf('camp')>=0)h+='<th style="text-align:left;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em">Campaign</th>';
+    h+='<th style="text-align:center;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em">Status</th>';
+    h+='<th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em">Spend</th>';
+    h+='<th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em">Impr</th>';
+    h+='<th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em">Clicks</th>';
+    h+='<th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em">CTR</th>';
+    h+='<th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em">Demos</th>';
+    h+='<th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em">CPD</th>';
+    h+='<th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em">Qual</th>';
+    h+='</tr></thead><tbody>';
+    for(const c of rows){
+      const cpd=c.demos>0?c.spend/c.demos:null;
+      const nm=(c.name||'').length>56?(c.name||'').slice(0,53)+'…':(c.name||'');
+      const cmp=(c.campaignName||c.campaign||'');
+      const cmpNm=cmp.length>40?cmp.slice(0,37)+'…':cmp;
+      h+='<tr style="border-bottom:1px solid var(--border)">';
+      h+='<td style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(c.name||'').replace(/"/g,'&quot;')+'">'+nm+'</td>';
+      if(extraCols.indexOf('camp')>=0)h+='<td style="padding:8px 6px;color:var(--grey);font-size:10px" title="'+cmp.replace(/"/g,'&quot;')+'">'+cmpNm+'</td>';
+      h+='<td style="text-align:center;padding:8px 6px">'+_statusBadge(c.status,c.spend)+'</td>';
+      h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+f$(c.spend)+'</td>';
+      h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+fN(c.impressions||0)+'</td>';
+      h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+fN(c.clicks||0)+'</td>';
+      h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+(c.ctr!=null?c.ctr.toFixed(2)+'%':'—')+'</td>';
+      h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+fN(c.demos||0)+'</td>';
+      h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+(cpd!=null?f$(cpd):'—')+'</td>';
+      h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+fN(c.qualified||0)+'</td>';
+      h+='</tr>';
+    }
+    if(!rows.length)h+='<tr><td colspan="'+(extraCols.indexOf('camp')>=0?10:9)+'" style="padding:16px;text-align:center;color:var(--grey)">No data in this window</td></tr>';
+    h+='</tbody></table></div></div>';
+    return h;
+  }
+  target.innerHTML=_tableHTML('Meta Campaigns',camps,[])+_tableHTML('Meta Ad Creatives',cres,['camp']);
 }
 
 // Per-day demos bar chart for Irfan Dashboard — uses scheduledByDayScale
