@@ -1652,10 +1652,14 @@ async function processRequest(windowType, customFrom, customTo, env) {
   resp.contactInfoMap = contactInfoMap;
   resp.companyInfoMap = companyInfoMap;
 
-  // ── Irfan Dashboard — Special Time-Bound Tile #2 ──
-  // Closed-won deals in the last 14 days, aggregated by web-traffic tier at
-  // signing time (deal property average_monthly_web_traffic__cloned_).
-  // Always uses a fixed 14-day window, independent of the page time selector.
+  // ── Irfan Dashboard — Special Time-Bound Tiles ──
+  // Always use fixed windows (last 14 days, prior calendar month), independent of
+  // the page time selector. Stored under resp.irfan so the dashboard reads them
+  // separately from the main time-window metrics.
+  resp.irfan = {};
+
+  // Tile #2 — Closed-won deals in the last 14 days, aggregated by web-traffic tier
+  // at signing time (deal property average_monthly_web_traffic__cloned_).
   try {
     const _today = new Date();
     const _from14 = new Date(_today); _from14.setDate(_from14.getDate()-14);
@@ -1671,10 +1675,75 @@ async function processRequest(windowType, customFrom, customTo, env) {
       totalSignedLast14++;
       totalSignedLast14MRR += parseFloat(pp.amount)||0;
     }
-    resp.irfan = { signedLast14ByWebTraffic, totalSignedLast14, totalSignedLast14MRR, fromDate: _fromStr14, toDate: _toStr14 };
+    resp.irfan.signedLast14ByWebTraffic = signedLast14ByWebTraffic;
+    resp.irfan.totalSignedLast14 = totalSignedLast14;
+    resp.irfan.totalSignedLast14MRR = totalSignedLast14MRR;
+    resp.irfan.last14FromDate = _fromStr14;
+    resp.irfan.last14ToDate = _toStr14;
   } catch(e) {
     console.error('Irfan last-14-days fetch failed:', e);
-    resp.irfan = { error: e.message };
+    resp.irfan.last14Error = e.message;
+  }
+
+  // Tile #1 — Of qualified demos in the PRIOR CALENDAR MONTH (held, non-pre-launch),
+  // what % have since closed-won and at what avg starting ACV?
+  // Pipeline deals carry their CURRENT dealstage (HubSpot returns latest properties),
+  // so a deal qualified last month and signed this month shows dealstage='closedwon'.
+  try {
+    const _now = new Date();
+    const _pcmFrom = new Date(Date.UTC(_now.getUTCFullYear(), _now.getUTCMonth()-1, 1));
+    const _pcmTo = new Date(Date.UTC(_now.getUTCFullYear(), _now.getUTCMonth(), 0));
+    const _pcmFromStr = fmt(_pcmFrom), _pcmToStr = fmt(_pcmTo);
+    // Build pcm lowSet (mirror processScheduledContacts pattern at lines 522-535)
+    const _pcmSched = await fetchScheduledContacts(hsToken, _pcmFromStr, _pcmToStr);
+    const _pcmLowSet = new Set();
+    for (const c of _pcmSched) {
+      const wt = (c.properties?.average_monthly_web_traffic || '').toLowerCase();
+      if (!wt.includes('pre-launch')) continue;
+      const co = (c.properties?.company || '').trim().toLowerCase();
+      if (co) _pcmLowSet.add(co);
+      const em = (c.properties?.email || '').toLowerCase();
+      if (em.includes('@')) {
+        const dom = em.split('@')[1];
+        const personalDomains = ['gmail.com','yahoo.com','hotmail.com','aol.com','outlook.com','icloud.com','protonmail.com'];
+        if (dom && !personalDomains.includes(dom)) _pcmLowSet.add('_domain_'+dom);
+      }
+    }
+    const _pcmPipe = await fetchPipelineDeals(hsToken, _pcmFromStr, _pcmToStr);
+    let qualifiedScale = 0, signed = 0, signedMrrSum = 0;
+    for (const d of (_pcmPipe||[])) {
+      const p = d.properties || {};
+      const att = (p.demo_attendance_status||'').trim();
+      const qo = (p.demo_qualification_outcome||'').trim();
+      if (qo !== 'Qualified') continue;
+      if (att !== 'Demo Given (originally scheduled)' && att !== 'Demo Given (rescheduled)') continue;
+      // pre-launch check via dealname match (same loose substring strategy as processPipelineDeals)
+      const dn = (p.dealname||'').trim().toLowerCase();
+      let isLow = false;
+      if (dn && _pcmLowSet.has(dn)) isLow = true;
+      if (!isLow && dn) {
+        for (const lk of _pcmLowSet) {
+          if (lk.startsWith('_domain_')) continue;
+          if (lk.length > 3 && (dn.includes(lk) || lk.includes(dn))) { isLow = true; break; }
+        }
+      }
+      if (isLow) continue;
+      qualifiedScale++;
+      if ((p.dealstage||'') === 'closedwon') {
+        signed++;
+        signedMrrSum += parseFloat(p.amount)||0;
+      }
+    }
+    const pctSigned = qualifiedScale > 0 ? (signed / qualifiedScale) * 100 : 0;
+    const avgStartingMrr = signed > 0 ? signedMrrSum / signed : 0;
+    resp.irfan.priorMonthQualifiedSigned = {
+      qualifiedScale, signed, pctSigned,
+      avgStartingMrr, avgStartingAcv: avgStartingMrr * 12,
+      fromDate: _pcmFromStr, toDate: _pcmToStr,
+    };
+  } catch(e) {
+    console.error('Irfan prior-month qualified→signed fetch failed:', e);
+    resp.irfan.priorMonthError = e.message;
   }
 
   return resp;
