@@ -317,6 +317,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
     <div class="snav">
       <div class="ni active" onclick="autoExpand();toggleDashMenu()" data-page="dashboard" id="dash-menu-parent" title="Executive Dashboard"><span class="ic">📊</span><span>Executive Dashboard</span><span id="dash-arrow" style="margin-left:auto;font-size:10px;transition:transform .2s">▼</span></div>
       <div id="dash-submenu" style="display:block;padding-left:24px">
+        <div class="ni sub" onclick="switchDashSub('irfan')" data-page="irfan" data-sub="irfan"><span class="ic" style="font-size:12px">⭐</span><span>Irfan Dashboard</span></div>
         <div class="ni sub active" onclick="switchDashSub('overview')" data-page="dashboard" data-sub="overview"><span class="ic" style="font-size:12px">📊</span><span>Overview</span></div>
         <div class="ni sub" onclick="switchDashSub('demoQuality')" data-page="demoQuality" data-sub="demoQuality"><span class="ic" style="font-size:12px">🎯</span><span>Demo Quality</span></div>
         <div class="ni sub" onclick="switchDashSub('outbound')" data-page="outbound" data-sub="outbound"><span class="ic" style="font-size:12px">📨</span><span>Outbound</span></div>
@@ -479,6 +480,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
       <div id="strat-output"></div>
     </div>
 
+    <div class="pg" id="page-irfan"><div id="irfan-date-header" style="margin-bottom:24px"></div><div id="irfan-c"></div></div>
     <div class="pg" id="page-demoQuality"><div id="dq-c"></div></div>
     <div class="pg" id="page-csession"><div id="csession-c"></div></div>
 
@@ -507,11 +509,11 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 const _BUILD_VER='s5r11';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 let PW='';
-const S={dashboard:{win:'mtd',data:null,sub:'overview'},strategy:{data:null,win:'lastMonth'},calculator:{win:'mtd',data:null},signup:{win:null,data:null},analyzer:{win:'mtd',data:null,tab:'overview',sub:'overview'},demoQuality:{win:'mtd',data:null},csession:{step:1},content:{data:null,sub:'cs-intel'},outbound:{data:null}};let AP='dashboard';
+const S={dashboard:{win:'mtd',data:null,sub:'overview'},irfan:{win:'mtd',data:null},strategy:{data:null,win:'lastMonth'},calculator:{win:'mtd',data:null},signup:{win:null,data:null},analyzer:{win:'mtd',data:null,tab:'overview',sub:'overview'},demoQuality:{win:'mtd',data:null},csession:{step:1},content:{data:null,sub:'cs-intel'},outbound:{data:null}};let AP='dashboard';
 const f$=v=>v==null?'—':'$'+Math.round(v).toLocaleString();
 const fN=v=>v==null?'—':Math.round(v).toLocaleString();
 const fP=(v,d=1)=>v==null?'—':v.toFixed(d)+'%';
-const T={dashboard:'Executive Dashboard',resources:'Resources',calculator:'ARR Calculator',signup:'Sign-Up Rate',analyzer:'Paid Ads Dashboard',demoQuality:'Demo Quality',content:'Social Media Content',outbound:'Outbound Sequences'};
+const T={dashboard:'Executive Dashboard',irfan:'Irfan Dashboard',resources:'Resources',calculator:'ARR Calculator',signup:'Sign-Up Rate',analyzer:'Paid Ads Dashboard',demoQuality:'Demo Quality',content:'Social Media Content',outbound:'Outbound Sequences'};
 const W=[{k:'7d',l:'Last 7 Days'},{k:'mtd',l:'Month to Date'},{k:'lastMonth',l:'Last Month'},{k:'ytd',l:'Year to Date'},{k:'allTime',l:'All Time'},{k:'custom',l:'Custom'}];
 const AZ_TABS=[{k:'overview',l:'Overview'},{k:'meta',l:'Meta'},{k:'google',l:'Google'},{k:'linkedin',l:'LinkedIn'},{k:'tiktok',l:'TikTok'},{k:'youtube',l:'YouTube'}];
 function effM(cr){return cr>0?(1-Math.pow(1-cr,12))/cr:12;}
@@ -613,7 +615,7 @@ function switchPage(pg){AP=pg;document.querySelectorAll('.ni').forEach(n=>n.clas
   // Close sidebar on mobile
   document.querySelector('.sidebar').classList.remove('open');document.getElementById('sidebarOverlay').classList.remove('open');
   bldF();if(!S[pg].data){if(pg==='signup')fd('mtd');else if(pg==='content'){fdContent();return;}else fd(S[pg].win);return;}renderPage();}
-function renderPage(){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));if(AP==='dashboard')renderDash();else if(AP==='calculator')updCalc();else if(AP==='signup')renderSignUp();else if(AP==='analyzer')renderAnalyzer();else if(AP==='strategy')renderStrategy();else if(AP==='demoQuality')renderDemoQuality();else if(AP==='csession')renderCreativeSession();else if(AP==='content')renderContent();else if(AP==='outbound')renderOutbound();document.getElementById('page-'+AP).classList.add('active');const d=S[AP].data;if(d){const ts=d.meta?.generatedAt;if(ts)document.getElementById('fts').textContent='Updated '+new Date(ts).toLocaleString();if(d.meta?.dataQuality&&!d.meta.dataQuality.complete)document.getElementById('dqb').classList.add('vis');}}
+function renderPage(){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));if(AP==='dashboard')renderDash();else if(AP==='irfan')renderIrfan();else if(AP==='calculator')updCalc();else if(AP==='signup')renderSignUp();else if(AP==='analyzer')renderAnalyzer();else if(AP==='strategy')renderStrategy();else if(AP==='demoQuality')renderDemoQuality();else if(AP==='csession')renderCreativeSession();else if(AP==='content')renderContent();else if(AP==='outbound')renderOutbound();document.getElementById('page-'+AP).classList.add('active');const d=S[AP].data;if(d){const ts=d.meta?.generatedAt;if(ts)document.getElementById('fts').textContent='Updated '+new Date(ts).toLocaleString();if(d.meta?.dataQuality&&!d.meta.dataQuality.complete)document.getElementById('dqb').classList.add('vis');}}
 
 // ═══════════════ EXECUTIVE DASHBOARD ═══════════════
 function renderDash(){
@@ -986,6 +988,92 @@ function renderDash(){
   const wrapEl=document.getElementById('sec-activity-trends'),dailyEl=document.getElementById('sec-daily');
   if(d.isAllTime){if(dailyEl)dailyEl.style.display='none';if(wrapEl)wrapEl.style.gridTemplateColumns='1fr';}else{if(dailyEl)dailyEl.style.display='block';if(wrapEl)wrapEl.style.gridTemplateColumns='2.2fr 1fr';renderDemosPerDay(d);}
   /* renderFunnel removed */
+}
+
+// ═══════════════ IRFAN DASHBOARD ═══════════════
+// CEO-facing summary view. Shares the same /api/dashboard payload as Overview
+// so the time-window selector at the top behaves identically.
+function renderIrfan(){
+  const d=S.irfan.data;if(!d||d.error){document.getElementById('irfan-c').innerHTML='<div style="padding:40px;text-align:center;color:var(--grey)">Loading…</div>';return;}
+  // ─ Date header (mirrors Overview) ─
+  const fmtD=s=>{const p=s.split('-');return new Date(p[0],p[1]-1,p[2]).toLocaleDateString('en-US',{month:'long',day:'numeric'});};
+  const fmtDY=s=>{const p=s.split('-');return new Date(p[0],p[1]-1,p[2]).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});};
+  let dh=`<div style="font-family:var(--font-h);font-size:20px;font-weight:700;color:var(--navy)">${d.period.label}: ${d.period.from.slice(0,4)!==d.period.to.slice(0,4)?fmtDY(d.period.from):fmtD(d.period.from)} – ${fmtDY(d.period.to)}</div>`;
+  if(d.priorPeriod)dh+=`<div style="font-size:12px;color:var(--grey);margin-top:4px">vs. Prior: ${fmtD(d.priorPeriod.from)} – ${fmtD(d.priorPeriod.to)}</div>`;
+  if(d.priorMonthPeriod)dh+=`<div style="font-size:12px;color:var(--grey);margin-top:2px">vs. Last Month: ${fmtD(d.priorMonthPeriod.from)} – ${fmtD(d.priorMonthPeriod.to)}</div>`;
+  document.getElementById('irfan-date-header').innerHTML=dh;
+
+  // ─ Pull metrics from shared dashboard payload ─
+  const es=d.executiveSummary||{},esM=es._meta||{},dt=d.demoTracking||{},qmeta=dt._qualMeta||{};
+  const tCpd=es.trueCpd?.value;const tCpdPV=es.trueCpd?.sameTimePrior?.value;const tCpdLMV=es.trueCpd?.lastMonth?.value;
+  const tCpqd=es.totalTrueCpqd?.value;const tCpqdPV=es.totalTrueCpqd?.sameTimePrior?.value;const tCpqdLMV=es.totalTrueCpqd?.lastMonth?.value;
+  const pruneRate=es.pruneRate?.value;const prunePV=es.pruneRate?.sameTimePrior?.value;const pruneLMV=es.pruneRate?.lastMonth?.value;
+  const noShowRate=dt.noShowRate?.value;const noShowPV=dt.noShowRate?.sameTimePrior?.value;const noShowLMV=dt.noShowRate?.lastMonth?.value;
+
+  // Local helpers — small inline delta line "↑ +N (+X.X%)" for tile footers
+  function _irNfmt(n,fmt,dec){if(n==null)return '—';var s=n>=0?'+':'-';var a=Math.abs(n);var dc=dec!=null?dec:1;if(fmt==='$')return s+'$'+Math.round(a).toLocaleString();if(fmt==='%')return s+a.toFixed(dc)+'%';return s+Math.round(a).toLocaleString();}
+  function _irDelta(cur,prev,fmt,inv,dec){if(cur==null||prev==null)return '<span style="color:var(--grey);font-size:10px">—</span>';var nd=cur-prev;var pd=prev!==0?((cur-prev)/prev)*100:null;var arrow=nd>=0?'↑':'↓';var positive=nd>0;var good=inv?!positive:positive;var color=nd===0?'var(--grey)':(good?'var(--green)':'var(--red)');var nStr=_irNfmt(nd,fmt,dec);var pStr=pd!=null?'('+(pd>=0?'+':'')+pd.toFixed(1)+'%)':'';return '<span style="color:'+color+';font-size:10px;font-weight:600">'+arrow+' '+nStr+' '+pStr+'</span>';}
+  function _irTileFooter(cur,pv,lmv,fmt,inv){return '<div style="font-size:10px;line-height:1.5;margin-top:6px"><div style="display:flex;gap:6px;align-items:baseline"><span style="color:var(--grey);min-width:42px">vs prior</span>'+_irDelta(cur,pv,fmt,inv)+'</div><div style="display:flex;gap:6px;align-items:baseline"><span style="color:var(--grey);min-width:42px">vs LM</span>'+_irDelta(cur,lmv,fmt,inv)+'</div></div>';}
+
+  let h='';
+
+  // ═══════ Section 1 — Graphs ═══════
+  h+='<div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);margin-bottom:10px">Daily Trend & Web-Traffic Mix</div>';
+  h+='<div style="display:grid;grid-template-columns:1.6fr 1fr;gap:16px;margin-bottom:28px">';
+  // 1a — Demos per day (excl. pre-launch). Renders into #irfan-daily-wrap below.
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Demos Scheduled per Day</div><div style="font-size:11px;color:var(--grey);margin-bottom:14px">Average line excludes pre-launch brands</div><div id="irfan-daily-wrap"></div><div style="font-size:11px;color:#D97706;margin-top:8px;font-style:italic">⚠ Showing total per day for now — needs <code>scheduled.byDayScale</code> from worker to filter out pre-launch per bar.</div></div>';
+  // 1b — Web-traffic distribution pie
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Demos by Web-Traffic Range</div><div style="font-size:11px;color:var(--grey);margin-bottom:14px">% of scheduled demos in each tier</div><div style="display:flex;align-items:center;justify-content:center;min-height:240px;color:var(--grey);font-size:12px;font-style:italic;padding:20px;text-align:center">⚠ Placeholder — needs <code>scheduled.byWebTraffic</code> aggregation from worker.<br>Will render a pie chart in fixed tier order (Pre-launch → 500K+) clockwise.</div></div>';
+  h+='</div>';
+
+  // ═══════ Section 2 — KPI Tiles ═══════
+  h+='<div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);margin-bottom:10px">Key Metrics</div>';
+  h+='<div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-bottom:28px">';
+  // 2.1 True CPD
+  h+=`<div class="tile hero" style="border-left:3px solid var(--teal)"><div class="tlbl">True CPD</div><div class="tval">${tCpd!=null?f$(tCpd):'—'}</div><div class="tdef" style="margin-top:4px">Ad spend ÷ Demos excl. pre-launch</div>${_irTileFooter(tCpd,tCpdPV,tCpdLMV,'$',true)}</div>`;
+  // 2.2 True CPQD
+  h+=`<div class="tile hero" style="border-left:3px solid var(--teal)"><div class="tlbl">True CPQD</div><div class="tval">${tCpqd!=null?f$(tCpqd):'—'}</div><div class="tdef" style="margin-top:4px">Ad spend ÷ Demos held excl. pre-launch</div>${_irTileFooter(tCpqd,tCpqdPV,tCpqdLMV,'$',true)}</div>`;
+  // 2.3 % Pruned upfront
+  h+=`<div class="tile ${pruneRate!=null&&pruneRate>20?'warn':'hero'}"><div class="tlbl">% Pruned (upfront)</div><div class="tval">${pruneRate!=null?pruneRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">Cancelled before demo ÷ all settled outcomes</div>${_irTileFooter(pruneRate,prunePV,pruneLMV,'%',true)}</div>`;
+  // 2.4 No-show rate — currently full, not scale-tier
+  h+=`<div class="tile ${noShowRate!=null&&noShowRate>20?'warn':'hero'}"><div class="tlbl">No-Show Rate</div><div class="tval">${noShowRate!=null?noShowRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">No Show ÷ (Demo Given orig + resched + No Show)</div><div style="font-size:10px;color:#D97706;margin-top:6px;font-style:italic">⚠ Includes pre-launch — non-pre-launch version pending worker support</div></div>`;
+  // 2.5 Placeholder
+  h+='<div class="tile" style="border:1.5px dashed #FCD34D;background:rgba(245,158,11,.04)"><div class="tlbl" style="color:#D97706">% Unqualified (Brand Fit)</div><div class="tval" style="color:#D97706">—</div><div class="tdef" style="margin-top:4px;color:#92400E">% who answered both schedule-demo questions and gave a non-qualified "best fits your brand" response</div><div style="font-size:10px;color:#D97706;margin-top:6px;font-style:italic">⚠ Placeholder — data source not yet wired</div></div>';
+  h+='</div>';
+
+  // ═══════ Section 3 — Special Time-Bound Tiles ═══════
+  h+='<div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);margin-bottom:4px">Time-Bound Insights</div>';
+  h+='<div style="font-size:11px;color:var(--grey);margin-bottom:10px">Independent of the time selector above — uses fixed windows (prior month, last 2 weeks)</div>';
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">';
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Prior Month Qualified → Signed</div><div style="font-size:11px;color:var(--grey);margin-bottom:14px">Of qualified demos (held, non-pre-launch, non-cancelled) in the prior month, what % have since signed and at what avg starting ACV</div><div style="display:flex;align-items:center;justify-content:center;min-height:120px;color:var(--grey);font-size:12px;font-style:italic;padding:20px;text-align:center">⚠ Placeholder — needs worker logic to cross-reference prior-month qualified demos against closed-won deals (by deal ID or matched company)</div></div>';
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Signed Deals (Last 2 Weeks) by Web Traffic</div><div style="font-size:11px;color:var(--grey);margin-bottom:14px">% of closed-won deals in the last 14 days, by starting web-traffic tier</div><div style="display:flex;align-items:center;justify-content:center;min-height:120px;color:var(--grey);font-size:12px;font-style:italic;padding:20px;text-align:center">⚠ Placeholder — needs worker to expose closed-won deal list with web-traffic tier per deal</div></div>';
+  h+='</div>';
+
+  // Meta Campaign + Creative tables — share the analyzer payload (S.analyzer.data)
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:24px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Meta — Campaign & Creative Tables</div><div style="font-size:11px;color:var(--grey);margin-bottom:14px">Mirrored from the Paid Ads Dashboard for at-a-glance tracking</div><div style="display:flex;align-items:center;justify-content:center;min-height:120px;color:var(--grey);font-size:12px;font-style:italic;padding:20px;text-align:center">⚠ Placeholder — these tables live on the Paid Ads Dashboard (renderAzChannel). To embed here we need to either (a) fetch /api/analyzer data in parallel when Irfan loads, or (b) extract the table renderers into reusable functions that take a Meta channel data shape.</div></div>';
+
+  document.getElementById('irfan-c').innerHTML=h;
+
+  // Render daily chart into #irfan-daily-wrap (simplified version of renderDemosPerDay)
+  _renderIrfanDaily(d);
+}
+
+// Per-day demos bar chart for Irfan Dashboard. Same structure as renderDemosPerDay
+// but writes to #irfan-daily-wrap and skips the surrounding stat tiles.
+function _renderIrfanDaily(d){
+  const sByDay=d.demoTracking?.scheduledByDay||{};
+  const days=Object.entries(sByDay).sort((a,b)=>a[0].localeCompare(b[0])).map(([date,count])=>({date,count}));
+  const target=document.getElementById('irfan-daily-wrap');if(!target)return;
+  if(!days.length){target.innerHTML='<div style="color:var(--grey);font-size:12px;padding:20px 0">No daily data</div>';return;}
+  const total=days.reduce((s,x)=>s+x.count,0),avg=total/days.length;
+  const mx=Math.max(...days.map(x=>x.count),1),avgTop=180*(1-avg/mx);
+  let h='<div style="position:relative">';
+  h+=`<div style="position:absolute;left:0;right:0;top:${avgTop}px;border-top:1.5px dashed var(--teal);z-index:2;pointer-events:none"><div style="position:absolute;right:-2px;top:-12px;font-size:10px;font-weight:700;color:#fff;background:var(--teal);font-family:var(--font-h);padding:2px 8px;border-radius:99px;line-height:1.2">Avg ${avg.toFixed(1)}</div></div>`;
+  h+='<div style="display:flex;gap:6px">';
+  for(const dy of days){const dt2=new Date(dy.date+'T12:00:00'),dow=dt2.getDay(),isW=dow===0||dow===6;const barH=(dy.count/mx)*100;const lbl=dt2.toLocaleDateString('en-US',{month:'short',day:'numeric'});const dowL=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dow];
+    h+=`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px"><div style="width:100%;height:180px;display:flex;align-items:flex-end;justify-content:center"><div class="dbc-bar${isW?' wknd':''}" title="${dowL}, ${lbl}: ${dy.count}" style="height:${barH}%;width:100%;max-width:48px;position:relative"><div class="dbc-cnt">${dy.count}</div></div></div><div class="dbc-lbl dow">${dowL}</div><div class="dbc-lbl">${lbl}</div></div>`;}
+  h+='</div></div>';
+  target.innerHTML=h;
 }
 
 // Lightweight churn update — only touches ARR/ROAS values, not the slider
@@ -2324,10 +2412,10 @@ async function loadOutbound(){
 function switchDashSub(sub){
   S.dashboard.sub=sub;
   // Map sub to AP
-  var apMap={overview:'dashboard',signup:'signup',calculator:'calculator',strategy:'strategy',demoQuality:'demoQuality',outbound:'outbound'};
+  var apMap={overview:'dashboard',irfan:'irfan',signup:'signup',calculator:'calculator',strategy:'strategy',demoQuality:'demoQuality',outbound:'outbound'};
   AP=apMap[sub]||'dashboard';
   // Update titles
-  var titleMap={overview:'Executive Dashboard',signup:'Sign-Up Rate',calculator:'ARR Calculator',strategy:'Monthly Review',demoQuality:'Demo Quality',outbound:'Outbound Sequences'};
+  var titleMap={overview:'Executive Dashboard',irfan:'Irfan Dashboard',signup:'Sign-Up Rate',calculator:'ARR Calculator',strategy:'Monthly Review',demoQuality:'Demo Quality',outbound:'Outbound Sequences'};
   document.getElementById('ptitle').textContent=titleMap[sub]||'Executive Dashboard';
   // Highlight nav items
   document.querySelectorAll('.snav>.ni').forEach(n=>n.classList.toggle('active',n.dataset.page==='dashboard'));
