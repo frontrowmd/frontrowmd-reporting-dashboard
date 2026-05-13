@@ -1204,6 +1204,10 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
       noShowDenomLastMonth: pm.pipeline?.noShowDenom ?? null,
       noShowCountPrior: p.pipeline?.noShowCount ?? null,
       noShowCountLastMonth: pm.pipeline?.noShowCount ?? null,
+      // Scale-tier (non-pre-launch) counters for Irfan Dashboard subtext
+      noShowScaleCount: c.pipeline.noShowScaleCount||0,
+      noShowDenomScale: c.pipeline.noShowDenomScale||0,
+      demoGivenScaleCount: c.pipeline.demoGivenScaleCount||0,
       staleScheduledCount: c.pipeline.staleScheduledCount||0,
       cancelledBeforeDemoCount: c.pipeline.cancelledBeforeDemoCount||0,
       cancelledBeforeDemoCountPrior: p.pipeline?.cancelledBeforeDemoCount ?? null,

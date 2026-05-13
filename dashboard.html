@@ -1005,39 +1005,49 @@ function renderIrfan(){
 
   // ─ Pull metrics from shared dashboard payload ─
   const es=d.executiveSummary||{},esM=es._meta||{},dt=d.demoTracking||{},qmeta=dt._qualMeta||{};
+  const ltmeta=(es.lowTrafficPct&&es.lowTrafficPct._meta)||{};
   const tCpd=es.trueCpd?.value;const tCpdPV=es.trueCpd?.sameTimePrior?.value;const tCpdLMV=es.trueCpd?.lastMonth?.value;
   const tCpqd=es.totalTrueCpqd?.value;const tCpqdPV=es.totalTrueCpqd?.sameTimePrior?.value;const tCpqdLMV=es.totalTrueCpqd?.lastMonth?.value;
   const pruneRate=es.pruneRate?.value;const prunePV=es.pruneRate?.sameTimePrior?.value;const pruneLMV=es.pruneRate?.lastMonth?.value;
-  // KPI #4 uses scale-tier no-show rate (non-pre-launch only) from new worker field.
   const noShowRate=dt.noShowRateScale?.value;const noShowPV=dt.noShowRateScale?.sameTimePrior?.value;const noShowLMV=dt.noShowRateScale?.lastMonth?.value;
+
+  // ─ Numerator/denominator values for KPI calc subtext ─
+  const _totalSpend=esM.totalSpend||0;
+  const _scaleSched=Math.max(0,(esM.totalScheduled||esM.totalWD||0)-(ltmeta.lowTraffic||0));
+  const _demosHeldScale=esM.demosHeldScaleCount||0;
+  const _cancelledBefore=qmeta.cancelledBeforeDemoCount||0;
+  const _pruneDenom=qmeta.pruneDenom||0;
+  const _noShowScale=qmeta.noShowScaleCount||0;
+  const _noShowDenomScale=qmeta.noShowDenomScale||0;
 
   // Local helpers — small inline delta line "↑ +N (+X.X%)" for tile footers
   function _irNfmt(n,fmt,dec){if(n==null)return '—';var s=n>=0?'+':'-';var a=Math.abs(n);var dc=dec!=null?dec:1;if(fmt==='$')return s+'$'+Math.round(a).toLocaleString();if(fmt==='%')return s+a.toFixed(dc)+'%';return s+Math.round(a).toLocaleString();}
   function _irDelta(cur,prev,fmt,inv,dec){if(cur==null||prev==null)return '<span style="color:var(--grey);font-size:10px">—</span>';var nd=cur-prev;var pd=prev!==0?((cur-prev)/prev)*100:null;var arrow=nd>=0?'↑':'↓';var positive=nd>0;var good=inv?!positive:positive;var color=nd===0?'var(--grey)':(good?'var(--green)':'var(--red)');var nStr=_irNfmt(nd,fmt,dec);var pStr=pd!=null?'('+(pd>=0?'+':'')+pd.toFixed(1)+'%)':'';return '<span style="color:'+color+';font-size:10px;font-weight:600">'+arrow+' '+nStr+' '+pStr+'</span>';}
   function _irTileFooter(cur,pv,lmv,fmt,inv){return '<div style="font-size:10px;line-height:1.5;margin-top:6px"><div style="display:flex;gap:6px;align-items:baseline"><span style="color:var(--grey);min-width:42px">vs prior</span>'+_irDelta(cur,pv,fmt,inv)+'</div><div style="display:flex;gap:6px;align-items:baseline"><span style="color:var(--grey);min-width:42px">vs LM</span>'+_irDelta(cur,lmv,fmt,inv)+'</div></div>';}
+  function _irCalc(num){return '<div style="font-size:11px;color:var(--navy);font-variant-numeric:tabular-nums;margin-top:4px">'+num+'</div>';}
 
   let h='';
 
   // ═══════ Section 1 — Graphs ═══════
   h+='<div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);margin-bottom:10px">Daily Trend & Web-Traffic Mix</div>';
   h+='<div style="display:grid;grid-template-columns:1.6fr 1fr;gap:16px;margin-bottom:28px">';
-  // 1a — Demos per day (excl. pre-launch). Renders into #irfan-daily-wrap below.
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Demos Scheduled per Day</div><div style="font-size:11px;color:var(--grey);margin-bottom:14px">Excludes pre-launch brands · average line shows daily mean</div><div id="irfan-daily-wrap"></div></div>';
-  // 1b — Web-traffic distribution pie
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Demos by Web-Traffic Range</div><div style="font-size:11px;color:var(--grey);margin-bottom:14px">% of scheduled demos in each tier · ordered Pre-launch → 500K+ clockwise</div><div id="irfan-wt-pie"></div></div>';
+  // 1a — Demos Booked per Day (matches Overview). Reuses renderDemosPerDay for mini KPI cards + hover.
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Demos Booked per Day</div><div style="font-size:11px;color:var(--grey);margin-bottom:14px">Contacts created with date_demo_booked set · average line shows daily mean</div><div id="irfan-daily-wrap"></div></div>';
+  // 1b — Demos Booked by Web-Traffic Range (donut, with % labels + hover)
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Demos Booked by Web-Traffic Range</div><div style="font-size:11px;color:var(--grey);margin-bottom:14px">% of demos booked in each tier · ordered Pre-launch → 500K+ clockwise</div><div id="irfan-wt-pie"></div></div>';
   h+='</div>';
 
   // ═══════ Section 2 — KPI Tiles ═══════
   h+='<div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);margin-bottom:10px">Key Metrics</div>';
   h+='<div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-bottom:28px">';
   // 2.1 True CPD
-  h+=`<div class="tile hero" style="border-left:3px solid var(--teal)"><div class="tlbl">True CPD</div><div class="tval">${tCpd!=null?f$(tCpd):'—'}</div><div class="tdef" style="margin-top:4px">Ad spend ÷ Demos excl. pre-launch</div>${_irTileFooter(tCpd,tCpdPV,tCpdLMV,'$',true)}</div>`;
+  h+=`<div class="tile hero" style="border-left:3px solid var(--teal)"><div class="tlbl">True CPD</div><div class="tval">${tCpd!=null?f$(tCpd):'—'}</div><div class="tdef" style="margin-top:4px">Ad spend ÷ Demos excl. pre-launch</div>${_irCalc(f$(_totalSpend)+' ÷ '+fN(_scaleSched))}${_irTileFooter(tCpd,tCpdPV,tCpdLMV,'$',true)}</div>`;
   // 2.2 True CPQD
-  h+=`<div class="tile hero" style="border-left:3px solid var(--teal)"><div class="tlbl">True CPQD</div><div class="tval">${tCpqd!=null?f$(tCpqd):'—'}</div><div class="tdef" style="margin-top:4px">Ad spend ÷ Demos held excl. pre-launch</div>${_irTileFooter(tCpqd,tCpqdPV,tCpqdLMV,'$',true)}</div>`;
+  h+=`<div class="tile hero" style="border-left:3px solid var(--teal)"><div class="tlbl">True CPQD</div><div class="tval">${tCpqd!=null?f$(tCpqd):'—'}</div><div class="tdef" style="margin-top:4px">Ad spend ÷ Demos held excl. pre-launch</div>${_irCalc(f$(_totalSpend)+' ÷ '+fN(_demosHeldScale))}${_irTileFooter(tCpqd,tCpqdPV,tCpqdLMV,'$',true)}</div>`;
   // 2.3 % Pruned upfront
-  h+=`<div class="tile ${pruneRate!=null&&pruneRate>20?'warn':'hero'}"><div class="tlbl">% Pruned (upfront)</div><div class="tval">${pruneRate!=null?pruneRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">Cancelled before demo ÷ all settled outcomes</div>${_irTileFooter(pruneRate,prunePV,pruneLMV,'%',true)}</div>`;
+  h+=`<div class="tile ${pruneRate!=null&&pruneRate>20?'warn':'hero'}"><div class="tlbl">% Pruned (upfront)</div><div class="tval">${pruneRate!=null?pruneRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">Cancelled before demo ÷ all settled outcomes</div>${_irCalc(fN(_cancelledBefore)+' ÷ '+fN(_pruneDenom))}${_irTileFooter(pruneRate,prunePV,pruneLMV,'%',true)}</div>`;
   // 2.4 No-show rate — scale tier (excludes pre-launch)
-  h+=`<div class="tile ${noShowRate!=null&&noShowRate>20?'warn':'hero'}"><div class="tlbl">No-Show Rate</div><div class="tval">${noShowRate!=null?noShowRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">No Show ÷ (Demo Given orig + resched + No Show), excl. pre-launch</div>${_irTileFooter(noShowRate,noShowPV,noShowLMV,'%',true)}</div>`;
+  h+=`<div class="tile ${noShowRate!=null&&noShowRate>20?'warn':'hero'}"><div class="tlbl">No-Show Rate</div><div class="tval">${noShowRate!=null?noShowRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">No Show ÷ (Demo Given orig + resched + No Show), excl. pre-launch</div>${_irCalc(fN(_noShowScale)+' ÷ '+fN(_noShowDenomScale))}${_irTileFooter(noShowRate,noShowPV,noShowLMV,'%',true)}</div>`;
   // 2.5 Placeholder
   h+='<div class="tile" style="border:1.5px dashed #FCD34D;background:rgba(245,158,11,.04)"><div class="tlbl" style="color:#D97706">% Unqualified (Brand Fit)</div><div class="tval" style="color:#D97706">—</div><div class="tdef" style="margin-top:4px;color:#92400E">% who answered both schedule-demo questions and gave a non-qualified "best fits your brand" response</div><div style="font-size:10px;color:#D97706;margin-top:6px;font-style:italic">⚠ Placeholder — data source not yet wired</div></div>';
   h+='</div>';
@@ -1047,11 +1057,15 @@ function renderIrfan(){
   h+='<div style="font-size:11px;color:var(--grey);margin-bottom:10px">Independent of the time selector above — uses fixed windows (prior month, last 2 weeks)</div>';
   h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">';
   // Special Tile #1 — Prior calendar month qualified → signed since.
-  const _irPCM=(d.irfan&&d.irfan.priorMonthQualifiedSigned)||null;
+  const _irf=d.irfan||{};
+  const _irPCM=_irf.priorMonthQualifiedSigned||null;
+  const _irPCMErr=_irf.priorMonthError;
   const _irPCMRange=_irPCM&&_irPCM.fromDate&&_irPCM.toDate?`${fmtD(_irPCM.fromDate)} – ${fmtD(_irPCM.toDate)}`:'prior month';
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Prior Month Qualified → Signed</div>';
   h+=`<div style="font-size:11px;color:var(--grey);margin-bottom:14px">Qualified demos (held, non-pre-launch) in ${_irPCMRange} that have since closed-won</div>`;
-  if(!_irPCM){h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">No data</div>';}
+  if(_irPCMErr){h+='<div style="color:var(--red);font-size:11px;padding:14px 0;text-align:center;font-style:italic">Failed to load: '+_irPCMErr+'</div>';}
+  else if(!_irPCM){h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">Data not yet loaded — try Refresh</div>';}
+  else if(_irPCM.qualifiedScale===0){h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">No qualified non-pre-launch demos in '+_irPCMRange+'</div>';}
   else{
     const pctC=_irPCM.pctSigned>=20?'var(--green)':(_irPCM.pctSigned>=10?'var(--navy)':'var(--grey)');
     h+='<div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap">';
@@ -1065,21 +1079,24 @@ function renderIrfan(){
   }
   h+='</div>';
   // Special Tile #2 — Signed last 14 days by web traffic. Uses fixed 14-day window.
-  const _ir14=d.irfan||{};
-  const _ir14Range=_ir14.last14FromDate&&_ir14.last14ToDate?`${fmtD(_ir14.last14FromDate)} – ${fmtD(_ir14.last14ToDate)}`:'last 14 days';
-  h+=`<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Signed Deals — Last 2 Weeks by Web Traffic</div><div style="font-size:11px;color:var(--grey);margin-bottom:14px">${_ir14Range} · ${fN(_ir14.totalSignedLast14||0)} signed · ${_ir14.totalSignedLast14MRR?f$(_ir14.totalSignedLast14MRR)+' MRR':''}</div><div id="irfan-signed14-pie"></div></div>`;
+  const _ir14Err=_irf.last14Error;
+  const _ir14Range=_irf.last14FromDate&&_irf.last14ToDate?`${fmtD(_irf.last14FromDate)} – ${fmtD(_irf.last14ToDate)}`:'last 14 days';
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Signed Deals — Last 2 Weeks by Web Traffic</div>';
+  h+=`<div style="font-size:11px;color:var(--grey);margin-bottom:14px">${_ir14Range} · ${fN(_irf.totalSignedLast14||0)} signed · ${_irf.totalSignedLast14MRR?f$(_irf.totalSignedLast14MRR)+' MRR':'$0 MRR'}</div>`;
+  if(_ir14Err)h+='<div style="color:var(--red);font-size:11px;padding:14px 0;text-align:center;font-style:italic">Failed to load: '+_ir14Err+'</div>';
+  else h+='<div id="irfan-signed14-pie"></div>';
+  h+='</div>';
   h+='</div>';
 
   // Meta Campaign + Creative tables — read-only, pulled from S.analyzer.data.
-  // Fetched lazily by _renderIrfanMetaTables if the analyzer payload isn't loaded yet.
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:24px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Meta — Campaign & Creative Tables</div><div style="font-size:11px;color:var(--grey);margin-bottom:14px">Top by spend · sourced from the Paid Ads Dashboard payload</div><div id="irfan-meta-tables"></div></div>';
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:24px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Meta — Campaign & Creative Tables</div><div style="font-size:11px;color:var(--grey);margin-bottom:14px">Sortable · sourced from the Paid Ads Dashboard payload</div><div id="irfan-meta-tables"></div></div>';
 
   document.getElementById('irfan-c').innerHTML=h;
 
-  // Render daily chart into #irfan-daily-wrap (simplified version of renderDemosPerDay)
-  _renderIrfanDaily(d);
+  // Render charts — daily uses the same renderer as Overview (mini KPI cards + hover come for free)
+  renderDemosPerDay(d,'irfan-daily-wrap');
   _renderIrfanWtPie(d);
-  _renderIrfanSignedLast14Pie(d);
+  if(!_ir14Err)_renderIrfanSignedLast14Pie(d);
   _renderIrfanMetaTablesLoader();
 }
 
@@ -1113,81 +1130,173 @@ function _renderIrfanMetaTablesLoader(){
     .catch(e=>{console.error('Irfan analyzer fetch failed:',e);target.innerHTML='<div style="padding:24px;text-align:center;color:var(--red);font-size:12px">Failed to load analyzer data: '+e.message+'</div>';});
 }
 
-// Read-only simplified Meta Campaign + Ad Creative tables for the Irfan Dashboard.
-// Mirrors the Paid Ads Dashboard's per-channel tables but strips filters/sort/expand
-// controls — top 25 of each by spend, sorted desc.
+// Meta Campaign + Ad Creative tables for the Irfan Dashboard.
+// Sortable headers, Stage filter (campaigns only), Stage badges column,
+// heatmap from Spend rightward, thumbnails on creatives, default sort by CPD.
+let _irfanMetaD=null;
+// Heatmap shading — mirrors azHeat in renderAzChannel. Higher = greener,
+// or redder when inv=true (used for cost metrics like CPD).
+function _irfanHeat(vals,v,inv){
+  if(v==null||v===0||!vals.length)return'';
+  const pos=vals.filter(x=>x>0);if(!pos.length)return'';
+  const mx=Math.max(...pos);if(mx===0)return'';
+  const pct=Math.min(v/mx,1);
+  const r=inv?Math.round(200*pct+50):Math.round(50+200*(1-pct));
+  const g=inv?Math.round(50+200*(1-pct)):Math.round(200*pct+50);
+  return 'background:rgba('+r+','+g+',60,'+(0.06+pct*0.18).toFixed(3)+')';
+}
+// Extract stage badges from a campaign/creative name (matches getStages in renderAzChannel).
+function _irfanStages(name){
+  const n=(name||'').toLowerCase();const tags=[];
+  if(/\bs01\b/.test(n))tags.push({k:'s1',l:'TOF',c:'#2980B9'});
+  if(/\bs02\b/.test(n))tags.push({k:'s2',l:'MOF',c:'#E67E22'});
+  if(/\bs03\b/.test(n))tags.push({k:'s3',l:'BOF',c:'#C0392B'});
+  if(/retarget/.test(n))tags.push({k:'s4',l:'Retargeting',c:'#7D3C98'});
+  if(!tags.length)tags.push({k:'other',l:'—',c:'var(--grey)'});
+  return tags;
+}
+function _irfanSortRows(rows,col,dir){
+  const cmp=(a,b)=>{
+    let av,bv;
+    if(col==='name'){av=(a.name||'').toLowerCase();bv=(b.name||'').toLowerCase();}
+    else if(col==='cpd'){av=a.demos>0?a.spend/a.demos:null;bv=b.demos>0?b.spend/b.demos:null;}
+    else if(col==='status'){av=a.status||'';bv=b.status||'';}
+    else if(col==='stage'){av=_irfanStages(a.name)[0].l;bv=_irfanStages(b.name)[0].l;}
+    else if(col==='ctr'){av=a.ctr||0;bv=b.ctr||0;}
+    else{av=a[col]||0;bv=b[col]||0;}
+    if(av==null&&bv==null)return 0;
+    if(av==null)return 1;if(bv==null)return -1;
+    if(av<bv)return dir==='asc'?-1:1;
+    if(av>bv)return dir==='asc'?1:-1;
+    return 0;
+  };
+  return rows.slice().sort(cmp);
+}
+function _irfanSortableTh(label,col,sortState,cbName,align){
+  const isAct=sortState.col===col;
+  const arrow=isAct?(sortState.dir==='desc'?' ↓':' ↑'):'';
+  const col2=isAct?'var(--teal)':'var(--grey)';
+  return '<th onclick="'+cbName+'(\''+col+'\')" style="text-align:'+(align||'right')+';padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;cursor:pointer;color:'+col2+';user-select:none;white-space:nowrap">'+label+arrow+'</th>';
+}
+function _irfanStatusBadge(st,sp){
+  const a=st==='ACTIVE'||(!st&&sp>0);
+  const p=st==='PAUSED'||st==='COMPLETED'||st==='REMOVED'||(!st&&sp===0);
+  const col=a?'#16A34A':(p?'#9CA3AF':'#64748B');
+  const lbl=a?'Active':(p?'Paused':(st||'—'));
+  return '<span style="display:inline-block;font-size:9px;font-weight:700;color:'+col+';background:'+col+'15;padding:2px 8px;border-radius:99px">'+lbl+'</span>';
+}
+// Callbacks invoked by header clicks / stage filter pills.
+window.irfanSortCamp=function(col){const s=S.irfan.metaCampSort||(S.irfan.metaCampSort={col:'cpd',dir:'desc'});if(s.col===col)s.dir=s.dir==='desc'?'asc':'desc';else{s.col=col;s.dir=(col==='name'||col==='status'||col==='stage')?'asc':'desc';}if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD);};
+window.irfanSortCre=function(col){const s=S.irfan.metaCreSort||(S.irfan.metaCreSort={col:'cpd',dir:'desc'});if(s.col===col)s.dir=s.dir==='desc'?'asc':'desc';else{s.col=col;s.dir=(col==='name'||col==='status')?'asc':'desc';}if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD);};
+window.irfanCampStageF=function(stage){S.irfan.metaCampStageF=stage;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD);};
 function _renderIrfanMetaTables(d){
+  _irfanMetaD=d;
   const target=document.getElementById('irfan-meta-tables');if(!target)return;
   const meta=d&&d.channels&&d.channels.meta;
   if(!meta){target.innerHTML='<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px">No Meta data available for this window</div>';return;}
-  const camps=(meta.campaigns||[]).filter(c=>c.spend>0).sort((a,b)=>b.spend-a.spend).slice(0,25);
-  const cres=(meta.creatives||[]).filter(c=>c.spend>0).sort((a,b)=>b.spend-a.spend).slice(0,25);
-  function _statusBadge(st,sp){const a=st==='ACTIVE'||(!st&&sp>0);const p=st==='PAUSED'||st==='COMPLETED'||st==='REMOVED'||(!st&&sp===0);const col=a?'#16A34A':(p?'#9CA3AF':'#64748B');const lbl=a?'Active':(p?'Paused':(st||'—'));return '<span style="display:inline-block;font-size:9px;font-weight:700;color:'+col+';background:'+col+'15;padding:2px 8px;border-radius:99px">'+lbl+'</span>';}
-  function _tableHTML(title,rows,extraCols){
-    let h='<div style="margin-bottom:16px"><div style="font-family:var(--font-h);font-size:12px;font-weight:700;color:var(--navy);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em">'+title+' <span style="font-weight:400;color:var(--grey);font-size:11px;text-transform:none;letter-spacing:0">(top '+rows.length+' by spend)</span></div>';
-    h+='<div style="overflow-x:auto"><table style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr style="border-bottom:1.5px solid var(--border);color:var(--grey)">';
-    h+='<th style="text-align:left;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em">Name</th>';
-    if(extraCols.indexOf('camp')>=0)h+='<th style="text-align:left;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em">Campaign</th>';
-    h+='<th style="text-align:center;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em">Status</th>';
-    h+='<th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em">Spend</th>';
-    h+='<th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em">Impr</th>';
-    h+='<th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em">Clicks</th>';
-    h+='<th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em">CTR</th>';
-    h+='<th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em">Demos</th>';
-    h+='<th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em">CPD</th>';
-    h+='<th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em">Qual</th>';
-    h+='</tr></thead><tbody>';
-    for(const c of rows){
-      const cpd=c.demos>0?c.spend/c.demos:null;
-      const nm=(c.name||'').length>56?(c.name||'').slice(0,53)+'…':(c.name||'');
-      const cmp=(c.campaignName||c.campaign||'');
-      const cmpNm=cmp.length>40?cmp.slice(0,37)+'…':cmp;
-      h+='<tr style="border-bottom:1px solid var(--border)">';
-      h+='<td style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(c.name||'').replace(/"/g,'&quot;')+'">'+nm+'</td>';
-      if(extraCols.indexOf('camp')>=0)h+='<td style="padding:8px 6px;color:var(--grey);font-size:10px" title="'+cmp.replace(/"/g,'&quot;')+'">'+cmpNm+'</td>';
-      h+='<td style="text-align:center;padding:8px 6px">'+_statusBadge(c.status,c.spend)+'</td>';
-      h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+f$(c.spend)+'</td>';
-      h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+fN(c.impressions||0)+'</td>';
-      h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+fN(c.clicks||0)+'</td>';
-      h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+(c.ctr!=null?c.ctr.toFixed(2)+'%':'—')+'</td>';
-      h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+fN(c.demos||0)+'</td>';
-      h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+(cpd!=null?f$(cpd):'—')+'</td>';
-      h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+fN(c.qualified||0)+'</td>';
-      h+='</tr>';
-    }
-    if(!rows.length)h+='<tr><td colspan="'+(extraCols.indexOf('camp')>=0?10:9)+'" style="padding:16px;text-align:center;color:var(--grey)">No data in this window</td></tr>';
-    h+='</tbody></table></div></div>';
-    return h;
+  // Defaults: sort by CPD descending; no stage filter
+  if(!S.irfan.metaCampSort)S.irfan.metaCampSort={col:'cpd',dir:'desc'};
+  if(!S.irfan.metaCreSort)S.irfan.metaCreSort={col:'cpd',dir:'desc'};
+  if(!S.irfan.metaCampStageF)S.irfan.metaCampStageF='all';
+  const campSort=S.irfan.metaCampSort,creSort=S.irfan.metaCreSort,stageF=S.irfan.metaCampStageF;
+
+  // ── Campaigns ──
+  let campRows=(meta.campaigns||[]).filter(c=>c.spend>0);
+  if(stageF!=='all')campRows=campRows.filter(c=>_irfanStages(c.name).some(t=>t.k===stageF));
+  campRows=_irfanSortRows(campRows,campSort.col,campSort.dir);
+  // Heatmap value arrays (across visible rows)
+  const cSp=campRows.map(c=>c.spend),cIm=campRows.map(c=>c.impressions||0),cCl=campRows.map(c=>c.clicks||0),cCt=campRows.map(c=>c.ctr||0),cDe=campRows.map(c=>c.demos||0),cCp=campRows.map(c=>c.demos>0?c.spend/c.demos:0),cQu=campRows.map(c=>c.qualified||0);
+  // Stage filter pills
+  const stages=[{k:'all',l:'All',c:'var(--grey)'},{k:'s1',l:'TOF',c:'#2980B9'},{k:'s2',l:'MOF',c:'#E67E22'},{k:'s3',l:'BOF',c:'#C0392B'},{k:'s4',l:'Retarget',c:'#7D3C98'}];
+  let campH='<div style="margin-bottom:24px">';
+  campH+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap"><div style="font-family:var(--font-h);font-size:12px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.06em">Meta Campaigns <span style="font-weight:400;color:var(--grey);font-size:11px;text-transform:none;letter-spacing:0">('+campRows.length+' rows · sort by '+campSort.col+' '+campSort.dir+')</span></div>';
+  campH+='<div style="flex:1"></div><span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em">Stage</span>';
+  for(const s of stages){const isA=stageF===s.k;campH+='<button onclick="irfanCampStageF(\''+s.k+'\')" style="padding:5px 12px;border-radius:50px;font-size:10px;font-weight:'+(isA?'700':'500')+';border:'+(isA?'none':'1px solid '+s.c)+';background:'+(isA?s.c:'transparent')+';color:'+(isA?'#fff':s.c)+';cursor:pointer;font-family:var(--font-h)">'+s.l+'</button>';}
+  campH+='</div>';
+  campH+='<div style="overflow-x:auto"><table style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr style="border-bottom:1.5px solid var(--border)">';
+  campH+=_irfanSortableTh('Name','name',campSort,'irfanSortCamp','left');
+  campH+='<th style="text-align:left;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Stage</th>';
+  campH+=_irfanSortableTh('Status','status',campSort,'irfanSortCamp','center');
+  campH+=_irfanSortableTh('Spend','spend',campSort,'irfanSortCamp','right');
+  campH+=_irfanSortableTh('Impr','impressions',campSort,'irfanSortCamp','right');
+  campH+=_irfanSortableTh('Clicks','clicks',campSort,'irfanSortCamp','right');
+  campH+=_irfanSortableTh('CTR','ctr',campSort,'irfanSortCamp','right');
+  campH+=_irfanSortableTh('Demos','demos',campSort,'irfanSortCamp','right');
+  campH+=_irfanSortableTh('CPD','cpd',campSort,'irfanSortCamp','right');
+  campH+=_irfanSortableTh('Qual','qualified',campSort,'irfanSortCamp','right');
+  campH+='</tr></thead><tbody>';
+  for(let i=0;i<campRows.length;i++){
+    const c=campRows[i];const cpd=c.demos>0?c.spend/c.demos:null;
+    const nm=(c.name||'').length>56?(c.name||'').slice(0,53)+'…':(c.name||'');
+    const stags=_irfanStages(c.name);
+    let stagesCell='';for(const t of stags)stagesCell+='<span style="display:inline-block;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;background:'+t.c+'15;color:'+t.c+';margin-right:2px">'+t.l+'</span>';
+    campH+='<tr style="border-bottom:1px solid var(--border)">';
+    campH+='<td style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(c.name||'').replace(/"/g,'&quot;')+'">'+nm+'</td>';
+    campH+='<td style="padding:8px 6px">'+stagesCell+'</td>';
+    campH+='<td style="text-align:center;padding:8px 6px">'+_irfanStatusBadge(c.status,c.spend)+'</td>';
+    campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cSp,c.spend,true)+'">'+f$(c.spend)+'</td>';
+    campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cIm,c.impressions||0,false)+'">'+fN(c.impressions||0)+'</td>';
+    campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cCl,c.clicks||0,false)+'">'+fN(c.clicks||0)+'</td>';
+    campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cCt,c.ctr||0,false)+'">'+(c.ctr!=null?c.ctr.toFixed(2)+'%':'—')+'</td>';
+    campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cDe,c.demos||0,false)+'">'+fN(c.demos||0)+'</td>';
+    campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cCp,cpd||0,true)+'">'+(cpd!=null?f$(cpd):'—')+'</td>';
+    campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cQu,c.qualified||0,false)+'">'+fN(c.qualified||0)+'</td>';
+    campH+='</tr>';
   }
-  target.innerHTML=_tableHTML('Meta Campaigns',camps,[])+_tableHTML('Meta Ad Creatives',cres,['camp']);
+  if(!campRows.length)campH+='<tr><td colspan="10" style="padding:16px;text-align:center;color:var(--grey)">No campaigns match</td></tr>';
+  campH+='</tbody></table></div></div>';
+
+  // ── Creatives ──
+  let creRows=(meta.creatives||[]).filter(c=>c.spend>0);
+  creRows=_irfanSortRows(creRows,creSort.col,creSort.dir);
+  const rSp=creRows.map(c=>c.spend),rIm=creRows.map(c=>c.impressions||0),rCl=creRows.map(c=>c.clicks||0),rCt=creRows.map(c=>c.ctr||0),rDe=creRows.map(c=>c.demos||0),rCp=creRows.map(c=>c.demos>0?c.spend/c.demos:0),rQu=creRows.map(c=>c.qualified||0);
+  let creH='<div>';
+  creH+='<div style="font-family:var(--font-h);font-size:12px;font-weight:700;color:var(--navy);margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em">Meta Ad Creatives <span style="font-weight:400;color:var(--grey);font-size:11px;text-transform:none;letter-spacing:0">('+creRows.length+' rows · sort by '+creSort.col+' '+creSort.dir+')</span></div>';
+  creH+='<div style="overflow-x:auto"><table style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr style="border-bottom:1.5px solid var(--border)">';
+  creH+='<th style="width:48px;padding:8px 4px"></th>';
+  creH+=_irfanSortableTh('Name','name',creSort,'irfanSortCre','left');
+  creH+=_irfanSortableTh('Status','status',creSort,'irfanSortCre','center');
+  creH+=_irfanSortableTh('Spend','spend',creSort,'irfanSortCre','right');
+  creH+=_irfanSortableTh('Impr','impressions',creSort,'irfanSortCre','right');
+  creH+=_irfanSortableTh('Clicks','clicks',creSort,'irfanSortCre','right');
+  creH+=_irfanSortableTh('CTR','ctr',creSort,'irfanSortCre','right');
+  creH+=_irfanSortableTh('Demos','demos',creSort,'irfanSortCre','right');
+  creH+=_irfanSortableTh('CPD','cpd',creSort,'irfanSortCre','right');
+  creH+=_irfanSortableTh('Qual','qualified',creSort,'irfanSortCre','right');
+  creH+='</tr></thead><tbody>';
+  for(let i=0;i<creRows.length;i++){
+    const c=creRows[i];const cpd=c.demos>0?c.spend/c.demos:null;
+    const nm=(c.name||'').length>56?(c.name||'').slice(0,53)+'…':(c.name||'');
+    let thumb='';
+    if(c.thumbnail)thumb='<img src="'+c.thumbnail+'" style="width:36px;height:36px;object-fit:cover;border-radius:4px;display:block" onerror="this.style.display=\'none\';this.parentNode.innerHTML=this.parentNode.innerHTML.replace(/<img[^>]*>/,\'📷\')">';
+    else thumb='<div style="width:36px;height:36px;border-radius:4px;background:var(--lighter);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--teal)">📷</div>';
+    creH+='<tr style="border-bottom:1px solid var(--border)">';
+    creH+='<td style="padding:6px 4px">'+thumb+'</td>';
+    creH+='<td style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(c.name||'').replace(/"/g,'&quot;')+'">'+nm+'</td>';
+    creH+='<td style="text-align:center;padding:8px 6px">'+_irfanStatusBadge(c.status,c.spend)+'</td>';
+    creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rSp,c.spend,true)+'">'+f$(c.spend)+'</td>';
+    creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rIm,c.impressions||0,false)+'">'+fN(c.impressions||0)+'</td>';
+    creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rCl,c.clicks||0,false)+'">'+fN(c.clicks||0)+'</td>';
+    creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rCt,c.ctr||0,false)+'">'+(c.ctr!=null?c.ctr.toFixed(2)+'%':'—')+'</td>';
+    creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rDe,c.demos||0,false)+'">'+fN(c.demos||0)+'</td>';
+    creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rCp,cpd||0,true)+'">'+(cpd!=null?f$(cpd):'—')+'</td>';
+    creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rQu,c.qualified||0,false)+'">'+fN(c.qualified||0)+'</td>';
+    creH+='</tr>';
+  }
+  if(!creRows.length)creH+='<tr><td colspan="10" style="padding:16px;text-align:center;color:var(--grey)">No creatives</td></tr>';
+  creH+='</tbody></table></div></div>';
+
+  target.innerHTML=campH+creH;
 }
 
-// Per-day demos bar chart for Irfan Dashboard — uses scheduledByDayScale
-// (non-pre-launch per-day counts) so both bars and the average line exclude pre-launch.
-function _renderIrfanDaily(d){
-  const sByDay=d.demoTracking?.scheduledByDayScale||{};
-  const days=Object.entries(sByDay).sort((a,b)=>a[0].localeCompare(b[0])).map(([date,count])=>({date,count}));
-  const target=document.getElementById('irfan-daily-wrap');if(!target)return;
-  if(!days.length){target.innerHTML='<div style="color:var(--grey);font-size:12px;padding:20px 0">No daily data</div>';return;}
-  const total=days.reduce((s,x)=>s+x.count,0),avg=total/days.length;
-  const mx=Math.max(...days.map(x=>x.count),1),avgTop=180*(1-avg/mx);
-  let h='<div style="position:relative">';
-  h+=`<div style="position:absolute;left:0;right:0;top:${avgTop}px;border-top:1.5px dashed var(--teal);z-index:2;pointer-events:none"><div style="position:absolute;right:-2px;top:-12px;font-size:10px;font-weight:700;color:#fff;background:var(--teal);font-family:var(--font-h);padding:2px 8px;border-radius:99px;line-height:1.2">Avg ${avg.toFixed(1)}</div></div>`;
-  h+='<div style="display:flex;gap:6px">';
-  for(const dy of days){const dt2=new Date(dy.date+'T12:00:00'),dow=dt2.getDay(),isW=dow===0||dow===6;const barH=(dy.count/mx)*100;const lbl=dt2.toLocaleDateString('en-US',{month:'short',day:'numeric'});const dowL=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dow];
-    h+=`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px"><div style="width:100%;height:180px;display:flex;align-items:flex-end;justify-content:center"><div class="dbc-bar${isW?' wknd':''}" title="${dowL}, ${lbl}: ${dy.count}" style="height:${barH}%;width:100%;max-width:48px;position:relative"><div class="dbc-cnt">${dy.count}</div></div></div><div class="dbc-lbl dow">${dowL}</div><div class="dbc-lbl">${lbl}</div></div>`;}
-  h+='</div></div>';
-  target.innerHTML=h;
-}
-
-// Web-traffic-tier pie chart for Irfan Dashboard. Segments in fixed chronological
+// Web-traffic-tier donut chart for Irfan Dashboard. Segments in fixed chronological
 // order clockwise: Pre-launch → 0-10K → ... → 500K+. Each tier gets the same
 // color as the BD Dashboard and Demo Quality web-traffic palette.
 const IRFAN_WT_LABELS={'Pre-launch / just launching':'Pre-launch','0-10K monthly web visitors':'0-10K','10-25K monthly web visitors':'10-25K','25-50K monthly web visitors':'25-50K','50-100K monthly web visitors':'50-100K','100-200K monthly web visitors':'100-200K','200-500K monthly web visitors':'200-500K','500K+ monthly web visitors':'500K+'};
 const IRFAN_WT_ORDER=['Pre-launch','0-10K','10-25K','25-50K','50-100K','100-200K','200-500K','500K+'];
 const IRFAN_WT_COLORS={'Pre-launch':'#9CA3AF','0-10K':'#72A4BF','10-25K':'#1D4053','25-50K':'#172C45','50-100K':'#0EA5E9','100-200K':'#7C3AED','200-500K':'#16A34A','500K+':'#F59E0B','(none)':'#E5E7EB'};
-// Reusable: render a web-traffic-tier donut into a target element.
-// rawBuckets is keyed by raw HubSpot values; centerLabel is text shown under the count.
+// Render a web-traffic donut into a target element. Bigger SVG, inline % labels
+// on each segment >=4%, and instant hover with a floating tooltip.
 function _renderIrfanWtPieInto(targetId, rawBuckets, centerLabel){
   const target=document.getElementById(targetId);if(!target)return;
   const buckets={};for(const key in (rawBuckets||{})){const lbl=IRFAN_WT_LABELS[key]||(key==='(none)'?'(none)':key);buckets[lbl]=(buckets[lbl]||0)+rawBuckets[key];}
@@ -1195,16 +1304,47 @@ function _renderIrfanWtPieInto(targetId, rawBuckets, centerLabel){
   for(const t of IRFAN_WT_ORDER){if(buckets[t]){segs.push({label:t,count:buckets[t]});total+=buckets[t];delete buckets[t];}}
   for(const k of Object.keys(buckets)){segs.push({label:k,count:buckets[k]});total+=buckets[k];}
   if(!total){target.innerHTML='<div style="color:var(--grey);font-size:12px;padding:40px 0;text-align:center">No data</div>';return;}
-  const cx=120,cy=120,r=90;let cum=0;let paths='';
-  for(const s of segs){const frac=s.count/total;const a0=cum*2*Math.PI-Math.PI/2;const a1=(cum+frac)*2*Math.PI-Math.PI/2;cum+=frac;const x0=cx+r*Math.cos(a0),y0=cy+r*Math.sin(a0);const x1=cx+r*Math.cos(a1),y1=cy+r*Math.sin(a1);const large=frac>0.5?1:0;const col=IRFAN_WT_COLORS[s.label]||'#9CA3AF';
-    if(frac>=0.9999){paths+=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${col}"/>`;}
-    else paths+=`<path d="M ${cx} ${cy} L ${x0.toFixed(2)} ${y0.toFixed(2)} A ${r} ${r} 0 ${large} 1 ${x1.toFixed(2)} ${y1.toFixed(2)} Z" fill="${col}"/>`;}
+  // Geometry: viewBox 280, outer r=130, inner r=58 (donut hole for big center number)
+  const cx=140,cy=140,r=130,rInner=58;let cum=0;let paths='',labels='';
+  for(const s of segs){
+    const frac=s.count/total;
+    const a0=cum*2*Math.PI-Math.PI/2;const a1=(cum+frac)*2*Math.PI-Math.PI/2;cum+=frac;
+    const x0=cx+r*Math.cos(a0),y0=cy+r*Math.sin(a0);
+    const x1=cx+r*Math.cos(a1),y1=cy+r*Math.sin(a1);
+    const large=frac>0.5?1:0;
+    const col=IRFAN_WT_COLORS[s.label]||'#9CA3AF';
+    const pctStr=(frac*100).toFixed(1)+'%';
+    if(frac>=0.9999){paths+='<circle class="irfan-pie-seg" data-tip="'+s.label+': '+s.count+' ('+pctStr+')" cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="'+col+'"/>';}
+    else paths+='<path class="irfan-pie-seg" data-tip="'+s.label+': '+s.count+' ('+pctStr+')" d="M '+cx+' '+cy+' L '+x0.toFixed(2)+' '+y0.toFixed(2)+' A '+r+' '+r+' 0 '+large+' 1 '+x1.toFixed(2)+' '+y1.toFixed(2)+' Z" fill="'+col+'"/>';
+    // % label at midpoint, only if segment is wide enough to read
+    if(frac>=0.04){
+      const aMid=(cum-frac/2)*2*Math.PI-Math.PI/2;
+      const rLbl=(r+rInner)/2;
+      const lx=cx+rLbl*Math.cos(aMid),ly=cy+rLbl*Math.sin(aMid);
+      labels+='<text x="'+lx.toFixed(1)+'" y="'+ly.toFixed(1)+'" text-anchor="middle" dominant-baseline="central" style="font-family:var(--font-h);font-size:12px;font-weight:700;fill:#fff;pointer-events:none;text-shadow:0 0 3px rgba(0,0,0,.35)">'+pctStr+'</text>';
+    }
+  }
   let legend='<div style="display:flex;flex-direction:column;gap:6px;font-size:11px;color:var(--navy)">';
-  for(const s of segs){const pct=(s.count/total*100).toFixed(1);const col=IRFAN_WT_COLORS[s.label]||'#9CA3AF';legend+=`<div style="display:flex;align-items:center;gap:6px;white-space:nowrap"><span style="display:inline-block;width:10px;height:10px;background:${col};border-radius:2px;flex-shrink:0"></span><span style="font-weight:600;min-width:62px">${s.label}</span><span style="color:var(--grey)">${s.count}</span><span style="color:var(--grey);font-variant-numeric:tabular-nums">${pct}%</span></div>`;}
+  for(const s of segs){const pct=(s.count/total*100).toFixed(1);const col=IRFAN_WT_COLORS[s.label]||'#9CA3AF';legend+='<div style="display:flex;align-items:center;gap:6px;white-space:nowrap"><span style="display:inline-block;width:10px;height:10px;background:'+col+';border-radius:2px;flex-shrink:0"></span><span style="font-weight:600;min-width:62px">'+s.label+'</span><span style="color:var(--grey)">'+s.count+'</span><span style="color:var(--grey);font-variant-numeric:tabular-nums">'+pct+'%</span></div>';}
   legend+='</div>';
-  target.innerHTML=`<div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;justify-content:center"><svg viewBox="0 0 240 240" style="width:200px;height:200px;flex-shrink:0">${paths}<circle cx="${cx}" cy="${cy}" r="40" fill="var(--white)"/><text x="${cx}" y="${cy-4}" text-anchor="middle" style="font-family:var(--font-h);font-size:18px;font-weight:700;fill:var(--navy)">${total}</text><text x="${cx}" y="${cy+12}" text-anchor="middle" style="font-size:10px;fill:var(--grey)">${centerLabel||''}</text></svg>${legend}</div>`;
+  target.innerHTML='<div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;justify-content:center;position:relative">'
+    +'<svg viewBox="0 0 280 280" style="width:280px;height:280px;flex-shrink:0">'+paths+labels
+    +'<circle cx="'+cx+'" cy="'+cy+'" r="'+rInner+'" fill="var(--white)"/>'
+    +'<text x="'+cx+'" y="'+(cy-4)+'" text-anchor="middle" style="font-family:var(--font-h);font-size:34px;font-weight:700;fill:var(--navy)">'+total+'</text>'
+    +'<text x="'+cx+'" y="'+(cy+18)+'" text-anchor="middle" style="font-size:11px;fill:var(--grey)">'+(centerLabel||'')+'</text>'
+    +'</svg>'+legend
+    +'<div id="'+targetId+'-tip" style="display:none;position:fixed;background:#172C45;color:#fff;padding:6px 10px;border-radius:6px;font-size:12px;font-family:var(--font-b);pointer-events:none;z-index:999;box-shadow:0 4px 12px rgba(2,15,24,.25);white-space:nowrap"></div>'
+    +'</div>';
+  // Wire up hover tooltip
+  const tip=document.getElementById(targetId+'-tip');
+  target.querySelectorAll('.irfan-pie-seg').forEach(function(el){
+    el.style.cursor='default';el.style.transition='opacity .15s';
+    el.addEventListener('mouseenter',function(){el.style.opacity='0.85';if(tip){tip.style.display='block';tip.textContent=el.getAttribute('data-tip')||'';}});
+    el.addEventListener('mousemove',function(e){if(!tip)return;var tw=tip.offsetWidth||140;var vw=window.innerWidth;var x=e.clientX+12;if(x+tw>vw-8)x=e.clientX-tw-12;tip.style.left=x+'px';tip.style.top=(e.clientY-30)+'px';});
+    el.addEventListener('mouseleave',function(){el.style.opacity='1';if(tip)tip.style.display='none';});
+  });
 }
-function _renderIrfanWtPie(d){_renderIrfanWtPieInto('irfan-wt-pie', d.demoTracking?.scheduledByWebTraffic, 'demos');}
+function _renderIrfanWtPie(d){_renderIrfanWtPieInto('irfan-wt-pie', d.demoTracking?.scheduledByWebTraffic, 'demos booked');}
 function _renderIrfanSignedLast14Pie(d){_renderIrfanWtPieInto('irfan-signed14-pie', d.irfan?.signedLast14ByWebTraffic, 'signed');}
 
 // Lightweight churn update — only touches ARR/ROAS values, not the slider
@@ -1427,7 +1567,8 @@ function renderCPDTable(d){
   renderOverviewOutcomeBreakdown(d);
 }
 function dbcTip(e,el){let tip=document.getElementById('dbc-tip');if(!tip){tip=document.createElement('div');tip.id='dbc-tip';tip.style.cssText='position:fixed;background:var(--navy);color:#fff;padding:6px 10px;border-radius:6px;font-size:12px;font-family:var(--font-b);pointer-events:none;z-index:9999;box-shadow:0 4px 12px rgba(2,15,24,.25);white-space:nowrap;transition:opacity .08s ease;opacity:0';document.body.appendChild(tip);}tip.textContent=el.getAttribute('data-tip')||'';tip.style.opacity='1';dbcTipMove(e);}function dbcTipMove(e){const tip=document.getElementById('dbc-tip');if(!tip||tip.style.opacity==='0')return;tip.style.left=(e.clientX+12)+'px';tip.style.top=(e.clientY-32)+'px';}function dbcTipHide(){const tip=document.getElementById('dbc-tip');if(tip)tip.style.opacity='0';}
-function renderDemosPerDay(d){
+function renderDemosPerDay(d, targetId){
+  const _target=document.getElementById(targetId||'daily-wrap');if(!_target)return;
   const sByDay=d.demoTracking.scheduledByDay||{};const days=Object.entries(sByDay).sort((a,b)=>a[0].localeCompare(b[0])).map(([date,count])=>({date,count}));const total=days.reduce((s,x)=>s+x.count,0),numDays=days.length||1,avg=total/numDays;
   // vs prior (sameTimePrior) and vs LM (lastMonth) — both pulled from the totalScheduled tile
   const priorTotal=d.demoTracking.totalScheduled?.sameTimePrior?.value;
@@ -1447,7 +1588,7 @@ function renderDemosPerDay(d){
   h+=`<div class="tile accent"><div class="tlbl">Demos Booked</div><div class="tval">${fN(total)}</div>${tileDeltaBlock(total,priorTotal,lmTotal,'#')}</div>`;
   h+=`<div class="tile"><div class="tlbl">Daily Avg</div><div class="tval">${avg.toFixed(1)}</div>${tileDeltaBlock(avg,priorAvg,lmAvg,'',1)}</div>`;
   h+='</div>';
-  if(!days.length){h+='<div style="color:var(--grey);font-size:12px">No daily data</div>';document.getElementById('daily-wrap').innerHTML=h;return;}
+  if(!days.length){h+='<div style="color:var(--grey);font-size:12px">No daily data</div>';_target.innerHTML=h;return;}
   const mx=Math.max(...days.map(x=>x.count),1),avgTop=220*(1-avg/mx);
   h+='<div style="position:relative">';
   h+=`<div style="position:absolute;left:0;right:0;top:${avgTop}px;border-top:1.5px dashed var(--teal);z-index:2;pointer-events:none"><div style="position:absolute;right:-2px;top:-12px;font-size:10px;font-weight:700;color:#fff;background:var(--teal);font-family:var(--font-h);padding:2px 8px;border-radius:99px;line-height:1.2">Avg ${avg.toFixed(1)}</div></div>`;
@@ -1457,7 +1598,7 @@ function renderDemosPerDay(d){
     h+=`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px"><div style="width:100%;height:220px;display:flex;align-items:flex-end;justify-content:center"><div class="dbc-bar${isW?' wknd':''}" data-tip="${tipText.replace(/"/g,'&quot;')}" style="height:${barH}%;width:100%;max-width:72px;position:relative;cursor:pointer" onmouseover="dbcTip(event,this)" onmouseout="dbcTipHide()" onmousemove="dbcTipMove(event)"><div class="dbc-cnt">${dy.count}</div></div></div><div class="dbc-lbl dow">${dowL}</div><div class="dbc-lbl">${lbl}</div></div>`;}
   h+='</div></div>';
   h+='<div class="dbc-legend"><div><div class="sw s"></div>Weekday</div><div><div class="sw d"></div>Weekend</div><div style="display:flex;align-items:center;gap:4px"><div style="width:14px;border-top:2px dashed var(--teal)"></div>Daily Avg</div></div>';
-  document.getElementById('daily-wrap').innerHTML=h;
+  _target.innerHTML=h;
 }
 
 function renderFunnel(d){
