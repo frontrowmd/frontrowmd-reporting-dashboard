@@ -1047,7 +1047,10 @@ function renderIrfan(){
   h+='<div style="font-size:11px;color:var(--grey);margin-bottom:10px">Independent of the time selector above — uses fixed windows (prior month, last 2 weeks)</div>';
   h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">';
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Prior Month Qualified → Signed</div><div style="font-size:11px;color:var(--grey);margin-bottom:14px">Of qualified demos (held, non-pre-launch, non-cancelled) in the prior month, what % have since signed and at what avg starting ACV</div><div style="display:flex;align-items:center;justify-content:center;min-height:120px;color:var(--grey);font-size:12px;font-style:italic;padding:20px;text-align:center">⚠ Placeholder — needs worker logic to cross-reference prior-month qualified demos against closed-won deals (by deal ID or matched company)</div></div>';
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Signed Deals (Last 2 Weeks) by Web Traffic</div><div style="font-size:11px;color:var(--grey);margin-bottom:14px">% of closed-won deals in the last 14 days, by starting web-traffic tier</div><div style="display:flex;align-items:center;justify-content:center;min-height:120px;color:var(--grey);font-size:12px;font-style:italic;padding:20px;text-align:center">⚠ Placeholder — needs worker to expose closed-won deal list with web-traffic tier per deal</div></div>';
+  // Special Tile #2 — Signed last 14 days by web traffic. Uses fixed 14-day window.
+  const _ir14=d.irfan||{};
+  const _ir14Range=_ir14.fromDate&&_ir14.toDate?`${fmtD(_ir14.fromDate)} – ${fmtD(_ir14.toDate)}`:'last 14 days';
+  h+=`<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Signed Deals — Last 2 Weeks by Web Traffic</div><div style="font-size:11px;color:var(--grey);margin-bottom:14px">${_ir14Range} · ${fN(_ir14.totalSignedLast14||0)} signed · ${_ir14.totalSignedLast14MRR?f$(_ir14.totalSignedLast14MRR)+' MRR':''}</div><div id="irfan-signed14-pie"></div></div>`;
   h+='</div>';
 
   // Meta Campaign + Creative tables — share the analyzer payload (S.analyzer.data)
@@ -1058,6 +1061,7 @@ function renderIrfan(){
   // Render daily chart into #irfan-daily-wrap (simplified version of renderDemosPerDay)
   _renderIrfanDaily(d);
   _renderIrfanWtPie(d);
+  _renderIrfanSignedLast14Pie(d);
 }
 
 // Per-day demos bar chart for Irfan Dashboard — uses scheduledByDayScale
@@ -1084,17 +1088,15 @@ function _renderIrfanDaily(d){
 const IRFAN_WT_LABELS={'Pre-launch / just launching':'Pre-launch','0-10K monthly web visitors':'0-10K','10-25K monthly web visitors':'10-25K','25-50K monthly web visitors':'25-50K','50-100K monthly web visitors':'50-100K','100-200K monthly web visitors':'100-200K','200-500K monthly web visitors':'200-500K','500K+ monthly web visitors':'500K+'};
 const IRFAN_WT_ORDER=['Pre-launch','0-10K','10-25K','25-50K','50-100K','100-200K','200-500K','500K+'];
 const IRFAN_WT_COLORS={'Pre-launch':'#9CA3AF','0-10K':'#72A4BF','10-25K':'#1D4053','25-50K':'#172C45','50-100K':'#0EA5E9','100-200K':'#7C3AED','200-500K':'#16A34A','500K+':'#F59E0B','(none)':'#E5E7EB'};
-function _renderIrfanWtPie(d){
-  const target=document.getElementById('irfan-wt-pie');if(!target)return;
-  const raw=d.demoTracking?.scheduledByWebTraffic||{};
-  // Normalize raw HubSpot values → short tier labels
-  const buckets={};for(const key in raw){const lbl=IRFAN_WT_LABELS[key]||(key==='(none)'?'(none)':key);buckets[lbl]=(buckets[lbl]||0)+raw[key];}
-  // Order: tiers in fixed sequence first; '(none)' or anything else trailing
+// Reusable: render a web-traffic-tier donut into a target element.
+// rawBuckets is keyed by raw HubSpot values; centerLabel is text shown under the count.
+function _renderIrfanWtPieInto(targetId, rawBuckets, centerLabel){
+  const target=document.getElementById(targetId);if(!target)return;
+  const buckets={};for(const key in (rawBuckets||{})){const lbl=IRFAN_WT_LABELS[key]||(key==='(none)'?'(none)':key);buckets[lbl]=(buckets[lbl]||0)+rawBuckets[key];}
   const segs=[];let total=0;
   for(const t of IRFAN_WT_ORDER){if(buckets[t]){segs.push({label:t,count:buckets[t]});total+=buckets[t];delete buckets[t];}}
   for(const k of Object.keys(buckets)){segs.push({label:k,count:buckets[k]});total+=buckets[k];}
-  if(!total){target.innerHTML='<div style="color:var(--grey);font-size:12px;padding:40px 0;text-align:center">No web-traffic data</div>';return;}
-  // SVG pie — radius 90, viewBox 240x240
+  if(!total){target.innerHTML='<div style="color:var(--grey);font-size:12px;padding:40px 0;text-align:center">No data</div>';return;}
   const cx=120,cy=120,r=90;let cum=0;let paths='';
   for(const s of segs){const frac=s.count/total;const a0=cum*2*Math.PI-Math.PI/2;const a1=(cum+frac)*2*Math.PI-Math.PI/2;cum+=frac;const x0=cx+r*Math.cos(a0),y0=cy+r*Math.sin(a0);const x1=cx+r*Math.cos(a1),y1=cy+r*Math.sin(a1);const large=frac>0.5?1:0;const col=IRFAN_WT_COLORS[s.label]||'#9CA3AF';
     if(frac>=0.9999){paths+=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${col}"/>`;}
@@ -1102,8 +1104,10 @@ function _renderIrfanWtPie(d){
   let legend='<div style="display:flex;flex-direction:column;gap:6px;font-size:11px;color:var(--navy)">';
   for(const s of segs){const pct=(s.count/total*100).toFixed(1);const col=IRFAN_WT_COLORS[s.label]||'#9CA3AF';legend+=`<div style="display:flex;align-items:center;gap:6px;white-space:nowrap"><span style="display:inline-block;width:10px;height:10px;background:${col};border-radius:2px;flex-shrink:0"></span><span style="font-weight:600;min-width:62px">${s.label}</span><span style="color:var(--grey)">${s.count}</span><span style="color:var(--grey);font-variant-numeric:tabular-nums">${pct}%</span></div>`;}
   legend+='</div>';
-  target.innerHTML=`<div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;justify-content:center"><svg viewBox="0 0 240 240" style="width:200px;height:200px;flex-shrink:0">${paths}<circle cx="${cx}" cy="${cy}" r="40" fill="var(--white)"/><text x="${cx}" y="${cy-4}" text-anchor="middle" style="font-family:var(--font-h);font-size:18px;font-weight:700;fill:var(--navy)">${total}</text><text x="${cx}" y="${cy+12}" text-anchor="middle" style="font-size:10px;fill:var(--grey)">demos</text></svg>${legend}</div>`;
+  target.innerHTML=`<div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;justify-content:center"><svg viewBox="0 0 240 240" style="width:200px;height:200px;flex-shrink:0">${paths}<circle cx="${cx}" cy="${cy}" r="40" fill="var(--white)"/><text x="${cx}" y="${cy-4}" text-anchor="middle" style="font-family:var(--font-h);font-size:18px;font-weight:700;fill:var(--navy)">${total}</text><text x="${cx}" y="${cy+12}" text-anchor="middle" style="font-size:10px;fill:var(--grey)">${centerLabel||''}</text></svg>${legend}</div>`;
 }
+function _renderIrfanWtPie(d){_renderIrfanWtPieInto('irfan-wt-pie', d.demoTracking?.scheduledByWebTraffic, 'demos');}
+function _renderIrfanSignedLast14Pie(d){_renderIrfanWtPieInto('irfan-signed14-pie', d.irfan?.signedLast14ByWebTraffic, 'signed');}
 
 // Lightweight churn update — only touches ARR/ROAS values, not the slider
 function updateDashChurn(){

@@ -403,7 +403,7 @@ async function fetchClosedWonDeals(token, from, to) {
       { propertyName: 'closedate', operator: 'GTE', value: String(toMsET(from)) },
       { propertyName: 'closedate', operator: 'LTE', value: String(toMsET(to, true)) },
     ],
-  }], ['amount','closedate','hs_createdate','utm_source','utm_medium','utm_campaign','utm_content','hubspot_owner_id','brand_status']);
+  }], ['amount','closedate','hs_createdate','utm_source','utm_medium','utm_campaign','utm_content','hubspot_owner_id','brand_status','average_monthly_web_traffic__cloned_']);
 }
 
 // Deals by hs_createdate — for Demo Quality table (shows deals created/booked in the window)
@@ -1651,6 +1651,32 @@ async function processRequest(windowType, customFrom, customTo, env) {
   resp.demoQualityDeals = demoQualityDeals;
   resp.contactInfoMap = contactInfoMap;
   resp.companyInfoMap = companyInfoMap;
+
+  // ── Irfan Dashboard — Special Time-Bound Tile #2 ──
+  // Closed-won deals in the last 14 days, aggregated by web-traffic tier at
+  // signing time (deal property average_monthly_web_traffic__cloned_).
+  // Always uses a fixed 14-day window, independent of the page time selector.
+  try {
+    const _today = new Date();
+    const _from14 = new Date(_today); _from14.setDate(_from14.getDate()-14);
+    const _fromStr14 = fmt(_from14), _toStr14 = fmt(_today);
+    const irfanCW14 = await fetchClosedWonDeals(hsToken, _fromStr14, _toStr14);
+    const signedLast14ByWebTraffic = {};
+    let totalSignedLast14 = 0, totalSignedLast14MRR = 0;
+    for (const dl of (irfanCW14||[])) {
+      const pp = dl.properties || {};
+      const wtRaw = pp.average_monthly_web_traffic__cloned_ || '';
+      const key = wtRaw || '(none)';
+      signedLast14ByWebTraffic[key] = (signedLast14ByWebTraffic[key]||0) + 1;
+      totalSignedLast14++;
+      totalSignedLast14MRR += parseFloat(pp.amount)||0;
+    }
+    resp.irfan = { signedLast14ByWebTraffic, totalSignedLast14, totalSignedLast14MRR, fromDate: _fromStr14, toDate: _toStr14 };
+  } catch(e) {
+    console.error('Irfan last-14-days fetch failed:', e);
+    resp.irfan = { error: e.message };
+  }
+
   return resp;
 }
 
