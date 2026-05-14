@@ -69,9 +69,14 @@ html,body{height:100%}body{font-family:var(--font-b);font-size:15px;color:var(--
 .fb:hover{background:var(--teal-8)}.fb.active{background:var(--navy);color:var(--white)}
 .rfb{padding:8px 16px;border-radius:50px;border:1.5px solid var(--teal);background:transparent;color:var(--teal);cursor:pointer;font-family:var(--font-h);font-size:12px;font-weight:700;margin-left:auto;transition:all .2s}
 .rfb:hover{background:var(--teal);color:var(--white)}.rfb.loading{opacity:.5;pointer-events:none}
-.cr{display:none;align-items:center;gap:8px;margin-left:8px}.cr.vis{display:flex}
+.cr{display:none;align-items:center;gap:8px;margin-left:8px;flex-wrap:wrap}.cr.vis{display:flex}
 .cr input[type="date"]{padding:6px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px}
 .cr button{padding:6px 16px;border-radius:50px;background:var(--teal);color:white;border:none;cursor:pointer;font-size:13px;font-family:var(--font-h);font-weight:700}
+.cr-cmp-lbl{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--navy);cursor:pointer;user-select:none;padding:4px 10px;border-radius:50px;background:rgba(114,164,191,.08);border:1px solid rgba(114,164,191,.2)}
+.cr-cmp-lbl input{margin:0;cursor:pointer}
+.cr-vs{display:none;align-items:center;gap:8px}
+.cr-vs.vis{display:inline-flex}
+.cr-vs-prefix{font-size:11px;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;font-weight:700}
 .dqb{background:#FEF3C7;border:1px solid #F59E0B;border-radius:10px;padding:12px 20px;margin:16px 32px 0;font-size:13px;color:#92400E;display:none;align-items:center;gap:8px}.dqb.vis{display:flex}
 .ld{display:flex;align-items:center;justify-content:center;flex:1;padding:80px}
 .sp{width:40px;height:40px;border:3px solid var(--teal-30);border-top-color:var(--navy);border-radius:50%;animation:spin .8s linear infinite}
@@ -587,10 +592,10 @@ async function doLogin(){
 document.getElementById('pw').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
 
 // Filters
-function bldF(){const s=S[AP];var aiBtn=AI_PANEL_PAGES.indexOf(AP)>=0?'<button id="ai-panel-btn" onclick="toggleAIPanel()" class="fb" style="border:1.5px solid #B8860B;background:'+(_aiPanelOpen?'#B8860B':'#FFF8E1')+';color:'+(_aiPanelOpen?'#fff':'#8B6914')+';font-weight:700" onmouseover="this.style.background=\'#B8860B\';this.style.color=\'#fff\'" onmouseout="if(!_aiPanelOpen){this.style.background=\'#FFF8E1\';this.style.color=\'#8B6914\';}">✦ AI Analysis</button>':'';if(AP==='signup'){document.getElementById('filters').innerHTML='<span style="font-size:13px;color:var(--grey)">Fixed cohorts — independent of time filters</span>'+aiBtn;return;}if(AP==='strategy'||AP==='csession'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='content'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='outbound'){document.getElementById('filters').innerHTML=aiBtn;document.getElementById('filters').style.display=aiBtn?'':'none';return;}else{document.getElementById('filters').style.display='';}let h='';for(const w of W)h+=`<button class="fb${s.win===w.k?' active':''}" data-w="${w.k}" onclick="selW('${w.k}')">${w.l}</button>`;h+=`<div class="cr${s.win==='custom'?' vis':''}" id="cr"><input type="date" id="cf"><span style="color:var(--grey)">→</span><input type="date" id="ct"><button onclick="goC()">Go</button></div>`;h+=aiBtn;h+=`<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>`;document.getElementById('filters').innerHTML=h;}
+function bldF(){const s=S[AP];var aiBtn=AI_PANEL_PAGES.indexOf(AP)>=0?'<button id="ai-panel-btn" onclick="toggleAIPanel()" class="fb" style="border:1.5px solid #B8860B;background:'+(_aiPanelOpen?'#B8860B':'#FFF8E1')+';color:'+(_aiPanelOpen?'#fff':'#8B6914')+';font-weight:700" onmouseover="this.style.background=\'#B8860B\';this.style.color=\'#fff\'" onmouseout="if(!_aiPanelOpen){this.style.background=\'#FFF8E1\';this.style.color=\'#8B6914\';}">✦ AI Analysis</button>':'';if(AP==='signup'){document.getElementById('filters').innerHTML='<span style="font-size:13px;color:var(--grey)">Fixed cohorts — independent of time filters</span>'+aiBtn;return;}if(AP==='strategy'||AP==='csession'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='content'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='outbound'){document.getElementById('filters').innerHTML=aiBtn;document.getElementById('filters').style.display=aiBtn?'':'none';return;}else{document.getElementById('filters').style.display='';}let h='';for(const w of W)h+=`<button class="fb${s.win===w.k?' active':''}" data-w="${w.k}" onclick="selW('${w.k}')">${w.l}</button>`;h+=`<div class="cr${s.win==='custom'?' vis':''}" id="cr"><input type="date" id="cf"><span style="color:var(--grey)">→</span><input type="date" id="ct"><label class="cr-cmp-lbl"><input type="checkbox" id="cc" onchange="document.getElementById('crVs').classList.toggle('vis',this.checked)">Compare</label><span class="cr-vs" id="crVs"><span class="cr-vs-prefix">vs</span><input type="date" id="cvf"><span style="color:var(--grey)">→</span><input type="date" id="cvt"></span><button onclick="goC()">Go</button></div>`;h+=aiBtn;h+=`<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>`;document.getElementById('filters').innerHTML=h;}
 async function selW(w){S[AP].win=w;document.querySelectorAll('#filters .fb').forEach(b=>b.classList.toggle('active',b.dataset.w===w));const cr=document.getElementById('cr');if(cr)cr.classList.toggle('vis',w==='custom');if(w==='custom')return;await fd(w);}
-async function goC(){const f=document.getElementById('cf').value,t=document.getElementById('ct').value;if(!f||!t)return;await fd('custom',f,t);}
-async function fd(w,from,to){
+async function goC(){const f=document.getElementById('cf').value,t=document.getElementById('ct').value;if(!f||!t)return;const cc=document.getElementById('cc');let vsFrom=null,vsTo=null;if(cc&&cc.checked){vsFrom=document.getElementById('cvf').value||null;vsTo=document.getElementById('cvt').value||null;if(!vsFrom||!vsTo)return;}await fd('custom',f,t,vsFrom,vsTo);}
+async function fd(w,from,to,vsFrom,vsTo){
   const mySeq=++_fdSeq;
   const ldEl=document.getElementById('loading');
   ldEl.style.display='flex';
@@ -608,7 +613,7 @@ async function fd(w,from,to){
   if(pf)pf.style.width='5%';
   if(pl)pl.textContent=steps[0];
   const iv=setInterval(()=>{si++;const pct=Math.min(5+si*15,92);if(pf)pf.style.width=pct+'%';if(pl)pl.textContent=steps[Math.min(si,steps.length-1)];},2800);
-  const b={password:PW,window:w};if(from)b.from=from;if(to)b.to=to;
+  const b={password:PW,window:w};if(from)b.from=from;if(to)b.to=to;if(vsFrom)b.vsFrom=vsFrom;if(vsTo)b.vsTo=vsTo;
   try{
     const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
     const d=await r.json();

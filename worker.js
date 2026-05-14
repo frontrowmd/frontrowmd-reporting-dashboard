@@ -164,7 +164,7 @@ function daysInMonth(y, m) { return new Date(Date.UTC(y, m+1, 0)).getUTCDate(); 
 // ---------------------------------------------------------------------------
 // Time Windows (guide: Section "Time Windows")
 // ---------------------------------------------------------------------------
-function computeWindows(windowType, customFrom, customTo) {
+function computeWindows(windowType, customFrom, customTo, vsFrom, vsTo) {
   const yd = todayET(); // Include today's data
   let current, prior, priorMonth;
 
@@ -208,11 +208,17 @@ function computeWindows(windowType, customFrom, customTo) {
     }
     case 'custom': {
       current = { from: customFrom, to: customTo, label: 'Custom Range' };
-      const fD = new Date(customFrom+'T00:00:00Z'), tD = new Date(customTo+'T00:00:00Z');
-      const span = Math.round((tD-fD)/86400000);
-      const pT = new Date(fD); pT.setUTCDate(pT.getUTCDate()-1);
-      const pF = new Date(pT); pF.setUTCDate(pF.getUTCDate()-span);
-      prior = { from: fmt(pF), to: fmt(pT) };
+      if (vsFrom && vsTo) {
+        // User-supplied comparison range
+        prior = { from: vsFrom, to: vsTo };
+      } else {
+        // Default: same-length window immediately before customFrom
+        const fD = new Date(customFrom+'T00:00:00Z'), tD = new Date(customTo+'T00:00:00Z');
+        const span = Math.round((tD-fD)/86400000);
+        const pT = new Date(fD); pT.setUTCDate(pT.getUTCDate()-1);
+        const pF = new Date(pT); pF.setUTCDate(pF.getUTCDate()-span);
+        prior = { from: fmt(pF), to: fmt(pT) };
+      }
       break;
     }
     default: throw new Error(`Unknown window: ${windowType}`);
@@ -1455,9 +1461,9 @@ function buildMarketingFunnel(monthlySpendData, allQualified, allClosedWon) {
   return { months: data, totals };
 }
 
-async function processRequest(windowType, customFrom, customTo, env) {
+async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsTo) {
   const apiKey = env.WINDSOR_API_KEY, hsToken = env.HUBSPOT_TOKEN;
-  const { current, prior, priorMonth } = computeWindows(windowType, customFrom, customTo);
+  const { current, prior, priorMonth } = computeWindows(windowType, customFrom, customTo, vsFrom, vsTo);
   const isAllTime = windowType === 'allTime';
   const yd = todayET();
 
@@ -2388,9 +2394,9 @@ function buildAzResponse(period, prior, priorMonth, windsor, creatives, priorW, 
   };
 }
 
-async function processAzRequest(windowType, customFrom, customTo, env) {
+async function processAzRequest(windowType, customFrom, customTo, env, vsFrom, vsTo) {
   const apiKey = env.WINDSOR_API_KEY, hsToken = env.HUBSPOT_TOKEN;
-  const { current, prior, priorMonth } = computeWindows(windowType, customFrom, customTo);
+  const { current, prior, priorMonth } = computeWindows(windowType, customFrom, customTo, vsFrom, vsTo);
   const isAllTime = windowType === 'allTime';
 
   // Current period: Windsor campaigns + creatives + HubSpot (clamp Windsor dates)
@@ -2900,7 +2906,7 @@ export default {
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
       if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
       try {
-        const result = await processRequest(body.window||'7d', body.from||null, body.to||null, env);
+        const result = await processRequest(body.window||'7d', body.from||null, body.to||null, env, body.vsFrom||null, body.vsTo||null);
         return jr(result);
       } catch(err) { console.error('Error:', err); return jr({ error: 'Internal error', detail: err.message }, 500); }
     }
@@ -2911,7 +2917,7 @@ export default {
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
       if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
       try {
-        const result = await processAzRequest(body.window||'mtd', body.from||null, body.to||null, env);
+        const result = await processAzRequest(body.window||'mtd', body.from||null, body.to||null, env, body.vsFrom||null, body.vsTo||null);
         return jr(result);
       } catch(err) { console.error('Analyzer error:', err); return jr({ error: 'Internal error', detail: err.message }, 500); }
     }
