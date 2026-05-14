@@ -1658,51 +1658,29 @@ async function processRequest(windowType, customFrom, customTo, env) {
 
   // ── Irfan Dashboard — Special Time-Bound Tiles ──
   // Always use fixed windows (last 14 days, prior calendar month), independent of
-  // the page time selector. Stored under resp.irfan so the dashboard reads them
-  // separately from the main time-window metrics.
+  // the page time selector. Where possible, reuse already-fetched data instead of
+  // making extra HubSpot subrequests (Cloudflare Workers cap at 50/request).
   resp.irfan = {};
-
-  // Tile #2 — Closed-won deals in the last 14 days, aggregated by web-traffic tier
-  // at signing time (deal property average_monthly_web_traffic__cloned_).
-  try {
-    const _today = new Date();
-    const _from14 = new Date(_today); _from14.setDate(_from14.getDate()-14);
-    const _fromStr14 = fmt(_from14), _toStr14 = fmt(_today);
-    const irfanCW14 = await fetchClosedWonDeals(hsToken, _fromStr14, _toStr14);
-    const signedLast14ByWebTraffic = {};
-    let totalSignedLast14 = 0, totalSignedLast14MRR = 0;
-    for (const dl of (irfanCW14||[])) {
-      const pp = dl.properties || {};
-      // Prefer the cloned-at-close property; fall back to the contact-style property
-      // (some older deals don't have the cloning automation run).
-      const wtRaw = pp.average_monthly_web_traffic__cloned_ || pp.average_monthly_web_traffic || '';
-      const key = wtRaw || '(none)';
-      signedLast14ByWebTraffic[key] = (signedLast14ByWebTraffic[key]||0) + 1;
-      totalSignedLast14++;
-      totalSignedLast14MRR += parseFloat(pp.amount)||0;
-    }
-    resp.irfan.signedLast14ByWebTraffic = signedLast14ByWebTraffic;
-    resp.irfan.totalSignedLast14 = totalSignedLast14;
-    resp.irfan.totalSignedLast14MRR = totalSignedLast14MRR;
-    resp.irfan.last14FromDate = _fromStr14;
-    resp.irfan.last14ToDate = _toStr14;
-    console.log(`Irfan last-14: ${totalSignedLast14} signed (${_fromStr14} to ${_toStr14}), MRR ${totalSignedLast14MRR}, tiers ${Object.keys(signedLast14ByWebTraffic).join('|')}`);
-  } catch(e) {
-    console.error('Irfan last-14-days fetch failed:', e);
-    resp.irfan.last14Error = e.message;
-  }
 
   // Tile #1 — Of deals with date_demo_booked in the PRIOR CALENDAR MONTH
   // (excluding any whose average_monthly_web_traffic__cloned_ is "Pre-launch"),
   // how many have since reached dealstage='closedwon'?
-  // Pipeline deals carry their CURRENT dealstage, so a deal booked last month and
-  // signed this month shows dealstage='closedwon'.
   try {
     const _now = new Date();
     const _pcmFrom = new Date(Date.UTC(_now.getUTCFullYear(), _now.getUTCMonth()-1, 1));
     const _pcmTo = new Date(Date.UTC(_now.getUTCFullYear(), _now.getUTCMonth(), 0));
     const _pcmFromStr = fmt(_pcmFrom), _pcmToStr = fmt(_pcmTo);
-    const _pcmPipe = await fetchPipelineDeals(hsToken, _pcmFromStr, _pcmToStr);
+    // Reuse pipeline data if an existing fetch covers exactly this window.
+    // pmPipe covers priorMonth (= PCM when window is mtd/ytd).
+    // cPipe covers current.from→pipeEndDate (= PCM when window is lastMonth).
+    let _pcmPipe = null, _pcmSource = 'fresh';
+    if (priorMonth && priorMonth.from === _pcmFromStr && priorMonth.to === _pcmToStr && pmPipe) {
+      _pcmPipe = pmPipe; _pcmSource = 'pmPipe';
+    } else if (current.from === _pcmFromStr && current.to === _pcmToStr && cPipe) {
+      _pcmPipe = cPipe; _pcmSource = 'cPipe';
+    } else {
+      _pcmPipe = await fetchPipelineDeals(hsToken, _pcmFromStr, _pcmToStr);
+    }
     let totalBooked = 0, scaleBooked = 0, signed = 0, signedMrrSum = 0, preLaunchExcluded = 0;
     for (const d of (_pcmPipe||[])) {
       const p = d.properties || {};
@@ -1720,16 +1698,81 @@ async function processRequest(windowType, customFrom, customTo, env) {
     const pctSigned = scaleBooked > 0 ? (signed / scaleBooked) * 100 : 0;
     const avgStartingMrr = signed > 0 ? signedMrrSum / signed : 0;
     resp.irfan.priorMonthHeldSigned = {
-      // Field names kept for backward compat with dashboard rendering — heldScale = scaleBooked
       heldScale: scaleBooked, signed, pctSigned,
       totalBooked, preLaunchExcluded,
       avgStartingMrr, avgStartingAcv: avgStartingMrr * 12,
       fromDate: _pcmFromStr, toDate: _pcmToStr,
     };
-    console.log(`Irfan PCM: ${totalBooked} booked, ${preLaunchExcluded} pre-launch excluded, ${scaleBooked} scale-tier, ${signed} signed`);
+    console.log(`Irfan PCM (${_pcmSource}): ${totalBooked} booked, ${preLaunchExcluded} pre-launch excluded, ${scaleBooked} scale-tier, ${signed} signed`);
   } catch(e) {
     console.error('Irfan prior-month booked→signed fetch failed:', e);
     resp.irfan.priorMonthError = e.message;
+  }
+
+  // Tile #2 — Closed-won deals in the last 14 days, aggregated by web-traffic tier
+  // at signing time (deal property average_monthly_web_traffic__cloned_).
+  try {
+    const _today = new Date();
+    const _from14 = new Date(_today); _from14.setDate(_from14.getDate()-14);
+    const _fromStr14 = fmt(_from14), _toStr14 = fmt(_today);
+    // Try to satisfy the last-14 window from already-fetched closed-won sets.
+    // Any of cCW / pCW / pmCW that overlap the range; combine + dedupe by id, then filter.
+    const _combined = new Map();
+    const _addAll = (arr) => { if (!arr) return; for (const x of arr) _combined.set(x.id, x); };
+    _addAll(cCW); _addAll(pCW); _addAll(pmCW);
+    // Check whether the union covers our 14-day range entirely.
+    const _parseDate = (s, eod) => {
+      if (!s) return eod ? -Infinity : Infinity;
+      const [y,m,d] = s.split('-').map(Number);
+      return Date.UTC(y, m-1, d, eod?23:0, eod?59:0, eod?59:0);
+    };
+    const _coverEarliest = Math.min(
+      _parseDate(current?.from),
+      _parseDate(prior?.from),
+      _parseDate(priorMonth?.from),
+    );
+    const _coverLatest = Math.max(
+      _parseDate(current?.to, true),
+      _parseDate(prior?.to, true),
+      _parseDate(priorMonth?.to, true),
+    );
+    const _needFromMs = _from14.getTime();
+    const _needToMs = _today.getTime();
+    let irfanCW14, _cwSource;
+    if (_combined.size > 0 && _coverEarliest <= _needFromMs && _coverLatest >= _needToMs) {
+      // Existing combined set fully covers the 14-day window — filter client-side
+      const fromMs = _needFromMs, toMs = _today.getTime();
+      irfanCW14 = [];
+      for (const dl of _combined.values()) {
+        const cd = dl.properties?.closedate;
+        if (!cd) continue;
+        const cdMs = isoMs(cd);
+        if (!isNaN(cdMs) && cdMs >= fromMs && cdMs <= toMs) irfanCW14.push(dl);
+      }
+      _cwSource = 'cached('+_combined.size+'→'+irfanCW14.length+')';
+    } else {
+      irfanCW14 = await fetchClosedWonDeals(hsToken, _fromStr14, _toStr14);
+      _cwSource = 'fresh';
+    }
+    const signedLast14ByWebTraffic = {};
+    let totalSignedLast14 = 0, totalSignedLast14MRR = 0;
+    for (const dl of (irfanCW14||[])) {
+      const pp = dl.properties || {};
+      const wtRaw = pp.average_monthly_web_traffic__cloned_ || pp.average_monthly_web_traffic || '';
+      const key = wtRaw || '(none)';
+      signedLast14ByWebTraffic[key] = (signedLast14ByWebTraffic[key]||0) + 1;
+      totalSignedLast14++;
+      totalSignedLast14MRR += parseFloat(pp.amount)||0;
+    }
+    resp.irfan.signedLast14ByWebTraffic = signedLast14ByWebTraffic;
+    resp.irfan.totalSignedLast14 = totalSignedLast14;
+    resp.irfan.totalSignedLast14MRR = totalSignedLast14MRR;
+    resp.irfan.last14FromDate = _fromStr14;
+    resp.irfan.last14ToDate = _toStr14;
+    console.log(`Irfan last-14 (${_cwSource}): ${totalSignedLast14} signed (${_fromStr14} to ${_toStr14}), MRR ${totalSignedLast14MRR}, tiers ${Object.keys(signedLast14ByWebTraffic).join('|')}`);
+  } catch(e) {
+    console.error('Irfan last-14-days fetch failed:', e);
+    resp.irfan.last14Error = e.message;
   }
 
   return resp;
