@@ -1714,7 +1714,7 @@ async function processRequest(windowType, customFrom, customTo, env) {
     const demosHeld = cntWon + cntAppt + cntDemoHappened + cntDM + cntCS;
     const cntPending = cntAppt + cntDemoHappened + cntDM + cntCS + cntNoShow;
     const pctSigned = demosHeld > 0 ? (cntWon / demosHeld) * 100 : 0;
-    const pctPending = allBooked > 0 ? (cntPending / allBooked) * 100 : 0;
+    const pctPending = demosHeld > 0 ? (cntPending / demosHeld) * 100 : 0;
     const pctPruned = allBooked > 0 ? (cntNotAFit / allBooked) * 100 : 0;
     const pctNoShow = allBooked > 0 ? (cntNoShow / allBooked) * 100 : 0;
     const acv = cntWon > 0 ? signedMrrSum / cntWon : 0;  // New MRR ÷ Closed-won deals
