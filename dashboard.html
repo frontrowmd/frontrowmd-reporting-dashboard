@@ -1085,7 +1085,10 @@ function renderIrfan(){
   h+=`<div class="irf-card-sub">Deals created in ${_irPCMRange} with a Date Demo Booked on or after their Create Date — how many have since reached Closed Won</div>`;
   if(_irPCMErr){h+='<div style="color:var(--red);font-size:11px;padding:14px 0;text-align:center;font-style:italic">Failed to load: '+_irPCMErr+'</div>';}
   else if(!_irPCM){h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">Data not yet loaded — click Refresh to fetch</div>';}
-  else if(_irPCM.heldScale===0){h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">No qualifying deals in '+_irPCMRange+' ('+fN(_irPCM.totalBooked||0)+' created with demo booked, '+fN(_irPCM.demoBeforeCreateExcluded||0)+' had demo before create)</div>';}
+  else if(_irPCM.heldScale===0){
+    h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">No qualifying deals in '+_irPCMRange+'</div>';
+    h+='<div style="font-size:10px;color:var(--grey);padding:6px 10px;background:rgba(23,44,69,.04);border-radius:4px;margin-top:4px;text-align:center;font-variant-numeric:tabular-nums">debug · cohort='+fN(_irPCM.cohortConsidered||0)+' · created-in-month='+fN(_irPCM.createdInPcm||0)+' · no-demo='+fN(_irPCM.noDemoExcluded||0)+' · demo-before-create='+fN(_irPCM.demoBeforeCreateExcluded||0)+'</div>';
+  }
   else{
     // Hero KPI card: % Signed
     h+='<div class="irf-hero-kpi">';

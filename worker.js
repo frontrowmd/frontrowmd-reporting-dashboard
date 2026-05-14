@@ -1665,24 +1665,30 @@ async function processRequest(windowType, customFrom, customTo, env) {
   // Tile #1 — Of all deals with hs_createdate in the PRIOR CALENDAR MONTH AND a
   // date_demo_booked on or after the create date, how many have since reached
   // dealstage='closedwon'?
+  // Reuses cohortDeals (already fetched for the Sign-Up Rate cohorts) instead of
+  // doing a fresh subrequest. cohortDeals covers the past ~4 months of
+  // date_demo_booked, which fully contains April-created deals whose demos are
+  // booked anywhere from Feb to today.
   try {
     const _now = new Date();
     const _pcmFrom = new Date(Date.UTC(_now.getUTCFullYear(), _now.getUTCMonth()-1, 1));
     const _pcmTo = new Date(Date.UTC(_now.getUTCFullYear(), _now.getUTCMonth(), 0));
     const _pcmFromStr = fmt(_pcmFrom), _pcmToStr = fmt(_pcmTo);
-    // fetchDealsByCreateDate filters hs_createdate in window AND date_demo_booked HAS_PROPERTY.
-    const _pcmCreated = await fetchDealsByCreateDate(hsToken, _pcmFromStr, _pcmToStr);
-    let totalFetched = 0, demoBeforeCreateExcluded = 0;
+    const _pcmFromMs = _pcmFrom.getTime();
+    const _pcmToMs = Date.UTC(_pcmTo.getUTCFullYear(), _pcmTo.getUTCMonth(), _pcmTo.getUTCDate(), 23, 59, 59, 999);
+    // Filter cohortDeals to: created in PCM, has date_demo_booked, demo >= create
+    let cohortConsidered = 0, createdInPcm = 0, demoBeforeCreateExcluded = 0, noDemoExcluded = 0;
     let universe = 0, signed = 0, signedMrrSum = 0;
-    for (const d of (_pcmCreated||[])) {
+    for (const d of (cohortDeals||[])) {
+      cohortConsidered++;
       const p = d.properties || {};
-      totalFetched++;
-      // Require date_demo_booked on or after hs_createdate (per spec).
       const createMs = isoMs(p.hs_createdate);
-      const ddbMs = dateMs(p.date_demo_booked);
-      if (isNaN(createMs) || isNaN(ddbMs) || ddbMs < createMs) {
-        demoBeforeCreateExcluded++; continue;
-      }
+      if (isNaN(createMs) || createMs < _pcmFromMs || createMs > _pcmToMs) continue;
+      createdInPcm++;
+      const ddbRaw = p.date_demo_booked;
+      if (!ddbRaw) { noDemoExcluded++; continue; }
+      const ddbMs = dateMs(ddbRaw);
+      if (isNaN(ddbMs) || ddbMs < createMs) { demoBeforeCreateExcluded++; continue; }
       universe++;
       if ((p.dealstage||'') === 'closedwon') {
         signed++;
@@ -1695,11 +1701,13 @@ async function processRequest(windowType, customFrom, customTo, env) {
     resp.irfan.priorMonthHeldSigned = {
       // heldScale kept as field name for backward compat — it's the deals-created universe
       heldScale: universe, signed, pctSigned,
-      totalBooked: totalFetched, demoBeforeCreateExcluded,
+      cohortConsidered, createdInPcm, noDemoExcluded, demoBeforeCreateExcluded,
+      // alias retained for the empty-state breakdown
+      totalBooked: createdInPcm,
       newArr, acv,
       fromDate: _pcmFromStr, toDate: _pcmToStr,
     };
-    console.log(`Irfan PCM: ${totalFetched} created+demo, ${demoBeforeCreateExcluded} demo-before-create, ${universe} universe, ${signed} closed-won`);
+    console.log(`Irfan PCM (cohortDeals): considered=${cohortConsidered}, created-in-PCM=${createdInPcm}, no-demo=${noDemoExcluded}, demo-before-create=${demoBeforeCreateExcluded}, universe=${universe}, closed-won=${signed}`);
   } catch(e) {
     console.error('Irfan prior-month created→signed fetch failed:', e);
     resp.irfan.priorMonthError = e.message;
