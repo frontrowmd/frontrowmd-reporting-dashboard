@@ -96,6 +96,9 @@ html,body{height:100%}body{font-family:var(--font-b);font-size:15px;color:var(--
 .irf-mini-kpi{background:rgba(114,164,191,.06);border:1px solid rgba(114,164,191,.2);border-radius:8px;padding:12px 14px;flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center}
 .irf-mini-kpi-label{font-size:10px;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .irf-mini-kpi-value{font-family:var(--font-h);font-size:22px;font-weight:700;color:var(--navy);line-height:1.1;font-variant-numeric:tabular-nums}
+.irf-mini-kpi.small{padding:8px 10px;background:rgba(23,44,69,.04);border-color:rgba(23,44,69,.1)}
+.irf-mini-kpi.small .irf-mini-kpi-label{font-size:9px;margin-bottom:4px}
+.irf-mini-kpi.small .irf-mini-kpi-value{font-size:16px}
 .irf-mini-kpi-grid{display:grid;gap:10px}
 .irf-hero-kpi{background:linear-gradient(135deg,rgba(114,164,191,.10),rgba(114,164,191,.20));border:1px solid rgba(114,164,191,.30);border-radius:10px;padding:18px 22px;text-align:center;box-shadow:inset 4px 0 0 var(--teal);margin-bottom:14px}
 .irf-hero-kpi-label{font-family:var(--font-h);font-size:11px;color:var(--teal);text-transform:uppercase;letter-spacing:.08em;font-weight:700}
@@ -1081,28 +1084,34 @@ function renderIrfan(){
   const _irPCM=_irf.priorMonthHeldSigned||null;
   const _irPCMErr=_irf.priorMonthError;
   const _irPCMRange=_irPCM&&_irPCM.fromDate&&_irPCM.toDate?`${fmtD(_irPCM.fromDate)} – ${fmtD(_irPCM.toDate)}`:'prior month';
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:22px 24px"><div class="irf-card-title">Prior Month Deals Created → Signed</div>';
-  h+=`<div class="irf-card-sub">Deals created in ${_irPCMRange} with a Date Demo Booked on or after their Create Date — how many have since reached Closed Won</div>`;
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:22px 24px"><div class="irf-card-title">Signed Deals from Last Month</div>';
+  h+=`<div class="irf-card-sub">Of demos booked in ${_irPCMRange}, what % have signed (Closed Won ÷ Demos Held)</div>`;
   if(_irPCMErr){h+='<div style="color:var(--red);font-size:11px;padding:14px 0;text-align:center;font-style:italic">Failed to load: '+_irPCMErr+'</div>';}
   else if(!_irPCM){h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">Data not yet loaded — click Refresh to fetch</div>';}
-  else if(_irPCM.heldScale===0){
-    h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">No qualifying deals in '+_irPCMRange+'</div>';
+  else if(_irPCM.allBooked===0){
+    h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">No deals booked in '+_irPCMRange+'</div>';
     const _src=_irPCM.sourceCounts||{};
-    h+='<div style="font-size:10px;color:var(--grey);padding:6px 10px;background:rgba(23,44,69,.04);border-radius:4px;margin-top:4px;text-align:center;font-variant-numeric:tabular-nums">debug · sources pmPipe='+fN(_src.pmPipe||0)+' cPipe='+fN(_src.cPipe||0)+' cohort='+fN(_src.cohortDeals||0)+' pPipe='+fN(_src.pPipe||0)+' union='+fN(_src.union||0)+' · created-in-month='+fN(_irPCM.totalBooked||0)+' · no-demo='+fN(_irPCM.noDemoExcluded||0)+' · demo-before-create='+fN(_irPCM.demoBeforeCreateExcluded||0)+'</div>';
+    h+='<div style="font-size:10px;color:var(--grey);padding:6px 10px;background:rgba(23,44,69,.04);border-radius:4px;margin-top:4px;text-align:center;font-variant-numeric:tabular-nums">debug · sources pmPipe='+fN(_src.pmPipe||0)+' cPipe='+fN(_src.cPipe||0)+' cohort='+fN(_src.cohortDeals||0)+' pPipe='+fN(_src.pPipe||0)+' union='+fN(_src.union||0)+'</div>';
   }
   else{
     // Hero KPI card: % Signed
     h+='<div class="irf-hero-kpi">';
     h+=`<div class="irf-hero-kpi-label">% Signed</div>`;
     h+=`<div class="irf-hero-kpi-value">${_irPCM.pctSigned.toFixed(1)}%</div>`;
-    h+=`<div class="irf-hero-kpi-calc">${fN(_irPCM.signed)} ÷ ${fN(_irPCM.heldScale)} deals</div>`;
+    h+=`<div class="irf-hero-kpi-calc">${fN(_irPCM.signed)} ÷ ${fN(_irPCM.heldScale)} demos held</div>`;
     h+='</div>';
-    // Detail mini KPI cards: Deals Created / Closed Won / New ARR / ACV
+    // Detail mini KPI cards: Demos Held / Closed Won / New ARR / ACV
     h+='<div class="irf-mini-kpi-grid" style="grid-template-columns:repeat(4,minmax(0,1fr))">';
-    h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">Deals Created</div><div class="irf-mini-kpi-value">${fN(_irPCM.heldScale)}</div></div>`;
+    h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">Demos Held</div><div class="irf-mini-kpi-value">${fN(_irPCM.heldScale)}</div></div>`;
     h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">Closed Won</div><div class="irf-mini-kpi-value">${fN(_irPCM.signed)}</div></div>`;
     h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">New ARR</div><div class="irf-mini-kpi-value">${_irPCM.signed>0?f$(_irPCM.newArr):'—'}</div></div>`;
     h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">ACV</div><div class="irf-mini-kpi-value">${_irPCM.signed>0?f$(_irPCM.acv):'—'}</div></div>`;
+    h+='</div>';
+    // Small breakdown KPI cards: % Pending / % Pruned / % No Show
+    h+='<div class="irf-mini-kpi-grid" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-top:10px">';
+    h+=`<div class="irf-mini-kpi small" title="Appointment Scheduled + Demo Happened + Decision Maker + Contract Sent + No Show ÷ all deals booked in prior month"><div class="irf-mini-kpi-label">% Pending</div><div class="irf-mini-kpi-value">${_irPCM.pctPending.toFixed(1)}%</div></div>`;
+    h+=`<div class="irf-mini-kpi small" title="Not a Fit ÷ all deals booked in prior month"><div class="irf-mini-kpi-label">% Pruned</div><div class="irf-mini-kpi-value">${_irPCM.pctPruned.toFixed(1)}%</div></div>`;
+    h+=`<div class="irf-mini-kpi small" title="No Show ÷ all deals booked in prior month"><div class="irf-mini-kpi-label">% No Show</div><div class="irf-mini-kpi-value">${_irPCM.pctNoShow.toFixed(1)}%</div></div>`;
     h+='</div>';
   }
   h+='</div>';
