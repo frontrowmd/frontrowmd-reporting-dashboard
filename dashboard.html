@@ -93,10 +93,14 @@ html,body{height:100%}body{font-family:var(--font-b);font-size:15px;color:var(--
 .irf-sec-sub{font-size:12px;color:var(--grey);margin-bottom:12px;margin-top:-8px}
 .irf-card-title{font-family:var(--font-h);font-size:17px;font-weight:700;color:var(--navy);margin-bottom:4px;letter-spacing:-.01em}
 .irf-card-sub{font-size:12px;color:var(--grey);margin-bottom:16px;line-height:1.4}
-.irf-mini-kpi{background:rgba(114,164,191,.06);border:1px solid rgba(114,164,191,.2);border-radius:8px;padding:10px 12px;flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center}
-.irf-mini-kpi-label{font-size:10px;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.irf-mini-kpi-value{font-family:var(--font-h);font-size:20px;font-weight:700;color:var(--navy);line-height:1.1;font-variant-numeric:tabular-nums}
-.irf-mini-kpi-grid{display:grid;gap:8px}
+.irf-mini-kpi{background:rgba(114,164,191,.06);border:1px solid rgba(114,164,191,.2);border-radius:8px;padding:12px 14px;flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center}
+.irf-mini-kpi-label{font-size:10px;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.irf-mini-kpi-value{font-family:var(--font-h);font-size:22px;font-weight:700;color:var(--navy);line-height:1.1;font-variant-numeric:tabular-nums}
+.irf-mini-kpi-grid{display:grid;gap:10px}
+.irf-hero-kpi{background:linear-gradient(135deg,rgba(114,164,191,.10),rgba(114,164,191,.20));border:1px solid rgba(114,164,191,.30);border-radius:10px;padding:18px 22px;text-align:center;box-shadow:inset 4px 0 0 var(--teal);margin-bottom:14px}
+.irf-hero-kpi-label{font-family:var(--font-h);font-size:11px;color:var(--teal);text-transform:uppercase;letter-spacing:.08em;font-weight:700}
+.irf-hero-kpi-value{font-family:var(--font-h);font-size:48px;font-weight:700;color:var(--navy);line-height:1;margin:8px 0 6px;letter-spacing:-.02em}
+.irf-hero-kpi-calc{font-size:11px;color:var(--navy);font-weight:600;font-variant-numeric:tabular-nums;background:rgba(255,255,255,.5);display:inline-block;padding:4px 12px;border-radius:99px}
 .irf-meta-table tbody tr{transition:filter .15s ease,box-shadow .15s ease}
 .irf-meta-table tbody tr:hover{filter:brightness(0.96);box-shadow:inset 3px 0 0 var(--teal)}
 .tile.hero .tc .lbl{color:rgba(255,255,255,.45)}.tile.hero .tc .val{color:rgba(255,255,255,.85)}
@@ -1070,28 +1074,28 @@ function renderIrfan(){
   h+='<div class="irf-sec-title" style="margin-bottom:4px">Time-Bound Insights</div>';
   h+='<div class="irf-sec-sub" style="margin-top:0">Independent of the time selector above — uses fixed windows (prior month, last 2 weeks)</div>';
   h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">';
-  // Special Tile #1 — Of demos HELD in the prior calendar month (excluding
-  // pre-launch and cancelled), how many have since reached Closed Won?
+  // Special Tile #1 — Of deals with date_demo_booked in the prior calendar month
+  // (excluding pre-launch and inactive brand statuses), how many have since
+  // reached dealstage='closedwon'?
   const _irf=d.irfan||{};
   const _irPCM=_irf.priorMonthHeldSigned||null;
   const _irPCMErr=_irf.priorMonthError;
   const _irPCMRange=_irPCM&&_irPCM.fromDate&&_irPCM.toDate?`${fmtD(_irPCM.fromDate)} – ${fmtD(_irPCM.toDate)}`:'prior month';
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div class="irf-card-title">Prior Month Demos Held → Signed</div>';
-  h+=`<div class="irf-card-sub">Demos held in ${_irPCMRange} (excl. pre-launch, cancelled) that have since reached Closed Won</div>`;
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:22px 24px"><div class="irf-card-title">Prior Month Demos Booked → Signed</div>';
+  h+=`<div class="irf-card-sub">Deals booked in ${_irPCMRange} with active brand status (Signed/Paying) that have since reached Closed Won — pre-launch excluded</div>`;
   if(_irPCMErr){h+='<div style="color:var(--red);font-size:11px;padding:14px 0;text-align:center;font-style:italic">Failed to load: '+_irPCMErr+'</div>';}
   else if(!_irPCM){h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">Data not yet loaded — click Refresh to fetch</div>';}
-  else if(_irPCM.heldScale===0){h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">No scale-tier demos held in '+_irPCMRange+' ('+fN(_irPCM.totalBooked||0)+' booked, '+fN(_irPCM.notHeldExcluded||0)+' not held, '+fN(_irPCM.preLaunchExcluded||0)+' pre-launch)</div>';}
+  else if(_irPCM.heldScale===0){h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">No qualifying demos booked in '+_irPCMRange+' ('+fN(_irPCM.totalBooked||0)+' booked, '+fN(_irPCM.preLaunchExcluded||0)+' pre-launch, '+fN(_irPCM.churnedExcluded||0)+' inactive brand)</div>';}
   else{
-    const pctC=_irPCM.pctSigned>=20?'var(--green)':(_irPCM.pctSigned>=10?'var(--navy)':'var(--grey)');
-    // Hero: big % with calc subtext underneath
-    h+='<div style="text-align:center;padding:8px 0 16px 0;border-bottom:1px solid var(--border);margin-bottom:14px">';
-    h+=`<div style="font-family:var(--font-h);font-size:44px;font-weight:700;color:${pctC};line-height:1">${_irPCM.pctSigned.toFixed(1)}%</div>`;
-    h+=`<div style="font-size:11px;color:var(--grey);margin-top:6px;text-transform:uppercase;letter-spacing:.06em;font-weight:700">Signed</div>`;
-    h+=`<div style="font-size:11px;color:var(--navy);font-variant-numeric:tabular-nums;margin-top:4px;font-weight:600">${fN(_irPCM.signed)} ÷ ${fN(_irPCM.heldScale)}</div>`;
+    // Hero KPI card: % Signed
+    h+='<div class="irf-hero-kpi">';
+    h+=`<div class="irf-hero-kpi-label">% Signed</div>`;
+    h+=`<div class="irf-hero-kpi-value">${_irPCM.pctSigned.toFixed(1)}%</div>`;
+    h+=`<div class="irf-hero-kpi-calc">${fN(_irPCM.signed)} ÷ ${fN(_irPCM.heldScale)} deals</div>`;
     h+='</div>';
-    // Mini KPI cards: Demos Held / Closed Won / New ARR / ACV
+    // Detail mini KPI cards: Demos Booked / Closed Won / New ARR / ACV
     h+='<div class="irf-mini-kpi-grid" style="grid-template-columns:repeat(4,minmax(0,1fr))">';
-    h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">Demos Held</div><div class="irf-mini-kpi-value">${fN(_irPCM.heldScale)}</div></div>`;
+    h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">Demos Booked</div><div class="irf-mini-kpi-value">${fN(_irPCM.heldScale)}</div></div>`;
     h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">Closed Won</div><div class="irf-mini-kpi-value">${fN(_irPCM.signed)}</div></div>`;
     h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">New ARR</div><div class="irf-mini-kpi-value">${_irPCM.signed>0?f$(_irPCM.newArr):'—'}</div></div>`;
     h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">ACV</div><div class="irf-mini-kpi-value">${_irPCM.signed>0?f$(_irPCM.acv):'—'}</div></div>`;
@@ -1106,7 +1110,7 @@ function renderIrfan(){
   const _ir14MRR=_irf.totalSignedLast14MRR||0;
   const _ir14NewARR=_ir14MRR*12;
   const _ir14ACV=_ir14Signed>0?_ir14MRR/_ir14Signed:0;
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div class="irf-card-title">Signed Deals — Last 2 Weeks by Web Traffic</div>';
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:22px 24px"><div class="irf-card-title">Signed Deals — Last 2 Weeks by Web Traffic</div>';
   h+=`<div class="irf-card-sub">Closed Won by Close Date, bucketed by Web Traffic Tier · ${_ir14Range} · ${fN(_ir14Signed)} signed</div>`;
   if(_ir14Err)h+='<div style="color:var(--red);font-size:11px;padding:14px 0;text-align:center;font-style:italic">Failed to load: '+_ir14Err+'</div>';
   else if(!_ir14Loaded)h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">Data not yet loaded — click Refresh to fetch</div>';

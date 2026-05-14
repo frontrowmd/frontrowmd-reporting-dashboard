@@ -1681,37 +1681,35 @@ async function processRequest(windowType, customFrom, customTo, env) {
     } else {
       _pcmPipe = await fetchPipelineDeals(hsToken, _pcmFromStr, _pcmToStr);
     }
-    let totalBooked = 0, notHeldExcluded = 0, preLaunchExcluded = 0;
-    let heldScale = 0, signed = 0, signedMrrSum = 0;
+    let totalBooked = 0, churnedExcluded = 0, preLaunchExcluded = 0;
+    let inUniverse = 0, signed = 0, signedMrrSum = 0;
     for (const d of (_pcmPipe||[])) {
       const p = d.properties || {};
       totalBooked++;
-      // Only count demos that were held: Demo Given (originally scheduled) or
-      // Demo Given (rescheduled). This also implicitly excludes Cancelled before demo,
-      // No Show, Scheduled — pending, and Rescheduled — pending.
-      const att = (p.demo_attendance_status||'').trim();
-      if (att !== 'Demo Given (originally scheduled)' && att !== 'Demo Given (rescheduled)') {
-        notHeldExcluded++; continue;
-      }
       // Exclude pre-launch via the deal's cloned web-traffic property.
       const wt = (p.average_monthly_web_traffic__cloned_||'').toLowerCase();
       if (wt.includes('pre-launch')) { preLaunchExcluded++; continue; }
-      heldScale++;
+      // Exclude inactive brand statuses (Paused / Churned / Never Implemented).
+      // Same predicate as filterActiveBrands: keep Signed, Paying, or blank.
+      const bs = (p.brand_status||'').toLowerCase();
+      if (bs && bs !== 'paying' && bs !== 'signed') { churnedExcluded++; continue; }
+      inUniverse++;
       if ((p.dealstage||'') === 'closedwon') {
         signed++;
         signedMrrSum += parseFloat(p.amount)||0;
       }
     }
-    const pctSigned = heldScale > 0 ? (signed / heldScale) * 100 : 0;
-    const acv = signed > 0 ? signedMrrSum / signed : 0;  // ACV per spec: New MRR ÷ Closed-won deals
+    const pctSigned = inUniverse > 0 ? (signed / inUniverse) * 100 : 0;
+    const acv = signed > 0 ? signedMrrSum / signed : 0;  // New MRR ÷ Closed-won deals
     const newArr = signedMrrSum * 12;
     resp.irfan.priorMonthHeldSigned = {
-      heldScale, signed, pctSigned,
-      totalBooked, notHeldExcluded, preLaunchExcluded,
+      // heldScale kept as the field name for backward compat — it's the active-brand universe
+      heldScale: inUniverse, signed, pctSigned,
+      totalBooked, churnedExcluded, preLaunchExcluded,
       newArr, acv,
       fromDate: _pcmFromStr, toDate: _pcmToStr,
     };
-    console.log(`Irfan PCM (${_pcmSource}): ${totalBooked} booked, ${notHeldExcluded} not-held, ${preLaunchExcluded} pre-launch, ${heldScale} held-scale, ${signed} signed`);
+    console.log(`Irfan PCM (${_pcmSource}): ${totalBooked} booked, ${preLaunchExcluded} pre-launch, ${churnedExcluded} inactive-brand, ${inUniverse} universe, ${signed} signed`);
   } catch(e) {
     console.error('Irfan prior-month booked→signed fetch failed:', e);
     resp.irfan.priorMonthError = e.message;
@@ -1725,10 +1723,12 @@ async function processRequest(windowType, customFrom, customTo, env) {
   // for anything outside the dashboard's natural windows.
   try {
     const _today = new Date();
-    const _from14 = new Date(_today); _from14.setDate(_from14.getDate()-14);
+    const _from14 = new Date(_today); _from14.setUTCDate(_from14.getUTCDate()-14);
     const _fromStr14 = fmt(_from14), _toStr14 = fmt(_today);
-    const _needFromMs = _from14.getTime();
-    const _needToMs = _today.getTime();
+    // Use midnight UTC bounds so the entire start day (14 days ago) is included
+    // regardless of what hour the worker happens to run at.
+    const _needFromMs = Date.UTC(_from14.getUTCFullYear(), _from14.getUTCMonth(), _from14.getUTCDate(), 0, 0, 0, 0);
+    const _needToMs = Date.UTC(_today.getUTCFullYear(), _today.getUTCMonth(), _today.getUTCDate(), 23, 59, 59, 999);
     // Step 1: collect from already-fetched closed-won sets
     const _combined = new Map();
     const _addAll = (arr) => { if (!arr) return; for (const x of arr) _combined.set(x.id, x); };
