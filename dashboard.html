@@ -1385,7 +1385,7 @@ function _renderIrfanWtPieInto(targetId, rawBuckets, centerLabel){
     }
   }
   let legend='<div style="display:flex;flex-direction:column;gap:6px;font-size:11px;color:var(--navy)">';
-  for(const s of segs){const pct=(s.count/total*100).toFixed(1);const col=IRFAN_WT_COLORS[s.label]||'#9CA3AF';legend+='<div style="display:flex;align-items:center;gap:6px;white-space:nowrap"><span style="display:inline-block;width:10px;height:10px;background:'+col+';border-radius:2px;flex-shrink:0"></span><span style="font-weight:600;min-width:62px">'+s.label+'</span><span style="color:var(--grey)">'+s.count+'</span><span style="color:var(--grey);font-variant-numeric:tabular-nums">'+pct+'%</span></div>';}
+  for(const s of segs){const pct=(s.count/total*100).toFixed(1);const col=IRFAN_WT_COLORS[s.label]||'#9CA3AF';legend+='<div style="display:flex;align-items:center;gap:8px;white-space:nowrap"><span style="display:inline-block;width:10px;height:10px;background:'+col+';border-radius:2px;flex-shrink:0"></span><span style="font-weight:600;min-width:62px;color:var(--navy)">'+s.label+'</span><span style="color:var(--grey);min-width:24px;text-align:right;font-variant-numeric:tabular-nums">'+s.count+'</span><span style="color:var(--teal);font-weight:700;font-variant-numeric:tabular-nums">'+pct+'%</span></div>';}
   legend+='</div>';
   target.innerHTML='<div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;justify-content:center;position:relative;padding:20px 0">'
     +'<svg viewBox="0 0 280 280" style="width:280px;height:280px;flex-shrink:0">'+paths+labels
