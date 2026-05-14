@@ -1484,6 +1484,22 @@ async function processRequest(windowType, customFrom, customTo, env) {
   let pmW, pmLI, pmG; if (priorMonth) { pmW = windsorResults[wIdx++]; pmLI = windsorResults[wIdx++]; pmG = windsorResults[wIdx++]; }
 
   // ── Phase 2: Run HubSpot calls sequentially (avoids 429 rate limits) ──
+  // Irfan Tile #1 dedicated fetch — done EARLY (before the heavier company-batch
+  // subrequests) so it has guaranteed budget. Stored on a closed-over var for
+  // the response builder later.
+  const _irfanPcmNow = new Date();
+  const _irfanPcmFrom = new Date(Date.UTC(_irfanPcmNow.getUTCFullYear(), _irfanPcmNow.getUTCMonth()-1, 1));
+  const _irfanPcmTo = new Date(Date.UTC(_irfanPcmNow.getUTCFullYear(), _irfanPcmNow.getUTCMonth(), 0));
+  const _irfanPcmFromStr = fmt(_irfanPcmFrom), _irfanPcmToStr = fmt(_irfanPcmTo);
+  let _irfanPcmCreated = null, _irfanPcmFetchErr = null;
+  try {
+    _irfanPcmCreated = await fetchDealsByCreateDate(hsToken, _irfanPcmFromStr, _irfanPcmToStr);
+    console.log(`Irfan PCM fetch (early): ${_irfanPcmCreated.length} deals created in ${_irfanPcmFromStr}–${_irfanPcmToStr}`);
+  } catch(e) {
+    _irfanPcmFetchErr = e.message;
+    console.error('Irfan PCM early fetch failed:', e);
+  }
+
   const cSch = await fetchScheduledContacts(hsToken, current.from, current.to);
   // For Demo Quality: extend pipeline fetch through end of month (processPipelineDeals re-filters to MTD)
   let pipeEndDate = current.to;
@@ -1662,55 +1678,48 @@ async function processRequest(windowType, customFrom, customTo, env) {
   // making extra HubSpot subrequests (Cloudflare Workers cap at 50/request).
   resp.irfan = {};
 
-  // Tile #1 — Of all deals with hs_createdate in the PRIOR CALENDAR MONTH AND a
-  // date_demo_booked on or after the create date, how many have since reached
-  // dealstage='closedwon'?
-  // Reuses cohortDeals (already fetched for the Sign-Up Rate cohorts) instead of
-  // doing a fresh subrequest. cohortDeals covers the past ~4 months of
-  // date_demo_booked, which fully contains April-created deals whose demos are
-  // booked anywhere from Feb to today.
-  try {
-    const _now = new Date();
-    const _pcmFrom = new Date(Date.UTC(_now.getUTCFullYear(), _now.getUTCMonth()-1, 1));
-    const _pcmTo = new Date(Date.UTC(_now.getUTCFullYear(), _now.getUTCMonth(), 0));
-    const _pcmFromStr = fmt(_pcmFrom), _pcmToStr = fmt(_pcmTo);
-    const _pcmFromMs = _pcmFrom.getTime();
-    const _pcmToMs = Date.UTC(_pcmTo.getUTCFullYear(), _pcmTo.getUTCMonth(), _pcmTo.getUTCDate(), 23, 59, 59, 999);
-    // Filter cohortDeals to: created in PCM, has date_demo_booked, demo >= create
-    let cohortConsidered = 0, createdInPcm = 0, demoBeforeCreateExcluded = 0, noDemoExcluded = 0;
-    let universe = 0, signed = 0, signedMrrSum = 0;
-    for (const d of (cohortDeals||[])) {
-      cohortConsidered++;
-      const p = d.properties || {};
-      const createMs = isoMs(p.hs_createdate);
-      if (isNaN(createMs) || createMs < _pcmFromMs || createMs > _pcmToMs) continue;
-      createdInPcm++;
-      const ddbRaw = p.date_demo_booked;
-      if (!ddbRaw) { noDemoExcluded++; continue; }
-      const ddbMs = dateMs(ddbRaw);
-      if (isNaN(ddbMs) || ddbMs < createMs) { demoBeforeCreateExcluded++; continue; }
-      universe++;
-      if ((p.dealstage||'') === 'closedwon') {
-        signed++;
-        signedMrrSum += parseFloat(p.amount)||0;
+  // Tile #1 — Process the early-fetched _irfanPcmCreated. The dedicated fetch
+  // ran at the top of Phase 2 so subrequest budget wasn't an issue.
+  if (_irfanPcmFetchErr) {
+    resp.irfan.priorMonthError = _irfanPcmFetchErr;
+  } else {
+    try {
+      let totalFetched = 0, demoBeforeCreateExcluded = 0, noDemoExcluded = 0;
+      let universe = 0, signed = 0, signedMrrSum = 0;
+      // Same-day-safe comparison: compare DATE-only values, not timestamps.
+      // A deal created Apr 20 at 14:30 with demo booked Apr 20 (stored midnight UTC)
+      // should pass the "demo on or after create" check.
+      const _floorToDay = (ms) => { const d = new Date(ms); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()); };
+      for (const d of (_irfanPcmCreated||[])) {
+        totalFetched++;
+        const p = d.properties || {};
+        const createMs = isoMs(p.hs_createdate);
+        const ddbRaw = p.date_demo_booked;
+        if (!ddbRaw) { noDemoExcluded++; continue; }
+        const ddbMs = dateMs(ddbRaw);
+        if (isNaN(createMs) || isNaN(ddbMs)) { noDemoExcluded++; continue; }
+        if (ddbMs < _floorToDay(createMs)) { demoBeforeCreateExcluded++; continue; }
+        universe++;
+        if ((p.dealstage||'') === 'closedwon') {
+          signed++;
+          signedMrrSum += parseFloat(p.amount)||0;
+        }
       }
+      const pctSigned = universe > 0 ? (signed / universe) * 100 : 0;
+      const acv = signed > 0 ? signedMrrSum / signed : 0;  // New MRR ÷ Closed-won deals
+      const newArr = signedMrrSum * 12;
+      resp.irfan.priorMonthHeldSigned = {
+        // heldScale kept as field name for backward compat — it's the deals-created universe
+        heldScale: universe, signed, pctSigned,
+        totalBooked: totalFetched, noDemoExcluded, demoBeforeCreateExcluded,
+        newArr, acv,
+        fromDate: _irfanPcmFromStr, toDate: _irfanPcmToStr,
+      };
+      console.log(`Irfan PCM (dedicated): fetched=${totalFetched}, no-demo=${noDemoExcluded}, demo-before-create=${demoBeforeCreateExcluded}, universe=${universe}, closed-won=${signed}`);
+    } catch(e) {
+      console.error('Irfan PCM processing failed:', e);
+      resp.irfan.priorMonthError = e.message;
     }
-    const pctSigned = universe > 0 ? (signed / universe) * 100 : 0;
-    const acv = signed > 0 ? signedMrrSum / signed : 0;  // New MRR ÷ Closed-won deals
-    const newArr = signedMrrSum * 12;
-    resp.irfan.priorMonthHeldSigned = {
-      // heldScale kept as field name for backward compat — it's the deals-created universe
-      heldScale: universe, signed, pctSigned,
-      cohortConsidered, createdInPcm, noDemoExcluded, demoBeforeCreateExcluded,
-      // alias retained for the empty-state breakdown
-      totalBooked: createdInPcm,
-      newArr, acv,
-      fromDate: _pcmFromStr, toDate: _pcmToStr,
-    };
-    console.log(`Irfan PCM (cohortDeals): considered=${cohortConsidered}, created-in-PCM=${createdInPcm}, no-demo=${noDemoExcluded}, demo-before-create=${demoBeforeCreateExcluded}, universe=${universe}, closed-won=${signed}`);
-  } catch(e) {
-    console.error('Irfan prior-month created→signed fetch failed:', e);
-    resp.irfan.priorMonthError = e.message;
   }
 
   // Tile #2 — Closed-won deals in the last 14 days, aggregated by web-traffic tier
