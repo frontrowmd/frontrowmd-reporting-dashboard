@@ -1059,27 +1059,26 @@ function renderIrfan(){
   h+='<div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);margin-bottom:4px">Time-Bound Insights</div>';
   h+='<div style="font-size:11px;color:var(--grey);margin-bottom:10px">Independent of the time selector above — uses fixed windows (prior month, last 2 weeks)</div>';
   h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">';
-  // Special Tile #1 — Of deals with date_demo_booked in the prior calendar month
-  // (excluding pre-launch via average_monthly_web_traffic__cloned_), how many have
-  // since reached Closed Won?
+  // Special Tile #1 — Of demos HELD in the prior calendar month (excluding
+  // pre-launch and cancelled), how many have since reached Closed Won?
   const _irf=d.irfan||{};
   const _irPCM=_irf.priorMonthHeldSigned||null;
   const _irPCMErr=_irf.priorMonthError;
   const _irPCMRange=_irPCM&&_irPCM.fromDate&&_irPCM.toDate?`${fmtD(_irPCM.fromDate)} – ${fmtD(_irPCM.toDate)}`:'prior month';
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Prior Month Demos Booked → Signed</div>';
-  h+=`<div style="font-size:11px;color:var(--grey);margin-bottom:14px">Deals with date_demo_booked in ${_irPCMRange} (excl. pre-launch) that have since reached Closed Won</div>`;
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Prior Month Demos Held → Signed</div>';
+  h+=`<div style="font-size:11px;color:var(--grey);margin-bottom:14px">Demos held in ${_irPCMRange} (excl. pre-launch, cancelled) that have since reached Closed Won</div>`;
   if(_irPCMErr){h+='<div style="color:var(--red);font-size:11px;padding:14px 0;text-align:center;font-style:italic">Failed to load: '+_irPCMErr+'</div>';}
   else if(!_irPCM){h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">Data not yet loaded — click Refresh to fetch</div>';}
-  else if(_irPCM.heldScale===0){h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">No non-pre-launch demos booked in '+_irPCMRange+' ('+fN(_irPCM.totalBooked||0)+' total, '+fN(_irPCM.preLaunchExcluded||0)+' pre-launch)</div>';}
+  else if(_irPCM.heldScale===0){h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">No scale-tier demos held in '+_irPCMRange+' ('+fN(_irPCM.totalBooked||0)+' booked, '+fN(_irPCM.notHeldExcluded||0)+' not held, '+fN(_irPCM.preLaunchExcluded||0)+' pre-launch)</div>';}
   else{
     const pctC=_irPCM.pctSigned>=20?'var(--green)':(_irPCM.pctSigned>=10?'var(--navy)':'var(--grey)');
     h+='<div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap">';
     h+=`<div style="flex:0 0 auto"><div style="font-family:var(--font-h);font-size:36px;font-weight:700;color:${pctC};line-height:1">${_irPCM.pctSigned.toFixed(1)}%</div><div style="font-size:11px;color:var(--grey);margin-top:4px">signed</div><div style="font-size:10px;color:var(--grey);margin-top:2px;font-variant-numeric:tabular-nums">${fN(_irPCM.signed)} ÷ ${fN(_irPCM.heldScale)}</div></div>`;
     h+=`<div style="flex:1;min-width:140px;display:flex;flex-direction:column;gap:8px">`;
-    h+=`<div style="display:flex;justify-content:space-between;font-size:12px;gap:8px"><span style="color:var(--grey)">Demos Booked</span><span style="font-weight:600;color:var(--navy)">${fN(_irPCM.heldScale)}</span></div>`;
+    h+=`<div style="display:flex;justify-content:space-between;font-size:12px;gap:8px"><span style="color:var(--grey)">Demos Held</span><span style="font-weight:600;color:var(--navy)">${fN(_irPCM.heldScale)}</span></div>`;
     h+=`<div style="display:flex;justify-content:space-between;font-size:12px;gap:8px"><span style="color:var(--grey)">Closed Won since</span><span style="font-weight:600;color:var(--navy)">${fN(_irPCM.signed)}</span></div>`;
-    h+=`<div style="display:flex;justify-content:space-between;font-size:12px;gap:8px;padding-top:8px;border-top:1px solid var(--border)"><span style="color:var(--grey)">Avg Starting MRR</span><span style="font-weight:600;color:var(--navy)">${_irPCM.signed>0?f$(_irPCM.avgStartingMrr):'—'}</span></div>`;
-    h+=`<div style="display:flex;justify-content:space-between;font-size:12px;gap:8px"><span style="color:var(--grey)">Avg Starting ACV</span><span style="font-weight:600;color:var(--navy)">${_irPCM.signed>0?f$(_irPCM.avgStartingAcv):'—'}</span></div>`;
+    h+=`<div style="display:flex;justify-content:space-between;font-size:12px;gap:8px;padding-top:8px;border-top:1px solid var(--border)"><span style="color:var(--grey)">New ARR</span><span style="font-weight:600;color:var(--navy)">${_irPCM.signed>0?f$(_irPCM.newArr):'—'}</span></div>`;
+    h+=`<div style="display:flex;justify-content:space-between;font-size:12px;gap:8px"><span style="color:var(--grey)">ACV</span><span style="font-weight:600;color:var(--navy)">${_irPCM.signed>0?f$(_irPCM.acv):'—'}</span></div>`;
     h+='</div></div>';
   }
   h+='</div>';
@@ -1091,7 +1090,12 @@ function renderIrfan(){
   h+=`<div style="font-size:11px;color:var(--grey);margin-bottom:14px">${_ir14Range} · closed-won by closedate, bucketed by average_monthly_web_traffic__cloned_ · ${fN(_irf.totalSignedLast14||0)} signed${_irf.totalSignedLast14MRR?' · '+f$(_irf.totalSignedLast14MRR)+' MRR':''}</div>`;
   if(_ir14Err)h+='<div style="color:var(--red);font-size:11px;padding:14px 0;text-align:center;font-style:italic">Failed to load: '+_ir14Err+'</div>';
   else if(!_ir14Loaded)h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">Data not yet loaded — click Refresh to fetch</div>';
-  else if(!_irf.totalSignedLast14)h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">No deals signed in '+_ir14Range+'</div>';
+  else if(!_irf.totalSignedLast14){
+    const _dbg=_irf.last14Debug||{};
+    const _cached=_dbg.cached||{};
+    h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">No deals signed in '+_ir14Range+'</div>';
+    h+='<div style="font-size:10px;color:var(--grey);padding:6px 10px;background:rgba(23,44,69,.04);border-radius:4px;margin-top:8px;text-align:center;font-variant-numeric:tabular-nums">debug · cached cCW='+fN(_cached.cCW||0)+' pCW='+fN(_cached.pCW||0)+' pmCW='+fN(_cached.pmCW||0)+' · fresh='+fN(_dbg.fresh||0)+' · union='+fN(_dbg.unionAfterDedupe||0)+' · in range='+fN(_dbg.filtered||0)+'</div>';
+  }
   else h+='<div id="irfan-signed14-pie"></div>';
   h+='</div>';
   h+='</div>';

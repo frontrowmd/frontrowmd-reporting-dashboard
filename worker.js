@@ -1681,29 +1681,37 @@ async function processRequest(windowType, customFrom, customTo, env) {
     } else {
       _pcmPipe = await fetchPipelineDeals(hsToken, _pcmFromStr, _pcmToStr);
     }
-    let totalBooked = 0, scaleBooked = 0, signed = 0, signedMrrSum = 0, preLaunchExcluded = 0;
+    let totalBooked = 0, notHeldExcluded = 0, preLaunchExcluded = 0;
+    let heldScale = 0, signed = 0, signedMrrSum = 0;
     for (const d of (_pcmPipe||[])) {
       const p = d.properties || {};
       totalBooked++;
-      // Pre-launch exclusion: drop deals whose cloned web-traffic property says pre-launch.
-      // Deals without the field (most non-closed deals) are kept — we assume scale-tier.
+      // Only count demos that were held: Demo Given (originally scheduled) or
+      // Demo Given (rescheduled). This also implicitly excludes Cancelled before demo,
+      // No Show, Scheduled — pending, and Rescheduled — pending.
+      const att = (p.demo_attendance_status||'').trim();
+      if (att !== 'Demo Given (originally scheduled)' && att !== 'Demo Given (rescheduled)') {
+        notHeldExcluded++; continue;
+      }
+      // Exclude pre-launch via the deal's cloned web-traffic property.
       const wt = (p.average_monthly_web_traffic__cloned_||'').toLowerCase();
       if (wt.includes('pre-launch')) { preLaunchExcluded++; continue; }
-      scaleBooked++;
+      heldScale++;
       if ((p.dealstage||'') === 'closedwon') {
         signed++;
         signedMrrSum += parseFloat(p.amount)||0;
       }
     }
-    const pctSigned = scaleBooked > 0 ? (signed / scaleBooked) * 100 : 0;
-    const avgStartingMrr = signed > 0 ? signedMrrSum / signed : 0;
+    const pctSigned = heldScale > 0 ? (signed / heldScale) * 100 : 0;
+    const acv = signed > 0 ? signedMrrSum / signed : 0;  // ACV per spec: New MRR ÷ Closed-won deals
+    const newArr = signedMrrSum * 12;
     resp.irfan.priorMonthHeldSigned = {
-      heldScale: scaleBooked, signed, pctSigned,
-      totalBooked, preLaunchExcluded,
-      avgStartingMrr, avgStartingAcv: avgStartingMrr * 12,
+      heldScale, signed, pctSigned,
+      totalBooked, notHeldExcluded, preLaunchExcluded,
+      newArr, acv,
       fromDate: _pcmFromStr, toDate: _pcmToStr,
     };
-    console.log(`Irfan PCM (${_pcmSource}): ${totalBooked} booked, ${preLaunchExcluded} pre-launch excluded, ${scaleBooked} scale-tier, ${signed} signed`);
+    console.log(`Irfan PCM (${_pcmSource}): ${totalBooked} booked, ${notHeldExcluded} not-held, ${preLaunchExcluded} pre-launch, ${heldScale} held-scale, ${signed} signed`);
   } catch(e) {
     console.error('Irfan prior-month booked→signed fetch failed:', e);
     resp.irfan.priorMonthError = e.message;
@@ -1711,52 +1719,41 @@ async function processRequest(windowType, customFrom, customTo, env) {
 
   // Tile #2 — Closed-won deals in the last 14 days, aggregated by web-traffic tier
   // at signing time (deal property average_monthly_web_traffic__cloned_).
+  // Strategy: combine already-fetched closed-won sets (cCW/pCW/pmCW) + always
+  // do a fresh dedicated fetch, then take the union. This way reuse helps when
+  // subrequest budget is tight, and the fresh fetch is the source of truth
+  // for anything outside the dashboard's natural windows.
   try {
     const _today = new Date();
     const _from14 = new Date(_today); _from14.setDate(_from14.getDate()-14);
     const _fromStr14 = fmt(_from14), _toStr14 = fmt(_today);
-    // Try to satisfy the last-14 window from already-fetched closed-won sets.
-    // Any of cCW / pCW / pmCW that overlap the range; combine + dedupe by id, then filter.
+    const _needFromMs = _from14.getTime();
+    const _needToMs = _today.getTime();
+    // Step 1: collect from already-fetched closed-won sets
     const _combined = new Map();
     const _addAll = (arr) => { if (!arr) return; for (const x of arr) _combined.set(x.id, x); };
     _addAll(cCW); _addAll(pCW); _addAll(pmCW);
-    // Check whether the union covers our 14-day range entirely.
-    const _parseDate = (s, eod) => {
-      if (!s) return eod ? -Infinity : Infinity;
-      const [y,m,d] = s.split('-').map(Number);
-      return Date.UTC(y, m-1, d, eod?23:0, eod?59:0, eod?59:0);
-    };
-    const _coverEarliest = Math.min(
-      _parseDate(current?.from),
-      _parseDate(prior?.from),
-      _parseDate(priorMonth?.from),
-    );
-    const _coverLatest = Math.max(
-      _parseDate(current?.to, true),
-      _parseDate(prior?.to, true),
-      _parseDate(priorMonth?.to, true),
-    );
-    const _needFromMs = _from14.getTime();
-    const _needToMs = _today.getTime();
-    let irfanCW14, _cwSource;
-    if (_combined.size > 0 && _coverEarliest <= _needFromMs && _coverLatest >= _needToMs) {
-      // Existing combined set fully covers the 14-day window — filter client-side
-      const fromMs = _needFromMs, toMs = _today.getTime();
-      irfanCW14 = [];
-      for (const dl of _combined.values()) {
-        const cd = dl.properties?.closedate;
-        if (!cd) continue;
-        const cdMs = isoMs(cd);
-        if (!isNaN(cdMs) && cdMs >= fromMs && cdMs <= toMs) irfanCW14.push(dl);
-      }
-      _cwSource = 'cached('+_combined.size+'→'+irfanCW14.length+')';
-    } else {
-      irfanCW14 = await fetchClosedWonDeals(hsToken, _fromStr14, _toStr14);
-      _cwSource = 'fresh';
+    const cachedSourceCounts = { cCW: cCW?.length||0, pCW: pCW?.length||0, pmCW: pmCW?.length||0 };
+    // Step 2: also do a dedicated fetch for the 14-day range (handles windows
+    // like lastMonth where the existing fetches don't reach today)
+    let freshFetched = [];
+    try {
+      freshFetched = await fetchClosedWonDeals(hsToken, _fromStr14, _toStr14) || [];
+    } catch(fe) {
+      console.warn('Irfan last-14 fresh fetch failed (will fall back to cached):', fe.message);
+    }
+    for (const x of freshFetched) _combined.set(x.id, x);
+    // Step 3: filter the union by closedate
+    const irfanCW14 = [];
+    for (const dl of _combined.values()) {
+      const cd = dl.properties?.closedate;
+      if (!cd) continue;
+      const cdMs = isoMs(cd);
+      if (!isNaN(cdMs) && cdMs >= _needFromMs && cdMs <= _needToMs) irfanCW14.push(dl);
     }
     const signedLast14ByWebTraffic = {};
     let totalSignedLast14 = 0, totalSignedLast14MRR = 0;
-    for (const dl of (irfanCW14||[])) {
+    for (const dl of irfanCW14) {
       const pp = dl.properties || {};
       const wtRaw = pp.average_monthly_web_traffic__cloned_ || pp.average_monthly_web_traffic || '';
       const key = wtRaw || '(none)';
@@ -1769,7 +1766,14 @@ async function processRequest(windowType, customFrom, customTo, env) {
     resp.irfan.totalSignedLast14MRR = totalSignedLast14MRR;
     resp.irfan.last14FromDate = _fromStr14;
     resp.irfan.last14ToDate = _toStr14;
-    console.log(`Irfan last-14 (${_cwSource}): ${totalSignedLast14} signed (${_fromStr14} to ${_toStr14}), MRR ${totalSignedLast14MRR}, tiers ${Object.keys(signedLast14ByWebTraffic).join('|')}`);
+    // Diagnostics exposed for in-page debugging
+    resp.irfan.last14Debug = {
+      cached: cachedSourceCounts,
+      fresh: freshFetched.length,
+      unionAfterDedupe: _combined.size,
+      filtered: irfanCW14.length,
+    };
+    console.log(`Irfan last-14: cached={cCW:${cachedSourceCounts.cCW},pCW:${cachedSourceCounts.pCW},pmCW:${cachedSourceCounts.pmCW}} fresh=${freshFetched.length} union=${_combined.size} filtered=${irfanCW14.length} signed=${totalSignedLast14} (${_fromStr14} to ${_toStr14}), MRR ${totalSignedLast14MRR}, tiers ${Object.keys(signedLast14ByWebTraffic).join('|')}`);
   } catch(e) {
     console.error('Irfan last-14-days fetch failed:', e);
     resp.irfan.last14Error = e.message;
