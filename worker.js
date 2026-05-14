@@ -1662,8 +1662,10 @@ async function processRequest(windowType, customFrom, customTo, env) {
   // making extra HubSpot subrequests (Cloudflare Workers cap at 50/request).
   resp.irfan = {};
 
-  // Tile #1 — Filter cohortDeals (already-fetched 4-month sliding window) by
-  // hs_createdate in the prior calendar month and date_demo_booked on or after.
+  // Tile #1 — Union of already-fetched pipeline data (pmPipe + cPipe + cohortDeals,
+  // deduped by id), filtered by hs_createdate in the prior calendar month with
+  // date_demo_booked on or after the Create Date. Using the union avoids the
+  // pagination cap that any single fetch could hit on its own.
   try {
     const _now = new Date();
     const _pcmFrom = new Date(Date.UTC(_now.getUTCFullYear(), _now.getUTCMonth()-1, 1));
@@ -1674,10 +1676,14 @@ async function processRequest(windowType, customFrom, customTo, env) {
     // Same-day-safe comparison: floor the create timestamp to a UTC date so a deal
     // created Apr 20 at 14:30 with demo booked Apr 20 (stored midnight UTC) passes.
     const _floorToDay = (ms) => { const d = new Date(ms); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()); };
-    let cohortConsidered = 0, createdInPcm = 0, noDemoExcluded = 0, demoBeforeCreateExcluded = 0;
+    // Dedupe union by id
+    const _pcmUnion = new Map();
+    const _addAll = (arr) => { if (!arr) return; for (const x of arr) _pcmUnion.set(x.id, x); };
+    _addAll(pmPipe); _addAll(cPipe); _addAll(cohortDeals); _addAll(pPipe);
+    const _srcCounts = { pmPipe: pmPipe?.length||0, cPipe: cPipe?.length||0, cohortDeals: cohortDeals?.length||0, pPipe: pPipe?.length||0, union: _pcmUnion.size };
+    let createdInPcm = 0, noDemoExcluded = 0, demoBeforeCreateExcluded = 0;
     let universe = 0, signed = 0, signedMrrSum = 0;
-    for (const d of (cohortDeals||[])) {
-      cohortConsidered++;
+    for (const d of _pcmUnion.values()) {
       const p = d.properties || {};
       const createMs = isoMs(p.hs_createdate);
       if (isNaN(createMs) || createMs < _pcmFromMs || createMs > _pcmToMs) continue;
@@ -1699,11 +1705,11 @@ async function processRequest(windowType, customFrom, customTo, env) {
       // heldScale kept as field name for backward compat — it's the deals-created universe
       heldScale: universe, signed, pctSigned,
       totalBooked: createdInPcm, noDemoExcluded, demoBeforeCreateExcluded,
-      cohortConsidered,
+      sourceCounts: _srcCounts,
       newArr, acv,
       fromDate: _pcmFromStr, toDate: _pcmToStr,
     };
-    console.log(`Irfan PCM (cohortDeals): considered=${cohortConsidered}, created-in-PCM=${createdInPcm}, no-demo=${noDemoExcluded}, demo-before-create=${demoBeforeCreateExcluded}, universe=${universe}, closed-won=${signed}`);
+    console.log(`Irfan PCM (union): sources={pmPipe:${_srcCounts.pmPipe},cPipe:${_srcCounts.cPipe},cohortDeals:${_srcCounts.cohortDeals},pPipe:${_srcCounts.pPipe}} union=${_srcCounts.union} created-in-PCM=${createdInPcm} no-demo=${noDemoExcluded} demo-before-create=${demoBeforeCreateExcluded} universe=${universe} closed-won=${signed}`);
   } catch(e) {
     console.error('Irfan prior-month created→signed processing failed:', e);
     resp.irfan.priorMonthError = e.message;
