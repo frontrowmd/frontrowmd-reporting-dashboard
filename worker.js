@@ -391,7 +391,7 @@ async function fetchPipelineDeals(token, from, to) {
       { propertyName: 'hs_createdate', operator: 'GTE', value: fMsET },
       { propertyName: 'hs_createdate', operator: 'LTE', value: tMsET2 },
     ]},
-  ], ['dealname','date_demo_booked','demo_given_date','demo_given__status','demo_attendance_status','demo_qualification_outcome','rescheduled_meeting_date','disqualification_reason','dealstage','amount','closedate','createdate','hs_createdate','hubspot_owner_id','utm_source','utm_medium','utm_campaign','utm_content','brand_status']);
+  ], ['dealname','date_demo_booked','demo_given_date','demo_given__status','demo_attendance_status','demo_qualification_outcome','rescheduled_meeting_date','disqualification_reason','dealstage','amount','closedate','createdate','hs_createdate','hubspot_owner_id','utm_source','utm_medium','utm_campaign','utm_content','brand_status','average_monthly_web_traffic__cloned_']);
   return [...new Map(deals.map(d => [d.id, d])).values()]; // dedup
 }
 
@@ -1686,68 +1686,49 @@ async function processRequest(windowType, customFrom, customTo, env) {
     resp.irfan.totalSignedLast14MRR = totalSignedLast14MRR;
     resp.irfan.last14FromDate = _fromStr14;
     resp.irfan.last14ToDate = _toStr14;
+    console.log(`Irfan last-14: ${totalSignedLast14} signed (${_fromStr14} to ${_toStr14}), MRR ${totalSignedLast14MRR}, tiers ${Object.keys(signedLast14ByWebTraffic).join('|')}`);
   } catch(e) {
     console.error('Irfan last-14-days fetch failed:', e);
     resp.irfan.last14Error = e.message;
   }
 
-  // Tile #1 — Of demos HELD in the PRIOR CALENDAR MONTH (excluding pre-launch),
+  // Tile #1 — Of deals with date_demo_booked in the PRIOR CALENDAR MONTH
+  // (excluding any whose average_monthly_web_traffic__cloned_ is "Pre-launch"),
   // how many have since reached dealstage='closedwon'?
-  // Pipeline deals carry their CURRENT dealstage (HubSpot returns latest properties),
-  // so a deal whose demo was held last month and signed this month shows dealstage='closedwon'.
+  // Pipeline deals carry their CURRENT dealstage, so a deal booked last month and
+  // signed this month shows dealstage='closedwon'.
   try {
     const _now = new Date();
     const _pcmFrom = new Date(Date.UTC(_now.getUTCFullYear(), _now.getUTCMonth()-1, 1));
     const _pcmTo = new Date(Date.UTC(_now.getUTCFullYear(), _now.getUTCMonth(), 0));
     const _pcmFromStr = fmt(_pcmFrom), _pcmToStr = fmt(_pcmTo);
-    // Build pcm lowSet (mirror processScheduledContacts pattern at lines 522-535)
-    const _pcmSched = await fetchScheduledContacts(hsToken, _pcmFromStr, _pcmToStr);
-    const _pcmLowSet = new Set();
-    for (const c of _pcmSched) {
-      const wt = (c.properties?.average_monthly_web_traffic || '').toLowerCase();
-      if (!wt.includes('pre-launch')) continue;
-      const co = (c.properties?.company || '').trim().toLowerCase();
-      if (co) _pcmLowSet.add(co);
-      const em = (c.properties?.email || '').toLowerCase();
-      if (em.includes('@')) {
-        const dom = em.split('@')[1];
-        const personalDomains = ['gmail.com','yahoo.com','hotmail.com','aol.com','outlook.com','icloud.com','protonmail.com'];
-        if (dom && !personalDomains.includes(dom)) _pcmLowSet.add('_domain_'+dom);
-      }
-    }
     const _pcmPipe = await fetchPipelineDeals(hsToken, _pcmFromStr, _pcmToStr);
-    let heldScale = 0, signed = 0, signedMrrSum = 0;
+    let totalBooked = 0, scaleBooked = 0, signed = 0, signedMrrSum = 0, preLaunchExcluded = 0;
     for (const d of (_pcmPipe||[])) {
       const p = d.properties || {};
-      const att = (p.demo_attendance_status||'').trim();
-      // Demos Held = Demo Given (orig) + Demo Given (resched). No qualification filter.
-      if (att !== 'Demo Given (originally scheduled)' && att !== 'Demo Given (rescheduled)') continue;
-      // Pre-launch check via dealname substring match against lowSet
-      const dn = (p.dealname||'').trim().toLowerCase();
-      let isLow = false;
-      if (dn && _pcmLowSet.has(dn)) isLow = true;
-      if (!isLow && dn) {
-        for (const lk of _pcmLowSet) {
-          if (lk.startsWith('_domain_')) continue;
-          if (lk.length > 3 && (dn.includes(lk) || lk.includes(dn))) { isLow = true; break; }
-        }
-      }
-      if (isLow) continue;
-      heldScale++;
+      totalBooked++;
+      // Pre-launch exclusion: drop deals whose cloned web-traffic property says pre-launch.
+      // Deals without the field (most non-closed deals) are kept — we assume scale-tier.
+      const wt = (p.average_monthly_web_traffic__cloned_||'').toLowerCase();
+      if (wt.includes('pre-launch')) { preLaunchExcluded++; continue; }
+      scaleBooked++;
       if ((p.dealstage||'') === 'closedwon') {
         signed++;
         signedMrrSum += parseFloat(p.amount)||0;
       }
     }
-    const pctSigned = heldScale > 0 ? (signed / heldScale) * 100 : 0;
+    const pctSigned = scaleBooked > 0 ? (signed / scaleBooked) * 100 : 0;
     const avgStartingMrr = signed > 0 ? signedMrrSum / signed : 0;
     resp.irfan.priorMonthHeldSigned = {
-      heldScale, signed, pctSigned,
+      // Field names kept for backward compat with dashboard rendering — heldScale = scaleBooked
+      heldScale: scaleBooked, signed, pctSigned,
+      totalBooked, preLaunchExcluded,
       avgStartingMrr, avgStartingAcv: avgStartingMrr * 12,
       fromDate: _pcmFromStr, toDate: _pcmToStr,
     };
+    console.log(`Irfan PCM: ${totalBooked} booked, ${preLaunchExcluded} pre-launch excluded, ${scaleBooked} scale-tier, ${signed} signed`);
   } catch(e) {
-    console.error('Irfan prior-month held→signed fetch failed:', e);
+    console.error('Irfan prior-month booked→signed fetch failed:', e);
     resp.irfan.priorMonthError = e.message;
   }
 

@@ -85,6 +85,9 @@ html,body{height:100%}body{font-family:var(--font-b);font-size:15px;color:var(--
 .tile:hover{box-shadow:0 4px 16px rgba(23,44,69,.08);transform:translateY(-1px)}
 .tile.hero{background:linear-gradient(135deg,var(--navy),var(--mid-navy));color:var(--white);border:none}
 .tile.hero .tlbl{color:var(--teal)}.tile.hero .tval{color:var(--white)}.tile.hero .tdef{color:rgba(255,255,255,.5)}.tile.hero .tcalc{color:rgba(255,255,255,.7)}
+.irf-calc{display:inline-block;padding:4px 8px;background:rgba(23,44,69,.08);border-radius:4px;color:var(--navy);font-weight:600;font-size:11px;font-variant-numeric:tabular-nums;margin-top:6px}
+.tile.hero .irf-calc,.tile.highlight .irf-calc{background:rgba(255,255,255,.14);color:#fff}
+.tile.warn .irf-calc{background:rgba(245,158,11,.12);color:#92400E}
 .tile.hero .tc .lbl{color:rgba(255,255,255,.45)}.tile.hero .tc .val{color:rgba(255,255,255,.85)}
 .tile.hero .tc .d.up{color:#6EE7B7}.tile.hero .tc .d.dn{color:#FCA5A5}
 .tile.accent{border-left:4px solid var(--teal);background:linear-gradient(135deg,var(--white),var(--teal-8))}
@@ -1024,7 +1027,7 @@ function renderIrfan(){
   function _irNfmt(n,fmt,dec){if(n==null)return '—';var s=n>=0?'+':'-';var a=Math.abs(n);var dc=dec!=null?dec:1;if(fmt==='$')return s+'$'+Math.round(a).toLocaleString();if(fmt==='%')return s+a.toFixed(dc)+'%';return s+Math.round(a).toLocaleString();}
   function _irDelta(cur,prev,fmt,inv,dec){if(cur==null||prev==null)return '<span style="color:var(--grey);font-size:10px">—</span>';var nd=cur-prev;var pd=prev!==0?((cur-prev)/prev)*100:null;var arrow=nd>=0?'↑':'↓';var positive=nd>0;var good=inv?!positive:positive;var color=nd===0?'var(--grey)':(good?'var(--green)':'var(--red)');var nStr=_irNfmt(nd,fmt,dec);var pStr=pd!=null?'('+(pd>=0?'+':'')+pd.toFixed(1)+'%)':'';return '<span style="color:'+color+';font-size:10px;font-weight:600">'+arrow+' '+nStr+' '+pStr+'</span>';}
   function _irTileFooter(cur,pv,lmv,fmt,inv){return '<div style="font-size:10px;line-height:1.5;margin-top:6px"><div style="display:flex;gap:6px;align-items:baseline"><span style="color:var(--grey);min-width:42px">vs prior</span>'+_irDelta(cur,pv,fmt,inv)+'</div><div style="display:flex;gap:6px;align-items:baseline"><span style="color:var(--grey);min-width:42px">vs LM</span>'+_irDelta(cur,lmv,fmt,inv)+'</div></div>';}
-  function _irCalc(num){return '<div style="font-size:11px;color:var(--navy);font-weight:600;font-variant-numeric:tabular-nums;margin-top:6px;padding:4px 8px;background:rgba(114,164,191,.08);border-radius:4px;display:inline-block">'+num+'</div>';}
+  function _irCalc(num){return '<div class="irf-calc">'+num+'</div>';}
 
   let h='';
 
@@ -1056,23 +1059,24 @@ function renderIrfan(){
   h+='<div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);margin-bottom:4px">Time-Bound Insights</div>';
   h+='<div style="font-size:11px;color:var(--grey);margin-bottom:10px">Independent of the time selector above — uses fixed windows (prior month, last 2 weeks)</div>';
   h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">';
-  // Special Tile #1 — Of demos HELD in the prior calendar month (non-pre-launch),
-  // how many have since closed-won?
+  // Special Tile #1 — Of deals with date_demo_booked in the prior calendar month
+  // (excluding pre-launch via average_monthly_web_traffic__cloned_), how many have
+  // since reached Closed Won?
   const _irf=d.irfan||{};
   const _irPCM=_irf.priorMonthHeldSigned||null;
   const _irPCMErr=_irf.priorMonthError;
   const _irPCMRange=_irPCM&&_irPCM.fromDate&&_irPCM.toDate?`${fmtD(_irPCM.fromDate)} – ${fmtD(_irPCM.toDate)}`:'prior month';
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Prior Month Demos Held → Signed</div>';
-  h+=`<div style="font-size:11px;color:var(--grey);margin-bottom:14px">Demos held (non-pre-launch) in ${_irPCMRange} that have since reached Closed Won</div>`;
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Prior Month Demos Booked → Signed</div>';
+  h+=`<div style="font-size:11px;color:var(--grey);margin-bottom:14px">Deals with date_demo_booked in ${_irPCMRange} (excl. pre-launch) that have since reached Closed Won</div>`;
   if(_irPCMErr){h+='<div style="color:var(--red);font-size:11px;padding:14px 0;text-align:center;font-style:italic">Failed to load: '+_irPCMErr+'</div>';}
-  else if(!_irPCM){h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">Data not yet loaded — try Refresh</div>';}
-  else if(_irPCM.heldScale===0){h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">No non-pre-launch demos held in '+_irPCMRange+'</div>';}
+  else if(!_irPCM){h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">Data not yet loaded — click Refresh to fetch</div>';}
+  else if(_irPCM.heldScale===0){h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">No non-pre-launch demos booked in '+_irPCMRange+' ('+fN(_irPCM.totalBooked||0)+' total, '+fN(_irPCM.preLaunchExcluded||0)+' pre-launch)</div>';}
   else{
     const pctC=_irPCM.pctSigned>=20?'var(--green)':(_irPCM.pctSigned>=10?'var(--navy)':'var(--grey)');
     h+='<div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap">';
     h+=`<div style="flex:0 0 auto"><div style="font-family:var(--font-h);font-size:36px;font-weight:700;color:${pctC};line-height:1">${_irPCM.pctSigned.toFixed(1)}%</div><div style="font-size:11px;color:var(--grey);margin-top:4px">signed</div><div style="font-size:10px;color:var(--grey);margin-top:2px;font-variant-numeric:tabular-nums">${fN(_irPCM.signed)} ÷ ${fN(_irPCM.heldScale)}</div></div>`;
     h+=`<div style="flex:1;min-width:140px;display:flex;flex-direction:column;gap:8px">`;
-    h+=`<div style="display:flex;justify-content:space-between;font-size:12px;gap:8px"><span style="color:var(--grey)">Demos Held</span><span style="font-weight:600;color:var(--navy)">${fN(_irPCM.heldScale)}</span></div>`;
+    h+=`<div style="display:flex;justify-content:space-between;font-size:12px;gap:8px"><span style="color:var(--grey)">Demos Booked</span><span style="font-weight:600;color:var(--navy)">${fN(_irPCM.heldScale)}</span></div>`;
     h+=`<div style="display:flex;justify-content:space-between;font-size:12px;gap:8px"><span style="color:var(--grey)">Closed Won since</span><span style="font-weight:600;color:var(--navy)">${fN(_irPCM.signed)}</span></div>`;
     h+=`<div style="display:flex;justify-content:space-between;font-size:12px;gap:8px;padding-top:8px;border-top:1px solid var(--border)"><span style="color:var(--grey)">Avg Starting MRR</span><span style="font-weight:600;color:var(--navy)">${_irPCM.signed>0?f$(_irPCM.avgStartingMrr):'—'}</span></div>`;
     h+=`<div style="display:flex;justify-content:space-between;font-size:12px;gap:8px"><span style="color:var(--grey)">Avg Starting ACV</span><span style="font-weight:600;color:var(--navy)">${_irPCM.signed>0?f$(_irPCM.avgStartingAcv):'—'}</span></div>`;
@@ -1081,10 +1085,13 @@ function renderIrfan(){
   h+='</div>';
   // Special Tile #2 — Signed last 14 days by web traffic. Uses fixed 14-day window.
   const _ir14Err=_irf.last14Error;
+  const _ir14Loaded=_irf.last14FromDate!=null;
   const _ir14Range=_irf.last14FromDate&&_irf.last14ToDate?`${fmtD(_irf.last14FromDate)} – ${fmtD(_irf.last14ToDate)}`:'last 14 days';
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Signed Deals — Last 2 Weeks by Web Traffic</div>';
-  h+=`<div style="font-size:11px;color:var(--grey);margin-bottom:14px">${_ir14Range} · ${fN(_irf.totalSignedLast14||0)} signed · ${_irf.totalSignedLast14MRR?f$(_irf.totalSignedLast14MRR)+' MRR':'$0 MRR'}</div>`;
+  h+=`<div style="font-size:11px;color:var(--grey);margin-bottom:14px">${_ir14Range} · closed-won by closedate, bucketed by average_monthly_web_traffic__cloned_ · ${fN(_irf.totalSignedLast14||0)} signed${_irf.totalSignedLast14MRR?' · '+f$(_irf.totalSignedLast14MRR)+' MRR':''}</div>`;
   if(_ir14Err)h+='<div style="color:var(--red);font-size:11px;padding:14px 0;text-align:center;font-style:italic">Failed to load: '+_ir14Err+'</div>';
+  else if(!_ir14Loaded)h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">Data not yet loaded — click Refresh to fetch</div>';
+  else if(!_irf.totalSignedLast14)h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">No deals signed in '+_ir14Range+'</div>';
   else h+='<div id="irfan-signed14-pie"></div>';
   h+='</div>';
   h+='</div>';
@@ -1218,9 +1225,9 @@ function _renderIrfanMetaTables(d){
   campH+=_irfanSortableTh('Name','name',campSort,'irfanSortCamp','left');
   campH+='<th style="text-align:left;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Stage</th>';
   campH+=_irfanSortableTh('Status','status',campSort,'irfanSortCamp','center');
+  campH+=_irfanSortableTh('Spend','spend',campSort,'irfanSortCamp','right');
   campH+=_irfanSortableTh('Demos','demos',campSort,'irfanSortCamp','right');
   campH+=_irfanSortableTh('CPD','cpd',campSort,'irfanSortCamp','right');
-  campH+=_irfanSortableTh('Spend','spend',campSort,'irfanSortCamp','right');
   campH+=_irfanSortableTh('Impr','impressions',campSort,'irfanSortCamp','right');
   campH+=_irfanSortableTh('Clicks','clicks',campSort,'irfanSortCamp','right');
   campH+=_irfanSortableTh('CTR','ctr',campSort,'irfanSortCamp','right');
@@ -1235,9 +1242,9 @@ function _renderIrfanMetaTables(d){
     campH+='<td style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(c.name||'').replace(/"/g,'&quot;')+'">'+nm+'</td>';
     campH+='<td style="padding:8px 6px">'+stagesCell+'</td>';
     campH+='<td style="text-align:center;padding:8px 6px">'+_irfanStatusBadge(c.status,c.spend)+'</td>';
+    campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cSp,c.spend,true)+'">'+f$(c.spend)+'</td>';
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cDe,c.demos||0,false)+'">'+fN(c.demos||0)+'</td>';
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cCp,cpd||0,true)+'">'+(cpd!=null?f$(cpd):'—')+'</td>';
-    campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cSp,c.spend,true)+'">'+f$(c.spend)+'</td>';
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cIm,c.impressions||0,false)+'">'+fN(c.impressions||0)+'</td>';
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cCl,c.clicks||0,false)+'">'+fN(c.clicks||0)+'</td>';
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cCt,c.ctr||0,false)+'">'+(c.ctr!=null?c.ctr.toFixed(2)+'%':'—')+'</td>';
@@ -1257,9 +1264,9 @@ function _renderIrfanMetaTables(d){
   creH+='<th style="width:68px;padding:8px 4px"></th>';
   creH+=_irfanSortableTh('Name','name',creSort,'irfanSortCre','left');
   creH+=_irfanSortableTh('Status','status',creSort,'irfanSortCre','center');
+  creH+=_irfanSortableTh('Spend','spend',creSort,'irfanSortCre','right');
   creH+=_irfanSortableTh('Demos','demos',creSort,'irfanSortCre','right');
   creH+=_irfanSortableTh('CPD','cpd',creSort,'irfanSortCre','right');
-  creH+=_irfanSortableTh('Spend','spend',creSort,'irfanSortCre','right');
   creH+=_irfanSortableTh('Impr','impressions',creSort,'irfanSortCre','right');
   creH+=_irfanSortableTh('Clicks','clicks',creSort,'irfanSortCre','right');
   creH+=_irfanSortableTh('CTR','ctr',creSort,'irfanSortCre','right');
@@ -1275,9 +1282,9 @@ function _renderIrfanMetaTables(d){
     creH+='<td style="padding:6px 4px">'+thumb+'</td>';
     creH+='<td style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(c.name||'').replace(/"/g,'&quot;')+'">'+nm+'</td>';
     creH+='<td style="text-align:center;padding:8px 6px">'+_irfanStatusBadge(c.status,c.spend)+'</td>';
+    creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rSp,c.spend,true)+'">'+f$(c.spend)+'</td>';
     creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rDe,c.demos||0,false)+'">'+fN(c.demos||0)+'</td>';
     creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rCp,cpd||0,true)+'">'+(cpd!=null?f$(cpd):'—')+'</td>';
-    creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rSp,c.spend,true)+'">'+f$(c.spend)+'</td>';
     creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rIm,c.impressions||0,false)+'">'+fN(c.impressions||0)+'</td>';
     creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rCl,c.clicks||0,false)+'">'+fN(c.clicks||0)+'</td>';
     creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rCt,c.ctr||0,false)+'">'+(c.ctr!=null?c.ctr.toFixed(2)+'%':'—')+'</td>';
@@ -1328,7 +1335,7 @@ function _renderIrfanWtPieInto(targetId, rawBuckets, centerLabel){
   let legend='<div style="display:flex;flex-direction:column;gap:6px;font-size:11px;color:var(--navy)">';
   for(const s of segs){const pct=(s.count/total*100).toFixed(1);const col=IRFAN_WT_COLORS[s.label]||'#9CA3AF';legend+='<div style="display:flex;align-items:center;gap:6px;white-space:nowrap"><span style="display:inline-block;width:10px;height:10px;background:'+col+';border-radius:2px;flex-shrink:0"></span><span style="font-weight:600;min-width:62px">'+s.label+'</span><span style="color:var(--grey)">'+s.count+'</span><span style="color:var(--grey);font-variant-numeric:tabular-nums">'+pct+'%</span></div>';}
   legend+='</div>';
-  target.innerHTML='<div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;justify-content:center;position:relative">'
+  target.innerHTML='<div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;justify-content:center;position:relative;padding:20px 0">'
     +'<svg viewBox="0 0 280 280" style="width:280px;height:280px;flex-shrink:0">'+paths+labels
     +'<circle cx="'+cx+'" cy="'+cy+'" r="'+rInner+'" fill="var(--white)"/>'
     +'<text x="'+cx+'" y="'+(cy-4)+'" text-anchor="middle" style="font-family:var(--font-h);font-size:34px;font-weight:700;fill:var(--navy)">'+total+'</text>'
