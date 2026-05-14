@@ -88,6 +88,17 @@ html,body{height:100%}body{font-family:var(--font-b);font-size:15px;color:var(--
 .irf-calc{display:inline-block;padding:4px 8px;background:rgba(23,44,69,.08);border-radius:4px;color:var(--navy);font-weight:600;font-size:11px;font-variant-numeric:tabular-nums;margin-top:6px}
 .tile.hero .irf-calc,.tile.highlight .irf-calc{background:rgba(255,255,255,.14);color:#fff}
 .tile.warn .irf-calc{background:rgba(245,158,11,.12);color:#92400E}
+/* Irfan Dashboard typography + components */
+.irf-sec-title{font-family:var(--font-h);font-size:20px;font-weight:700;color:var(--navy);margin-bottom:12px;letter-spacing:-.01em}
+.irf-sec-sub{font-size:12px;color:var(--grey);margin-bottom:12px;margin-top:-8px}
+.irf-card-title{font-family:var(--font-h);font-size:17px;font-weight:700;color:var(--navy);margin-bottom:4px;letter-spacing:-.01em}
+.irf-card-sub{font-size:12px;color:var(--grey);margin-bottom:16px;line-height:1.4}
+.irf-mini-kpi{background:rgba(114,164,191,.06);border:1px solid rgba(114,164,191,.2);border-radius:8px;padding:10px 12px;flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center}
+.irf-mini-kpi-label{font-size:10px;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.irf-mini-kpi-value{font-family:var(--font-h);font-size:20px;font-weight:700;color:var(--navy);line-height:1.1;font-variant-numeric:tabular-nums}
+.irf-mini-kpi-grid{display:grid;gap:8px}
+.irf-meta-table tbody tr{transition:filter .15s ease,box-shadow .15s ease}
+.irf-meta-table tbody tr:hover{filter:brightness(0.96);box-shadow:inset 3px 0 0 var(--teal)}
 .tile.hero .tc .lbl{color:rgba(255,255,255,.45)}.tile.hero .tc .val{color:rgba(255,255,255,.85)}
 .tile.hero .tc .d.up{color:#6EE7B7}.tile.hero .tc .d.dn{color:#FCA5A5}
 .tile.accent{border-left:4px solid var(--teal);background:linear-gradient(135deg,var(--white),var(--teal-8))}
@@ -1032,16 +1043,16 @@ function renderIrfan(){
   let h='';
 
   // ═══════ Section 1 — Graphs ═══════
-  h+='<div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);margin-bottom:10px">Daily Trend & Web-Traffic Mix</div>';
+  h+='<div class="irf-sec-title">Daily Trend & Web-Traffic Mix</div>';
   h+='<div style="display:grid;grid-template-columns:1.6fr 1fr;gap:16px;margin-bottom:28px">';
   // 1a — Demos Booked per Day (matches Overview). Reuses renderDemosPerDay for mini KPI cards + hover.
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Demos Booked per Day</div><div style="font-size:11px;color:var(--grey);margin-bottom:14px">Contacts created with date_demo_booked set · average line shows daily mean</div><div id="irfan-daily-wrap"></div></div>';
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div class="irf-card-title">Demos Booked per Day</div><div class="irf-card-sub">Contacts created with date_demo_booked set · average line shows daily mean</div><div id="irfan-daily-wrap"></div></div>';
   // 1b — Demos Booked by Web-Traffic Range (donut, with % labels + hover)
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Demos Booked by Web-Traffic Range</div><div style="font-size:11px;color:var(--grey);margin-bottom:14px">% of demos booked in each tier · ordered Pre-launch → 500K+ clockwise</div><div id="irfan-wt-pie"></div></div>';
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div class="irf-card-title">Demos Booked by Web-Traffic Range</div><div class="irf-card-sub">% of demos booked in each tier · ordered Pre-launch → 500K+ clockwise</div><div id="irfan-wt-pie"></div></div>';
   h+='</div>';
 
   // ═══════ Section 2 — KPI Tiles ═══════
-  h+='<div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);margin-bottom:10px">Key Metrics</div>';
+  h+='<div class="irf-sec-title">Key Metrics</div>';
   h+='<div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-bottom:28px">';
   // 2.1 True CPD
   h+=`<div class="tile hero" style="border-left:3px solid var(--teal)"><div class="tlbl">True CPD</div><div class="tval">${tCpd!=null?f$(tCpd):'—'}</div><div class="tdef" style="margin-top:4px">Ad spend ÷ Demos excl. pre-launch</div>${_irCalc(f$(_totalSpend)+' ÷ '+fN(_scaleSched))}${_irTileFooter(tCpd,tCpdPV,tCpdLMV,'$',true)}</div>`;
@@ -1056,8 +1067,8 @@ function renderIrfan(){
   h+='</div>';
 
   // ═══════ Section 3 — Special Time-Bound Tiles ═══════
-  h+='<div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);margin-bottom:4px">Time-Bound Insights</div>';
-  h+='<div style="font-size:11px;color:var(--grey);margin-bottom:10px">Independent of the time selector above — uses fixed windows (prior month, last 2 weeks)</div>';
+  h+='<div class="irf-sec-title" style="margin-bottom:4px">Time-Bound Insights</div>';
+  h+='<div class="irf-sec-sub" style="margin-top:0">Independent of the time selector above — uses fixed windows (prior month, last 2 weeks)</div>';
   h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">';
   // Special Tile #1 — Of demos HELD in the prior calendar month (excluding
   // pre-launch and cancelled), how many have since reached Closed Won?
@@ -1065,43 +1076,59 @@ function renderIrfan(){
   const _irPCM=_irf.priorMonthHeldSigned||null;
   const _irPCMErr=_irf.priorMonthError;
   const _irPCMRange=_irPCM&&_irPCM.fromDate&&_irPCM.toDate?`${fmtD(_irPCM.fromDate)} – ${fmtD(_irPCM.toDate)}`:'prior month';
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Prior Month Demos Held → Signed</div>';
-  h+=`<div style="font-size:11px;color:var(--grey);margin-bottom:14px">Demos held in ${_irPCMRange} (excl. pre-launch, cancelled) that have since reached Closed Won</div>`;
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div class="irf-card-title">Prior Month Demos Held → Signed</div>';
+  h+=`<div class="irf-card-sub">Demos held in ${_irPCMRange} (excl. pre-launch, cancelled) that have since reached Closed Won</div>`;
   if(_irPCMErr){h+='<div style="color:var(--red);font-size:11px;padding:14px 0;text-align:center;font-style:italic">Failed to load: '+_irPCMErr+'</div>';}
   else if(!_irPCM){h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">Data not yet loaded — click Refresh to fetch</div>';}
   else if(_irPCM.heldScale===0){h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">No scale-tier demos held in '+_irPCMRange+' ('+fN(_irPCM.totalBooked||0)+' booked, '+fN(_irPCM.notHeldExcluded||0)+' not held, '+fN(_irPCM.preLaunchExcluded||0)+' pre-launch)</div>';}
   else{
     const pctC=_irPCM.pctSigned>=20?'var(--green)':(_irPCM.pctSigned>=10?'var(--navy)':'var(--grey)');
-    h+='<div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap">';
-    h+=`<div style="flex:0 0 auto"><div style="font-family:var(--font-h);font-size:36px;font-weight:700;color:${pctC};line-height:1">${_irPCM.pctSigned.toFixed(1)}%</div><div style="font-size:11px;color:var(--grey);margin-top:4px">signed</div><div style="font-size:10px;color:var(--grey);margin-top:2px;font-variant-numeric:tabular-nums">${fN(_irPCM.signed)} ÷ ${fN(_irPCM.heldScale)}</div></div>`;
-    h+=`<div style="flex:1;min-width:140px;display:flex;flex-direction:column;gap:8px">`;
-    h+=`<div style="display:flex;justify-content:space-between;font-size:12px;gap:8px"><span style="color:var(--grey)">Demos Held</span><span style="font-weight:600;color:var(--navy)">${fN(_irPCM.heldScale)}</span></div>`;
-    h+=`<div style="display:flex;justify-content:space-between;font-size:12px;gap:8px"><span style="color:var(--grey)">Closed Won since</span><span style="font-weight:600;color:var(--navy)">${fN(_irPCM.signed)}</span></div>`;
-    h+=`<div style="display:flex;justify-content:space-between;font-size:12px;gap:8px;padding-top:8px;border-top:1px solid var(--border)"><span style="color:var(--grey)">New ARR</span><span style="font-weight:600;color:var(--navy)">${_irPCM.signed>0?f$(_irPCM.newArr):'—'}</span></div>`;
-    h+=`<div style="display:flex;justify-content:space-between;font-size:12px;gap:8px"><span style="color:var(--grey)">ACV</span><span style="font-weight:600;color:var(--navy)">${_irPCM.signed>0?f$(_irPCM.acv):'—'}</span></div>`;
-    h+='</div></div>';
+    // Hero: big % with calc subtext underneath
+    h+='<div style="text-align:center;padding:8px 0 16px 0;border-bottom:1px solid var(--border);margin-bottom:14px">';
+    h+=`<div style="font-family:var(--font-h);font-size:44px;font-weight:700;color:${pctC};line-height:1">${_irPCM.pctSigned.toFixed(1)}%</div>`;
+    h+=`<div style="font-size:11px;color:var(--grey);margin-top:6px;text-transform:uppercase;letter-spacing:.06em;font-weight:700">Signed</div>`;
+    h+=`<div style="font-size:11px;color:var(--navy);font-variant-numeric:tabular-nums;margin-top:4px;font-weight:600">${fN(_irPCM.signed)} ÷ ${fN(_irPCM.heldScale)}</div>`;
+    h+='</div>';
+    // Mini KPI cards: Demos Held / Closed Won / New ARR / ACV
+    h+='<div class="irf-mini-kpi-grid" style="grid-template-columns:repeat(4,minmax(0,1fr))">';
+    h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">Demos Held</div><div class="irf-mini-kpi-value">${fN(_irPCM.heldScale)}</div></div>`;
+    h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">Closed Won</div><div class="irf-mini-kpi-value">${fN(_irPCM.signed)}</div></div>`;
+    h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">New ARR</div><div class="irf-mini-kpi-value">${_irPCM.signed>0?f$(_irPCM.newArr):'—'}</div></div>`;
+    h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">ACV</div><div class="irf-mini-kpi-value">${_irPCM.signed>0?f$(_irPCM.acv):'—'}</div></div>`;
+    h+='</div>';
   }
   h+='</div>';
   // Special Tile #2 — Signed last 14 days by web traffic. Uses fixed 14-day window.
   const _ir14Err=_irf.last14Error;
   const _ir14Loaded=_irf.last14FromDate!=null;
   const _ir14Range=_irf.last14FromDate&&_irf.last14ToDate?`${fmtD(_irf.last14FromDate)} – ${fmtD(_irf.last14ToDate)}`:'last 14 days';
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Signed Deals — Last 2 Weeks by Web Traffic</div>';
-  h+=`<div style="font-size:11px;color:var(--grey);margin-bottom:14px">${_ir14Range} · closed-won by closedate, bucketed by average_monthly_web_traffic__cloned_ · ${fN(_irf.totalSignedLast14||0)} signed${_irf.totalSignedLast14MRR?' · '+f$(_irf.totalSignedLast14MRR)+' MRR':''}</div>`;
+  const _ir14Signed=_irf.totalSignedLast14||0;
+  const _ir14MRR=_irf.totalSignedLast14MRR||0;
+  const _ir14NewARR=_ir14MRR*12;
+  const _ir14ACV=_ir14Signed>0?_ir14MRR/_ir14Signed:0;
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div class="irf-card-title">Signed Deals — Last 2 Weeks by Web Traffic</div>';
+  h+=`<div class="irf-card-sub">Closed Won by Close Date, bucketed by Web Traffic Tier · ${_ir14Range} · ${fN(_ir14Signed)} signed</div>`;
   if(_ir14Err)h+='<div style="color:var(--red);font-size:11px;padding:14px 0;text-align:center;font-style:italic">Failed to load: '+_ir14Err+'</div>';
   else if(!_ir14Loaded)h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">Data not yet loaded — click Refresh to fetch</div>';
-  else if(!_irf.totalSignedLast14){
+  else if(!_ir14Signed){
     const _dbg=_irf.last14Debug||{};
     const _cached=_dbg.cached||{};
     h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">No deals signed in '+_ir14Range+'</div>';
     h+='<div style="font-size:10px;color:var(--grey);padding:6px 10px;background:rgba(23,44,69,.04);border-radius:4px;margin-top:8px;text-align:center;font-variant-numeric:tabular-nums">debug · cached cCW='+fN(_cached.cCW||0)+' pCW='+fN(_cached.pCW||0)+' pmCW='+fN(_cached.pmCW||0)+' · fresh='+fN(_dbg.fresh||0)+' · union='+fN(_dbg.unionAfterDedupe||0)+' · in range='+fN(_dbg.filtered||0)+'</div>';
   }
-  else h+='<div id="irfan-signed14-pie"></div>';
+  else {
+    h+='<div id="irfan-signed14-pie"></div>';
+    // Mini KPI cards: New ARR + ACV
+    h+='<div class="irf-mini-kpi-grid" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-top:14px">';
+    h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">New ARR</div><div class="irf-mini-kpi-value">${f$(_ir14NewARR)}</div></div>`;
+    h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">ACV</div><div class="irf-mini-kpi-value">${f$(_ir14ACV)}</div></div>`;
+    h+='</div>';
+  }
   h+='</div>';
   h+='</div>';
 
   // Meta Campaign + Creative tables — read-only, pulled from S.analyzer.data.
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:24px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Meta — Campaign & Creative Tables</div><div style="font-size:11px;color:var(--grey);margin-bottom:14px">Sortable · sourced from the Paid Ads Dashboard payload</div><div id="irfan-meta-tables"></div></div>';
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:24px"><div class="irf-card-title">Meta — Campaign & Creative Tables</div><div class="irf-card-sub">Sortable · sourced from the Paid Ads Dashboard payload</div><div id="irfan-meta-tables"></div></div>';
 
   document.getElementById('irfan-c').innerHTML=h;
 
@@ -1225,7 +1252,7 @@ function _renderIrfanMetaTables(d){
   campH+='<div style="flex:1"></div><span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em">Stage</span>';
   for(const s of stages){const isA=stageF===s.k;campH+='<button onclick="irfanCampStageF(\''+s.k+'\')" style="padding:5px 12px;border-radius:50px;font-size:10px;font-weight:'+(isA?'700':'500')+';border:'+(isA?'none':'1px solid '+s.c)+';background:'+(isA?s.c:'transparent')+';color:'+(isA?'#fff':s.c)+';cursor:pointer;font-family:var(--font-h)">'+s.l+'</button>';}
   campH+='</div>';
-  campH+='<div style="overflow-x:auto"><table style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr style="border-bottom:1.5px solid var(--border)">';
+  campH+='<div style="overflow-x:auto"><table class="irf-meta-table" style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr style="border-bottom:1.5px solid var(--border)">';
   campH+=_irfanSortableTh('Name','name',campSort,'irfanSortCamp','left');
   campH+='<th style="text-align:left;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Stage</th>';
   campH+=_irfanSortableTh('Status','status',campSort,'irfanSortCamp','center');
@@ -1264,7 +1291,7 @@ function _renderIrfanMetaTables(d){
   const rSp=creRows.map(c=>c.spend),rIm=creRows.map(c=>c.impressions||0),rCl=creRows.map(c=>c.clicks||0),rCt=creRows.map(c=>c.ctr||0),rDe=creRows.map(c=>c.demos||0),rCp=creRows.map(c=>c.demos>0?c.spend/c.demos:0),rQu=creRows.map(c=>c.qualified||0);
   let creH='<div>';
   creH+='<div style="font-family:var(--font-h);font-size:12px;font-weight:700;color:var(--navy);margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em">Meta Ad Creatives <span style="font-weight:400;color:var(--grey);font-size:11px;text-transform:none;letter-spacing:0">('+creRows.length+' rows · sort by '+creSort.col+' '+creSort.dir+')</span></div>';
-  creH+='<div style="overflow-x:auto"><table style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr style="border-bottom:1.5px solid var(--border)">';
+  creH+='<div style="overflow-x:auto"><table class="irf-meta-table" style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr style="border-bottom:1.5px solid var(--border)">';
   creH+='<th style="width:68px;padding:8px 4px"></th>';
   creH+=_irfanSortableTh('Name','name',creSort,'irfanSortCre','left');
   creH+=_irfanSortableTh('Status','status',creSort,'irfanSortCre','center');
