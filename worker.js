@@ -1233,6 +1233,8 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
     scheduledByDay: c.scheduled.byDay,
     scheduledByDayScale: c.scheduled.byDayScale,
     scheduledByWebTraffic: c.scheduled.byWebTraffic,
+    scheduledByWebTrafficPrior: prior ? p.scheduled?.byWebTraffic || null : null,
+    scheduledByWebTrafficLastMonth: priorMonth ? pm.scheduled?.byWebTraffic || null : null,
   };
   demoTracking.demosPaidPct._meta = { windsorDemos: c.adSpend.total.windsorDemos, demosBooked: c.scheduled.total };
 

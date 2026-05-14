@@ -1362,9 +1362,12 @@ const IRFAN_WT_ORDER=['Pre-launch','0-10K','10-25K','25-50K','50-100K','100-200K
 const IRFAN_WT_COLORS={'Pre-launch':'#9CA3AF','0-10K':'#72A4BF','10-25K':'#1D4053','25-50K':'#172C45','50-100K':'#0EA5E9','100-200K':'#7C3AED','200-500K':'#16A34A','500K+':'#F59E0B','(none)':'#E5E7EB'};
 // Render a web-traffic donut into a target element. Bigger SVG, inline % labels
 // on each segment >=4%, and instant hover with a floating tooltip.
-function _renderIrfanWtPieInto(targetId, rawBuckets, centerLabel){
+function _renderIrfanWtPieInto(targetId, rawBuckets, centerLabel, priorBuckets){
   const target=document.getElementById(targetId);if(!target)return;
   const buckets={};for(const key in (rawBuckets||{})){const lbl=IRFAN_WT_LABELS[key]||(key==='(none)'?'(none)':key);buckets[lbl]=(buckets[lbl]||0)+rawBuckets[key];}
+  // Normalize prior-period buckets the same way so we can match by canonical label
+  const priorByLabel={};let priorTotal=0;
+  if(priorBuckets){for(const key in priorBuckets){const lbl=IRFAN_WT_LABELS[key]||(key==='(none)'?'(none)':key);priorByLabel[lbl]=(priorByLabel[lbl]||0)+priorBuckets[key];priorTotal+=priorBuckets[key];}}
   const segs=[];let total=0;
   for(const t of IRFAN_WT_ORDER){if(buckets[t]){segs.push({label:t,count:buckets[t]});total+=buckets[t];delete buckets[t];}}
   for(const k of Object.keys(buckets)){segs.push({label:k,count:buckets[k]});total+=buckets[k];}
@@ -1390,7 +1393,20 @@ function _renderIrfanWtPieInto(targetId, rawBuckets, centerLabel){
     }
   }
   let legend='<div style="display:flex;flex-direction:column;gap:6px;font-size:11px;color:var(--navy)">';
-  for(const s of segs){const pct=(s.count/total*100).toFixed(1);const col=IRFAN_WT_COLORS[s.label]||'#9CA3AF';legend+='<div style="display:flex;align-items:center;gap:8px;white-space:nowrap"><span style="display:inline-block;width:10px;height:10px;background:'+col+';border-radius:2px;flex-shrink:0"></span><span style="font-weight:600;min-width:62px;color:var(--navy)">'+s.label+'</span><span style="color:var(--grey);min-width:24px;text-align:right;font-variant-numeric:tabular-nums">'+s.count+'</span><span style="color:var(--teal);font-weight:700;font-variant-numeric:tabular-nums">'+pct+'%</span></div>';}
+  for(const s of segs){
+    const pctNum=s.count/total*100;const pct=pctNum.toFixed(1);
+    const col=IRFAN_WT_COLORS[s.label]||'#9CA3AF';
+    // Optional delta badge vs prior period (percentage-point change in share)
+    let deltaBadge='';
+    if(priorTotal>0){
+      const priorPct=(priorByLabel[s.label]||0)/priorTotal*100;
+      const dlt=pctNum-priorPct;
+      const sign=dlt>=0?'+':'';
+      const dColor=Math.abs(dlt)<0.05?'var(--grey)':(dlt>0?'var(--green)':'var(--red)');
+      deltaBadge='<span style="font-size:10px;color:'+dColor+';font-weight:700;font-variant-numeric:tabular-nums;padding:2px 6px;border-radius:99px;background:'+dColor+'14">'+sign+dlt.toFixed(1)+'pp</span>';
+    }
+    legend+='<div style="display:flex;align-items:center;gap:8px;white-space:nowrap"><span style="display:inline-block;width:10px;height:10px;background:'+col+';border-radius:2px;flex-shrink:0"></span><span style="font-weight:600;min-width:62px;color:var(--navy)">'+s.label+'</span><span style="color:var(--grey);min-width:24px;text-align:right;font-variant-numeric:tabular-nums">'+s.count+'</span><span style="color:var(--teal);font-weight:700;font-variant-numeric:tabular-nums;min-width:42px;text-align:right">'+pct+'%</span>'+deltaBadge+'</div>';
+  }
   legend+='</div>';
   target.innerHTML='<div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;justify-content:center;position:relative;padding:20px 0">'
     +'<svg viewBox="0 0 280 280" style="width:280px;height:280px;flex-shrink:0">'+paths+labels
@@ -1409,7 +1425,7 @@ function _renderIrfanWtPieInto(targetId, rawBuckets, centerLabel){
     el.addEventListener('mouseleave',function(){el.style.opacity='1';if(tip)tip.style.display='none';});
   });
 }
-function _renderIrfanWtPie(d){_renderIrfanWtPieInto('irfan-wt-pie', d.demoTracking?.scheduledByWebTraffic, 'demos booked');}
+function _renderIrfanWtPie(d){_renderIrfanWtPieInto('irfan-wt-pie', d.demoTracking?.scheduledByWebTraffic, 'demos booked', d.demoTracking?.scheduledByWebTrafficPrior);}
 function _renderIrfanSignedLast14Pie(d){_renderIrfanWtPieInto('irfan-signed14-pie', d.irfan?.signedLast14ByWebTraffic, 'signed');}
 
 // Lightweight churn update — only touches ARR/ROAS values, not the slider
