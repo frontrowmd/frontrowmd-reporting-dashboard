@@ -403,7 +403,7 @@ async function fetchClosedWonDeals(token, from, to) {
       { propertyName: 'closedate', operator: 'GTE', value: String(toMsET(from)) },
       { propertyName: 'closedate', operator: 'LTE', value: String(toMsET(to, true)) },
     ],
-  }], ['amount','closedate','hs_createdate','utm_source','utm_medium','utm_campaign','utm_content','hubspot_owner_id','brand_status','average_monthly_web_traffic__cloned_']);
+  }], ['amount','closedate','hs_createdate','utm_source','utm_medium','utm_campaign','utm_content','hubspot_owner_id','brand_status','average_monthly_web_traffic__cloned_','average_monthly_web_traffic']);
 }
 
 // Deals by hs_createdate — for Demo Quality table (shows deals created/booked in the window)
@@ -1673,7 +1673,9 @@ async function processRequest(windowType, customFrom, customTo, env) {
     let totalSignedLast14 = 0, totalSignedLast14MRR = 0;
     for (const dl of (irfanCW14||[])) {
       const pp = dl.properties || {};
-      const wtRaw = pp.average_monthly_web_traffic__cloned_ || '';
+      // Prefer the cloned-at-close property; fall back to the contact-style property
+      // (some older deals don't have the cloning automation run).
+      const wtRaw = pp.average_monthly_web_traffic__cloned_ || pp.average_monthly_web_traffic || '';
       const key = wtRaw || '(none)';
       signedLast14ByWebTraffic[key] = (signedLast14ByWebTraffic[key]||0) + 1;
       totalSignedLast14++;
@@ -1689,10 +1691,10 @@ async function processRequest(windowType, customFrom, customTo, env) {
     resp.irfan.last14Error = e.message;
   }
 
-  // Tile #1 — Of qualified demos in the PRIOR CALENDAR MONTH (held, non-pre-launch),
-  // what % have since closed-won and at what avg starting ACV?
+  // Tile #1 — Of demos HELD in the PRIOR CALENDAR MONTH (excluding pre-launch),
+  // how many have since reached dealstage='closedwon'?
   // Pipeline deals carry their CURRENT dealstage (HubSpot returns latest properties),
-  // so a deal qualified last month and signed this month shows dealstage='closedwon'.
+  // so a deal whose demo was held last month and signed this month shows dealstage='closedwon'.
   try {
     const _now = new Date();
     const _pcmFrom = new Date(Date.UTC(_now.getUTCFullYear(), _now.getUTCMonth()-1, 1));
@@ -1714,14 +1716,13 @@ async function processRequest(windowType, customFrom, customTo, env) {
       }
     }
     const _pcmPipe = await fetchPipelineDeals(hsToken, _pcmFromStr, _pcmToStr);
-    let qualifiedScale = 0, signed = 0, signedMrrSum = 0;
+    let heldScale = 0, signed = 0, signedMrrSum = 0;
     for (const d of (_pcmPipe||[])) {
       const p = d.properties || {};
       const att = (p.demo_attendance_status||'').trim();
-      const qo = (p.demo_qualification_outcome||'').trim();
-      if (qo !== 'Qualified') continue;
+      // Demos Held = Demo Given (orig) + Demo Given (resched). No qualification filter.
       if (att !== 'Demo Given (originally scheduled)' && att !== 'Demo Given (rescheduled)') continue;
-      // pre-launch check via dealname match (same loose substring strategy as processPipelineDeals)
+      // Pre-launch check via dealname substring match against lowSet
       const dn = (p.dealname||'').trim().toLowerCase();
       let isLow = false;
       if (dn && _pcmLowSet.has(dn)) isLow = true;
@@ -1732,21 +1733,21 @@ async function processRequest(windowType, customFrom, customTo, env) {
         }
       }
       if (isLow) continue;
-      qualifiedScale++;
+      heldScale++;
       if ((p.dealstage||'') === 'closedwon') {
         signed++;
         signedMrrSum += parseFloat(p.amount)||0;
       }
     }
-    const pctSigned = qualifiedScale > 0 ? (signed / qualifiedScale) * 100 : 0;
+    const pctSigned = heldScale > 0 ? (signed / heldScale) * 100 : 0;
     const avgStartingMrr = signed > 0 ? signedMrrSum / signed : 0;
-    resp.irfan.priorMonthQualifiedSigned = {
-      qualifiedScale, signed, pctSigned,
+    resp.irfan.priorMonthHeldSigned = {
+      heldScale, signed, pctSigned,
       avgStartingMrr, avgStartingAcv: avgStartingMrr * 12,
       fromDate: _pcmFromStr, toDate: _pcmToStr,
     };
   } catch(e) {
-    console.error('Irfan prior-month qualified→signed fetch failed:', e);
+    console.error('Irfan prior-month held→signed fetch failed:', e);
     resp.irfan.priorMonthError = e.message;
   }
 
