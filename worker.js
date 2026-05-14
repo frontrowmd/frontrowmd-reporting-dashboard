@@ -1662,56 +1662,46 @@ async function processRequest(windowType, customFrom, customTo, env) {
   // making extra HubSpot subrequests (Cloudflare Workers cap at 50/request).
   resp.irfan = {};
 
-  // Tile #1 — Of deals with date_demo_booked in the PRIOR CALENDAR MONTH
-  // (excluding any whose average_monthly_web_traffic__cloned_ is "Pre-launch"),
-  // how many have since reached dealstage='closedwon'?
+  // Tile #1 — Of all deals with hs_createdate in the PRIOR CALENDAR MONTH AND a
+  // date_demo_booked on or after the create date, how many have since reached
+  // dealstage='closedwon'?
   try {
     const _now = new Date();
     const _pcmFrom = new Date(Date.UTC(_now.getUTCFullYear(), _now.getUTCMonth()-1, 1));
     const _pcmTo = new Date(Date.UTC(_now.getUTCFullYear(), _now.getUTCMonth(), 0));
     const _pcmFromStr = fmt(_pcmFrom), _pcmToStr = fmt(_pcmTo);
-    // Reuse pipeline data if an existing fetch covers exactly this window.
-    // pmPipe covers priorMonth (= PCM when window is mtd/ytd).
-    // cPipe covers current.from→pipeEndDate (= PCM when window is lastMonth).
-    let _pcmPipe = null, _pcmSource = 'fresh';
-    if (priorMonth && priorMonth.from === _pcmFromStr && priorMonth.to === _pcmToStr && pmPipe) {
-      _pcmPipe = pmPipe; _pcmSource = 'pmPipe';
-    } else if (current.from === _pcmFromStr && current.to === _pcmToStr && cPipe) {
-      _pcmPipe = cPipe; _pcmSource = 'cPipe';
-    } else {
-      _pcmPipe = await fetchPipelineDeals(hsToken, _pcmFromStr, _pcmToStr);
-    }
-    let totalBooked = 0, churnedExcluded = 0, preLaunchExcluded = 0;
-    let inUniverse = 0, signed = 0, signedMrrSum = 0;
-    for (const d of (_pcmPipe||[])) {
+    // fetchDealsByCreateDate filters hs_createdate in window AND date_demo_booked HAS_PROPERTY.
+    const _pcmCreated = await fetchDealsByCreateDate(hsToken, _pcmFromStr, _pcmToStr);
+    let totalFetched = 0, demoBeforeCreateExcluded = 0;
+    let universe = 0, signed = 0, signedMrrSum = 0;
+    for (const d of (_pcmCreated||[])) {
       const p = d.properties || {};
-      totalBooked++;
-      // Exclude pre-launch via the deal's cloned web-traffic property.
-      const wt = (p.average_monthly_web_traffic__cloned_||'').toLowerCase();
-      if (wt.includes('pre-launch')) { preLaunchExcluded++; continue; }
-      // Exclude inactive brand statuses (Paused / Churned / Never Implemented).
-      // Same predicate as filterActiveBrands: keep Signed, Paying, or blank.
-      const bs = (p.brand_status||'').toLowerCase();
-      if (bs && bs !== 'paying' && bs !== 'signed') { churnedExcluded++; continue; }
-      inUniverse++;
+      totalFetched++;
+      // Require date_demo_booked on or after hs_createdate (per spec).
+      const createMs = isoMs(p.hs_createdate);
+      const ddbMs = dateMs(p.date_demo_booked);
+      if (isNaN(createMs) || isNaN(ddbMs) || ddbMs < createMs) {
+        demoBeforeCreateExcluded++; continue;
+      }
+      universe++;
       if ((p.dealstage||'') === 'closedwon') {
         signed++;
         signedMrrSum += parseFloat(p.amount)||0;
       }
     }
-    const pctSigned = inUniverse > 0 ? (signed / inUniverse) * 100 : 0;
+    const pctSigned = universe > 0 ? (signed / universe) * 100 : 0;
     const acv = signed > 0 ? signedMrrSum / signed : 0;  // New MRR ÷ Closed-won deals
     const newArr = signedMrrSum * 12;
     resp.irfan.priorMonthHeldSigned = {
-      // heldScale kept as the field name for backward compat — it's the active-brand universe
-      heldScale: inUniverse, signed, pctSigned,
-      totalBooked, churnedExcluded, preLaunchExcluded,
+      // heldScale kept as field name for backward compat — it's the deals-created universe
+      heldScale: universe, signed, pctSigned,
+      totalBooked: totalFetched, demoBeforeCreateExcluded,
       newArr, acv,
       fromDate: _pcmFromStr, toDate: _pcmToStr,
     };
-    console.log(`Irfan PCM (${_pcmSource}): ${totalBooked} booked, ${preLaunchExcluded} pre-launch, ${churnedExcluded} inactive-brand, ${inUniverse} universe, ${signed} signed`);
+    console.log(`Irfan PCM: ${totalFetched} created+demo, ${demoBeforeCreateExcluded} demo-before-create, ${universe} universe, ${signed} closed-won`);
   } catch(e) {
-    console.error('Irfan prior-month booked→signed fetch failed:', e);
+    console.error('Irfan prior-month created→signed fetch failed:', e);
     resp.irfan.priorMonthError = e.message;
   }
 

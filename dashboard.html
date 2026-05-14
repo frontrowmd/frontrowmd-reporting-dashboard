@@ -1081,11 +1081,11 @@ function renderIrfan(){
   const _irPCM=_irf.priorMonthHeldSigned||null;
   const _irPCMErr=_irf.priorMonthError;
   const _irPCMRange=_irPCM&&_irPCM.fromDate&&_irPCM.toDate?`${fmtD(_irPCM.fromDate)} – ${fmtD(_irPCM.toDate)}`:'prior month';
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:22px 24px"><div class="irf-card-title">Prior Month Demos Booked → Signed</div>';
-  h+=`<div class="irf-card-sub">Deals booked in ${_irPCMRange} with active brand status (Signed/Paying) that have since reached Closed Won — pre-launch excluded</div>`;
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:22px 24px"><div class="irf-card-title">Prior Month Deals Created → Signed</div>';
+  h+=`<div class="irf-card-sub">Deals created in ${_irPCMRange} with a Date Demo Booked on or after their Create Date — how many have since reached Closed Won</div>`;
   if(_irPCMErr){h+='<div style="color:var(--red);font-size:11px;padding:14px 0;text-align:center;font-style:italic">Failed to load: '+_irPCMErr+'</div>';}
   else if(!_irPCM){h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">Data not yet loaded — click Refresh to fetch</div>';}
-  else if(_irPCM.heldScale===0){h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">No qualifying demos booked in '+_irPCMRange+' ('+fN(_irPCM.totalBooked||0)+' booked, '+fN(_irPCM.preLaunchExcluded||0)+' pre-launch, '+fN(_irPCM.churnedExcluded||0)+' inactive brand)</div>';}
+  else if(_irPCM.heldScale===0){h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">No qualifying deals in '+_irPCMRange+' ('+fN(_irPCM.totalBooked||0)+' created with demo booked, '+fN(_irPCM.demoBeforeCreateExcluded||0)+' had demo before create)</div>';}
   else{
     // Hero KPI card: % Signed
     h+='<div class="irf-hero-kpi">';
@@ -1093,9 +1093,9 @@ function renderIrfan(){
     h+=`<div class="irf-hero-kpi-value">${_irPCM.pctSigned.toFixed(1)}%</div>`;
     h+=`<div class="irf-hero-kpi-calc">${fN(_irPCM.signed)} ÷ ${fN(_irPCM.heldScale)} deals</div>`;
     h+='</div>';
-    // Detail mini KPI cards: Demos Booked / Closed Won / New ARR / ACV
+    // Detail mini KPI cards: Deals Created / Closed Won / New ARR / ACV
     h+='<div class="irf-mini-kpi-grid" style="grid-template-columns:repeat(4,minmax(0,1fr))">';
-    h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">Demos Booked</div><div class="irf-mini-kpi-value">${fN(_irPCM.heldScale)}</div></div>`;
+    h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">Deals Created</div><div class="irf-mini-kpi-value">${fN(_irPCM.heldScale)}</div></div>`;
     h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">Closed Won</div><div class="irf-mini-kpi-value">${fN(_irPCM.signed)}</div></div>`;
     h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">New ARR</div><div class="irf-mini-kpi-value">${_irPCM.signed>0?f$(_irPCM.newArr):'—'}</div></div>`;
     h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">ACV</div><div class="irf-mini-kpi-value">${_irPCM.signed>0?f$(_irPCM.acv):'—'}</div></div>`;
