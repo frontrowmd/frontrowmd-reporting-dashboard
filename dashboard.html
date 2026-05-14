@@ -1111,9 +1111,9 @@ function renderIrfan(){
     // Small breakdown KPI cards: % Pending / % Pruned / % No Show. Each shows
     // numerator ÷ denominator under the percentage.
     const _sc=_irPCM.stageCounts||{};
-    const _pendingNum=(_sc.appt||0)+(_sc.demoHappened||0)+(_sc.dm||0)+(_sc.cs||0)+(_sc.noShow||0);
+    const _pendingNum=(_sc.appt||0)+(_sc.demoHappened||0)+(_sc.dm||0)+(_sc.cs||0);
     h+='<div class="irf-mini-kpi-grid" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-top:10px">';
-    h+=`<div class="irf-mini-kpi small" title="Appointment Scheduled + Demo Happened + Decision Maker + Contract Sent + No Show ÷ Demos Held"><div class="irf-mini-kpi-label">% Pending</div><div class="irf-mini-kpi-value">${_irPCM.pctPending.toFixed(1)}%</div><div class="irf-mini-kpi-calc">${fN(_pendingNum)} ÷ ${fN(_irPCM.heldScale)}</div></div>`;
+    h+=`<div class="irf-mini-kpi small" title="Appointment Scheduled + Demo Happened + Decision Maker + Contract Sent ÷ Demos Held"><div class="irf-mini-kpi-label">% Pending</div><div class="irf-mini-kpi-value">${_irPCM.pctPending.toFixed(1)}%</div><div class="irf-mini-kpi-calc">${fN(_pendingNum)} ÷ ${fN(_irPCM.heldScale)}</div></div>`;
     h+=`<div class="irf-mini-kpi small" title="Not a Fit ÷ all deals booked in prior month"><div class="irf-mini-kpi-label">% Pruned</div><div class="irf-mini-kpi-value">${_irPCM.pctPruned.toFixed(1)}%</div><div class="irf-mini-kpi-calc">${fN(_sc.notAFit||0)} ÷ ${fN(_irPCM.allBooked||0)}</div></div>`;
     h+=`<div class="irf-mini-kpi small" title="No Show ÷ all deals booked in prior month"><div class="irf-mini-kpi-label">% No Show</div><div class="irf-mini-kpi-value">${_irPCM.pctNoShow.toFixed(1)}%</div><div class="irf-mini-kpi-calc">${fN(_sc.noShow||0)} ÷ ${fN(_irPCM.allBooked||0)}</div></div>`;
     h+='</div>';

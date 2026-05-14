@@ -1712,7 +1712,7 @@ async function processRequest(windowType, customFrom, customTo, env) {
       else if (stage === STAGE_NOT_A_FIT) cntNotAFit++;
     }
     const demosHeld = cntWon + cntAppt + cntDemoHappened + cntDM + cntCS;
-    const cntPending = cntAppt + cntDemoHappened + cntDM + cntCS + cntNoShow;
+    const cntPending = cntAppt + cntDemoHappened + cntDM + cntCS;
     const pctSigned = demosHeld > 0 ? (cntWon / demosHeld) * 100 : 0;
     const pctPending = demosHeld > 0 ? (cntPending / demosHeld) * 100 : 0;
     const pctPruned = allBooked > 0 ? (cntNotAFit / allBooked) * 100 : 0;
