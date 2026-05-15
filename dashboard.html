@@ -1075,8 +1075,18 @@ function renderIrfan(){
   h+=`<div class="tile ${pruneRate!=null&&pruneRate>20?'warn':'hero'}"><div class="tlbl">% Pruned (upfront)</div><div class="tval">${pruneRate!=null?pruneRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">Cancelled before demo ÷ all settled outcomes</div>${_irCalc(fN(_cancelledBefore)+' ÷ '+fN(_pruneDenom))}${_irTileFooter(pruneRate,prunePV,pruneLMV,'%',true)}</div>`;
   // 2.4 No-show rate — scale tier (excludes pre-launch)
   h+=`<div class="tile ${noShowRate!=null&&noShowRate>20?'warn':'hero'}"><div class="tlbl">No-Show Rate</div><div class="tval">${noShowRate!=null?noShowRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">No Show ÷ (Demo Given orig + resched + No Show), excl. pre-launch</div>${_irCalc(fN(_noShowScale)+' ÷ '+fN(_noShowDenomScale))}${_irTileFooter(noShowRate,noShowPV,noShowLMV,'%',true)}</div>`;
-  // 2.5 Placeholder
-  h+='<div class="tile" style="border:1.5px dashed #FCD34D;background:rgba(245,158,11,.04)"><div class="tlbl" style="color:#D97706">% Unqualified (Brand Fit)</div><div class="tval" style="color:#D97706">—</div><div class="tdef" style="margin-top:4px;color:#92400E">% who answered both schedule-demo questions and gave a non-qualified "best fits your brand" response</div><div style="font-size:10px;color:#D97706;margin-top:6px;font-style:italic">⚠ Placeholder — data source not yet wired</div></div>';
+  // 2.5 % Unqualified (Brand Fit) — Disqualification Form submissions ÷ demo clicks
+  const _dqForm=d.irfan?.dqForm;const _dqFormErr=d.irfan?.dqFormError;
+  const _dqSubs=_dqForm?_dqForm.count:null;
+  const _demoClicks=d.webPerformance?._meta?.demoClicks||0;
+  const _unqRate=(_dqSubs!=null&&_demoClicks>0)?(_dqSubs/_demoClicks)*100:null;
+  if(_dqFormErr){
+    h+=`<div class="tile" style="border:1.5px dashed #FCA5A5;background:rgba(220,38,38,.04)"><div class="tlbl" style="color:#991B1B">% Unqualified (Brand Fit)</div><div class="tval" style="color:#991B1B">—</div><div class="tdef" style="margin-top:4px;color:#7F1D1D">Failed to fetch Disqualification Form</div><div style="font-size:10px;color:#991B1B;margin-top:6px;font-style:italic">${_dqFormErr}</div></div>`;
+  } else if(_dqForm&&!_dqForm.formFound){
+    h+='<div class="tile" style="border:1.5px dashed #FCD34D;background:rgba(245,158,11,.04)"><div class="tlbl" style="color:#D97706">% Unqualified (Brand Fit)</div><div class="tval" style="color:#D97706">—</div><div class="tdef" style="margin-top:4px;color:#92400E">No HubSpot form found matching "Disqualification"</div></div>';
+  } else {
+    h+=`<div class="tile hero" style="border-left:3px solid var(--teal)"><div class="tlbl">% Unqualified (Brand Fit)</div><div class="tval">${_unqRate!=null?_unqRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">Disqualification Form submissions ÷ Demo Clicks</div>${_irCalc(fN(_dqSubs||0)+' ÷ '+fN(_demoClicks))}</div>`;
+  }
   h+='</div>';
 
   // ═══════ Section 3 — Special Time-Bound Tiles ═══════

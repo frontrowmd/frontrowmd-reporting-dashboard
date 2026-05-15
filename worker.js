@@ -349,6 +349,54 @@ function filterActiveBrands(deals) {
   });
 }
 
+// Look up the "Disqualification Form" by name (case-insensitive substring match)
+// and count submissions in [from, to]. Used by Irfan KPI #5 (% Unqualified Brand Fit).
+async function fetchDisqualificationFormSubmissions(token, from, to) {
+  // Step 1: list forms and find the DQ form by name
+  const formsRes = await fetch('https://api.hubapi.com/marketing/v3/forms?limit=200', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!formsRes.ok) {
+    const txt = await formsRes.text();
+    throw new Error(`Forms list failed: ${formsRes.status} ${txt.slice(0,120)}`);
+  }
+  const formsData = await formsRes.json();
+  const form = (formsData.results || []).find(f =>
+    (f.name || '').toLowerCase().includes('disqualification')
+  );
+  if (!form) {
+    return { count: 0, formFound: false };
+  }
+  // Step 2: walk submissions filtered by submittedAt in [from, to]
+  const fromMs = new Date(from + 'T00:00:00Z').getTime();
+  const toMs = new Date(to + 'T23:59:59.999Z').getTime();
+  let count = 0, totalSeen = 0, after = null, pages = 0;
+  while (pages < 50) {
+    let url = `https://api.hubapi.com/form-integrations/v1/submissions/forms/${form.id}?limit=50`;
+    if (after) url += `&after=${after}`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) {
+      console.error(`DQ form submissions ${res.status}: ${(await res.text()).slice(0,120)}`);
+      break;
+    }
+    const data = await res.json();
+    const results = data.results || [];
+    totalSeen += results.length;
+    let pastWindow = false;
+    for (const s of results) {
+      const ms = s.submittedAt || 0;
+      if (ms >= fromMs && ms <= toMs) count++;
+      // Submissions come back newest-first by default; once we cross before fromMs we can stop
+      if (ms < fromMs) pastWindow = true;
+    }
+    if (pastWindow) break;
+    if (!data.paging?.next?.after) break;
+    after = data.paging.next.after;
+    pages++;
+  }
+  return { count, totalSeen, pages, formFound: true, formId: form.id, formName: form.name };
+}
+
 async function fetchScheduledContacts(token, from, to) {
   return hsSearch(token, 'contacts', [{
     filters: [
@@ -1491,6 +1539,18 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   let pW, pLI, pG; if (prior) { pW = windsorResults[wIdx++]; pLI = windsorResults[wIdx++]; pG = windsorResults[wIdx++]; }
   let pmW, pmLI, pmG; if (priorMonth) { pmW = windsorResults[wIdx++]; pmLI = windsorResults[wIdx++]; pmG = windsorResults[wIdx++]; }
 
+  // Irfan KPI #5 — Disqualification Form submissions for the current window.
+  // Done here (after Windsor, before HubSpot's heavy Phase 2 fetches) so it
+  // gets subrequest budget. Result stored in a closed-over variable.
+  let _irfanDqForm = null, _irfanDqFormErr = null;
+  try {
+    _irfanDqForm = await fetchDisqualificationFormSubmissions(hsToken, current.from, current.to);
+    console.log(`Irfan DQ form: ${_irfanDqForm.count} submissions in ${current.from}..${current.to} (form: ${_irfanDqForm.formName||'not found'})`);
+  } catch(e) {
+    _irfanDqFormErr = e.message;
+    console.error('Irfan DQ form fetch failed:', e);
+  }
+
   // ── Phase 2: Run HubSpot calls sequentially (avoids 429 rate limits) ──
   const cSch = await fetchScheduledContacts(hsToken, current.from, current.to);
   // For Demo Quality: extend pipeline fetch through end of month (processPipelineDeals re-filters to MTD)
@@ -1669,6 +1729,14 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   // the page time selector. Where possible, reuse already-fetched data instead of
   // making extra HubSpot subrequests (Cloudflare Workers cap at 50/request).
   resp.irfan = {};
+
+  // Irfan KPI #5 — Disqualification Form submissions for the current window.
+  // Captured earlier in Phase 2; surface the result/error to the dashboard here.
+  if (_irfanDqFormErr) {
+    resp.irfan.dqFormError = _irfanDqFormErr;
+  } else if (_irfanDqForm) {
+    resp.irfan.dqForm = _irfanDqForm;
+  }
 
   // Tile #1 — Signed Deals from Last Month.
   //   denominator (Demos Held) = deals with date_demo_booked in prior calendar
