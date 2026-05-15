@@ -91,8 +91,8 @@ html,body{height:100%}body{font-family:var(--font-b);font-size:15px;color:var(--
 .tile.hero{background:linear-gradient(135deg,var(--navy),var(--mid-navy));color:var(--white);border:none}
 .tile.hero .tlbl{color:var(--teal)}.tile.hero .tval{color:var(--white)}.tile.hero .tdef{color:rgba(255,255,255,.5)}.tile.hero .tcalc{color:rgba(255,255,255,.7)}
 .irf-calc{display:inline-block;padding:4px 8px;background:rgba(23,44,69,.08);border-radius:4px;color:var(--navy);font-weight:600;font-size:11px;font-variant-numeric:tabular-nums;margin-top:6px}
-.tile.hero .irf-calc,.tile.highlight .irf-calc{background:rgba(255,255,255,.14);color:#fff}
-.tile.warn .irf-calc{background:rgba(245,158,11,.12);color:#92400E}
+.tile.hero .irf-calc,.tile.highlight .irf-calc{background:rgba(114,164,191,.30);color:#fff}
+.tile.warn .irf-calc{background:rgba(114,164,191,.20);color:var(--navy)}
 /* Irfan Dashboard typography + components */
 .irf-sec-title{font-family:var(--font-h);font-size:20px;font-weight:700;color:var(--navy);margin-bottom:12px;letter-spacing:-.01em}
 .irf-sec-sub{font-size:12px;color:var(--grey);margin-bottom:12px;margin-top:-8px}
@@ -110,6 +110,15 @@ html,body{height:100%}body{font-family:var(--font-b);font-size:15px;color:var(--
 .irf-hero-kpi-label{font-family:var(--font-h);font-size:11px;color:var(--teal);text-transform:uppercase;letter-spacing:.08em;font-weight:700}
 .irf-hero-kpi-value{font-family:var(--font-h);font-size:48px;font-weight:700;color:var(--navy);line-height:1;margin:8px 0 6px;letter-spacing:-.02em}
 .irf-hero-kpi-calc{font-size:11px;color:var(--navy);font-weight:600;font-variant-numeric:tabular-nums;background:rgba(255,255,255,.5);display:inline-block;padding:4px 12px;border-radius:99px}
+/* Grouped multi-stat card — one teal-gradient container with several sub-cells */
+.irf-grouped-card{background:linear-gradient(135deg,rgba(114,164,191,.10),rgba(114,164,191,.20));border:1px solid rgba(114,164,191,.30);border-radius:10px;box-shadow:inset 4px 0 0 var(--teal);display:flex;align-items:stretch;margin-bottom:14px;padding:18px 0;flex-wrap:wrap}
+.irf-grouped-item{flex:1;padding:0 18px;display:flex;flex-direction:column;justify-content:center;min-width:0}
+.irf-grouped-item.primary{flex:1.4;text-align:center;align-items:center}
+.irf-grouped-divider{width:1px;background:rgba(114,164,191,.25);margin:4px 0;flex-shrink:0}
+.irf-grouped-label{font-family:var(--font-h);font-size:10px;color:var(--teal);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.irf-grouped-value{font-family:var(--font-h);font-size:22px;font-weight:700;color:var(--navy);line-height:1.1;font-variant-numeric:tabular-nums}
+.irf-grouped-item.primary .irf-grouped-value{font-size:44px;letter-spacing:-.02em;margin:4px 0 6px}
+.irf-grouped-calc{font-size:11px;color:var(--navy);font-weight:600;font-variant-numeric:tabular-nums;background:rgba(255,255,255,.5);display:inline-block;padding:4px 12px;border-radius:99px;margin-top:2px}
 .irf-meta-table tbody tr{transition:filter .15s ease,box-shadow .15s ease}
 .irf-meta-table tbody tr:hover{filter:brightness(0.96);box-shadow:inset 3px 0 0 var(--teal)}
 .tile.hero .tc .lbl{color:rgba(255,255,255,.45)}.tile.hero .tc .val{color:rgba(255,255,255,.85)}
@@ -1071,10 +1080,12 @@ function renderIrfan(){
   h+=`<div class="tile hero" style="border-left:3px solid var(--teal)"><div class="tlbl">True CPD</div><div class="tval">${tCpd!=null?f$(tCpd):'—'}</div><div class="tdef" style="margin-top:4px">Ad spend ÷ Demos excl. pre-launch</div>${_irCalc(f$(_totalSpend)+' ÷ '+fN(_scaleSched))}${_irTileFooter(tCpd,tCpdPV,tCpdLMV,'$',true)}</div>`;
   // 2.2 True CPQD
   h+=`<div class="tile hero" style="border-left:3px solid var(--teal)"><div class="tlbl">True CPQD</div><div class="tval">${tCpqd!=null?f$(tCpqd):'—'}</div><div class="tdef" style="margin-top:4px">Ad spend ÷ Demos held excl. pre-launch</div>${_irCalc(f$(_totalSpend)+' ÷ '+fN(_demosHeldScale))}${_irTileFooter(tCpqd,tCpqdPV,tCpqdLMV,'$',true)}</div>`;
-  // 2.3 % Pruned upfront
-  h+=`<div class="tile ${pruneRate!=null&&pruneRate>20?'warn':'hero'}"><div class="tlbl">% Pruned (upfront)</div><div class="tval">${pruneRate!=null?pruneRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">Cancelled before demo ÷ all settled outcomes</div>${_irCalc(fN(_cancelledBefore)+' ÷ '+fN(_pruneDenom))}${_irTileFooter(pruneRate,prunePV,pruneLMV,'%',true)}</div>`;
-  // 2.4 No-show rate — scale tier (excludes pre-launch)
-  h+=`<div class="tile ${noShowRate!=null&&noShowRate>20?'warn':'hero'}"><div class="tlbl">No-Show Rate</div><div class="tval">${noShowRate!=null?noShowRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">No Show ÷ (Demo Given orig + resched + No Show), excl. pre-launch</div>${_irCalc(fN(_noShowScale)+' ÷ '+fN(_noShowDenomScale))}${_irTileFooter(noShowRate,noShowPV,noShowLMV,'%',true)}</div>`;
+  // 2.3 % Pruned upfront — orange left border when >20%
+  const _pruneBC=pruneRate!=null&&pruneRate>20?'#F59E0B':'var(--teal)';
+  h+=`<div class="tile hero" style="border-left:3px solid ${_pruneBC}"><div class="tlbl">% Pruned (upfront)</div><div class="tval">${pruneRate!=null?pruneRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">Cancelled before demo ÷ all settled outcomes</div>${_irCalc(fN(_cancelledBefore)+' ÷ '+fN(_pruneDenom))}${_irTileFooter(pruneRate,prunePV,pruneLMV,'%',true)}</div>`;
+  // 2.4 No-show rate — scale tier (excludes pre-launch). Orange left border when >20%.
+  const _noShowBC=noShowRate!=null&&noShowRate>20?'#F59E0B':'var(--teal)';
+  h+=`<div class="tile hero" style="border-left:3px solid ${_noShowBC}"><div class="tlbl">No-Show Rate</div><div class="tval">${noShowRate!=null?noShowRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">No Show ÷ (Demo Given orig + resched + No Show), excl. pre-launch</div>${_irCalc(fN(_noShowScale)+' ÷ '+fN(_noShowDenomScale))}${_irTileFooter(noShowRate,noShowPV,noShowLMV,'%',true)}</div>`;
   // 2.5 % Unqualified (Brand Fit) — Disqualification Form submissions ÷ demo clicks
   const _dqForm=d.irfan?.dqForm;const _dqFormErr=d.irfan?.dqFormError;
   const _dqSubs=_dqForm?_dqForm.count:null;
@@ -1085,7 +1096,8 @@ function renderIrfan(){
   } else if(_dqForm&&!_dqForm.formFound){
     h+='<div class="tile" style="border:1.5px dashed #FCD34D;background:rgba(245,158,11,.04)"><div class="tlbl" style="color:#D97706">% Unqualified (Brand Fit)</div><div class="tval" style="color:#D97706">—</div><div class="tdef" style="margin-top:4px;color:#92400E">No HubSpot form found matching "Disqualification"</div></div>';
   } else {
-    h+=`<div class="tile hero" style="border-left:3px solid var(--teal)"><div class="tlbl">% Unqualified (Brand Fit)</div><div class="tval">${_unqRate!=null?_unqRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">Disqualification Form submissions ÷ Demo Clicks</div>${_irCalc(fN(_dqSubs||0)+' ÷ '+fN(_demoClicks))}</div>`;
+    const _unqBC=_unqRate!=null&&_unqRate>20?'#F59E0B':'var(--teal)';
+    h+=`<div class="tile hero" style="border-left:3px solid ${_unqBC}"><div class="tlbl">% Unqualified (Brand Fit)</div><div class="tval">${_unqRate!=null?_unqRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">Disqualification Form submissions ÷ Demo Clicks</div>${_irCalc(fN(_dqSubs||0)+' ÷ '+fN(_demoClicks))}</div>`;
   }
   h+='</div>';
 
@@ -1110,18 +1122,22 @@ function renderIrfan(){
     h+='<div style="font-size:10px;color:var(--grey);padding:6px 10px;background:rgba(23,44,69,.04);border-radius:4px;margin-top:4px;text-align:center;font-variant-numeric:tabular-nums">debug · sources pmPipe='+fN(_src.pmPipe||0)+' cPipe='+fN(_src.cPipe||0)+' cohort='+fN(_src.cohortDeals||0)+' pPipe='+fN(_src.pPipe||0)+' union='+fN(_src.union||0)+'</div>';
   }
   else{
-    // Hero KPI card: % Signed
-    h+='<div class="irf-hero-kpi">';
-    h+=`<div class="irf-hero-kpi-label">% Signed</div>`;
-    h+=`<div class="irf-hero-kpi-value">${_irPCM.pctSigned.toFixed(1)}%</div>`;
-    h+=`<div class="irf-hero-kpi-calc">${fN(_irPCM.signed)} ÷ ${fN(_irPCM.heldScale)} demos held</div>`;
+    // Grouped "signed" card — % Signed prominent, then 4 detail stats sharing
+    // the same teal-gradient container.
+    h+='<div class="irf-grouped-card">';
+    h+='<div class="irf-grouped-item primary">';
+    h+=`<div class="irf-grouped-label">% Signed</div>`;
+    h+=`<div class="irf-grouped-value">${_irPCM.pctSigned.toFixed(1)}%</div>`;
+    h+=`<div class="irf-grouped-calc">${fN(_irPCM.signed)} ÷ ${fN(_irPCM.heldScale)} demos held</div>`;
     h+='</div>';
-    // Detail mini KPI cards: Closed Won / Demos Held / New ARR / ACV
-    h+='<div class="irf-mini-kpi-grid" style="grid-template-columns:repeat(4,minmax(0,1fr))">';
-    h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">Closed Won</div><div class="irf-mini-kpi-value">${fN(_irPCM.signed)}</div></div>`;
-    h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">Demos Held</div><div class="irf-mini-kpi-value">${fN(_irPCM.heldScale)}</div></div>`;
-    h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">New ARR</div><div class="irf-mini-kpi-value">${_irPCM.signed>0?f$(_irPCM.newArr):'—'}</div></div>`;
-    h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">ACV</div><div class="irf-mini-kpi-value">${_irPCM.signed>0?f$(_irPCM.acv):'—'}</div></div>`;
+    h+='<div class="irf-grouped-divider"></div>';
+    h+=`<div class="irf-grouped-item"><div class="irf-grouped-label">Closed Won</div><div class="irf-grouped-value">${fN(_irPCM.signed)}</div></div>`;
+    h+='<div class="irf-grouped-divider"></div>';
+    h+=`<div class="irf-grouped-item"><div class="irf-grouped-label">Demos Held</div><div class="irf-grouped-value">${fN(_irPCM.heldScale)}</div></div>`;
+    h+='<div class="irf-grouped-divider"></div>';
+    h+=`<div class="irf-grouped-item"><div class="irf-grouped-label">New ARR</div><div class="irf-grouped-value">${_irPCM.signed>0?f$(_irPCM.newArr):'—'}</div></div>`;
+    h+='<div class="irf-grouped-divider"></div>';
+    h+=`<div class="irf-grouped-item"><div class="irf-grouped-label">ACV</div><div class="irf-grouped-value">${_irPCM.signed>0?f$(_irPCM.acv):'—'}</div></div>`;
     h+='</div>';
     // Small breakdown KPI cards: % Pending / % Pruned / % No Show. Each shows
     // numerator ÷ denominator under the percentage.
