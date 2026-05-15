@@ -1172,7 +1172,7 @@ function renderIrfan(){
   // Render charts — daily uses the same renderer as Overview (mini KPI cards + hover come for free)
   renderDemosPerDay(d,'irfan-daily-wrap');
   _renderIrfanWtPie(d);
-  if(!_ir14Err)_renderIrfanSignedLast14Pie(d);
+  if(!d.irfan?.last14Error)_renderIrfanSignedLast14Pie(d);
   _renderIrfanMetaTablesLoader();
 }
 
