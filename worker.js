@@ -449,6 +449,19 @@ async function fetchPipelineDeals(token, from, to) {
   return [...new Map(deals.map(d => [d.id, d])).values()]; // dedup
 }
 
+// Pipeline-agnostic "won" deals by closedate. Uses HubSpot's hs_is_closed_won
+// computed property so custom-pipeline won stages (e.g. an Onboarding pipeline)
+// are picked up alongside the default 'closedwon' stage. Used by Irfan MTD/Last14.
+async function fetchAnyWonDealsByCloseDate(token, from, to) {
+  return hsSearch(token, 'deals', [{
+    filters: [
+      { propertyName: 'hs_is_closed_won', operator: 'EQ', value: 'true' },
+      { propertyName: 'closedate', operator: 'GTE', value: String(toMsET(from)) },
+      { propertyName: 'closedate', operator: 'LTE', value: String(toMsET(to, true)) },
+    ],
+  }], ['amount','closedate','hs_createdate','utm_source','utm_medium','utm_campaign','utm_content','hubspot_owner_id','brand_status','average_monthly_web_traffic__cloned_','average_monthly_web_traffic','dealstage','dealname']);
+}
+
 // Closed-won deals by closedate (guide Section 5)
 async function fetchClosedWonDeals(token, from, to) {
   return hsSearch(token, 'deals', [{
@@ -1878,33 +1891,22 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     const _mtdFromStr = fmt(_mtdFrom), _mtdToStr = fmt(_todayMtd);
     const _mtdFromMs = _mtdFrom.getTime();
     const _mtdToMs = Date.UTC(_todayMtd.getUTCFullYear(), _todayMtd.getUTCMonth(), _todayMtd.getUTCDate(), 23, 59, 59, 999);
-    let mtdFetched = [];      // ET-bound fetch (matches the existing fetchClosedWonDeals semantics)
-    let mtdFetchedUtc = [];   // UTC-bound fetch (catches deals whose closedate sits between UTC midnight and ET midnight on month boundaries)
+    // Single fetch using the pipeline-agnostic hs_is_closed_won filter so we
+    // pick up custom-pipeline "Won" stages (Onboarding, etc.) alongside the
+    // default 'closedwon'. Previous version did two fetches (ET + UTC) but
+    // those were tripping HubSpot's per-token rate limit and returning empty.
+    let mtdFetched = [];
     let mtdFetchErr = null;
     try {
-      mtdFetched = (await fetchClosedWonDeals(hsToken, _mtdFromStr, _mtdToStr)) || [];
+      mtdFetched = (await fetchAnyWonDealsByCloseDate(hsToken, _mtdFromStr, _mtdToStr)) || [];
     } catch(mfe) {
       mtdFetchErr = mfe.message;
-      console.warn('Irfan MTD ET fetch failed:', mfe.message);
+      console.warn('Irfan MTD fetch failed:', mfe.message);
     }
-    try {
-      // Inline UTC-bound fetch — same filters as fetchClosedWonDeals but using toMsUTC.
-      mtdFetchedUtc = await hsSearch(hsToken, 'deals', [{
-        filters: [
-          { propertyName: 'dealstage', operator: 'EQ', value: 'closedwon' },
-          { propertyName: 'closedate', operator: 'GTE', value: String(toMsUTC(_mtdFromStr)) },
-          { propertyName: 'closedate', operator: 'LTE', value: String(toMsUTC(_mtdToStr, true)) },
-        ],
-      }], ['amount','closedate','hs_createdate','utm_source','utm_medium','utm_campaign','utm_content','hubspot_owner_id','brand_status','average_monthly_web_traffic__cloned_','average_monthly_web_traffic']);
-    } catch(mfe2) {
-      console.warn('Irfan MTD UTC fetch failed:', mfe2.message);
-    }
-    // Defensive: also fold in any deals from the last-14 union that happen to
-    // sit in the MTD window — covers the (rare) case where a fresh fetch returns
-    // a partial result.
+    // Defensive: also fold in any deals from the last-14 union that sit in the
+    // MTD window — covers the case where the dedicated fetch was rate-limited.
     const _mtdMap = new Map();
     for (const x of mtdFetched) _mtdMap.set(x.id, x);
-    for (const x of mtdFetchedUtc) _mtdMap.set(x.id, x);
     for (const x of _combined.values()) {
       const cd = x.properties?.closedate;
       if (!cd) continue;
@@ -1928,12 +1930,11 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     resp.irfan.mtdToDate = _mtdToStr;
     resp.irfan.mtdDebug = {
       fresh: mtdFetched.length,
-      freshUtc: mtdFetchedUtc.length,
-      unionAdds: _mtdMap.size - Math.max(mtdFetched.length, mtdFetchedUtc.length),
+      unionAdds: _mtdMap.size - mtdFetched.length,
       total: _mtdMap.size,
       error: mtdFetchErr,
     };
-    console.log(`Irfan MTD (dedicated): ET-fresh=${mtdFetched.length} UTC-fresh=${mtdFetchedUtc.length} total=${_mtdMap.size} signed=${totalSignedMtd} (${_mtdFromStr} to ${_mtdToStr}), MRR ${totalSignedMtdMRR}, tiers ${Object.keys(signedMtdByWebTraffic).join('|')}`);
+    console.log(`Irfan MTD (hs_is_closed_won): fresh=${mtdFetched.length} union+=${_mtdMap.size-mtdFetched.length} total=${_mtdMap.size} signed=${totalSignedMtd} (${_mtdFromStr} to ${_mtdToStr}), MRR ${totalSignedMtdMRR}, tiers ${Object.keys(signedMtdByWebTraffic).join('|')}`);
   } catch(e) {
     console.error('Irfan last-14-days fetch failed:', e);
     resp.irfan.last14Error = e.message;
