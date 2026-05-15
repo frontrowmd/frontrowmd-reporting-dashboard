@@ -1138,6 +1138,10 @@ function renderIrfan(){
     h+='<div class="irf-grouped-divider"></div>';
     h+=`<div class="irf-grouped-item"><div class="irf-grouped-label">Demos Held</div><div class="irf-grouped-value">${fN(_irPCM.heldScale)}</div></div>`;
     h+='<div class="irf-grouped-divider"></div>';
+    const _avgD=_irPCM.avgDaysToClose;
+    const _avgDLabel=(_avgD==null)?'—':(_avgD<10?_avgD.toFixed(1):Math.round(_avgD).toString());
+    h+=`<div class="irf-grouped-item" title="Average days from date_demo_booked to closedate across signed deals in this cohort (n=${fN(_irPCM.avgDaysToCloseN||0)})"><div class="irf-grouped-label">Avg Days to Close</div><div class="irf-grouped-value">${_avgDLabel}${_avgD!=null?'<span style="font-size:13px;color:var(--grey);font-weight:600;margin-left:3px">d</span>':''}</div></div>`;
+    h+='<div class="irf-grouped-divider"></div>';
     h+=`<div class="irf-grouped-item"><div class="irf-grouped-label">New ARR</div><div class="irf-grouped-value">${_irPCM.signed>0?f$(_irPCM.newArr):'—'}</div></div>`;
     h+='<div class="irf-grouped-divider"></div>';
     h+=`<div class="irf-grouped-item"><div class="irf-grouped-label">ACV</div><div class="irf-grouped-value">${_irPCM.signed>0?f$(_irPCM.acv):'—'}</div></div>`;
@@ -1540,12 +1544,6 @@ function _buildIrfanSpecial2Inner(d, mode){
   h+='</div>';
   h+='<div id="irfan-signed-pie" style="flex:1;min-width:280px"></div>';
   h+='</div>';
-  // Diagnostic strip — exposes worker counts so we can compare against HubSpot
-  if(_s2Mode==='mtd'){
-    const _mdbg=_irf.mtdDebug||{};
-    const _errs=[_mdbg.byCloseError?'byClose:'+_mdbg.byCloseError:'',_mdbg.byEnteredError?'byEntered:'+_mdbg.byEnteredError:''].filter(Boolean).join(' · ');
-    h+='<div style="font-size:10px;color:var(--grey);padding:6px 10px;background:rgba(23,44,69,.03);border-radius:4px;margin-top:10px;text-align:center;font-variant-numeric:tabular-nums">MTD source · byClose='+fN(_mdbg.byClose||0)+' · byEntered='+fN(_mdbg.byEntered||0)+' · enteredAdds='+fN(_mdbg.enteredAdds||0)+' · unionAdds='+fN(_mdbg.unionAdds||0)+' · total='+fN(_mdbg.total||0)+(_errs?' · '+_errs:'')+'</div>';
-  }
   return h;
 }
 // Toggle handler — mutates the card's innerHTML directly so the switch is

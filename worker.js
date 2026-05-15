@@ -1824,13 +1824,25 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     let cntWon = 0, cntAppt = 0, cntDemoHappened = 0, cntDM = 0, cntCS = 0;
     let cntNoShow = 0, cntNotAFit = 0;
     let signedMrrSum = 0;
+    // Avg Days to Close — for signed deals in this cohort, mean(closedate - date_demo_booked)
+    // in days. Floors both to UTC-midnight to avoid sub-day noise.
+    let daysToCloseSum = 0, daysToCloseN = 0;
     for (const d of _pcmUnion.values()) {
       const p = d.properties || {};
       const ddbMs = dateMs(p.date_demo_booked);
       if (isNaN(ddbMs) || ddbMs < _pcmFromMs || ddbMs > _pcmToMs) continue;
       allBooked++;
       const stage = (p.dealstage||'').trim();
-      if (stage === STAGE_WON) { cntWon++; signedMrrSum += parseFloat(p.amount)||0; }
+      if (stage === STAGE_WON) {
+        cntWon++; signedMrrSum += parseFloat(p.amount)||0;
+        const cdMs = isoMs(p.closedate);
+        if (!isNaN(cdMs) && !isNaN(ddbMs)) {
+          // Floor each to UTC midnight so partial-day deltas don't skew.
+          const _floor = (ms) => { const x = new Date(ms); return Date.UTC(x.getUTCFullYear(), x.getUTCMonth(), x.getUTCDate()); };
+          const days = (_floor(cdMs) - _floor(ddbMs)) / 86400000;
+          if (days >= 0) { daysToCloseSum += days; daysToCloseN++; }
+        }
+      }
       else if (stage === STAGE_APPT) cntAppt++;
       else if (stage === STAGE_DEMO_HAPPENED) cntDemoHappened++;
       else if (stage === STAGE_DM) cntDM++;
@@ -1846,13 +1858,14 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     const pctNoShow = allBooked > 0 ? (cntNoShow / allBooked) * 100 : 0;
     const acv = cntWon > 0 ? signedMrrSum / cntWon : 0;  // New MRR ÷ Closed-won deals
     const newArr = signedMrrSum * 12;
+    const avgDaysToClose = daysToCloseN > 0 ? daysToCloseSum / daysToCloseN : null;
     resp.irfan.priorMonthHeldSigned = {
       // heldScale kept as field name for backward compat — it's "demos held" denominator
       heldScale: demosHeld, signed: cntWon, pctSigned,
       allBooked, pctPending, pctPruned, pctNoShow,
       stageCounts: { won: cntWon, appt: cntAppt, demoHappened: cntDemoHappened, dm: cntDM, cs: cntCS, noShow: cntNoShow, notAFit: cntNotAFit },
       sourceCounts: _srcCounts,
-      newArr, acv,
+      newArr, acv, avgDaysToClose, avgDaysToCloseN: daysToCloseN,
       fromDate: _pcmFromStr, toDate: _pcmToStr,
     };
     console.log(`Irfan PCM: union=${_srcCounts.union} all-booked-in-PCM=${allBooked} demos-held=${demosHeld} won=${cntWon} (pending=${pctPending.toFixed(1)}% pruned=${pctPruned.toFixed(1)}% noShow=${pctNoShow.toFixed(1)}%)`);
