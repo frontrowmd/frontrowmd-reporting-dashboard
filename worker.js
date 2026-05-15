@@ -1577,27 +1577,33 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     console.error('Irfan DQ form fetch failed:', e);
   }
 
-  // Irfan Special #2 — MTD signed-deals dual fetch. Done EARLY (here, not later
+  // Irfan Special #2 — MTD signed-deals fetch. Done EARLY (here, not later
   // inside the irfan response block) so it gets subrequest budget before the
-  // heavy company/contact batches in Phase 2 burn through HubSpot's 100req/10s
-  // window. Two parallel filters:
-  //   1) hs_is_closed_won=true + closedate in MTD window  (pipeline-agnostic by user-editable close date)
-  //   2) hs_is_closed_won=true + hs_date_entered_closedwon in MTD window  (catches default-pipeline deals
-  //      whose closedate was manually set outside May but which actually entered won this month)
-  // Results are unioned in the aggregation block below.
+  // heavy company/contact batches in Phase 2.
+  //   • byClose: hs_is_closed_won=true + closedate in MTD window — pipeline-agnostic
+  //   • byEntered: hs_is_closed_won=true + hs_date_entered_closedwon in MTD window —
+  //     fallback for default-pipeline deals whose closedate was manually set
+  //     outside the MTD window. SKIPPED when current page window is MTD (cCW
+  //     + byClose already give full coverage) to conserve subrequests.
   const _irfanMtdToday = new Date();
   const _irfanMtdFrom  = new Date(Date.UTC(_irfanMtdToday.getUTCFullYear(), _irfanMtdToday.getUTCMonth(), 1));
   const _irfanMtdFromStr = fmt(_irfanMtdFrom), _irfanMtdToStr = fmt(_irfanMtdToday);
+  const _irfanMtdSkipByEntered = (windowType === 'mtd');
   let _irfanMtdByClose = [], _irfanMtdByEntered = [];
   let _irfanMtdByCloseErr = null, _irfanMtdByEnteredErr = null;
   try {
-    const [byClose, byEntered] = await Promise.all([
+    const fetches = [
       fetchAnyWonDealsByCloseDate(hsToken, _irfanMtdFromStr, _irfanMtdToStr).catch(e => { _irfanMtdByCloseErr = e.message; return []; }),
-      fetchAnyWonDealsByEnteredWon(hsToken, _irfanMtdFromStr, _irfanMtdToStr).catch(e => { _irfanMtdByEnteredErr = e.message; return []; }),
-    ]);
-    _irfanMtdByClose = byClose || [];
-    _irfanMtdByEntered = byEntered || [];
-    console.log(`Irfan MTD early-fetch: byClose=${_irfanMtdByClose.length} byEntered=${_irfanMtdByEntered.length} window=${_irfanMtdFromStr}..${_irfanMtdToStr}`);
+    ];
+    if (!_irfanMtdSkipByEntered) {
+      fetches.push(
+        fetchAnyWonDealsByEnteredWon(hsToken, _irfanMtdFromStr, _irfanMtdToStr).catch(e => { _irfanMtdByEnteredErr = e.message; return []; })
+      );
+    }
+    const results = await Promise.all(fetches);
+    _irfanMtdByClose = results[0] || [];
+    _irfanMtdByEntered = (_irfanMtdSkipByEntered ? [] : (results[1] || []));
+    console.log(`Irfan MTD early-fetch: byClose=${_irfanMtdByClose.length} byEntered=${_irfanMtdByEntered.length}${_irfanMtdSkipByEntered?' (skipped, window=mtd)':''} window=${_irfanMtdFromStr}..${_irfanMtdToStr}`);
   } catch(e) {
     console.error('Irfan MTD early-fetch failed:', e);
   }
@@ -1672,18 +1678,55 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   console.log(`Executive DQ: ${Object.keys(companyInfoMap).length} companies matched`);
   const cCW = await fetchClosedWonDeals(hsToken, current.from, current.to);
 
-  let pSch, pPipe, pCW;
-  if (prior) {
-    pSch = await fetchScheduledContacts(hsToken, prior.from, prior.to);
-    pPipe = await fetchPipelineDeals(hsToken, prior.from, prior.to);
-    pCW = await fetchClosedWonDeals(hsToken, prior.from, prior.to);
-  }
-
+  // Fetch priorMonth FIRST so we can derive prior from it in-memory when prior
+  // is a strict subset (saves 3 HubSpot calls = up to ~15 subrequests).
   let pmSch, pmPipe, pmCW;
   if (priorMonth) {
     pmSch = await fetchScheduledContacts(hsToken, priorMonth.from, priorMonth.to);
     pmPipe = await fetchPipelineDeals(hsToken, priorMonth.from, priorMonth.to);
     pmCW = await fetchClosedWonDeals(hsToken, priorMonth.from, priorMonth.to);
+  }
+
+  // For MTD: prior = April 1..(today-of-month) and priorMonth = April 1..30.
+  // prior is a strict subset of priorMonth, so we can filter in-memory.
+  // For 7d / lastMonth / custom: prior and priorMonth are disjoint windows, fetch normally.
+  let pSch, pPipe, pCW;
+  const _priorIsSubsetOfPriorMonth = prior && priorMonth
+    && prior.from === priorMonth.from
+    && prior.to <= priorMonth.to;
+  if (prior && _priorIsSubsetOfPriorMonth && pmSch && pmPipe && pmCW) {
+    // Derive prior arrays by filtering pm* sets to prior window.
+    const _pFromMs = toMsET(prior.from);
+    const _pToMs = toMsET(prior.to, true);
+    const _pFromMsUTC = toMsUTC(prior.from);
+    const _pToMsUTC = toMsUTC(prior.to, true);
+    pSch = pmSch.filter(c => {
+      const ms = dateMs(c.properties?.date_demo_booked);
+      return !isNaN(ms) && ms >= _pFromMsUTC && ms <= _pToMsUTC;
+    });
+    // Match fetchPipelineDeals's three OR filter groups:
+    //   (1) date_demo_booked in window (UTC)
+    //   (2) rescheduled_meeting_date in window (UTC)
+    //   (3) demo_attendance_status IN [No Show, Cancelled before demo] AND hs_createdate in window (ET)
+    const _missedStatuses = new Set(['No Show', 'Cancelled before demo']);
+    pPipe = pmPipe.filter(d => {
+      const p = d.properties || {};
+      const dbMs = dateMs(p.date_demo_booked);
+      const rmMs = dateMs(p.rescheduled_meeting_date);
+      const crMs = isoMs(p.hs_createdate);
+      return (!isNaN(dbMs) && dbMs >= _pFromMsUTC && dbMs <= _pToMsUTC)
+          || (!isNaN(rmMs) && rmMs >= _pFromMsUTC && rmMs <= _pToMsUTC)
+          || (_missedStatuses.has(p.demo_attendance_status) && !isNaN(crMs) && crMs >= _pFromMs && crMs <= _pToMs);
+    });
+    pCW = pmCW.filter(d => {
+      const ms = isoMs(d.properties?.closedate);
+      return !isNaN(ms) && ms >= _pFromMs && ms <= _pToMs;
+    });
+    console.log(`prior derived from priorMonth in-memory (saved 3 fetches): pSch=${pSch.length} pPipe=${pPipe.length} pCW=${pCW.length}`);
+  } else if (prior) {
+    pSch = await fetchScheduledContacts(hsToken, prior.from, prior.to);
+    pPipe = await fetchPipelineDeals(hsToken, prior.from, prior.to);
+    pCW = await fetchClosedWonDeals(hsToken, prior.from, prior.to);
   }
 
   const ownerMap = await fetchOwners(hsToken);
