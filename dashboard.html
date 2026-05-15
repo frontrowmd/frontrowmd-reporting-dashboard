@@ -1153,46 +1153,12 @@ function renderIrfan(){
     h+='</div>';
   }
   h+='</div>';
-  // Special Tile #2 — Signed deals by web traffic. Toggle between Last 2 Weeks
-  // and MTD; both windows are fixed (independent of the page time selector).
+  // Special Tile #2 — Signed deals by web traffic. Wrapped in a card that the
+  // toggle handler can target directly (see irfanSetSigned2Mode below) so the
+  // mode switch doesn't need a full renderIrfan pass.
   if(!S.irfan.signed2Mode)S.irfan.signed2Mode='14d';
-  const _s2Mode=S.irfan.signed2Mode;
-  const _ir14Err=_irf.last14Error;
-  const _ir14Loaded=_irf.last14FromDate!=null;
-  // Pick data based on toggle
-  const _s2From=_s2Mode==='mtd'?_irf.mtdFromDate:_irf.last14FromDate;
-  const _s2To=_s2Mode==='mtd'?_irf.mtdToDate:_irf.last14ToDate;
-  const _s2Range=_s2From&&_s2To?`${fmtD(_s2From)} – ${fmtD(_s2To)}`:(_s2Mode==='mtd'?'MTD':'last 14 days');
-  const _s2Signed=(_s2Mode==='mtd'?_irf.totalSignedMtd:_irf.totalSignedLast14)||0;
-  const _s2MRR=(_s2Mode==='mtd'?_irf.totalSignedMtdMRR:_irf.totalSignedLast14MRR)||0;
-  const _s2Buckets=_s2Mode==='mtd'?_irf.signedMtdByWebTraffic:_irf.signedLast14ByWebTraffic;
-  const _s2NewARR=_s2MRR*12;
-  const _s2ACV=_s2Signed>0?_s2MRR/_s2Signed:0;
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:22px 24px"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap"><div style="flex:1;min-width:200px"><div class="irf-card-title">Signed Deals by Web Traffic</div>';
-  h+=`<div class="irf-card-sub">Closed Won by Close Date, bucketed by Web Traffic Tier · ${_s2Range} · ${fN(_s2Signed)} signed</div></div>`;
-  // Toggle pills
-  h+='<div style="display:inline-flex;background:rgba(114,164,191,.10);border:1px solid rgba(114,164,191,.25);border-radius:99px;padding:3px;gap:2px;flex-shrink:0">';
-  h+=`<button onclick="irfanSetSigned2Mode('14d')" style="padding:5px 14px;border-radius:99px;font-size:11px;font-weight:${_s2Mode==='14d'?'700':'500'};border:none;background:${_s2Mode==='14d'?'var(--teal)':'transparent'};color:${_s2Mode==='14d'?'#fff':'var(--navy)'};cursor:pointer;font-family:var(--font-h)">Last 2 Weeks</button>`;
-  h+=`<button onclick="irfanSetSigned2Mode('mtd')" style="padding:5px 14px;border-radius:99px;font-size:11px;font-weight:${_s2Mode==='mtd'?'700':'500'};border:none;background:${_s2Mode==='mtd'?'var(--teal)':'transparent'};color:${_s2Mode==='mtd'?'#fff':'var(--navy)'};cursor:pointer;font-family:var(--font-h)">MTD</button>`;
-  h+='</div></div>';
-  if(_ir14Err)h+='<div style="color:var(--red);font-size:11px;padding:14px 0;text-align:center;font-style:italic">Failed to load: '+_ir14Err+'</div>';
-  else if(!_ir14Loaded)h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">Data not yet loaded — click Refresh to fetch</div>';
-  else if(!_s2Signed){
-    const _dbg=_irf.last14Debug||{};
-    const _cached=_dbg.cached||{};
-    h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">No deals signed in '+_s2Range+'</div>';
-    if(_s2Mode==='14d')h+='<div style="font-size:10px;color:var(--grey);padding:6px 10px;background:rgba(23,44,69,.04);border-radius:4px;margin-top:8px;text-align:center;font-variant-numeric:tabular-nums">debug · cached cCW='+fN(_cached.cCW||0)+' pCW='+fN(_cached.pCW||0)+' pmCW='+fN(_cached.pmCW||0)+' · fresh='+fN(_dbg.fresh||0)+' · union='+fN(_dbg.unionAfterDedupe||0)+' · in range='+fN(_dbg.filtered||0)+'</div>';
-  }
-  else {
-    // Side-by-side layout: mini KPIs on left (stacked), pie on right
-    h+='<div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;margin-top:14px">';
-    h+='<div class="irf-mini-kpi-grid" style="grid-template-columns:1fr;flex:0 0 200px">';
-    h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">New ARR</div><div class="irf-mini-kpi-value">${f$(_s2NewARR)}</div></div>`;
-    h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">ACV</div><div class="irf-mini-kpi-value">${f$(_s2ACV)}</div></div>`;
-    h+='</div>';
-    h+='<div id="irfan-signed14-pie" style="flex:1;min-width:280px"></div>';
-    h+='</div>';
-  }
+  h+='<div id="irfan-special2-card" style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:22px 24px">';
+  h+=_buildIrfanSpecial2Inner(d, S.irfan.signed2Mode);
   h+='</div>';
   h+='</div>';
 
@@ -1538,12 +1504,63 @@ function _renderIrfanSignedLast14Pie(d){
   const buckets=mode==='mtd'?d.irfan?.signedMtdByWebTraffic:d.irfan?.signedLast14ByWebTraffic;
   _renderIrfanWtPieInto('irfan-signed14-pie', buckets, 'signed');
 }
-// Toggle handler for the Special #2 card's 14d / MTD switch
+// Build just the inner content of the Special #2 card for a given mode.
+// Pure HTML string; the caller must also call _renderIrfanSignedLast14Pie afterward
+// to populate the pie if the live state renders one.
+function _buildIrfanSpecial2Inner(d, mode){
+  const _irf=d?.irfan||{};
+  const fmtD=s=>{const p=s.split('-');return new Date(p[0],p[1]-1,p[2]).toLocaleDateString('en-US',{month:'long',day:'numeric'});};
+  const _ir14Err=_irf.last14Error;
+  const _ir14Loaded=_irf.last14FromDate!=null;
+  const _s2Mode=mode==='mtd'?'mtd':'14d';
+  const _s2From=_s2Mode==='mtd'?_irf.mtdFromDate:_irf.last14FromDate;
+  const _s2To=_s2Mode==='mtd'?_irf.mtdToDate:_irf.last14ToDate;
+  const _s2Range=_s2From&&_s2To?`${fmtD(_s2From)} – ${fmtD(_s2To)}`:(_s2Mode==='mtd'?'MTD':'last 14 days');
+  const _s2Signed=(_s2Mode==='mtd'?_irf.totalSignedMtd:_irf.totalSignedLast14)||0;
+  const _s2MRR=(_s2Mode==='mtd'?_irf.totalSignedMtdMRR:_irf.totalSignedLast14MRR)||0;
+  const _s2NewARR=_s2MRR*12;
+  const _s2ACV=_s2Signed>0?_s2MRR/_s2Signed:0;
+  // Detect whether the MTD data is on the payload at all
+  const _mtdMissing=_s2Mode==='mtd'&&_irf.mtdFromDate==null;
+  let h='<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap"><div style="flex:1;min-width:200px"><div class="irf-card-title">Signed Deals by Web Traffic</div>';
+  h+=`<div class="irf-card-sub">Closed Won by Close Date, bucketed by Web Traffic Tier · <strong>${_s2Range}</strong> · ${fN(_s2Signed)} signed <span style="color:var(--teal);font-weight:600">(mode: ${_s2Mode})</span></div></div>`;
+  h+='<div style="display:inline-flex;background:rgba(114,164,191,.10);border:1px solid rgba(114,164,191,.25);border-radius:99px;padding:3px;gap:2px;flex-shrink:0">';
+  h+=`<button onclick="irfanSetSigned2Mode('14d')" style="padding:5px 14px;border-radius:99px;font-size:11px;font-weight:${_s2Mode==='14d'?'700':'500'};border:none;background:${_s2Mode==='14d'?'var(--teal)':'transparent'};color:${_s2Mode==='14d'?'#fff':'var(--navy)'};cursor:pointer;font-family:var(--font-h)">Last 2 Weeks</button>`;
+  h+=`<button onclick="irfanSetSigned2Mode('mtd')" style="padding:5px 14px;border-radius:99px;font-size:11px;font-weight:${_s2Mode==='mtd'?'700':'500'};border:none;background:${_s2Mode==='mtd'?'var(--teal)':'transparent'};color:${_s2Mode==='mtd'?'#fff':'var(--navy)'};cursor:pointer;font-family:var(--font-h)">MTD</button>`;
+  h+='</div></div>';
+  if(_ir14Err)h+='<div style="color:var(--red);font-size:11px;padding:14px 0;text-align:center;font-style:italic">Failed to load: '+_ir14Err+'</div>';
+  else if(!_ir14Loaded)h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">Data not yet loaded — click Refresh to fetch</div>';
+  else if(_mtdMissing)h+='<div style="color:#D97706;font-size:12px;padding:20px 0;text-align:center;font-style:italic">MTD data not on this payload — click ↻ Refresh in the top-right to re-fetch.</div>';
+  else if(!_s2Signed){
+    const _dbg=_irf.last14Debug||{};
+    const _cached=_dbg.cached||{};
+    h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">No deals signed in '+_s2Range+'</div>';
+    h+='<div style="font-size:10px;color:var(--grey);padding:6px 10px;background:rgba(23,44,69,.04);border-radius:4px;margin-top:8px;text-align:center;font-variant-numeric:tabular-nums">debug · cached cCW='+fN(_cached.cCW||0)+' pCW='+fN(_cached.pCW||0)+' pmCW='+fN(_cached.pmCW||0)+' · fresh='+fN(_dbg.fresh||0)+' · union='+fN(_dbg.unionAfterDedupe||0)+'</div>';
+  }
+  else {
+    h+='<div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;margin-top:14px">';
+    h+='<div class="irf-mini-kpi-grid" style="grid-template-columns:1fr;flex:0 0 200px">';
+    h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">New ARR</div><div class="irf-mini-kpi-value">${f$(_s2NewARR)}</div></div>`;
+    h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">ACV</div><div class="irf-mini-kpi-value">${f$(_s2ACV)}</div></div>`;
+    h+='</div>';
+    h+='<div id="irfan-signed14-pie" style="flex:1;min-width:280px"></div>';
+    h+='</div>';
+  }
+  return h;
+}
+// Toggle handler for the Special #2 card's 14d / MTD switch.
+// Updates the card directly via DOM mutation so the toggle response is
+// independent of the broader renderIrfan flow.
 window.irfanSetSigned2Mode=function(mode){
   if(mode!=='14d'&&mode!=='mtd')return;
-  console.log('[Irfan] signed2Mode →',mode,'· payload has totalSignedMtd?',S.irfan?.data?.irfan?.totalSignedMtd);
+  const has=S.irfan?.data?.irfan;
+  console.log('[Irfan] signed2Mode →',mode,'· payload mtdFromDate=',has?.mtdFromDate,'totalSignedMtd=',has?.totalSignedMtd);
   S.irfan.signed2Mode=mode;
-  if(AP==='irfan'&&S.irfan.data)renderIrfan();
+  const card=document.getElementById('irfan-special2-card');
+  if(card&&S.irfan.data){
+    card.innerHTML=_buildIrfanSpecial2Inner(S.irfan.data, mode);
+    _renderIrfanSignedLast14Pie(S.irfan.data);
+  }
 };
 
 // Lightweight churn update — only touches ARR/ROAS values, not the slider
