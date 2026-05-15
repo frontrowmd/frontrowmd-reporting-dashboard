@@ -111,14 +111,18 @@ html,body{height:100%}body{font-family:var(--font-b);font-size:15px;color:var(--
 .irf-hero-kpi-value{font-family:var(--font-h);font-size:48px;font-weight:700;color:var(--navy);line-height:1;margin:8px 0 6px;letter-spacing:-.02em}
 .irf-hero-kpi-calc{font-size:11px;color:var(--navy);font-weight:600;font-variant-numeric:tabular-nums;background:rgba(255,255,255,.5);display:inline-block;padding:4px 12px;border-radius:99px}
 /* Grouped multi-stat card — one teal-gradient container with several sub-cells */
-.irf-grouped-card{background:linear-gradient(135deg,rgba(114,164,191,.10),rgba(114,164,191,.20));border:1px solid rgba(114,164,191,.30);border-radius:10px;box-shadow:inset 4px 0 0 var(--teal);display:flex;align-items:stretch;margin-bottom:14px;padding:18px 0;flex-wrap:wrap}
-.irf-grouped-item{flex:1;padding:0 18px;display:flex;flex-direction:column;justify-content:center;min-width:0}
-.irf-grouped-item.primary{flex:1.4;text-align:center;align-items:center}
-.irf-grouped-divider{width:1px;background:rgba(114,164,191,.25);margin:4px 0;flex-shrink:0}
-.irf-grouped-label{font-family:var(--font-h);font-size:10px;color:var(--teal);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.irf-grouped-value{font-family:var(--font-h);font-size:22px;font-weight:700;color:var(--navy);line-height:1.1;font-variant-numeric:tabular-nums}
-.irf-grouped-item.primary .irf-grouped-value{font-size:44px;letter-spacing:-.02em;margin:4px 0 6px}
-.irf-grouped-calc{font-size:11px;color:var(--navy);font-weight:600;font-variant-numeric:tabular-nums;background:rgba(255,255,255,.5);display:inline-block;padding:4px 12px;border-radius:99px;margin-top:2px}
+.irf-grouped-card{background:linear-gradient(135deg,rgba(114,164,191,.10),rgba(114,164,191,.20));border:1px solid rgba(114,164,191,.30);border-radius:10px;box-shadow:inset 4px 0 0 var(--teal);display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:14px;padding:14px 0;position:relative}
+.irf-grouped-item{padding:8px 14px;display:flex;flex-direction:column;justify-content:center;min-width:0;position:relative}
+.irf-grouped-item.primary{text-align:center;align-items:center;grid-column:1;grid-row:1;padding:4px 14px 8px}
+/* vertical separators between columns (skip first col of each row) */
+.irf-grouped-item:not(:nth-child(3n+1))::before{content:'';position:absolute;left:0;top:10px;bottom:10px;width:1px;background:rgba(114,164,191,.25)}
+/* horizontal separator between row 1 and row 2 */
+.irf-grouped-item:nth-child(-n+3)::after{content:'';position:absolute;left:14px;right:14px;bottom:-1px;height:1px;background:rgba(114,164,191,.25)}
+.irf-grouped-divider{display:none}
+.irf-grouped-label{font-family:var(--font-h);font-size:10px;color:var(--teal);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:5px;line-height:1.25}
+.irf-grouped-value{font-family:var(--font-h);font-size:20px;font-weight:700;color:var(--navy);line-height:1.1;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.irf-grouped-item.primary .irf-grouped-value{font-size:40px;letter-spacing:-.02em;margin:4px 0 6px;overflow:visible}
+.irf-grouped-calc{font-size:11px;color:var(--navy);font-weight:600;font-variant-numeric:tabular-nums;background:rgba(255,255,255,.5);display:inline-block;padding:4px 10px;border-radius:99px;margin-top:2px;white-space:nowrap}
 .irf-meta-table tbody tr{transition:background .15s ease,box-shadow .15s ease}
 .irf-meta-table tbody tr:hover td{background:rgba(114,164,191,.10)}
 .irf-meta-table tbody tr:hover{box-shadow:inset 3px 0 0 var(--teal)}
@@ -1127,24 +1131,23 @@ function renderIrfan(){
   else{
     // Grouped "signed" card — % Signed prominent, then 4 detail stats sharing
     // the same teal-gradient container.
+    // 3-col × 2-row grid. Source order = visual order: % Signed | New ARR | ACV
+    // (row 1), Closed Won | Demos Held | Avg Days to Close (row 2).
+    const _avgD=_irPCM.avgDaysToClose;
+    const _avgDLabel=(_avgD==null)?'—':(_avgD<10?_avgD.toFixed(1):Math.round(_avgD).toString());
     h+='<div class="irf-grouped-card">';
+    // Row 1
     h+='<div class="irf-grouped-item primary">';
     h+=`<div class="irf-grouped-label">% Signed</div>`;
     h+=`<div class="irf-grouped-value">${_irPCM.pctSigned.toFixed(1)}%</div>`;
     h+=`<div class="irf-grouped-calc">${fN(_irPCM.signed)} ÷ ${fN(_irPCM.heldScale)} demos held</div>`;
     h+='</div>';
-    h+='<div class="irf-grouped-divider"></div>';
-    h+=`<div class="irf-grouped-item"><div class="irf-grouped-label">Closed Won</div><div class="irf-grouped-value">${fN(_irPCM.signed)}</div></div>`;
-    h+='<div class="irf-grouped-divider"></div>';
-    h+=`<div class="irf-grouped-item"><div class="irf-grouped-label">Demos Held</div><div class="irf-grouped-value">${fN(_irPCM.heldScale)}</div></div>`;
-    h+='<div class="irf-grouped-divider"></div>';
-    const _avgD=_irPCM.avgDaysToClose;
-    const _avgDLabel=(_avgD==null)?'—':(_avgD<10?_avgD.toFixed(1):Math.round(_avgD).toString());
-    h+=`<div class="irf-grouped-item" title="Average days from date_demo_booked to closedate across signed deals in this cohort (n=${fN(_irPCM.avgDaysToCloseN||0)})"><div class="irf-grouped-label">Avg Days to Close</div><div class="irf-grouped-value">${_avgDLabel}${_avgD!=null?'<span style="font-size:13px;color:var(--grey);font-weight:600;margin-left:3px">d</span>':''}</div></div>`;
-    h+='<div class="irf-grouped-divider"></div>';
     h+=`<div class="irf-grouped-item"><div class="irf-grouped-label">New ARR</div><div class="irf-grouped-value">${_irPCM.signed>0?f$(_irPCM.newArr):'—'}</div></div>`;
-    h+='<div class="irf-grouped-divider"></div>';
     h+=`<div class="irf-grouped-item"><div class="irf-grouped-label">ACV</div><div class="irf-grouped-value">${_irPCM.signed>0?f$(_irPCM.acv):'—'}</div></div>`;
+    // Row 2
+    h+=`<div class="irf-grouped-item"><div class="irf-grouped-label">Closed Won</div><div class="irf-grouped-value">${fN(_irPCM.signed)}</div></div>`;
+    h+=`<div class="irf-grouped-item"><div class="irf-grouped-label">Demos Held</div><div class="irf-grouped-value">${fN(_irPCM.heldScale)}</div></div>`;
+    h+=`<div class="irf-grouped-item" title="Average days from date_demo_booked to closedate across signed deals in this cohort (n=${fN(_irPCM.avgDaysToCloseN||0)})"><div class="irf-grouped-label">Avg Days to Close</div><div class="irf-grouped-value">${_avgDLabel}${_avgD!=null?'<span style="font-size:13px;color:var(--grey);font-weight:600;margin-left:3px">d</span>':''}</div></div>`;
     h+='</div>';
     // Small breakdown KPI cards: % Pending / % Pruned / % No Show. Each shows
     // numerator ÷ denominator under the percentage.
