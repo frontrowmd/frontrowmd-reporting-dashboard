@@ -119,8 +119,9 @@ html,body{height:100%}body{font-family:var(--font-b);font-size:15px;color:var(--
 .irf-grouped-value{font-family:var(--font-h);font-size:22px;font-weight:700;color:var(--navy);line-height:1.1;font-variant-numeric:tabular-nums}
 .irf-grouped-item.primary .irf-grouped-value{font-size:44px;letter-spacing:-.02em;margin:4px 0 6px}
 .irf-grouped-calc{font-size:11px;color:var(--navy);font-weight:600;font-variant-numeric:tabular-nums;background:rgba(255,255,255,.5);display:inline-block;padding:4px 12px;border-radius:99px;margin-top:2px}
-.irf-meta-table tbody tr{transition:filter .15s ease,box-shadow .15s ease}
-.irf-meta-table tbody tr:hover{filter:brightness(0.96);box-shadow:inset 3px 0 0 var(--teal)}
+.irf-meta-table tbody tr{transition:background .15s ease,box-shadow .15s ease}
+.irf-meta-table tbody tr:hover td{background:rgba(114,164,191,.10)}
+.irf-meta-table tbody tr:hover{box-shadow:inset 3px 0 0 var(--teal)}
 .tile.hero .tc .lbl{color:rgba(255,255,255,.45)}.tile.hero .tc .val{color:rgba(255,255,255,.85)}
 .tile.hero .tc .d.up{color:#6EE7B7}.tile.hero .tc .d.dn{color:#FCA5A5}
 .tile.accent{border-left:4px solid var(--teal);background:linear-gradient(135deg,var(--white),var(--teal-8))}
@@ -1080,12 +1081,14 @@ function renderIrfan(){
   h+=`<div class="tile hero" style="border-left:3px solid var(--teal)"><div class="tlbl">True CPD</div><div class="tval">${tCpd!=null?f$(tCpd):'—'}</div><div class="tdef" style="margin-top:4px">Ad spend ÷ Demos excl. pre-launch</div>${_irCalc(f$(_totalSpend)+' ÷ '+fN(_scaleSched))}${_irTileFooter(tCpd,tCpdPV,tCpdLMV,'$',true)}</div>`;
   // 2.2 True CPQD
   h+=`<div class="tile hero" style="border-left:3px solid var(--teal)"><div class="tlbl">True CPQD</div><div class="tval">${tCpqd!=null?f$(tCpqd):'—'}</div><div class="tdef" style="margin-top:4px">Ad spend ÷ Demos held excl. pre-launch</div>${_irCalc(f$(_totalSpend)+' ÷ '+fN(_demosHeldScale))}${_irTileFooter(tCpqd,tCpqdPV,tCpqdLMV,'$',true)}</div>`;
-  // 2.3 % Pruned upfront — orange left border when >20%
-  const _pruneBC=pruneRate!=null&&pruneRate>20?'#F59E0B':'var(--teal)';
-  h+=`<div class="tile hero" style="border-left:3px solid ${_pruneBC}"><div class="tlbl">% Pruned (upfront)</div><div class="tval">${pruneRate!=null?pruneRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">Cancelled before demo ÷ all settled outcomes</div>${_irCalc(fN(_cancelledBefore)+' ÷ '+fN(_pruneDenom))}${_irTileFooter(pruneRate,prunePV,pruneLMV,'%',true)}</div>`;
-  // 2.4 No-show rate — scale tier (excludes pre-launch). Orange left border when >20%.
-  const _noShowBC=noShowRate!=null&&noShowRate>20?'#F59E0B':'var(--teal)';
-  h+=`<div class="tile hero" style="border-left:3px solid ${_noShowBC}"><div class="tlbl">No-Show Rate</div><div class="tval">${noShowRate!=null?noShowRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">No Show ÷ (Demo Given orig + resched + No Show), excl. pre-launch</div>${_irCalc(fN(_noShowScale)+' ÷ '+fN(_noShowDenomScale))}${_irTileFooter(noShowRate,noShowPV,noShowLMV,'%',true)}</div>`;
+  // 2.3 % Pruned — full orange border when >20%, teal accent when ≤20%
+  const _pruneWarn=pruneRate!=null&&pruneRate>20;
+  const _pruneStyle=_pruneWarn?'border:2px solid #F59E0B':'border-left:3px solid var(--teal)';
+  h+=`<div class="tile hero" style="${_pruneStyle}"><div class="tlbl">% Pruned</div><div class="tval">${pruneRate!=null?pruneRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">Cancelled before demo ÷ all settled outcomes</div>${_irCalc(fN(_cancelledBefore)+' ÷ '+fN(_pruneDenom))}${_irTileFooter(pruneRate,prunePV,pruneLMV,'%',true)}</div>`;
+  // 2.4 % No-Show — scale tier (excludes pre-launch). Full orange border when >20%.
+  const _noShowWarn=noShowRate!=null&&noShowRate>20;
+  const _noShowStyle=_noShowWarn?'border:2px solid #F59E0B':'border-left:3px solid var(--teal)';
+  h+=`<div class="tile hero" style="${_noShowStyle}"><div class="tlbl">% No-Show</div><div class="tval">${noShowRate!=null?noShowRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">No Show ÷ (Demo Given orig + resched + No Show), excl. pre-launch</div>${_irCalc(fN(_noShowScale)+' ÷ '+fN(_noShowDenomScale))}${_irTileFooter(noShowRate,noShowPV,noShowLMV,'%',true)}</div>`;
   // 2.5 % Disqualified Routing — Disqualification Form submissions ÷ demo clicks
   const _dqForm=d.irfan?.dqForm;const _dqFormErr=d.irfan?.dqFormError;
   const _dqSubs=_dqForm?_dqForm.count:null;
@@ -1150,30 +1153,44 @@ function renderIrfan(){
     h+='</div>';
   }
   h+='</div>';
-  // Special Tile #2 — Signed last 14 days by web traffic. Uses fixed 14-day window.
+  // Special Tile #2 — Signed deals by web traffic. Toggle between Last 2 Weeks
+  // and MTD; both windows are fixed (independent of the page time selector).
+  if(!S.irfan.signed2Mode)S.irfan.signed2Mode='14d';
+  const _s2Mode=S.irfan.signed2Mode;
   const _ir14Err=_irf.last14Error;
   const _ir14Loaded=_irf.last14FromDate!=null;
-  const _ir14Range=_irf.last14FromDate&&_irf.last14ToDate?`${fmtD(_irf.last14FromDate)} – ${fmtD(_irf.last14ToDate)}`:'last 14 days';
-  const _ir14Signed=_irf.totalSignedLast14||0;
-  const _ir14MRR=_irf.totalSignedLast14MRR||0;
-  const _ir14NewARR=_ir14MRR*12;
-  const _ir14ACV=_ir14Signed>0?_ir14MRR/_ir14Signed:0;
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:22px 24px"><div class="irf-card-title">Signed Deals — Last 2 Weeks by Web Traffic</div>';
-  h+=`<div class="irf-card-sub">Closed Won by Close Date, bucketed by Web Traffic Tier · ${_ir14Range} · ${fN(_ir14Signed)} signed</div>`;
+  // Pick data based on toggle
+  const _s2From=_s2Mode==='mtd'?_irf.mtdFromDate:_irf.last14FromDate;
+  const _s2To=_s2Mode==='mtd'?_irf.mtdToDate:_irf.last14ToDate;
+  const _s2Range=_s2From&&_s2To?`${fmtD(_s2From)} – ${fmtD(_s2To)}`:(_s2Mode==='mtd'?'MTD':'last 14 days');
+  const _s2Signed=(_s2Mode==='mtd'?_irf.totalSignedMtd:_irf.totalSignedLast14)||0;
+  const _s2MRR=(_s2Mode==='mtd'?_irf.totalSignedMtdMRR:_irf.totalSignedLast14MRR)||0;
+  const _s2Buckets=_s2Mode==='mtd'?_irf.signedMtdByWebTraffic:_irf.signedLast14ByWebTraffic;
+  const _s2NewARR=_s2MRR*12;
+  const _s2ACV=_s2Signed>0?_s2MRR/_s2Signed:0;
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:22px 24px"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap"><div style="flex:1;min-width:200px"><div class="irf-card-title">Signed Deals by Web Traffic</div>';
+  h+=`<div class="irf-card-sub">Closed Won by Close Date, bucketed by Web Traffic Tier · ${_s2Range} · ${fN(_s2Signed)} signed</div></div>`;
+  // Toggle pills
+  h+='<div style="display:inline-flex;background:rgba(114,164,191,.10);border:1px solid rgba(114,164,191,.25);border-radius:99px;padding:3px;gap:2px;flex-shrink:0">';
+  h+=`<button onclick="irfanSetSigned2Mode('14d')" style="padding:5px 14px;border-radius:99px;font-size:11px;font-weight:${_s2Mode==='14d'?'700':'500'};border:none;background:${_s2Mode==='14d'?'var(--teal)':'transparent'};color:${_s2Mode==='14d'?'#fff':'var(--navy)'};cursor:pointer;font-family:var(--font-h)">Last 2 Weeks</button>`;
+  h+=`<button onclick="irfanSetSigned2Mode('mtd')" style="padding:5px 14px;border-radius:99px;font-size:11px;font-weight:${_s2Mode==='mtd'?'700':'500'};border:none;background:${_s2Mode==='mtd'?'var(--teal)':'transparent'};color:${_s2Mode==='mtd'?'#fff':'var(--navy)'};cursor:pointer;font-family:var(--font-h)">MTD</button>`;
+  h+='</div></div>';
   if(_ir14Err)h+='<div style="color:var(--red);font-size:11px;padding:14px 0;text-align:center;font-style:italic">Failed to load: '+_ir14Err+'</div>';
   else if(!_ir14Loaded)h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">Data not yet loaded — click Refresh to fetch</div>';
-  else if(!_ir14Signed){
+  else if(!_s2Signed){
     const _dbg=_irf.last14Debug||{};
     const _cached=_dbg.cached||{};
-    h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">No deals signed in '+_ir14Range+'</div>';
-    h+='<div style="font-size:10px;color:var(--grey);padding:6px 10px;background:rgba(23,44,69,.04);border-radius:4px;margin-top:8px;text-align:center;font-variant-numeric:tabular-nums">debug · cached cCW='+fN(_cached.cCW||0)+' pCW='+fN(_cached.pCW||0)+' pmCW='+fN(_cached.pmCW||0)+' · fresh='+fN(_dbg.fresh||0)+' · union='+fN(_dbg.unionAfterDedupe||0)+' · in range='+fN(_dbg.filtered||0)+'</div>';
+    h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">No deals signed in '+_s2Range+'</div>';
+    if(_s2Mode==='14d')h+='<div style="font-size:10px;color:var(--grey);padding:6px 10px;background:rgba(23,44,69,.04);border-radius:4px;margin-top:8px;text-align:center;font-variant-numeric:tabular-nums">debug · cached cCW='+fN(_cached.cCW||0)+' pCW='+fN(_cached.pCW||0)+' pmCW='+fN(_cached.pmCW||0)+' · fresh='+fN(_dbg.fresh||0)+' · union='+fN(_dbg.unionAfterDedupe||0)+' · in range='+fN(_dbg.filtered||0)+'</div>';
   }
   else {
-    h+='<div id="irfan-signed14-pie"></div>';
-    // Mini KPI cards: New ARR + ACV
-    h+='<div class="irf-mini-kpi-grid" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-top:14px">';
-    h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">New ARR</div><div class="irf-mini-kpi-value">${f$(_ir14NewARR)}</div></div>`;
-    h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">ACV</div><div class="irf-mini-kpi-value">${f$(_ir14ACV)}</div></div>`;
+    // Side-by-side layout: mini KPIs on left (stacked), pie on right
+    h+='<div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;margin-top:14px">';
+    h+='<div class="irf-mini-kpi-grid" style="grid-template-columns:1fr;flex:0 0 200px">';
+    h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">New ARR</div><div class="irf-mini-kpi-value">${f$(_s2NewARR)}</div></div>`;
+    h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">ACV</div><div class="irf-mini-kpi-value">${f$(_s2ACV)}</div></div>`;
+    h+='</div>';
+    h+='<div id="irfan-signed14-pie" style="flex:1;min-width:280px"></div>';
     h+='</div>';
   }
   h+='</div>';
@@ -1285,6 +1302,15 @@ function _irfanStatusBadge(st,sp){
 window.irfanSortCamp=function(col){const s=S.irfan.metaCampSort||(S.irfan.metaCampSort={col:'cpd',dir:'desc'});if(s.col===col)s.dir=s.dir==='desc'?'asc':'desc';else{s.col=col;s.dir=(col==='name'||col==='status'||col==='stage')?'asc':'desc';}if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD);};
 window.irfanSortCre=function(col){const s=S.irfan.metaCreSort||(S.irfan.metaCreSort={col:'cpd',dir:'desc'});if(s.col===col)s.dir=s.dir==='desc'?'asc':'desc';else{s.col=col;s.dir=(col==='name'||col==='status')?'asc':'desc';}if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD);};
 window.irfanCampStageF=function(stage){S.irfan.metaCampStageF=stage;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD);};
+// Toggle the visibility of a campaign's nested creative rows.
+window.irfanToggleCampCreatives=function(rowId){
+  const rows=document.querySelectorAll('.'+rowId+'-cre');
+  if(!rows.length)return;
+  const isOpen=rows[0].style.display!=='none';
+  rows.forEach(r=>r.style.display=isOpen?'none':'table-row');
+  const chev=document.querySelector('.irf-camp-chev[data-row="'+rowId+'"]');
+  if(chev)chev.textContent=isOpen?'▶':'▼';
+};
 function _renderIrfanMetaTables(d){
   _irfanMetaD=d;
   const campTarget=document.getElementById('irfan-meta-campaigns');
@@ -1302,6 +1328,14 @@ function _renderIrfanMetaTables(d){
   let campRows=(meta.campaigns||[]).filter(c=>c.spend>0);
   if(stageF!=='all')campRows=campRows.filter(c=>_irfanStages(c.name).some(t=>t.k===stageF));
   campRows=_irfanSortRows(campRows,campSort.col,campSort.dir);
+  // Group creatives by parent campaign name so we can nest them under each row
+  const _creByCamp={};
+  for(const _cr of (meta.creatives||[])){
+    const _k=(_cr.campaignName||_cr.campaign||'').toLowerCase().trim();
+    if(!_k)continue;
+    if(!_creByCamp[_k])_creByCamp[_k]=[];
+    _creByCamp[_k].push(_cr);
+  }
   // Heatmap value arrays (across visible rows)
   const cSp=campRows.map(c=>c.spend),cIm=campRows.map(c=>c.impressions||0),cCl=campRows.map(c=>c.clicks||0),cCt=campRows.map(c=>c.ctr||0),cDe=campRows.map(c=>c.demos||0),cCp=campRows.map(c=>c.demos>0?c.spend/c.demos:0),cQu=campRows.map(c=>c.qualified||0);
   // Stage filter pills
@@ -1328,8 +1362,13 @@ function _renderIrfanMetaTables(d){
     const nm=(c.name||'').length>56?(c.name||'').slice(0,53)+'…':(c.name||'');
     const stags=_irfanStages(c.name);
     let stagesCell='';for(const t of stags)stagesCell+='<span style="display:inline-block;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;background:'+t.c+'15;color:'+t.c+';margin-right:2px">'+t.l+'</span>';
-    campH+='<tr style="border-bottom:1px solid var(--border)">';
-    campH+='<td style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(c.name||'').replace(/"/g,'&quot;')+'">'+nm+'</td>';
+    // Check for nested creatives
+    const _campKey=(c.name||'').toLowerCase().trim();
+    const _nested=(_creByCamp[_campKey]||[]).slice().sort((a,b)=>b.spend-a.spend);
+    const _hasNested=_nested.length>0;
+    const _rowId='irf-camp-'+i;
+    campH+='<tr style="border-bottom:1px solid var(--border)'+(_hasNested?';cursor:pointer':'')+'"'+(_hasNested?' onclick="irfanToggleCampCreatives(\''+_rowId+'\')"':'')+'>';
+    campH+='<td style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(c.name||'').replace(/"/g,'&quot;')+'">'+(_hasNested?'<span class="irf-camp-chev" data-row="'+_rowId+'" style="display:inline-block;width:10px;color:var(--teal);margin-right:6px;font-size:9px">▶</span>':'<span style="display:inline-block;width:10px;margin-right:6px"></span>')+nm+(_hasNested?' <span style="font-size:9px;color:var(--grey);font-weight:400">('+_nested.length+')</span>':'')+'</td>';
     campH+='<td style="padding:8px 6px">'+stagesCell+'</td>';
     campH+='<td style="text-align:center;padding:8px 6px">'+_irfanStatusBadge(c.status,c.spend)+'</td>';
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cSp,c.spend,true)+'">'+f$(c.spend)+'</td>';
@@ -1340,6 +1379,28 @@ function _renderIrfanMetaTables(d){
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cCt,c.ctr||0,false)+'">'+(c.ctr!=null?c.ctr.toFixed(2)+'%':'—')+'</td>';
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cQu,c.qualified||0,false)+'">'+fN(c.qualified||0)+'</td>';
     campH+='</tr>';
+    // Nested creative rows (hidden by default)
+    if(_hasNested){
+      for(let ni=0;ni<_nested.length;ni++){
+        const ncr=_nested[ni];const ncCpd=ncr.demos>0?ncr.spend/ncr.demos:null;
+        const nNm=(ncr.name||'').length>52?(ncr.name||'').slice(0,49)+'…':(ncr.name||'');
+        let _thumb='';
+        if(ncr.thumbnail)_thumb='<img src="'+ncr.thumbnail+'" style="width:28px;height:28px;object-fit:cover;border-radius:4px;display:inline-block;vertical-align:middle;margin-right:8px" onerror="this.style.display=\'none\'">';
+        else _thumb='<span style="display:inline-block;width:28px;height:28px;border-radius:4px;background:var(--lighter);border:1px solid var(--border);text-align:center;line-height:26px;font-size:12px;margin-right:8px;vertical-align:middle">📷</span>';
+        campH+='<tr class="'+_rowId+'-cre" style="display:none;background:rgba(114,164,191,.04);border-bottom:1px solid var(--border)">';
+        campH+='<td style="padding:6px 6px 6px 30px;color:var(--navy);font-size:10px" title="'+(ncr.name||'').replace(/"/g,'&quot;')+'">'+_thumb+nNm+'</td>';
+        campH+='<td></td>';
+        campH+='<td style="text-align:center;padding:6px">'+_irfanStatusBadge(ncr.status,ncr.spend)+'</td>';
+        campH+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+f$(ncr.spend)+'</td>';
+        campH+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.demos||0)+'</td>';
+        campH+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(ncCpd!=null?f$(ncCpd):'—')+'</td>';
+        campH+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.impressions||0)+'</td>';
+        campH+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.clicks||0)+'</td>';
+        campH+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(ncr.ctr!=null?ncr.ctr.toFixed(2)+'%':'—')+'</td>';
+        campH+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.qualified||0)+'</td>';
+        campH+='</tr>';
+      }
+    }
   }
   if(!campRows.length)campH+='<tr><td colspan="10" style="padding:16px;text-align:center;color:var(--grey)">No campaigns match</td></tr>';
   campH+='</tbody></table></div>';
@@ -1460,7 +1521,17 @@ function _renderIrfanWtPieInto(targetId, rawBuckets, centerLabel, priorBuckets){
   });
 }
 function _renderIrfanWtPie(d){_renderIrfanWtPieInto('irfan-wt-pie', d.demoTracking?.scheduledByWebTraffic, 'demos booked', d.demoTracking?.scheduledByWebTrafficPrior);}
-function _renderIrfanSignedLast14Pie(d){_renderIrfanWtPieInto('irfan-signed14-pie', d.irfan?.signedLast14ByWebTraffic, 'signed');}
+function _renderIrfanSignedLast14Pie(d){
+  const mode=S.irfan?.signed2Mode||'14d';
+  const buckets=mode==='mtd'?d.irfan?.signedMtdByWebTraffic:d.irfan?.signedLast14ByWebTraffic;
+  _renderIrfanWtPieInto('irfan-signed14-pie', buckets, 'signed');
+}
+// Toggle handler for the Special #2 card's 14d / MTD switch
+window.irfanSetSigned2Mode=function(mode){
+  if(mode!=='14d'&&mode!=='mtd')return;
+  S.irfan.signed2Mode=mode;
+  if(AP==='irfan'&&S.irfan.data)renderIrfan();
+};
 
 // Lightweight churn update — only touches ARR/ROAS values, not the slider
 function updateDashChurn(){

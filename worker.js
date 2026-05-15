@@ -1869,6 +1869,34 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
       filtered: irfanCW14.length,
     };
     console.log(`Irfan last-14: cached={cCW:${cachedSourceCounts.cCW},pCW:${cachedSourceCounts.pCW},pmCW:${cachedSourceCounts.pmCW}} fresh=${freshFetched.length} union=${_combined.size} filtered=${irfanCW14.length} signed=${totalSignedLast14} (${_fromStr14} to ${_toStr14}), MRR ${totalSignedLast14MRR}, tiers ${Object.keys(signedLast14ByWebTraffic).join('|')}`);
+
+    // Same shape, but for the CURRENT CALENDAR MONTH (Month-to-Date toggle).
+    // Filter the same union by [month-start, today].
+    const _todayMtd = new Date();
+    const _mtdFrom = new Date(Date.UTC(_todayMtd.getUTCFullYear(), _todayMtd.getUTCMonth(), 1));
+    const _mtdFromStr = fmt(_mtdFrom), _mtdToStr = fmt(_todayMtd);
+    const _mtdFromMs = _mtdFrom.getTime();
+    const _mtdToMs = Date.UTC(_todayMtd.getUTCFullYear(), _todayMtd.getUTCMonth(), _todayMtd.getUTCDate(), 23, 59, 59, 999);
+    const signedMtdByWebTraffic = {};
+    let totalSignedMtd = 0, totalSignedMtdMRR = 0;
+    for (const dl of _combined.values()) {
+      const cd = dl.properties?.closedate;
+      if (!cd) continue;
+      const cdMs = isoMs(cd);
+      if (isNaN(cdMs) || cdMs < _mtdFromMs || cdMs > _mtdToMs) continue;
+      const pp = dl.properties || {};
+      const wtRaw = pp.average_monthly_web_traffic__cloned_ || pp.average_monthly_web_traffic || '';
+      const key = wtRaw || '(none)';
+      signedMtdByWebTraffic[key] = (signedMtdByWebTraffic[key]||0) + 1;
+      totalSignedMtd++;
+      totalSignedMtdMRR += parseFloat(pp.amount)||0;
+    }
+    resp.irfan.signedMtdByWebTraffic = signedMtdByWebTraffic;
+    resp.irfan.totalSignedMtd = totalSignedMtd;
+    resp.irfan.totalSignedMtdMRR = totalSignedMtdMRR;
+    resp.irfan.mtdFromDate = _mtdFromStr;
+    resp.irfan.mtdToDate = _mtdToStr;
+    console.log(`Irfan MTD signed: ${totalSignedMtd} (${_mtdFromStr} to ${_mtdToStr}), MRR ${totalSignedMtdMRR}`);
   } catch(e) {
     console.error('Irfan last-14-days fetch failed:', e);
     resp.irfan.last14Error = e.message;
