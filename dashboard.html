@@ -2304,6 +2304,89 @@ function renderDemoQuality(){try{
     return true;
   });
 
+  // ── Rep × Web Traffic Tier matrix ────────────────────────────────────────
+  // Fairness audit: each cell shows count + that rep's share of its own row.
+  // Cells are highlighted red when the rep is under-indexed in a tier by ≥5pp
+  // vs the overall mix, green when over-indexed by ≥5pp. Lets you spot reps
+  // who aren't getting their fair share of bigger-traffic brands.
+  (function(){
+    var tiers=['Pre-launch / just launching','0-10K monthly web visitors','10-25K monthly web visitors','25-50K monthly web visitors','50-100K monthly web visitors','100-200K monthly web visitors','200-500K monthly web visitors','500K+ monthly web visitors'];
+    var repTierCount={},repTotalLocal={},tierTotal={},grand=0;
+    for(var mi=0;mi<sharedFiltered.length;mi++){
+      var mdd=sharedFiltered[mi];
+      var mrep=ownerMap[mdd.hubspot_owner_id]||'Unassigned';
+      var mwt=(mdd._ci&&mdd._ci.webTraffic)||'(none)';
+      if(!repTierCount[mrep])repTierCount[mrep]={};
+      repTierCount[mrep][mwt]=(repTierCount[mrep][mwt]||0)+1;
+      repTotalLocal[mrep]=(repTotalLocal[mrep]||0)+1;
+      tierTotal[mwt]=(tierTotal[mwt]||0)+1;
+      grand++;
+    }
+    // Only include reps with ≥3 demos to reduce noise
+    var matrixReps=Object.keys(repTierCount).filter(function(r){return repTotalLocal[r]>=3;}).sort(function(a,b){return repTotalLocal[b]-repTotalLocal[a];});
+    if(!matrixReps.length||!grand)return;
+    var overallPct={};
+    for(var ti=0;ti<tiers.length;ti++)overallPct[tiers[ti]]=grand>0?(tierTotal[tiers[ti]]||0)/grand*100:0;
+    var mh='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-bottom:16px">';
+    mh+='<div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:#172C45;margin-bottom:4px">Rep × Web Traffic Tier</div>';
+    mh+='<div style="font-size:11px;color:var(--grey);margin-bottom:12px">Each row sums to 100% — cell shows count and that rep\'s share of its own row. Red = under-indexed in this tier by ≥5pp vs the overall mix · green = over-indexed by ≥5pp.</div>';
+    mh+='<div style="overflow-x:auto"><table style="width:100%;font-size:11px;border-collapse:collapse">';
+    mh+='<thead><tr style="border-bottom:1.5px solid var(--border);color:var(--grey)">';
+    mh+='<th style="text-align:left;padding:8px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em">Rep</th>';
+    for(var thi=0;thi<tiers.length;thi++){
+      var thLbl=wtLabels[tiers[thi]];
+      var thCol=wtColors[tiers[thi]];
+      mh+='<th style="text-align:right;padding:8px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap"><span style="display:inline-block;width:8px;height:8px;background:'+thCol+';border-radius:2px;margin-right:4px;vertical-align:middle"></span>'+thLbl+'</th>';
+    }
+    mh+='<th style="text-align:right;padding:8px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em">Total</th>';
+    mh+='</tr></thead><tbody>';
+    for(var mri=0;mri<matrixReps.length;mri++){
+      var mrn=matrixReps[mri];
+      mh+='<tr style="border-bottom:1px solid var(--border)">';
+      mh+='<td style="padding:8px;color:var(--navy);font-weight:600;white-space:nowrap">'+mrn+'</td>';
+      for(var mti=0;mti<tiers.length;mti++){
+        var mt=tiers[mti];
+        var mCnt=(repTierCount[mrn]||{})[mt]||0;
+        var mPct=repTotalLocal[mrn]>0?mCnt/repTotalLocal[mrn]*100:0;
+        var mDelta=mPct-overallPct[mt];
+        var mBg='';
+        if(mCnt>0){
+          if(mDelta<=-5)mBg='background:rgba(220,38,38,.15)';
+          else if(mDelta>=5)mBg='background:rgba(22,163,74,.15)';
+          else mBg='background:rgba(114,164,191,.04)';
+        }
+        mh+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;'+mBg+'" title="'+mCnt+' demos · '+mPct.toFixed(1)+'% of '+mrn+'\'s row · overall mix '+overallPct[mt].toFixed(1)+'% · delta '+(mDelta>=0?'+':'')+mDelta.toFixed(1)+'pp">';
+        if(mCnt>0){
+          mh+='<div style="font-weight:600;color:var(--navy)">'+mCnt+'</div>';
+          mh+='<div style="font-size:9px;color:var(--grey);margin-top:2px">'+mPct.toFixed(1)+'%</div>';
+        }else{
+          mh+='<div style="color:var(--grey);opacity:.4">—</div>';
+        }
+        mh+='</td>';
+      }
+      mh+='<td style="text-align:right;padding:8px;font-variant-numeric:tabular-nums;font-weight:700;color:var(--navy)">'+repTotalLocal[mrn]+'</td>';
+      mh+='</tr>';
+    }
+    mh+='<tr style="border-top:1.5px solid var(--border);background:rgba(23,44,69,.04)">';
+    mh+='<td style="padding:8px;color:var(--navy);font-weight:700;white-space:nowrap;text-transform:uppercase;letter-spacing:.04em;font-size:10px">Overall mix</td>';
+    for(var oi=0;oi<tiers.length;oi++){
+      var ot=tiers[oi];
+      var oCnt=tierTotal[ot]||0;
+      var oPct=overallPct[ot];
+      mh+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums">';
+      if(oCnt>0){
+        mh+='<div style="font-weight:600;color:var(--navy)">'+oCnt+'</div>';
+        mh+='<div style="font-size:9px;color:var(--grey);margin-top:2px">'+oPct.toFixed(1)+'%</div>';
+      }else{
+        mh+='<div style="color:var(--grey);opacity:.4">—</div>';
+      }
+      mh+='</td>';
+    }
+    mh+='<td style="text-align:right;padding:8px;font-variant-numeric:tabular-nums;font-weight:700;color:var(--navy)">'+grand+'</td>';
+    mh+='</tr></tbody></table></div></div>';
+    h+=mh;
+  })();
+
   // Deal Attribution
   var attrDims=[{k:'hubspot_owner_id',l:'Rep'},{k:'_pq',l:'PQ'},{k:'dealstage',l:'Stage'},{k:'_att',l:'Attendance'},{k:'_qo',l:'Qual Outcome'},{k:'_industry',l:'Industry'},{k:'_timezone',l:'Time Zone'},{k:'_size',l:'Size'},{k:'_webTraffic',l:'Web Traffic'},{k:'_storylane',l:'Storylane'},{k:'utm_source',l:'UTM Source'},{k:'utm_medium',l:'UTM Medium'},{k:'utm_campaign',l:'UTM Campaign'},{k:'utm_content',l:'UTM Content'}];
   var attrData={};
