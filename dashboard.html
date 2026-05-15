@@ -1153,11 +1153,11 @@ function renderIrfan(){
     h+='</div>';
   }
   h+='</div>';
-  // Special Tile #2 — Signed deals by web traffic. Shows BOTH the Last 2 Weeks
-  // and MTD periods side-by-side in one card; both are independent of the
-  // top-of-page time selector.
+  // Special Tile #2 — Signed deals by web traffic. Toggle between Last 2 Weeks
+  // and MTD; both windows are fixed (independent of the page time selector).
+  if(!S.irfan.signed2Mode)S.irfan.signed2Mode='14d';
   h+='<div id="irfan-special2-card" style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:22px 24px">';
-  h+=_buildIrfanSpecial2Inner(d);
+  h+=_buildIrfanSpecial2Inner(d, S.irfan.signed2Mode);
   h+='</div>';
   h+='</div>';
 
@@ -1171,7 +1171,7 @@ function renderIrfan(){
   // Render charts — daily uses the same renderer as Overview (mini KPI cards + hover come for free)
   renderDemosPerDay(d,'irfan-daily-wrap');
   _renderIrfanWtPie(d);
-  if(!d.irfan?.last14Error){_renderIrfanSignedLast14Pie(d);_renderIrfanSignedMtdPie(d);}
+  if(!d.irfan?.last14Error)_renderIrfanSignedPie(d);
   _renderIrfanMetaTablesLoader();
 }
 
@@ -1498,54 +1498,61 @@ function _renderIrfanWtPieInto(targetId, rawBuckets, centerLabel, priorBuckets){
   });
 }
 function _renderIrfanWtPie(d){_renderIrfanWtPieInto('irfan-wt-pie', d.demoTracking?.scheduledByWebTraffic, 'demos booked', d.demoTracking?.scheduledByWebTrafficPrior);}
-function _renderIrfanSignedLast14Pie(d){_renderIrfanWtPieInto('irfan-signed14-pie', d.irfan?.signedLast14ByWebTraffic, 'signed');}
-function _renderIrfanSignedMtdPie(d){_renderIrfanWtPieInto('irfan-signedmtd-pie', d.irfan?.signedMtdByWebTraffic, 'signed');}
-// Build the Special #2 card content — shows BOTH Last 2 Weeks and MTD periods
-// side-by-side. The caller must also invoke the two pie renderers to populate
-// the SVG donuts.
-function _buildIrfanSpecial2Inner(d){
+// Single signed-deals pie that reads the current toggle mode and renders into #irfan-signed-pie.
+function _renderIrfanSignedPie(d){
+  const mode=S.irfan?.signed2Mode||'14d';
+  const buckets=mode==='mtd'?d.irfan?.signedMtdByWebTraffic:d.irfan?.signedLast14ByWebTraffic;
+  _renderIrfanWtPieInto('irfan-signed-pie', buckets, 'signed');
+}
+// Build the Special #2 card content for the given mode ('14d' or 'mtd').
+// The caller must also invoke _renderIrfanSignedPie(d) afterward to populate
+// the donut for the active mode.
+function _buildIrfanSpecial2Inner(d, mode){
   const _irf=d?.irfan||{};
   const fmtD=s=>{const p=s.split('-');return new Date(p[0],p[1]-1,p[2]).toLocaleDateString('en-US',{month:'long',day:'numeric'});};
   const _err=_irf.last14Error;
-  let h='<div class="irf-card-title">Signed Deals by Web Traffic</div>';
-  h+='<div class="irf-card-sub">Closed Won by Close Date, bucketed by Web Traffic Tier · independent of the time selector above</div>';
+  const _s2Mode=mode==='mtd'?'mtd':'14d';
+  const _s2From=_s2Mode==='mtd'?_irf.mtdFromDate:_irf.last14FromDate;
+  const _s2To=_s2Mode==='mtd'?_irf.mtdToDate:_irf.last14ToDate;
+  const _s2Range=_s2From&&_s2To?`${fmtD(_s2From)} – ${fmtD(_s2To)}`:(_s2Mode==='mtd'?'Month-to-Date':'last 14 days');
+  const _s2Signed=(_s2Mode==='mtd'?_irf.totalSignedMtd:_irf.totalSignedLast14)||0;
+  const _s2MRR=(_s2Mode==='mtd'?_irf.totalSignedMtdMRR:_irf.totalSignedLast14MRR)||0;
+  const _s2NewARR=_s2MRR*12;
+  const _s2ACV=_s2Signed>0?_s2MRR/_s2Signed:0;
+  let h='<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap"><div style="flex:1;min-width:200px"><div class="irf-card-title">Signed Deals by Web Traffic</div>';
+  h+=`<div class="irf-card-sub">Closed Won by Close Date, bucketed by Web Traffic Tier · ${_s2Range} · ${fN(_s2Signed)} signed</div></div>`;
+  // Toggle pills
+  h+='<div style="display:inline-flex;background:rgba(114,164,191,.10);border:1px solid rgba(114,164,191,.25);border-radius:99px;padding:3px;gap:2px;flex-shrink:0">';
+  h+=`<button onclick="irfanSetSigned2Mode('14d')" style="padding:5px 14px;border-radius:99px;font-size:11px;font-weight:${_s2Mode==='14d'?'700':'500'};border:none;background:${_s2Mode==='14d'?'var(--teal)':'transparent'};color:${_s2Mode==='14d'?'#fff':'var(--navy)'};cursor:pointer;font-family:var(--font-h)">Last 2 Weeks</button>`;
+  h+=`<button onclick="irfanSetSigned2Mode('mtd')" style="padding:5px 14px;border-radius:99px;font-size:11px;font-weight:${_s2Mode==='mtd'?'700':'500'};border:none;background:${_s2Mode==='mtd'?'var(--teal)':'transparent'};color:${_s2Mode==='mtd'?'#fff':'var(--navy)'};cursor:pointer;font-family:var(--font-h)">MTD</button>`;
+  h+='</div></div>';
   if(_err){h+='<div style="color:var(--red);font-size:11px;padding:14px 0;text-align:center;font-style:italic">Failed to load: '+_err+'</div>';return h;}
   if(_irf.last14FromDate==null&&_irf.mtdFromDate==null){h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">Data not yet loaded — click Refresh to fetch</div>';return h;}
-  // Build one panel for a given period
-  const panel=(label,from,to,signed,mrr,pieId,debugLine)=>{
-    const range=from&&to?`${fmtD(from)} – ${fmtD(to)}`:label;
-    const newArr=(mrr||0)*12;
-    const acv=signed>0?mrr/signed:0;
-    let p='<div style="flex:1;min-width:340px;background:rgba(114,164,191,.04);border:1px solid rgba(114,164,191,.18);border-radius:10px;padding:16px">';
-    p+=`<div style="font-family:var(--font-h);font-size:12px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">${label}</div>`;
-    p+=`<div style="font-size:11px;color:var(--grey);margin-bottom:12px;font-variant-numeric:tabular-nums">${range} · <strong style="color:var(--navy)">${fN(signed||0)} signed</strong></div>`;
-    if(!signed){
-      p+='<div style="color:var(--grey);font-size:12px;padding:14px 0;text-align:center;font-style:italic">No deals signed in '+range+'</div>';
-      if(debugLine)p+='<div style="font-size:10px;color:var(--grey);padding:6px 8px;background:rgba(23,44,69,.04);border-radius:4px;margin-top:6px;text-align:center;font-variant-numeric:tabular-nums">'+debugLine+'</div>';
-    } else {
-      p+='<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">';
-      p+='<div class="irf-mini-kpi-grid" style="grid-template-columns:1fr;flex:0 0 150px;gap:8px">';
-      p+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">New ARR</div><div class="irf-mini-kpi-value">${f$(newArr)}</div></div>`;
-      p+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">ACV</div><div class="irf-mini-kpi-value">${f$(acv)}</div></div>`;
-      p+='</div>';
-      p+=`<div id="${pieId}" style="flex:1;min-width:200px"></div>`;
-      p+='</div>';
-    }
-    p+='</div>';
-    return p;
-  };
-  // 14d debug line if empty
-  const _dbg14=_irf.last14Debug||{};const _cached=_dbg14.cached||{};
-  const _dbg14Line='14d debug · cached cCW='+fN(_cached.cCW||0)+' pCW='+fN(_cached.pCW||0)+' pmCW='+fN(_cached.pmCW||0)+' · fresh='+fN(_dbg14.fresh||0)+' · union='+fN(_dbg14.unionAfterDedupe||0);
-  // MTD debug line if empty
-  const _mdbg=_irf.mtdDebug||{};
-  const _dbgMtdLine='MTD debug · fresh='+fN(_mdbg.fresh||0)+' · union adds='+fN(_mdbg.unionAdds||0)+' · total='+fN(_mdbg.total||0)+(_mdbg.error?' · err: '+_mdbg.error:'');
-  h+='<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:14px">';
-  h+=panel('Last 2 Weeks',_irf.last14FromDate,_irf.last14ToDate,_irf.totalSignedLast14||0,_irf.totalSignedLast14MRR||0,'irfan-signed14-pie',_dbg14Line);
-  h+=panel('Month-to-Date',_irf.mtdFromDate,_irf.mtdToDate,_irf.totalSignedMtd||0,_irf.totalSignedMtdMRR||0,'irfan-signedmtd-pie',_dbgMtdLine);
+  if(!_s2Signed){
+    h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">No deals signed in '+_s2Range+'</div>';
+    return h;
+  }
+  // Side-by-side layout: mini KPIs on left (stacked), pie on right
+  h+='<div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;margin-top:14px">';
+  h+='<div class="irf-mini-kpi-grid" style="grid-template-columns:1fr;flex:0 0 200px">';
+  h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">New ARR</div><div class="irf-mini-kpi-value">${f$(_s2NewARR)}</div></div>`;
+  h+=`<div class="irf-mini-kpi"><div class="irf-mini-kpi-label">ACV</div><div class="irf-mini-kpi-value">${f$(_s2ACV)}</div></div>`;
+  h+='</div>';
+  h+='<div id="irfan-signed-pie" style="flex:1;min-width:280px"></div>';
   h+='</div>';
   return h;
 }
+// Toggle handler — mutates the card's innerHTML directly so the switch is
+// instant and isolated from renderIrfan side effects.
+window.irfanSetSigned2Mode=function(mode){
+  if(mode!=='14d'&&mode!=='mtd')return;
+  S.irfan.signed2Mode=mode;
+  const card=document.getElementById('irfan-special2-card');
+  if(card&&S.irfan.data){
+    card.innerHTML=_buildIrfanSpecial2Inner(S.irfan.data, mode);
+    _renderIrfanSignedPie(S.irfan.data);
+  }
+};
 
 // Lightweight churn update — only touches ARR/ROAS values, not the slider
 function updateDashChurn(){
