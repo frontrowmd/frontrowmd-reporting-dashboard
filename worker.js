@@ -1871,19 +1871,35 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     console.log(`Irfan last-14: cached={cCW:${cachedSourceCounts.cCW},pCW:${cachedSourceCounts.pCW},pmCW:${cachedSourceCounts.pmCW}} fresh=${freshFetched.length} union=${_combined.size} filtered=${irfanCW14.length} signed=${totalSignedLast14} (${_fromStr14} to ${_toStr14}), MRR ${totalSignedLast14MRR}, tiers ${Object.keys(signedLast14ByWebTraffic).join('|')}`);
 
     // Same shape, but for the CURRENT CALENDAR MONTH (Month-to-Date toggle).
-    // Filter the same union by [month-start, today].
+    // DEDICATED FETCH — independent of the last-14 union so the toggle's data
+    // is always populated regardless of which time window the user is on.
     const _todayMtd = new Date();
     const _mtdFrom = new Date(Date.UTC(_todayMtd.getUTCFullYear(), _todayMtd.getUTCMonth(), 1));
     const _mtdFromStr = fmt(_mtdFrom), _mtdToStr = fmt(_todayMtd);
     const _mtdFromMs = _mtdFrom.getTime();
     const _mtdToMs = Date.UTC(_todayMtd.getUTCFullYear(), _todayMtd.getUTCMonth(), _todayMtd.getUTCDate(), 23, 59, 59, 999);
-    const signedMtdByWebTraffic = {};
-    let totalSignedMtd = 0, totalSignedMtdMRR = 0;
-    for (const dl of _combined.values()) {
-      const cd = dl.properties?.closedate;
+    let mtdFetched = [];
+    let mtdFetchErr = null;
+    try {
+      mtdFetched = (await fetchClosedWonDeals(hsToken, _mtdFromStr, _mtdToStr)) || [];
+    } catch(mfe) {
+      mtdFetchErr = mfe.message;
+      console.warn('Irfan MTD dedicated fetch failed:', mfe.message);
+    }
+    // Defensive: also fold in any deals from the last-14 union that happen to
+    // sit in the MTD window — covers the (rare) case where the fresh fetch
+    // returns a partial result.
+    const _mtdMap = new Map();
+    for (const x of mtdFetched) _mtdMap.set(x.id, x);
+    for (const x of _combined.values()) {
+      const cd = x.properties?.closedate;
       if (!cd) continue;
       const cdMs = isoMs(cd);
-      if (isNaN(cdMs) || cdMs < _mtdFromMs || cdMs > _mtdToMs) continue;
+      if (!isNaN(cdMs) && cdMs >= _mtdFromMs && cdMs <= _mtdToMs) _mtdMap.set(x.id, x);
+    }
+    const signedMtdByWebTraffic = {};
+    let totalSignedMtd = 0, totalSignedMtdMRR = 0;
+    for (const dl of _mtdMap.values()) {
       const pp = dl.properties || {};
       const wtRaw = pp.average_monthly_web_traffic__cloned_ || pp.average_monthly_web_traffic || '';
       const key = wtRaw || '(none)';
@@ -1896,7 +1912,8 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     resp.irfan.totalSignedMtdMRR = totalSignedMtdMRR;
     resp.irfan.mtdFromDate = _mtdFromStr;
     resp.irfan.mtdToDate = _mtdToStr;
-    console.log(`Irfan MTD signed: ${totalSignedMtd} (${_mtdFromStr} to ${_mtdToStr}), MRR ${totalSignedMtdMRR}`);
+    resp.irfan.mtdDebug = { fresh: mtdFetched.length, unionAdds: _mtdMap.size - mtdFetched.length, total: _mtdMap.size, error: mtdFetchErr };
+    console.log(`Irfan MTD (dedicated): fresh=${mtdFetched.length} union+=${_mtdMap.size-mtdFetched.length} signed=${totalSignedMtd} (${_mtdFromStr} to ${_mtdToStr}), MRR ${totalSignedMtdMRR}, tiers ${Object.keys(signedMtdByWebTraffic).join('|')}`);
   } catch(e) {
     console.error('Irfan last-14-days fetch failed:', e);
     resp.irfan.last14Error = e.message;

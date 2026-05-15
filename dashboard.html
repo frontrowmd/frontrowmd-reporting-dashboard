@@ -1532,10 +1532,15 @@ function _buildIrfanSpecial2Inner(d, mode){
   else if(!_ir14Loaded)h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">Data not yet loaded — click Refresh to fetch</div>';
   else if(_mtdMissing)h+='<div style="color:#D97706;font-size:12px;padding:20px 0;text-align:center;font-style:italic">MTD data not on this payload — click ↻ Refresh in the top-right to re-fetch.</div>';
   else if(!_s2Signed){
-    const _dbg=_irf.last14Debug||{};
-    const _cached=_dbg.cached||{};
     h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">No deals signed in '+_s2Range+'</div>';
-    h+='<div style="font-size:10px;color:var(--grey);padding:6px 10px;background:rgba(23,44,69,.04);border-radius:4px;margin-top:8px;text-align:center;font-variant-numeric:tabular-nums">debug · cached cCW='+fN(_cached.cCW||0)+' pCW='+fN(_cached.pCW||0)+' pmCW='+fN(_cached.pmCW||0)+' · fresh='+fN(_dbg.fresh||0)+' · union='+fN(_dbg.unionAfterDedupe||0)+'</div>';
+    if(_s2Mode==='mtd'){
+      const _mdbg=_irf.mtdDebug||{};
+      h+='<div style="font-size:10px;color:var(--grey);padding:6px 10px;background:rgba(23,44,69,.04);border-radius:4px;margin-top:8px;text-align:center;font-variant-numeric:tabular-nums">MTD debug · fresh='+fN(_mdbg.fresh||0)+' · union adds='+fN(_mdbg.unionAdds||0)+' · total='+fN(_mdbg.total||0)+(_mdbg.error?' · err: '+_mdbg.error:'')+'</div>';
+    } else {
+      const _dbg=_irf.last14Debug||{};
+      const _cached=_dbg.cached||{};
+      h+='<div style="font-size:10px;color:var(--grey);padding:6px 10px;background:rgba(23,44,69,.04);border-radius:4px;margin-top:8px;text-align:center;font-variant-numeric:tabular-nums">14d debug · cached cCW='+fN(_cached.cCW||0)+' pCW='+fN(_cached.pCW||0)+' pmCW='+fN(_cached.pmCW||0)+' · fresh='+fN(_dbg.fresh||0)+' · union='+fN(_dbg.unionAfterDedupe||0)+'</div>';
+    }
   }
   else {
     h+='<div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;margin-top:14px">';
