@@ -1540,6 +1540,11 @@ function _buildIrfanSpecial2Inner(d, mode){
   h+='</div>';
   h+='<div id="irfan-signed-pie" style="flex:1;min-width:280px"></div>';
   h+='</div>';
+  // Diagnostic strip — exposes worker counts so we can compare against HubSpot
+  if(_s2Mode==='mtd'){
+    const _mdbg=_irf.mtdDebug||{};
+    h+='<div style="font-size:10px;color:var(--grey);padding:6px 10px;background:rgba(23,44,69,.03);border-radius:4px;margin-top:10px;text-align:center;font-variant-numeric:tabular-nums">MTD source · ET-fresh='+fN(_mdbg.fresh||0)+' · UTC-fresh='+fN(_mdbg.freshUtc||0)+' · total after union='+fN(_mdbg.total||0)+(_mdbg.error?' · err: '+_mdbg.error:'')+'</div>';
+  }
   return h;
 }
 // Toggle handler — mutates the card's innerHTML directly so the switch is
