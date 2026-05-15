@@ -344,8 +344,8 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
     <div class="snav">
       <div class="ni active" onclick="autoExpand();toggleDashMenu()" data-page="dashboard" id="dash-menu-parent" title="Executive Dashboard"><span class="ic">📊</span><span>Executive Dashboard</span><span id="dash-arrow" style="margin-left:auto;font-size:10px;transition:transform .2s">▼</span></div>
       <div id="dash-submenu" style="display:block;padding-left:24px">
-        <div class="ni sub" onclick="switchDashSub('irfan')" data-page="irfan" data-sub="irfan"><span class="ic" style="font-size:12px">⭐</span><span>Irfan Dashboard</span></div>
-        <div class="ni sub active" onclick="switchDashSub('overview')" data-page="dashboard" data-sub="overview"><span class="ic" style="font-size:12px">📊</span><span>Overview</span></div>
+        <div class="ni sub active" onclick="switchDashSub('irfan')" data-page="irfan" data-sub="irfan"><span class="ic" style="font-size:12px">⭐</span><span>Irfan Dashboard</span></div>
+        <div class="ni sub" onclick="switchDashSub('overview')" data-page="dashboard" data-sub="overview"><span class="ic" style="font-size:12px">📊</span><span>Overview</span></div>
         <div class="ni sub" onclick="switchDashSub('demoQuality')" data-page="demoQuality" data-sub="demoQuality"><span class="ic" style="font-size:12px">🎯</span><span>Demo Quality</span></div>
         <div class="ni sub" onclick="switchDashSub('outbound')" data-page="outbound" data-sub="outbound"><span class="ic" style="font-size:12px">📨</span><span>Outbound</span></div>
         <div class="ni sub" onclick="switchDashSub('strategy')" data-page="dashboard" data-sub="strategy"><span class="ic" style="font-size:12px">📋</span><span>Monthly Review</span></div>
@@ -536,7 +536,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 const _BUILD_VER='s5r11';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 let PW='';
-const S={dashboard:{win:'mtd',data:null,sub:'overview'},irfan:{win:'mtd',data:null},strategy:{data:null,win:'lastMonth'},calculator:{win:'mtd',data:null},signup:{win:null,data:null},analyzer:{win:'mtd',data:null,tab:'overview',sub:'overview'},demoQuality:{win:'mtd',data:null},csession:{step:1},content:{data:null,sub:'cs-intel'},outbound:{data:null}};let AP='dashboard';
+const S={dashboard:{win:'mtd',data:null,sub:'irfan'},irfan:{win:'7d',data:null},strategy:{data:null,win:'lastMonth'},calculator:{win:'mtd',data:null},signup:{win:null,data:null},analyzer:{win:'mtd',data:null,tab:'overview',sub:'overview'},demoQuality:{win:'mtd',data:null},csession:{step:1},content:{data:null,sub:'cs-intel'},outbound:{data:null}};let AP='irfan';
 const f$=v=>v==null?'—':'$'+Math.round(v).toLocaleString();
 const fN=v=>v==null?'—':Math.round(v).toLocaleString();
 const fP=(v,d=1)=>v==null?'—':v.toFixed(d)+'%';
@@ -575,7 +575,7 @@ async function doLogin(){
   btn.disabled=true;btn.innerHTML='<span class="sp" style="width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:8px"></span>Signing in...';
   document.getElementById('gerr').style.display='none';
   try{
-    const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw,window:'mtd'})});
+    const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw,window:S[AP]?.win||'7d'})});
     if(r.status===401){document.getElementById('gerr').style.display='block';btn.disabled=false;btn.textContent='Log In →';return;}
     const d=await r.json();for(const k of Object.keys(S)){if(k!=='analyzer'&&k!=='content')S[k].data=d;}
     document.getElementById('gate').style.display='none';document.getElementById('app').classList.add('active');
