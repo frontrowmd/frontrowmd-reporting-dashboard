@@ -1328,7 +1328,10 @@ function _renderIrfanMetaTables(d){
   let campRows=(meta.campaigns||[]).filter(c=>c.spend>0);
   if(stageF!=='all')campRows=campRows.filter(c=>_irfanStages(c.name).some(t=>t.k===stageF));
   campRows=_irfanSortRows(campRows,campSort.col,campSort.dir);
-  // Group creatives by parent campaign name so we can nest them under each row
+  // Group creatives by parent campaign name so we can nest them under each row.
+  // Two sources: the flat meta.creatives list (which has qualified counts but is
+  // limited to creatives with activity in the window) and meta.creativeByCampaign
+  // (the worker's full per-campaign creative breakdown).
   const _creByCamp={};
   for(const _cr of (meta.creatives||[])){
     const _k=(_cr.campaignName||_cr.campaign||'').toLowerCase().trim();
@@ -1336,6 +1339,7 @@ function _renderIrfanMetaTables(d){
     if(!_creByCamp[_k])_creByCamp[_k]=[];
     _creByCamp[_k].push(_cr);
   }
+  const _creByCampWorker=meta.creativeByCampaign||{};
   // Heatmap value arrays (across visible rows)
   const cSp=campRows.map(c=>c.spend),cIm=campRows.map(c=>c.impressions||0),cCl=campRows.map(c=>c.clicks||0),cCt=campRows.map(c=>c.ctr||0),cDe=campRows.map(c=>c.demos||0),cCp=campRows.map(c=>c.demos>0?c.spend/c.demos:0),cQu=campRows.map(c=>c.qualified||0);
   // Stage filter pills
@@ -1362,9 +1366,17 @@ function _renderIrfanMetaTables(d){
     const nm=(c.name||'').length>56?(c.name||'').slice(0,53)+'…':(c.name||'');
     const stags=_irfanStages(c.name);
     let stagesCell='';for(const t of stags)stagesCell+='<span style="display:inline-block;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;background:'+t.c+'15;color:'+t.c+';margin-right:2px">'+t.l+'</span>';
-    // Check for nested creatives
+    // Check for nested creatives — try flat list first, then worker per-campaign
+    // map, then fuzzy substring match against either source.
     const _campKey=(c.name||'').toLowerCase().trim();
-    const _nested=(_creByCamp[_campKey]||[]).slice().sort((a,b)=>b.spend-a.spend);
+    let _nested=(_creByCamp[_campKey]||[]).slice();
+    if(!_nested.length&&_creByCampWorker[_campKey])_nested=(_creByCampWorker[_campKey]||[]).slice();
+    if(!_nested.length){
+      for(const ck in _creByCampWorker){
+        if(ck.length>3&&(ck.indexOf(_campKey)>=0||_campKey.indexOf(ck)>=0)){_nested=(_creByCampWorker[ck]||[]).slice();break;}
+      }
+    }
+    _nested.sort((a,b)=>(b.spend||0)-(a.spend||0));
     const _hasNested=_nested.length>0;
     const _rowId='irf-camp-'+i;
     campH+='<tr style="border-bottom:1px solid var(--border)'+(_hasNested?';cursor:pointer':'')+'"'+(_hasNested?' onclick="irfanToggleCampCreatives(\''+_rowId+'\')"':'')+'>';
@@ -1529,6 +1541,7 @@ function _renderIrfanSignedLast14Pie(d){
 // Toggle handler for the Special #2 card's 14d / MTD switch
 window.irfanSetSigned2Mode=function(mode){
   if(mode!=='14d'&&mode!=='mtd')return;
+  console.log('[Irfan] signed2Mode →',mode,'· payload has totalSignedMtd?',S.irfan?.data?.irfan?.totalSignedMtd);
   S.irfan.signed2Mode=mode;
   if(AP==='irfan'&&S.irfan.data)renderIrfan();
 };
