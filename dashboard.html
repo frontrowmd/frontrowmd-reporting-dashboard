@@ -1153,8 +1153,10 @@ function renderIrfan(){
   h+='</div>';
   h+='</div>';
 
-  // Meta Campaign + Creative tables — read-only, pulled from S.analyzer.data.
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:24px"><div class="irf-card-title">Meta — Campaign & Creative Tables</div><div class="irf-card-sub">Sortable · sourced from the Paid Ads Dashboard payload</div><div id="irfan-meta-tables"></div></div>';
+  // Meta Campaign + Creative tables — each in its own card. Both lazy-loaded
+  // from the analyzer payload via _renderIrfanMetaTablesLoader.
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:16px"><div class="irf-card-title">Meta — Campaigns</div><div class="irf-card-sub">Sortable · stage-filterable · sourced from the Paid Ads Dashboard payload</div><div id="irfan-meta-campaigns"></div></div>';
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:24px"><div class="irf-card-title">Meta — Ad Creatives</div><div class="irf-card-sub">Sortable · all creatives across campaigns · sourced from the Paid Ads Dashboard payload</div><div id="irfan-meta-creatives"></div></div>';
 
   document.getElementById('irfan-c').innerHTML=h;
 
@@ -1170,7 +1172,10 @@ function renderIrfan(){
 // don't clobber S.analyzer's own state. Falls back to S.analyzer.data if the
 // user happens to have just visited the analyzer for the same window.
 function _renderIrfanMetaTablesLoader(){
-  const target=document.getElementById('irfan-meta-tables');if(!target)return;
+  const campTarget=document.getElementById('irfan-meta-campaigns');
+  const creTarget=document.getElementById('irfan-meta-creatives');
+  if(!campTarget&&!creTarget)return;
+  const _setBoth=(html)=>{if(campTarget)campTarget.innerHTML=html;if(creTarget)creTarget.innerHTML=html;};
   const irfWin=S.irfan?.win||'mtd';
   if(!S.irfan.metaCache)S.irfan.metaCache={};
   // Hit cache from prior Irfan fetch for this window
@@ -1180,7 +1185,7 @@ function _renderIrfanMetaTablesLoader(){
     S.irfan.metaCache[irfWin]=S.analyzer.data.channels.meta;
     _renderIrfanMetaTables(S.analyzer.data);return;
   }
-  target.innerHTML='<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px"><span class="sp" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle"></span> Loading Meta campaign + creative data…</div>';
+  _setBoth('<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px"><span class="sp" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle"></span> Loading Meta data…</div>');
   fetch(AZ_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:PW,window:irfWin})})
     .then(r=>r.json())
     .then(ad=>{
@@ -1189,10 +1194,10 @@ function _renderIrfanMetaTablesLoader(){
         // Only render if user is still on Irfan and on the same window
         if(AP==='irfan'&&(S.irfan?.win||'mtd')===irfWin)_renderIrfanMetaTables(ad);
       } else {
-        target.innerHTML='<div style="padding:24px;text-align:center;color:var(--red);font-size:12px">Failed to load analyzer data: '+(ad?.detail||ad?.error||'unknown')+'</div>';
+        _setBoth('<div style="padding:24px;text-align:center;color:var(--red);font-size:12px">Failed to load analyzer data: '+(ad?.detail||ad?.error||'unknown')+'</div>');
       }
     })
-    .catch(e=>{console.error('Irfan analyzer fetch failed:',e);target.innerHTML='<div style="padding:24px;text-align:center;color:var(--red);font-size:12px">Failed to load analyzer data: '+e.message+'</div>';});
+    .catch(e=>{console.error('Irfan analyzer fetch failed:',e);_setBoth('<div style="padding:24px;text-align:center;color:var(--red);font-size:12px">Failed to load analyzer data: '+e.message+'</div>');});
 }
 
 // Meta Campaign + Ad Creative tables for the Irfan Dashboard.
@@ -1256,9 +1261,11 @@ window.irfanSortCre=function(col){const s=S.irfan.metaCreSort||(S.irfan.metaCreS
 window.irfanCampStageF=function(stage){S.irfan.metaCampStageF=stage;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD);};
 function _renderIrfanMetaTables(d){
   _irfanMetaD=d;
-  const target=document.getElementById('irfan-meta-tables');if(!target)return;
+  const campTarget=document.getElementById('irfan-meta-campaigns');
+  const creTarget=document.getElementById('irfan-meta-creatives');
+  if(!campTarget&&!creTarget)return;
   const meta=d&&d.channels&&d.channels.meta;
-  if(!meta){target.innerHTML='<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px">No Meta data available for this window</div>';return;}
+  if(!meta){const empty='<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px">No Meta data available for this window</div>';if(campTarget)campTarget.innerHTML=empty;if(creTarget)creTarget.innerHTML=empty;return;}
   // Defaults: sort by CPD descending; no stage filter
   if(!S.irfan.metaCampSort)S.irfan.metaCampSort={col:'cpd',dir:'desc'};
   if(!S.irfan.metaCreSort)S.irfan.metaCreSort={col:'cpd',dir:'desc'};
@@ -1273,8 +1280,8 @@ function _renderIrfanMetaTables(d){
   const cSp=campRows.map(c=>c.spend),cIm=campRows.map(c=>c.impressions||0),cCl=campRows.map(c=>c.clicks||0),cCt=campRows.map(c=>c.ctr||0),cDe=campRows.map(c=>c.demos||0),cCp=campRows.map(c=>c.demos>0?c.spend/c.demos:0),cQu=campRows.map(c=>c.qualified||0);
   // Stage filter pills
   const stages=[{k:'all',l:'All',c:'var(--grey)'},{k:'s1',l:'TOF',c:'#2980B9'},{k:'s2',l:'MOF',c:'#E67E22'},{k:'s3',l:'BOF',c:'#C0392B'},{k:'s4',l:'Retarget',c:'#7D3C98'}];
-  let campH='<div style="margin-bottom:24px">';
-  campH+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap"><div style="font-family:var(--font-h);font-size:12px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.06em">Meta Campaigns <span style="font-weight:400;color:var(--grey);font-size:11px;text-transform:none;letter-spacing:0">('+campRows.length+' rows · sort by '+campSort.col+' '+campSort.dir+')</span></div>';
+  let campH='';
+  campH+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap"><div style="font-size:11px;color:var(--grey);font-variant-numeric:tabular-nums">'+campRows.length+' rows · sort by '+campSort.col+' '+campSort.dir+'</div>';
   campH+='<div style="flex:1"></div><span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em">Stage</span>';
   for(const s of stages){const isA=stageF===s.k;campH+='<button onclick="irfanCampStageF(\''+s.k+'\')" style="padding:5px 12px;border-radius:50px;font-size:10px;font-weight:'+(isA?'700':'500')+';border:'+(isA?'none':'1px solid '+s.c)+';background:'+(isA?s.c:'transparent')+';color:'+(isA?'#fff':s.c)+';cursor:pointer;font-family:var(--font-h)">'+s.l+'</button>';}
   campH+='</div>';
@@ -1309,14 +1316,14 @@ function _renderIrfanMetaTables(d){
     campH+='</tr>';
   }
   if(!campRows.length)campH+='<tr><td colspan="10" style="padding:16px;text-align:center;color:var(--grey)">No campaigns match</td></tr>';
-  campH+='</tbody></table></div></div>';
+  campH+='</tbody></table></div>';
 
   // ── Creatives ──
   let creRows=(meta.creatives||[]).filter(c=>c.spend>0);
   creRows=_irfanSortRows(creRows,creSort.col,creSort.dir);
   const rSp=creRows.map(c=>c.spend),rIm=creRows.map(c=>c.impressions||0),rCl=creRows.map(c=>c.clicks||0),rCt=creRows.map(c=>c.ctr||0),rDe=creRows.map(c=>c.demos||0),rCp=creRows.map(c=>c.demos>0?c.spend/c.demos:0),rQu=creRows.map(c=>c.qualified||0);
-  let creH='<div>';
-  creH+='<div style="font-family:var(--font-h);font-size:12px;font-weight:700;color:var(--navy);margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em">Meta Ad Creatives <span style="font-weight:400;color:var(--grey);font-size:11px;text-transform:none;letter-spacing:0">('+creRows.length+' rows · sort by '+creSort.col+' '+creSort.dir+')</span></div>';
+  let creH='';
+  creH+='<div style="font-size:11px;color:var(--grey);font-variant-numeric:tabular-nums;margin-bottom:10px">'+creRows.length+' rows · sort by '+creSort.col+' '+creSort.dir+'</div>';
   creH+='<div style="overflow-x:auto"><table class="irf-meta-table" style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr style="border-bottom:1.5px solid var(--border)">';
   creH+='<th style="width:68px;padding:8px 4px"></th>';
   creH+=_irfanSortableTh('Name','name',creSort,'irfanSortCre','left');
@@ -1349,9 +1356,10 @@ function _renderIrfanMetaTables(d){
     creH+='</tr>';
   }
   if(!creRows.length)creH+='<tr><td colspan="10" style="padding:16px;text-align:center;color:var(--grey)">No creatives</td></tr>';
-  creH+='</tbody></table></div></div>';
+  creH+='</tbody></table></div>';
 
-  target.innerHTML=campH+creH;
+  if(campTarget)campTarget.innerHTML=campH;
+  if(creTarget)creTarget.innerHTML=creH;
 }
 
 // Web-traffic-tier donut chart for Irfan Dashboard. Segments in fixed chronological
