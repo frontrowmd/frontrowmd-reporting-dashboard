@@ -459,7 +459,20 @@ async function fetchAnyWonDealsByCloseDate(token, from, to) {
       { propertyName: 'closedate', operator: 'GTE', value: String(toMsET(from)) },
       { propertyName: 'closedate', operator: 'LTE', value: String(toMsET(to, true)) },
     ],
-  }], ['amount','closedate','hs_createdate','utm_source','utm_medium','utm_campaign','utm_content','hubspot_owner_id','brand_status','average_monthly_web_traffic__cloned_','average_monthly_web_traffic','dealstage','dealname']);
+  }], ['amount','closedate','hs_createdate','hs_date_entered_closedwon','utm_source','utm_medium','utm_campaign','utm_content','hubspot_owner_id','brand_status','average_monthly_web_traffic__cloned_','average_monthly_web_traffic','dealstage','dealname']);
+}
+
+// Pipeline-agnostic "won" deals by hs_date_entered_closedwon (the timestamp HubSpot
+// stamps when a deal enters a closed-won stage). Catches deals whose user-editable
+// `closedate` falls outside the window but which entered won inside it.
+async function fetchAnyWonDealsByEnteredWon(token, from, to) {
+  return hsSearch(token, 'deals', [{
+    filters: [
+      { propertyName: 'hs_is_closed_won', operator: 'EQ', value: 'true' },
+      { propertyName: 'hs_date_entered_closedwon', operator: 'GTE', value: String(toMsET(from)) },
+      { propertyName: 'hs_date_entered_closedwon', operator: 'LTE', value: String(toMsET(to, true)) },
+    ],
+  }], ['amount','closedate','hs_createdate','hs_date_entered_closedwon','utm_source','utm_medium','utm_campaign','utm_content','hubspot_owner_id','brand_status','average_monthly_web_traffic__cloned_','average_monthly_web_traffic','dealstage','dealname']);
 }
 
 // Closed-won deals by closedate (guide Section 5)
@@ -1564,6 +1577,31 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     console.error('Irfan DQ form fetch failed:', e);
   }
 
+  // Irfan Special #2 — MTD signed-deals dual fetch. Done EARLY (here, not later
+  // inside the irfan response block) so it gets subrequest budget before the
+  // heavy company/contact batches in Phase 2 burn through HubSpot's 100req/10s
+  // window. Two parallel filters:
+  //   1) hs_is_closed_won=true + closedate in MTD window  (pipeline-agnostic by user-editable close date)
+  //   2) hs_is_closed_won=true + hs_date_entered_closedwon in MTD window  (catches default-pipeline deals
+  //      whose closedate was manually set outside May but which actually entered won this month)
+  // Results are unioned in the aggregation block below.
+  const _irfanMtdToday = new Date();
+  const _irfanMtdFrom  = new Date(Date.UTC(_irfanMtdToday.getUTCFullYear(), _irfanMtdToday.getUTCMonth(), 1));
+  const _irfanMtdFromStr = fmt(_irfanMtdFrom), _irfanMtdToStr = fmt(_irfanMtdToday);
+  let _irfanMtdByClose = [], _irfanMtdByEntered = [];
+  let _irfanMtdByCloseErr = null, _irfanMtdByEnteredErr = null;
+  try {
+    const [byClose, byEntered] = await Promise.all([
+      fetchAnyWonDealsByCloseDate(hsToken, _irfanMtdFromStr, _irfanMtdToStr).catch(e => { _irfanMtdByCloseErr = e.message; return []; }),
+      fetchAnyWonDealsByEnteredWon(hsToken, _irfanMtdFromStr, _irfanMtdToStr).catch(e => { _irfanMtdByEnteredErr = e.message; return []; }),
+    ]);
+    _irfanMtdByClose = byClose || [];
+    _irfanMtdByEntered = byEntered || [];
+    console.log(`Irfan MTD early-fetch: byClose=${_irfanMtdByClose.length} byEntered=${_irfanMtdByEntered.length} window=${_irfanMtdFromStr}..${_irfanMtdToStr}`);
+  } catch(e) {
+    console.error('Irfan MTD early-fetch failed:', e);
+  }
+
   // ── Phase 2: Run HubSpot calls sequentially (avoids 429 rate limits) ──
   const cSch = await fetchScheduledContacts(hsToken, current.from, current.to);
   // For Demo Quality: extend pipeline fetch through end of month (processPipelineDeals re-filters to MTD)
@@ -1884,29 +1922,21 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     console.log(`Irfan last-14: cached={cCW:${cachedSourceCounts.cCW},pCW:${cachedSourceCounts.pCW},pmCW:${cachedSourceCounts.pmCW}} fresh=${freshFetched.length} union=${_combined.size} filtered=${irfanCW14.length} signed=${totalSignedLast14} (${_fromStr14} to ${_toStr14}), MRR ${totalSignedLast14MRR}, tiers ${Object.keys(signedLast14ByWebTraffic).join('|')}`);
 
     // Same shape, but for the CURRENT CALENDAR MONTH (Month-to-Date toggle).
-    // DEDICATED FETCH — independent of the last-14 union so the toggle's data
-    // is always populated regardless of which time window the user is on.
-    const _todayMtd = new Date();
-    const _mtdFrom = new Date(Date.UTC(_todayMtd.getUTCFullYear(), _todayMtd.getUTCMonth(), 1));
-    const _mtdFromStr = fmt(_mtdFrom), _mtdToStr = fmt(_todayMtd);
-    const _mtdFromMs = _mtdFrom.getTime();
-    const _mtdToMs = Date.UTC(_todayMtd.getUTCFullYear(), _todayMtd.getUTCMonth(), _todayMtd.getUTCDate(), 23, 59, 59, 999);
-    // Single fetch using the pipeline-agnostic hs_is_closed_won filter so we
-    // pick up custom-pipeline "Won" stages (Onboarding, etc.) alongside the
-    // default 'closedwon'. Previous version did two fetches (ET + UTC) but
-    // those were tripping HubSpot's per-token rate limit and returning empty.
-    let mtdFetched = [];
-    let mtdFetchErr = null;
-    try {
-      mtdFetched = (await fetchAnyWonDealsByCloseDate(hsToken, _mtdFromStr, _mtdToStr)) || [];
-    } catch(mfe) {
-      mtdFetchErr = mfe.message;
-      console.warn('Irfan MTD fetch failed:', mfe.message);
-    }
-    // Defensive: also fold in any deals from the last-14 union that sit in the
-    // MTD window — covers the case where the dedicated fetch was rate-limited.
+    // Uses the EARLY-FETCHED MTD results (_irfanMtdByClose + _irfanMtdByEntered)
+    // captured before Phase 2's heavy company/contact batches so they had full
+    // subrequest budget. Unioned with the last-14 cohort as final safety net.
+    const _mtdFromStr = _irfanMtdFromStr, _mtdToStr = _irfanMtdToStr;
+    const _mtdFromMs = _irfanMtdFrom.getTime();
+    const _mtdToMs = Date.UTC(_irfanMtdToday.getUTCFullYear(), _irfanMtdToday.getUTCMonth(), _irfanMtdToday.getUTCDate(), 23, 59, 59, 999);
+    // Three-way union:
+    //   (1) deals where closedate is in MTD window  → _irfanMtdByClose
+    //   (2) deals where hs_date_entered_closedwon is in MTD window → _irfanMtdByEntered
+    //   (3) deals from the last-14 union whose closedate is in MTD window  → fallback
     const _mtdMap = new Map();
-    for (const x of mtdFetched) _mtdMap.set(x.id, x);
+    for (const x of (_irfanMtdByClose||[]))   _mtdMap.set(x.id, x);
+    const _mtdAfterClose = _mtdMap.size;
+    for (const x of (_irfanMtdByEntered||[])) _mtdMap.set(x.id, x);
+    const _mtdAfterEntered = _mtdMap.size;
     for (const x of _combined.values()) {
       const cd = x.properties?.closedate;
       if (!cd) continue;
@@ -1929,12 +1959,15 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     resp.irfan.mtdFromDate = _mtdFromStr;
     resp.irfan.mtdToDate = _mtdToStr;
     resp.irfan.mtdDebug = {
-      fresh: mtdFetched.length,
-      unionAdds: _mtdMap.size - mtdFetched.length,
+      byClose: (_irfanMtdByClose||[]).length,
+      byEntered: (_irfanMtdByEntered||[]).length,
+      enteredAdds: _mtdAfterEntered - _mtdAfterClose,
+      unionAdds: _mtdMap.size - _mtdAfterEntered,
       total: _mtdMap.size,
-      error: mtdFetchErr,
+      byCloseError: _irfanMtdByCloseErr,
+      byEnteredError: _irfanMtdByEnteredErr,
     };
-    console.log(`Irfan MTD (hs_is_closed_won): fresh=${mtdFetched.length} union+=${_mtdMap.size-mtdFetched.length} total=${_mtdMap.size} signed=${totalSignedMtd} (${_mtdFromStr} to ${_mtdToStr}), MRR ${totalSignedMtdMRR}, tiers ${Object.keys(signedMtdByWebTraffic).join('|')}`);
+    console.log(`Irfan MTD (dual-filter early-fetch): byClose=${(_irfanMtdByClose||[]).length} byEntered=${(_irfanMtdByEntered||[]).length} enteredAdds=${_mtdAfterEntered - _mtdAfterClose} unionAdds=${_mtdMap.size - _mtdAfterEntered} total=${_mtdMap.size} signed=${totalSignedMtd} (${_mtdFromStr} to ${_mtdToStr}), MRR ${totalSignedMtdMRR}, tiers ${Object.keys(signedMtdByWebTraffic).join('|')}`);
   } catch(e) {
     console.error('Irfan last-14-days fetch failed:', e);
     resp.irfan.last14Error = e.message;

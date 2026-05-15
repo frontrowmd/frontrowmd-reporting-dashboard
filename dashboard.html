@@ -1543,7 +1543,8 @@ function _buildIrfanSpecial2Inner(d, mode){
   // Diagnostic strip — exposes worker counts so we can compare against HubSpot
   if(_s2Mode==='mtd'){
     const _mdbg=_irf.mtdDebug||{};
-    h+='<div style="font-size:10px;color:var(--grey);padding:6px 10px;background:rgba(23,44,69,.03);border-radius:4px;margin-top:10px;text-align:center;font-variant-numeric:tabular-nums">MTD source · fresh (hs_is_closed_won)='+fN(_mdbg.fresh||0)+' · union adds='+fN(_mdbg.unionAdds||0)+' · total='+fN(_mdbg.total||0)+(_mdbg.error?' · err: '+_mdbg.error:'')+'</div>';
+    const _errs=[_mdbg.byCloseError?'byClose:'+_mdbg.byCloseError:'',_mdbg.byEnteredError?'byEntered:'+_mdbg.byEnteredError:''].filter(Boolean).join(' · ');
+    h+='<div style="font-size:10px;color:var(--grey);padding:6px 10px;background:rgba(23,44,69,.03);border-radius:4px;margin-top:10px;text-align:center;font-variant-numeric:tabular-nums">MTD source · byClose='+fN(_mdbg.byClose||0)+' · byEntered='+fN(_mdbg.byEntered||0)+' · enteredAdds='+fN(_mdbg.enteredAdds||0)+' · unionAdds='+fN(_mdbg.unionAdds||0)+' · total='+fN(_mdbg.total||0)+(_errs?' · '+_errs:'')+'</div>';
   }
   return h;
 }
