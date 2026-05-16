@@ -422,11 +422,19 @@ async function fetchContactsForDQ(token, from, to) {
 }
 
 // Pipeline deals (guide Section 4 — multiple filterGroups OR)
-async function fetchPipelineDeals(token, from, to) {
+async function fetchPipelineDeals(token, from, to, opts = {}) {
   // date_demo_booked is a DATE property stored at midnight UTC — use UTC boundaries
   const fMsDate = String(toMsUTC(from)), tMsDate = String(toMsUTC(to, true));
   // hs_createdate is a datetime property — use ET boundaries
   const fMsET = String(toMsET(from)), tMsET2 = String(toMsET(to, true));
+  // Pagination & sort can be overridden by callers fetching wide windows where
+  // hsSearch's default (200 × 10 pages = 2000) is at risk of capping — e.g.
+  // the 4-month Sign-Up Rate cohort fetch. Default sort (hs_createdate ASC)
+  // truncates from the newest end if the cap is hit, which silently drops the
+  // most recent months. Cohort callers should pass DESC sort + bumped maxPages.
+  const limit = opts.limit ?? 200;
+  const sorts = opts.sorts ?? [{ propertyName: 'hs_createdate', direction: 'ASCENDING' }];
+  const maxPages = opts.maxPages ?? 10;
   const deals = await hsSearch(token, 'deals', [
     { filters: [
       { propertyName: 'date_demo_booked', operator: 'GTE', value: fMsDate },
@@ -445,7 +453,7 @@ async function fetchPipelineDeals(token, from, to) {
       { propertyName: 'hs_createdate', operator: 'GTE', value: fMsET },
       { propertyName: 'hs_createdate', operator: 'LTE', value: tMsET2 },
     ]},
-  ], ['dealname','date_demo_booked','demo_given_date','demo_given__status','demo_attendance_status','demo_qualification_outcome','rescheduled_meeting_date','disqualification_reason','dealstage','amount','closedate','createdate','hs_createdate','hubspot_owner_id','utm_source','utm_medium','utm_campaign','utm_content','brand_status','average_monthly_web_traffic__cloned_']);
+  ], ['dealname','date_demo_booked','demo_given_date','demo_given__status','demo_attendance_status','demo_qualification_outcome','rescheduled_meeting_date','disqualification_reason','dealstage','amount','closedate','createdate','hs_createdate','hubspot_owner_id','utm_source','utm_medium','utm_campaign','utm_content','brand_status','average_monthly_web_traffic__cloned_'], limit, sorts, maxPages);
   return [...new Map(deals.map(d => [d.id, d])).values()]; // dedup
 }
 
@@ -1767,8 +1775,18 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
 
   const ownerMap = await fetchOwners(hsToken);
 
-  // Single sign-up cohort fetch: full 4-month window
-  const cohortDeals = await fetchPipelineDeals(hsToken, cohortStart, cohortEnd);
+  // Single sign-up cohort fetch: full 4-month window.
+  // Override hsSearch defaults so we don't silently truncate the newest months:
+  //   • sorts: date_demo_booked DESC — if we ever do hit the page cap, the
+  //     dropped tail is the OLDEST data (4 months back), not the newest.
+  //     The page-7 buildSignUpCohorts uses the recent months prominently, so
+  //     losing the newest end was very visible (April/May appeared sparse).
+  //   • maxPages: 30 → 6000-deal headroom across the 3 OR filter groups (deduped).
+  const cohortDeals = await fetchPipelineDeals(hsToken, cohortStart, cohortEnd, {
+    sorts: [{ propertyName: 'date_demo_booked', direction: 'DESCENDING' }],
+    maxPages: 30,
+  });
+  console.log(`cohortDeals: ${cohortDeals.length} deals (${cohortStart} → ${cohortEnd}) — desc sort, maxPages=30`);
 
   // All-time deals for rep summary and marketing funnel.
   //
