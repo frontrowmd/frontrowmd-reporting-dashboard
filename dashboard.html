@@ -123,6 +123,33 @@ html,body{height:100%}body{font-family:var(--font-b);font-size:15px;color:var(--
 .irf-grouped-value{font-family:var(--font-h);font-size:20px;font-weight:700;color:var(--navy);line-height:1.1;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .irf-grouped-item.primary .irf-grouped-value{font-size:40px;letter-spacing:-.02em;margin:4px 0 6px;overflow:visible}
 .irf-grouped-calc{font-size:11px;color:var(--navy);font-weight:600;font-variant-numeric:tabular-nums;background:rgba(255,255,255,.5);display:inline-block;padding:4px 10px;border-radius:99px;margin-top:2px;white-space:nowrap}
+/* Sign-Up Rate cohort cards — Row 1 highlighted, Row 2 secondary, table below. */
+.su-cohort-card{background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:18px}
+.su-cohort-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;gap:12px;flex-wrap:wrap}
+.su-cohort-title{font-family:var(--font-h);font-size:16px;font-weight:700;color:var(--navy)}
+.su-cohort-sub{font-size:11px;color:var(--grey)}
+.su-row1{background:linear-gradient(135deg,rgba(114,164,191,.10),rgba(114,164,191,.20));border:1px solid rgba(114,164,191,.30);border-radius:10px;box-shadow:inset 4px 0 0 var(--teal);display:grid;grid-template-columns:repeat(6,minmax(0,1fr));padding:14px 0;margin-bottom:8px;position:relative}
+.su-r1-item{padding:6px 14px;display:flex;flex-direction:column;justify-content:center;min-width:0;position:relative}
+.su-r1-item.primary{text-align:center;align-items:center;padding:4px 14px 8px}
+.su-r1-item:not(:nth-child(6n+1))::before{content:'';position:absolute;left:0;top:10px;bottom:10px;width:1px;background:rgba(114,164,191,.25)}
+.su-row2{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;margin-bottom:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.su-r2-item{padding:10px 14px;display:flex;flex-direction:column;justify-content:center;min-width:0;background:var(--white);position:relative}
+.su-r2-item:not(:first-child){border-left:1px solid var(--border)}
+.su-label{font-family:var(--font-h);font-size:10px;color:var(--teal);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:5px;line-height:1.25}
+.su-value{font-family:var(--font-h);font-size:20px;font-weight:700;color:var(--navy);line-height:1.1;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.su-r1-item.primary .su-value{font-size:40px;letter-spacing:-.02em;margin:4px 0 6px;overflow:visible}
+.su-calc{font-size:10px;color:var(--navy);font-weight:600;font-variant-numeric:tabular-nums;background:rgba(255,255,255,.5);display:inline-block;padding:3px 9px;border-radius:99px;margin-top:2px;white-space:nowrap}
+.su-rep-table{width:100%;font-size:11px;border-collapse:collapse;table-layout:fixed}
+.su-rep-table th{text-align:right;padding:8px 6px;font-family:var(--font-h);font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;border-bottom:1.5px solid var(--border);white-space:nowrap}
+.su-rep-table th:first-child{text-align:left}
+.su-rep-table th.highlight{background:rgba(114,164,191,.10);color:var(--teal)}
+.su-rep-table td{padding:8px 6px;text-align:right;font-variant-numeric:tabular-nums;border-bottom:1px solid var(--border);color:var(--navy)}
+.su-rep-table td:first-child{text-align:left;font-weight:600}
+.su-rep-table td.highlight{background:rgba(114,164,191,.06);font-weight:700}
+.su-rep-table tbody tr:hover td{background:rgba(114,164,191,.08)}
+.su-rep-table tbody tr:hover td.highlight{background:rgba(114,164,191,.16)}
+.su-rep-table tfoot td{background:var(--teal-8);font-weight:700;border-top:1.5px solid var(--teal-30);border-bottom:none}
+.su-rep-table tfoot td.highlight{background:rgba(114,164,191,.20)}
 .irf-meta-table tbody tr{transition:background .15s ease,box-shadow .15s ease}
 .irf-meta-table tbody tr:hover td{background:rgba(114,164,191,.10)}
 .irf-meta-table tbody tr:hover{box-shadow:inset 3px 0 0 var(--teal)}
@@ -498,7 +525,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
         </div>
       </div>
     </div></div>
-    <div class="pg" id="page-signup"><div class="sec"><div class="st">Sign-Up Rate by Cohort</div><div style="font-size:13px;color:var(--grey);margin-bottom:16px">Deals created during each month and their current outcome as of today.</div><div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;padding:12px 16px;background:var(--white);border:1px solid var(--border);border-radius:10px;max-width:400px"><span style="font-size:12px;color:var(--grey);white-space:nowrap">Churn:</span><input type="range" id="suChurn" min="0" max="10" step="0.25" value="0" style="flex:1;height:6px;background:linear-gradient(90deg,var(--teal) 0%,var(--teal-30) 0%);border-radius:50px"><span id="suChD" style="font-family:var(--font-h);font-weight:700;color:var(--navy);min-width:50px;font-size:14px">0.00%</span></div><div id="signup-c"></div></div></div>
+    <div class="pg" id="page-signup"><div class="sec"><div class="st">Sign-Up Rate by Cohort</div><div style="font-size:13px;color:var(--grey);margin-bottom:16px">Of demos booked in each calendar month: how many signed, how many are still pending, and the per-rep breakdown. Same definition as the Irfan Dashboard's "Signed Deals from Last Month" card.</div><div id="signup-c"></div></div></div>
     <div class="pg" id="page-analyzer">
       <div id="az-date-header" style="margin-bottom:16px"></div>
       <div style="display:flex;gap:6px;margin-bottom:24px;flex-wrap:wrap" id="az-tabs"></div>
@@ -2932,61 +2959,126 @@ cv.addEventListener('mouseleave',function(){tip.style.display='none';});
 // ═══════════════ SIGN-UP RATE ═══════════════
 function renderSignUp(){
   const d=S.signup.data||S.dashboard.data;if(!d||d.error)return;
-  const s=d.signUpRate;if(!s||!s.cohorts){document.getElementById('signup-c').innerHTML='<div style="color:var(--grey)">No data</div>';return;}
-  const cr=getChurnRate(),eM=effM(cr),crPct=(cr*100).toFixed(2);
-  const pctOfQual=(n,qual)=>qual>0?`<span class="sub">${((n/qual)*100).toFixed(0)}% of qual</span>`:'';
-  const pctOfTotal=(n,qual,te,nq)=>{const tot=qual+te+nq;return tot>0?`<span class="sub">${((n/tot)*100).toFixed(0)}% of total</span>`:'';};
-  let h='';
+  const s=d.signUpRate;
+  if(!s||!s.cohorts){document.getElementById('signup-c').innerHTML='<div style="color:var(--grey)">No data</div>';return;}
 
-  // ── All Time By Rep Summary ──
-  if(s.allTimeByRep&&s.allTimeByRep.length){
-    const reps=s.allTimeByRep;
-    let tQ=0,tW=0,tL=0,tP=0,tMRR=0,tCyc=[];
-    let rows='';
+  // Formatters — Avg Days to Close mirrors the Irfan Special #1 card:
+  // one decimal under 10d, integer otherwise.
+  const fmtDays=(n)=>{
+    if(n==null)return '—';
+    const dStr=n<10?n.toFixed(1):Math.round(n).toString();
+    return dStr+'<span style="font-size:11px;color:var(--grey);font-weight:600;margin-left:2px">d</span>';
+  };
+  const fmtPct=(v,dec=1)=>v==null?'—':v.toFixed(dec)+'%';
+  const fmtDateRange=(from,to)=>{
+    if(!from||!to)return '';
+    const fd=new Date(from+'T00:00:00Z'),td=new Date(to+'T00:00:00Z');
+    const opts={month:'short',day:'numeric',timeZone:'UTC'};
+    return fd.toLocaleDateString('en-US',opts)+' – '+td.toLocaleDateString('en-US',opts)+', '+td.getUTCFullYear();
+  };
+
+  let h='<div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);margin-bottom:14px">Monthly Cohorts</div>';
+
+  for(const c of s.cohorts){
+    const _avgD=c.avgDaysToClose;
+    const _avgDStr=fmtDays(_avgD);
+    const titleRange=fmtDateRange(c.period.from,c.period.to);
+
+    // ── Row 1 (highlighted): % Signed (primary) · Closed Won · Demos Held · Avg Days to Close · New ARR · ACV
+    let row1='<div class="su-row1">';
+    row1+='<div class="su-r1-item primary">';
+    row1+='<div class="su-label">% Signed</div>';
+    row1+=`<div class="su-value">${c.pctSigned.toFixed(1)}%</div>`;
+    row1+=`<div class="su-calc">${fN(c.signed)} ÷ ${fN(c.demosHeld)} demos held</div>`;
+    row1+='</div>';
+    row1+=`<div class="su-r1-item"><div class="su-label">Closed Won</div><div class="su-value">${fN(c.signed)}</div></div>`;
+    row1+=`<div class="su-r1-item"><div class="su-label">Demos Held</div><div class="su-value">${fN(c.demosHeld)}</div></div>`;
+    row1+=`<div class="su-r1-item" title="Average days from date_demo_booked to closedate across signed deals (n=${fN(c.avgDaysToCloseN||0)})"><div class="su-label">Avg Days to Close</div><div class="su-value">${_avgDStr}</div></div>`;
+    row1+=`<div class="su-r1-item"><div class="su-label">New ARR</div><div class="su-value">${c.signed>0?f$(c.newArr):'—'}</div></div>`;
+    row1+=`<div class="su-r1-item"><div class="su-label">ACV</div><div class="su-value">${c.signed>0?f$(c.acv):'—'}</div></div>`;
+    row1+='</div>';
+
+    // ── Row 2: % Pending · % Pruned · % No Show
+    const _sc=c.stageCounts||{};
+    const _pendingNum=(_sc.appt||0)+(_sc.demoHappened||0)+(_sc.dm||0)+(_sc.cs||0);
+    let row2='<div class="su-row2">';
+    row2+=`<div class="su-r2-item" title="Appointment Scheduled + Demo Happened + Decision Maker + Contract Sent ÷ Demos Held"><div class="su-label">% Pending</div><div class="su-value">${fmtPct(c.pctPending)}</div><div style="font-size:10px;color:var(--grey);margin-top:2px">${fN(_pendingNum)} ÷ ${fN(c.demosHeld)}</div></div>`;
+    row2+=`<div class="su-r2-item" title="Not a Fit ÷ all deals booked in month"><div class="su-label">% Pruned</div><div class="su-value">${fmtPct(c.pctPruned)}</div><div style="font-size:10px;color:var(--grey);margin-top:2px">${fN(_sc.notAFit||0)} ÷ ${fN(c.allBooked||0)}</div></div>`;
+    row2+=`<div class="su-r2-item" title="No Show ÷ all deals booked in month"><div class="su-label">% No Show</div><div class="su-value">${fmtPct(c.pctNoShow)}</div><div style="font-size:10px;color:var(--grey);margin-top:2px">${fN(_sc.noShow||0)} ÷ ${fN(c.allBooked||0)}</div></div>`;
+    row2+='</div>';
+
+    // ── Per-rep table
+    // Columns: Rep · %Signed* · Closed Won* · Demos Held · Avg Days · New ARR · ACV · #CS · #DM · %Pending · %Pruned · %NoShow
+    // (* = highlight column)
+    const reps=Object.entries(c.byRep)
+      .map(([oid,r])=>r)
+      .sort((a,b)=>(b.signed||0)-(a.signed||0) || (b.demosHeld||0)-(a.demosHeld||0));
+    let tableRows='';
     for(const r of reps){
-      tQ+=r.qualified;tW+=r.won;tL+=r.lost;tP+=r.pending;tMRR+=r.mrr;
-      if(r.avgCycleDays!=null)tCyc.push(r.avgCycleDays);
-      const rARR=r.mrr*eM;
-      const pPct=r.qualified>0?((r.pending/r.qualified)*100).toFixed(0)+'%':'0%';
-      rows+=`<tr><td>${r.name}</td><td class="n">${r.won}</td><td class="n">${fP(r.signUpRate)}</td><td class="n">${r.avgCycleDays!=null?Math.round(r.avgCycleDays)+' days':'—'}</td><td class="n">${r.pending}<span class="sub">${pPct}</span></td><td class="n">${f$(rARR)}</td></tr>`;
+      const rsc=r.stageCounts||{};
+      const rAvgD=fmtDays(r.avgDaysToClose);
+      tableRows+=`<tr>
+        <td>${r.name||'—'}</td>
+        <td class="highlight">${fmtPct(r.pctSigned)}</td>
+        <td class="highlight">${fN(r.signed)}</td>
+        <td>${fN(r.demosHeld)}</td>
+        <td>${rAvgD}</td>
+        <td>${r.signed>0?f$(r.newArr):'—'}</td>
+        <td>${r.signed>0?f$(r.acv):'—'}</td>
+        <td>${fN(rsc.cs||0)}</td>
+        <td>${fN(rsc.dm||0)}</td>
+        <td>${fmtPct(r.pctPending)}</td>
+        <td>${fmtPct(r.pctPruned)}</td>
+        <td>${fmtPct(r.pctNoShow)}</td>
+      </tr>`;
     }
-    const tRate=tQ>0?(tW/tQ*100):0,tARR=tMRR*eM,tAvg=tCyc.length?Math.round(tCyc.reduce((a,b)=>a+b,0)/tCyc.length):null;
-    const tPPct=tQ>0?((tP/tQ)*100).toFixed(0)+'%':'0%';
-    rows+=`<tr style="font-weight:700;background:var(--teal-8)"><td>Total</td><td class="n">${tW}</td><td class="n">${fP(tRate)}</td><td class="n">${tAvg!=null?tAvg+' days':'—'}</td><td class="n">${tP}<span class="sub">${tPPct}</span></td><td class="n">${f$(tARR)}</td></tr>`;
-    const pendPct=tQ>0?(tP/tQ)*100:0;
-    h+=`<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:24px"><div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);margin-bottom:4px">All Time by Rep</div><div style="font-size:11px;color:var(--grey);margin-bottom:12px">All closed-won deals since January 2024 — Sign-Up Rate uses qualified demos as denominator — adjusted for ${crPct}% churn</div>`;
-    h+=`<div class="tg" style="margin-bottom:14px">`;
-    h+=mkT('Deals Won',tW,'#','All closedwon deals',null,null);
-    h+=mkT('Sign-Up Rate',tRate,'%','Won ÷ qualified demos',tW+' won / '+tQ+' qualified',null,'accent');
-    h+=mkT('ARR',tARR,'$','Adjusted for '+crPct+'% churn',f$(tMRR)+' × '+eM.toFixed(1),null);
-    h+=mkT('Deals Pending',pendPct,'%','Qualified demos still in pipeline',fN(tP)+' deals',null);
-    if(tAvg!=null)h+=mkT('Avg Cycle',tAvg,'#','Create to close','days',null);
-    h+=`</div>`;
-    h+=`<div class="tw"><table class="ctbl"><thead><tr><th>Rep</th><th class="n">Won</th><th class="n">Win Rate</th><th class="n">Avg Cycle</th><th class="n">Pending</th><th class="n">ARR</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+    // Totals row mirrors the cohort-level values
+    const totalRow=`<tr>
+      <td>Total</td>
+      <td class="highlight">${fmtPct(c.pctSigned)}</td>
+      <td class="highlight">${fN(c.signed)}</td>
+      <td>${fN(c.demosHeld)}</td>
+      <td>${_avgDStr}</td>
+      <td>${c.signed>0?f$(c.newArr):'—'}</td>
+      <td>${c.signed>0?f$(c.acv):'—'}</td>
+      <td>${fN(_sc.cs||0)}</td>
+      <td>${fN(_sc.dm||0)}</td>
+      <td>${fmtPct(c.pctPending)}</td>
+      <td>${fmtPct(c.pctPruned)}</td>
+      <td>${fmtPct(c.pctNoShow)}</td>
+    </tr>`;
+
+    h+=`<div class="su-cohort-card">
+      <div class="su-cohort-head">
+        <div>
+          <div class="su-cohort-title">${c.period.label}</div>
+          <div class="su-cohort-sub">${titleRange} · ${fN(c.allBooked||0)} demo${(c.allBooked||0)===1?'':'s'} booked</div>
+        </div>
+      </div>
+      ${row1}
+      ${row2}
+      <div style="overflow-x:auto"><table class="su-rep-table">
+        <thead><tr>
+          <th>Rep</th>
+          <th class="highlight">% Signed</th>
+          <th class="highlight">Closed Won</th>
+          <th>Demos Held</th>
+          <th>Avg Days to Close</th>
+          <th>New ARR</th>
+          <th>ACV</th>
+          <th title="dealstage = Contract Sent"># CS</th>
+          <th title="dealstage = Decision Maker Brought In"># DM</th>
+          <th>% Pending</th>
+          <th>% Pruned</th>
+          <th>% No Show</th>
+        </tr></thead>
+        <tbody>${tableRows||'<tr><td colspan="12" style="text-align:center;color:var(--grey);font-style:italic;padding:14px">No reps with demos in this cohort</td></tr>'}</tbody>
+        <tfoot>${totalRow}</tfoot>
+      </table></div>
+    </div>`;
   }
 
-  h+='<div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);margin-bottom:12px">Monthly Cohorts</div>';
-  for(const c of s.cohorts){
-    const arr=c.mrr*eM,gapPct=c.demosGiven>0?((c.dataGaps/c.demosGiven)*100):0;
-    let cards='<div class="tg" style="margin-bottom:12px">';
-    cards+=mkT('Deals Won',c.closedWon,'#',null,c.closedWon+' of '+c.demosGiven+' qualified',null);
-    cards+=mkT('Sign-Up Rate',c.closeRate,'%',c.closedWon+' of '+c.demosGiven+' qualified',null,null,'accent');
-    cards+=mkT('ARR',arr,'$','Adjusted for '+crPct+'% churn',f$(c.mrr)+' × '+eM.toFixed(1),null);
-    cards+=mkT('Deals Pending',gapPct,'%','Deals still open',fN(c.dataGaps)+' deals',null);
-    cards+=(c.avgCycleDays!=null?mkT('Avg Cycle',Math.round(c.avgCycleDays),'#',null,'days',null):'');
-    cards+='</div>';
-    if(c.tooEarly>0||c.tooSmall>0||c.notQualified>0||c.pendingEval>0)cards+=`<div style="font-size:11px;color:var(--grey);margin-bottom:12px">Also: ${c.notQualified} Disqualified after demo, ${c.pendingEval||0} Pending Eval${(c.tooEarly||0)+(c.tooSmall||0)>0?', '+(c.tooEarly||0)+' Too Early, '+(c.tooSmall||0)+' Too Small (legacy)':''} (excluded from qualified count)</div>`;
-    let rows='',tQ=0,tP=0,tNQ=0,tPE=0,tL=0,tW=0,tMRR=0;
-    for(const[,r]of Object.entries(c.byRep)){
-      const rARR=r.mrr*eM,q=r.demosGiven,pen=r.stillOpen||0,pe=r.pendingEval||0;
-      tQ+=q;tP+=pen;tNQ+=r.notQualified;tPE+=pe;tL+=r.closedLost;tW+=r.closedWon;tMRR+=r.mrr;
-      const qualWR=r.signUpRate;
-      rows+=`<tr><td>${r.name}</td><td class="n">${q}</td><td class="n">${pen}${pctOfQual(pen,q)}</td><td class="n" style="color:#0891B2">${pe}${pctOfQual(pe,q)}</td><td class="n">${r.notQualified}${pctOfQual(r.notQualified,q)}</td><td class="n">${r.closedLost}${pctOfQual(r.closedLost,q)}</td><td class="n">${r.closedWon}</td><td class="n" style="background:rgba(114,164,191,.06)">${fP(qualWR)}<span class="sub">${r.closedWon} / ${q} qual</span></td><td class="n">${r.avgCycleDays!=null?Math.round(r.avgCycleDays)+' d':'—'}</td><td class="n">${f$(rARR)}</td></tr>`;
-    }
-    const tRate=tQ>0?(tW/tQ*100):0,tARR=tMRR*eM,tAvgCyc=c.avgCycleDays;
-    rows+=`<tr style="font-weight:700;background:var(--teal-8)"><td>Total</td><td class="n">${tQ}</td><td class="n">${tP}${pctOfQual(tP,tQ)}</td><td class="n" style="color:#0891B2">${tPE}${pctOfQual(tPE,tQ)}</td><td class="n">${tNQ}${pctOfQual(tNQ,tQ)}</td><td class="n">${tL}${pctOfQual(tL,tQ)}</td><td class="n">${tW}</td><td class="n" style="background:rgba(114,164,191,.12)">${fP(tRate)}<span class="sub">${tW} / ${tQ} qual</span></td><td class="n">${tAvgCyc!=null?Math.round(tAvgCyc)+' d':'—'}</td><td class="n">${f$(tARR)}</td></tr>`;
-    h+=`<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:12px"><div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy);margin-bottom:3px">${c.period.label}</div><div style="font-size:11px;color:var(--grey);margin-bottom:10px">${c.period.from} to ${c.period.to}</div>${cards}<div class="tw"><table class="ctbl"><thead><tr><th>Rep</th><th class="n">Qual</th><th class="n">Pending</th><th class="n" style="color:#0891B2">Pending Eval</th><th class="n">Disqual.</th><th class="n">Lost</th><th class="n">Won</th><th class="n" style="background:rgba(114,164,191,.1)">Sign-Up Rate</th><th class="n">Avg Cycle</th><th class="n">ARR</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
-  }document.getElementById('signup-c').innerHTML=h;
+  document.getElementById('signup-c').innerHTML=h;
 }
 
 // ═══════════════ INSIGHTS ENGINE ═══════════════
@@ -6299,7 +6391,6 @@ async function fdSocial(period){
 document.getElementById('churn').addEventListener('input',function(){_churnPct=parseFloat(this.value);syncSliders();updCalc();updateDashChurn();});
 document.addEventListener('input',function(e){
   if(e.target.id==='dashChurn'){_churnPct=parseFloat(e.target.value);syncSliders();updCalc();updateDashChurn();}
-  if(e.target.id==='suChurn'){_churnPct=parseFloat(e.target.value);syncSliders();updCalc();renderSignUp();}
   if(e.target.id==='azChurn'){_churnPct=parseFloat(e.target.value);syncSliders();updCalc();updateAzChurn();}
 });
 

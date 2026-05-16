@@ -910,114 +910,134 @@ const ALL_DEMO_HAPPENED = [
 ];
 
 function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
-  const eM = effM(0.025); // fixed 2.5% churn for sign-up rate
+  // Sign-Up Rate cohorts use the SAME stage-based definition as the Irfan
+  // Dashboard's Special #1 "Signed Deals from Last Month" card. For each
+  // cohort month (date_demo_booked within month):
+  //   demosHeld  = won + appt + demoHappened + dm + cs
+  //   signed     = won
+  //   pctSigned  = signed ÷ demosHeld
+  //   pctPending = (appt + demoHappened + dm + cs) ÷ demosHeld
+  //   pctPruned  = notAFit ÷ allBooked
+  //   pctNoShow  = noShow ÷ allBooked
+  //   avgDaysToClose = mean(closedate − date_demo_booked) across signed deals
+  // Per-rep buckets include cntCS / cntDM so the rep table can show
+  // "# Contract Sent" and "# Decision Maker" columns explicitly.
+  const STAGE_APPT = 'appointmentscheduled';
+  const STAGE_DEMO_HAPPENED = '1084214349';
+  const STAGE_DM = 'decisionmakerboughtin';
+  const STAGE_CS = 'contractsent';
+  const STAGE_WON = 'closedwon';
+  const STAGE_NO_SHOW = '3453957850';
+  const STAGE_NOT_A_FIT = '1062974581';
 
   // Pre-build empty month buckets
+  const emptyBucket = (name) => ({
+    name: name || null,
+    allBooked: 0,
+    cntWon: 0, cntAppt: 0, cntDemoHappened: 0, cntDM: 0, cntCS: 0,
+    cntNoShow: 0, cntNotAFit: 0,
+    signedMrrSum: 0,
+    daysToCloseSum: 0, daysToCloseN: 0,
+  });
   const buckets = {};
   for (const cm of cohortMonths) {
-    buckets[cm.label] = {
-      period: cm,
-      demosGiven: 0, closedWon: 0, closedLost: 0, stillOpen: 0,
-      tooEarly: 0, notQualified: 0, pendingEval: 0, mrr: 0, cycleDays: [],
-      byRep: {},
-    };
+    buckets[cm.label] = { period: cm, ...emptyBucket(), byRep: {} };
   }
 
-  // Build month key lookup: "2026-03" → cohortMonth label
+  // Month-key lookup: "2026-03" → cohortMonth label
   const monthToLabel = {};
-  for (const cm of cohortMonths) monthToLabel[cm.from.slice(0, 7)] = cm.label;
+  const monthRanges = {};
+  for (const cm of cohortMonths) {
+    monthToLabel[cm.from.slice(0, 7)] = cm.label;
+    monthRanges[cm.label] = { fromMs: toMsUTC(cm.from), toMs: toMsUTC(cm.to, true) };
+  }
+
+  // Floor a ms timestamp to UTC-midnight so partial-day deltas don't skew
+  // the Avg Days to Close metric.
+  const _floor = (ms) => { const x = new Date(ms); return Date.UTC(x.getUTCFullYear(), x.getUTCMonth(), x.getUTCDate()); };
 
   for (const deal of allDeals) {
     const p = deal.properties || {};
     const ddb = p.date_demo_booked;
-    if (!ddb) continue; // skip deals without date_demo_booked
+    if (!ddb) continue;
 
-    const att = (p.demo_attendance_status || '').trim();
-    const qo = (p.demo_qualification_outcome || '').trim();
-    const status = (p.demo_given__status || '').trim();
-    if (!demoDidHappen(att, status)) continue; // skip demos that didn't happen
+    const ddbMs = dateMs(ddb);
+    if (isNaN(ddbMs)) continue;
 
-    // Route to correct month bucket
-    const monthKey = ddb.substring(0, 7); // "2026-03"
+    const monthKey = ddb.substring(0, 7);
     const label = monthToLabel[monthKey];
-    if (!label) continue; // outside our cohort window
-    const b = buckets[label];
+    if (!label) continue;
 
-    const stage = (p.dealstage || '').toLowerCase();
+    const range = monthRanges[label];
+    if (ddbMs < range.fromMs || ddbMs > range.toMs) continue;
+
+    const b = buckets[label];
+    const stage = (p.dealstage || '').trim();
     const amt = parseFloat(p.amount) || 0;
     const oid = p.hubspot_owner_id || 'unassigned';
 
-    if (!b.byRep[oid]) b.byRep[oid] = { name: ownerMap[oid] || (oid === 'unassigned' ? 'Unassigned' : oid), demosGiven: 0, closedWon: 0, closedLost: 0, stillOpen: 0, tooEarly: 0, tooSmall: 0, notQualified: 0, pendingEval: 0, mrr: 0, cycleDays: [] };
-
-    // Pending Eval: demo given but qualification not recorded (data hygiene flag, new field model only)
-    if (att.startsWith('Demo Given') && (qo === 'Not yet evaluated' || qo === '')) {
-      b.pendingEval++; b.byRep[oid].pendingEval++;
-      continue;
+    if (!b.byRep[oid]) {
+      b.byRep[oid] = emptyBucket(ownerMap[oid] || (oid === 'unassigned' ? 'Unassigned' : oid));
     }
 
-    // Legacy-only buckets (preserved for historical visibility on pre-migration data)
-    // New-field deals never enter these branches because tooEarly/tooSmall now map to Qualified
-    if (!att && status === 'Demo Given, Qualified Company, too early') {
-      b.tooEarly++; b.byRep[oid].tooEarly++;
-      continue;
-    }
-    if (!att && status === 'Demo Given / Qualified / Too Small') {
-      b.tooSmall = (b.tooSmall||0) + 1; b.byRep[oid].tooSmall++;
-      continue;
-    }
-    // Disqualified after demo (new field model OR legacy)
-    const isDisqAfterDemo = (att.startsWith('Demo Given') && qo === 'Disqualified')
-                          || (!att && status === 'Not Qualified after the demo');
-    if (isDisqAfterDemo) {
-      b.notQualified++; b.byRep[oid].notQualified++;
-      continue;
-    }
+    b.allBooked++;
+    b.byRep[oid].allBooked++;
 
-    // Qualified demo — counts as demosGiven
-    b.demosGiven++; b.byRep[oid].demosGiven++;
-    if (stage === 'closedwon') {
-      b.closedWon++; b.mrr += amt;
-      b.byRep[oid].closedWon++; b.byRep[oid].mrr += amt;
-      const closeMs = isoMs(p.closedate), createMs = isoMs(p.hs_createdate);
-      if (!isNaN(closeMs) && !isNaN(createMs) && closeMs > createMs) {
-        const days = (closeMs - createMs) / (1000 * 60 * 60 * 24);
-        b.cycleDays.push(days);
-        b.byRep[oid].cycleDays.push(days);
+    if (stage === STAGE_WON) {
+      b.cntWon++; b.byRep[oid].cntWon++;
+      b.signedMrrSum += amt; b.byRep[oid].signedMrrSum += amt;
+      const cdMs = isoMs(p.closedate);
+      if (!isNaN(cdMs)) {
+        const days = (_floor(cdMs) - _floor(ddbMs)) / 86400000;
+        if (days >= 0) {
+          b.daysToCloseSum += days; b.daysToCloseN++;
+          b.byRep[oid].daysToCloseSum += days; b.byRep[oid].daysToCloseN++;
+        }
       }
-    } else if (stage === 'closedlost') {
-      b.closedLost++; b.byRep[oid].closedLost++;
-    } else {
-      b.stillOpen++; b.byRep[oid].stillOpen++;
-    }
+    } else if (stage === STAGE_APPT)           { b.cntAppt++;          b.byRep[oid].cntAppt++; }
+    else if (stage === STAGE_DEMO_HAPPENED)    { b.cntDemoHappened++;  b.byRep[oid].cntDemoHappened++; }
+    else if (stage === STAGE_DM)               { b.cntDM++;            b.byRep[oid].cntDM++; }
+    else if (stage === STAGE_CS)               { b.cntCS++;            b.byRep[oid].cntCS++; }
+    else if (stage === STAGE_NO_SHOW)          { b.cntNoShow++;        b.byRep[oid].cntNoShow++; }
+    else if (stage === STAGE_NOT_A_FIT)        { b.cntNotAFit++;       b.byRep[oid].cntNotAFit++; }
+  }
+
+  // Derive metric block for a bucket (works for both global cohort + per-rep)
+  function deriveMetrics(b) {
+    const demosHeld = b.cntWon + b.cntAppt + b.cntDemoHappened + b.cntDM + b.cntCS;
+    const cntPending = b.cntAppt + b.cntDemoHappened + b.cntDM + b.cntCS;
+    return {
+      allBooked: b.allBooked,
+      signed: b.cntWon,
+      demosHeld,
+      pctSigned:  demosHeld    > 0 ? (b.cntWon     / demosHeld)    * 100 : 0,
+      pctPending: demosHeld    > 0 ? (cntPending   / demosHeld)    * 100 : 0,
+      pctPruned:  b.allBooked  > 0 ? (b.cntNotAFit / b.allBooked)  * 100 : 0,
+      pctNoShow:  b.allBooked  > 0 ? (b.cntNoShow  / b.allBooked)  * 100 : 0,
+      stageCounts: {
+        won: b.cntWon, appt: b.cntAppt, demoHappened: b.cntDemoHappened,
+        dm: b.cntDM, cs: b.cntCS, noShow: b.cntNoShow, notAFit: b.cntNotAFit,
+      },
+      mrr: b.signedMrrSum,
+      newArr: b.signedMrrSum * 12,
+      acv: b.cntWon > 0 ? b.signedMrrSum / b.cntWon : 0,
+      avgDaysToClose: b.daysToCloseN > 0 ? b.daysToCloseSum / b.daysToCloseN : null,
+      avgDaysToCloseN: b.daysToCloseN,
+    };
   }
 
   // Build final cohort objects — current month first, then descending
   const cohorts = [];
   for (const cm of cohortMonths) {
     const b = buckets[cm.label];
-    const closeRate = b.demosGiven > 0 ? (b.closedWon / b.demosGiven) * 100 : 0;
-    const avgCycleDays = b.cycleDays.length > 0 ? b.cycleDays.reduce((a, v) => a + v, 0) / b.cycleDays.length : null;
-    const arr = b.mrr * eM;
+    const m = deriveMetrics(b);
 
-    // Per-rep: compute sign-up rate = closedWon / demosGiven
     const repData = {};
     for (const [oid, r] of Object.entries(b.byRep)) {
-      repData[oid] = {
-        ...r, signUpRate: r.demosGiven > 0 ? (r.closedWon / r.demosGiven) * 100 : 0,
-        arr: r.mrr * eM,
-        avgCycleDays: r.cycleDays && r.cycleDays.length > 0 ? r.cycleDays.reduce((a, v) => a + v, 0) / r.cycleDays.length : null,
-      };
+      repData[oid] = { name: r.name, ...deriveMetrics(r) };
     }
 
-    cohorts.push({
-      period: cm,
-      demosGiven: b.demosGiven, closedWon: b.closedWon, closedLost: b.closedLost,
-      stillOpen: b.stillOpen, tooEarly: b.tooEarly, notQualified: b.notQualified,
-      pendingEval: b.pendingEval || 0,
-      closeRate, avgCycleDays, mrr: b.mrr, arr,
-      dataGaps: b.stillOpen,
-      byRep: repData,
-    });
+    cohorts.push({ period: cm, ...m, byRep: repData });
   }
 
   return { cohorts };
