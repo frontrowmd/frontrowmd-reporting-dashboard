@@ -1288,6 +1288,13 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
       noShowScaleCount: c.pipeline.noShowScaleCount||0,
       noShowDenomScale: c.pipeline.noShowDenomScale||0,
       demoGivenScaleCount: c.pipeline.demoGivenScaleCount||0,
+      demoGivenScaleCountPrior: p.pipeline?.demoGivenScaleCount ?? null,
+      demoGivenScaleCountLastMonth: pm.pipeline?.demoGivenScaleCount ?? null,
+      // Qualified demos EXCLUDING pre-launch — used by the Detailed Dashboard's
+      // redefined "Qualified demos" card and "Qualification rate" card.
+      qualifiedRawScaleCount: c.pipeline.qualifiedRawScaleCount||0,
+      qualifiedRawScaleCountPrior: p.pipeline?.qualifiedRawScaleCount ?? null,
+      qualifiedRawScaleCountLastMonth: pm.pipeline?.qualifiedRawScaleCount ?? null,
       staleScheduledCount: c.pipeline.staleScheduledCount||0,
       cancelledBeforeDemoCount: c.pipeline.cancelledBeforeDemoCount||0,
       cancelledBeforeDemoCountPrior: p.pipeline?.cancelledBeforeDemoCount ?? null,
