@@ -2992,7 +2992,7 @@ function renderSignUp(){
     row1+=`<div class="su-calc">${fN(c.signed)} ÷ ${fN(c.demosHeld)} demos held</div>`;
     row1+='</div>';
     row1+=`<div class="su-r1-item"><div class="su-label">Closed Won</div><div class="su-value">${fN(c.signed)}</div></div>`;
-    row1+=`<div class="su-r1-item"><div class="su-label">Demos Held</div><div class="su-value">${fN(c.demosHeld)}</div></div>`;
+    row1+=`<div class="su-r1-item" title="Deals where date_demo_booked is in ${c.period.label} AND dealstage is Closed Won, Demo Happened, Decision Maker Brought In, Contract Sent, or Appointment Scheduled (with past date)"><div class="su-label">Qual Demos Held</div><div class="su-value">${fN(c.demosHeld)}</div></div>`;
     row1+=`<div class="su-r1-item" title="Average days from date_demo_booked to closedate across signed deals (n=${fN(c.avgDaysToCloseN||0)})"><div class="su-label">Avg Days to Close</div><div class="su-value">${_avgDStr}</div></div>`;
     row1+=`<div class="su-r1-item"><div class="su-label">New ARR</div><div class="su-value">${c.signed>0?f$(c.newArr):'—'}</div></div>`;
     row1+=`<div class="su-r1-item"><div class="su-label">ACV</div><div class="su-value">${c.signed>0?f$(c.acv):'—'}</div></div>`;
@@ -3048,6 +3048,18 @@ function renderSignUp(){
       <td>${fmtPct(c.pctNoShow)}</td>
     </tr>`;
 
+    // Per-cohort diagnostic strip — shows raw HubSpot fetch count + the
+    // formula breakdown that produced Qual Demos Held. If a cohort looks
+    // off, this tells us instantly whether it's a fetch issue (low fetched
+    // count) or a definition issue (count is fine but breakdown is wrong).
+    const fetched=c._fetchedCount;
+    const diagPieces=[
+      fetched!=null?`HubSpot fetch: <b>${fN(fetched)} deals</b>`:null,
+      `In ${c.period.label} window: <b>${fN(c.allBooked||0)} deals</b>`,
+      `Qual Demos Held = ${fN(_sc.won||0)} CW + ${fN(_sc.demoHappened||0)} DH + ${fN(_sc.dm||0)} DM + ${fN(_sc.cs||0)} CS + ${fN(_sc.appt||0)} Appt(past) = <b>${fN(c.demosHeld)}</b>`,
+    ].filter(Boolean);
+    const diagBar=`<div style="font-size:10px;color:var(--grey);padding:6px 10px;background:rgba(23,44,69,.03);border-radius:4px;margin-bottom:10px;font-variant-numeric:tabular-nums;line-height:1.6">${diagPieces.join(' &nbsp;·&nbsp; ')}</div>`;
+
     h+=`<div class="su-cohort-card">
       <div class="su-cohort-head">
         <div>
@@ -3055,6 +3067,7 @@ function renderSignUp(){
           <div class="su-cohort-sub">${titleRange} · ${fN(c.allBooked||0)} demo${(c.allBooked||0)===1?'':'s'} booked</div>
         </div>
       </div>
+      ${diagBar}
       ${row1}
       ${row2}
       <div style="overflow-x:auto"><table class="su-rep-table">
@@ -3062,7 +3075,7 @@ function renderSignUp(){
           <th>Rep</th>
           <th class="highlight">% Signed</th>
           <th class="highlight">Closed Won</th>
-          <th>Demos Held</th>
+          <th title="Deals where date_demo_booked is in this cohort month AND dealstage is Closed Won, Demo Happened, Decision Maker Brought In, Contract Sent, or Appointment Scheduled (with past date)">Qual Demos Held</th>
           <th>Avg Days to Close</th>
           <th>New ARR</th>
           <th>ACV</th>

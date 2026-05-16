@@ -497,32 +497,38 @@ async function fetchCohortDealsByBookedDate(token, from, to) {
   200, [{ propertyName: 'date_demo_booked', direction: 'DESCENDING' }], 50);
 }
 
-// Sign-Up Rate cohort fetch: ONE query per cohort month, in parallel.
+// Sign-Up Rate cohort fetch: ONE query per cohort month, SEQUENTIAL.
 // A single 4-month wide query hits HubSpot's 10k hard limit on busy
-// pipelines and silently drops one end of the window (oldest with DESC
-// sort, newest with ASC). Per-month queries each get their own 10k
-// budget — a single calendar month is nowhere near that ceiling, so
-// every cohort comes back complete.
+// pipelines and silently drops one end of the window. Running 4 parallel
+// queries can hit rate limits or CF subrequest budget at the wrong moment
+// and individual months fail silently — so we go sequential. Total cost
+// for ~250 demos/month is 4 × 1-2 page requests = 4-8 HTTP calls, fast
+// enough not to matter.
+// Returns { union: Deal[], perMonth: { [label]: count } } so the caller
+// can surface the per-cohort fetched count to the dashboard.
 async function fetchCohortDealsPerMonth(token, cohortMonths) {
   const props = ['dealname','date_demo_booked','demo_attendance_status','demo_qualification_outcome','dealstage','amount','closedate','hs_createdate','hubspot_owner_id','brand_status'];
-  const fetches = cohortMonths.map(cm =>
-    hsSearch(token, 'deals', [{
-      filters: [
-        { propertyName: 'date_demo_booked', operator: 'GTE', value: String(toMsUTC(cm.from)) },
-        { propertyName: 'date_demo_booked', operator: 'LTE', value: String(toMsUTC(cm.to, true)) },
-      ],
-    }], props, 200, [{ propertyName: 'date_demo_booked', direction: 'DESCENDING' }], 10)
-      .then(arr => ({ label: cm.label, arr: arr || [] }))
-      .catch(e => { console.warn(`SignUp month fetch ${cm.label} failed:`, e.message); return { label: cm.label, arr: [] }; })
-  );
-  const results = await Promise.all(fetches);
-  // Union all months, dedupe by deal id
   const map = new Map();
-  for (const { arr } of results) for (const d of arr) map.set(d.id, d);
-  // Per-month diagnostic — surfaces if any month's fetch came back unexpectedly thin.
-  const counts = results.map(r => `${r.label}=${r.arr.length}`).join(', ');
-  console.log(`SignUp per-month fetch: ${counts} → union=${map.size} unique`);
-  return [...map.values()];
+  const perMonth = {};
+  for (const cm of cohortMonths) {
+    let arr = [];
+    try {
+      arr = await hsSearch(token, 'deals', [{
+        filters: [
+          { propertyName: 'date_demo_booked', operator: 'GTE', value: String(toMsUTC(cm.from)) },
+          { propertyName: 'date_demo_booked', operator: 'LTE', value: String(toMsUTC(cm.to, true)) },
+        ],
+      }], props, 200, [{ propertyName: 'date_demo_booked', direction: 'DESCENDING' }], 10) || [];
+    } catch(e) {
+      console.warn(`SignUp month fetch ${cm.label} failed:`, e.message);
+      arr = [];
+    }
+    perMonth[cm.label] = arr.length;
+    for (const d of arr) map.set(d.id, d);
+    console.log(`SignUp fetch ${cm.label} (${cm.from}..${cm.to}): ${arr.length} deals`);
+  }
+  console.log(`SignUp cohort union: ${map.size} unique across ${Object.keys(perMonth).length} months`);
+  return { union: [...map.values()], perMonth };
 }
 
 // Closed-won deals by closedate (guide Section 5)
@@ -1709,6 +1715,18 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     console.error('Irfan MTD early-fetch failed:', e);
   }
 
+  // Sign-Up Rate cohort fetch — done EARLY (sequential per-month) so each
+  // month's query gets a fresh slice of HubSpot rate-limit + CF subrequest
+  // budget before the heavy Phase 2 company/contact batches drain them.
+  // Sequential is intentional: parallel runs caused individual months to
+  // fail silently and February/March came back empty.
+  let _signupCohortResult = { union: [], perMonth: {} };
+  try {
+    _signupCohortResult = await fetchCohortDealsPerMonth(hsToken, cohortMonths);
+  } catch(e) {
+    console.error('SignUp cohort early-fetch failed:', e);
+  }
+
   // ── Phase 2: Run HubSpot calls sequentially (avoids 429 rate limits) ──
   const cSch = await fetchScheduledContacts(hsToken, current.from, current.to);
   // For Demo Quality: extend pipeline fetch through end of month (processPipelineDeals re-filters to MTD)
@@ -1832,12 +1850,11 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
 
   const ownerMap = await fetchOwners(hsToken);
 
-  // Sign-Up Rate cohort fetch: PER-MONTH queries in parallel. A single
-  // 4-month wide query still hits HubSpot's 10k hard limit on busy
-  // pipelines (one end of the window gets silently dropped depending on
-  // sort direction). Per-month queries each get their own 10k budget,
-  // so every cohort returns complete data.
-  const cohortDeals = await fetchCohortDealsPerMonth(hsToken, cohortMonths);
+  // Sign-Up Rate cohort union — fetched earlier in the handler so each
+  // month's query had subrequest budget. _signupCohortResult.perMonth
+  // tracks the raw fetched count per cohort for the dashboard diagnostic.
+  const cohortDeals = _signupCohortResult.union;
+  const cohortFetchedPerMonth = _signupCohortResult.perMonth;
 
   // All-time deals for rep summary and marketing funnel.
   //
@@ -1883,20 +1900,23 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   const priorMonthData = priorMonth ? buildPeriodData(priorMonth, pmW, pmLI, pmG, pmSch, filterActiveBrands(pmPipe), filterActiveBrands(pmCW)) : null;
 
   // ── Sign-Up Rate cohorts ──
-  // Union cohortDeals (wide 4-month fetch) with the narrower cPipe/pPipe/pmPipe
-  // sources. Each narrow source is a separate fetch over its own short window
-  // and is nowhere near hitting a pagination cap, so it acts as a defense-in-
-  // depth backup for the months it covers — same trick the Irfan PCM uses.
-  //   • cPipe   → current month
-  //   • pPipe   → "prior" window (last MTD for MTD, last week for 7d, etc.)
-  //   • pmPipe  → prior calendar month
-  //   • cohortDeals → full 4-month window (the only source covering the
-  //                    oldest months in the cohort range)
+  // Union cohortDeals (per-month early fetch) with the narrower cPipe/pPipe/
+  // pmPipe sources. Each narrow source is a separate fetch over its own short
+  // window and is nowhere near a pagination cap, so it acts as defense-in-
+  // depth for the months it covers — same trick the Irfan PCM uses.
   const _signupUnion = new Map();
   const _signupAdd = (arr) => { if (!arr) return; for (const x of arr) _signupUnion.set(x.id, x); };
   _signupAdd(cohortDeals); _signupAdd(cPipe); _signupAdd(pPipe); _signupAdd(pmPipe);
   console.log(`SignUp union: cohortDeals=${cohortDeals.length}, cPipe=${cPipe?.length||0}, pPipe=${pPipe?.length||0}, pmPipe=${pmPipe?.length||0} → union=${_signupUnion.size} unique`);
   currentData.signUpRate = buildSignUpCohorts([..._signupUnion.values()], cohortMonths, ownerMap);
+  // Attach per-cohort fetched count for the dashboard diagnostic strip.
+  // This tells us exactly what HubSpot returned for each month before any
+  // bucketing — if a number looks off, this is where we can start.
+  if (currentData.signUpRate?.cohorts) {
+    for (const c of currentData.signUpRate.cohorts) {
+      c._fetchedCount = cohortFetchedPerMonth[c.period.label] ?? null;
+    }
+  }
   currentData.signUpRate.allTimeByRep = buildAllTimeRepStats(allTimeClosedWon, allTimeQualifiedForReps, ownerMap);
   currentData.quarterlyHistory = isAllTime ? buildQuarterlyHistory(filterActiveBrands(cCW), current.from, current.to) : null;
 
