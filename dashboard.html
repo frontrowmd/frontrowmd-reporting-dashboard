@@ -416,8 +416,8 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
       <!-- Row 1: Daily Activity (70%) + Revenue Outcome (30%) -->
       <div class="sec" id="sec-row1" style="display:grid;grid-template-columns:7fr 3fr;gap:16px"><div id="sec-daily" class="sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:#3B82F6;border-radius:50%;margin-right:8px;vertical-align:middle"></span>Daily Activity</div><div id="daily-wrap"></div></div><div id="t-revenue"></div></div>
 
-      <!-- Row 2: Demos Booked by Web-Traffic Range (50%) + Marketing Funnel (50%) -->
-      <div class="sec" id="sec-row2" style="display:grid;grid-template-columns:1fr 1fr;gap:16px"><div class="sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:#9333EA;border-radius:50%;margin-right:8px;vertical-align:middle"></span>Demos Booked by Web-Traffic Range</div><div id="t-webtraffic"></div></div><div class="sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:var(--teal);border-radius:50%;margin-right:8px;vertical-align:middle"></span>Marketing Funnel</div><div id="t-trends"></div></div></div>
+      <!-- Row 2: Demos Booked by Web-Traffic Range (2/3) + Marketing Funnel (1/3) -->
+      <div class="sec" id="sec-row2" style="display:grid;grid-template-columns:2fr 1fr;gap:16px"><div class="sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:#9333EA;border-radius:50%;margin-right:8px;vertical-align:middle"></span>Demos Booked by Web-Traffic Range</div><div style="font-size:12px;color:var(--grey);margin-bottom:6px">% of demos booked in each tier · ordered Pre-launch → 500K+ clockwise</div><div id="t-webtraffic"></div></div><div class="sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:var(--teal);border-radius:50%;margin-right:8px;vertical-align:middle"></span>Marketing Funnel</div><div id="t-trends"></div></div></div>
 
       <!-- Row 3: Executive Summary 3-panel (Volume / Quality / Efficiency) -->
       <div class="sec"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:var(--navy);border-radius:50%;margin-right:8px;vertical-align:middle"></span>Executive Summary</div><div id="t-overview"></div></div>
@@ -919,9 +919,7 @@ function renderDash(){
   oh+=panelOpen('Volume','#3B82F6');
   oh+=statRow('Demos to occur','Deals by date_demo_booked in window',fN(demosToOccur),null,demosToOccur,demosToOccurPV,demosToOccurLMV,'#');
   oh+=statRow('Demos supposed to happen','Demos held + No shows + Pruned',fN(qmeta.pruneDenom||0),`${fN((qmeta.demoGivenOrigCount||0)+(qmeta.demoGivenReschedCount||0))} held + ${fN(qmeta.noShowCount||0)} no-show + ${fN(qmeta.cancelledBeforeDemoCount||0)} pruned`,qmeta.pruneDenom||0,qmeta.pruneDenomPrior,qmeta.pruneDenomLastMonth,'#');
-  oh+=statRow('Demos held (excl. pre-launch)','Demo Given orig + resched, excluding pre-launch brands',fN(heldScaleCur),null,heldScaleCur,heldScalePV,heldScaleLMV,'#');
-  oh+=statRow('Qualified demos','Of Demos Held (excl. pre-launch), how many had Demo Qualification Outcome = Qualified',fN(qualScaleCur),`${fN(qualScaleCur)} qualified \u00f7 ${fN(heldScaleCur)} held`,qualScaleCur,qualScalePV,qualScaleLMV,'#');
-  oh+=statRow('% Pre-launch demos','Pre-launch \u00f7 New demos scheduled',lowTrafficPct!=null?lowTrafficPct.toFixed(1)+'%':'\u2014',`${fN(ltmeta.lowTraffic||0)} \u00f7 ${fN(ltmeta.totalScheduled||0)}`,lowTrafficPct,lowTrafficPctPV,lowTrafficPctLMV,'%',{inv:true,warnIf:30,noMargin:true});
+  oh+=statRow('Demos held (excl. pre-launch)','Demo Given orig + resched, excluding pre-launch brands',fN(heldScaleCur),null,heldScaleCur,heldScalePV,heldScaleLMV,'#',{noMargin:true});
   oh+='</div>';
   oh+=panelOpen('Quality','#1D9E75');
   oh+=statRow('Prune rate','Cancelled before demo \u00f7 all settled outcomes',prune!=null?prune.toFixed(1)+'%':'\u2014',`${fN(qmeta.cancelledBeforeDemoCount||0)} \u00f7 ${fN(qmeta.pruneDenom||0)}`,prune,prunePV,pruneLMV,'%',{inv:true,warnIf:20});
@@ -957,56 +955,12 @@ function renderDash(){
   document.getElementById('t-adspend').innerHTML=adH;
 
   // ─── Row 2: Demos Booked by Web-Traffic Range ──────────────────────────────
-  // Data sourced from d.demoTracking.scheduledByWebTraffic (raw tier label → count).
-  // Renders as a sorted vertical bar list — biggest cohorts on top.
-  (function renderWebTrafficCard(){
-    const wtEl=document.getElementById('t-webtraffic');
-    if(!wtEl)return;
-    const buckets=d.demoTracking?.scheduledByWebTraffic||{};
-    const priorBuckets=d.demoTracking?.scheduledByWebTrafficPrior||{};
-    const lmBuckets=d.demoTracking?.scheduledByWebTrafficLastMonth||{};
-    // Sort entries: pre-launch first (it's a denominator of % Pre-launch demos and
-    // people want it visible), then largest → smallest.
-    const entries=Object.entries(buckets).map(([k,v])=>{
-      const isPre=k.toLowerCase().includes('pre-launch');
-      return {k,v,isPre,pv:priorBuckets[k]||null,lmv:lmBuckets[k]||null};
-    });
-    entries.sort((a,b)=>{
-      if(a.isPre!==b.isPre)return a.isPre?-1:1;
-      return (b.v||0)-(a.v||0);
-    });
-    const totalCur=entries.reduce((s,e)=>s+(e.v||0),0);
-    if(!entries.length||totalCur===0){
-      wtEl.innerHTML='<div style="color:var(--grey);font-size:12px;padding:18px 0;text-align:center;font-style:italic">No demos booked in this window</div>';
-      return;
-    }
-    const maxV=Math.max(...entries.map(e=>e.v||0));
-    let wh='<div style="font-size:12px;color:var(--grey);margin-bottom:12px">Demos booked in window, bucketed by tier on average_monthly_web_traffic. Pre-launch row is the same denominator as the % Pre-launch demos KPI.</div>';
-    wh+='<div style="display:flex;flex-direction:column;gap:8px">';
-    for(const e of entries){
-      const pct=maxV>0?(e.v/maxV)*100:0;
-      const tierLabel=e.k==='(none)'?'(no tier set)':e.k;
-      const barCol=e.isPre?'#F59E0B':'var(--teal)';
-      const deltaPV=e.pv!=null?fmtDC(e.v,e.pv,'#'):'<span style="color:var(--grey);font-size:10px">—</span>';
-      const deltaLM=e.lmv!=null?fmtDC(e.v,e.lmv,'#'):'<span style="color:var(--grey);font-size:10px">—</span>';
-      wh+=`<div style="display:grid;grid-template-columns:1.2fr 60px 90px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid rgba(114,164,191,.08)">
-        <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
-          <div style="font-family:var(--font-h);font-size:12px;font-weight:600;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"${e.isPre?' title="Pre-launch tier — denominator of % Pre-launch demos"':''}>${tierLabel}${e.isPre?' <span style="color:#F59E0B;font-size:9px;font-weight:700">PRE-LAUNCH</span>':''}</div>
-          <div style="height:6px;background:rgba(114,164,191,.08);border-radius:3px;overflow:hidden"><div style="height:100%;width:${pct.toFixed(1)}%;background:${barCol};border-radius:3px"></div></div>
-        </div>
-        <div style="font-family:var(--font-h);font-size:18px;font-weight:700;color:var(--navy);text-align:right;font-variant-numeric:tabular-nums">${fN(e.v)}</div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px;line-height:1.3">
-          <div style="font-size:9px;color:var(--grey)">vs prior</div>
-          <div>${deltaPV}</div>
-          <div style="font-size:9px;color:var(--grey);margin-top:2px">vs LM</div>
-          <div>${deltaLM}</div>
-        </div>
-      </div>`;
-    }
-    wh+='</div>';
-    wh+=`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:11px;color:var(--grey);display:flex;justify-content:space-between"><span>Total demos booked</span><span style="font-family:var(--font-h);font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">${fN(totalCur)}</span></div>`;
-    wtEl.innerHTML=wh;
-  })();
+  // Re-uses the Irfan Dashboard's web-traffic donut renderer for visual parity
+  // (same colors, segment order Pre-launch → 500K+ clockwise, instant hover
+  // tooltips, vs-prior pp-delta badges in the legend).
+  if(typeof _renderIrfanWtPieInto==='function'){
+    _renderIrfanWtPieInto('t-webtraffic', d.demoTracking?.scheduledByWebTraffic, 'demos booked', d.demoTracking?.scheduledByWebTrafficPrior);
+  }
 
   // ─── Conversion Funnel ──────────────────────────────
   // Two-row layout: top tracks click → schedule (universe of all booked demos),
@@ -1017,7 +971,11 @@ function renderDash(){
   const scheduled=totalScheduled;
   const demosSupposed=qmeta.pruneDenom||0;
   const demosSupposedPV=qmeta.pruneDenomPrior,demosSupposedLMV=qmeta.pruneDenomLastMonth;
-  const qualified=qmeta.qualifiedRawCount||0;
+  // Conversion Funnel "Qualified" card uses the redefined metric:
+  // Of Demos Held (excl. pre-launch), how many had demo_qualification_outcome = Qualified.
+  // qualScaleCur / qualScalePV / qualScaleLMV are computed earlier in renderDash
+  // (from qmeta.qualifiedRawScaleCount + its priors).
+  const qualified=qualScaleCur||0;
   const held=demosHeldFull,heldPV=demosHeldFullPV,heldLMV=demosHeldFullLMV;
   const r1=visitors>0?(demoClicks/visitors*100):null;
   const r2=demoClicks>0?(scheduled/demoClicks*100):null;
@@ -1033,7 +991,10 @@ function renderDash(){
   const prunedLMV=(cancelledLMV!=null||noShowLastMonthV!=null)?((cancelledLMV||0)+(noShowLastMonthV||0)):null;
   const rPruneRate=demosSupposed>0?(pruned/demosSupposed*100):null;
   const rHeldOverall=demosSupposed>0?(held/demosSupposed*100):null;
-  const r4=held>0?(qualified/held*100):null;
+  // r4 = Held → Qualified rate. Now uses the redefined Qualified denominator
+  // (Demos Held excl. pre-launch) so the arrow matches the Qualified card's
+  // new calculation.
+  const r4=heldScaleCur>0?(qualified/heldScaleCur*100):null;
   const e2e=visitors>0?(qualified/visitors*100):null;
 
   // Header: section description + Website CVR as a compact chip on the right
@@ -1077,7 +1038,8 @@ function renderDash(){
   fh+=funnelArrow(rHeldOverall);
   fh+=funnelStage('Held',fN(held),held,heldPV,heldLMV,'#',false,'teal');
   fh+=funnelArrow(r4);
-  fh+=funnelStage('Qualified',fN(qualified),tqdCur,tqdPrior,tqdLm,'#',true);
+  // Deltas use the SAME scale-tier priors as the displayed value (qualScaleCur).
+  fh+=funnelStage('Qualified',fN(qualified),qualScaleCur,qualScalePV,qualScaleLMV,'#',true);
   fh+='</div>';
   fh+='</div>';
 
