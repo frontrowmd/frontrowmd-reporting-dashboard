@@ -1247,15 +1247,24 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
       windsorDemos: c.adSpend.channels[ch]?.windsorDemos||0,
       ctr: c.adSpend.channels[ch]?.ctr||0,
       budget: budgets[ch]||0,
+      // Prior-period stats (vs P delta)
       priorSpend: p.adSpend?.channels?.[ch]?.spend??null,
       priorWindsorDemos: p.adSpend?.channels?.[ch]?.windsorDemos??null,
-      priorMonthSpend: pm.adSpend?.channels?.[ch]?.spend??null,
-      qualified: c.pipeline.byChannel[ch]?.qualified||0,
       priorQualified: p.pipeline?.byChannel?.[ch]?.qualified??null,
-      closedWon: c.closedWon.byChannel[ch]?.count||0,
-      closedWonMRR: c.closedWon.byChannel[ch]?.mrr||0,
       priorClosedWon: p.closedWon?.byChannel?.[ch]?.count??null,
       priorClosedWonMRR: p.closedWon?.byChannel?.[ch]?.mrr??null,
+      // Prior-month stats (vs LM delta) — previously only spend was exposed,
+      // which caused Demos / CPD / Qual / CPQD LM deltas in the Channel
+      // Performance table to silently render as "—".
+      priorMonthSpend: pm.adSpend?.channels?.[ch]?.spend??null,
+      priorMonthWindsorDemos: pm.adSpend?.channels?.[ch]?.windsorDemos??null,
+      priorMonthQualified: pm.pipeline?.byChannel?.[ch]?.qualified??null,
+      priorMonthClosedWon: pm.closedWon?.byChannel?.[ch]?.count??null,
+      priorMonthClosedWonMRR: pm.closedWon?.byChannel?.[ch]?.mrr??null,
+      // Current-period outcomes
+      qualified: c.pipeline.byChannel[ch]?.qualified||0,
+      closedWon: c.closedWon.byChannel[ch]?.count||0,
+      closedWonMRR: c.closedWon.byChannel[ch]?.mrr||0,
     };
   }
 
