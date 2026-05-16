@@ -1715,18 +1715,6 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     console.error('Irfan MTD early-fetch failed:', e);
   }
 
-  // Sign-Up Rate cohort fetch — done EARLY (sequential per-month) so each
-  // month's query gets a fresh slice of HubSpot rate-limit + CF subrequest
-  // budget before the heavy Phase 2 company/contact batches drain them.
-  // Sequential is intentional: parallel runs caused individual months to
-  // fail silently and February/March came back empty.
-  let _signupCohortResult = { union: [], perMonth: {} };
-  try {
-    _signupCohortResult = await fetchCohortDealsPerMonth(hsToken, cohortMonths);
-  } catch(e) {
-    console.error('SignUp cohort early-fetch failed:', e);
-  }
-
   // ── Phase 2: Run HubSpot calls sequentially (avoids 429 rate limits) ──
   const cSch = await fetchScheduledContacts(hsToken, current.from, current.to);
   // For Demo Quality: extend pipeline fetch through end of month (processPipelineDeals re-filters to MTD)
@@ -1850,11 +1838,17 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
 
   const ownerMap = await fetchOwners(hsToken);
 
-  // Sign-Up Rate cohort union — fetched earlier in the handler so each
-  // month's query had subrequest budget. _signupCohortResult.perMonth
-  // tracks the raw fetched count per cohort for the dashboard diagnostic.
-  const cohortDeals = _signupCohortResult.union;
-  const cohortFetchedPerMonth = _signupCohortResult.perMonth;
+  // Sign-Up Rate cohort fetch — sequential per-month. A single 4-month
+  // wide query hits HubSpot's 10k hard ceiling on busy pipelines and
+  // silently drops one end of the window. Per-month queries each get
+  // their own 10k budget. Sequential avoids the parallel-fetch
+  // intermittent-failure issue we saw with the first attempt.
+  // Done HERE (not earlier in the handler) so we don't risk crowding
+  // out the rest of the work on the per-request CF budget — the
+  // 4 sequential fetches add ~1-3s wall-clock but each one is small.
+  const _cohortRes = await fetchCohortDealsPerMonth(hsToken, cohortMonths);
+  const cohortDeals = _cohortRes.union;
+  const cohortFetchedPerMonth = _cohortRes.perMonth;
 
   // All-time deals for rep summary and marketing funnel.
   //
