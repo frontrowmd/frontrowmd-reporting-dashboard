@@ -944,13 +944,11 @@ function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
     buckets[cm.label] = { period: cm, ...emptyBucket(), byRep: {} };
   }
 
-  // Month-key lookup: "2026-03" → cohortMonth label
+  // Month-key lookup: "2026-03" → cohortMonth label. Routing by the YYYY-MM
+  // prefix of date_demo_booked is sufficient — no need for a separate ms range
+  // check (the prefix IS the month constraint).
   const monthToLabel = {};
-  const monthRanges = {};
-  for (const cm of cohortMonths) {
-    monthToLabel[cm.from.slice(0, 7)] = cm.label;
-    monthRanges[cm.label] = { fromMs: toMsUTC(cm.from), toMs: toMsUTC(cm.to, true) };
-  }
+  for (const cm of cohortMonths) monthToLabel[cm.from.slice(0, 7)] = cm.label;
 
   // Floor a ms timestamp to UTC-midnight so partial-day deltas don't skew
   // the Avg Days to Close metric.
@@ -961,15 +959,17 @@ function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
     const ddb = p.date_demo_booked;
     if (!ddb) continue;
 
-    const ddbMs = dateMs(ddb);
-    if (isNaN(ddbMs)) continue;
-
-    const monthKey = ddb.substring(0, 7);
+    // Route by YYYY-MM prefix — works whether HubSpot returns "2026-04-15"
+    // or "2026-04-15T00:00:00.000Z" (DATE props are usually the former, but
+    // datetime-shape values do occur in the wild).
+    const monthKey = String(ddb).substring(0, 7);
     const label = monthToLabel[monthKey];
     if (!label) continue;
 
-    const range = monthRanges[label];
-    if (ddbMs < range.fromMs || ddbMs > range.toMs) continue;
+    // ms parse for Avg Days to Close. dateMs handles "YYYY-MM-DD" exactly;
+    // isoMs (Date.parse-based) is the fallback for ISO datetime variants.
+    let ddbMs = dateMs(ddb);
+    if (isNaN(ddbMs)) ddbMs = isoMs(ddb);
 
     const b = buckets[label];
     const stage = (p.dealstage || '').trim();
