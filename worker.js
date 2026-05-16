@@ -486,11 +486,7 @@ async function fetchAnyWonDealsByEnteredWon(token, from, to) {
 // Deals by date_demo_booked (single filter, no OR groups). Used by the
 // Sign-Up Rate cohort builder. fetchPipelineDeals's three OR groups create
 // duplicate hits that inflate the raw count against hsSearch's 10k hard cap,
-// silently dropping deals on wide (4-month) cohort windows. SignUp cohort
-// routing only needs deals with date_demo_booked set — Group 2 / Group 3
-// hits without it can't be routed to a month anyway. Sorted DESC by
-// date_demo_booked + maxPages bumped so even if we ever do cap, we keep
-// the most-recent months intact (cohorts use them prominently).
+// silently dropping deals on wide (4-month) cohort windows.
 async function fetchCohortDealsByBookedDate(token, from, to) {
   return hsSearch(token, 'deals', [{
     filters: [
@@ -499,6 +495,34 @@ async function fetchCohortDealsByBookedDate(token, from, to) {
     ],
   }], ['dealname','date_demo_booked','demo_attendance_status','demo_qualification_outcome','dealstage','amount','closedate','hs_createdate','hubspot_owner_id','brand_status'],
   200, [{ propertyName: 'date_demo_booked', direction: 'DESCENDING' }], 50);
+}
+
+// Sign-Up Rate cohort fetch: ONE query per cohort month, in parallel.
+// A single 4-month wide query hits HubSpot's 10k hard limit on busy
+// pipelines and silently drops one end of the window (oldest with DESC
+// sort, newest with ASC). Per-month queries each get their own 10k
+// budget — a single calendar month is nowhere near that ceiling, so
+// every cohort comes back complete.
+async function fetchCohortDealsPerMonth(token, cohortMonths) {
+  const props = ['dealname','date_demo_booked','demo_attendance_status','demo_qualification_outcome','dealstage','amount','closedate','hs_createdate','hubspot_owner_id','brand_status'];
+  const fetches = cohortMonths.map(cm =>
+    hsSearch(token, 'deals', [{
+      filters: [
+        { propertyName: 'date_demo_booked', operator: 'GTE', value: String(toMsUTC(cm.from)) },
+        { propertyName: 'date_demo_booked', operator: 'LTE', value: String(toMsUTC(cm.to, true)) },
+      ],
+    }], props, 200, [{ propertyName: 'date_demo_booked', direction: 'DESCENDING' }], 10)
+      .then(arr => ({ label: cm.label, arr: arr || [] }))
+      .catch(e => { console.warn(`SignUp month fetch ${cm.label} failed:`, e.message); return { label: cm.label, arr: [] }; })
+  );
+  const results = await Promise.all(fetches);
+  // Union all months, dedupe by deal id
+  const map = new Map();
+  for (const { arr } of results) for (const d of arr) map.set(d.id, d);
+  // Per-month diagnostic — surfaces if any month's fetch came back unexpectedly thin.
+  const counts = results.map(r => `${r.label}=${r.arr.length}`).join(', ');
+  console.log(`SignUp per-month fetch: ${counts} → union=${map.size} unique`);
+  return [...map.values()];
 }
 
 // Closed-won deals by closedate (guide Section 5)
@@ -979,6 +1003,13 @@ function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
   // Floor a ms timestamp to UTC-midnight so partial-day deltas don't skew
   // the Avg Days to Close metric.
   const _floor = (ms) => { const x = new Date(ms); return Date.UTC(x.getUTCFullYear(), x.getUTCMonth(), x.getUTCDate()); };
+  // Today's UTC midnight — used to exclude FUTURE-dated demos from the
+  // "held" count. Without this, the current month's Demos Held is inflated
+  // by upcoming demos still in stage = appointmentscheduled (they haven't
+  // happened yet, but the formula otherwise treats appt-stage as "held").
+  // Past months don't have this problem — all dates are <= today.
+  const _today = new Date();
+  const _todayMs = Date.UTC(_today.getUTCFullYear(), _today.getUTCMonth(), _today.getUTCDate(), 23, 59, 59, 999);
 
   for (const deal of allDeals) {
     const p = deal.properties || {};
@@ -1020,7 +1051,15 @@ function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
           b.byRep[oid].daysToCloseSum += days; b.byRep[oid].daysToCloseN++;
         }
       }
-    } else if (stage === STAGE_APPT)           { b.cntAppt++;          b.byRep[oid].cntAppt++; }
+    } else if (stage === STAGE_APPT) {
+      // STAGE_APPT (Appointment Scheduled) is the only ambiguous stage —
+      // for past months the demo presumably happened (stage just wasn't
+      // updated), for the current month the demo may still be upcoming.
+      // Only count toward held if date_demo_booked is on or before today.
+      if (!isNaN(ddbMs) && ddbMs <= _todayMs) {
+        b.cntAppt++; b.byRep[oid].cntAppt++;
+      }
+    }
     else if (stage === STAGE_DEMO_HAPPENED)    { b.cntDemoHappened++;  b.byRep[oid].cntDemoHappened++; }
     else if (stage === STAGE_DM)               { b.cntDM++;            b.byRep[oid].cntDM++; }
     else if (stage === STAGE_CS)               { b.cntCS++;            b.byRep[oid].cntCS++; }
@@ -1793,12 +1832,12 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
 
   const ownerMap = await fetchOwners(hsToken);
 
-  // Sign-Up Rate cohort fetch: full 4-month window via a single-filter
-  // query (no OR groups), avoiding the duplication that bloats the raw
-  // count against hsSearch's 10k hard cap. Sorted DESC by date_demo_booked
-  // with maxPages bumped to 50 (10k unique cap).
-  const cohortDeals = await fetchCohortDealsByBookedDate(hsToken, cohortStart, cohortEnd);
-  console.log(`cohortDeals: ${cohortDeals.length} deals (${cohortStart} → ${cohortEnd})`);
+  // Sign-Up Rate cohort fetch: PER-MONTH queries in parallel. A single
+  // 4-month wide query still hits HubSpot's 10k hard limit on busy
+  // pipelines (one end of the window gets silently dropped depending on
+  // sort direction). Per-month queries each get their own 10k budget,
+  // so every cohort returns complete data.
+  const cohortDeals = await fetchCohortDealsPerMonth(hsToken, cohortMonths);
 
   // All-time deals for rep summary and marketing funnel.
   //
