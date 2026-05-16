@@ -483,6 +483,24 @@ async function fetchAnyWonDealsByEnteredWon(token, from, to) {
   }], ['amount','closedate','hs_createdate','hs_date_entered_closedwon','utm_source','utm_medium','utm_campaign','utm_content','hubspot_owner_id','brand_status','average_monthly_web_traffic__cloned_','average_monthly_web_traffic','dealstage','dealname']);
 }
 
+// Deals by date_demo_booked (single filter, no OR groups). Used by the
+// Sign-Up Rate cohort builder. fetchPipelineDeals's three OR groups create
+// duplicate hits that inflate the raw count against hsSearch's 10k hard cap,
+// silently dropping deals on wide (4-month) cohort windows. SignUp cohort
+// routing only needs deals with date_demo_booked set — Group 2 / Group 3
+// hits without it can't be routed to a month anyway. Sorted DESC by
+// date_demo_booked + maxPages bumped so even if we ever do cap, we keep
+// the most-recent months intact (cohorts use them prominently).
+async function fetchCohortDealsByBookedDate(token, from, to) {
+  return hsSearch(token, 'deals', [{
+    filters: [
+      { propertyName: 'date_demo_booked', operator: 'GTE', value: String(toMsUTC(from)) },
+      { propertyName: 'date_demo_booked', operator: 'LTE', value: String(toMsUTC(to, true)) },
+    ],
+  }], ['dealname','date_demo_booked','demo_attendance_status','demo_qualification_outcome','dealstage','amount','closedate','hs_createdate','hubspot_owner_id','brand_status'],
+  200, [{ propertyName: 'date_demo_booked', direction: 'DESCENDING' }], 50);
+}
+
 // Closed-won deals by closedate (guide Section 5)
 async function fetchClosedWonDeals(token, from, to) {
   return hsSearch(token, 'deals', [{
@@ -1775,18 +1793,12 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
 
   const ownerMap = await fetchOwners(hsToken);
 
-  // Single sign-up cohort fetch: full 4-month window.
-  // Override hsSearch defaults so we don't silently truncate the newest months:
-  //   • sorts: date_demo_booked DESC — if we ever do hit the page cap, the
-  //     dropped tail is the OLDEST data (4 months back), not the newest.
-  //     The page-7 buildSignUpCohorts uses the recent months prominently, so
-  //     losing the newest end was very visible (April/May appeared sparse).
-  //   • maxPages: 30 → 6000-deal headroom across the 3 OR filter groups (deduped).
-  const cohortDeals = await fetchPipelineDeals(hsToken, cohortStart, cohortEnd, {
-    sorts: [{ propertyName: 'date_demo_booked', direction: 'DESCENDING' }],
-    maxPages: 30,
-  });
-  console.log(`cohortDeals: ${cohortDeals.length} deals (${cohortStart} → ${cohortEnd}) — desc sort, maxPages=30`);
+  // Sign-Up Rate cohort fetch: full 4-month window via a single-filter
+  // query (no OR groups), avoiding the duplication that bloats the raw
+  // count against hsSearch's 10k hard cap. Sorted DESC by date_demo_booked
+  // with maxPages bumped to 50 (10k unique cap).
+  const cohortDeals = await fetchCohortDealsByBookedDate(hsToken, cohortStart, cohortEnd);
+  console.log(`cohortDeals: ${cohortDeals.length} deals (${cohortStart} → ${cohortEnd})`);
 
   // All-time deals for rep summary and marketing funnel.
   //
@@ -1831,8 +1843,21 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   const priorData = prior ? buildPeriodData(prior, pW, pLI, pG, pSch, filterActiveBrands(pPipe), filterActiveBrands(pCW)) : null;
   const priorMonthData = priorMonth ? buildPeriodData(priorMonth, pmW, pmLI, pmG, pmSch, filterActiveBrands(pmPipe), filterActiveBrands(pmCW)) : null;
 
-  // ── Sign-Up Rate cohorts (single query, bucketed by month) ──
-  currentData.signUpRate = buildSignUpCohorts(cohortDeals, cohortMonths, ownerMap);
+  // ── Sign-Up Rate cohorts ──
+  // Union cohortDeals (wide 4-month fetch) with the narrower cPipe/pPipe/pmPipe
+  // sources. Each narrow source is a separate fetch over its own short window
+  // and is nowhere near hitting a pagination cap, so it acts as a defense-in-
+  // depth backup for the months it covers — same trick the Irfan PCM uses.
+  //   • cPipe   → current month
+  //   • pPipe   → "prior" window (last MTD for MTD, last week for 7d, etc.)
+  //   • pmPipe  → prior calendar month
+  //   • cohortDeals → full 4-month window (the only source covering the
+  //                    oldest months in the cohort range)
+  const _signupUnion = new Map();
+  const _signupAdd = (arr) => { if (!arr) return; for (const x of arr) _signupUnion.set(x.id, x); };
+  _signupAdd(cohortDeals); _signupAdd(cPipe); _signupAdd(pPipe); _signupAdd(pmPipe);
+  console.log(`SignUp union: cohortDeals=${cohortDeals.length}, cPipe=${cPipe?.length||0}, pPipe=${pPipe?.length||0}, pmPipe=${pmPipe?.length||0} → union=${_signupUnion.size} unique`);
+  currentData.signUpRate = buildSignUpCohorts([..._signupUnion.values()], cohortMonths, ownerMap);
   currentData.signUpRate.allTimeByRep = buildAllTimeRepStats(allTimeClosedWon, allTimeQualifiedForReps, ownerMap);
   currentData.quarterlyHistory = isAllTime ? buildQuarterlyHistory(filterActiveBrands(cCW), current.from, current.to) : null;
 
