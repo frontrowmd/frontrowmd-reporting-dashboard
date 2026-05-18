@@ -3115,21 +3115,44 @@ function renderSignUp(){
 
   let h='<div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);margin-bottom:14px">Monthly Cohorts</div>';
 
-  for(const c of s.cohorts){
-    const _avgD=c.avgDaysToClose;
-    const _avgDStr=fmtDays(_avgD);
+  // Build the Avg-Days "stacked two-value" cell HTML — mirrors the Special #1
+  // card design. Primary value = from booked; secondary = from created.
+  const _avgDaysCell=(fromBookedV,fromCreatedV,titleAttr)=>{
+    const _f=(v)=>v==null?'—':(v<10?v.toFixed(1):Math.round(v).toString());
+    return `<div${titleAttr?' title="'+titleAttr+'"':''}>`
+      +`<div style="display:flex;align-items:baseline;gap:6px;font-variant-numeric:tabular-nums">`
+      +  `<span style="font-family:var(--font-h);font-size:18px;font-weight:700;color:var(--navy);line-height:1.05">${_f(fromBookedV)}${fromBookedV!=null?'<span style="font-size:10px;color:var(--grey);font-weight:600;margin-left:2px">d</span>':''}</span>`
+      +  `<span style="font-size:9px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;font-weight:600">from booked</span>`
+      +`</div>`
+      +`<div style="display:flex;align-items:baseline;gap:6px;font-variant-numeric:tabular-nums;margin-top:2px">`
+      +  `<span style="font-family:var(--font-h);font-size:14px;font-weight:600;color:var(--mid-navy);line-height:1.05">${_f(fromCreatedV)}${fromCreatedV!=null?'<span style="font-size:9px;color:var(--grey);font-weight:600;margin-left:2px">d</span>':''}</span>`
+      +  `<span style="font-size:9px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;font-weight:600">from created</span>`
+      +`</div>`
+      +`</div>`;
+  };
+  // Compact "X d" cell for the rep-table columns
+  const _daysCell=(v)=>v==null?'—':`${v<10?v.toFixed(1):Math.round(v)}<span style="font-size:10px;color:var(--grey);font-weight:600;margin-left:1px">d</span>`;
+
+  // Collect cohort → pie-target-id for post-injection rendering
+  const _pieTargets=[];
+
+  for(let _ci=0;_ci<s.cohorts.length;_ci++){
+    const c=s.cohorts[_ci];
+    const _pieId='signup-pie-'+_ci;
+    _pieTargets.push({id:_pieId,buckets:c.signedByWebTraffic||{},signed:c.signed||0});
     const titleRange=fmtDateRange(c.period.from,c.period.to);
 
-    // ── Row 1 (highlighted): % Signed (primary) · Closed Won · Demos Held · Avg Days to Close · New ARR · ACV
+    // ── Row 1 (highlighted): % Signed (primary) · Closed Won · Qual Demos Held · Avg Days · New ARR · ACV
     let row1='<div class="su-row1">';
     row1+='<div class="su-r1-item primary">';
     row1+='<div class="su-label">% Signed</div>';
     row1+=`<div class="su-value">${c.pctSigned.toFixed(1)}%</div>`;
-    row1+=`<div class="su-calc">${fN(c.signed)} ÷ ${fN(c.demosHeld)} demos held</div>`;
+    row1+=`<div class="su-calc">${fN(c.signed)} ÷ ${fN(c.demosHeld)} qual demos held</div>`;
     row1+='</div>';
     row1+=`<div class="su-r1-item"><div class="su-label">Closed Won</div><div class="su-value">${fN(c.signed)}</div></div>`;
     row1+=`<div class="su-r1-item" title="Deals where date_demo_booked is in ${c.period.label} AND dealstage is Closed Won, Demo Happened, Decision Maker Brought In, Contract Sent, or Appointment Scheduled (with past date)"><div class="su-label">Qual Demos Held</div><div class="su-value">${fN(c.demosHeld)}</div></div>`;
-    row1+=`<div class="su-r1-item" title="Average days from date_demo_booked to closedate across signed deals (n=${fN(c.avgDaysToCloseN||0)})"><div class="su-label">Avg Days to Close</div><div class="su-value">${_avgDStr}</div></div>`;
+    // Avg Days — TWO stacked values: from booked + from created
+    row1+=`<div class="su-r1-item" title="Average days from each anchor to closedate across signed deals in this cohort"><div class="su-label">Avg Days to Close</div>${_avgDaysCell(c.avgDaysFromBooked!=null?c.avgDaysFromBooked:c.avgDaysToClose, c.avgDaysFromCreated)}</div>`;
     row1+=`<div class="su-r1-item"><div class="su-label">New ARR</div><div class="su-value">${c.signed>0?f$(c.newArr):'—'}</div></div>`;
     row1+=`<div class="su-r1-item"><div class="su-label">ACV</div><div class="su-value">${c.signed>0?f$(c.acv):'—'}</div></div>`;
     row1+='</div>';
@@ -3143,22 +3166,22 @@ function renderSignUp(){
     row2+=`<div class="su-r2-item" title="No Show ÷ all deals booked in month"><div class="su-label">% No Show</div><div class="su-value">${fmtPct(c.pctNoShow)}</div><div style="font-size:10px;color:var(--grey);margin-top:2px">${fN(_sc.noShow||0)} ÷ ${fN(c.allBooked||0)}</div></div>`;
     row2+='</div>';
 
-    // ── Per-rep table
-    // Columns: Rep · %Signed* · Closed Won* · Demos Held · Avg Days · New ARR · ACV · #CS · #DM · %Pending · %Pruned · %NoShow
-    // (* = highlight column)
+    // ── Per-rep table — 13 cols: Rep · %Signed* · Closed Won* · Qual Demos Held · Avg Days
+    //    (Booked) · Avg Days (Created) · New ARR · ACV · Contracts Sent · Decision Makers ·
+    //    %Pending · %Pruned · %NoShow.  (* = highlight column)
     const reps=Object.entries(c.byRep)
       .map(([oid,r])=>r)
       .sort((a,b)=>(b.signed||0)-(a.signed||0) || (b.demosHeld||0)-(a.demosHeld||0));
     let tableRows='';
     for(const r of reps){
       const rsc=r.stageCounts||{};
-      const rAvgD=fmtDays(r.avgDaysToClose);
       tableRows+=`<tr>
         <td>${r.name||'—'}</td>
         <td class="highlight">${fmtPct(r.pctSigned)}</td>
         <td class="highlight">${fN(r.signed)}</td>
         <td>${fN(r.demosHeld)}</td>
-        <td>${rAvgD}</td>
+        <td>${_daysCell(r.avgDaysFromBooked!=null?r.avgDaysFromBooked:r.avgDaysToClose)}</td>
+        <td>${_daysCell(r.avgDaysFromCreated)}</td>
         <td>${r.signed>0?f$(r.newArr):'—'}</td>
         <td>${r.signed>0?f$(r.acv):'—'}</td>
         <td>${fN(rsc.cs||0)}</td>
@@ -3174,7 +3197,8 @@ function renderSignUp(){
       <td class="highlight">${fmtPct(c.pctSigned)}</td>
       <td class="highlight">${fN(c.signed)}</td>
       <td>${fN(c.demosHeld)}</td>
-      <td>${_avgDStr}</td>
+      <td>${_daysCell(c.avgDaysFromBooked!=null?c.avgDaysFromBooked:c.avgDaysToClose)}</td>
+      <td>${_daysCell(c.avgDaysFromCreated)}</td>
       <td>${c.signed>0?f$(c.newArr):'—'}</td>
       <td>${c.signed>0?f$(c.acv):'—'}</td>
       <td>${fN(_sc.cs||0)}</td>
@@ -3184,10 +3208,7 @@ function renderSignUp(){
       <td>${fmtPct(c.pctNoShow)}</td>
     </tr>`;
 
-    // Per-cohort diagnostic strip — shows raw HubSpot fetch count + the
-    // formula breakdown that produced Qual Demos Held. If a cohort looks
-    // off, this tells us instantly whether it's a fetch issue (low fetched
-    // count) or a definition issue (count is fine but breakdown is wrong).
+    // Per-cohort diagnostic strip
     const fetched=c._fetchedCount;
     const diagPieces=[
       fetched!=null?`HubSpot fetch: <b>${fN(fetched)} deals</b>`:null,
@@ -3195,6 +3216,15 @@ function renderSignUp(){
       `Qual Demos Held = ${fN(_sc.won||0)} CW + ${fN(_sc.demoHappened||0)} DH + ${fN(_sc.dm||0)} DM + ${fN(_sc.cs||0)} CS + ${fN(_sc.appt||0)} Appt(past) = <b>${fN(c.demosHeld)}</b>`,
     ].filter(Boolean);
     const diagBar=`<div style="font-size:10px;color:var(--grey);padding:6px 10px;background:rgba(23,44,69,.03);border-radius:4px;margin-bottom:10px;font-variant-numeric:tabular-nums;line-height:1.6">${diagPieces.join(' &nbsp;·&nbsp; ')}</div>`;
+
+    // Totals on the left (rows 1+2), pie chart on the right.
+    // Pie target is rendered via _renderIrfanWtPieInto AFTER the innerHTML
+    // injection (collected in _pieTargets above).
+    const pieCol=`<div style="flex:0 0 320px;display:flex;flex-direction:column;border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:var(--white);min-width:280px">
+      <div style="font-family:var(--font-h);font-size:11px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px">Sign-Ups by Web Traffic</div>
+      <div style="font-size:10px;color:var(--grey);margin-bottom:4px">Closed Won deals in ${c.period.label}, bucketed by tier</div>
+      <div id="${_pieId}" style="flex:1;min-height:280px;display:flex;align-items:center;justify-content:center"></div>
+    </div>`;
 
     h+=`<div class="su-cohort-card">
       <div class="su-cohort-head">
@@ -3204,30 +3234,51 @@ function renderSignUp(){
         </div>
       </div>
       ${diagBar}
-      ${row1}
-      ${row2}
+      <div style="display:flex;gap:14px;align-items:stretch;flex-wrap:wrap;margin-bottom:14px">
+        <div style="flex:1;min-width:420px;display:flex;flex-direction:column;gap:8px">
+          ${row1}
+          ${row2}
+        </div>
+        ${pieCol}
+      </div>
       <div style="overflow-x:auto"><table class="su-rep-table">
         <thead><tr>
           <th>Rep</th>
           <th class="highlight">% Signed</th>
           <th class="highlight">Closed Won</th>
           <th title="Deals where date_demo_booked is in this cohort month AND dealstage is Closed Won, Demo Happened, Decision Maker Brought In, Contract Sent, or Appointment Scheduled (with past date)">Qual Demos Held</th>
-          <th>Avg Days to Close</th>
+          <th title="Average days from date_demo_booked to closedate across signed deals">Avg Days (Booked)</th>
+          <th title="Average days from hs_createdate to closedate across signed deals">Avg Days (Created)</th>
           <th>New ARR</th>
           <th>ACV</th>
-          <th title="dealstage = Contract Sent"># CS</th>
-          <th title="dealstage = Decision Maker Brought In"># DM</th>
+          <th title="dealstage = Contract Sent">Contracts Sent</th>
+          <th title="dealstage = Decision Maker Brought In">Decision Makers</th>
           <th>% Pending</th>
           <th>% Pruned</th>
           <th>% No Show</th>
         </tr></thead>
-        <tbody>${tableRows||'<tr><td colspan="12" style="text-align:center;color:var(--grey);font-style:italic;padding:14px">No reps with demos in this cohort</td></tr>'}</tbody>
+        <tbody>${tableRows||'<tr><td colspan="13" style="text-align:center;color:var(--grey);font-style:italic;padding:14px">No reps with demos in this cohort</td></tr>'}</tbody>
         <tfoot>${totalRow}</tfoot>
       </table></div>
     </div>`;
   }
 
   document.getElementById('signup-c').innerHTML=h;
+
+  // ── Render the per-cohort web-traffic donuts now that the targets exist ──
+  // Re-uses the Irfan Dashboard's web-traffic donut renderer for full visual
+  // parity (same palette, Pre-launch → 500K+ clockwise, hover tooltips,
+  // legend with counts + %).
+  if(typeof _renderIrfanWtPieInto==='function'){
+    for(const pt of _pieTargets){
+      if(pt.signed>0){
+        _renderIrfanWtPieInto(pt.id, pt.buckets, 'signed', null);
+      } else {
+        const el=document.getElementById(pt.id);
+        if(el)el.innerHTML='<div style="color:var(--grey);font-size:12px;padding:24px 0;text-align:center;font-style:italic">No signed deals</div>';
+      }
+    }
+  }
 }
 
 // ═══════════════ INSIGHTS ENGINE ═══════════════

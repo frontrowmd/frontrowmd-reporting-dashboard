@@ -1030,12 +1030,18 @@ function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
     cntWon: 0, cntAppt: 0, cntDemoHappened: 0, cntDM: 0, cntCS: 0,
     cntNoShow: 0, cntNotAFit: 0,
     signedMrrSum: 0,
-    daysToCloseSum: 0, daysToCloseN: 0,
+    // Avg Days to Close — two variants per spec: from date_demo_booked + from hs_createdate.
+    daysToCloseSum: 0, daysToCloseN: 0,           // from date_demo_booked (back-compat name)
+    daysFromCreatedSum: 0, daysFromCreatedN: 0,   // from hs_createdate
   });
   const buckets = {};
   for (const cm of cohortMonths) {
-    buckets[cm.label] = { period: cm, ...emptyBucket(), byRep: {} };
+    // signedByWebTraffic — bucket Closed Won deals by web-traffic tier for the
+    // pie chart on each cohort. Cohort-level only (not tracked per rep).
+    buckets[cm.label] = { period: cm, ...emptyBucket(), byRep: {}, signedByWebTraffic: {} };
   }
+  // Robust parse for hs_createdate (numeric ms string OR ISO datetime variants)
+  const _parseDt = (v) => { if (!v) return NaN; return /^\d+$/.test(v) ? parseInt(v) : new Date(v).getTime(); };
 
   // Month-key lookup: "2026-03" → cohortMonth label. Routing by the YYYY-MM
   // prefix of date_demo_booked is sufficient — no need for a separate ms range
@@ -1088,12 +1094,27 @@ function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
       b.signedMrrSum += amt; b.byRep[oid].signedMrrSum += amt;
       const cdMs = isoMs(p.closedate);
       if (!isNaN(cdMs)) {
+        // From date_demo_booked
         const days = (_floor(cdMs) - _floor(ddbMs)) / 86400000;
         if (days >= 0) {
           b.daysToCloseSum += days; b.daysToCloseN++;
           b.byRep[oid].daysToCloseSum += days; b.byRep[oid].daysToCloseN++;
         }
+        // From hs_createdate (the "real" lead-to-close cycle time)
+        const hcdMs = _parseDt(p.hs_createdate);
+        if (!isNaN(hcdMs)) {
+          const daysC = (_floor(cdMs) - _floor(hcdMs)) / 86400000;
+          if (daysC >= 0) {
+            b.daysFromCreatedSum += daysC; b.daysFromCreatedN++;
+            b.byRep[oid].daysFromCreatedSum += daysC; b.byRep[oid].daysFromCreatedN++;
+          }
+        }
       }
+      // Web-traffic tier bucket for the per-cohort pie chart.
+      // Prefer the cloned snapshot (signed-time value); fall back to live.
+      const wtRaw = p.average_monthly_web_traffic__cloned_ || p.average_monthly_web_traffic || '';
+      const tierKey = wtRaw || '(none)';
+      b.signedByWebTraffic[tierKey] = (b.signedByWebTraffic[tierKey]||0) + 1;
     } else if (stage === STAGE_APPT) {
       // STAGE_APPT (Appointment Scheduled) is the only ambiguous stage —
       // for past months the demo presumably happened (stage just wasn't
@@ -1129,8 +1150,14 @@ function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
       mrr: b.signedMrrSum,
       newArr: b.signedMrrSum * 12,
       acv: b.cntWon > 0 ? b.signedMrrSum / b.cntWon : 0,
+      // From date_demo_booked
       avgDaysToClose: b.daysToCloseN > 0 ? b.daysToCloseSum / b.daysToCloseN : null,
       avgDaysToCloseN: b.daysToCloseN,
+      avgDaysFromBooked: b.daysToCloseN > 0 ? b.daysToCloseSum / b.daysToCloseN : null,
+      avgDaysFromBookedN: b.daysToCloseN,
+      // From hs_createdate
+      avgDaysFromCreated: b.daysFromCreatedN > 0 ? b.daysFromCreatedSum / b.daysFromCreatedN : null,
+      avgDaysFromCreatedN: b.daysFromCreatedN,
     };
   }
 
@@ -1145,7 +1172,7 @@ function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
       repData[oid] = { name: r.name, ...deriveMetrics(r) };
     }
 
-    cohorts.push({ period: cm, ...m, byRep: repData });
+    cohorts.push({ period: cm, ...m, signedByWebTraffic: b.signedByWebTraffic||{}, byRep: repData });
   }
 
   return { cohorts };
