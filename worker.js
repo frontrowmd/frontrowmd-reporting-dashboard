@@ -2018,30 +2018,21 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     resp.irfan.dqForm = _irfanDqForm;
   }
 
-  // Tile #1 — Signed Deals from Last Month.
-  //   denominator (Demos Held) = deals with date_demo_booked in prior calendar
-  //     month AND dealstage in [closedwon, appointmentscheduled, 1084214349
-  //     (Demo Happened), decisionmakerboughtin, contractsent].
-  //   numerator (Closed Won) = denominator subset with dealstage='closedwon'.
-  // Plus three breakdown ratios over ALL deals booked in prior month:
-  //   % Pending = (appointmentscheduled + Demo Happened + decisionmaker
-  //     + contractsent + No Show) / all
-  //   % Pruned  = Not a Fit / all
-  //   % No Show = No Show / all
+  // Tile #1 — Signed Deals (toggle: Last Month / MTD).
+  //   "Qualified Demos Held" denominator = deals with date_demo_booked in the
+  //     selected month AND dealstage in [closedwon, appointmentscheduled,
+  //     1084214349 (Demo Happened), decisionmakerboughtin, contractsent].
+  //     For STAGE_APPT, we require date_demo_booked <= today (the current
+  //     month would otherwise be inflated by future-dated bookings).
+  //   "Closed Won" numerator = denominator subset with dealstage='closedwon'.
+  //   Three breakdown ratios over deals booked in the month (excl. pre-launch):
+  //     % Pending = (appt-past + Demo Happened + decisionmaker + contractsent) / Qual Demos Held
+  //     % Pruned  = Not a Fit / all booked
+  //     % No Show = No Show / all booked
+  //   PRE-LAUNCH (Pre-launch / just launching) brands are excluded entirely.
   // Union of pmPipe + cPipe + cohortDeals + pPipe avoids any single fetch's
   // pagination cap.
-  try {
-    const _now = new Date();
-    const _pcmFrom = new Date(Date.UTC(_now.getUTCFullYear(), _now.getUTCMonth()-1, 1));
-    const _pcmTo = new Date(Date.UTC(_now.getUTCFullYear(), _now.getUTCMonth(), 0));
-    const _pcmFromStr = fmt(_pcmFrom), _pcmToStr = fmt(_pcmTo);
-    const _pcmFromMs = _pcmFrom.getTime();
-    const _pcmToMs = Date.UTC(_pcmTo.getUTCFullYear(), _pcmTo.getUTCMonth(), _pcmTo.getUTCDate(), 23, 59, 59, 999);
-    const _pcmUnion = new Map();
-    const _addAll = (arr) => { if (!arr) return; for (const x of arr) _pcmUnion.set(x.id, x); };
-    _addAll(pmPipe); _addAll(cPipe); _addAll(cohortDeals); _addAll(pPipe);
-    const _srcCounts = { pmPipe: pmPipe?.length||0, cPipe: cPipe?.length||0, cohortDeals: cohortDeals?.length||0, pPipe: pPipe?.length||0, union: _pcmUnion.size };
-    // Stage IDs (mirror dashboard.html STAGE_LABELS):
+  function _buildSpecial1Cohort(dealsArr, fromStr, toStr) {
     const STAGE_APPT = 'appointmentscheduled';
     const STAGE_DEMO_HAPPENED = '1084214349';
     const STAGE_DM = 'decisionmakerboughtin';
@@ -2049,30 +2040,50 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     const STAGE_WON = 'closedwon';
     const STAGE_NO_SHOW = '3453957850';
     const STAGE_NOT_A_FIT = '1062974581';
+    const fromD = new Date(fromStr+'T00:00:00Z');
+    const toD = new Date(toStr+'T00:00:00Z');
+    const fromMs = fromD.getTime();
+    const toMs = Date.UTC(toD.getUTCFullYear(), toD.getUTCMonth(), toD.getUTCDate(), 23, 59, 59, 999);
+    // Today's UTC midnight EOD — gate for STAGE_APPT (don't count future-dated)
+    const _today = new Date();
+    const _todayMs = Date.UTC(_today.getUTCFullYear(), _today.getUTCMonth(), _today.getUTCDate(), 23, 59, 59, 999);
+    const _floor = (ms) => { const x = new Date(ms); return Date.UTC(x.getUTCFullYear(), x.getUTCMonth(), x.getUTCDate()); };
+    // Robust parse for hs_createdate (numeric ms string OR ISO datetime)
+    const _parseDt = (v) => { if (!v) return NaN; return /^\d+$/.test(v) ? parseInt(v) : new Date(v).getTime(); };
+
     let allBooked = 0;
     let cntWon = 0, cntAppt = 0, cntDemoHappened = 0, cntDM = 0, cntCS = 0;
     let cntNoShow = 0, cntNotAFit = 0;
     let signedMrrSum = 0;
-    // Avg Days to Close — for signed deals in this cohort, mean(closedate - date_demo_booked)
-    // in days. Floors both to UTC-midnight to avoid sub-day noise.
-    let daysToCloseSum = 0, daysToCloseN = 0;
-    for (const d of _pcmUnion.values()) {
+    let daysFromBookedSum = 0, daysFromBookedN = 0;
+    let daysFromCreatedSum = 0, daysFromCreatedN = 0;
+    let prelaunchExcluded = 0;
+
+    for (const d of dealsArr) {
       const p = d.properties || {};
       const ddbMs = dateMs(p.date_demo_booked);
-      if (isNaN(ddbMs) || ddbMs < _pcmFromMs || ddbMs > _pcmToMs) continue;
+      if (isNaN(ddbMs) || ddbMs < fromMs || ddbMs > toMs) continue;
+      // Exclude pre-launch brands. Deal-level field is
+      // average_monthly_web_traffic__cloned_ (snapshot at signing time);
+      // fall back to the live field for deals without the cloned snapshot.
+      const wt = (p.average_monthly_web_traffic__cloned_ || p.average_monthly_web_traffic || '').toLowerCase();
+      if (wt.indexOf('pre-launch') >= 0) { prelaunchExcluded++; continue; }
       allBooked++;
       const stage = (p.dealstage||'').trim();
       if (stage === STAGE_WON) {
         cntWon++; signedMrrSum += parseFloat(p.amount)||0;
         const cdMs = isoMs(p.closedate);
-        if (!isNaN(cdMs) && !isNaN(ddbMs)) {
-          // Floor each to UTC midnight so partial-day deltas don't skew.
-          const _floor = (ms) => { const x = new Date(ms); return Date.UTC(x.getUTCFullYear(), x.getUTCMonth(), x.getUTCDate()); };
-          const days = (_floor(cdMs) - _floor(ddbMs)) / 86400000;
-          if (days >= 0) { daysToCloseSum += days; daysToCloseN++; }
+        if (!isNaN(cdMs)) {
+          const daysB = (_floor(cdMs) - _floor(ddbMs)) / 86400000;
+          if (daysB >= 0) { daysFromBookedSum += daysB; daysFromBookedN++; }
+          const hcdMs = _parseDt(p.hs_createdate);
+          if (!isNaN(hcdMs)) {
+            const daysC = (_floor(cdMs) - _floor(hcdMs)) / 86400000;
+            if (daysC >= 0) { daysFromCreatedSum += daysC; daysFromCreatedN++; }
+          }
         }
       }
-      else if (stage === STAGE_APPT) cntAppt++;
+      else if (stage === STAGE_APPT) { if (ddbMs <= _todayMs) cntAppt++; }
       else if (stage === STAGE_DEMO_HAPPENED) cntDemoHappened++;
       else if (stage === STAGE_DM) cntDM++;
       else if (stage === STAGE_CS) cntCS++;
@@ -2081,25 +2092,55 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     }
     const demosHeld = cntWon + cntAppt + cntDemoHappened + cntDM + cntCS;
     const cntPending = cntAppt + cntDemoHappened + cntDM + cntCS;
-    const pctSigned = demosHeld > 0 ? (cntWon / demosHeld) * 100 : 0;
-    const pctPending = demosHeld > 0 ? (cntPending / demosHeld) * 100 : 0;
-    const pctPruned = allBooked > 0 ? (cntNotAFit / allBooked) * 100 : 0;
-    const pctNoShow = allBooked > 0 ? (cntNoShow / allBooked) * 100 : 0;
-    const acv = cntWon > 0 ? signedMrrSum / cntWon : 0;  // New MRR ÷ Closed-won deals
-    const newArr = signedMrrSum * 12;
-    const avgDaysToClose = daysToCloseN > 0 ? daysToCloseSum / daysToCloseN : null;
-    resp.irfan.priorMonthHeldSigned = {
-      // heldScale kept as field name for backward compat — it's "demos held" denominator
-      heldScale: demosHeld, signed: cntWon, pctSigned,
-      allBooked, pctPending, pctPruned, pctNoShow,
+    return {
+      // heldScale kept as field name for backward compat — it's "Qualified Demos Held"
+      heldScale: demosHeld, signed: cntWon,
+      pctSigned: demosHeld > 0 ? (cntWon / demosHeld) * 100 : 0,
+      allBooked,
+      pctPending: demosHeld > 0 ? (cntPending / demosHeld) * 100 : 0,
+      pctPruned:  allBooked > 0 ? (cntNotAFit / allBooked) * 100 : 0,
+      pctNoShow:  allBooked > 0 ? (cntNoShow / allBooked) * 100 : 0,
       stageCounts: { won: cntWon, appt: cntAppt, demoHappened: cntDemoHappened, dm: cntDM, cs: cntCS, noShow: cntNoShow, notAFit: cntNotAFit },
-      sourceCounts: _srcCounts,
-      newArr, acv, avgDaysToClose, avgDaysToCloseN: daysToCloseN,
-      fromDate: _pcmFromStr, toDate: _pcmToStr,
+      newArr: signedMrrSum * 12,
+      acv: cntWon > 0 ? signedMrrSum / cntWon : 0,
+      // Two Avg Days variants per Irfan request
+      avgDaysFromBooked: daysFromBookedN > 0 ? daysFromBookedSum / daysFromBookedN : null,
+      avgDaysFromBookedN: daysFromBookedN,
+      avgDaysFromCreated: daysFromCreatedN > 0 ? daysFromCreatedSum / daysFromCreatedN : null,
+      avgDaysFromCreatedN: daysFromCreatedN,
+      // back-compat alias (older clients reading avgDaysToClose)
+      avgDaysToClose: daysFromBookedN > 0 ? daysFromBookedSum / daysFromBookedN : null,
+      avgDaysToCloseN: daysFromBookedN,
+      fromDate: fromStr, toDate: toStr,
+      prelaunchExcluded,
     };
-    console.log(`Irfan PCM: union=${_srcCounts.union} all-booked-in-PCM=${allBooked} demos-held=${demosHeld} won=${cntWon} (pending=${pctPending.toFixed(1)}% pruned=${pctPruned.toFixed(1)}% noShow=${pctNoShow.toFixed(1)}%)`);
+  }
+
+  try {
+    const _now = new Date();
+    // Last Month window (prior calendar month — full)
+    const _pcmFrom = new Date(Date.UTC(_now.getUTCFullYear(), _now.getUTCMonth()-1, 1));
+    const _pcmTo = new Date(Date.UTC(_now.getUTCFullYear(), _now.getUTCMonth(), 0));
+    const _pcmFromStr = fmt(_pcmFrom), _pcmToStr = fmt(_pcmTo);
+    // MTD window (current calendar month so far)
+    const _mtdFrom = new Date(Date.UTC(_now.getUTCFullYear(), _now.getUTCMonth(), 1));
+    const _mtdFromStr = fmt(_mtdFrom), _mtdToStr = fmt(_now);
+    // Build the deal union once, share across both cohorts
+    const _pcmUnion = new Map();
+    const _addAll = (arr) => { if (!arr) return; for (const x of arr) _pcmUnion.set(x.id, x); };
+    _addAll(pmPipe); _addAll(cPipe); _addAll(cohortDeals); _addAll(pPipe);
+    const _srcCounts = { pmPipe: pmPipe?.length||0, cPipe: cPipe?.length||0, cohortDeals: cohortDeals?.length||0, pPipe: pPipe?.length||0, union: _pcmUnion.size };
+    const _dealsArr = [..._pcmUnion.values()];
+    const pcmCohort = _buildSpecial1Cohort(_dealsArr, _pcmFromStr, _pcmToStr);
+    const mtdCohort = _buildSpecial1Cohort(_dealsArr, _mtdFromStr, _mtdToStr);
+    pcmCohort.sourceCounts = _srcCounts;
+    mtdCohort.sourceCounts = _srcCounts;
+    resp.irfan.priorMonthHeldSigned = pcmCohort;
+    resp.irfan.mtdHeldSigned = mtdCohort;
+    console.log(`Irfan Special#1 LastMonth: all-booked=${pcmCohort.allBooked} demos-held=${pcmCohort.heldScale} won=${pcmCohort.signed} prelaunchExcluded=${pcmCohort.prelaunchExcluded}`);
+    console.log(`Irfan Special#1 MTD: all-booked=${mtdCohort.allBooked} demos-held=${mtdCohort.heldScale} won=${mtdCohort.signed} prelaunchExcluded=${mtdCohort.prelaunchExcluded}`);
   } catch(e) {
-    console.error('Irfan prior-month signed processing failed:', e);
+    console.error('Irfan Special#1 processing failed:', e);
     resp.irfan.priorMonthError = e.message;
   }
 

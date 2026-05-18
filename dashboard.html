@@ -1209,53 +1209,12 @@ function renderIrfan(){
   h+='<div class="irf-sec-title" style="margin-bottom:4px">Time-Bound Insights</div>';
   h+='<div class="irf-sec-sub" style="margin-top:0">Independent of the time selector above — uses fixed windows (prior month, last 2 weeks)</div>';
   h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">';
-  // Special Tile #1 — Of deals with date_demo_booked in the prior calendar month
-  // (excluding pre-launch and inactive brand statuses), how many have since
-  // reached dealstage='closedwon'?
-  const _irf=d.irfan||{};
-  const _irPCM=_irf.priorMonthHeldSigned||null;
-  const _irPCMErr=_irf.priorMonthError;
-  const _irPCMRange=_irPCM&&_irPCM.fromDate&&_irPCM.toDate?`${fmtD(_irPCM.fromDate)} – ${fmtD(_irPCM.toDate)}`:'prior month';
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:22px 24px"><div class="irf-card-title">Signed Deals from Last Month</div>';
-  h+=`<div class="irf-card-sub">Of demos booked in ${_irPCMRange}, what % have signed (Closed Won ÷ Demos Held)</div>`;
-  if(_irPCMErr){h+='<div style="color:var(--red);font-size:11px;padding:14px 0;text-align:center;font-style:italic">Failed to load: '+_irPCMErr+'</div>';}
-  else if(!_irPCM){h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">Data not yet loaded — click Refresh to fetch</div>';}
-  else if(_irPCM.allBooked===0){
-    h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">No deals booked in '+_irPCMRange+'</div>';
-    const _src=_irPCM.sourceCounts||{};
-    h+='<div style="font-size:10px;color:var(--grey);padding:6px 10px;background:rgba(23,44,69,.04);border-radius:4px;margin-top:4px;text-align:center;font-variant-numeric:tabular-nums">debug · sources pmPipe='+fN(_src.pmPipe||0)+' cPipe='+fN(_src.cPipe||0)+' cohort='+fN(_src.cohortDeals||0)+' pPipe='+fN(_src.pPipe||0)+' union='+fN(_src.union||0)+'</div>';
-  }
-  else{
-    // Grouped "signed" card — % Signed prominent, then 4 detail stats sharing
-    // the same teal-gradient container.
-    // 3-col × 2-row grid. Source order = visual order: % Signed | New ARR | ACV
-    // (row 1), Closed Won | Demos Held | Avg Days to Close (row 2).
-    const _avgD=_irPCM.avgDaysToClose;
-    const _avgDLabel=(_avgD==null)?'—':(_avgD<10?_avgD.toFixed(1):Math.round(_avgD).toString());
-    h+='<div class="irf-grouped-card">';
-    // Row 1
-    h+='<div class="irf-grouped-item primary">';
-    h+=`<div class="irf-grouped-label">% Signed</div>`;
-    h+=`<div class="irf-grouped-value">${_irPCM.pctSigned.toFixed(1)}%</div>`;
-    h+=`<div class="irf-grouped-calc">${fN(_irPCM.signed)} ÷ ${fN(_irPCM.heldScale)} demos held</div>`;
-    h+='</div>';
-    h+=`<div class="irf-grouped-item"><div class="irf-grouped-label">New ARR</div><div class="irf-grouped-value">${_irPCM.signed>0?f$(_irPCM.newArr):'—'}</div></div>`;
-    h+=`<div class="irf-grouped-item"><div class="irf-grouped-label">ACV</div><div class="irf-grouped-value">${_irPCM.signed>0?f$(_irPCM.acv):'—'}</div></div>`;
-    // Row 2
-    h+=`<div class="irf-grouped-item"><div class="irf-grouped-label">Closed Won</div><div class="irf-grouped-value">${fN(_irPCM.signed)}</div></div>`;
-    h+=`<div class="irf-grouped-item"><div class="irf-grouped-label">Demos Held</div><div class="irf-grouped-value">${fN(_irPCM.heldScale)}</div></div>`;
-    h+=`<div class="irf-grouped-item" title="Average days from date_demo_booked to closedate across signed deals in this cohort (n=${fN(_irPCM.avgDaysToCloseN||0)})"><div class="irf-grouped-label">Avg Days to Close</div><div class="irf-grouped-value">${_avgDLabel}${_avgD!=null?'<span style="font-size:13px;color:var(--grey);font-weight:600;margin-left:3px">d</span>':''}</div></div>`;
-    h+='</div>';
-    // Small breakdown KPI cards: % Pending / % Pruned / % No Show. Each shows
-    // numerator ÷ denominator under the percentage.
-    const _sc=_irPCM.stageCounts||{};
-    const _pendingNum=(_sc.appt||0)+(_sc.demoHappened||0)+(_sc.dm||0)+(_sc.cs||0);
-    h+='<div class="irf-mini-kpi-grid" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-top:10px">';
-    h+=`<div class="irf-mini-kpi small" title="Appointment Scheduled + Demo Happened + Decision Maker + Contract Sent ÷ Demos Held"><div class="irf-mini-kpi-label">% Pending</div><div class="irf-mini-kpi-value">${_irPCM.pctPending.toFixed(1)}%</div><div class="irf-mini-kpi-calc">${fN(_pendingNum)} ÷ ${fN(_irPCM.heldScale)}</div></div>`;
-    h+=`<div class="irf-mini-kpi small" title="Not a Fit ÷ all deals booked in prior month"><div class="irf-mini-kpi-label">% Pruned</div><div class="irf-mini-kpi-value">${_irPCM.pctPruned.toFixed(1)}%</div><div class="irf-mini-kpi-calc">${fN(_sc.notAFit||0)} ÷ ${fN(_irPCM.allBooked||0)}</div></div>`;
-    h+=`<div class="irf-mini-kpi small" title="No Show ÷ all deals booked in prior month"><div class="irf-mini-kpi-label">% No Show</div><div class="irf-mini-kpi-value">${_irPCM.pctNoShow.toFixed(1)}%</div><div class="irf-mini-kpi-calc">${fN(_sc.noShow||0)} ÷ ${fN(_irPCM.allBooked||0)}</div></div>`;
-    h+='</div>';
-  }
+  // Special Tile #1 — Of deals with date_demo_booked in the selected month
+  // (excluding pre-launch brands), how many have since reached
+  // dealstage='closedwon'? Toggle: Last Month / MTD (mirrors Special #2's toggle).
+  if(!S.irfan.special1Mode)S.irfan.special1Mode='lastMonth';
+  h+='<div id="irfan-special1-card" style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:22px 24px">';
+  h+=_buildIrfanSpecial1Inner(d, S.irfan.special1Mode);
   h+='</div>';
   // Special Tile #2 — Signed deals by web traffic. Toggle between Last 2 Weeks
   // and MTD; both windows are fixed (independent of the page time selector).
@@ -1685,6 +1644,88 @@ function _renderIrfanSignedPie(d){
 // Build the Special #2 card content for the given mode ('14d' or 'mtd').
 // The caller must also invoke _renderIrfanSignedPie(d) afterward to populate
 // the donut for the active mode.
+// Build the Special #1 card content for the given mode ('lastMonth' or 'mtd').
+// Mirrors the design of Special #2: title + sub on the left, toggle pills on
+// the right, then the grouped stat card + breakdown KPIs.
+function _buildIrfanSpecial1Inner(d, mode){
+  const _irf=d?.irfan||{};
+  const fmtD=s=>{const p=s.split('-');return new Date(p[0],p[1]-1,p[2]).toLocaleDateString('en-US',{month:'long',day:'numeric'});};
+  const _err=_irf.priorMonthError;
+  const _s1Mode=mode==='mtd'?'mtd':'lastMonth';
+  // Pick the cohort payload by mode. mtdHeldSigned is the new MTD variant.
+  const _irPCM=_s1Mode==='mtd'?(_irf.mtdHeldSigned||null):(_irf.priorMonthHeldSigned||null);
+  const _modeLabel=_s1Mode==='mtd'?'MTD':'Last Month';
+  const _irPCMRange=_irPCM&&_irPCM.fromDate&&_irPCM.toDate?`${fmtD(_irPCM.fromDate)} – ${fmtD(_irPCM.toDate)}`:(_s1Mode==='mtd'?'this month':'prior month');
+  // Header: title + sub on the left, toggle pills on the right
+  let h='<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:14px"><div style="flex:1;min-width:200px">';
+  h+=`<div class="irf-card-title">Signed Deals — ${_modeLabel}</div>`;
+  h+=`<div class="irf-card-sub">Of demos booked in ${_irPCMRange} (excl. pre-launch), what % have signed (Closed Won ÷ Qualified Demos Held)</div>`;
+  h+='</div>';
+  // Toggle pills
+  h+='<div style="display:inline-flex;background:rgba(114,164,191,.10);border:1px solid rgba(114,164,191,.25);border-radius:99px;padding:3px;gap:2px;flex-shrink:0">';
+  h+=`<button onclick="irfanSetSpecial1Mode('lastMonth')" style="padding:5px 14px;border-radius:99px;font-size:11px;font-weight:${_s1Mode==='lastMonth'?'700':'500'};border:none;background:${_s1Mode==='lastMonth'?'var(--teal)':'transparent'};color:${_s1Mode==='lastMonth'?'#fff':'var(--navy)'};cursor:pointer;font-family:var(--font-h)">Last Month</button>`;
+  h+=`<button onclick="irfanSetSpecial1Mode('mtd')" style="padding:5px 14px;border-radius:99px;font-size:11px;font-weight:${_s1Mode==='mtd'?'700':'500'};border:none;background:${_s1Mode==='mtd'?'var(--teal)':'transparent'};color:${_s1Mode==='mtd'?'#fff':'var(--navy)'};cursor:pointer;font-family:var(--font-h)">MTD</button>`;
+  h+='</div></div>';
+  // Body
+  if(_err){h+='<div style="color:var(--red);font-size:11px;padding:14px 0;text-align:center;font-style:italic">Failed to load: '+_err+'</div>';return h;}
+  if(!_irPCM){h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">Data not yet loaded — click Refresh to fetch</div>';return h;}
+  if((_irPCM.allBooked||0)===0){
+    h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">No deals booked in '+_irPCMRange+'</div>';
+    return h;
+  }
+  // Two Avg Days values per Irfan request: from date_demo_booked + from hs_createdate.
+  const _avgB=_irPCM.avgDaysFromBooked!=null?_irPCM.avgDaysFromBooked:_irPCM.avgDaysToClose;
+  const _avgC=_irPCM.avgDaysFromCreated;
+  const _fmtD=(v)=>v==null?'—':(v<10?v.toFixed(1):Math.round(v).toString());
+  // Grouped card — 3×2 grid, same shape as before, but Avg Days cell now
+  // shows BOTH "from booked" and "from created" stacked.
+  h+='<div class="irf-grouped-card">';
+  // Row 1
+  h+='<div class="irf-grouped-item primary">';
+  h+=`<div class="irf-grouped-label">% Signed</div>`;
+  h+=`<div class="irf-grouped-value">${_irPCM.pctSigned.toFixed(1)}%</div>`;
+  h+=`<div class="irf-grouped-calc">${fN(_irPCM.signed)} ÷ ${fN(_irPCM.heldScale)} qual demos held</div>`;
+  h+='</div>';
+  h+=`<div class="irf-grouped-item"><div class="irf-grouped-label">New ARR</div><div class="irf-grouped-value">${_irPCM.signed>0?f$(_irPCM.newArr):'—'}</div></div>`;
+  h+=`<div class="irf-grouped-item"><div class="irf-grouped-label">ACV</div><div class="irf-grouped-value">${_irPCM.signed>0?f$(_irPCM.acv):'—'}</div></div>`;
+  // Row 2
+  h+=`<div class="irf-grouped-item"><div class="irf-grouped-label">Closed Won</div><div class="irf-grouped-value">${fN(_irPCM.signed)}</div></div>`;
+  h+=`<div class="irf-grouped-item" title="Demos that reached Closed Won, Demo Happened, Decision Maker, Contract Sent, or past-dated Appointment Scheduled (excl. pre-launch)"><div class="irf-grouped-label">Qualified Demos Held</div><div class="irf-grouped-value">${fN(_irPCM.heldScale)}</div></div>`;
+  // Avg Days card — TWO sub-rows: "from Booked" and "from Created"
+  h+=`<div class="irf-grouped-item" title="Average days from each anchor to closedate, across signed deals in this cohort">`
+    +`<div class="irf-grouped-label">Avg Days to Close</div>`
+    +`<div style="display:flex;flex-direction:column;gap:2px;margin-top:2px">`
+    +  `<div style="display:flex;align-items:baseline;gap:6px;font-variant-numeric:tabular-nums">`
+    +    `<span style="font-family:var(--font-h);font-size:18px;font-weight:700;color:var(--navy);line-height:1.05">${_fmtD(_avgB)}${_avgB!=null?'<span style="font-size:10px;color:var(--grey);font-weight:600;margin-left:2px">d</span>':''}</span>`
+    +    `<span style="font-size:9px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;font-weight:600">from booked</span>`
+    +  `</div>`
+    +  `<div style="display:flex;align-items:baseline;gap:6px;font-variant-numeric:tabular-nums">`
+    +    `<span style="font-family:var(--font-h);font-size:14px;font-weight:600;color:var(--mid-navy);line-height:1.05">${_fmtD(_avgC)}${_avgC!=null?'<span style="font-size:9px;color:var(--grey);font-weight:600;margin-left:2px">d</span>':''}</span>`
+    +    `<span style="font-size:9px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;font-weight:600">from created</span>`
+    +  `</div>`
+    +`</div>`
+    +`</div>`;
+  h+='</div>';
+  // Small breakdown KPI cards: % Pending / % Pruned / % No Show
+  const _sc=_irPCM.stageCounts||{};
+  const _pendingNum=(_sc.appt||0)+(_sc.demoHappened||0)+(_sc.dm||0)+(_sc.cs||0);
+  const _bookedWindow=_s1Mode==='mtd'?'in this month so far':'in prior month';
+  h+='<div class="irf-mini-kpi-grid" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-top:10px">';
+  h+=`<div class="irf-mini-kpi small" title="Appointment Scheduled + Demo Happened + Decision Maker + Contract Sent ÷ Qualified Demos Held"><div class="irf-mini-kpi-label">% Pending</div><div class="irf-mini-kpi-value">${_irPCM.pctPending.toFixed(1)}%</div><div class="irf-mini-kpi-calc">${fN(_pendingNum)} ÷ ${fN(_irPCM.heldScale)}</div></div>`;
+  h+=`<div class="irf-mini-kpi small" title="Not a Fit ÷ all deals booked ${_bookedWindow} (excl. pre-launch)"><div class="irf-mini-kpi-label">% Pruned</div><div class="irf-mini-kpi-value">${_irPCM.pctPruned.toFixed(1)}%</div><div class="irf-mini-kpi-calc">${fN(_sc.notAFit||0)} ÷ ${fN(_irPCM.allBooked||0)}</div></div>`;
+  h+=`<div class="irf-mini-kpi small" title="No Show ÷ all deals booked ${_bookedWindow} (excl. pre-launch)"><div class="irf-mini-kpi-label">% No Show</div><div class="irf-mini-kpi-value">${_irPCM.pctNoShow.toFixed(1)}%</div><div class="irf-mini-kpi-calc">${fN(_sc.noShow||0)} ÷ ${fN(_irPCM.allBooked||0)}</div></div>`;
+  h+='</div>';
+  return h;
+}
+// Toggle handler — mutates the card's innerHTML directly so the switch is
+// instant and isolated from renderIrfan side effects (matches Special #2).
+window.irfanSetSpecial1Mode=function(mode){
+  if(mode!=='lastMonth'&&mode!=='mtd')return;
+  S.irfan.special1Mode=mode;
+  const card=document.getElementById('irfan-special1-card');
+  if(card&&S.irfan.data)card.innerHTML=_buildIrfanSpecial1Inner(S.irfan.data, mode);
+};
+
 function _buildIrfanSpecial2Inner(d, mode){
   const _irf=d?.irfan||{};
   const fmtD=s=>{const p=s.split('-');return new Date(p[0],p[1]-1,p[2]).toLocaleDateString('en-US',{month:'long',day:'numeric'});};
@@ -1962,7 +2003,17 @@ function renderDemosPerDay(d, targetId){
   // is 'irfan-daily-wrap'; everywhere else uses the unfiltered series.
   const _isScale=!!(targetId&&targetId.indexOf('irfan')===0);
   const sByDay=(_isScale?d.demoTracking.scheduledByDayScale:d.demoTracking.scheduledByDay)||{};
-  const days=Object.entries(sByDay).sort((a,b)=>a[0].localeCompare(b[0])).map(([date,count])=>({date,count}));const total=days.reduce((s,x)=>s+x.count,0),numDays=days.length||1,avg=total/numDays;
+  const days=Object.entries(sByDay).sort((a,b)=>a[0].localeCompare(b[0])).map(([date,count])=>({date,count}));
+  const total=days.reduce((s,x)=>s+x.count,0);
+  // Weekday Avg — sum of weekday-only demo counts ÷ number of weekday days in
+  // the dataset. Excludes Sat/Sun. For a B2B sales pipeline this is the more
+  // honest measure of throughput; weekend bookings are typically rare and
+  // distort the straight daily mean.
+  const _isWeekend=(dateStr)=>{const dt=new Date(dateStr+'T12:00:00');const dow=dt.getDay();return dow===0||dow===6;};
+  const weekdays=days.filter(d=>!_isWeekend(d.date));
+  const weekdayTotal=weekdays.reduce((s,x)=>s+x.count,0);
+  const numWeekdays=weekdays.length||1;
+  const avg=weekdayTotal/numWeekdays;
   // vs prior (sameTimePrior) and vs LM (lastMonth). For scale mode, subtract
   // the prior/LM pre-launch counts so the delta math matches the chart series.
   const _ltm=d.executiveSummary?.lowTrafficPct?._meta||{};
@@ -1971,11 +2022,21 @@ function renderDemosPerDay(d, targetId){
   const priorTotal=_isScale&&_priorRaw!=null?(_priorRaw-(_ltm.lowTrafficPrior||0)):_priorRaw;
   const lmTotal=_isScale&&_lmRaw!=null?(_lmRaw-(_ltm.lowTrafficLastMonth||0)):_lmRaw;
   const priorPeriod=d.priorPeriod;const priorMonthPeriod=d.priorMonthPeriod;
-  let priorDays=null,lmDays=null;
-  if(priorPeriod){const f2=new Date(priorPeriod.from+'T00:00:00Z'),t2=new Date(priorPeriod.to+'T00:00:00Z');priorDays=Math.round((t2-f2)/86400000)+1;}
-  if(priorMonthPeriod){const f3=new Date(priorMonthPeriod.from+'T00:00:00Z'),t3=new Date(priorMonthPeriod.to+'T00:00:00Z');lmDays=Math.round((t3-f3)/86400000)+1;}
-  const priorAvg=priorTotal!=null&&priorDays?priorTotal/priorDays:null;
-  const lmAvg=lmTotal!=null&&lmDays?lmTotal/lmDays:null;
+  // Count weekdays in the prior / LM ranges so the avg compares apples to apples.
+  const _countWeekdays=(fromStr,toStr)=>{
+    if(!fromStr||!toStr)return null;
+    const f=new Date(fromStr+'T00:00:00Z'),t=new Date(toStr+'T00:00:00Z');
+    let n=0;
+    for(let dd=new Date(f);dd<=t;dd.setUTCDate(dd.getUTCDate()+1)){
+      const dow=dd.getUTCDay();
+      if(dow!==0&&dow!==6)n++;
+    }
+    return n;
+  };
+  const priorWd=priorPeriod?_countWeekdays(priorPeriod.from,priorPeriod.to):null;
+  const lmWd=priorMonthPeriod?_countWeekdays(priorMonthPeriod.from,priorMonthPeriod.to):null;
+  const priorAvg=priorTotal!=null&&priorWd?priorTotal/priorWd:null;
+  const lmAvg=lmTotal!=null&&lmWd?lmTotal/lmWd:null;
   // Reusable tile delta block: vs prior + vs LM, each as "↑ +N (+X.X%)"
   // Local nfmt + fmtDC mirrors helpers in renderDash (this function is a separate scope)
   function nfmt(n,fmt,dec){if(n==null)return '\u2014';var s=n>=0?'+':'-';var a=Math.abs(n);var d=dec!=null?dec:1;if(fmt==='$')return s+'$'+Math.round(a).toLocaleString();if(fmt==='#')return s+Math.round(a).toLocaleString();if(fmt==='%')return s+a.toFixed(d)+'%';if(fmt==='x')return s+a.toFixed(2)+'x';return s+a.toFixed(d);}
@@ -1984,18 +2045,18 @@ function renderDemosPerDay(d, targetId){
   let h='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px">';
   const _bookedLabel=_isScale?'Demos Booked (excl. pre-launch)':'Demos Booked';
   h+=`<div class="tile accent" title="${_isScale?'Excludes pre-launch / just-launching brands':''}"><div class="tlbl">${_bookedLabel}</div><div class="tval">${fN(total)}</div>${tileDeltaBlock(total,priorTotal,lmTotal,'#')}</div>`;
-  h+=`<div class="tile"><div class="tlbl">Daily Avg</div><div class="tval">${avg.toFixed(1)}</div>${tileDeltaBlock(avg,priorAvg,lmAvg,'',1)}</div>`;
+  h+=`<div class="tile" title="Average across Mon–Fri only (weekend bookings excluded)"><div class="tlbl">Weekday Avg</div><div class="tval">${avg.toFixed(1)}</div>${tileDeltaBlock(avg,priorAvg,lmAvg,'',1)}</div>`;
   h+='</div>';
   if(!days.length){h+='<div style="color:var(--grey);font-size:12px">No daily data</div>';_target.innerHTML=h;return;}
   const mx=Math.max(...days.map(x=>x.count),1),avgTop=220*(1-avg/mx);
   h+='<div style="position:relative">';
-  h+=`<div style="position:absolute;left:0;right:0;top:${avgTop}px;border-top:1.5px dashed var(--teal);z-index:2;pointer-events:none"><div style="position:absolute;right:-2px;top:-12px;font-size:10px;font-weight:700;color:#fff;background:var(--teal);font-family:var(--font-h);padding:2px 8px;border-radius:99px;line-height:1.2">Avg ${avg.toFixed(1)}</div></div>`;
+  h+=`<div style="position:absolute;left:0;right:0;top:${avgTop}px;border-top:1.5px dashed var(--teal);z-index:2;pointer-events:none"><div style="position:absolute;right:-2px;top:-12px;font-size:10px;font-weight:700;color:#fff;background:var(--teal);font-family:var(--font-h);padding:2px 8px;border-radius:99px;line-height:1.2" title="Weekday-only average">Weekday Avg ${avg.toFixed(1)}</div></div>`;
   h+='<div style="display:flex;gap:12px">';
   for(const dy of days){const dt2=new Date(dy.date+'T12:00:00'),dow=dt2.getDay(),isW=dow===0||dow===6;const barH=(dy.count/mx)*100;const lbl=dt2.toLocaleDateString('en-US',{month:'short',day:'numeric'});const dowL=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dow];
     const dowFull=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][dow];const tipText=`${dowFull}, ${lbl}: ${dy.count} demo${dy.count===1?'':'s'}${isW?' (weekend)':''}`;
     h+=`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px"><div style="width:100%;height:220px;display:flex;align-items:flex-end;justify-content:center"><div class="dbc-bar${isW?' wknd':''}" data-tip="${tipText.replace(/"/g,'&quot;')}" style="height:${barH}%;width:100%;max-width:72px;position:relative;cursor:pointer" onmouseover="dbcTip(event,this)" onmouseout="dbcTipHide()" onmousemove="dbcTipMove(event)"><div class="dbc-cnt">${dy.count}</div></div></div><div class="dbc-lbl dow">${dowL}</div><div class="dbc-lbl">${lbl}</div></div>`;}
   h+='</div></div>';
-  h+='<div class="dbc-legend"><div><div class="sw s"></div>Weekday</div><div><div class="sw d"></div>Weekend</div><div style="display:flex;align-items:center;gap:4px"><div style="width:14px;border-top:2px dashed var(--teal)"></div>Daily Avg</div></div>';
+  h+='<div class="dbc-legend"><div><div class="sw s"></div>Weekday</div><div><div class="sw d"></div>Weekend</div><div style="display:flex;align-items:center;gap:4px"><div style="width:14px;border-top:2px dashed var(--teal)"></div>Weekday Avg</div></div>';
   _target.innerHTML=h;
 }
 
