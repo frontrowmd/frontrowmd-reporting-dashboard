@@ -805,8 +805,17 @@ function processPipelineDeals(deals, winFromUTC, winToUTC, winFromET, winToET, l
     // windowDeals filter via the effective-date check, but we still need
     // to confirm the original date_demo_booked (not rescheduled_meeting_date)
     // is in range, plus hs_createdate in range.
+    //
+    // hs_createdate from HubSpot can come back as either a numeric ms string
+    // ("1746083592000") OR an ISO datetime ("2026-04-25T10:33:12.000Z"). The
+    // previous parseInt path silently returned 2026 (the year) for the ISO
+    // form, which failed the ms comparison and zeroed the tight count.
     const _ddbMsT = dateMs(p.date_demo_booked);
-    const _hcdMsT = p.hs_createdate ? parseInt(p.hs_createdate) : NaN;
+    const _hcdRaw = p.hs_createdate;
+    let _hcdMsT = NaN;
+    if (_hcdRaw) {
+      _hcdMsT = /^\d+$/.test(_hcdRaw) ? parseInt(_hcdRaw) : new Date(_hcdRaw).getTime();
+    }
     const _isTight = !isNaN(_ddbMsT) && _ddbMsT >= winFromUTC && _ddbMsT <= winToUTC
                    && !isNaN(_hcdMsT) && _hcdMsT >= winFromET && _hcdMsT <= winToET;
     if (_isTight) {
