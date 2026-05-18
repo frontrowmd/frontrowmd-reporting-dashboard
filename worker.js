@@ -507,28 +507,71 @@ async function fetchCohortDealsByBookedDate(token, from, to) {
 // Returns { union: Deal[], perMonth: { [label]: count } } so the caller
 // can surface the per-cohort fetched count to the dashboard.
 async function fetchCohortDealsPerMonth(token, cohortMonths) {
-  const props = ['dealname','date_demo_booked','demo_attendance_status','demo_qualification_outcome','dealstage','amount','closedate','hs_createdate','hubspot_owner_id','brand_status'];
-  const map = new Map();
-  const perMonth = {};
-  for (const cm of cohortMonths) {
-    let arr = [];
+  // Fetch deals booked in each cohort month. We do TWO PASSES:
+  //  1. Parallel first pass — fastest path on the happy day. Promise.all
+  //     of all cohort months at once. HubSpot's per-token rate limit is
+  //     100 req / 10s; 4 months × 1-2 pages each is well under that.
+  //  2. Sequential retry — any month that came back with 0 deals OR a
+  //     fetch failure gets retried with the alternate sort direction
+  //     and a small delay. This catches silent rate-limit-exhaust /
+  //     CF-subrequest-budget failures from the parallel run.
+  //
+  // Earlier this function ran fully sequential and older cohorts (Feb /
+  // March) silently returned 0 deals because by the time we got to them
+  // the rate counter was high enough to drop the request. Sequential
+  // also stacked retry-backoff time, making it slow.
+  const props = ['dealname','date_demo_booked','demo_attendance_status','demo_qualification_outcome','dealstage','amount','closedate','hs_createdate','hubspot_owner_id','brand_status','average_monthly_web_traffic__cloned_','average_monthly_web_traffic'];
+
+  const fetchOne = async (cm, sortDir) => {
     try {
-      arr = await hsSearch(token, 'deals', [{
+      const arr = await hsSearch(token, 'deals', [{
         filters: [
           { propertyName: 'date_demo_booked', operator: 'GTE', value: String(toMsUTC(cm.from)) },
           { propertyName: 'date_demo_booked', operator: 'LTE', value: String(toMsUTC(cm.to, true)) },
         ],
-      }], props, 200, [{ propertyName: 'date_demo_booked', direction: 'DESCENDING' }], 10) || [];
+      }], props, 200, [{ propertyName: 'date_demo_booked', direction: sortDir }], 10);
+      return arr || [];
     } catch(e) {
-      console.warn(`SignUp month fetch ${cm.label} failed:`, e.message);
-      arr = [];
+      console.warn(`SignUp fetch ${cm.label}/${sortDir} threw:`, e.message);
+      return null; // explicit failure (distinct from [] empty)
     }
-    perMonth[cm.label] = arr.length;
-    for (const d of arr) map.set(d.id, d);
-    console.log(`SignUp fetch ${cm.label} (${cm.from}..${cm.to}): ${arr.length} deals`);
+  };
+
+  // Pass 1 — parallel DESC sort
+  console.log(`SignUp per-month fetch (parallel, ${cohortMonths.length} months)`);
+  const firstPass = await Promise.all(cohortMonths.map(cm =>
+    fetchOne(cm, 'DESCENDING').then(arr => ({ cm, arr }))
+  ));
+
+  // Pass 2 — retry any month that came back null or empty.
+  // Sequential with a 300ms gap lets HubSpot's rate counter decay
+  // between requests. ASC sort to vary the query shape on the off
+  // chance HubSpot's response was indexing-related.
+  const map = new Map();
+  const perMonth = {};
+  const perMonthStatus = {};
+  for (const { cm, arr } of firstPass) {
+    let finalArr = arr;
+    let status = arr === null ? 'failed' : (arr.length > 0 ? 'ok' : 'empty');
+    if (status !== 'ok') {
+      await sleep(300);
+      const retryArr = await fetchOne(cm, 'ASCENDING');
+      if (retryArr !== null && retryArr.length > 0) {
+        finalArr = retryArr;
+        status = 'ok-retry';
+        console.log(`SignUp retry ${cm.label} (ASC): ${retryArr.length} deals`);
+      } else if (retryArr === null) {
+        status = 'failed-retry';
+      }
+    }
+    if (!finalArr) finalArr = [];
+    perMonth[cm.label] = finalArr.length;
+    perMonthStatus[cm.label] = status;
+    for (const d of finalArr) map.set(d.id, d);
+    console.log(`SignUp ${cm.label} (${cm.from}..${cm.to}): ${finalArr.length} deals [${status}]`);
   }
   console.log(`SignUp cohort union: ${map.size} unique across ${Object.keys(perMonth).length} months`);
-  return { union: [...map.values()], perMonth };
+  return { union: [...map.values()], perMonth, perMonthStatus };
 }
 
 // Closed-won deals by closedate (guide Section 5)
@@ -1930,6 +1973,7 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   const _cohortRes = await fetchCohortDealsPerMonth(hsToken, cohortMonths);
   const cohortDeals = _cohortRes.union;
   const cohortFetchedPerMonth = _cohortRes.perMonth;
+  const cohortFetchStatus = _cohortRes.perMonthStatus || {};
 
   // All-time deals for rep summary and marketing funnel.
   //
@@ -1990,6 +2034,7 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   if (currentData.signUpRate?.cohorts) {
     for (const c of currentData.signUpRate.cohorts) {
       c._fetchedCount = cohortFetchedPerMonth[c.period.label] ?? null;
+      c._fetchStatus = cohortFetchStatus[c.period.label] ?? null;
     }
   }
   currentData.signUpRate.allTimeByRep = buildAllTimeRepStats(allTimeClosedWon, allTimeQualifiedForReps, ownerMap);

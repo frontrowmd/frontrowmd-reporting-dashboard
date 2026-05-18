@@ -3303,10 +3303,20 @@ function renderSignUp(){
       <td>${fmtPct(c.pctNoShow)}</td>
     </tr>`;
 
-    // Per-cohort diagnostic strip
+    // Per-cohort diagnostic strip — surfaces the raw HubSpot fetch count
+    // alongside the in-window deal count. If the per-month fetch FAILED
+    // (silent rate-limit drop, subrequest exhaustion, etc.) we tag the
+    // count red and label it so the user knows the cohort numbers came
+    // entirely from the union backfill (cPipe/pPipe/pmPipe), not the
+    // dedicated month query.
     const fetched=c._fetchedCount;
+    const status=c._fetchStatus; // 'ok' | 'ok-retry' | 'empty' | 'failed' | 'failed-retry'
+    const failed=(status==='failed'||status==='failed-retry');
+    const statusLabel = failed
+      ? ' <span style="color:#DC2626;font-weight:700">fetch failed</span>'
+      : (status==='ok-retry' ? ' <span style="color:#D97706;font-weight:600">via retry</span>' : '');
     const diagPieces=[
-      fetched!=null?`HubSpot fetch: <b>${fN(fetched)} deals</b>`:null,
+      fetched!=null?`HubSpot fetch: <b${failed?' style="color:#DC2626"':''}>${fN(fetched)} deals</b>${statusLabel}`:null,
       `In ${c.period.label} window: <b>${fN(c.allBooked||0)} deals</b>`,
       `Qual Demos Held = ${fN(_sc.won||0)} CW + ${fN(_sc.demoHappened||0)} DH + ${fN(_sc.dm||0)} DM + ${fN(_sc.cs||0)} CS + ${fN(_sc.appt||0)} Appt(past) = <b>${fN(c.demosHeld)}</b>`,
     ].filter(Boolean);
