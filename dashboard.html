@@ -156,12 +156,15 @@ html,body{height:100%}body{font-family:var(--font-b);font-size:15px;color:var(--
 .su-pie-title{font-family:var(--font-h);font-size:11px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}
 .su-pie-sub{font-size:10px;color:var(--grey);margin-bottom:6px}
 .su-pie-target{flex:1;min-height:240px;display:flex;align-items:center;justify-content:center}
-.su-rep-table{width:100%;font-size:11px;border-collapse:collapse;table-layout:fixed}
-.su-rep-table th{text-align:right;padding:8px 6px;font-family:var(--font-h);font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;border-bottom:1.5px solid var(--border);white-space:nowrap}
+.su-rep-table{width:100%;font-size:11px;border-collapse:collapse;table-layout:auto}
+.su-rep-table th{text-align:right;padding:8px 6px;font-family:var(--font-h);font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;border-bottom:1.5px solid var(--border);white-space:normal;line-height:1.25;vertical-align:bottom;cursor:pointer;user-select:none;transition:color .12s ease}
 .su-rep-table th:first-child{text-align:left}
 .su-rep-table th.highlight{background:rgba(114,164,191,.10);color:var(--teal)}
-.su-rep-table td{padding:8px 6px;text-align:right;font-variant-numeric:tabular-nums;border-bottom:1px solid var(--border);color:var(--navy)}
-.su-rep-table td:first-child{text-align:left;font-weight:600}
+.su-rep-table th:hover{color:var(--teal)}
+.su-rep-table th.sort-active{color:var(--teal)}
+.su-rep-table th .sort-arrow{display:inline-block;margin-left:3px;font-size:10px;color:inherit;font-weight:700}
+.su-rep-table td{padding:8px 6px;text-align:right;font-variant-numeric:tabular-nums;border-bottom:1px solid var(--border);color:var(--navy);white-space:nowrap}
+.su-rep-table td:first-child{text-align:left;font-weight:600;white-space:normal}
 .su-rep-table td.highlight{background:rgba(114,164,191,.06);font-weight:700}
 .su-rep-table tbody tr:hover td{background:rgba(114,164,191,.08)}
 .su-rep-table tbody tr:hover td.highlight{background:rgba(114,164,191,.16)}
@@ -3119,10 +3122,76 @@ cv.addEventListener('mouseleave',function(){tip.style.display='none';});
 }
 
 // ═══════════════ SIGN-UP RATE ═══════════════
+// ── Sign-Up Rate rep-table sort ──────────────────────────────
+// Click-to-sort on any column header in the per-rep tables. Sort applies
+// globally (same column/direction across every cohort) — that's the
+// most intuitive UX since the column structure is shared.
+// Default direction depends on the metric: "more is better" → desc,
+// "less is better" (days-to-close, %pruned, %no-show) → asc.
+const _signupDefaultDir = {
+  name:'asc',
+  pctSigned:'desc', signed:'desc', demosHeld:'desc',
+  newArr:'desc', acv:'desc', cs:'desc', pctPending:'desc',
+  avgDaysFromBooked:'asc', avgDaysFromCreated:'asc',
+  pctPruned:'asc', pctNoShow:'asc',
+};
+function _signupGetVal(r, col){
+  switch(col){
+    case 'name': return (r.name||'').toLowerCase();
+    case 'pctSigned': return r.pctSigned||0;
+    case 'signed': return r.signed||0;
+    case 'demosHeld': return r.demosHeld||0;
+    case 'newArr': return r.newArr||0;
+    case 'acv': return r.acv||0;
+    case 'avgDaysFromBooked': return r.avgDaysFromBooked!=null ? r.avgDaysFromBooked : (r.avgDaysToClose!=null ? r.avgDaysToClose : Infinity);
+    case 'avgDaysFromCreated': return r.avgDaysFromCreated!=null ? r.avgDaysFromCreated : Infinity;
+    case 'cs': return r.stageCounts?.cs||0;
+    case 'pctPending': return r.pctPending||0;
+    case 'pctPruned': return r.pctPruned||0;
+    case 'pctNoShow': return r.pctNoShow||0;
+    default: return 0;
+  }
+}
+function _signupCmp(col, dir){
+  const sign = dir==='asc'?1:-1;
+  return (a,b)=>{
+    const av=_signupGetVal(a,col), bv=_signupGetVal(b,col);
+    if(av<bv) return -1*sign;
+    if(av>bv) return  1*sign;
+    return 0;
+  };
+}
+function _signupSortableTh(label, col, opts){
+  opts = opts || {};
+  const active = S.signup.sortCol===col;
+  const dir = active ? S.signup.sortDir : (_signupDefaultDir[col]||'desc');
+  const arrow = active ? `<span class="sort-arrow">${dir==='asc'?'↑':'↓'}</span>` : '';
+  let cls = '';
+  if(opts.highlight) cls += 'highlight';
+  if(active) cls += (cls?' ':'')+'sort-active';
+  const clsAttr = cls?` class="${cls}"`:'';
+  const titleAttr = opts.title?` title="${opts.title.replace(/"/g,'&quot;')}"`:'';
+  return `<th${clsAttr}${titleAttr} onclick="signupSort('${col}')">${label}${arrow}</th>`;
+}
+window.signupSort = function(col){
+  if(!S.signup.sortCol) S.signup.sortCol='signed';
+  if(!S.signup.sortDir) S.signup.sortDir='desc';
+  if(S.signup.sortCol===col){
+    S.signup.sortDir = S.signup.sortDir==='asc'?'desc':'asc';
+  } else {
+    S.signup.sortCol = col;
+    S.signup.sortDir = _signupDefaultDir[col]||'desc';
+  }
+  renderSignUp();
+};
+
 function renderSignUp(){
   const d=S.signup.data||S.dashboard.data;if(!d||d.error)return;
   const s=d.signUpRate;
   if(!s||!s.cohorts){document.getElementById('signup-c').innerHTML='<div style="color:var(--grey)">No data</div>';return;}
+  // Default rep-table sort: Won DESC (most signed deals at the top)
+  if(!S.signup.sortCol) S.signup.sortCol='signed';
+  if(!S.signup.sortDir) S.signup.sortDir='desc';
 
   // Formatters — Avg Days to Close mirrors the Irfan Special #1 card:
   // one decimal under 10d, integer otherwise.
@@ -3199,7 +3268,7 @@ function renderSignUp(){
     //    (* = highlight column; Decision Makers removed)
     const reps=Object.entries(c.byRep)
       .map(([oid,r])=>r)
-      .sort((a,b)=>(b.signed||0)-(a.signed||0) || (b.demosHeld||0)-(a.demosHeld||0));
+      .sort(_signupCmp(S.signup.sortCol||'signed', S.signup.sortDir||'desc'));
     let tableRows='';
     for(const r of reps){
       const rsc=r.stageCounts||{};
@@ -3268,18 +3337,18 @@ function renderSignUp(){
       </div>
       <div style="overflow-x:auto"><table class="su-rep-table">
         <thead><tr>
-          <th>Rep</th>
-          <th class="highlight">% Signed</th>
-          <th class="highlight" title="Deals where dealstage = Closed Won">Won</th>
-          <th title="Deals where date_demo_booked is in this cohort month AND dealstage is Closed Won, Demo Happened, Decision Maker Brought In, Contract Sent, or Appointment Scheduled (with past date)">Qual Demos</th>
-          <th>New ARR</th>
-          <th>ACV</th>
-          <th title="Average days from date_demo_booked to closedate across signed deals">From Booked</th>
-          <th title="Average days from hs_createdate to closedate across signed deals">From Created</th>
-          <th title="dealstage = Contract Sent">Contracts Sent</th>
-          <th>% Pending</th>
-          <th>% Pruned</th>
-          <th>% No Show</th>
+          ${_signupSortableTh('Rep','name')}
+          ${_signupSortableTh('% Signed','pctSigned',{highlight:true})}
+          ${_signupSortableTh('Won','signed',{highlight:true,title:'Deals where dealstage = Closed Won'})}
+          ${_signupSortableTh('Qual Demos','demosHeld',{title:'Deals where date_demo_booked is in this cohort month AND dealstage is Closed Won, Demo Happened, Decision Maker Brought In, Contract Sent, or Appointment Scheduled (with past date)'})}
+          ${_signupSortableTh('New ARR','newArr')}
+          ${_signupSortableTh('ACV','acv')}
+          ${_signupSortableTh('From Booked','avgDaysFromBooked',{title:'Average days from date_demo_booked to closedate across signed deals'})}
+          ${_signupSortableTh('From Created','avgDaysFromCreated',{title:'Average days from hs_createdate to closedate across signed deals'})}
+          ${_signupSortableTh('Contracts Sent','cs',{title:'dealstage = Contract Sent'})}
+          ${_signupSortableTh('% Pending','pctPending')}
+          ${_signupSortableTh('% Pruned','pctPruned')}
+          ${_signupSortableTh('% No Show','pctNoShow')}
         </tr></thead>
         <tbody>${tableRows||'<tr><td colspan="12" style="text-align:center;color:var(--grey);font-style:italic;padding:14px">No reps with demos in this cohort</td></tr>'}</tbody>
         <tfoot>${totalRow}</tfoot>
