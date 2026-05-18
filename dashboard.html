@@ -123,22 +123,36 @@ html,body{height:100%}body{font-family:var(--font-b);font-size:15px;color:var(--
 .irf-grouped-value{font-family:var(--font-h);font-size:20px;font-weight:700;color:var(--navy);line-height:1.1;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .irf-grouped-item.primary .irf-grouped-value{font-size:40px;letter-spacing:-.02em;margin:4px 0 6px;overflow:visible}
 .irf-grouped-calc{font-size:11px;color:var(--navy);font-weight:600;font-variant-numeric:tabular-nums;background:rgba(255,255,255,.5);display:inline-block;padding:4px 10px;border-radius:99px;margin-top:2px;white-space:nowrap}
-/* Sign-Up Rate cohort cards — Row 1 highlighted, Row 2 secondary, table below. */
+/* Sign-Up Rate cohort cards — Row 1 highlighted (3 col × 2 row totals), Row 2 secondary (% strip), pie on the right, table below. */
 .su-cohort-card{background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:18px}
 .su-cohort-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;gap:12px;flex-wrap:wrap}
 .su-cohort-title{font-family:var(--font-h);font-size:16px;font-weight:700;color:var(--navy)}
 .su-cohort-sub{font-size:11px;color:var(--grey)}
-.su-row1{background:linear-gradient(135deg,rgba(114,164,191,.10),rgba(114,164,191,.20));border:1px solid rgba(114,164,191,.30);border-radius:10px;box-shadow:inset 4px 0 0 var(--teal);display:grid;grid-template-columns:repeat(6,minmax(0,1fr));padding:14px 0;margin-bottom:8px;position:relative}
-.su-r1-item{padding:6px 14px;display:flex;flex-direction:column;justify-content:center;min-width:0;position:relative}
-.su-r1-item.primary{text-align:center;align-items:center;padding:4px 14px 8px}
-.su-r1-item:not(:nth-child(6n+1))::before{content:'';position:absolute;left:0;top:10px;bottom:10px;width:1px;background:rgba(114,164,191,.25)}
-.su-row2{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;margin-bottom:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.su-row1{background:linear-gradient(135deg,rgba(114,164,191,.10),rgba(114,164,191,.20));border:1px solid rgba(114,164,191,.30);border-radius:10px;box-shadow:inset 4px 0 0 var(--teal);display:grid;grid-template-columns:repeat(3,minmax(0,1fr));padding:14px 0;margin-bottom:10px;position:relative}
+.su-r1-item{padding:8px 14px;display:flex;flex-direction:column;justify-content:center;min-width:0;position:relative}
+.su-r1-item.primary{text-align:center;align-items:center;grid-column:1;grid-row:1;padding:4px 14px 8px}
+/* vertical separators between columns (skip first col of each row) */
+.su-r1-item:not(:nth-child(3n+1))::before{content:'';position:absolute;left:0;top:10px;bottom:10px;width:1px;background:rgba(114,164,191,.25)}
+/* horizontal separator between row 1 and row 2 */
+.su-r1-item:nth-child(-n+3)::after{content:'';position:absolute;left:14px;right:14px;bottom:-1px;height:1px;background:rgba(114,164,191,.25)}
+.su-row2{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;margin-bottom:0;border:1px solid var(--border);border-radius:10px;overflow:hidden}
 .su-r2-item{padding:10px 14px;display:flex;flex-direction:column;justify-content:center;min-width:0;background:var(--white);position:relative}
 .su-r2-item:not(:first-child){border-left:1px solid var(--border)}
 .su-label{font-family:var(--font-h);font-size:10px;color:var(--teal);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:5px;line-height:1.25}
 .su-value{font-family:var(--font-h);font-size:20px;font-weight:700;color:var(--navy);line-height:1.1;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .su-r1-item.primary .su-value{font-size:40px;letter-spacing:-.02em;margin:4px 0 6px;overflow:visible}
 .su-calc{font-size:10px;color:var(--navy);font-weight:600;font-variant-numeric:tabular-nums;background:rgba(255,255,255,.5);display:inline-block;padding:3px 9px;border-radius:99px;margin-top:2px;white-space:nowrap}
+/* Avg Days — two equal-format stacked values within the same cell */
+.su-avgdays-stack{display:flex;flex-direction:column;gap:4px;margin-top:2px}
+.su-avgdays-row{display:flex;align-items:baseline;gap:8px;font-variant-numeric:tabular-nums}
+.su-avgdays-val{font-family:var(--font-h);font-size:18px;font-weight:700;color:var(--navy);line-height:1.05}
+.su-avgdays-unit{font-size:10px;color:var(--grey);font-weight:600;margin-left:1px}
+.su-avgdays-from{font-size:9px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;font-weight:600}
+/* Pie chart card — sits to the right of the totals on wider widths */
+.su-pie-card{flex:0 0 320px;display:flex;flex-direction:column;border:1px solid var(--border);border-radius:10px;padding:12px 14px;background:var(--white);min-width:280px}
+.su-pie-title{font-family:var(--font-h);font-size:11px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}
+.su-pie-sub{font-size:10px;color:var(--grey);margin-bottom:6px}
+.su-pie-target{flex:1;min-height:260px;display:flex;align-items:center;justify-content:center}
 .su-rep-table{width:100%;font-size:11px;border-collapse:collapse;table-layout:fixed}
 .su-rep-table th{text-align:right;padding:8px 6px;font-family:var(--font-h);font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;border-bottom:1.5px solid var(--border);white-space:nowrap}
 .su-rep-table th:first-child{text-align:left}
@@ -3115,19 +3129,18 @@ function renderSignUp(){
 
   let h='<div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);margin-bottom:14px">Monthly Cohorts</div>';
 
-  // Build the Avg-Days "stacked two-value" cell HTML — mirrors the Special #1
-  // card design. Primary value = from booked; secondary = from created.
+  // Build the Avg-Days "stacked two-value" cell HTML. Both values get the
+  // SAME visual treatment (per spec) — same font size, same weight, same
+  // color. Anchor label sits inline to the right of each number.
   const _avgDaysCell=(fromBookedV,fromCreatedV,titleAttr)=>{
     const _f=(v)=>v==null?'—':(v<10?v.toFixed(1):Math.round(v).toString());
-    return `<div${titleAttr?' title="'+titleAttr+'"':''}>`
-      +`<div style="display:flex;align-items:baseline;gap:6px;font-variant-numeric:tabular-nums">`
-      +  `<span style="font-family:var(--font-h);font-size:18px;font-weight:700;color:var(--navy);line-height:1.05">${_f(fromBookedV)}${fromBookedV!=null?'<span style="font-size:10px;color:var(--grey);font-weight:600;margin-left:2px">d</span>':''}</span>`
-      +  `<span style="font-size:9px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;font-weight:600">from booked</span>`
-      +`</div>`
-      +`<div style="display:flex;align-items:baseline;gap:6px;font-variant-numeric:tabular-nums;margin-top:2px">`
-      +  `<span style="font-family:var(--font-h);font-size:14px;font-weight:600;color:var(--mid-navy);line-height:1.05">${_f(fromCreatedV)}${fromCreatedV!=null?'<span style="font-size:9px;color:var(--grey);font-weight:600;margin-left:2px">d</span>':''}</span>`
-      +  `<span style="font-size:9px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;font-weight:600">from created</span>`
-      +`</div>`
+    const _row=(v,label)=>`<div class="su-avgdays-row">`
+      +`<span class="su-avgdays-val">${_f(v)}${v!=null?'<span class="su-avgdays-unit">d</span>':''}</span>`
+      +`<span class="su-avgdays-from">${label}</span>`
+      +`</div>`;
+    return `<div${titleAttr?' title="'+titleAttr+'"':''} class="su-avgdays-stack">`
+      +_row(fromBookedV,'from booked')
+      +_row(fromCreatedV,'from created')
       +`</div>`;
   };
   // Compact "X d" cell for the rep-table columns
@@ -3142,19 +3155,22 @@ function renderSignUp(){
     _pieTargets.push({id:_pieId,buckets:c.signedByWebTraffic||{},signed:c.signed||0});
     const titleRange=fmtDateRange(c.period.from,c.period.to);
 
-    // ── Row 1 (highlighted): % Signed (primary) · Closed Won · Qual Demos Held · Avg Days · New ARR · ACV
+    // ── Row 1 (highlighted, 3 col × 2 row grid):
+    //   Top row:    % Signed (primary)  |  New ARR        |  ACV
+    //   Bottom row: Closed Won          |  Qual Demos Held|  Avg Days to Close
     let row1='<div class="su-row1">';
+    // Top row
     row1+='<div class="su-r1-item primary">';
     row1+='<div class="su-label">% Signed</div>';
     row1+=`<div class="su-value">${c.pctSigned.toFixed(1)}%</div>`;
     row1+=`<div class="su-calc">${fN(c.signed)} ÷ ${fN(c.demosHeld)} qual demos held</div>`;
     row1+='</div>';
-    row1+=`<div class="su-r1-item"><div class="su-label">Closed Won</div><div class="su-value">${fN(c.signed)}</div></div>`;
-    row1+=`<div class="su-r1-item" title="Deals where date_demo_booked is in ${c.period.label} AND dealstage is Closed Won, Demo Happened, Decision Maker Brought In, Contract Sent, or Appointment Scheduled (with past date)"><div class="su-label">Qual Demos Held</div><div class="su-value">${fN(c.demosHeld)}</div></div>`;
-    // Avg Days — TWO stacked values: from booked + from created
-    row1+=`<div class="su-r1-item" title="Average days from each anchor to closedate across signed deals in this cohort"><div class="su-label">Avg Days to Close</div>${_avgDaysCell(c.avgDaysFromBooked!=null?c.avgDaysFromBooked:c.avgDaysToClose, c.avgDaysFromCreated)}</div>`;
     row1+=`<div class="su-r1-item"><div class="su-label">New ARR</div><div class="su-value">${c.signed>0?f$(c.newArr):'—'}</div></div>`;
     row1+=`<div class="su-r1-item"><div class="su-label">ACV</div><div class="su-value">${c.signed>0?f$(c.acv):'—'}</div></div>`;
+    // Bottom row
+    row1+=`<div class="su-r1-item"><div class="su-label">Closed Won</div><div class="su-value">${fN(c.signed)}</div></div>`;
+    row1+=`<div class="su-r1-item" title="Deals where date_demo_booked is in ${c.period.label} AND dealstage is Closed Won, Demo Happened, Decision Maker Brought In, Contract Sent, or Appointment Scheduled (with past date)"><div class="su-label">Qual Demos Held</div><div class="su-value">${fN(c.demosHeld)}</div></div>`;
+    row1+=`<div class="su-r1-item" title="Average days from each anchor to closedate across signed deals in this cohort"><div class="su-label">Avg Days to Close</div>${_avgDaysCell(c.avgDaysFromBooked!=null?c.avgDaysFromBooked:c.avgDaysToClose, c.avgDaysFromCreated)}</div>`;
     row1+='</div>';
 
     // ── Row 2: % Pending · % Pruned · % No Show
@@ -3217,13 +3233,12 @@ function renderSignUp(){
     ].filter(Boolean);
     const diagBar=`<div style="font-size:10px;color:var(--grey);padding:6px 10px;background:rgba(23,44,69,.03);border-radius:4px;margin-bottom:10px;font-variant-numeric:tabular-nums;line-height:1.6">${diagPieces.join(' &nbsp;·&nbsp; ')}</div>`;
 
-    // Totals on the left (rows 1+2), pie chart on the right.
-    // Pie target is rendered via _renderIrfanWtPieInto AFTER the innerHTML
-    // injection (collected in _pieTargets above).
-    const pieCol=`<div style="flex:0 0 320px;display:flex;flex-direction:column;border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:var(--white);min-width:280px">
-      <div style="font-family:var(--font-h);font-size:11px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px">Sign-Ups by Web Traffic</div>
-      <div style="font-size:10px;color:var(--grey);margin-bottom:4px">Closed Won deals in ${c.period.label}, bucketed by tier</div>
-      <div id="${_pieId}" style="flex:1;min-height:280px;display:flex;align-items:center;justify-content:center"></div>
+    // Pie card to the right of the totals. Renders via _renderIrfanWtPieInto
+    // AFTER the innerHTML injection (collected in _pieTargets above).
+    const pieCol=`<div class="su-pie-card">
+      <div class="su-pie-title">Sign-Ups by Web Traffic</div>
+      <div class="su-pie-sub">Closed Won deals in ${c.period.label}, bucketed by tier</div>
+      <div id="${_pieId}" class="su-pie-target"></div>
     </div>`;
 
     h+=`<div class="su-cohort-card">
@@ -3235,7 +3250,7 @@ function renderSignUp(){
       </div>
       ${diagBar}
       <div style="display:flex;gap:14px;align-items:stretch;flex-wrap:wrap;margin-bottom:14px">
-        <div style="flex:1;min-width:420px;display:flex;flex-direction:column;gap:8px">
+        <div style="flex:1;min-width:440px;display:flex;flex-direction:column">
           ${row1}
           ${row2}
         </div>
