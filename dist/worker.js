@@ -507,21 +507,26 @@ async function fetchCohortDealsByBookedDate(token, from, to) {
 // Returns { union: Deal[], perMonth: { [label]: count } } so the caller
 // can surface the per-cohort fetched count to the dashboard.
 async function fetchCohortDealsPerMonth(token, cohortMonths) {
-  // Fetch deals booked in each cohort month. We do TWO PASSES:
-  //  1. Parallel first pass — fastest path on the happy day. Promise.all
-  //     of all cohort months at once. HubSpot's per-token rate limit is
-  //     100 req / 10s; 4 months × 1-2 pages each is well under that.
-  //  2. Sequential retry — any month that came back with 0 deals OR a
-  //     fetch failure gets retried with the alternate sort direction
-  //     and a small delay. This catches silent rate-limit-exhaust /
-  //     CF-subrequest-budget failures from the parallel run.
+  // Fetch deals booked in each cohort month. PARALLEL first pass + a
+  // SEQUENTIAL retry pass for any month that came back null (fetch
+  // threw) or empty ([]).
   //
-  // Earlier this function ran fully sequential and older cohorts (Feb /
-  // March) silently returned 0 deals because by the time we got to them
-  // the rate counter was high enough to drop the request. Sequential
-  // also stacked retry-backoff time, making it slow.
+  // Sort uses hs_createdate ASCENDING (hsSearch's default). The earlier
+  // implementation sorted by date_demo_booked DESCENDING; that combo
+  // exposed a HubSpot quirk where pagination silently stopped after
+  // page 1 even when more results existed. The result was that older /
+  // larger cohorts returned exactly 200 deals (the page-1 cap) and
+  // months further back returned 0. hs_createdate is always present
+  // on every deal and paginates reliably across the codebase.
+  //
+  // maxPages bumped to 20 (4000 deals headroom per month — well above
+  // any realistic single-month cohort size).
   const props = ['dealname','date_demo_booked','demo_attendance_status','demo_qualification_outcome','dealstage','amount','closedate','hs_createdate','hubspot_owner_id','brand_status','average_monthly_web_traffic__cloned_','average_monthly_web_traffic'];
+  const MAX_PAGES = 20;
 
+  // sortDir lets the retry pass vary the query shape (ASC → DESC) if
+  // the first attempt returned 0 — protects against any single-attempt
+  // edge case while keeping the proven default for first attempt.
   const fetchOne = async (cm, sortDir) => {
     try {
       const arr = await hsSearch(token, 'deals', [{
@@ -529,7 +534,7 @@ async function fetchCohortDealsPerMonth(token, cohortMonths) {
           { propertyName: 'date_demo_booked', operator: 'GTE', value: String(toMsUTC(cm.from)) },
           { propertyName: 'date_demo_booked', operator: 'LTE', value: String(toMsUTC(cm.to, true)) },
         ],
-      }], props, 200, [{ propertyName: 'date_demo_booked', direction: sortDir }], 10);
+      }], props, 200, [{ propertyName: 'hs_createdate', direction: sortDir }], MAX_PAGES);
       return arr || [];
     } catch(e) {
       console.warn(`SignUp fetch ${cm.label}/${sortDir} threw:`, e.message);
@@ -537,16 +542,14 @@ async function fetchCohortDealsPerMonth(token, cohortMonths) {
     }
   };
 
-  // Pass 1 — parallel DESC sort
-  console.log(`SignUp per-month fetch (parallel, ${cohortMonths.length} months)`);
+  // Pass 1 — parallel, hs_createdate ASC (the proven default)
+  console.log(`SignUp per-month fetch (parallel, ${cohortMonths.length} months, maxPages=${MAX_PAGES})`);
   const firstPass = await Promise.all(cohortMonths.map(cm =>
-    fetchOne(cm, 'DESCENDING').then(arr => ({ cm, arr }))
+    fetchOne(cm, 'ASCENDING').then(arr => ({ cm, arr }))
   ));
 
-  // Pass 2 — retry any month that came back null or empty.
-  // Sequential with a 300ms gap lets HubSpot's rate counter decay
-  // between requests. ASC sort to vary the query shape on the off
-  // chance HubSpot's response was indexing-related.
+  // Pass 2 — sequential retry with hs_createdate DESC + small delay.
+  // Catches silent rate-limit drops from pass 1.
   const map = new Map();
   const perMonth = {};
   const perMonthStatus = {};
@@ -555,11 +558,11 @@ async function fetchCohortDealsPerMonth(token, cohortMonths) {
     let status = arr === null ? 'failed' : (arr.length > 0 ? 'ok' : 'empty');
     if (status !== 'ok') {
       await sleep(300);
-      const retryArr = await fetchOne(cm, 'ASCENDING');
+      const retryArr = await fetchOne(cm, 'DESCENDING');
       if (retryArr !== null && retryArr.length > 0) {
         finalArr = retryArr;
         status = 'ok-retry';
-        console.log(`SignUp retry ${cm.label} (ASC): ${retryArr.length} deals`);
+        console.log(`SignUp retry ${cm.label} (DESC): ${retryArr.length} deals`);
       } else if (retryArr === null) {
         status = 'failed-retry';
       }
