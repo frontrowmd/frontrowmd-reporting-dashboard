@@ -1243,8 +1243,8 @@ function renderIrfan(){
     const _pendingNum=(_sc.appt||0)+(_sc.demoHappened||0)+(_sc.dm||0)+(_sc.cs||0);
     h+='<div class="irf-mini-kpi-grid" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-top:10px">';
     h+=`<div class="irf-mini-kpi small" title="Appointment Scheduled + Demo Happened + Decision Maker + Contract Sent ÷ Demos Held"><div class="irf-mini-kpi-label">% Pending</div><div class="irf-mini-kpi-value">${_irPCM.pctPending.toFixed(1)}%</div><div class="irf-mini-kpi-calc">${fN(_pendingNum)} ÷ ${fN(_irPCM.heldScale)}</div></div>`;
-    h+=`<div class="irf-mini-kpi small" title="Not a Fit ÷ all deals booked in prior month"><div class="irf-mini-kpi-label">% Pruned</div><div class="irf-mini-kpi-value">${_irPCM.pctPruned.toFixed(1)}%</div><div class="irf-mini-kpi-calc">${fN(_sc.notAFit||0)} ÷ ${fN(_irPCM.allBooked||0)}</div></div>`;
-    h+=`<div class="irf-mini-kpi small" title="No Show ÷ all deals booked in prior month"><div class="irf-mini-kpi-label">% No Show</div><div class="irf-mini-kpi-value">${_irPCM.pctNoShow.toFixed(1)}%</div><div class="irf-mini-kpi-calc">${fN(_sc.noShow||0)} ÷ ${fN(_irPCM.allBooked||0)}</div></div>`;
+    h+=`<div class="irf-mini-kpi small" title="Not a Fit ÷ deals that were BOTH scheduled in the prior month (hs_createdate) AND supposed to occur in it (date_demo_booked)"><div class="irf-mini-kpi-label">% Pruned</div><div class="irf-mini-kpi-value">${_irPCM.pctPruned.toFixed(1)}%</div><div class="irf-mini-kpi-calc">${fN(_irPCM.cntNotAFitTight||0)} ÷ ${fN(_irPCM.allBookedTight||0)}</div></div>`;
+    h+=`<div class="irf-mini-kpi small" title="No Show ÷ deals that were BOTH scheduled in the prior month (hs_createdate) AND supposed to occur in it (date_demo_booked)"><div class="irf-mini-kpi-label">% No Show</div><div class="irf-mini-kpi-value">${_irPCM.pctNoShow.toFixed(1)}%</div><div class="irf-mini-kpi-calc">${fN(_irPCM.cntNoShowTight||0)} ÷ ${fN(_irPCM.allBookedTight||0)}</div></div>`;
     h+='</div>';
   }
   h+='</div>';
@@ -1341,6 +1341,7 @@ function _irfanSortRows(rows,col,dir){
     let av,bv;
     if(col==='name'){av=(a.name||'').toLowerCase();bv=(b.name||'').toLowerCase();}
     else if(col==='cpd'){av=a.demos>0?a.spend/a.demos:null;bv=b.demos>0?b.spend/b.demos:null;}
+    else if(col==='watch'){av=a.impressions>0?((a.videoP25||0)/a.impressions)*100:null;bv=b.impressions>0?((b.videoP25||0)/b.impressions)*100:null;}
     else if(col==='status'){av=a.status||'';bv=b.status||'';}
     else if(col==='stage'){av=_irfanStages(a.name)[0].l;bv=_irfanStages(b.name)[0].l;}
     else if(col==='ctr'){av=a.ctr||0;bv=b.ctr||0;}
@@ -1495,9 +1496,42 @@ function _renderIrfanMetaTables(d){
   let creRows=(meta.creatives||[]).filter(c=>c.spend>0);
   creRows=_irfanSortRows(creRows,creSort.col,creSort.dir);
   const rSp=creRows.map(c=>c.spend),rIm=creRows.map(c=>c.impressions||0),rCl=creRows.map(c=>c.clicks||0),rCt=creRows.map(c=>c.ctr||0),rDe=creRows.map(c=>c.demos||0),rCp=creRows.map(c=>c.demos>0?c.spend/c.demos:0),rQu=creRows.map(c=>c.qualified||0);
+  // Watch rate = videoP25 / impressions × 100 (% of impressions where viewer
+  // watched at least 25% of the video — a standard "hook" metric for Meta video creatives).
+  const watchRate=(c)=>(c.impressions>0?((c.videoP25||0)/c.impressions)*100:null);
+  const rWt=creRows.map(c=>watchRate(c)||0);
+  // KILL flag — relative thresholds across the displayed creatives. A creative
+  // is flagged "KILL" if it is BAD on all 3 leading indicators:
+  //   • Low CTR (bottom 30%)
+  //   • Low Watch rate (bottom 30%) — only counts if the creative has impressions
+  //   • High CPD (top 30%) OR has NO demos (worst case — money in, zero out)
+  // Spend gate: must have at least $25 spent — too-low spend = not enough signal.
+  // Note: a "high CPD with great CTR" creative will NOT be flagged. That's the point.
+  const _pctile=(arr,p)=>{const s=arr.filter(v=>v!=null&&!isNaN(v)).slice().sort((a,b)=>a-b);if(!s.length)return null;return s[Math.min(s.length-1,Math.max(0,Math.floor(s.length*p)))];};
+  const _ctrLow=_pctile(creRows.map(c=>c.ctr||0),0.30);
+  const _watchLow=_pctile(creRows.filter(c=>c.impressions>0).map(c=>watchRate(c)),0.30);
+  const _cpdHigh=_pctile(creRows.filter(c=>c.demos>0).map(c=>c.spend/c.demos),0.70);
+  const KILL_SPEND_MIN=25;
+  const isKill=(c)=>{
+    if((c.spend||0)<KILL_SPEND_MIN)return false; // not enough signal yet
+    const ctrBad=_ctrLow!=null&&(c.ctr||0)<=_ctrLow;
+    const wr=watchRate(c);
+    const wrBad=_watchLow!=null&&c.impressions>0&&wr!=null&&wr<=_watchLow;
+    // High CPD: either >= 70th-pctile CPD OR no demos at all (spend with zero demos = worst)
+    const cpdBad=(c.demos===0)||(c.demos>0&&_cpdHigh!=null&&(c.spend/c.demos)>=_cpdHigh);
+    return ctrBad&&wrBad&&cpdBad;
+  };
+  let killCount=0; for(const c of creRows) if(isKill(c)) killCount++;
+
   let creH='';
-  creH+='<div style="font-size:11px;color:var(--grey);font-variant-numeric:tabular-nums;margin-bottom:10px">'+creRows.length+' rows · sort by '+creSort.col+' '+creSort.dir+'</div>';
+  creH+='<div style="font-size:11px;color:var(--grey);font-variant-numeric:tabular-nums;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:10px">'
+    +'<span>'+creRows.length+' rows · sort by '+creSort.col+' '+creSort.dir+'</span>'
+    +(killCount>0
+      ?'<span style="font-family:var(--font-h);font-size:10px;font-weight:700;color:#fff;background:#DC2626;padding:3px 9px;border-radius:99px;letter-spacing:.04em" title="Bad on all 3: low CTR, low Watch rate, high CPD (or no demos)">⚠ '+killCount+' KILL '+(killCount===1?'candidate':'candidates')+'</span>'
+      :'<span style="color:var(--green);font-weight:600">✓ no kill candidates</span>'
+    )+'</div>';
   creH+='<div style="overflow-x:auto"><table class="irf-meta-table" style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr style="border-bottom:1.5px solid var(--border)">';
+  creH+='<th style="width:42px;padding:8px 4px;text-align:center;font-size:9px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em" title="Kill candidates: bad on CTR + Watch + CPD">Flag</th>';
   creH+='<th style="width:68px;padding:8px 4px"></th>';
   creH+=_irfanSortableTh('Name','name',creSort,'irfanSortCre','left');
   creH+=_irfanSortableTh('Status','status',creSort,'irfanSortCre','center');
@@ -1507,15 +1541,19 @@ function _renderIrfanMetaTables(d){
   creH+=_irfanSortableTh('Impr','impressions',creSort,'irfanSortCre','right');
   creH+=_irfanSortableTh('Clicks','clicks',creSort,'irfanSortCre','right');
   creH+=_irfanSortableTh('CTR','ctr',creSort,'irfanSortCre','right');
+  creH+=_irfanSortableTh('Watch','watch',creSort,'irfanSortCre','right');
   creH+=_irfanSortableTh('Qual','qualified',creSort,'irfanSortCre','right');
   creH+='</tr></thead><tbody>';
   for(let i=0;i<creRows.length;i++){
     const c=creRows[i];const cpd=c.demos>0?c.spend/c.demos:null;
     const nm=(c.name||'').length>56?(c.name||'').slice(0,53)+'…':(c.name||'');
+    const wr=watchRate(c);
+    const kill=isKill(c);
     let thumb='';
     if(c.thumbnail)thumb='<img src="'+c.thumbnail+'" style="width:56px;height:56px;object-fit:cover;border-radius:6px;display:block" onerror="this.style.display=\'none\';this.parentNode.innerHTML=this.parentNode.innerHTML.replace(/<img[^>]*>/,\'📷\')">';
     else thumb='<div style="width:56px;height:56px;border-radius:6px;background:var(--lighter);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--teal)">📷</div>';
-    creH+='<tr style="border-bottom:1px solid var(--border)">';
+    creH+='<tr style="border-bottom:1px solid var(--border);'+(kill?'background:rgba(220,38,38,.06)':'')+'">';
+    creH+='<td style="padding:6px 4px;text-align:center">'+(kill?'<span title="Low CTR + Low Watch + High CPD — kill candidate" style="display:inline-block;font-family:var(--font-h);font-size:9px;font-weight:700;color:#fff;background:#DC2626;padding:2px 6px;border-radius:99px;letter-spacing:.04em">KILL</span>':'')+'</td>';
     creH+='<td style="padding:6px 4px">'+thumb+'</td>';
     creH+='<td style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(c.name||'').replace(/"/g,'&quot;')+'">'+nm+'</td>';
     creH+='<td style="text-align:center;padding:8px 6px">'+_irfanStatusBadge(c.status,c.spend)+'</td>';
@@ -1525,10 +1563,11 @@ function _renderIrfanMetaTables(d){
     creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rIm,c.impressions||0,false)+'">'+fN(c.impressions||0)+'</td>';
     creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rCl,c.clicks||0,false)+'">'+fN(c.clicks||0)+'</td>';
     creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rCt,c.ctr||0,false)+'">'+(c.ctr!=null?c.ctr.toFixed(2)+'%':'—')+'</td>';
+    creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rWt,wr||0,false)+'" title="% of impressions where viewer watched ≥25% of video">'+(wr!=null?wr.toFixed(1)+'%':'—')+'</td>';
     creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rQu,c.qualified||0,false)+'">'+fN(c.qualified||0)+'</td>';
     creH+='</tr>';
   }
-  if(!creRows.length)creH+='<tr><td colspan="10" style="padding:16px;text-align:center;color:var(--grey)">No creatives</td></tr>';
+  if(!creRows.length)creH+='<tr><td colspan="12" style="padding:16px;text-align:center;color:var(--grey)">No creatives</td></tr>';
   creH+='</tbody></table></div>';
 
   // Broadcast to ALL targets (Irfan + Overview)
@@ -1892,10 +1931,19 @@ function renderCPDTable(d){
 function dbcTip(e,el){let tip=document.getElementById('dbc-tip');if(!tip){tip=document.createElement('div');tip.id='dbc-tip';tip.style.cssText='position:fixed;background:var(--navy);color:#fff;padding:6px 10px;border-radius:6px;font-size:12px;font-family:var(--font-b);pointer-events:none;z-index:9999;box-shadow:0 4px 12px rgba(2,15,24,.25);white-space:nowrap;transition:opacity .08s ease;opacity:0';document.body.appendChild(tip);}tip.textContent=el.getAttribute('data-tip')||'';tip.style.opacity='1';dbcTipMove(e);}function dbcTipMove(e){const tip=document.getElementById('dbc-tip');if(!tip||tip.style.opacity==='0')return;tip.style.left=(e.clientX+12)+'px';tip.style.top=(e.clientY-32)+'px';}function dbcTipHide(){const tip=document.getElementById('dbc-tip');if(tip)tip.style.opacity='0';}
 function renderDemosPerDay(d, targetId){
   const _target=document.getElementById(targetId||'daily-wrap');if(!_target)return;
-  const sByDay=d.demoTracking.scheduledByDay||{};const days=Object.entries(sByDay).sort((a,b)=>a[0].localeCompare(b[0])).map(([date,count])=>({date,count}));const total=days.reduce((s,x)=>s+x.count,0),numDays=days.length||1,avg=total/numDays;
-  // vs prior (sameTimePrior) and vs LM (lastMonth) — both pulled from the totalScheduled tile
-  const priorTotal=d.demoTracking.totalScheduled?.sameTimePrior?.value;
-  const lmTotal=d.demoTracking.totalScheduled?.lastMonth?.value;
+  // Irfan Dashboard wants pre-launch brands EXCLUDED from the daily chart
+  // and from the tile totals/deltas. Detect via targetId — Irfan's container
+  // is 'irfan-daily-wrap'; everywhere else uses the unfiltered series.
+  const _isScale=!!(targetId&&targetId.indexOf('irfan')===0);
+  const sByDay=(_isScale?d.demoTracking.scheduledByDayScale:d.demoTracking.scheduledByDay)||{};
+  const days=Object.entries(sByDay).sort((a,b)=>a[0].localeCompare(b[0])).map(([date,count])=>({date,count}));const total=days.reduce((s,x)=>s+x.count,0),numDays=days.length||1,avg=total/numDays;
+  // vs prior (sameTimePrior) and vs LM (lastMonth). For scale mode, subtract
+  // the prior/LM pre-launch counts so the delta math matches the chart series.
+  const _ltm=d.executiveSummary?.lowTrafficPct?._meta||{};
+  const _priorRaw=d.demoTracking.totalScheduled?.sameTimePrior?.value;
+  const _lmRaw=d.demoTracking.totalScheduled?.lastMonth?.value;
+  const priorTotal=_isScale&&_priorRaw!=null?(_priorRaw-(_ltm.lowTrafficPrior||0)):_priorRaw;
+  const lmTotal=_isScale&&_lmRaw!=null?(_lmRaw-(_ltm.lowTrafficLastMonth||0)):_lmRaw;
   const priorPeriod=d.priorPeriod;const priorMonthPeriod=d.priorMonthPeriod;
   let priorDays=null,lmDays=null;
   if(priorPeriod){const f2=new Date(priorPeriod.from+'T00:00:00Z'),t2=new Date(priorPeriod.to+'T00:00:00Z');priorDays=Math.round((t2-f2)/86400000)+1;}
@@ -1908,7 +1956,8 @@ function renderDemosPerDay(d, targetId){
   function fmtDC(cur,prev,fmt,inv,dec){if(cur==null||prev==null)return '<span style="color:var(--grey);font-size:10px">\u2014</span>';var nd=cur-prev;var pd=prev!==0?((cur-prev)/prev)*100:null;var arrow=nd>=0?'\u2191':'\u2193';var positive=nd>0;var good=inv?!positive:positive;var color=nd===0?'var(--grey)':(good?'var(--green)':'var(--red)');var nStr=nfmt(nd,fmt,dec);var pStr=pd!=null?'('+(pd>=0?'+':'')+pd.toFixed(1)+'%)':'';return '<span style="color:'+color+';font-size:10px;font-weight:600">'+arrow+' '+nStr+' '+pStr+'</span>';}
   const tileDeltaBlock=(cur,p,l,fmt,dec)=>`<div style="font-size:10px;line-height:1.5;margin-top:4px"><div style="display:flex;gap:6px;align-items:baseline"><span style="color:var(--grey);min-width:42px;font-size:10px">vs prior</span>${fmtDC(cur,p,fmt,false,dec)}</div><div style="display:flex;gap:6px;align-items:baseline"><span style="color:var(--grey);min-width:42px;font-size:10px">vs LM</span>${fmtDC(cur,l,fmt,false,dec)}</div></div>`;
   let h='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px">';
-  h+=`<div class="tile accent"><div class="tlbl">Demos Booked</div><div class="tval">${fN(total)}</div>${tileDeltaBlock(total,priorTotal,lmTotal,'#')}</div>`;
+  const _bookedLabel=_isScale?'Demos Booked (excl. pre-launch)':'Demos Booked';
+  h+=`<div class="tile accent" title="${_isScale?'Excludes pre-launch / just-launching brands':''}"><div class="tlbl">${_bookedLabel}</div><div class="tval">${fN(total)}</div>${tileDeltaBlock(total,priorTotal,lmTotal,'#')}</div>`;
   h+=`<div class="tile"><div class="tlbl">Daily Avg</div><div class="tval">${avg.toFixed(1)}</div>${tileDeltaBlock(avg,priorAvg,lmAvg,'',1)}</div>`;
   h+='</div>';
   if(!days.length){h+='<div style="color:var(--grey);font-size:12px">No daily data</div>';_target.innerHTML=h;return;}

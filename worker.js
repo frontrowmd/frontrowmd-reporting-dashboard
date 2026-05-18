@@ -1303,7 +1303,13 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
   const pLowTrafficPct = pLowTraffic != null && (p.scheduled?.total||0) > 0 ? (pLowTraffic / p.scheduled.total) * 100 : null;
   const pmLowTrafficPct = pmLowTraffic != null && (pm.scheduled?.total||0) > 0 ? (pmLowTraffic / pm.scheduled.total) * 100 : null;
   executiveSummary.lowTrafficPct = buildTile(lowTrafficPct, pLowTrafficPct, pmLowTrafficPct, '% of demos from Pre-launch web traffic brands');
-  executiveSummary.lowTrafficPct._meta = { lowTraffic, totalScheduled };
+  // priors added so the Irfan Daily Activity chart can compute scale-tier
+  // (excl. pre-launch) totals for vs-prior / vs-LM deltas.
+  executiveSummary.lowTrafficPct._meta = {
+    lowTraffic, totalScheduled,
+    lowTrafficPrior: pLowTraffic,
+    lowTrafficLastMonth: pmLowTraffic,
+  };
   const qualifiedDemos = totalScheduled - lowTraffic;
   const trueCpd = qualifiedDemos > 0 ? totalSpend / qualifiedDemos : null;
   const pQualDemos = pLowTraffic != null ? (p.scheduled?.total||0) - pLowTraffic : null;
@@ -1996,17 +2002,29 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     const STAGE_NO_SHOW = '3453957850';
     const STAGE_NOT_A_FIT = '1062974581';
     let allBooked = 0;
+    // "Scheduled-in-period AND should-occur-in-period" tighter cohort —
+    // used as denominator for % Pruned and % No Show per Irfan's spec.
+    // i.e., the customer had to click Book Demo on our site within the
+    // period (hs_createdate in period) AND the demo date had to land in
+    // the same period. This excludes early bookings that crossed months.
+    let allBookedTight = 0, cntNoShowTight = 0, cntNotAFitTight = 0;
     let cntWon = 0, cntAppt = 0, cntDemoHappened = 0, cntDM = 0, cntCS = 0;
     let cntNoShow = 0, cntNotAFit = 0;
     let signedMrrSum = 0;
     // Avg Days to Close — for signed deals in this cohort, mean(closedate - date_demo_booked)
     // in days. Floors both to UTC-midnight to avoid sub-day noise.
     let daysToCloseSum = 0, daysToCloseN = 0;
+    // hs_createdate is a datetime — use ET boundaries (matches everywhere else)
+    const _pcmHcdFromMs = toMsET(_pcmFromStr);
+    const _pcmHcdToMs = toMsET(_pcmToStr, true);
     for (const d of _pcmUnion.values()) {
       const p = d.properties || {};
       const ddbMs = dateMs(p.date_demo_booked);
       if (isNaN(ddbMs) || ddbMs < _pcmFromMs || ddbMs > _pcmToMs) continue;
       allBooked++;
+      const hcdMs = isoMs(p.hs_createdate);
+      const _tight = !isNaN(hcdMs) && hcdMs >= _pcmHcdFromMs && hcdMs <= _pcmHcdToMs;
+      if (_tight) allBookedTight++;
       const stage = (p.dealstage||'').trim();
       if (stage === STAGE_WON) {
         cntWon++; signedMrrSum += parseFloat(p.amount)||0;
@@ -2022,15 +2040,18 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
       else if (stage === STAGE_DEMO_HAPPENED) cntDemoHappened++;
       else if (stage === STAGE_DM) cntDM++;
       else if (stage === STAGE_CS) cntCS++;
-      else if (stage === STAGE_NO_SHOW) cntNoShow++;
-      else if (stage === STAGE_NOT_A_FIT) cntNotAFit++;
+      else if (stage === STAGE_NO_SHOW) { cntNoShow++; if (_tight) cntNoShowTight++; }
+      else if (stage === STAGE_NOT_A_FIT) { cntNotAFit++; if (_tight) cntNotAFitTight++; }
     }
     const demosHeld = cntWon + cntAppt + cntDemoHappened + cntDM + cntCS;
     const cntPending = cntAppt + cntDemoHappened + cntDM + cntCS;
     const pctSigned = demosHeld > 0 ? (cntWon / demosHeld) * 100 : 0;
     const pctPending = demosHeld > 0 ? (cntPending / demosHeld) * 100 : 0;
-    const pctPruned = allBooked > 0 ? (cntNotAFit / allBooked) * 100 : 0;
-    const pctNoShow = allBooked > 0 ? (cntNoShow / allBooked) * 100 : 0;
+    // % Pruned / % No Show: tightened cohort. Both numerator and denominator
+    // require hs_createdate AND date_demo_booked to be in the period — i.e.,
+    // the demo was scheduled in the period AND was supposed to occur in it.
+    const pctPruned = allBookedTight > 0 ? (cntNotAFitTight / allBookedTight) * 100 : 0;
+    const pctNoShow = allBookedTight > 0 ? (cntNoShowTight / allBookedTight) * 100 : 0;
     const acv = cntWon > 0 ? signedMrrSum / cntWon : 0;  // New MRR ÷ Closed-won deals
     const newArr = signedMrrSum * 12;
     const avgDaysToClose = daysToCloseN > 0 ? daysToCloseSum / daysToCloseN : null;
@@ -2038,6 +2059,8 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
       // heldScale kept as field name for backward compat — it's "demos held" denominator
       heldScale: demosHeld, signed: cntWon, pctSigned,
       allBooked, pctPending, pctPruned, pctNoShow,
+      // Tight-cohort breakdown (denominator for % Pruned + % No Show)
+      allBookedTight, cntNotAFitTight, cntNoShowTight,
       stageCounts: { won: cntWon, appt: cntAppt, demoHappened: cntDemoHappened, dm: cntDM, cs: cntCS, noShow: cntNoShow, notAFit: cntNotAFit },
       sourceCounts: _srcCounts,
       newArr, acv, avgDaysToClose, avgDaysToCloseN: daysToCloseN,
