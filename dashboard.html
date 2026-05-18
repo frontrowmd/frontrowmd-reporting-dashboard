@@ -3194,9 +3194,9 @@ function renderSignUp(){
     row2+=`<div class="su-r2-item" title="No Show ÷ all deals booked in month"><div class="su-label">% No Show</div><div class="su-value">${fmtPct(c.pctNoShow)}</div><div style="font-size:10px;color:var(--grey);margin-top:2px">${fN(_sc.noShow||0)} ÷ ${fN(c.allBooked||0)}</div></div>`;
     row2+='</div>';
 
-    // ── Per-rep table — 13 cols: Rep · %Signed* · Closed Won* · Qual Demos Held · Avg Days
-    //    (Booked) · Avg Days (Created) · New ARR · ACV · Contracts Sent · Decision Makers ·
-    //    %Pending · %Pruned · %NoShow.  (* = highlight column)
+    // ── Per-rep table — 12 cols: Rep · %Signed* · Won* · Qual Demos · New ARR · ACV ·
+    //    From Booked · From Created · Contracts Sent · %Pending · %Pruned · %NoShow.
+    //    (* = highlight column; Decision Makers removed)
     const reps=Object.entries(c.byRep)
       .map(([oid,r])=>r)
       .sort((a,b)=>(b.signed||0)-(a.signed||0) || (b.demosHeld||0)-(a.demosHeld||0));
@@ -3208,12 +3208,11 @@ function renderSignUp(){
         <td class="highlight">${fmtPct(r.pctSigned)}</td>
         <td class="highlight">${fN(r.signed)}</td>
         <td>${fN(r.demosHeld)}</td>
-        <td>${_daysCell(r.avgDaysFromBooked!=null?r.avgDaysFromBooked:r.avgDaysToClose)}</td>
-        <td>${_daysCell(r.avgDaysFromCreated)}</td>
         <td>${r.signed>0?f$(r.newArr):'—'}</td>
         <td>${r.signed>0?f$(r.acv):'—'}</td>
+        <td>${_daysCell(r.avgDaysFromBooked!=null?r.avgDaysFromBooked:r.avgDaysToClose)}</td>
+        <td>${_daysCell(r.avgDaysFromCreated)}</td>
         <td>${fN(rsc.cs||0)}</td>
-        <td>${fN(rsc.dm||0)}</td>
         <td>${fmtPct(r.pctPending)}</td>
         <td>${fmtPct(r.pctPruned)}</td>
         <td>${fmtPct(r.pctNoShow)}</td>
@@ -3225,12 +3224,11 @@ function renderSignUp(){
       <td class="highlight">${fmtPct(c.pctSigned)}</td>
       <td class="highlight">${fN(c.signed)}</td>
       <td>${fN(c.demosHeld)}</td>
-      <td>${_daysCell(c.avgDaysFromBooked!=null?c.avgDaysFromBooked:c.avgDaysToClose)}</td>
-      <td>${_daysCell(c.avgDaysFromCreated)}</td>
       <td>${c.signed>0?f$(c.newArr):'—'}</td>
       <td>${c.signed>0?f$(c.acv):'—'}</td>
+      <td>${_daysCell(c.avgDaysFromBooked!=null?c.avgDaysFromBooked:c.avgDaysToClose)}</td>
+      <td>${_daysCell(c.avgDaysFromCreated)}</td>
       <td>${fN(_sc.cs||0)}</td>
-      <td>${fN(_sc.dm||0)}</td>
       <td>${fmtPct(c.pctPending)}</td>
       <td>${fmtPct(c.pctPruned)}</td>
       <td>${fmtPct(c.pctNoShow)}</td>
@@ -3272,19 +3270,18 @@ function renderSignUp(){
         <thead><tr>
           <th>Rep</th>
           <th class="highlight">% Signed</th>
-          <th class="highlight">Closed Won</th>
-          <th title="Deals where date_demo_booked is in this cohort month AND dealstage is Closed Won, Demo Happened, Decision Maker Brought In, Contract Sent, or Appointment Scheduled (with past date)">Qual Demos Held</th>
-          <th title="Average days from date_demo_booked to closedate across signed deals">Avg Days (Booked)</th>
-          <th title="Average days from hs_createdate to closedate across signed deals">Avg Days (Created)</th>
+          <th class="highlight" title="Deals where dealstage = Closed Won">Won</th>
+          <th title="Deals where date_demo_booked is in this cohort month AND dealstage is Closed Won, Demo Happened, Decision Maker Brought In, Contract Sent, or Appointment Scheduled (with past date)">Qual Demos</th>
           <th>New ARR</th>
           <th>ACV</th>
+          <th title="Average days from date_demo_booked to closedate across signed deals">From Booked</th>
+          <th title="Average days from hs_createdate to closedate across signed deals">From Created</th>
           <th title="dealstage = Contract Sent">Contracts Sent</th>
-          <th title="dealstage = Decision Maker Brought In">Decision Makers</th>
           <th>% Pending</th>
           <th>% Pruned</th>
           <th>% No Show</th>
         </tr></thead>
-        <tbody>${tableRows||'<tr><td colspan="13" style="text-align:center;color:var(--grey);font-style:italic;padding:14px">No reps with demos in this cohort</td></tr>'}</tbody>
+        <tbody>${tableRows||'<tr><td colspan="12" style="text-align:center;color:var(--grey);font-style:italic;padding:14px">No reps with demos in this cohort</td></tr>'}</tbody>
         <tfoot>${totalRow}</tfoot>
       </table></div>
     </div>`;
