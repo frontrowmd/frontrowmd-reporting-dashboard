@@ -1137,15 +1137,24 @@ function renderIrfan(){
   const ltmeta=(es.lowTrafficPct&&es.lowTrafficPct._meta)||{};
   const tCpd=es.trueCpd?.value;const tCpdPV=es.trueCpd?.sameTimePrior?.value;const tCpdLMV=es.trueCpd?.lastMonth?.value;
   const tCpqd=es.totalTrueCpqd?.value;const tCpqdPV=es.totalTrueCpqd?.sameTimePrior?.value;const tCpqdLMV=es.totalTrueCpqd?.lastMonth?.value;
-  const pruneRate=es.pruneRate?.value;const prunePV=es.pruneRate?.sameTimePrior?.value;const pruneLMV=es.pruneRate?.lastMonth?.value;
+  // % Pruned uses the TIGHT cohort per Irfan's spec: only deals where BOTH
+  // hs_createdate AND date_demo_booked land in the period (i.e., the user
+  // clicked Book Demo on our site in the period AND the demo was supposed
+  // to happen in the period). The loose es.pruneRate is left untouched so
+  // the Detailed Dashboard's Quality panel and any other consumers keep
+  // their existing behavior.
+  const pruneRate=qmeta.pruneRateTight!=null?qmeta.pruneRateTight:es.pruneRate?.value;
+  const prunePV=qmeta.pruneRateTightPrior;
+  const pruneLMV=qmeta.pruneRateTightLastMonth;
   const noShowRate=dt.noShowRateScale?.value;const noShowPV=dt.noShowRateScale?.sameTimePrior?.value;const noShowLMV=dt.noShowRateScale?.lastMonth?.value;
 
   // ─ Numerator/denominator values for KPI calc subtext ─
   const _totalSpend=esM.totalSpend||0;
   const _scaleSched=Math.max(0,(esM.totalScheduled||esM.totalWD||0)-(ltmeta.lowTraffic||0));
   const _demosHeldScale=esM.demosHeldScaleCount||0;
-  const _cancelledBefore=qmeta.cancelledBeforeDemoCount||0;
-  const _pruneDenom=qmeta.pruneDenom||0;
+  // Numerator + denominator for the TIGHT cohort (KPI #3 % Pruned).
+  const _cancelledBefore=qmeta.cancelledBeforeDemoCountTight||0;
+  const _pruneDenom=qmeta.pruneDenomTight||0;
   const _noShowScale=qmeta.noShowScaleCount||0;
   const _noShowDenomScale=qmeta.noShowDenomScale||0;
 
@@ -1176,7 +1185,7 @@ function renderIrfan(){
   // 2.3 % Pruned — full orange border when >20%, teal accent when ≤20%
   const _pruneWarn=pruneRate!=null&&pruneRate>20;
   const _pruneStyle=_pruneWarn?'border:2px solid #F59E0B':'border-left:3px solid var(--teal)';
-  h+=`<div class="tile hero" style="${_pruneStyle}"><div class="tlbl">% Pruned</div><div class="tval">${pruneRate!=null?pruneRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">Cancelled before demo ÷ all settled outcomes</div>${_irCalc(fN(_cancelledBefore)+' ÷ '+fN(_pruneDenom))}${_irTileFooter(pruneRate,prunePV,pruneLMV,'%',true)}</div>`;
+  h+=`<div class="tile hero" style="${_pruneStyle}" title="Of demos that were BOTH scheduled in this period AND supposed to occur in this period, what % were pruned before the demo happened?"><div class="tlbl">% Pruned</div><div class="tval">${pruneRate!=null?pruneRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">Cancelled before demo ÷ settled outcomes (booked AND supposed to occur this period)</div>${_irCalc(fN(_cancelledBefore)+' ÷ '+fN(_pruneDenom))}${_irTileFooter(pruneRate,prunePV,pruneLMV,'%',true)}</div>`;
   // 2.4 % No-Show — scale tier (excludes pre-launch). Full orange border when >20%.
   const _noShowWarn=noShowRate!=null&&noShowRate>20;
   const _noShowStyle=_noShowWarn?'border:2px solid #F59E0B':'border-left:3px solid var(--teal)';
@@ -1243,8 +1252,8 @@ function renderIrfan(){
     const _pendingNum=(_sc.appt||0)+(_sc.demoHappened||0)+(_sc.dm||0)+(_sc.cs||0);
     h+='<div class="irf-mini-kpi-grid" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-top:10px">';
     h+=`<div class="irf-mini-kpi small" title="Appointment Scheduled + Demo Happened + Decision Maker + Contract Sent ÷ Demos Held"><div class="irf-mini-kpi-label">% Pending</div><div class="irf-mini-kpi-value">${_irPCM.pctPending.toFixed(1)}%</div><div class="irf-mini-kpi-calc">${fN(_pendingNum)} ÷ ${fN(_irPCM.heldScale)}</div></div>`;
-    h+=`<div class="irf-mini-kpi small" title="Not a Fit ÷ deals that were BOTH scheduled in the prior month (hs_createdate) AND supposed to occur in it (date_demo_booked)"><div class="irf-mini-kpi-label">% Pruned</div><div class="irf-mini-kpi-value">${_irPCM.pctPruned.toFixed(1)}%</div><div class="irf-mini-kpi-calc">${fN(_irPCM.cntNotAFitTight||0)} ÷ ${fN(_irPCM.allBookedTight||0)}</div></div>`;
-    h+=`<div class="irf-mini-kpi small" title="No Show ÷ deals that were BOTH scheduled in the prior month (hs_createdate) AND supposed to occur in it (date_demo_booked)"><div class="irf-mini-kpi-label">% No Show</div><div class="irf-mini-kpi-value">${_irPCM.pctNoShow.toFixed(1)}%</div><div class="irf-mini-kpi-calc">${fN(_irPCM.cntNoShowTight||0)} ÷ ${fN(_irPCM.allBookedTight||0)}</div></div>`;
+    h+=`<div class="irf-mini-kpi small" title="Not a Fit ÷ all deals booked in prior month"><div class="irf-mini-kpi-label">% Pruned</div><div class="irf-mini-kpi-value">${_irPCM.pctPruned.toFixed(1)}%</div><div class="irf-mini-kpi-calc">${fN(_sc.notAFit||0)} ÷ ${fN(_irPCM.allBooked||0)}</div></div>`;
+    h+=`<div class="irf-mini-kpi small" title="No Show ÷ all deals booked in prior month"><div class="irf-mini-kpi-label">% No Show</div><div class="irf-mini-kpi-value">${_irPCM.pctNoShow.toFixed(1)}%</div><div class="irf-mini-kpi-calc">${fN(_sc.noShow||0)} ÷ ${fN(_irPCM.allBooked||0)}</div></div>`;
     h+='</div>';
   }
   h+='</div>';
@@ -1500,20 +1509,20 @@ function _renderIrfanMetaTables(d){
   // watched at least 25% of the video — a standard "hook" metric for Meta video creatives).
   const watchRate=(c)=>(c.impressions>0?((c.videoP25||0)/c.impressions)*100:null);
   const rWt=creRows.map(c=>watchRate(c)||0);
-  // KILL flag — relative thresholds across the displayed creatives. A creative
-  // is flagged "KILL" if it is BAD on all 3 leading indicators:
-  //   • Low CTR (bottom 30%)
-  //   • Low Watch rate (bottom 30%) — only counts if the creative has impressions
-  //   • High CPD (top 30%) OR has NO demos (worst case — money in, zero out)
-  // Spend gate: must have at least $25 spent — too-low spend = not enough signal.
-  // Note: a "high CPD with great CTR" creative will NOT be flagged. That's the point.
+  // PAUSE flag — relative thresholds across the displayed creatives. A creative
+  // is flagged "PAUSE" when it is BAD on all 3 leading indicators:
+  //   • Low CTR        — bottom 30% of CTR in the displayed set
+  //   • Low Watch rate — bottom 30% of (videoP25 / impressions)
+  //   • High CPD       — top 30% of CPD, OR no demos at all (worst case)
+  // Spend gate: must have ≥ $25 spent (below that there's not enough signal).
+  // A creative with e.g. high CPD but excellent CTR will NOT be flagged.
   const _pctile=(arr,p)=>{const s=arr.filter(v=>v!=null&&!isNaN(v)).slice().sort((a,b)=>a-b);if(!s.length)return null;return s[Math.min(s.length-1,Math.max(0,Math.floor(s.length*p)))];};
   const _ctrLow=_pctile(creRows.map(c=>c.ctr||0),0.30);
   const _watchLow=_pctile(creRows.filter(c=>c.impressions>0).map(c=>watchRate(c)),0.30);
   const _cpdHigh=_pctile(creRows.filter(c=>c.demos>0).map(c=>c.spend/c.demos),0.70);
-  const KILL_SPEND_MIN=25;
-  const isKill=(c)=>{
-    if((c.spend||0)<KILL_SPEND_MIN)return false; // not enough signal yet
+  const PAUSE_SPEND_MIN=25;
+  const isPause=(c)=>{
+    if((c.spend||0)<PAUSE_SPEND_MIN)return false; // not enough signal yet
     const ctrBad=_ctrLow!=null&&(c.ctr||0)<=_ctrLow;
     const wr=watchRate(c);
     const wrBad=_watchLow!=null&&c.impressions>0&&wr!=null&&wr<=_watchLow;
@@ -1521,17 +1530,17 @@ function _renderIrfanMetaTables(d){
     const cpdBad=(c.demos===0)||(c.demos>0&&_cpdHigh!=null&&(c.spend/c.demos)>=_cpdHigh);
     return ctrBad&&wrBad&&cpdBad;
   };
-  let killCount=0; for(const c of creRows) if(isKill(c)) killCount++;
+  let pauseCount=0; for(const c of creRows) if(isPause(c)) pauseCount++;
 
   let creH='';
   creH+='<div style="font-size:11px;color:var(--grey);font-variant-numeric:tabular-nums;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:10px">'
     +'<span>'+creRows.length+' rows · sort by '+creSort.col+' '+creSort.dir+'</span>'
-    +(killCount>0
-      ?'<span style="font-family:var(--font-h);font-size:10px;font-weight:700;color:#fff;background:#DC2626;padding:3px 9px;border-radius:99px;letter-spacing:.04em" title="Bad on all 3: low CTR, low Watch rate, high CPD (or no demos)">⚠ '+killCount+' KILL '+(killCount===1?'candidate':'candidates')+'</span>'
-      :'<span style="color:var(--green);font-weight:600">✓ no kill candidates</span>'
+    +(pauseCount>0
+      ?'<span style="font-family:var(--font-h);font-size:10px;font-weight:700;color:#fff;background:#DC2626;padding:3px 9px;border-radius:99px;letter-spacing:.04em" title="Bad on all 3: low CTR, low Watch rate, high CPD (or no demos)">⚠ '+pauseCount+' PAUSE '+(pauseCount===1?'candidate':'candidates')+'</span>'
+      :'<span style="color:var(--green);font-weight:600">✓ no pause candidates</span>'
     )+'</div>';
   creH+='<div style="overflow-x:auto"><table class="irf-meta-table" style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr style="border-bottom:1.5px solid var(--border)">';
-  creH+='<th style="width:42px;padding:8px 4px;text-align:center;font-size:9px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em" title="Kill candidates: bad on CTR + Watch + CPD">Flag</th>';
+  creH+='<th style="width:48px;padding:8px 4px;text-align:center;font-size:9px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em" title="Pause candidates: bad on CTR + Watch + CPD">Flag</th>';
   creH+='<th style="width:68px;padding:8px 4px"></th>';
   creH+=_irfanSortableTh('Name','name',creSort,'irfanSortCre','left');
   creH+=_irfanSortableTh('Status','status',creSort,'irfanSortCre','center');
@@ -1548,12 +1557,12 @@ function _renderIrfanMetaTables(d){
     const c=creRows[i];const cpd=c.demos>0?c.spend/c.demos:null;
     const nm=(c.name||'').length>56?(c.name||'').slice(0,53)+'…':(c.name||'');
     const wr=watchRate(c);
-    const kill=isKill(c);
+    const pause=isPause(c);
     let thumb='';
     if(c.thumbnail)thumb='<img src="'+c.thumbnail+'" style="width:56px;height:56px;object-fit:cover;border-radius:6px;display:block" onerror="this.style.display=\'none\';this.parentNode.innerHTML=this.parentNode.innerHTML.replace(/<img[^>]*>/,\'📷\')">';
     else thumb='<div style="width:56px;height:56px;border-radius:6px;background:var(--lighter);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--teal)">📷</div>';
-    creH+='<tr style="border-bottom:1px solid var(--border);'+(kill?'background:rgba(220,38,38,.06)':'')+'">';
-    creH+='<td style="padding:6px 4px;text-align:center">'+(kill?'<span title="Low CTR + Low Watch + High CPD — kill candidate" style="display:inline-block;font-family:var(--font-h);font-size:9px;font-weight:700;color:#fff;background:#DC2626;padding:2px 6px;border-radius:99px;letter-spacing:.04em">KILL</span>':'')+'</td>';
+    creH+='<tr style="border-bottom:1px solid var(--border);'+(pause?'background:rgba(220,38,38,.06)':'')+'">';
+    creH+='<td style="padding:6px 4px;text-align:center">'+(pause?'<span title="Low CTR + Low Watch + High CPD — pause candidate" style="display:inline-block;font-family:var(--font-h);font-size:9px;font-weight:700;color:#fff;background:#DC2626;padding:2px 7px;border-radius:99px;letter-spacing:.04em">PAUSE</span>':'')+'</td>';
     creH+='<td style="padding:6px 4px">'+thumb+'</td>';
     creH+='<td style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(c.name||'').replace(/"/g,'&quot;')+'">'+nm+'</td>';
     creH+='<td style="text-align:center;padding:8px 6px">'+_irfanStatusBadge(c.status,c.spend)+'</td>';
@@ -1569,6 +1578,23 @@ function _renderIrfanMetaTables(d){
   }
   if(!creRows.length)creH+='<tr><td colspan="12" style="padding:16px;text-align:center;color:var(--grey)">No creatives</td></tr>';
   creH+='</tbody></table></div>';
+  // PAUSE-criteria footer — explains what triggers the badge, with the actual
+  // percentile thresholds computed from THIS displayed set so users see the
+  // concrete numbers (not just "bottom 30%"). Falls back gracefully if not
+  // enough creatives in the set to compute percentiles.
+  const _ctrLowStr=_ctrLow!=null?_ctrLow.toFixed(2)+'%':'—';
+  const _watchLowStr=_watchLow!=null?_watchLow.toFixed(1)+'%':'—';
+  const _cpdHighStr=_cpdHigh!=null?f$(_cpdHigh):'—';
+  creH+='<div style="margin-top:10px;padding:10px 12px;background:rgba(220,38,38,.04);border:1px solid rgba(220,38,38,.20);border-left:3px solid #DC2626;border-radius:8px;font-size:10px;color:var(--navy);line-height:1.65">'
+    +'<div style="font-family:var(--font-h);font-size:10px;font-weight:700;color:#DC2626;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">What triggers a PAUSE flag?</div>'
+    +'<div style="color:#172C45">A creative is flagged <b>PAUSE</b> when it is bad on <b>all three</b> leading indicators (relative thresholds, recomputed for this time window):</div>'
+    +'<ul style="margin:6px 0 0 18px;padding:0">'
+    +'<li><b>Low CTR</b> — at or below the bottom 30% of CTR &nbsp;<span style="color:var(--grey)">(≤ '+_ctrLowStr+' for this window)</span></li>'
+    +'<li><b>Low Watch rate</b> — at or below the bottom 30% of % impressions that watched ≥25% &nbsp;<span style="color:var(--grey)">(≤ '+_watchLowStr+' for this window)</span></li>'
+    +'<li><b>High CPD</b> — at or above the top 30% of CPD, <i>or</i> no demos at all (spend with zero output) &nbsp;<span style="color:var(--grey)">(≥ '+_cpdHighStr+' for this window)</span></li>'
+    +'</ul>'
+    +'<div style="margin-top:6px;color:var(--grey)">Spend gate: must have ≥ $'+PAUSE_SPEND_MIN+' spent — below that there\'s not enough signal yet. A creative that is e.g. high-CPD but excellent-CTR will <b>not</b> be flagged (one good metric protects it).</div>'
+    +'</div>';
 
   // Broadcast to ALL targets (Irfan + Overview)
   campTargets.forEach(el=>el.innerHTML=campH);

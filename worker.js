@@ -729,6 +729,13 @@ function processPipelineDeals(deals, winFromUTC, winToUTC, winFromET, winToET, l
   let qualifiedRawScaleCount=0;  // Qualified count excluding Pre-launch brands (denominator for Total True CPQD)
   let staleScheduledCount=0;  // Scheduled — pending with date_demo_booked in the past
   let cancelledBeforeDemoCount=0;  // Prune Rate numerator: demo_attendance_status = 'Cancelled before demo'
+  // Tight-cohort counts for Irfan KPI #3 "% Pruned": only deals where BOTH
+  // hs_createdate AND date_demo_booked land in the current window — i.e., the
+  // customer clicked Book Demo in the window AND the demo was supposed to
+  // happen in the window. This is the cohort Irfan actually cares about for
+  // "what % were pruned up front by the team?" — it excludes cross-month
+  // bookings that would dilute the rate.
+  let cancelledBeforeDemoCountTight=0, pruneDenomTightSettled=0;
   const todayMidnight = new Date(); todayMidnight.setHours(0,0,0,0);
   const todayMs = todayMidnight.getTime();
   const byCat = {}; for (const c of FUNNEL_ORDER) byCat[c] = 0;
@@ -793,6 +800,23 @@ function processPipelineDeals(deals, winFromUTC, winToUTC, winFromET, winToET, l
     // Prune Rate numerator: demos cancelled before they happened
     if (att === 'Cancelled before demo') cancelledBeforeDemoCount++;
 
+    // Tight-cohort counters — only deals where BOTH date_demo_booked and
+    // hs_createdate are in the current window. ddb already passed the
+    // windowDeals filter via the effective-date check, but we still need
+    // to confirm the original date_demo_booked (not rescheduled_meeting_date)
+    // is in range, plus hs_createdate in range.
+    const _ddbMsT = dateMs(p.date_demo_booked);
+    const _hcdMsT = p.hs_createdate ? parseInt(p.hs_createdate) : NaN;
+    const _isTight = !isNaN(_ddbMsT) && _ddbMsT >= winFromUTC && _ddbMsT <= winToUTC
+                   && !isNaN(_hcdMsT) && _hcdMsT >= winFromET && _hcdMsT <= winToET;
+    if (_isTight) {
+      if (att === 'Demo Given (originally scheduled)' || att === 'Demo Given (rescheduled)' ||
+          att === 'No Show' || att === 'Cancelled before demo') {
+        pruneDenomTightSettled++;
+      }
+      if (att === 'Cancelled before demo') cancelledBeforeDemoCountTight++;
+    }
+
     // Raw qualification outcome counts
     if (qo === 'Qualified') {
       qualifiedRawCount++;
@@ -853,6 +877,9 @@ function processPipelineDeals(deals, winFromUTC, winToUTC, winFromET, winToET, l
   // Denominator: demos with any settled outcome (excludes still-pending so pending demos don't deflate the rate).
   const pruneDenom = demoGivenOrigCount + demoGivenReschedCount + noShowCount + cancelledBeforeDemoCount;
   const pruneRate = pruneDenom > 0 ? (cancelledBeforeDemoCount / pruneDenom) * 100 : 0;
+  // Tight Prune Rate — same formula but on the tight cohort (hs_createdate AND
+  // date_demo_booked both in window). Used by Irfan KPI #3 "% Pruned".
+  const pruneRateTight = pruneDenomTightSettled > 0 ? (cancelledBeforeDemoCountTight / pruneDenomTightSettled) * 100 : 0;
 
   // Blanks (data hygiene) = Scheduled — pending deals where date_demo_booked is in the past
   const blanksCount = staleScheduledCount;
@@ -865,6 +892,7 @@ function processPipelineDeals(deals, winFromUTC, winToUTC, winFromET, winToET, l
     totalExtended, demoGivenOrigCount, demoGivenReschedCount, demoGivenScaleCount, noShowScaleCount,
     qualifiedRawCount, disqualifiedRawCount, notYetEvalCount, qualifiedRawScaleCount,
     staleScheduledCount, cancelledBeforeDemoCount, pruneDenom,
+    cancelledBeforeDemoCountTight, pruneDenomTightSettled, pruneRateTight,
     demoShowRate, qualificationRate, disqualificationRate, noShowRate, noShowDenom, noShowRateScale, noShowDenomScale, pruneRate,
     byCategory: byCat, byRep, byChannel, byDay, byStage,
     stageOrder: STAGES,
@@ -1408,6 +1436,17 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
       pruneDenom: c.pipeline.pruneDenom||0,
       pruneDenomPrior: p.pipeline?.pruneDenom ?? null,
       pruneDenomLastMonth: pm.pipeline?.pruneDenom ?? null,
+      // Tight prune-rate cohort (denominator = deals where BOTH date_demo_booked
+      // AND hs_createdate land in the window). Used by Irfan KPI #3.
+      cancelledBeforeDemoCountTight: c.pipeline.cancelledBeforeDemoCountTight||0,
+      cancelledBeforeDemoCountTightPrior: p.pipeline?.cancelledBeforeDemoCountTight ?? null,
+      cancelledBeforeDemoCountTightLastMonth: pm.pipeline?.cancelledBeforeDemoCountTight ?? null,
+      pruneDenomTight: c.pipeline.pruneDenomTightSettled||0,
+      pruneDenomTightPrior: p.pipeline?.pruneDenomTightSettled ?? null,
+      pruneDenomTightLastMonth: pm.pipeline?.pruneDenomTightSettled ?? null,
+      pruneRateTight: c.pipeline.pruneRateTight||0,
+      pruneRateTightPrior: p.pipeline?.pruneRateTight ?? null,
+      pruneRateTightLastMonth: pm.pipeline?.pruneRateTight ?? null,
     },
     blanks: buildTile(c.pipeline.blanksCount, p.pipeline?.blanksCount??null, pm.pipeline?.blanksCount??null, 'Scheduled — pending deals with date_demo_booked in the past'),
     demosPaidPct: buildTile(
@@ -2002,29 +2041,17 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     const STAGE_NO_SHOW = '3453957850';
     const STAGE_NOT_A_FIT = '1062974581';
     let allBooked = 0;
-    // "Scheduled-in-period AND should-occur-in-period" tighter cohort —
-    // used as denominator for % Pruned and % No Show per Irfan's spec.
-    // i.e., the customer had to click Book Demo on our site within the
-    // period (hs_createdate in period) AND the demo date had to land in
-    // the same period. This excludes early bookings that crossed months.
-    let allBookedTight = 0, cntNoShowTight = 0, cntNotAFitTight = 0;
     let cntWon = 0, cntAppt = 0, cntDemoHappened = 0, cntDM = 0, cntCS = 0;
     let cntNoShow = 0, cntNotAFit = 0;
     let signedMrrSum = 0;
     // Avg Days to Close — for signed deals in this cohort, mean(closedate - date_demo_booked)
     // in days. Floors both to UTC-midnight to avoid sub-day noise.
     let daysToCloseSum = 0, daysToCloseN = 0;
-    // hs_createdate is a datetime — use ET boundaries (matches everywhere else)
-    const _pcmHcdFromMs = toMsET(_pcmFromStr);
-    const _pcmHcdToMs = toMsET(_pcmToStr, true);
     for (const d of _pcmUnion.values()) {
       const p = d.properties || {};
       const ddbMs = dateMs(p.date_demo_booked);
       if (isNaN(ddbMs) || ddbMs < _pcmFromMs || ddbMs > _pcmToMs) continue;
       allBooked++;
-      const hcdMs = isoMs(p.hs_createdate);
-      const _tight = !isNaN(hcdMs) && hcdMs >= _pcmHcdFromMs && hcdMs <= _pcmHcdToMs;
-      if (_tight) allBookedTight++;
       const stage = (p.dealstage||'').trim();
       if (stage === STAGE_WON) {
         cntWon++; signedMrrSum += parseFloat(p.amount)||0;
@@ -2040,18 +2067,15 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
       else if (stage === STAGE_DEMO_HAPPENED) cntDemoHappened++;
       else if (stage === STAGE_DM) cntDM++;
       else if (stage === STAGE_CS) cntCS++;
-      else if (stage === STAGE_NO_SHOW) { cntNoShow++; if (_tight) cntNoShowTight++; }
-      else if (stage === STAGE_NOT_A_FIT) { cntNotAFit++; if (_tight) cntNotAFitTight++; }
+      else if (stage === STAGE_NO_SHOW) cntNoShow++;
+      else if (stage === STAGE_NOT_A_FIT) cntNotAFit++;
     }
     const demosHeld = cntWon + cntAppt + cntDemoHappened + cntDM + cntCS;
     const cntPending = cntAppt + cntDemoHappened + cntDM + cntCS;
     const pctSigned = demosHeld > 0 ? (cntWon / demosHeld) * 100 : 0;
     const pctPending = demosHeld > 0 ? (cntPending / demosHeld) * 100 : 0;
-    // % Pruned / % No Show: tightened cohort. Both numerator and denominator
-    // require hs_createdate AND date_demo_booked to be in the period — i.e.,
-    // the demo was scheduled in the period AND was supposed to occur in it.
-    const pctPruned = allBookedTight > 0 ? (cntNotAFitTight / allBookedTight) * 100 : 0;
-    const pctNoShow = allBookedTight > 0 ? (cntNoShowTight / allBookedTight) * 100 : 0;
+    const pctPruned = allBooked > 0 ? (cntNotAFit / allBooked) * 100 : 0;
+    const pctNoShow = allBooked > 0 ? (cntNoShow / allBooked) * 100 : 0;
     const acv = cntWon > 0 ? signedMrrSum / cntWon : 0;  // New MRR ÷ Closed-won deals
     const newArr = signedMrrSum * 12;
     const avgDaysToClose = daysToCloseN > 0 ? daysToCloseSum / daysToCloseN : null;
@@ -2059,8 +2083,6 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
       // heldScale kept as field name for backward compat — it's "demos held" denominator
       heldScale: demosHeld, signed: cntWon, pctSigned,
       allBooked, pctPending, pctPruned, pctNoShow,
-      // Tight-cohort breakdown (denominator for % Pruned + % No Show)
-      allBookedTight, cntNotAFitTight, cntNoShowTight,
       stageCounts: { won: cntWon, appt: cntAppt, demoHappened: cntDemoHappened, dm: cntDM, cs: cntCS, noShow: cntNoShow, notAFit: cntNotAFit },
       sourceCounts: _srcCounts,
       newArr, acv, avgDaysToClose, avgDaysToCloseN: daysToCloseN,
