@@ -148,11 +148,14 @@ html,body{height:100%}body{font-family:var(--font-b);font-size:15px;color:var(--
 .su-avgdays-val{font-family:var(--font-h);font-size:18px;font-weight:700;color:var(--navy);line-height:1.05}
 .su-avgdays-unit{font-size:10px;color:var(--grey);font-weight:600;margin-left:1px}
 .su-avgdays-from{font-size:9px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;font-weight:600}
-/* Pie chart card — sits to the right of the totals on wider widths */
-.su-pie-card{flex:0 0 320px;display:flex;flex-direction:column;border:1px solid var(--border);border-radius:10px;padding:12px 14px;background:var(--white);min-width:280px}
+/* Pie chart card — wider so the legend sits BESIDE the SVG (horizontal
+ * layout), not below it. This keeps the pie card vertically aligned with
+ * the totals + % strip on the left, killing the dead space we used to
+ * have between the % strip and the per-rep table. */
+.su-pie-card{flex:0 0 460px;display:flex;flex-direction:column;border:1px solid var(--border);border-radius:10px;padding:12px 14px;background:var(--white);min-width:400px}
 .su-pie-title{font-family:var(--font-h);font-size:11px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}
 .su-pie-sub{font-size:10px;color:var(--grey);margin-bottom:6px}
-.su-pie-target{flex:1;min-height:260px;display:flex;align-items:center;justify-content:center}
+.su-pie-target{flex:1;min-height:240px;display:flex;align-items:center;justify-content:center}
 .su-rep-table{width:100%;font-size:11px;border-collapse:collapse;table-layout:fixed}
 .su-rep-table th{text-align:right;padding:8px 6px;font-family:var(--font-h);font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;border-bottom:1.5px solid var(--border);white-space:nowrap}
 .su-rep-table th:first-child{text-align:left}
@@ -1583,9 +1586,13 @@ function _renderIrfanMetaTables(d){
 const IRFAN_WT_LABELS={'Pre-launch / just launching':'Pre-launch','0-10K monthly web visitors':'0-10K','10-25K monthly web visitors':'10-25K','25-50K monthly web visitors':'25-50K','50-100K monthly web visitors':'50-100K','100-200K monthly web visitors':'100-200K','200-500K monthly web visitors':'200-500K','500K+ monthly web visitors':'500K+'};
 const IRFAN_WT_ORDER=['Pre-launch','0-10K','10-25K','25-50K','50-100K','100-200K','200-500K','500K+'];
 const IRFAN_WT_COLORS={'Pre-launch':'#9CA3AF','0-10K':'#72A4BF','10-25K':'#1D4053','25-50K':'#172C45','50-100K':'#0EA5E9','100-200K':'#7C3AED','200-500K':'#16A34A','500K+':'#F59E0B','(none)':'#E5E7EB'};
-// Render a web-traffic donut into a target element. Bigger SVG, inline % labels
-// on each segment >=4%, and instant hover with a floating tooltip.
-function _renderIrfanWtPieInto(targetId, rawBuckets, centerLabel, priorBuckets){
+// Render a web-traffic donut into a target element. Inline % labels on each
+// segment >=4%, instant hover with a floating tooltip. Optional opts.size
+// shrinks the SVG (default 280) for cards with tighter vertical budget.
+function _renderIrfanWtPieInto(targetId, rawBuckets, centerLabel, priorBuckets, opts){
+  opts = opts || {};
+  const SIZE = opts.size || 280;
+  const PAD_Y = opts.padding != null ? opts.padding : (SIZE >= 280 ? 20 : 8);
   const target=document.getElementById(targetId);if(!target)return;
   const buckets={};for(const key in (rawBuckets||{})){const lbl=IRFAN_WT_LABELS[key]||(key==='(none)'?'(none)':key);buckets[lbl]=(buckets[lbl]||0)+rawBuckets[key];}
   // Normalize prior-period buckets the same way so we can match by canonical label
@@ -1595,8 +1602,13 @@ function _renderIrfanWtPieInto(targetId, rawBuckets, centerLabel, priorBuckets){
   for(const t of IRFAN_WT_ORDER){if(buckets[t]){segs.push({label:t,count:buckets[t]});total+=buckets[t];delete buckets[t];}}
   for(const k of Object.keys(buckets)){segs.push({label:k,count:buckets[k]});total+=buckets[k];}
   if(!total){target.innerHTML='<div style="color:var(--grey);font-size:12px;padding:40px 0;text-align:center">No data</div>';return;}
-  // Geometry: viewBox 280, outer r=130, inner r=58 (donut hole for big center number)
-  const cx=140,cy=140,r=130,rInner=58;let cum=0;let paths='',labels='';
+  // Geometry scales with SIZE. Defaults match the original 280×280 donut.
+  const cx=SIZE/2, cy=SIZE/2, r=Math.round(SIZE*130/280), rInner=Math.round(SIZE*58/280);
+  // Font sizes proportional to SIZE so center number remains readable
+  const _centerNumFs=Math.round(SIZE*34/280);
+  const _centerLblFs=Math.round(SIZE*11/280);
+  const _segLblFs=Math.round(SIZE*12/280);
+  let cum=0;let paths='',labels='';
   for(const s of segs){
     const frac=s.count/total;
     const a0=cum*2*Math.PI-Math.PI/2;const a1=(cum+frac)*2*Math.PI-Math.PI/2;cum+=frac;
@@ -1612,7 +1624,7 @@ function _renderIrfanWtPieInto(targetId, rawBuckets, centerLabel, priorBuckets){
       const aMid=(cum-frac/2)*2*Math.PI-Math.PI/2;
       const rLbl=(r+rInner)/2;
       const lx=cx+rLbl*Math.cos(aMid),ly=cy+rLbl*Math.sin(aMid);
-      labels+='<text x="'+lx.toFixed(1)+'" y="'+ly.toFixed(1)+'" text-anchor="middle" dominant-baseline="central" style="font-family:var(--font-h);font-size:12px;font-weight:700;fill:#fff;pointer-events:none;text-shadow:0 0 3px rgba(0,0,0,.35)">'+pctStr+'</text>';
+      labels+='<text x="'+lx.toFixed(1)+'" y="'+ly.toFixed(1)+'" text-anchor="middle" dominant-baseline="central" style="font-family:var(--font-h);font-size:'+_segLblFs+'px;font-weight:700;fill:#fff;pointer-events:none;text-shadow:0 0 3px rgba(0,0,0,.35)">'+pctStr+'</text>';
     }
   }
   let legend='<div style="display:flex;flex-direction:column;gap:6px;font-size:11px;color:var(--navy)">';
@@ -1631,11 +1643,11 @@ function _renderIrfanWtPieInto(targetId, rawBuckets, centerLabel, priorBuckets){
     legend+='<div style="display:flex;align-items:center;gap:8px;white-space:nowrap"><span style="display:inline-block;width:10px;height:10px;background:'+col+';border-radius:2px;flex-shrink:0"></span><span style="font-weight:600;min-width:62px;color:var(--navy)">'+s.label+'</span><span style="color:var(--grey);min-width:24px;text-align:right;font-variant-numeric:tabular-nums">'+s.count+'</span><span style="color:var(--teal);font-weight:700;font-variant-numeric:tabular-nums;min-width:42px;text-align:right">'+pct+'%</span>'+deltaBadge+'</div>';
   }
   legend+='</div>';
-  target.innerHTML='<div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;justify-content:center;position:relative;padding:20px 0">'
-    +'<svg viewBox="0 0 280 280" style="width:280px;height:280px;flex-shrink:0">'+paths+labels
+  target.innerHTML='<div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;justify-content:center;position:relative;padding:'+PAD_Y+'px 0">'
+    +'<svg viewBox="0 0 '+SIZE+' '+SIZE+'" style="width:'+SIZE+'px;height:'+SIZE+'px;flex-shrink:0">'+paths+labels
     +'<circle cx="'+cx+'" cy="'+cy+'" r="'+rInner+'" fill="var(--white)"/>'
-    +'<text x="'+cx+'" y="'+(cy-4)+'" text-anchor="middle" style="font-family:var(--font-h);font-size:34px;font-weight:700;fill:var(--navy)">'+total+'</text>'
-    +'<text x="'+cx+'" y="'+(cy+18)+'" text-anchor="middle" style="font-size:11px;fill:var(--grey)">'+(centerLabel||'')+'</text>'
+    +'<text x="'+cx+'" y="'+(cy-4)+'" text-anchor="middle" style="font-family:var(--font-h);font-size:'+_centerNumFs+'px;font-weight:700;fill:var(--navy)">'+total+'</text>'
+    +'<text x="'+cx+'" y="'+(cy+Math.round(SIZE*18/280))+'" text-anchor="middle" style="font-size:'+_centerLblFs+'px;fill:var(--grey)">'+(centerLabel||'')+'</text>'
     +'</svg>'+legend
     +'<div id="'+targetId+'-tip" style="display:none;position:fixed;background:#172C45;color:#fff;padding:6px 10px;border-radius:6px;font-size:12px;font-family:var(--font-b);pointer-events:none;z-index:999;box-shadow:0 4px 12px rgba(2,15,24,.25);white-space:nowrap"></div>'
     +'</div>';
@@ -3287,7 +3299,9 @@ function renderSignUp(){
   if(typeof _renderIrfanWtPieInto==='function'){
     for(const pt of _pieTargets){
       if(pt.signed>0){
-        _renderIrfanWtPieInto(pt.id, pt.buckets, 'signed', null);
+        // size:220 + padding:6 = shorter pie card height, legend sits beside SVG
+        // in the wider su-pie-card (460px). Matches the totals card height.
+        _renderIrfanWtPieInto(pt.id, pt.buckets, 'signed', null, {size:220, padding:6});
       } else {
         const el=document.getElementById(pt.id);
         if(el)el.innerHTML='<div style="color:var(--grey);font-size:12px;padding:24px 0;text-align:center;font-style:italic">No signed deals</div>';
