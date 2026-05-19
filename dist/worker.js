@@ -543,7 +543,11 @@ async function fetchCohortDealsPerMonth(token, cohortMonths) {
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
       if (BACKOFFS[attempt] > 0) await sleep(BACKOFFS[attempt]);
       try {
-        const candidate = await fetchPipelineDeals(token, cm.from, cm.to, { maxPages: 20 });
+        // maxPages capped at 5 (1000-deal headroom per cohort, well above
+        // any realistic single-month size). Lower cap keeps the SignUp
+        // cohort fetch's own subrequest cost predictable so we don't blow
+        // the CF Workers per-request budget on a single month.
+        const candidate = await fetchPipelineDeals(token, cm.from, cm.to, { maxPages: 5 });
         if (candidate && candidate.length > 0) {
           arr = candidate;
           status = attempt === 0 ? 'ok' : 'ok-retry';
@@ -1835,6 +1839,21 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     console.error('Irfan MTD early-fetch failed:', e);
   }
 
+  // Sign-Up Rate cohort fetch — done EARLY (before Phase 2) so older months
+  // (Feb, March) actually get HubSpot subrequest budget. Earlier iterations
+  // ran this LATER in the handler, after Phase 2 consumed most of the per-
+  // request subrequest budget on cPipe/pmPipe/companyInfoMap batches. By
+  // the time the per-month fetch ran, March + Feb queries hit the 429 wall
+  // and returned [] silently. May + April happened to be backfilled by cPipe
+  // / pmPipe via the broader OR-group queries — which is why they always
+  // looked fine and only March/Feb appeared broken.
+  let _signupCohortRes = { union: [], perMonth: {}, perMonthStatus: {} };
+  try {
+    _signupCohortRes = await fetchCohortDealsPerMonth(hsToken, cohortMonths);
+  } catch(e) {
+    console.error('SignUp cohort early-fetch failed:', e);
+  }
+
   // ── Phase 2: Run HubSpot calls sequentially (avoids 429 rate limits) ──
   const cSch = await fetchScheduledContacts(hsToken, current.from, current.to);
   // For Demo Quality: extend pipeline fetch through end of month (processPipelineDeals re-filters to MTD)
@@ -1966,10 +1985,12 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   // Done HERE (not earlier in the handler) so we don't risk crowding
   // out the rest of the work on the per-request CF budget — the
   // 4 sequential fetches add ~1-3s wall-clock but each one is small.
-  const _cohortRes = await fetchCohortDealsPerMonth(hsToken, cohortMonths);
-  const cohortDeals = _cohortRes.union;
-  const cohortFetchedPerMonth = _cohortRes.perMonth;
-  const cohortFetchStatus = _cohortRes.perMonthStatus || {};
+  // Use the cohort result captured EARLIER in the handler (right after the
+  // Irfan MTD early-fetch). Doing the fetch then instead of now ensures
+  // older months get fresh subrequest budget before Phase 2 burns it.
+  const cohortDeals = _signupCohortRes.union;
+  const cohortFetchedPerMonth = _signupCohortRes.perMonth;
+  const cohortFetchStatus = _signupCohortRes.perMonthStatus || {};
 
   // All-time deals for rep summary and marketing funnel.
   //
