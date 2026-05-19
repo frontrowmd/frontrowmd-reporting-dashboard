@@ -407,11 +407,10 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
       <div id="dash-submenu" style="display:block;padding-left:24px">
         <div class="ni sub active" onclick="switchDashSub('irfan')" data-page="irfan" data-sub="irfan"><span class="ic" style="font-size:12px">⭐</span><span>Irfan Dashboard</span></div>
         <div class="ni sub" onclick="switchDashSub('overview')" data-page="dashboard" data-sub="overview"><span class="ic" style="font-size:12px">📊</span><span>Detailed Dashboard</span></div>
+        <div class="ni sub" onclick="switchDashSub('signup')" data-page="dashboard" data-sub="signup"><span class="ic" style="font-size:12px">📋</span><span>Sign-Up Rate</span></div>
         <div class="ni sub" onclick="switchDashSub('demoQuality')" data-page="demoQuality" data-sub="demoQuality"><span class="ic" style="font-size:12px">🎯</span><span>Demo Quality</span></div>
         <div class="ni sub" onclick="switchDashSub('outbound')" data-page="outbound" data-sub="outbound"><span class="ic" style="font-size:12px">📨</span><span>Outbound</span></div>
         <div class="ni sub" onclick="switchDashSub('strategy')" data-page="dashboard" data-sub="strategy"><span class="ic" style="font-size:12px">📋</span><span>Monthly Review</span></div>
-        <div class="ni sub" onclick="switchDashSub('signup')" data-page="dashboard" data-sub="signup"><span class="ic" style="font-size:12px">📋</span><span>Sign-Up Rate</span></div>
-        <div class="ni sub" onclick="switchDashSub('calculator')" data-page="dashboard" data-sub="calculator"><span class="ic" style="font-size:12px">🧮</span><span>ARR Calculator</span></div>
       </div>
       <div class="ni" onclick="autoExpand();toggleAzMenu()" data-page="analyzer" id="az-menu-parent" title="Paid Ads Dashboard"><span class="ic">🔬</span><span>Paid Ads Dashboard</span><span id="az-arrow" style="margin-left:auto;font-size:10px;transition:transform .2s">▼</span></div>
       <div id="az-submenu" style="display:block;padding-left:24px">
@@ -432,6 +431,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
       <div id="res-submenu" style="display:block;padding-left:24px">
         <div class="ni sub" onclick="window.open('/bd','_blank')" data-page="resources" data-sub="bd-dash"><span class="ic" style="font-size:12px">💼</span><span>BD Tracker</span><span style="margin-left:auto;font-size:9px;opacity:.5">↗</span></div>
         <div class="ni sub" onclick="window.open('/sales','_blank')" data-page="resources" data-sub="sales-dash"><span class="ic" style="font-size:12px">📋</span><span>Sales Dashboard</span><span style="margin-left:auto;font-size:9px;opacity:.5">↗</span></div>
+        <div class="ni sub" onclick="switchToCalculator()" data-page="resources" data-sub="calculator"><span class="ic" style="font-size:12px">🧮</span><span>ARR Calculator</span></div>
         <div class="ni sub" onclick="switchRes('brand-guide')" data-page="resources" data-sub="brand-guide"><span class="ic" style="font-size:12px">🎨</span><span>Brand Guide</span></div>
         <div class="ni sub" onclick="switchRes('data-key')" data-page="resources" data-sub="data-key"><span class="ic" style="font-size:12px">🗝️</span><span>Data Source Key</span></div>
       </div>
@@ -3211,10 +3211,10 @@ function renderSignUp(){
   let h='<div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);margin-bottom:14px">Monthly Cohorts</div>';
 
   // Build the Avg-Days "stacked two-value" cell HTML. Both values get the
-  // SAME visual treatment (per spec) — same font size, same weight, same
-  // color. Anchor label sits inline to the right of each number.
+  // SAME visual treatment — same font size, weight, color. Always rendered
+  // as whole-number days (Math.round) for consistency.
   const _avgDaysCell=(fromBookedV,fromCreatedV,titleAttr)=>{
-    const _f=(v)=>v==null?'—':(v<10?v.toFixed(1):Math.round(v).toString());
+    const _f=(v)=>v==null?'—':Math.round(v).toString();
     const _row=(v,label)=>`<div class="su-avgdays-row">`
       +`<span class="su-avgdays-val">${_f(v)}${v!=null?'<span class="su-avgdays-unit">d</span>':''}</span>`
       +`<span class="su-avgdays-from">${label}</span>`
@@ -3224,8 +3224,8 @@ function renderSignUp(){
       +_row(fromCreatedV,'from created')
       +`</div>`;
   };
-  // Compact "X d" cell for the rep-table columns
-  const _daysCell=(v)=>v==null?'—':`${v<10?v.toFixed(1):Math.round(v)}<span style="font-size:10px;color:var(--grey);font-weight:600;margin-left:1px">d</span>`;
+  // Compact "X d" cell for the rep-table columns — also whole-number rounded
+  const _daysCell=(v)=>v==null?'—':`${Math.round(v)}<span style="font-size:10px;color:var(--grey);font-weight:600;margin-left:1px">d</span>`;
 
   // Collect cohort → pie-target-id for post-injection rendering
   const _pieTargets=[];
@@ -3310,11 +3310,12 @@ function renderSignUp(){
     // entirely from the union backfill (cPipe/pPipe/pmPipe), not the
     // dedicated month query.
     const fetched=c._fetchedCount;
-    const status=c._fetchStatus; // 'ok' | 'ok-retry' | 'empty' | 'failed' | 'failed-retry'
+    const status=c._fetchStatus; // 'ok' | 'ok-retry' | 'empty' | 'failed' | 'failed-retry' | 'partial'
     const failed=(status==='failed'||status==='failed-retry');
     const statusLabel = failed
       ? ' <span style="color:#DC2626;font-weight:700">fetch failed</span>'
-      : (status==='ok-retry' ? ' <span style="color:#D97706;font-weight:600">via retry</span>' : '');
+      : (status==='partial' ? ' <span style="color:#D97706;font-weight:700">partial — some weekly slices failed</span>'
+      : (status==='ok-retry' ? ' <span style="color:#D97706;font-weight:600">via retry</span>' : ''));
     const diagPieces=[
       fetched!=null?`HubSpot fetch: <b${failed?' style="color:#DC2626"':''}>${fN(fetched)} deals</b>${statusLabel}`:null,
       `In ${c.period.label} window: <b>${fN(c.allBooked||0)} deals</b>`,
@@ -3518,6 +3519,19 @@ function toggleResMenu(){
   if(sub.style.display==='none'){sub.style.display='block';arrow.style.transform='rotate(0deg)';}
   else{sub.style.display='none';arrow.style.transform='rotate(-90deg)';}
 }
+// ARR Calculator is visually housed under the Resources menu group, but its
+// page render flow is the dashboard's calculator sub (AP='calculator'). This
+// wrapper delegates to switchDashSub for the actual page change and then
+// re-applies highlighting so the Resources parent + the calculator sub-item
+// in the Resources sub-menu are the ones marked active.
+window.switchToCalculator=function(){
+  switchDashSub('calculator');
+  document.querySelectorAll('.snav>.ni').forEach(function(n){n.classList.toggle('active',n.dataset.page==='resources');});
+  document.getElementById('res-menu-parent').classList.add('active');
+  document.querySelectorAll('#dash-submenu .ni').forEach(function(n){n.classList.remove('active');});
+  document.querySelectorAll('#res-submenu .ni').forEach(function(n){n.classList.toggle('active',n.dataset.sub==='calculator');});
+};
+
 function switchRes(subId){
   S.page='resources';S.resSub=subId;
   // Deactivate all sidebar items, activate clicked one
