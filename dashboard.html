@@ -617,7 +617,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r12';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r13';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 let PW='';
@@ -1270,10 +1270,11 @@ function renderIrfan(){
   } else if(_dqForm&&!_dqForm.formFound){
     h+='<div class="tile" style="border:1.5px dashed #FCD34D;background:rgba(245,158,11,.04)"><div class="tlbl" style="color:#D97706">% Disqualified Routing</div><div class="tval" style="color:#D97706">—</div><div class="tdef" style="margin-top:4px;color:#92400E">No HubSpot form found matching "Disqualification"</div></div>';
   } else if(_dqForm&&_dqForm.views==null){
-    // Form found but the analytics endpoint didn't return view data — likely
-    // a HubSpot tier / scope limitation. Show as a soft-error state with the
-    // submission count surfaced as a sanity-check fallback.
-    h+=`<div class="tile" style="border:1.5px dashed #FCD34D;background:rgba(245,158,11,.04)"><div class="tlbl" style="color:#D97706">% Disqualified Routing</div><div class="tval" style="color:#D97706">—</div><div class="tdef" style="margin-top:4px;color:#92400E">Form view analytics unavailable</div><div style="font-size:10px;color:#92400E;margin-top:6px">${fN(_dqSubs||0)} submissions logged in window (analytics v2 didn't return view counts)</div></div>`;
+    // Form found but the analytics endpoint didn't return view data. Show the
+    // exact reason (HTTP status, scope problem, etc.) reported by the worker
+    // so we can act on it instead of guessing.
+    const _vErr=_dqForm.viewError||'analytics v2 returned no view counts';
+    h+=`<div class="tile" style="border:1.5px dashed #FCD34D;background:rgba(245,158,11,.04)"><div class="tlbl" style="color:#D97706">% Disqualified Routing</div><div class="tval" style="color:#D97706">—</div><div class="tdef" style="margin-top:4px;color:#92400E">Form view analytics unavailable</div><div style="font-size:10px;color:#92400E;margin-top:6px;word-break:break-word">${fN(_dqSubs||0)} submissions logged in window<br><span style="font-style:italic;opacity:.85">${_vErr}</span></div></div>`;
   } else {
     const _unqBC=_unqRate!=null&&_unqRate>20?'#F59E0B':'var(--teal)';
     h+=`<div class="tile hero" style="border-left:3px solid ${_unqBC}" title="HubSpot Disqualification Form pageviews ÷ Demo Clicks. Pageviews = times the form rendered on a page; ${fN(_dqSubs||0)} of those resulted in a submission this window."><div class="tlbl">% Disqualified Routing</div><div class="tval">${_unqRate!=null?_unqRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">Disqualification Form pageviews ÷ Demo Clicks</div>${_irCalc(fN(_dqViews||0)+' ÷ '+fN(_demoClicks))}</div>`;

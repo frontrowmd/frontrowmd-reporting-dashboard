@@ -401,39 +401,81 @@ async function fetchDisqualificationFormSubmissions(token, from, to) {
     after = data.paging.next.after;
     pages++;
   }
-  // Step 2b: fetch form view counts via HubSpot Analytics v2. Pageviews is
-  // what the dashboard actually uses for the % Disqualified Routing card.
-  // The v2 analytics endpoint is documented and works on most Marketing Hub
-  // tiers — but is treated as best-effort; on failure we leave views=null
-  // and the dashboard surfaces an error state.
+  // Step 2b: fetch form view counts via HubSpot Analytics v2.
+  // Correct legacy v2 URL pattern: /analytics/v2/reports/{breakdown-by}/{time-period}
+  // For form analytics: breakdown-by=forms, time-period=total → /analytics/v2/reports/forms/total
+  // Response shape is: { breakdowns: [{ breakdown: <formId>, [metric]: N, ... }] }
+  // where each row's `breakdown` field is the form GUID. Common metric keys
+  // observed across portals: `views`, `view`, `pageViews`. Submissions show up
+  // as `submissions`, conversion as `ctr`.
+  // Requires the private app to have the `business-intelligence` scope.
   let views = null;
+  let viewError = null;
   try {
     const d1 = from.replace(/-/g, '');
     const d2 = to.replace(/-/g, '');
-    const viewsUrl = `https://api.hubapi.com/analytics/v2/reports/forms/total/total?d1=${d1}&d2=${d2}&f=${encodeURIComponent(form.id)}`;
+    const viewsUrl = `https://api.hubapi.com/analytics/v2/reports/forms/total?d1=${d1}&d2=${d2}`;
     const viewsRes = await fetch(viewsUrl, { headers: { Authorization: `Bearer ${token}` } });
     if (viewsRes.ok) {
       const viewsData = await viewsRes.json();
-      // Response shape can vary by HubSpot tier; try the common ones.
-      if (viewsData?.totals && typeof viewsData.totals.view === 'number') {
-        views = viewsData.totals.view;
-      } else if (viewsData?.results && viewsData.results[form.id]) {
-        const formRows = viewsData.results[form.id];
-        if (Array.isArray(formRows) && formRows.length > 0 && typeof formRows[0].view === 'number') {
-          views = formRows[0].view;
+      const pickViewCount = (row) => {
+        if (!row || typeof row !== 'object') return null;
+        // Try direct metric keys first
+        for (const k of ['views', 'view', 'pageViews', 'pageviews']) {
+          if (typeof row[k] === 'number') return row[k];
         }
-      } else if (typeof viewsData?.view === 'number') {
-        views = viewsData.view;
+        // Then nested metrics object
+        if (row.metrics && typeof row.metrics === 'object') {
+          for (const k of ['views', 'view', 'pageViews', 'pageviews']) {
+            if (typeof row.metrics[k] === 'number') return row.metrics[k];
+          }
+        }
+        return null;
+      };
+      // Primary shape: breakdowns array
+      if (Array.isArray(viewsData?.breakdowns)) {
+        const myRow = viewsData.breakdowns.find(b => (b?.breakdown || b?.formId) === form.id);
+        if (myRow) {
+          views = pickViewCount(myRow);
+        } else if (viewsData.breakdowns.length === 0) {
+          viewError = 'HubSpot returned empty breakdowns array (no form analytics in window)';
+        } else {
+          viewError = `Form ${form.id} not in HubSpot breakdowns (${viewsData.breakdowns.length} forms returned)`;
+        }
       }
-      console.log(`DQ form views: ${views} (${form.name}, ${from}..${to})`);
+      // Fallback shapes (older portals)
+      if (views == null && !viewError) {
+        if (viewsData?.totals && (typeof viewsData.totals.views === 'number' || typeof viewsData.totals.view === 'number')) {
+          views = viewsData.totals.views ?? viewsData.totals.view;
+        } else if (viewsData?.results && viewsData.results[form.id]) {
+          const formRows = viewsData.results[form.id];
+          if (Array.isArray(formRows) && formRows.length > 0) views = pickViewCount(formRows[0]);
+        } else if (typeof viewsData?.view === 'number') {
+          views = viewsData.view;
+        } else if (typeof viewsData?.views === 'number') {
+          views = viewsData.views;
+        }
+      }
+      if (views == null && !viewError) {
+        // Log a snippet so we can diagnose unfamiliar shapes
+        const snippet = JSON.stringify(viewsData).slice(0, 400);
+        viewError = `Unrecognized analytics response shape (snippet: ${snippet})`;
+      }
+      console.log(`DQ form views: ${views} (${form.name}, ${from}..${to})${viewError ? ' err='+viewError : ''}`);
     } else {
       const txt = await viewsRes.text();
-      console.warn(`DQ form views ${viewsRes.status}: ${txt.slice(0,160)}`);
+      viewError = `HTTP ${viewsRes.status}: ${txt.slice(0,200)}`;
+      console.warn(`DQ form views ${viewsRes.status}: ${txt.slice(0,200)}`);
+      // 403 typically means the private app is missing the business-intelligence scope.
+      if (viewsRes.status === 403) {
+        viewError = 'HubSpot 403: private app token likely missing "business-intelligence" scope (Settings → Integrations → Private Apps → Scopes → Analytics)';
+      }
     }
   } catch(e) {
+    viewError = `Fetch threw: ${e.message}`;
     console.warn('DQ form views fetch threw:', e.message);
   }
-  return { count, views, totalSeen, pages, formFound: true, formId: form.id, formName: form.name };
+  return { count, views, viewError, totalSeen, pages, formFound: true, formId: form.id, formName: form.name };
 }
 
 async function fetchScheduledContacts(token, from, to) {
