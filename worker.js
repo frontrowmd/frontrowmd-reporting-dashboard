@@ -562,11 +562,22 @@ async function fetchCohortDealsPerMonth(token, cohortMonths) {
     }
   };
 
-  // Pass 1 — every slice in parallel
-  console.log(`SignUp per-week fetch: ${slices.length} slices across ${cohortMonths.length} months`);
-  const results = await Promise.all(slices.map(s =>
-    fetchSlice(s).then(arr => ({ slice: s, arr }))
-  ));
+  // Pass 1 — CHUNKED parallel. Firing all 17ish slices simultaneously caused
+  // HubSpot to silently rate-limit-drop most of them (returning [] without
+  // ever surfacing a 429 to us). Chunking keeps us safely under HubSpot's
+  // 100req/10s ceiling while still being faster than fully sequential.
+  console.log(`SignUp per-week fetch: ${slices.length} slices across ${cohortMonths.length} months (chunked)`);
+  const CHUNK_SIZE = 4;
+  const CHUNK_GAP_MS = 250;
+  const results = [];
+  for (let i = 0; i < slices.length; i += CHUNK_SIZE) {
+    const chunk = slices.slice(i, i + CHUNK_SIZE);
+    const chunkResults = await Promise.all(chunk.map(s =>
+      fetchSlice(s).then(arr => ({ slice: s, arr }))
+    ));
+    results.push(...chunkResults);
+    if (i + CHUNK_SIZE < slices.length) await sleep(CHUNK_GAP_MS);
+  }
 
   // Aggregate by month
   const monthDealMaps = new Map(); // label → Map(dealId → deal)
@@ -582,28 +593,35 @@ async function fetchCohortDealsPerMonth(token, cohortMonths) {
     monthSliceStatus.get(slice.label).push({ from: slice.from, to: slice.to, count: arr?.length || 0, status });
   }
 
-  // Pass 2 — sequential retry for any slice that came back null (errored).
-  // 300ms gap lets HubSpot's rate counter decay between requests.
-  const failed = [];
+  // Pass 2 — sequential retry for any slice that came back 'failed' (JS
+  // threw) OR 'empty' (HubSpot returned []). Rate-limited fetches surface
+  // as 'empty' through hsSearch's silent return-on-429-exhaust path, so
+  // retrying empty slices is essential — most "empty" slices on a busy
+  // month are actually silent rate-limit drops.
+  // 400ms gap between retries.
+  const needsRetry = [];
   for (const cm of cohortMonths) {
     for (const s of monthSliceStatus.get(cm.label)) {
-      if (s.status === 'failed') failed.push({ label: cm.label, from: s.from, to: s.to });
+      if (s.status === 'failed' || s.status === 'empty') {
+        needsRetry.push({ label: cm.label, from: s.from, to: s.to, originalStatus: s.status });
+      }
     }
   }
-  if (failed.length > 0) {
-    console.log(`SignUp retrying ${failed.length} failed slices`);
-    for (const slice of failed) {
-      await sleep(300);
+  if (needsRetry.length > 0) {
+    console.log(`SignUp retrying ${needsRetry.length} slices (failed + empty)`);
+    for (const slice of needsRetry) {
+      await sleep(400);
       const retryArr = await fetchSlice(slice);
-      if (retryArr !== null) {
+      const ss = monthSliceStatus.get(slice.label).find(s => s.from === slice.from && s.to === slice.to);
+      if (retryArr !== null && retryArr.length > 0) {
         const dm = monthDealMaps.get(slice.label);
         for (const d of retryArr) dm.set(d.id, d);
-        const ss = monthSliceStatus.get(slice.label).find(s => s.from === slice.from && s.to === slice.to);
-        if (ss) { ss.count = retryArr.length; ss.status = retryArr.length > 0 ? 'ok-retry' : 'empty'; }
-      } else {
-        const ss = monthSliceStatus.get(slice.label).find(s => s.from === slice.from && s.to === slice.to);
+        if (ss) { ss.count = retryArr.length; ss.status = 'ok-retry'; }
+      } else if (retryArr === null) {
         if (ss) ss.status = 'failed-retry';
       }
+      // If still empty after retry, leave status='empty' — this slice
+      // genuinely has no deals (or HubSpot is double-failing it).
     }
   }
 
