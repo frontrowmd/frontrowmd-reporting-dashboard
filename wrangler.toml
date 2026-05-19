@@ -14,3 +14,20 @@ no_bundle = true
 [[kv_namespaces]]
 binding = "CONTENT_STORE"
 id = "15173a7248cc4ce187596152580b37f1"
+
+# Observability — keep wrangler in sync with the Cloudflare dashboard settings
+# so deploys don't toggle logs off. Logs are enabled and persisted; traces off.
+[observability]
+enabled = false
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
+
+[observability.traces]
+enabled = false
+persist = true
+head_sampling_rate = 1

@@ -617,9 +617,10 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r15';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r16';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
+const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
 let PW='';
 const S={dashboard:{win:'mtd',data:null,sub:'irfan'},irfan:{win:'mtd',data:null},strategy:{data:null,win:'lastMonth'},calculator:{win:'mtd',data:null},signup:{win:null,data:null},analyzer:{win:'mtd',data:null,tab:'overview',sub:'overview'},demoQuality:{win:'mtd',data:null},csession:{step:1},content:{data:null,sub:'cs-intel'},outbound:{data:null}};let AP='irfan';
 const f$=v=>v==null?'—':'$'+Math.round(v).toLocaleString();
@@ -716,6 +717,11 @@ async function fd(w,from,to,vsFrom,vsTo){
   }catch(e){console.error(e);clearInterval(iv);if(pl)pl.textContent='Connection error';await new Promise(ok=>setTimeout(ok,1000));}
   finally{if(mySeq===_fdSeq){ldEl.style.display='none';if(pw2)pw2.style.display='none';}}
   if(mySeq===_fdSeq)renderPage();
+  // Kick off Special #1 fetch for the irfan page (in parallel, fire-and-forget).
+  // Lives on its own endpoint so it's time-bound to MTD + Last Month and never
+  // shifts when the page selector changes. First call fetches; subsequent
+  // calls re-use S.irfan.special1Data, so changing windows doesn't re-fetch.
+  if(AP==='irfan'&&!S.irfan.special1Data&&typeof fdSpecial1==='function'){fdSpecial1();}
 }
 // Dedicated SignUp Rate fetch — hits /api/signup-cohorts which has its
 // own fresh HubSpot subrequest budget. The main /api/data handler runs
@@ -762,7 +768,29 @@ async function fdSignup(){
   }
   if(mySeq===_fdSeq)renderPage();
 }
-async function refreshData(){const btn=document.getElementById('rfb');if(btn){btn.classList.add('loading');btn.textContent='↻ Refreshing...';}if(AP==='signup'){await fdSignup();}else{await fd(S[AP].win||'mtd');}if(btn){btn.classList.remove('loading');btn.textContent='↻ Refresh';}}
+// Dedicated Special #1 fetch — hits /api/special1-cohorts. Always fetches
+// Last Month + MTD cohorts from a deal query scoped to those windows ONLY,
+// so the data never shifts when the page time selector changes. Result is
+// cached on S.irfan.special1Data; subsequent renders read from cache.
+async function fdSpecial1(){
+  try{
+    const r=await fetch(SPECIAL1_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:PW})});
+    const d=await r.json();
+    if(r.ok&&!d.error){
+      S.irfan.special1Data=d;
+      // If the irfan page is currently rendered, re-render to swap in fresh data.
+      const card=document.getElementById('irfan-special1-card');
+      if(card&&typeof _buildIrfanSpecial1Inner==='function'){
+        // Compose a faux 'd' with merged special1 fields so the renderer reads them
+        const dataForRender=Object.assign({},S.irfan.data||{},{irfan:Object.assign({},(S.irfan.data&&S.irfan.data.irfan)||{},{priorMonthHeldSigned:d.priorMonthHeldSigned,mtdHeldSigned:d.mtdHeldSigned})});
+        card.innerHTML=_buildIrfanSpecial1Inner(dataForRender, S.irfan.special1Mode||'mtd');
+      }
+    } else {
+      console.error('Special1 API error:',r.status,d);
+    }
+  }catch(e){console.error('Special1 fetch threw:',e);}
+}
+async function refreshData(){const btn=document.getElementById('rfb');if(btn){btn.classList.add('loading');btn.textContent='↻ Refreshing...';}if(AP==='signup'){await fdSignup();}else{await fd(S[AP].win||'mtd');if(AP==='irfan')await fdSpecial1();}if(btn){btn.classList.remove('loading');btn.textContent='↻ Refresh';}}
 
 // Nav
 function toggleSidebar(){document.querySelector('.sidebar').classList.toggle('open');document.getElementById('sidebarOverlay').classList.toggle('open');}
@@ -1736,7 +1764,17 @@ function _renderIrfanSignedPie(d){
 // Mirrors the design of Special #2: title + sub on the left, toggle pills on
 // the right, then the grouped stat card + breakdown KPIs.
 function _buildIrfanSpecial1Inner(d, mode){
-  const _irf=d?.irfan||{};
+  // Prefer the dedicated /api/special1-cohorts payload — it's time-bound to
+  // Last Month + MTD only and doesn't shift when the page selector changes.
+  // Falls back to whatever /api/data returned (older payload shape) only if
+  // the dedicated fetch hasn't completed yet. Self-heals by triggering the
+  // dedicated fetch on first miss.
+  const _s1Cache=S.irfan.special1Data;
+  const _irf=_s1Cache?{priorMonthHeldSigned:_s1Cache.priorMonthHeldSigned,mtdHeldSigned:_s1Cache.mtdHeldSigned}:((d&&d.irfan)||{});
+  if(!_s1Cache&&typeof fdSpecial1==='function'&&!S.irfan._special1Fetching){
+    S.irfan._special1Fetching=true;
+    Promise.resolve(fdSpecial1()).finally(()=>{S.irfan._special1Fetching=false;});
+  }
   const fmtD=s=>{const p=s.split('-');return new Date(p[0],p[1]-1,p[2]).toLocaleDateString('en-US',{month:'long',day:'numeric'});};
   const _err=_irf.priorMonthError;
   const _s1Mode=mode==='mtd'?'mtd':'lastMonth';
