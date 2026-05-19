@@ -507,140 +507,69 @@ async function fetchCohortDealsByBookedDate(token, from, to) {
 // Returns { union: Deal[], perMonth: { [label]: count } } so the caller
 // can surface the per-cohort fetched count to the dashboard.
 async function fetchCohortDealsPerMonth(token, cohortMonths) {
-  // BULLETPROOF cohort fetch — split each month into 7-day slices and
-  // fetch every slice in parallel. Each weekly slice will almost always
-  // hold well under the 200-deal page cap (a busy team books 100-150
-  // demos / week), so we never hit HubSpot's pagination quirks at all.
+  // BULLETPROOF cohort fetch — delegate to fetchPipelineDeals (the SAME
+  // helper that successfully fetches 500+ deals/month for cPipe, pPipe,
+  // pmPipe). Its 3-OR-filter-group shape avoids the HubSpot pagination
+  // quirk that capped every single-filter query at 200 deals.
   //
-  // This sidesteps the prior failure modes entirely:
-  //  • Pagination capped at page 1 on date-property sorts → not relevant,
-  //    each slice fits in one page so we never need to paginate.
-  //  • Rate-limit-induced 0-result silent failures on later months →
-  //    each slice is a tiny independent query; even if a few fail,
-  //    the rest of the slices still collectively cover the month, and
-  //    we retry just the failed ones.
-  //  • 10k hard ceiling on huge ranges → moot at this granularity.
+  // History of why this is the right answer:
+  //  • Single-filter sort=date_demo_booked DESC: capped at exactly 200
+  //    deals per query. HubSpot pagination silently stopped after page 1.
+  //  • Single-filter sort=hs_createdate ASC: same cap, same quirk.
+  //  • Weekly slicing: each slice tiny enough to fit in one page, but
+  //    parallel fan-out (17 concurrent) tripped rate limits, and silent
+  //    429-on-retry returns of [] meant some months still came back 0.
+  //  • THIS approach: fetchPipelineDeals is the proven-working pattern.
+  //    For cPipe it pulls 580+ deals/month with full pagination. Using it
+  //    here gets us the SAME reliable pagination behavior.
   //
-  // Per-month total = sum across all weekly slices, de-duplicated by id.
-  // perMonthStatus carries 'ok' / 'ok-retry' / 'partial' / 'empty' /
-  // 'failed' depending on slice outcomes.
-  const props = ['dealname','date_demo_booked','demo_attendance_status','demo_qualification_outcome','dealstage','amount','closedate','hs_createdate','hubspot_owner_id','brand_status','average_monthly_web_traffic__cloned_','average_monthly_web_traffic'];
+  // fetchPipelineDeals's 3rd filter group catches deals where
+  // date_demo_booked is null but rescheduled_meeting_date or
+  // missed-status+hs_createdate match. buildSignUpCohorts routes by
+  // date_demo_booked.substring(0,7), so any extra "spillover" deals
+  // pulled by groups 2/3 that don't have date_demo_booked in our cohort
+  // months simply get dropped by the cohort router — harmless.
 
-  // Build 7-day slices for each cohort month. The final slice of each
-  // month may be shorter (e.g., Mar 29-31, May 15-18).
-  const _toFmt = (d) => fmt(d);
-  const slices = [];
-  for (const cm of cohortMonths) {
-    const start = new Date(cm.from + 'T00:00:00Z');
-    const end = new Date(cm.to + 'T00:00:00Z');
-    let cur = new Date(start);
-    while (cur <= end) {
-      const sEnd = new Date(cur);
-      sEnd.setUTCDate(sEnd.getUTCDate() + 6); // 7-day window inclusive
-      if (sEnd > end) sEnd.setTime(end.getTime());
-      slices.push({ label: cm.label, from: _toFmt(cur), to: _toFmt(sEnd) });
-      cur = new Date(sEnd);
-      cur.setUTCDate(cur.getUTCDate() + 1);
-    }
-  }
-
-  const fetchSlice = async (slice) => {
+  // Pass 1 — parallel per-month via fetchPipelineDeals.
+  // maxPages bumped to 20 so a busy month with many OR-group dupes can't
+  // hit the cap.
+  console.log(`SignUp cohort fetch via fetchPipelineDeals (${cohortMonths.length} months in parallel, maxPages=20)`);
+  const results = await Promise.all(cohortMonths.map(async (cm) => {
     try {
-      const arr = await hsSearch(token, 'deals', [{
-        filters: [
-          { propertyName: 'date_demo_booked', operator: 'GTE', value: String(toMsUTC(slice.from)) },
-          { propertyName: 'date_demo_booked', operator: 'LTE', value: String(toMsUTC(slice.to, true)) },
-        ],
-      }], props, 200, [{ propertyName: 'hs_createdate', direction: 'ASCENDING' }], 3);
-      // maxPages=3 = 600 deal headroom per weekly slice. We expect ≤200
-      // in nearly all cases, so a value >200 here means we accidentally
-      // sliced too wide and want to know about it.
-      return arr || [];
+      const arr = await fetchPipelineDeals(token, cm.from, cm.to, { maxPages: 20 });
+      return { cm, arr: arr || [], status: 'ok-first' };
     } catch(e) {
-      console.warn(`SignUp slice ${slice.label} ${slice.from}..${slice.to} threw:`, e.message);
-      return null;
+      console.warn(`SignUp cohort ${cm.label} pass 1 threw:`, e.message);
+      return { cm, arr: [], status: 'failed' };
     }
-  };
+  }));
 
-  // Pass 1 — CHUNKED parallel. Firing all 17ish slices simultaneously caused
-  // HubSpot to silently rate-limit-drop most of them (returning [] without
-  // ever surfacing a 429 to us). Chunking keeps us safely under HubSpot's
-  // 100req/10s ceiling while still being faster than fully sequential.
-  console.log(`SignUp per-week fetch: ${slices.length} slices across ${cohortMonths.length} months (chunked)`);
-  const CHUNK_SIZE = 4;
-  const CHUNK_GAP_MS = 250;
-  const results = [];
-  for (let i = 0; i < slices.length; i += CHUNK_SIZE) {
-    const chunk = slices.slice(i, i + CHUNK_SIZE);
-    const chunkResults = await Promise.all(chunk.map(s =>
-      fetchSlice(s).then(arr => ({ slice: s, arr }))
-    ));
-    results.push(...chunkResults);
-    if (i + CHUNK_SIZE < slices.length) await sleep(CHUNK_GAP_MS);
-  }
-
-  // Aggregate by month
-  const monthDealMaps = new Map(); // label → Map(dealId → deal)
-  const monthSliceStatus = new Map(); // label → [{from, to, count, status}]
-  for (const cm of cohortMonths) {
-    monthDealMaps.set(cm.label, new Map());
-    monthSliceStatus.set(cm.label, []);
-  }
-  for (const { slice, arr } of results) {
-    const dm = monthDealMaps.get(slice.label);
-    const status = arr === null ? 'failed' : (arr.length > 0 ? 'ok' : 'empty');
-    if (arr) for (const d of arr) dm.set(d.id, d);
-    monthSliceStatus.get(slice.label).push({ from: slice.from, to: slice.to, count: arr?.length || 0, status });
-  }
-
-  // Pass 2 — sequential retry for any slice that came back 'failed' (JS
-  // threw) OR 'empty' (HubSpot returned []). Rate-limited fetches surface
-  // as 'empty' through hsSearch's silent return-on-429-exhaust path, so
-  // retrying empty slices is essential — most "empty" slices on a busy
-  // month are actually silent rate-limit drops.
-  // 400ms gap between retries.
-  const needsRetry = [];
-  for (const cm of cohortMonths) {
-    for (const s of monthSliceStatus.get(cm.label)) {
-      if (s.status === 'failed' || s.status === 'empty') {
-        needsRetry.push({ label: cm.label, from: s.from, to: s.to, originalStatus: s.status });
-      }
-    }
-  }
-  if (needsRetry.length > 0) {
-    console.log(`SignUp retrying ${needsRetry.length} slices (failed + empty)`);
-    for (const slice of needsRetry) {
-      await sleep(400);
-      const retryArr = await fetchSlice(slice);
-      const ss = monthSliceStatus.get(slice.label).find(s => s.from === slice.from && s.to === slice.to);
-      if (retryArr !== null && retryArr.length > 0) {
-        const dm = monthDealMaps.get(slice.label);
-        for (const d of retryArr) dm.set(d.id, d);
-        if (ss) { ss.count = retryArr.length; ss.status = 'ok-retry'; }
-      } else if (retryArr === null) {
-        if (ss) ss.status = 'failed-retry';
-      }
-      // If still empty after retry, leave status='empty' — this slice
-      // genuinely has no deals (or HubSpot is double-failing it).
-    }
-  }
-
-  // Build final result
+  // Pass 2 — sequential retry for any month that returned empty OR errored.
+  // 500ms gap between retries to let HubSpot's rate counter decay.
   const map = new Map();
   const perMonth = {};
   const perMonthStatus = {};
-  for (const cm of cohortMonths) {
-    const dm = monthDealMaps.get(cm.label);
-    for (const [id, d] of dm) map.set(id, d);
-    perMonth[cm.label] = dm.size;
-    const sl = monthSliceStatus.get(cm.label);
-    const anyFailed = sl.some(s => s.status === 'failed' || s.status === 'failed-retry');
-    const anyRetry = sl.some(s => s.status === 'ok-retry');
-    perMonthStatus[cm.label] = anyFailed
-      ? 'partial'
-      : (anyRetry ? 'ok-retry' : (dm.size > 0 ? 'ok' : 'empty'));
-    const sliceCounts = sl.map(s => s.count).join('+');
-    console.log(`SignUp ${cm.label} (${cm.from}..${cm.to}): ${dm.size} deals from ${sl.length} slices [${sliceCounts}] [${perMonthStatus[cm.label]}]`);
+  for (const r of results) {
+    let arr = r.arr;
+    let status = r.status === 'failed' ? 'failed' : (arr.length > 0 ? 'ok' : 'empty');
+    if (status !== 'ok') {
+      await sleep(500);
+      try {
+        const retry = await fetchPipelineDeals(token, r.cm.from, r.cm.to, { maxPages: 20 });
+        if (retry && retry.length > 0) {
+          arr = retry;
+          status = 'ok-retry';
+          console.log(`SignUp cohort ${r.cm.label} retry: ${retry.length} deals`);
+        }
+      } catch(e) {
+        status = 'failed-retry';
+        console.warn(`SignUp cohort ${r.cm.label} retry threw:`, e.message);
+      }
+    }
+    perMonth[r.cm.label] = arr.length;
+    perMonthStatus[r.cm.label] = status;
+    for (const d of arr) map.set(d.id, d);
+    console.log(`SignUp ${r.cm.label} (${r.cm.from}..${r.cm.to}): ${arr.length} deals [${status}]`);
   }
   console.log(`SignUp cohort union: ${map.size} unique across ${Object.keys(perMonth).length} months`);
   return { union: [...map.values()], perMonth, perMonthStatus };
