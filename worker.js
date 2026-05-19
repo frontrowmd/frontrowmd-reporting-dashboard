@@ -349,8 +349,15 @@ function filterActiveBrands(deals) {
   });
 }
 
-// Look up the "Disqualification Form" by name (case-insensitive substring match)
-// and count submissions in [from, to]. Used by Irfan KPI #5 (% Unqualified Brand Fit).
+// Look up the "Disqualification Form" by name (case-insensitive substring match),
+// then return BOTH:
+//   • count — submissions in [from, to]  (count of people who filled out the form)
+//   • views — form page views in [from, to] (count of times the form was loaded
+//     on a page — pulled from HubSpot's v2 analytics endpoint)
+// Used by Irfan KPI #5 (% Disqualified Routing). The numerator on the card is
+// views — that's the right metric for "how many people were routed to the
+// disqualification page", since a view happens whether or not the visitor
+// completes the form.
 async function fetchDisqualificationFormSubmissions(token, from, to) {
   // Step 1: list forms and find the DQ form by name
   const formsRes = await fetch('https://api.hubapi.com/marketing/v3/forms?limit=200', {
@@ -365,9 +372,9 @@ async function fetchDisqualificationFormSubmissions(token, from, to) {
     (f.name || '').toLowerCase().includes('disqualification')
   );
   if (!form) {
-    return { count: 0, formFound: false };
+    return { count: 0, views: null, formFound: false };
   }
-  // Step 2: walk submissions filtered by submittedAt in [from, to]
+  // Step 2a: walk submissions filtered by submittedAt in [from, to]
   const fromMs = new Date(from + 'T00:00:00Z').getTime();
   const toMs = new Date(to + 'T23:59:59.999Z').getTime();
   let count = 0, totalSeen = 0, after = null, pages = 0;
@@ -394,7 +401,39 @@ async function fetchDisqualificationFormSubmissions(token, from, to) {
     after = data.paging.next.after;
     pages++;
   }
-  return { count, totalSeen, pages, formFound: true, formId: form.id, formName: form.name };
+  // Step 2b: fetch form view counts via HubSpot Analytics v2. Pageviews is
+  // what the dashboard actually uses for the % Disqualified Routing card.
+  // The v2 analytics endpoint is documented and works on most Marketing Hub
+  // tiers — but is treated as best-effort; on failure we leave views=null
+  // and the dashboard surfaces an error state.
+  let views = null;
+  try {
+    const d1 = from.replace(/-/g, '');
+    const d2 = to.replace(/-/g, '');
+    const viewsUrl = `https://api.hubapi.com/analytics/v2/reports/forms/total/total?d1=${d1}&d2=${d2}&f=${encodeURIComponent(form.id)}`;
+    const viewsRes = await fetch(viewsUrl, { headers: { Authorization: `Bearer ${token}` } });
+    if (viewsRes.ok) {
+      const viewsData = await viewsRes.json();
+      // Response shape can vary by HubSpot tier; try the common ones.
+      if (viewsData?.totals && typeof viewsData.totals.view === 'number') {
+        views = viewsData.totals.view;
+      } else if (viewsData?.results && viewsData.results[form.id]) {
+        const formRows = viewsData.results[form.id];
+        if (Array.isArray(formRows) && formRows.length > 0 && typeof formRows[0].view === 'number') {
+          views = formRows[0].view;
+        }
+      } else if (typeof viewsData?.view === 'number') {
+        views = viewsData.view;
+      }
+      console.log(`DQ form views: ${views} (${form.name}, ${from}..${to})`);
+    } else {
+      const txt = await viewsRes.text();
+      console.warn(`DQ form views ${viewsRes.status}: ${txt.slice(0,160)}`);
+    }
+  } catch(e) {
+    console.warn('DQ form views fetch threw:', e.message);
+  }
+  return { count, views, totalSeen, pages, formFound: true, formId: form.id, formName: form.name };
 }
 
 async function fetchScheduledContacts(token, from, to) {

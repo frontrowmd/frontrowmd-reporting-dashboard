@@ -1256,18 +1256,27 @@ function renderIrfan(){
   const _noShowWarn=noShowRate!=null&&noShowRate>20;
   const _noShowStyle=_noShowWarn?'border:2px solid #F59E0B':'border-left:3px solid var(--teal)';
   h+=`<div class="tile hero" style="${_noShowStyle}"><div class="tlbl">% No-Show</div><div class="tval">${noShowRate!=null?noShowRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">No Show ÷ (Demo Given orig + resched + No Show), excl. pre-launch</div>${_irCalc(fN(_noShowScale)+' ÷ '+fN(_noShowDenomScale))}${_irTileFooter(noShowRate,noShowPV,noShowLMV,'%',true)}</div>`;
-  // 2.5 % Disqualified Routing — Disqualification Form submissions ÷ demo clicks
+  // 2.5 % Disqualified Routing — Disqualification Form page VIEWS ÷ demo clicks.
+  // Views captures every visitor routed to the disqualification page (whether
+  // they completed the form or not), which is the right denominator-comparable
+  // numerator for "% of demo-click traffic that got disqualified-routed."
   const _dqForm=d.irfan?.dqForm;const _dqFormErr=d.irfan?.dqFormError;
+  const _dqViews=_dqForm?_dqForm.views:null;
   const _dqSubs=_dqForm?_dqForm.count:null;
   const _demoClicks=d.webPerformance?._meta?.demoClicks||0;
-  const _unqRate=(_dqSubs!=null&&_demoClicks>0)?(_dqSubs/_demoClicks)*100:null;
+  const _unqRate=(_dqViews!=null&&_demoClicks>0)?(_dqViews/_demoClicks)*100:null;
   if(_dqFormErr){
     h+=`<div class="tile" style="border:1.5px dashed #FCA5A5;background:rgba(220,38,38,.04)"><div class="tlbl" style="color:#991B1B">% Disqualified Routing</div><div class="tval" style="color:#991B1B">—</div><div class="tdef" style="margin-top:4px;color:#7F1D1D">Failed to fetch Disqualification Form</div><div style="font-size:10px;color:#991B1B;margin-top:6px;font-style:italic">${_dqFormErr}</div></div>`;
   } else if(_dqForm&&!_dqForm.formFound){
     h+='<div class="tile" style="border:1.5px dashed #FCD34D;background:rgba(245,158,11,.04)"><div class="tlbl" style="color:#D97706">% Disqualified Routing</div><div class="tval" style="color:#D97706">—</div><div class="tdef" style="margin-top:4px;color:#92400E">No HubSpot form found matching "Disqualification"</div></div>';
+  } else if(_dqForm&&_dqForm.views==null){
+    // Form found but the analytics endpoint didn't return view data — likely
+    // a HubSpot tier / scope limitation. Show as a soft-error state with the
+    // submission count surfaced as a sanity-check fallback.
+    h+=`<div class="tile" style="border:1.5px dashed #FCD34D;background:rgba(245,158,11,.04)"><div class="tlbl" style="color:#D97706">% Disqualified Routing</div><div class="tval" style="color:#D97706">—</div><div class="tdef" style="margin-top:4px;color:#92400E">Form view analytics unavailable</div><div style="font-size:10px;color:#92400E;margin-top:6px">${fN(_dqSubs||0)} submissions logged in window (analytics v2 didn't return view counts)</div></div>`;
   } else {
     const _unqBC=_unqRate!=null&&_unqRate>20?'#F59E0B':'var(--teal)';
-    h+=`<div class="tile hero" style="border-left:3px solid ${_unqBC}"><div class="tlbl">% Disqualified Routing</div><div class="tval">${_unqRate!=null?_unqRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">Disqualification Form submissions ÷ Demo Clicks</div>${_irCalc(fN(_dqSubs||0)+' ÷ '+fN(_demoClicks))}</div>`;
+    h+=`<div class="tile hero" style="border-left:3px solid ${_unqBC}" title="HubSpot Disqualification Form pageviews ÷ Demo Clicks. Pageviews = times the form rendered on a page; ${fN(_dqSubs||0)} of those resulted in a submission this window."><div class="tlbl">% Disqualified Routing</div><div class="tval">${_unqRate!=null?_unqRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">Disqualification Form pageviews ÷ Demo Clicks</div>${_irCalc(fN(_dqViews||0)+' ÷ '+fN(_demoClicks))}</div>`;
   }
   h+='</div>';
 
@@ -1278,13 +1287,13 @@ function renderIrfan(){
   // Special Tile #1 — Of deals with date_demo_booked in the selected month
   // (excluding pre-launch brands), how many have since reached
   // dealstage='closedwon'? Toggle: Last Month / MTD (mirrors Special #2's toggle).
-  if(!S.irfan.special1Mode)S.irfan.special1Mode='lastMonth';
+  if(!S.irfan.special1Mode)S.irfan.special1Mode='mtd';
   h+='<div id="irfan-special1-card" style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:22px 24px">';
   h+=_buildIrfanSpecial1Inner(d, S.irfan.special1Mode);
   h+='</div>';
   // Special Tile #2 — Signed deals by web traffic. Toggle between Last 2 Weeks
   // and MTD; both windows are fixed (independent of the page time selector).
-  if(!S.irfan.signed2Mode)S.irfan.signed2Mode='14d';
+  if(!S.irfan.signed2Mode)S.irfan.signed2Mode='mtd';
   h+='<div id="irfan-special2-card" style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:22px 24px">';
   h+=_buildIrfanSpecial2Inner(d, S.irfan.signed2Mode);
   h+='</div>';
@@ -1712,7 +1721,7 @@ function _renderIrfanWtPieInto(targetId, rawBuckets, centerLabel, priorBuckets, 
 function _renderIrfanWtPie(d){_renderIrfanWtPieInto('irfan-wt-pie', d.demoTracking?.scheduledByWebTraffic, 'demos booked', d.demoTracking?.scheduledByWebTrafficPrior);}
 // Single signed-deals pie that reads the current toggle mode and renders into #irfan-signed-pie.
 function _renderIrfanSignedPie(d){
-  const mode=S.irfan?.signed2Mode||'14d';
+  const mode=S.irfan?.signed2Mode||'mtd';
   const buckets=mode==='mtd'?d.irfan?.signedMtdByWebTraffic:d.irfan?.signedLast14ByWebTraffic;
   _renderIrfanWtPieInto('irfan-signed-pie', buckets, 'signed');
 }
