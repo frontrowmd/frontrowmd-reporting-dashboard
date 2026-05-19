@@ -442,7 +442,9 @@ async function fetchDisqualificationFormSubmissions(token, from, to) {
   try {
     const d1 = from.replace(/-/g, '');
     const d2 = to.replace(/-/g, '');
-    const viewsUrl = `https://api.hubapi.com/analytics/v2/reports/forms/total?d1=${d1}&d2=${d2}`;
+    // CORRECT params: start= / end= (NOT d1/d2 — those are drilldown filters per
+    // HubSpot's docs, which is why our previous query returned empty results).
+    const viewsUrl = `https://api.hubapi.com/analytics/v2/reports/forms/total?start=${d1}&end=${d2}&f=${encodeURIComponent(form.id)}`;
     const viewsRes = await fetch(viewsUrl, { headers: { Authorization: `Bearer ${token}` } });
     if (viewsRes.ok) {
       const viewsData = await viewsRes.json();
@@ -3662,33 +3664,15 @@ export default {
           pages++;
         }
         out.submissions = { count: subCount, totalSeen, pagesWalked: pages };
-        // 3. Try a battery of HubSpot analytics endpoints to find the one
-        //    that returns the 91 views shown in HubSpot's UI.
-        // Group A: legacy v2 forms breakdown (we know these are empty, but
-        // confirms behavior)
-        await tryFetch('a1_v2_forms_total', `https://api.hubapi.com/analytics/v2/reports/forms/total?d1=${d1}&d2=${d2}`);
-        await tryFetch('a2_v2_forms_total_f', `https://api.hubapi.com/analytics/v2/reports/forms/total?d1=${d1}&d2=${d2}&f=${encodeURIComponent(fid)}`);
-        // Group B: legacy v2 totals/total — the UI may treat the form GUID as a content-id filter
-        await tryFetch('b1_v2_totals_total', `https://api.hubapi.com/analytics/v2/reports/totals/total?d1=${d1}&d2=${d2}`);
-        await tryFetch('b2_v2_totals_total_f', `https://api.hubapi.com/analytics/v2/reports/totals/total?d1=${d1}&d2=${d2}&f=${encodeURIComponent(fid)}`);
-        // Group C: time-period variants instead of "total"
-        await tryFetch('c1_v2_forms_daily', `https://api.hubapi.com/analytics/v2/reports/forms/daily?d1=${d1}&d2=${d2}`);
-        await tryFetch('c2_v2_forms_daily_f', `https://api.hubapi.com/analytics/v2/reports/forms/daily?d1=${d1}&d2=${d2}&f=${encodeURIComponent(fid)}`);
-        await tryFetch('c3_v2_forms_monthly', `https://api.hubapi.com/analytics/v2/reports/forms/monthly?d1=${d1}&d2=${d2}`);
-        // Group D: v3-style marketing endpoints that may carry form stats
-        await tryFetch('d1_v3_form_metrics', `https://api.hubapi.com/marketing/v3/forms/${fid}/metrics?startDate=${fromStr}&endDate=${toStr}`);
-        await tryFetch('d2_v3_form_performance', `https://api.hubapi.com/marketing/v3/forms/${fid}/performance?startDate=${fromStr}&endDate=${toStr}`);
-        await tryFetch('d3_v3_form_analytics', `https://api.hubapi.com/marketing/v3/forms/${fid}/analytics?startDate=${fromStr}&endDate=${toStr}`);
-        await tryFetch('d4_v3_form_stats', `https://api.hubapi.com/marketing/v3/forms/${fid}/stats?startDate=${fromStr}&endDate=${toStr}`);
-        await tryFetch('d5_v3_form_views', `https://api.hubapi.com/marketing/v3/forms/${fid}/views?startDate=${fromStr}&endDate=${toStr}`);
-        // Group E: legacy /content endpoints
-        await tryFetch('e1_v2_form_details', `https://api.hubapi.com/analytics/v2/forms/${fid}/details?d1=${d1}&d2=${d2}`);
-        await tryFetch('e2_v2_form', `https://api.hubapi.com/analytics/v2/forms/${fid}?d1=${d1}&d2=${d2}`);
-        // Group F: forms-analytics internal-ish
-        await tryFetch('f1_forms_analytics', `https://api.hubapi.com/forms-analytics/v1/forms/${fid}?d1=${d1}&d2=${d2}`);
-        await tryFetch('f2_forms_analytics_perf', `https://api.hubapi.com/forms-analytics/v1/forms/${fid}/performance?d1=${d1}&d2=${d2}`);
-        // Group G: events API — form-view events
-        await tryFetch('g1_events_form_view', `https://api.hubapi.com/events/v3/events?eventType=e_form_view&objectType=form&objectId=${fid}&occurredAfter=${fromStr}&occurredBefore=${toStr}&limit=10`);
+        // 3. Date params: HubSpot v2 analytics uses ?start=YYYYMMDD&end=YYYYMMDD.
+        //    The d1/d2 params we tried before are drilldown FILTERS, not dates —
+        //    that's why everything came back empty. Re-test with correct params.
+        const dateQ = `start=${d1}&end=${d2}`;
+        await tryFetch('h1_forms_total', `https://api.hubapi.com/analytics/v2/reports/forms/total?${dateQ}`);
+        await tryFetch('h2_forms_total_f', `https://api.hubapi.com/analytics/v2/reports/forms/total?${dateQ}&f=${encodeURIComponent(fid)}`);
+        await tryFetch('h3_forms_summarize_total', `https://api.hubapi.com/analytics/v2/reports/forms/summarize/total?${dateQ}`);
+        await tryFetch('h4_forms_daily_f', `https://api.hubapi.com/analytics/v2/reports/forms/daily?${dateQ}&f=${encodeURIComponent(fid)}`);
+        await tryFetch('h5_totals_total', `https://api.hubapi.com/analytics/v2/reports/totals/total?${dateQ}`);
         return jr(out);
       } catch(e) {
         out.error = e.message;
