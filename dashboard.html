@@ -730,7 +730,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r22';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r23';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -8158,6 +8158,31 @@ function renderAzChannel(d,chKey,cr,eM,crPct,isMTD){
   document.getElementById('az-content').innerHTML=h;
 }
 function r2(n){return Math.round(n*100)/100;}
+
+// Top-level creative-scoring UI helpers — hoisted out of renderAzChannel so
+// they're callable from any page (Irfan/Detailed Dashboard Meta tables also
+// use them now). The nested copies inside renderAzChannel still exist for
+// back-compat; behavior is identical.
+function scoreBadge(score){
+  var color=score>=65?'#2ecc71':score>=35?'#f39c12':'#e74c3c';
+  return '<span style="font-size:11px;font-weight:700;color:'+color+'">'+score+'</span>';
+}
+function scoreTag(tag){
+  var colors={WINNER:'#2ecc71',TESTING:'#f39c12',LOSER:'#e74c3c'};
+  return '<span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:4px;background:'+(colors[tag]||'#999')+'20;color:'+(colors[tag]||'#999')+'">'+tag+'</span>';
+}
+function fatigueBadge(cr){
+  if(!cr||!cr.fatigued)return '';
+  return ' <span title="CTR declined '+cr.fatigueDecline+'% ('+cr.fatigueFirstCtr+'% → '+cr.fatigueLastCtr+'%) over 14 days" style="cursor:help;font-size:10px;background:rgba(243,156,18,.12);color:#e67e22;padding:1px 5px;border-radius:4px;font-weight:700;white-space:nowrap">⚠ Fatigue</span>';
+}
+function fatigueBadgeFromMap(fMap,ch,name){
+  if(!fMap)return '';
+  var key=ch+'::'+(name||'').toLowerCase();
+  var ft=fMap[key];
+  if(!ft||!ft.fatigued)return '';
+  return ' <span title="CTR declined '+ft.decline+'% ('+ft.firstCtr+'% → '+ft.lastCtr+'%) over 14 days" style="cursor:help;font-size:10px;background:rgba(243,156,18,.12);color:#e67e22;padding:1px 5px;border-radius:4px;font-weight:700;white-space:nowrap">⚠ Fatigue</span>';
+}
+
 // ── Creative Scoring Model (Agency Tier 1) ──
 // Composite = 0.35×CTR_pct + 0.35×CPA_inv_pct + 0.15×demo_vol_pct + 0.15×imp_share_pct
 function scoreCreatives(items){
