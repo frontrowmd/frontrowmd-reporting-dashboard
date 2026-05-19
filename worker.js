@@ -2597,6 +2597,9 @@ async function fetchAzCreatives(apiKey, from, to) {
   const results = {};
 
   // Build fetch promises for all channels in parallel (NO thumbnail fields - causes size overflow)
+  // For Meta we also pull ad_status so the dashboard can distinguish ACTIVE
+  // creatives from PAUSED/COMPLETED ones (rather than guessing from spend>0,
+  // which mis-labels active creatives that had no impressions in the window).
   const promises = [];
   const channels = [];
   for (const ch of DASH_CHANNELS) {
@@ -2608,7 +2611,8 @@ async function fetchAzCreatives(apiKey, from, to) {
       const freq = cfg.hasFreq ? ',frequency' : '';
       const video = ch === 'meta' ? ',video_p25_watched_actions' : '';
       const placement = ch === 'meta' ? ',publisher_platform,platform_position' : '';
-      promises.push(azWindsorFetch(apiKey, cfg.connector, from, to, base + extra + freq + video + placement).catch(e => { console.error(`Creative fetch ${ch}:`, e.message); return []; }));
+      const status = ch === 'meta' ? ',ad_status' : '';
+      promises.push(azWindsorFetch(apiKey, cfg.connector, from, to, base + extra + freq + video + placement + status).catch(e => { console.error(`Creative fetch ${ch}:`, e.message); return []; }));
     }
     channels.push(ch);
   }
@@ -2676,7 +2680,14 @@ async function fetchAzCreatives(apiKey, from, to) {
         map[name]._placements[pKey].demos += Math.round(pDemo);
       }
       // Flat aggregation
-      if (!map[name]) map[name] = { name, spend:0, clicks:0, impressions:0, demos:0, freqVals:[], thumbnail: tm[name] || null, campaignName: campName, videoP25:0, _dates:[], _placements:{} };
+      if (!map[name]) map[name] = { name, spend:0, clicks:0, impressions:0, demos:0, freqVals:[], thumbnail: tm[name] || null, campaignName: campName, videoP25:0, _dates:[], _placements:{}, status:null };
+      // Roll up ad_status across daily rows. Prefer ACTIVE — if any single
+      // row in the window reports ACTIVE, the creative is currently active.
+      const _rowStatus = (row.ad_status || row.adStatus || row.effective_status || '').toString().toUpperCase();
+      if (_rowStatus) {
+        if (_rowStatus === 'ACTIVE') map[name].status = 'ACTIVE';
+        else if (!map[name].status) map[name].status = _rowStatus;
+      }
       map[name].spend += parseFloat(row.spend)||0;
       if (!map[name]._campSpend) map[name]._campSpend = {};
       if (!map[name]._campSpend[campName]) map[name]._campSpend[campName] = 0;
@@ -2697,7 +2708,12 @@ async function fetchAzCreatives(apiKey, from, to) {
       // Per-campaign creative aggregation
       const campKey = campName.toLowerCase().trim();
       if (!campCreMap[campKey]) campCreMap[campKey] = {};
-      if (!campCreMap[campKey][name]) campCreMap[campKey][name] = { name, spend:0, clicks:0, impressions:0, demos:0, freqVals:[], thumbnail: tm[name] || null, videoP25:0, _dates:[], _campName: campName };
+      if (!campCreMap[campKey][name]) campCreMap[campKey][name] = { name, spend:0, clicks:0, impressions:0, demos:0, freqVals:[], thumbnail: tm[name] || null, videoP25:0, _dates:[], _campName: campName, status:null };
+      // Same ACTIVE-preferred status rollup as the flat map
+      if (_rowStatus) {
+        if (_rowStatus === 'ACTIVE') campCreMap[campKey][name].status = 'ACTIVE';
+        else if (!campCreMap[campKey][name].status) campCreMap[campKey][name].status = _rowStatus;
+      }
       campCreMap[campKey][name].spend += parseFloat(row.spend)||0;
       campCreMap[campKey][name].clicks += parseInt(row.clicks)||0;
       campCreMap[campKey][name].impressions += parseInt(row.impressions)||0;

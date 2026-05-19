@@ -682,7 +682,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r19';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r20';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -1714,21 +1714,46 @@ function _renderIrfanMetaTables(d){
     const nm=(c.name||'').length>56?(c.name||'').slice(0,53)+'…':(c.name||'');
     const stags=_irfanStages(c.name);
     let stagesCell='';for(const t of stags)stagesCell+='<span style="display:inline-block;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;background:'+t.c+'15;color:'+t.c+';margin-right:2px">'+t.l+'</span>';
-    // Check for nested creatives — try flat list first, then worker per-campaign
-    // map, then fuzzy substring match against either source.
+    // Check for nested creatives. Per-campaign breakdown is the AUTHORITATIVE
+    // source: it preserves every campaign each creative ran in (the flat list
+    // collapses each ad onto its single top-spend campaign, which silently
+    // drops ads from the dropdowns of their secondary campaigns). We union
+    // both sources and dedupe by ad name so no active creative gets missed.
     const _campKey=(c.name||'').toLowerCase().trim();
-    let _nested=(_creByCamp[_campKey]||[]).slice();
-    if(!_nested.length&&_creByCampWorker[_campKey])_nested=(_creByCampWorker[_campKey]||[]).slice();
-    if(!_nested.length){
+    const _byName=new Map();
+    // 1. Primary: worker's per-campaign breakdown for this exact campaign
+    for(const cr of (_creByCampWorker[_campKey]||[]))_byName.set(cr.name,cr);
+    // 2. Secondary: flat list filtered to ads whose top campaign is this one
+    for(const cr of (_creByCamp[_campKey]||[])){
+      if(_byName.has(cr.name))continue;
+      _byName.set(cr.name,cr);
+    }
+    // 3. Fuzzy fallback if both came up empty (campaign-name mismatch /
+    //    trimming differences between sources)
+    if(_byName.size===0){
       for(const ck in _creByCampWorker){
-        if(ck.length>3&&(ck.indexOf(_campKey)>=0||_campKey.indexOf(ck)>=0)){_nested=(_creByCampWorker[ck]||[]).slice();break;}
+        if(ck.length>3&&(ck.indexOf(_campKey)>=0||_campKey.indexOf(ck)>=0)){
+          for(const cr of (_creByCampWorker[ck]||[]))_byName.set(cr.name,cr);
+          break;
+        }
       }
     }
-    _nested.sort((a,b)=>(b.spend||0)-(a.spend||0));
+    let _nested=Array.from(_byName.values());
+    // Sort: ACTIVE creatives first, then by spend desc. Ensures recently-
+    // launched active ads (low spend so far) still appear near the top.
+    _nested.sort((a,b)=>{
+      const aA=a.status==='ACTIVE'?1:0, bA=b.status==='ACTIVE'?1:0;
+      if(aA!==bA)return bA-aA;
+      return (b.spend||0)-(a.spend||0);
+    });
     const _hasNested=_nested.length>0;
     const _rowId='irf-camp-'+i;
     campH+='<tr style="border-bottom:1px solid var(--border)'+(_hasNested?';cursor:pointer':'')+'"'+(_hasNested?' onclick="irfanToggleCampCreatives(\''+_rowId+'\')"':'')+'>';
-    campH+='<td style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(c.name||'').replace(/"/g,'&quot;')+'">'+(_hasNested?'<span class="irf-camp-chev" data-row="'+_rowId+'" style="display:inline-block;width:10px;color:var(--teal);margin-right:6px;font-size:9px">▶</span>':'<span style="display:inline-block;width:10px;margin-right:6px"></span>')+nm+(_hasNested?' <span style="font-size:9px;color:var(--grey);font-weight:400">('+_nested.length+')</span>':'')+'</td>';
+    // Active count: prefer explicit ACTIVE status; fall back to spend>0 when
+    // status is missing (older payloads / non-Meta channels).
+    const _activeN=_nested.filter(n=>n.status==='ACTIVE'||(!n.status&&(n.spend||0)>0)).length;
+    const _countLabel=_hasNested?(_activeN<_nested.length?_activeN+' active · '+_nested.length+' total':_nested.length+(_nested.length===1?' creative':' creatives')):'';
+    campH+='<td style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(c.name||'').replace(/"/g,'&quot;')+'">'+(_hasNested?'<span class="irf-camp-chev" data-row="'+_rowId+'" style="display:inline-block;width:10px;color:var(--teal);margin-right:6px;font-size:9px">▶</span>':'<span style="display:inline-block;width:10px;margin-right:6px"></span>')+nm+(_hasNested?' <span style="font-size:9px;color:var(--grey);font-weight:400">('+_countLabel+')</span>':'')+'</td>';
     campH+='<td style="padding:8px 6px">'+stagesCell+'</td>';
     campH+='<td style="text-align:center;padding:8px 6px">'+_irfanStatusBadge(c.status,c.spend)+'</td>';
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cSp,c.spend,true)+'">'+f$(c.spend)+'</td>';
