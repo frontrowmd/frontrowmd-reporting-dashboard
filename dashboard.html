@@ -381,6 +381,39 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;hei
   .irf-skel-row-specials{grid-template-columns:1fr}
 }
 
+/* Detailed Dashboard skeleton — 9-section layout that mirrors the real
+   #page-dashboard structure. Reuses .su-skel-bar + .su-skel-banner. */
+.dash-skel-row{margin-bottom:16px}
+.dash-skel-row-7-3{display:grid;grid-template-columns:7fr 3fr;gap:16px}
+.dash-skel-row-2-1{display:grid;grid-template-columns:2fr 1fr;gap:16px}
+.dash-skel-row-3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.dash-skel-card{background:#fff;border:1px solid var(--border);border-radius:12px;padding:18px 20px;box-shadow:0 1px 3px rgba(2,15,24,.03)}
+.dash-skel-card-header{display:flex;align-items:center;gap:8px;margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid var(--teal-30)}
+.dash-skel-card-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;background:var(--teal);animation:su-pulse 1.6s ease-in-out infinite}
+.dash-skel-card-title-bar{height:14px;width:200px}
+.dash-skel-stat-grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+.dash-skel-stat-grid-5{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.dash-skel-chart-area{height:260px;border-radius:8px}
+.dash-skel-revenue-stack{display:flex;flex-direction:column;gap:10px}
+.dash-skel-pie-block{height:280px;display:flex;align-items:center;justify-content:center;padding:20px}
+.dash-skel-funnel-rows{display:flex;flex-direction:column;gap:8px}
+.dash-skel-funnel-row{height:38px}
+.dash-skel-exec-panel{background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px}
+.dash-skel-exec-title-bar{height:11px;width:60%;margin-bottom:14px}
+.dash-skel-exec-tile-stack{display:flex;flex-direction:column;gap:8px}
+.dash-skel-exec-tile{height:64px;border-radius:8px}
+.dash-skel-conv-funnel{display:flex;flex-direction:column;gap:8px;padding:12px 0}
+.dash-skel-conv-stage{height:42px;border-radius:6px}
+.dash-skel-table-row{height:32px;margin-bottom:6px}
+.dash-skel-tile{height:78px;border-radius:8px}
+.dash-skel-date-bar{height:22px;width:42%;margin-bottom:8px}
+.dash-skel-date-sub{height:11px;width:28%}
+@media(max-width:900px){
+  .dash-skel-row-7-3,.dash-skel-row-2-1,.dash-skel-row-3{grid-template-columns:1fr}
+  .dash-skel-stat-grid-5{grid-template-columns:repeat(2,1fr)}
+  .dash-skel-stat-grid-4{grid-template-columns:repeat(2,1fr)}
+}
+
 @media(max-width:900px){
   .hamburger{display:flex}
   .sidebar{position:fixed;left:0;top:0;height:100%;transform:translateX(-100%);transition:transform .25s ease;z-index:15;width:280px;min-width:280px}
@@ -682,7 +715,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r20';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r21';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -746,6 +779,140 @@ document.getElementById('pw').addEventListener('keydown',e=>{if(e.key==='Enter')
 function bldF(){const s=S[AP];var aiBtn=AI_PANEL_PAGES.indexOf(AP)>=0?'<button id="ai-panel-btn" onclick="toggleAIPanel()" class="fb" style="border:1.5px solid #B8860B;background:'+(_aiPanelOpen?'#B8860B':'#FFF8E1')+';color:'+(_aiPanelOpen?'#fff':'#8B6914')+';font-weight:700" onmouseover="this.style.background=\'#B8860B\';this.style.color=\'#fff\'" onmouseout="if(!_aiPanelOpen){this.style.background=\'#FFF8E1\';this.style.color=\'#8B6914\';}">✦ AI Analysis</button>':'';if(AP==='signup'){document.getElementById('filters').innerHTML='<span style="font-size:13px;color:var(--grey)">Fixed cohorts — independent of time filters</span>'+aiBtn;return;}if(AP==='strategy'||AP==='csession'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='content'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='outbound'){document.getElementById('filters').innerHTML=aiBtn;document.getElementById('filters').style.display=aiBtn?'':'none';return;}else{document.getElementById('filters').style.display='';}let h='';for(const w of W)h+=`<button class="fb${s.win===w.k?' active':''}" data-w="${w.k}" onclick="selW('${w.k}')">${w.l}</button>`;h+=`<div class="cr${s.win==='custom'?' vis':''}" id="cr"><input type="date" id="cf"><span style="color:var(--grey)">→</span><input type="date" id="ct"><label class="cr-cmp-lbl"><input type="checkbox" id="cc" onchange="document.getElementById('crVs').classList.toggle('vis',this.checked)">Compare</label><span class="cr-vs" id="crVs"><span class="cr-vs-prefix">vs</span><input type="date" id="cvf"><span style="color:var(--grey)">→</span><input type="date" id="cvt"></span><button onclick="goC()">Go</button></div>`;h+=aiBtn;h+=`<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>`;document.getElementById('filters').innerHTML=h;}
 async function selW(w){S[AP].win=w;document.querySelectorAll('#filters .fb').forEach(b=>b.classList.toggle('active',b.dataset.w===w));const cr=document.getElementById('cr');if(cr)cr.classList.toggle('vis',w==='custom');if(w==='custom')return;await fd(w);}
 async function goC(){const f=document.getElementById('cf').value,t=document.getElementById('ct').value;if(!f||!t)return;const cc=document.getElementById('cc');let vsFrom=null,vsTo=null;if(cc&&cc.checked){vsFrom=document.getElementById('cvf').value||null;vsTo=document.getElementById('cvt').value||null;if(!vsFrom||!vsTo)return;}await fd('custom',f,t,vsFrom,vsTo);}
+// Detailed Dashboard skeleton — replaces the full #page-dashboard innerHTML
+// with a 9-section layout matching the real page (Daily / Revenue / WT Pie /
+// Funnel / Executive Summary / Conversion Funnel / Demo Outcome / Ad Spend /
+// Channel Perf / Meta Campaigns / Meta Creatives). Snapshots the original
+// template HTML on first call so renderDash can restore it when data arrives.
+let _dashTemplateHTML=null;
+function _captureDashTemplate(){
+  const el=document.getElementById('page-dashboard');
+  if(el&&_dashTemplateHTML===null)_dashTemplateHTML=el.innerHTML;
+}
+function _restoreDashTemplate(){
+  const el=document.getElementById('page-dashboard');
+  if(!el||_dashTemplateHTML===null)return;
+  // Only swap if the skeleton is currently up (prevents wiping mid-render
+  // when renderDash re-runs from a table sort or similar).
+  if(el.querySelector('.su-skel-banner'))el.innerHTML=_dashTemplateHTML;
+}
+function _renderDashSkeleton(pct, step){
+  _captureDashTemplate();
+  const el=document.getElementById('page-dashboard');if(!el)return;
+  const bar=(c)=>`<div class="su-skel-bar ${c||''}"></div>`;
+  const cardHead=(titleW)=>`<div class="dash-skel-card-header"><span class="dash-skel-card-dot"></span><div class="su-skel-bar dash-skel-card-title-bar" style="width:${titleW||200}px"></div></div>`;
+  el.innerHTML=`
+    <div style="margin-bottom:24px">
+      ${bar('dash-skel-date-bar')}${bar('dash-skel-date-sub')}
+    </div>
+    <div class="su-skel-banner" role="status" aria-live="polite">
+      <div class="su-skel-banner-spin" aria-hidden="true"></div>
+      <div class="su-skel-banner-text">
+        <div class="su-skel-banner-title">Loading Detailed Dashboard</div>
+        <div class="su-skel-banner-step">${step||'Connecting to Windsor.ai & HubSpot…'}</div>
+      </div>
+      <div class="su-skel-banner-bar"><div class="su-skel-banner-fill" style="width:${Math.max(0,Math.min(100,pct||0))}%"></div></div>
+      <div class="su-skel-banner-pct">${Math.round(pct||0)}%</div>
+    </div>
+
+    <!-- Row 1: Daily Activity (7) + Revenue Outcome (3) -->
+    <div class="dash-skel-row dash-skel-row-7-3">
+      <div class="dash-skel-card">
+        ${cardHead(140)}
+        <div class="dash-skel-stat-grid-5">${'<div class="su-skel-bar dash-skel-tile"></div>'.repeat(5)}</div>
+        <div style="height:14px"></div>
+        <div class="su-skel-bar dash-skel-chart-area"></div>
+      </div>
+      <div class="dash-skel-card">
+        ${cardHead(140)}
+        <div class="dash-skel-revenue-stack">
+          ${'<div class="su-skel-bar dash-skel-tile"></div>'.repeat(4)}
+        </div>
+      </div>
+    </div>
+
+    <!-- Row 2: Web-Traffic Pie (2) + Marketing Funnel (1) -->
+    <div class="dash-skel-row dash-skel-row-2-1">
+      <div class="dash-skel-card">
+        ${cardHead(280)}
+        <div class="dash-skel-pie-block">
+          <div class="irf-skel-donut-ring" style="width:180px;height:180px"></div>
+          <div style="flex:1;padding-left:32px;display:flex;flex-direction:column;gap:8px;max-width:280px">
+            ${'<div class="su-skel-bar" style="height:18px"></div>'.repeat(5)}
+          </div>
+        </div>
+      </div>
+      <div class="dash-skel-card">
+        ${cardHead(140)}
+        ${'<div class="su-skel-bar dash-skel-funnel-row"></div>'.repeat(6)}
+      </div>
+    </div>
+
+    <!-- Row 3: Executive Summary — 3-panel -->
+    <div class="dash-skel-card" style="margin-bottom:16px">
+      ${cardHead(180)}
+      <div class="dash-skel-row-3">
+        <div class="dash-skel-exec-panel">
+          ${bar('dash-skel-exec-title-bar')}
+          <div class="dash-skel-exec-tile-stack">${'<div class="su-skel-bar dash-skel-exec-tile"></div>'.repeat(4)}</div>
+        </div>
+        <div class="dash-skel-exec-panel">
+          ${bar('dash-skel-exec-title-bar')}
+          <div class="dash-skel-exec-tile-stack">${'<div class="su-skel-bar dash-skel-exec-tile"></div>'.repeat(4)}</div>
+        </div>
+        <div class="dash-skel-exec-panel">
+          ${bar('dash-skel-exec-title-bar')}
+          <div class="dash-skel-exec-tile-stack">${'<div class="su-skel-bar dash-skel-exec-tile"></div>'.repeat(4)}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Row 4: Conversion Funnel -->
+    <div class="dash-skel-card" style="margin-bottom:16px">
+      ${cardHead(160)}
+      <div class="dash-skel-conv-funnel">
+        ${[100,86,72,58,44,30].map(w=>`<div class="su-skel-bar dash-skel-conv-stage" style="width:${w}%"></div>`).join('')}
+      </div>
+    </div>
+
+    <!-- Row 5: Demo Outcome Breakdown -->
+    <div class="dash-skel-card" style="margin-bottom:16px">
+      ${cardHead(220)}
+      <div class="dash-skel-stat-grid-4">${'<div class="su-skel-bar dash-skel-tile"></div>'.repeat(4)}</div>
+      ${'<div class="su-skel-bar dash-skel-table-row"></div>'.repeat(4)}
+    </div>
+
+    <!-- Row 6: Ad Spend -->
+    <div class="dash-skel-card" style="margin-bottom:16px">
+      ${cardHead(100)}
+      <div class="dash-skel-stat-grid-4">${'<div class="su-skel-bar dash-skel-tile"></div>'.repeat(4)}</div>
+      ${'<div class="su-skel-bar dash-skel-table-row"></div>'.repeat(5)}
+    </div>
+
+    <!-- Row 7: Channel Performance -->
+    <div class="dash-skel-card" style="margin-bottom:16px">
+      ${cardHead(180)}
+      ${'<div class="su-skel-bar dash-skel-table-row"></div>'.repeat(6)}
+    </div>
+
+    <!-- Row 8: Meta — Campaigns -->
+    <div class="dash-skel-card" style="margin-bottom:16px">
+      ${cardHead(160)}
+      ${'<div class="su-skel-bar dash-skel-table-row"></div>'.repeat(6)}
+    </div>
+
+    <!-- Row 9: Meta — Ad Creatives -->
+    <div class="dash-skel-card" style="margin-bottom:24px">
+      ${cardHead(160)}
+      ${'<div class="su-skel-bar dash-skel-table-row"></div>'.repeat(6)}
+    </div>`;
+}
+function _updateDashSkeletonProgress(pct, step){
+  const fill=document.querySelector('#page-dashboard .su-skel-banner-fill');if(fill)fill.style.width=Math.max(0,Math.min(100,pct))+'%';
+  const stepEl=document.querySelector('#page-dashboard .su-skel-banner-step');if(stepEl&&step)stepEl.textContent=step;
+  const pctEl=document.querySelector('#page-dashboard .su-skel-banner-pct');if(pctEl)pctEl.textContent=Math.round(pct)+'%';
+}
+
 // Irfan Dashboard skeleton — mirrors the real page layout (charts → KPIs →
 // specials → tables) with shimmering placeholders. Same banner pattern as
 // Sign-Up Rate. Used in place of the full-page overlay when AP==='irfan'.
@@ -800,32 +967,40 @@ async function fd(w,from,to,vsFrom,vsTo){
   document.getElementById('dqb').classList.remove('vis');
   const isAz=AP==='analyzer';
   const isIrfan=AP==='irfan';
+  const isDash=AP==='dashboard';
+  const useSkeleton=isIrfan||isDash;
   const url=isAz?AZ_API:API;
-  // Irfan gets an inline skeleton instead of the blocking full-page overlay
-  // (same UX pattern as Sign-Up Rate). Other pages still use the overlay.
-  if(isIrfan){
+  // Pages with custom inline skeletons (Irfan + Detailed Dashboard) skip the
+  // blocking full-page overlay in favor of section-shaped shimmer placeholders.
+  if(useSkeleton){
     if(ldEl)ldEl.style.display='none';
-    const pgEl=document.getElementById('page-irfan');if(pgEl)pgEl.classList.add('active');
-    _renderIrfanSkeleton(6,'Connecting to Windsor.ai & HubSpot…');
+    const pgId=isIrfan?'page-irfan':'page-dashboard';
+    const pgEl=document.getElementById(pgId);if(pgEl)pgEl.classList.add('active');
+    if(isIrfan)_renderIrfanSkeleton(6,'Connecting to Windsor.ai & HubSpot…');
+    else _renderDashSkeleton(6,'Connecting to Windsor.ai & HubSpot…');
   } else {
     if(ldEl)ldEl.style.display='flex';
   }
   const pw2=document.getElementById('prgWrap'),pf=document.getElementById('prgFill'),pl=document.getElementById('prgLbl'),lt=document.getElementById('loadText'),ld2=document.getElementById('loadDesc');
   const pgTitle=T[AP]||'data';
-  if(!isIrfan){
+  if(!useSkeleton){
     if(pw2){pw2.style.display='block';if(pf)pf.style.width='3%';}
     if(lt)lt.textContent=pgTitle;
     if(ld2)ld2.textContent=isAz?'Fetching per-channel ad spend data and HubSpot pipeline attribution':'Connecting to Windsor.ai and HubSpot APIs for latest metrics';
   }
-  const steps=isAz?['Connecting to Windsor.ai…','Fetching per-channel ad data…','Fetching HubSpot pipeline data…','Processing campaign attribution…','Building channel breakdowns…','Rendering dashboard…']:isIrfan?['Connecting to Windsor.ai & HubSpot…','Fetching ad spend data…','Fetching demo bookings…','Fetching pipeline deals…','Fetching closed-won deals…','Pulling HubSpot Disqualification Form views…','Computing executive summary…','Building KPI tiles…','Rendering charts…']:['Connecting to APIs…','Fetching ad spend data…','Fetching HubSpot pipeline…','Processing metrics…','Building executive summary…','Rendering dashboard…'];
-  let si=0;let curPct=isIrfan?6:5;
-  if(!isIrfan){
+  const steps=isAz?['Connecting to Windsor.ai…','Fetching per-channel ad data…','Fetching HubSpot pipeline data…','Processing campaign attribution…','Building channel breakdowns…','Rendering dashboard…']
+    :isIrfan?['Connecting to Windsor.ai & HubSpot…','Fetching ad spend data…','Fetching demo bookings…','Fetching pipeline deals…','Fetching closed-won deals…','Pulling HubSpot Disqualification Form views…','Computing executive summary…','Building KPI tiles…','Rendering charts…']
+    :isDash?['Connecting to Windsor.ai & HubSpot…','Fetching ad spend & impressions…','Fetching demo bookings from HubSpot…','Fetching pipeline & closed-won deals…','Fetching demo quality breakdown…','Pulling Meta campaign metadata…','Computing executive summary…','Building Channel Performance table…','Rendering charts & funnels…']
+    :['Connecting to APIs…','Fetching ad spend data…','Fetching HubSpot pipeline…','Processing metrics…','Building executive summary…','Rendering dashboard…'];
+  let si=0;let curPct=useSkeleton?6:5;
+  if(!useSkeleton){
     if(pf)pf.style.width='5%';
     if(pl)pl.textContent=steps[0];
   }
   const iv=setInterval(()=>{
     si++;
     if(isIrfan){curPct=Math.min(6+si*10,92);_updateIrfanSkeletonProgress(curPct,steps[Math.min(si,steps.length-1)]);}
+    else if(isDash){curPct=Math.min(6+si*10,92);_updateDashSkeletonProgress(curPct,steps[Math.min(si,steps.length-1)]);}
     else{const pct=Math.min(5+si*15,92);if(pf)pf.style.width=pct+'%';if(pl)pl.textContent=steps[Math.min(si,steps.length-1)];}
   },2300);
   const b={password:PW,window:w};if(from)b.from=from;if(to)b.to=to;if(vsFrom)b.vsFrom=vsFrom;if(vsTo)b.vsTo=vsTo;
@@ -837,20 +1012,23 @@ async function fd(w,from,to,vsFrom,vsTo){
     if(r.ok&&!d.error){
       S[AP].data=d;
       if(isIrfan){_updateIrfanSkeletonProgress(100,'Complete!');await new Promise(ok=>setTimeout(ok,260));}
+      else if(isDash){_updateDashSkeletonProgress(100,'Complete!');await new Promise(ok=>setTimeout(ok,260));}
       else{if(pf)pf.style.width='100%';if(pl)pl.textContent='Complete!';if(lt)lt.textContent='Ready';await new Promise(ok=>setTimeout(ok,400));}
     } else {
       console.error('API error:',r.status,d);
       if(isIrfan)_updateIrfanSkeletonProgress(curPct,'Error: '+(d.detail||d.error||'Unknown'));
+      else if(isDash)_updateDashSkeletonProgress(curPct,'Error: '+(d.detail||d.error||'Unknown'));
       else{if(pl)pl.textContent='Error: '+(d.detail||d.error||'Unknown');if(pf)pf.style.width='0%';}
       await new Promise(ok=>setTimeout(ok,1500));
     }
   }catch(e){
     console.error(e);clearInterval(iv);
     if(isIrfan)_updateIrfanSkeletonProgress(curPct,'Connection error');
+    else if(isDash)_updateDashSkeletonProgress(curPct,'Connection error');
     else if(pl)pl.textContent='Connection error';
     await new Promise(ok=>setTimeout(ok,1000));
   }
-  finally{if(mySeq===_fdSeq){if(!isIrfan&&ldEl)ldEl.style.display='none';if(!isIrfan&&pw2)pw2.style.display='none';}}
+  finally{if(mySeq===_fdSeq){if(!useSkeleton&&ldEl)ldEl.style.display='none';if(!useSkeleton&&pw2)pw2.style.display='none';}}
   if(mySeq===_fdSeq)renderPage();
   // Kick off Special #1 fetch for the irfan page (in parallel, fire-and-forget).
   // Lives on its own endpoint so it's time-bound to MTD + Last Month and never
@@ -992,7 +1170,11 @@ function renderPage(){document.querySelectorAll('.pg').forEach(p=>p.classList.re
 
 // ═══════════════ EXECUTIVE DASHBOARD ═══════════════
 function renderDash(){
-  const d=S.dashboard.data;if(!d||d.error)return;
+  const d=S.dashboard.data;
+  if(!d||d.error)return; // skeleton stays up; fd() banner shows the error state
+  // Wipe the skeleton (if up) and put back the section scaffolding so the rest
+  // of renderDash can write into the real target divs.
+  _restoreDashTemplate();
   _lmLabel=d.meta?.windowType==='7d'?'Same time last mo':'Last mo';
   const ad=d.adSpend,em=d.executiveSummary._meta||{},wm=d.webPerformance._meta||{};
   const isMTD=d.period.label==='Month to Date'||d.period.label==='Last Month';
