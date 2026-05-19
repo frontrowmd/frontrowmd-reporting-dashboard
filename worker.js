@@ -1768,6 +1768,43 @@ function buildMarketingFunnel(monthlySpendData, allQualified, allClosedWon) {
   return { months: data, totals };
 }
 
+// ── Sign-Up Rate dedicated endpoint ────────────────────────────────────
+// The full /api/data handler burns a lot of HubSpot subrequest budget on
+// Phase 2 work (cPipe / pmPipe / dqContacts / companyInfoMap batches)
+// before getting to the SignUp cohort fetch. By the time fetchCohortDeals
+// PerMonth ran, older-month queries (Feb / March) hit the rate-limit wall
+// and silently returned [].
+//
+// This dedicated endpoint has the SAME hsSearch behavior but with a fresh,
+// dedicated subrequest budget — there's nothing else competing for it. We
+// only do the per-month cohort fetch + owners, then build the cohorts.
+async function processSignupRequest(env) {
+  const hsToken = env.HUBSPOT_TOKEN;
+  // Same cohort-month definition as the main handler — current calendar
+  // month plus the three prior months (newest first).
+  const yd = todayET();
+  const cohortMonths = [];
+  for (let i = 0; i <= 3; i++) {
+    const s = new Date(Date.UTC(yd.getUTCFullYear(), yd.getUTCMonth()-i, 1));
+    const e = i === 0 ? yd : new Date(Date.UTC(yd.getUTCFullYear(), yd.getUTCMonth()-i+1, 0));
+    cohortMonths.push({ from: fmt(s), to: fmt(e), label: s.toLocaleDateString('en-US',{month:'long',year:'numeric',timeZone:'UTC'}) });
+  }
+  // Owners + cohort fetches in parallel — both are cheap and independent.
+  const [ownerMap, cohortRes] = await Promise.all([
+    fetchOwners(hsToken),
+    fetchCohortDealsPerMonth(hsToken, cohortMonths),
+  ]);
+  const signUpRate = buildSignUpCohorts(cohortRes.union, cohortMonths, ownerMap);
+  // Attach per-cohort fetched count + status for the dashboard diagnostic.
+  if (signUpRate?.cohorts) {
+    for (const c of signUpRate.cohorts) {
+      c._fetchedCount = cohortRes.perMonth[c.period.label] ?? null;
+      c._fetchStatus = cohortRes.perMonthStatus[c.period.label] ?? null;
+    }
+  }
+  return { signUpRate, _meta: { generatedAt: new Date().toISOString() } };
+}
+
 async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsTo) {
   const apiKey = env.WINDSOR_API_KEY, hsToken = env.HUBSPOT_TOKEN;
   const { current, prior, priorMonth } = computeWindows(windowType, customFrom, customTo, vsFrom, vsTo);
@@ -1962,18 +1999,17 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
 
   const ownerMap = await fetchOwners(hsToken);
 
-  // Sign-Up Rate cohort fetch — sequential per-month. A single 4-month
-  // wide query hits HubSpot's 10k hard ceiling on busy pipelines and
-  // silently drops one end of the window. Per-month queries each get
-  // their own 10k budget. Sequential avoids the parallel-fetch
-  // intermittent-failure issue we saw with the first attempt.
-  // Done HERE (not earlier in the handler) so we don't risk crowding
-  // out the rest of the work on the per-request CF budget — the
-  // 4 sequential fetches add ~1-3s wall-clock but each one is small.
-  const _cohortRes = await fetchCohortDealsPerMonth(hsToken, cohortMonths);
-  const cohortDeals = _cohortRes.union;
-  const cohortFetchedPerMonth = _cohortRes.perMonth;
-  const cohortFetchStatus = _cohortRes.perMonthStatus || {};
+  // Sign-Up Rate cohorts are now served by a dedicated /api/signup-cohorts
+  // endpoint (processSignupRequest) that has its own fresh HubSpot
+  // subrequest budget. Removing the fetch from /api/data frees ~12-20
+  // subrequests for the rest of the handler — exactly the budget that
+  // older SignUp months used to silently lose.
+  //
+  // cohortDeals kept as an empty fallback so the Irfan PCM union code
+  // (_addAll(cohortDeals)) is a harmless no-op. April PCM data still
+  // comes from pmPipe; cohortDeals was only adding cross-month
+  // redundancy.
+  const cohortDeals = [];
 
   // All-time deals for rep summary and marketing funnel.
   //
@@ -2018,26 +2054,12 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   const priorData = prior ? buildPeriodData(prior, pW, pLI, pG, pSch, filterActiveBrands(pPipe), filterActiveBrands(pCW)) : null;
   const priorMonthData = priorMonth ? buildPeriodData(priorMonth, pmW, pmLI, pmG, pmSch, filterActiveBrands(pmPipe), filterActiveBrands(pmCW)) : null;
 
-  // ── Sign-Up Rate cohorts ──
-  // Union cohortDeals (per-month early fetch) with the narrower cPipe/pPipe/
-  // pmPipe sources. Each narrow source is a separate fetch over its own short
-  // window and is nowhere near a pagination cap, so it acts as defense-in-
-  // depth for the months it covers — same trick the Irfan PCM uses.
-  const _signupUnion = new Map();
-  const _signupAdd = (arr) => { if (!arr) return; for (const x of arr) _signupUnion.set(x.id, x); };
-  _signupAdd(cohortDeals); _signupAdd(cPipe); _signupAdd(pPipe); _signupAdd(pmPipe);
-  console.log(`SignUp union: cohortDeals=${cohortDeals.length}, cPipe=${cPipe?.length||0}, pPipe=${pPipe?.length||0}, pmPipe=${pmPipe?.length||0} → union=${_signupUnion.size} unique`);
-  currentData.signUpRate = buildSignUpCohorts([..._signupUnion.values()], cohortMonths, ownerMap);
-  // Attach per-cohort fetched count for the dashboard diagnostic strip.
-  // This tells us exactly what HubSpot returned for each month before any
-  // bucketing — if a number looks off, this is where we can start.
-  if (currentData.signUpRate?.cohorts) {
-    for (const c of currentData.signUpRate.cohorts) {
-      c._fetchedCount = cohortFetchedPerMonth[c.period.label] ?? null;
-      c._fetchStatus = cohortFetchStatus[c.period.label] ?? null;
-    }
-  }
-  currentData.signUpRate.allTimeByRep = buildAllTimeRepStats(allTimeClosedWon, allTimeQualifiedForReps, ownerMap);
+  // signUpRate is no longer computed in /api/data — the dashboard fetches
+  // it from the dedicated /api/signup-cohorts endpoint instead. Skipping
+  // the build saves a CPU loop and (more importantly) avoids using the
+  // per-request HubSpot subrequest budget on a path no current consumer
+  // reads. quarterlyHistory remains here since it's used by Detailed
+  // Dashboard's All Time view.
   currentData.quarterlyHistory = isAllTime ? buildQuarterlyHistory(filterActiveBrands(cCW), current.from, current.to) : null;
 
   // ── Marketing Funnel (monthly historical table) ──
@@ -3433,6 +3455,20 @@ export default {
         const result = await processRequest(body.window||'7d', body.from||null, body.to||null, env, body.vsFrom||null, body.vsTo||null);
         return jr(result);
       } catch(err) { console.error('Error:', err); return jr({ error: 'Internal error', detail: err.message }, 500); }
+    }
+
+    // POST /api/signup-cohorts → dedicated SignUp Rate endpoint.
+    // Runs JUST the per-month cohort fetch + owners, builds cohorts. No
+    // Phase 2 / Windsor / Irfan PCM work. Lets older months (Feb, March)
+    // get a fresh subrequest budget so they actually return data.
+    if (request.method === 'POST' && url.pathname === '/api/signup-cohorts') {
+      let body;
+      try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
+      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      try {
+        const result = await processSignupRequest(env);
+        return jr(result);
+      } catch(err) { console.error('SignUp endpoint error:', err); return jr({ error: 'Internal error', detail: err.message }, 500); }
     }
 
     // POST /api/analyzer → Paid Channel Analyzer API

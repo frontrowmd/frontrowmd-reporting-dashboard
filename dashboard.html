@@ -619,6 +619,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <script>
 const _BUILD_VER='s5r11';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
+const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 let PW='';
 const S={dashboard:{win:'mtd',data:null,sub:'irfan'},irfan:{win:'mtd',data:null},strategy:{data:null,win:'lastMonth'},calculator:{win:'mtd',data:null},signup:{win:null,data:null},analyzer:{win:'mtd',data:null,tab:'overview',sub:'overview'},demoQuality:{win:'mtd',data:null},csession:{step:1},content:{data:null,sub:'cs-intel'},outbound:{data:null}};let AP='irfan';
 const f$=v=>v==null?'—':'$'+Math.round(v).toLocaleString();
@@ -716,7 +717,52 @@ async function fd(w,from,to,vsFrom,vsTo){
   finally{if(mySeq===_fdSeq){ldEl.style.display='none';if(pw2)pw2.style.display='none';}}
   if(mySeq===_fdSeq)renderPage();
 }
-async function refreshData(){const btn=document.getElementById('rfb');if(btn){btn.classList.add('loading');btn.textContent='↻ Refreshing...';}await fd(S[AP].win||'mtd');if(btn){btn.classList.remove('loading');btn.textContent='↻ Refresh';}}
+// Dedicated SignUp Rate fetch — hits /api/signup-cohorts which has its
+// own fresh HubSpot subrequest budget. The main /api/data handler runs
+// out of budget by the time it gets to older cohort months (Feb / March)
+// and silently returns []; the dedicated endpoint avoids that entirely.
+async function fdSignup(){
+  const mySeq=++_fdSeq;
+  const ldEl=document.getElementById('loading');
+  if(ldEl)ldEl.style.display='flex';
+  document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));
+  document.getElementById('dqb').classList.remove('vis');
+  const pw2=document.getElementById('prgWrap'),pf=document.getElementById('prgFill'),pl=document.getElementById('prgLbl'),lt=document.getElementById('loadText'),ld2=document.getElementById('loadDesc');
+  if(pw2)pw2.style.display='block';
+  if(lt)lt.textContent='Sign-Up Rate';
+  if(ld2)ld2.textContent='Fetching per-cohort deal data from HubSpot';
+  const steps=['Connecting...','Fetching deals for each cohort month...','Building rep breakdowns...','Rendering...'];
+  let si=0;
+  if(pf)pf.style.width='10%';
+  if(pl)pl.textContent=steps[0];
+  const iv=setInterval(()=>{si++;const pct=Math.min(10+si*20,92);if(pf)pf.style.width=pct+'%';if(pl)pl.textContent=steps[Math.min(si,steps.length-1)];},2000);
+  try{
+    const r=await fetch(SIGNUP_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:PW})});
+    const d=await r.json();
+    clearInterval(iv);
+    if(mySeq!==_fdSeq)return;
+    if(r.ok&&!d.error){
+      // Stored shape mirrors the old S.signup.data structure so renderSignUp
+      // continues to read d.signUpRate the same way.
+      S.signup.data=d;
+      if(pf)pf.style.width='100%';if(pl)pl.textContent='Complete!';if(lt)lt.textContent='Ready';
+      await new Promise(ok=>setTimeout(ok,400));
+    } else {
+      console.error('SignUp API error:',r.status,d);
+      if(pl)pl.textContent='Error: '+(d.detail||d.error||'Unknown');
+      if(pf)pf.style.width='0%';
+      await new Promise(ok=>setTimeout(ok,1500));
+    }
+  }catch(e){
+    console.error(e);clearInterval(iv);
+    if(pl)pl.textContent='Connection error';
+    await new Promise(ok=>setTimeout(ok,1000));
+  } finally {
+    if(mySeq===_fdSeq){if(ldEl)ldEl.style.display='none';if(pw2)pw2.style.display='none';}
+  }
+  if(mySeq===_fdSeq)renderPage();
+}
+async function refreshData(){const btn=document.getElementById('rfb');if(btn){btn.classList.add('loading');btn.textContent='↻ Refreshing...';}if(AP==='signup'){await fdSignup();}else{await fd(S[AP].win||'mtd');}if(btn){btn.classList.remove('loading');btn.textContent='↻ Refresh';}}
 
 // Nav
 function toggleSidebar(){document.querySelector('.sidebar').classList.toggle('open');document.getElementById('sidebarOverlay').classList.toggle('open');}
@@ -3478,7 +3524,7 @@ function switchDashSub(sub){
   if(AP==='outbound'){loadOutbound();return;}
   if(!S[AP].data){
     if(AP==='strategy'){renderPage();return;}
-    if(AP==='signup')fd('mtd');
+    if(AP==='signup')fdSignup();
     else if(AP==='calculator'){if(!S.calculator.data){fd(S.calculator.win||'mtd');return;}renderPage();return;}
     else fd(S[AP].win);
     return;
