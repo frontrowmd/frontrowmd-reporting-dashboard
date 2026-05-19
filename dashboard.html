@@ -414,6 +414,21 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;hei
   .dash-skel-stat-grid-4{grid-template-columns:repeat(2,1fr)}
 }
 
+/* Paid Ads Dashboard (analyzer) skeleton — tabs strip + KPI grid + chart +
+   campaign/creative tables. Reuses .su-skel-bar + .su-skel-banner. */
+.az-skel-tabs{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.az-skel-tab{height:30px;width:96px;border-radius:50px}
+.az-skel-tab.active{background:linear-gradient(135deg,var(--navy),var(--mid-navy));animation:none}
+.az-skel-match{height:11px;width:42%;margin-bottom:20px;border-radius:4px}
+.az-skel-kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.az-skel-kpi-tile{height:108px;border-radius:10px}
+.az-skel-channel-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px}
+.az-skel-channel-tile{height:88px;border-radius:10px}
+@media(max-width:900px){
+  .az-skel-kpi-grid{grid-template-columns:repeat(2,1fr)}
+  .az-skel-channel-grid{grid-template-columns:repeat(2,1fr)}
+}
+
 @media(max-width:900px){
   .hamburger{display:flex}
   .sidebar{position:fixed;left:0;top:0;height:100%;transform:translateX(-100%);transition:transform .25s ease;z-index:15;width:280px;min-width:280px}
@@ -715,7 +730,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r21';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r22';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -1740,25 +1755,29 @@ function _renderIrfanMetaTablesLoader(winOverride){
   // Window override lets callers (e.g. Overview/renderDash) request data for
   // a different selector window than the Irfan page is showing.
   const irfWin=winOverride||S.irfan?.win||'mtd';
-  if(!S.irfan.metaCache)S.irfan.metaCache={};
-  // Hit cache from prior fetch for this window (shared across pages)
-  if(S.irfan.metaCache[irfWin]){_renderIrfanMetaTables({channels:{meta:S.irfan.metaCache[irfWin]}});return;}
+  // Full analyzer payload cache (Meta data + matchRate + audiences + fatigue).
+  // Previously only stored the meta channel; expanded so we can also surface
+  // the attribution match-rate footer on the Detailed Dashboard's Channel
+  // Performance table and the Audiences table below Meta Creatives.
+  if(!S.irfan.analyzerCache)S.irfan.analyzerCache={};
+  if(S.irfan.analyzerCache[irfWin]){_renderIrfanMetaTables(S.irfan.analyzerCache[irfWin]);_updateCpdMatchRate(irfWin);return;}
   // Reuse analyzer's already-loaded payload if same window
   if(S.analyzer?.data?.channels?.meta&&S.analyzer.win===irfWin){
-    S.irfan.metaCache[irfWin]=S.analyzer.data.channels.meta;
-    _renderIrfanMetaTables(S.analyzer.data);return;
+    S.irfan.analyzerCache[irfWin]=S.analyzer.data;
+    _renderIrfanMetaTables(S.analyzer.data);_updateCpdMatchRate(irfWin);return;
   }
   _setBoth('<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px"><span class="sp" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle"></span> Loading Meta data…</div>');
   fetch(AZ_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:PW,window:irfWin})})
     .then(r=>r.json())
     .then(ad=>{
       if(ad&&!ad.error&&ad.channels?.meta){
-        S.irfan.metaCache[irfWin]=ad.channels.meta;
+        S.irfan.analyzerCache[irfWin]=ad;
         // Render if either page is active and on the matching window. The
         // render function itself writes to whichever DOM targets are present.
         const onIrfan=AP==='irfan'&&(S.irfan?.win||'mtd')===irfWin;
         const onOverview=AP==='dashboard'&&(S.dashboard?.win||'mtd')===irfWin;
         if(onIrfan||onOverview)_renderIrfanMetaTables(ad);
+        _updateCpdMatchRate(irfWin);
       } else {
         _setBoth('<div style="padding:24px;text-align:center;color:var(--red);font-size:12px">Failed to load analyzer data: '+(ad?.detail||ad?.error||'unknown')+'</div>');
       }
@@ -1835,6 +1854,11 @@ window.irfanToggleCampCreatives=function(rowId){
   const chev=document.querySelector('.irf-camp-chev[data-row="'+rowId+'"]');
   if(chev)chev.textContent=isOpen?'▶':'▼';
 };
+// Expand All / Collapse All across every campaign row at once.
+window.irfanToggleAllCampCreatives=function(){
+  S.irfan.metaAllExpanded=!S.irfan.metaAllExpanded;
+  if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD);
+};
 function _renderIrfanMetaTables(d){
   _irfanMetaD=d;
   // Collect ALL possible render targets (Irfan + Overview). The function
@@ -1848,16 +1872,17 @@ function _renderIrfanMetaTables(d){
   const creTarget=creTargets[0]||null;
   const meta=d&&d.channels&&d.channels.meta;
   if(!meta){const empty='<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px">No Meta data available for this window</div>';[...campTargets,...creTargets].forEach(el=>el.innerHTML=empty);return;}
-  // Defaults: sort by CPD descending; no stage filter
-  if(!S.irfan.metaCampSort)S.irfan.metaCampSort={col:'cpd',dir:'desc'};
-  if(!S.irfan.metaCreSort)S.irfan.metaCreSort={col:'cpd',dir:'desc'};
+  // Defaults: sort by Score descending (now that we score everything)
+  if(!S.irfan.metaCampSort)S.irfan.metaCampSort={col:'_score',dir:'desc'};
+  if(!S.irfan.metaCreSort)S.irfan.metaCreSort={col:'_score',dir:'desc'};
   if(!S.irfan.metaCampStageF)S.irfan.metaCampStageF='all';
+  if(S.irfan.metaAllExpanded==null)S.irfan.metaAllExpanded=false;
   const campSort=S.irfan.metaCampSort,creSort=S.irfan.metaCreSort,stageF=S.irfan.metaCampStageF;
+  const fatigueMap=meta.fatigueMap||{};
 
   // ── Campaigns ──
   let campRows=(meta.campaigns||[]).filter(c=>c.spend>0);
   if(stageF!=='all')campRows=campRows.filter(c=>_irfanStages(c.name).some(t=>t.k===stageF));
-  campRows=_irfanSortRows(campRows,campSort.col,campSort.dir);
   // Group creatives by parent campaign name so we can nest them under each row.
   // Two sources: the flat meta.creatives list (which has qualified counts but is
   // limited to creatives with activity in the window) and meta.creativeByCampaign
@@ -1870,12 +1895,30 @@ function _renderIrfanMetaTables(d){
     _creByCamp[_k].push(_cr);
   }
   const _creByCampWorker=meta.creativeByCampaign||{};
+  // Compute Watch rate per campaign by summing nested creatives' video_p25 /
+  // impressions. Campaigns don't carry videoP25 directly (it's a creative-
+  // level field), so we aggregate.
+  for(const c of campRows){
+    const _k=(c.name||'').toLowerCase().trim();
+    let _nested=_creByCampWorker[_k]||_creByCamp[_k]||[];
+    let _vp25=0,_imp=0;
+    for(const n of _nested){_vp25+=(n.videoP25||0);_imp+=(n.impressions||0);}
+    c.watch=_imp>0?(_vp25/_imp)*100:null;
+  }
+  // Score and tag every campaign (relative ranking — uses same per-stage
+  // formula as creatives). Per Item 8 from the spec.
+  if(typeof scoreCreatives==='function'&&campRows.length>0){
+    try{scoreCreatives(campRows);}catch(e){console.warn('scoreCreatives(campaigns) failed:',e);}
+  }
+  campRows=_irfanSortRows(campRows,campSort.col,campSort.dir);
   // Heatmap value arrays (across visible rows)
   const cSp=campRows.map(c=>c.spend),cIm=campRows.map(c=>c.impressions||0),cCl=campRows.map(c=>c.clicks||0),cCt=campRows.map(c=>c.ctr||0),cDe=campRows.map(c=>c.demos||0),cCp=campRows.map(c=>c.demos>0?c.spend/c.demos:0),cQu=campRows.map(c=>c.qualified||0);
   // Stage filter pills
   const stages=[{k:'all',l:'All',c:'var(--grey)'},{k:'s1',l:'TOF',c:'#2980B9'},{k:'s2',l:'MOF',c:'#E67E22'},{k:'s3',l:'BOF',c:'#C0392B'},{k:'s4',l:'Retarget',c:'#7D3C98'}];
   let campH='';
   campH+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap"><div style="font-size:11px;color:var(--grey);font-variant-numeric:tabular-nums">'+campRows.length+' rows · sort by '+campSort.col+' '+campSort.dir+'</div>';
+  // Expand All / Collapse All button — toggles every campaign row's nested creatives at once
+  campH+='<button onclick="irfanToggleAllCampCreatives()" style="padding:5px 12px;border-radius:50px;font-size:10px;font-weight:600;border:1px solid var(--teal);background:transparent;color:var(--teal);cursor:pointer;font-family:var(--font-h)">'+(S.irfan.metaAllExpanded?'▼ Collapse All':'▶ Expand All')+'</button>';
   campH+='<div style="flex:1"></div><span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em">Stage</span>';
   for(const s of stages){const isA=stageF===s.k;campH+='<button onclick="irfanCampStageF(\''+s.k+'\')" style="padding:5px 12px;border-radius:50px;font-size:10px;font-weight:'+(isA?'700':'500')+';border:'+(isA?'none':'1px solid '+s.c)+';background:'+(isA?s.c:'transparent')+';color:'+(isA?'#fff':s.c)+';cursor:pointer;font-family:var(--font-h)">'+s.l+'</button>';}
   campH+='</div>';
@@ -1889,8 +1932,16 @@ function _renderIrfanMetaTables(d){
   campH+=_irfanSortableTh('Impr','impressions',campSort,'irfanSortCamp','right');
   campH+=_irfanSortableTh('Clicks','clicks',campSort,'irfanSortCamp','right');
   campH+=_irfanSortableTh('CTR','ctr',campSort,'irfanSortCamp','right');
+  campH+=_irfanSortableTh('Watch','watch',campSort,'irfanSortCamp','right');
+  campH+=_irfanSortableTh('Freq.','frequency',campSort,'irfanSortCamp','right');
   campH+=_irfanSortableTh('Qual','qualified',campSort,'irfanSortCamp','right');
+  campH+=_irfanSortableTh('Score','_score',campSort,'irfanSortCamp','right');
+  campH+=_irfanSortableTh('Tag','_tag',campSort,'irfanSortCamp','right');
   campH+='</tr></thead><tbody>';
+  // Heatmap value arrays for new cols (Watch, Frequency, Score)
+  const cWa=campRows.map(c=>c.watch||0),cFr=campRows.map(c=>c.frequency||0),cSc=campRows.map(c=>c._score||0);
+  // Totals accumulators
+  let _tSp=0,_tDe=0,_tIm=0,_tCl=0,_tQu=0,_tVp25=0;
   for(let i=0;i<campRows.length;i++){
     const c=campRows[i];const cpd=c.demos>0?c.spend/c.demos:null;
     const nm=(c.name||'').length>56?(c.name||'').slice(0,53)+'…':(c.name||'');
@@ -1930,12 +1981,14 @@ function _renderIrfanMetaTables(d){
     });
     const _hasNested=_nested.length>0;
     const _rowId='irf-camp-'+i;
+    const _showNested=S.irfan.metaAllExpanded;
     campH+='<tr style="border-bottom:1px solid var(--border)'+(_hasNested?';cursor:pointer':'')+'"'+(_hasNested?' onclick="irfanToggleCampCreatives(\''+_rowId+'\')"':'')+'>';
     // Active count: prefer explicit ACTIVE status; fall back to spend>0 when
     // status is missing (older payloads / non-Meta channels).
     const _activeN=_nested.filter(n=>n.status==='ACTIVE'||(!n.status&&(n.spend||0)>0)).length;
     const _countLabel=_hasNested?(_activeN<_nested.length?_activeN+' active · '+_nested.length+' total':_nested.length+(_nested.length===1?' creative':' creatives')):'';
-    campH+='<td style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(c.name||'').replace(/"/g,'&quot;')+'">'+(_hasNested?'<span class="irf-camp-chev" data-row="'+_rowId+'" style="display:inline-block;width:10px;color:var(--teal);margin-right:6px;font-size:9px">▶</span>':'<span style="display:inline-block;width:10px;margin-right:6px"></span>')+nm+(_hasNested?' <span style="font-size:9px;color:var(--grey);font-weight:400">('+_countLabel+')</span>':'')+'</td>';
+    const _chev=_showNested?'▼':'▶';
+    campH+='<td style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(c.name||'').replace(/"/g,'&quot;')+'">'+(_hasNested?'<span class="irf-camp-chev" data-row="'+_rowId+'" style="display:inline-block;width:10px;color:var(--teal);margin-right:6px;font-size:9px">'+_chev+'</span>':'<span style="display:inline-block;width:10px;margin-right:6px"></span>')+nm+(_hasNested?' <span style="font-size:9px;color:var(--grey);font-weight:400">('+_countLabel+')</span>':'')+'</td>';
     campH+='<td style="padding:8px 6px">'+stagesCell+'</td>';
     campH+='<td style="text-align:center;padding:8px 6px">'+_irfanStatusBadge(c.status,c.spend)+'</td>';
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cSp,c.spend,true)+'">'+f$(c.spend)+'</td>';
@@ -1944,18 +1997,36 @@ function _renderIrfanMetaTables(d){
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cIm,c.impressions||0,false)+'">'+fN(c.impressions||0)+'</td>';
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cCl,c.clicks||0,false)+'">'+fN(c.clicks||0)+'</td>';
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cCt,c.ctr||0,false)+'">'+(c.ctr!=null?c.ctr.toFixed(2)+'%':'—')+'</td>';
+    campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cWa,c.watch||0,false)+'" title="% impressions where viewer watched ≥25% of video (aggregated from nested creatives)">'+(c.watch!=null?c.watch.toFixed(1)+'%':'—')+'</td>';
+    campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cFr,c.frequency||0,true)+'" title="Average impressions per unique reach (higher = more ad fatigue risk)">'+(c.frequency!=null?c.frequency.toFixed(2):'—')+'</td>';
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cQu,c.qualified||0,false)+'">'+fN(c.qualified||0)+'</td>';
+    campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cSc,c._score||0,false)+'">'+(c._score!=null?scoreBadge(c._score):'—')+'</td>';
+    campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+(c._tag?scoreTag(c._tag):'—')+'</td>';
     campH+='</tr>';
-    // Nested creative rows (hidden by default)
+    // Accumulate totals
+    _tSp+=c.spend||0;_tDe+=c.demos||0;_tIm+=c.impressions||0;_tCl+=c.clicks||0;_tQu+=c.qualified||0;
+    // Sum nested videoP25 for true weighted Watch in totals row
+    for(const n of _nested)_tVp25+=(n.videoP25||0);
+    // Nested creative rows (hidden by default unless Expand-All is on)
     if(_hasNested){
+      // Score the nested creatives so we can show Score + Tag inline
+      if(typeof scoreCreatives==='function'&&_nested.length>0){
+        try{scoreCreatives(_nested);}catch(e){}
+      }
       for(let ni=0;ni<_nested.length;ni++){
         const ncr=_nested[ni];const ncCpd=ncr.demos>0?ncr.spend/ncr.demos:null;
+        const nWr=ncr.impressions>0?((ncr.videoP25||0)/ncr.impressions)*100:null;
         const nNm=(ncr.name||'').length>52?(ncr.name||'').slice(0,49)+'…':(ncr.name||'');
         let _thumb='';
         if(ncr.thumbnail)_thumb='<img src="'+ncr.thumbnail+'" style="width:28px;height:28px;object-fit:cover;border-radius:4px;display:inline-block;vertical-align:middle;margin-right:8px" onerror="this.style.display=\'none\'">';
         else _thumb='<span style="display:inline-block;width:28px;height:28px;border-radius:4px;background:var(--lighter);border:1px solid var(--border);text-align:center;line-height:26px;font-size:12px;margin-right:8px;vertical-align:middle">📷</span>';
-        campH+='<tr class="'+_rowId+'-cre" style="display:none;background:rgba(114,164,191,.04);border-bottom:1px solid var(--border)">';
-        campH+='<td style="padding:6px 6px 6px 30px;color:var(--navy);font-size:10px" title="'+(ncr.name||'').replace(/"/g,'&quot;')+'">'+_thumb+nNm+'</td>';
+        // Fatigue + naming-check badges inline next to name
+        const _ftBadge=fatigueBadgeFromMap(fatigueMap,'meta',ncr.name);
+        const _subj=(typeof detectSubject==='function')?detectSubject(ncr.name):{type:'talent'};
+        const _nameBad=_subj&&_subj.type==='unknown';
+        const _nameBadge=_nameBad?' <span title="Name doesn\'t match {Format}_{Talent}_{Concept}_{Setting}_{Variant} convention" style="cursor:help;font-size:9px;background:rgba(243,156,18,.12);color:#e67e22;padding:1px 5px;border-radius:4px;font-weight:700;white-space:nowrap">⚠ Naming</span>':'';
+        campH+='<tr class="'+_rowId+'-cre" style="display:'+(_showNested?'table-row':'none')+';background:rgba(114,164,191,.04);border-bottom:1px solid var(--border)">';
+        campH+='<td style="padding:6px 6px 6px 30px;color:var(--navy);font-size:10px" title="'+(ncr.name||'').replace(/"/g,'&quot;')+'">'+_thumb+nNm+_ftBadge+_nameBadge+'</td>';
         campH+='<td></td>';
         campH+='<td style="text-align:center;padding:6px">'+_irfanStatusBadge(ncr.status,ncr.spend)+'</td>';
         campH+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+f$(ncr.spend)+'</td>';
@@ -1964,22 +2035,53 @@ function _renderIrfanMetaTables(d){
         campH+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.impressions||0)+'</td>';
         campH+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.clicks||0)+'</td>';
         campH+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(ncr.ctr!=null?ncr.ctr.toFixed(2)+'%':'—')+'</td>';
+        campH+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(nWr!=null?nWr.toFixed(1)+'%':'—')+'</td>';
+        campH+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(ncr.frequency!=null?ncr.frequency.toFixed(2):'—')+'</td>';
         campH+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.qualified||0)+'</td>';
+        campH+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(ncr._score!=null?scoreBadge(ncr._score):'—')+'</td>';
+        campH+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(ncr._tag?scoreTag(ncr._tag):'—')+'</td>';
         campH+='</tr>';
       }
     }
   }
-  if(!campRows.length)campH+='<tr><td colspan="10" style="padding:16px;text-align:center;color:var(--grey)">No campaigns match</td></tr>';
+  if(!campRows.length)campH+='<tr><td colspan="14" style="padding:16px;text-align:center;color:var(--grey)">No campaigns match</td></tr>';
+  // Totals row — sum spend/demos/impressions/clicks/qual; weighted CPD/CTR/Watch
+  if(campRows.length){
+    const _tCpd=_tDe>0?_tSp/_tDe:null;
+    const _tCtr=_tIm>0?(_tCl/_tIm)*100:null;
+    const _tWatch=_tIm>0?(_tVp25/_tIm)*100:null;
+    campH+='<tr style="background:var(--lighter);font-weight:700;border-top:2px solid var(--teal-30)">'
+      +'<td style="padding:10px 6px;color:var(--navy)">Total ('+campRows.length+' campaigns)</td>'
+      +'<td></td>'
+      +'<td></td>'
+      +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+f$(_tSp)+'</td>'
+      +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+fN(_tDe)+'</td>'
+      +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+(_tCpd!=null?f$(_tCpd):'—')+'</td>'
+      +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+fN(_tIm)+'</td>'
+      +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+fN(_tCl)+'</td>'
+      +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+(_tCtr!=null?_tCtr.toFixed(2)+'%':'—')+'</td>'
+      +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+(_tWatch!=null?_tWatch.toFixed(1)+'%':'—')+'</td>'
+      +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums;color:var(--grey)">—</td>'
+      +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+fN(_tQu)+'</td>'
+      +'<td></td>'
+      +'<td></td>'
+      +'</tr>';
+  }
   campH+='</tbody></table></div>';
 
   // ── Creatives ──
   let creRows=(meta.creatives||[]).filter(c=>c.spend>0);
+  // Apply scoring (Score + Tag columns)
+  if(typeof scoreCreatives==='function'&&creRows.length>0){
+    try{scoreCreatives(creRows);}catch(e){console.warn('scoreCreatives(creatives) failed:',e);}
+  }
   creRows=_irfanSortRows(creRows,creSort.col,creSort.dir);
   const rSp=creRows.map(c=>c.spend),rIm=creRows.map(c=>c.impressions||0),rCl=creRows.map(c=>c.clicks||0),rCt=creRows.map(c=>c.ctr||0),rDe=creRows.map(c=>c.demos||0),rCp=creRows.map(c=>c.demos>0?c.spend/c.demos:0),rQu=creRows.map(c=>c.qualified||0);
   // Watch rate = videoP25 / impressions × 100 (% of impressions where viewer
   // watched at least 25% of the video — a standard "hook" metric for Meta video creatives).
   const watchRate=(c)=>(c.impressions>0?((c.videoP25||0)/c.impressions)*100:null);
   const rWt=creRows.map(c=>watchRate(c)||0);
+  const rFr=creRows.map(c=>c.frequency||0),rSc=creRows.map(c=>c._score||0);
   // PAUSE flag — relative thresholds across the displayed creatives. A creative
   // is flagged "PAUSE" when it is BAD on all 3 leading indicators:
   //   • Low CTR        — bottom 30% of CTR in the displayed set
@@ -2022,7 +2124,10 @@ function _renderIrfanMetaTables(d){
   creH+=_irfanSortableTh('Clicks','clicks',creSort,'irfanSortCre','right');
   creH+=_irfanSortableTh('CTR','ctr',creSort,'irfanSortCre','right');
   creH+=_irfanSortableTh('Watch','watch',creSort,'irfanSortCre','right');
+  creH+=_irfanSortableTh('Freq.','frequency',creSort,'irfanSortCre','right');
   creH+=_irfanSortableTh('Qual','qualified',creSort,'irfanSortCre','right');
+  creH+=_irfanSortableTh('Score','_score',creSort,'irfanSortCre','right');
+  creH+=_irfanSortableTh('Tag','_tag',creSort,'irfanSortCre','right');
   creH+='</tr></thead><tbody>';
   for(let i=0;i<creRows.length;i++){
     const c=creRows[i];const cpd=c.demos>0?c.spend/c.demos:null;
@@ -2032,10 +2137,17 @@ function _renderIrfanMetaTables(d){
     let thumb='';
     if(c.thumbnail)thumb='<img src="'+c.thumbnail+'" style="width:56px;height:56px;object-fit:cover;border-radius:6px;display:block" onerror="this.style.display=\'none\';this.parentNode.innerHTML=this.parentNode.innerHTML.replace(/<img[^>]*>/,\'📷\')">';
     else thumb='<div style="width:56px;height:56px;border-radius:6px;background:var(--lighter);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--teal)">📷</div>';
+    // Fatigue badge — hover shows decline details (CTR drop % + first/last CTR)
+    const _ftBadge=fatigueBadgeFromMap(fatigueMap,'meta',c.name);
+    // Naming-check badge — flags creatives that don't follow the
+    // {Format}_{Talent}_{Concept}_{Setting}_{Variant} convention
+    const _subj=(typeof detectSubject==='function')?detectSubject(c.name):{type:'talent'};
+    const _nameBad=_subj&&_subj.type==='unknown';
+    const _nameBadge=_nameBad?' <span title="Name doesn\'t match {Format}_{Talent}_{Concept}_{Setting}_{Variant} convention" style="cursor:help;font-size:9px;background:rgba(243,156,18,.12);color:#e67e22;padding:1px 5px;border-radius:4px;font-weight:700;white-space:nowrap">⚠ Naming</span>':'';
     creH+='<tr style="border-bottom:1px solid var(--border);'+(pause?'background:rgba(220,38,38,.06)':'')+'">';
     creH+='<td style="padding:6px 4px;text-align:center">'+(pause?'<span title="Low CTR + Low Watch + High CPD — pause candidate" style="display:inline-block;font-family:var(--font-h);font-size:9px;font-weight:700;color:#fff;background:#DC2626;padding:2px 7px;border-radius:99px;letter-spacing:.04em">PAUSE</span>':'')+'</td>';
     creH+='<td style="padding:6px 4px">'+thumb+'</td>';
-    creH+='<td style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(c.name||'').replace(/"/g,'&quot;')+'">'+nm+'</td>';
+    creH+='<td style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(c.name||'').replace(/"/g,'&quot;')+'">'+nm+_ftBadge+_nameBadge+'</td>';
     creH+='<td style="text-align:center;padding:8px 6px">'+_irfanStatusBadge(c.status,c.spend)+'</td>';
     creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rSp,c.spend,true)+'">'+f$(c.spend)+'</td>';
     creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rDe,c.demos||0,false)+'">'+fN(c.demos||0)+'</td>';
@@ -2044,10 +2156,13 @@ function _renderIrfanMetaTables(d){
     creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rCl,c.clicks||0,false)+'">'+fN(c.clicks||0)+'</td>';
     creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rCt,c.ctr||0,false)+'">'+(c.ctr!=null?c.ctr.toFixed(2)+'%':'—')+'</td>';
     creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rWt,wr||0,false)+'" title="% of impressions where viewer watched ≥25% of video">'+(wr!=null?wr.toFixed(1)+'%':'—')+'</td>';
+    creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rFr,c.frequency||0,true)+'" title="Average impressions per unique reach (higher = more ad fatigue risk)">'+(c.frequency!=null?c.frequency.toFixed(2):'—')+'</td>';
     creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rQu,c.qualified||0,false)+'">'+fN(c.qualified||0)+'</td>';
+    creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rSc,c._score||0,false)+'">'+(c._score!=null?scoreBadge(c._score):'—')+'</td>';
+    creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+(c._tag?scoreTag(c._tag):'—')+'</td>';
     creH+='</tr>';
   }
-  if(!creRows.length)creH+='<tr><td colspan="12" style="padding:16px;text-align:center;color:var(--grey)">No creatives</td></tr>';
+  if(!creRows.length)creH+='<tr><td colspan="15" style="padding:16px;text-align:center;color:var(--grey)">No creatives</td></tr>';
   creH+='</tbody></table></div>';
   // PAUSE-criteria footer — explains what triggers the badge, with the actual
   // percentile thresholds computed from THIS displayed set so users see the
@@ -2066,6 +2181,94 @@ function _renderIrfanMetaTables(d){
     +'</ul>'
     +'<div style="margin-top:6px;color:var(--grey)">Spend gate: must have ≥ $'+PAUSE_SPEND_MIN+' spent — below that there\'s not enough signal yet. A creative that is e.g. high-CPD but excellent-CTR will <b>not</b> be flagged (one good metric protects it).</div>'
     +'</div>';
+
+  // ── Audiences table (ad-set level for Meta) ──
+  const audiences=meta.audiences||[];
+  if(audiences.length){
+    const aSp=audiences.map(a=>a.spend||0),aDe=audiences.map(a=>a.demos||0),aCp=audiences.map(a=>a.demos>0?a.spend/a.demos:0);
+    // Default sort: spend desc
+    const sorted=audiences.slice().sort((a,b)=>(b.spend||0)-(a.spend||0));
+    let aTSp=0,aTDe=0,aTIm=0,aTCl=0;
+    creH+='<div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--teal-15)"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Audiences (Meta Ad Sets)</div>';
+    creH+='<div style="font-size:11px;color:var(--grey);margin-bottom:10px">Audience-level breakdown of spend, performance, and demos. Sorted by spend descending. '+sorted.length+' audience'+(sorted.length===1?'':'s')+' with activity in this window.</div>';
+    creH+='<div style="overflow-x:auto"><table class="irf-meta-table" style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr style="border-bottom:1.5px solid var(--border)">';
+    creH+='<th style="text-align:left;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Audience</th>';
+    creH+='<th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Spend</th>';
+    creH+='<th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Impr</th>';
+    creH+='<th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Clicks</th>';
+    creH+='<th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">CTR</th>';
+    creH+='<th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">CPC</th>';
+    creH+='<th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Demos</th>';
+    creH+='<th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">CPD</th>';
+    creH+='</tr></thead><tbody>';
+    for(const a of sorted){
+      const nm=(a.name||'').length>56?(a.name||'').slice(0,53)+'…':(a.name||'');
+      const cpd=a.demos>0?a.spend/a.demos:null;
+      const cpc=a.clicks>0?a.spend/a.clicks:null;
+      aTSp+=a.spend||0;aTDe+=a.demos||0;aTIm+=a.impressions||0;aTCl+=a.clicks||0;
+      creH+='<tr style="border-bottom:1px solid var(--border)">';
+      creH+='<td style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(a.name||'').replace(/"/g,'&quot;')+'">'+nm+'</td>';
+      creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(aSp,a.spend,true)+'">'+f$(a.spend||0)+'</td>';
+      creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+fN(a.impressions||0)+'</td>';
+      creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+fN(a.clicks||0)+'</td>';
+      creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+(a.ctr!=null?a.ctr.toFixed(2)+'%':'—')+'</td>';
+      creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+(cpc!=null?f$(cpc):'—')+'</td>';
+      creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(aDe,a.demos||0,false)+'">'+fN(a.demos||0)+'</td>';
+      creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(aCp,cpd||0,true)+'">'+(cpd!=null?f$(cpd):'—')+'</td>';
+      creH+='</tr>';
+    }
+    // Audiences totals row
+    const aTCpd=aTDe>0?aTSp/aTDe:null;
+    const aTCtr=aTIm>0?(aTCl/aTIm)*100:null;
+    const aTCpc=aTCl>0?aTSp/aTCl:null;
+    creH+='<tr style="background:var(--lighter);font-weight:700;border-top:2px solid var(--teal-30)">'
+      +'<td style="padding:10px 6px;color:var(--navy)">Total ('+sorted.length+' audiences)</td>'
+      +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+f$(aTSp)+'</td>'
+      +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+fN(aTIm)+'</td>'
+      +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+fN(aTCl)+'</td>'
+      +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+(aTCtr!=null?aTCtr.toFixed(2)+'%':'—')+'</td>'
+      +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+(aTCpc!=null?f$(aTCpc):'—')+'</td>'
+      +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+fN(aTDe)+'</td>'
+      +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+(aTCpd!=null?f$(aTCpd):'—')+'</td>'
+      +'</tr>';
+    creH+='</tbody></table></div></div>';
+  }
+
+  // ── Creative Scoring Formula + Creative Naming check ──
+  // Compute naming-compliance count for the displayed creatives
+  let _nmTot=0,_nmTagged=0;
+  for(const cr of creRows){
+    _nmTot++;
+    const _s=(typeof detectSubject==='function')?detectSubject(cr.name):{type:'talent'};
+    if(_s&&_s.type!=='unknown')_nmTagged++;
+  }
+  const _nmPct=_nmTot>0?Math.round(_nmTagged/_nmTot*100):100;
+  const _nmColor=_nmPct===100?'#16A34A':_nmPct>=60?'#F59E0B':'#DC2626';
+  creH+='<div style="margin-top:20px;padding:14px 16px;background:rgba(114,164,191,.04);border:1px solid rgba(114,164,191,.15);border-radius:10px;font-size:11px;color:var(--navy);line-height:1.7">';
+  creH+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">';
+  creH+='<div style="font-family:var(--font-h);font-size:12px;font-weight:700;color:var(--navy)">Creative Scoring Formula</div>';
+  creH+='<div style="font-size:10px;color:var(--grey)">Per-campaign relative ranking · stage-aware</div>';
+  creH+='</div>';
+  creH+='<div><strong>TOF (S01):</strong> 25% CTR + 20% Video Views + 20% Impression Share + 15% Qual Rate + 10% CPA⁻¹ + 10% Demo Volume</div>';
+  creH+='<div><strong>MOF (S02):</strong> 25% Clicks + 25% CPA⁻¹ + 20% Qual Rate + 15% CTR + 15% Demo Volume</div>';
+  creH+='<div><strong>BOF/Retargeting (S03+):</strong> 30% CPA⁻¹ + 25% Qual Rate + 20% Demo Volume + 15% CTR + 10% Clicks</div>';
+  creH+='<div style="margin-top:6px"><strong>Tags:</strong> <span style="color:#2ecc71;font-weight:700">WINNER ≥ 65</span> · <span style="color:#f39c12;font-weight:700">TESTING 35–64</span> · <span style="color:#e74c3c;font-weight:700">LOSER &lt; 35</span></div>';
+  creH+='<div><strong>New (&lt;7d):</strong> Protected from LOSER tag (still learning) · <strong>Auto-LOSER:</strong> Active &gt;14d w/ score &lt;35, OR Spend ≥ avg w/ score &lt;35, OR both w/ score &lt;50, OR Spend ≥ avg + Qual Rate &lt;20% + 3+ demos</div>';
+  creH+='<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(114,164,191,.18);display:flex;align-items:center;gap:10px;flex-wrap:wrap">';
+  creH+='<div style="font-family:var(--font-h);font-size:12px;font-weight:700;color:var(--navy)">Creative Naming</div>';
+  creH+='<div style="background:'+_nmColor+'15;color:'+_nmColor+';padding:3px 10px;border-radius:50px;font-size:10px;font-weight:700;font-family:var(--font-h)">'+_nmPct+'% compliant</div>';
+  creH+='<div style="color:var(--grey)"><strong>'+_nmTagged+'</strong> of <strong>'+_nmTot+'</strong> creatives follow the convention</div>';
+  creH+='</div>';
+  creH+='<div style="margin-top:6px;padding:8px 10px;background:#fff;border-radius:6px;font-family:monospace;font-size:11px;color:var(--navy)">{Format}_{Talent}_{Concept}_{Setting}_{Variant} <span style="color:var(--grey)">— e.g. Vid_Aurea_TrustHook_Studio_v1</span></div>';
+  creH+='<div style="margin-top:6px;display:flex;gap:14px;flex-wrap:wrap;color:var(--grey);font-size:10px">';
+  creH+='<div><strong>Format:</strong> Vid, Img, Car, UGC</div>';
+  creH+='<div><strong>Talent:</strong> Irfan, Aurea, Talar, NoTalent</div>';
+  creH+='<div><strong>Concept:</strong> TrustHook, SocialProof, BeforeAfter, etc.</div>';
+  creH+='<div><strong>Setting:</strong> Studio, Office, Outdoor, Screen, etc.</div>';
+  creH+='<div><strong>Variant:</strong> v1, v2, A, B</div>';
+  creH+='</div>';
+  creH+='<div style="margin-top:6px;color:var(--grey);font-style:italic">Rows with a <span style="background:rgba(243,156,18,.12);color:#e67e22;padding:1px 5px;border-radius:4px;font-weight:700;font-style:normal">⚠ Naming</span> badge above don\'t match the convention. Rows with a <span style="background:rgba(243,156,18,.12);color:#e67e22;padding:1px 5px;border-radius:4px;font-weight:700;font-style:normal">⚠ Fatigue</span> badge had a >15% CTR decline over the last 14 days (hover for first vs. last CTR).</div>';
+  creH+='</div>';
 
   // Broadcast to ALL targets (Irfan + Overview)
   campTargets.forEach(el=>el.innerHTML=campH);
@@ -2430,10 +2633,30 @@ function renderOverviewOutcomeBreakdown(d){
   }catch(err){console.error('[OV-OUTCOME] Error:',err);console.error('[OV-OUTCOME] Stack:',err.stack);}
 }
 
+// Update the attribution match-rate line at the bottom of the Channel
+// Performance table. Called after the analyzer fetch returns (since match
+// rate isn't on /api/data, only on /api/analyzer's matchRate field).
+function _updateCpdMatchRate(win){
+  const el=document.getElementById('cpd-match-rate');
+  if(!el)return;
+  const w=win||S.dashboard?.win||S.irfan?.win||'mtd';
+  const mr=S.irfan?.analyzerCache?.[w]?.matchRate;
+  if(!mr||mr.pct==null){
+    el.innerHTML='<span style="color:var(--grey);font-style:italic">Computing attribution match rate…</span>';
+    return;
+  }
+  const pctColor=mr.pct>=80?'var(--green)':mr.pct>=60?'var(--yellow)':'var(--red)';
+  el.innerHTML='<span style="font-family:var(--font-h);font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em">Attribution match rate</span> '
+    +'<strong style="color:'+pctColor+';font-variant-numeric:tabular-nums">'+mr.pct.toFixed(1)+'%</strong> '
+    +'<span style="color:var(--grey)">('+fN(mr.attributed)+' of '+fN(mr.windsorDemos)+' Windsor demos matched to HubSpot deals via UTMs)</span>';
+}
+
 function renderCPDTable(d){
   var ad=d.adSpend,channels=ad.channels;
   var totalCpqdBlended=d.executiveSummary.totalCpqd?.value;
   var em=d.executiveSummary._meta||{};
+  // Churn-adjusted effective months (mirrors Revenue Outcome card math)
+  var cr=getChurnRate(),eM=effM(cr);
   function pct(cur,prev){if(prev==null||prev===0||cur==null)return null;return((cur-prev)/prev)*100;}
   // Local nfmt (mirrors renderDash's helper) — formats a signed nominal with format char
   function nfmt(n,fmt,dec){if(n==null)return '\u2014';var s=n>=0?'+':'-';var a=Math.abs(n);var d=dec!=null?dec:1;if(fmt==='$')return s+'$'+Math.round(a).toLocaleString();if(fmt==='#')return s+Math.round(a).toLocaleString();if(fmt==='%')return s+a.toFixed(d)+'%';if(fmt==='x')return s+a.toFixed(2)+'x';return s+a.toFixed(d);}
@@ -2446,9 +2669,9 @@ function renderCPDTable(d){
   function cell(value,prior,lm,inv,valCol){var c=valCol||'var(--navy)';return '<div style="font-variant-numeric:tabular-nums;color:'+c+'">'+value+'</div><div style="margin-top:2px">'+cellDelta(prior,lm,inv)+'</div>';}
   var totalSpend=ad.total.value||0;
   var html='<style>.cpd-row:hover td{background:rgba(114,164,191,.10)!important;transition:background .15s ease}</style><table style="width:100%;font-size:12px;border-collapse:collapse;table-layout:fixed">';
-  // 7 cols total (Unattr removed). Pacing trimmed 16% \u2192 12%. Spend widened to fit
-  // the new % chip alongside the $ value.
-  html+='<colgroup><col style="width:13%"><col style="width:12%"><col style="width:18%"><col style="width:13%"><col style="width:14%"><col style="width:13%"><col style="width:17%"></colgroup>';
+  // 9 cols total. Pacing 10%; Spend (with share chip) 16%; Channel 11%;
+  // metric cols (Demos/CPD/Qual/CPQD/Won/ARR) each ~10-11%. Tweaked to fit.
+  html+='<colgroup><col style="width:11%"><col style="width:10%"><col style="width:16%"><col style="width:9%"><col style="width:9%"><col style="width:9%"><col style="width:10%"><col style="width:8%"><col style="width:11%"></colgroup>';
   html+='<thead><tr style="border-bottom:1px solid var(--border)">'+
     '<th style="text-align:left;font-weight:600;color:var(--grey);padding:8px 6px;font-size:11px">Channel</th>'+
     '<th style="text-align:center;font-weight:600;color:var(--grey);padding:8px 6px;font-size:11px">Pacing</th>'+
@@ -2457,20 +2680,26 @@ function renderCPDTable(d){
     '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 6px;font-size:11px">CPD</th>'+
     '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 6px;font-size:11px">Qual</th>'+
     '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 6px;font-size:11px">CPQD</th>'+
+    '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 6px;font-size:11px" title="Closed-won deals attributed via UTMs">Won</th>'+
+    '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 6px;font-size:11px" title="Churn-adjusted ARR from UTM-attributed closed-won deals (MRR \u00d7 effective months)">ARR</th>'+
     '</tr></thead><tbody>';
-  var sumSp=0,sumD=0,sumQ=0,pSumSp=0,pSumD=0,pSumQ=0,pmSumSp=0,pmSumD=0,pmSumQ=0,hasPrior=false,hasPriorMonth=false;
+  var sumSp=0,sumD=0,sumQ=0,sumW=0,sumMRR=0,pSumSp=0,pSumD=0,pSumQ=0,pSumW=0,pSumMRR=0,pmSumSp=0,pmSumD=0,pmSumQ=0,pmSumW=0,pmSumMRR=0,hasPrior=false,hasPriorMonth=false;
   for(var k in channels){
     var info=channels[k];
     var spend=info.spend||0,demos=info.windsorDemos||0,qual=info.qualified||0;
+    var won=info.closedWon||0,wMRR=info.closedWonMRR||0,wARR=wMRR*eM;
     var channelCPD=demos>0?spend/demos:null,channelCPQD=qual>0?spend/qual:null;
     var spendShare=totalSpend>0?(spend/totalSpend)*100:0;
     var pSp=info.priorSpend,pWD=info.priorWindsorDemos,pQ=info.priorQualified;
     var pmSp=info.priorMonthSpend,pmWD=info.priorMonthWindsorDemos,pmQ=info.priorMonthQualified;
+    var pW=info.priorClosedWon,pmW=info.priorMonthClosedWon;
+    var pMRR=info.priorClosedWonMRR,pmMRR=info.priorMonthClosedWonMRR;
+    var pARR=pMRR!=null?pMRR*eM:null,pmARR=pmMRR!=null?pmMRR*eM:null;
     var pCPD=(pSp!=null&&pWD>0)?pSp/pWD:null,pmCPD=(pmSp!=null&&pmWD>0)?pmSp/pmWD:null;
     var pCPQD=(pSp!=null&&pQ>0)?pSp/pQ:null,pmCPQD=(pmSp!=null&&pmQ>0)?pmSp/pmQ:null;
-    sumSp+=spend;sumD+=demos;sumQ+=qual;
-    if(pSp!=null){hasPrior=true;pSumSp+=(pSp||0);pSumD+=(pWD||0);pSumQ+=(pQ||0);}
-    if(pmSp!=null){hasPriorMonth=true;pmSumSp+=(pmSp||0);pmSumD+=(pmWD||0);pmSumQ+=(pmQ||0);}
+    sumSp+=spend;sumD+=demos;sumQ+=qual;sumW+=won;sumMRR+=wMRR;
+    if(pSp!=null){hasPrior=true;pSumSp+=(pSp||0);pSumD+=(pWD||0);pSumQ+=(pQ||0);pSumW+=(pW||0);pSumMRR+=(pMRR||0);}
+    if(pmSp!=null){hasPriorMonth=true;pmSumSp+=(pmSp||0);pmSumD+=(pmWD||0);pmSumQ+=(pmQ||0);pmSumW+=(pmW||0);pmSumMRR+=(pmMRR||0);}
     var cpqdColor='var(--navy)';
     if(channelCPQD!=null&&totalCpqdBlended!=null){if(channelCPQD<totalCpqdBlended)cpqdColor='var(--green)';else if(channelCPQD<totalCpqdBlended*2)cpqdColor='var(--yellow)';else cpqdColor='var(--red)';}
     // Per-channel pacing: spend / monthly budget vs days elapsed in current month.
@@ -2494,6 +2723,8 @@ function renderCPDTable(d){
       '<td style="padding:8px 6px;text-align:right">'+cell2(channelCPD!=null?f$(channelCPD):'\u2014',channelCPD,pCPD,pmCPD,'$',true)+'</td>'+
       '<td style="padding:8px 6px;text-align:right">'+cell2(fN(qual),qual,pQ,pmQ,'#',false)+'</td>'+
       '<td style="padding:8px 6px;text-align:right">'+cell2(channelCPQD!=null?f$(channelCPQD):'\u2014',channelCPQD,pCPQD,pmCPQD,'$',true,cpqdColor)+'</td>'+
+      '<td style="padding:8px 6px;text-align:right">'+cell2(fN(won),won,pW,pmW,'#',false)+'</td>'+
+      '<td style="padding:8px 6px;text-align:right">'+cell2(wARR>0?f$(wARR):'\u2014',wARR,pARR,pmARR,'$',false)+'</td>'+
       '</tr>';
   }
   // Total row
@@ -2510,6 +2741,7 @@ function renderCPDTable(d){
   var totalPacingCell=totalBudget===0
     ?'<td style="padding:8px 4px;text-align:center"><span style="color:var(--grey);font-size:10px">\u2014</span></td>'
     :'<td style="padding:8px 4px"><div style="position:relative;height:6px;background:#fff;border-radius:3px;overflow:visible" title="'+totalPctSpent.toFixed(0)+'% spent \u00b7 '+totalPctElapsed.toFixed(0)+'% of month elapsed \u00b7 '+totalPaceDiffStr+'"><div style="position:absolute;left:0;top:0;height:6px;width:'+Math.min(totalPctSpent,100)+'%;background:'+totalPaceColor+';border-radius:3px;opacity:.85"></div><div style="position:absolute;left:'+Math.min(totalPctElapsed,100)+'%;top:-2px;bottom:-2px;width:1.5px;background:var(--navy)"></div></div><div style="display:flex;justify-content:space-between;font-size:9px;margin-top:3px;line-height:1.2;align-items:baseline"><span style="font-variant-numeric:tabular-nums;color:var(--navy);font-weight:600">'+totalPctSpent.toFixed(0)+'%</span><span style="color:'+totalPaceColor+';font-weight:700;font-variant-numeric:tabular-nums">'+totalPaceDiffStr+'</span></div></td>';
+  var tARR=sumMRR*eM,ptARR=hasPrior?(pSumMRR*eM):null,pmtARR=hasPriorMonth?(pmSumMRR*eM):null;
   html+='<tr style="background:var(--lighter);font-weight:600">'+
     '<td style="padding:8px 6px;color:var(--navy)">Total</td>'+
     totalPacingCell+
@@ -2518,10 +2750,17 @@ function renderCPDTable(d){
     '<td style="padding:8px 6px;text-align:right;font-variant-numeric:tabular-nums">'+(tCPD!=null?f$(tCPD):'\u2014')+cellDelta2(tCPD,ptCPD,pmtCPD,'$',true)+'</td>'+
     '<td style="padding:8px 6px;text-align:right;font-variant-numeric:tabular-nums">'+fN(sumQ)+cellDelta2(sumQ,pSumQ,pmSumQ,'#',false)+'</td>'+
     '<td style="padding:8px 6px;text-align:right;font-variant-numeric:tabular-nums">'+(tCPQD!=null?f$(tCPQD):'\u2014')+cellDelta2(tCPQD,ptCPQD,pmtCPQD,'$',true)+'</td>'+
+    '<td style="padding:8px 6px;text-align:right;font-variant-numeric:tabular-nums">'+fN(sumW)+cellDelta2(sumW,pSumW,pmSumW,'#',false)+'</td>'+
+    '<td style="padding:8px 6px;text-align:right;font-variant-numeric:tabular-nums">'+(tARR>0?f$(tARR):'\u2014')+cellDelta2(tARR,ptARR,pmtARR,'$',false)+'</td>'+
     '</tr>';
   html+='</tbody></table>';
-  html+='<div style="margin-top:10px;font-size:11px;color:var(--grey)">Pacing bar fills with % of monthly budget spent; vertical line marks % of month elapsed; the right-hand chip shows how many pp ahead (+) or behind (\u2212) pace. <span style="color:var(--green)">Green</span> within \u00b15pp of pace \u00b7 <span style="color:var(--yellow)">amber</span> 5\u201315pp off \u00b7 <span style="color:var(--red)">red</span> 15+pp off. CPQD color: green = below blended \u00b7 amber = 1\u20132x blended \u00b7 red = 2x+ blended.</div>';
+  // Attribution match-rate row (populated by _updateCpdMatchRate after the
+  // /api/analyzer fetch completes; placeholder shown until then).
+  html+='<div id="cpd-match-rate" style="margin-top:14px;padding:10px 14px;background:rgba(114,164,191,.06);border:1px solid rgba(114,164,191,.18);border-radius:8px;font-size:11px;color:var(--navy);line-height:1.5"><span style="color:var(--grey);font-style:italic">Computing attribution match rate\u2026</span></div>';
+  html+='<div style="margin-top:10px;font-size:11px;color:var(--grey)">Pacing bar fills with % of monthly budget spent; vertical line marks % of month elapsed; the right-hand chip shows how many pp ahead (+) or behind (\u2212) pace. <span style="color:var(--green)">Green</span> within \u00b15pp of pace \u00b7 <span style="color:var(--yellow)">amber</span> 5\u201315pp off \u00b7 <span style="color:var(--red)">red</span> 15+pp off. CPQD color: green = below blended \u00b7 amber = 1\u20132x blended \u00b7 red = 2x+ blended. ARR = MRR \u00d7 '+eM.toFixed(1)+' eff. months (churn-adjusted, '+(cr*100).toFixed(1)+'%).</div>';
   document.getElementById('cpd-tbl').innerHTML=html;
+  // Try to populate match-rate immediately if analyzer payload already cached
+  _updateCpdMatchRate(S.dashboard?.win||'mtd');
 
   // Demo Outcome Breakdown — cloned from Demo Quality page, with Quality-section mini KPIs
   renderOverviewOutcomeBreakdown(d);
