@@ -296,6 +296,34 @@ async function fetchGA4(apiKey, from, to) {
   return windsorFetch(apiKey, from, to, fields, '&connectors=googleanalytics4');
 }
 
+// GA4 page-level views via Windsor.ai. Used to count pageviews on the
+// Disqualification page (/not-supported) for the % Disqualified Routing card.
+// Uses pagepath (Windsor's GA4 field name) and screenpageviews (GA4's
+// standard pageview metric).
+// Returns { views, rowsSeen, matched, source, error }.
+async function fetchGA4PageViews(apiKey, from, to, pathFilter) {
+  const fields = 'date,pagepath,pagetitle,screenpageviews';
+  try {
+    const rows = await windsorFetch(apiKey, from, to, fields, '&connectors=googleanalytics4');
+    let total = 0, matched = 0;
+    const want = (pathFilter || '').toLowerCase();
+    for (const r of rows) {
+      const rawPath = (r.pagepath || r.page_path || r.pagePath || '').toLowerCase();
+      // Strip query string for matching (/not-supported?utm=foo → /not-supported)
+      const path = rawPath.split('?')[0].split('#')[0];
+      if (!want || path === want || path === want + '/' || path.endsWith(want)) {
+        const v = parseInt(r.screenpageviews ?? r.pageviews ?? r.views ?? 0, 10) || 0;
+        total += v;
+        matched++;
+      }
+    }
+    return { views: total, rowsSeen: rows.length, matched, source: 'ga4_via_windsor', error: null };
+  } catch(e) {
+    console.warn('GA4 page views fetch failed:', e.message);
+    return { views: null, rowsSeen: 0, matched: 0, source: 'ga4_via_windsor', error: e.message };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // HubSpot Fetching
 // ---------------------------------------------------------------------------
@@ -1914,13 +1942,34 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   let pW, pLI, pG; if (prior) { pW = windsorResults[wIdx++]; pLI = windsorResults[wIdx++]; pG = windsorResults[wIdx++]; }
   let pmW, pmLI, pmG; if (priorMonth) { pmW = windsorResults[wIdx++]; pmLI = windsorResults[wIdx++]; pmG = windsorResults[wIdx++]; }
 
-  // Irfan KPI #5 — Disqualification Form submissions for the current window.
-  // Done here (after Windsor, before HubSpot's heavy Phase 2 fetches) so it
-  // gets subrequest budget. Result stored in a closed-over variable.
+  // Irfan KPI #5 — Disqualification Form submissions + DQ-page views.
+  // Done here (after Windsor, before HubSpot's heavy Phase 2 fetches) so they
+  // get subrequest budget. We fetch in parallel:
+  //   • HubSpot: form lookup + submission count (and best-effort HS analytics views)
+  //   • Windsor.ai → GA4: pageviews on /not-supported (the DQ page)
+  // GA4 is the authoritative source for views — HubSpot's v2 form-analytics
+  // endpoint returns empty data because the form-render page isn't on a
+  // HubSpot-tracked domain. We let GA4 override _irfanDqForm.views.
+  const DQ_PAGE_PATH = '/not-supported';
   let _irfanDqForm = null, _irfanDqFormErr = null;
   try {
-    _irfanDqForm = await fetchDisqualificationFormSubmissions(hsToken, current.from, current.to);
-    console.log(`Irfan DQ form: ${_irfanDqForm.count} submissions in ${current.from}..${current.to} (form: ${_irfanDqForm.formName||'not found'})`);
+    const [dqForm, ga4Views] = await Promise.all([
+      fetchDisqualificationFormSubmissions(hsToken, current.from, current.to),
+      fetchGA4PageViews(apiKey, current.from, current.to, DQ_PAGE_PATH),
+    ]);
+    _irfanDqForm = dqForm;
+    // Merge GA4 views in. Prefer GA4 over the HubSpot v2 attempt.
+    if (ga4Views && typeof ga4Views.views === 'number') {
+      _irfanDqForm.views = ga4Views.views;
+      _irfanDqForm.viewError = null;
+      _irfanDqForm.viewsSource = 'ga4_via_windsor';
+      _irfanDqForm.ga4Matched = ga4Views.matched;
+      _irfanDqForm.ga4PagePath = DQ_PAGE_PATH;
+    } else {
+      _irfanDqForm.viewsSource = _irfanDqForm.views != null ? 'hubspot_v2' : null;
+      if (ga4Views?.error) _irfanDqForm.ga4Error = ga4Views.error;
+    }
+    console.log(`Irfan DQ form: ${_irfanDqForm.count} submissions, ${_irfanDqForm.views} views (source=${_irfanDqForm.viewsSource||'none'}, path=${DQ_PAGE_PATH})`);
   } catch(e) {
     _irfanDqFormErr = e.message;
     console.error('Irfan DQ form fetch failed:', e);
