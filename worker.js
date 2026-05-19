@@ -1160,6 +1160,9 @@ function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
     cntWon: 0, cntAppt: 0, cntDemoHappened: 0, cntDM: 0, cntCS: 0,
     cntNoShow: 0, cntNotAFit: 0,
     signedMrrSum: 0,
+    // Pre-launch brands are filtered out from cohort metrics (matches Special #1
+    // card behavior — pre-launch demos aren't qualified for sign-up tracking).
+    prelaunchExcluded: 0,
     // Avg Days to Close — two variants per spec: from date_demo_booked + from hs_createdate.
     daysToCloseSum: 0, daysToCloseN: 0,           // from date_demo_booked (back-compat name)
     daysFromCreatedSum: 0, daysFromCreatedN: 0,   // from hs_createdate
@@ -1216,6 +1219,17 @@ function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
       b.byRep[oid] = emptyBucket(ownerMap[oid] || (oid === 'unassigned' ? 'Unassigned' : oid));
     }
 
+    // Exclude pre-launch brands from the cohort (same as Special #1 card).
+    // Pre-launch deals don't qualify for sign-up rate tracking — they're
+    // prospects, not yet-launched brands ready to certify. Prefer the cloned
+    // snapshot (signed-time value) over the live property.
+    const wt = (p.average_monthly_web_traffic__cloned_ || p.average_monthly_web_traffic || '').toLowerCase();
+    if (wt.indexOf('pre-launch') >= 0) {
+      b.prelaunchExcluded++;
+      b.byRep[oid].prelaunchExcluded++;
+      continue;
+    }
+
     b.allBooked++;
     b.byRep[oid].allBooked++;
 
@@ -1267,6 +1281,7 @@ function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
     const cntPending = b.cntAppt + b.cntDemoHappened + b.cntDM + b.cntCS;
     return {
       allBooked: b.allBooked,
+      prelaunchExcluded: b.prelaunchExcluded || 0,
       signed: b.cntWon,
       demosHeld,
       pctSigned:  demosHeld    > 0 ? (b.cntWon     / demosHeld)    * 100 : 0,
