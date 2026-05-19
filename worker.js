@@ -3601,6 +3601,82 @@ export default {
       } catch(err) { console.error('SignUp endpoint error:', err); return jr({ error: 'Internal error', detail: err.message }, 500); }
     }
 
+    // GET /api/dq-form-debug?password=...&days=30 → Diagnostic endpoint.
+    // Hits every relevant HubSpot endpoint for the Disqualification Form and
+    // returns the raw responses, so we can see exactly what HubSpot has.
+    // Temporary; remove once the views question is resolved.
+    if (request.method === 'GET' && url.pathname === '/api/dq-form-debug') {
+      const pw = url.searchParams.get('password');
+      if (pw !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      const days = parseInt(url.searchParams.get('days') || '30', 10);
+      const today = todayET();
+      const toStr = fmt(today);
+      const fromDate = new Date(today.getTime() - days*86400*1000);
+      const fromStr = fmt(fromDate);
+      const d1 = fromStr.replace(/-/g,'');
+      const d2 = toStr.replace(/-/g,'');
+      const token = env.HUBSPOT_TOKEN;
+      const out = { window: { from: fromStr, to: toStr, days }, form: null, endpoints: {} };
+      const tryFetch = async (label, url, opts={}) => {
+        try {
+          const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, ...opts });
+          const txt = await r.text();
+          let parsed; try { parsed = JSON.parse(txt); } catch { parsed = null; }
+          out.endpoints[label] = { url, status: r.status, ok: r.ok, body: parsed ?? txt.slice(0, 2000) };
+        } catch(e) {
+          out.endpoints[label] = { url, error: e.message };
+        }
+      };
+      // 1. Find the form
+      try {
+        const formsRes = await fetch('https://api.hubapi.com/marketing/v3/forms?limit=200', { headers: { Authorization: `Bearer ${token}` } });
+        const formsData = await formsRes.json();
+        const form = (formsData.results || []).find(f => (f.name || '').toLowerCase().includes('disqualification'));
+        out.form = form ? { id: form.id, name: form.name, formType: form.formType, archived: form.archived, createdAt: form.createdAt, updatedAt: form.updatedAt, displayOptions: form.displayOptions } : null;
+        if (!form) {
+          out.error = 'No form found matching "disqualification"';
+          out.allFormNames = (formsData.results || []).map(f => f.name);
+          return jr(out);
+        }
+        const fid = form.id;
+        // 2. Submission count in window
+        let subCount = 0, totalSeen = 0, after = null, pages = 0;
+        const fromMs = new Date(fromStr+'T00:00:00Z').getTime();
+        const toMs = new Date(toStr+'T23:59:59.999Z').getTime();
+        while (pages < 50) {
+          let u = `https://api.hubapi.com/form-integrations/v1/submissions/forms/${fid}?limit=50`;
+          if (after) u += `&after=${after}`;
+          const r = await fetch(u, { headers: { Authorization: `Bearer ${token}` } });
+          if (!r.ok) break;
+          const d = await r.json();
+          const results = d.results || [];
+          totalSeen += results.length;
+          let past = false;
+          for (const s of results) {
+            const ms = s.submittedAt || 0;
+            if (ms >= fromMs && ms <= toMs) subCount++;
+            if (ms < fromMs) past = true;
+          }
+          if (past || !d.paging?.next?.after) break;
+          after = d.paging.next.after;
+          pages++;
+        }
+        out.submissions = { count: subCount, totalSeen, pagesWalked: pages };
+        // 3. Hit every HubSpot analytics variant
+        await tryFetch('forms_total_breakdown', `https://api.hubapi.com/analytics/v2/reports/forms/total?d1=${d1}&d2=${d2}`);
+        await tryFetch('forms_total_with_filter', `https://api.hubapi.com/analytics/v2/reports/forms/total?d1=${d1}&d2=${d2}&f=${encodeURIComponent(fid)}`);
+        await tryFetch('forms_summarize_total', `https://api.hubapi.com/analytics/v2/reports/forms/summarize/total?d1=${d1}&d2=${d2}`);
+        await tryFetch('forms_summarize_total_with_filter', `https://api.hubapi.com/analytics/v2/reports/forms/summarize/total?d1=${d1}&d2=${d2}&f=${encodeURIComponent(fid)}`);
+        await tryFetch('form_details_with_stats', `https://api.hubapi.com/marketing/v3/forms/${fid}`);
+        // 4. Page-level analytics for /not-supported (HubSpot side)
+        await tryFetch('pages_total_breakdown', `https://api.hubapi.com/analytics/v2/reports/sources/total?d1=${d1}&d2=${d2}`);
+        return jr(out);
+      } catch(e) {
+        out.error = e.message;
+        return jr(out, 500);
+      }
+    }
+
     // POST /api/analyzer → Paid Channel Analyzer API
     if (request.method === 'POST' && url.pathname === '/api/analyzer') {
       let body;
