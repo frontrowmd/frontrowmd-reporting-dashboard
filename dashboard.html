@@ -316,6 +316,38 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;hei
 .prgfill{height:100%;background:linear-gradient(90deg,var(--teal),var(--navy));border-radius:50px;transition:width .5s ease}
 .prglbl{font-size:11px;color:var(--grey);margin-top:6px;font-family:var(--font-b)}
 
+/* Sign-Up Rate loading skeleton — inline shimmer placeholders that preview the
+   real card layout while the dedicated cohort fetch runs (12-18s typical). */
+@keyframes su-shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+@keyframes su-pulse{0%,100%{opacity:.55}50%{opacity:1}}
+.su-skel-grid{display:flex;flex-direction:column;gap:14px}
+.su-skel-card{background:#fff;border:1px solid var(--teal-15);border-radius:12px;padding:20px 22px;box-shadow:0 1px 3px rgba(2,15,24,.03)}
+.su-skel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--teal-15)}
+.su-skel-title{font-family:var(--font-h);font-size:18px;font-weight:700;color:var(--navy);display:flex;align-items:center;gap:10px}
+.su-skel-dot{width:8px;height:8px;border-radius:50%;background:var(--teal);animation:su-pulse 1.4s ease-in-out infinite}
+.su-skel-status{font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--teal);font-family:var(--font-b)}
+.su-skel-row{display:grid;gap:10px;margin-bottom:12px}
+.su-skel-row.r-top{grid-template-columns:repeat(6,1fr)}
+.su-skel-row.r-bot{grid-template-columns:repeat(3,1fr);max-width:540px}
+.su-skel-bar{background:linear-gradient(90deg,rgba(114,164,191,.08) 0%,rgba(114,164,191,.30) 50%,rgba(114,164,191,.08) 100%);background-size:200% 100%;animation:su-shimmer 1.8s ease-in-out infinite;border-radius:6px}
+.su-skel-bar.b-lg{height:60px}
+.su-skel-bar.b-md{height:44px}
+.su-skel-bar.b-sm{height:26px;margin-bottom:8px}
+.su-skel-table{margin-top:14px;padding-top:14px;border-top:1px solid var(--teal-15)}
+.su-skel-banner{display:flex;align-items:center;gap:14px;background:linear-gradient(135deg,var(--navy) 0%,var(--mid-navy) 100%);color:#fff;padding:14px 20px;border-radius:10px;margin-bottom:18px;box-shadow:0 4px 12px rgba(23,44,69,.15)}
+.su-skel-banner-spin{width:18px;height:18px;border:2px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:spin .9s linear infinite;flex-shrink:0}
+.su-skel-banner-text{flex:1;min-width:0}
+.su-skel-banner-title{font-family:var(--font-h);font-size:14px;font-weight:700;color:#fff;line-height:1.2}
+.su-skel-banner-step{font-size:11px;color:rgba(255,255,255,.7);margin-top:2px;letter-spacing:.02em}
+.su-skel-banner-bar{flex:0 1 180px;height:6px;background:rgba(255,255,255,.18);border-radius:99px;overflow:hidden}
+.su-skel-banner-fill{height:100%;background:linear-gradient(90deg,var(--teal),#a8d4eb);border-radius:99px;transition:width .4s cubic-bezier(.4,0,.2,1)}
+.su-skel-banner-pct{font-family:var(--font-h);font-size:13px;font-weight:700;color:#fff;font-variant-numeric:tabular-nums;flex-shrink:0;min-width:38px;text-align:right}
+@media(max-width:700px){
+  .su-skel-row.r-top{grid-template-columns:repeat(3,1fr)}
+  .su-skel-banner{flex-wrap:wrap}
+  .su-skel-banner-bar{flex:1 1 100%;order:99}
+}
+
 @media(max-width:900px){
   .hamburger{display:flex}
   .sidebar{position:fixed;left:0;top:0;height:100%;transform:translateX(-100%);transition:transform .25s ease;z-index:15;width:280px;min-width:280px}
@@ -617,7 +649,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r17';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r18';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -723,48 +755,101 @@ async function fd(w,from,to,vsFrom,vsTo){
   // calls re-use S.irfan.special1Data, so changing windows doesn't re-fetch.
   if(AP==='irfan'&&!S.irfan.special1Data&&typeof fdSpecial1==='function'){fdSpecial1();}
 }
+// Compute the 4 cohort month labels (current + 3 prior, newest first) so the
+// loading skeleton can show real labels (e.g. "May 2026") instead of generic
+// placeholders. Matches the server-side cohortMonths computation.
+function _signupCohortMonthLabels(){
+  const out=[];const t=new Date();
+  for(let i=0;i<=3;i++){
+    const d=new Date(t.getFullYear(),t.getMonth()-i,1);
+    out.push(d.toLocaleDateString('en-US',{month:'long',year:'numeric'}));
+  }
+  return out;
+}
+// Render the inline loading skeleton: a sticky banner with spinner + progress
+// bar + live step label across the top, then 4 cohort-shaped skeleton cards
+// (one per cohort month) with shimmering placeholders so users see the
+// structure they're about to get.
+function _renderSignupSkeleton(pct, step){
+  const el=document.getElementById('signup-c');if(!el)return;
+  const months=_signupCohortMonthLabels();
+  const cards=months.map((m,i)=>`
+    <div class="su-skel-card" style="animation-delay:${i*80}ms">
+      <div class="su-skel-head">
+        <div class="su-skel-title"><span class="su-skel-dot" style="animation-delay:${i*200}ms"></span>${m}</div>
+        <div class="su-skel-status">Loading</div>
+      </div>
+      <div class="su-skel-row r-top">
+        <div class="su-skel-bar b-lg"></div><div class="su-skel-bar b-lg"></div><div class="su-skel-bar b-lg"></div>
+        <div class="su-skel-bar b-lg"></div><div class="su-skel-bar b-lg"></div><div class="su-skel-bar b-lg"></div>
+      </div>
+      <div class="su-skel-row r-bot">
+        <div class="su-skel-bar b-md"></div><div class="su-skel-bar b-md"></div><div class="su-skel-bar b-md"></div>
+      </div>
+      <div class="su-skel-table">
+        <div class="su-skel-bar b-sm" style="width:35%"></div>
+        <div class="su-skel-bar b-sm"></div><div class="su-skel-bar b-sm"></div><div class="su-skel-bar b-sm"></div>
+      </div>
+    </div>`).join('');
+  el.innerHTML=`
+    <div class="su-skel-banner" role="status" aria-live="polite">
+      <div class="su-skel-banner-spin" aria-hidden="true"></div>
+      <div class="su-skel-banner-text">
+        <div class="su-skel-banner-title">Loading Sign-Up Rate cohorts</div>
+        <div class="su-skel-banner-step">${step||'Connecting to HubSpot…'}</div>
+      </div>
+      <div class="su-skel-banner-bar"><div class="su-skel-banner-fill" style="width:${Math.max(0,Math.min(100,pct||0))}%"></div></div>
+      <div class="su-skel-banner-pct">${Math.round(pct||0)}%</div>
+    </div>
+    <div class="su-skel-grid">${cards}</div>`;
+}
+function _updateSignupSkeletonProgress(pct,step){
+  const fill=document.querySelector('.su-skel-banner-fill');if(fill)fill.style.width=Math.max(0,Math.min(100,pct))+'%';
+  const stepEl=document.querySelector('.su-skel-banner-step');if(stepEl&&step)stepEl.textContent=step;
+  const pctEl=document.querySelector('.su-skel-banner-pct');if(pctEl)pctEl.textContent=Math.round(pct)+'%';
+}
+
 // Dedicated SignUp Rate fetch — hits /api/signup-cohorts which has its
 // own fresh HubSpot subrequest budget. The main /api/data handler runs
 // out of budget by the time it gets to older cohort months (Feb / March)
 // and silently returns []; the dedicated endpoint avoids that entirely.
+// Skips the full-page overlay in favor of the inline skeleton — users see
+// the page structure being built rather than a blocking spinner.
 async function fdSignup(){
   const mySeq=++_fdSeq;
-  const ldEl=document.getElementById('loading');
-  if(ldEl)ldEl.style.display='flex';
+  // Make the signup page visible immediately so the inline skeleton renders
   document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));
+  const pgEl=document.getElementById('page-signup');if(pgEl)pgEl.classList.add('active');
   document.getElementById('dqb').classList.remove('vis');
-  const pw2=document.getElementById('prgWrap'),pf=document.getElementById('prgFill'),pl=document.getElementById('prgLbl'),lt=document.getElementById('loadText'),ld2=document.getElementById('loadDesc');
-  if(pw2)pw2.style.display='block';
-  if(lt)lt.textContent='Sign-Up Rate';
-  if(ld2)ld2.textContent='Fetching per-cohort deal data from HubSpot';
-  const steps=['Connecting...','Fetching deals for each cohort month...','Building rep breakdowns...','Rendering...'];
-  let si=0;
-  if(pf)pf.style.width='10%';
-  if(pl)pl.textContent=steps[0];
-  const iv=setInterval(()=>{si++;const pct=Math.min(10+si*20,92);if(pf)pf.style.width=pct+'%';if(pl)pl.textContent=steps[Math.min(si,steps.length-1)];},2000);
+  // Hide the global overlay — the inline skeleton replaces it
+  const ldEl=document.getElementById('loading');if(ldEl)ldEl.style.display='none';
+  // Initial skeleton render
+  _renderSignupSkeleton(8,'Connecting to HubSpot…');
+  // Steps roughly mirror the server-side timeline. Per-cohort fetch is
+  // sequential (~3s each), so we tick through month names to give users a
+  // sense that real per-cohort work is happening.
+  const months=_signupCohortMonthLabels();
+  const steps=['Connecting to HubSpot…',`Fetching deals for ${months[0]}…`,`Fetching deals for ${months[1]}…`,`Fetching deals for ${months[2]}…`,`Fetching deals for ${months[3]}…`,'Building per-rep breakdowns…','Filtering pre-launch brands…','Rendering cohort cards…'];
+  let si=0;let curPct=8;
+  const iv=setInterval(()=>{si++;curPct=Math.min(8+si*11,92);_updateSignupSkeletonProgress(curPct,steps[Math.min(si,steps.length-1)]);},1800);
   try{
     const r=await fetch(SIGNUP_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:PW})});
     const d=await r.json();
     clearInterval(iv);
     if(mySeq!==_fdSeq)return;
     if(r.ok&&!d.error){
-      // Stored shape mirrors the old S.signup.data structure so renderSignUp
-      // continues to read d.signUpRate the same way.
       S.signup.data=d;
-      if(pf)pf.style.width='100%';if(pl)pl.textContent='Complete!';if(lt)lt.textContent='Ready';
-      await new Promise(ok=>setTimeout(ok,400));
+      _updateSignupSkeletonProgress(100,'Complete!');
+      await new Promise(ok=>setTimeout(ok,260));
     } else {
       console.error('SignUp API error:',r.status,d);
-      if(pl)pl.textContent='Error: '+(d.detail||d.error||'Unknown');
-      if(pf)pf.style.width='0%';
+      _updateSignupSkeletonProgress(curPct,'Error: '+(d.detail||d.error||'Unknown'));
       await new Promise(ok=>setTimeout(ok,1500));
     }
   }catch(e){
     console.error(e);clearInterval(iv);
-    if(pl)pl.textContent='Connection error';
+    _updateSignupSkeletonProgress(curPct,'Connection error');
     await new Promise(ok=>setTimeout(ok,1000));
-  } finally {
-    if(mySeq===_fdSeq){if(ldEl)ldEl.style.display='none';if(pw2)pw2.style.display='none';}
   }
   if(mySeq===_fdSeq)renderPage();
 }
@@ -3294,9 +3379,12 @@ function renderSignUp(){
     if(typeof fdSignup==='function'&&!S.signup._fetching){
       S.signup._fetching=true;
       Promise.resolve(fdSignup()).finally(()=>{S.signup._fetching=false;});
-      document.getElementById('signup-c').innerHTML='<div style="color:var(--grey);padding:24px 0;text-align:center;font-style:italic">Loading cohort data…</div>';
+      // Don't double-render — fdSignup already paints the skeleton.
     } else if(S.signup._fetching){
-      document.getElementById('signup-c').innerHTML='<div style="color:var(--grey);padding:24px 0;text-align:center;font-style:italic">Loading cohort data…</div>';
+      // Skeleton is already on screen from fdSignup; only re-render it if
+      // the page area got stomped by something else.
+      const el=document.getElementById('signup-c');
+      if(el&&!el.querySelector('.su-skel-banner'))_renderSignupSkeleton(15,'Loading cohort data…');
     } else {
       document.getElementById('signup-c').innerHTML='<div style="color:var(--grey)">No data</div>';
     }
