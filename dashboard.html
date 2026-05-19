@@ -310,6 +310,11 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;hei
 .hamburger span{display:block;width:22px;height:2px;background:var(--navy);border-radius:2px;transition:all .2s}
 .sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(2,15,24,.5);z-index:9}
 
+/* 3-column note card (PAUSE · Scoring · Naming) — stacks on narrow screens */
+@media(max-width:900px){
+  .meta-notes-3col{grid-template-columns:1fr !important}
+}
+
 /* Progress bar */
 .prgw{max-width:280px;margin:12px auto 0}
 .prgbar{height:6px;background:var(--teal-15);border-radius:50px;overflow:hidden}
@@ -598,7 +603,10 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
       <div class="sec sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:#1877F2;border-radius:50%;margin-right:8px;vertical-align:middle"></span>Meta — Campaigns</div><div style="font-size:12px;color:var(--grey);margin-bottom:10px">Sortable · stage-filterable · sourced from the Paid Ads Dashboard payload</div><div id="ov-meta-campaigns"></div></div>
 
       <!-- Row 9: Meta — Ad Creatives (mirror of Irfan Dashboard table) -->
-      <div class="sec sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:#1877F2;border-radius:50%;margin-right:8px;vertical-align:middle"></span>Meta — Ad Creatives</div><div style="font-size:12px;color:var(--grey);margin-bottom:10px">Sortable · all creatives across campaigns · sourced from the Paid Ads Dashboard payload</div><div id="ov-meta-creatives"></div></div>
+      <div class="sec sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:#1877F2;border-radius:50%;margin-right:8px;vertical-align:middle"></span>Meta — Ad Creatives</div><div style="font-size:12px;color:var(--grey);margin-bottom:10px">Sortable · filterable by Tag &amp; Flags · all creatives across campaigns · sourced from the Paid Ads Dashboard payload</div><div id="ov-meta-creatives"></div></div>
+
+      <!-- Row 10: Meta — Audiences (ad-set level) -->
+      <div class="sec sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:#1877F2;border-radius:50%;margin-right:8px;vertical-align:middle"></span>Meta — Audiences</div><div style="font-size:12px;color:var(--grey);margin-bottom:10px">Sortable · ad-set level breakdown of spend, performance, and demos</div><div id="ov-meta-audiences"></div></div>
 
     </div>
     <div class="pg" id="page-calculator"><div class="sec">
@@ -730,7 +738,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r23';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r24';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -1729,7 +1737,8 @@ function renderIrfan(){
   // Meta Campaign + Creative tables — each in its own card. Both lazy-loaded
   // from the analyzer payload via _renderIrfanMetaTablesLoader.
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:16px"><div class="irf-card-title">Meta — Campaigns</div><div class="irf-card-sub">Sortable · stage-filterable · sourced from the Paid Ads Dashboard payload</div><div id="irfan-meta-campaigns"></div></div>';
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:24px"><div class="irf-card-title">Meta — Ad Creatives</div><div class="irf-card-sub">Sortable · all creatives across campaigns · sourced from the Paid Ads Dashboard payload</div><div id="irfan-meta-creatives"></div></div>';
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:16px"><div class="irf-card-title">Meta — Ad Creatives</div><div class="irf-card-sub">Sortable · filterable by Tag &amp; Flags · all creatives across campaigns · sourced from the Paid Ads Dashboard payload</div><div id="irfan-meta-creatives"></div></div>';
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:24px"><div class="irf-card-title">Meta — Audiences</div><div class="irf-card-sub">Sortable · ad-set level breakdown of spend, performance, and demos</div><div id="irfan-meta-audiences"></div></div>';
 
   document.getElementById('irfan-c').innerHTML=h;
 
@@ -1750,8 +1759,9 @@ function _renderIrfanMetaTablesLoader(winOverride){
   // fetch hydrates both pages.
   const campTargets=[document.getElementById('irfan-meta-campaigns'),document.getElementById('ov-meta-campaigns')].filter(Boolean);
   const creTargets=[document.getElementById('irfan-meta-creatives'),document.getElementById('ov-meta-creatives')].filter(Boolean);
-  if(!campTargets.length&&!creTargets.length)return;
-  const _setBoth=(html)=>{[...campTargets,...creTargets].forEach(el=>el.innerHTML=html);};
+  const audTargets=[document.getElementById('irfan-meta-audiences'),document.getElementById('ov-meta-audiences')].filter(Boolean);
+  if(!campTargets.length&&!creTargets.length&&!audTargets.length)return;
+  const _setBoth=(html)=>{[...campTargets,...creTargets,...audTargets].forEach(el=>el.innerHTML=html);};
   // Window override lets callers (e.g. Overview/renderDash) request data for
   // a different selector window than the Irfan page is showing.
   const irfWin=winOverride||S.irfan?.win||'mtd';
@@ -1844,7 +1854,10 @@ function _irfanStatusBadge(st,sp){
 // Callbacks invoked by header clicks / stage filter pills.
 window.irfanSortCamp=function(col){const s=S.irfan.metaCampSort||(S.irfan.metaCampSort={col:'cpd',dir:'desc'});if(s.col===col)s.dir=s.dir==='desc'?'asc':'desc';else{s.col=col;s.dir=(col==='name'||col==='status'||col==='stage')?'asc':'desc';}if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD);};
 window.irfanSortCre=function(col){const s=S.irfan.metaCreSort||(S.irfan.metaCreSort={col:'cpd',dir:'desc'});if(s.col===col)s.dir=s.dir==='desc'?'asc':'desc';else{s.col=col;s.dir=(col==='name'||col==='status')?'asc':'desc';}if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD);};
+window.irfanSortAud=function(col){const s=S.irfan.metaAudSort||(S.irfan.metaAudSort={col:'cpd',dir:'desc'});if(s.col===col)s.dir=s.dir==='desc'?'asc':'desc';else{s.col=col;s.dir=(col==='name')?'asc':'desc';}if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD);};
 window.irfanCampStageF=function(stage){S.irfan.metaCampStageF=stage;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD);};
+window.irfanCreTagF=function(tag){S.irfan.metaCreTagF=tag;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD);};
+window.irfanCreFlagF=function(flag){S.irfan.metaCreFlagF=flag;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD);};
 // Toggle the visibility of a campaign's nested creative rows.
 window.irfanToggleCampCreatives=function(rowId){
   const rows=document.querySelectorAll('.'+rowId+'-cre');
@@ -1866,18 +1879,24 @@ function _renderIrfanMetaTables(d){
   // call hydrates both pages.
   const campTargets=[document.getElementById('irfan-meta-campaigns'),document.getElementById('ov-meta-campaigns')].filter(Boolean);
   const creTargets=[document.getElementById('irfan-meta-creatives'),document.getElementById('ov-meta-creatives')].filter(Boolean);
-  if(!campTargets.length&&!creTargets.length)return;
+  const audTargets=[document.getElementById('irfan-meta-audiences'),document.getElementById('ov-meta-audiences')].filter(Boolean);
+  if(!campTargets.length&&!creTargets.length&&!audTargets.length)return;
   // First target used for back-compat in any later code that still reads campTarget/creTarget.
   const campTarget=campTargets[0]||null;
   const creTarget=creTargets[0]||null;
   const meta=d&&d.channels&&d.channels.meta;
-  if(!meta){const empty='<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px">No Meta data available for this window</div>';[...campTargets,...creTargets].forEach(el=>el.innerHTML=empty);return;}
-  // Defaults: sort by Score descending (now that we score everything)
-  if(!S.irfan.metaCampSort)S.irfan.metaCampSort={col:'_score',dir:'desc'};
-  if(!S.irfan.metaCreSort)S.irfan.metaCreSort={col:'_score',dir:'desc'};
+  if(!meta){const empty='<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px">No Meta data available for this window</div>';[...campTargets,...creTargets,...audTargets].forEach(el=>el.innerHTML=empty);return;}
+  // Defaults: sort by CPD descending (highest CPD first — worst performers
+  // at the top so problems are immediately visible).
+  if(!S.irfan.metaCampSort)S.irfan.metaCampSort={col:'cpd',dir:'desc'};
+  if(!S.irfan.metaCreSort)S.irfan.metaCreSort={col:'cpd',dir:'desc'};
+  if(!S.irfan.metaAudSort)S.irfan.metaAudSort={col:'cpd',dir:'desc'};
   if(!S.irfan.metaCampStageF)S.irfan.metaCampStageF='all';
+  if(!S.irfan.metaCreTagF)S.irfan.metaCreTagF='all';
+  if(!S.irfan.metaCreFlagF)S.irfan.metaCreFlagF='all';
   if(S.irfan.metaAllExpanded==null)S.irfan.metaAllExpanded=false;
-  const campSort=S.irfan.metaCampSort,creSort=S.irfan.metaCreSort,stageF=S.irfan.metaCampStageF;
+  const campSort=S.irfan.metaCampSort,creSort=S.irfan.metaCreSort,audSort=S.irfan.metaAudSort,stageF=S.irfan.metaCampStageF;
+  const tagF=S.irfan.metaCreTagF,flagF=S.irfan.metaCreFlagF;
   const fatigueMap=meta.fatigueMap||{};
 
   // ── Campaigns ──
@@ -2024,7 +2043,7 @@ function _renderIrfanMetaTables(d){
         const _ftBadge=fatigueBadgeFromMap(fatigueMap,'meta',ncr.name);
         const _subj=(typeof detectSubject==='function')?detectSubject(ncr.name):{type:'talent'};
         const _nameBad=_subj&&_subj.type==='unknown';
-        const _nameBadge=_nameBad?' <span title="Name doesn\'t match {Format}_{Talent}_{Concept}_{Setting}_{Variant} convention" style="cursor:help;font-size:9px;background:rgba(243,156,18,.12);color:#e67e22;padding:1px 5px;border-radius:4px;font-weight:700;white-space:nowrap">⚠ Naming</span>':'';
+        const _nameBadge=_nameBad?' <span title="Name doesn\'t match {Format}_{Talent}_{Concept}_{Setting}_{Variant} convention" style="cursor:help;font-size:9px;background:rgba(124,58,237,.10);color:#7C3AED;padding:1px 6px;border-radius:4px;font-weight:700;white-space:nowrap;border:1px solid rgba(124,58,237,.30)">📝 Naming</span>':'';
         campH+='<tr class="'+_rowId+'-cre" style="display:'+(_showNested?'table-row':'none')+';background:rgba(114,164,191,.04);border-bottom:1px solid var(--border)">';
         campH+='<td style="padding:6px 6px 6px 30px;color:var(--navy);font-size:10px" title="'+(ncr.name||'').replace(/"/g,'&quot;')+'">'+_thumb+nNm+_ftBadge+_nameBadge+'</td>';
         campH+='<td></td>';
@@ -2070,48 +2089,77 @@ function _renderIrfanMetaTables(d){
   campH+='</tbody></table></div>';
 
   // ── Creatives ──
-  let creRows=(meta.creatives||[]).filter(c=>c.spend>0);
-  // Apply scoring (Score + Tag columns)
-  if(typeof scoreCreatives==='function'&&creRows.length>0){
-    try{scoreCreatives(creRows);}catch(e){console.warn('scoreCreatives(creatives) failed:',e);}
+  // Step 1: unfiltered set with scoring (used to compute PAUSE percentiles
+  // on the FULL set so thresholds remain stable when the user filters)
+  let creAll=(meta.creatives||[]).filter(c=>c.spend>0);
+  if(typeof scoreCreatives==='function'&&creAll.length>0){
+    try{scoreCreatives(creAll);}catch(e){console.warn('scoreCreatives(creatives) failed:',e);}
   }
-  creRows=_irfanSortRows(creRows,creSort.col,creSort.dir);
-  const rSp=creRows.map(c=>c.spend),rIm=creRows.map(c=>c.impressions||0),rCl=creRows.map(c=>c.clicks||0),rCt=creRows.map(c=>c.ctr||0),rDe=creRows.map(c=>c.demos||0),rCp=creRows.map(c=>c.demos>0?c.spend/c.demos:0),rQu=creRows.map(c=>c.qualified||0);
   // Watch rate = videoP25 / impressions × 100 (% of impressions where viewer
   // watched at least 25% of the video — a standard "hook" metric for Meta video creatives).
   const watchRate=(c)=>(c.impressions>0?((c.videoP25||0)/c.impressions)*100:null);
-  const rWt=creRows.map(c=>watchRate(c)||0);
-  const rFr=creRows.map(c=>c.frequency||0),rSc=creRows.map(c=>c._score||0);
-  // PAUSE flag — relative thresholds across the displayed creatives. A creative
-  // is flagged "PAUSE" when it is BAD on all 3 leading indicators:
-  //   • Low CTR        — bottom 30% of CTR in the displayed set
-  //   • Low Watch rate — bottom 30% of (videoP25 / impressions)
-  //   • High CPD       — top 30% of CPD, OR no demos at all (worst case)
-  // Spend gate: must have ≥ $25 spent (below that there's not enough signal).
-  // A creative with e.g. high CPD but excellent CTR will NOT be flagged.
+  // PAUSE flag — relative thresholds across ALL creatives in the window
+  // (not just the filtered set), so the bar doesn't shift as the user
+  // filters. Bad on all 3 indicators: Low CTR, Low Watch, High CPD.
   const _pctile=(arr,p)=>{const s=arr.filter(v=>v!=null&&!isNaN(v)).slice().sort((a,b)=>a-b);if(!s.length)return null;return s[Math.min(s.length-1,Math.max(0,Math.floor(s.length*p)))];};
-  const _ctrLow=_pctile(creRows.map(c=>c.ctr||0),0.30);
-  const _watchLow=_pctile(creRows.filter(c=>c.impressions>0).map(c=>watchRate(c)),0.30);
-  const _cpdHigh=_pctile(creRows.filter(c=>c.demos>0).map(c=>c.spend/c.demos),0.70);
+  const _ctrLow=_pctile(creAll.map(c=>c.ctr||0),0.30);
+  const _watchLow=_pctile(creAll.filter(c=>c.impressions>0).map(c=>watchRate(c)),0.30);
+  const _cpdHigh=_pctile(creAll.filter(c=>c.demos>0).map(c=>c.spend/c.demos),0.70);
   const PAUSE_SPEND_MIN=25;
   const isPause=(c)=>{
-    if((c.spend||0)<PAUSE_SPEND_MIN)return false; // not enough signal yet
+    if((c.spend||0)<PAUSE_SPEND_MIN)return false;
     const ctrBad=_ctrLow!=null&&(c.ctr||0)<=_ctrLow;
     const wr=watchRate(c);
     const wrBad=_watchLow!=null&&c.impressions>0&&wr!=null&&wr<=_watchLow;
-    // High CPD: either >= 70th-pctile CPD OR no demos at all (spend with zero demos = worst)
     const cpdBad=(c.demos===0)||(c.demos>0&&_cpdHigh!=null&&(c.spend/c.demos)>=_cpdHigh);
     return ctrBad&&wrBad&&cpdBad;
   };
-  let pauseCount=0; for(const c of creRows) if(isPause(c)) pauseCount++;
+  // Tag every creative with flag flags (pause / fatigue / naming-bad) BEFORE
+  // filtering, so badges + filter logic are based on the same data.
+  for(const c of creAll){
+    c._pause=isPause(c);
+    c._fatigued=!!(fatigueMap['meta::'+(c.name||'').toLowerCase()]||{}).fatigued;
+    const _subj=(typeof detectSubject==='function')?detectSubject(c.name):{type:'talent'};
+    c._namingBad=!!(_subj&&_subj.type==='unknown');
+  }
+  // Apply Tag + Flag filters (default: 'all', so no-op)
+  let creRows=creAll.slice();
+  if(tagF!=='all')creRows=creRows.filter(c=>c._tag===tagF);
+  if(flagF!=='all')creRows=creRows.filter(c=>{
+    if(flagF==='pause')return c._pause;
+    if(flagF==='fatigue')return c._fatigued;
+    if(flagF==='naming')return c._namingBad;
+    if(flagF==='any')return c._pause||c._fatigued||c._namingBad;
+    return true;
+  });
+  creRows=_irfanSortRows(creRows,creSort.col,creSort.dir);
+  const rSp=creRows.map(c=>c.spend),rIm=creRows.map(c=>c.impressions||0),rCl=creRows.map(c=>c.clicks||0),rCt=creRows.map(c=>c.ctr||0),rDe=creRows.map(c=>c.demos||0),rCp=creRows.map(c=>c.demos>0?c.spend/c.demos:0),rQu=creRows.map(c=>c.qualified||0);
+  const rWt=creRows.map(c=>watchRate(c)||0);
+  const rFr=creRows.map(c=>c.frequency||0),rSc=creRows.map(c=>c._score||0);
+  // pauseCount across ALL creatives (so the badge count doesn't shift on filter)
+  let pauseCount=0; for(const c of creAll) if(c._pause) pauseCount++;
+  let fatigueCount=0; for(const c of creAll) if(c._fatigued) fatigueCount++;
+  let namingBadCount=0; for(const c of creAll) if(c._namingBad) namingBadCount++;
 
   let creH='';
-  creH+='<div style="font-size:11px;color:var(--grey);font-variant-numeric:tabular-nums;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:10px">'
-    +'<span>'+creRows.length+' rows · sort by '+creSort.col+' '+creSort.dir+'</span>'
-    +(pauseCount>0
-      ?'<span style="font-family:var(--font-h);font-size:10px;font-weight:700;color:#fff;background:#DC2626;padding:3px 9px;border-radius:99px;letter-spacing:.04em" title="Bad on all 3: low CTR, low Watch rate, high CPD (or no demos)">⚠ '+pauseCount+' PAUSE '+(pauseCount===1?'candidate':'candidates')+'</span>'
-      :'<span style="color:var(--green);font-weight:600">✓ no pause candidates</span>'
-    )+'</div>';
+  // Row count + counts of each flag type across the FULL set (so it stays stable on filter)
+  creH+='<div style="font-size:11px;color:var(--grey);font-variant-numeric:tabular-nums;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">'
+    +'<span>'+creRows.length+' rows'+(creRows.length!==creAll.length?' of '+creAll.length:'')+' · sort by '+creSort.col+' '+creSort.dir+'</span>'
+    +'<span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
+    +(pauseCount>0?'<span style="font-family:var(--font-h);font-size:10px;font-weight:700;color:#fff;background:#DC2626;padding:3px 9px;border-radius:99px;letter-spacing:.04em" title="Bad on all 3: low CTR, low Watch rate, high CPD (or no demos)">⚠ '+pauseCount+' PAUSE</span>':'')
+    +(fatigueCount>0?'<span style="font-family:var(--font-h);font-size:10px;font-weight:700;color:#e67e22;background:rgba(243,156,18,.12);padding:3px 9px;border-radius:99px;letter-spacing:.04em" title="CTR declined >15% over the last 14 days">⚠ '+fatigueCount+' Fatigue</span>':'')
+    +(namingBadCount>0?'<span style="font-family:var(--font-h);font-size:10px;font-weight:700;color:#7C3AED;background:rgba(124,58,237,.10);border:1px solid rgba(124,58,237,.30);padding:2px 9px;border-radius:99px;letter-spacing:.04em" title="Doesn\'t match {Format}_{Talent}_{Concept}_{Setting}_{Variant} convention">📝 '+namingBadCount+' Naming</span>':'')
+    +(pauseCount===0&&fatigueCount===0&&namingBadCount===0?'<span style="color:var(--green);font-weight:600">✓ all clear</span>':'')
+    +'</span></div>';
+  // Tag + Flag filter pills
+  const _tagPills=[{k:'all',l:'All',c:'var(--grey)'},{k:'WINNER',l:'Winner',c:'#2ecc71'},{k:'TESTING',l:'Testing',c:'#f39c12'},{k:'LOSER',l:'Loser',c:'#e74c3c'}];
+  const _flagPills=[{k:'all',l:'All',c:'var(--grey)'},{k:'any',l:'Any flag',c:'var(--navy)'},{k:'pause',l:'PAUSE',c:'#DC2626'},{k:'fatigue',l:'Fatigue',c:'#e67e22'},{k:'naming',l:'Naming',c:'#7C3AED'}];
+  creH+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap"><span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;margin-right:2px">Tag</span>';
+  for(const p of _tagPills){const isA=tagF===p.k;creH+='<button onclick="irfanCreTagF(\''+p.k+'\')" style="padding:5px 12px;border-radius:50px;font-size:10px;font-weight:'+(isA?'700':'500')+';border:'+(isA?'none':'1px solid '+p.c)+';background:'+(isA?p.c:'transparent')+';color:'+(isA?'#fff':p.c)+';cursor:pointer;font-family:var(--font-h)">'+p.l+'</button>';}
+  creH+='<div style="width:1px;height:20px;background:var(--border);margin:0 4px"></div>';
+  creH+='<span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;margin-right:2px">Flags</span>';
+  for(const p of _flagPills){const isA=flagF===p.k;creH+='<button onclick="irfanCreFlagF(\''+p.k+'\')" style="padding:5px 12px;border-radius:50px;font-size:10px;font-weight:'+(isA?'700':'500')+';border:'+(isA?'none':'1px solid '+p.c)+';background:'+(isA?p.c:'transparent')+';color:'+(isA?'#fff':p.c)+';cursor:pointer;font-family:var(--font-h)">'+p.l+'</button>';}
+  creH+='</div>';
   creH+='<div style="overflow-x:auto"><table class="irf-meta-table" style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr style="border-bottom:1.5px solid var(--border)">';
   creH+='<th style="width:48px;padding:8px 4px;text-align:center;font-size:9px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em" title="Pause candidates: bad on CTR + Watch + CPD">Flag</th>';
   creH+='<th style="width:68px;padding:8px 4px"></th>';
@@ -2133,17 +2181,16 @@ function _renderIrfanMetaTables(d){
     const c=creRows[i];const cpd=c.demos>0?c.spend/c.demos:null;
     const nm=(c.name||'').length>56?(c.name||'').slice(0,53)+'…':(c.name||'');
     const wr=watchRate(c);
-    const pause=isPause(c);
+    const pause=c._pause; // precomputed on creAll above
     let thumb='';
     if(c.thumbnail)thumb='<img src="'+c.thumbnail+'" style="width:56px;height:56px;object-fit:cover;border-radius:6px;display:block" onerror="this.style.display=\'none\';this.parentNode.innerHTML=this.parentNode.innerHTML.replace(/<img[^>]*>/,\'📷\')">';
     else thumb='<div style="width:56px;height:56px;border-radius:6px;background:var(--lighter);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--teal)">📷</div>';
     // Fatigue badge — hover shows decline details (CTR drop % + first/last CTR)
     const _ftBadge=fatigueBadgeFromMap(fatigueMap,'meta',c.name);
     // Naming-check badge — flags creatives that don't follow the
-    // {Format}_{Talent}_{Concept}_{Setting}_{Variant} convention
-    const _subj=(typeof detectSubject==='function')?detectSubject(c.name):{type:'talent'};
-    const _nameBad=_subj&&_subj.type==='unknown';
-    const _nameBadge=_nameBad?' <span title="Name doesn\'t match {Format}_{Talent}_{Concept}_{Setting}_{Variant} convention" style="cursor:help;font-size:9px;background:rgba(243,156,18,.12);color:#e67e22;padding:1px 5px;border-radius:4px;font-weight:700;white-space:nowrap">⚠ Naming</span>':'';
+    // {Format}_{Talent}_{Concept}_{Setting}_{Variant} convention (precomputed)
+    const _nameBad=!!c._namingBad;
+    const _nameBadge=_nameBad?' <span title="Name doesn\'t match {Format}_{Talent}_{Concept}_{Setting}_{Variant} convention" style="cursor:help;font-size:9px;background:rgba(124,58,237,.10);color:#7C3AED;padding:1px 6px;border-radius:4px;font-weight:700;white-space:nowrap;border:1px solid rgba(124,58,237,.30)">📝 Naming</span>':'';
     creH+='<tr style="border-bottom:1px solid var(--border);'+(pause?'background:rgba(220,38,38,.06)':'')+'">';
     creH+='<td style="padding:6px 4px;text-align:center">'+(pause?'<span title="Low CTR + Low Watch + High CPD — pause candidate" style="display:inline-block;font-family:var(--font-h);font-size:9px;font-weight:700;color:#fff;background:#DC2626;padding:2px 7px;border-radius:99px;letter-spacing:.04em">PAUSE</span>':'')+'</td>';
     creH+='<td style="padding:6px 4px">'+thumb+'</td>';
@@ -2162,66 +2209,102 @@ function _renderIrfanMetaTables(d){
     creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+(c._tag?scoreTag(c._tag):'—')+'</td>';
     creH+='</tr>';
   }
-  if(!creRows.length)creH+='<tr><td colspan="15" style="padding:16px;text-align:center;color:var(--grey)">No creatives</td></tr>';
+  if(!creRows.length)creH+='<tr><td colspan="15" style="padding:16px;text-align:center;color:var(--grey)">No creatives match the current filters</td></tr>';
   creH+='</tbody></table></div>';
-  // PAUSE-criteria footer — explains what triggers the badge, with the actual
-  // percentile thresholds computed from THIS displayed set so users see the
-  // concrete numbers (not just "bottom 30%"). Falls back gracefully if not
-  // enough creatives in the set to compute percentiles.
+
+  // ── 3-column note card: PAUSE triggers · Scoring Formula · Naming ──
   const _ctrLowStr=_ctrLow!=null?_ctrLow.toFixed(2)+'%':'—';
   const _watchLowStr=_watchLow!=null?_watchLow.toFixed(1)+'%':'—';
   const _cpdHighStr=_cpdHigh!=null?f$(_cpdHigh):'—';
-  creH+='<div style="margin-top:10px;padding:10px 12px;background:rgba(220,38,38,.04);border:1px solid rgba(220,38,38,.20);border-left:3px solid #DC2626;border-radius:8px;font-size:10px;color:var(--navy);line-height:1.65">'
-    +'<div style="font-family:var(--font-h);font-size:10px;font-weight:700;color:#DC2626;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">What triggers a PAUSE flag?</div>'
-    +'<div style="color:#172C45">A creative is flagged <b>PAUSE</b> when it is bad on <b>all three</b> leading indicators (relative thresholds, recomputed for this time window):</div>'
+  // Naming compliance is computed across creAll (the full set) so the
+  // percentage reflects portfolio health, not what's currently filtered.
+  let _nmTot=0,_nmTagged=0;
+  for(const cr of creAll){_nmTot++;if(!cr._namingBad)_nmTagged++;}
+  const _nmPct=_nmTot>0?Math.round(_nmTagged/_nmTot*100):100;
+  const _nmColor=_nmPct===100?'#16A34A':_nmPct>=60?'#F59E0B':'#DC2626';
+  creH+='<div class="meta-notes-3col" style="margin-top:20px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">';
+  // Column 1 — PAUSE flag triggers (red)
+  creH+='<div style="padding:14px 16px;background:rgba(220,38,38,.04);border:1px solid rgba(220,38,38,.20);border-left:3px solid #DC2626;border-radius:10px;font-size:11px;color:var(--navy);line-height:1.65">'
+    +'<div style="font-family:var(--font-h);font-size:12px;font-weight:700;color:#DC2626;margin-bottom:8px;display:flex;align-items:center;gap:6px"><span style="display:inline-block;font-size:9px;font-weight:700;color:#fff;background:#DC2626;padding:2px 7px;border-radius:99px;letter-spacing:.04em">PAUSE</span> Flag triggers</div>'
+    +'<div>Flagged when <b>all three</b> leading indicators are bad (recomputed each window):</div>'
     +'<ul style="margin:6px 0 0 18px;padding:0">'
-    +'<li><b>Low CTR</b> — at or below the bottom 30% of CTR &nbsp;<span style="color:var(--grey)">(≤ '+_ctrLowStr+' for this window)</span></li>'
-    +'<li><b>Low Watch rate</b> — at or below the bottom 30% of % impressions that watched ≥25% &nbsp;<span style="color:var(--grey)">(≤ '+_watchLowStr+' for this window)</span></li>'
-    +'<li><b>High CPD</b> — at or above the top 30% of CPD, <i>or</i> no demos at all (spend with zero output) &nbsp;<span style="color:var(--grey)">(≥ '+_cpdHighStr+' for this window)</span></li>'
+    +'<li><b>Low CTR</b> — bottom 30% &nbsp;<span style="color:var(--grey)">(≤ '+_ctrLowStr+')</span></li>'
+    +'<li><b>Low Watch</b> — bottom 30% of % impressions ≥25% &nbsp;<span style="color:var(--grey)">(≤ '+_watchLowStr+')</span></li>'
+    +'<li><b>High CPD</b> — top 30%, or zero demos &nbsp;<span style="color:var(--grey)">(≥ '+_cpdHighStr+')</span></li>'
     +'</ul>'
-    +'<div style="margin-top:6px;color:var(--grey)">Spend gate: must have ≥ $'+PAUSE_SPEND_MIN+' spent — below that there\'s not enough signal yet. A creative that is e.g. high-CPD but excellent-CTR will <b>not</b> be flagged (one good metric protects it).</div>'
+    +'<div style="margin-top:8px;color:var(--grey)">Spend gate: ≥ $'+PAUSE_SPEND_MIN+' required. One good metric protects from PAUSE.</div>'
     +'</div>';
+  // Column 2 — Creative Scoring Formula (teal/navy)
+  creH+='<div style="padding:14px 16px;background:rgba(114,164,191,.04);border:1px solid rgba(114,164,191,.20);border-left:3px solid var(--teal);border-radius:10px;font-size:11px;color:var(--navy);line-height:1.65">'
+    +'<div style="font-family:var(--font-h);font-size:12px;font-weight:700;color:var(--navy);margin-bottom:8px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">📊 Creative Scoring <span style="font-size:9px;color:var(--grey);font-weight:600;text-transform:none;letter-spacing:0">stage-aware · per-campaign relative</span></div>'
+    +'<div><b>TOF (S01):</b> 25% CTR + 20% Video Views + 20% Impr. Share + 15% Qual Rate + 10% CPA⁻¹ + 10% Demo Vol.</div>'
+    +'<div><b>MOF (S02):</b> 25% Clicks + 25% CPA⁻¹ + 20% Qual Rate + 15% CTR + 15% Demo Vol.</div>'
+    +'<div><b>BOF/Retargeting (S03+):</b> 30% CPA⁻¹ + 25% Qual Rate + 20% Demo Vol. + 15% CTR + 10% Clicks</div>'
+    +'<div style="margin-top:8px"><b>Tags:</b> <span style="color:#2ecc71;font-weight:700">WINNER ≥ 65</span> · <span style="color:#f39c12;font-weight:700">TESTING 35–64</span> · <span style="color:#e74c3c;font-weight:700">LOSER &lt; 35</span></div>'
+    +'<div style="margin-top:4px;color:var(--grey);font-size:10px"><b>&lt; 7d active:</b> protected from LOSER. <b>Auto-LOSER:</b> &gt;14d w/ score &lt;35, OR ≥ avg spend w/ score &lt;35, OR both w/ score &lt;50.</div>'
+    +'</div>';
+  // Column 3 — Creative Naming (purple, matches the inline badge)
+  creH+='<div style="padding:14px 16px;background:rgba(124,58,237,.04);border:1px solid rgba(124,58,237,.22);border-left:3px solid #7C3AED;border-radius:10px;font-size:11px;color:var(--navy);line-height:1.65">'
+    +'<div style="font-family:var(--font-h);font-size:12px;font-weight:700;color:#7C3AED;margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">📝 Creative Naming <span style="background:'+_nmColor+'15;color:'+_nmColor+';padding:2px 8px;border-radius:50px;font-size:9px;font-weight:700">'+_nmPct+'% compliant</span></div>'
+    +'<div style="color:var(--grey);margin-bottom:6px"><strong style="color:var(--navy)">'+_nmTagged+'</strong> of <strong style="color:var(--navy)">'+_nmTot+'</strong> creatives follow the convention.</div>'
+    +'<div style="padding:6px 10px;background:#fff;border-radius:6px;font-family:monospace;font-size:11px;color:var(--navy);border:1px solid rgba(124,58,237,.15);margin-bottom:6px">{Format}_{Talent}_{Concept}_{Setting}_{Variant}</div>'
+    +'<div style="color:var(--grey);font-size:10px;margin-bottom:6px">e.g. <span style="font-family:monospace;color:var(--navy)">Vid_Aurea_TrustHook_Studio_v1</span></div>'
+    +'<div style="color:var(--grey);font-size:10px;line-height:1.7"><b>Format:</b> Vid, Img, Car, UGC<br><b>Talent:</b> Irfan, Aurea, Talar, NoTalent<br><b>Concept:</b> TrustHook, SocialProof, BeforeAfter…<br><b>Setting:</b> Studio, Office, Outdoor, Screen…<br><b>Variant:</b> v1, v2, A, B</div>'
+    +'</div>';
+  creH+='</div>';
 
-  // ── Audiences table (ad-set level for Meta) ──
+  // ── Audiences table (rendered to its own target div, not appended to creH) ──
+  let audH='';
   const audiences=meta.audiences||[];
   if(audiences.length){
+    // Sort by the user-selected column (default: cpd desc)
+    const _audSort=(a,b)=>{
+      const col=audSort.col;
+      let av,bv;
+      if(col==='name'){av=(a.name||'').toLowerCase();bv=(b.name||'').toLowerCase();}
+      else if(col==='cpd'){av=a.demos>0?a.spend/a.demos:null;bv=b.demos>0?b.spend/b.demos:null;}
+      else if(col==='cpc'){av=a.clicks>0?a.spend/a.clicks:null;bv=b.clicks>0?b.spend/b.clicks:null;}
+      else{av=a[col]||0;bv=b[col]||0;}
+      if(av==null&&bv==null)return 0;
+      if(av==null)return 1;if(bv==null)return -1;
+      if(av<bv)return audSort.dir==='asc'?-1:1;
+      if(av>bv)return audSort.dir==='asc'?1:-1;
+      return 0;
+    };
+    const sorted=audiences.slice().sort(_audSort);
     const aSp=audiences.map(a=>a.spend||0),aDe=audiences.map(a=>a.demos||0),aCp=audiences.map(a=>a.demos>0?a.spend/a.demos:0);
-    // Default sort: spend desc
-    const sorted=audiences.slice().sort((a,b)=>(b.spend||0)-(a.spend||0));
     let aTSp=0,aTDe=0,aTIm=0,aTCl=0;
-    creH+='<div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--teal-15)"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Audiences (Meta Ad Sets)</div>';
-    creH+='<div style="font-size:11px;color:var(--grey);margin-bottom:10px">Audience-level breakdown of spend, performance, and demos. Sorted by spend descending. '+sorted.length+' audience'+(sorted.length===1?'':'s')+' with activity in this window.</div>';
-    creH+='<div style="overflow-x:auto"><table class="irf-meta-table" style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr style="border-bottom:1.5px solid var(--border)">';
-    creH+='<th style="text-align:left;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Audience</th>';
-    creH+='<th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Spend</th>';
-    creH+='<th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Impr</th>';
-    creH+='<th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Clicks</th>';
-    creH+='<th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">CTR</th>';
-    creH+='<th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">CPC</th>';
-    creH+='<th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Demos</th>';
-    creH+='<th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">CPD</th>';
-    creH+='</tr></thead><tbody>';
+    audH+='<div style="font-size:11px;color:var(--grey);font-variant-numeric:tabular-nums;margin-bottom:10px">'+sorted.length+' audience'+(sorted.length===1?'':'s')+' · sort by '+audSort.col+' '+audSort.dir+'</div>';
+    audH+='<div style="overflow-x:auto"><table class="irf-meta-table" style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr style="border-bottom:1.5px solid var(--border)">';
+    audH+=_irfanSortableTh('Audience','name',audSort,'irfanSortAud','left');
+    audH+=_irfanSortableTh('Spend','spend',audSort,'irfanSortAud','right');
+    audH+=_irfanSortableTh('Impr','impressions',audSort,'irfanSortAud','right');
+    audH+=_irfanSortableTh('Clicks','clicks',audSort,'irfanSortAud','right');
+    audH+=_irfanSortableTh('CTR','ctr',audSort,'irfanSortAud','right');
+    audH+=_irfanSortableTh('CPC','cpc',audSort,'irfanSortAud','right');
+    audH+=_irfanSortableTh('Demos','demos',audSort,'irfanSortAud','right');
+    audH+=_irfanSortableTh('CPD','cpd',audSort,'irfanSortAud','right');
+    audH+='</tr></thead><tbody>';
     for(const a of sorted){
       const nm=(a.name||'').length>56?(a.name||'').slice(0,53)+'…':(a.name||'');
       const cpd=a.demos>0?a.spend/a.demos:null;
       const cpc=a.clicks>0?a.spend/a.clicks:null;
       aTSp+=a.spend||0;aTDe+=a.demos||0;aTIm+=a.impressions||0;aTCl+=a.clicks||0;
-      creH+='<tr style="border-bottom:1px solid var(--border)">';
-      creH+='<td style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(a.name||'').replace(/"/g,'&quot;')+'">'+nm+'</td>';
-      creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(aSp,a.spend,true)+'">'+f$(a.spend||0)+'</td>';
-      creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+fN(a.impressions||0)+'</td>';
-      creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+fN(a.clicks||0)+'</td>';
-      creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+(a.ctr!=null?a.ctr.toFixed(2)+'%':'—')+'</td>';
-      creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+(cpc!=null?f$(cpc):'—')+'</td>';
-      creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(aDe,a.demos||0,false)+'">'+fN(a.demos||0)+'</td>';
-      creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(aCp,cpd||0,true)+'">'+(cpd!=null?f$(cpd):'—')+'</td>';
-      creH+='</tr>';
+      audH+='<tr style="border-bottom:1px solid var(--border)">';
+      audH+='<td style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(a.name||'').replace(/"/g,'&quot;')+'">'+nm+'</td>';
+      audH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(aSp,a.spend,true)+'">'+f$(a.spend||0)+'</td>';
+      audH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+fN(a.impressions||0)+'</td>';
+      audH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+fN(a.clicks||0)+'</td>';
+      audH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+(a.ctr!=null?a.ctr.toFixed(2)+'%':'—')+'</td>';
+      audH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+(cpc!=null?f$(cpc):'—')+'</td>';
+      audH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(aDe,a.demos||0,false)+'">'+fN(a.demos||0)+'</td>';
+      audH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(aCp,cpd||0,true)+'">'+(cpd!=null?f$(cpd):'—')+'</td>';
+      audH+='</tr>';
     }
-    // Audiences totals row
     const aTCpd=aTDe>0?aTSp/aTDe:null;
     const aTCtr=aTIm>0?(aTCl/aTIm)*100:null;
     const aTCpc=aTCl>0?aTSp/aTCl:null;
-    creH+='<tr style="background:var(--lighter);font-weight:700;border-top:2px solid var(--teal-30)">'
+    audH+='<tr style="background:var(--lighter);font-weight:700;border-top:2px solid var(--teal-30)">'
       +'<td style="padding:10px 6px;color:var(--navy)">Total ('+sorted.length+' audiences)</td>'
       +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+f$(aTSp)+'</td>'
       +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+fN(aTIm)+'</td>'
@@ -2231,48 +2314,15 @@ function _renderIrfanMetaTables(d){
       +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+fN(aTDe)+'</td>'
       +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+(aTCpd!=null?f$(aTCpd):'—')+'</td>'
       +'</tr>';
-    creH+='</tbody></table></div></div>';
+    audH+='</tbody></table></div>';
+  } else {
+    audH='<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px">No audience-level data for this window</div>';
   }
-
-  // ── Creative Scoring Formula + Creative Naming check ──
-  // Compute naming-compliance count for the displayed creatives
-  let _nmTot=0,_nmTagged=0;
-  for(const cr of creRows){
-    _nmTot++;
-    const _s=(typeof detectSubject==='function')?detectSubject(cr.name):{type:'talent'};
-    if(_s&&_s.type!=='unknown')_nmTagged++;
-  }
-  const _nmPct=_nmTot>0?Math.round(_nmTagged/_nmTot*100):100;
-  const _nmColor=_nmPct===100?'#16A34A':_nmPct>=60?'#F59E0B':'#DC2626';
-  creH+='<div style="margin-top:20px;padding:14px 16px;background:rgba(114,164,191,.04);border:1px solid rgba(114,164,191,.15);border-radius:10px;font-size:11px;color:var(--navy);line-height:1.7">';
-  creH+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">';
-  creH+='<div style="font-family:var(--font-h);font-size:12px;font-weight:700;color:var(--navy)">Creative Scoring Formula</div>';
-  creH+='<div style="font-size:10px;color:var(--grey)">Per-campaign relative ranking · stage-aware</div>';
-  creH+='</div>';
-  creH+='<div><strong>TOF (S01):</strong> 25% CTR + 20% Video Views + 20% Impression Share + 15% Qual Rate + 10% CPA⁻¹ + 10% Demo Volume</div>';
-  creH+='<div><strong>MOF (S02):</strong> 25% Clicks + 25% CPA⁻¹ + 20% Qual Rate + 15% CTR + 15% Demo Volume</div>';
-  creH+='<div><strong>BOF/Retargeting (S03+):</strong> 30% CPA⁻¹ + 25% Qual Rate + 20% Demo Volume + 15% CTR + 10% Clicks</div>';
-  creH+='<div style="margin-top:6px"><strong>Tags:</strong> <span style="color:#2ecc71;font-weight:700">WINNER ≥ 65</span> · <span style="color:#f39c12;font-weight:700">TESTING 35–64</span> · <span style="color:#e74c3c;font-weight:700">LOSER &lt; 35</span></div>';
-  creH+='<div><strong>New (&lt;7d):</strong> Protected from LOSER tag (still learning) · <strong>Auto-LOSER:</strong> Active &gt;14d w/ score &lt;35, OR Spend ≥ avg w/ score &lt;35, OR both w/ score &lt;50, OR Spend ≥ avg + Qual Rate &lt;20% + 3+ demos</div>';
-  creH+='<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(114,164,191,.18);display:flex;align-items:center;gap:10px;flex-wrap:wrap">';
-  creH+='<div style="font-family:var(--font-h);font-size:12px;font-weight:700;color:var(--navy)">Creative Naming</div>';
-  creH+='<div style="background:'+_nmColor+'15;color:'+_nmColor+';padding:3px 10px;border-radius:50px;font-size:10px;font-weight:700;font-family:var(--font-h)">'+_nmPct+'% compliant</div>';
-  creH+='<div style="color:var(--grey)"><strong>'+_nmTagged+'</strong> of <strong>'+_nmTot+'</strong> creatives follow the convention</div>';
-  creH+='</div>';
-  creH+='<div style="margin-top:6px;padding:8px 10px;background:#fff;border-radius:6px;font-family:monospace;font-size:11px;color:var(--navy)">{Format}_{Talent}_{Concept}_{Setting}_{Variant} <span style="color:var(--grey)">— e.g. Vid_Aurea_TrustHook_Studio_v1</span></div>';
-  creH+='<div style="margin-top:6px;display:flex;gap:14px;flex-wrap:wrap;color:var(--grey);font-size:10px">';
-  creH+='<div><strong>Format:</strong> Vid, Img, Car, UGC</div>';
-  creH+='<div><strong>Talent:</strong> Irfan, Aurea, Talar, NoTalent</div>';
-  creH+='<div><strong>Concept:</strong> TrustHook, SocialProof, BeforeAfter, etc.</div>';
-  creH+='<div><strong>Setting:</strong> Studio, Office, Outdoor, Screen, etc.</div>';
-  creH+='<div><strong>Variant:</strong> v1, v2, A, B</div>';
-  creH+='</div>';
-  creH+='<div style="margin-top:6px;color:var(--grey);font-style:italic">Rows with a <span style="background:rgba(243,156,18,.12);color:#e67e22;padding:1px 5px;border-radius:4px;font-weight:700;font-style:normal">⚠ Naming</span> badge above don\'t match the convention. Rows with a <span style="background:rgba(243,156,18,.12);color:#e67e22;padding:1px 5px;border-radius:4px;font-weight:700;font-style:normal">⚠ Fatigue</span> badge had a >15% CTR decline over the last 14 days (hover for first vs. last CTR).</div>';
-  creH+='</div>';
 
   // Broadcast to ALL targets (Irfan + Overview)
   campTargets.forEach(el=>el.innerHTML=campH);
   creTargets.forEach(el=>el.innerHTML=creH);
+  audTargets.forEach(el=>el.innerHTML=audH);
   // Back-compat aliases (campTarget/creTarget) retained above but no longer used.
   if(false&&campTarget)campTarget.innerHTML=campH;
   if(false&&creTarget)creTarget.innerHTML=creH;
