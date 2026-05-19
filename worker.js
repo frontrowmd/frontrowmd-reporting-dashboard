@@ -2325,11 +2325,33 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     // MTD window (current calendar month so far)
     const _mtdFrom = new Date(Date.UTC(_now.getUTCFullYear(), _now.getUTCMonth(), 1));
     const _mtdFromStr = fmt(_mtdFrom), _mtdToStr = fmt(_now);
+    // ── Time-bound coverage ──
+    // The Special #1 card has its own Last Month / MTD toggle, so its cohorts
+    // must always be computed from deals in those two fixed windows —
+    // regardless of the page-level time selector. The shared deal sets
+    // (cPipe, pmPipe, etc.) only cover what the page window asked for, so
+    // they can be missing days. Example: page = "Last 7 Days" means cPipe
+    // = May 12–19, which doesn't cover May 1–11 needed for MTD. We patch
+    // by explicitly fetching for any uncovered window before building.
+    // YYYY-MM-DD strings compare lexicographically, so plain string ops work.
+    const _wContains = (aF, aT, bF, bT) => aF <= bF && aT >= bT;
+    const _coverMTD = _wContains(current.from, pipeEndDate, _mtdFromStr, _mtdToStr);
+    const _coverPCM = (priorMonth && _wContains(priorMonth.from, priorMonth.to, _pcmFromStr, _pcmToStr))
+                   || _wContains(current.from, pipeEndDate, _pcmFromStr, _pcmToStr);
+    let _mtdExtra = null, _pcmExtra = null;
+    const _extraJobs = [];
+    if (!_coverMTD) _extraJobs.push(fetchPipelineDeals(hsToken, _mtdFromStr, _mtdToStr).then(a => { _mtdExtra = a; }));
+    if (!_coverPCM) _extraJobs.push(fetchPipelineDeals(hsToken, _pcmFromStr, _pcmToStr).then(a => { _pcmExtra = a; }));
+    if (_extraJobs.length > 0) {
+      await Promise.all(_extraJobs);
+      console.log(`Special1 explicit fetches: mtd=${_mtdExtra?.length||0} (covered=${_coverMTD}), pcm=${_pcmExtra?.length||0} (covered=${_coverPCM})`);
+    }
     // Build the deal union once, share across both cohorts
     const _pcmUnion = new Map();
     const _addAll = (arr) => { if (!arr) return; for (const x of arr) _pcmUnion.set(x.id, x); };
     _addAll(pmPipe); _addAll(cPipe); _addAll(cohortDeals); _addAll(pPipe);
-    const _srcCounts = { pmPipe: pmPipe?.length||0, cPipe: cPipe?.length||0, cohortDeals: cohortDeals?.length||0, pPipe: pPipe?.length||0, union: _pcmUnion.size };
+    _addAll(_mtdExtra); _addAll(_pcmExtra);
+    const _srcCounts = { pmPipe: pmPipe?.length||0, cPipe: cPipe?.length||0, cohortDeals: cohortDeals?.length||0, pPipe: pPipe?.length||0, mtdExtra: _mtdExtra?.length||0, pcmExtra: _pcmExtra?.length||0, union: _pcmUnion.size };
     const _dealsArr = [..._pcmUnion.values()];
     const pcmCohort = _buildSpecial1Cohort(_dealsArr, _pcmFromStr, _pcmToStr);
     const mtdCohort = _buildSpecial1Cohort(_dealsArr, _mtdFromStr, _mtdToStr);
