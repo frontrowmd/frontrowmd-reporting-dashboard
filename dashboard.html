@@ -617,7 +617,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r14';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r15';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 let PW='';
@@ -1277,8 +1277,9 @@ function renderIrfan(){
     h+=`<div class="tile" style="border:1.5px dashed #FCD34D;background:rgba(245,158,11,.04)"><div class="tlbl" style="color:#D97706">% Disqualified Routing</div><div class="tval" style="color:#D97706">—</div><div class="tdef" style="margin-top:4px;color:#92400E">Form view analytics unavailable</div><div style="font-size:10px;color:#92400E;margin-top:6px;word-break:break-word">${fN(_dqSubs||0)} submissions logged in window<br><span style="font-style:italic;opacity:.85">${_vErr}</span></div></div>`;
   } else {
     const _unqBC=_unqRate!=null&&_unqRate>20?'#F59E0B':'var(--teal)';
-    const _viewsSrc=_dqForm.viewsSource==='ga4_via_windsor'?'GA4 pageviews on '+(_dqForm.ga4PagePath||'/not-supported'):'HubSpot form pageviews';
-    const _ttl=`${_viewsSrc} ÷ Demo Clicks. ${fN(_dqSubs||0)} of those pageviews resulted in a form submission this window.`;
+    const _src=_dqForm.viewsSource;
+    const _viewsSrc=_src==='hubspot_form_analytics'?'Disqualification Form views (HubSpot)':_src==='ga4_via_windsor_fallback'?'GA4 pageviews on '+(_dqForm.ga4PagePath||'/not-supported')+' (fallback)':'Disqualification Form views';
+    const _ttl=`${_viewsSrc} ÷ Demo Clicks. ${fN(_dqSubs||0)} of those views resulted in a form submission this window.`;
     h+=`<div class="tile hero" style="border-left:3px solid ${_unqBC}" title="${_ttl}"><div class="tlbl">% Disqualified Routing</div><div class="tval">${_unqRate!=null?_unqRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">${_viewsSrc} ÷ Demo Clicks</div>${_irCalc(fN(_dqViews||0)+' ÷ '+fN(_demoClicks))}</div>`;
   }
   h+='</div>';

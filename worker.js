@@ -430,82 +430,58 @@ async function fetchDisqualificationFormSubmissions(token, from, to) {
     pages++;
   }
   // Step 2b: fetch form view counts via HubSpot Analytics v2.
-  // Correct legacy v2 URL pattern: /analytics/v2/reports/{breakdown-by}/{time-period}
-  // For form analytics: breakdown-by=forms, time-period=total → /analytics/v2/reports/forms/total
-  // Response shape is: { breakdowns: [{ breakdown: <formId>, [metric]: N, ... }] }
-  // where each row's `breakdown` field is the form GUID. Common metric keys
-  // observed across portals: `views`, `view`, `pageViews`. Submissions show up
-  // as `submissions`, conversion as `ctr`.
-  // Requires the private app to have the `business-intelligence` scope.
-  let views = null;
-  let viewError = null;
+  // Endpoint: /analytics/v2/reports/forms/total?start=YYYYMMDD&end=YYYYMMDD&f=<formId>
+  // Date params are start/end (NOT d1/d2 — those are drilldown filter slots).
+  // Response shape with the f= filter:
+  //   { offset, total, totals: { formViews, submissions, submissionsPerFormView, ... },
+  //     breakdowns: [{ breakdown: <formId>, formViews, submissions, ... }] }
+  // The metric we want is `formViews` (matches the number in HubSpot's Forms
+  // Performance UI). conversion-rate is `submissionsPerFormView`.
+  // Requires the private app to have the business-intelligence (analytics.read) scope.
+  let views = null, viewError = null, conversionRate = null, interactions = null, visibles = null;
   try {
     const d1 = from.replace(/-/g, '');
     const d2 = to.replace(/-/g, '');
-    // CORRECT params: start= / end= (NOT d1/d2 — those are drilldown filters per
-    // HubSpot's docs, which is why our previous query returned empty results).
     const viewsUrl = `https://api.hubapi.com/analytics/v2/reports/forms/total?start=${d1}&end=${d2}&f=${encodeURIComponent(form.id)}`;
     const viewsRes = await fetch(viewsUrl, { headers: { Authorization: `Bearer ${token}` } });
     if (viewsRes.ok) {
       const viewsData = await viewsRes.json();
-      const pickViewCount = (row) => {
-        if (!row || typeof row !== 'object') return null;
-        // Try direct metric keys first
-        for (const k of ['views', 'view', 'pageViews', 'pageviews']) {
-          if (typeof row[k] === 'number') return row[k];
-        }
-        // Then nested metrics object
-        if (row.metrics && typeof row.metrics === 'object') {
-          for (const k of ['views', 'view', 'pageViews', 'pageviews']) {
-            if (typeof row.metrics[k] === 'number') return row.metrics[k];
-          }
-        }
-        return null;
-      };
-      // Primary shape: breakdowns array
-      if (Array.isArray(viewsData?.breakdowns)) {
-        const myRow = viewsData.breakdowns.find(b => (b?.breakdown || b?.formId) === form.id);
+      // Prefer totals (single-form filter returns the form's metrics here),
+      // fall back to the breakdowns row matching our form ID.
+      const t = viewsData?.totals;
+      if (t && typeof t.formViews === 'number') {
+        views = t.formViews;
+        if (typeof t.submissionsPerFormView === 'number') conversionRate = t.submissionsPerFormView;
+        if (typeof t.interactions === 'number') interactions = t.interactions;
+        if (typeof t.visibles === 'number') visibles = t.visibles;
+      } else if (Array.isArray(viewsData?.breakdowns)) {
+        const myRow = viewsData.breakdowns.find(b => b?.breakdown === form.id);
         if (myRow) {
-          views = pickViewCount(myRow);
-        } else if (viewsData.breakdowns.length === 0) {
-          viewError = 'HubSpot returned empty breakdowns array (no form analytics in window)';
+          if (typeof myRow.formViews === 'number') views = myRow.formViews;
+          if (typeof myRow.submissionsPerFormView === 'number') conversionRate = myRow.submissionsPerFormView;
+          if (typeof myRow.interactions === 'number') interactions = myRow.interactions;
+          if (typeof myRow.visibles === 'number') visibles = myRow.visibles;
         } else {
-          viewError = `Form ${form.id} not in HubSpot breakdowns (${viewsData.breakdowns.length} forms returned)`;
-        }
-      }
-      // Fallback shapes (older portals)
-      if (views == null && !viewError) {
-        if (viewsData?.totals && (typeof viewsData.totals.views === 'number' || typeof viewsData.totals.view === 'number')) {
-          views = viewsData.totals.views ?? viewsData.totals.view;
-        } else if (viewsData?.results && viewsData.results[form.id]) {
-          const formRows = viewsData.results[form.id];
-          if (Array.isArray(formRows) && formRows.length > 0) views = pickViewCount(formRows[0]);
-        } else if (typeof viewsData?.view === 'number') {
-          views = viewsData.view;
-        } else if (typeof viewsData?.views === 'number') {
-          views = viewsData.views;
+          viewError = `Form ${form.id} not present in HubSpot breakdowns (got ${viewsData.breakdowns.length} rows)`;
         }
       }
       if (views == null && !viewError) {
-        // Log a snippet so we can diagnose unfamiliar shapes
         const snippet = JSON.stringify(viewsData).slice(0, 400);
-        viewError = `Unrecognized analytics response shape (snippet: ${snippet})`;
+        viewError = `Unrecognized response shape: ${snippet}`;
       }
-      console.log(`DQ form views: ${views} (${form.name}, ${from}..${to})${viewError ? ' err='+viewError : ''}`);
+      console.log(`DQ form: ${views} views, ${count} submissions, ${conversionRate!=null?(conversionRate*100).toFixed(2)+'%':'?'} conv (${form.name}, ${from}..${to})`);
     } else {
       const txt = await viewsRes.text();
-      viewError = `HTTP ${viewsRes.status}: ${txt.slice(0,200)}`;
+      viewError = viewsRes.status === 403
+        ? 'HubSpot 403: token missing analytics scope (Settings → Integrations → Private Apps → Scopes → Analytics)'
+        : `HTTP ${viewsRes.status}: ${txt.slice(0,200)}`;
       console.warn(`DQ form views ${viewsRes.status}: ${txt.slice(0,200)}`);
-      // 403 typically means the private app is missing the business-intelligence scope.
-      if (viewsRes.status === 403) {
-        viewError = 'HubSpot 403: private app token likely missing "business-intelligence" scope (Settings → Integrations → Private Apps → Scopes → Analytics)';
-      }
     }
   } catch(e) {
     viewError = `Fetch threw: ${e.message}`;
     console.warn('DQ form views fetch threw:', e.message);
   }
-  return { count, views, viewError, totalSeen, pages, formFound: true, formId: form.id, formName: form.name };
+  return { count, views, viewError, conversionRate, interactions, visibles, totalSeen, pages, formFound: true, formId: form.id, formName: form.name };
 }
 
 async function fetchScheduledContacts(token, from, to) {
@@ -1944,14 +1920,11 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   let pW, pLI, pG; if (prior) { pW = windsorResults[wIdx++]; pLI = windsorResults[wIdx++]; pG = windsorResults[wIdx++]; }
   let pmW, pmLI, pmG; if (priorMonth) { pmW = windsorResults[wIdx++]; pmLI = windsorResults[wIdx++]; pmG = windsorResults[wIdx++]; }
 
-  // Irfan KPI #5 — Disqualification Form submissions + DQ-page views.
-  // Done here (after Windsor, before HubSpot's heavy Phase 2 fetches) so they
-  // get subrequest budget. We fetch in parallel:
-  //   • HubSpot: form lookup + submission count (and best-effort HS analytics views)
-  //   • Windsor.ai → GA4: pageviews on /not-supported (the DQ page)
-  // GA4 is the authoritative source for views — HubSpot's v2 form-analytics
-  // endpoint returns empty data because the form-render page isn't on a
-  // HubSpot-tracked domain. We let GA4 override _irfanDqForm.views.
+  // Irfan KPI #5 — Disqualification Form submissions + form views.
+  // HubSpot's /analytics/v2/reports/forms/total?start=&end=&f=<id> returns
+  // the same formViews/submissions/conversion shown in HubSpot's Forms
+  // Performance UI — use that as the authoritative source. GA4 pageviews
+  // on /not-supported run in parallel as a fallback if HubSpot fails.
   const DQ_PAGE_PATH = '/not-supported';
   let _irfanDqForm = null, _irfanDqFormErr = null;
   try {
@@ -1960,18 +1933,19 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
       fetchGA4PageViews(apiKey, current.from, current.to, DQ_PAGE_PATH),
     ]);
     _irfanDqForm = dqForm;
-    // Merge GA4 views in. Prefer GA4 over the HubSpot v2 attempt.
-    if (ga4Views && typeof ga4Views.views === 'number') {
+    if (typeof _irfanDqForm.views === 'number') {
+      _irfanDqForm.viewsSource = 'hubspot_form_analytics';
+    } else if (ga4Views && typeof ga4Views.views === 'number') {
+      // HubSpot failed; fall back to GA4.
       _irfanDqForm.views = ga4Views.views;
-      _irfanDqForm.viewError = null;
-      _irfanDqForm.viewsSource = 'ga4_via_windsor';
+      _irfanDqForm.viewsSource = 'ga4_via_windsor_fallback';
       _irfanDqForm.ga4Matched = ga4Views.matched;
       _irfanDqForm.ga4PagePath = DQ_PAGE_PATH;
     } else {
-      _irfanDqForm.viewsSource = _irfanDqForm.views != null ? 'hubspot_v2' : null;
+      _irfanDqForm.viewsSource = null;
       if (ga4Views?.error) _irfanDqForm.ga4Error = ga4Views.error;
     }
-    console.log(`Irfan DQ form: ${_irfanDqForm.count} submissions, ${_irfanDqForm.views} views (source=${_irfanDqForm.viewsSource||'none'}, path=${DQ_PAGE_PATH})`);
+    console.log(`Irfan DQ form: ${_irfanDqForm.count} submissions, ${_irfanDqForm.views} views (source=${_irfanDqForm.viewsSource||'none'})`);
   } catch(e) {
     _irfanDqFormErr = e.message;
     console.error('Irfan DQ form fetch failed:', e);
@@ -3601,83 +3575,6 @@ export default {
         const result = await processSignupRequest(env);
         return jr(result);
       } catch(err) { console.error('SignUp endpoint error:', err); return jr({ error: 'Internal error', detail: err.message }, 500); }
-    }
-
-    // GET /api/dq-form-debug?password=...&days=30 → Diagnostic endpoint.
-    // Hits every relevant HubSpot endpoint for the Disqualification Form and
-    // returns the raw responses, so we can see exactly what HubSpot has.
-    // Temporary; remove once the views question is resolved.
-    if (request.method === 'GET' && url.pathname === '/api/dq-form-debug') {
-      const pw = url.searchParams.get('password');
-      if (pw !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
-      const days = parseInt(url.searchParams.get('days') || '30', 10);
-      const today = todayET();
-      const toStr = fmt(today);
-      const fromDate = new Date(today.getTime() - days*86400*1000);
-      const fromStr = fmt(fromDate);
-      const d1 = fromStr.replace(/-/g,'');
-      const d2 = toStr.replace(/-/g,'');
-      const token = env.HUBSPOT_TOKEN;
-      const out = { window: { from: fromStr, to: toStr, days }, form: null, endpoints: {} };
-      const tryFetch = async (label, url, opts={}) => {
-        try {
-          const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, ...opts });
-          const txt = await r.text();
-          let parsed; try { parsed = JSON.parse(txt); } catch { parsed = null; }
-          out.endpoints[label] = { url, status: r.status, ok: r.ok, body: parsed ?? txt.slice(0, 2000) };
-        } catch(e) {
-          out.endpoints[label] = { url, error: e.message };
-        }
-      };
-      // 1. Find the form
-      try {
-        const formsRes = await fetch('https://api.hubapi.com/marketing/v3/forms?limit=200', { headers: { Authorization: `Bearer ${token}` } });
-        const formsData = await formsRes.json();
-        const form = (formsData.results || []).find(f => (f.name || '').toLowerCase().includes('disqualification'));
-        out.form = form ? { id: form.id, name: form.name, formType: form.formType, archived: form.archived, createdAt: form.createdAt, updatedAt: form.updatedAt, displayOptions: form.displayOptions } : null;
-        if (!form) {
-          out.error = 'No form found matching "disqualification"';
-          out.allFormNames = (formsData.results || []).map(f => f.name);
-          return jr(out);
-        }
-        const fid = form.id;
-        // 2. Submission count in window
-        let subCount = 0, totalSeen = 0, after = null, pages = 0;
-        const fromMs = new Date(fromStr+'T00:00:00Z').getTime();
-        const toMs = new Date(toStr+'T23:59:59.999Z').getTime();
-        while (pages < 50) {
-          let u = `https://api.hubapi.com/form-integrations/v1/submissions/forms/${fid}?limit=50`;
-          if (after) u += `&after=${after}`;
-          const r = await fetch(u, { headers: { Authorization: `Bearer ${token}` } });
-          if (!r.ok) break;
-          const d = await r.json();
-          const results = d.results || [];
-          totalSeen += results.length;
-          let past = false;
-          for (const s of results) {
-            const ms = s.submittedAt || 0;
-            if (ms >= fromMs && ms <= toMs) subCount++;
-            if (ms < fromMs) past = true;
-          }
-          if (past || !d.paging?.next?.after) break;
-          after = d.paging.next.after;
-          pages++;
-        }
-        out.submissions = { count: subCount, totalSeen, pagesWalked: pages };
-        // 3. Date params: HubSpot v2 analytics uses ?start=YYYYMMDD&end=YYYYMMDD.
-        //    The d1/d2 params we tried before are drilldown FILTERS, not dates —
-        //    that's why everything came back empty. Re-test with correct params.
-        const dateQ = `start=${d1}&end=${d2}`;
-        await tryFetch('h1_forms_total', `https://api.hubapi.com/analytics/v2/reports/forms/total?${dateQ}`);
-        await tryFetch('h2_forms_total_f', `https://api.hubapi.com/analytics/v2/reports/forms/total?${dateQ}&f=${encodeURIComponent(fid)}`);
-        await tryFetch('h3_forms_summarize_total', `https://api.hubapi.com/analytics/v2/reports/forms/summarize/total?${dateQ}`);
-        await tryFetch('h4_forms_daily_f', `https://api.hubapi.com/analytics/v2/reports/forms/daily?${dateQ}&f=${encodeURIComponent(fid)}`);
-        await tryFetch('h5_totals_total', `https://api.hubapi.com/analytics/v2/reports/totals/total?${dateQ}`);
-        return jr(out);
-      } catch(e) {
-        out.error = e.message;
-        return jr(out, 500);
-      }
     }
 
     // POST /api/analyzer → Paid Channel Analyzer API
