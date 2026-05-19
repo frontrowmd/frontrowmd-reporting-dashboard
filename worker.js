@@ -507,69 +507,64 @@ async function fetchCohortDealsByBookedDate(token, from, to) {
 // Returns { union: Deal[], perMonth: { [label]: count } } so the caller
 // can surface the per-cohort fetched count to the dashboard.
 async function fetchCohortDealsPerMonth(token, cohortMonths) {
-  // BULLETPROOF cohort fetch — delegate to fetchPipelineDeals (the SAME
-  // helper that successfully fetches 500+ deals/month for cPipe, pPipe,
-  // pmPipe). Its 3-OR-filter-group shape avoids the HubSpot pagination
-  // quirk that capped every single-filter query at 200 deals.
+  // FULLY SEQUENTIAL cohort fetch via fetchPipelineDeals. Every previous
+  // attempt at parallel (or chunked parallel) has eventually overlapped
+  // with HubSpot's 100req/10s rate-limit budget and silently dropped
+  // older-month queries. Sequential with small gaps is the bulletproof
+  // path:
   //
-  // History of why this is the right answer:
-  //  • Single-filter sort=date_demo_booked DESC: capped at exactly 200
-  //    deals per query. HubSpot pagination silently stopped after page 1.
-  //  • Single-filter sort=hs_createdate ASC: same cap, same quirk.
-  //  • Weekly slicing: each slice tiny enough to fit in one page, but
-  //    parallel fan-out (17 concurrent) tripped rate limits, and silent
-  //    429-on-retry returns of [] meant some months still came back 0.
-  //  • THIS approach: fetchPipelineDeals is the proven-working pattern.
-  //    For cPipe it pulls 580+ deals/month with full pagination. Using it
-  //    here gets us the SAME reliable pagination behavior.
+  //   • fetchPipelineDeals is the proven helper used by cPipe/pPipe/
+  //     pmPipe; its 3-OR-filterGroup query shape paginates reliably
+  //     past the 200-deal page cap that single-filter queries hit.
+  //   • One month at a time means no overlapping page fetches against
+  //     HubSpot's rate counter.
+  //   • Each month gets up to 3 attempts with growing backoff (0/600/
+  //     1200ms) if it returns empty or errors. Empty-after-retry means
+  //     either the month is genuinely empty OR HubSpot triple-dropped
+  //     it — surfaced to the dashboard via perMonthStatus.
+  //   • 250ms gap between months further decays the rate counter.
   //
-  // fetchPipelineDeals's 3rd filter group catches deals where
-  // date_demo_booked is null but rescheduled_meeting_date or
-  // missed-status+hs_createdate match. buildSignUpCohorts routes by
-  // date_demo_booked.substring(0,7), so any extra "spillover" deals
-  // pulled by groups 2/3 that don't have date_demo_booked in our cohort
-  // months simply get dropped by the cohort router — harmless.
+  // Total worst-case wall-clock: ~4 months × (1.5s avg fetch + retries)
+  // ≈ 12-18s. CF Workers Paid has no fixed wall-clock cap for HTTP
+  // handlers — only the 30s CPU-time limit, and time spent awaiting
+  // fetches doesn't count toward that.
 
-  // Pass 1 — parallel per-month via fetchPipelineDeals.
-  // maxPages bumped to 20 so a busy month with many OR-group dupes can't
-  // hit the cap.
-  console.log(`SignUp cohort fetch via fetchPipelineDeals (${cohortMonths.length} months in parallel, maxPages=20)`);
-  const results = await Promise.all(cohortMonths.map(async (cm) => {
-    try {
-      const arr = await fetchPipelineDeals(token, cm.from, cm.to, { maxPages: 20 });
-      return { cm, arr: arr || [], status: 'ok-first' };
-    } catch(e) {
-      console.warn(`SignUp cohort ${cm.label} pass 1 threw:`, e.message);
-      return { cm, arr: [], status: 'failed' };
-    }
-  }));
-
-  // Pass 2 — sequential retry for any month that returned empty OR errored.
-  // 500ms gap between retries to let HubSpot's rate counter decay.
   const map = new Map();
   const perMonth = {};
   const perMonthStatus = {};
-  for (const r of results) {
-    let arr = r.arr;
-    let status = r.status === 'failed' ? 'failed' : (arr.length > 0 ? 'ok' : 'empty');
-    if (status !== 'ok') {
-      await sleep(500);
+  const MAX_ATTEMPTS = 3;
+  const BACKOFFS = [0, 600, 1200]; // ms before each attempt
+
+  console.log(`SignUp cohort fetch (sequential via fetchPipelineDeals, ${cohortMonths.length} months)`);
+  for (const cm of cohortMonths) {
+    let arr = [];
+    let status = 'empty';
+    let lastErr = null;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      if (BACKOFFS[attempt] > 0) await sleep(BACKOFFS[attempt]);
       try {
-        const retry = await fetchPipelineDeals(token, r.cm.from, r.cm.to, { maxPages: 20 });
-        if (retry && retry.length > 0) {
-          arr = retry;
-          status = 'ok-retry';
-          console.log(`SignUp cohort ${r.cm.label} retry: ${retry.length} deals`);
+        const candidate = await fetchPipelineDeals(token, cm.from, cm.to, { maxPages: 20 });
+        if (candidate && candidate.length > 0) {
+          arr = candidate;
+          status = attempt === 0 ? 'ok' : 'ok-retry';
+          break;
         }
+        // Empty result — try again unless this was the last attempt
+        status = 'empty';
       } catch(e) {
-        status = 'failed-retry';
-        console.warn(`SignUp cohort ${r.cm.label} retry threw:`, e.message);
+        status = 'failed';
+        lastErr = e;
+        console.warn(`SignUp ${cm.label} attempt ${attempt+1} threw:`, e.message);
       }
     }
-    perMonth[r.cm.label] = arr.length;
-    perMonthStatus[r.cm.label] = status;
+    if (status === 'empty' && lastErr) status = 'failed-retry';
+    perMonth[cm.label] = arr.length;
+    perMonthStatus[cm.label] = status;
     for (const d of arr) map.set(d.id, d);
-    console.log(`SignUp ${r.cm.label} (${r.cm.from}..${r.cm.to}): ${arr.length} deals [${status}]`);
+    console.log(`SignUp ${cm.label} (${cm.from}..${cm.to}): ${arr.length} deals [${status}]`);
+    // Small gap before the next month's fetches start — lets HubSpot's
+    // rate counter decay so we don't accumulate pressure.
+    await sleep(250);
   }
   console.log(`SignUp cohort union: ${map.size} unique across ${Object.keys(perMonth).length} months`);
   return { union: [...map.values()], perMonth, perMonthStatus };
