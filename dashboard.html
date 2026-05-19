@@ -348,6 +348,39 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;hei
   .su-skel-banner-bar{flex:1 1 100%;order:99}
 }
 
+/* Irfan Dashboard skeleton — same shimmer system as the Sign-Up Rate skeleton,
+   with layout shapes that mirror Irfan's real grid (charts → KPIs → specials
+   → tables). Reuses .su-skel-bar / .su-skel-banner from above. */
+.irf-skel-section{margin-bottom:24px}
+.irf-skel-section-title{font-family:var(--font-h);font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--teal-15)}
+.irf-skel-row-charts{display:grid;grid-template-columns:1.6fr 1fr;gap:16px}
+.irf-skel-row-kpi{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+.irf-skel-row-specials{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.irf-skel-card{background:#fff;border:1px solid var(--teal-15);border-radius:12px;padding:18px 20px;box-shadow:0 1px 3px rgba(2,15,24,.03)}
+.irf-skel-card-title-bar{height:18px;width:50%;margin-bottom:6px}
+.irf-skel-card-sub-bar{height:11px;width:70%;margin-bottom:14px}
+.irf-skel-chart{height:240px}
+.irf-skel-donut{height:240px;display:flex;align-items:center;justify-content:center}
+.irf-skel-donut-ring{width:160px;height:160px;border-radius:50%;background:conic-gradient(rgba(114,164,191,.30) 0deg,rgba(114,164,191,.30) 110deg,rgba(114,164,191,.18) 110deg,rgba(114,164,191,.18) 200deg,rgba(114,164,191,.10) 200deg,rgba(114,164,191,.10) 360deg);position:relative;animation:su-shimmer 1.8s ease-in-out infinite;background-size:200% 200%;mask:radial-gradient(circle,transparent 48px,#000 50px);-webkit-mask:radial-gradient(circle,transparent 48px,#000 50px)}
+.irf-skel-tile{padding:16px 18px;background:linear-gradient(135deg,rgba(23,44,69,.06) 0%,rgba(29,64,83,.04) 100%);border-radius:10px;border-left:3px solid var(--teal-30)}
+.irf-skel-tile-lbl{height:10px;width:50%;margin-bottom:10px}
+.irf-skel-tile-val{height:28px;width:70%;margin-bottom:8px}
+.irf-skel-tile-def{height:9px;width:90%;margin-bottom:4px}
+.irf-skel-tile-foot{height:8px;width:60%}
+.irf-skel-special-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:16px}
+.irf-skel-special-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
+.irf-skel-special-cell{height:80px}
+.irf-skel-special-mini-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.irf-skel-special-mini-cell{height:50px}
+.irf-skel-table-row{height:32px;margin-bottom:6px}
+.irf-skel-date-header{height:24px;width:38%;margin-bottom:6px}
+.irf-skel-date-sub{height:11px;width:24%}
+@media(max-width:900px){
+  .irf-skel-row-charts{grid-template-columns:1fr}
+  .irf-skel-row-kpi{grid-template-columns:repeat(2,1fr)}
+  .irf-skel-row-specials{grid-template-columns:1fr}
+}
+
 @media(max-width:900px){
   .hamburger{display:flex}
   .sidebar{position:fixed;left:0;top:0;height:100%;transform:translateX(-100%);transition:transform .25s ease;z-index:15;width:280px;min-width:280px}
@@ -649,7 +682,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r18';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r19';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -713,24 +746,88 @@ document.getElementById('pw').addEventListener('keydown',e=>{if(e.key==='Enter')
 function bldF(){const s=S[AP];var aiBtn=AI_PANEL_PAGES.indexOf(AP)>=0?'<button id="ai-panel-btn" onclick="toggleAIPanel()" class="fb" style="border:1.5px solid #B8860B;background:'+(_aiPanelOpen?'#B8860B':'#FFF8E1')+';color:'+(_aiPanelOpen?'#fff':'#8B6914')+';font-weight:700" onmouseover="this.style.background=\'#B8860B\';this.style.color=\'#fff\'" onmouseout="if(!_aiPanelOpen){this.style.background=\'#FFF8E1\';this.style.color=\'#8B6914\';}">✦ AI Analysis</button>':'';if(AP==='signup'){document.getElementById('filters').innerHTML='<span style="font-size:13px;color:var(--grey)">Fixed cohorts — independent of time filters</span>'+aiBtn;return;}if(AP==='strategy'||AP==='csession'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='content'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='outbound'){document.getElementById('filters').innerHTML=aiBtn;document.getElementById('filters').style.display=aiBtn?'':'none';return;}else{document.getElementById('filters').style.display='';}let h='';for(const w of W)h+=`<button class="fb${s.win===w.k?' active':''}" data-w="${w.k}" onclick="selW('${w.k}')">${w.l}</button>`;h+=`<div class="cr${s.win==='custom'?' vis':''}" id="cr"><input type="date" id="cf"><span style="color:var(--grey)">→</span><input type="date" id="ct"><label class="cr-cmp-lbl"><input type="checkbox" id="cc" onchange="document.getElementById('crVs').classList.toggle('vis',this.checked)">Compare</label><span class="cr-vs" id="crVs"><span class="cr-vs-prefix">vs</span><input type="date" id="cvf"><span style="color:var(--grey)">→</span><input type="date" id="cvt"></span><button onclick="goC()">Go</button></div>`;h+=aiBtn;h+=`<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>`;document.getElementById('filters').innerHTML=h;}
 async function selW(w){S[AP].win=w;document.querySelectorAll('#filters .fb').forEach(b=>b.classList.toggle('active',b.dataset.w===w));const cr=document.getElementById('cr');if(cr)cr.classList.toggle('vis',w==='custom');if(w==='custom')return;await fd(w);}
 async function goC(){const f=document.getElementById('cf').value,t=document.getElementById('ct').value;if(!f||!t)return;const cc=document.getElementById('cc');let vsFrom=null,vsTo=null;if(cc&&cc.checked){vsFrom=document.getElementById('cvf').value||null;vsTo=document.getElementById('cvt').value||null;if(!vsFrom||!vsTo)return;}await fd('custom',f,t,vsFrom,vsTo);}
+// Irfan Dashboard skeleton — mirrors the real page layout (charts → KPIs →
+// specials → tables) with shimmering placeholders. Same banner pattern as
+// Sign-Up Rate. Used in place of the full-page overlay when AP==='irfan'.
+function _renderIrfanSkeleton(pct, step){
+  const dh=document.getElementById('irfan-date-header');
+  if(dh)dh.innerHTML=`<div class="su-skel-bar irf-skel-date-header"></div><div class="su-skel-bar irf-skel-date-sub"></div>`;
+  const el=document.getElementById('irfan-c');if(!el)return;
+  const tile=()=>`<div class="irf-skel-tile"><div class="su-skel-bar irf-skel-tile-lbl"></div><div class="su-skel-bar irf-skel-tile-val"></div><div class="su-skel-bar irf-skel-tile-def"></div><div class="su-skel-bar irf-skel-tile-foot"></div></div>`;
+  const chartCard=()=>`<div class="irf-skel-card"><div class="su-skel-bar irf-skel-card-title-bar"></div><div class="su-skel-bar irf-skel-card-sub-bar"></div><div class="su-skel-bar irf-skel-chart"></div></div>`;
+  const donutCard=()=>`<div class="irf-skel-card"><div class="su-skel-bar irf-skel-card-title-bar"></div><div class="su-skel-bar irf-skel-card-sub-bar"></div><div class="irf-skel-donut"><div class="irf-skel-donut-ring"></div></div></div>`;
+  const specialCard=()=>`<div class="irf-skel-card"><div class="irf-skel-special-head"><div style="flex:1"><div class="su-skel-bar irf-skel-card-title-bar"></div><div class="su-skel-bar irf-skel-card-sub-bar"></div></div><div class="su-skel-bar" style="height:28px;width:120px;border-radius:99px"></div></div><div class="irf-skel-special-grid">${'<div class="su-skel-bar irf-skel-special-cell"></div>'.repeat(3)}</div><div class="irf-skel-special-grid">${'<div class="su-skel-bar irf-skel-special-cell"></div>'.repeat(3)}</div><div class="irf-skel-special-mini-grid">${'<div class="su-skel-bar irf-skel-special-mini-cell"></div>'.repeat(3)}</div></div>`;
+  const tableCard=()=>`<div class="irf-skel-card"><div class="su-skel-bar irf-skel-card-title-bar"></div><div class="su-skel-bar irf-skel-card-sub-bar"></div>${'<div class="su-skel-bar irf-skel-table-row"></div>'.repeat(5)}</div>`;
+  el.innerHTML=`
+    <div class="su-skel-banner" role="status" aria-live="polite">
+      <div class="su-skel-banner-spin" aria-hidden="true"></div>
+      <div class="su-skel-banner-text">
+        <div class="su-skel-banner-title">Loading Irfan Dashboard</div>
+        <div class="su-skel-banner-step">${step||'Connecting to Windsor.ai & HubSpot…'}</div>
+      </div>
+      <div class="su-skel-banner-bar"><div class="su-skel-banner-fill" style="width:${Math.max(0,Math.min(100,pct||0))}%"></div></div>
+      <div class="su-skel-banner-pct">${Math.round(pct||0)}%</div>
+    </div>
+    <div class="irf-skel-section">
+      <div class="irf-skel-section-title">Daily Trend & Web-Traffic Mix</div>
+      <div class="irf-skel-row-charts">${chartCard()}${donutCard()}</div>
+    </div>
+    <div class="irf-skel-section">
+      <div class="irf-skel-section-title">Key Metrics</div>
+      <div class="irf-skel-row-kpi">${tile()}${tile()}${tile()}${tile()}${tile()}</div>
+    </div>
+    <div class="irf-skel-section">
+      <div class="irf-skel-section-title">Time-Bound Specials</div>
+      <div class="irf-skel-row-specials">${specialCard()}${specialCard()}</div>
+    </div>
+    <div class="irf-skel-section">
+      <div class="irf-skel-section-title">Campaign & Creative Breakdown</div>
+      ${tableCard()}
+      <div style="height:16px"></div>
+      ${tableCard()}
+    </div>`;
+}
+function _updateIrfanSkeletonProgress(pct, step){
+  const fill=document.querySelector('#irfan-c .su-skel-banner-fill');if(fill)fill.style.width=Math.max(0,Math.min(100,pct))+'%';
+  const stepEl=document.querySelector('#irfan-c .su-skel-banner-step');if(stepEl&&step)stepEl.textContent=step;
+  const pctEl=document.querySelector('#irfan-c .su-skel-banner-pct');if(pctEl)pctEl.textContent=Math.round(pct)+'%';
+}
+
 async function fd(w,from,to,vsFrom,vsTo){
   const mySeq=++_fdSeq;
   const ldEl=document.getElementById('loading');
-  ldEl.style.display='flex';
   document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));
   document.getElementById('dqb').classList.remove('vis');
   const isAz=AP==='analyzer';
+  const isIrfan=AP==='irfan';
   const url=isAz?AZ_API:API;
+  // Irfan gets an inline skeleton instead of the blocking full-page overlay
+  // (same UX pattern as Sign-Up Rate). Other pages still use the overlay.
+  if(isIrfan){
+    if(ldEl)ldEl.style.display='none';
+    const pgEl=document.getElementById('page-irfan');if(pgEl)pgEl.classList.add('active');
+    _renderIrfanSkeleton(6,'Connecting to Windsor.ai & HubSpot…');
+  } else {
+    if(ldEl)ldEl.style.display='flex';
+  }
   const pw2=document.getElementById('prgWrap'),pf=document.getElementById('prgFill'),pl=document.getElementById('prgLbl'),lt=document.getElementById('loadText'),ld2=document.getElementById('loadDesc');
   const pgTitle=T[AP]||'data';
-  if(pw2){pw2.style.display='block';if(pf)pf.style.width='3%';}
-  if(lt)lt.textContent=pgTitle;
-  if(ld2)ld2.textContent=isAz?'Fetching per-channel ad spend data and HubSpot pipeline attribution':'Connecting to Windsor.ai and HubSpot APIs for latest metrics';
-  const steps=isAz?['Connecting to Windsor.ai...','Fetching per-channel ad data...','Fetching HubSpot pipeline data...','Processing campaign attribution...','Building channel breakdowns...','Rendering dashboard...']:['Connecting to APIs...','Fetching ad spend data...','Fetching HubSpot pipeline...','Processing metrics...','Building executive summary...','Rendering dashboard...'];
-  let si=0;
-  if(pf)pf.style.width='5%';
-  if(pl)pl.textContent=steps[0];
-  const iv=setInterval(()=>{si++;const pct=Math.min(5+si*15,92);if(pf)pf.style.width=pct+'%';if(pl)pl.textContent=steps[Math.min(si,steps.length-1)];},2800);
+  if(!isIrfan){
+    if(pw2){pw2.style.display='block';if(pf)pf.style.width='3%';}
+    if(lt)lt.textContent=pgTitle;
+    if(ld2)ld2.textContent=isAz?'Fetching per-channel ad spend data and HubSpot pipeline attribution':'Connecting to Windsor.ai and HubSpot APIs for latest metrics';
+  }
+  const steps=isAz?['Connecting to Windsor.ai…','Fetching per-channel ad data…','Fetching HubSpot pipeline data…','Processing campaign attribution…','Building channel breakdowns…','Rendering dashboard…']:isIrfan?['Connecting to Windsor.ai & HubSpot…','Fetching ad spend data…','Fetching demo bookings…','Fetching pipeline deals…','Fetching closed-won deals…','Pulling HubSpot Disqualification Form views…','Computing executive summary…','Building KPI tiles…','Rendering charts…']:['Connecting to APIs…','Fetching ad spend data…','Fetching HubSpot pipeline…','Processing metrics…','Building executive summary…','Rendering dashboard…'];
+  let si=0;let curPct=isIrfan?6:5;
+  if(!isIrfan){
+    if(pf)pf.style.width='5%';
+    if(pl)pl.textContent=steps[0];
+  }
+  const iv=setInterval(()=>{
+    si++;
+    if(isIrfan){curPct=Math.min(6+si*10,92);_updateIrfanSkeletonProgress(curPct,steps[Math.min(si,steps.length-1)]);}
+    else{const pct=Math.min(5+si*15,92);if(pf)pf.style.width=pct+'%';if(pl)pl.textContent=steps[Math.min(si,steps.length-1)];}
+  },2300);
   const b={password:PW,window:w};if(from)b.from=from;if(to)b.to=to;if(vsFrom)b.vsFrom=vsFrom;if(vsTo)b.vsTo=vsTo;
   try{
     const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
@@ -739,15 +836,21 @@ async function fd(w,from,to,vsFrom,vsTo){
     if(mySeq!==_fdSeq){return;}
     if(r.ok&&!d.error){
       S[AP].data=d;
-      if(pf)pf.style.width='100%';if(pl)pl.textContent='Complete!';if(lt)lt.textContent='Ready';
-      await new Promise(ok=>setTimeout(ok,400));
+      if(isIrfan){_updateIrfanSkeletonProgress(100,'Complete!');await new Promise(ok=>setTimeout(ok,260));}
+      else{if(pf)pf.style.width='100%';if(pl)pl.textContent='Complete!';if(lt)lt.textContent='Ready';await new Promise(ok=>setTimeout(ok,400));}
     } else {
       console.error('API error:',r.status,d);
-      if(pl)pl.textContent='Error: '+(d.detail||d.error||'Unknown');if(pf)pf.style.width='0%';
+      if(isIrfan)_updateIrfanSkeletonProgress(curPct,'Error: '+(d.detail||d.error||'Unknown'));
+      else{if(pl)pl.textContent='Error: '+(d.detail||d.error||'Unknown');if(pf)pf.style.width='0%';}
       await new Promise(ok=>setTimeout(ok,1500));
     }
-  }catch(e){console.error(e);clearInterval(iv);if(pl)pl.textContent='Connection error';await new Promise(ok=>setTimeout(ok,1000));}
-  finally{if(mySeq===_fdSeq){ldEl.style.display='none';if(pw2)pw2.style.display='none';}}
+  }catch(e){
+    console.error(e);clearInterval(iv);
+    if(isIrfan)_updateIrfanSkeletonProgress(curPct,'Connection error');
+    else if(pl)pl.textContent='Connection error';
+    await new Promise(ok=>setTimeout(ok,1000));
+  }
+  finally{if(mySeq===_fdSeq){if(!isIrfan&&ldEl)ldEl.style.display='none';if(!isIrfan&&pw2)pw2.style.display='none';}}
   if(mySeq===_fdSeq)renderPage();
   // Kick off Special #1 fetch for the irfan page (in parallel, fire-and-forget).
   // Lives on its own endpoint so it's time-bound to MTD + Last Month and never
@@ -1302,7 +1405,17 @@ function renderDash(){
 // CEO-facing summary view. Shares the same /api/dashboard payload as Overview
 // so the time-window selector at the top behaves identically.
 function renderIrfan(){
-  const d=S.irfan.data;if(!d||d.error){document.getElementById('irfan-c').innerHTML='<div style="padding:40px;text-align:center;color:var(--grey)">Loading…</div>';return;}
+  const d=S.irfan.data;
+  if(!d||d.error){
+    // Only paint the fallback text if the skeleton isn't already on screen.
+    // fd() paints the inline skeleton when AP==='irfan', so we shouldn't
+    // overwrite it with bland "Loading…" text mid-fetch.
+    const el=document.getElementById('irfan-c');
+    if(el&&!el.querySelector('.su-skel-banner')){
+      _renderIrfanSkeleton(15,d&&d.error?('Error: '+(d.error||d.detail||'Unknown')):'Loading…');
+    }
+    return;
+  }
   // ─ Date header (mirrors Overview) ─
   const fmtD=s=>{const p=s.split('-');return new Date(p[0],p[1]-1,p[2]).toLocaleDateString('en-US',{month:'long',day:'numeric'});};
   const fmtDY=s=>{const p=s.split('-');return new Date(p[0],p[1]-1,p[2]).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});};
