@@ -315,6 +315,12 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;hei
   .meta-notes-3col{grid-template-columns:1fr !important}
 }
 
+/* Detailed Dashboard ad-channel tabs — switches the 3 Meta tables below */
+.dash-ad-tab{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:50px;border:1px solid var(--border);background:transparent;color:var(--navy);font-family:var(--font-h);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
+.dash-ad-tab:hover{background:var(--teal-8);border-color:var(--teal-30)}
+.dash-ad-tab.active{background:var(--navy);color:#fff;border-color:var(--navy);box-shadow:0 2px 6px rgba(2,15,24,.18)}
+.dash-ad-tab-dot{display:inline-block;width:8px;height:8px;border-radius:50%}
+
 /* Progress bar */
 .prgw{max-width:280px;margin:12px auto 0}
 .prgbar{height:6px;background:var(--teal-15);border-radius:50px;overflow:hidden}
@@ -599,14 +605,27 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
       <!-- Row 7: Channel Performance -->
       <div class="sec sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:var(--yellow);border-radius:50%;margin-right:8px;vertical-align:middle"></span>Channel Performance</div><div id="cpd-tbl"></div></div>
 
-      <!-- Row 8: Meta — Campaigns (mirror of Irfan Dashboard table) -->
-      <div class="sec sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:#1877F2;border-radius:50%;margin-right:8px;vertical-align:middle"></span>Meta — Campaigns</div><div style="font-size:12px;color:var(--grey);margin-bottom:10px">Sortable · stage-filterable · sourced from the Paid Ads Dashboard payload</div><div id="ov-meta-campaigns"></div></div>
+      <!-- Row 7.5: Ad Channel switcher (Detailed Dashboard only) -->
+      <div class="sec" style="margin-bottom:14px">
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px 14px">
+          <span style="font-family:var(--font-h);font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.08em;margin-right:4px">Ad Channel</span>
+          <button class="dash-ad-tab active" data-ch="meta" onclick="dashSetAdChannel('meta')"><span class="dash-ad-tab-dot" style="background:#1877F2"></span>Meta</button>
+          <button class="dash-ad-tab" data-ch="tiktok" onclick="dashSetAdChannel('tiktok')"><span class="dash-ad-tab-dot" style="background:#FF0050"></span>TikTok</button>
+          <button class="dash-ad-tab" data-ch="linkedin" onclick="dashSetAdChannel('linkedin')"><span class="dash-ad-tab-dot" style="background:#0A66C2"></span>LinkedIn</button>
+          <button class="dash-ad-tab" data-ch="google" onclick="dashSetAdChannel('google')"><span class="dash-ad-tab-dot" style="background:#4285F4"></span>Google</button>
+          <div style="flex:1"></div>
+          <span style="font-size:11px;color:var(--grey)">Switches the three tables below to the selected channel.</span>
+        </div>
+      </div>
 
-      <!-- Row 9: Meta — Ad Creatives (mirror of Irfan Dashboard table) -->
-      <div class="sec sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:#1877F2;border-radius:50%;margin-right:8px;vertical-align:middle"></span>Meta — Ad Creatives</div><div style="font-size:12px;color:var(--grey);margin-bottom:10px">Sortable · filterable by Tag &amp; Flags · all creatives across campaigns · sourced from the Paid Ads Dashboard payload</div><div id="ov-meta-creatives"></div></div>
+      <!-- Row 8: <channel> — Campaigns -->
+      <div class="sec sec-card"><div class="st"><span class="ad-channel-dot" style="display:inline-block;width:8px;height:8px;background:#1877F2;border-radius:50%;margin-right:8px;vertical-align:middle"></span><span class="ad-channel-label">Meta</span> — Campaigns</div><div style="font-size:12px;color:var(--grey);margin-bottom:10px">Sortable · stage-filterable · sourced from the Paid Ads Dashboard payload</div><div id="ov-meta-campaigns"></div></div>
 
-      <!-- Row 10: Meta — Audiences (ad-set level) -->
-      <div class="sec sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:#1877F2;border-radius:50%;margin-right:8px;vertical-align:middle"></span>Meta — Audiences</div><div style="font-size:12px;color:var(--grey);margin-bottom:10px">Sortable · ad-set level breakdown of spend, performance, and demos</div><div id="ov-meta-audiences"></div></div>
+      <!-- Row 9: <channel> — Ad Creatives -->
+      <div class="sec sec-card"><div class="st"><span class="ad-channel-dot" style="display:inline-block;width:8px;height:8px;background:#1877F2;border-radius:50%;margin-right:8px;vertical-align:middle"></span><span class="ad-channel-label">Meta</span> — Ad Creatives</div><div style="font-size:12px;color:var(--grey);margin-bottom:10px">Sortable · filterable by Tag &amp; Flags · all creatives across campaigns · sourced from the Paid Ads Dashboard payload</div><div id="ov-meta-creatives"></div></div>
+
+      <!-- Row 10: <channel> — Audiences -->
+      <div class="sec sec-card"><div class="st"><span class="ad-channel-dot" style="display:inline-block;width:8px;height:8px;background:#1877F2;border-radius:50%;margin-right:8px;vertical-align:middle"></span><span class="ad-channel-label">Meta</span> — <span class="ad-channel-audlabel">Audiences</span></div><div style="font-size:12px;color:var(--grey);margin-bottom:10px"><span class="ad-channel-audsub">Sortable · ad-set level breakdown of spend, performance, and demos</span></div><div id="ov-meta-audiences"></div></div>
 
     </div>
     <div class="pg" id="page-calculator"><div class="sec">
@@ -738,7 +757,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r24';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r25';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -1604,6 +1623,11 @@ function renderDash(){
   // Re-uses the existing Irfan loader; the loader now writes to both irfan-*
   // and ov-* DOM targets so a single fetch hydrates both pages.
   if(typeof _renderIrfanMetaTablesLoader==='function')_renderIrfanMetaTablesLoader(S.dashboard?.win||'mtd');
+  // Sync ad-channel tab UI (in case the user previously switched to a non-Meta
+  // channel and is now coming back to the Detailed Dashboard).
+  if(typeof dashSetAdChannel==='function'&&S.dashboard?.activeAdChannel&&S.dashboard.activeAdChannel!=='meta'){
+    dashSetAdChannel(S.dashboard.activeAdChannel);
+  }
 }
 
 // ═══════════════ IRFAN DASHBOARD ═══════════════
@@ -1770,13 +1794,14 @@ function _renderIrfanMetaTablesLoader(winOverride){
   // the attribution match-rate footer on the Detailed Dashboard's Channel
   // Performance table and the Audiences table below Meta Creatives.
   if(!S.irfan.analyzerCache)S.irfan.analyzerCache={};
-  if(S.irfan.analyzerCache[irfWin]){_renderIrfanMetaTables(S.irfan.analyzerCache[irfWin]);_updateCpdMatchRate(irfWin);return;}
+  const _getCh=()=>AP==='dashboard'?(S.dashboard.activeAdChannel||'meta'):'meta';
+  if(S.irfan.analyzerCache[irfWin]){_renderIrfanMetaTables(S.irfan.analyzerCache[irfWin],_getCh());_updateCpdMatchRate(irfWin);return;}
   // Reuse analyzer's already-loaded payload if same window
   if(S.analyzer?.data?.channels?.meta&&S.analyzer.win===irfWin){
     S.irfan.analyzerCache[irfWin]=S.analyzer.data;
-    _renderIrfanMetaTables(S.analyzer.data);_updateCpdMatchRate(irfWin);return;
+    _renderIrfanMetaTables(S.analyzer.data,_getCh());_updateCpdMatchRate(irfWin);return;
   }
-  _setBoth('<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px"><span class="sp" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle"></span> Loading Meta data…</div>');
+  _setBoth('<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px"><span class="sp" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle"></span> Loading ad-channel data…</div>');
   fetch(AZ_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:PW,window:irfWin})})
     .then(r=>r.json())
     .then(ad=>{
@@ -1786,7 +1811,7 @@ function _renderIrfanMetaTablesLoader(winOverride){
         // render function itself writes to whichever DOM targets are present.
         const onIrfan=AP==='irfan'&&(S.irfan?.win||'mtd')===irfWin;
         const onOverview=AP==='dashboard'&&(S.dashboard?.win||'mtd')===irfWin;
-        if(onIrfan||onOverview)_renderIrfanMetaTables(ad);
+        if(onIrfan||onOverview)_renderIrfanMetaTables(ad,_getCh());
         _updateCpdMatchRate(irfWin);
       } else {
         _setBoth('<div style="padding:24px;text-align:center;color:var(--red);font-size:12px">Failed to load analyzer data: '+(ad?.detail||ad?.error||'unknown')+'</div>');
@@ -1851,13 +1876,39 @@ function _irfanStatusBadge(st,sp){
   const lbl=a?'Active':(p?'Paused':(st||'—'));
   return '<span style="display:inline-block;font-size:9px;font-weight:700;color:'+col+';background:'+col+'15;padding:2px 8px;border-radius:99px">'+lbl+'</span>';
 }
-// Callbacks invoked by header clicks / stage filter pills.
-window.irfanSortCamp=function(col){const s=S.irfan.metaCampSort||(S.irfan.metaCampSort={col:'cpd',dir:'desc'});if(s.col===col)s.dir=s.dir==='desc'?'asc':'desc';else{s.col=col;s.dir=(col==='name'||col==='status'||col==='stage')?'asc':'desc';}if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD);};
-window.irfanSortCre=function(col){const s=S.irfan.metaCreSort||(S.irfan.metaCreSort={col:'cpd',dir:'desc'});if(s.col===col)s.dir=s.dir==='desc'?'asc':'desc';else{s.col=col;s.dir=(col==='name'||col==='status')?'asc':'desc';}if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD);};
-window.irfanSortAud=function(col){const s=S.irfan.metaAudSort||(S.irfan.metaAudSort={col:'cpd',dir:'desc'});if(s.col===col)s.dir=s.dir==='desc'?'asc':'desc';else{s.col=col;s.dir=(col==='name')?'asc':'desc';}if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD);};
-window.irfanCampStageF=function(stage){S.irfan.metaCampStageF=stage;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD);};
-window.irfanCreTagF=function(tag){S.irfan.metaCreTagF=tag;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD);};
-window.irfanCreFlagF=function(flag){S.irfan.metaCreFlagF=flag;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD);};
+// Callbacks invoked by header clicks / stage filter pills. On Detailed
+// Dashboard we render the user-selected channel; on Irfan it's always meta.
+function _curAdCh(){return AP==='dashboard'?(S.dashboard.activeAdChannel||'meta'):'meta';}
+window.irfanSortCamp=function(col){const s=S.irfan.metaCampSort||(S.irfan.metaCampSort={col:'cpd',dir:'desc'});if(s.col===col)s.dir=s.dir==='desc'?'asc':'desc';else{s.col=col;s.dir=(col==='name'||col==='status'||col==='stage')?'asc':'desc';}if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
+window.irfanSortCre=function(col){const s=S.irfan.metaCreSort||(S.irfan.metaCreSort={col:'cpd',dir:'desc'});if(s.col===col)s.dir=s.dir==='desc'?'asc':'desc';else{s.col=col;s.dir=(col==='name'||col==='status')?'asc':'desc';}if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
+window.irfanSortAud=function(col){const s=S.irfan.metaAudSort||(S.irfan.metaAudSort={col:'cpd',dir:'desc'});if(s.col===col)s.dir=s.dir==='desc'?'asc':'desc';else{s.col=col;s.dir=(col==='name')?'asc':'desc';}if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
+window.irfanCampStageF=function(stage){S.irfan.metaCampStageF=stage;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
+window.irfanCreTagF=function(tag){S.irfan.metaCreTagF=tag;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
+window.irfanCreFlagF=function(flag){S.irfan.metaCreFlagF=flag;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
+// Switch the active ad channel on the Detailed Dashboard. Updates section
+// titles + colored dots + the active tab pill, then re-renders the 3 tables.
+window.dashSetAdChannel=function(ch){
+  if(!ch)return;
+  S.dashboard.activeAdChannel=ch;
+  // Update active tab pill state
+  document.querySelectorAll('.dash-ad-tab').forEach(p=>p.classList.toggle('active',p.dataset.ch===ch));
+  // Update section labels + colored dots to match the chosen channel
+  const labels={meta:'Meta',tiktok:'TikTok',linkedin:'LinkedIn',google:'Google',youtube:'YouTube'};
+  const colors={meta:'#1877F2',tiktok:'#FF0050',linkedin:'#0A66C2',google:'#4285F4',youtube:'#FF0000'};
+  document.querySelectorAll('.ad-channel-label').forEach(el=>el.textContent=labels[ch]||ch);
+  document.querySelectorAll('.ad-channel-dot').forEach(el=>el.style.background=colors[ch]||'var(--teal)');
+  // Audiences vs Ad Groups terminology
+  const audLbl=ch==='meta'?'Audiences':(ch==='linkedin'?'Audiences':'Ad Groups');
+  const audSub=ch==='meta'?'Sortable · ad-set level breakdown of spend, performance, and demos':(ch==='linkedin'?'Sortable · audience-level breakdown':'Sortable · ad-group level breakdown of spend, performance, and demos');
+  document.querySelectorAll('.ad-channel-audlabel').forEach(el=>el.textContent=audLbl);
+  document.querySelectorAll('.ad-channel-audsub').forEach(el=>el.textContent=audSub);
+  // Reset filters when switching channels (different campaigns/creatives)
+  S.irfan.metaCampStageF='all';
+  S.irfan.metaCreTagF='all';
+  S.irfan.metaCreFlagF='all';
+  // Re-render with the cached analyzer payload if we have one
+  if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,ch);
+};
 // Toggle the visibility of a campaign's nested creative rows.
 window.irfanToggleCampCreatives=function(rowId){
   const rows=document.querySelectorAll('.'+rowId+'-cre');
@@ -1870,10 +1921,17 @@ window.irfanToggleCampCreatives=function(rowId){
 // Expand All / Collapse All across every campaign row at once.
 window.irfanToggleAllCampCreatives=function(){
   S.irfan.metaAllExpanded=!S.irfan.metaAllExpanded;
-  if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD);
+  if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());
 };
-function _renderIrfanMetaTables(d){
+function _renderIrfanMetaTables(d, channel){
   _irfanMetaD=d;
+  // Default to 'meta' for back-compat; Detailed Dashboard passes the active
+  // ad-channel tab. Irfan Dashboard always passes 'meta' (no tabs there).
+  channel = channel || 'meta';
+  const chLabel={meta:'Meta',tiktok:'TikTok',linkedin:'LinkedIn',google:'Google',youtube:'YouTube'}[channel]||channel;
+  // For non-Meta channels, the ad-set/ad-group terminology differs
+  const audSectionLabel=channel==='meta'?'Audiences':(channel==='linkedin'?'Audiences':'Ad Groups');
+  const audItemLabel=channel==='meta'?'audience':(channel==='linkedin'?'audience':'ad group');
   // Collect ALL possible render targets (Irfan + Overview). The function
   // writes to whichever are present in the DOM at this moment, so a single
   // call hydrates both pages.
@@ -1884,8 +1942,8 @@ function _renderIrfanMetaTables(d){
   // First target used for back-compat in any later code that still reads campTarget/creTarget.
   const campTarget=campTargets[0]||null;
   const creTarget=creTargets[0]||null;
-  const meta=d&&d.channels&&d.channels.meta;
-  if(!meta){const empty='<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px">No Meta data available for this window</div>';[...campTargets,...creTargets,...audTargets].forEach(el=>el.innerHTML=empty);return;}
+  const meta=d&&d.channels&&d.channels[channel];
+  if(!meta){const empty='<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px">No '+chLabel+' data available for this window</div>';[...campTargets,...creTargets,...audTargets].forEach(el=>el.innerHTML=empty);return;}
   // Defaults: sort by CPD descending (highest CPD first — worst performers
   // at the top so problems are immediately visible).
   if(!S.irfan.metaCampSort)S.irfan.metaCampSort={col:'cpd',dir:'desc'};
@@ -2040,7 +2098,7 @@ function _renderIrfanMetaTables(d){
         if(ncr.thumbnail)_thumb='<img src="'+ncr.thumbnail+'" style="width:28px;height:28px;object-fit:cover;border-radius:4px;display:inline-block;vertical-align:middle;margin-right:8px" onerror="this.style.display=\'none\'">';
         else _thumb='<span style="display:inline-block;width:28px;height:28px;border-radius:4px;background:var(--lighter);border:1px solid var(--border);text-align:center;line-height:26px;font-size:12px;margin-right:8px;vertical-align:middle">📷</span>';
         // Fatigue + naming-check badges inline next to name
-        const _ftBadge=fatigueBadgeFromMap(fatigueMap,'meta',ncr.name);
+        const _ftBadge=fatigueBadgeFromMap(fatigueMap,channel,ncr.name);
         const _subj=(typeof detectSubject==='function')?detectSubject(ncr.name):{type:'talent'};
         const _nameBad=_subj&&_subj.type==='unknown';
         const _nameBadge=_nameBad?' <span title="Name doesn\'t match {Format}_{Talent}_{Concept}_{Setting}_{Variant} convention" style="cursor:help;font-size:9px;background:rgba(124,58,237,.10);color:#7C3AED;padding:1px 6px;border-radius:4px;font-weight:700;white-space:nowrap;border:1px solid rgba(124,58,237,.30)">📝 Naming</span>':'';
@@ -2186,7 +2244,7 @@ function _renderIrfanMetaTables(d){
     if(c.thumbnail)thumb='<img src="'+c.thumbnail+'" style="width:56px;height:56px;object-fit:cover;border-radius:6px;display:block" onerror="this.style.display=\'none\';this.parentNode.innerHTML=this.parentNode.innerHTML.replace(/<img[^>]*>/,\'📷\')">';
     else thumb='<div style="width:56px;height:56px;border-radius:6px;background:var(--lighter);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--teal)">📷</div>';
     // Fatigue badge — hover shows decline details (CTR drop % + first/last CTR)
-    const _ftBadge=fatigueBadgeFromMap(fatigueMap,'meta',c.name);
+    const _ftBadge=fatigueBadgeFromMap(fatigueMap,channel,c.name);
     // Naming-check badge — flags creatives that don't follow the
     // {Format}_{Talent}_{Concept}_{Setting}_{Variant} convention (precomputed)
     const _nameBad=!!c._namingBad;
@@ -2274,9 +2332,9 @@ function _renderIrfanMetaTables(d){
     const sorted=audiences.slice().sort(_audSort);
     const aSp=audiences.map(a=>a.spend||0),aDe=audiences.map(a=>a.demos||0),aCp=audiences.map(a=>a.demos>0?a.spend/a.demos:0);
     let aTSp=0,aTDe=0,aTIm=0,aTCl=0;
-    audH+='<div style="font-size:11px;color:var(--grey);font-variant-numeric:tabular-nums;margin-bottom:10px">'+sorted.length+' audience'+(sorted.length===1?'':'s')+' · sort by '+audSort.col+' '+audSort.dir+'</div>';
+    audH+='<div style="font-size:11px;color:var(--grey);font-variant-numeric:tabular-nums;margin-bottom:10px">'+sorted.length+' '+audItemLabel+(sorted.length===1?'':'s')+' · sort by '+audSort.col+' '+audSort.dir+'</div>';
     audH+='<div style="overflow-x:auto"><table class="irf-meta-table" style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr style="border-bottom:1.5px solid var(--border)">';
-    audH+=_irfanSortableTh('Audience','name',audSort,'irfanSortAud','left');
+    audH+=_irfanSortableTh(audSectionLabel==='Audiences'?'Audience':'Ad Group','name',audSort,'irfanSortAud','left');
     audH+=_irfanSortableTh('Spend','spend',audSort,'irfanSortAud','right');
     audH+=_irfanSortableTh('Impr','impressions',audSort,'irfanSortAud','right');
     audH+=_irfanSortableTh('Clicks','clicks',audSort,'irfanSortAud','right');
@@ -2305,7 +2363,7 @@ function _renderIrfanMetaTables(d){
     const aTCtr=aTIm>0?(aTCl/aTIm)*100:null;
     const aTCpc=aTCl>0?aTSp/aTCl:null;
     audH+='<tr style="background:var(--lighter);font-weight:700;border-top:2px solid var(--teal-30)">'
-      +'<td style="padding:10px 6px;color:var(--navy)">Total ('+sorted.length+' audiences)</td>'
+      +'<td style="padding:10px 6px;color:var(--navy)">Total ('+sorted.length+' '+audItemLabel+(sorted.length===1?'':'s')+')</td>'
       +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+f$(aTSp)+'</td>'
       +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+fN(aTIm)+'</td>'
       +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+fN(aTCl)+'</td>'
@@ -8221,16 +8279,21 @@ function scoreTag(tag){
   var colors={WINNER:'#2ecc71',TESTING:'#f39c12',LOSER:'#e74c3c'};
   return '<span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:4px;background:'+(colors[tag]||'#999')+'20;color:'+(colors[tag]||'#999')+'">'+tag+'</span>';
 }
+// Fatigue badges use the custom dbcTip system (instant hover, no browser
+// tooltip delay). The badge encodes the message as data-tip so the same
+// tooltip element gets re-populated on hover.
 function fatigueBadge(cr){
   if(!cr||!cr.fatigued)return '';
-  return ' <span title="CTR declined '+cr.fatigueDecline+'% ('+cr.fatigueFirstCtr+'% → '+cr.fatigueLastCtr+'%) over 14 days" style="cursor:help;font-size:10px;background:rgba(243,156,18,.12);color:#e67e22;padding:1px 5px;border-radius:4px;font-weight:700;white-space:nowrap">⚠ Fatigue</span>';
+  var tip='CTR declined '+cr.fatigueDecline+'% ('+cr.fatigueFirstCtr+'% → '+cr.fatigueLastCtr+'%) over 14 days';
+  return ' <span data-tip="'+tip.replace(/"/g,'&quot;')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" style="cursor:help;font-size:10px;background:rgba(243,156,18,.12);color:#e67e22;padding:1px 5px;border-radius:4px;font-weight:700;white-space:nowrap">⚠ Fatigue</span>';
 }
 function fatigueBadgeFromMap(fMap,ch,name){
   if(!fMap)return '';
   var key=ch+'::'+(name||'').toLowerCase();
   var ft=fMap[key];
   if(!ft||!ft.fatigued)return '';
-  return ' <span title="CTR declined '+ft.decline+'% ('+ft.firstCtr+'% → '+ft.lastCtr+'%) over 14 days" style="cursor:help;font-size:10px;background:rgba(243,156,18,.12);color:#e67e22;padding:1px 5px;border-radius:4px;font-weight:700;white-space:nowrap">⚠ Fatigue</span>';
+  var tip='CTR declined '+ft.decline+'% ('+ft.firstCtr+'% → '+ft.lastCtr+'%) over 14 days';
+  return ' <span data-tip="'+tip.replace(/"/g,'&quot;')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" style="cursor:help;font-size:10px;background:rgba(243,156,18,.12);color:#e67e22;padding:1px 5px;border-radius:4px;font-weight:700;white-space:nowrap">⚠ Fatigue</span>';
 }
 
 // ── Creative Scoring Model (Agency Tier 1) ──
