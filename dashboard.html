@@ -746,7 +746,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r28';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r29';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -8542,8 +8542,27 @@ function renderCreativeSession(){
   var _exhaustedSnap=_allAudSnap.filter(function(a){return a.spend>50&&(a.demos===0||(a.spend>200&&a.demos>0&&a.spend/a.demos>500));});
   var _nmTot=0,_nmTagged=0;_allCrSnap.forEach(function(c){_nmTot++;var s=detectSubject(c.name);if(s.type!=='unknown')_nmTagged++;});
   var _nmPct=_nmTot>0?Math.round(_nmTagged/_nmTot*100):100;
+  // Top 5 creatives by score (any tag, must have spend)
+  var _top5Snap=_allCrSnap.filter(function(c){return (c.spend||0)>0;}).sort(function(a,b){return (b._score||0)-(a._score||0);}).slice(0,5);
+  // Top combos (Format + Talent + Concept) — same ranking as the Top Combos panel
+  var _comboMapSnap={};
+  _allCrSnap.forEach(function(c){
+    var s=detectSubject(c.name);
+    if(s.type!=='talent')return;
+    if(!s.format||!s.label||!s.concept)return;
+    var k=s.format+' + '+s.label+' + '+s.concept;
+    if(!_comboMapSnap[k])_comboMapSnap[k]={label:k,count:0,spend:0,demos:0,clicks:0,impressions:0};
+    var b=_comboMapSnap[k];
+    b.count++;b.spend+=c.spend||0;b.demos+=c.demos||0;b.clicks+=c.clicks||0;b.impressions+=c.impressions||0;
+  });
+  var _topComboSnap=Object.values(_comboMapSnap).filter(function(c){return c.count>=2;}).map(function(c){c.cpd=c.demos>0?c.spend/c.demos:null;return c;}).sort(function(a,b){
+    if(a.demos>0&&b.demos===0)return -1;
+    if(b.demos>0&&a.demos===0)return 1;
+    if(a.demos>0&&b.demos>0)return (a.cpd||999)-(b.cpd||999);
+    return (b.spend||0)-(a.spend||0);
+  }).slice(0,3);
   // Stash for the Slack-copy callback (must be top-level so onclick can reach it)
-  window._csSnap={winners:_winnersSnap,losers:_losersSnap,fatigued:_fatSnap,scaling:_scalingSnap,exhausted:_exhaustedSnap,waste:_wasteSnap,nmPct:_nmPct,nmTot:_nmTot,nmTagged:_nmTagged,window:(az.period&&az.period.label)||'current window'};
+  window._csSnap={winners:_winnersSnap,losers:_losersSnap,fatigued:_fatSnap,scaling:_scalingSnap,exhausted:_exhaustedSnap,waste:_wasteSnap,nmPct:_nmPct,nmTot:_nmTot,nmTagged:_nmTagged,top5:_top5Snap,topCombos:_topComboSnap,window:(az.period&&az.period.label)||'current window'};
   var step=S.csession.step||1;
   var h='';
   // Header
@@ -8580,8 +8599,11 @@ function renderCreativeSession(){
   h+='</div>';
   h+='<button onclick="copyCSessionToSlack()" style="background:var(--navy);color:#fff;border:none;padding:7px 16px;border-radius:50px;font-family:var(--font-h);font-weight:700;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:6px">📋 Copy as Slack</button>';
   h+='</div></div>';
-  // Step navigation
-  var steps=[{n:1,label:'Winners',icon:'🏆'},{n:2,label:'Losers',icon:'⚠️'},{n:3,label:'Fatigue',icon:'📉'},{n:4,label:'Audiences',icon:'👥'},{n:5,label:'Hypotheses',icon:'💡'},{n:6,label:'Placements & Patterns',icon:'🎨'}];
+  // Step navigation. Step 7 (Decisions) shows + tracks all open decisions
+  // made from Steps 1-3's action chips; persisted to KV across sessions.
+  var openDecCount=Object.keys(S.csession.actions||{}).length;
+  var decBadge=openDecCount>0?' <span style="background:#e74c3c;color:#fff;font-size:9px;font-weight:700;padding:1px 7px;border-radius:50px;margin-left:4px">'+openDecCount+'</span>':'';
+  var steps=[{n:1,label:'Winners',icon:'🏆'},{n:2,label:'Losers',icon:'⚠️'},{n:3,label:'Fatigue',icon:'📉'},{n:4,label:'Audiences',icon:'👥'},{n:5,label:'Hypotheses',icon:'💡'},{n:6,label:'Placements & Patterns',icon:'🎨'},{n:7,label:'Decisions'+decBadge,icon:'✅'}];
   h+='<div style="display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap">';
   for(var i=0;i<steps.length;i++){
     var s=steps[i];
@@ -8609,65 +8631,122 @@ function renderCreativeSession(){
   else if(step===4) h+=csStep4Audiences(allAud,az);
   else if(step===5) h+=csStep5Hypotheses(allAud,allCr);
   else if(step===6) h+=csStep6Placements(az);
+  else if(step===7) h+=csStep7Decisions(allCr,allAud,az);
   el.innerHTML=h;
 }
 
-// Generate a Slack-friendly markdown summary of the session and copy to clipboard.
-// Pulls from window._csSnap (populated by renderCreativeSession).
+// Step 7 — Decisions log. Reads from S.csession.actions (KV-backed). Groups
+// the open decisions by action type so the team can see the work outstanding
+// at a glance. Each row has "Mark Done" (clears the decision) and a Slack
+// export.
+function csStep7Decisions(allCr,allAud,az){
+  var actions=S.csession.actions||{};
+  var keys=Object.keys(actions);
+  // Build a lookup of creative metadata so we can show context
+  var crMap={};
+  for(var ch in az.channels){var crs=az.channels[ch].creatives;if(!crs)continue;crs.forEach(function(c){crMap[c.name]=Object.assign({},c,{channel:ch});});}
+  // Group by action type
+  var byAction={pause:[],scale:[],refresh:[],brief:[],watch:[]};
+  keys.forEach(function(k){var a=actions[k];if(!a||!a.action)return;var bucket=byAction[a.action]||(byAction[a.action]=[]);bucket.push({name:k,action:a.action,ts:a.ts,cr:crMap[k]||null});});
+  // Sort each bucket by decision time DESC (newest first)
+  Object.keys(byAction).forEach(function(k){byAction[k].sort(function(a,b){return (b.ts||0)-(a.ts||0);});});
+  var totalOpen=keys.length;
+  var h='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:16px">';
+  h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:12px"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:18px">✅</span><div style="font-family:var(--font-h);font-weight:700;font-size:15px;color:var(--navy)">Open Decisions ('+totalOpen+')</div></div>';
+  if(totalOpen>0)h+='<button onclick="copyDecisionsToSlack()" style="background:var(--navy);color:#fff;border:none;padding:7px 16px;border-radius:50px;font-family:var(--font-h);font-weight:700;font-size:11px;cursor:pointer">📋 Copy decisions to Slack</button>';
+  h+='</div>';
+  if(!totalOpen){
+    h+='<div style="padding:32px 16px;text-align:center;color:var(--grey);font-size:13px">';
+    h+='<div style="font-size:32px;margin-bottom:10px;opacity:.4">📋</div>';
+    h+='<div style="font-family:var(--font-h);font-weight:700;color:var(--navy);font-size:14px;margin-bottom:6px">No open decisions yet</div>';
+    h+='<div style="max-width:420px;margin:0 auto;line-height:1.6">On the <b>Winners</b>, <b>Losers</b>, and <b>Fatigue</b> tabs, use the action chips on each creative to log a decision. They\'ll appear here, persisted across sessions, so the next reviewer can see the open work.</div>';
+    h+='</div></div>';return h;
+  }
+  // Action explainers + grouped list
+  CS_ACTIONS.forEach(function(act){
+    var items=byAction[act.k]||[];
+    if(!items.length)return;
+    h+='<div style="margin-bottom:14px;padding:12px 14px;background:'+act.c+'08;border:1px solid '+act.c+'22;border-left:3px solid '+act.c+';border-radius:8px">';
+    h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="background:'+act.c+';color:#fff;font-family:var(--font-h);font-weight:700;font-size:10px;padding:3px 11px;border-radius:50px;letter-spacing:.04em;text-transform:uppercase">'+act.l+'</span><span style="color:var(--navy);font-weight:700;font-size:12px">'+items.length+' '+(items.length===1?'creative':'creatives')+'</span><span style="color:var(--grey);font-size:11px">· '+act.tip+'</span></div>';
+    items.forEach(function(it){
+      var cr=it.cr;
+      var safe=(it.name||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      var meta=cr?(cr.channel+' · $'+Math.round(cr.spend||0)+' spend · '+(cr.demos||0)+' demos'+(cr.demos>0&&cr.spend>0?' · $'+Math.round(cr.spend/cr.demos)+' CPD':'')+(cr._score!=null?' · Score '+cr._score:'')):'<span style="color:var(--grey);font-style:italic">no longer in current window</span>';
+      h+='<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:#fff;border-radius:6px;margin-bottom:4px"><div style="flex:1;min-width:0"><div style="font-weight:700;font-size:12px;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+(it.name||'').replace(/"/g,'&quot;')+'">'+(it.name||'(unknown)')+'</div><div style="font-size:10px;color:var(--grey);margin-top:2px">'+meta+'</div></div><div style="font-size:10px;color:var(--grey);white-space:nowrap">'+_csRelTime(it.ts)+'</div><button onclick="csClearAction(\''+safe+'\')" style="background:transparent;border:1px solid var(--border);color:var(--navy);font-family:var(--font-h);font-weight:700;font-size:9px;padding:4px 10px;border-radius:50px;cursor:pointer;letter-spacing:.04em;text-transform:uppercase">Mark Done</button></div>';
+    });
+    h+='</div>';
+  });
+  h+='</div>';
+  return h;
+}
+// Slack copy for the Decisions tab — separate from the main snapshot copy.
+window.copyDecisionsToSlack=function(){
+  var actions=S.csession.actions||{};
+  var keys=Object.keys(actions);
+  if(!keys.length){_csToast('No open decisions to copy');return;}
+  var byAction={};
+  keys.forEach(function(k){var a=actions[k];if(!a||!a.action)return;if(!byAction[a.action])byAction[a.action]=[];byAction[a.action].push({name:k,ts:a.ts});});
+  var lines=[];
+  var dStr=new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+  lines.push('*Creative Session — Open Decisions ('+dStr+')*');lines.push('');
+  CS_ACTIONS.forEach(function(act){
+    var items=byAction[act.k]||[];
+    if(!items.length)return;
+    var em={pause:':warning:',scale:':rocket:',refresh:':arrows_counterclockwise:',brief:':pencil:',watch:':eyes:'}[act.k]||':white_check_mark:';
+    lines.push(em+' *'+act.l+'* ('+items.length+')');
+    items.sort(function(a,b){return (b.ts||0)-(a.ts||0);}).forEach(function(it){lines.push('  • '+it.name+' _('+_csRelTime(it.ts)+')_');});
+    lines.push('');
+  });
+  var text=lines.join('\n').trim();
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(function(){_csToast('Decisions copied to clipboard');},function(){console.log(text);_csToast('Clipboard blocked — see console');});}
+  else{var ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.top='-9999px';document.body.appendChild(ta);ta.select();try{document.execCommand('copy');_csToast('Decisions copied to clipboard');}catch(e){console.log(text);_csToast('Clipboard blocked');}document.body.removeChild(ta);}
+};
+
+// Generate a tight Slack-friendly markdown summary and copy to clipboard.
+// Streamlined per user request: snapshot one-liner, top 5 creatives, top
+// 3 naming patterns, action tail. Pulls from window._csSnap.
 window.copyCSessionToSlack=function(){
   var s=window._csSnap;if(!s)return;
   var lines=[];
   var dStr=new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
-  lines.push('*Creative Session — '+dStr+'*');
-  lines.push('_Window: '+s.window+'_');
+  lines.push('*Creative Session — '+dStr+'*  _('+s.window+')_');
   lines.push('');
-  // Winners
-  if(s.winners.length){
-    lines.push(':trophy: *'+s.winners.length+' Winner'+(s.winners.length===1?'':'s')+'* worth scaling');
-    s.winners.slice(0,5).sort(function(a,b){return b._score-a._score;}).forEach(function(c){
+  // Snapshot one-liner
+  var snapParts=[];
+  if(s.winners.length)snapParts.push(s.winners.length+' winners');
+  if(s.losers.length)snapParts.push(s.losers.length+' losers'+(s.waste>0?' ($'+Math.round(s.waste).toLocaleString()+' wasted)':''));
+  if(s.fatigued.length)snapParts.push(s.fatigued.length+' fatigued');
+  if(s.scaling.length||s.exhausted.length)snapParts.push(s.scaling.length+' scaling'+(s.exhausted.length?' · '+s.exhausted.length+' exhausted':''));
+  if(s.nmTot>0)snapParts.push(s.nmPct+'% naming compliance');
+  if(snapParts.length)lines.push('*Snapshot:* '+snapParts.join(' · '));
+  lines.push('');
+  // Top 5 creatives by score
+  if(s.top5&&s.top5.length){
+    lines.push(':trophy: *Top 5 Creatives* (by score)');
+    s.top5.forEach(function(c,i){
       var cpd=c.demos>0?'$'+Math.round(c.spend/c.demos)+' CPD':'0 demos';
-      lines.push('  • '+c.name+' ('+c.channel+') — Score '+c._score+' · '+cpd+' · '+c.demos+' demos');
+      var sc=c._score!=null?'Score '+c._score+' · ':'';
+      lines.push((i+1)+'. '+c.name+' ('+c.channel+') — '+sc+cpd+' · '+c.demos+' demos');
     });
-    if(s.winners.length>5)lines.push('  _… and '+(s.winners.length-5)+' more_');
     lines.push('');
   }
-  // Losers
-  if(s.losers.length){
-    var waste=s.waste>0?' — *$'+Math.round(s.waste).toLocaleString()+' wasted on zero-demo creatives*':'';
-    lines.push(':warning: *'+s.losers.length+' Loser'+(s.losers.length===1?'':'s')+'*'+waste);
-    s.losers.slice(0,5).sort(function(a,b){return a._score-b._score;}).forEach(function(c){
-      var cpd=c.demos>0?'$'+Math.round(c.spend/c.demos)+' CPD':'0 demos';
-      lines.push('  • '+c.name+' ('+c.channel+') — Score '+c._score+' · $'+Math.round(c.spend)+' spend · '+cpd);
+  // Top Naming Patterns combos
+  if(s.topCombos&&s.topCombos.length){
+    lines.push(':art: *Top Naming Patterns* (Format + Talent + Concept)');
+    s.topCombos.forEach(function(c){
+      var cpd=c.cpd!=null?'$'+Math.round(c.cpd)+' CPD':'0 demos';
+      lines.push('  • '+c.label+' — '+c.count+' ads · '+cpd+' · '+c.demos+' demos');
     });
-    if(s.losers.length>5)lines.push('  _… and '+(s.losers.length-5)+' more_');
     lines.push('');
   }
-  // Fatigue
-  if(s.fatigued.length){
-    lines.push(':chart_with_downwards_trend: *'+s.fatigued.length+' Fatigued* — CTR declining >15% over 14d, consider refresh');
-    s.fatigued.slice(0,3).sort(function(a,b){return b.spend-a.spend;}).forEach(function(c){
-      lines.push('  • '+c.name+' ('+c.channel+') — $'+Math.round(c.spend)+' spend');
-    });
-    if(s.fatigued.length>3)lines.push('  _… and '+(s.fatigued.length-3)+' more_');
-    lines.push('');
-  }
-  // Audiences
-  if(s.scaling.length||s.exhausted.length){
-    lines.push(':busts_in_silhouette: *Audiences*: '+s.scaling.length+' scaling · '+s.exhausted.length+' exhausted');
-    if(s.scaling.length){
-      s.scaling.slice(0,3).sort(function(a,b){return b.spend-a.spend;}).forEach(function(a){
-        var cpd=a.demos>0?'$'+Math.round(a.spend/a.demos)+' CPD':'0 demos';
-        lines.push('  • Scale: '+a.name+' ('+a.channel+') — '+a.demos+' demos · '+cpd);
-      });
-    }
-    lines.push('');
-  }
-  // Naming hygiene
-  if(s.nmTot>0){
-    var nmEmoji=s.nmPct===100?':label:':s.nmPct>=60?':label:':':warning:';
-    lines.push(nmEmoji+' *Naming hygiene*: '+s.nmPct+'% compliant ('+s.nmTagged+' of '+s.nmTot+' creatives)'+(s.nmPct<100?' — '+(s.nmTot-s.nmTagged)+' need structured names':''));
-  }
-  var text=lines.join('\n');
+  // Action tail line
+  var tail=[];
+  if(s.losers.length)tail.push(s.losers.length+' to pause');
+  if(s.fatigued.length)tail.push(s.fatigued.length+' to refresh');
+  if(s.scaling.length)tail.push(s.scaling.length+' audiences to scale');
+  if(s.nmTot-s.nmTagged>0)tail.push((s.nmTot-s.nmTagged)+' names need structure');
+  if(tail.length)lines.push(':dart: *Actions:* '+tail.join(' · '));
+  var text=lines.join('\n').trim();
   // Copy to clipboard
   if(navigator.clipboard&&navigator.clipboard.writeText){
     navigator.clipboard.writeText(text).then(function(){_csToast('Copied to clipboard — paste into Slack');},function(){_csToast('Clipboard blocked — see console for output');console.log(text);});
@@ -8700,11 +8779,11 @@ function _csRelTime(ts){
   return 'just now';
 }
 var CS_ACTIONS=[
-  {k:'pause',l:'Pause',c:'#e74c3c'},
-  {k:'scale',l:'Scale',c:'#2ecc71'},
-  {k:'refresh',l:'Refresh',c:'#f39c12'},
-  {k:'brief',l:'Brief Variant',c:'#72A4BF'},
-  {k:'watch',l:'Watch',c:'#9CA3AF'}
+  {k:'pause',l:'Pause',c:'#e74c3c',tip:'Mark this creative to be paused — wasting spend or underperforming'},
+  {k:'scale',l:'Scale',c:'#2ecc71',tip:'Mark this winner to scale — increase budget or duplicate to more audiences'},
+  {k:'refresh',l:'Refresh',c:'#f39c12',tip:'Mark this fatigued creative for a refresh — needs a new variant'},
+  {k:'brief',l:'Brief Variant',c:'#72A4BF',tip:'Brief a new variant based on this creative — for the creative team'},
+  {k:'watch',l:'Watch',c:'#9CA3AF',tip:'Keep monitoring — not ready to decide yet'}
 ];
 // HTML for the row of action chips on a creative card. Switches between
 // "show all 5 options" and "show current decision + clear button" based on
@@ -8721,7 +8800,7 @@ function _csActionChips(name){
     html+='<button onclick="event.stopPropagation();csClearAction(\''+safeName+'\')" title="Clear decision" style="background:none;border:none;color:var(--grey);cursor:pointer;font-size:13px;padding:0 6px;margin-left:2px;line-height:1">✕</button>';
   } else {
     CS_ACTIONS.forEach(function(a){
-      html+='<button onclick="event.stopPropagation();csSetAction(\''+safeName+'\',\''+a.k+'\')" style="background:transparent;border:1px solid '+a.c+'40;color:'+a.c+';font-family:var(--font-h);font-weight:700;font-size:9px;padding:2px 9px;border-radius:50px;cursor:pointer;letter-spacing:.04em;text-transform:uppercase;transition:all .15s" onmouseover="this.style.background=\''+a.c+'\';this.style.color=\'#fff\'" onmouseout="this.style.background=\'transparent\';this.style.color=\''+a.c+'\'">'+a.l+'</button>';
+      html+='<button title="'+a.tip.replace(/"/g,'&quot;')+'" onclick="event.stopPropagation();csSetAction(\''+safeName+'\',\''+a.k+'\')" style="background:transparent;border:1px solid '+a.c+'40;color:'+a.c+';font-family:var(--font-h);font-weight:700;font-size:9px;padding:2px 9px;border-radius:50px;cursor:pointer;letter-spacing:.04em;text-transform:uppercase;transition:all .15s" onmouseover="this.style.background=\''+a.c+'\';this.style.color=\'#fff\'" onmouseout="this.style.background=\'transparent\';this.style.color=\''+a.c+'\'">'+a.l+'</button>';
     });
   }
   html+='</div>';
@@ -9052,8 +9131,171 @@ function detectSubject(name){
   return{label:'Untagged',type:'unknown'};
 }
 
+// Window callback: sort one of the Format/Concept/Setting tables in Step 6
+window.csSortDim=function(dim,col){
+  if(!S.csession.dimSort)S.csession.dimSort={};
+  var s=S.csession.dimSort[dim]||(S.csession.dimSort[dim]={col:'spend',dir:'desc'});
+  if(s.col===col)s.dir=s.dir==='desc'?'asc':'desc';else{s.col=col;s.dir=(col==='label')?'asc':'desc';}
+  renderCreativeSession();
+};
+// Window callback: sort the Top Combos panel
+window.csSortCombos=function(col){
+  if(!S.csession.comboSort)S.csession.comboSort={col:'cpd',dir:'asc'};
+  var s=S.csession.comboSort;
+  if(s.col===col)s.dir=s.dir==='desc'?'asc':'desc';else{s.col=col;s.dir=(col==='label')?'asc':'desc';}
+  renderCreativeSession();
+};
+
 function csStep6Placements(az){
   var h='';
+
+  // ── NAMING PATTERNS (Format · Concept · Setting + Top Combos) ──
+  // Rendered FIRST — it's the most strategic pattern-level insight. Tables
+  // are sortable, include a % share column with inline bar viz.
+  var allCr=[];for(var ch in az.channels){var crs=az.channels[ch].creatives;if(!crs)continue;crs.forEach(function(c){allCr.push(Object.assign({},c,{channel:ch}));});}
+  if(allCr.length){
+    var dimMaps={format:{},concept:{},setting:{}};
+    var dimUntagged=0;
+    for(var di=0;di<allCr.length;di++){
+      var crD=allCr[di];var subjD=detectSubject(crD.name);
+      if(subjD.type!=='talent'){dimUntagged++;continue;}
+      var fmt=(subjD.format||'').trim();
+      var con=(subjD.concept||'').trim();
+      var set=(subjD.setting||'').trim();
+      function bump(map,key){
+        if(!key)return;
+        if(!map[key])map[key]={label:key,spend:0,clicks:0,impressions:0,demos:0,count:0};
+        map[key].spend+=crD.spend||0;
+        map[key].clicks+=crD.clicks||0;
+        map[key].impressions+=crD.impressions||0;
+        map[key].demos+=crD.demos||0;
+        map[key].count++;
+      }
+      bump(dimMaps.format,fmt);
+      bump(dimMaps.concept,con);
+      bump(dimMaps.setting,set);
+    }
+    function _finalizeDim(map){
+      var arr=Object.values(map).map(function(g){
+        g.ctr=g.impressions>0?(g.clicks/g.impressions)*100:0;
+        g.cpd=g.demos>0?g.spend/g.demos:null;
+        return g;
+      });
+      var totalSp=arr.reduce(function(s,g){return s+(g.spend||0);},0);
+      arr.forEach(function(g){g.sharePct=totalSp>0?(g.spend/totalSp)*100:0;});
+      return arr;
+    }
+    function _sortDim(arr,dim){
+      if(!S.csession.dimSort)S.csession.dimSort={};
+      var s=S.csession.dimSort[dim]||(S.csession.dimSort[dim]={col:'spend',dir:'desc'});
+      return arr.slice().sort(function(a,b){
+        var av=a[s.col],bv=b[s.col];
+        if(s.col==='label')return s.dir==='asc'?av.localeCompare(bv):bv.localeCompare(av);
+        if(av==null&&bv==null)return 0;
+        if(av==null)return 1;if(bv==null)return -1;
+        return s.dir==='desc'?bv-av:av-bv;
+      });
+    }
+    function _dimSortTh(label,col,dim,align){
+      var s=(S.csession.dimSort||{})[dim]||{col:'spend',dir:'desc'};
+      var isA=s.col===col;
+      var arrow=isA?(s.dir==='desc'?' ↓':' ↑'):'';
+      var col2=isA?'var(--teal)':'var(--grey)';
+      return '<th onclick="csSortDim(\''+dim+'\',\''+col+'\')" style="cursor:pointer;text-align:'+(align||'right')+';padding:6px 6px;font-size:10px;font-weight:600;color:'+col2+';text-transform:uppercase;letter-spacing:.04em;user-select:none;white-space:nowrap">'+label+arrow+'</th>';
+    }
+    function _dimTable(dim,title,icon,arr,emptyMsg){
+      var hh='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 18px">';
+      hh+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><span style="font-size:16px">'+icon+'</span><div style="font-family:var(--font-h);font-weight:700;font-size:13px;color:var(--navy)">'+title+'</div></div>';
+      if(!arr.length){hh+='<div style="color:var(--grey);font-size:12px">'+(emptyMsg||'No data.')+'</div></div>';return hh;}
+      var sorted=_sortDim(arr,dim);
+      var maxSp=Math.max.apply(null,arr.map(function(g){return g.spend;}))||1;
+      var pos=arr.filter(function(g){return g.cpd!=null;}).map(function(g){return g.cpd;});
+      var minCpd=pos.length?Math.min.apply(null,pos):0,maxCpd=pos.length?Math.max.apply(null,pos):1;
+      hh+='<table class="ctbl" style="font-size:11px;width:100%"><thead><tr>';
+      hh+=_dimSortTh(title.split(' ')[0],'label',dim,'left');
+      hh+=_dimSortTh('Ads','count',dim);
+      hh+=_dimSortTh('Spend','spend',dim);
+      hh+=_dimSortTh('Share','sharePct',dim);
+      hh+=_dimSortTh('CTR','ctr',dim);
+      hh+=_dimSortTh('Demos','demos',dim);
+      hh+=_dimSortTh('CPD','cpd',dim);
+      hh+='</tr></thead><tbody>';
+      for(var i=0;i<sorted.length;i++){var g=sorted[i];
+        var spHeat=g.spend>0?'background:rgba(114,164,191,'+(0.05+(g.spend/maxSp)*0.15).toFixed(2)+')':'';
+        var cpdHeat='';if(g.cpd!=null&&maxCpd>minCpd){var n=(g.cpd-minCpd)/(maxCpd-minCpd);cpdHeat='background:rgba('+(n>0.5?'231,76,60':'46,204,113')+','+(0.05+Math.abs(n-0.5)*0.3).toFixed(2)+')';}
+        // % share with inline horizontal bar visualization
+        var shareCell='<div style="display:flex;align-items:center;justify-content:flex-end;gap:5px"><div style="height:5px;width:42px;background:var(--lighter);border-radius:3px;overflow:hidden;flex-shrink:0"><div style="width:'+g.sharePct.toFixed(1)+'%;height:100%;background:var(--teal);transition:width .3s"></div></div><span style="font-variant-numeric:tabular-nums;font-weight:600;color:var(--navy);min-width:30px;text-align:right">'+g.sharePct.toFixed(1)+'%</span></div>';
+        hh+='<tr><td style="font-weight:600;padding:6px 8px">'+g.label+'</td><td class="n" style="padding:6px 8px">'+g.count+'</td><td class="n" style="'+spHeat+';padding:6px 8px">$'+Math.round(g.spend).toLocaleString()+'</td><td class="n" style="padding:6px 8px">'+shareCell+'</td><td class="n" style="padding:6px 8px">'+g.ctr.toFixed(2)+'%</td><td class="n" style="padding:6px 8px">'+g.demos+'</td><td class="n" style="'+cpdHeat+';padding:6px 8px">'+(g.cpd!=null?'$'+Math.round(g.cpd):'—')+'</td></tr>';
+      }
+      hh+='</tbody></table></div>';
+      return hh;
+    }
+    var fmtArr=_finalizeDim(dimMaps.format);
+    var conArr=_finalizeDim(dimMaps.concept);
+    var setArr=_finalizeDim(dimMaps.setting);
+    h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:16px">';
+    h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:18px">🧩</span><div style="font-family:var(--font-h);font-weight:700;font-size:15px;color:var(--navy)">Naming Patterns</div></div>';
+    h+='<div style="font-size:11px;color:var(--grey);margin-bottom:14px">Performance rolled up by each dimension of the {Format}_{Talent}_{Concept}_{Setting}_{Variant} convention. Only structured-name creatives ('+(allCr.length-dimUntagged)+' of '+allCr.length+') are included. <b>Click headers to sort</b> · <b>Share</b> = % of dimension total spend.</div>';
+    h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">'+_dimTable('format','Format','🎬',fmtArr,'No structured Format data')+_dimTable('concept','Concept','💡',conArr,'No structured Concept data')+_dimTable('setting','Setting','📍',setArr,'No structured Setting data')+'</div>';
+
+    // ── TOP COMBOS (Format + Talent + Concept) — now sortable ──
+    var comboMap={};
+    for(var ci=0;ci<allCr.length;ci++){
+      var crC=allCr[ci];var subC=detectSubject(crC.name);
+      if(subC.type!=='talent')continue;
+      var fmt2=subC.format||'?',tal=subC.label||'?',con2=subC.concept||'?';
+      if(!fmt2||!tal||!con2||fmt2==='?'||tal==='?'||con2==='?')continue;
+      var ck=fmt2+' + '+tal+' + '+con2;
+      if(!comboMap[ck])comboMap[ck]={label:ck,format:fmt2,talent:tal,concept:con2,spend:0,demos:0,clicks:0,impressions:0,count:0};
+      comboMap[ck].spend+=crC.spend||0;
+      comboMap[ck].demos+=crC.demos||0;
+      comboMap[ck].clicks+=crC.clicks||0;
+      comboMap[ck].impressions+=crC.impressions||0;
+      comboMap[ck].count++;
+    }
+    var combos=Object.values(comboMap).filter(function(c){return c.count>=2;}).map(function(c){
+      c.ctr=c.impressions>0?(c.clicks/c.impressions)*100:0;
+      c.cpd=c.demos>0?c.spend/c.demos:null;
+      return c;
+    });
+    // Compute % share for combos
+    var totalComboSp=combos.reduce(function(s,c){return s+(c.spend||0);},0);
+    combos.forEach(function(c){c.sharePct=totalComboSp>0?(c.spend/totalComboSp)*100:0;});
+    // Sort by user-selected col
+    if(!S.csession.comboSort)S.csession.comboSort={col:'cpd',dir:'asc'};
+    var cSort=S.csession.comboSort;
+    var sortedCombos=combos.slice().sort(function(a,b){
+      var av=a[cSort.col],bv=b[cSort.col];
+      if(cSort.col==='label')return cSort.dir==='asc'?av.localeCompare(bv):bv.localeCompare(av);
+      if(av==null&&bv==null)return 0;
+      if(av==null)return 1;if(bv==null)return -1;
+      return cSort.dir==='desc'?bv-av:av-bv;
+    });
+    if(combos.length){
+      h+='<div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">';
+      h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">';
+      h+='<span style="font-size:16px">🏆</span><div style="font-family:var(--font-h);font-weight:700;font-size:13px;color:var(--navy)">Top Combos</div>';
+      h+='<span style="font-size:10px;color:var(--grey)">— Format + Talent + Concept · ≥2 creatives</span>';
+      h+='<div style="flex:1"></div>';
+      h+='<span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;margin-right:4px">Sort</span>';
+      [{c:'spend',l:'Spend'},{c:'sharePct',l:'Share'},{c:'demos',l:'Demos'},{c:'cpd',l:'CPD'},{c:'ctr',l:'CTR'}].forEach(function(p){
+        var isA=cSort.col===p.c;
+        h+='<button onclick="csSortCombos(\''+p.c+'\')" style="background:'+(isA?'var(--teal)':'var(--teal-8)')+';color:'+(isA?'#fff':'var(--navy)')+';border:none;border-radius:50px;padding:3px 10px;font-size:10px;font-family:var(--font-h);cursor:pointer">'+p.l+(isA?(cSort.dir==='desc'?' ↓':' ↑'):'')+'</button>';
+      });
+      h+='</div>';
+      h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">';
+      sortedCombos.slice(0,8).forEach(function(c,i){
+        var bg=i===0?'rgba(46,204,113,.08)':'rgba(114,164,191,.04)';
+        var border=i===0?'1px solid rgba(46,204,113,.30)':'1px solid var(--border)';
+        var rank=i===0?'<span style="background:#2ecc71;color:#fff;font-family:var(--font-h);font-weight:700;font-size:9px;padding:2px 7px;border-radius:50px;margin-right:6px">TOP</span>':'';
+        var cpdStr=c.cpd!=null?'$'+Math.round(c.cpd)+' CPD':'0 demos';
+        h+='<div style="padding:10px 12px;background:'+bg+';border:'+border+';border-radius:8px"><div style="font-family:var(--font-h);font-weight:700;font-size:12px;color:var(--navy);margin-bottom:4px">'+rank+c.label+'</div><div style="display:flex;align-items:center;gap:5px;margin:4px 0"><div style="height:4px;flex:1;background:var(--lighter);border-radius:2px;overflow:hidden"><div style="width:'+c.sharePct.toFixed(1)+'%;height:100%;background:var(--teal)"></div></div><span style="font-size:10px;color:var(--navy);font-weight:700;min-width:36px;text-align:right">'+c.sharePct.toFixed(1)+'%</span></div><div style="font-size:10px;color:var(--grey)">'+c.count+' ads · $'+Math.round(c.spend).toLocaleString()+' spend · '+c.demos+' demos · '+c.ctr.toFixed(2)+'% CTR · '+cpdStr+'</div></div>';
+      });
+      h+='</div></div>';
+    }
+    h+='</div>';
+  }
+
   // ── PLACEMENT ANALYSIS (Meta only) ──
   var metaCh=az.channels.meta;
   var placements=metaCh&&metaCh.placements?metaCh.placements:[];
@@ -9109,106 +9351,6 @@ function csStep6Placements(az){
     h+='<div class="tw" style="max-height:none;overflow:visible"><table class="ctbl" style="font-size:12px"><thead><tr><th>Subject</th><th>Type</th><th class="n">Ads</th><th class="n">Spend</th><th class="n">Impr.</th><th class="n">Clicks</th><th class="n">CTR</th><th class="n">Demos</th><th class="n">CPD</th></tr></thead><tbody id="sj-tbody">'+window._sjBuild()+'</tbody></table></div>';
   }
   if(untaggedCount>0)h+='<div style="margin-top:10px;font-size:11px;color:var(--grey)">'+untaggedCount+' creatives have no detectable subject in their ad name.</div>';
-  h+='</div>';
-
-  // ── NAMING-DIMENSION ROLLUPS (Format · Concept · Setting) ──
-  // The detectSubject parser extracts Format/Concept/Setting/Variant from the
-  // {Format}_{Talent}_{Concept}_{Setting}_{Variant} convention. Until now we
-  // only rolled up by Talent — these tables unlock the other 3 dimensions.
-  var dimMaps={format:{},concept:{},setting:{}};
-  var dimUntagged=0;
-  for(var di=0;di<allCr.length;di++){
-    var crD=allCr[di];var subjD=detectSubject(crD.name);
-    if(subjD.type!=='talent'){dimUntagged++;continue;} // only structured names have format/concept/setting
-    var fmt=(subjD.format||'').trim();
-    var con=(subjD.concept||'').trim();
-    var set=(subjD.setting||'').trim();
-    function bump(map,key){
-      if(!key)return;
-      if(!map[key])map[key]={label:key,spend:0,clicks:0,impressions:0,demos:0,count:0};
-      map[key].spend+=crD.spend||0;
-      map[key].clicks+=crD.clicks||0;
-      map[key].impressions+=crD.impressions||0;
-      map[key].demos+=crD.demos||0;
-      map[key].count++;
-    }
-    bump(dimMaps.format,fmt);
-    bump(dimMaps.concept,con);
-    bump(dimMaps.setting,set);
-  }
-  function _finalizeDim(map){
-    return Object.values(map).map(function(g){
-      g.ctr=g.impressions>0?(g.clicks/g.impressions)*100:0;
-      g.cpd=g.demos>0?g.spend/g.demos:null;
-      return g;
-    }).sort(function(a,b){return b.spend-a.spend;});
-  }
-  function _dimTable(title,icon,arr,emptyMsg){
-    var hh='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px">';
-    hh+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><span style="font-size:16px">'+icon+'</span><div style="font-family:var(--font-h);font-weight:700;font-size:13px;color:var(--navy)">'+title+'</div></div>';
-    if(!arr.length){hh+='<div style="color:var(--grey);font-size:12px">'+(emptyMsg||'No data.')+'</div></div>';return hh;}
-    var maxSp=Math.max.apply(null,arr.map(function(g){return g.spend;}))||1;
-    var pos=arr.filter(function(g){return g.cpd!=null;}).map(function(g){return g.cpd;});
-    var minCpd=pos.length?Math.min.apply(null,pos):0,maxCpd=pos.length?Math.max.apply(null,pos):1;
-    hh+='<table class="ctbl" style="font-size:11px;width:100%"><thead><tr><th style="text-align:left">'+title.split(' ')[0]+'</th><th class="n">Ads</th><th class="n">Spend</th><th class="n">CTR</th><th class="n">Demos</th><th class="n">CPD</th></tr></thead><tbody>';
-    for(var i=0;i<arr.length;i++){var g=arr[i];
-      var spHeat=g.spend>0?'background:rgba(114,164,191,'+(0.05+(g.spend/maxSp)*0.15).toFixed(2)+')':'';
-      var cpdHeat='';if(g.cpd!=null&&maxCpd>minCpd){var n=(g.cpd-minCpd)/(maxCpd-minCpd);cpdHeat='background:rgba('+(n>0.5?'231,76,60':'46,204,113')+','+(0.05+Math.abs(n-0.5)*0.3).toFixed(2)+')';}
-      hh+='<tr><td style="font-weight:600;padding:6px 8px">'+g.label+'</td><td class="n" style="padding:6px 8px">'+g.count+'</td><td class="n" style="'+spHeat+';padding:6px 8px">$'+Math.round(g.spend).toLocaleString()+'</td><td class="n" style="padding:6px 8px">'+g.ctr.toFixed(2)+'%</td><td class="n" style="padding:6px 8px">'+g.demos+'</td><td class="n" style="'+cpdHeat+';padding:6px 8px">'+(g.cpd!=null?'$'+Math.round(g.cpd):'—')+'</td></tr>';
-    }
-    hh+='</tbody></table></div>';
-    return hh;
-  }
-  var fmtArr=_finalizeDim(dimMaps.format);
-  var conArr=_finalizeDim(dimMaps.concept);
-  var setArr=_finalizeDim(dimMaps.setting);
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:16px">';
-  h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:18px">🧩</span><div style="font-family:var(--font-h);font-weight:700;font-size:15px;color:var(--navy)">Naming Patterns</div></div>';
-  h+='<div style="font-size:11px;color:var(--grey);margin-bottom:14px">Performance rolled up by each dimension of the {Format}_{Talent}_{Concept}_{Setting}_{Variant} convention. Only structured-name creatives ('+(allCr.length-dimUntagged)+' of '+allCr.length+') are included.</div>';
-  h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">'+_dimTable('Format','🎬',fmtArr,'No structured Format data')+_dimTable('Concept','💡',conArr,'No structured Concept data')+_dimTable('Setting','📍',setArr,'No structured Setting data')+'</div>';
-
-  // ── TOP COMBOS (Format + Talent + Concept) ──
-  // Surfaces the highest-converting pattern combinations — e.g. "Vid + Aurea
-  // + TrustHook" is the top combo. Requires ≥ 2 creatives in the combo to
-  // avoid surfacing one-offs.
-  var comboMap={};
-  for(var ci=0;ci<allCr.length;ci++){
-    var crC=allCr[ci];var subC=detectSubject(crC.name);
-    if(subC.type!=='talent')continue;
-    var fmt2=subC.format||'?',tal=subC.label||'?',con2=subC.concept||'?';
-    if(!fmt2||!tal||!con2||fmt2==='?'||tal==='?'||con2==='?')continue;
-    var ck=fmt2+' + '+tal+' + '+con2;
-    if(!comboMap[ck])comboMap[ck]={label:ck,format:fmt2,talent:tal,concept:con2,spend:0,demos:0,clicks:0,impressions:0,count:0};
-    comboMap[ck].spend+=crC.spend||0;
-    comboMap[ck].demos+=crC.demos||0;
-    comboMap[ck].clicks+=crC.clicks||0;
-    comboMap[ck].impressions+=crC.impressions||0;
-    comboMap[ck].count++;
-  }
-  var combos=Object.values(comboMap).filter(function(c){return c.count>=2;}).map(function(c){
-    c.ctr=c.impressions>0?(c.clicks/c.impressions)*100:0;
-    c.cpd=c.demos>0?c.spend/c.demos:null;
-    return c;
-  }).sort(function(a,b){
-    // Rank: combos with real demos first (sorted by CPD asc), then by spend
-    if(a.demos>0&&b.demos===0)return -1;
-    if(b.demos>0&&a.demos===0)return 1;
-    if(a.demos>0&&b.demos>0)return (a.cpd||999)-(b.cpd||999);
-    return (b.spend||0)-(a.spend||0);
-  });
-  if(combos.length){
-    h+='<div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">';
-    h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><span style="font-size:16px">🏆</span><div style="font-family:var(--font-h);font-weight:700;font-size:13px;color:var(--navy)">Top Combos</div><span style="font-size:10px;color:var(--grey)">— Format + Talent + Concept · ≥2 creatives</span></div>';
-    h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">';
-    combos.slice(0,8).forEach(function(c,i){
-      var bg=i===0?'rgba(46,204,113,.08)':'rgba(114,164,191,.04)';
-      var border=i===0?'1px solid rgba(46,204,113,.30)':'1px solid var(--border)';
-      var rank=i===0?'<span style="background:#2ecc71;color:#fff;font-family:var(--font-h);font-weight:700;font-size:9px;padding:2px 7px;border-radius:50px;margin-right:6px">TOP</span>':'';
-      var cpdStr=c.cpd!=null?'$'+Math.round(c.cpd)+' CPD':'0 demos';
-      h+='<div style="padding:10px 12px;background:'+bg+';border:'+border+';border-radius:8px"><div style="font-family:var(--font-h);font-weight:700;font-size:12px;color:var(--navy);margin-bottom:4px">'+rank+c.label+'</div><div style="font-size:10px;color:var(--grey)">'+c.count+' ads · $'+Math.round(c.spend).toLocaleString()+' spend · '+c.demos+' demos · '+c.ctr.toFixed(2)+'% CTR · '+cpdStr+'</div></div>';
-    });
-    h+='</div></div>';
-  }
   h+='</div>';
 
   // ── PER-CREATIVE PLACEMENT BREAKDOWN ──
