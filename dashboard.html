@@ -746,7 +746,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r26';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r27';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -8527,6 +8527,20 @@ function renderCreativeSession(){
     el.innerHTML='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:40px 32px;text-align:center;max-width:520px;margin:24px auto">'+spinner+'<div style="font-family:var(--font-h);font-size:16px;font-weight:700;color:var(--navy);margin-bottom:8px">Creative Session</div><div style="color:var(--grey);font-size:13px;margin-bottom:20px">'+msg+'</div>'+(fetching?'':'<button onclick="fdAnalyzer()" style="background:var(--navy);color:#fff;border:none;padding:10px 24px;border-radius:50px;font-family:var(--font-h);font-weight:700;font-size:13px;cursor:pointer">Load data →</button>')+'</div>';
     return;
   }
+  // ── Pre-compute snapshot stats (used by header + Slack copy) ──
+  var _allCrSnap=[];for(var _ch in az.channels){var _crs=az.channels[_ch].creatives;if(!_crs)continue;_crs.forEach(function(c){_allCrSnap.push(Object.assign({},c,{channel:_ch}));});}
+  if(typeof scoreCreatives==='function'&&_allCrSnap.length>1){try{scoreCreatives(_allCrSnap);}catch(e){}}
+  var _winnersSnap=_allCrSnap.filter(function(c){return c._tag==='WINNER'&&c.spend>50;});
+  var _losersSnap=_allCrSnap.filter(function(c){return c._tag==='LOSER'&&c.spend>50;});
+  var _wasteSnap=_losersSnap.reduce(function(s,c){return s+(c.demos===0?c.spend:0);},0);
+  var _fatSnap=_allCrSnap.filter(function(c){return c.fatigue||c.fatigued;});
+  var _allAudSnap=[];for(var _ch2 in az.channels){var _auds=az.channels[_ch2].audiences;if(!_auds)continue;_auds.forEach(function(a){_allAudSnap.push(Object.assign({},a,{channel:_ch2}));});}
+  var _scalingSnap=_allAudSnap.filter(function(a){return a.spend>50&&a.demos>0&&(a.spend/a.demos)<300;});
+  var _exhaustedSnap=_allAudSnap.filter(function(a){return a.spend>50&&(a.demos===0||(a.spend>200&&a.demos>0&&a.spend/a.demos>500));});
+  var _nmTot=0,_nmTagged=0;_allCrSnap.forEach(function(c){_nmTot++;var s=detectSubject(c.name);if(s.type!=='unknown')_nmTagged++;});
+  var _nmPct=_nmTot>0?Math.round(_nmTagged/_nmTot*100):100;
+  // Stash for the Slack-copy callback (must be top-level so onclick can reach it)
+  window._csSnap={winners:_winnersSnap,losers:_losersSnap,fatigued:_fatSnap,scaling:_scalingSnap,exhausted:_exhaustedSnap,waste:_wasteSnap,nmPct:_nmPct,nmTot:_nmTot,nmTagged:_nmTagged,window:(az.period&&az.period.label)||'current window'};
   var step=S.csession.step||1;
   var h='';
   // Header
@@ -8546,8 +8560,25 @@ function renderCreativeSession(){
     h+='<div style="display:flex;align-items:center;gap:8px"><div style="background:rgba(46,204,113,.2);color:#2ecc71;padding:4px 12px;border-radius:50px;font-size:10px;font-weight:700">✓ Naming: 100%</div></div>';
   }
   h+='</div></div>';
+  // ── Session Snapshot panel ──
+  // Compact at-a-glance card: counts per step + waste $ + naming compliance,
+  // with a one-click "Copy as Slack" that generates a meeting-ready summary.
+  var snap=window._csSnap;
+  var nmCol=snap.nmPct===100?'#16A34A':snap.nmPct>=60?'#F59E0B':'#DC2626';
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-bottom:18px;box-shadow:0 1px 3px rgba(2,15,24,.04)">';
+  h+='<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">';
+  h+='<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">';
+  h+='<div style="display:flex;align-items:center;gap:6px"><span style="font-family:var(--font-h);font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.08em">Snapshot</span><span style="font-size:11px;color:var(--grey)">· '+snap.window+'</span></div>';
+  h+='<div style="display:flex;align-items:center;gap:4px;padding:5px 12px;background:rgba(46,204,113,.08);border:1px solid rgba(46,204,113,.20);border-radius:50px;font-size:11px"><span style="color:#2ecc71;font-weight:700">🏆 '+snap.winners.length+'</span><span style="color:var(--navy);font-weight:600">winners</span></div>';
+  h+='<div style="display:flex;align-items:center;gap:4px;padding:5px 12px;background:rgba(231,76,60,.06);border:1px solid rgba(231,76,60,.20);border-radius:50px;font-size:11px"><span style="color:#e74c3c;font-weight:700">⚠ '+snap.losers.length+'</span><span style="color:var(--navy);font-weight:600">losers</span>'+(snap.waste>0?'<span style="color:var(--grey)">·</span><span style="color:#e74c3c;font-weight:700">$'+Math.round(snap.waste).toLocaleString()+' wasted</span>':'')+'</div>';
+  h+='<div style="display:flex;align-items:center;gap:4px;padding:5px 12px;background:rgba(243,156,18,.06);border:1px solid rgba(243,156,18,.20);border-radius:50px;font-size:11px"><span style="color:#f39c12;font-weight:700">📉 '+snap.fatigued.length+'</span><span style="color:var(--navy);font-weight:600">fatigued</span></div>';
+  h+='<div style="display:flex;align-items:center;gap:4px;padding:5px 12px;background:rgba(114,164,191,.06);border:1px solid rgba(114,164,191,.20);border-radius:50px;font-size:11px"><span style="color:var(--teal);font-weight:700">👥 '+snap.scaling.length+'</span><span style="color:var(--navy);font-weight:600">scaling</span>'+(snap.exhausted.length>0?'<span style="color:var(--grey)">·</span><span style="color:#e74c3c;font-weight:700">'+snap.exhausted.length+' exhausted</span>':'')+'</div>';
+  h+='<div style="display:flex;align-items:center;gap:4px;padding:5px 12px;background:'+nmCol+'12;border:1px solid '+nmCol+'40;border-radius:50px;font-size:11px"><span style="color:'+nmCol+';font-weight:700">📝 '+snap.nmPct+'%</span><span style="color:var(--navy);font-weight:600">naming</span></div>';
+  h+='</div>';
+  h+='<button onclick="copyCSessionToSlack()" style="background:var(--navy);color:#fff;border:none;padding:7px 16px;border-radius:50px;font-family:var(--font-h);font-weight:700;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:6px">📋 Copy as Slack</button>';
+  h+='</div></div>';
   // Step navigation
-  var steps=[{n:1,label:'Winners',icon:'🏆'},{n:2,label:'Losers',icon:'⚠️'},{n:3,label:'Fatigue',icon:'📉'},{n:4,label:'Audiences',icon:'👥'},{n:5,label:'Hypotheses',icon:'💡'},{n:6,label:'Placements & Talent',icon:'📍'}];
+  var steps=[{n:1,label:'Winners',icon:'🏆'},{n:2,label:'Losers',icon:'⚠️'},{n:3,label:'Fatigue',icon:'📉'},{n:4,label:'Audiences',icon:'👥'},{n:5,label:'Hypotheses',icon:'💡'},{n:6,label:'Placements & Patterns',icon:'🎨'}];
   h+='<div style="display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap">';
   for(var i=0;i<steps.length;i++){
     var s=steps[i];
@@ -8576,6 +8607,79 @@ function renderCreativeSession(){
   else if(step===5) h+=csStep5Hypotheses(allAud,allCr);
   else if(step===6) h+=csStep6Placements(az);
   el.innerHTML=h;
+}
+
+// Generate a Slack-friendly markdown summary of the session and copy to clipboard.
+// Pulls from window._csSnap (populated by renderCreativeSession).
+window.copyCSessionToSlack=function(){
+  var s=window._csSnap;if(!s)return;
+  var lines=[];
+  var dStr=new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+  lines.push('*Creative Session — '+dStr+'*');
+  lines.push('_Window: '+s.window+'_');
+  lines.push('');
+  // Winners
+  if(s.winners.length){
+    lines.push(':trophy: *'+s.winners.length+' Winner'+(s.winners.length===1?'':'s')+'* worth scaling');
+    s.winners.slice(0,5).sort(function(a,b){return b._score-a._score;}).forEach(function(c){
+      var cpd=c.demos>0?'$'+Math.round(c.spend/c.demos)+' CPD':'0 demos';
+      lines.push('  • '+c.name+' ('+c.channel+') — Score '+c._score+' · '+cpd+' · '+c.demos+' demos');
+    });
+    if(s.winners.length>5)lines.push('  _… and '+(s.winners.length-5)+' more_');
+    lines.push('');
+  }
+  // Losers
+  if(s.losers.length){
+    var waste=s.waste>0?' — *$'+Math.round(s.waste).toLocaleString()+' wasted on zero-demo creatives*':'';
+    lines.push(':warning: *'+s.losers.length+' Loser'+(s.losers.length===1?'':'s')+'*'+waste);
+    s.losers.slice(0,5).sort(function(a,b){return a._score-b._score;}).forEach(function(c){
+      var cpd=c.demos>0?'$'+Math.round(c.spend/c.demos)+' CPD':'0 demos';
+      lines.push('  • '+c.name+' ('+c.channel+') — Score '+c._score+' · $'+Math.round(c.spend)+' spend · '+cpd);
+    });
+    if(s.losers.length>5)lines.push('  _… and '+(s.losers.length-5)+' more_');
+    lines.push('');
+  }
+  // Fatigue
+  if(s.fatigued.length){
+    lines.push(':chart_with_downwards_trend: *'+s.fatigued.length+' Fatigued* — CTR declining >15% over 14d, consider refresh');
+    s.fatigued.slice(0,3).sort(function(a,b){return b.spend-a.spend;}).forEach(function(c){
+      lines.push('  • '+c.name+' ('+c.channel+') — $'+Math.round(c.spend)+' spend');
+    });
+    if(s.fatigued.length>3)lines.push('  _… and '+(s.fatigued.length-3)+' more_');
+    lines.push('');
+  }
+  // Audiences
+  if(s.scaling.length||s.exhausted.length){
+    lines.push(':busts_in_silhouette: *Audiences*: '+s.scaling.length+' scaling · '+s.exhausted.length+' exhausted');
+    if(s.scaling.length){
+      s.scaling.slice(0,3).sort(function(a,b){return b.spend-a.spend;}).forEach(function(a){
+        var cpd=a.demos>0?'$'+Math.round(a.spend/a.demos)+' CPD':'0 demos';
+        lines.push('  • Scale: '+a.name+' ('+a.channel+') — '+a.demos+' demos · '+cpd);
+      });
+    }
+    lines.push('');
+  }
+  // Naming hygiene
+  if(s.nmTot>0){
+    var nmEmoji=s.nmPct===100?':label:':s.nmPct>=60?':label:':':warning:';
+    lines.push(nmEmoji+' *Naming hygiene*: '+s.nmPct+'% compliant ('+s.nmTagged+' of '+s.nmTot+' creatives)'+(s.nmPct<100?' — '+(s.nmTot-s.nmTagged)+' need structured names':''));
+  }
+  var text=lines.join('\n');
+  // Copy to clipboard
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(function(){_csToast('Copied to clipboard — paste into Slack');},function(){_csToast('Clipboard blocked — see console for output');console.log(text);});
+  } else {
+    // Fallback for older browsers
+    var ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.top='-9999px';document.body.appendChild(ta);ta.select();
+    try{document.execCommand('copy');_csToast('Copied to clipboard — paste into Slack');}catch(e){_csToast('Clipboard blocked — see console for output');console.log(text);}
+    document.body.removeChild(ta);
+  }
+};
+function _csToast(msg){
+  var t=document.getElementById('cs-toast');
+  if(!t){t=document.createElement('div');t.id='cs-toast';t.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;padding:10px 18px;border-radius:50px;font-family:var(--font-h);font-weight:600;font-size:13px;box-shadow:0 4px 16px rgba(2,15,24,.25);z-index:9999;transition:opacity .2s,transform .2s;opacity:0';document.body.appendChild(t);}
+  t.textContent=msg;t.style.opacity='1';t.style.transform='translateX(-50%) translateY(0)';
+  clearTimeout(t._hideTo);t._hideTo=setTimeout(function(){t.style.opacity='0';t.style.transform='translateX(-50%) translateY(8px)';},2400);
 }
 
 function csStep1Winners(allCr,az){
@@ -8927,6 +9031,107 @@ function csStep6Placements(az){
   }
   if(untaggedCount>0)h+='<div style="margin-top:10px;font-size:11px;color:var(--grey)">'+untaggedCount+' creatives have no detectable subject in their ad name.</div>';
   h+='</div>';
+
+  // ── NAMING-DIMENSION ROLLUPS (Format · Concept · Setting) ──
+  // The detectSubject parser extracts Format/Concept/Setting/Variant from the
+  // {Format}_{Talent}_{Concept}_{Setting}_{Variant} convention. Until now we
+  // only rolled up by Talent — these tables unlock the other 3 dimensions.
+  var dimMaps={format:{},concept:{},setting:{}};
+  var dimUntagged=0;
+  for(var di=0;di<allCr.length;di++){
+    var crD=allCr[di];var subjD=detectSubject(crD.name);
+    if(subjD.type!=='talent'){dimUntagged++;continue;} // only structured names have format/concept/setting
+    var fmt=(subjD.format||'').trim();
+    var con=(subjD.concept||'').trim();
+    var set=(subjD.setting||'').trim();
+    function bump(map,key){
+      if(!key)return;
+      if(!map[key])map[key]={label:key,spend:0,clicks:0,impressions:0,demos:0,count:0};
+      map[key].spend+=crD.spend||0;
+      map[key].clicks+=crD.clicks||0;
+      map[key].impressions+=crD.impressions||0;
+      map[key].demos+=crD.demos||0;
+      map[key].count++;
+    }
+    bump(dimMaps.format,fmt);
+    bump(dimMaps.concept,con);
+    bump(dimMaps.setting,set);
+  }
+  function _finalizeDim(map){
+    return Object.values(map).map(function(g){
+      g.ctr=g.impressions>0?(g.clicks/g.impressions)*100:0;
+      g.cpd=g.demos>0?g.spend/g.demos:null;
+      return g;
+    }).sort(function(a,b){return b.spend-a.spend;});
+  }
+  function _dimTable(title,icon,arr,emptyMsg){
+    var hh='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px">';
+    hh+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><span style="font-size:16px">'+icon+'</span><div style="font-family:var(--font-h);font-weight:700;font-size:13px;color:var(--navy)">'+title+'</div></div>';
+    if(!arr.length){hh+='<div style="color:var(--grey);font-size:12px">'+(emptyMsg||'No data.')+'</div></div>';return hh;}
+    var maxSp=Math.max.apply(null,arr.map(function(g){return g.spend;}))||1;
+    var pos=arr.filter(function(g){return g.cpd!=null;}).map(function(g){return g.cpd;});
+    var minCpd=pos.length?Math.min.apply(null,pos):0,maxCpd=pos.length?Math.max.apply(null,pos):1;
+    hh+='<table class="ctbl" style="font-size:11px;width:100%"><thead><tr><th style="text-align:left">'+title.split(' ')[0]+'</th><th class="n">Ads</th><th class="n">Spend</th><th class="n">CTR</th><th class="n">Demos</th><th class="n">CPD</th></tr></thead><tbody>';
+    for(var i=0;i<arr.length;i++){var g=arr[i];
+      var spHeat=g.spend>0?'background:rgba(114,164,191,'+(0.05+(g.spend/maxSp)*0.15).toFixed(2)+')':'';
+      var cpdHeat='';if(g.cpd!=null&&maxCpd>minCpd){var n=(g.cpd-minCpd)/(maxCpd-minCpd);cpdHeat='background:rgba('+(n>0.5?'231,76,60':'46,204,113')+','+(0.05+Math.abs(n-0.5)*0.3).toFixed(2)+')';}
+      hh+='<tr><td style="font-weight:600;padding:6px 8px">'+g.label+'</td><td class="n" style="padding:6px 8px">'+g.count+'</td><td class="n" style="'+spHeat+';padding:6px 8px">$'+Math.round(g.spend).toLocaleString()+'</td><td class="n" style="padding:6px 8px">'+g.ctr.toFixed(2)+'%</td><td class="n" style="padding:6px 8px">'+g.demos+'</td><td class="n" style="'+cpdHeat+';padding:6px 8px">'+(g.cpd!=null?'$'+Math.round(g.cpd):'—')+'</td></tr>';
+    }
+    hh+='</tbody></table></div>';
+    return hh;
+  }
+  var fmtArr=_finalizeDim(dimMaps.format);
+  var conArr=_finalizeDim(dimMaps.concept);
+  var setArr=_finalizeDim(dimMaps.setting);
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:16px">';
+  h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:18px">🧩</span><div style="font-family:var(--font-h);font-weight:700;font-size:15px;color:var(--navy)">Naming Patterns</div></div>';
+  h+='<div style="font-size:11px;color:var(--grey);margin-bottom:14px">Performance rolled up by each dimension of the {Format}_{Talent}_{Concept}_{Setting}_{Variant} convention. Only structured-name creatives ('+(allCr.length-dimUntagged)+' of '+allCr.length+') are included.</div>';
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">'+_dimTable('Format','🎬',fmtArr,'No structured Format data')+_dimTable('Concept','💡',conArr,'No structured Concept data')+_dimTable('Setting','📍',setArr,'No structured Setting data')+'</div>';
+
+  // ── TOP COMBOS (Format + Talent + Concept) ──
+  // Surfaces the highest-converting pattern combinations — e.g. "Vid + Aurea
+  // + TrustHook" is the top combo. Requires ≥ 2 creatives in the combo to
+  // avoid surfacing one-offs.
+  var comboMap={};
+  for(var ci=0;ci<allCr.length;ci++){
+    var crC=allCr[ci];var subC=detectSubject(crC.name);
+    if(subC.type!=='talent')continue;
+    var fmt2=subC.format||'?',tal=subC.label||'?',con2=subC.concept||'?';
+    if(!fmt2||!tal||!con2||fmt2==='?'||tal==='?'||con2==='?')continue;
+    var ck=fmt2+' + '+tal+' + '+con2;
+    if(!comboMap[ck])comboMap[ck]={label:ck,format:fmt2,talent:tal,concept:con2,spend:0,demos:0,clicks:0,impressions:0,count:0};
+    comboMap[ck].spend+=crC.spend||0;
+    comboMap[ck].demos+=crC.demos||0;
+    comboMap[ck].clicks+=crC.clicks||0;
+    comboMap[ck].impressions+=crC.impressions||0;
+    comboMap[ck].count++;
+  }
+  var combos=Object.values(comboMap).filter(function(c){return c.count>=2;}).map(function(c){
+    c.ctr=c.impressions>0?(c.clicks/c.impressions)*100:0;
+    c.cpd=c.demos>0?c.spend/c.demos:null;
+    return c;
+  }).sort(function(a,b){
+    // Rank: combos with real demos first (sorted by CPD asc), then by spend
+    if(a.demos>0&&b.demos===0)return -1;
+    if(b.demos>0&&a.demos===0)return 1;
+    if(a.demos>0&&b.demos>0)return (a.cpd||999)-(b.cpd||999);
+    return (b.spend||0)-(a.spend||0);
+  });
+  if(combos.length){
+    h+='<div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">';
+    h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><span style="font-size:16px">🏆</span><div style="font-family:var(--font-h);font-weight:700;font-size:13px;color:var(--navy)">Top Combos</div><span style="font-size:10px;color:var(--grey)">— Format + Talent + Concept · ≥2 creatives</span></div>';
+    h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">';
+    combos.slice(0,8).forEach(function(c,i){
+      var bg=i===0?'rgba(46,204,113,.08)':'rgba(114,164,191,.04)';
+      var border=i===0?'1px solid rgba(46,204,113,.30)':'1px solid var(--border)';
+      var rank=i===0?'<span style="background:#2ecc71;color:#fff;font-family:var(--font-h);font-weight:700;font-size:9px;padding:2px 7px;border-radius:50px;margin-right:6px">TOP</span>':'';
+      var cpdStr=c.cpd!=null?'$'+Math.round(c.cpd)+' CPD':'0 demos';
+      h+='<div style="padding:10px 12px;background:'+bg+';border:'+border+';border-radius:8px"><div style="font-family:var(--font-h);font-weight:700;font-size:12px;color:var(--navy);margin-bottom:4px">'+rank+c.label+'</div><div style="font-size:10px;color:var(--grey)">'+c.count+' ads · $'+Math.round(c.spend).toLocaleString()+' spend · '+c.demos+' demos · '+c.ctr.toFixed(2)+'% CTR · '+cpdStr+'</div></div>';
+    });
+    h+='</div></div>';
+  }
+  h+='</div>';
+
   // ── PER-CREATIVE PLACEMENT BREAKDOWN ──
   if(metaCh&&metaCh.creatives){
     var topCr=metaCh.creatives.filter(function(c){return c.placements&&c.placements.length>1&&c.spend>100;}).sort(function(a,b){return b.spend-a.spend;}).slice(0,8);
