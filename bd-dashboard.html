@@ -101,30 +101,45 @@ function doLogin(){
 // lookups (uses cached names only) to stay under the per-invocation
 // subrequest budget. This calls /api/bd/lookup-companies which has its
 // own fresh budget, merges results into BD.data.deals, and re-renders.
-// If more companies remain (deferred>0), recurses until cache is full.
-function bdLookupMissingCompanies(){
+// Retries until either there's no more missing OR no progress is made
+// (server returned a placeholder for every ID it could fetch + had no
+// deferred work). Safety counter caps recursion at 8 waves.
+function bdLookupMissingCompanies(attempt){
+  attempt=attempt||0;
+  if(attempt>=8){var hSafety=document.getElementById('bd-co-hint');if(hSafety)hSafety.style.display='none';return;}
   if(!BD.pw||!BD.data||!BD.data.missingCompanyIds||!BD.data.missingCompanyIds.length)return;
-  var ids=BD.data.missingCompanyIds.slice(); // copy
-  // Show loading hint in the All Deals header (if rendered)
+  var ids=BD.data.missingCompanyIds.slice();
+  var beforeCount=ids.length;
   var hint=document.getElementById('bd-co-hint');
   if(hint){hint.textContent=' \u00b7 loading '+ids.length+' company names\u2026';hint.style.display='inline';}
   fetch('/api/bd/lookup-companies',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:BD.pw,companyIds:ids})}).then(function(r){return r.json();}).then(function(d){
-    if(!d||!d.ok||!d.companies)return;
-    // Build a companyId \u2192 {name, id} lookup
+    if(!d||!d.ok||!d.companies){if(hint)hint.style.display='none';return;}
     var nameMap=d.companies;
-    // Patch each deal's companyName from the lookup
+    // Patch each deal's companyName from the lookup. Entries with empty
+    // name (placeholder for archived/deleted companies) still mark the
+    // deal as "resolved" \u2014 we just leave companyName as ''.
     BD.data.deals.forEach(function(deal){
       if(deal.companyId&&!deal.companyName&&nameMap[deal.companyId]){
         deal.companyName=nameMap[deal.companyId].name||'';
       }
     });
-    // Recompute missing list (some may still be missing if deferred>0)
+    // Any ID returned by the server (even with empty name = unresolved
+    // placeholder) gets removed from the missing list \u2014 we won't keep
+    // retrying it. Only IDs the server DIDN'T return stay in missing,
+    // and those imply the server hit its subrequest budget and deferred
+    // the rest.
     BD.data.missingCompanyIds=BD.data.missingCompanyIds.filter(function(id){return !nameMap[id];});
+    var afterCount=BD.data.missingCompanyIds.length;
     renderBD();
-    if(hint){
-      if(d.deferred>0){hint.textContent=' \u00b7 '+d.deferred+' more queued\u2026';bdLookupMissingCompanies();}
-      else{hint.style.display='none';}
-    } else if(d.deferred>0){bdLookupMissingCompanies();}
+    // Retry if: still missing AND we made progress this wave OR server
+    // explicitly deferred work. Stops if no progress (would loop forever).
+    var madeProgress=afterCount<beforeCount;
+    if(afterCount>0&&(d.deferred>0||madeProgress)){
+      if(hint)hint.textContent=' \u00b7 '+afterCount+' more queued\u2026';
+      bdLookupMissingCompanies(attempt+1);
+    } else {
+      if(hint)hint.style.display='none';
+    }
   }).catch(function(e){console.warn('bdLookupMissingCompanies failed:',e);if(hint)hint.style.display='none';});
 }
 function bdRefresh(){

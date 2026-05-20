@@ -3365,10 +3365,15 @@ async function lookupBDCompanies(env, companyIds) {
   const MAX_BATCHES = 30;
   const idsToFetch = missingIds.slice(0, MAX_BATCHES * 100);
   let fetched = 0;
+  let attempted = new Set();
   for (let i = 0; i < idsToFetch.length; i += 100) {
     const batch = idsToFetch.slice(i, i + 100);
+    batch.forEach(id => attempted.add(id));
     try {
-      const coRes = await fetch('https://api.hubapi.com/crm/v3/objects/companies/batch/read', {
+      // archived=true so we also pull metadata for archived/deleted companies
+      // — without this HubSpot silently drops them from `results`, leaving
+      // those deals' Company column permanently blank.
+      const coRes = await fetch('https://api.hubapi.com/crm/v3/objects/companies/batch/read?archived=true', {
         method: 'POST',
         headers: { Authorization: `Bearer ${hsToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ inputs: batch.map(id => ({ id })), properties: ['name','domain','website'] }),
@@ -3381,25 +3386,36 @@ async function lookupBDCompanies(env, companyIds) {
       const coData = await coRes.json();
       for (const co of (coData.results || [])) {
         const name = co.properties?.name || co.properties?.domain || co.properties?.website || '';
-        companyMap[co.id] = { name, id: co.id };
+        companyMap[co.id] = { name, id: co.id, archived: !!co.archived };
         if (name) fetched++;
       }
     } catch(e) { console.error('BD lookup batch error:', e); }
   }
-  // Persist updated cache
-  if (env.CONTENT_STORE && fetched > 0) {
+  // For IDs we ATTEMPTED but HubSpot didn't return (e.g., hard-deleted,
+  // missing scope), stash a placeholder so we don't keep retrying them on
+  // every page load. They'll show as "—" in the table but won't re-fetch.
+  let unresolvedCount = 0;
+  for (const id of attempted) {
+    if (!companyMap[id]) {
+      companyMap[id] = { name: '', id: String(id), _unresolved: true };
+      unresolvedCount++;
+    }
+  }
+  // Persist updated cache (always when we attempted anything, so the
+  // unresolved-placeholder write also lands)
+  if (env.CONTENT_STORE && attempted.size > 0) {
     try {
       await env.CONTENT_STORE.put('bd_company_cache_v1', JSON.stringify(companyMap));
     } catch(e) { console.warn('BD lookup cache save failed:', e.message); }
   }
-  // Build response: only the requested IDs
+  // Build response: include every requested ID (resolved OR unresolved placeholder)
   const companies = {};
   for (const id of companyIds) {
     if (companyMap[id]) companies[id] = companyMap[id];
   }
   const deferred = missingIds.length - idsToFetch.length;
-  console.log(`BD lookup: ${companyIds.length} requested · ${cacheHits} cache hits · ${fetched} newly fetched · ${deferred} deferred`);
-  return { companies, deferred, fetched, cacheHits };
+  console.log(`BD lookup: ${companyIds.length} requested · ${cacheHits} cache hits · ${fetched} newly fetched · ${unresolvedCount} unresolved (cached as placeholder) · ${deferred} deferred`);
+  return { companies, deferred, fetched, cacheHits, unresolved: unresolvedCount };
 }
 
 async function fetchSalesData(mode, env) {
