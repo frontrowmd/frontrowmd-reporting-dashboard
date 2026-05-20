@@ -248,16 +248,25 @@ function renderBD(){
   h+='<div class="tile hero" style="flex:1"><div class="tlbl">Total ARR</div><div class="tval" style="font-size:22px">'+f$(sfTotalAmt*12)+'</div><div class="tdef">MRR \u00d7 12</div></div>';
   h+='<div class="tile hero" style="flex:1"><div class="tlbl">Total MRR</div><div class="tval" style="font-size:22px">'+f$(sfTotalAmt)+'</div><div class="tdef">Sum of amount</div></div>';
   h+='<div class="tile hero" style="flex:1"><div class="tlbl">Avg ACV</div><div class="tval" style="font-size:22px">'+f$(sfAvgACV)+'</div><div class="tdef">MRR \u00f7 deals</div></div>';
-  // Avg Days to Close \u2014 now shows BOTH metrics side-by-side:
+  // Avg Days to Close \u2014 two metrics side-by-side, each clearly labeled.
   //   From Demo    = closedate \u2212 date_demo_booked
-  //   From Created = closedate \u2212 createdate  (existing)
+  //   From Created = closedate \u2212 createdate
+  // Design: small uppercase label ABOVE each number (so you know which is
+  // which at a glance), a faint vertical divider between, and a footer line
+  // showing each metric's sample size.
   h+='<div class="tile hero" style="flex:1"><div class="tlbl">Avg Days to Close</div>'
-    +'<div style="display:flex;gap:14px;align-items:baseline;margin-top:2px">'
-    +'<div><div class="tval" style="font-size:22px;line-height:1">'+(sfAvgDaysFromDemo==null?'\u2014':sfAvgDaysFromDemo)+'</div><div style="font-size:9px;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.04em;margin-top:3px">From Demo</div></div>'
-    +'<div style="opacity:.35;font-size:18px;color:#fff">/</div>'
-    +'<div><div class="tval" style="font-size:22px;line-height:1">'+(sfAvgDays==null?'\u2014':sfAvgDays)+'</div><div style="font-size:9px;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.04em;margin-top:3px">From Created</div></div>'
+    +'<div style="display:flex;align-items:stretch;margin-top:8px">'
+    +'<div style="flex:1;text-align:center">'
+    +  '<div style="font-size:9px;color:rgba(255,255,255,.55);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:4px">From Demo</div>'
+    +  '<div class="tval" style="font-size:28px;line-height:1;font-weight:700">'+(sfAvgDaysFromDemo==null?'\u2014':sfAvgDaysFromDemo)+'</div>'
     +'</div>'
-    +'<div class="tdef" style="margin-top:8px">'+sfDemoDaysCount+' from demo \u00b7 '+sfDaysCount+' from created (Closed-Won)</div></div>';
+    +'<div style="width:1px;background:rgba(255,255,255,.18);margin:0 4px"></div>'
+    +'<div style="flex:1;text-align:center">'
+    +  '<div style="font-size:9px;color:rgba(255,255,255,.55);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:4px">From Created</div>'
+    +  '<div class="tval" style="font-size:28px;line-height:1;font-weight:700">'+(sfAvgDays==null?'\u2014':sfAvgDays)+'</div>'
+    +'</div>'
+    +'</div>'
+    +'<div class="tdef" style="margin-top:10px;text-align:center">'+sfDemoDaysCount+' from demo \u00b7 '+sfDaysCount+' from created (Closed-Won)</div></div>';
   h+='<div class="tile '+(sfStatusFilled&&sfPaused/sfStatusFilled>.15?'warn':'hero')+'" style="flex:1"><div class="tlbl">% Paused</div><div class="tval" style="font-size:22px">'+(sfStatusFilled?(sfPaused/sfStatusFilled*100).toFixed(1):0)+'%</div><div class="tdef">'+sfPaused+' \u00f7 '+sfStatusFilled+' brands w/ status \u00b7 '+f$(sfPausedMRR)+' MRR</div></div>';
   h+='<div class="tile '+(sfStatusFilled&&sfChurned/sfStatusFilled>.2?'warn':'hero')+'" style="flex:1"><div class="tlbl">% Churned</div><div class="tval" style="font-size:22px">'+(sfStatusFilled?(sfChurned/sfStatusFilled*100).toFixed(1):0)+'%</div><div class="tdef">Churned dealstage '+sfChurned+' \u00f7 '+sfStatusFilled+' brands w/ status \u00b7 '+f$(sfChurnedMRR)+' MRR</div></div>';
   h+='</div>';
@@ -320,7 +329,7 @@ function renderBD(){
   var _BD_LEAD={setup_fee:1,months_until_upgrade:1,fee_after_upgrade:1,of_clinicianai:1};
   function _bdSortVal(d,k){
     if(k==='dealname'||k==='companyName'||k==='brand_status'||k==='notes')return (d[k]||'').toString().toLowerCase();
-    if(k==='closedate'||k==='createdate')return (d[k]||'').substring(0,10);
+    if(k==='closedate'||k==='createdate'||k==='date_demo_booked')return (d[k]||'').substring(0,10);
     if(k==='hubspot_owner_id')return (ownerMap[d.hubspot_owner_id]||'').toLowerCase();
     if(k==='dealstage')return (BD_STAGE_LABELS[d.dealstage]||d.dealstage||'').toLowerCase();
     if(k==='package_type'){var pn=bdPlanName(d.package_type||'');return BD_PKG_ORDER[pn]||99;}
@@ -347,6 +356,7 @@ function renderBD(){
     {k:'dealstage',l:'Deal Stage',w:115},
     {k:'hubspot_owner_id',l:'Rep',w:70},
     {k:'closedate',l:'Close Date',w:90},
+    {k:'date_demo_booked',l:'Date Demo Booked',w:100},
     {k:'createdate',l:'Create Date',w:90},
     {k:'from_demo',l:'From Demo',w:75},
     {k:'days_to_close',l:'From Created',w:80},
@@ -407,6 +417,8 @@ function renderBD(){
     h+='<td><span class="pill" style="background:'+stageColor+'18;color:'+stageColor+'">'+stageLabel+'</span></td>';
     h+='<td title="'+repName+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(repName.split(' ')[0]||dash)+'</td>';
     h+='<td>'+cd+'</td>';
+    var ddb=(row.date_demo_booked||'').substring(0,10)||dash;
+    h+='<td>'+ddb+'</td>';
     h+='<td style="font-size:10px">'+crd+'</td>';
     var fromDemoVal=bdFromDemo(row);
     h+='<td style="text-align:center">'+(fromDemoVal==null?dash:fromDemoVal)+'</td>';

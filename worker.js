@@ -3240,39 +3240,78 @@ async function fetchBDData(env) {
 
   const dealIds = deals.map(d => d.id);
   const companyAssociations = {};
+  let assocMatched = 0, assocBatches = 0, assocFailures = 0;
   for (let i = 0; i < dealIds.length; i += 100) {
     const batch = dealIds.slice(i, i + 100);
+    assocBatches++;
     try {
       const assocRes = await fetch('https://api.hubapi.com/crm/v4/associations/deals/companies/batch/read', {
         method: 'POST',
         headers: { Authorization: `Bearer ${hsToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ inputs: batch.map(id => ({ id: String(id) })) }),
       });
+      if (!assocRes.ok) {
+        const txt = await assocRes.text();
+        console.error(`BD assoc batch ${i} HTTP ${assocRes.status}: ${txt.slice(0,200)}`);
+        assocFailures++;
+        continue;
+      }
       const assocData = await assocRes.json();
       for (const r of (assocData.results || [])) {
         const dealId = r.from?.id;
-        const companyId = r.to?.[0]?.toObjectId;
-        if (dealId && companyId) companyAssociations[dealId] = String(companyId);
+        const to = r.to || [];
+        if (!dealId || !to.length) continue;
+        // Prefer the PRIMARY company association (HubSpot labels primary
+        // deal↔company associations with label "Primary" / typeId 5). Fall
+        // back to the first association if no explicit primary is marked.
+        let primaryId = null, firstId = null;
+        for (const t of to) {
+          // Defensive: handle both .toObjectId (v4 standard) and .id
+          const cId = t.toObjectId ?? t.id ?? t.companyId ?? null;
+          if (cId == null) continue;
+          if (firstId == null) firstId = cId;
+          const types = t.associationTypes || t.types || [];
+          // Primary detection: typeId 5 OR label contains "primary"
+          if (types.some(at => at.typeId === 5 || /primary/i.test(at.label || ''))) {
+            primaryId = cId; break;
+          }
+        }
+        const companyId = primaryId ?? firstId;
+        if (companyId != null) {
+          companyAssociations[dealId] = String(companyId);
+          assocMatched++;
+        }
       }
-    } catch(e) { console.error('BD assoc batch error:', e); }
+    } catch(e) { console.error('BD assoc batch error:', e); assocFailures++; }
   }
+  console.log(`BD associations: ${assocMatched} of ${dealIds.length} deals matched to companies (${assocBatches} batches, ${assocFailures} failures)`);
 
   const uniqueCompanyIds = [...new Set(Object.values(companyAssociations))];
   const companyMap = {};
+  let companiesFetched = 0;
   for (let i = 0; i < uniqueCompanyIds.length; i += 100) {
     const batch = uniqueCompanyIds.slice(i, i + 100);
     try {
       const coRes = await fetch('https://api.hubapi.com/crm/v3/objects/companies/batch/read', {
         method: 'POST',
         headers: { Authorization: `Bearer ${hsToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inputs: batch.map(id => ({ id })), properties: ['name'] }),
+        body: JSON.stringify({ inputs: batch.map(id => ({ id })), properties: ['name','domain','website'] }),
       });
+      if (!coRes.ok) {
+        const txt = await coRes.text();
+        console.error(`BD company batch ${i} HTTP ${coRes.status}: ${txt.slice(0,200)}`);
+        continue;
+      }
       const coData = await coRes.json();
       for (const co of (coData.results || [])) {
-        companyMap[co.id] = { name: co.properties?.name || '', id: co.id };
+        // Fall back to domain/website if name is missing (rare but happens)
+        const name = co.properties?.name || co.properties?.domain || co.properties?.website || '';
+        companyMap[co.id] = { name, id: co.id };
+        if (name) companiesFetched++;
       }
     } catch(e) { console.error('BD company batch error:', e); }
   }
+  console.log(`BD companies: ${companiesFetched} of ${uniqueCompanyIds.length} unique company records fetched with name`);
 
   const mappedDeals = deals.map(d => {
     const p = d.properties || {};
