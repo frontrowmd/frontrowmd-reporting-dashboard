@@ -157,6 +157,17 @@ function parseInput(s){return parseFloat((s||'').replace(/[^0-9.]/g,''))||0;}
 function bdClearDate(){_bdDateFrom='';_bdDateTo='';renderBD();}
 function bdResetFilters(){_bdBrandStatusF='Active';_bdStageF='all';_bdRepF='all';_bdPkgF='all';_bdWebTrafficF='all';_bdDateFrom=_bdFirstOfMonth();_bdDateTo='';_bdDateMode='close';renderBD();}
 function bdCalc(){var el=document.getElementById('bd-calc-result');if(!el)return;var goal=parseInput(_bdArrGoal);var acvIn=parseInput(_bdAcvInput);if(!goal||!acvIn){el.textContent='\u2014';return;}var d=BD.data;if(!d)return;var cw=d.deals.filter(function(dd){return dd.dealstage==='closedwon';});var active=cw.filter(function(dd){return !['Paused','Churned','Never Implemented - Churned'].includes(dd.brand_status);});var currentARR=0;active.forEach(function(dd){currentARR+=dd.amount;});currentARR*=12;var gap=goal-currentARR;if(gap<=0){el.innerHTML='<span style="color:#16A34A">\u2713 Goal reached!</span>';return;}var needed=Math.ceil(gap/(acvIn*12));el.innerHTML='<span style="font-size:32px">'+needed+'</span> <span style="font-size:14px;color:var(--grey)">deals needed</span>';}
+// Display-name overrides \u2014 keyed by a substring found in the owner's full
+// HubSpot name. e.g. an owner whose HubSpot name is "Shealtiel <something>"
+// (or includes "Shealtiel" anywhere) displays as "Kean" in the UI.
+var BD_NAME_OVERRIDES={'Shealtiel':'Kean'};
+function bdFirstName(fullName){
+  if(!fullName)return '';
+  for(var k in BD_NAME_OVERRIDES){
+    if(fullName.indexOf(k)>=0)return BD_NAME_OVERRIDES[k];
+  }
+  return fullName.split(' ')[0]||fullName;
+}
 function renderBD(){
   var d=BD.data;if(!d||!d.deals)return;var el=document.getElementById('bd-content');var deals=d.deals,ownerMap=d.ownerMap||{};
   var fp=function(active,label,onclick){return '<span class="pill '+(active?'active':'')+'" style="cursor:pointer;'+(active?'background:var(--navy);color:#fff;':'background:rgba(23,44,69,.06);color:var(--navy);')+'font-size:11px;padding:4px 12px;font-weight:600" onclick="'+onclick+'">'+label+'</span>';};
@@ -265,7 +276,11 @@ function renderBD(){
   h+='<label style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--grey);cursor:pointer;margin-left:8px"><input type="checkbox" '+(_bdHideBlanks?'checked':'')+' onchange="_bdHideBlanks=this.checked;renderBD()" style="margin:0;cursor:pointer">Hide blanks</label>';
   h+='</div><div id="bd-attr-bars" style="padding:0 20px">';
   for(var ari=0;ari<attrSorted.length;ari++){var ak=attrSorted[ari][0],ac=attrSorted[ari][1];var apct=(ac/(attrVisTotal||1)*100).toFixed(1);var aMrr=attrMRR[ak]||0;var bw2=Math.max(ac/attrMax*100,2);var barC=attrColors[ak]||'#72A4BF';
-  h+='<div class="attr-row" data-label="'+ak+'" data-count="'+ac+'" data-pct="'+apct+'" data-mrr="'+Math.round(aMrr)+'" style="display:flex;align-items:center;gap:12px;margin-bottom:10px;cursor:pointer"><div style="width:120px;flex-shrink:0;font-size:12px;font-weight:600;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right" title="'+ak+'">'+ak+'</div><div style="flex:1;min-width:0;background:rgba(114,164,191,.06);border-radius:6px;height:28px;position:relative"><div style="height:100%;border-radius:6px;background:'+barC+';width:'+bw2+'%;min-width:4px;transition:width .3s"></div></div><div style="width:180px;flex-shrink:0;font-size:12px;color:var(--navy);white-space:nowrap;text-align:right;font-weight:500"><span style="color:var(--grey);font-weight:400">'+ac+'</span> <span style="color:var(--grey);font-weight:400">('+apct+'%)</span> <span style="font-weight:600">'+f$(aMrr)+'</span></div></div>';}
+  // Visible bar label: for rep-type dimensions show first name (with overrides
+  // applied via bdFirstName) — keeps the bar tidy and respects display
+  // preferences. Full name stays in data-label + title for hover.
+  var akDisp=(_bdAttrDim==='_rep'||_bdAttrDim==='_opsRep')?bdFirstName(ak):ak;
+  h+='<div class="attr-row" data-label="'+ak+'" data-count="'+ac+'" data-pct="'+apct+'" data-mrr="'+Math.round(aMrr)+'" style="display:flex;align-items:center;gap:12px;margin-bottom:10px;cursor:pointer"><div style="width:120px;flex-shrink:0;font-size:12px;font-weight:600;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right" title="'+ak+'">'+akDisp+'</div><div style="flex:1;min-width:0;background:rgba(114,164,191,.06);border-radius:6px;height:28px;position:relative"><div style="height:100%;border-radius:6px;background:'+barC+';width:'+bw2+'%;min-width:4px;transition:width .3s"></div></div><div style="width:180px;flex-shrink:0;font-size:12px;color:var(--navy);white-space:nowrap;text-align:right;font-weight:500"><span style="color:var(--grey);font-weight:400">'+ac+'</span> <span style="color:var(--grey);font-weight:400">('+apct+'%)</span> <span style="font-weight:600">'+f$(aMrr)+'</span></div></div>';}
   h+='</div><div id="bd-attr-tip" class="float-tip"></div></div>';
   // Summary Card
   // sfStatusFilled = denominator for % Paused / % Churned (deals with brand_status field filled).
@@ -345,7 +360,7 @@ function renderBD(){
   h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Deal Rep</span> ';
   h+=fp(_bdRepF==='all','All',"_bdRepF='all';renderBD()")+' ';
-  repSorted.forEach(function(rs){var rn=rs[0];h+=fp(_bdRepF===rn,rn.split(' ')[0]||rn,"_bdRepF='"+rn.replace(/'/g,"\\'")+"';renderBD()")+' ';});
+  repSorted.forEach(function(rs){var rn=rs[0];h+=fp(_bdRepF===rn,bdFirstName(rn)||rn,"_bdRepF='"+rn.replace(/'/g,"\\'")+"';renderBD()")+' ';});
   h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Package</span> ';
   h+=fp(_bdPkgF==='all','All',"_bdPkgF='all';renderBD()")+' ';
@@ -472,10 +487,10 @@ function renderBD(){
     h+='<td>'+coCell+'</td>';
     h+='<td>'+(row.brand_status?'<span class="pill" style="background:'+bsColor+'18;color:'+bsColor+'">'+row.brand_status+'</span>':dash)+'</td>';
     h+='<td><span class="pill" style="background:'+stageColor+'18;color:'+stageColor+'">'+stageLabel+'</span></td>';
-    h+='<td title="'+repName+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(repName.split(' ')[0]||dash)+'</td>';
+    h+='<td title="'+repName+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(bdFirstName(repName)||dash)+'</td>';
     // Ops Rep — from the company record's ops_owner field, resolved via ownerMap
     var opsName=ownerMap[row.ops_owner_id]||'';
-    h+='<td title="'+opsName+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(opsName.split(' ')[0]||dash)+'</td>';
+    h+='<td title="'+opsName+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(bdFirstName(opsName)||dash)+'</td>';
     h+='<td>'+cd+'</td>';
     var ddb=(row.date_demo_booked||'').substring(0,10)||dash;
     h+='<td>'+ddb+'</td>';
