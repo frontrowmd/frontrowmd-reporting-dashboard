@@ -536,11 +536,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
         <div class="ni sub" onclick="switchDashSub('outbound')" data-page="outbound" data-sub="outbound"><span class="ic" style="font-size:12px">📨</span><span>Outbound</span></div>
         <div class="ni sub" onclick="switchDashSub('strategy')" data-page="dashboard" data-sub="strategy"><span class="ic" style="font-size:12px">📋</span><span>Monthly Review</span></div>
       </div>
-      <div class="ni" onclick="autoExpand();toggleAzMenu()" data-page="analyzer" id="az-menu-parent" title="Paid Ads Dashboard"><span class="ic">🔬</span><span>Paid Ads Dashboard</span><span id="az-arrow" style="margin-left:auto;font-size:10px;transition:transform .2s">▼</span></div>
-      <div id="az-submenu" style="display:block;padding-left:24px">
-        <div class="ni sub" onclick="switchAzSub('overview')" data-page="analyzer" data-sub="overview"><span class="ic" style="font-size:12px">📊</span><span>Overview</span></div>
-        <div class="ni sub" onclick="switchAzSub('csession')" data-page="analyzer" data-sub="csession"><span class="ic" style="font-size:12px">🎨</span><span>Creative Session</span></div>
-      </div>
+      <div class="ni" onclick="autoExpand();switchPage('csession')" data-page="csession" title="Creative Session"><span class="ic">🎨</span><span>Creative Session</span></div>
       <div class="ni" onclick="autoExpand();toggleContentMenu()" data-page="content" id="content-menu-parent" title="Social Media"><span class="ic">📱</span><span>Social Media</span><span id="content-arrow" style="margin-left:auto;font-size:10px;transition:transform .2s">▼</span></div>
       <div id="content-submenu" style="display:block;padding-left:24px">
         <div class="ni sub" onclick="switchContent('cs-intel')" data-page="content"><span class="ic" style="font-size:12px">📰</span><span>Intelligence</span></div>
@@ -686,13 +682,6 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
       </div>
     </div></div>
     <div class="pg" id="page-signup"><div class="sec"><div class="st">Sign-Up Rate by Cohort</div><div style="font-size:13px;color:var(--grey);margin-bottom:16px">Of demos booked in each calendar month: how many signed, how many are still pending, and the per-rep breakdown. Same definition as the Irfan Dashboard's "Signed Deals from Last Month" card.</div><div id="signup-c"></div></div></div>
-    <div class="pg" id="page-analyzer">
-      <div id="az-date-header" style="margin-bottom:16px"></div>
-      <div style="display:flex;gap:6px;margin-bottom:24px;flex-wrap:wrap" id="az-tabs"></div>
-      <div id="az-match" style="font-size:11px;color:var(--grey);margin-bottom:20px"></div>
-      <div id="az-content"></div>
-    </div>
-
     <div class="pg" id="page-strategy">
       <div style="background:linear-gradient(135deg,#172C45 0%,#1D4053 50%,#72A4BF 100%);border-radius:16px;padding:24px 28px;margin-bottom:20px;color:#fff;position:relative;overflow:hidden">
         <div style="position:absolute;top:-50px;right:-50px;width:200px;height:200px;border-radius:50%;background:rgba(255,255,255,.04)"></div>
@@ -757,7 +746,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r25';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r26';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -766,7 +755,7 @@ const S={dashboard:{win:'mtd',data:null,sub:'irfan'},irfan:{win:'mtd',data:null}
 const f$=v=>v==null?'—':'$'+Math.round(v).toLocaleString();
 const fN=v=>v==null?'—':Math.round(v).toLocaleString();
 const fP=(v,d=1)=>v==null?'—':v.toFixed(d)+'%';
-const T={dashboard:'Executive Dashboard',irfan:'Irfan Dashboard',resources:'Resources',calculator:'ARR Calculator',signup:'Sign-Up Rate',analyzer:'Paid Ads Dashboard',demoQuality:'Demo Quality',content:'Social Media Content',outbound:'Outbound Sequences'};
+const T={dashboard:'Executive Dashboard',irfan:'Irfan Dashboard',resources:'Resources',calculator:'ARR Calculator',signup:'Sign-Up Rate',csession:'Creative Session',demoQuality:'Demo Quality',content:'Social Media Content',outbound:'Outbound Sequences'};
 const W=[{k:'7d',l:'Last 7 Days'},{k:'mtd',l:'Month to Date'},{k:'lastMonth',l:'Last Month'},{k:'ytd',l:'Year to Date'},{k:'allTime',l:'All Time'},{k:'custom',l:'Custom'}];
 const AZ_TABS=[{k:'overview',l:'Overview'},{k:'meta',l:'Meta'},{k:'google',l:'Google'},{k:'linkedin',l:'LinkedIn'},{k:'tiktok',l:'TikTok'},{k:'youtube',l:'YouTube'}];
 function effM(cr){return cr>0?(1-Math.pow(1-cr,12))/cr:12;}
@@ -1198,17 +1187,60 @@ async function fdSpecial1(){
     }
   }catch(e){console.error('Special1 fetch threw:',e);}
 }
-async function refreshData(){const btn=document.getElementById('rfb');if(btn){btn.classList.add('loading');btn.textContent='↻ Refreshing...';}if(AP==='signup'){await fdSignup();}else{await fd(S[AP].win||'mtd');if(AP==='irfan')await fdSpecial1();}if(btn){btn.classList.remove('loading');btn.textContent='↻ Refresh';}}
+// Dedicated /api/analyzer fetch — used by Creative Session (which lives
+// independently of the now-removed Paid Ads Dashboard page). First checks
+// the analyzer cache populated when the user visits the Detailed/Irfan
+// Dashboard so we avoid a redundant fetch.
+async function fdAnalyzer(win){
+  win = win || S.analyzer.win || S.dashboard?.win || 'mtd';
+  // Reuse the cache that Detailed Dashboard / Irfan Dashboard populates
+  if(S.irfan?.analyzerCache?.[win]){
+    S.analyzer.data=S.irfan.analyzerCache[win];
+    S.analyzer.win=win;
+    if(AP==='csession')renderCreativeSession();
+    return S.analyzer.data;
+  }
+  if(S.analyzer._fetching)return null;
+  S.analyzer._fetching=true;
+  if(AP==='csession')renderCreativeSession(); // show loading state
+  try{
+    const r=await fetch(AZ_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:PW,window:win})});
+    const d=await r.json();
+    if(r.ok&&!d.error&&d.channels){
+      S.analyzer.data=d;
+      S.analyzer.win=win;
+      // Also stash in the shared cache so other pages benefit
+      if(!S.irfan.analyzerCache)S.irfan.analyzerCache={};
+      S.irfan.analyzerCache[win]=d;
+    } else {
+      console.error('Analyzer API error:',r.status,d);
+    }
+  }catch(e){console.error('Analyzer fetch failed:',e);}
+  finally{S.analyzer._fetching=false;}
+  if(AP==='csession')renderCreativeSession();
+  return S.analyzer.data;
+}
+async function refreshData(){const btn=document.getElementById('rfb');if(btn){btn.classList.add('loading');btn.textContent='↻ Refreshing...';}if(AP==='signup'){await fdSignup();}else if(AP==='csession'){S.analyzer.data=null;await fdAnalyzer(S.analyzer.win||S.dashboard?.win||'mtd');}else{await fd(S[AP].win||'mtd');if(AP==='irfan')await fdSpecial1();}if(btn){btn.classList.remove('loading');btn.textContent='↻ Refresh';}}
 
 // Nav
 function toggleSidebar(){document.querySelector('.sidebar').classList.toggle('open');document.getElementById('sidebarOverlay').classList.toggle('open');}
 function toggleCollapse(){var sb=document.querySelector('.sidebar');sb.classList.toggle('collapsed');}
 function autoExpand(){var sb=document.querySelector('.sidebar');if(sb.classList.contains('collapsed'))sb.classList.remove('collapsed');}
-function switchPage(pg){AP=pg;document.querySelectorAll('.ni').forEach(n=>n.classList.toggle('active',n.dataset.page===pg));document.getElementById('ptitle').textContent=T[pg];document.getElementById('dqb').classList.remove('vis');
+function switchPage(pg){AP=pg;document.querySelectorAll('.ni').forEach(n=>n.classList.toggle('active',n.dataset.page===pg));document.getElementById('ptitle').textContent=T[pg]||pg;document.getElementById('dqb').classList.remove('vis');
   // Close sidebar on mobile
   document.querySelector('.sidebar').classList.remove('open');document.getElementById('sidebarOverlay').classList.remove('open');
-  bldF();if(!S[pg].data){if(pg==='signup')fd('mtd');else if(pg==='content'){fdContent();return;}else fd(S[pg].win);return;}renderPage();}
-function renderPage(){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));if(AP==='dashboard')renderDash();else if(AP==='irfan')renderIrfan();else if(AP==='calculator')updCalc();else if(AP==='signup')renderSignUp();else if(AP==='analyzer')renderAnalyzer();else if(AP==='strategy')renderStrategy();else if(AP==='demoQuality')renderDemoQuality();else if(AP==='csession')renderCreativeSession();else if(AP==='content')renderContent();else if(AP==='outbound')renderOutbound();document.getElementById('page-'+AP).classList.add('active');const d=S[AP].data;if(d){const ts=d.meta?.generatedAt;if(ts)document.getElementById('fts').textContent='Updated '+new Date(ts).toLocaleString();if(d.meta?.dataQuality&&!d.meta.dataQuality.complete)document.getElementById('dqb').classList.add('vis');}}
+  bldF();
+  // Creative Session needs the /api/analyzer payload (creatives + audiences +
+  // fatigue). If we don't have it cached yet, fetch it before rendering.
+  if(pg==='csession'){
+    document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));
+    document.getElementById('page-csession').classList.add('active');
+    if(!S.analyzer.data&&!S.analyzer._fetching){fdAnalyzer(S.analyzer.win||S.dashboard?.win||'mtd');}
+    renderCreativeSession();
+    return;
+  }
+  if(!S[pg].data){if(pg==='signup')fd('mtd');else if(pg==='content'){fdContent();return;}else fd(S[pg].win);return;}renderPage();}
+function renderPage(){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));if(AP==='dashboard')renderDash();else if(AP==='irfan')renderIrfan();else if(AP==='calculator')updCalc();else if(AP==='signup')renderSignUp();else if(AP==='strategy')renderStrategy();else if(AP==='demoQuality')renderDemoQuality();else if(AP==='csession')renderCreativeSession();else if(AP==='content')renderContent();else if(AP==='outbound')renderOutbound();document.getElementById('page-'+AP).classList.add('active');const d=S[AP].data;if(d){const ts=d.meta?.generatedAt;if(ts)document.getElementById('fts').textContent='Updated '+new Date(ts).toLocaleString();if(d.meta?.dataQuality&&!d.meta.dataQuality.complete)document.getElementById('dqb').classList.add('vis');}}
 
 // ═══════════════ EXECUTIVE DASHBOARD ═══════════════
 function renderDash(){
@@ -8489,7 +8521,10 @@ function renderCreativeSession(){
   var el=document.getElementById('csession-c');
   var az=S&&S.analyzer&&S.analyzer.data;
   if(!az||!az.channels){
-    el.innerHTML='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:32px;text-align:center"><div style="font-size:32px;margin-bottom:12px">🎨</div><div style="font-family:var(--font-h);font-size:16px;font-weight:700;color:var(--navy);margin-bottom:8px">Creative Session</div><div style="color:var(--grey);font-size:13px;margin-bottom:16px">Load the Paid Ads Dashboard → Overview first, then return here.</div><button onclick="switchAzSub(\'overview\')" style="background:var(--navy);color:#fff;border:none;padding:10px 24px;border-radius:50px;font-family:var(--font-h);font-weight:700;font-size:13px;cursor:pointer">Go to Overview →</button></div>';
+    var fetching=S.analyzer._fetching;
+    var msg=fetching?'Fetching paid ads data from Windsor.ai & HubSpot…':'Click Refresh to load paid ads data.';
+    var spinner=fetching?'<div class="sp" style="width:24px;height:24px;border-width:3px;margin:0 auto 16px"></div>':'<div style="font-size:32px;margin-bottom:12px">🎨</div>';
+    el.innerHTML='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:40px 32px;text-align:center;max-width:520px;margin:24px auto">'+spinner+'<div style="font-family:var(--font-h);font-size:16px;font-weight:700;color:var(--navy);margin-bottom:8px">Creative Session</div><div style="color:var(--grey);font-size:13px;margin-bottom:20px">'+msg+'</div>'+(fetching?'':'<button onclick="fdAnalyzer()" style="background:var(--navy);color:#fff;border:none;padding:10px 24px;border-radius:50px;font-family:var(--font-h);font-weight:700;font-size:13px;cursor:pointer">Load data →</button>')+'</div>';
     return;
   }
   var step=S.csession.step||1;
