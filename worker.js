@@ -3239,10 +3239,36 @@ async function fetchBDData(env) {
   } catch(e) { console.error('BD owner fetch error:', e); }
 
   const dealIds = deals.map(d => d.id);
+  // Load cached associations from KV so we don't re-fetch deals that we've
+  // already mapped to a company. Same pattern as the companies cache.
+  // Cache value per deal:
+  //   "12345"  → company ID string
+  //   null     → tried but no associated company (don't retry)
+  //   missing  → never tried → fetch this load
+  let assocCache = {};
+  if (env.CONTENT_STORE) {
+    try {
+      const raw = await env.CONTENT_STORE.get('bd_assoc_cache_v1');
+      if (raw) assocCache = JSON.parse(raw);
+    } catch(e) { console.warn('BD assoc cache load failed:', e.message); }
+  }
   const companyAssociations = {};
-  let assocMatched = 0, assocBatches = 0, assocFailures = 0;
-  for (let i = 0; i < dealIds.length; i += 100) {
-    const batch = dealIds.slice(i, i + 100);
+  for (const id of dealIds) {
+    const cached = assocCache[id];
+    if (cached) companyAssociations[id] = cached; // string ID
+    // null → no associated company → leave companyAssociations[id] unset
+  }
+  const cachedAssocCount = Object.keys(companyAssociations).length;
+  const missingDealIds = dealIds.filter(id => assocCache[id] === undefined);
+  // Cap per-load association fetching to stay within Cloudflare's
+  // subrequest budget (deal search + owner + assoc + company-cache-read
+  // already use ~25-30 subrequests). 12 batches = 1200 deals per load.
+  // Subsequent loads will catch up on remaining missing deals.
+  const MAX_ASSOC_BATCHES = 12;
+  const idsToFetch = missingDealIds.slice(0, MAX_ASSOC_BATCHES * 100);
+  let assocMatched = 0, assocBatches = 0, assocFailures = 0, assocNoCompany = 0;
+  for (let i = 0; i < idsToFetch.length; i += 100) {
+    const batch = idsToFetch.slice(i, i + 100);
     assocBatches++;
     try {
       const assocRes = await fetch('https://api.hubapi.com/crm/v4/associations/deals/companies/batch/read', {
@@ -3257,34 +3283,58 @@ async function fetchBDData(env) {
         continue;
       }
       const assocData = await assocRes.json();
+      const returnedIds = new Set();
       for (const r of (assocData.results || [])) {
         const dealId = r.from?.id;
+        if (!dealId) continue;
+        returnedIds.add(dealId);
         const to = r.to || [];
-        if (!dealId || !to.length) continue;
-        // Prefer the PRIMARY company association (HubSpot labels primary
-        // deal↔company associations with label "Primary" / typeId 5). Fall
-        // back to the first association if no explicit primary is marked.
+        if (!to.length) {
+          assocCache[dealId] = null; // explicitly no company
+          assocNoCompany++;
+          continue;
+        }
+        // Prefer the PRIMARY company association (typeId 5 / label "Primary")
         let primaryId = null, firstId = null;
         for (const t of to) {
-          // Defensive: handle both .toObjectId (v4 standard) and .id
           const cId = t.toObjectId ?? t.id ?? t.companyId ?? null;
           if (cId == null) continue;
           if (firstId == null) firstId = cId;
           const types = t.associationTypes || t.types || [];
-          // Primary detection: typeId 5 OR label contains "primary"
           if (types.some(at => at.typeId === 5 || /primary/i.test(at.label || ''))) {
             primaryId = cId; break;
           }
         }
         const companyId = primaryId ?? firstId;
         if (companyId != null) {
-          companyAssociations[dealId] = String(companyId);
+          const cidStr = String(companyId);
+          companyAssociations[dealId] = cidStr;
+          assocCache[dealId] = cidStr;
           assocMatched++;
+        } else {
+          assocCache[dealId] = null;
+          assocNoCompany++;
+        }
+      }
+      // Any deal in this batch NOT in returnedIds means HubSpot's batch read
+      // didn't include it (typically: archived/deleted deal, or no
+      // associations at all). Mark as null so we don't re-fetch next load.
+      for (const id of batch) {
+        if (!returnedIds.has(id) && assocCache[id] === undefined) {
+          assocCache[id] = null;
+          assocNoCompany++;
         }
       }
     } catch(e) { console.error('BD assoc batch error:', e); assocFailures++; }
   }
-  console.log(`BD associations: ${assocMatched} of ${dealIds.length} deals matched to companies (${assocBatches} batches, ${assocFailures} failures)`);
+  // Persist updated association cache
+  if (env.CONTENT_STORE && idsToFetch.length > 0) {
+    try {
+      await env.CONTENT_STORE.put('bd_assoc_cache_v1', JSON.stringify(assocCache));
+    } catch(e) { console.warn('BD assoc cache save failed:', e.message); }
+  }
+  const assocDeferred = missingDealIds.length - idsToFetch.length;
+  console.log(`BD associations: ${cachedAssocCount} cache hits · ${assocMatched} newly matched · ${assocNoCompany} no-company · ${assocDeferred} deferred to next load (${assocBatches} batches, ${assocFailures} failures, ${dealIds.length} total deals)`);
 
   // Company names are loaded ONLY from KV cache in this endpoint — no live
   // HubSpot fetches here. Deal search + associations already eat most of
