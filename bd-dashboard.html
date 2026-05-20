@@ -233,10 +233,11 @@ function renderBD(){
   // Attribution with MRR
   // Dimension order: Web Traffic Tier first (default), Plan Name second,
   // then the other dimensions.
-  var attrDims=[{k:'_webTraffic',l:'Web Traffic Tier'},{k:'package_type',l:'Plan Name'},{k:'dealstage',l:'Deal Stage'},{k:'_rep',l:'Rep'},{k:'brand_status',l:'Brand Status'}];
+  var attrDims=[{k:'_webTraffic',l:'Web Traffic Tier'},{k:'package_type',l:'Plan Name'},{k:'dealstage',l:'Deal Stage'},{k:'_rep',l:'Deal Rep'},{k:'_opsRep',l:'Ops Rep'},{k:'brand_status',l:'Brand Status'}];
   var attrData={},attrMRR={};for(var ai=0;ai<sharedFiltered.length;ai++){var ad=sharedFiltered[ai];var dimVal='';
     if(_bdAttrDim==='dealstage')dimVal=BD_STAGE_LABELS[ad.dealstage]||ad.dealstage||'(none)';
     else if(_bdAttrDim==='_rep')dimVal=ownerMap[ad.hubspot_owner_id]||'Unassigned';
+    else if(_bdAttrDim==='_opsRep')dimVal=ownerMap[ad.ops_owner_id]||'Unassigned';
     else if(_bdAttrDim==='brand_status')dimVal=ad.brand_status||'(none)';
     else if(_bdAttrDim==='package_type')dimVal=bdPlanName(ad.package_type)||'(none)';
     else if(_bdAttrDim==='_webTraffic')dimVal=BD_WT_LABELS[ad.average_monthly_web_traffic__cloned_]||ad.average_monthly_web_traffic__cloned_||'(none)';
@@ -342,7 +343,7 @@ function renderBD(){
   h+=fp(_bdStageF==='all','All',"_bdStageF='all';renderBD()")+' ';
   Object.keys(uniqStage).sort().forEach(function(v){h+=fp(_bdStageF===v,BD_STAGE_LABELS[v]||v,"_bdStageF='"+v+"';renderBD()")+' ';});
   h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
-  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Rep</span> ';
+  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Deal Rep</span> ';
   h+=fp(_bdRepF==='all','All',"_bdRepF='all';renderBD()")+' ';
   repSorted.forEach(function(rs){var rn=rs[0];h+=fp(_bdRepF===rn,rn.split(' ')[0]||rn,"_bdRepF='"+rn.replace(/'/g,"\\'")+"';renderBD()")+' ';});
   h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
@@ -385,6 +386,7 @@ function renderBD(){
     if(k==='dealname'||k==='companyName'||k==='brand_status'||k==='notes')return (d[k]||'').toString().toLowerCase();
     if(k==='closedate'||k==='createdate'||k==='date_demo_booked')return (d[k]||'').substring(0,10);
     if(k==='hubspot_owner_id')return (ownerMap[d.hubspot_owner_id]||'').toLowerCase();
+    if(k==='ops_owner_id')return (ownerMap[d.ops_owner_id]||'').toLowerCase();
     if(k==='dealstage')return (BD_STAGE_LABELS[d.dealstage]||d.dealstage||'').toLowerCase();
     if(k==='package_type'){var pn=bdPlanName(d.package_type||'');return BD_PKG_ORDER[pn]||99;}
     if(k==='from_demo'){var fd=bdFromDemo(d);return fd==null?Infinity:fd;}
@@ -408,7 +410,8 @@ function renderBD(){
     {k:'companyName',l:'Company',w:140},
     {k:'brand_status',l:'Brand Status',w:100},
     {k:'dealstage',l:'Deal Stage',w:115},
-    {k:'hubspot_owner_id',l:'Rep',w:70},
+    {k:'hubspot_owner_id',l:'Deal Rep',w:80},
+    {k:'ops_owner_id',l:'Ops Rep',w:80},
     {k:'closedate',l:'Close Date',w:90},
     {k:'date_demo_booked',l:'Date Demo Booked',w:100},
     {k:'createdate',l:'Create Date',w:90},
@@ -470,6 +473,9 @@ function renderBD(){
     h+='<td>'+(row.brand_status?'<span class="pill" style="background:'+bsColor+'18;color:'+bsColor+'">'+row.brand_status+'</span>':dash)+'</td>';
     h+='<td><span class="pill" style="background:'+stageColor+'18;color:'+stageColor+'">'+stageLabel+'</span></td>';
     h+='<td title="'+repName+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(repName.split(' ')[0]||dash)+'</td>';
+    // Ops Rep — from the company record's ops_owner field, resolved via ownerMap
+    var opsName=ownerMap[row.ops_owner_id]||'';
+    h+='<td title="'+opsName+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(opsName.split(' ')[0]||dash)+'</td>';
     h+='<td>'+cd+'</td>';
     var ddb=(row.date_demo_booked||'').substring(0,10)||dash;
     h+='<td>'+ddb+'</td>';

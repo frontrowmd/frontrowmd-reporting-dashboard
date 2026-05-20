@@ -3346,7 +3346,7 @@ async function fetchBDData(env) {
   let companyMap = {};
   if (env.CONTENT_STORE) {
     try {
-      const raw = await env.CONTENT_STORE.get('bd_company_cache_v1');
+      const raw = await env.CONTENT_STORE.get('bd_company_cache_v2');
       if (raw) companyMap = JSON.parse(raw);
     } catch(e) { console.warn('BD cache load failed:', e.message); }
   }
@@ -3386,6 +3386,9 @@ async function fetchBDData(env) {
       // will fill it in via /api/bd/lookup-companies).
       companyName: company?.name||'',
       companyId: companyId ? String(companyId) : '',
+      // ops_owner from the COMPANY record (resolved client-side via
+      // ownerMap). Surfaces as the "Ops Rep" column on the deal table.
+      ops_owner_id: company?.ops_owner||'',
     };
   });
 
@@ -3403,7 +3406,7 @@ async function lookupBDCompanies(env, companyIds) {
   let companyMap = {};
   if (env.CONTENT_STORE) {
     try {
-      const raw = await env.CONTENT_STORE.get('bd_company_cache_v1');
+      const raw = await env.CONTENT_STORE.get('bd_company_cache_v2');
       if (raw) companyMap = JSON.parse(raw);
     } catch(e) { console.warn('BD lookup cache load failed:', e.message); }
   }
@@ -3426,7 +3429,7 @@ async function lookupBDCompanies(env, companyIds) {
       const coRes = await fetch('https://api.hubapi.com/crm/v3/objects/companies/batch/read?archived=true', {
         method: 'POST',
         headers: { Authorization: `Bearer ${hsToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inputs: batch.map(id => ({ id })), properties: ['name','domain','website'] }),
+        body: JSON.stringify({ inputs: batch.map(id => ({ id })), properties: ['name','domain','website','ops_owner'] }),
       });
       if (!coRes.ok) {
         const txt = await coRes.text();
@@ -3436,7 +3439,8 @@ async function lookupBDCompanies(env, companyIds) {
       const coData = await coRes.json();
       for (const co of (coData.results || [])) {
         const name = co.properties?.name || co.properties?.domain || co.properties?.website || '';
-        companyMap[co.id] = { name, id: co.id, archived: !!co.archived };
+        const ops_owner = co.properties?.ops_owner || '';
+        companyMap[co.id] = { name, id: co.id, archived: !!co.archived, ops_owner };
         if (name) fetched++;
       }
     } catch(e) { console.error('BD lookup batch error:', e); }
@@ -3455,7 +3459,7 @@ async function lookupBDCompanies(env, companyIds) {
   // unresolved-placeholder write also lands)
   if (env.CONTENT_STORE && attempted.size > 0) {
     try {
-      await env.CONTENT_STORE.put('bd_company_cache_v1', JSON.stringify(companyMap));
+      await env.CONTENT_STORE.put('bd_company_cache_v2', JSON.stringify(companyMap));
     } catch(e) { console.warn('BD lookup cache save failed:', e.message); }
   }
   // Build response: include every requested ID (resolved OR unresolved placeholder)
@@ -4345,7 +4349,7 @@ export default {
     // Dedicated endpoint so it gets its own fresh subrequest budget,
     // separate from /api/bd which spends most of its budget on deal
     // pagination + association batches. Results are written to KV
-    // (key 'bd_company_cache_v1') so /api/bd picks them up on next load.
+    // (key 'bd_company_cache_v2') so /api/bd picks them up on next load.
     if (request.method === 'POST' && url.pathname === '/api/bd/lookup-companies') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
