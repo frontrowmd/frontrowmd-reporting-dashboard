@@ -534,9 +534,9 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
         <div class="ni sub" onclick="switchDashSub('signup')" data-page="dashboard" data-sub="signup"><span class="ic" style="font-size:12px">📋</span><span>Sign-Up Rate</span></div>
         <div class="ni sub" onclick="switchDashSub('demoQuality')" data-page="demoQuality" data-sub="demoQuality"><span class="ic" style="font-size:12px">🎯</span><span>Demo Quality</span></div>
         <div class="ni sub" onclick="switchDashSub('outbound')" data-page="outbound" data-sub="outbound"><span class="ic" style="font-size:12px">📨</span><span>Outbound</span></div>
+        <div class="ni sub" onclick="switchPage('csession')" data-page="csession"><span class="ic" style="font-size:12px">🎨</span><span>Creative Session</span></div>
         <div class="ni sub" onclick="switchDashSub('strategy')" data-page="dashboard" data-sub="strategy"><span class="ic" style="font-size:12px">📋</span><span>Monthly Review</span></div>
       </div>
-      <div class="ni" onclick="autoExpand();switchPage('csession')" data-page="csession" title="Creative Session"><span class="ic">🎨</span><span>Creative Session</span></div>
       <div class="ni" onclick="autoExpand();toggleContentMenu()" data-page="content" id="content-menu-parent" title="Social Media"><span class="ic">📱</span><span>Social Media</span><span id="content-arrow" style="margin-left:auto;font-size:10px;transition:transform .2s">▼</span></div>
       <div id="content-submenu" style="display:block;padding-left:24px">
         <div class="ni sub" onclick="switchContent('cs-intel')" data-page="content"><span class="ic" style="font-size:12px">📰</span><span>Intelligence</span></div>
@@ -746,7 +746,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r29';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r30';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';

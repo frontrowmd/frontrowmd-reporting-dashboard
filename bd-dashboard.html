@@ -63,7 +63,7 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
   </div>
 </div>
 <script>
-var BD={data:null},_bdSort='closedate',_bdSortDir='desc',_bdHideBlanks=false,_bdAttrDim='dealstage';
+var BD={data:null},_bdSort='closedate',_bdSortDir='desc',_bdHideBlanks=false,_bdAttrDim='_webTraffic';
 function _bdFirstOfMonth(){var _d=new Date();return _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-01';}
 var _bdBrandStatusF='Active',_bdStageF='all',_bdRepF='all',_bdPkgF='all',_bdWebTrafficF='all',_bdDateFrom=_bdFirstOfMonth(),_bdDateTo='',_bdDateMode='close';
 var BD_REP_COLORS=['#1565C0','#2E7D32','#72A4BF','#E65100','#5C6BC0','#00897B','#C62828','#6A1B9A','#EF6C00','#00695C'];
@@ -71,7 +71,22 @@ var _bdArrGoal='',_bdAcvInput='';
 var BD_STAGE_LABELS={appointmentscheduled:'Scheduled','1084214349':'Demo Happened',decisionmakerboughtin:'Decision Maker',contractsent:'Contract Sent',closedwon:'Closed Won',closedlost:'Closed Lost','3453957850':'No Show','3453925110':'Churned','1062974581':'Not a Fit','3517067985':'Churned (Onb)'};
 var BD_STAGE_COLORS={appointmentscheduled:'#F59E0B','1084214349':'#0EA5E9',decisionmakerboughtin:'#7C3AED',contractsent:'#1565C0',closedwon:'#16A34A',closedlost:'#9CA3AF','3453957850':'#EF4444','3453925110':'#EF4444','1062974581':'#64748B','3517067985':'#DC2626'};
 var BD_STATUS_COLORS={Signed:'#16A34A',Paying:'#172C45',Paused:'#F59E0B',Churned:'#DC2626','Never Implemented - Churned':'#9CA3AF'};
-var BD_PKG_COLORS={Beginner:'#9CA3AF',Starter:'#F59E0B',Flagship:'#1565C0',Pro:'#172C45'};
+// Plan color palette. New main plans (Hero/Core/Portfolio) get the most
+// prominent colors; legacy plans are muted. Distinct enough to read on
+// stage badges and the Deal Attribution chart side-by-side.
+var BD_PKG_COLORS={
+  Hero:'#DC2626',        // crimson — new flagship
+  Core:'#0EA5E9',        // sky blue — middle tier
+  Portfolio:'#7C3AED',   // purple — multi-product premium
+  Beginner:'#9CA3AF',    // grey
+  Starter:'#F59E0B',     // amber
+  Flagship:'#0891B2',    // teal (recolored to free up blue for Core)
+  Pro:'#172C45',         // dark navy
+  'Full Access':'#16A34A'// green
+};
+// Display order — used by the filter pill row, table sort, and the
+// Deal Attribution chart when Plan Name is the active dimension.
+var BD_PKG_ORDER={Hero:1,Core:2,Portfolio:3,Beginner:4,Starter:5,Flagship:6,Pro:7,'Full Access':8};
 function doLogin(){
   var btn=document.getElementById('loginBtn');
   btn.innerHTML='<span class="sp" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle"></span> Logging in...';btn.disabled=true;btn.style.opacity='.7';
@@ -142,6 +157,16 @@ function renderBD(){
     return true;});
   // Plan name display: strip trailing parenthetical (e.g., "Hero (1 Product)" → "Hero")
   function bdPlanName(v){return (v||'').replace(/\s*\([^)]*\)\s*$/,'');}
+  // Days from date_demo_booked → closedate (rounded). Null if either field
+  // missing or closedate precedes the booking. Used in the "From Demo"
+  // table column and the Avg Days to Close KPI tile.
+  function bdFromDemo(d){
+    if(!d||!d.closedate||!d.date_demo_booked)return null;
+    var t1=new Date(d.date_demo_booked).getTime();
+    var t2=new Date(d.closedate).getTime();
+    if(isNaN(t1)||isNaN(t2)||t2<t1)return null;
+    return Math.round((t2-t1)/86400000);
+  }
   // Web Traffic Tier short-label map
   var BD_WT_LABELS={'Pre-launch / just launching':'Pre-launch','0-10K monthly web visitors':'0-10K','10-25K monthly web visitors':'10-25K','25-50K monthly web visitors':'25-50K','50-100K monthly web visitors':'50-100K','100-200K monthly web visitors':'100-200K','200-500K monthly web visitors':'200-500K','500K+ monthly web visitors':'500K+'};
   var BD_WT_COLORS={'Pre-launch / just launching':'#9CA3AF','0-10K monthly web visitors':'#72A4BF','10-25K monthly web visitors':'#1D4053','25-50K monthly web visitors':'#172C45','50-100K monthly web visitors':'#0EA5E9','100-200K monthly web visitors':'#7C3AED','200-500K monthly web visitors':'#16A34A','500K+ monthly web visitors':'#F59E0B'};
@@ -153,7 +178,9 @@ function renderBD(){
   var repSorted=Object.entries(repCount).sort(function(a,b){return b[1]-a[1];});
   var BD_REP_CMAP={};for(var rci=0;rci<repSorted.length;rci++){BD_REP_CMAP[repSorted[rci][0]]=BD_REP_COLORS[rci%BD_REP_COLORS.length];}
   // Attribution with MRR
-  var attrDims=[{k:'dealstage',l:'Deal Stage'},{k:'_rep',l:'Rep'},{k:'brand_status',l:'Brand Status'},{k:'package_type',l:'Plan Name'},{k:'_webTraffic',l:'Web Traffic Tier'}];
+  // Dimension order: Web Traffic Tier first (default), Plan Name second,
+  // then the other dimensions.
+  var attrDims=[{k:'_webTraffic',l:'Web Traffic Tier'},{k:'package_type',l:'Plan Name'},{k:'dealstage',l:'Deal Stage'},{k:'_rep',l:'Rep'},{k:'brand_status',l:'Brand Status'}];
   var attrData={},attrMRR={};for(var ai=0;ai<sharedFiltered.length;ai++){var ad=sharedFiltered[ai];var dimVal='';
     if(_bdAttrDim==='dealstage')dimVal=BD_STAGE_LABELS[ad.dealstage]||ad.dealstage||'(none)';
     else if(_bdAttrDim==='_rep')dimVal=ownerMap[ad.hubspot_owner_id]||'Unassigned';
@@ -161,9 +188,15 @@ function renderBD(){
     else if(_bdAttrDim==='package_type')dimVal=bdPlanName(ad.package_type)||'(none)';
     else if(_bdAttrDim==='_webTraffic')dimVal=BD_WT_LABELS[ad.average_monthly_web_traffic__cloned_]||ad.average_monthly_web_traffic__cloned_||'(none)';
     else dimVal=ad[_bdAttrDim]||'(none)';attrData[dimVal]=(attrData[dimVal]||0)+1;attrMRR[dimVal]=(attrMRR[dimVal]||0)+ad.amount;}
-  // Tier-order sort when Web Traffic dim is selected; else default count-desc.
+  // Dimension-specific ordering. Web Traffic sorts by tier; Plan Name sorts
+  // by BD_PKG_ORDER (Hero → Core → Portfolio → legacy plans); everything
+  // else falls back to count-desc.
   var _wtO={'Pre-launch':1,'0-10K':2,'10-25K':3,'25-50K':4,'50-100K':5,'100-200K':6,'200-500K':7,'500K+':8};
-  var attrSorted=Object.entries(attrData).sort(function(a,b){if(_bdAttrDim==='_webTraffic')return (_wtO[a[0]]||99)-(_wtO[b[0]]||99);return b[1]-a[1];});
+  var attrSorted=Object.entries(attrData).sort(function(a,b){
+    if(_bdAttrDim==='_webTraffic')return (_wtO[a[0]]||99)-(_wtO[b[0]]||99);
+    if(_bdAttrDim==='package_type')return (BD_PKG_ORDER[a[0]]||99)-(BD_PKG_ORDER[b[0]]||99);
+    return b[1]-a[1];
+  });
   if(_bdHideBlanks){attrSorted=attrSorted.filter(function(e){var k=e[0].toLowerCase();return k!=='(none)'&&k!==''&&k!=='none';});}
   var attrVisTotal=0,attrVisMRR=0;for(var avt=0;avt<attrSorted.length;avt++){attrVisTotal+=attrSorted[avt][1];attrVisMRR+=attrMRR[attrSorted[avt][0]]||0;}
   var attrMax=1;for(var ami=0;ami<attrSorted.length;ami++){if(attrSorted[ami][1]>attrMax)attrMax=attrSorted[ami][1];}
@@ -185,6 +218,9 @@ function renderBD(){
   // sfDaysCount = sample size for Avg Days to Close, restricted to Closed-Won deals only.
   var sfTotal=sharedFiltered.length,sfTotalAmt=0,sfPaused=0,sfChurned=0,sfPausedMRR=0,sfChurnedMRR=0;
   var sfDaysSum=0,sfDaysCount=0,sfStatusFilled=0;
+  // "From Demo" companion stats — Closed-Won only, computed from
+  // date_demo_booked → closedate
+  var sfDemoDaysSum=0,sfDemoDaysCount=0;
   sharedFiltered.forEach(function(dd){
     sfTotalAmt+=dd.amount;
     // Universe for % Paused / % Churned = deals with brand_status filled
@@ -198,15 +234,30 @@ function renderBD(){
       var t1=new Date(dd.createdate).getTime(),t2=new Date(dd.closedate).getTime();
       if(!isNaN(t1)&&!isNaN(t2)&&t2>=t1){sfDaysSum+=(t2-t1)/86400000;sfDaysCount++;}
     }
+    // Avg Days From Demo: Closed-Won only, from date_demo_booked → closedate
+    if(dd.dealstage==='closedwon'&&dd.date_demo_booked&&dd.closedate){
+      var td1=new Date(dd.date_demo_booked).getTime(),td2=new Date(dd.closedate).getTime();
+      if(!isNaN(td1)&&!isNaN(td2)&&td2>=td1){sfDemoDaysSum+=(td2-td1)/86400000;sfDemoDaysCount++;}
+    }
   });
   var sfAvgDays=sfDaysCount?Math.round(sfDaysSum/sfDaysCount):null;
+  var sfAvgDaysFromDemo=sfDemoDaysCount?Math.round(sfDemoDaysSum/sfDemoDaysCount):null;
   var sfAvgACV=sfTotal?(sfTotalAmt/sfTotal):0;
   h+='<div style="display:flex;gap:12px;margin-bottom:16px">';
   h+='<div class="tile hero" style="flex:1"><div class="tlbl">Deals</div><div class="tval" style="font-size:22px">'+sfTotal+'</div><div class="tdef">Matching filters</div></div>';
   h+='<div class="tile hero" style="flex:1"><div class="tlbl">Total ARR</div><div class="tval" style="font-size:22px">'+f$(sfTotalAmt*12)+'</div><div class="tdef">MRR \u00d7 12</div></div>';
   h+='<div class="tile hero" style="flex:1"><div class="tlbl">Total MRR</div><div class="tval" style="font-size:22px">'+f$(sfTotalAmt)+'</div><div class="tdef">Sum of amount</div></div>';
   h+='<div class="tile hero" style="flex:1"><div class="tlbl">Avg ACV</div><div class="tval" style="font-size:22px">'+f$(sfAvgACV)+'</div><div class="tdef">MRR \u00f7 deals</div></div>';
-  h+='<div class="tile hero" style="flex:1"><div class="tlbl">Avg Days to Close</div><div class="tval" style="font-size:22px">'+(sfAvgDays==null?'\u2014':sfAvgDays)+'</div><div class="tdef">(closedate \u2212 createdate) \u00f7 '+sfDaysCount+' Closed-Won deals</div></div>';
+  // Avg Days to Close \u2014 now shows BOTH metrics side-by-side:
+  //   From Demo    = closedate \u2212 date_demo_booked
+  //   From Created = closedate \u2212 createdate  (existing)
+  h+='<div class="tile hero" style="flex:1"><div class="tlbl">Avg Days to Close</div>'
+    +'<div style="display:flex;gap:14px;align-items:baseline;margin-top:2px">'
+    +'<div><div class="tval" style="font-size:22px;line-height:1">'+(sfAvgDaysFromDemo==null?'\u2014':sfAvgDaysFromDemo)+'</div><div style="font-size:9px;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.04em;margin-top:3px">From Demo</div></div>'
+    +'<div style="opacity:.35;font-size:18px;color:#fff">/</div>'
+    +'<div><div class="tval" style="font-size:22px;line-height:1">'+(sfAvgDays==null?'\u2014':sfAvgDays)+'</div><div style="font-size:9px;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.04em;margin-top:3px">From Created</div></div>'
+    +'</div>'
+    +'<div class="tdef" style="margin-top:8px">'+sfDemoDaysCount+' from demo \u00b7 '+sfDaysCount+' from created (Closed-Won)</div></div>';
   h+='<div class="tile '+(sfStatusFilled&&sfPaused/sfStatusFilled>.15?'warn':'hero')+'" style="flex:1"><div class="tlbl">% Paused</div><div class="tval" style="font-size:22px">'+(sfStatusFilled?(sfPaused/sfStatusFilled*100).toFixed(1):0)+'%</div><div class="tdef">'+sfPaused+' \u00f7 '+sfStatusFilled+' brands w/ status \u00b7 '+f$(sfPausedMRR)+' MRR</div></div>';
   h+='<div class="tile '+(sfStatusFilled&&sfChurned/sfStatusFilled>.2?'warn':'hero')+'" style="flex:1"><div class="tlbl">% Churned</div><div class="tval" style="font-size:22px">'+(sfStatusFilled?(sfChurned/sfStatusFilled*100).toFixed(1):0)+'%</div><div class="tdef">Churned dealstage '+sfChurned+' \u00f7 '+sfStatusFilled+' brands w/ status \u00b7 '+f$(sfChurnedMRR)+' MRR</div></div>';
   h+='</div>';
@@ -235,7 +286,7 @@ function renderBD(){
   h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Package</span> ';
   h+=fp(_bdPkgF==='all','All',"_bdPkgF='all';renderBD()")+' ';
-  Object.keys(uniqPkg).sort().forEach(function(v){h+=fp(_bdPkgF===v,bdPlanName(v),"_bdPkgF='"+v+"';renderBD()")+' ';});
+  Object.keys(uniqPkg).sort(function(a,b){return (BD_PKG_ORDER[bdPlanName(a)]||99)-(BD_PKG_ORDER[bdPlanName(b)]||99);}).forEach(function(v){h+=fp(_bdPkgF===v,bdPlanName(v),"_bdPkgF='"+v+"';renderBD()")+' ';});
   h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Web Traffic</span> ';
   h+=fp(_bdWebTrafficF==='all','All',"_bdWebTrafficF='all';renderBD()")+' ';
@@ -272,7 +323,8 @@ function renderBD(){
     if(k==='closedate'||k==='createdate')return (d[k]||'').substring(0,10);
     if(k==='hubspot_owner_id')return (ownerMap[d.hubspot_owner_id]||'').toLowerCase();
     if(k==='dealstage')return (BD_STAGE_LABELS[d.dealstage]||d.dealstage||'').toLowerCase();
-    if(k==='package_type')return bdPlanName(d.package_type||'').toLowerCase();
+    if(k==='package_type'){var pn=bdPlanName(d.package_type||'');return BD_PKG_ORDER[pn]||99;}
+    if(k==='from_demo'){var fd=bdFromDemo(d);return fd==null?Infinity:fd;}
     if(k==='average_monthly_web_traffic__cloned_'){var o=BD_WT_ORDER[d[k]];return o!=null?o:99;}
     if(_BD_NUM[k])return parseFloat(d[k])||0;
     if(_BD_LEAD[k]){var n=_bdLeadingNum(d[k]);return isNaN(n)?Infinity:n;}
@@ -296,7 +348,8 @@ function renderBD(){
     {k:'hubspot_owner_id',l:'Rep',w:70},
     {k:'closedate',l:'Close Date',w:90},
     {k:'createdate',l:'Create Date',w:90},
-    {k:'days_to_close',l:'Days to Close',w:75},
+    {k:'from_demo',l:'From Demo',w:75},
+    {k:'days_to_close',l:'From Created',w:80},
     {k:'amount',l:'Amount',w:90},
     {k:'original_amount',l:'Original Amount',w:100},
     {k:'package_type',l:'Plan Name',w:115},
@@ -336,12 +389,27 @@ function renderBD(){
     var wtLbl=wtRaw?(BD_WT_LABELS[wtRaw]||wtRaw):'\u2014';
     h+='<tr>';
     h+='<td><div style="display:flex;align-items:center;gap:4px;overflow:hidden"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+row.dealname+'">'+row.dealname+'</span><a href="https://app.hubspot.com/contacts/46815331/record/0-3/'+row.id+'" target="_blank" style="flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:4px;background:rgba(114,164,191,.1);color:var(--teal);font-size:9px;text-decoration:none">\u2197</a></div></td>';
-    h+='<td><div style="display:flex;align-items:center;gap:4px;overflow:hidden"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+row.companyName+'">'+(row.companyName||dash)+'</span>'+(row.companyId?'<a href="https://app.hubspot.com/contacts/46815331/record/0-2/'+row.companyId+'" target="_blank" style="flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:4px;background:rgba(114,164,191,.1);color:var(--teal);font-size:9px;text-decoration:none">\u2197</a>':'')+'</div></td>';
+    // Company cell \u2014 the name itself is now the clickable link to the
+    // HubSpot company record (was a tiny arrow icon next to plain text).
+    // If we have no companyId, render the name as-is or "\u2014".
+    var coName=row.companyName||'';
+    var coUrl=row.companyId?'https://app.hubspot.com/contacts/46815331/record/0-2/'+row.companyId:'';
+    var coCell;
+    if(coName&&coUrl){
+      coCell='<a href="'+coUrl+'" target="_blank" title="'+coName.replace(/"/g,'&quot;')+'" style="color:var(--teal);text-decoration:none;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;max-width:100%">'+coName+' \u2197</a>';
+    } else if(coName){
+      coCell='<span title="'+coName.replace(/"/g,'&quot;')+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;max-width:100%">'+coName+'</span>';
+    } else {
+      coCell=dash;
+    }
+    h+='<td>'+coCell+'</td>';
     h+='<td>'+(row.brand_status?'<span class="pill" style="background:'+bsColor+'18;color:'+bsColor+'">'+row.brand_status+'</span>':dash)+'</td>';
     h+='<td><span class="pill" style="background:'+stageColor+'18;color:'+stageColor+'">'+stageLabel+'</span></td>';
     h+='<td title="'+repName+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(repName.split(' ')[0]||dash)+'</td>';
     h+='<td>'+cd+'</td>';
     h+='<td style="font-size:10px">'+crd+'</td>';
+    var fromDemoVal=bdFromDemo(row);
+    h+='<td style="text-align:center">'+(fromDemoVal==null?dash:fromDemoVal)+'</td>';
     h+='<td style="text-align:center">'+tNum(row.days_to_close)+'</td>';
     h+='<td style="font-weight:600">'+f$(row.amount)+'</td>';
     h+='<td>'+(row.original_amount?f$(row.original_amount):dash)+'</td>';

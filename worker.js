@@ -3214,6 +3214,8 @@ const BD_DEAL_PROPS = [
   'days_to_close','original_amount','average_monthly_web_traffic__cloned_',
   'of_products','month_minimum','of_free_reviews','of_total_reviews',
   'of_clinicianai','of_clinician_analysis','activation_fee','notes',
+  // Added for "From Demo" column / KPI on BD Tracker
+  'date_demo_booked',
 ];
 
 async function fetchBDData(env) {
@@ -3298,6 +3300,7 @@ async function fetchBDData(env) {
       of_clinician_analysis: p.of_clinician_analysis||'',
       activation_fee: parseFloat(p.activation_fee)||0,
       notes: p.notes||'',
+      date_demo_booked: p.date_demo_booked||'',
       companyName: company?.name||'', companyId: company?.id||'',
     };
   });
