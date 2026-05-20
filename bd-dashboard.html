@@ -65,7 +65,7 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
 <script>
 var BD={data:null},_bdSort='closedate',_bdSortDir='desc',_bdHideBlanks=false,_bdAttrDim='_webTraffic';
 function _bdFirstOfMonth(){var _d=new Date();return _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-01';}
-var _bdBrandStatusF='Active',_bdStageF='all',_bdRepF='all',_bdPkgF='all',_bdWebTrafficF='all',_bdDateFrom=_bdFirstOfMonth(),_bdDateTo='',_bdDateMode='close';
+var _bdBrandStatusF='Active',_bdStageF='all',_bdRepF='all',_bdOpsRepF='all',_bdPkgF='all',_bdWebTrafficF='all',_bdDateFrom=_bdFirstOfMonth(),_bdDateTo='',_bdDateMode='close';
 var BD_REP_COLORS=['#1565C0','#2E7D32','#72A4BF','#E65100','#5C6BC0','#00897B','#C62828','#6A1B9A','#EF6C00','#00695C'];
 var _bdArrGoal='',_bdAcvInput='';
 var BD_STAGE_LABELS={appointmentscheduled:'Scheduled','1084214349':'Demo Happened',decisionmakerboughtin:'Decision Maker',contractsent:'Contract Sent',closedwon:'Closed Won',closedlost:'Closed Lost','3453957850':'No Show','3453925110':'Churned','1062974581':'Not a Fit','3517067985':'Churned (Onb)'};
@@ -155,7 +155,7 @@ function f$(v){if(v==null||isNaN(v))return'\u2014';return'$'+Math.round(v).toLoc
 function fmtInput(el){var v=el.value.replace(/[^0-9]/g,'');el.value=v?parseInt(v).toLocaleString():'';}
 function parseInput(s){return parseFloat((s||'').replace(/[^0-9.]/g,''))||0;}
 function bdClearDate(){_bdDateFrom='';_bdDateTo='';renderBD();}
-function bdResetFilters(){_bdBrandStatusF='Active';_bdStageF='all';_bdRepF='all';_bdPkgF='all';_bdWebTrafficF='all';_bdDateFrom=_bdFirstOfMonth();_bdDateTo='';_bdDateMode='close';renderBD();}
+function bdResetFilters(){_bdBrandStatusF='Active';_bdStageF='all';_bdRepF='all';_bdOpsRepF='all';_bdPkgF='all';_bdWebTrafficF='all';_bdDateFrom=_bdFirstOfMonth();_bdDateTo='';_bdDateMode='close';renderBD();}
 function bdCalc(){var el=document.getElementById('bd-calc-result');if(!el)return;var goal=parseInput(_bdArrGoal);var acvIn=parseInput(_bdAcvInput);if(!goal||!acvIn){el.textContent='\u2014';return;}var d=BD.data;if(!d)return;var cw=d.deals.filter(function(dd){return dd.dealstage==='closedwon';});var active=cw.filter(function(dd){return !['Paused','Churned','Never Implemented - Churned'].includes(dd.brand_status);});var currentARR=0;active.forEach(function(dd){currentARR+=dd.amount;});currentARR*=12;var gap=goal-currentARR;if(gap<=0){el.innerHTML='<span style="color:#16A34A">\u2713 Goal reached!</span>';return;}var needed=Math.ceil(gap/(acvIn*12));el.innerHTML='<span style="font-size:32px">'+needed+'</span> <span style="font-size:14px;color:var(--grey)">deals needed</span>';}
 // Display-name overrides \u2014 keyed by a substring found in the owner's full
 // HubSpot name. e.g. an owner whose HubSpot name is "Shealtiel <something>"
@@ -208,6 +208,7 @@ function renderBD(){
     else if(_bdBrandStatusF!=='all'&&dd.brand_status!==_bdBrandStatusF)return false;
     if(_bdStageF!=='all'&&dd.dealstage!==_bdStageF)return false;
     if(_bdRepF!=='all'){var rn=ownerMap[dd.hubspot_owner_id]||'Unassigned';if(rn!==_bdRepF)return false;}
+    if(_bdOpsRepF!=='all'){var on=ownerMap[dd.ops_owner_id]||'Unassigned';if(on!==_bdOpsRepF)return false;}
     if(_bdPkgF!=='all'&&dd.package_type!==_bdPkgF)return false;
     if(_bdWebTrafficF!=='all'&&dd.average_monthly_web_traffic__cloned_!==_bdWebTrafficF)return false;
     if(_bdDateFrom||_bdDateTo){
@@ -238,13 +239,18 @@ function renderBD(){
   var uniqWebTrafficBD={};deals.forEach(function(dd){if(dd.average_monthly_web_traffic__cloned_)uniqWebTrafficBD[dd.average_monthly_web_traffic__cloned_]=1;});
   // Build rep color map from full deal set (stable colors regardless of filter)
   var repCount={};
-  deals.forEach(function(dd){var rn=ownerMap[dd.hubspot_owner_id]||'Unassigned';repCount[rn]=(repCount[rn]||0)+1;});
+  var opsCount={};
+  deals.forEach(function(dd){
+    var rn=ownerMap[dd.hubspot_owner_id]||'Unassigned';repCount[rn]=(repCount[rn]||0)+1;
+    if(dd.ops_owner_id){var on=ownerMap[dd.ops_owner_id]||'Unassigned';opsCount[on]=(opsCount[on]||0)+1;}
+  });
   var repSorted=Object.entries(repCount).sort(function(a,b){return b[1]-a[1];});
+  var opsSorted=Object.entries(opsCount).sort(function(a,b){return b[1]-a[1];});
   var BD_REP_CMAP={};for(var rci=0;rci<repSorted.length;rci++){BD_REP_CMAP[repSorted[rci][0]]=BD_REP_COLORS[rci%BD_REP_COLORS.length];}
   // Attribution with MRR
   // Dimension order: Web Traffic Tier first (default), Plan Name second,
   // then the other dimensions.
-  var attrDims=[{k:'_webTraffic',l:'Web Traffic Tier'},{k:'package_type',l:'Plan Name'},{k:'dealstage',l:'Deal Stage'},{k:'_rep',l:'Deal Rep'},{k:'_opsRep',l:'Ops Rep'},{k:'brand_status',l:'Brand Status'}];
+  var attrDims=[{k:'_webTraffic',l:'Web Traffic Tier'},{k:'package_type',l:'Plan Name'},{k:'_rep',l:'Deal Rep'},{k:'_opsRep',l:'Ops Rep'},{k:'brand_status',l:'Brand Status'},{k:'dealstage',l:'Deal Stage'}];
   var attrData={},attrMRR={};for(var ai=0;ai<sharedFiltered.length;ai++){var ad=sharedFiltered[ai];var dimVal='';
     if(_bdAttrDim==='dealstage')dimVal=BD_STAGE_LABELS[ad.dealstage]||ad.dealstage||'(none)';
     else if(_bdAttrDim==='_rep')dimVal=ownerMap[ad.hubspot_owner_id]||'Unassigned';
@@ -362,6 +368,10 @@ function renderBD(){
   h+=fp(_bdRepF==='all','All',"_bdRepF='all';renderBD()")+' ';
   repSorted.forEach(function(rs){var rn=rs[0];h+=fp(_bdRepF===rn,bdFirstName(rn)||rn,"_bdRepF='"+rn.replace(/'/g,"\\'")+"';renderBD()")+' ';});
   h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
+  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Ops Rep</span> ';
+  h+=fp(_bdOpsRepF==='all','All',"_bdOpsRepF='all';renderBD()")+' ';
+  opsSorted.forEach(function(rs){var rn=rs[0];h+=fp(_bdOpsRepF===rn,bdFirstName(rn)||rn,"_bdOpsRepF='"+rn.replace(/'/g,"\\'")+"';renderBD()")+' ';});
+  h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Package</span> ';
   h+=fp(_bdPkgF==='all','All',"_bdPkgF='all';renderBD()")+' ';
   Object.keys(uniqPkg).sort(function(a,b){return (BD_PKG_ORDER[bdPlanName(a)]||99)-(BD_PKG_ORDER[bdPlanName(b)]||99);}).forEach(function(v){h+=fp(_bdPkgF===v,bdPlanName(v),"_bdPkgF='"+v+"';renderBD()")+' ';});
@@ -384,7 +394,7 @@ function renderBD(){
   h+='<input type="date" value="'+_bdDateTo+'" onchange="_bdDateTo=this.value;renderBD()" style="padding:3px 8px;border:1.5px solid rgba(23,44,69,.12);border-radius:50px;font-size:10px;font-family:var(--font-b);color:var(--navy)">';
   h+='<button onclick="renderBD()" style="padding:3px 10px;border-radius:50px;border:1.5px solid var(--navy);background:var(--navy);color:#fff;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--font-b)">Go</button>';
   if(_bdDateFrom||_bdDateTo){h+='<button onclick="bdClearDate()" style="padding:3px 10px;border-radius:50px;border:1.5px solid rgba(23,44,69,.12);background:transparent;color:var(--navy);font-size:10px;cursor:pointer;font-family:var(--font-b)">Clear</button>';}
-  var anyF=_bdBrandStatusF!=='all'||_bdStageF!=='all'||_bdRepF!=='all'||_bdPkgF!=='all'||_bdWebTrafficF!=='all'||_bdDateFrom||_bdDateTo;
+  var anyF=_bdBrandStatusF!=='all'||_bdStageF!=='all'||_bdRepF!=='all'||_bdOpsRepF!=='all'||_bdPkgF!=='all'||_bdWebTrafficF!=='all'||_bdDateFrom||_bdDateTo;
   if(anyF){h+='<button onclick="bdResetFilters()" style="padding:3px 12px;border-radius:50px;border:1.5px solid #C62828;background:rgba(198,40,40,.05);color:#C62828;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font-b);margin-left:auto">Reset All Filters</button>';}
   h+='</div></div>';
   // Table
