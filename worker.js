@@ -3663,6 +3663,37 @@ export default {
     // Body: { password, pqMap: {[dealId]: {pq, reason}}, mode: 'merge'|'replace' }
     // - 'merge' (default): merges body.pqMap into stored map, body wins on conflict
     // - 'replace': overwrites stored map entirely (used by Clear All)
+    // POST /api/csession/actions → Creative Session per-creative action log.
+    // Body shape:
+    //   { password, load: true }                          → returns { ok, actions }
+    //   { password, actions: { '<name>': {action,ts,...} } }  → merges into KV
+    //   { password, actions: { '<name>': null } }         → removes that entry
+    // Stored at KV key 'csession_actions' as a flat { creativeName -> entry } map.
+    if (request.method === 'POST' && url.pathname === '/api/csession/actions') {
+      let body;
+      try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
+      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      if (!env.CONTENT_STORE) return jr({ ok: false, error: 'KV not configured' }, 200);
+      try {
+        let existing = {};
+        try {
+          const raw = await env.CONTENT_STORE.get('csession_actions');
+          if (raw) existing = JSON.parse(raw);
+        } catch(e) { /* treat as empty */ }
+        // Load-only request
+        if (body.load) return jr({ ok: true, actions: existing });
+        // Save: merge incoming, allow null to delete
+        const incoming = body.actions || {};
+        const final = { ...existing };
+        for (const k of Object.keys(incoming)) {
+          if (incoming[k] == null) { delete final[k]; }
+          else { final[k] = incoming[k]; }
+        }
+        await env.CONTENT_STORE.put('csession_actions', JSON.stringify(final));
+        return jr({ ok: true, count: Object.keys(final).length, savedAt: new Date().toISOString(), actions: final });
+      } catch(err) { return jr({ ok: false, error: 'Save error', detail: err.message }, 500); }
+    }
+
     if (request.method === 'POST' && url.pathname === '/api/pq/save') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }

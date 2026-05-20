@@ -746,7 +746,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r27';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r28';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -1236,6 +1236,9 @@ function switchPage(pg){AP=pg;document.querySelectorAll('.ni').forEach(n=>n.clas
     document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));
     document.getElementById('page-csession').classList.add('active');
     if(!S.analyzer.data&&!S.analyzer._fetching){fdAnalyzer(S.analyzer.win||S.dashboard?.win||'mtd');}
+    // Load previously-decided actions from KV (background fetch — render now,
+    // re-render when they arrive so badges appear without blocking).
+    if(!S.csession.actions)csLoadActions();
     renderCreativeSession();
     return;
   }
@@ -8682,6 +8685,79 @@ function _csToast(msg){
   clearTimeout(t._hideTo);t._hideTo=setTimeout(function(){t.style.opacity='0';t.style.transform='translateX(-50%) translateY(8px)';},2400);
 }
 
+// ── Creative Session action tracking (KV-backed) ──
+// Each creative can have ONE active decision attached: pause / scale / refresh /
+// brief / watch. Decisions persist across sessions so reviewers can see what
+// was decided last time. Single map shape: { creativeName: { action, ts } }.
+function _csRelTime(ts){
+  if(!ts)return '';
+  var diff=Date.now()-ts;
+  var mins=Math.floor(diff/60000),hrs=Math.floor(diff/3600000),days=Math.floor(diff/86400000);
+  if(days>=7)return Math.floor(days/7)+'w ago';
+  if(days>=1)return days+'d ago';
+  if(hrs>=1)return hrs+'h ago';
+  if(mins>=1)return mins+'m ago';
+  return 'just now';
+}
+var CS_ACTIONS=[
+  {k:'pause',l:'Pause',c:'#e74c3c'},
+  {k:'scale',l:'Scale',c:'#2ecc71'},
+  {k:'refresh',l:'Refresh',c:'#f39c12'},
+  {k:'brief',l:'Brief Variant',c:'#72A4BF'},
+  {k:'watch',l:'Watch',c:'#9CA3AF'}
+];
+// HTML for the row of action chips on a creative card. Switches between
+// "show all 5 options" and "show current decision + clear button" based on
+// whether an action is set.
+function _csActionChips(name){
+  var current=(S.csession.actions||{})[name];
+  var safeName=(name||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+  var html='<div style="display:flex;align-items:center;gap:4px;margin-top:8px;flex-wrap:wrap">';
+  if(current&&current.action){
+    var act=CS_ACTIONS.find(function(a){return a.k===current.action;})||{l:current.action,c:'var(--grey)'};
+    html+='<span style="font-size:9px;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;margin-right:4px;font-weight:700">Decision</span>';
+    html+='<span style="background:'+act.c+';color:#fff;font-family:var(--font-h);font-weight:700;font-size:9px;padding:3px 10px;border-radius:50px;letter-spacing:.04em;text-transform:uppercase">'+act.l+'</span>';
+    html+='<span style="font-size:10px;color:var(--grey)">· '+_csRelTime(current.ts)+'</span>';
+    html+='<button onclick="event.stopPropagation();csClearAction(\''+safeName+'\')" title="Clear decision" style="background:none;border:none;color:var(--grey);cursor:pointer;font-size:13px;padding:0 6px;margin-left:2px;line-height:1">✕</button>';
+  } else {
+    CS_ACTIONS.forEach(function(a){
+      html+='<button onclick="event.stopPropagation();csSetAction(\''+safeName+'\',\''+a.k+'\')" style="background:transparent;border:1px solid '+a.c+'40;color:'+a.c+';font-family:var(--font-h);font-weight:700;font-size:9px;padding:2px 9px;border-radius:50px;cursor:pointer;letter-spacing:.04em;text-transform:uppercase;transition:all .15s" onmouseover="this.style.background=\''+a.c+'\';this.style.color=\'#fff\'" onmouseout="this.style.background=\'transparent\';this.style.color=\''+a.c+'\'">'+a.l+'</button>';
+    });
+  }
+  html+='</div>';
+  return html;
+}
+async function csSetAction(name,action){
+  if(!S.csession.actions)S.csession.actions={};
+  S.csession.actions[name]={action:action,ts:Date.now()};
+  if(AP==='csession')renderCreativeSession();
+  try{
+    var payload={};payload[name]=S.csession.actions[name];
+    var r=await fetch('/api/csession/actions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:PW,actions:payload})});
+    var d=await r.json();
+    if(!d.ok)_csToast('Decision saved locally; KV sync failed');
+  }catch(e){_csToast('Decision saved locally; KV sync failed');console.warn('csSetAction sync:',e);}
+}
+async function csClearAction(name){
+  if(S.csession.actions)delete S.csession.actions[name];
+  if(AP==='csession')renderCreativeSession();
+  try{
+    var payload={};payload[name]=null;
+    await fetch('/api/csession/actions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:PW,actions:payload})});
+  }catch(e){console.warn('csClearAction sync:',e);}
+}
+async function csLoadActions(){
+  if(!PW)return;
+  try{
+    var r=await fetch('/api/csession/actions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:PW,load:true})});
+    var d=await r.json();
+    if(d.ok&&d.actions){
+      S.csession.actions=d.actions;
+      if(AP==='csession')renderCreativeSession();
+    }
+  }catch(e){console.warn('csLoadActions:',e);}
+}
+
 function csStep1Winners(allCr,az){
   var winners=allCr.filter(function(c){return c._tag==='WINNER'&&c.spend>50;}).sort(function(a,b){return b._score-a._score;}).slice(0,10);
   window._csWinners=winners;window._csWinnersAz=az;
@@ -8701,6 +8777,7 @@ function csStep1Winners(allCr,az){
     h+='<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:12px;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+c.name+'">'+c.name+'</div>';
     h+='<div style="font-size:11px;color:var(--grey);margin-top:2px">'+c.channel+' · $'+Math.round(c.spend)+' · '+c.demos+' demos'+(cpd?' · $'+Math.round(cpd)+' CPD':'')+(c.videoP25&&c.impressions?' · '+(c.videoP25/c.impressions*100).toFixed(1)+'% viewed 25%':'')+'</div>';
     var wi=getInsight('winners',c.name);if(wi)h+='<div style="margin-top:6px;padding:5px 8px;background:rgba(114,164,191,.06);border-radius:4px;font-size:10px;color:var(--navy);line-height:1.5;border-left:2px solid var(--teal)">'+wi+'</div>';
+    h+=_csActionChips(c.name);
     h+='</div>';
     h+='<div style="font-size:10px;color:#2ecc71;font-weight:700;text-transform:uppercase;flex-shrink:0">WINNER</div>';
     h+='</div>';
@@ -8730,6 +8807,7 @@ function csStep2Losers(allCr,az){
     h+='<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:12px;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+c.name+'">'+c.name+'</div>';
     h+='<div style="font-size:11px;color:var(--grey);margin-top:2px">'+c.channel+' · $'+Math.round(c.spend)+' · '+c.demos+' demos'+(cpd?' · $'+Math.round(cpd)+' CPD':'')+(c.videoP25&&c.impressions?' · '+(c.videoP25/c.impressions*100).toFixed(1)+'% viewed 25%':'')+' · <span style="color:#e74c3c">'+reason+'</span></div>';
     var li=getInsight('losers',c.name);if(li)h+='<div style="margin-top:6px;padding:5px 8px;background:rgba(114,164,191,.06);border-radius:4px;font-size:10px;color:var(--navy);line-height:1.5;border-left:2px solid var(--teal)">'+li+'</div>';
+    h+=_csActionChips(c.name);
     h+='</div>';
     h+='<div style="font-size:10px;font-weight:700;color:#e74c3c;background:#e74c3c10;padding:4px 10px;border-radius:50px;flex-shrink:0">PAUSE</div>';
     h+='</div>';
@@ -8755,6 +8833,7 @@ function csStep3Fatigue(allCr,az){
     h+='<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:12px;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+c.name+'">'+c.name+'</div>';
     h+='<div style="font-size:11px;color:var(--grey);margin-top:2px">'+c.channel+' · $'+Math.round(c.spend)+' · '+c.demos+' demos · CTR declining over 14 days'+(c.videoP25&&c.impressions?' · '+(c.videoP25/c.impressions*100).toFixed(1)+'% viewed 25%':'')+'</div>';
     var fi=getInsight('fatigue',c.name);if(fi)h+='<div style="margin-top:6px;padding:5px 8px;background:rgba(114,164,191,.06);border-radius:4px;font-size:10px;color:var(--navy);line-height:1.5;border-left:2px solid var(--teal)">'+fi+'</div>';
+    h+=_csActionChips(c.name);
     h+='</div>';
     h+='<div style="font-size:10px;font-weight:700;color:#f39c12;flex-shrink:0">REFRESH</div>';
     h+='</div>';
