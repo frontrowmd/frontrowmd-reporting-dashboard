@@ -3286,11 +3286,34 @@ async function fetchBDData(env) {
   }
   console.log(`BD associations: ${assocMatched} of ${dealIds.length} deals matched to companies (${assocBatches} batches, ${assocFailures} failures)`);
 
+  // Company names are KV-cached across requests because a single BD load
+  // can have 2500+ unique companies → 26 batch reads × 100 = 26 subrequests,
+  // which (combined with deal pagination + association batches) exceeds
+  // Cloudflare's per-invocation subrequest budget. Strategy:
+  //   1. Load the cached company map from KV (populated by prior requests)
+  //   2. Only fetch companies NOT in the cache
+  //   3. Cap per-request fetches so a single invocation never exhausts the
+  //      remaining subrequest budget — progress is preserved in KV and
+  //      subsequent loads will fill in the rest
+  //   4. Save the updated cache back to KV
   const uniqueCompanyIds = [...new Set(Object.values(companyAssociations))];
-  const companyMap = {};
+  let companyMap = {};
+  if (env.CONTENT_STORE) {
+    try {
+      const raw = await env.CONTENT_STORE.get('bd_company_cache_v1');
+      if (raw) companyMap = JSON.parse(raw);
+    } catch(e) { console.warn('BD cache load failed:', e.message); }
+  }
+  const cachedHits = uniqueCompanyIds.filter(id => companyMap[id]).length;
+  const idsToFetch = uniqueCompanyIds.filter(id => !companyMap[id]);
+  // Cap to ~12 batches per request (1200 companies) to leave subrequest
+  // budget for deal pagination + associations. Subsequent loads will
+  // catch up on whatever's missing.
+  const MAX_COMPANY_BATCHES = 12;
+  const idsToFetchLimited = idsToFetch.slice(0, MAX_COMPANY_BATCHES * 100);
   let companiesFetched = 0;
-  for (let i = 0; i < uniqueCompanyIds.length; i += 100) {
-    const batch = uniqueCompanyIds.slice(i, i + 100);
+  for (let i = 0; i < idsToFetchLimited.length; i += 100) {
+    const batch = idsToFetchLimited.slice(i, i + 100);
     try {
       const coRes = await fetch('https://api.hubapi.com/crm/v3/objects/companies/batch/read', {
         method: 'POST',
@@ -3304,14 +3327,21 @@ async function fetchBDData(env) {
       }
       const coData = await coRes.json();
       for (const co of (coData.results || [])) {
-        // Fall back to domain/website if name is missing (rare but happens)
         const name = co.properties?.name || co.properties?.domain || co.properties?.website || '';
         companyMap[co.id] = { name, id: co.id };
         if (name) companiesFetched++;
       }
     } catch(e) { console.error('BD company batch error:', e); }
   }
-  console.log(`BD companies: ${companiesFetched} of ${uniqueCompanyIds.length} unique company records fetched with name`);
+  // Persist the updated cache. Wrapped in try so a KV write failure doesn't
+  // tank the request — we still return what we have in memory.
+  if (env.CONTENT_STORE && (companiesFetched > 0 || cachedHits === 0)) {
+    try {
+      await env.CONTENT_STORE.put('bd_company_cache_v1', JSON.stringify(companyMap));
+    } catch(e) { console.warn('BD cache save failed:', e.message); }
+  }
+  const remaining = idsToFetch.length - idsToFetchLimited.length;
+  console.log(`BD companies: ${cachedHits} cache hits · ${companiesFetched} newly fetched · ${remaining} deferred to next load (total unique: ${uniqueCompanyIds.length})`);
 
   const mappedDeals = deals.map(d => {
     const p = d.properties || {};

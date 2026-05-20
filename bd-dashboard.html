@@ -153,7 +153,14 @@ function renderBD(){
     if(_bdRepF!=='all'){var rn=ownerMap[dd.hubspot_owner_id]||'Unassigned';if(rn!==_bdRepF)return false;}
     if(_bdPkgF!=='all'&&dd.package_type!==_bdPkgF)return false;
     if(_bdWebTrafficF!=='all'&&dd.average_monthly_web_traffic__cloned_!==_bdWebTrafficF)return false;
-    if(_bdDateFrom||_bdDateTo){var _bdDf=(_bdDateMode==='create'?(dd.createdate||dd.hs_createdate||''):(dd.closedate||'')).substring(0,10);if(_bdDateFrom&&_bdDf<_bdDateFrom)return false;if(_bdDateTo&&_bdDf>_bdDateTo)return false;}
+    if(_bdDateFrom||_bdDateTo){
+      var _bdDf;
+      if(_bdDateMode==='create')_bdDf=(dd.createdate||dd.hs_createdate||'').substring(0,10);
+      else if(_bdDateMode==='demo')_bdDf=(dd.date_demo_booked||'').substring(0,10);
+      else _bdDf=(dd.closedate||'').substring(0,10);
+      if(_bdDateFrom&&_bdDf<_bdDateFrom)return false;
+      if(_bdDateTo&&_bdDf>_bdDateTo)return false;
+    }
     return true;});
   // Plan name display: strip trailing parenthetical (e.g., "Hero (1 Product)" → "Hero")
   function bdPlanName(v){return (v||'').replace(/\s*\([^)]*\)\s*$/,'');}
@@ -303,9 +310,10 @@ function renderBD(){
   h+='</span></div>';
   // Date filter row — always its own row, last. Toggle selects which date field the from/to apply to.
   h+='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid rgba(23,44,69,.06)">';
-  // Segmented toggle (Close Date / Create Date)
+  // Segmented toggle (Close Date · Demo Date · Create Date)
   h+='<span style="display:inline-flex;align-items:center;background:rgba(23,44,69,.05);border-radius:50px;padding:2px;gap:2px;flex-shrink:0">';
   h+=fp(_bdDateMode==='close','Close Date',"_bdDateMode='close';renderBD()");
+  h+=fp(_bdDateMode==='demo','Demo Date',"_bdDateMode='demo';renderBD()");
   h+=fp(_bdDateMode==='create','Create Date',"_bdDateMode='create';renderBD()");
   h+='</span>';
   // From / To inputs (single set; persist when toggling)
@@ -425,7 +433,12 @@ function renderBD(){
     h+='<td style="text-align:center">'+tNum(row.days_to_close)+'</td>';
     h+='<td style="font-weight:600">'+f$(row.amount)+'</td>';
     h+='<td>'+(row.original_amount?f$(row.original_amount):dash)+'</td>';
-    h+='<td>'+(row.package_type?'<span class="pill" style="background:'+(BD_PKG_COLORS[row.package_type]||'#9CA3AF')+'18;color:'+(BD_PKG_COLORS[row.package_type]||'#9CA3AF')+'" title="'+row.package_type+'">'+bdPlanName(row.package_type)+'</span>':dash)+'</td>';
+    // Plan-name color: look up the CLEANED plan name (strips trailing
+    // "(1 Product)" etc.) so colors match the Deal Attribution chart,
+    // which also uses bdPlanName for its keying.
+    var pnClean=bdPlanName(row.package_type||'');
+    var pnColor=BD_PKG_COLORS[pnClean]||'#9CA3AF';
+    h+='<td>'+(row.package_type?'<span class="pill" style="background:'+pnColor+'18;color:'+pnColor+'" title="'+row.package_type+'">'+pnClean+'</span>':dash)+'</td>';
     h+='<td>'+(wtRaw?'<span class="pill" style="background:'+(BD_WT_COLORS[wtRaw]||'#9CA3AF')+'18;color:'+(BD_WT_COLORS[wtRaw]||'#9CA3AF')+'" title="'+wtRaw+'">'+wtLbl+'</span>':dash)+'</td>';
     h+='<td style="text-align:center">'+tNum(row.of_products)+'</td>';
     h+='<td>'+(row.month_minimum?Math.round(row.month_minimum).toLocaleString():dash)+'</td>';
