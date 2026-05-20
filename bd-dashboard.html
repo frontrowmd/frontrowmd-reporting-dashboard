@@ -94,13 +94,44 @@ function doLogin(){
   fetch('/api/bd',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})}).then(function(r){return r.json();}).then(function(d){
     if(d.error){document.getElementById('gerr').style.display='block';btn.innerHTML='Log In \u2192';btn.disabled=false;btn.style.opacity='1';return;}
     BD.pw=pw;BD.data=d;document.getElementById('gate').style.display='none';document.getElementById('app').style.display='block';renderBD();
+    bdLookupMissingCompanies();
   }).catch(function(){document.getElementById('gerr').style.display='block';btn.innerHTML='Log In \u2192';btn.disabled=false;btn.style.opacity='1';});
+}
+// Background fetch of missing company names. /api/bd skips live company
+// lookups (uses cached names only) to stay under the per-invocation
+// subrequest budget. This calls /api/bd/lookup-companies which has its
+// own fresh budget, merges results into BD.data.deals, and re-renders.
+// If more companies remain (deferred>0), recurses until cache is full.
+function bdLookupMissingCompanies(){
+  if(!BD.pw||!BD.data||!BD.data.missingCompanyIds||!BD.data.missingCompanyIds.length)return;
+  var ids=BD.data.missingCompanyIds.slice(); // copy
+  // Show loading hint in the All Deals header (if rendered)
+  var hint=document.getElementById('bd-co-hint');
+  if(hint){hint.textContent=' \u00b7 loading '+ids.length+' company names\u2026';hint.style.display='inline';}
+  fetch('/api/bd/lookup-companies',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:BD.pw,companyIds:ids})}).then(function(r){return r.json();}).then(function(d){
+    if(!d||!d.ok||!d.companies)return;
+    // Build a companyId \u2192 {name, id} lookup
+    var nameMap=d.companies;
+    // Patch each deal's companyName from the lookup
+    BD.data.deals.forEach(function(deal){
+      if(deal.companyId&&!deal.companyName&&nameMap[deal.companyId]){
+        deal.companyName=nameMap[deal.companyId].name||'';
+      }
+    });
+    // Recompute missing list (some may still be missing if deferred>0)
+    BD.data.missingCompanyIds=BD.data.missingCompanyIds.filter(function(id){return !nameMap[id];});
+    renderBD();
+    if(hint){
+      if(d.deferred>0){hint.textContent=' \u00b7 '+d.deferred+' more queued\u2026';bdLookupMissingCompanies();}
+      else{hint.style.display='none';}
+    } else if(d.deferred>0){bdLookupMissingCompanies();}
+  }).catch(function(e){console.warn('bdLookupMissingCompanies failed:',e);if(hint)hint.style.display='none';});
 }
 function bdRefresh(){
   if(!BD.pw)return;
   var btn=document.getElementById('refreshBtn');btn.innerHTML='<span class="sp" style="width:12px;height:12px;border-width:2px;display:inline-block;vertical-align:middle"></span> Loading...';btn.disabled=true;
   fetch('/api/bd',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:BD.pw})}).then(function(r){return r.json();}).then(function(d){
-    if(!d.error){BD.data=d;renderBD();}
+    if(!d.error){BD.data=d;renderBD();bdLookupMissingCompanies();}
     btn.innerHTML='\u21bb Refresh';btn.disabled=false;
   }).catch(function(){btn.innerHTML='\u21bb Refresh';btn.disabled=false;});
 }
@@ -327,7 +358,7 @@ function renderBD(){
   h+='</div></div>';
   // Table
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:20px 24px">';
-  h+='<div style="display:flex;align-items:center;margin-bottom:12px"><div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">All Deals</div><div style="font-size:10px;color:var(--grey);margin-left:8px">'+sharedFiltered.length+' of '+deals.length+'</div></div>';
+  h+='<div style="display:flex;align-items:center;margin-bottom:12px"><div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">All Deals</div><div style="font-size:10px;color:var(--grey);margin-left:8px">'+sharedFiltered.length+' of '+deals.length+'<span id="bd-co-hint" style="display:none;color:var(--teal);font-weight:600"></span></div></div>';
   // Generic sort that respects column type (numeric, enum-with-leading-num, tier-order, label, plain string).
   // Pulls first numeric token from strings like "$299", "3 Months", "2 (1 Free)" so numeric columns sort numerically even when stored as strings.
   function _bdLeadingNum(v){var m=String(v==null?'':v).match(/-?[\d.]+/);return m?parseFloat(m[0]):NaN;}

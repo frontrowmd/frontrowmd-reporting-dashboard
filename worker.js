@@ -3286,16 +3286,12 @@ async function fetchBDData(env) {
   }
   console.log(`BD associations: ${assocMatched} of ${dealIds.length} deals matched to companies (${assocBatches} batches, ${assocFailures} failures)`);
 
-  // Company names are KV-cached across requests because a single BD load
-  // can have 2500+ unique companies → 26 batch reads × 100 = 26 subrequests,
-  // which (combined with deal pagination + association batches) exceeds
-  // Cloudflare's per-invocation subrequest budget. Strategy:
-  //   1. Load the cached company map from KV (populated by prior requests)
-  //   2. Only fetch companies NOT in the cache
-  //   3. Cap per-request fetches so a single invocation never exhausts the
-  //      remaining subrequest budget — progress is preserved in KV and
-  //      subsequent loads will fill in the rest
-  //   4. Save the updated cache back to KV
+  // Company names are loaded ONLY from KV cache in this endpoint — no live
+  // HubSpot fetches here. Deal search + associations already eat most of
+  // the per-invocation subrequest budget, so company fetches go to a
+  // dedicated /api/bd/lookup-companies endpoint with its own fresh budget.
+  // The client calls that endpoint after the initial render to fill in
+  // missing names; the worker maintains the cache so each load is cheaper.
   const uniqueCompanyIds = [...new Set(Object.values(companyAssociations))];
   let companyMap = {};
   if (env.CONTENT_STORE) {
@@ -3305,43 +3301,8 @@ async function fetchBDData(env) {
     } catch(e) { console.warn('BD cache load failed:', e.message); }
   }
   const cachedHits = uniqueCompanyIds.filter(id => companyMap[id]).length;
-  const idsToFetch = uniqueCompanyIds.filter(id => !companyMap[id]);
-  // Cap to ~12 batches per request (1200 companies) to leave subrequest
-  // budget for deal pagination + associations. Subsequent loads will
-  // catch up on whatever's missing.
-  const MAX_COMPANY_BATCHES = 12;
-  const idsToFetchLimited = idsToFetch.slice(0, MAX_COMPANY_BATCHES * 100);
-  let companiesFetched = 0;
-  for (let i = 0; i < idsToFetchLimited.length; i += 100) {
-    const batch = idsToFetchLimited.slice(i, i + 100);
-    try {
-      const coRes = await fetch('https://api.hubapi.com/crm/v3/objects/companies/batch/read', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${hsToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inputs: batch.map(id => ({ id })), properties: ['name','domain','website'] }),
-      });
-      if (!coRes.ok) {
-        const txt = await coRes.text();
-        console.error(`BD company batch ${i} HTTP ${coRes.status}: ${txt.slice(0,200)}`);
-        continue;
-      }
-      const coData = await coRes.json();
-      for (const co of (coData.results || [])) {
-        const name = co.properties?.name || co.properties?.domain || co.properties?.website || '';
-        companyMap[co.id] = { name, id: co.id };
-        if (name) companiesFetched++;
-      }
-    } catch(e) { console.error('BD company batch error:', e); }
-  }
-  // Persist the updated cache. Wrapped in try so a KV write failure doesn't
-  // tank the request — we still return what we have in memory.
-  if (env.CONTENT_STORE && (companiesFetched > 0 || cachedHits === 0)) {
-    try {
-      await env.CONTENT_STORE.put('bd_company_cache_v1', JSON.stringify(companyMap));
-    } catch(e) { console.warn('BD cache save failed:', e.message); }
-  }
-  const remaining = idsToFetch.length - idsToFetchLimited.length;
-  console.log(`BD companies: ${cachedHits} cache hits · ${companiesFetched} newly fetched · ${remaining} deferred to next load (total unique: ${uniqueCompanyIds.length})`);
+  const missingCompanyIds = uniqueCompanyIds.filter(id => !companyMap[id]);
+  console.log(`BD companies (cache-only): ${cachedHits} cache hits · ${missingCompanyIds.length} missing → client will lookup via /api/bd/lookup-companies (total unique: ${uniqueCompanyIds.length})`);
 
   const mappedDeals = deals.map(d => {
     const p = d.properties || {};
@@ -3370,11 +3331,75 @@ async function fetchBDData(env) {
       activation_fee: parseFloat(p.activation_fee)||0,
       notes: p.notes||'',
       date_demo_booked: p.date_demo_booked||'',
-      companyName: company?.name||'', companyId: company?.id||'',
+      // Always include the associated companyId (from associations); the
+      // companyName comes from the cache if available, else empty (client
+      // will fill it in via /api/bd/lookup-companies).
+      companyName: company?.name||'',
+      companyId: companyId ? String(companyId) : '',
     };
   });
 
-  return { deals: mappedDeals, ownerMap, meta: { generatedAt: new Date().toISOString(), dealCount: deals.length } };
+  return { deals: mappedDeals, ownerMap, missingCompanyIds, meta: { generatedAt: new Date().toISOString(), dealCount: deals.length } };
+}
+
+// Dedicated company-lookup endpoint. Each invocation gets its own fresh
+// subrequest budget — separate from /api/bd's deal + association work —
+// which is the only way to handle portals with 2500+ unique BD companies
+// without blowing Cloudflare's per-invocation subrequest limit.
+async function lookupBDCompanies(env, companyIds) {
+  const hsToken = env.HUBSPOT_TOKEN;
+  if (!Array.isArray(companyIds) || companyIds.length === 0) return { companies: {}, deferred: 0, fetched: 0, cacheHits: 0 };
+  // Load cache
+  let companyMap = {};
+  if (env.CONTENT_STORE) {
+    try {
+      const raw = await env.CONTENT_STORE.get('bd_company_cache_v1');
+      if (raw) companyMap = JSON.parse(raw);
+    } catch(e) { console.warn('BD lookup cache load failed:', e.message); }
+  }
+  // Filter to IDs not in cache
+  const cacheHits = companyIds.filter(id => companyMap[id]).length;
+  const missingIds = companyIds.filter(id => !companyMap[id]);
+  // Cap to 30 batches (3000 companies) per request — plenty of headroom on
+  // any plan, leaves room for the KV write at the end.
+  const MAX_BATCHES = 30;
+  const idsToFetch = missingIds.slice(0, MAX_BATCHES * 100);
+  let fetched = 0;
+  for (let i = 0; i < idsToFetch.length; i += 100) {
+    const batch = idsToFetch.slice(i, i + 100);
+    try {
+      const coRes = await fetch('https://api.hubapi.com/crm/v3/objects/companies/batch/read', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${hsToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inputs: batch.map(id => ({ id })), properties: ['name','domain','website'] }),
+      });
+      if (!coRes.ok) {
+        const txt = await coRes.text();
+        console.error(`BD lookup batch ${i} HTTP ${coRes.status}: ${txt.slice(0,200)}`);
+        continue;
+      }
+      const coData = await coRes.json();
+      for (const co of (coData.results || [])) {
+        const name = co.properties?.name || co.properties?.domain || co.properties?.website || '';
+        companyMap[co.id] = { name, id: co.id };
+        if (name) fetched++;
+      }
+    } catch(e) { console.error('BD lookup batch error:', e); }
+  }
+  // Persist updated cache
+  if (env.CONTENT_STORE && fetched > 0) {
+    try {
+      await env.CONTENT_STORE.put('bd_company_cache_v1', JSON.stringify(companyMap));
+    } catch(e) { console.warn('BD lookup cache save failed:', e.message); }
+  }
+  // Build response: only the requested IDs
+  const companies = {};
+  for (const id of companyIds) {
+    if (companyMap[id]) companies[id] = companyMap[id];
+  }
+  const deferred = missingIds.length - idsToFetch.length;
+  console.log(`BD lookup: ${companyIds.length} requested · ${cacheHits} cache hits · ${fetched} newly fetched · ${deferred} deferred`);
+  return { companies, deferred, fetched, cacheHits };
 }
 
 async function fetchSalesData(mode, env) {
@@ -4248,6 +4273,21 @@ export default {
         const result = await fetchBDData(env);
         return jr(result);
       } catch(err) { console.error('BD API error:', err); return jr({ error: 'Internal error', detail: err.message }, 500); }
+    }
+
+    // POST /api/bd/lookup-companies → fetch company names for a list of IDs.
+    // Dedicated endpoint so it gets its own fresh subrequest budget,
+    // separate from /api/bd which spends most of its budget on deal
+    // pagination + association batches. Results are written to KV
+    // (key 'bd_company_cache_v1') so /api/bd picks them up on next load.
+    if (request.method === 'POST' && url.pathname === '/api/bd/lookup-companies') {
+      let body;
+      try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
+      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      try {
+        const result = await lookupBDCompanies(env, body.companyIds || []);
+        return jr({ ok: true, ...result });
+      } catch(err) { console.error('BD lookup error:', err); return jr({ ok: false, error: 'Internal error', detail: err.message }, 500); }
     }
 
     return jr({ error: 'Not found' }, 404);
