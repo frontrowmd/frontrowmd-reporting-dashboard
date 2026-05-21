@@ -746,7 +746,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r39';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r40';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -4069,6 +4069,108 @@ window.signupSort = function(col){
   renderSignUp();
 };
 
+// ── In-cohort Demo Date filter helpers ──
+// Each cohort ships with a `dealShadows` array — minimal per-deal records
+// that let us recompute cohort metrics client-side when the user narrows
+// the cohort by Demo Date (date_demo_booked). Mirrors the worker-side
+// deriveMetrics logic but operates on the (date-range-filtered) subset.
+// Stage constants kept identical to the worker so behavior matches.
+const _SU_STAGE_WON='closedwon';
+const _SU_STAGE_APPT='appointmentscheduled';
+const _SU_STAGE_DH='1084214349';
+const _SU_STAGE_DM='decisionmakerboughtin';
+const _SU_STAGE_CS='contractsent';
+const _SU_STAGE_NS='3453957850';
+const _SU_STAGE_NF='1062974581';
+function _suTodayMs(){const d=new Date();return Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate(),23,59,59,999);}
+// Apply date filter to a shadow list. fromStr/toStr are 'YYYY-MM-DD' or ''.
+function _suFilterShadows(shadows,fromStr,toStr){
+  if(!fromStr&&!toStr)return shadows;
+  const fromMs=fromStr?new Date(fromStr+'T00:00:00Z').getTime():-Infinity;
+  const toMs=toStr?new Date(toStr+'T23:59:59.999Z').getTime():Infinity;
+  return shadows.filter(sh=>{
+    const t=sh.d?new Date(sh.d+(sh.d.length===10?'T00:00:00Z':'')).getTime():NaN;
+    return !isNaN(t)&&t>=fromMs&&t<=toMs;
+  });
+}
+function _suRecomputeMetrics(shadows){
+  let cntWon=0,cntAppt=0,cntDH=0,cntDM=0,cntCS=0,cntNS=0,cntNF=0,sumMrr=0;
+  let daysToCloseSum=0,daysToCloseN=0,daysFromCreatedSum=0,daysFromCreatedN=0;
+  const todayMs=_suTodayMs();
+  for(const sh of shadows){
+    const stage=sh.s;
+    if(stage===_SU_STAGE_WON){
+      cntWon++;sumMrr+=sh.a||0;
+      const cdMs=sh.cd?new Date(sh.cd).getTime():NaN;
+      const ddbMs=sh.d?new Date(sh.d).getTime():NaN;
+      if(!isNaN(cdMs)&&!isNaN(ddbMs)){const days=(cdMs-ddbMs)/86400000;if(days>=0){daysToCloseSum+=days;daysToCloseN++;}}
+      const hcdMs=sh.hd?(/^\d+$/.test(sh.hd)?parseInt(sh.hd):new Date(sh.hd).getTime()):NaN;
+      if(!isNaN(cdMs)&&!isNaN(hcdMs)){const days=(cdMs-hcdMs)/86400000;if(days>=0){daysFromCreatedSum+=days;daysFromCreatedN++;}}
+    }else if(stage===_SU_STAGE_APPT){
+      const ddbMs=sh.d?new Date(sh.d).getTime():NaN;
+      if(!isNaN(ddbMs)&&ddbMs<=todayMs)cntAppt++;
+    }else if(stage===_SU_STAGE_DH)cntDH++;
+    else if(stage===_SU_STAGE_DM)cntDM++;
+    else if(stage===_SU_STAGE_CS)cntCS++;
+    else if(stage===_SU_STAGE_NS)cntNS++;
+    else if(stage===_SU_STAGE_NF)cntNF++;
+  }
+  const allBooked=shadows.length;
+  const demosHeld=cntWon+cntAppt+cntDH+cntDM+cntCS;
+  const cntPending=cntAppt+cntDH+cntDM+cntCS;
+  return {
+    allBooked, signed:cntWon, demosHeld,
+    pctSigned:demosHeld>0?(cntWon/demosHeld)*100:0,
+    pctPending:demosHeld>0?(cntPending/demosHeld)*100:0,
+    pctPruned:allBooked>0?(cntNF/allBooked)*100:0,
+    pctNoShow:allBooked>0?(cntNS/allBooked)*100:0,
+    stageCounts:{won:cntWon,appt:cntAppt,demoHappened:cntDH,dm:cntDM,cs:cntCS,noShow:cntNS,notAFit:cntNF},
+    mrr:sumMrr, newArr:sumMrr*12,
+    acv:cntWon>0?sumMrr/cntWon:0,
+    avgDaysToClose:daysToCloseN>0?daysToCloseSum/daysToCloseN:null,
+    avgDaysToCloseN:daysToCloseN,
+    avgDaysFromBooked:daysToCloseN>0?daysToCloseSum/daysToCloseN:null,
+    avgDaysFromBookedN:daysToCloseN,
+    avgDaysFromCreated:daysFromCreatedN>0?daysFromCreatedSum/daysFromCreatedN:null,
+    avgDaysFromCreatedN:daysFromCreatedN,
+  };
+}
+function _suRecomputeByRep(shadows,ownerMap){
+  const byOwner={};
+  for(const sh of shadows){
+    const oid=sh.o||'unassigned';
+    if(!byOwner[oid])byOwner[oid]={oid,shadows:[]};
+    byOwner[oid].shadows.push(sh);
+  }
+  const out={};
+  for(const oid in byOwner){
+    const name=(ownerMap&&ownerMap[oid])||(oid==='unassigned'?'Unassigned':oid);
+    out[oid]={name, ..._suRecomputeMetrics(byOwner[oid].shadows)};
+  }
+  return out;
+}
+function _suRecomputeSignedByWebTraffic(shadows){
+  const out={};
+  for(const sh of shadows){
+    if(sh.s!==_SU_STAGE_WON)continue;
+    const k=sh.w||'(none)';
+    out[k]=(out[k]||0)+1;
+  }
+  return out;
+}
+// Window callback for the date inputs — instant filter; re-renders just
+// the signup page.
+window.signupDateFilter=function(label,which,value){
+  if(!S.signup.dateFilters)S.signup.dateFilters={};
+  if(!S.signup.dateFilters[label])S.signup.dateFilters[label]={from:'',to:''};
+  S.signup.dateFilters[label][which]=value||'';
+  renderSignUp();
+};
+window.signupClearDateFilter=function(label){
+  if(S.signup.dateFilters)delete S.signup.dateFilters[label];
+  renderSignUp();
+};
+
 function renderSignUp(){
   // SignUp data now comes EXCLUSIVELY from /api/signup-cohorts (via fdSignup)
   // — the main /api/data endpoint no longer computes signUpRate. If the
@@ -4134,8 +4236,28 @@ function renderSignUp(){
   // Collect cohort → pie-target-id for post-injection rendering
   const _pieTargets=[];
 
+  // Per-cohort Demo Date filter state (instant client-side narrowing within
+  // a cohort's month). If a filter is set on a given cohort, we recompute
+  // that cohort's metrics + byRep + signedByWebTraffic from its dealShadows.
+  if(!S.signup.dateFilters)S.signup.dateFilters={};
   for(let _ci=0;_ci<s.cohorts.length;_ci++){
-    const c=s.cohorts[_ci];
+    let c=s.cohorts[_ci];
+    const _filt=S.signup.dateFilters[c.period.label]||{from:'',to:''};
+    const _hasFilter=!!(_filt.from||_filt.to);
+    let _filtCount=null;
+    if(_hasFilter&&Array.isArray(c.dealShadows)&&c.dealShadows.length){
+      const filteredShadows=_suFilterShadows(c.dealShadows,_filt.from,_filt.to);
+      _filtCount=filteredShadows.length;
+      // Build oid→name lookup from the original (unfiltered) byRep so the
+      // recompute can resolve owner IDs without needing a separate ownerMap.
+      const oidToName={};
+      for(const oid in (c.byRep||{}))oidToName[oid]=c.byRep[oid].name;
+      const newMetrics=_suRecomputeMetrics(filteredShadows);
+      const newByRep=_suRecomputeByRep(filteredShadows,oidToName);
+      const newSignedByWT=_suRecomputeSignedByWebTraffic(filteredShadows);
+      // Replace the cohort fields (immutable copy) with recomputed values
+      c=Object.assign({},c,newMetrics,{byRep:newByRep,signedByWebTraffic:newSignedByWT,_filterApplied:true,_filterFromTo:_filt});
+    }
     const _pieId='signup-pie-'+_ci;
     _pieTargets.push({id:_pieId,buckets:c.signedByWebTraffic||{},signed:c.signed||0});
     const titleRange=fmtDateRange(c.period.from,c.period.to);
@@ -4235,11 +4357,23 @@ function renderSignUp(){
       <div id="${_pieId}" class="su-pie-target"></div>
     </div>`;
 
+    // Cohort header with Demo Date filter inputs (instant client-side). The
+    // inputs are constrained to the cohort's calendar month via min/max so
+    // users can't accidentally pick a date outside the cohort window.
+    const _lblSafe=(c.period.label||'').replace(/'/g,"\\'");
+    const _filterSummary=_hasFilter?` · <span style="color:var(--teal);font-weight:600">filtered: ${fN(_filtCount||0)} of ${fN((s.cohorts[_ci].dealShadows||[]).length)} demo${((s.cohorts[_ci].dealShadows||[]).length===1?'':'s')}</span>`:'';
     h+=`<div class="su-cohort-card">
       <div class="su-cohort-head">
-        <div>
+        <div style="flex:1;min-width:200px">
           <div class="su-cohort-title">${c.period.label}</div>
-          <div class="su-cohort-sub">${titleRange} · ${fN(c.allBooked||0)} demo${(c.allBooked||0)===1?'':'s'} booked</div>
+          <div class="su-cohort-sub">${titleRange} · ${fN(c.allBooked||0)} demo${(c.allBooked||0)===1?'':'s'} booked${_filterSummary}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em">Demo Date</span>
+          <input type="date" value="${_filt.from||''}" min="${c.period.from}" max="${c.period.to}" oninput="signupDateFilter('${_lblSafe}','from',this.value)" style="padding:3px 8px;border:1.5px solid rgba(23,44,69,.12);border-radius:50px;font-size:10px;font-family:var(--font-b);color:var(--navy)">
+          <span style="font-size:10px;color:var(--grey)">→</span>
+          <input type="date" value="${_filt.to||''}" min="${c.period.from}" max="${c.period.to}" oninput="signupDateFilter('${_lblSafe}','to',this.value)" style="padding:3px 8px;border:1.5px solid rgba(23,44,69,.12);border-radius:50px;font-size:10px;font-family:var(--font-b);color:var(--navy)">
+          ${_hasFilter?`<button onclick="signupClearDateFilter('${_lblSafe}')" style="padding:3px 10px;border-radius:50px;border:1.5px solid #C62828;background:rgba(198,40,40,.05);color:#C62828;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font-b)">Clear</button>`:''}
         </div>
       </div>
       ${diagBar}

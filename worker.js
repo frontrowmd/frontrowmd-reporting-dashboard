@@ -1171,7 +1171,9 @@ function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
   for (const cm of cohortMonths) {
     // signedByWebTraffic — bucket Closed Won deals by web-traffic tier for the
     // pie chart on each cohort. Cohort-level only (not tracked per rep).
-    buckets[cm.label] = { period: cm, ...emptyBucket(), byRep: {}, signedByWebTraffic: {} };
+    // dealShadows — minimal per-deal data so the client can recompute cohort
+    // metrics when the user filters by Demo Date (instant in-cohort filter).
+    buckets[cm.label] = { period: cm, ...emptyBucket(), byRep: {}, signedByWebTraffic: {}, dealShadows: [] };
   }
   // Robust parse for hs_createdate (numeric ms string OR ISO datetime variants)
   const _parseDt = (v) => { if (!v) return NaN; return /^\d+$/.test(v) ? parseInt(v) : new Date(v).getTime(); };
@@ -1232,6 +1234,20 @@ function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
 
     b.allBooked++;
     b.byRep[oid].allBooked++;
+
+    // Stash a minimal shadow of this deal on the cohort bucket so the
+    // client can filter by Demo Date (date_demo_booked) within the cohort
+    // and recompute metrics instantly. Keys are short to keep payload size
+    // reasonable (~70 bytes/deal × ~500 deals/cohort ≈ 35KB per cohort).
+    b.dealShadows.push({
+      d: ddb,                                  // date_demo_booked (YYYY-MM-DD)
+      s: stage,                                // dealstage
+      a: amt,                                  // amount
+      cd: p.closedate || '',                   // closedate
+      hd: p.hs_createdate || '',               // hs_createdate
+      o: oid,                                  // hubspot_owner_id
+      w: p.average_monthly_web_traffic__cloned_ || p.average_monthly_web_traffic || '',
+    });
 
     if (stage === STAGE_WON) {
       b.cntWon++; b.byRep[oid].cntWon++;
@@ -1317,7 +1333,7 @@ function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
       repData[oid] = { name: r.name, ...deriveMetrics(r) };
     }
 
-    cohorts.push({ period: cm, ...m, signedByWebTraffic: b.signedByWebTraffic||{}, byRep: repData });
+    cohorts.push({ period: cm, ...m, signedByWebTraffic: b.signedByWebTraffic||{}, byRep: repData, dealShadows: b.dealShadows||[] });
   }
 
   return { cohorts };
