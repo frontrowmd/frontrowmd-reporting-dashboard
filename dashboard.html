@@ -746,7 +746,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r40';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r41';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -4093,6 +4093,19 @@ function _suFilterShadows(shadows,fromStr,toStr){
     return !isNaN(t)&&t>=fromMs&&t<=toMs;
   });
 }
+// Apply web-traffic-tier multi-select to a shadow list. selected is an
+// array of raw tier values (e.g. ['0-10K monthly web visitors', ...]).
+// Empty/null/zero-length array means "no filter applied".
+function _suFilterByWT(shadows,selected){
+  if(!selected||!selected.length)return shadows;
+  const set=new Set(selected);
+  return shadows.filter(sh=>set.has(sh.w||''));
+}
+// Web traffic tier sort rank for the multi-select pills + a short-label map
+// for the visible pill text. Pre-launch normally won't appear (excluded
+// before shadow creation) but is included for completeness.
+const _SU_WT_RANK={'Pre-launch / just launching':0,'0-10K monthly web visitors':1,'10-25K monthly web visitors':2,'25-50K monthly web visitors':3,'50-100K monthly web visitors':4,'100-200K monthly web visitors':5,'200-500K monthly web visitors':6,'500K+ monthly web visitors':7};
+const _SU_WT_LABELS={'Pre-launch / just launching':'Pre-launch','0-10K monthly web visitors':'0-10K','10-25K monthly web visitors':'10-25K','25-50K monthly web visitors':'25-50K','50-100K monthly web visitors':'50-100K','100-200K monthly web visitors':'100-200K','200-500K monthly web visitors':'200-500K','500K+ monthly web visitors':'500K+'};
 function _suRecomputeMetrics(shadows){
   let cntWon=0,cntAppt=0,cntDH=0,cntDM=0,cntCS=0,cntNS=0,cntNF=0,sumMrr=0;
   let daysToCloseSum=0,daysToCloseN=0,daysFromCreatedSum=0,daysFromCreatedN=0;
@@ -4170,6 +4183,20 @@ window.signupClearDateFilter=function(label){
   if(S.signup.dateFilters)delete S.signup.dateFilters[label];
   renderSignUp();
 };
+// Toggle a single web-traffic tier in/out of the multi-select for a given
+// cohort. Empty selection = no filter applied (all tiers included).
+window.signupWtToggle=function(label,tier){
+  if(!S.signup.wtFilters)S.signup.wtFilters={};
+  const arr=S.signup.wtFilters[label]||[];
+  const i=arr.indexOf(tier);
+  if(i>=0)arr.splice(i,1);else arr.push(tier);
+  if(arr.length)S.signup.wtFilters[label]=arr;else delete S.signup.wtFilters[label];
+  renderSignUp();
+};
+window.signupClearWtFilter=function(label){
+  if(S.signup.wtFilters)delete S.signup.wtFilters[label];
+  renderSignUp();
+};
 
 function renderSignUp(){
   // SignUp data now comes EXCLUSIVELY from /api/signup-cohorts (via fdSignup)
@@ -4236,17 +4263,32 @@ function renderSignUp(){
   // Collect cohort → pie-target-id for post-injection rendering
   const _pieTargets=[];
 
-  // Per-cohort Demo Date filter state (instant client-side narrowing within
-  // a cohort's month). If a filter is set on a given cohort, we recompute
-  // that cohort's metrics + byRep + signedByWebTraffic from its dealShadows.
+  // Per-cohort filters (instant client-side):
+  //   · Demo Date range (date_demo_booked between from/to)
+  //   · Web Traffic Tier multi-select
+  // When either filter is active, recompute the cohort's metrics + byRep
+  // + signedByWebTraffic from the filtered dealShadows list.
   if(!S.signup.dateFilters)S.signup.dateFilters={};
+  if(!S.signup.wtFilters)S.signup.wtFilters={};
   for(let _ci=0;_ci<s.cohorts.length;_ci++){
     let c=s.cohorts[_ci];
     const _filt=S.signup.dateFilters[c.period.label]||{from:'',to:''};
-    const _hasFilter=!!(_filt.from||_filt.to);
+    const _wtSel=S.signup.wtFilters[c.period.label]||[];
+    const _hasDateFilter=!!(_filt.from||_filt.to);
+    const _hasWtFilter=_wtSel.length>0;
+    const _hasFilter=_hasDateFilter||_hasWtFilter;
+    // Build the list of web traffic tiers that actually appear in this
+    // cohort, sorted by tier rank — used to populate the multi-select pills.
+    const _wtInCohort=(()=>{
+      const set={};
+      for(const sh of (c.dealShadows||[])){if(sh.w)set[sh.w]=true;}
+      return Object.keys(set).sort((a,b)=>(_SU_WT_RANK[a]??99)-(_SU_WT_RANK[b]??99));
+    })();
     let _filtCount=null;
     if(_hasFilter&&Array.isArray(c.dealShadows)&&c.dealShadows.length){
-      const filteredShadows=_suFilterShadows(c.dealShadows,_filt.from,_filt.to);
+      let filteredShadows=c.dealShadows;
+      if(_hasDateFilter)filteredShadows=_suFilterShadows(filteredShadows,_filt.from,_filt.to);
+      if(_hasWtFilter)filteredShadows=_suFilterByWT(filteredShadows,_wtSel);
       _filtCount=filteredShadows.length;
       // Build oid→name lookup from the original (unfiltered) byRep so the
       // recompute can resolve owner IDs without needing a separate ownerMap.
@@ -4357,13 +4399,30 @@ function renderSignUp(){
       <div id="${_pieId}" class="su-pie-target"></div>
     </div>`;
 
-    // Cohort header with Demo Date filter inputs (instant client-side). The
-    // inputs are constrained to the cohort's calendar month via min/max so
-    // users can't accidentally pick a date outside the cohort window.
+    // Cohort header with two filter rows:
+    //   1) Demo Date range (constrained to the cohort's calendar month)
+    //   2) Web Traffic Tier multi-select pills
+    // Both filters combine; metrics recompute instantly client-side.
     const _lblSafe=(c.period.label||'').replace(/'/g,"\\'");
     const _filterSummary=_hasFilter?` · <span style="color:var(--teal);font-weight:600">filtered: ${fN(_filtCount||0)} of ${fN((s.cohorts[_ci].dealShadows||[]).length)} demo${((s.cohorts[_ci].dealShadows||[]).length===1?'':'s')}</span>`:'';
+    // Build WT pill row (only shown when the cohort actually has WT data)
+    let _wtPillsHtml='';
+    if(_wtInCohort.length){
+      const wtSelSet=new Set(_wtSel);
+      _wtPillsHtml='<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px">';
+      _wtPillsHtml+='<span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em">Web Traffic</span>';
+      for(const tier of _wtInCohort){
+        const sel=wtSelSet.has(tier);
+        const lbl=_SU_WT_LABELS[tier]||tier;
+        _wtPillsHtml+='<button onclick="signupWtToggle(\''+_lblSafe+'\',\''+tier.replace(/'/g,"\\'")+'\')" style="padding:3px 12px;border-radius:50px;border:1.5px solid '+(sel?'var(--teal)':'rgba(23,44,69,.18)')+';background:'+(sel?'var(--teal)':'transparent')+';color:'+(sel?'#fff':'var(--navy)')+';font-size:10px;font-weight:'+(sel?'700':'600')+';cursor:pointer;font-family:var(--font-b);transition:all .15s">'+lbl+'</button>';
+      }
+      if(_hasWtFilter){
+        _wtPillsHtml+='<button onclick="signupClearWtFilter(\''+_lblSafe+'\')" style="padding:3px 10px;border-radius:50px;border:none;background:transparent;color:var(--grey);font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font-b);text-decoration:underline">clear</button>';
+      }
+      _wtPillsHtml+='</div>';
+    }
     h+=`<div class="su-cohort-card">
-      <div class="su-cohort-head">
+      <div class="su-cohort-head" style="flex-wrap:wrap;align-items:flex-start">
         <div style="flex:1;min-width:200px">
           <div class="su-cohort-title">${c.period.label}</div>
           <div class="su-cohort-sub">${titleRange} · ${fN(c.allBooked||0)} demo${(c.allBooked||0)===1?'':'s'} booked${_filterSummary}</div>
@@ -4373,9 +4432,10 @@ function renderSignUp(){
           <input type="date" value="${_filt.from||''}" min="${c.period.from}" max="${c.period.to}" oninput="signupDateFilter('${_lblSafe}','from',this.value)" style="padding:3px 8px;border:1.5px solid rgba(23,44,69,.12);border-radius:50px;font-size:10px;font-family:var(--font-b);color:var(--navy)">
           <span style="font-size:10px;color:var(--grey)">→</span>
           <input type="date" value="${_filt.to||''}" min="${c.period.from}" max="${c.period.to}" oninput="signupDateFilter('${_lblSafe}','to',this.value)" style="padding:3px 8px;border:1.5px solid rgba(23,44,69,.12);border-radius:50px;font-size:10px;font-family:var(--font-b);color:var(--navy)">
-          ${_hasFilter?`<button onclick="signupClearDateFilter('${_lblSafe}')" style="padding:3px 10px;border-radius:50px;border:1.5px solid #C62828;background:rgba(198,40,40,.05);color:#C62828;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font-b)">Clear</button>`:''}
+          ${_hasDateFilter?`<button onclick="signupClearDateFilter('${_lblSafe}')" style="padding:3px 10px;border-radius:50px;border:1.5px solid #C62828;background:rgba(198,40,40,.05);color:#C62828;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font-b)">Clear</button>`:''}
         </div>
       </div>
+      ${_wtPillsHtml}
       ${diagBar}
       <div style="display:flex;gap:14px;align-items:stretch;flex-wrap:wrap;margin-bottom:14px">
         <div style="flex:1;min-width:440px;display:flex;flex-direction:column">
