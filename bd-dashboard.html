@@ -36,6 +36,32 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
 .attr-row:hover{background:rgba(114,164,191,.04);border-radius:6px;margin-left:-8px;margin-right:-8px;padding-left:8px;padding-right:8px}
 .sp{display:inline-block;width:18px;height:18px;border:3px solid rgba(114,164,191,.2);border-top-color:var(--teal);border-radius:50%;animation:spin .6s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Skeleton loader (initial load + refresh) ───────────────────────────── */
+@keyframes bd-skel-shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+@keyframes bd-skel-pulse{0%,100%{opacity:.55}50%{opacity:1}}
+.bd-skel-bar{background:linear-gradient(90deg,rgba(114,164,191,.08) 0%,rgba(114,164,191,.30) 50%,rgba(114,164,191,.08) 100%);background-size:200% 100%;animation:bd-skel-shimmer 1.8s ease-in-out infinite;border-radius:6px}
+.bd-skel-banner{display:flex;align-items:center;gap:14px;background:linear-gradient(135deg,var(--navy) 0%,#1D4053 100%);color:#fff;padding:14px 20px;border-radius:10px;margin-bottom:18px;box-shadow:0 4px 12px rgba(23,44,69,.15)}
+.bd-skel-banner-spin{width:18px;height:18px;border:2px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:spin .9s linear infinite;flex-shrink:0}
+.bd-skel-banner-text{flex:1;min-width:0}
+.bd-skel-banner-title{font-family:var(--font-h);font-size:14px;font-weight:700;color:#fff;line-height:1.2}
+.bd-skel-banner-step{font-size:11px;color:rgba(255,255,255,.7);margin-top:2px;letter-spacing:.02em}
+.bd-skel-banner-bar{flex:0 1 180px;height:6px;background:rgba(255,255,255,.18);border-radius:99px;overflow:hidden}
+.bd-skel-banner-fill{height:100%;background:linear-gradient(90deg,var(--teal),#a8d4eb);border-radius:99px;transition:width .4s cubic-bezier(.4,0,.2,1)}
+.bd-skel-banner-pct{font-family:var(--font-h);font-size:13px;font-weight:700;color:#fff;font-variant-numeric:tabular-nums;flex-shrink:0;min-width:38px;text-align:right}
+.bd-skel-card{background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 18px;box-shadow:0 1px 3px rgba(2,15,24,.03)}
+.bd-skel-row-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:14px}
+.bd-skel-tile{height:96px;border-radius:12px}
+.bd-skel-card-title{height:14px;width:160px;margin-bottom:14px}
+.bd-skel-card-sub{height:10px;width:60%;margin-bottom:14px}
+.bd-skel-attr-row{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.bd-skel-attr-label{height:14px;width:110px;flex-shrink:0}
+.bd-skel-attr-bar{flex:1;height:28px;border-radius:6px}
+.bd-skel-table-head{height:18px;margin-bottom:10px;background:linear-gradient(90deg,rgba(114,164,191,.08) 0%,rgba(114,164,191,.20) 50%,rgba(114,164,191,.08) 100%)}
+.bd-skel-table-row{height:32px;margin-bottom:5px}
+.bd-skel-filters-row{display:flex;gap:10px;flex-wrap:wrap}
+.bd-skel-filter-pill{height:22px;width:70px;border-radius:50px}
+@media(max-width:700px){.bd-skel-row-tiles{grid-template-columns:repeat(2,1fr)}.bd-skel-banner{flex-wrap:wrap}.bd-skel-banner-bar{flex:1 1 100%;order:99}}
 .header-bar{display:flex;align-items:center;padding:16px 24px;background:linear-gradient(135deg,#020F18,#1D4053);border-bottom:1px solid rgba(114,164,191,.1)}
 .header-bar img{height:32px;margin-right:12px}
 .header-bar .title{font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--teal);letter-spacing:.1em;text-transform:uppercase}
@@ -58,9 +84,7 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
     <span id="fts" style="font-size:11px;color:rgba(114,164,191,.6);margin-right:12px"></span>
     <button onclick="bdRefresh()" id="refreshBtn" style="padding:6px 16px;border-radius:50px;border:1.5px solid rgba(114,164,191,.3);background:transparent;color:var(--teal);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-b);display:flex;align-items:center;gap:6px;transition:all .2s">↻ Refresh</button>
   </div>
-  <div class="main" id="bd-content">
-    <div style="text-align:center;padding:60px"><div class="sp"></div><div style="margin-top:12px;color:var(--grey);font-size:13px">Loading BD data...</div></div>
-  </div>
+  <div class="main" id="bd-content"></div>
 </div>
 <script>
 var BD={data:null},_bdSort='closedate',_bdSortDir='desc',_bdHideBlanks=false,_bdAttrDim='_webTraffic';
@@ -87,15 +111,73 @@ var BD_PKG_COLORS={
 // Display order — used by the filter pill row, table sort, and the
 // Deal Attribution chart when Plan Name is the active dimension.
 var BD_PKG_ORDER={Hero:1,Core:2,Portfolio:3,Beginner:4,Starter:5,Flagship:6,Pro:7,'Full Access':8};
+// \u2500\u2500 Skeleton renderer for the initial /api/bd fetch + refresh \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// Paints a section-shaped placeholder layout that mirrors the eventual BD
+// content (Deal Attribution chart + summary KPI tiles + filter bar +
+// All Deals table). Banner across the top shows a progress bar that
+// ticks through realistic-feeling step labels every 1.8s.
+var _bdSkelTimer=null;
+function _bdRenderSkeleton(pct,step){
+  var el=document.getElementById('bd-content');if(!el)return;
+  var tile=function(){return '<div class="bd-skel-bar bd-skel-tile"></div>';};
+  var attrRow=function(w){return '<div class="bd-skel-attr-row"><div class="bd-skel-bar bd-skel-attr-label"></div><div class="bd-skel-bar bd-skel-attr-bar" style="width:'+w+'%"></div></div>';};
+  el.innerHTML=
+    '<div class="bd-skel-banner" role="status" aria-live="polite">'
+    +'<div class="bd-skel-banner-spin"></div>'
+    +'<div class="bd-skel-banner-text"><div class="bd-skel-banner-title">Loading BD Tracker</div><div class="bd-skel-banner-step">'+(step||'Connecting to HubSpot\u2026')+'</div></div>'
+    +'<div class="bd-skel-banner-bar"><div class="bd-skel-banner-fill" style="width:'+Math.max(0,Math.min(100,pct||0))+'%"></div></div>'
+    +'<div class="bd-skel-banner-pct">'+Math.round(pct||0)+'%</div>'
+    +'</div>'
+    // ARR calculator + Signed top row (placeholder)
+    +'<div class="bd-skel-row-tiles">'+tile()+tile()+tile()+tile()+'</div>'
+    // Deal Attribution card placeholder
+    +'<div class="bd-skel-card" style="margin-bottom:16px"><div class="bd-skel-bar bd-skel-card-title"></div><div class="bd-skel-bar bd-skel-card-sub"></div>'
+    +attrRow(85)+attrRow(70)+attrRow(58)+attrRow(42)+attrRow(28)+attrRow(15)
+    +'</div>'
+    // Summary KPI row (Signed Brands / Total ARR / etc.)
+    +'<div class="bd-skel-row-tiles" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">'+tile()+tile()+tile()+tile()+tile()+tile()+tile()+'</div>'
+    // Filters card
+    +'<div class="bd-skel-card" style="margin-bottom:16px"><div class="bd-skel-filters-row">'+'<div class="bd-skel-bar bd-skel-filter-pill"></div>'.repeat(10)+'</div></div>'
+    // All Deals table
+    +'<div class="bd-skel-card"><div class="bd-skel-bar bd-skel-card-title" style="width:120px"></div><div class="bd-skel-bar bd-skel-table-head"></div>'
+    +'<div class="bd-skel-bar bd-skel-table-row"></div>'.repeat(10)
+    +'</div>';
+}
+function _bdUpdateSkeletonProgress(pct,step){
+  var fill=document.querySelector('#bd-content .bd-skel-banner-fill');if(fill)fill.style.width=Math.max(0,Math.min(100,pct))+'%';
+  var stepEl=document.querySelector('#bd-content .bd-skel-banner-step');if(stepEl&&step)stepEl.textContent=step;
+  var pctEl=document.querySelector('#bd-content .bd-skel-banner-pct');if(pctEl)pctEl.textContent=Math.round(pct)+'%';
+}
+// Start cycling through realistic step labels + ticking the progress bar.
+// Returns a stop function. Step cadence roughly matches the actual /api/bd
+// timing (deal pagination \u2192 owner fetch \u2192 associations \u2192 company cache hit).
+function _bdStartSkeleton(){
+  _bdRenderSkeleton(6,'Connecting to HubSpot\u2026');
+  var steps=['Connecting to HubSpot\u2026','Fetching deal pipeline\u2026','Loading owner directory\u2026','Building deal-company associations\u2026','Reading cached company names\u2026','Mapping deal records\u2026','Rendering deals\u2026'];
+  var si=0,pct=6;
+  if(_bdSkelTimer)clearInterval(_bdSkelTimer);
+  _bdSkelTimer=setInterval(function(){si++;pct=Math.min(6+si*13,92);_bdUpdateSkeletonProgress(pct,steps[Math.min(si,steps.length-1)]);},1800);
+}
+function _bdStopSkeleton(){
+  if(_bdSkelTimer){clearInterval(_bdSkelTimer);_bdSkelTimer=null;}
+  _bdUpdateSkeletonProgress(100,'Complete!');
+}
+
 function doLogin(){
   var btn=document.getElementById('loginBtn');
   btn.innerHTML='<span class="sp" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle"></span> Logging in...';btn.disabled=true;btn.style.opacity='.7';
   var pw=document.getElementById('pw').value;
   fetch('/api/bd',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})}).then(function(r){return r.json();}).then(function(d){
     if(d.error){document.getElementById('gerr').style.display='block';btn.innerHTML='Log In \u2192';btn.disabled=false;btn.style.opacity='1';return;}
-    BD.pw=pw;BD.data=d;document.getElementById('gate').style.display='none';document.getElementById('app').style.display='block';renderBD();
-    bdLookupMissingCompanies();
+    BD.pw=pw;BD.data=d;document.getElementById('gate').style.display='none';document.getElementById('app').style.display='block';
+    // Show the skeleton briefly so the user sees the page structure before
+    // the real render swaps in \u2014 feels less janky than an instant flicker.
+    _bdStartSkeleton();_bdUpdateSkeletonProgress(96,'Rendering deals\u2026');
+    setTimeout(function(){_bdStopSkeleton();renderBD();bdLookupMissingCompanies();},120);
   }).catch(function(){document.getElementById('gerr').style.display='block';btn.innerHTML='Log In \u2192';btn.disabled=false;btn.style.opacity='1';});
+  // Render skeleton into the bd-content area immediately so it's visible
+  // the moment the gate fades away (login UX continuity).
+  _bdStartSkeleton();
 }
 // Background fetch of missing company names. /api/bd skips live company
 // lookups (uses cached names only) to stay under the per-invocation
@@ -145,10 +227,12 @@ function bdLookupMissingCompanies(attempt){
 function bdRefresh(){
   if(!BD.pw)return;
   var btn=document.getElementById('refreshBtn');btn.innerHTML='<span class="sp" style="width:12px;height:12px;border-width:2px;display:inline-block;vertical-align:middle"></span> Loading...';btn.disabled=true;
+  _bdStartSkeleton();
   fetch('/api/bd',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:BD.pw})}).then(function(r){return r.json();}).then(function(d){
-    if(!d.error){BD.data=d;renderBD();bdLookupMissingCompanies();}
+    if(!d.error){BD.data=d;_bdStopSkeleton();setTimeout(function(){renderBD();bdLookupMissingCompanies();},120);}
+    else{_bdStopSkeleton();}
     btn.innerHTML='\u21bb Refresh';btn.disabled=false;
-  }).catch(function(){btn.innerHTML='\u21bb Refresh';btn.disabled=false;});
+  }).catch(function(){_bdStopSkeleton();btn.innerHTML='\u21bb Refresh';btn.disabled=false;});
 }
 document.getElementById('pw').addEventListener('keydown',function(e){if(e.key==='Enter')doLogin();});
 function f$(v){if(v==null||isNaN(v))return'\u2014';return'$'+Math.round(v).toLocaleString();}
