@@ -746,7 +746,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r48';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r49';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -3894,7 +3894,14 @@ function renderDemoQuality(){try{
       });
     }
   });
-}catch(err){console.error("[DQ-RENDER] Error:",err);console.error("[DQ-RENDER] Stack:",err.stack);}}
+}catch(err){
+  console.error("[DQ-RENDER] Error:",err);console.error("[DQ-RENDER] Stack:",err.stack);
+  // Surface the failure in the UI instead of leaving the page silently blank —
+  // the page used to swallow render errors here, which made it impossible to
+  // tell whether data was still loading or something had thrown.
+  var _dqEl=document.getElementById('dq-c');
+  if(_dqEl){_dqEl.innerHTML='<div style="padding:40px;text-align:center;background:var(--white);border:1px solid var(--border);border-radius:12px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--red);margin-bottom:8px">Demo Quality render failed</div><div style="font-size:12px;color:var(--grey);max-width:720px;margin:0 auto;word-break:break-word">'+(err&&err.message?err.message:String(err))+'</div><pre style="margin-top:12px;text-align:left;background:#FEF2F2;border:1px solid #FECACA;padding:12px;border-radius:8px;font-size:10px;line-height:1.5;color:#7F1D1D;max-height:240px;overflow:auto;white-space:pre-wrap">'+(err&&err.stack?err.stack:'')+'</pre></div>';}
+}}
 
 function dqSetSort(k){if(_dqSort===k)_dqSortDir=_dqSortDir==='asc'?'desc':'asc';else{_dqSort=k;_dqSortDir=k==='dealname'||k==='_pq'||k==='website'?'asc':'desc';}renderDemoQuality();}
 
