@@ -151,7 +151,9 @@ function pqSyncToKV(pqMap,mode){
   }catch(e){console.warn('PQ KV sync error:',e);}
 }
 var _dqAttrDim='_pq',_dqSort='date_demo_booked',_dqSortDir='asc',_dqChartStatus='all',_dqHideBlanks=false;
-var _tblStageFilter='all',_tblPqFilter='all',_tblAttFilter='all',_tblQoFilter='all',_tblRepFilter='all',_tblIndustryFilter='all',_tblTzFilter='all',_tblWebTrafficFilter='all',_tblStorylaneFilter='all',_tblDateFrom='',_tblDateTo='',_tblDateMode='demo';
+var _tblStageFilter='all',_tblPqFilter='all',_tblAttFilter='all',_tblQoFilter='all',_tblRepFilter='all',_tblIndustryFilter='all',_tblTzFilter='all',_tblWebTrafficFilter=[],_tblStorylaneFilter='all',_tblDateFrom='',_tblDateTo='',_tblDateMode='demo';
+function sdWtToggle(v){var i=_tblWebTrafficFilter.indexOf(v);if(i>=0)_tblWebTrafficFilter.splice(i,1);else _tblWebTrafficFilter.push(v);renderPreDemo();}
+function sdWtClear(){_tblWebTrafficFilter=[];renderPreDemo();}
 var DQ_REP_COLORS=['#1565C0','#2E7D32','#72A4BF','#E65100','#5C6BC0','#00897B','#C62828','#6A1B9A','#EF6C00','#00695C'];
 var STAGE_LABELS={'appointmentscheduled':'Scheduled','1084214349':'Demo Happened','decisionmakerboughtin':'Decision Maker','contractsent':'Contract Sent','closedwon':'Closed Won','closedlost':'Closed Lost','3453957850':'No Show','3453925110':'Churned','1062974581':'Not a Fit'};
 var STAGE_COLORS={'Scheduled':'#64748B','Demo Happened':'#1565C0','Decision Maker':'#7C3AED','Contract Sent':'#0891B2','Closed Won':'#16A34A','Closed Lost':'#DC2626','No Show':'#EA580C','Churned':'#991B1B','Not a Fit':'#D97706'};
@@ -349,7 +351,7 @@ function renderPreDemo(){
     if(_tblIndustryFilter!=='all'){var ind=(dd._co&&dd._co.industry)||'';if(ind!==_tblIndustryFilter)return false;}
     if(_tblTzFilter!=='all'){var tz2=(dd._co&&dd._co.timezone)||'';if(tz2!==_tblTzFilter)return false;}
     if(_tblStorylaneFilter!=='all'){var slv2=(dd._ci&&dd._ci.slName)?'Viewed':'Not Viewed';if(slv2!==_tblStorylaneFilter)return false;}
-    if(_tblWebTrafficFilter!=='all'){var wt2=(dd._ci&&dd._ci.webTraffic)||'';if(wt2!==_tblWebTrafficFilter)return false;}
+    if(_tblWebTrafficFilter.length>0){var wt2=(dd._ci&&dd._ci.webTraffic)||'';if(_tblWebTrafficFilter.indexOf(wt2)<0)return false;}
     if(_tblDateFrom||_tblDateTo){
       var _tblDf=(_tblDateMode==='create')?(dd.createdate||'').split('T')[0]:(dd.rescheduled_meeting_date||dd.date_demo_booked||'').split('T')[0];
       if(!_tblDf)return false;
@@ -434,9 +436,12 @@ function renderPreDemo(){
   h+=fp(_tblStorylaneFilter==='Viewed','Viewed',"_tblStorylaneFilter='Viewed';renderPreDemo()")+' ';
   h+=fp(_tblStorylaneFilter==='Not Viewed','Not Viewed',"_tblStorylaneFilter='Not Viewed';renderPreDemo()")+' ';
   h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
-  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Web Traffic</span> ';
-  h+=fp(_tblWebTrafficFilter==='all','All',"_tblWebTrafficFilter='all';renderPreDemo()")+' ';
-  Object.keys(uniqWebTraffic).sort(function(a,b){return(wtOrder[a]||0)-(wtOrder[b]||0);}).forEach(function(v){h+=fp(_tblWebTrafficFilter===v,wtLabels[v]||v,"_tblWebTrafficFilter='"+v.replace(/'/g,"\\'").replace(/\//g,'\\/')+"';renderPreDemo()")+' ';});
+  // Web Traffic — multi-select (BD Tracker pattern).
+  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Web Traffic</span>';
+  h+='<span style="font-size:8.5px;font-weight:600;color:var(--teal);text-transform:none;letter-spacing:.02em;margin-left:-2px;margin-right:2px;font-style:italic">(multi-select)</span> ';
+  var fpMultiSd=function(active,label,onclick){var bg=active?'background:var(--navy);color:#fff;':'background:#fff;color:var(--navy);';var border='border:1.5px solid '+(active?'var(--navy)':'var(--teal)')+';';var prefix=active?'<span style="margin-right:4px;font-size:10px;line-height:1">✓</span>':'';return '<span class="pill" style="cursor:pointer;'+bg+border+'font-size:11px;padding:2.5px 10px;font-weight:600;display:inline-flex;align-items:center" onclick="'+onclick+'">'+prefix+label+'</span>';};
+  h+=fpMultiSd(_tblWebTrafficFilter.length===0,'All','sdWtClear()')+' ';
+  Object.keys(uniqWebTraffic).sort(function(a,b){return(wtOrder[a]||0)-(wtOrder[b]||0);}).forEach(function(v){h+=fpMultiSd(_tblWebTrafficFilter.indexOf(v)>=0,wtLabels[v]||v,"sdWtToggle('"+v.replace(/'/g,"\\'").replace(/\//g,'\\/')+"')")+' ';});
   h+='</span></div>';
   // Date filter row — always its own row, last. Toggle controls Demo Date / Create Date.
   h+='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid rgba(23,44,69,.06)">';
@@ -449,7 +454,7 @@ function renderPreDemo(){
   h+='<input type="date" value="'+_tblDateTo+'" onchange="_tblDateTo=this.value" style="padding:3px 8px;border:1.5px solid rgba(23,44,69,.12);border-radius:50px;font-size:10px;font-family:var(--font-b);color:var(--navy)">';
   h+='<button onclick="renderPreDemo()" style="padding:3px 10px;border-radius:50px;border:1.5px solid var(--navy);background:var(--navy);color:#fff;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--font-b)">Go</button>';
   if(_tblDateFrom||_tblDateTo){h+='<button onclick="sdClearDate()" style="padding:3px 10px;border-radius:50px;border:1.5px solid rgba(23,44,69,.12);background:transparent;color:var(--navy);font-size:10px;cursor:pointer;font-family:var(--font-b)">Clear</button>';}
-  var anyFilter=_tblPqFilter!=='all'||_tblStageFilter!=='all'||_tblAttFilter!=='all'||_tblQoFilter!=='all'||_tblRepFilter!=='all'||_tblIndustryFilter!=='all'||_tblTzFilter!=='all'||_tblStorylaneFilter!=='all'||_tblWebTrafficFilter!=='all'||_tblDateFrom||_tblDateTo;
+  var anyFilter=_tblPqFilter!=='all'||_tblStageFilter!=='all'||_tblAttFilter!=='all'||_tblQoFilter!=='all'||_tblRepFilter!=='all'||_tblIndustryFilter!=='all'||_tblTzFilter!=='all'||_tblStorylaneFilter!=='all'||_tblWebTrafficFilter.length>0||_tblDateFrom||_tblDateTo;
   if(anyFilter){h+='<button onclick="sdResetFilters()" style="padding:3px 12px;border-radius:50px;border:1.5px solid #C62828;background:rgba(198,40,40,.05);color:#C62828;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font-b);margin-left:auto">Reset All Filters</button>';}
   h+='</div></div>';
 
@@ -537,7 +542,7 @@ function renderPreDemo(){
 }
 function toggleExpand(id){var el=document.getElementById(id);if(!el)return;el.classList.toggle('open');var prow=el.previousElementSibling;if(prow)prow.classList.toggle('row-expanded');var arrow=prow&&prow.querySelector('td:last-child span');if(arrow)arrow.textContent=el.classList.contains('open')?'▼':'▶';}
 function sdClearDate(){_tblDateFrom='';_tblDateTo='';renderPreDemo();}
-function sdResetFilters(){_tblPqFilter='all';_tblStageFilter='all';_tblAttFilter='all';_tblQoFilter='all';_tblRepFilter='all';_tblIndustryFilter='all';_tblTzFilter='all';_tblStorylaneFilter='all';_tblWebTrafficFilter='all';_tblDateFrom='';_tblDateTo='';_tblDateMode='demo';renderPreDemo();}
+function sdResetFilters(){_tblPqFilter='all';_tblStageFilter='all';_tblAttFilter='all';_tblQoFilter='all';_tblRepFilter='all';_tblIndustryFilter='all';_tblTzFilter='all';_tblStorylaneFilter='all';_tblWebTrafficFilter=[];_tblDateFrom='';_tblDateTo='';_tblDateMode='demo';renderPreDemo();}
 function sdToggleCollapse(){var sb=document.getElementById('sd-sidebar');if(sb)sb.classList.toggle('collapsed');}
 function sdClearPq(dealId){delete _dqPqMap[dealId];try{localStorage.setItem('sdPqResults',JSON.stringify(_dqPqMap));}catch(e){}pqSyncToKV(_dqPqMap,'replace');renderPreDemo();}
 function sdClearAllPq(){if(!confirm('Clear all prequalification results?'))return;if(!confirm('Are you sure? All PQ results will be deleted and will need to be re-run.'))return;_dqPqMap={};try{localStorage.setItem('sdPqResults','{}');}catch(e){}pqSyncToKV({},'replace');renderPreDemo();}
@@ -616,11 +621,13 @@ async function sdRunPrequal(){
 // ── Post-Demo Page ──
 var _pdRepFilter='all',_pdAttrDim='dealstage',_pdSort='date_demo_booked',_pdSortDir='desc',_pdChartStatus='all',_pdChartDim='att',_pdHideBlanks=false;
 var _pdGlobalFrom='',_pdGlobalTo='';
-var _pdStageFilter='all',_pdPqFilter='all',_pdAttFilter='all',_pdQoFilter='all',_pdRepTblFilter='all',_pdIndustryFilter='all',_pdTzFilter='all',_pdStorylaneFilter='all',_pdWebTrafficFilter='all',_pdDateFrom='',_pdDateTo='',_pdDateMode='demo';
+var _pdStageFilter='all',_pdPqFilter='all',_pdAttFilter='all',_pdQoFilter='all',_pdRepTblFilter='all',_pdIndustryFilter='all',_pdTzFilter='all',_pdStorylaneFilter='all',_pdWebTrafficFilter=[],_pdDateFrom='',_pdDateTo='',_pdDateMode='demo';
+function pdWtToggle(v){var i=_pdWebTrafficFilter.indexOf(v);if(i>=0)_pdWebTrafficFilter.splice(i,1);else _pdWebTrafficFilter.push(v);renderPostDemo();}
+function pdWtClear(){_pdWebTrafficFilter=[];renderPostDemo();}
 
 function pdSwitchRep(r){_pdRepFilter=r;renderPostDemo();}
 function pdClearDate(){_pdDateFrom='';_pdDateTo='';renderPostDemo();}
-function pdResetFilters(){_pdPqFilter='all';_pdStageFilter='all';_pdAttFilter='all';_pdQoFilter='all';_pdRepTblFilter='all';_pdIndustryFilter='all';_pdTzFilter='all';_pdStorylaneFilter='all';_pdWebTrafficFilter='all';_pdDateFrom='';_pdDateTo='';_pdDateMode='demo';renderPostDemo();}
+function pdResetFilters(){_pdPqFilter='all';_pdStageFilter='all';_pdAttFilter='all';_pdQoFilter='all';_pdRepTblFilter='all';_pdIndustryFilter='all';_pdTzFilter='all';_pdStorylaneFilter='all';_pdWebTrafficFilter=[];_pdDateFrom='';_pdDateTo='';_pdDateMode='demo';renderPostDemo();}
 
 function renderPostDemo(){
   var d=S.postDemo.data;if(!d||!d.deals)return;
@@ -960,7 +967,7 @@ function renderPostDemo(){
     if(_pdIndustryFilter!=='all'){var ind=(dd._co&&dd._co.industry)||'';if(ind!==_pdIndustryFilter)return false;}
     if(_pdTzFilter!=='all'){var tz2=(dd._co&&dd._co.timezone)||'';if(tz2!==_pdTzFilter)return false;}
     if(_pdStorylaneFilter!=='all'){var slv=(dd._ci&&dd._ci.slName)?'Viewed':'Not Viewed';if(slv!==_pdStorylaneFilter)return false;}
-    if(_pdWebTrafficFilter!=='all'){var wt2=(dd._ci&&dd._ci.webTraffic)||'';if(wt2!==_pdWebTrafficFilter)return false;}
+    if(_pdWebTrafficFilter.length>0){var wt2=(dd._ci&&dd._ci.webTraffic)||'';if(_pdWebTrafficFilter.indexOf(wt2)<0)return false;}
     if(_pdDateFrom||_pdDateTo){
       var _pdDf=(_pdDateMode==='create')?(dd.createdate||'').split('T')[0]:(dd.rescheduled_meeting_date||dd.date_demo_booked||'').split('T')[0];
       if(!_pdDf)return false;
@@ -1038,9 +1045,12 @@ function renderPostDemo(){
   h+=fp(_pdStorylaneFilter==='Viewed','Viewed',"_pdStorylaneFilter='Viewed';renderPostDemo()")+' ';
   h+=fp(_pdStorylaneFilter==='Not Viewed','Not Viewed',"_pdStorylaneFilter='Not Viewed';renderPostDemo()")+' ';
   h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
-  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Web Traffic</span> ';
-  h+=fp(_pdWebTrafficFilter==='all','All',"_pdWebTrafficFilter='all';renderPostDemo()")+' ';
-  Object.keys(uniqWebTraffic).sort(function(a,b){return(wtOrder[a]||0)-(wtOrder[b]||0);}).forEach(function(v){h+=fp(_pdWebTrafficFilter===v,wtLabels[v]||v,"_pdWebTrafficFilter='"+v.replace(/'/g,"\\'").replace(/\//g,'\\/')+"';renderPostDemo()")+' ';});
+  // Web Traffic — multi-select (BD Tracker pattern).
+  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Web Traffic</span>';
+  h+='<span style="font-size:8.5px;font-weight:600;color:var(--teal);text-transform:none;letter-spacing:.02em;margin-left:-2px;margin-right:2px;font-style:italic">(multi-select)</span> ';
+  var fpMultiPd=function(active,label,onclick){var bg=active?'background:var(--navy);color:#fff;':'background:#fff;color:var(--navy);';var border='border:1.5px solid '+(active?'var(--navy)':'var(--teal)')+';';var prefix=active?'<span style="margin-right:4px;font-size:10px;line-height:1">✓</span>':'';return '<span class="pill" style="cursor:pointer;'+bg+border+'font-size:11px;padding:2.5px 10px;font-weight:600;display:inline-flex;align-items:center" onclick="'+onclick+'">'+prefix+label+'</span>';};
+  h+=fpMultiPd(_pdWebTrafficFilter.length===0,'All','pdWtClear()')+' ';
+  Object.keys(uniqWebTraffic).sort(function(a,b){return(wtOrder[a]||0)-(wtOrder[b]||0);}).forEach(function(v){h+=fpMultiPd(_pdWebTrafficFilter.indexOf(v)>=0,wtLabels[v]||v,"pdWtToggle('"+v.replace(/'/g,"\\'").replace(/\//g,'\\/')+"')")+' ';});
   h+='</span></div>';
   // Date filter row — always its own row, last. Toggle controls Demo Date / Create Date.
   h+='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid rgba(23,44,69,.06)">';
@@ -1053,7 +1063,7 @@ function renderPostDemo(){
   h+='<input type="date" value="'+_pdDateTo+'" onchange="_pdDateTo=this.value" style="padding:3px 8px;border:1.5px solid rgba(23,44,69,.12);border-radius:50px;font-size:10px;font-family:var(--font-b);color:var(--navy)">';
   h+='<button onclick="renderPostDemo()" style="padding:3px 10px;border-radius:50px;border:1.5px solid var(--navy);background:var(--navy);color:#fff;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--font-b)">Go</button>';
   if(_pdDateFrom||_pdDateTo){h+='<button onclick="pdClearDate()" style="padding:3px 10px;border-radius:50px;border:1.5px solid rgba(23,44,69,.12);background:transparent;color:var(--navy);font-size:10px;cursor:pointer;font-family:var(--font-b)">Clear</button>';}
-  var anyF=_pdPqFilter!=='all'||_pdStageFilter!=='all'||_pdAttFilter!=='all'||_pdQoFilter!=='all'||_pdRepTblFilter!=='all'||_pdIndustryFilter!=='all'||_pdTzFilter!=='all'||_pdStorylaneFilter!=='all'||_pdWebTrafficFilter!=='all'||_pdDateFrom||_pdDateTo;
+  var anyF=_pdPqFilter!=='all'||_pdStageFilter!=='all'||_pdAttFilter!=='all'||_pdQoFilter!=='all'||_pdRepTblFilter!=='all'||_pdIndustryFilter!=='all'||_pdTzFilter!=='all'||_pdStorylaneFilter!=='all'||_pdWebTrafficFilter.length>0||_pdDateFrom||_pdDateTo;
   if(anyF){h+='<button onclick="pdResetFilters()" style="padding:3px 12px;border-radius:50px;border:1.5px solid #C62828;background:rgba(198,40,40,.05);color:#C62828;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font-b);margin-left:auto">Reset All Filters</button>';}
   h+='</div></div>';
 
