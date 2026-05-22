@@ -749,7 +749,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r54';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r55';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -2958,6 +2958,14 @@ function renderNoShowAnalysis(d){
         +'</div>';
     }
 
+    // Weekly buckets — declared up here (not inside the card 3 block) because
+    // Insight 3 + the Recommendations card both reference them before card 3's
+    // body runs. `var` hoists the declaration but not the assignment, so
+    // leaving these where they used to live left bucketKeys undefined when
+    // Insight 3's loop ran.
+    var bucketKeys=[0,1,2,3,4,'5+'];
+    var bucketLabels={0:'Same week',1:'1 week',2:'2 weeks',3:'3 weeks',4:'4 weeks','5+':'5+ weeks'};
+
     // ─── Compute insights for each card ─────────────────────────────
     // Min denominator for "highest rate" insight — keeps single-deal tiers
     // from claiming the top spot. Scales with sample size: tiny windows
@@ -3076,8 +3084,7 @@ function renderNoShowAnalysis(d){
     // For each weeks-ahead bucket: No Show ÷ (Demo Given orig + resched + No Show),
     // i.e. how often do demos booked X weeks out turn into no-shows. Bars scale
     // to the max rate so cross-bucket differences stay readable at low rates.
-    var bucketKeys=[0,1,2,3,4,'5+'];
-    var bucketLabels={0:'Same week',1:'1 week',2:'2 weeks',3:'3 weeks',4:'4 weeks','5+':'5+ weeks'};
+    // (bucketKeys + bucketLabels declared above for insight 3 / recs.)
     var totalWeeksDemos=0;
     for(var bk=0;bk<bucketKeys.length;bk++)totalWeeksDemos+=demosByWeeks[bucketKeys[bk]];
     h+=_nsCardOpen('No-show rate by weeks from create to demo','No Show ÷ (Demo Given orig + resched + No Show), per weekly bucket');
