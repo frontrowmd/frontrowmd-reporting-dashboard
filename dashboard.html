@@ -746,7 +746,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r49';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r50';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -2550,10 +2550,15 @@ function _buildIrfanSpecial1Inner(d, mode){
     h+='<div style="color:var(--grey);font-size:12px;padding:20px 0;text-align:center;font-style:italic">No deals booked in '+_irPCMRange+'</div>';
     return h;
   }
-  // Two Avg Days values per Irfan request: from date_demo_booked + from hs_createdate.
+  // Three Avg Days values, matching the BD Tracker's "Avg Days" card:
+  //   _avgT = To Demo            (hs_createdate → date_demo_booked, all deals)
+  //   _avgB = Close From Demo    (date_demo_booked → closedate, Closed Won only)
+  //   _avgC = Close From Created (hs_createdate → closedate, Closed Won only)
+  // Always show one decimal, rounded to nearest 0.1.
+  const _avgT=_irPCM.avgDaysToDemo;
   const _avgB=_irPCM.avgDaysFromBooked!=null?_irPCM.avgDaysFromBooked:_irPCM.avgDaysToClose;
   const _avgC=_irPCM.avgDaysFromCreated;
-  const _fmtD=(v)=>v==null?'—':(v<10?v.toFixed(1):Math.round(v).toString());
+  const _fmtD=(v)=>v==null?'—':(Math.round(v*10)/10).toFixed(1);
   // Grouped card — 3×2 grid, same shape as before, but Avg Days cell now
   // shows BOTH "from booked" and "from created" stacked.
   h+='<div class="irf-grouped-card">';
@@ -2568,18 +2573,21 @@ function _buildIrfanSpecial1Inner(d, mode){
   // Row 2
   h+=`<div class="irf-grouped-item"><div class="irf-grouped-label">Closed Won</div><div class="irf-grouped-value">${fN(_irPCM.signed)}</div></div>`;
   h+=`<div class="irf-grouped-item" title="Demos that reached Closed Won, Demo Happened, Decision Maker, Contract Sent, or past-dated Appointment Scheduled (excl. pre-launch)"><div class="irf-grouped-label">Qualified Demos Held</div><div class="irf-grouped-value">${fN(_irPCM.heldScale)}</div></div>`;
-  // Avg Days card — TWO sub-rows: "from Booked" and "from Created"
-  h+=`<div class="irf-grouped-item" title="Average days from each anchor to closedate, across signed deals in this cohort">`
-    +`<div class="irf-grouped-label">Avg Days to Close</div>`
-    +`<div style="display:flex;flex-direction:column;gap:2px;margin-top:2px">`
-    +  `<div style="display:flex;align-items:baseline;gap:6px;font-variant-numeric:tabular-nums">`
-    +    `<span style="font-family:var(--font-h);font-size:18px;font-weight:700;color:var(--navy);line-height:1.05">${_fmtD(_avgB)}${_avgB!=null?'<span style="font-size:10px;color:var(--grey);font-weight:600;margin-left:2px">d</span>':''}</span>`
-    +    `<span style="font-size:9px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;font-weight:600">from booked</span>`
-    +  `</div>`
-    +  `<div style="display:flex;align-items:baseline;gap:6px;font-variant-numeric:tabular-nums">`
-    +    `<span style="font-family:var(--font-h);font-size:14px;font-weight:600;color:var(--mid-navy);line-height:1.05">${_fmtD(_avgC)}${_avgC!=null?'<span style="font-size:9px;color:var(--grey);font-weight:600;margin-left:2px">d</span>':''}</span>`
-    +    `<span style="font-size:9px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;font-weight:600">from created</span>`
-    +  `</div>`
+  // Avg Days card — THREE sub-stats in BD-Tracker style: 3 vertical columns
+  // separated by thin dividers, label above value, all rounded to 0.1.
+  //   To Demo            = date_demo_booked − hs_createdate (any deal)
+  //   Close From Demo    = closedate − date_demo_booked (Closed Won only)
+  //   Close From Created = closedate − hs_createdate (Closed Won only)
+  const _irAvgCol=(lbl,v)=>`<div style="flex:1;text-align:center;min-width:0;display:flex;flex-direction:column;justify-content:flex-start"><div style="font-size:8.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;line-height:1.15;min-height:22px;display:flex;align-items:center;justify-content:center">${lbl}</div><div style="font-family:var(--font-h);font-size:16px;font-weight:700;line-height:1;color:var(--navy);font-variant-numeric:tabular-nums">${_fmtD(v)}</div></div>`;
+  const _irAvgDiv='<div style="width:1px;background:var(--border);margin:0 2px"></div>';
+  h+=`<div class="irf-grouped-item" title="Avg days across the cohort — To Demo across all booked deals; Close From Demo / Close From Created across Closed Won deals only">`
+    +`<div class="irf-grouped-label">Avg Days</div>`
+    +`<div style="display:flex;align-items:stretch;margin-top:4px">`
+    +  _irAvgCol('To Demo',_avgT)
+    +  _irAvgDiv
+    +  _irAvgCol('Close From Demo',_avgB)
+    +  _irAvgDiv
+    +  _irAvgCol('Close From Created',_avgC)
     +`</div>`
     +`</div>`;
   h+='</div>';
@@ -4118,9 +4126,16 @@ const _SU_WT_LABELS={'Pre-launch / just launching':'Pre-launch','0-10K monthly w
 function _suRecomputeMetrics(shadows){
   let cntWon=0,cntAppt=0,cntDH=0,cntDM=0,cntCS=0,cntNS=0,cntNF=0,sumMrr=0;
   let daysToCloseSum=0,daysToCloseN=0,daysFromCreatedSum=0,daysFromCreatedN=0;
+  let daysToDemoSum=0,daysToDemoN=0;  // hs_createdate → date_demo_booked, all shadows
   const todayMs=_suTodayMs();
   for(const sh of shadows){
     const stage=sh.s;
+    // "To Demo" is computed for ALL shadows (mirrors worker logic), not just won.
+    {
+      const ddbMs=sh.d?new Date(sh.d).getTime():NaN;
+      const hcdMs=sh.hd?(/^\d+$/.test(sh.hd)?parseInt(sh.hd):new Date(sh.hd).getTime()):NaN;
+      if(!isNaN(ddbMs)&&!isNaN(hcdMs)){const days=(ddbMs-hcdMs)/86400000;if(days>=0){daysToDemoSum+=days;daysToDemoN++;}}
+    }
     if(stage===_SU_STAGE_WON){
       cntWon++;sumMrr+=sh.a||0;
       const cdMs=sh.cd?new Date(sh.cd).getTime():NaN;
@@ -4155,6 +4170,8 @@ function _suRecomputeMetrics(shadows){
     avgDaysFromBookedN:daysToCloseN,
     avgDaysFromCreated:daysFromCreatedN>0?daysFromCreatedSum/daysFromCreatedN:null,
     avgDaysFromCreatedN:daysFromCreatedN,
+    avgDaysToDemo:daysToDemoN>0?daysToDemoSum/daysToDemoN:null,
+    avgDaysToDemoN:daysToDemoN,
   };
 }
 function _suRecomputeByRep(shadows,ownerMap){
@@ -4235,12 +4252,11 @@ function renderSignUp(){
   if(!S.signup.sortCol) S.signup.sortCol='signed';
   if(!S.signup.sortDir) S.signup.sortDir='desc';
 
-  // Formatters — Avg Days to Close mirrors the Irfan Special #1 card:
-  // one decimal under 10d, integer otherwise.
+  // Formatters — Avg Days now always rounds to nearest 0.1 (one decimal),
+  // matching the BD Tracker "Avg Days" card precision.
   const fmtDays=(n)=>{
     if(n==null)return '—';
-    const dStr=n<10?n.toFixed(1):Math.round(n).toString();
-    return dStr+'<span style="font-size:11px;color:var(--grey);font-weight:600;margin-left:2px">d</span>';
+    return (Math.round(n*10)/10).toFixed(1)+'<span style="font-size:11px;color:var(--grey);font-weight:600;margin-left:2px">d</span>';
   };
   const fmtPct=(v,dec=1)=>v==null?'—':v.toFixed(dec)+'%';
   const fmtDateRange=(from,to)=>{
@@ -4252,22 +4268,27 @@ function renderSignUp(){
 
   let h='<div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);margin-bottom:14px">Monthly Cohorts</div>';
 
-  // Build the Avg-Days "stacked two-value" cell HTML. Both values get the
-  // SAME visual treatment — same font size, weight, color. Always rendered
-  // as whole-number days (Math.round) for consistency.
-  const _avgDaysCell=(fromBookedV,fromCreatedV,titleAttr)=>{
-    const _f=(v)=>v==null?'—':Math.round(v).toString();
-    const _row=(v,label)=>`<div class="su-avgdays-row">`
-      +`<span class="su-avgdays-val">${_f(v)}${v!=null?'<span class="su-avgdays-unit">d</span>':''}</span>`
-      +`<span class="su-avgdays-from">${label}</span>`
+  // Build the Avg Days cell — three sub-stats laid out as columns separated
+  // by thin dividers (mirrors the BD Tracker "Avg Days" card visually). All
+  // values render at 1 decimal place (rounded to nearest 0.1).
+  //   To Demo            = hs_createdate → date_demo_booked, all cohort deals
+  //   Close From Demo    = date_demo_booked → closedate, Closed Won only
+  //   Close From Created = hs_createdate → closedate, Closed Won only
+  const _avgDaysCell=(toDemoV,fromBookedV,fromCreatedV,titleAttr)=>{
+    const _f=(v)=>v==null?'—':(Math.round(v*10)/10).toFixed(1);
+    const _col=(lbl,v)=>`<div style="flex:1;text-align:center;min-width:0;display:flex;flex-direction:column;justify-content:flex-start">`
+      +`<div style="font-size:8.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;line-height:1.15;min-height:22px;display:flex;align-items:center;justify-content:center">${lbl}</div>`
+      +`<div style="font-family:var(--font-h);font-size:18px;font-weight:700;line-height:1;color:var(--navy);font-variant-numeric:tabular-nums">${_f(v)}</div>`
       +`</div>`;
-    return `<div${titleAttr?' title="'+titleAttr+'"':''} class="su-avgdays-stack">`
-      +_row(fromBookedV,'from booked')
-      +_row(fromCreatedV,'from created')
+    const _div='<div style="width:1px;background:var(--border);margin:0 2px"></div>';
+    return `<div${titleAttr?' title="'+titleAttr+'"':''} style="display:flex;align-items:stretch;margin-top:4px">`
+      +_col('To Demo',toDemoV)+_div
+      +_col('Close From Demo',fromBookedV)+_div
+      +_col('Close From Created',fromCreatedV)
       +`</div>`;
   };
-  // Compact "X d" cell for the rep-table columns — also whole-number rounded
-  const _daysCell=(v)=>v==null?'—':`${Math.round(v)}<span style="font-size:10px;color:var(--grey);font-weight:600;margin-left:1px">d</span>`;
+  // Compact "X.X d" cell for the rep-table columns — 1-decimal rounded
+  const _daysCell=(v)=>v==null?'—':`${(Math.round(v*10)/10).toFixed(1)}<span style="font-size:10px;color:var(--grey);font-weight:600;margin-left:1px">d</span>`;
 
   // Collect cohort → pie-target-id for post-injection rendering
   const _pieTargets=[];
@@ -4328,7 +4349,7 @@ function renderSignUp(){
     // Bottom row
     row1+=`<div class="su-r1-item"><div class="su-label">Closed Won</div><div class="su-value">${fN(c.signed)}</div></div>`;
     row1+=`<div class="su-r1-item" title="Deals where date_demo_booked is in ${c.period.label} AND dealstage is Closed Won, Demo Happened, Decision Maker Brought In, Contract Sent, or Appointment Scheduled (with past date). Pre-launch brands excluded${c.prelaunchExcluded?' ('+fN(c.prelaunchExcluded)+' filtered out)':''}."><div class="su-label">Qual Demos Held<span style="font-size:9px;font-weight:500;color:var(--grey);margin-left:4px;text-transform:none;letter-spacing:0">excl. pre-launch</span></div><div class="su-value">${fN(c.demosHeld)}</div></div>`;
-    row1+=`<div class="su-r1-item" title="Average days from each anchor to closedate across signed deals in this cohort"><div class="su-label">Avg Days to Close</div>${_avgDaysCell(c.avgDaysFromBooked!=null?c.avgDaysFromBooked:c.avgDaysToClose, c.avgDaysFromCreated)}</div>`;
+    row1+=`<div class="su-r1-item" title="Avg days across the cohort — To Demo across all booked deals; Close From Demo / Close From Created across signed deals only"><div class="su-label">Avg Days</div>${_avgDaysCell(c.avgDaysToDemo, c.avgDaysFromBooked!=null?c.avgDaysFromBooked:c.avgDaysToClose, c.avgDaysFromCreated)}</div>`;
     row1+='</div>';
 
     // ── Row 2: % Pending · % Pruned · % No Show

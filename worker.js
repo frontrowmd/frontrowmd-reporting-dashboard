@@ -1163,9 +1163,14 @@ function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
     // Pre-launch brands are filtered out from cohort metrics (matches Special #1
     // card behavior — pre-launch demos aren't qualified for sign-up tracking).
     prelaunchExcluded: 0,
-    // Avg Days to Close — two variants per spec: from date_demo_booked + from hs_createdate.
-    daysToCloseSum: 0, daysToCloseN: 0,           // from date_demo_booked (back-compat name)
-    daysFromCreatedSum: 0, daysFromCreatedN: 0,   // from hs_createdate
+    // Avg Days — three variants:
+    //   daysToDemo         = date_demo_booked − hs_createdate (any deal, "To Demo")
+    //   daysToClose        = closedate − date_demo_booked   (Closed Won only, "Close From Demo")
+    //   daysFromCreated    = closedate − hs_createdate      (Closed Won only, "Close From Created")
+    // daysToCloseSum is the back-compat name for "From Booked".
+    daysToCloseSum: 0, daysToCloseN: 0,
+    daysFromCreatedSum: 0, daysFromCreatedN: 0,
+    daysToDemoSum: 0, daysToDemoN: 0,
   });
   const buckets = {};
   for (const cm of cohortMonths) {
@@ -1234,6 +1239,19 @@ function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
 
     b.allBooked++;
     b.byRep[oid].allBooked++;
+
+    // "To Demo" = date_demo_booked − hs_createdate, across ALL booked deals
+    // in the cohort (not just signed). Mirrors the BD Tracker's interpretation.
+    {
+      const hcdMs = _parseDt(p.hs_createdate);
+      if (!isNaN(hcdMs) && !isNaN(ddbMs)) {
+        const daysD = (_floor(ddbMs) - _floor(hcdMs)) / 86400000;
+        if (daysD >= 0) {
+          b.daysToDemoSum += daysD; b.daysToDemoN++;
+          b.byRep[oid].daysToDemoSum += daysD; b.byRep[oid].daysToDemoN++;
+        }
+      }
+    }
 
     // Stash a minimal shadow of this deal on the cohort bucket so the
     // client can filter by Demo Date (date_demo_booked) within the cohort
@@ -1311,14 +1329,17 @@ function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
       mrr: b.signedMrrSum,
       newArr: b.signedMrrSum * 12,
       acv: b.cntWon > 0 ? b.signedMrrSum / b.cntWon : 0,
-      // From date_demo_booked
+      // From date_demo_booked → closedate ("Close From Demo")
       avgDaysToClose: b.daysToCloseN > 0 ? b.daysToCloseSum / b.daysToCloseN : null,
       avgDaysToCloseN: b.daysToCloseN,
       avgDaysFromBooked: b.daysToCloseN > 0 ? b.daysToCloseSum / b.daysToCloseN : null,
       avgDaysFromBookedN: b.daysToCloseN,
-      // From hs_createdate
+      // From hs_createdate → closedate ("Close From Created")
       avgDaysFromCreated: b.daysFromCreatedN > 0 ? b.daysFromCreatedSum / b.daysFromCreatedN : null,
       avgDaysFromCreatedN: b.daysFromCreatedN,
+      // hs_createdate → date_demo_booked ("To Demo"), all deals
+      avgDaysToDemo: b.daysToDemoN > 0 ? b.daysToDemoSum / b.daysToDemoN : null,
+      avgDaysToDemoN: b.daysToDemoN,
     };
   }
 
@@ -1920,6 +1941,7 @@ function buildSpecial1Cohort(dealsArr, fromStr, toStr) {
   let cntNoShow = 0, cntNotAFit = 0, signedMrrSum = 0;
   let daysFromBookedSum = 0, daysFromBookedN = 0;
   let daysFromCreatedSum = 0, daysFromCreatedN = 0;
+  let daysToDemoSum = 0, daysToDemoN = 0;   // hs_createdate → date_demo_booked, all deals
   let prelaunchExcluded = 0;
   for (const d of dealsArr) {
     const p = d.properties || {};
@@ -1928,6 +1950,15 @@ function buildSpecial1Cohort(dealsArr, fromStr, toStr) {
     const wt = (p.average_monthly_web_traffic__cloned_ || p.average_monthly_web_traffic || '').toLowerCase();
     if (wt.indexOf('pre-launch') >= 0) { prelaunchExcluded++; continue; }
     allBooked++;
+    // "To Demo" — hs_createdate → date_demo_booked, computed across all
+    // non-prelaunch booked deals (not gated on STAGE_WON).
+    {
+      const hcdMs = _parseDt(p.hs_createdate);
+      if (!isNaN(hcdMs)) {
+        const daysD = (_floor(ddbMs) - _floor(hcdMs)) / 86400000;
+        if (daysD >= 0) { daysToDemoSum += daysD; daysToDemoN++; }
+      }
+    }
     const stage = (p.dealstage||'').trim();
     if (stage === STAGE_WON) {
       cntWon++; signedMrrSum += parseFloat(p.amount)||0;
@@ -1967,6 +1998,9 @@ function buildSpecial1Cohort(dealsArr, fromStr, toStr) {
     avgDaysFromCreatedN: daysFromCreatedN,
     avgDaysToClose: daysFromBookedN > 0 ? daysFromBookedSum / daysFromBookedN : null,
     avgDaysToCloseN: daysFromBookedN,
+    // hs_createdate → date_demo_booked ("To Demo")
+    avgDaysToDemo: daysToDemoN > 0 ? daysToDemoSum / daysToDemoN : null,
+    avgDaysToDemoN: daysToDemoN,
     fromDate: fromStr, toDate: toStr,
     prelaunchExcluded,
   };
