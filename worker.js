@@ -3232,6 +3232,9 @@ const BD_DEAL_PROPS = [
   'of_clinicianai','of_clinician_analysis','activation_fee','notes',
   // Added for "From Demo" column / KPI on BD Tracker
   'date_demo_booked',
+  // Billing details group (new in v22)
+  'invoice_date','approval_date','internal_recurly_link',
+  'recurly_account_management_url','recurly_billing_intake_url',
 ];
 
 async function fetchBDData(env) {
@@ -3362,7 +3365,7 @@ async function fetchBDData(env) {
   let companyMap = {};
   if (env.CONTENT_STORE) {
     try {
-      const raw = await env.CONTENT_STORE.get('bd_company_cache_v2');
+      const raw = await env.CONTENT_STORE.get('bd_company_cache_v3');
       if (raw) companyMap = JSON.parse(raw);
     } catch(e) { console.warn('BD cache load failed:', e.message); }
   }
@@ -3397,6 +3400,14 @@ async function fetchBDData(env) {
       activation_fee: parseFloat(p.activation_fee)||0,
       notes: p.notes||'',
       date_demo_booked: p.date_demo_booked||'',
+      // Billing details group (new in v22) — sourced from custom HubSpot
+      // deal properties. Each is rendered as its own column on the BD
+      // Tracker's "Billing Details" group.
+      invoice_date: p.invoice_date||'',
+      approval_date: p.approval_date||'',
+      internal_recurly_link: p.internal_recurly_link||'',
+      recurly_account_management_url: p.recurly_account_management_url||'',
+      recurly_billing_intake_url: p.recurly_billing_intake_url||'',
       // Always include the associated companyId (from associations); the
       // companyName comes from the cache if available, else empty (client
       // will fill it in via /api/bd/lookup-companies).
@@ -3405,6 +3416,9 @@ async function fetchBDData(env) {
       // ops_owner from the COMPANY record (resolved client-side via
       // ownerMap). Surfaces as the "Ops Rep" column on the deal table.
       ops_owner_id: company?.ops_owner||'',
+      // se_rep_id from the COMPANY record's hubspot_owner_id (the company
+      // owner — typically the SE assigned to that account).
+      se_rep_id: company?.se_owner||'',
     };
   });
 
@@ -3422,7 +3436,7 @@ async function lookupBDCompanies(env, companyIds) {
   let companyMap = {};
   if (env.CONTENT_STORE) {
     try {
-      const raw = await env.CONTENT_STORE.get('bd_company_cache_v2');
+      const raw = await env.CONTENT_STORE.get('bd_company_cache_v3');
       if (raw) companyMap = JSON.parse(raw);
     } catch(e) { console.warn('BD lookup cache load failed:', e.message); }
   }
@@ -3445,7 +3459,7 @@ async function lookupBDCompanies(env, companyIds) {
       const coRes = await fetch('https://api.hubapi.com/crm/v3/objects/companies/batch/read?archived=true', {
         method: 'POST',
         headers: { Authorization: `Bearer ${hsToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inputs: batch.map(id => ({ id })), properties: ['name','domain','website','ops_owner'] }),
+        body: JSON.stringify({ inputs: batch.map(id => ({ id })), properties: ['name','domain','website','ops_owner','hubspot_owner_id'] }),
       });
       if (!coRes.ok) {
         const txt = await coRes.text();
@@ -3456,7 +3470,9 @@ async function lookupBDCompanies(env, companyIds) {
       for (const co of (coData.results || [])) {
         const name = co.properties?.name || co.properties?.domain || co.properties?.website || '';
         const ops_owner = co.properties?.ops_owner || '';
-        companyMap[co.id] = { name, id: co.id, archived: !!co.archived, ops_owner };
+        // SE Rep = the company record's hubspot_owner_id
+        const se_owner = co.properties?.hubspot_owner_id || '';
+        companyMap[co.id] = { name, id: co.id, archived: !!co.archived, ops_owner, se_owner };
         if (name) fetched++;
       }
     } catch(e) { console.error('BD lookup batch error:', e); }
@@ -3475,7 +3491,7 @@ async function lookupBDCompanies(env, companyIds) {
   // unresolved-placeholder write also lands)
   if (env.CONTENT_STORE && attempted.size > 0) {
     try {
-      await env.CONTENT_STORE.put('bd_company_cache_v2', JSON.stringify(companyMap));
+      await env.CONTENT_STORE.put('bd_company_cache_v3', JSON.stringify(companyMap));
     } catch(e) { console.warn('BD lookup cache save failed:', e.message); }
   }
   // Build response: include every requested ID (resolved OR unresolved placeholder)
@@ -4365,7 +4381,7 @@ export default {
     // Dedicated endpoint so it gets its own fresh subrequest budget,
     // separate from /api/bd which spends most of its budget on deal
     // pagination + association batches. Results are written to KV
-    // (key 'bd_company_cache_v2') so /api/bd picks them up on next load.
+    // (key 'bd_company_cache_v3') so /api/bd picks them up on next load.
     if (request.method === 'POST' && url.pathname === '/api/bd/lookup-companies') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }

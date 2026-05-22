@@ -89,7 +89,13 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
 <script>
 var BD={data:null},_bdSort='closedate',_bdSortDir='desc',_bdHideBlanks=false,_bdAttrDim='_webTraffic';
 function _bdFirstOfMonth(){var _d=new Date();return _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-01';}
-var _bdBrandStatusF='Active',_bdStageF='all',_bdRepF='all',_bdOpsRepF='all',_bdPkgF='all',_bdWebTrafficF='all',_bdDateFrom=_bdFirstOfMonth(),_bdDateTo='',_bdDateMode='close';
+var _bdBrandStatusF='Active',_bdStageF='all',_bdRepF='all',_bdSeRepF='all',_bdOpsRepF='all',_bdPkgF='all',_bdDateFrom=_bdFirstOfMonth(),_bdDateTo='',_bdDateMode='close';
+// Web Traffic filter is multi-select — array of selected raw tier values.
+// Empty array = no filter (all tiers shown).
+var _bdWebTrafficF=[];
+// Plan Details / Billing Details column groups: extra columns are
+// collapsed by default; users toggle to expand.
+var _bdPlanExpanded=false, _bdBillingExpanded=false;
 var BD_REP_COLORS=['#1565C0','#2E7D32','#72A4BF','#E65100','#5C6BC0','#00897B','#C62828','#6A1B9A','#EF6C00','#00695C'];
 var _bdArrGoal='',_bdAcvInput='';
 var BD_STAGE_LABELS={appointmentscheduled:'Scheduled','1084214349':'Demo Happened',decisionmakerboughtin:'Decision Maker',contractsent:'Contract Sent',closedwon:'Closed Won',closedlost:'Closed Lost','3453957850':'No Show','3453925110':'Churned','1062974581':'Not a Fit','3517067985':'Churned (Onb)'};
@@ -239,7 +245,13 @@ function f$(v){if(v==null||isNaN(v))return'\u2014';return'$'+Math.round(v).toLoc
 function fmtInput(el){var v=el.value.replace(/[^0-9]/g,'');el.value=v?parseInt(v).toLocaleString():'';}
 function parseInput(s){return parseFloat((s||'').replace(/[^0-9.]/g,''))||0;}
 function bdClearDate(){_bdDateFrom='';_bdDateTo='';renderBD();}
-function bdResetFilters(){_bdBrandStatusF='Active';_bdStageF='all';_bdRepF='all';_bdOpsRepF='all';_bdPkgF='all';_bdWebTrafficF='all';_bdDateFrom=_bdFirstOfMonth();_bdDateTo='';_bdDateMode='close';renderBD();}
+function bdResetFilters(){_bdBrandStatusF='Active';_bdStageF='all';_bdRepF='all';_bdSeRepF='all';_bdOpsRepF='all';_bdPkgF='all';_bdWebTrafficF=[];_bdDateFrom=_bdFirstOfMonth();_bdDateTo='';_bdDateMode='close';renderBD();}
+// Toggle a single web-traffic tier in/out of the multi-select array.
+function bdWtToggle(tier){var i=_bdWebTrafficF.indexOf(tier);if(i>=0)_bdWebTrafficF.splice(i,1);else _bdWebTrafficF.push(tier);renderBD();}
+function bdWtClear(){_bdWebTrafficF=[];renderBD();}
+// Toggle collapse state for Plan Details / Billing Details column groups.
+function bdTogglePlan(){_bdPlanExpanded=!_bdPlanExpanded;renderBD();}
+function bdToggleBilling(){_bdBillingExpanded=!_bdBillingExpanded;renderBD();}
 function bdCalc(){var el=document.getElementById('bd-calc-result');if(!el)return;var goal=parseInput(_bdArrGoal);var acvIn=parseInput(_bdAcvInput);if(!goal||!acvIn){el.textContent='\u2014';return;}var d=BD.data;if(!d)return;var cw=d.deals.filter(function(dd){return dd.dealstage==='closedwon';});var active=cw.filter(function(dd){return !['Paused','Churned','Never Implemented - Churned'].includes(dd.brand_status);});var currentARR=0;active.forEach(function(dd){currentARR+=dd.amount;});currentARR*=12;var gap=goal-currentARR;if(gap<=0){el.innerHTML='<span style="color:#16A34A">\u2713 Goal reached!</span>';return;}var needed=Math.ceil(gap/(acvIn*12));el.innerHTML='<span style="font-size:32px">'+needed+'</span> <span style="font-size:14px;color:var(--grey)">deals needed</span>';}
 // Display-name overrides \u2014 keyed by a substring found in the owner's full
 // HubSpot name. e.g. an owner whose HubSpot name is "Shealtiel <something>"
@@ -292,9 +304,11 @@ function renderBD(){
     else if(_bdBrandStatusF!=='all'&&dd.brand_status!==_bdBrandStatusF)return false;
     if(_bdStageF!=='all'&&dd.dealstage!==_bdStageF)return false;
     if(_bdRepF!=='all'){var rn=ownerMap[dd.hubspot_owner_id]||'Unassigned';if(rn!==_bdRepF)return false;}
+    if(_bdSeRepF!=='all'){var sn=ownerMap[dd.se_rep_id]||'Unassigned';if(sn!==_bdSeRepF)return false;}
     if(_bdOpsRepF!=='all'){var on=ownerMap[dd.ops_owner_id]||'Unassigned';if(on!==_bdOpsRepF)return false;}
     if(_bdPkgF!=='all'&&dd.package_type!==_bdPkgF)return false;
-    if(_bdWebTrafficF!=='all'&&dd.average_monthly_web_traffic__cloned_!==_bdWebTrafficF)return false;
+    // Web Traffic is multi-select: empty array = no filter, else match any of the selected tiers
+    if(_bdWebTrafficF.length>0&&_bdWebTrafficF.indexOf(dd.average_monthly_web_traffic__cloned_)<0)return false;
     if(_bdDateFrom||_bdDateTo){
       var _bdDf;
       if(_bdDateMode==='create')_bdDf=(dd.createdate||dd.hs_createdate||'').substring(0,10);
@@ -308,11 +322,21 @@ function renderBD(){
   function bdPlanName(v){return (v||'').replace(/\s*\([^)]*\)\s*$/,'');}
   // Days from date_demo_booked → closedate (rounded). Null if either field
   // missing or closedate precedes the booking. Used in the "From Demo"
-  // table column and the Avg Days to Close KPI tile.
+  // table column and the Avg Days KPI tile.
   function bdFromDemo(d){
     if(!d||!d.closedate||!d.date_demo_booked)return null;
     var t1=new Date(d.date_demo_booked).getTime();
     var t2=new Date(d.closedate).getTime();
+    if(isNaN(t1)||isNaN(t2)||t2<t1)return null;
+    return Math.round((t2-t1)/86400000);
+  }
+  // Days from createdate → date_demo_booked (rounded). Null if either field
+  // missing or booking is before create. Used in the "To Demo" table column
+  // and the Avg Days KPI tile.
+  function bdToDemo(d){
+    if(!d||!d.createdate||!d.date_demo_booked)return null;
+    var t1=new Date(d.createdate).getTime();
+    var t2=new Date(d.date_demo_booked).getTime();
     if(isNaN(t1)||isNaN(t2)||t2<t1)return null;
     return Math.round((t2-t1)/86400000);
   }
@@ -324,20 +348,24 @@ function renderBD(){
   // Build rep color map from full deal set (stable colors regardless of filter)
   var repCount={};
   var opsCount={};
+  var seCount={};
   deals.forEach(function(dd){
     var rn=ownerMap[dd.hubspot_owner_id]||'Unassigned';repCount[rn]=(repCount[rn]||0)+1;
     if(dd.ops_owner_id){var on=ownerMap[dd.ops_owner_id]||'Unassigned';opsCount[on]=(opsCount[on]||0)+1;}
+    if(dd.se_rep_id){var sn=ownerMap[dd.se_rep_id]||'Unassigned';seCount[sn]=(seCount[sn]||0)+1;}
   });
   var repSorted=Object.entries(repCount).sort(function(a,b){return b[1]-a[1];});
   var opsSorted=Object.entries(opsCount).sort(function(a,b){return b[1]-a[1];});
+  var seSorted=Object.entries(seCount).sort(function(a,b){return b[1]-a[1];});
   var BD_REP_CMAP={};for(var rci=0;rci<repSorted.length;rci++){BD_REP_CMAP[repSorted[rci][0]]=BD_REP_COLORS[rci%BD_REP_COLORS.length];}
   // Attribution with MRR
   // Dimension order: Web Traffic Tier first (default), Plan Name second,
   // then the other dimensions.
-  var attrDims=[{k:'_webTraffic',l:'Web Traffic Tier'},{k:'package_type',l:'Plan Name'},{k:'_rep',l:'Deal Rep'},{k:'_opsRep',l:'Ops Rep'},{k:'brand_status',l:'Brand Status'},{k:'dealstage',l:'Deal Stage'}];
+  var attrDims=[{k:'_webTraffic',l:'Web Traffic Tier'},{k:'package_type',l:'Plan Name'},{k:'_rep',l:'Deal Rep'},{k:'_seRep',l:'SE Rep'},{k:'_opsRep',l:'Ops Rep'},{k:'brand_status',l:'Brand Status'},{k:'dealstage',l:'Deal Stage'}];
   var attrData={},attrMRR={};for(var ai=0;ai<sharedFiltered.length;ai++){var ad=sharedFiltered[ai];var dimVal='';
     if(_bdAttrDim==='dealstage')dimVal=BD_STAGE_LABELS[ad.dealstage]||ad.dealstage||'(none)';
     else if(_bdAttrDim==='_rep')dimVal=ownerMap[ad.hubspot_owner_id]||'Unassigned';
+    else if(_bdAttrDim==='_seRep')dimVal=ownerMap[ad.se_rep_id]||'Unassigned';
     else if(_bdAttrDim==='_opsRep')dimVal=ownerMap[ad.ops_owner_id]||'Unassigned';
     else if(_bdAttrDim==='brand_status')dimVal=ad.brand_status||'(none)';
     else if(_bdAttrDim==='package_type')dimVal=bdPlanName(ad.package_type)||'(none)';
@@ -369,7 +397,7 @@ function renderBD(){
   // Visible bar label: for rep-type dimensions show first name (with overrides
   // applied via bdFirstName) — keeps the bar tidy and respects display
   // preferences. Full name stays in data-label + title for hover.
-  var akDisp=(_bdAttrDim==='_rep'||_bdAttrDim==='_opsRep')?bdFirstName(ak):ak;
+  var akDisp=(_bdAttrDim==='_rep'||_bdAttrDim==='_opsRep'||_bdAttrDim==='_seRep')?bdFirstName(ak):ak;
   h+='<div class="attr-row" data-label="'+ak+'" data-count="'+ac+'" data-pct="'+apct+'" data-mrr="'+Math.round(aMrr)+'" style="display:flex;align-items:center;gap:12px;margin-bottom:10px;cursor:pointer"><div style="width:120px;flex-shrink:0;font-size:12px;font-weight:600;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right" title="'+ak+'">'+akDisp+'</div><div style="flex:1;min-width:0;background:rgba(114,164,191,.06);border-radius:6px;height:28px;position:relative"><div style="height:100%;border-radius:6px;background:'+barC+';width:'+bw2+'%;min-width:4px;transition:width .3s"></div></div><div style="width:180px;flex-shrink:0;font-size:12px;color:var(--navy);white-space:nowrap;text-align:right;font-weight:500"><span style="color:var(--grey);font-weight:400">'+ac+'</span> <span style="color:var(--grey);font-weight:400">('+apct+'%)</span> <span style="font-weight:600">'+f$(aMrr)+'</span></div></div>';}
   h+='</div><div id="bd-attr-tip" class="float-tip"></div></div>';
   // Summary Card
@@ -377,9 +405,11 @@ function renderBD(){
   // sfDaysCount = sample size for Avg Days to Close, restricted to Closed-Won deals only.
   var sfTotal=sharedFiltered.length,sfTotalAmt=0,sfPaused=0,sfChurned=0,sfPausedMRR=0,sfChurnedMRR=0;
   var sfDaysSum=0,sfDaysCount=0,sfStatusFilled=0;
-  // "From Demo" companion stats — Closed-Won only, computed from
-  // date_demo_booked → closedate
+  // "Close From Demo" companion: closedate − date_demo_booked
   var sfDemoDaysSum=0,sfDemoDaysCount=0;
+  // "To Demo" companion: date_demo_booked − createdate (NOT limited to
+  // closed-won — it measures speed-to-book, useful pipeline-wide)
+  var sfToDemoSum=0,sfToDemoCount=0;
   sharedFiltered.forEach(function(dd){
     sfTotalAmt+=dd.amount;
     // Universe for % Paused / % Churned = deals with brand_status filled
@@ -388,44 +418,52 @@ function renderBD(){
       if(dd.brand_status==='Paused'){sfPaused++;sfPausedMRR+=dd.amount;}
       if(dd.dealstage==='3453925110'||dd.dealstage==='3517067985'){sfChurned++;sfChurnedMRR+=dd.amount;}
     }
-    // Avg Days to Close: Closed-Won only, with both createdate and closedate present
+    // Close From Created: Closed-Won only, with both createdate and closedate present
     if(dd.dealstage==='closedwon'&&dd.createdate&&dd.closedate){
       var t1=new Date(dd.createdate).getTime(),t2=new Date(dd.closedate).getTime();
       if(!isNaN(t1)&&!isNaN(t2)&&t2>=t1){sfDaysSum+=(t2-t1)/86400000;sfDaysCount++;}
     }
-    // Avg Days From Demo: Closed-Won only, from date_demo_booked → closedate
+    // Close From Demo: Closed-Won only, from date_demo_booked → closedate
     if(dd.dealstage==='closedwon'&&dd.date_demo_booked&&dd.closedate){
       var td1=new Date(dd.date_demo_booked).getTime(),td2=new Date(dd.closedate).getTime();
       if(!isNaN(td1)&&!isNaN(td2)&&td2>=td1){sfDemoDaysSum+=(td2-td1)/86400000;sfDemoDaysCount++;}
     }
+    // To Demo: any deal that has both createdate and date_demo_booked
+    if(dd.createdate&&dd.date_demo_booked){
+      var tc1=new Date(dd.createdate).getTime(),tc2=new Date(dd.date_demo_booked).getTime();
+      if(!isNaN(tc1)&&!isNaN(tc2)&&tc2>=tc1){sfToDemoSum+=(tc2-tc1)/86400000;sfToDemoCount++;}
+    }
   });
   var sfAvgDays=sfDaysCount?Math.round(sfDaysSum/sfDaysCount):null;
   var sfAvgDaysFromDemo=sfDemoDaysCount?Math.round(sfDemoDaysSum/sfDemoDaysCount):null;
+  var sfAvgToDemo=sfToDemoCount?Math.round(sfToDemoSum/sfToDemoCount):null;
   var sfAvgACV=sfTotal?(sfTotalAmt/sfTotal):0;
   h+='<div style="display:flex;gap:12px;margin-bottom:16px">';
   h+='<div class="tile hero" style="flex:1"><div class="tlbl">Deals</div><div class="tval" style="font-size:22px">'+sfTotal+'</div><div class="tdef">Matching filters</div></div>';
   h+='<div class="tile hero" style="flex:1"><div class="tlbl">Total ARR</div><div class="tval" style="font-size:22px">'+f$(sfTotalAmt*12)+'</div><div class="tdef">MRR \u00d7 12</div></div>';
   h+='<div class="tile hero" style="flex:1"><div class="tlbl">Total MRR</div><div class="tval" style="font-size:22px">'+f$(sfTotalAmt)+'</div><div class="tdef">Sum of amount</div></div>';
   h+='<div class="tile hero" style="flex:1"><div class="tlbl">Avg ACV</div><div class="tval" style="font-size:22px">'+f$(sfAvgACV)+'</div><div class="tdef">MRR \u00f7 deals</div></div>';
-  // Avg Days to Close \u2014 two metrics side-by-side, card split into 2 halves.
-  //   From Demo    = closedate \u2212 date_demo_booked
-  //   From Created = closedate \u2212 createdate
-  // Labels use BD's standard --grey color (matching .tlbl); vertical divider
-  // uses --border. Same .tval color/sizing as every other KPI tile, just
-  // rendered twice in a 1:1 grid.
-  h+='<div class="tile hero" style="flex:1;display:flex;flex-direction:column;justify-content:center"><div class="tlbl">Avg Days to Close</div>'
+  // Avg Days \u2014 three metrics side-by-side, card split into 3 thirds.
+  //   To Demo            = date_demo_booked \u2212 createdate (any deal)
+  //   Close From Demo    = closedate \u2212 date_demo_booked (Closed-Won)
+  //   Close From Created = closedate \u2212 createdate (Closed-Won)
+  // Smaller tval (22px instead of 28px) so all three fit comfortably.
+  var _avgCol=function(lbl,val){
+    return '<div style="flex:1;text-align:center;min-width:0">'
+      +'<div style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+lbl+'</div>'
+      +'<div class="tval" style="line-height:1;font-size:22px">'+(val==null?'\u2014':val)+'</div>'
+      +'</div>';
+  };
+  var _vDiv='<div style="width:1px;background:var(--border);margin:0 4px"></div>';
+  h+='<div class="tile hero" style="flex:1;display:flex;flex-direction:column;justify-content:center"><div class="tlbl">Avg Days</div>'
     +'<div style="display:flex;align-items:stretch;margin-top:6px">'
-    +'<div style="flex:1;text-align:center">'
-    +  '<div style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">From Demo</div>'
-    +  '<div class="tval" style="line-height:1">'+(sfAvgDaysFromDemo==null?'\u2014':sfAvgDaysFromDemo)+'</div>'
+    +_avgCol('To Demo',sfAvgToDemo)
+    +_vDiv
+    +_avgCol('Close From Demo',sfAvgDaysFromDemo)
+    +_vDiv
+    +_avgCol('Close From Created',sfAvgDays)
     +'</div>'
-    +'<div style="width:1px;background:var(--border);margin:0 4px"></div>'
-    +'<div style="flex:1;text-align:center">'
-    +  '<div style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">From Created</div>'
-    +  '<div class="tval" style="line-height:1">'+(sfAvgDays==null?'\u2014':sfAvgDays)+'</div>'
-    +'</div>'
-    +'</div>'
-    +'<div class="tdef" style="margin-top:6px;text-align:center">'+sfDemoDaysCount+' from demo \u00b7 '+sfDaysCount+' from created (Closed-Won)</div></div>';
+    +'<div class="tdef" style="margin-top:6px;text-align:center;font-size:9px">'+sfToDemoCount+' to demo \u00b7 '+sfDemoDaysCount+' from demo \u00b7 '+sfDaysCount+' from created (CW)</div></div>';
   h+='<div class="tile '+(sfStatusFilled&&sfPaused/sfStatusFilled>.15?'warn':'hero')+'" style="flex:1"><div class="tlbl">% Paused</div><div class="tval" style="font-size:22px">'+(sfStatusFilled?(sfPaused/sfStatusFilled*100).toFixed(1):0)+'%</div><div class="tdef">'+sfPaused+' \u00f7 '+sfStatusFilled+' brands w/ status \u00b7 '+f$(sfPausedMRR)+' MRR</div></div>';
   h+='<div class="tile '+(sfStatusFilled&&sfChurned/sfStatusFilled>.2?'warn':'hero')+'" style="flex:1"><div class="tlbl">% Churned</div><div class="tval" style="font-size:22px">'+(sfStatusFilled?(sfChurned/sfStatusFilled*100).toFixed(1):0)+'%</div><div class="tdef">Churned dealstage '+sfChurned+' \u00f7 '+sfStatusFilled+' brands w/ status \u00b7 '+f$(sfChurnedMRR)+' MRR</div></div>';
   h+='</div>';
@@ -452,6 +490,10 @@ function renderBD(){
   h+=fp(_bdRepF==='all','All',"_bdRepF='all';renderBD()")+' ';
   repSorted.forEach(function(rs){var rn=rs[0];h+=fp(_bdRepF===rn,bdFirstName(rn)||rn,"_bdRepF='"+rn.replace(/'/g,"\\'")+"';renderBD()")+' ';});
   h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
+  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">SE Rep</span> ';
+  h+=fp(_bdSeRepF==='all','All',"_bdSeRepF='all';renderBD()")+' ';
+  seSorted.forEach(function(rs){var rn=rs[0];h+=fp(_bdSeRepF===rn,bdFirstName(rn)||rn,"_bdSeRepF='"+rn.replace(/'/g,"\\'")+"';renderBD()")+' ';});
+  h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Ops Rep</span> ';
   h+=fp(_bdOpsRepF==='all','All',"_bdOpsRepF='all';renderBD()")+' ';
   opsSorted.forEach(function(rs){var rn=rs[0];h+=fp(_bdOpsRepF===rn,bdFirstName(rn)||rn,"_bdOpsRepF='"+rn.replace(/'/g,"\\'")+"';renderBD()")+' ';});
@@ -461,8 +503,8 @@ function renderBD(){
   Object.keys(uniqPkg).sort(function(a,b){return (BD_PKG_ORDER[bdPlanName(a)]||99)-(BD_PKG_ORDER[bdPlanName(b)]||99);}).forEach(function(v){h+=fp(_bdPkgF===v,bdPlanName(v),"_bdPkgF='"+v+"';renderBD()")+' ';});
   h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Web Traffic</span> ';
-  h+=fp(_bdWebTrafficF==='all','All',"_bdWebTrafficF='all';renderBD()")+' ';
-  Object.keys(uniqWebTrafficBD).sort(function(a,b){return(BD_WT_ORDER[a]||99)-(BD_WT_ORDER[b]||99);}).forEach(function(v){h+=fp(_bdWebTrafficF===v,BD_WT_LABELS[v]||v,"_bdWebTrafficF='"+v.replace(/'/g,"\\'")+"';renderBD()")+' ';});
+  h+=fp(_bdWebTrafficF.length===0,'All',"bdWtClear()")+' ';
+  Object.keys(uniqWebTrafficBD).sort(function(a,b){return(BD_WT_ORDER[a]||99)-(BD_WT_ORDER[b]||99);}).forEach(function(v){h+=fp(_bdWebTrafficF.indexOf(v)>=0,BD_WT_LABELS[v]||v,"bdWtToggle('"+v.replace(/'/g,"\\'")+"')")+' ';});
   h+='</span></div>';
   // Date filter row — always its own row, last. Toggle selects which date field the from/to apply to.
   h+='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid rgba(23,44,69,.06)">';
@@ -478,7 +520,7 @@ function renderBD(){
   h+='<input type="date" value="'+_bdDateTo+'" onchange="_bdDateTo=this.value;renderBD()" style="padding:3px 8px;border:1.5px solid rgba(23,44,69,.12);border-radius:50px;font-size:10px;font-family:var(--font-b);color:var(--navy)">';
   h+='<button onclick="renderBD()" style="padding:3px 10px;border-radius:50px;border:1.5px solid var(--navy);background:var(--navy);color:#fff;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--font-b)">Go</button>';
   if(_bdDateFrom||_bdDateTo){h+='<button onclick="bdClearDate()" style="padding:3px 10px;border-radius:50px;border:1.5px solid rgba(23,44,69,.12);background:transparent;color:var(--navy);font-size:10px;cursor:pointer;font-family:var(--font-b)">Clear</button>';}
-  var anyF=_bdBrandStatusF!=='all'||_bdStageF!=='all'||_bdRepF!=='all'||_bdOpsRepF!=='all'||_bdPkgF!=='all'||_bdWebTrafficF!=='all'||_bdDateFrom||_bdDateTo;
+  var anyF=_bdBrandStatusF!=='all'||_bdStageF!=='all'||_bdRepF!=='all'||_bdSeRepF!=='all'||_bdOpsRepF!=='all'||_bdPkgF!=='all'||_bdWebTrafficF.length>0||_bdDateFrom||_bdDateTo;
   if(anyF){h+='<button onclick="bdResetFilters()" style="padding:3px 12px;border-radius:50px;border:1.5px solid #C62828;background:rgba(198,40,40,.05);color:#C62828;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font-b);margin-left:auto">Reset All Filters</button>';}
   h+='</div></div>';
   // Table
@@ -493,9 +535,11 @@ function renderBD(){
   var _BD_LEAD={setup_fee:1,months_until_upgrade:1,fee_after_upgrade:1,of_clinicianai:1};
   function _bdSortVal(d,k){
     if(k==='dealname'||k==='companyName'||k==='brand_status'||k==='notes')return (d[k]||'').toString().toLowerCase();
-    if(k==='closedate'||k==='createdate'||k==='date_demo_booked')return (d[k]||'').substring(0,10);
+    if(k==='closedate'||k==='createdate'||k==='date_demo_booked'||k==='invoice_date'||k==='approval_date')return (d[k]||'').substring(0,10);
     if(k==='hubspot_owner_id')return (ownerMap[d.hubspot_owner_id]||'').toLowerCase();
     if(k==='ops_owner_id')return (ownerMap[d.ops_owner_id]||'').toLowerCase();
+    if(k==='se_rep_id')return (ownerMap[d.se_rep_id]||'').toLowerCase();
+    if(k==='to_demo'){var td=bdToDemo(d);return td==null?Infinity:td;}
     if(k==='dealstage')return (BD_STAGE_LABELS[d.dealstage]||d.dealstage||'').toLowerCase();
     if(k==='package_type'){var pn=bdPlanName(d.package_type||'');return BD_PKG_ORDER[pn]||99;}
     if(k==='from_demo'){var fd=bdFromDemo(d);return fd==null?Infinity:fd;}
@@ -514,40 +558,85 @@ function renderBD(){
     }
     return _bdSortDir==='asc'?(av>bv?1:av<bv?-1:0):(av<bv?1:av>bv?-1:0);
   });
+  // Column definitions. `group` attaches a column to a Plan Details / Billing
+  // Details group (highlighted background + group header). `groupCollapse:true`
+  // means the column is hidden by default and only shown when the group is
+  // expanded via its toggle button.
   var cols=[
     {k:'dealname',l:'Deal Name',w:140},
     {k:'companyName',l:'Company',w:140},
     {k:'brand_status',l:'Brand Status',w:100},
     {k:'dealstage',l:'Deal Stage',w:115},
     {k:'hubspot_owner_id',l:'Deal Rep',w:80},
+    {k:'se_rep_id',l:'SE Rep',w:80},
     {k:'ops_owner_id',l:'Ops Rep',w:80},
     {k:'closedate',l:'Close Date',w:90},
     {k:'date_demo_booked',l:'Date Demo Booked',w:100},
     {k:'createdate',l:'Create Date',w:90},
+    {k:'to_demo',l:'To Demo',w:75},
     {k:'from_demo',l:'From Demo',w:75},
     {k:'days_to_close',l:'From Created',w:80},
-    {k:'amount',l:'Amount',w:90},
-    {k:'original_amount',l:'Original Amount',w:100},
-    {k:'package_type',l:'Plan Name',w:115},
-    {k:'average_monthly_web_traffic__cloned_',l:'Web Traffic Tier',w:100},
-    {k:'of_products',l:'# of Products',w:80},
-    {k:'month_minimum',l:'Month Minimum',w:100},
-    {k:'of_free_reviews',l:'# of Free Reviews',w:90},
-    {k:'of_total_reviews',l:'# of Total Reviews',w:95},
-    {k:'price_per_review',l:'Price Per Review',w:95},
-    {k:'of_clinicianai',l:'# of ClinicianAI',w:100},
-    {k:'of_clinician_analysis',l:'# of Clinician Analysis',w:115},
-    {k:'clinician_ai_price_per_product',l:'Price Per ClinicianAI',w:115},
-    {k:'setup_fee',l:'Setup Fee',w:130},
-    {k:'months_until_upgrade',l:'Months Until Upgrade',w:120},
-    {k:'fee_after_upgrade',l:'Fee After Upgrade',w:110},
-    {k:'notes',l:'Notes',w:200}
+    // ── Plan Details group ──
+    {k:'amount',l:'Amount',w:90, group:'plan'},
+    {k:'original_amount',l:'Original Amount',w:100, group:'plan'},
+    {k:'package_type',l:'Plan Name',w:115, group:'plan'},
+    {k:'average_monthly_web_traffic__cloned_',l:'Web Traffic Tier',w:100, group:'plan'},
+    {k:'of_products',l:'# of Products',w:80, group:'plan', groupCollapse:true},
+    {k:'month_minimum',l:'Month Minimum',w:100, group:'plan', groupCollapse:true},
+    {k:'of_free_reviews',l:'# of Free Reviews',w:90, group:'plan', groupCollapse:true},
+    {k:'of_total_reviews',l:'# of Total Reviews',w:95, group:'plan', groupCollapse:true},
+    {k:'price_per_review',l:'Price Per Review',w:95, group:'plan', groupCollapse:true},
+    {k:'of_clinicianai',l:'# of ClinicianAI',w:100, group:'plan', groupCollapse:true},
+    {k:'of_clinician_analysis',l:'# of Clinician Analysis',w:115, group:'plan', groupCollapse:true},
+    {k:'clinician_ai_price_per_product',l:'Price Per ClinicianAI',w:115, group:'plan', groupCollapse:true},
+    {k:'setup_fee',l:'Setup Fee',w:130, group:'plan', groupCollapse:true},
+    {k:'months_until_upgrade',l:'Months Until Upgrade',w:120, group:'plan', groupCollapse:true},
+    {k:'fee_after_upgrade',l:'Fee After Upgrade',w:110, group:'plan', groupCollapse:true},
+    {k:'notes',l:'Notes',w:200, group:'plan', groupCollapse:true},
+    // ── Billing Details group ──
+    {k:'invoice_date',l:'Invoice Date',w:100, group:'billing'},
+    {k:'approval_date',l:'Approval Date',w:100, group:'billing', groupCollapse:true},
+    {k:'internal_recurly_link',l:'Internal Recurly Link',w:140, group:'billing', groupCollapse:true},
+    {k:'recurly_account_management_url',l:'Recurly Account Management',w:160, group:'billing', groupCollapse:true},
+    {k:'recurly_billing_intake_url',l:'Recurly Billing Intake',w:140, group:'billing', groupCollapse:true},
   ];
-  // Build colgroup from cols widths
+  // Apply the group-expansion toggles → produces the filtered visible cols
+  cols=cols.filter(function(c){
+    if(!c.group||!c.groupCollapse)return true;
+    if(c.group==='plan')return _bdPlanExpanded;
+    if(c.group==='billing')return _bdBillingExpanded;
+    return true;
+  });
+  // Set of currently-visible column keys, used to conditionally render TDs
+  var visibleKeys={};for(var vk=0;vk<cols.length;vk++){visibleKeys[cols[vk].k]=true;}
+  var _td=function(key,html){return visibleKeys[key]?html:'';};
+  // Build colgroup from visible cols
   var colgroupHTML='<colgroup>';for(var cgi=0;cgi<cols.length;cgi++){colgroupHTML+='<col style="width:'+cols[cgi].w+'px">';}colgroupHTML+='</colgroup>';
-  h+='<div style="overflow-x:auto"><table class="stbl" style="table-layout:fixed;width:auto;min-width:100%">'+colgroupHTML+'<thead><tr>';
-  for(var ci2=0;ci2<cols.length;ci2++){var c=cols[ci2];var isS=_bdSort===c.k;h+='<th onclick="'+(c.k?"_bdSort='"+c.k+"';_bdSortDir=_bdSortDir==='asc'?'desc':'asc';renderBD()":"")+'">'+c.l+(isS?(_bdSortDir==='asc'?' \u25B2':' \u25BC'):'')+'</th>';}
+  // Group banner row \u2014 colspans match visible-column counts for each group
+  var planCols=cols.filter(function(c){return c.group==='plan';}).length;
+  var billingCols=cols.filter(function(c){return c.group==='billing';}).length;
+  var preGroupCols=0;for(var pgi=0;pgi<cols.length;pgi++){if(cols[pgi].group)break;preGroupCols++;}
+  var planChev=_bdPlanExpanded?'\u25BC':'\u25B6';
+  var billingChev=_bdBillingExpanded?'\u25BC':'\u25B6';
+  h+='<div style="overflow-x:auto"><table class="stbl" style="table-layout:fixed;width:auto;min-width:100%">'+colgroupHTML+'<thead>';
+  // Group banner row (only shown when there's at least one group column visible)
+  if(planCols>0||billingCols>0){
+    h+='<tr class="bd-grp-row">';
+    if(preGroupCols>0)h+='<th colspan="'+preGroupCols+'" style="background:transparent;border-bottom:none;padding-bottom:2px"></th>';
+    if(planCols>0)h+='<th colspan="'+planCols+'" style="background:rgba(114,164,191,.16);border-bottom:1px solid rgba(114,164,191,.35);text-align:center;cursor:pointer;color:var(--navy);font-weight:700;letter-spacing:.06em;font-size:10px;padding:6px 8px" onclick="bdTogglePlan()" title="Toggle Plan Details columns"><span style="color:var(--teal);margin-right:6px">'+planChev+'</span>Plan Details</th>';
+    if(billingCols>0)h+='<th colspan="'+billingCols+'" style="background:rgba(245,158,11,.14);border-bottom:1px solid rgba(245,158,11,.40);text-align:center;cursor:pointer;color:var(--navy);font-weight:700;letter-spacing:.06em;font-size:10px;padding:6px 8px" onclick="bdToggleBilling()" title="Toggle Billing Details columns"><span style="color:#B45309;margin-right:6px">'+billingChev+'</span>Billing Details</th>';
+    h+='</tr>';
+  }
+  // Column header row \u2014 tint cells inside a group with a subtle background
+  h+='<tr>';
+  for(var ci2=0;ci2<cols.length;ci2++){var c=cols[ci2];var isS=_bdSort===c.k;
+    var thBg=c.group==='plan'?'background:rgba(114,164,191,.06);':(c.group==='billing'?'background:rgba(245,158,11,.06);':'');
+    h+='<th style="'+thBg+'" onclick="'+(c.k?"_bdSort='"+c.k+"';_bdSortDir=_bdSortDir==='asc'?'desc':'asc';renderBD()":"")+'">'+c.l+(isS?(_bdSortDir==='asc'?' \u25B2':' \u25BC'):'')+'</th>';
+  }
   h+='</tr></thead><tbody>';
+  // Helper to style group cells consistently \u2014 subtle tint matching the header
+  var _planBg='background:rgba(114,164,191,.04)';
+  var _billingBg='background:rgba(245,158,11,.04)';
   // Cell helpers
   var dash='<span style="color:#ccc">\u2014</span>';
   function tNum(v){if(v===''||v==null||v===0)return v===0?'0':dash;return v;}
@@ -563,6 +652,12 @@ function renderBD(){
     var repName=ownerMap[row.hubspot_owner_id]||'';
     var wtRaw=row.average_monthly_web_traffic__cloned_||'';
     var wtLbl=wtRaw?(BD_WT_LABELS[wtRaw]||wtRaw):'\u2014';
+    // SE Rep \u2014 from the company record's hubspot_owner_id
+    var seName=ownerMap[row.se_rep_id]||'';
+    var toDemoVal=bdToDemo(row);
+    // Resolve URLs that may or may not have a protocol prefix
+    var _safeUrl=function(u){if(!u)return '';var s=String(u).trim();if(!s)return '';if(/^https?:\/\//i.test(s))return s;return 'https://'+s;};
+    var _linkCell=function(u,lbl){var url=_safeUrl(u);if(!url)return dash;return '<a href="'+url+'" target="_blank" style="color:var(--teal);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;max-width:100%" title="'+u.replace(/"/g,'&quot;')+'">'+(lbl||u)+' \u2197</a>';};
     h+='<tr>';
     h+='<td><div style="display:flex;align-items:center;gap:4px;overflow:hidden"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+row.dealname+'">'+row.dealname+'</span><a href="https://app.hubspot.com/contacts/46815331/record/0-3/'+row.id+'" target="_blank" style="flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:4px;background:rgba(114,164,191,.1);color:var(--teal);font-size:9px;text-decoration:none">\u2197</a></div></td>';
     // Company cell \u2014 the name itself is now the clickable link to the
@@ -582,37 +677,46 @@ function renderBD(){
     h+='<td>'+(row.brand_status?'<span class="pill" style="background:'+bsColor+'18;color:'+bsColor+'">'+row.brand_status+'</span>':dash)+'</td>';
     h+='<td><span class="pill" style="background:'+stageColor+'18;color:'+stageColor+'">'+stageLabel+'</span></td>';
     h+='<td title="'+repName+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(bdFirstName(repName)||dash)+'</td>';
+    // SE Rep — from the company record's hubspot_owner_id, resolved via ownerMap
+    h+=_td('se_rep_id','<td title="'+seName+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(bdFirstName(seName)||dash)+'</td>');
     // Ops Rep — from the company record's ops_owner field, resolved via ownerMap
     var opsName=ownerMap[row.ops_owner_id]||'';
-    h+='<td title="'+opsName+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(bdFirstName(opsName)||dash)+'</td>';
-    h+='<td>'+cd+'</td>';
+    h+=_td('ops_owner_id','<td title="'+opsName+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(bdFirstName(opsName)||dash)+'</td>');
+    h+=_td('closedate','<td>'+cd+'</td>');
     var ddb=(row.date_demo_booked||'').substring(0,10)||dash;
-    h+='<td>'+ddb+'</td>';
-    h+='<td style="font-size:10px">'+crd+'</td>';
+    h+=_td('date_demo_booked','<td>'+ddb+'</td>');
+    h+=_td('createdate','<td style="font-size:10px">'+crd+'</td>');
+    h+=_td('to_demo','<td style="text-align:center">'+(toDemoVal==null?dash:toDemoVal)+'</td>');
     var fromDemoVal=bdFromDemo(row);
-    h+='<td style="text-align:center">'+(fromDemoVal==null?dash:fromDemoVal)+'</td>';
-    h+='<td style="text-align:center">'+tNum(row.days_to_close)+'</td>';
-    h+='<td style="font-weight:600">'+f$(row.amount)+'</td>';
-    h+='<td>'+(row.original_amount?f$(row.original_amount):dash)+'</td>';
-    // Plan-name color: look up the CLEANED plan name (strips trailing
-    // "(1 Product)" etc.) so colors match the Deal Attribution chart,
-    // which also uses bdPlanName for its keying.
+    h+=_td('from_demo','<td style="text-align:center">'+(fromDemoVal==null?dash:fromDemoVal)+'</td>');
+    h+=_td('days_to_close','<td style="text-align:center">'+tNum(row.days_to_close)+'</td>');
+    // ── Plan Details group cells (tinted teal) ──
+    h+=_td('amount','<td style="font-weight:600;'+_planBg+'">'+f$(row.amount)+'</td>');
+    h+=_td('original_amount','<td style="'+_planBg+'">'+(row.original_amount?f$(row.original_amount):dash)+'</td>');
     var pnClean=bdPlanName(row.package_type||'');
     var pnColor=BD_PKG_COLORS[pnClean]||'#9CA3AF';
-    h+='<td>'+(row.package_type?'<span class="pill" style="background:'+pnColor+'18;color:'+pnColor+'" title="'+row.package_type+'">'+pnClean+'</span>':dash)+'</td>';
-    h+='<td>'+(wtRaw?'<span class="pill" style="background:'+(BD_WT_COLORS[wtRaw]||'#9CA3AF')+'18;color:'+(BD_WT_COLORS[wtRaw]||'#9CA3AF')+'" title="'+wtRaw+'">'+wtLbl+'</span>':dash)+'</td>';
-    h+='<td style="text-align:center">'+tNum(row.of_products)+'</td>';
-    h+='<td>'+(row.month_minimum?Math.round(row.month_minimum).toLocaleString():dash)+'</td>';
-    h+='<td style="text-align:center">'+tNum(row.of_free_reviews)+'</td>';
-    h+='<td style="text-align:center">'+tNum(row.of_total_reviews)+'</td>';
-    h+='<td>'+tMoney(row.price_per_review)+'</td>';
-    h+='<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+row.of_clinicianai+'">'+tEnum(row.of_clinicianai)+'</td>';
-    h+='<td style="text-align:center">'+tNum(row.of_clinician_analysis)+'</td>';
-    h+='<td>'+tMoney(row.clinician_ai_price_per_product)+'</td>';
-    h+='<td style="font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+row.setup_fee+'">'+tEnum(row.setup_fee)+'</td>';
-    h+='<td>'+tEnum(row.months_until_upgrade)+'</td>';
-    h+='<td>'+tMoney(row.fee_after_upgrade)+'</td>';
-    h+='<td style="font-size:10px">'+tNotes(row.notes)+'</td>';
+    h+=_td('package_type','<td style="'+_planBg+'">'+(row.package_type?'<span class="pill" style="background:'+pnColor+'18;color:'+pnColor+'" title="'+row.package_type+'">'+pnClean+'</span>':dash)+'</td>');
+    h+=_td('average_monthly_web_traffic__cloned_','<td style="'+_planBg+'">'+(wtRaw?'<span class="pill" style="background:'+(BD_WT_COLORS[wtRaw]||'#9CA3AF')+'18;color:'+(BD_WT_COLORS[wtRaw]||'#9CA3AF')+'" title="'+wtRaw+'">'+wtLbl+'</span>':dash)+'</td>');
+    h+=_td('of_products','<td style="text-align:center;'+_planBg+'">'+tNum(row.of_products)+'</td>');
+    h+=_td('month_minimum','<td style="'+_planBg+'">'+(row.month_minimum?Math.round(row.month_minimum).toLocaleString():dash)+'</td>');
+    h+=_td('of_free_reviews','<td style="text-align:center;'+_planBg+'">'+tNum(row.of_free_reviews)+'</td>');
+    h+=_td('of_total_reviews','<td style="text-align:center;'+_planBg+'">'+tNum(row.of_total_reviews)+'</td>');
+    h+=_td('price_per_review','<td style="'+_planBg+'">'+tMoney(row.price_per_review)+'</td>');
+    h+=_td('of_clinicianai','<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+_planBg+'" title="'+row.of_clinicianai+'">'+tEnum(row.of_clinicianai)+'</td>');
+    h+=_td('of_clinician_analysis','<td style="text-align:center;'+_planBg+'">'+tNum(row.of_clinician_analysis)+'</td>');
+    h+=_td('clinician_ai_price_per_product','<td style="'+_planBg+'">'+tMoney(row.clinician_ai_price_per_product)+'</td>');
+    h+=_td('setup_fee','<td style="font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+_planBg+'" title="'+row.setup_fee+'">'+tEnum(row.setup_fee)+'</td>');
+    h+=_td('months_until_upgrade','<td style="'+_planBg+'">'+tEnum(row.months_until_upgrade)+'</td>');
+    h+=_td('fee_after_upgrade','<td style="'+_planBg+'">'+tMoney(row.fee_after_upgrade)+'</td>');
+    h+=_td('notes','<td style="font-size:10px;'+_planBg+'">'+tNotes(row.notes)+'</td>');
+    // ── Billing Details group cells (tinted gold) ──
+    var invd=(row.invoice_date||'').substring(0,10)||dash;
+    var appd=(row.approval_date||'').substring(0,10)||dash;
+    h+=_td('invoice_date','<td style="'+_billingBg+'">'+invd+'</td>');
+    h+=_td('approval_date','<td style="'+_billingBg+'">'+appd+'</td>');
+    h+=_td('internal_recurly_link','<td style="font-size:10px;'+_billingBg+'">'+_linkCell(row.internal_recurly_link,'Recurly')+'</td>');
+    h+=_td('recurly_account_management_url','<td style="font-size:10px;'+_billingBg+'">'+_linkCell(row.recurly_account_management_url,'Account')+'</td>');
+    h+=_td('recurly_billing_intake_url','<td style="font-size:10px;'+_billingBg+'">'+_linkCell(row.recurly_billing_intake_url,'Intake')+'</td>');
     h+='</tr>';}
   h+='</tbody></table></div></div>';
   // Post-render: charts + calc + attribution hover
