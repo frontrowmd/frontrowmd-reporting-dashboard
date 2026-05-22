@@ -434,9 +434,11 @@ function renderBD(){
       if(!isNaN(tc1)&&!isNaN(tc2)&&tc2>=tc1){sfToDemoSum+=(tc2-tc1)/86400000;sfToDemoCount++;}
     }
   });
-  var sfAvgDays=sfDaysCount?Math.round(sfDaysSum/sfDaysCount):null;
-  var sfAvgDaysFromDemo=sfDemoDaysCount?Math.round(sfDemoDaysSum/sfDemoDaysCount):null;
-  var sfAvgToDemo=sfToDemoCount?Math.round(sfToDemoSum/sfToDemoCount):null;
+  // Round avg days to nearest 0.1, formatted to always show one decimal place.
+  var _avg1=function(s,c){return c?(Math.round((s/c)*10)/10).toFixed(1):null;};
+  var sfAvgDays=_avg1(sfDaysSum,sfDaysCount);
+  var sfAvgDaysFromDemo=_avg1(sfDemoDaysSum,sfDemoDaysCount);
+  var sfAvgToDemo=_avg1(sfToDemoSum,sfToDemoCount);
   var sfAvgACV=sfTotal?(sfTotalAmt/sfTotal):0;
   h+='<div style="display:flex;gap:12px;margin-bottom:16px">';
   h+='<div class="tile hero" style="flex:1"><div class="tlbl">Deals</div><div class="tval" style="font-size:22px">'+sfTotal+'</div><div class="tdef">Matching filters</div></div>';
@@ -449,13 +451,13 @@ function renderBD(){
   //   Close From Created = closedate \u2212 createdate (Closed-Won)
   // Smaller tval (22px instead of 28px) so all three fit comfortably.
   var _avgCol=function(lbl,val){
-    return '<div style="flex:1;text-align:center;min-width:0">'
-      +'<div style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+lbl+'</div>'
+    return '<div style="flex:1;text-align:center;min-width:0;display:flex;flex-direction:column;justify-content:flex-start">'
+      +'<div style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;line-height:1.15;min-height:22px;display:flex;align-items:center;justify-content:center">'+lbl+'</div>'
       +'<div class="tval" style="line-height:1;font-size:22px">'+(val==null?'\u2014':val)+'</div>'
       +'</div>';
   };
-  var _vDiv='<div style="width:1px;background:var(--border);margin:0 4px"></div>';
-  h+='<div class="tile hero" style="flex:1;display:flex;flex-direction:column;justify-content:center"><div class="tlbl">Avg Days</div>'
+  var _vDiv='<div style="width:1px;background:var(--border);margin:0 2px"></div>';
+  h+='<div class="tile hero" style="flex:1.7;display:flex;flex-direction:column;justify-content:center;min-width:0"><div class="tlbl">Avg Days</div>'
     +'<div style="display:flex;align-items:stretch;margin-top:6px">'
     +_avgCol('To Demo',sfAvgToDemo)
     +_vDiv
@@ -502,9 +504,20 @@ function renderBD(){
   h+=fp(_bdPkgF==='all','All',"_bdPkgF='all';renderBD()")+' ';
   Object.keys(uniqPkg).sort(function(a,b){return (BD_PKG_ORDER[bdPlanName(a)]||99)-(BD_PKG_ORDER[bdPlanName(b)]||99);}).forEach(function(v){h+=fp(_bdPkgF===v,bdPlanName(v),"_bdPkgF='"+v+"';renderBD()")+' ';});
   h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
-  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Web Traffic</span> ';
-  h+=fp(_bdWebTrafficF.length===0,'All',"bdWtClear()")+' ';
-  Object.keys(uniqWebTrafficBD).sort(function(a,b){return(BD_WT_ORDER[a]||99)-(BD_WT_ORDER[b]||99);}).forEach(function(v){h+=fp(_bdWebTrafficF.indexOf(v)>=0,BD_WT_LABELS[v]||v,"bdWtToggle('"+v.replace(/'/g,"\\'")+"')")+' ';});
+  // Web Traffic — multi-select. Differentiated from the single-select rows by
+  // a 1.5px teal border around every pill, a ✓ prefix on selected pills, and
+  // a "(multi-select)" sublabel next to the header.
+  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Web Traffic</span>';
+  h+='<span style="font-size:8.5px;font-weight:600;color:var(--teal);text-transform:none;letter-spacing:.02em;margin-left:-2px;margin-right:2px;font-style:italic">(multi-select)</span> ';
+  // Custom pill renderer for multi-select: teal border always, navy fill when selected.
+  var fpMulti=function(active,label,onclick){
+    var bg=active?'background:var(--navy);color:#fff;':'background:#fff;color:var(--navy);';
+    var border='border:1.5px solid '+(active?'var(--navy)':'var(--teal)')+';';
+    var prefix=active?'<span style="margin-right:4px;font-size:10px;line-height:1">✓</span>':'';
+    return '<span class="pill" style="cursor:pointer;'+bg+border+'font-size:11px;padding:2.5px 10px;font-weight:600;display:inline-flex;align-items:center" onclick="'+onclick+'">'+prefix+label+'</span>';
+  };
+  h+=fpMulti(_bdWebTrafficF.length===0,'All',"bdWtClear()")+' ';
+  Object.keys(uniqWebTrafficBD).sort(function(a,b){return(BD_WT_ORDER[a]||99)-(BD_WT_ORDER[b]||99);}).forEach(function(v){h+=fpMulti(_bdWebTrafficF.indexOf(v)>=0,BD_WT_LABELS[v]||v,"bdWtToggle('"+v.replace(/'/g,"\\'")+"')")+' ';});
   h+='</span></div>';
   // Date filter row — always its own row, last. Toggle selects which date field the from/to apply to.
   h+='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid rgba(23,44,69,.06)">';
