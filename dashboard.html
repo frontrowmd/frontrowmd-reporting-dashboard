@@ -595,6 +595,9 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
       <!-- Row 5: Demo Outcome Breakdown -->
       <div class="sec sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:#16A34A;border-radius:50%;margin-right:8px;vertical-align:middle"></span>Demo Outcome Breakdown</div><div id="ov-outcome-wrap"></div></div>
 
+      <!-- Row 5.5: No-Show Analysis -->
+      <div class="sec sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:#EF4444;border-radius:50%;margin-right:8px;vertical-align:middle"></span>No-Show Analysis</div><div id="ov-noshow-wrap"></div></div>
+
       <!-- Row 6: Ad Spend -->
       <div class="sec sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:#0EA5E9;border-radius:50%;margin-right:8px;vertical-align:middle"></span>Ad Spend</div><div id="t-adspend"></div></div>
 
@@ -746,7 +749,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r50';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r51';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -911,6 +914,12 @@ function _renderDashSkeleton(pct, step){
       ${cardHead(220)}
       <div class="dash-skel-stat-grid-4">${'<div class="su-skel-bar dash-skel-tile"></div>'.repeat(4)}</div>
       ${'<div class="su-skel-bar dash-skel-table-row"></div>'.repeat(4)}
+    </div>
+
+    <!-- Row 5.5: No-Show Analysis -->
+    <div class="dash-skel-card" style="margin-bottom:16px">
+      ${cardHead(160)}
+      ${'<div class="su-skel-bar dash-skel-table-row"></div>'.repeat(6)}
     </div>
 
     <!-- Row 6: Ad Spend -->
@@ -2784,6 +2793,196 @@ function renderOverviewOutcomeBreakdown(d){
   }catch(err){console.error('[OV-OUTCOME] Error:',err);console.error('[OV-OUTCOME] Stack:',err.stack);}
 }
 
+// No-Show Analysis (Detailed Dashboard). Three sub-analyses on the no-shows
+// that fall in the current window:
+//   1. Distribution of no-shows by web-traffic tier (% of all no-shows in each tier)
+//   2. No-show rate per web-traffic tier (No Show ÷ Demo Given orig + resched + No Show)
+//   3. No-shows bucketed by # of weeks between hs_createdate and date_demo_booked
+// Web-traffic tier isn't on demoQualityDeals directly — it lives in
+// contactInfoMap and is matched in by the same fuzzy logic that
+// renderDemoQuality uses (deal name ↔ company name / domain root).
+function renderNoShowAnalysis(d){
+  try{
+    var el=document.getElementById('ov-noshow-wrap');
+    if(!el)return;
+    var deals=d.demoQualityDeals||[];
+    var ciMap=d.contactInfoMap||{};
+    if(!deals.length){el.innerHTML='<div style="color:var(--grey);font-size:12px;padding:8px">No demo data available.</div>';return;}
+
+    // Same past-demos-in-window filter as renderOverviewOutcomeBreakdown
+    var todayStr=(function(){var t=new Date();return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');})();
+    var winFrom=d.period&&d.period.from?d.period.from:'';
+    var winTo=d.period&&d.period.to?d.period.to:'';
+    var pastFiltered=deals.filter(function(dd){
+      var ed=(dd.rescheduled_meeting_date||dd.date_demo_booked||'').split('T')[0];
+      if(!ed)return false;
+      if(ed>todayStr)return false;
+      if(winFrom&&ed<winFrom)return false;
+      if(winTo&&ed>winTo)return false;
+      return true;
+    });
+
+    // Web-traffic labels/colors/ordering — mirror Demo Quality + BD Tracker.
+    var wtLabels={'Pre-launch / just launching':'Pre-launch','0-10K monthly web visitors':'0-10K','10-25K monthly web visitors':'10-25K','25-50K monthly web visitors':'25-50K','50-100K monthly web visitors':'50-100K','100-200K monthly web visitors':'100-200K','200-500K monthly web visitors':'200-500K','500K+ monthly web visitors':'500K+'};
+    var wtColors={'Pre-launch / just launching':'#DC2626','0-10K monthly web visitors':'#EA580C','10-25K monthly web visitors':'#F97316','25-50K monthly web visitors':'#F59E0B','50-100K monthly web visitors':'#EAB308','100-200K monthly web visitors':'#84CC16','200-500K monthly web visitors':'#1565C0','500K+ monthly web visitors':'#16A34A'};
+    var wtOrder={'Pre-launch / just launching':1,'0-10K monthly web visitors':2,'10-25K monthly web visitors':3,'25-50K monthly web visitors':4,'50-100K monthly web visitors':5,'100-200K monthly web visitors':6,'200-500K monthly web visitors':7,'500K+ monthly web visitors':8,'(none)':99};
+
+    // Fuzzy-match each deal to its contact (same logic as renderDemoQuality
+    // line ~3220). Cache the ciMap key list once since it's a hot loop.
+    var ciKeys=Object.keys(ciMap);
+    function findCi(dd){
+      var dn=(dd.dealname||'').trim().toLowerCase();
+      if(!dn)return null;
+      var dnClean=dn.replace(/[^a-z0-9]/g,'');
+      var ci=ciMap[dn]||null;
+      if(ci)return ci;
+      for(var ki=0;ki<ciKeys.length;ki++){
+        var k=ciKeys[ki];
+        if(k.indexOf('_domain_')===0){
+          var domRoot=k.replace('_domain_','').split('.')[0].replace(/[^a-z0-9]/g,'');
+          if(domRoot.length>2&&(dnClean.indexOf(domRoot)>=0||domRoot.indexOf(dnClean)>=0))return ciMap[k];
+        }else{
+          var ciKey=k.replace(/[^a-z0-9]/g,'');
+          if(ciKey.length>2&&(dnClean.indexOf(ciKey)>=0||ciKey.indexOf(dnClean)>=0))return ciMap[k];
+        }
+      }
+      return null;
+    }
+
+    // Walk the filtered deals exactly once and bucket the counts we need:
+    //   noShowByTier  : no-shows per tier (used for both % distribution + rate numerator)
+    //   demosByTier   : orig + resched + noShow per tier (denominator for rate)
+    //   weeksBuckets  : no-shows bucketed by floor((booked - create) / 7 days)
+    var noShowByTier={};
+    var demosByTier={};
+    var weeksBuckets={0:0,1:0,2:0,3:0,4:0,'5+':0};
+    var totalNoShows=0;
+    var totalDemos=0;
+    var noShowsMissingDate=0;
+    for(var i=0;i<pastFiltered.length;i++){
+      var dd=pastFiltered[i];
+      var att=(dd.demo_attendance_status||'').trim();
+      var isOrig=att==='Demo Given (originally scheduled)';
+      var isResched=att==='Demo Given (rescheduled)';
+      var isNoShow=att==='No Show';
+      // Denom for rate = orig + resched + noShow (matches "Quality No-show rate")
+      if(!isOrig&&!isResched&&!isNoShow)continue;
+      var ci=findCi(dd);
+      var wt=(ci&&ci.webTraffic)||'';
+      var tierKey=wt||'(none)';
+      demosByTier[tierKey]=(demosByTier[tierKey]||0)+1;
+      totalDemos++;
+      if(isNoShow){
+        totalNoShows++;
+        noShowByTier[tierKey]=(noShowByTier[tierKey]||0)+1;
+        var cd=(dd.createdate||'').split('T')[0];
+        var db=(dd.date_demo_booked||'').split('T')[0];
+        if(cd&&db){
+          var cdMs=new Date(cd+'T00:00:00Z').getTime();
+          var dbMs=new Date(db+'T00:00:00Z').getTime();
+          if(!isNaN(cdMs)&&!isNaN(dbMs)){
+            var diffDays=Math.floor((dbMs-cdMs)/86400000);
+            if(diffDays<0)diffDays=0;
+            var weeks=Math.floor(diffDays/7);
+            var bucket=weeks>=5?'5+':weeks;
+            weeksBuckets[bucket]++;
+          }else{noShowsMissingDate++;}
+        }else{noShowsMissingDate++;}
+      }
+    }
+
+    // Shared row renderer — labelW px label · bar (flex:1) · rightW px value text.
+    function _row(lblTxt,lblTitle,barPct,barColor,rightTxt,rightW){
+      return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:5px">'
+        +'<div style="width:120px;font-size:12px;font-weight:600;color:var(--navy);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(lblTitle||lblTxt)+'">'+lblTxt+'</div>'
+        +'<div style="flex:1;background:rgba(114,164,191,.06);border-radius:4px;height:22px;position:relative">'
+        +  '<div style="height:100%;border-radius:4px;background:'+barColor+';width:'+Math.max(0,Math.min(100,barPct))+'%;min-width:2px;transition:width .3s"></div>'
+        +'</div>'
+        +'<div style="width:'+(rightW||80)+'px;font-size:11px;color:var(--grey);white-space:nowrap">'+rightTxt+'</div>'
+        +'</div>';
+    }
+
+    var h='';
+
+    // ── 1. No-show distribution by tier (% of all no-shows in each tier) ──
+    h+='<div style="margin-bottom:22px">';
+    h+='<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
+      +'<div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy)">No-show distribution by Web Traffic tier</div>'
+      +'<div style="font-size:11px;color:var(--grey)">'+totalNoShows+' total no shows · % of all no shows in each tier</div></div>';
+    if(totalNoShows===0){
+      h+='<div style="color:var(--grey);font-size:12px;padding:8px 0;font-style:italic">No no-shows in this window.</div>';
+    }else{
+      var distKeys=Object.keys(noShowByTier).sort(function(a,b){return (wtOrder[a]||99)-(wtOrder[b]||99);});
+      for(var dk=0;dk<distKeys.length;dk++){
+        var t=distKeys[dk];
+        var cnt=noShowByTier[t];
+        var pct=cnt/totalNoShows*100;
+        h+=_row(wtLabels[t]||t,t,pct,wtColors[t]||'#9CA3AF',pct.toFixed(1)+'% ('+cnt+')',80);
+      }
+    }
+    h+='</div>';
+
+    // ── 2. No-show rate per tier ──
+    h+='<div style="margin-bottom:22px">';
+    h+='<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
+      +'<div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy)">No-show rate per Web Traffic tier</div>'
+      +'<div style="font-size:11px;color:var(--grey)">No Show ÷ (Demo Given orig + resched + No Show), per tier</div></div>';
+    if(totalDemos===0){
+      h+='<div style="color:var(--grey);font-size:12px;padding:8px 0;font-style:italic">No demos in this window.</div>';
+    }else{
+      var rateKeys=Object.keys(demosByTier).sort(function(a,b){return (wtOrder[a]||99)-(wtOrder[b]||99);});
+      // Scale bars to the max rate so differences across tiers are visible
+      // (bars normalized to 100% otherwise compress at low absolute rates).
+      var maxRate=0,rates={};
+      for(var rk=0;rk<rateKeys.length;rk++){
+        var t2=rateKeys[rk];
+        var demos=demosByTier[t2];
+        var ns=noShowByTier[t2]||0;
+        var r=demos>0?(ns/demos*100):0;
+        rates[t2]={r:r,demos:demos,ns:ns};
+        if(r>maxRate)maxRate=r;
+      }
+      for(var rk2=0;rk2<rateKeys.length;rk2++){
+        var t3=rateKeys[rk2];
+        var rD=rates[t3];
+        var barPct=maxRate>0?(rD.r/maxRate*100):0;
+        h+=_row(wtLabels[t3]||t3,t3,barPct,wtColors[t3]||'#9CA3AF',rD.r.toFixed(1)+'% ('+rD.ns+' ÷ '+rD.demos+')',140);
+      }
+    }
+    h+='</div>';
+
+    // ── 3. No-shows by weeks between create and demo ──
+    var totalWithDates=0;
+    var bucketKeys=[0,1,2,3,4,'5+'];
+    for(var bk=0;bk<bucketKeys.length;bk++)totalWithDates+=weeksBuckets[bucketKeys[bk]];
+    var bucketLabels={0:'Same week',1:'1 week',2:'2 weeks',3:'3 weeks',4:'4 weeks','5+':'5+ weeks'};
+    h+='<div>';
+    h+='<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
+      +'<div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy)">No-shows by weeks from create to demo</div>'
+      +'<div style="font-size:11px;color:var(--grey)">date_demo_booked − createdate, bucketed weekly · '+totalWithDates+' no-shows</div></div>';
+    if(totalWithDates===0){
+      h+='<div style="color:var(--grey);font-size:12px;padding:8px 0;font-style:italic">No no-shows with both create + booked dates set in this window.</div>';
+    }else{
+      for(var bk2=0;bk2<bucketKeys.length;bk2++){
+        var bktK=bucketKeys[bk2];
+        var bktCnt=weeksBuckets[bktK];
+        var bktPct=bktCnt/totalWithDates*100;
+        h+=_row(bucketLabels[bktK],null,bktPct,'#EF4444',bktPct.toFixed(1)+'% ('+bktCnt+')',80);
+      }
+      if(noShowsMissingDate>0){
+        h+='<div style="font-size:10px;color:var(--grey);font-style:italic;margin-top:8px">'+noShowsMissingDate+' no-show'+(noShowsMissingDate===1?'':'s')+' excluded — missing or unparseable createdate / date_demo_booked.</div>';
+      }
+    }
+    h+='</div>';
+
+    el.innerHTML=h;
+  }catch(err){
+    console.error('[NO-SHOW] Error:',err);console.error('[NO-SHOW] Stack:',err.stack);
+    var elE=document.getElementById('ov-noshow-wrap');
+    if(elE)elE.innerHTML='<div style="padding:20px;text-align:center;color:var(--red);font-size:12px">No-show analysis failed: '+(err&&err.message?err.message:String(err))+'</div>';
+  }
+}
+
 // Update the attribution match-rate line at the bottom of the Channel
 // Performance table. Called after the analyzer fetch returns (since match
 // rate isn't on /api/data, only on /api/analyzer's matchRate field).
@@ -2915,6 +3114,9 @@ function renderCPDTable(d){
 
   // Demo Outcome Breakdown — cloned from Demo Quality page, with Quality-section mini KPIs
   renderOverviewOutcomeBreakdown(d);
+  // No-Show Analysis — three sub-analyses (distribution by tier, rate per tier,
+  // weeks from create→booked). Runs against the same demoQualityDeals window.
+  renderNoShowAnalysis(d);
 }
 function dbcTip(e,el){let tip=document.getElementById('dbc-tip');if(!tip){tip=document.createElement('div');tip.id='dbc-tip';tip.style.cssText='position:fixed;background:var(--navy);color:#fff;padding:6px 10px;border-radius:6px;font-size:12px;font-family:var(--font-b);pointer-events:none;z-index:9999;box-shadow:0 4px 12px rgba(2,15,24,.25);white-space:nowrap;transition:opacity .08s ease;opacity:0';document.body.appendChild(tip);}tip.textContent=el.getAttribute('data-tip')||'';tip.style.opacity='1';dbcTipMove(e);}function dbcTipMove(e){const tip=document.getElementById('dbc-tip');if(!tip||tip.style.opacity==='0')return;tip.style.left=(e.clientX+12)+'px';tip.style.top=(e.clientY-32)+'px';}function dbcTipHide(){const tip=document.getElementById('dbc-tip');if(tip)tip.style.opacity='0';}
 function renderDemosPerDay(d, targetId){
