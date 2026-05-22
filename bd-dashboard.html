@@ -591,9 +591,9 @@ function renderBD(){
     {k:'days_to_close',l:'From Created',w:80},
     // ── Plan Details group ──
     {k:'amount',l:'Amount',w:90, group:'plan'},
-    {k:'original_amount',l:'Original Amount',w:100, group:'plan'},
     {k:'package_type',l:'Plan Name',w:115, group:'plan'},
     {k:'average_monthly_web_traffic__cloned_',l:'Web Traffic Tier',w:100, group:'plan'},
+    {k:'original_amount',l:'Original Amount',w:100, group:'plan', groupCollapse:true},
     {k:'of_products',l:'# of Products',w:80, group:'plan', groupCollapse:true},
     {k:'month_minimum',l:'Month Minimum',w:100, group:'plan', groupCollapse:true},
     {k:'of_free_reviews',l:'# of Free Reviews',w:90, group:'plan', groupCollapse:true},
@@ -705,11 +705,11 @@ function renderBD(){
     h+=_td('days_to_close','<td style="text-align:center">'+tNum(row.days_to_close)+'</td>');
     // ── Plan Details group cells (tinted teal) ──
     h+=_td('amount','<td style="font-weight:600;'+_planBg+'">'+f$(row.amount)+'</td>');
-    h+=_td('original_amount','<td style="'+_planBg+'">'+(row.original_amount?f$(row.original_amount):dash)+'</td>');
     var pnClean=bdPlanName(row.package_type||'');
     var pnColor=BD_PKG_COLORS[pnClean]||'#9CA3AF';
     h+=_td('package_type','<td style="'+_planBg+'">'+(row.package_type?'<span class="pill" style="background:'+pnColor+'18;color:'+pnColor+'" title="'+row.package_type+'">'+pnClean+'</span>':dash)+'</td>');
     h+=_td('average_monthly_web_traffic__cloned_','<td style="'+_planBg+'">'+(wtRaw?'<span class="pill" style="background:'+(BD_WT_COLORS[wtRaw]||'#9CA3AF')+'18;color:'+(BD_WT_COLORS[wtRaw]||'#9CA3AF')+'" title="'+wtRaw+'">'+wtLbl+'</span>':dash)+'</td>');
+    h+=_td('original_amount','<td style="'+_planBg+'">'+(row.original_amount?f$(row.original_amount):dash)+'</td>');
     h+=_td('of_products','<td style="text-align:center;'+_planBg+'">'+tNum(row.of_products)+'</td>');
     h+=_td('month_minimum','<td style="'+_planBg+'">'+(row.month_minimum?Math.round(row.month_minimum).toLocaleString():dash)+'</td>');
     h+=_td('of_free_reviews','<td style="text-align:center;'+_planBg+'">'+tNum(row.of_free_reviews)+'</td>');
