@@ -746,7 +746,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r46';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r47';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -3203,11 +3203,11 @@ function drawStackedBar(canvasId,dataObj,repIds,colorMap,fixedLabels){
 
 // ── Demo Quality state (cloned from Post-Demo) ──
 var _eqAttrDim='dealstage',_eqSort='date_demo_booked',_eqSortDir='desc',_eqChartStatus='all',_eqChartDim='att',_eqHideBlanks=false;
-var _eqStageFilter='all',_eqPqFilter='all',_eqAttFilter='all',_eqQoFilter='all',_eqRepTblFilter='all',_eqSizeFilter='all',_eqIndustryFilter='all',_eqTzFilter='all',_eqStorylaneFilter='all',_eqWebTrafficFilter='all',_eqDateFrom='',_eqDateTo='',_eqDateMode='demo';
+var _eqStageFilter='all',_eqPqFilter='all',_eqAttFilter='all',_eqQoFilter='all',_eqRepTblFilter='all',_eqIndustryFilter='all',_eqTzFilter='all',_eqStorylaneFilter='all',_eqWebTrafficFilter='all',_eqDateFrom='',_eqDateTo='',_eqDateMode='demo';
 var _eqSourceFilter='all',_eqMediumFilter='all',_eqCampaignFilter='all',_eqContentFilter='all';
 var _rcm={};  // rep color map (set during render)
 function eqClearDate(){_eqDateFrom='';_eqDateTo='';renderDemoQuality();}
-function eqResetFilters(){_eqPqFilter='all';_eqStageFilter='all';_eqAttFilter='all';_eqQoFilter='all';_eqRepTblFilter='all';_eqSizeFilter='all';_eqIndustryFilter='all';_eqTzFilter='all';_eqStorylaneFilter='all';_eqWebTrafficFilter='all';_eqDateFrom='';_eqDateTo='';_eqDateMode='demo';_eqSourceFilter='all';_eqMediumFilter='all';_eqCampaignFilter='all';_eqContentFilter='all';renderDemoQuality();}
+function eqResetFilters(){_eqPqFilter='all';_eqStageFilter='all';_eqAttFilter='all';_eqQoFilter='all';_eqRepTblFilter='all';_eqIndustryFilter='all';_eqTzFilter='all';_eqStorylaneFilter='all';_eqWebTrafficFilter='all';_eqDateFrom='';_eqDateTo='';_eqDateMode='demo';_eqSourceFilter='all';_eqMediumFilter='all';_eqCampaignFilter='all';_eqContentFilter='all';renderDemoQuality();}
 
 function renderDemoQuality(){try{
   var d=S.demoQuality.data;if(!d||!d.demoQualityDeals)return;
@@ -3349,19 +3349,22 @@ function renderDemoQuality(){try{
   function panelOpenC(label,dotColor){return '<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border)"><div style="width:6px;height:6px;background:'+dotColor+';border-radius:50%"></div><div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy)">'+label+'</div></div>';}
   function statRowC(label,def,valueHTML,calcText,cur,priorV,lmV,fmt,opts){opts=opts||{};var valColor=opts.color||'var(--navy)';var calcSpan=calcText?'<div style="font-size:11px;color:var(--grey)">'+calcText+'</div>':'';var extraSpan=opts.extra?'<div style="font-size:11px;color:var(--grey);margin:4px 0 6px">'+opts.extra+'</div>':'';var mb=opts.noMargin?'0':'10px';var bgCol='var(--white)',borderCol='var(--border)',extraStyle='';if(opts.highlighted){bgCol='linear-gradient(135deg,rgba(114,164,191,.05) 0%,rgba(114,164,191,.10) 100%)';borderCol='#A6CDDB';extraStyle='box-shadow:inset 3px 0 0 var(--teal);';}if(opts.dangerIf!=null&&typeof cur==='number'&&cur>opts.dangerIf){borderCol='#FCA5A5';extraStyle+='box-shadow:inset 3px 0 0 var(--red);';}if(opts.warnIf!=null&&typeof cur==='number'&&cur>opts.warnIf){bgCol='linear-gradient(135deg,rgba(245,158,11,.05) 0%,rgba(245,158,11,.10) 100%)';borderCol='#FCD34D';extraStyle+='box-shadow:inset 3px 0 0 #F59E0B;';}return '<div class="stat-card" style="background:'+bgCol+';border:1px solid '+borderCol+';border-radius:8px;padding:12px;margin-bottom:'+mb+';transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease;'+extraStyle+'"><div style="font-family:var(--font-h);font-size:11px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">'+label+'</div><div style="font-size:11px;color:var(--grey);line-height:1.4;margin-bottom:6px">'+def+'</div><div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px"><div style="font-family:var(--font-h);font-size:22px;font-weight:700;line-height:1;color:'+valColor+'">'+valueHTML+'</div>'+calcSpan+'</div>'+extraSpan+deltaBlockC(cur,priorV,lmV,fmt,opts.inv,opts.dec)+'</div>';}
 
-  // Primary outcome / Volume / Quality — 3-col row (1/3 each)
+  // Top section — Volume / Quality / Demos Booked by Web-Traffic Range
+  // Matches the Detailed Dashboard's overview (same statRow shapes), with the
+  // donut as the 3rd panel. The donut renders into #dq-webtraffic after
+  // innerHTML is set, via _renderIrfanWtPieInto in the rAF block below.
   h+='<div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:12px;margin-bottom:20px">';
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px"><div style="font-family:var(--font-h);font-size:11px;color:var(--grey);margin-bottom:10px;padding:0 6px;text-transform:uppercase;letter-spacing:.08em">Primary outcome</div>'+statRowC('New demos scheduled','Contacts created with date_demo_booked set',fN(totalSchedCard),null,totalSchedCard,totalSchedCardPV,totalSchedCardLMV,'#',{highlighted:true})+statRowC('Demos held (excl. pre-launch)','Demo Given orig + resched, excluding pre-launch brands',fN(demosHeldScaleC),null,demosHeldScaleC,demosHeldScaleCPV,demosHeldScaleCLMV,'#',{highlighted:true})+statRowC('Qualified demos','Deals where demo_qualification_outcome = Qualified',fN(tqdCurC),null,tqdCurC,tqdPriorC,tqdLmC,'#',{noMargin:true})+'</div>';
   h+=panelOpenC('Volume','#3B82F6');
-  h+=statRowC('Demos supposed to happen','Demos held + No shows + Pruned',fN(qmetaC.pruneDenom||0),fN((qmetaC.demoGivenOrigCount||0)+(qmetaC.demoGivenReschedCount||0))+' held + '+fN(qmetaC.noShowCount||0)+' no-show + '+fN(qmetaC.cancelledBeforeDemoCount||0)+' pruned',qmetaC.pruneDenom||0,qmetaC.pruneDenomPrior,qmetaC.pruneDenomLastMonth,'#');
   h+=statRowC('Demos to occur','Deals by date_demo_booked in window',fN(demosToOccurC),null,demosToOccurC,demosToOccurCPV,demosToOccurCLMV,'#');
-  h+=statRowC('% Pre-launch demos','Pre-launch ÷ New demos scheduled',lowTrafficPctC!=null?lowTrafficPctC.toFixed(1)+'%':'—',fN(ltmetaC.lowTraffic||0)+' ÷ '+fN(ltmetaC.totalScheduled||0),lowTrafficPctC,lowTrafficPctCPV,lowTrafficPctCLMV,'%',{inv:true,warnIf:30,noMargin:true});
+  h+=statRowC('Demos supposed to happen','Demos held + No shows + Pruned',fN(qmetaC.pruneDenom||0),fN((qmetaC.demoGivenOrigCount||0)+(qmetaC.demoGivenReschedCount||0))+' held + '+fN(qmetaC.noShowCount||0)+' no-show + '+fN(qmetaC.cancelledBeforeDemoCount||0)+' pruned',qmetaC.pruneDenom||0,qmetaC.pruneDenomPrior,qmetaC.pruneDenomLastMonth,'#');
+  h+=statRowC('Demos held (excl. pre-launch)','Demo Given orig + resched, excluding pre-launch brands',fN(demosHeldScaleC),null,demosHeldScaleC,demosHeldScaleCPV,demosHeldScaleCLMV,'#',{noMargin:true});
   h+='</div>';
   h+=panelOpenC('Quality','#1D9E75');
   h+=statRowC('Prune rate','Cancelled before demo ÷ all settled outcomes',pruneC!=null?pruneC.toFixed(1)+'%':'—',fN(qmetaC.cancelledBeforeDemoCount||0)+' ÷ '+fN(qmetaC.pruneDenom||0),pruneC,pruneCPV,pruneCLMV,'%',{inv:true,warnIf:20});
   h+=statRowC('No-show rate','No Show ÷ (Demo Given orig + resched + No Show)',noShowC!=null?noShowC.toFixed(1)+'%':'—',fN(qmetaC.noShowCount||0)+' ÷ '+fN(qmetaC.noShowDenom||0),noShowC,noShowCPV,noShowCLMV,'%',{inv:true,warnIf:20});
   h+=statRowC('Qualification rate','Qualified ÷ Demos Held',qualRateC!=null?qualRateC.toFixed(1)+'%':'—',fN(qmetaC.qualifiedRawCount||0)+' ÷ '+fN(demosHeldFullC),qualRateC,qualRateCPV,qualRateCLMV,'%',{noMargin:true});
   h+='</div>';
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding-bottom:10px;border-bottom:1px solid var(--border)"><div style="width:6px;height:6px;background:#9333EA;border-radius:50%"></div><div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy)">Demos Booked by Web-Traffic Range</div></div><div style="font-size:11px;color:var(--grey);margin:6px 0 4px">% of demos booked in each tier · ordered Pre-launch → 500K+ clockwise</div><div id="dq-webtraffic"></div></div>';
   h+='</div>';
 
   // Demos by Rep (matches Pre-Demo format; bars based on full-window deals)
@@ -3581,7 +3584,6 @@ function renderDemoQuality(){try{
     if(_eqAttFilter!=='all'){var alF=ATT_LABELS[dd.demo_attendance_status]||(dd.demo_attendance_status||'Blank');if(alF!==_eqAttFilter)return false;}
     if(_eqQoFilter!=='all'){var qlF=QO_LABELS[dd.demo_qualification_outcome]||(dd.demo_qualification_outcome||'Blank');if(qlF!==_eqQoFilter)return false;}
     if(_eqRepTblFilter!=='all'){var rn=ownerMap[dd.hubspot_owner_id]||'Unassigned';if(rn!==_eqRepTblFilter)return false;}
-    if(_eqSizeFilter!=='all'){var sz=(dd._co&&dd._co.size)||'';if(sz!==_eqSizeFilter)return false;}
     if(_eqIndustryFilter!=='all'){var ind=(dd._co&&dd._co.industry)||'';if(ind!==_eqIndustryFilter)return false;}
     if(_eqTzFilter!=='all'){var tz2=(dd._co&&dd._co.timezone)||'';if(tz2!==_eqTzFilter)return false;}
     if(_eqStorylaneFilter!=='all'){var slv=(dd._ci&&dd._ci.slName)?'Viewed':'Not Viewed';if(slv!==_eqStorylaneFilter)return false;}
@@ -3679,7 +3681,7 @@ function renderDemoQuality(){try{
   })();
 
   // Deal Attribution
-  var attrDims=[{k:'hubspot_owner_id',l:'Rep'},{k:'_pq',l:'PQ'},{k:'dealstage',l:'Stage'},{k:'_att',l:'Attendance'},{k:'_qo',l:'Qual Outcome'},{k:'_industry',l:'Industry'},{k:'_timezone',l:'Time Zone'},{k:'_size',l:'Size'},{k:'_webTraffic',l:'Web Traffic'},{k:'_storylane',l:'Storylane'},{k:'utm_source',l:'UTM Source'},{k:'utm_medium',l:'UTM Medium'},{k:'utm_campaign',l:'UTM Campaign'},{k:'utm_content',l:'UTM Content'}];
+  var attrDims=[{k:'hubspot_owner_id',l:'Rep'},{k:'_pq',l:'PQ'},{k:'dealstage',l:'Stage'},{k:'_att',l:'Attendance'},{k:'_qo',l:'Qual Outcome'},{k:'_webTraffic',l:'Web Traffic'},{k:'_storylane',l:'Storylane'},{k:'utm_source',l:'UTM Source'},{k:'utm_medium',l:'UTM Medium'},{k:'utm_campaign',l:'UTM Campaign'},{k:'utm_content',l:'UTM Content'}];
   var attrData={};
   for(var ai=0;ai<sharedFiltered.length;ai++){var ad=sharedFiltered[ai];var dimVal='';
     if(_eqAttrDim==='_att'){var atRaw=ad.demo_attendance_status||'';dimVal=atRaw?(ATT_LABELS[atRaw]||atRaw):'Blank';}
@@ -3687,9 +3689,6 @@ function renderDemoQuality(){try{
     else if(_eqAttrDim==='_pq'){var pqFull={'Y':'Qualified','S':'Too Small','N':'Not Qualified','?':'Insufficient'};dimVal=pqFull[ad._pq]||ad._pq||'None';}
     else if(_eqAttrDim==='dealstage'){dimVal=STAGE_LABELS[ad.dealstage]||ad.dealstage||'Unknown';}
     else if(_eqAttrDim==='hubspot_owner_id'){dimVal=ownerMap[ad.hubspot_owner_id]||'Unassigned';}
-    else if(_eqAttrDim==='_industry'){dimVal=(ad._co&&ad._co.industry||'').replace(/_/g,' ')||'(none)';}
-    else if(_eqAttrDim==='_timezone'){dimVal=tzShort(ad._co&&ad._co.timezone)||'(none)';}
-    else if(_eqAttrDim==='_size'){dimVal=sizeMap[(ad._co&&ad._co.size)||'']||(ad._co&&ad._co.size)||'(none)';}
     else if(_eqAttrDim==='_webTraffic'){dimVal=wtLabels[(ad._ci&&ad._ci.webTraffic)||'']||(ad._ci&&ad._ci.webTraffic)||'(none)';}
     else if(_eqAttrDim==='_storylane'){dimVal=(ad._ci&&ad._ci.slName)?'Viewed':'Not Viewed';}
     else if(_eqAttrDim==='utm_source'){dimVal=(ad.utm_source||'').trim()||'(none)';}
@@ -3714,12 +3713,12 @@ function renderDemoQuality(){try{
   h+='</div><div id="eq-attr-tip" class="float-tip"></div></div>';
 
   // ── Shared Filters ──
-  var uniqReps={},uniqSize={},uniqIndustry={},uniqTz={},uniqStorylane={},uniqWebTraffic={},uniqAtt={},uniqQo={};
+  var uniqReps={},uniqIndustry={},uniqTz={},uniqStorylane={},uniqWebTraffic={},uniqAtt={},uniqQo={};
   filtered.forEach(function(dd){
     var rn=ownerMap[dd.hubspot_owner_id]||'Unassigned';uniqReps[rn]=1;
     var alU=ATT_LABELS[dd.demo_attendance_status]||(dd.demo_attendance_status||'Blank');uniqAtt[alU]=1;
     var qlU=QO_LABELS[dd.demo_qualification_outcome]||(dd.demo_qualification_outcome||'Blank');uniqQo[qlU]=1;
-    if(dd._co){if(dd._co.size)uniqSize[dd._co.size]=1;if(dd._co.industry)uniqIndustry[dd._co.industry]=1;if(dd._co.timezone)uniqTz[dd._co.timezone]=1;}
+    if(dd._co){if(dd._co.industry)uniqIndustry[dd._co.industry]=1;if(dd._co.timezone)uniqTz[dd._co.timezone]=1;}
     if(dd._ci){if(dd._ci.webTraffic)uniqWebTraffic[dd._ci.webTraffic]=1;uniqStorylane[dd._ci.slName?'Viewed':'Not Viewed']=1;}
   });
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px 20px;margin-bottom:16px">';
@@ -3748,10 +3747,6 @@ function renderDemoQuality(){try{
   // Row 2
   h+='<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">';
   h+='<span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
-  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Size</span> ';
-  h+=fp(_eqSizeFilter==='all','All',"_eqSizeFilter='all';renderDemoQuality()")+' ';
-  Object.keys(uniqSize).sort().forEach(function(v){h+=fp(_eqSizeFilter===v,sizeMap[v]||v,"_eqSizeFilter='"+v+"';renderDemoQuality()")+' ';});
-  h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Storylane</span> ';
   h+=fp(_eqStorylaneFilter==='all','All',"_eqStorylaneFilter='all';renderDemoQuality()")+' ';
   h+=fp(_eqStorylaneFilter==='Viewed','Viewed',"_eqStorylaneFilter='Viewed';renderDemoQuality()")+' ';
@@ -3773,7 +3768,7 @@ function renderDemoQuality(){try{
   h+='<input type="date" value="'+_eqDateTo+'" onchange="_eqDateTo=this.value" style="padding:3px 8px;border:1.5px solid rgba(23,44,69,.12);border-radius:50px;font-size:10px;font-family:var(--font-b);color:var(--navy)">';
   h+='<button onclick="renderDemoQuality()" style="padding:3px 10px;border-radius:50px;border:1.5px solid var(--navy);background:var(--navy);color:#fff;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--font-b)">Go</button>';
   if(_eqDateFrom||_eqDateTo){h+='<button onclick="eqClearDate()" style="padding:3px 10px;border-radius:50px;border:1.5px solid rgba(23,44,69,.12);background:transparent;color:var(--navy);font-size:10px;cursor:pointer;font-family:var(--font-b)">Clear</button>';}
-  var anyF=_eqPqFilter!=='all'||_eqStageFilter!=='all'||_eqAttFilter!=='all'||_eqQoFilter!=='all'||_eqRepTblFilter!=='all'||_eqSizeFilter!=='all'||_eqIndustryFilter!=='all'||_eqTzFilter!=='all'||_eqStorylaneFilter!=='all'||_eqWebTrafficFilter!=='all'||_eqDateFrom||_eqDateTo;
+  var anyF=_eqPqFilter!=='all'||_eqStageFilter!=='all'||_eqAttFilter!=='all'||_eqQoFilter!=='all'||_eqRepTblFilter!=='all'||_eqIndustryFilter!=='all'||_eqTzFilter!=='all'||_eqStorylaneFilter!=='all'||_eqWebTrafficFilter!=='all'||_eqDateFrom||_eqDateTo;
   if(anyF){h+='<button onclick="eqResetFilters()" style="padding:3px 12px;border-radius:50px;border:1.5px solid #C62828;background:rgba(198,40,40,.05);color:#C62828;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font-b);margin-left:auto">Reset All Filters</button>';}
   h+='</div></div>';
 
@@ -3794,7 +3789,6 @@ function renderDemoQuality(){try{
     if(_eqSort==='hubspot_owner_id'){av=ownerMap[a.hubspot_owner_id]||'';bv=ownerMap[b.hubspot_owner_id]||'';}
     if(_eqSort==='_industry'){av=(a._co&&a._co.industry)||'';bv=(b._co&&b._co.industry)||'';}
     if(_eqSort==='_timezone'){av=(a._co&&a._co.timezone)||'';bv=(b._co&&b._co.timezone)||'';}
-    if(_eqSort==='_size'){av=(a._co&&a._co.size)||'';bv=(b._co&&b._co.size)||'';}
     if(_eqSort==='_pq'){av=a._pq||'';bv=b._pq||'';}
     if(_eqSort==='_webTraffic'){av=wtOrder[(a._ci&&a._ci.webTraffic)||'']||0;bv=wtOrder[(b._ci&&b._ci.webTraffic)||'']||0;}
     if(_eqSort==='_storylane'){av=(a._ci&&a._ci.slName)?1:0;bv=(b._ci&&b._ci.slName)?1:0;}
@@ -3805,9 +3799,9 @@ function renderDemoQuality(){try{
     return _eqSortDir==='asc'?(av>bv?1:av<bv?-1:0):(av<bv?1:av>bv?-1:0);});
   h+='<div style="font-size:10px;color:var(--grey);margin-bottom:8px">Showing '+sorted.length+' of '+filtered.length+'</div>';
   h+='<div class="tbl-resp"><table class="stbl" style="min-width:2500px"><colgroup>';
-  h+='<col style="width:7%"><col style="width:4%"><col style="width:4.5%"><col style="width:4%"><col style="width:4%"><col style="width:3.5%"><col style="width:2.5%"><col style="width:3%"><col style="width:3.5%"><col style="width:3.5%"><col style="width:3.5%"><col style="width:3.5%"><col style="width:7%"><col style="width:5%"><col style="width:3%"><col style="width:2%"><col style="width:2%"><col style="width:2%"><col style="width:2%"><col style="width:2%"><col style="width:5%"><col style="width:5%"><col style="width:6%"><col style="width:6%"><col style="width:2%">';
+  h+='<col style="width:7%"><col style="width:4%"><col style="width:4.5%"><col style="width:4%"><col style="width:4%"><col style="width:3.5%"><col style="width:2.5%"><col style="width:3%"><col style="width:3.5%"><col style="width:3.5%"><col style="width:3.5%"><col style="width:3.5%"><col style="width:7%"><col style="width:5%"><col style="width:2%"><col style="width:2%"><col style="width:2%"><col style="width:2%"><col style="width:2%"><col style="width:5%"><col style="width:5%"><col style="width:6%"><col style="width:6%"><col style="width:2%">';
   h+='</colgroup><thead><tr>';
-  var cols=[{k:'dealname',l:'Deal Name'},{k:'website',l:'Website'},{k:'_contact',l:'Contact'},{k:'date_demo_booked',l:'Demo Date'},{k:'createdate',l:'Create Date'},{k:'rescheduled_meeting_date',l:'Resched Date'},{k:'hubspot_owner_id',l:'Rep'},{k:'_pq',l:'PQ'},{k:'dealstage',l:'Stage'},{k:'demo_attendance_status',l:'Attendance'},{k:'demo_qualification_outcome',l:'Qual'},{k:'_webTraffic',l:'Web Traffic'},{k:'_industry',l:'Industry'},{k:'_timezone',l:'Time Zone'},{k:'_size',l:'Size'},{k:'_opens',l:'Opens'},{k:'_replies',l:'Replies'},{k:'_seq',l:'Seq'},{k:'_storylane',l:'SL'},{k:'_slPct',l:'SL %'},{k:'utm_source',l:'Source'},{k:'utm_medium',l:'Medium'},{k:'utm_campaign',l:'Campaign'},{k:'utm_content',l:'Content'},{k:'',l:''}];
+  var cols=[{k:'dealname',l:'Deal Name'},{k:'website',l:'Website'},{k:'_contact',l:'Contact'},{k:'date_demo_booked',l:'Demo Date'},{k:'createdate',l:'Create Date'},{k:'rescheduled_meeting_date',l:'Resched Date'},{k:'hubspot_owner_id',l:'Rep'},{k:'_pq',l:'PQ'},{k:'dealstage',l:'Stage'},{k:'demo_attendance_status',l:'Attendance'},{k:'demo_qualification_outcome',l:'Qual'},{k:'_webTraffic',l:'Web Traffic'},{k:'_industry',l:'Industry'},{k:'_timezone',l:'Time Zone'},{k:'_opens',l:'Opens'},{k:'_replies',l:'Replies'},{k:'_seq',l:'Seq'},{k:'_storylane',l:'SL'},{k:'_slPct',l:'SL %'},{k:'utm_source',l:'Source'},{k:'utm_medium',l:'Medium'},{k:'utm_campaign',l:'Campaign'},{k:'utm_content',l:'Content'},{k:'',l:''}];
   for(var ci2=0;ci2<cols.length;ci2++){var c=cols[ci2];var isS=_eqSort===c.k;
   h+='<th onclick="'+(c.k?"_eqSort='"+c.k+"';_eqSortDir=_eqSortDir==='asc'?'desc':'asc';renderDemoQuality()":"")+'">'+c.l+(isS?(_eqSortDir==='asc'?' ▲':' ▼'):'')+'</th>';}
   h+='</tr></thead><tbody>';
@@ -3823,7 +3817,6 @@ function renderDemoQuality(){try{
     var rmd5=(row.rescheduled_meeting_date||'').split('T')[0]||'';
     var industry=(co.industry||'').replace(/_/g,' ');
     var tz=(co.timezone||'').replace(/^utc/,'UTC').replace(/_/g,' ');if(tz.length>20)tz=tz.substring(0,20)+'…';
-    var size=sizeMap[co.size]||co.size||'—';
     var hasExp=co.demoPrep||co.mainProducts||co.targetCustomer||(ciR.aboutContact)||co.description||row._pqReason;
     h+='<tr style="cursor:'+(hasExp?'pointer':'default')+'" onclick="'+(hasExp?"toggleExpand('eq-exp-"+ri3+"')":"")+'"><td><div style="display:flex;align-items:center;gap:4px"><span style="overflow:hidden;text-overflow:ellipsis" title="'+row.dealname+'">'+row.dealname+'</span><a href="https://app.hubspot.com/contacts/46815331/record/0-3/'+row.id+'" target="_blank" style="flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:4px;background:rgba(114,164,191,.1);color:var(--teal);font-size:9px;text-decoration:none" onclick="event.stopPropagation()">↗</a></div></td>';
     h+='<td>'+wsLink+'</td>';
@@ -3841,7 +3834,6 @@ function renderDemoQuality(){try{
     h+='<td style="text-align:center">'+(wtRaw?'<span class="pill" style="background:'+wtColor+'18;color:'+wtColor+'">'+wtLabel+'</span>':'<span style="color:#ccc">—</span>')+'</td>';
     h+='<td style="font-size:10px" title="'+industry+'">'+(industry.length>24?industry.substring(0,24)+'…':industry||'—')+'</td>';
     h+='<td style="font-size:9px" title="'+tz+'">'+(tz||'—')+'</td>';
-    h+='<td style="font-size:10px">'+size+'</td>';
     h+='<td style="text-align:center">'+(ciR.hasOpen?'<span style="color:#1565C0;font-weight:700">✓</span>':'<span style="color:#ccc">—</span>')+'</td>';
     h+='<td style="text-align:center">'+(ciR.hasReply?'<span style="color:#16A34A;font-weight:700">✓</span>':'<span style="color:#ccc">—</span>')+'</td>';
     h+='<td style="text-align:center">'+(ciR.inSequence?'<span style="color:#7C3AED;font-weight:700">✓</span>':'<span style="color:#ccc">—</span>')+'</td>';
@@ -3855,7 +3847,7 @@ function renderDemoQuality(){try{
     h+='<td style="font-size:9px" title="'+(row.utm_content||'')+'">'+(row.utm_content?(row.utm_content.length>14?row.utm_content.substring(0,14)+'…':row.utm_content):'<span style="color:#ccc">—</span>')+'</td>';
     h+='<td style="text-align:center">'+(hasExp?'<span style="font-size:11px;color:var(--teal);font-weight:700;cursor:pointer">▶</span>':'')+'</td></tr>';
     if(hasExp){
-      h+='<tr class="expand-row" id="eq-exp-'+ri3+'"><td colspan="25"><div style="padding:12px 8px">';
+      h+='<tr class="expand-row" id="eq-exp-'+ri3+'"><td colspan="24"><div style="padding:12px 8px">';
       var pqFullLabel={'Y':'Qualified','S':'Small','N':'Not Qualified','?':'Insufficient'};
       if(row._pqReason){h+='<div style="background:rgba(114,164,191,.08);border:1.5px solid rgba(114,164,191,.3);border-radius:10px;padding:10px 14px;margin-bottom:10px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="font-size:10px;font-weight:700;color:#72A4BF;text-transform:uppercase;letter-spacing:.05em">Prequalification</span><span class="pill" style="font-size:11px;padding:3px 12px;font-weight:700;'+(row._pq==='Y'?'background:#E8F5E9;color:#2E7D32':row._pq==='N'?'background:#FFEBEE;color:#C62828':row._pq==='S'?'background:#E3F2FD;color:#1565C0':'background:#FFF3E0;color:#E65100')+'">'+(pqFullLabel[row._pq]||row._pq)+'</span></div><div style="font-size:12px;color:var(--navy);line-height:1.5">'+row._pqReason+'</div></div>';}
       h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
@@ -3871,6 +3863,10 @@ function renderDemoQuality(){try{
 
   // Draw charts
   requestAnimationFrame(function(){
+    // Demos Booked by Web-Traffic Range donut — reuse the Irfan/Detailed renderer.
+    if(typeof _renderIrfanWtPieInto==='function'){
+      _renderIrfanWtPieInto('dq-webtraffic', d.demoTracking&&d.demoTracking.scheduledByWebTraffic, 'demos booked', d.demoTracking&&d.demoTracking.scheduledByWebTrafficPrior);
+    }
     drawStackedBar('eq-byday',byDay,repIds,_rcm,null);
     drawStackedBar('eq-bydow',byDOW,repIds,_rcm,['Mon','Tue','Wed','Thu','Fri']);
     if(repSorted.length>0)attachHover('eq-rep-bar','eq-rep-tip','data-rep',function(seg){return '<strong>'+seg.dataset.rep+'</strong>: '+seg.dataset.cnt+' demos ('+seg.dataset.pct+'%)';});

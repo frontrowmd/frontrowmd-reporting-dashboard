@@ -104,7 +104,6 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
     <div class="snav">
       <div class="ni active" onclick="switchPage('preDemo')" data-page="preDemo"><span class="ic">📋</span><span>Pre-Demo</span></div>
       <div class="ni" onclick="switchPage('postDemo')" data-page="postDemo"><span class="ic">📊</span><span>Post-Demo</span></div>
-      <div class="ni" onclick="switchPage('signup')" data-page="signup"><span class="ic">📈</span><span>Sign-Up Rate</span></div>
     </div>
     <div class="sb-toggle" onclick="sdToggleCollapse()"><span class="sb-arrow">◀</span><span class="sb-label">Collapse</span></div>
   </div>
@@ -118,14 +117,13 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
       <div id="loading" style="display:none;justify-content:center;align-items:center;padding:80px"><div class="sp" style="width:32px;height:32px;border-width:3px"></div></div>
       <div class="pg active" id="page-preDemo"><div id="preDemo-c"></div></div>
       <div class="pg" id="page-postDemo"><div id="postDemo-c"></div></div>
-      <div class="pg" id="page-signup"><div id="signup-c" style="padding:40px;text-align:center;color:var(--grey)">Sign-Up Rate page — coming soon</div></div>
     </div>
   </div>
 </div>
 <script>
 var API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/sales':'/api/sales';
 var PW='',AP='preDemo';
-var S={preDemo:{data:null},postDemo:{data:null},signup:{data:null}};
+var S={preDemo:{data:null},postDemo:{data:null}};
 var _repFilter='all',_dqPqRunning=false;
 var _dqPqMap=(function(){try{return JSON.parse(localStorage.getItem('sdPqResults')||'{}');}catch(e){return {};}})();
 // PQ KV sync (cross-device): mirrors logic in dashboard.html
@@ -192,7 +190,7 @@ function demoHappened(att,legacy){
   if(att)return false;
   return legacy==='Demo Given'||legacy==='Demo Given at Rescheduled time'||legacy==='Demo Given, Qualified Company, too early'||legacy==='Demo Given / Qualified / Too Small'||legacy==='Not Qualified after the demo';
 }
-var TITLES={'preDemo':'Pre-Demo','postDemo':'Post-Demo','signup':'Sign-Up Rate'};
+var TITLES={'preDemo':'Pre-Demo','postDemo':'Post-Demo'};
 function f$(v){return v==null?'—':'$'+Math.round(v).toLocaleString();}
 function fP(v){return v==null?'—':v.toFixed(1)+'%';}
 function stageBadge(sid){var l=STAGE_LABELS[sid]||sid||'—';var c=STAGE_COLORS[l]||'#9CA3AF';return l!=='—'?'<span class="pill" style="background:'+c+'18;color:'+c+'">'+l+'</span>':'—';}
@@ -218,7 +216,7 @@ async function doLogin(){
 }
 document.getElementById('pw').addEventListener('keydown',function(e){if(e.key==='Enter')doLogin();});
 function switchPage(pg){AP=pg;if(pg==='preDemo')_repFilter='all';if(pg==='postDemo')_pdRepFilter='all';document.querySelectorAll('.snav .ni').forEach(function(n){n.classList.toggle('active',n.dataset.page===pg);});document.querySelectorAll('.pg').forEach(function(p){p.classList.remove('active');});document.getElementById('page-'+pg).classList.add('active');document.getElementById('ptitle').textContent=TITLES[pg]||pg;if(!S[pg].data){loadData(pg);}else{renderPage();}}
-async function loadData(pg){var mode=pg==='preDemo'?'preDemoData':pg==='postDemo'?'postDemoData':'signupData';document.getElementById('loading').style.display='flex';try{var r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:PW,mode:mode})});var d=await r.json();S[pg].data=d;document.getElementById('loading').style.display='none';renderPage();}catch(e){document.getElementById('loading').style.display='none';}}
+async function loadData(pg){var mode=pg==='preDemo'?'preDemoData':'postDemoData';document.getElementById('loading').style.display='flex';try{var r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:PW,mode:mode})});var d=await r.json();S[pg].data=d;document.getElementById('loading').style.display='none';renderPage();}catch(e){document.getElementById('loading').style.display='none';}}
 function refreshData(){S[AP].data=null;loadData(AP);}
 function renderPage(){if(AP==='preDemo')renderPreDemo();if(AP==='postDemo')renderPostDemo();}
 
@@ -362,7 +360,7 @@ function renderPreDemo(){
   });
 
   // Deal Attribution (uses sharedFiltered)
-  var attrDims=[{k:'hubspot_owner_id',l:'Rep'},{k:'_pq',l:'PQ'},{k:'dealstage',l:'Stage'},{k:'_att',l:'Attendance'},{k:'_qo',l:'Qual Outcome'},{k:'_industry',l:'Industry'},{k:'_timezone',l:'Time Zone'},{k:'_webTraffic',l:'Web Traffic'},{k:'_storylane',l:'Storylane'}];
+  var attrDims=[{k:'hubspot_owner_id',l:'Rep'},{k:'_pq',l:'PQ'},{k:'dealstage',l:'Stage'},{k:'_att',l:'Attendance'},{k:'_qo',l:'Qual Outcome'},{k:'_webTraffic',l:'Web Traffic'},{k:'_storylane',l:'Storylane'}];
   var attrData={};
   for(var ai=0;ai<sharedFiltered.length;ai++){var ad=sharedFiltered[ai];var dimVal='';
     if(_dqAttrDim==='_att'){var atRaw=ad.demo_attendance_status||'';dimVal=atRaw?(ATT_LABELS[atRaw]||atRaw):'Blank';}
@@ -370,8 +368,6 @@ function renderPreDemo(){
     else if(_dqAttrDim==='_pq'){var pqFull={'Y':'Qualified','S':'Too Small','N':'Not Qualified','?':'Insufficient'};dimVal=pqFull[ad._pq]||ad._pq||'None';}
     else if(_dqAttrDim==='dealstage'){dimVal=STAGE_LABELS[ad.dealstage]||ad.dealstage||'Unknown';}
     else if(_dqAttrDim==='hubspot_owner_id'){dimVal=ownerMap[ad.hubspot_owner_id]||'Unassigned';}
-    else if(_dqAttrDim==='_industry'){dimVal=(ad._co&&ad._co.industry||'').replace(/_/g,' ')||'(none)';}
-    else if(_dqAttrDim==='_timezone'){dimVal=tzShort(ad._co&&ad._co.timezone)||'(none)';}
     else if(_dqAttrDim==='_webTraffic'){dimVal=wtLabels[(ad._ci&&ad._ci.webTraffic)||'']||(ad._ci&&ad._ci.webTraffic)||'(none)';}
     else if(_dqAttrDim==='_storylane'){dimVal=(ad._ci&&ad._ci.slName)?'Viewed':'Not Viewed';}
     else{dimVal=ad[_dqAttrDim]||'(none)';}
@@ -975,7 +971,7 @@ function renderPostDemo(){
   });
 
   // Deal Attribution
-  var attrDims=[{k:'hubspot_owner_id',l:'Rep'},{k:'_pq',l:'PQ'},{k:'dealstage',l:'Stage'},{k:'_att',l:'Attendance'},{k:'_qo',l:'Qual Outcome'},{k:'_industry',l:'Industry'},{k:'_timezone',l:'Time Zone'},{k:'_webTraffic',l:'Web Traffic'},{k:'_storylane',l:'Storylane'}];
+  var attrDims=[{k:'hubspot_owner_id',l:'Rep'},{k:'_pq',l:'PQ'},{k:'dealstage',l:'Stage'},{k:'_att',l:'Attendance'},{k:'_qo',l:'Qual Outcome'},{k:'_webTraffic',l:'Web Traffic'},{k:'_storylane',l:'Storylane'}];
   var attrData={};
   for(var ai=0;ai<sharedFiltered.length;ai++){var ad=sharedFiltered[ai];var dimVal='';
     if(_pdAttrDim==='_att'){var atRaw=ad.demo_attendance_status||'';dimVal=atRaw?(ATT_LABELS[atRaw]||atRaw):'Blank';}
@@ -983,8 +979,6 @@ function renderPostDemo(){
     else if(_pdAttrDim==='_pq'){var pqFull={'Y':'Qualified','S':'Too Small','N':'Not Qualified','?':'Insufficient'};dimVal=pqFull[ad._pq]||ad._pq||'None';}
     else if(_pdAttrDim==='dealstage'){dimVal=STAGE_LABELS[ad.dealstage]||ad.dealstage||'Unknown';}
     else if(_pdAttrDim==='hubspot_owner_id'){dimVal=ownerMap[ad.hubspot_owner_id]||'Unassigned';}
-    else if(_pdAttrDim==='_industry'){dimVal=(ad._co&&ad._co.industry||'').replace(/_/g,' ')||'(none)';}
-    else if(_pdAttrDim==='_timezone'){dimVal=tzShort(ad._co&&ad._co.timezone)||'(none)';}
     else if(_pdAttrDim==='_webTraffic'){dimVal=wtLabels[(ad._ci&&ad._ci.webTraffic)||'']||(ad._ci&&ad._ci.webTraffic)||'(none)';}
     else if(_pdAttrDim==='_storylane'){dimVal=(ad._ci&&ad._ci.slName)?'Viewed':'Not Viewed';}
     else{dimVal=ad[_pdAttrDim]||'(none)';}
