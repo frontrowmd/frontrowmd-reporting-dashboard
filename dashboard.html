@@ -749,7 +749,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r53';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r54';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -2865,6 +2865,8 @@ function renderNoShowAnalysis(d){
     var demosByTier={};
     var noShowsByWeeks={0:0,1:0,2:0,3:0,4:0,'5+':0};
     var demosByWeeks  ={0:0,1:0,2:0,3:0,4:0,'5+':0};
+    var noShowByCampaign={};   // utm_campaign → no-show count
+    var demosByCampaign={};    // utm_campaign → eligible-demo count (denominator for rate)
     var totalNoShows=0;
     var totalDemos=0;
     var noShowsMissingDate=0;
@@ -2886,6 +2888,11 @@ function renderNoShowAnalysis(d){
       var tierKey=wt||'(none)';
       demosByTier[tierKey]=(demosByTier[tierKey]||0)+1;
       totalDemos++;
+      // Campaign attribution — bucket every eligible demo by utm_campaign,
+      // and the subset of no-shows for the per-campaign rate.
+      var camp=(dd.utm_campaign||'').trim();
+      var campKey=camp||'(no campaign)';
+      demosByCampaign[campKey]=(demosByCampaign[campKey]||0)+1;
       // Compute weeks-from-create-to-demo once per deal so it's available
       // for BOTH the noShows-by-weeks numerator and the demos-by-weeks denom.
       var weeksBucket=null;
@@ -2906,6 +2913,7 @@ function renderNoShowAnalysis(d){
       if(isNoShow){
         totalNoShows++;
         noShowByTier[tierKey]=(noShowByTier[tierKey]||0)+1;
+        noShowByCampaign[campKey]=(noShowByCampaign[campKey]||0)+1;
         if(weeksBucket!=null){noShowsByWeeks[weeksBucket]++;}
         else{noShowsMissingDate++;}
       }
@@ -2922,21 +2930,91 @@ function renderNoShowAnalysis(d){
         +'</div>';
     }
     // Sub-card wrapper for each analysis. Gives every sub-analysis its own
-    // bordered container with a more prominent header (15px font-h, red dot,
-    // border-bottom separator). Inset red left-accent ties them visually to
-    // the parent No-Show Analysis section without re-using the section dot.
-    function _nsCardOpen(title,subtitle,isLast){
+    // bordered container with a more prominent header (15px font-h, accent dot,
+    // border-bottom separator). The inset left-accent ties them visually to
+    // the parent No-Show Analysis section. Pass an accentColor to override the
+    // default red — used by the Recommended Actions card (amber).
+    function _nsCardOpen(title,subtitle,isLast,accentColor){
+      var ac=accentColor||'#EF4444';
       var marginBot=isLast?'0':'14px';
-      return '<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin-bottom:'+marginBot+';box-shadow:inset 4px 0 0 #EF4444">'
+      return '<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin-bottom:'+marginBot+';box-shadow:inset 4px 0 0 '+ac+'">'
         +'<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border);flex-wrap:wrap">'
         +  '<div style="display:flex;align-items:center;gap:8px">'
-        +    '<div style="width:7px;height:7px;background:#EF4444;border-radius:50%"></div>'
+        +    '<div style="width:7px;height:7px;background:'+ac+';border-radius:50%"></div>'
         +    '<div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);letter-spacing:.01em">'+title+'</div>'
         +  '</div>'
         +  (subtitle?'<div style="font-size:11px;color:var(--grey);line-height:1.4">'+subtitle+'</div>':'')
         +'</div>';
     }
     function _nsCardClose(){return '</div>';}
+    // Auto-generated insight callout. Rendered as the first child inside each
+    // analysis card, between the header and the bars. Styled as a soft teal
+    // bordered note so it reads as analysis (not raw data).
+    function _insight(text){
+      if(!text)return '';
+      return '<div style="margin-bottom:12px;padding:8px 12px;background:rgba(114,164,191,.07);border-left:3px solid var(--teal);border-radius:4px;font-size:12px;color:var(--navy);line-height:1.45">'
+        +'<span style="display:inline-block;font-family:var(--font-h);font-size:9.5px;font-weight:700;color:var(--teal);letter-spacing:.08em;text-transform:uppercase;margin-right:6px">Insight</span>'
+        +text
+        +'</div>';
+    }
+
+    // ─── Compute insights for each card ─────────────────────────────
+    // Min denominator for "highest rate" insight — keeps single-deal tiers
+    // from claiming the top spot. Scales with sample size: tiny windows
+    // allow lower minimums.
+    var _minDenom=Math.max(3,Math.round(totalDemos*0.05));
+    function _topByCount(obj){
+      var best=null;
+      for(var k in obj){if(obj[k]>0&&(!best||obj[k]>best[1]))best=[k,obj[k]];}
+      return best;
+    }
+    function _topByRate(numObj,denObj,minD){
+      var best=null;
+      for(var k in denObj){
+        var d=denObj[k];if(d<(minD||3))continue;
+        var n=numObj[k]||0;var r=d>0?n/d*100:0;
+        if(r>0&&(!best||r>best.r))best={k:k,r:r,n:n,d:d};
+      }
+      return best;
+    }
+    // Insight 1: top tier by no-show share
+    var _ins1='';
+    if(totalNoShows>0){
+      var t1=_topByCount(noShowByTier);
+      if(t1){
+        var pct1=(t1[1]/totalNoShows*100).toFixed(1);
+        _ins1='<strong>'+(wtLabels[t1[0]]||t1[0])+'</strong> drives the most no-shows — <strong>'+pct1+'%</strong> of total ('+t1[1]+' of '+totalNoShows+').';
+      }
+    }
+    // Insight 2: highest tier rate
+    var _ins2='';
+    if(totalDemos>0){
+      var t2=_topByRate(noShowByTier,demosByTier,_minDenom);
+      if(t2&&t2.r>0){
+        _ins2='<strong>'+(wtLabels[t2.k]||t2.k)+'</strong> has the highest no-show rate at <strong>'+t2.r.toFixed(1)+'%</strong> ('+t2.n+' ÷ '+t2.d+').';
+      }else{
+        _ins2='No-show rates are similar across tiers in this window.';
+      }
+    }
+    // Insight 3: peak weekly bucket
+    var _ins3='';
+    var _peakBkt=null,_peakR=-1,_peakN=0,_peakD=0;
+    for(var _bi=0;_bi<bucketKeys.length;_bi++){
+      var _bkK=bucketKeys[_bi];
+      var _bd=demosByWeeks[_bkK]||0;if(_bd<3)continue;
+      var _bn=noShowsByWeeks[_bkK]||0;var _br=_bd>0?_bn/_bd*100:0;
+      if(_br>_peakR){_peakR=_br;_peakBkt=_bkK;_peakN=_bn;_peakD=_bd;}
+    }
+    var _sameWeekR=(demosByWeeks[0]||0)>=3?((noShowsByWeeks[0]||0)/demosByWeeks[0]*100):null;
+    var _peakMult=(_sameWeekR!=null&&_sameWeekR>0&&_peakBkt!==0&&_peakBkt!=null)?(_peakR/_sameWeekR).toFixed(1):null;
+    if(_peakBkt!=null&&_peakR>0){
+      var bktLblMap={0:'same week',1:'1 week ahead',2:'2 weeks ahead',3:'3 weeks ahead',4:'4 weeks ahead','5+':'5+ weeks ahead'};
+      _ins3='Demos booked <strong>'+bktLblMap[_peakBkt]+'</strong> have the highest no-show rate (<strong>'+_peakR.toFixed(1)+'%</strong>'
+        +(_peakMult?', '+_peakMult+'× same-week':'')+').';
+    }else{
+      _ins3='Insufficient data to identify a peak booking window.';
+    }
+    // Insight 4 (campaigns) computed below alongside the campaigns card.
 
     var h='';
 
@@ -2956,6 +3034,7 @@ function renderNoShowAnalysis(d){
     if(totalNoShows===0){
       h+='<div style="color:var(--grey);font-size:12px;padding:8px 0;font-style:italic">No no-shows in this window.</div>';
     }else{
+      h+=_insight(_ins1);
       var distKeys=Object.keys(noShowByTier).sort(function(a,b){return (wtOrder[a]||99)-(wtOrder[b]||99);});
       for(var dk=0;dk<distKeys.length;dk++){
         var t=distKeys[dk];
@@ -2971,6 +3050,7 @@ function renderNoShowAnalysis(d){
     if(totalDemos===0){
       h+='<div style="color:var(--grey);font-size:12px;padding:8px 0;font-style:italic">No demos in this window.</div>';
     }else{
+      h+=_insight(_ins2);
       var rateKeys=Object.keys(demosByTier).sort(function(a,b){return (wtOrder[a]||99)-(wtOrder[b]||99);});
       // Scale bars to the max rate so differences across tiers are visible
       // (bars normalized to 100% otherwise compress at low absolute rates).
@@ -3000,10 +3080,11 @@ function renderNoShowAnalysis(d){
     var bucketLabels={0:'Same week',1:'1 week',2:'2 weeks',3:'3 weeks',4:'4 weeks','5+':'5+ weeks'};
     var totalWeeksDemos=0;
     for(var bk=0;bk<bucketKeys.length;bk++)totalWeeksDemos+=demosByWeeks[bucketKeys[bk]];
-    h+=_nsCardOpen('No-show rate by weeks from create to demo','No Show ÷ (Demo Given orig + resched + No Show), per weekly bucket',true);
+    h+=_nsCardOpen('No-show rate by weeks from create to demo','No Show ÷ (Demo Given orig + resched + No Show), per weekly bucket');
     if(totalWeeksDemos===0){
       h+='<div style="color:var(--grey);font-size:12px;padding:8px 0;font-style:italic">No demos with both create + booked dates set in this window.</div>';
     }else{
+      h+=_insight(_ins3);
       // Pre-pass: compute rates so we can scale bars to the bucket with the
       // highest rate (mirrors subsection 2's bar normalization).
       var maxBktRate=0,bktRates={};
@@ -3034,6 +3115,115 @@ function renderNoShowAnalysis(d){
           +' — missing or unparseable createdate / date_demo_booked.</div>';
       }
     }
+    h+=_nsCardClose();
+
+    // ── 4. Top campaigns contributing to no-shows ──
+    // Build a sorted list of (campaign, no-show count, demos count, rate).
+    // Excludes the "(no campaign)" bucket from the top-N list but surfaces
+    // its count in the footer so the picture stays complete.
+    var campRows=[];
+    var noCampNs=0,noCampDm=0;
+    for(var ck in demosByCampaign){
+      var dm=demosByCampaign[ck]||0;
+      var ns=noShowByCampaign[ck]||0;
+      if(ck==='(no campaign)'){noCampNs=ns;noCampDm=dm;continue;}
+      if(ns===0)continue; // only show campaigns that produced at least one no-show
+      campRows.push({k:ck,ns:ns,dm:dm,r:dm>0?ns/dm*100:0});
+    }
+    // Sort by no-show count desc (the "top contributors" framing), tie-break by rate desc.
+    campRows.sort(function(a,b){if(b.ns!==a.ns)return b.ns-a.ns;return b.r-a.r;});
+    var TOP_CAMPAIGNS=8;
+    var topCamp=campRows.slice(0,TOP_CAMPAIGNS);
+    // Insight 4 — top campaign's share of total no-shows + its own rate.
+    var _ins4='';
+    if(topCamp.length>0&&totalNoShows>0){
+      var tc=topCamp[0];
+      var share=(tc.ns/totalNoShows*100).toFixed(1);
+      var rateStr=tc.dm>0?tc.r.toFixed(1)+'%':'—';
+      _ins4='<strong>'+tc.k+'</strong> contributes the most no-shows — <strong>'+tc.ns+'</strong> ('+share+'% of total) at a <strong>'+rateStr+'</strong> rate.';
+    }
+    h+=_nsCardOpen('Top campaigns contributing to no-shows','Sorted by no-show count · rate = No Show ÷ eligible demos for that campaign');
+    if(totalNoShows===0||campRows.length===0){
+      h+='<div style="color:var(--grey);font-size:12px;padding:8px 0;font-style:italic">No campaign-attributed no-shows in this window.</div>';
+    }else{
+      h+=_insight(_ins4);
+      // Bars scaled to the top campaign's count so cross-row comparisons are
+      // visually faithful (the leader fills the bar, others scale relative).
+      var maxCampNs=topCamp[0].ns;
+      for(var ti=0;ti<topCamp.length;ti++){
+        var tcr=topCamp[ti];
+        var barPctC=maxCampNs>0?(tcr.ns/maxCampNs*100):0;
+        var displayK=tcr.k.length>34?tcr.k.substring(0,32)+'…':tcr.k;
+        var rightTxt=tcr.ns+' no-show'+(tcr.ns===1?'':'s')+' · '+(tcr.dm>0?tcr.r.toFixed(1)+'%':'—')+' rate ('+tcr.ns+' ÷ '+tcr.dm+')';
+        h+=_row(displayK,tcr.k,barPctC,'#EF4444',rightTxt,210);
+      }
+      var footerBits=[];
+      if(campRows.length>TOP_CAMPAIGNS){
+        var rest=campRows.slice(TOP_CAMPAIGNS);
+        var restNs=0;for(var ri=0;ri<rest.length;ri++)restNs+=rest[ri].ns;
+        footerBits.push((campRows.length-TOP_CAMPAIGNS)+' more campaigns · '+restNs+' no-show'+(restNs===1?'':'s'));
+      }
+      if(noCampNs>0){
+        footerBits.push(noCampNs+' no-show'+(noCampNs===1?'':'s')+' from deals with no utm_campaign');
+      }
+      if(footerBits.length){
+        h+='<div style="font-size:10px;color:var(--grey);font-style:italic;margin-top:8px">'+footerBits.join(' · ')+'.</div>';
+      }
+    }
+    h+=_nsCardClose();
+
+    // ── 5. Recommended Actions ──
+    // Conditional recommendations driven by the same aggregates we just
+    // computed. The list is curated, not exhaustive — we surface the
+    // recommendations whose triggering conditions actually fire in the
+    // current window so the advice stays grounded in the data.
+    var recs=[];
+    // Rec 1 — tighten booking window
+    if(_peakBkt!=null&&_peakR>0&&(_peakBkt===2||_peakBkt===3||_peakBkt===4||_peakBkt==='5+')&&_peakMult&&parseFloat(_peakMult)>=1.5){
+      var bktWord=_peakBkt==='5+'?'5+ weeks':(_peakBkt+' week'+(_peakBkt===1?'':'s'));
+      recs.push({
+        title:'Tighten the public booking window',
+        body:'Demos booked '+bktWord+' out no-show at '+_peakR.toFixed(1)+'% — '+_peakMult+'× the same-week rate. Cap the calendar at ~14 days, or require manager approval for further-out slots.'
+      });
+    }
+    // Rec 2 — aggressive reminders for low-traffic tiers
+    var lowTierNs=(noShowByTier['Pre-launch / just launching']||0)+(noShowByTier['0-10K monthly web visitors']||0);
+    var lowTierShare=totalNoShows>0?lowTierNs/totalNoShows*100:0;
+    if(lowTierShare>=40){
+      recs.push({
+        title:'Layer aggressive reminders on low-traffic bookings',
+        body:'Pre-launch + 0-10K drive '+lowTierShare.toFixed(0)+'% of no-shows. Add SMS 24h before + day-of plus a personal touchpoint from the rep the day before — these segments are early-stage and need higher-touch confirmation.'
+      });
+    }
+    // Rec 3 — audit top campaign
+    if(topCamp.length>0&&totalNoShows>0){
+      var topShare=topCamp[0].ns/totalNoShows*100;
+      if(topShare>=20&&topCamp[0].dm>=5){
+        recs.push({
+          title:'Audit your highest-no-show campaign',
+          body:'<strong>'+topCamp[0].k+'</strong> alone accounts for '+topShare.toFixed(0)+'% of no-shows ('+topCamp[0].ns+' of '+totalNoShows+') at a '+topCamp[0].r.toFixed(1)+'% rate. Pull the landing-page / creative for this campaign and check whether targeting is pulling in unqualified intent.'
+        });
+      }
+    }
+    // Rec 4 — universal: flag high-risk bookings in HubSpot
+    recs.push({
+      title:'Flag high-risk bookings in HubSpot at create time',
+      body:'Combine Web Traffic tier ∈ (Pre-launch, 0-10K) AND days-to-demo > 14 into a single "high no-show risk" property on the deal. Lets reps proactively warm those bookings and gives you a clean cohort to A/B-test the gift-card incentive against.'
+    });
+
+    h+=_nsCardOpen('Recommended Actions','Conditional on the patterns observed in this window',true,'#F59E0B');
+    h+='<ol style="margin:0;padding-left:0;list-style:none;counter-reset:rec">';
+    for(var ri2=0;ri2<recs.length;ri2++){
+      var rc=recs[ri2];
+      h+='<li style="counter-increment:rec;display:flex;gap:12px;margin-bottom:'+(ri2===recs.length-1?'0':'14px')+'">'
+        +'<div style="flex-shrink:0;width:24px;height:24px;border-radius:50%;background:#F59E0B;color:#fff;display:flex;align-items:center;justify-content:center;font-family:var(--font-h);font-size:12px;font-weight:700">'+(ri2+1)+'</div>'
+        +'<div style="flex:1;min-width:0">'
+        +  '<div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy);margin-bottom:3px">'+rc.title+'</div>'
+        +  '<div style="font-size:12px;color:var(--navy);line-height:1.5;opacity:.85">'+rc.body+'</div>'
+        +'</div>'
+        +'</li>';
+    }
+    h+='</ol>';
     h+=_nsCardClose();
 
     el.innerHTML=h;
