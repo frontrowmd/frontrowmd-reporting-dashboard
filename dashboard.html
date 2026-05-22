@@ -749,7 +749,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r51';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r52';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -2793,14 +2793,18 @@ function renderOverviewOutcomeBreakdown(d){
   }catch(err){console.error('[OV-OUTCOME] Error:',err);console.error('[OV-OUTCOME] Stack:',err.stack);}
 }
 
-// No-Show Analysis (Detailed Dashboard). Three sub-analyses on the no-shows
-// that fall in the current window:
+// No-Show Analysis (Detailed Dashboard). Three sub-analyses on the past-dated
+// demos that fall in the current window:
 //   1. Distribution of no-shows by web-traffic tier (% of all no-shows in each tier)
 //   2. No-show rate per web-traffic tier (No Show ÷ Demo Given orig + resched + No Show)
-//   3. No-shows bucketed by # of weeks between hs_createdate and date_demo_booked
+//   3. No-show rate by weeks-from-create-to-demo, same denominator as (2),
+//      bucketed by floor((date_demo_booked − hs_createdate) / 7 days).
 // Web-traffic tier isn't on demoQualityDeals directly — it lives in
 // contactInfoMap and is matched in by the same fuzzy logic that
 // renderDemoQuality uses (deal name ↔ company name / domain root).
+// _ovNsHideBlanks: when true, drop deals whose web-traffic tier is unknown
+// from all three sub-analyses so percentages renormalize cleanly.
+var _ovNsHideBlanks=false;
 function renderNoShowAnalysis(d){
   try{
     var el=document.getElementById('ov-noshow-wrap');
@@ -2850,15 +2854,22 @@ function renderNoShowAnalysis(d){
     }
 
     // Walk the filtered deals exactly once and bucket the counts we need:
-    //   noShowByTier  : no-shows per tier (used for both % distribution + rate numerator)
-    //   demosByTier   : orig + resched + noShow per tier (denominator for rate)
-    //   weeksBuckets  : no-shows bucketed by floor((booked - create) / 7 days)
+    //   noShowByTier        : no-shows per tier (numerator for tier %)
+    //   demosByTier         : orig + resched + noShow per tier (denominator for tier rate)
+    //   noShowsByWeeks      : no-shows bucketed by floor((booked - create) / 7 days)
+    //   demosByWeeks        : all eligible demos bucketed the same way (denominator
+    //                         for the per-week no-show rate)
+    //   blanksExcluded      : count of deals dropped because tier is unknown AND
+    //                         _ovNsHideBlanks is on — surfaced in the header.
     var noShowByTier={};
     var demosByTier={};
-    var weeksBuckets={0:0,1:0,2:0,3:0,4:0,'5+':0};
+    var noShowsByWeeks={0:0,1:0,2:0,3:0,4:0,'5+':0};
+    var demosByWeeks  ={0:0,1:0,2:0,3:0,4:0,'5+':0};
     var totalNoShows=0;
     var totalDemos=0;
     var noShowsMissingDate=0;
+    var demosMissingDate=0;
+    var blanksExcluded=0;
     for(var i=0;i<pastFiltered.length;i++){
       var dd=pastFiltered[i];
       var att=(dd.demo_attendance_status||'').trim();
@@ -2869,25 +2880,34 @@ function renderNoShowAnalysis(d){
       if(!isOrig&&!isResched&&!isNoShow)continue;
       var ci=findCi(dd);
       var wt=(ci&&ci.webTraffic)||'';
+      // Hide-blanks: when on, drop deals with unknown tier from every analysis
+      // so all percentages renormalize over the known-tier subset.
+      if(_ovNsHideBlanks&&!wt){blanksExcluded++;continue;}
       var tierKey=wt||'(none)';
       demosByTier[tierKey]=(demosByTier[tierKey]||0)+1;
       totalDemos++;
+      // Compute weeks-from-create-to-demo once per deal so it's available
+      // for BOTH the noShows-by-weeks numerator and the demos-by-weeks denom.
+      var weeksBucket=null;
+      var cd=(dd.createdate||'').split('T')[0];
+      var db=(dd.date_demo_booked||'').split('T')[0];
+      if(cd&&db){
+        var cdMs=new Date(cd+'T00:00:00Z').getTime();
+        var dbMs=new Date(db+'T00:00:00Z').getTime();
+        if(!isNaN(cdMs)&&!isNaN(dbMs)){
+          var diffDays=Math.floor((dbMs-cdMs)/86400000);
+          if(diffDays<0)diffDays=0;
+          var weeks=Math.floor(diffDays/7);
+          weeksBucket=weeks>=5?'5+':weeks;
+        }
+      }
+      if(weeksBucket!=null){demosByWeeks[weeksBucket]++;}
+      else{demosMissingDate++;}
       if(isNoShow){
         totalNoShows++;
         noShowByTier[tierKey]=(noShowByTier[tierKey]||0)+1;
-        var cd=(dd.createdate||'').split('T')[0];
-        var db=(dd.date_demo_booked||'').split('T')[0];
-        if(cd&&db){
-          var cdMs=new Date(cd+'T00:00:00Z').getTime();
-          var dbMs=new Date(db+'T00:00:00Z').getTime();
-          if(!isNaN(cdMs)&&!isNaN(dbMs)){
-            var diffDays=Math.floor((dbMs-cdMs)/86400000);
-            if(diffDays<0)diffDays=0;
-            var weeks=Math.floor(diffDays/7);
-            var bucket=weeks>=5?'5+':weeks;
-            weeksBuckets[bucket]++;
-          }else{noShowsMissingDate++;}
-        }else{noShowsMissingDate++;}
+        if(weeksBucket!=null){noShowsByWeeks[weeksBucket]++;}
+        else{noShowsMissingDate++;}
       }
     }
 
@@ -2903,6 +2923,17 @@ function renderNoShowAnalysis(d){
     }
 
     var h='';
+
+    // ── Hide blanks toggle — top-right of the section, same control pattern
+    // as the Deal Attribution "Hide blanks" checkbox on Demo Quality. Re-uses
+    // S.dashboard.data on change so we don't need to capture `d` in a closure.
+    h+='<div style="display:flex;justify-content:flex-end;align-items:center;margin-bottom:10px">';
+    h+='<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--grey);cursor:pointer">'
+      +'<input type="checkbox" '+(_ovNsHideBlanks?'checked':'')+' onchange="_ovNsHideBlanks=this.checked;renderNoShowAnalysis(S.dashboard.data)" style="margin:0;cursor:pointer">'
+      +'Hide blanks'
+      +(_ovNsHideBlanks&&blanksExcluded>0?' <span style="color:var(--teal);font-weight:600">('+blanksExcluded+' hidden)</span>':'')
+      +'</label>';
+    h+='</div>';
 
     // ── 1. No-show distribution by tier (% of all no-shows in each tier) ──
     h+='<div style="margin-bottom:22px">';
@@ -2951,26 +2982,49 @@ function renderNoShowAnalysis(d){
     }
     h+='</div>';
 
-    // ── 3. No-shows by weeks between create and demo ──
-    var totalWithDates=0;
+    // ── 3. No-show RATE by weeks-from-create-to-demo ──
+    // For each weeks-ahead bucket: No Show ÷ (Demo Given orig + resched + No Show),
+    // i.e. how often do demos booked X weeks out turn into no-shows. Bars scale
+    // to the max rate so cross-bucket differences stay readable at low rates.
     var bucketKeys=[0,1,2,3,4,'5+'];
-    for(var bk=0;bk<bucketKeys.length;bk++)totalWithDates+=weeksBuckets[bucketKeys[bk]];
     var bucketLabels={0:'Same week',1:'1 week',2:'2 weeks',3:'3 weeks',4:'4 weeks','5+':'5+ weeks'};
+    var totalWeeksDemos=0;
+    for(var bk=0;bk<bucketKeys.length;bk++)totalWeeksDemos+=demosByWeeks[bucketKeys[bk]];
     h+='<div>';
     h+='<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
-      +'<div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy)">No-shows by weeks from create to demo</div>'
-      +'<div style="font-size:11px;color:var(--grey)">date_demo_booked − createdate, bucketed weekly · '+totalWithDates+' no-shows</div></div>';
-    if(totalWithDates===0){
-      h+='<div style="color:var(--grey);font-size:12px;padding:8px 0;font-style:italic">No no-shows with both create + booked dates set in this window.</div>';
+      +'<div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy)">No-show rate by weeks from create to demo</div>'
+      +'<div style="font-size:11px;color:var(--grey)">No Show ÷ (Demo Given orig + resched + No Show), per weekly bucket</div></div>';
+    if(totalWeeksDemos===0){
+      h+='<div style="color:var(--grey);font-size:12px;padding:8px 0;font-style:italic">No demos with both create + booked dates set in this window.</div>';
     }else{
+      // Pre-pass: compute rates so we can scale bars to the bucket with the
+      // highest rate (mirrors subsection 2's bar normalization).
+      var maxBktRate=0,bktRates={};
       for(var bk2=0;bk2<bucketKeys.length;bk2++){
-        var bktK=bucketKeys[bk2];
-        var bktCnt=weeksBuckets[bktK];
-        var bktPct=bktCnt/totalWithDates*100;
-        h+=_row(bucketLabels[bktK],null,bktPct,'#EF4444',bktPct.toFixed(1)+'% ('+bktCnt+')',80);
+        var bk2K=bucketKeys[bk2];
+        var ns2=noShowsByWeeks[bk2K]||0;
+        var dm2=demosByWeeks[bk2K]||0;
+        var br=dm2>0?(ns2/dm2*100):0;
+        bktRates[bk2K]={r:br,ns:ns2,dm:dm2};
+        if(br>maxBktRate)maxBktRate=br;
       }
-      if(noShowsMissingDate>0){
-        h+='<div style="font-size:10px;color:var(--grey);font-style:italic;margin-top:8px">'+noShowsMissingDate+' no-show'+(noShowsMissingDate===1?'':'s')+' excluded — missing or unparseable createdate / date_demo_booked.</div>';
+      for(var bk3=0;bk3<bucketKeys.length;bk3++){
+        var bk3K=bucketKeys[bk3];
+        var bd=bktRates[bk3K];
+        if(bd.dm===0){
+          // No demos in this bucket — render a flat "0% (0 ÷ 0)" row so the
+          // 6-bucket scale stays consistent (rather than dropping the row).
+          h+=_row(bucketLabels[bk3K],null,0,'#EF4444','— (0 ÷ 0)',140);
+        }else{
+          var bktBarPct=maxBktRate>0?(bd.r/maxBktRate*100):0;
+          h+=_row(bucketLabels[bk3K],null,bktBarPct,'#EF4444',bd.r.toFixed(1)+'% ('+bd.ns+' ÷ '+bd.dm+')',140);
+        }
+      }
+      if(demosMissingDate>0){
+        h+='<div style="font-size:10px;color:var(--grey);font-style:italic;margin-top:8px">'
+          +demosMissingDate+' dem'+(demosMissingDate===1?'o':'os')+' excluded'
+          +(noShowsMissingDate>0?' ('+noShowsMissingDate+' no-show'+(noShowsMissingDate===1?'':'s')+')':'')
+          +' — missing or unparseable createdate / date_demo_booked.</div>';
       }
     }
     h+='</div>';
