@@ -749,7 +749,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r52';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r53';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -2921,6 +2921,22 @@ function renderNoShowAnalysis(d){
         +'<div style="width:'+(rightW||80)+'px;font-size:11px;color:var(--grey);white-space:nowrap">'+rightTxt+'</div>'
         +'</div>';
     }
+    // Sub-card wrapper for each analysis. Gives every sub-analysis its own
+    // bordered container with a more prominent header (15px font-h, red dot,
+    // border-bottom separator). Inset red left-accent ties them visually to
+    // the parent No-Show Analysis section without re-using the section dot.
+    function _nsCardOpen(title,subtitle,isLast){
+      var marginBot=isLast?'0':'14px';
+      return '<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin-bottom:'+marginBot+';box-shadow:inset 4px 0 0 #EF4444">'
+        +'<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border);flex-wrap:wrap">'
+        +  '<div style="display:flex;align-items:center;gap:8px">'
+        +    '<div style="width:7px;height:7px;background:#EF4444;border-radius:50%"></div>'
+        +    '<div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);letter-spacing:.01em">'+title+'</div>'
+        +  '</div>'
+        +  (subtitle?'<div style="font-size:11px;color:var(--grey);line-height:1.4">'+subtitle+'</div>':'')
+        +'</div>';
+    }
+    function _nsCardClose(){return '</div>';}
 
     var h='';
 
@@ -2936,10 +2952,7 @@ function renderNoShowAnalysis(d){
     h+='</div>';
 
     // ── 1. No-show distribution by tier (% of all no-shows in each tier) ──
-    h+='<div style="margin-bottom:22px">';
-    h+='<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
-      +'<div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy)">No-show distribution by Web Traffic tier</div>'
-      +'<div style="font-size:11px;color:var(--grey)">'+totalNoShows+' total no shows · % of all no shows in each tier</div></div>';
+    h+=_nsCardOpen('No-show distribution by Web Traffic tier',totalNoShows+' total no shows · % of all no shows in each tier');
     if(totalNoShows===0){
       h+='<div style="color:var(--grey);font-size:12px;padding:8px 0;font-style:italic">No no-shows in this window.</div>';
     }else{
@@ -2951,13 +2964,10 @@ function renderNoShowAnalysis(d){
         h+=_row(wtLabels[t]||t,t,pct,wtColors[t]||'#9CA3AF',pct.toFixed(1)+'% ('+cnt+')',80);
       }
     }
-    h+='</div>';
+    h+=_nsCardClose();
 
     // ── 2. No-show rate per tier ──
-    h+='<div style="margin-bottom:22px">';
-    h+='<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
-      +'<div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy)">No-show rate per Web Traffic tier</div>'
-      +'<div style="font-size:11px;color:var(--grey)">No Show ÷ (Demo Given orig + resched + No Show), per tier</div></div>';
+    h+=_nsCardOpen('No-show rate per Web Traffic tier','No Show ÷ (Demo Given orig + resched + No Show), per tier');
     if(totalDemos===0){
       h+='<div style="color:var(--grey);font-size:12px;padding:8px 0;font-style:italic">No demos in this window.</div>';
     }else{
@@ -2980,7 +2990,7 @@ function renderNoShowAnalysis(d){
         h+=_row(wtLabels[t3]||t3,t3,barPct,wtColors[t3]||'#9CA3AF',rD.r.toFixed(1)+'% ('+rD.ns+' ÷ '+rD.demos+')',140);
       }
     }
-    h+='</div>';
+    h+=_nsCardClose();
 
     // ── 3. No-show RATE by weeks-from-create-to-demo ──
     // For each weeks-ahead bucket: No Show ÷ (Demo Given orig + resched + No Show),
@@ -2990,10 +3000,7 @@ function renderNoShowAnalysis(d){
     var bucketLabels={0:'Same week',1:'1 week',2:'2 weeks',3:'3 weeks',4:'4 weeks','5+':'5+ weeks'};
     var totalWeeksDemos=0;
     for(var bk=0;bk<bucketKeys.length;bk++)totalWeeksDemos+=demosByWeeks[bucketKeys[bk]];
-    h+='<div>';
-    h+='<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
-      +'<div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy)">No-show rate by weeks from create to demo</div>'
-      +'<div style="font-size:11px;color:var(--grey)">No Show ÷ (Demo Given orig + resched + No Show), per weekly bucket</div></div>';
+    h+=_nsCardOpen('No-show rate by weeks from create to demo','No Show ÷ (Demo Given orig + resched + No Show), per weekly bucket',true);
     if(totalWeeksDemos===0){
       h+='<div style="color:var(--grey);font-size:12px;padding:8px 0;font-style:italic">No demos with both create + booked dates set in this window.</div>';
     }else{
@@ -3027,7 +3034,7 @@ function renderNoShowAnalysis(d){
           +' — missing or unparseable createdate / date_demo_booked.</div>';
       }
     }
-    h+='</div>';
+    h+=_nsCardClose();
 
     el.innerHTML=h;
   }catch(err){
