@@ -661,15 +661,23 @@ async function fetchCohortDealsPerMonth(token, cohortMonths) {
   return { union: [...map.values()], perMonth, perMonthStatus };
 }
 
-// Closed-won deals by closedate (guide Section 5)
+// Closed-won deals by closedate (guide Section 5).
+// Uses HubSpot's pipeline-agnostic `hs_is_closed_won` computed property so
+// deals won in custom pipelines (e.g. the Onboarding pipeline, whose won
+// stage is NOT literally 'closedwon') are picked up alongside the default
+// pipeline. The narrower `dealstage = closedwon` filter we used to use was
+// the cause of Detailed Dashboard Revenue Outcome showing one fewer deal
+// than the Irfan Dashboard for the same MTD window — Irfan's
+// fetchAnyWonDealsByCloseDate is already pipeline-agnostic, this brings the
+// Detailed Dashboard + Analyzer paths in line.
 async function fetchClosedWonDeals(token, from, to) {
   return hsSearch(token, 'deals', [{
     filters: [
-      { propertyName: 'dealstage', operator: 'EQ', value: 'closedwon' },
+      { propertyName: 'hs_is_closed_won', operator: 'EQ', value: 'true' },
       { propertyName: 'closedate', operator: 'GTE', value: String(toMsET(from)) },
       { propertyName: 'closedate', operator: 'LTE', value: String(toMsET(to, true)) },
     ],
-  }], ['amount','closedate','hs_createdate','utm_source','utm_medium','utm_campaign','utm_content','hubspot_owner_id','brand_status','average_monthly_web_traffic__cloned_','average_monthly_web_traffic']);
+  }], ['amount','closedate','hs_createdate','hs_date_entered_closedwon','dealstage','utm_source','utm_medium','utm_campaign','utm_content','hubspot_owner_id','brand_status','average_monthly_web_traffic__cloned_','average_monthly_web_traffic']);
 }
 
 // Deals by hs_createdate — for Demo Quality table (shows deals created/booked in the window)
@@ -2563,14 +2571,23 @@ async function fetchAzCampaigns(apiKey, from, to) {
     for (const row of rows) {
       if (filterFn && !filterFn(row)) continue;
       const name = row.campaign_name || '(no name)';
-      if (!camps[name]) camps[name] = { name, spend:0, clicks:0, impressions:0, demos:0, freqVals:[], dates:[], status:null };
+      if (!camps[name]) camps[name] = { name, spend:0, clicks:0, impressions:0, demos:0, freqVals:[], dates:[], status:null, _statusDate:'' };
       camps[name].spend += parseFloat(row.spend)||0;
       camps[name].clicks += parseInt(row.clicks)||0;
       camps[name].impressions += parseInt(row.impressions)||0;
       if (row.date) camps[name].dates.push(row.date);
-      // Track status (effective_status for Meta, campaign_status for others) — normalize across connectors
+      // Track status (effective_status for Meta, campaign_status for others) —
+      // pick the value from the row with the LATEST date so the displayed
+      // status always reflects the most recent known state. Last-row-wins
+      // produced inconsistent results across windows (e.g. a campaign paused
+      // mid-month would show ACTIVE on MTD because an earlier row's status
+      // overwrote the final paused row depending on Windsor's row order).
       const rawSt = (row.effective_status || row.campaign_status || '').toUpperCase();
-      if (rawSt) camps[name].status = normStatus(rawSt);
+      const _rd = row.date || '';
+      if (rawSt && _rd >= camps[name]._statusDate) {
+        camps[name].status = normStatus(rawSt);
+        camps[name]._statusDate = _rd;
+      }
       // Only count demos if demoFilterFn passes (or no filter)
       if (!demoFilterFn || demoFilterFn(row)) {
         const rawD = parseFloat(row[cfg.demoField])||0;
@@ -2586,6 +2603,7 @@ async function fetchAzCampaigns(apiKey, from, to) {
       c.frequency = c.freqVals.length?c.freqVals.reduce((a,b)=>a+b,0)/c.freqVals.length:null;
       if (c.freqVals.length) fAll.push(...c.freqVals);
       delete c.freqVals;
+      delete c._statusDate;
       // Compute date range
       if (c.dates.length) {
         c.dates.sort();
@@ -2607,19 +2625,25 @@ async function fetchAzCampaigns(apiKey, from, to) {
     // Per-connector endpoint returns 'campaign' not 'campaign_name', no 'datasource' field
     for (const row of rows) {
       const name = row.campaign || row.campaign_name || '(no name)';
-      if (!camps[name]) camps[name] = { name, spend:0, clicks:0, impressions:0, demos:0, freqVals:[], dates:[], status:null };
+      if (!camps[name]) camps[name] = { name, spend:0, clicks:0, impressions:0, demos:0, freqVals:[], dates:[], status:null, _statusDate:'' };
       camps[name].spend += parseFloat(row.spend)||0;
       camps[name].clicks += parseInt(row.clicks)||0;
       camps[name].impressions += parseInt(row.impressions)||0;
       if (row.date) camps[name].dates.push(row.date);
+      // Latest-date-wins (see aggRows comment) — keeps status consistent across windows.
       const st = row.campaign_status;
-      if (st) camps[name].status = normStatus(st);
+      const _rd = row.date || '';
+      if (st && _rd >= camps[name]._statusDate) {
+        camps[name].status = normStatus(st);
+        camps[name]._statusDate = _rd;
+      }
     }
     let tS=0,tC=0,tI=0;
     for (const c of Object.values(camps)) {
       tS+=c.spend; tC+=c.clicks; tI+=c.impressions;
       c.ctr = c.impressions>0?(c.clicks/c.impressions)*100:0;
       c.frequency = null; delete c.freqVals;
+      delete c._statusDate;
       if (c.dates.length) {
         c.dates.sort(); c.firstDate=c.dates[0]; c.lastDate=c.dates[c.dates.length-1];
         const fd=new Date(c.firstDate+'T12:00:00Z'),ld=new Date(c.lastDate+'T12:00:00Z');
@@ -2730,13 +2754,18 @@ async function fetchAzCreatives(apiKey, from, to) {
         map[name]._placements[pKey].demos += Math.round(pDemo);
       }
       // Flat aggregation
-      if (!map[name]) map[name] = { name, spend:0, clicks:0, impressions:0, demos:0, freqVals:[], thumbnail: tm[name] || null, campaignName: campName, videoP25:0, _dates:[], _placements:{}, status:null };
-      // Roll up ad_status across daily rows. Prefer ACTIVE — if any single
-      // row in the window reports ACTIVE, the creative is currently active.
+      if (!map[name]) map[name] = { name, spend:0, clicks:0, impressions:0, demos:0, freqVals:[], thumbnail: tm[name] || null, campaignName: campName, videoP25:0, _dates:[], _placements:{}, status:null, _statusDate:'' };
+      // Roll up ad_status across daily rows by LATEST DATE. The previous
+      // "prefer ACTIVE — any single ACTIVE row wins" rule made creatives
+      // that were active early in the window then paused later still appear
+      // ACTIVE on long windows (e.g. MTD) while showing PAUSED on short
+      // windows (e.g. Last 7 Days). The displayed status now always reflects
+      // the most recent known state across whatever window is requested.
       const _rowStatus = (row.ad_status || row.adStatus || row.effective_status || '').toString().toUpperCase();
-      if (_rowStatus) {
-        if (_rowStatus === 'ACTIVE') map[name].status = 'ACTIVE';
-        else if (!map[name].status) map[name].status = _rowStatus;
+      const _rowDate = row.date || '';
+      if (_rowStatus && _rowDate >= map[name]._statusDate) {
+        map[name].status = normStatus(_rowStatus);
+        map[name]._statusDate = _rowDate;
       }
       map[name].spend += parseFloat(row.spend)||0;
       if (!map[name]._campSpend) map[name]._campSpend = {};
@@ -2758,11 +2787,11 @@ async function fetchAzCreatives(apiKey, from, to) {
       // Per-campaign creative aggregation
       const campKey = campName.toLowerCase().trim();
       if (!campCreMap[campKey]) campCreMap[campKey] = {};
-      if (!campCreMap[campKey][name]) campCreMap[campKey][name] = { name, spend:0, clicks:0, impressions:0, demos:0, freqVals:[], thumbnail: tm[name] || null, videoP25:0, _dates:[], _campName: campName, status:null };
-      // Same ACTIVE-preferred status rollup as the flat map
-      if (_rowStatus) {
-        if (_rowStatus === 'ACTIVE') campCreMap[campKey][name].status = 'ACTIVE';
-        else if (!campCreMap[campKey][name].status) campCreMap[campKey][name].status = _rowStatus;
+      if (!campCreMap[campKey][name]) campCreMap[campKey][name] = { name, spend:0, clicks:0, impressions:0, demos:0, freqVals:[], thumbnail: tm[name] || null, videoP25:0, _dates:[], _campName: campName, status:null, _statusDate:'' };
+      // Same latest-date-wins status rollup as the flat map.
+      if (_rowStatus && _rowDate >= campCreMap[campKey][name]._statusDate) {
+        campCreMap[campKey][name].status = normStatus(_rowStatus);
+        campCreMap[campKey][name]._statusDate = _rowDate;
       }
       campCreMap[campKey][name].spend += parseFloat(row.spend)||0;
       campCreMap[campKey][name].clicks += parseInt(row.clicks)||0;
@@ -2783,6 +2812,7 @@ async function fetchAzCreatives(apiKey, from, to) {
       c.cpd = c.demos > 0 ? c.spend/c.demos : null;
       c.frequency = c.freqVals.length ? c.freqVals.reduce((a,b)=>a+b,0)/c.freqVals.length : null;
       delete c.freqVals;
+      delete c._statusDate;
       // Compute activeDays
       if (c._dates && c._dates.length) {
         c._dates.sort(); const fd=new Date(c._dates[0]+'T12:00:00Z'),ld=new Date(c._dates[c._dates.length-1]+'T12:00:00Z');
@@ -2813,6 +2843,7 @@ async function fetchAzCreatives(apiKey, from, to) {
         c.cpd = c.demos > 0 ? c.spend/c.demos : null;
         c.frequency = c.freqVals.length ? c.freqVals.reduce((a,b)=>a+b,0)/c.freqVals.length : null;
         delete c.freqVals;
+        delete c._statusDate;
         if (c._dates && c._dates.length) {
           c._dates.sort(); const fd2=new Date(c._dates[0]+'T12:00:00Z'),ld2=new Date(c._dates[c._dates.length-1]+'T12:00:00Z');
           c.activeDays=Math.round((ld2-fd2)/86400000)+1;
