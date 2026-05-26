@@ -264,6 +264,16 @@ function bdFirstName(fullName){
   }
   return fullName.split(' ')[0]||fullName;
 }
+// Reps to suppress from the BD Tracker — matched on first name. Hidden reps
+// are dropped from their filter pill row AND rendered blank in the deal table
+// (their deals still appear; only the rep name is suppressed).
+var BD_DEAL_REP_HIDE=['Talar'];
+var BD_SE_REP_HIDE=['James','Sumukh','Elias','Ashley','Eisa','Talar','Alex','Gillian'];
+// True if a full owner name's first name is in the given hide list.
+function bdRepHidden(fullName,hideList){
+  if(!fullName)return false;
+  return hideList.indexOf(bdFirstName(fullName))>=0;
+}
 function renderBD(){
   var d=BD.data;if(!d||!d.deals)return;var el=document.getElementById('bd-content');var deals=d.deals,ownerMap=d.ownerMap||{};
   var fp=function(active,label,onclick){return '<span class="pill '+(active?'active':'')+'" style="cursor:pointer;'+(active?'background:var(--navy);color:#fff;':'background:rgba(23,44,69,.06);color:var(--navy);')+'font-size:11px;padding:4px 12px;font-weight:600" onclick="'+onclick+'">'+label+'</span>';};
@@ -490,11 +500,11 @@ function renderBD(){
   h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Deal Rep</span> ';
   h+=fp(_bdRepF==='all','All',"_bdRepF='all';renderBD()")+' ';
-  repSorted.forEach(function(rs){var rn=rs[0];h+=fp(_bdRepF===rn,bdFirstName(rn)||rn,"_bdRepF='"+rn.replace(/'/g,"\\'")+"';renderBD()")+' ';});
+  repSorted.forEach(function(rs){var rn=rs[0];if(bdRepHidden(rn,BD_DEAL_REP_HIDE))return;h+=fp(_bdRepF===rn,bdFirstName(rn)||rn,"_bdRepF='"+rn.replace(/'/g,"\\'")+"';renderBD()")+' ';});
   h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">SE Rep</span> ';
   h+=fp(_bdSeRepF==='all','All',"_bdSeRepF='all';renderBD()")+' ';
-  seSorted.forEach(function(rs){var rn=rs[0];h+=fp(_bdSeRepF===rn,bdFirstName(rn)||rn,"_bdSeRepF='"+rn.replace(/'/g,"\\'")+"';renderBD()")+' ';});
+  seSorted.forEach(function(rs){var rn=rs[0];if(bdRepHidden(rn,BD_SE_REP_HIDE))return;h+=fp(_bdSeRepF===rn,bdFirstName(rn)||rn,"_bdSeRepF='"+rn.replace(/'/g,"\\'")+"';renderBD()")+' ';});
   h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Ops Rep</span> ';
   h+=fp(_bdOpsRepF==='all','All',"_bdOpsRepF='all';renderBD()")+' ';
@@ -689,9 +699,11 @@ function renderBD(){
     h+='<td>'+coCell+'</td>';
     h+='<td>'+(row.brand_status?'<span class="pill" style="background:'+bsColor+'18;color:'+bsColor+'">'+row.brand_status+'</span>':dash)+'</td>';
     h+='<td><span class="pill" style="background:'+stageColor+'18;color:'+stageColor+'">'+stageLabel+'</span></td>';
-    h+='<td title="'+repName+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(bdFirstName(repName)||dash)+'</td>';
+    var repHidden=bdRepHidden(repName,BD_DEAL_REP_HIDE);
+    h+='<td title="'+(repHidden?'':repName)+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(repHidden?dash:(bdFirstName(repName)||dash))+'</td>';
     // SE Rep — from the company record's hubspot_owner_id, resolved via ownerMap
-    h+=_td('se_rep_id','<td title="'+seName+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(bdFirstName(seName)||dash)+'</td>');
+    var seHidden=bdRepHidden(seName,BD_SE_REP_HIDE);
+    h+=_td('se_rep_id','<td title="'+(seHidden?'':seName)+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(seHidden?dash:(bdFirstName(seName)||dash))+'</td>');
     // Ops Rep — from the company record's ops_owner field, resolved via ownerMap
     var opsName=ownerMap[row.ops_owner_id]||'';
     h+=_td('ops_owner_id','<td title="'+opsName+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(bdFirstName(opsName)||dash)+'</td>');
