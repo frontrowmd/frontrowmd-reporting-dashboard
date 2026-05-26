@@ -403,12 +403,14 @@ function renderBD(){
   for(var adi2=0;adi2<attrDims.length;adi2++){var adm2=attrDims[adi2];h+=fp(_bdAttrDim===adm2.k,adm2.l,"_bdAttrDim='"+adm2.k+"';renderBD()");}
   h+='<label style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--grey);cursor:pointer;margin-left:8px"><input type="checkbox" '+(_bdHideBlanks?'checked':'')+' onchange="_bdHideBlanks=this.checked;renderBD()" style="margin:0;cursor:pointer">Hide blanks</label>';
   h+='</div><div id="bd-attr-bars" style="padding:0 20px">';
-  for(var ari=0;ari<attrSorted.length;ari++){var ak=attrSorted[ari][0],ac=attrSorted[ari][1];var apct=(ac/(attrVisTotal||1)*100).toFixed(1);var aMrr=attrMRR[ak]||0;var bw2=Math.max(ac/attrMax*100,2);var barC=attrColors[ak]||'#72A4BF';
+  // Tiny uppercase metric tag so the MRR vs ACV values are unambiguous.
+  var _mLbl=function(t){return '<span style="font-size:8.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;margin-left:1px">'+t+'</span>';};
+  for(var ari=0;ari<attrSorted.length;ari++){var ak=attrSorted[ari][0],ac=attrSorted[ari][1];var apct=(ac/(attrVisTotal||1)*100).toFixed(1);var aMrr=attrMRR[ak]||0;var aAcv=ac>0?aMrr/ac:0;var bw2=Math.max(ac/attrMax*100,2);var barC=attrColors[ak]||'#72A4BF';
   // Visible bar label: for rep-type dimensions show first name (with overrides
   // applied via bdFirstName) — keeps the bar tidy and respects display
   // preferences. Full name stays in data-label + title for hover.
   var akDisp=(_bdAttrDim==='_rep'||_bdAttrDim==='_opsRep'||_bdAttrDim==='_seRep')?bdFirstName(ak):ak;
-  h+='<div class="attr-row" data-label="'+ak+'" data-count="'+ac+'" data-pct="'+apct+'" data-mrr="'+Math.round(aMrr)+'" style="display:flex;align-items:center;gap:12px;margin-bottom:10px;cursor:pointer"><div style="width:120px;flex-shrink:0;font-size:12px;font-weight:600;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right" title="'+ak+'">'+akDisp+'</div><div style="flex:1;min-width:0;background:rgba(114,164,191,.06);border-radius:6px;height:28px;position:relative"><div style="height:100%;border-radius:6px;background:'+barC+';width:'+bw2+'%;min-width:4px;transition:width .3s"></div></div><div style="width:180px;flex-shrink:0;font-size:12px;color:var(--navy);white-space:nowrap;text-align:right;font-weight:500"><span style="color:var(--grey);font-weight:400">'+ac+'</span> <span style="color:var(--grey);font-weight:400">('+apct+'%)</span> <span style="font-weight:600">'+f$(aMrr)+'</span></div></div>';}
+  h+='<div class="attr-row" data-label="'+ak+'" data-count="'+ac+'" data-pct="'+apct+'" data-mrr="'+Math.round(aMrr)+'" data-acv="'+Math.round(aAcv)+'" style="display:flex;align-items:center;gap:12px;margin-bottom:10px;cursor:pointer"><div style="width:120px;flex-shrink:0;font-size:12px;font-weight:600;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right" title="'+ak+'">'+akDisp+'</div><div style="flex:1;min-width:0;background:rgba(114,164,191,.06);border-radius:6px;height:28px;position:relative"><div style="height:100%;border-radius:6px;background:'+barC+';width:'+bw2+'%;min-width:4px;transition:width .3s"></div></div><div style="width:250px;flex-shrink:0;font-size:12px;color:var(--navy);white-space:nowrap;text-align:right;font-weight:500"><span style="color:var(--grey);font-weight:400">'+ac+'</span> <span style="color:var(--grey);font-weight:400">('+apct+'%)</span> <span style="color:rgba(23,44,69,.25);margin:0 2px">|</span> <span style="font-weight:600">'+f$(aMrr)+'</span>'+_mLbl('MRR')+' <span style="font-weight:600;color:var(--teal)">'+f$(aAcv)+'</span>'+_mLbl('ACV')+'</div></div>';}
   h+='</div><div id="bd-attr-tip" class="float-tip"></div></div>';
   // Summary Card
   // sfStatusFilled = denominator for % Paused / % Churned (deals with brand_status field filled).
@@ -750,7 +752,7 @@ function renderBD(){
   // Attribution hover
   var ab=document.getElementById('bd-attr-bars'),at=document.getElementById('bd-attr-tip');
   if(ab&&at){ab.querySelectorAll('.attr-row').forEach(function(row){
-    row.addEventListener('mouseenter',function(){at.style.display='block';at.innerHTML='<strong>'+row.dataset.label+'</strong>: '+row.dataset.count+' deals ('+row.dataset.pct+'%) \u00b7 '+f$(parseFloat(row.dataset.mrr))+' MRR';});
+    row.addEventListener('mouseenter',function(){at.style.display='block';at.innerHTML='<strong>'+row.dataset.label+'</strong>: '+row.dataset.count+' deals ('+row.dataset.pct+'%) \u00b7 '+f$(parseFloat(row.dataset.mrr))+' MRR \u00b7 '+f$(parseFloat(row.dataset.acv))+' ACV';});
     row.addEventListener('mousemove',function(e){var tw=at.offsetWidth||220,vw=window.innerWidth;var x=e.clientX+12;if(x+tw>vw-8){x=e.clientX-tw-12;}at.style.left=x+'px';at.style.top=(e.clientY-30)+'px';});
     row.addEventListener('mouseleave',function(){at.style.display='none';});
   });}
