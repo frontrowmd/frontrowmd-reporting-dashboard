@@ -662,22 +662,22 @@ async function fetchCohortDealsPerMonth(token, cohortMonths) {
 }
 
 // Closed-won deals by closedate (guide Section 5).
-// Uses HubSpot's pipeline-agnostic `hs_is_closed_won` computed property so
-// deals won in custom pipelines (e.g. the Onboarding pipeline, whose won
-// stage is NOT literally 'closedwon') are picked up alongside the default
-// pipeline. The narrower `dealstage = closedwon` filter we used to use was
-// the cause of Detailed Dashboard Revenue Outcome showing one fewer deal
-// than the Irfan Dashboard for the same MTD window — Irfan's
-// fetchAnyWonDealsByCloseDate is already pipeline-agnostic, this brings the
-// Detailed Dashboard + Analyzer paths in line.
+// Filters on the default-pipeline 'closedwon' stage. We deliberately do NOT
+// use the pipeline-agnostic hs_is_closed_won = true here: that matches every
+// won deal across ALL pipelines (including the entire active customer base in
+// the Onboarding pipeline), which paginates into many more pages per call.
+// Since this helper runs 3-4× per /api/data invocation, the broad filter blew
+// past Cloudflare's per-invocation subrequest budget and broke every page.
+// The one-deal discrepancy vs. the Irfan Dashboard (which uses the broader
+// filter) is handled separately/lightly — see note in processDataRequest.
 async function fetchClosedWonDeals(token, from, to) {
   return hsSearch(token, 'deals', [{
     filters: [
-      { propertyName: 'hs_is_closed_won', operator: 'EQ', value: 'true' },
+      { propertyName: 'dealstage', operator: 'EQ', value: 'closedwon' },
       { propertyName: 'closedate', operator: 'GTE', value: String(toMsET(from)) },
       { propertyName: 'closedate', operator: 'LTE', value: String(toMsET(to, true)) },
     ],
-  }], ['amount','closedate','hs_createdate','hs_date_entered_closedwon','dealstage','utm_source','utm_medium','utm_campaign','utm_content','hubspot_owner_id','brand_status','average_monthly_web_traffic__cloned_','average_monthly_web_traffic']);
+  }], ['amount','closedate','hs_createdate','utm_source','utm_medium','utm_campaign','utm_content','hubspot_owner_id','brand_status','average_monthly_web_traffic__cloned_','average_monthly_web_traffic']);
 }
 
 // Deals by hs_createdate — for Demo Quality table (shows deals created/booked in the window)
