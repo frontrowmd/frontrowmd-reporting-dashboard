@@ -324,6 +324,40 @@ async function fetchGA4PageViews(apiKey, from, to, pathFilter) {
   }
 }
 
+// GA4 daily series for the % Disqualified Routing card:
+//   • /not-supported pageviews  → numerator   ("Clicked Continue but DQ'd")
+//   • cal_routing_submitted event → denominator ("Clicked Schedule a Demo and Continue")
+// Both keyed by date over [from,to] via two Windsor GA4 calls. Returns
+// { viewsByDate, eventByDate } where each is { 'YYYY-MM-DD': number }. The
+// caller buckets these into the page's current/prior/priorMonth windows so the
+// card can show vs-prior / vs-LM deltas from a single widest-window fetch.
+async function fetchGA4RoutingSeries(apiKey, from, to, pagePath, eventName) {
+  const want = (pagePath || '').toLowerCase();
+  const viewsByDate = {}, eventByDate = {};
+  try {
+    const pv = await windsorFetch(apiKey, from, to, 'date,pagepath,screenpageviews', '&connectors=googleanalytics4');
+    for (const r of pv) {
+      const path = (r.pagepath || r.page_path || '').toLowerCase().split('?')[0].split('#')[0];
+      if (!want || path === want || path === want + '/' || path.endsWith(want)) {
+        const d = r.date; if (!d) continue;
+        viewsByDate[d] = (viewsByDate[d] || 0) + (parseInt(r.screenpageviews ?? r.pageviews ?? 0, 10) || 0);
+      }
+    }
+  } catch (e) { /* leave empty — card degrades to — */ }
+  try {
+    const ev = await windsorFetch(apiKey, from, to, 'date,event_name,event_count', '&connectors=googleanalytics4');
+    for (const r of ev) {
+      if ((r.event_name || '') !== eventName) continue;
+      const d = r.date; if (!d) continue;
+      eventByDate[d] = (eventByDate[d] || 0) + (parseInt(r.event_count) || 0);
+    }
+  } catch (e) { /* leave empty */ }
+  return { viewsByDate, eventByDate };
+}
+function _sumDateRange(byDate, from, to) {
+  let t = 0; for (const d in byDate) { if (d >= from && d <= to) t += byDate[d]; } return t;
+}
+
 // ---------------------------------------------------------------------------
 // HubSpot Fetching
 // ---------------------------------------------------------------------------
@@ -2170,6 +2204,21 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     console.error('Irfan DQ form fetch failed:', e);
   }
 
+  // % Disqualified Routing card series — numerator = /not-supported pageviews
+  // ("Clicked Continue but DQ'd"), denominator = cal_routing_submitted events
+  // ("Clicked Schedule a Demo and Continue"). Fetched ONCE over the widest of
+  // the three windows, then bucketed per window so the card shows vs-prior /
+  // vs-LM deltas. cal_routing_submitted only began firing 2026-05-26, so
+  // windows entirely before that return 0 (rate → — for those periods).
+  let _calRouting = null;
+  try {
+    const _rFrom = [current.from, prior && prior.from, priorMonth && priorMonth.from].filter(Boolean).sort()[0];
+    const _series = await fetchGA4RoutingSeries(apiKey, _rFrom, current.to, DQ_PAGE_PATH, 'cal_routing_submitted');
+    const _mk = (w) => w ? { views: _sumDateRange(_series.viewsByDate, w.from, w.to), routed: _sumDateRange(_series.eventByDate, w.from, w.to) } : null;
+    _calRouting = { current: _mk(current), prior: _mk(prior), priorMonth: _mk(priorMonth) };
+    console.log(`cal_routing: cur=${JSON.stringify(_calRouting.current)} prior=${JSON.stringify(_calRouting.prior)} pm=${JSON.stringify(_calRouting.priorMonth)}`);
+  } catch(e) { console.error('cal_routing series failed:', e && e.message); }
+
   // Irfan Special #2 — MTD signed-deals fetch. Done EARLY (here, not later
   // inside the irfan response block) so it gets subrequest budget before the
   // heavy company/contact batches in Phase 2.
@@ -2442,6 +2491,9 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   } else if (_irfanDqForm) {
     resp.irfan.dqForm = _irfanDqForm;
   }
+  // Per-window cal_routing_submitted + /not-supported views for the
+  // % Disqualified Routing card (denominator + deltas).
+  if (_calRouting) resp.irfan.calRouting = _calRouting;
 
   // Tile #1 — Signed Deals (toggle: Last Month / MTD).
   // Moved to dedicated /api/special1-cohorts endpoint (processSpecial1Request).

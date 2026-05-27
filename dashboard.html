@@ -749,7 +749,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r62';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r63';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -1755,15 +1755,23 @@ function renderIrfan(){
   const _noShowWarn=noShowRate!=null&&noShowRate>20;
   const _noShowStyle=_noShowWarn?'border:2px solid #F59E0B':'border-left:3px solid var(--teal)';
   h+=`<div class="tile hero" style="${_noShowStyle}"><div class="tlbl">% No-Show</div><div class="tval">${noShowRate!=null?noShowRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">No Show ÷ (Demo Given orig + resched + No Show), excl. pre-launch</div>${_irCalc(fN(_noShowScale)+' ÷ '+fN(_noShowDenomScale))}${_irTileFooter(noShowRate,noShowPV,noShowLMV,'%',true)}</div>`;
-  // 2.5 % Disqualified Routing — Disqualification Form page VIEWS ÷ demo clicks.
-  // Views captures every visitor routed to the disqualification page (whether
-  // they completed the form or not), which is the right denominator-comparable
-  // numerator for "% of demo-click traffic that got disqualified-routed."
+  // 2.5 % Disqualified Routing — "Clicked Continue but DQ'd" ÷ "Clicked
+  // Schedule a Demo and Continue".
+  //   numerator   = /not-supported page VIEWS (people routed to the DQ page) —
+  //                 unchanged from before (HubSpot form views, GA4 fallback)
+  //   denominator = cal_routing_submitted GA4 events (people who submitted the
+  //                 cal routing form), per-window via d.irfan.calRouting
   const _dqForm=d.irfan?.dqForm;const _dqFormErr=d.irfan?.dqFormError;
   const _dqViews=_dqForm?_dqForm.views:null;
   const _dqSubs=_dqForm?_dqForm.count:null;
-  const _demoClicks=d.webPerformance?._meta?.demoClicks||0;
-  const _unqRate=(_dqViews!=null&&_demoClicks>0)?(_dqViews/_demoClicks)*100:null;
+  const _calR=d.irfan?.calRouting;
+  const _routed=(_calR&&_calR.current)?_calR.current.routed:0;  // cal_routing_submitted, current window
+  const _unqRate=(_dqViews!=null&&_routed>0)?(_dqViews/_routed)*100:null;
+  // Prior / LM rates from the per-window GA4 series (the only source with daily
+  // history for both metrics). routed===0 → no data for that window → null.
+  const _crRate=function(o){return (o&&o.routed>0)?(o.views/o.routed)*100:null;};
+  const _unqPV=_calR?_crRate(_calR.prior):null;
+  const _unqLM=_calR?_crRate(_calR.priorMonth):null;
   if(_dqFormErr){
     h+=`<div class="tile" style="border:1.5px dashed #FCA5A5;background:rgba(220,38,38,.04)"><div class="tlbl" style="color:#991B1B">% Disqualified Routing</div><div class="tval" style="color:#991B1B">—</div><div class="tdef" style="margin-top:4px;color:#7F1D1D">Failed to fetch Disqualification Form</div><div style="font-size:10px;color:#991B1B;margin-top:6px;font-style:italic">${_dqFormErr}</div></div>`;
   } else if(_dqForm&&!_dqForm.formFound){
@@ -1776,10 +1784,8 @@ function renderIrfan(){
     h+=`<div class="tile" style="border:1.5px dashed #FCD34D;background:rgba(245,158,11,.04)"><div class="tlbl" style="color:#D97706">% Disqualified Routing</div><div class="tval" style="color:#D97706">—</div><div class="tdef" style="margin-top:4px;color:#92400E">Form view analytics unavailable</div><div style="font-size:10px;color:#92400E;margin-top:6px;word-break:break-word">${fN(_dqSubs||0)} submissions logged in window<br><span style="font-style:italic;opacity:.85">${_vErr}</span></div></div>`;
   } else {
     const _unqBC=_unqRate!=null&&_unqRate>20?'#F59E0B':'var(--teal)';
-    const _src=_dqForm.viewsSource;
-    const _viewsSrc=_src==='hubspot_form_analytics'?'Disqualification Form views (HubSpot)':_src==='ga4_via_windsor_fallback'?'GA4 pageviews on '+(_dqForm.ga4PagePath||'/not-supported')+' (fallback)':'Disqualification Form views';
-    const _ttl=`${_viewsSrc} ÷ Demo Clicks. ${fN(_dqSubs||0)} of those views resulted in a form submission this window.`;
-    h+=`<div class="tile hero" style="border-left:3px solid ${_unqBC}" title="${_ttl}"><div class="tlbl">% Disqualified Routing</div><div class="tval">${_unqRate!=null?_unqRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">${_viewsSrc} ÷ Demo Clicks</div>${_irCalc(fN(_dqViews||0)+' ÷ '+fN(_demoClicks))}</div>`;
+    const _ttl=`Clicked Continue but DQ'd (${fN(_dqViews||0)} /not-supported views) ÷ Clicked Schedule a Demo and Continue (${fN(_routed)} cal_routing_submitted).`;
+    h+=`<div class="tile hero" style="border-left:3px solid ${_unqBC}" title="${_ttl}"><div class="tlbl">% Disqualified Routing</div><div class="tval">${_unqRate!=null?_unqRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">Clicked Continue but DQ'd ÷ Clicked Schedule a Demo and Continue</div>${_irCalc(fN(_dqViews||0)+' ÷ '+fN(_routed))}${_irTileFooter(_unqRate,_unqPV,_unqLM,'%',true)}</div>`;
   }
   h+='</div>';
 
