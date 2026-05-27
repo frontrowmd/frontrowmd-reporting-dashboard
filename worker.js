@@ -363,6 +363,34 @@ async function hsSearch(token, objectType, filterGroups, properties, limit = 200
   return all;
 }
 
+// Wrap a WINDOW-INDEPENDENT fetch (same result regardless of the page's date
+// selector) with a short-lived KV cache. KV binding reads/writes do NOT count
+// against the per-invocation subrequest limit, so a cache hit replaces N
+// paginated HubSpot subrequests with zero — directly relieving the "Too many
+// subrequests by single Worker invocation" ceiling that the /api/data handler
+// kept hitting as the deal database grew. Falls back to a live fetch whenever
+// KV is unavailable, the entry is missing/expired, or parsing fails, so it can
+// never serve stale-forever or break the response.
+async function kvCachedFetch(env, key, ttlSec, fetchFn) {
+  if (env && env.CONTENT_STORE) {
+    try {
+      const raw = await env.CONTENT_STORE.get(key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.t && (Date.now() - parsed.t) < ttlSec * 1000) {
+          return parsed.data;
+        }
+      }
+    } catch (e) { /* fall through to live fetch */ }
+  }
+  const data = await fetchFn();
+  if (env && env.CONTENT_STORE) {
+    try { await env.CONTENT_STORE.put(key, JSON.stringify({ t: Date.now(), data })); }
+    catch (e) { /* non-fatal — caching is best-effort */ }
+  }
+  return data;
+}
+
 // Demos Booked = contacts created in window with date_demo_booked set (guide Section 3)
 // Windsor date clamp — don't query before ad data exists
 function wFrom(dateStr) { return dateStr < WINDSOR_EPOCH ? WINDSOR_EPOCH : dateStr; }
@@ -2278,7 +2306,8 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     pCW = await fetchClosedWonDeals(hsToken, prior.from, prior.to);
   }
 
-  const ownerMap = await fetchOwners(hsToken);
+  // Owners change rarely — cache 30 min so this isn't re-paginated every load.
+  const ownerMap = await kvCachedFetch(env, 'owners_cache_v1', 1800, () => fetchOwners(hsToken));
 
   // Sign-Up Rate cohorts are now served by a dedicated /api/signup-cohorts
   // endpoint (processSignupRequest) that has its own fresh HubSpot
@@ -2316,9 +2345,14 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     });
     console.log(`allTime: reusing cCW (${allTimeClosedWon.length}), funnel-qualified (${allTimeQualifiedForFunnel.length}), rep-qualified (${allTimeQualifiedForReps.length})`);
   } else {
+    // These two scan the ENTIRE deal history (no date bound) and grow with the
+    // database — together the single biggest chunk of the handler's subrequest
+    // budget on non-AllTime windows. They're window-independent (same result
+    // for MTD / Last Month / etc.), so cache 15 min. This is the primary fix
+    // for the "Too many subrequests" failures the dashboard started hitting.
     const [allQualKpi, _cw] = await Promise.all([
-      fetchAllQualifiedDeals(hsToken),
-      fetchAllClosedWon(hsToken),
+      kvCachedFetch(env, 'alltime_qualified_v1', 900, () => fetchAllQualifiedDeals(hsToken)),
+      kvCachedFetch(env, 'alltime_closedwon_v1', 900, () => fetchAllClosedWon(hsToken)),
     ]);
     allTimeClosedWon = _cw;
     allTimeQualifiedForFunnel = allQualKpi;
