@@ -586,8 +586,8 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
       <!-- Row 2: Demos Booked by Web-Traffic Range (2/3) + Marketing Funnel (1/3) -->
       <div class="sec" id="sec-row2" style="display:grid;grid-template-columns:2fr 1fr;gap:16px"><div class="sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:#9333EA;border-radius:50%;margin-right:8px;vertical-align:middle"></span>Demos Booked by Web-Traffic Range</div><div style="font-size:12px;color:var(--grey);margin-bottom:6px">% of demos booked in each tier · ordered Pre-launch → 500K+ clockwise</div><div id="t-webtraffic"></div></div><div class="sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:var(--teal);border-radius:50%;margin-right:8px;vertical-align:middle"></span>Marketing Funnel</div><div id="t-trends"></div></div></div>
 
-      <!-- Row 3: Executive Summary 3-panel (Volume / Quality / Efficiency) -->
-      <div class="sec"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:var(--navy);border-radius:50%;margin-right:8px;vertical-align:middle"></span>Executive Summary</div><div id="t-overview"></div></div>
+      <!-- Row 3: Volume / Quality / Efficiency 3-panel (header removed) -->
+      <div class="sec"><div id="t-overview"></div></div>
 
       <!-- Row 4: Conversion Funnel -->
       <div class="sec sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:#7C3AED;border-radius:50%;margin-right:8px;vertical-align:middle"></span>Conversion Funnel</div><div id="t-funnel"></div></div>
@@ -596,7 +596,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
       <div class="sec sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:#16A34A;border-radius:50%;margin-right:8px;vertical-align:middle"></span>Demo Outcome Breakdown</div><div id="ov-outcome-wrap"></div></div>
 
       <!-- Row 5.5: No-Show Analysis -->
-      <div class="sec sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:#EF4444;border-radius:50%;margin-right:8px;vertical-align:middle"></span>No-Show Analysis</div><div id="ov-noshow-wrap"></div></div>
+      <div class="sec sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:#72A4BF;border-radius:50%;margin-right:8px;vertical-align:middle"></span>No-Show Analysis</div><div id="ov-noshow-wrap"></div></div>
 
       <!-- Row 6: Ad Spend -->
       <div class="sec sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:#0EA5E9;border-radius:50%;margin-right:8px;vertical-align:middle"></span>Ad Spend</div><div id="t-adspend"></div></div>
@@ -749,7 +749,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r63';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r64';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -882,9 +882,8 @@ function _renderDashSkeleton(pct, step){
       </div>
     </div>
 
-    <!-- Row 3: Executive Summary — 3-panel -->
+    <!-- Row 3: Volume / Quality / Efficiency — 3-panel (header removed) -->
     <div class="dash-skel-card" style="margin-bottom:16px">
-      ${cardHead(180)}
       <div class="dash-skel-row-3">
         <div class="dash-skel-exec-panel">
           ${bar('dash-skel-exec-title-bar')}
@@ -1418,9 +1417,9 @@ function renderDash(){
   const tqd=d.executiveSummary.totalQualifiedDemos;
   const tqdCur=tqd?.value||0,tqdPrior=tqd?.sameTimePrior?.value,tqdLm=tqd?.lastMonth?.value;
   const periodLabel=d.period.label;
-  let subText=periodLabel;
-  if(isMTD){const today=new Date();const daysInMonth=new Date(today.getFullYear(),today.getMonth()+1,0).getDate();const dayNum=today.getDate();subText=`${periodLabel} \u00b7 Day ${dayNum} of ${daysInMonth}`;}
-  let oh=`<div style="font-size:13px;color:var(--grey);margin-bottom:14px">${subText}</div>`;
+  // Executive Summary header + the "Month to Date \u00b7 Day X of Y" subtext were
+  // removed per request \u2014 the 3-panel grid now leads the section directly.
+  let oh='';
 
   // Row 1 Revenue card built below — Primary Outcome hero removed; its stats
   // (Demos held excl. pre-launch, Qualified demos) now live in Volume below.
@@ -2809,8 +2808,9 @@ function renderOverviewOutcomeBreakdown(d){
 // contactInfoMap and is matched in by the same fuzzy logic that
 // renderDemoQuality uses (deal name ↔ company name / domain root).
 // _ovNsHideBlanks: when true, drop deals whose web-traffic tier is unknown
-// from all three sub-analyses so percentages renormalize cleanly.
-var _ovNsHideBlanks=false;
+// from all three sub-analyses so percentages renormalize cleanly. Defaults
+// to true — unknown-tier deals are noise in this view.
+var _ovNsHideBlanks=true;
 function renderNoShowAnalysis(d){
   try{
     var el=document.getElementById('ov-noshow-wrap');
@@ -2925,25 +2925,43 @@ function renderNoShowAnalysis(d){
       }
     }
 
+    // Calm default accent/bar color (replaces the previous jarring bright red).
+    var _NS_ACCENT='#72A4BF';
+    // HTML-escape for tooltip text stuffed into a data-tip attribute.
+    function _esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
     // Shared row renderer — labelW px label · bar (flex:1) · rightW px value text.
-    function _row(lblTxt,lblTitle,barPct,barColor,rightTxt,rightW){
-      return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:5px">'
-        +'<div style="width:120px;font-size:12px;font-weight:600;color:var(--navy);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(lblTitle||lblTxt)+'">'+lblTxt+'</div>'
-        +'<div style="flex:1;background:rgba(114,164,191,.06);border-radius:4px;height:22px;position:relative">'
+    // tip → instant-hover tooltip text (shown via the section's #ns-tip element).
+    function _row(lblTxt,lblTitle,barPct,barColor,rightTxt,rightW,tip){
+      return '<div class="nsrow"'+(tip?' data-tip="'+_esc(tip)+'"':'')+' style="display:flex;align-items:center;gap:10px;margin-bottom:5px;cursor:default">'
+        +'<div style="width:104px;flex-shrink:0;font-size:12px;font-weight:600;color:var(--navy);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(lblTitle||lblTxt)+'">'+lblTxt+'</div>'
+        +'<div style="flex:1;min-width:0;background:rgba(114,164,191,.08);border-radius:4px;height:22px;position:relative">'
         +  '<div style="height:100%;border-radius:4px;background:'+barColor+';width:'+Math.max(0,Math.min(100,barPct))+'%;min-width:2px;transition:width .3s"></div>'
         +'</div>'
-        +'<div style="width:'+(rightW||80)+'px;font-size:11px;color:var(--grey);white-space:nowrap">'+rightTxt+'</div>'
+        +'<div style="width:'+(rightW||80)+'px;flex-shrink:0;font-size:11px;color:var(--grey);white-space:nowrap;text-align:right">'+rightTxt+'</div>'
         +'</div>';
     }
-    // Sub-card wrapper for each analysis. Gives every sub-analysis its own
-    // bordered container with a more prominent header (15px font-h, accent dot,
-    // border-bottom separator). The inset left-accent ties them visually to
-    // the parent No-Show Analysis section. Pass an accentColor to override the
-    // default red — used by the Recommended Actions card (amber).
+    // Stacked row — full-width label line (long campaign names ellipsis cleanly
+    // with a hover title) above the bar. Used by the campaigns card where the
+    // names are far too long for a fixed left-label column.
+    function _rowStacked(lblTxt,lblTitle,barPct,barColor,rightTxt,tip){
+      return '<div class="nsrow"'+(tip?' data-tip="'+_esc(tip)+'"':'')+' style="margin-bottom:9px;cursor:default">'
+        +'<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:3px">'
+        +  '<span style="font-size:11.5px;font-weight:600;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(lblTitle||lblTxt)+'">'+lblTxt+'</span>'
+        +  '<span style="font-size:10px;color:var(--grey);white-space:nowrap;flex-shrink:0">'+rightTxt+'</span>'
+        +'</div>'
+        +'<div style="background:rgba(114,164,191,.08);border-radius:4px;height:16px;position:relative">'
+        +  '<div style="height:100%;border-radius:4px;background:'+barColor+';width:'+Math.max(0,Math.min(100,barPct))+'%;min-width:2px;transition:width .3s"></div>'
+        +'</div>'
+        +'</div>';
+    }
+    // Sub-card wrapper for each analysis. Header = accent dot + 15px title +
+    // optional subtitle, with a bottom border. No left-border accent (removed).
+    // margin-bottom is 0 — spacing is handled by the grid gap / wrapper that
+    // arranges the cards two-up. Pass accentColor to override the calm default
+    // (e.g. the Recommended Actions card uses amber).
     function _nsCardOpen(title,subtitle,isLast,accentColor){
-      var ac=accentColor||'#EF4444';
-      var marginBot=isLast?'0':'14px';
-      return '<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin-bottom:'+marginBot+';box-shadow:inset 4px 0 0 '+ac+'">'
+      var ac=accentColor||_NS_ACCENT;
+      return '<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px 18px;height:100%;box-sizing:border-box">'
         +'<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border);flex-wrap:wrap">'
         +  '<div style="display:flex;align-items:center;gap:8px">'
         +    '<div style="width:7px;height:7px;background:'+ac+';border-radius:50%"></div>'
@@ -3043,7 +3061,10 @@ function renderNoShowAnalysis(d){
       +'</label>';
     h+='</div>';
 
-    // ── 1. No-show distribution by tier (% of all no-shows in each tier) ──
+    // ── Pair A: volume-by-tier + rate-per-tier, side by side ──
+    h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px;margin-bottom:14px">';
+
+    // ── 1. No-show volume by tier (% of all no-shows in each tier) ──
     h+=_nsCardOpen('No-show volume by Web Traffic tier',totalNoShows+' total no shows · % of all no shows in each tier');
     if(totalNoShows===0){
       h+='<div style="color:var(--grey);font-size:12px;padding:8px 0;font-style:italic">No no-shows in this window.</div>';
@@ -3054,7 +3075,7 @@ function renderNoShowAnalysis(d){
         var t=distKeys[dk];
         var cnt=noShowByTier[t];
         var pct=cnt/totalNoShows*100;
-        h+=_row(wtLabels[t]||t,t,pct,wtColors[t]||'#9CA3AF',pct.toFixed(1)+'% ('+cnt+')',80);
+        h+=_row(wtLabels[t]||t,t,pct,wtColors[t]||'#9CA3AF',pct.toFixed(1)+'% ('+cnt+')',80,(wtLabels[t]||t)+': '+cnt+' no-show'+(cnt===1?'':'s')+' · '+pct.toFixed(1)+'% of all no-shows');
       }
     }
     h+=_nsCardClose();
@@ -3081,10 +3102,15 @@ function renderNoShowAnalysis(d){
         var t3=rateKeys[rk2];
         var rD=rates[t3];
         var barPct=maxRate>0?(rD.r/maxRate*100):0;
-        h+=_row(wtLabels[t3]||t3,t3,barPct,wtColors[t3]||'#9CA3AF',rD.r.toFixed(1)+'% ('+rD.ns+' ÷ '+rD.demos+')',140);
+        h+=_row(wtLabels[t3]||t3,t3,barPct,wtColors[t3]||'#9CA3AF',rD.r.toFixed(1)+'% ('+rD.ns+' ÷ '+rD.demos+')',150,(wtLabels[t3]||t3)+': '+rD.r.toFixed(1)+'% no-show rate ('+rD.ns+' no-shows ÷ '+rD.demos+' demos)');
       }
     }
     h+=_nsCardClose();
+
+    h+='</div>'; // close Pair A
+
+    // ── Pair B: rate-by-weeks + top-campaigns, side by side ──
+    h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px;margin-bottom:14px">';
 
     // ── 3. No-show RATE by weeks-from-create-to-demo ──
     // For each weeks-ahead bucket: No Show ÷ (Demo Given orig + resched + No Show),
@@ -3115,10 +3141,10 @@ function renderNoShowAnalysis(d){
         if(bd.dm===0){
           // No demos in this bucket — render a flat "0% (0 ÷ 0)" row so the
           // 6-bucket scale stays consistent (rather than dropping the row).
-          h+=_row(bucketLabels[bk3K],null,0,'#EF4444','— (0 ÷ 0)',140);
+          h+=_row(bucketLabels[bk3K],null,0,_NS_ACCENT,'— (0 ÷ 0)',150,bucketLabels[bk3K]+': no demos booked this far out');
         }else{
           var bktBarPct=maxBktRate>0?(bd.r/maxBktRate*100):0;
-          h+=_row(bucketLabels[bk3K],null,bktBarPct,'#EF4444',bd.r.toFixed(1)+'% ('+bd.ns+' ÷ '+bd.dm+')',140);
+          h+=_row(bucketLabels[bk3K],null,bktBarPct,_NS_ACCENT,bd.r.toFixed(1)+'% ('+bd.ns+' ÷ '+bd.dm+')',150,bucketLabels[bk3K]+': '+bd.r.toFixed(1)+'% no-show rate ('+bd.ns+' no-shows ÷ '+bd.dm+' demos)');
         }
       }
       if(demosMissingDate>0){
@@ -3162,13 +3188,16 @@ function renderNoShowAnalysis(d){
       h+=_insight(_ins4);
       // Bars scaled to the top campaign's count so cross-row comparisons are
       // visually faithful (the leader fills the bar, others scale relative).
+      // Stacked layout — campaign names are long, so the name gets its own
+      // full-width line (ellipsis + hover title) above the bar rather than a
+      // cramped fixed-width left column that cut names off.
       var maxCampNs=topCamp[0].ns;
       for(var ti=0;ti<topCamp.length;ti++){
         var tcr=topCamp[ti];
         var barPctC=maxCampNs>0?(tcr.ns/maxCampNs*100):0;
-        var displayK=tcr.k.length>34?tcr.k.substring(0,32)+'…':tcr.k;
-        var rightTxt=tcr.ns+' no-show'+(tcr.ns===1?'':'s')+' · '+(tcr.dm>0?tcr.r.toFixed(1)+'%':'—')+' rate ('+tcr.ns+' ÷ '+tcr.dm+')';
-        h+=_row(displayK,tcr.k,barPctC,'#EF4444',rightTxt,210);
+        var rightTxt=tcr.ns+' no-show'+(tcr.ns===1?'':'s')+' · '+(tcr.dm>0?tcr.r.toFixed(1)+'%':'—')+' rate';
+        var tipTxt=tcr.k+': '+tcr.ns+' no-show'+(tcr.ns===1?'':'s')+(tcr.dm>0?' · '+tcr.r.toFixed(1)+'% rate ('+tcr.ns+' ÷ '+tcr.dm+' demos)':'');
+        h+=_rowStacked(tcr.k,tcr.k,barPctC,_NS_ACCENT,rightTxt,tipTxt);
       }
       var footerBits=[];
       if(campRows.length>TOP_CAMPAIGNS){
@@ -3184,6 +3213,8 @@ function renderNoShowAnalysis(d){
       }
     }
     h+=_nsCardClose();
+
+    h+='</div>'; // close Pair B
 
     // ── 5. Recommended Actions ──
     // Conditional recommendations driven by the same aggregates we just
@@ -3239,7 +3270,25 @@ function renderNoShowAnalysis(d){
     h+='</ol>';
     h+=_nsCardClose();
 
+    // Floating tooltip element for instant hover on every bar row.
+    h+='<div id="ns-tip" style="display:none;position:fixed;background:#172C45;color:#fff;padding:7px 11px;border-radius:8px;font-size:12px;font-family:var(--font-b);pointer-events:none;z-index:9999;box-shadow:0 4px 14px rgba(2,15,24,.25);max-width:320px;line-height:1.4"></div>';
+
     el.innerHTML=h;
+
+    // Wire instant hover on every .nsrow (no native-title delay). One shared
+    // tooltip; rows carry their detail in data-tip.
+    requestAnimationFrame(function(){
+      var tip=document.getElementById('ns-tip');
+      if(!tip)return;
+      var rows=el.querySelectorAll('.nsrow');
+      rows.forEach(function(r){
+        var txt=r.getAttribute('data-tip');
+        if(!txt)return;
+        r.addEventListener('mouseenter',function(){tip.textContent=txt;tip.style.display='block';r.style.background='rgba(114,164,191,.06)';r.style.borderRadius='4px';});
+        r.addEventListener('mousemove',function(e){var tw=tip.offsetWidth||220,vw=window.innerWidth;var x=e.clientX+14;if(x+tw>vw-8)x=e.clientX-tw-14;tip.style.left=x+'px';tip.style.top=(e.clientY-34)+'px';});
+        r.addEventListener('mouseleave',function(){tip.style.display='none';r.style.background='';});
+      });
+    });
   }catch(err){
     console.error('[NO-SHOW] Error:',err);console.error('[NO-SHOW] Stack:',err.stack);
     var elE=document.getElementById('ov-noshow-wrap');
