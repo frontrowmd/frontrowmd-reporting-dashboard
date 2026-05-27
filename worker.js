@@ -371,22 +371,38 @@ async function hsSearch(token, objectType, filterGroups, properties, limit = 200
 // kept hitting as the deal database grew. Falls back to a live fetch whenever
 // KV is unavailable, the entry is missing/expired, or parsing fails, so it can
 // never serve stale-forever or break the response.
-async function kvCachedFetch(env, key, ttlSec, fetchFn) {
+async function kvCachedFetch(env, key, ttlSec, fetchFn, fallback) {
+  // staleData remembers the last cached payload even if expired, so a later
+  // live-fetch failure degrades to stale data instead of crashing the handler.
+  let staleData = (fallback !== undefined ? fallback : null);
   if (env && env.CONTENT_STORE) {
     try {
       const raw = await env.CONTENT_STORE.get(key);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed && parsed.t && (Date.now() - parsed.t) < ttlSec * 1000) {
-          return parsed.data;
+        if (parsed && typeof parsed.t === 'number') {
+          staleData = parsed.data;
+          if ((Date.now() - parsed.t) < ttlSec * 1000) return parsed.data;
         }
       }
     } catch (e) { /* fall through to live fetch */ }
   }
-  const data = await fetchFn();
+  let data;
+  try {
+    data = await fetchFn();
+  } catch (e) {
+    // Live fetch failed (e.g. subrequest budget). Serve stale/fallback rather
+    // than bubbling up — a degraded card beats a dead dashboard.
+    console.error('kvCachedFetch live fetch failed for ' + key + ':', e && e.message);
+    return staleData;
+  }
   if (env && env.CONTENT_STORE) {
-    try { await env.CONTENT_STORE.put(key, JSON.stringify({ t: Date.now(), data })); }
-    catch (e) { /* non-fatal — caching is best-effort */ }
+    try {
+      const blob = JSON.stringify({ t: Date.now(), data });
+      // KV value hard limit is 25 MB — skip caching anything near it rather
+      // than letting the put reject.
+      if (blob.length < 20 * 1024 * 1024) await env.CONTENT_STORE.put(key, blob);
+    } catch (e) { /* non-fatal — caching is best-effort */ }
   }
   return data;
 }
@@ -2307,7 +2323,7 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   }
 
   // Owners change rarely — cache 30 min so this isn't re-paginated every load.
-  const ownerMap = await kvCachedFetch(env, 'owners_cache_v1', 1800, () => fetchOwners(hsToken));
+  const ownerMap = await kvCachedFetch(env, 'owners_cache_v1', 1800, () => fetchOwners(hsToken), {});
 
   // Sign-Up Rate cohorts are now served by a dedicated /api/signup-cohorts
   // endpoint (processSignupRequest) that has its own fresh HubSpot
@@ -2351,8 +2367,8 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     // for MTD / Last Month / etc.), so cache 15 min. This is the primary fix
     // for the "Too many subrequests" failures the dashboard started hitting.
     const [allQualKpi, _cw] = await Promise.all([
-      kvCachedFetch(env, 'alltime_qualified_v1', 900, () => fetchAllQualifiedDeals(hsToken)),
-      kvCachedFetch(env, 'alltime_closedwon_v1', 900, () => fetchAllClosedWon(hsToken)),
+      kvCachedFetch(env, 'alltime_qualified_v1', 900, () => fetchAllQualifiedDeals(hsToken), []),
+      kvCachedFetch(env, 'alltime_closedwon_v1', 900, () => fetchAllClosedWon(hsToken), []),
     ]);
     allTimeClosedWon = _cw;
     allTimeQualifiedForFunnel = allQualKpi;
@@ -3871,7 +3887,7 @@ export default {
       try {
         const result = await processRequest(body.window||'7d', body.from||null, body.to||null, env, body.vsFrom||null, body.vsTo||null);
         return jr(result);
-      } catch(err) { console.error('Error:', err); return jr({ error: 'Internal error', detail: err.message }, 500); }
+      } catch(err) { console.error('Error:', err); return jr({ error: 'Internal error', detail: (err && (err.message || String(err))) || 'unknown', stack: (err && err.stack ? String(err.stack).split('\n').slice(0,4).join(' | ') : null) }, 500); }
     }
 
     // POST /api/signup-cohorts → dedicated SignUp Rate endpoint.
