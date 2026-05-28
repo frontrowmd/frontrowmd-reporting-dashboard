@@ -338,9 +338,9 @@ function renderPreDemo(){
   h+='</div>';
 
   // ── Compute shared filtered set (used by both Attribution and Table) ──
-  var wtLabels={'Pre-launch / just launching':'Pre-launch','0-10K monthly web visitors':'0-10K','10-25K monthly web visitors':'10-25K','25-50K monthly web visitors':'25-50K','50-100K monthly web visitors':'50-100K','100-200K monthly web visitors':'100-200K','200-500K monthly web visitors':'200-500K','500K+ monthly web visitors':'500K+'};
-  var wtColors={'Pre-launch / just launching':'#DC2626','0-10K monthly web visitors':'#EA580C','10-25K monthly web visitors':'#F97316','25-50K monthly web visitors':'#F59E0B','50-100K monthly web visitors':'#EAB308','100-200K monthly web visitors':'#84CC16','200-500K monthly web visitors':'#1565C0','500K+ monthly web visitors':'#16A34A'};
-  var wtOrder={'Pre-launch / just launching':1,'0-10K monthly web visitors':2,'10-25K monthly web visitors':3,'25-50K monthly web visitors':4,'50-100K monthly web visitors':5,'100-200K monthly web visitors':6,'200-500K monthly web visitors':7,'500K+ monthly web visitors':8};
+  var wtLabels={'Very Small':'Very Small','Pre-launch / just launching':'Pre-launch','0-10K monthly web visitors':'0-10K','10-25K monthly web visitors':'10-25K','25-50K monthly web visitors':'25-50K','50-100K monthly web visitors':'50-100K','100-200K monthly web visitors':'100-200K','200-500K monthly web visitors':'200-500K','500K+ monthly web visitors':'500K+'};
+  var wtColors={'Very Small':'#7F1D1D','Pre-launch / just launching':'#DC2626','0-10K monthly web visitors':'#EA580C','10-25K monthly web visitors':'#F97316','25-50K monthly web visitors':'#F59E0B','50-100K monthly web visitors':'#EAB308','100-200K monthly web visitors':'#84CC16','200-500K monthly web visitors':'#1565C0','500K+ monthly web visitors':'#16A34A'};
+  var wtOrder={'Very Small':0,'Pre-launch / just launching':1,'0-10K monthly web visitors':2,'10-25K monthly web visitors':3,'25-50K monthly web visitors':4,'50-100K monthly web visitors':5,'100-200K monthly web visitors':6,'200-500K monthly web visitors':7,'500K+ monthly web visitors':8};
   var tzShort=function(tz){return(tz||'').replace(/^utc/,'UTC').replace(/_/g,' ').replace(/\(.+?\)/,'').trim();};
   var sharedFiltered=filtered.filter(function(dd){
     if(_tblPqFilter!=='all'){if(_tblPqFilter==='—'){if(dd._pq)return false;}else{if(dd._pq!==_tblPqFilter)return false;}}
@@ -953,9 +953,9 @@ function renderPostDemo(){
   h+='</div>';
 
   // ── Compute shared filtered set (filters apply to both Attribution and Table) ──
-  var wtLabels={'Pre-launch / just launching':'Pre-launch','0-10K monthly web visitors':'0-10K','10-25K monthly web visitors':'10-25K','25-50K monthly web visitors':'25-50K','50-100K monthly web visitors':'50-100K','100-200K monthly web visitors':'100-200K','200-500K monthly web visitors':'200-500K','500K+ monthly web visitors':'500K+'};
-  var wtColors={'Pre-launch / just launching':'#DC2626','0-10K monthly web visitors':'#EA580C','10-25K monthly web visitors':'#F97316','25-50K monthly web visitors':'#F59E0B','50-100K monthly web visitors':'#EAB308','100-200K monthly web visitors':'#84CC16','200-500K monthly web visitors':'#1565C0','500K+ monthly web visitors':'#16A34A'};
-  var wtOrder={'Pre-launch / just launching':1,'0-10K monthly web visitors':2,'10-25K monthly web visitors':3,'25-50K monthly web visitors':4,'50-100K monthly web visitors':5,'100-200K monthly web visitors':6,'200-500K monthly web visitors':7,'500K+ monthly web visitors':8};
+  var wtLabels={'Very Small':'Very Small','Pre-launch / just launching':'Pre-launch','0-10K monthly web visitors':'0-10K','10-25K monthly web visitors':'10-25K','25-50K monthly web visitors':'25-50K','50-100K monthly web visitors':'50-100K','100-200K monthly web visitors':'100-200K','200-500K monthly web visitors':'200-500K','500K+ monthly web visitors':'500K+'};
+  var wtColors={'Very Small':'#7F1D1D','Pre-launch / just launching':'#DC2626','0-10K monthly web visitors':'#EA580C','10-25K monthly web visitors':'#F97316','25-50K monthly web visitors':'#F59E0B','50-100K monthly web visitors':'#EAB308','100-200K monthly web visitors':'#84CC16','200-500K monthly web visitors':'#1565C0','500K+ monthly web visitors':'#16A34A'};
+  var wtOrder={'Very Small':0,'Pre-launch / just launching':1,'0-10K monthly web visitors':2,'10-25K monthly web visitors':3,'25-50K monthly web visitors':4,'50-100K monthly web visitors':5,'100-200K monthly web visitors':6,'200-500K monthly web visitors':7,'500K+ monthly web visitors':8};
   var tzShort=function(tz){return(tz||'').replace(/^utc/,'UTC').replace(/_/g,' ').replace(/\(.+?\)/,'').trim();};
 
   var sharedFiltered=filtered.filter(function(dd){

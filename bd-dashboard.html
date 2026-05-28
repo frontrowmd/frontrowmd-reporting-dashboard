@@ -351,9 +351,9 @@ function renderBD(){
     return Math.round((t2-t1)/86400000);
   }
   // Web Traffic Tier short-label map
-  var BD_WT_LABELS={'Pre-launch / just launching':'Pre-launch','0-10K monthly web visitors':'0-10K','10-25K monthly web visitors':'10-25K','25-50K monthly web visitors':'25-50K','50-100K monthly web visitors':'50-100K','100-200K monthly web visitors':'100-200K','200-500K monthly web visitors':'200-500K','500K+ monthly web visitors':'500K+'};
-  var BD_WT_COLORS={'Pre-launch / just launching':'#9CA3AF','0-10K monthly web visitors':'#72A4BF','10-25K monthly web visitors':'#1D4053','25-50K monthly web visitors':'#172C45','50-100K monthly web visitors':'#0EA5E9','100-200K monthly web visitors':'#7C3AED','200-500K monthly web visitors':'#16A34A','500K+ monthly web visitors':'#F59E0B'};
-  var BD_WT_ORDER={'Pre-launch / just launching':0,'0-10K monthly web visitors':1,'10-25K monthly web visitors':2,'25-50K monthly web visitors':3,'50-100K monthly web visitors':4,'100-200K monthly web visitors':5,'200-500K monthly web visitors':6,'500K+ monthly web visitors':7};
+  var BD_WT_LABELS={'Very Small':'Very Small','Pre-launch / just launching':'Pre-launch','0-10K monthly web visitors':'0-10K','10-25K monthly web visitors':'10-25K','25-50K monthly web visitors':'25-50K','50-100K monthly web visitors':'50-100K','100-200K monthly web visitors':'100-200K','200-500K monthly web visitors':'200-500K','500K+ monthly web visitors':'500K+'};
+  var BD_WT_COLORS={'Very Small':'#6B7280','Pre-launch / just launching':'#9CA3AF','0-10K monthly web visitors':'#72A4BF','10-25K monthly web visitors':'#1D4053','25-50K monthly web visitors':'#172C45','50-100K monthly web visitors':'#0EA5E9','100-200K monthly web visitors':'#7C3AED','200-500K monthly web visitors':'#16A34A','500K+ monthly web visitors':'#F59E0B'};
+  var BD_WT_ORDER={'Very Small':-1,'Pre-launch / just launching':0,'0-10K monthly web visitors':1,'10-25K monthly web visitors':2,'25-50K monthly web visitors':3,'50-100K monthly web visitors':4,'100-200K monthly web visitors':5,'200-500K monthly web visitors':6,'500K+ monthly web visitors':7};
   var uniqWebTrafficBD={};deals.forEach(function(dd){if(dd.average_monthly_web_traffic__cloned_)uniqWebTrafficBD[dd.average_monthly_web_traffic__cloned_]=1;});
   // Build rep color map from full deal set (stable colors regardless of filter)
   var repCount={};
