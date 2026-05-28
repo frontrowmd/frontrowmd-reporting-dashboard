@@ -484,8 +484,9 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;hei
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(114,164,191,0.3);
 }
-.attr-row::after{content:attr(data-tip);position:absolute;left:210px;bottom:calc(100% + 6px);background:#172C45;color:#fff;padding:6px 12px;border-radius:8px;font-size:11px;font-family:'Inter',sans-serif;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .15s;z-index:10;box-shadow:0 4px 12px rgba(0,0,0,.15)}
-.attr-row:hover::after{opacity:1}
+/* (Removed: stale .attr-row::after rule rendered an empty styled box at a
+   fixed top-left position on hover because attr-row in Demo Quality has no
+   data-tip attribute. Hover tooltips are handled by JS via #eq-attr-tip.) */
 /* ── Demo Quality (cloned from Sales Post-Demo) ── */
 .stbl{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed}
 .stbl th{text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--grey);padding:8px 6px;border-bottom:2px solid var(--border);font-weight:700;white-space:nowrap;overflow:hidden;cursor:pointer}
@@ -749,7 +750,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r66';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r67';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -3725,7 +3726,10 @@ function drawStackedBar(canvasId,dataObj,repIds,colorMap,fixedLabels){
 }
 
 // ── Demo Quality state (cloned from Post-Demo) ──
-var _eqAttrDim='dealstage',_eqSort='date_demo_booked',_eqSortDir='desc',_eqChartStatus='all',_eqChartDim='att',_eqHideBlanks=false;
+// _eqChartStatus defaults to the first attendance bucket ('Demo Held') —
+// the chart filter no longer has an "All" option, so a specific bucket must
+// always be selected. Switching dimensions resets to that dim's first bucket.
+var _eqAttrDim='dealstage',_eqSort='date_demo_booked',_eqSortDir='desc',_eqChartStatus='Demo Held',_eqChartDim='att',_eqHideBlanks=false;
 var _eqStageFilter='all',_eqPqFilter='all',_eqAttFilter='all',_eqQoFilter='all',_eqRepTblFilter='all',_eqIndustryFilter='all',_eqTzFilter='all',_eqStorylaneFilter='all',_eqWebTrafficFilter=[],_eqDateFrom='',_eqDateTo='',_eqDateMode='demo';
 function eqWtToggle(v){var i=_eqWebTrafficFilter.indexOf(v);if(i>=0)_eqWebTrafficFilter.splice(i,1);else _eqWebTrafficFilter.push(v);renderDemoQuality();}
 function eqWtClear(){_eqWebTrafficFilter=[];renderDemoQuality();}
@@ -3944,9 +3948,9 @@ function renderDemoQuality(){try{
     var qo=(dd.demo_qualification_outcome||'').trim()||'Blank';if(qoChartCats.indexOf(qo)===-1)qo='Blank';
     if(_eqChartDim==='att'){
       if(att==null)return; // unknown attendance → not in any of the 4 buckets
-      if(_eqChartStatus!=='all'&&att!==_eqChartStatus)return;
+      if(att!==_eqChartStatus)return;
     }else{
-      if(_eqChartStatus!=='all'&&qo!==_eqChartStatus)return;
+      if(qo!==_eqChartStatus)return;
     }
     // Stack by rep
     var rep=ownerMap[dd.hubspot_owner_id]||'Unassigned';
@@ -3964,23 +3968,24 @@ function renderDemoQuality(){try{
   var dimLbl=_eqChartDim==='att'?attChartLbl:qoChartLbl;
   var dimCol=_eqChartDim==='att'?attChartCol:qoChartCol;
 
-  // Reset _eqChartStatus if it's not in the active dimension (e.g., switching from att to qo)
-  if(_eqChartStatus!=='all'&&dimCats.indexOf(_eqChartStatus)===-1){_eqChartStatus='all';}
+  // Reset _eqChartStatus to the active dimension's first bucket if the
+  // current selection isn't valid here (e.g. switching att ↔ qo).
+  if(dimCats.indexOf(_eqChartStatus)===-1)_eqChartStatus=dimCats[0];
 
   // Two-tier filter UI: dimension toggle + value pills
   h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Dimension</span> ';
-  h+=fp(_eqChartDim==='att','Attendance',"_eqChartDim='att';_eqChartStatus='all';renderDemoQuality()");
-  h+=fp(_eqChartDim==='qo','Qual Outcome',"_eqChartDim='qo';_eqChartStatus='all';renderDemoQuality()");
+  h+=fp(_eqChartDim==='att','Attendance',"_eqChartDim='att';_eqChartStatus='Demo Held';renderDemoQuality()");
+  h+=fp(_eqChartDim==='qo','Qual Outcome',"_eqChartDim='qo';_eqChartStatus='Qualified';renderDemoQuality()");
   h+='</div>';
   h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Filter</span> ';
-  h+=fp(_eqChartStatus==='all','All',"_eqChartStatus='all';renderDemoQuality()");
+  // No "All" pill — the chart shows exactly one bucket at a time.
   dimCats.forEach(function(sid){h+=fp(_eqChartStatus===sid,(dimLbl[sid]||sid),"_eqChartStatus='"+sid+"';renderDemoQuality()")+'  ';});
   h+='</div>';
 
   // Determine which buckets to show in charts
-  var chartStatIds=_eqChartStatus==='all'?dimCats:[_eqChartStatus];
+  var chartStatIds=[_eqChartStatus];  // always a single bucket (no "All")
   var statusChartColors=dimCol;
   // Legacy alias for downstream code (if any)
   var statusIds=dimCats;
@@ -3991,15 +3996,30 @@ function renderDemoQuality(){try{
   // Demos by Day
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;position:relative">';
   h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:#172C45">Demos by Day</div></div>';
-  // Mini avg per rep pills — weekday-only since the chart now excludes
-  // weekends. Count rep demos that landed in byDay (already weekday-filtered)
-  // and divide by the weekday-only day count for an apples-to-apples avg.
+  // Mini avg per rep pills — per-rep daily average computed PER REP's own
+  // active days, not the chart's full date axis. Previously divided by every
+  // weekday with any demos (e.g. 22), which crushed averages for reps who
+  // only worked a handful of days (e.g. Sumukh = 11 demos / 22 days ≈ 0.5,
+  // even though Sumukh's actual cadence on the days he worked was much
+  // higher). Now: numerator = that rep's demos in byDay (filter-aware,
+  // weekday-only); denominator = unique weekday DATES where THAT REP had at
+  // least one demo. Reads as "demos per day worked" — the intuitive number.
   h+='<div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">';
-  var weekdayDemosByRep={};
-  for(var _wdK in byDay){for(var _wdR in byDay[_wdK])weekdayDemosByRep[_wdR]=(weekdayDemosByRep[_wdR]||0)+byDay[_wdK][_wdR];}
-  var numDaysAll=Object.keys(byDay).length||1;
-  for(var mri=0;mri<repSorted.length;mri++){var mrn=repSorted[mri][0];var mrAvg=((weekdayDemosByRep[mrn]||0)/numDaysAll).toFixed(1);
-  h+='<div style="display:flex;align-items:center;gap:0;background:var(--white);border:1px solid var(--border);border-radius:8px;overflow:hidden;border-left:3px solid '+(_rcm[mrn]||'#ccc')+'"><div style="padding:4px 8px"><div style="font-size:14px;font-weight:700;font-family:var(--font-h);color:var(--navy)">'+mrAvg+'</div><div style="font-size:8px;color:var(--grey)">'+mrn.split(' ')[0]+'/day</div></div></div>';}
+  var weekdayDemosByRep={},repDayCount={};
+  for(var _wdK in byDay){
+    for(var _wdR in byDay[_wdK]){
+      weekdayDemosByRep[_wdR]=(weekdayDemosByRep[_wdR]||0)+byDay[_wdK][_wdR];
+      if(!repDayCount[_wdR])repDayCount[_wdR]={};
+      repDayCount[_wdR][_wdK]=true;
+    }
+  }
+  for(var mri=0;mri<repSorted.length;mri++){
+    var mrn=repSorted[mri][0];
+    var _repN=weekdayDemosByRep[mrn]||0;
+    var _repD=repDayCount[mrn]?Object.keys(repDayCount[mrn]).length:0;
+    var mrAvg=_repD>0?(_repN/_repD).toFixed(1):'0.0';
+    h+='<div title="'+_repN+' demos across '+_repD+' day'+(_repD===1?'':'s')+' worked (current filter)" style="display:flex;align-items:center;gap:0;background:var(--white);border:1px solid var(--border);border-radius:8px;overflow:hidden;border-left:3px solid '+(_rcm[mrn]||'#ccc')+'"><div style="padding:4px 8px"><div style="font-size:14px;font-weight:700;font-family:var(--font-h);color:var(--navy)">'+mrAvg+'</div><div style="font-size:8px;color:var(--grey)">'+mrn.split(' ')[0]+'/day</div></div></div>';
+  }
   h+='</div>';
   h+='<canvas id="eq-byday" style="width:100%;height:200px;cursor:crosshair"></canvas><div id="eq-byday-tip" class="float-tip"></div></div>';
 
