@@ -750,7 +750,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r67';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r68';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -3726,10 +3726,11 @@ function drawStackedBar(canvasId,dataObj,repIds,colorMap,fixedLabels){
 }
 
 // ── Demo Quality state (cloned from Post-Demo) ──
-// _eqChartStatus defaults to the first attendance bucket ('Demo Held') —
-// the chart filter no longer has an "All" option, so a specific bucket must
-// always be selected. Switching dimensions resets to that dim's first bucket.
-var _eqAttrDim='dealstage',_eqSort='date_demo_booked',_eqSortDir='desc',_eqChartStatus='Demo Held',_eqChartDim='att',_eqHideBlanks=false;
+// _eqChartStatus defaults to "Demos Supposed to Happen" — the umbrella over
+// Demo Held + No Show + Cancelled that matches the population the quality
+// KPIs measure. The chart filter has no "All" option; switching dimensions
+// resets to that dim's first bucket.
+var _eqAttrDim='dealstage',_eqSort='date_demo_booked',_eqSortDir='desc',_eqChartStatus='Demos Supposed to Happen',_eqChartDim='att',_eqHideBlanks=false;
 var _eqStageFilter='all',_eqPqFilter='all',_eqAttFilter='all',_eqQoFilter='all',_eqRepTblFilter='all',_eqIndustryFilter='all',_eqTzFilter='all',_eqStorylaneFilter='all',_eqWebTrafficFilter=[],_eqDateFrom='',_eqDateTo='',_eqDateMode='demo';
 function eqWtToggle(v){var i=_eqWebTrafficFilter.indexOf(v);if(i>=0)_eqWebTrafficFilter.splice(i,1);else _eqWebTrafficFilter.push(v);renderDemoQuality();}
 function eqWtClear(){_eqWebTrafficFilter=[];renderDemoQuality();}
@@ -3912,17 +3913,20 @@ function renderDemoQuality(){try{
   }
 
   // Chart filter dimensions: Attendance (consolidated buckets) | Qual Outcome.
-  // Attendance was previously 7 raw HubSpot values + Blank — collapsed here to
-  // 4 actionable buckets per request:
+  // Attendance buckets:
+  //   • Demos Supposed to Happen = Demo Held + No Show + Cancelled (umbrella)
   //   • Demo Held = Demo Given (orig) + Demo Given (rescheduled)
   //   • Pending   = Scheduled — pending + Rescheduled — pending
   //   • No Show
   //   • Cancelled = Cancelled before demo
-  // Blank/unknown is dropped entirely (deals without a status don't show in
-  // these charts).
-  var attChartCats=['Demo Held','Pending','No Show','Cancelled'];
-  var attChartLbl={'Demo Held':'Demo Held','Pending':'Pending','No Show':'No Show','Cancelled':'Cancelled'};
-  var attChartCol={'Demo Held':'#16A34A','Pending':'#F59E0B','No Show':'#EF4444','Cancelled':'#1E293B'};
+  // Blank/unknown is dropped entirely. "Demos Supposed to Happen" is the
+  // default — it's the population the quality KPIs (no-show rate, prune rate,
+  // qualification rate) actually measure, so the chart's first read matches.
+  var attChartCats=['Demos Supposed to Happen','Demo Held','Pending','No Show','Cancelled'];
+  var attChartLbl={'Demos Supposed to Happen':'Demos Supposed to Happen','Demo Held':'Demo Held','Pending':'Pending','No Show':'No Show','Cancelled':'Cancelled'};
+  var attChartCol={'Demos Supposed to Happen':'#475569','Demo Held':'#16A34A','Pending':'#F59E0B','No Show':'#EF4444','Cancelled':'#1E293B'};
+  // Underlying buckets the umbrella covers — used by the filter check below.
+  var DSH_BUCKETS=['Demo Held','No Show','Cancelled'];
   function _attBucket(raw){
     var s=(raw||'').trim();
     if(s==='Demo Given (originally scheduled)'||s==='Demo Given (rescheduled)')return 'Demo Held';
@@ -3948,7 +3952,13 @@ function renderDemoQuality(){try{
     var qo=(dd.demo_qualification_outcome||'').trim()||'Blank';if(qoChartCats.indexOf(qo)===-1)qo='Blank';
     if(_eqChartDim==='att'){
       if(att==null)return; // unknown attendance → not in any of the 4 buckets
-      if(att!==_eqChartStatus)return;
+      // "Demos Supposed to Happen" is an umbrella over Demo Held + No Show +
+      // Cancelled; everything else is an exact-match check.
+      if(_eqChartStatus==='Demos Supposed to Happen'){
+        if(DSH_BUCKETS.indexOf(att)===-1)return;
+      } else if(att!==_eqChartStatus){
+        return;
+      }
     }else{
       if(qo!==_eqChartStatus)return;
     }
@@ -3975,7 +3985,7 @@ function renderDemoQuality(){try{
   // Two-tier filter UI: dimension toggle + value pills
   h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Dimension</span> ';
-  h+=fp(_eqChartDim==='att','Attendance',"_eqChartDim='att';_eqChartStatus='Demo Held';renderDemoQuality()");
+  h+=fp(_eqChartDim==='att','Attendance',"_eqChartDim='att';_eqChartStatus='Demos Supposed to Happen';renderDemoQuality()");
   h+=fp(_eqChartDim==='qo','Qual Outcome',"_eqChartDim='qo';_eqChartStatus='Qualified';renderDemoQuality()");
   h+='</div>';
   h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap">';
