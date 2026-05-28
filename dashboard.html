@@ -749,7 +749,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r65';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r66';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -3643,8 +3643,8 @@ function loadDqEngagement(){
   }catch(e){console.error('[DQ-ENG] error:',e);_dqEngLoading=false;}
 }
 var DQ_REP_COLORS=['#1565C0','#2E7D32','#72A4BF','#E65100','#5C6BC0','#00897B','#C62828','#6A1B9A','#EF6C00','#00695C'];
-var STAGE_LABELS={'appointmentscheduled':'Scheduled','1084214349':'Demo Happened','decisionmakerboughtin':'Decision Maker','contractsent':'Contract Sent','closedwon':'Closed Won','closedlost':'Closed Lost','3453957850':'No Show','3453925110':'Churned','1062974581':'Not a Fit'};
-var STAGE_COLORS={'Scheduled':'#64748B','Demo Happened':'#1565C0','Decision Maker':'#7C3AED','Contract Sent':'#0891B2','Closed Won':'#16A34A','Closed Lost':'#DC2626','No Show':'#EA580C','Churned':'#991B1B','Not a Fit':'#D97706'};
+var STAGE_LABELS={'appointmentscheduled':'Scheduled','1084214349':'Demo Happened','decisionmakerboughtin':'Decision Maker','contractsent':'Contract Sent','closedwon':'Closed Won','closedlost':'Closed Lost','3453957850':'No Show','3453925110':'Churned','1062974581':'Not a Fit','3722491612':'Interested, Circle Back'};
+var STAGE_COLORS={'Scheduled':'#64748B','Demo Happened':'#1565C0','Decision Maker':'#7C3AED','Contract Sent':'#0891B2','Closed Won':'#16A34A','Closed Lost':'#DC2626','No Show':'#EA580C','Churned':'#991B1B','Not a Fit':'#D97706','Interested, Circle Back':'#EC4899'};
 var STATUS_COLORS={'Qual.':'#172C45','Too Early':'#7C3AED','Too Small':'#B794F4','Pruned':'#F59E0B','No Show':'#EF4444','Resch.':'#10B981','Pending Eval':'#0891B2','Pending':'#64748B','Blank':'#9CA3AF'};
 
 // ── Demo status migration helpers — prefer new dual-field model, legacy fallback ──
@@ -3907,28 +3907,55 @@ function renderDemoQuality(){try{
     h+='</div><div id="eq-rep-tip" class="float-tip"></div></div>';
   }
 
-  // Chart filter dimensions: Attendance (raw HubSpot values) | Qual Outcome
-  var attChartCats=['Demo Given (originally scheduled)','Demo Given (rescheduled)','Scheduled — pending','Rescheduled — pending','No Show','Cancelled before demo','Blank'];
-  var attChartLbl={'Demo Given (originally scheduled)':'Demo Given (orig)','Demo Given (rescheduled)':'Demo Given (resched)','Scheduled — pending':'Scheduled — Pending','Rescheduled — pending':'Rescheduled — Pending','No Show':'No Show','Cancelled before demo':'Cancelled','Blank':'Blank'};
-  var attChartCol={'Demo Given (originally scheduled)':'#16A34A','Demo Given (rescheduled)':'#14B8A6','Scheduled — pending':'#F59E0B','Rescheduled — pending':'#8B5CF6','No Show':'#EF4444','Cancelled before demo':'#1E293B','Blank':'#9CA3AF'};
+  // Chart filter dimensions: Attendance (consolidated buckets) | Qual Outcome.
+  // Attendance was previously 7 raw HubSpot values + Blank — collapsed here to
+  // 4 actionable buckets per request:
+  //   • Demo Held = Demo Given (orig) + Demo Given (rescheduled)
+  //   • Pending   = Scheduled — pending + Rescheduled — pending
+  //   • No Show
+  //   • Cancelled = Cancelled before demo
+  // Blank/unknown is dropped entirely (deals without a status don't show in
+  // these charts).
+  var attChartCats=['Demo Held','Pending','No Show','Cancelled'];
+  var attChartLbl={'Demo Held':'Demo Held','Pending':'Pending','No Show':'No Show','Cancelled':'Cancelled'};
+  var attChartCol={'Demo Held':'#16A34A','Pending':'#F59E0B','No Show':'#EF4444','Cancelled':'#1E293B'};
+  function _attBucket(raw){
+    var s=(raw||'').trim();
+    if(s==='Demo Given (originally scheduled)'||s==='Demo Given (rescheduled)')return 'Demo Held';
+    if(s==='Scheduled — pending'||s==='Rescheduled — pending')return 'Pending';
+    if(s==='No Show')return 'No Show';
+    if(s==='Cancelled before demo')return 'Cancelled';
+    return null; // Blank/unknown — excluded from these charts
+  }
   var qoChartCats=['Qualified','Disqualified','Not yet evaluated','Blank'];
   var qoChartLbl={'Qualified':'Qualified','Disqualified':'Disqualified','Not yet evaluated':'Not Yet Evaluated','Blank':'Blank'};
   var qoChartCol={'Qualified':'#16A34A','Disqualified':'#C62828','Not yet evaluated':'#64748B','Blank':'#9CA3AF'};
 
   // Build per-day/per-DOW data — stacked by REP across the full window.
   // Buckets by EFFECTIVE date (rescheduled if set, else original) so a rescheduled demo lands on its new date.
+  // Weekends are excluded from byDay (the Demos by Day chart shows weekdays
+  // only); byDOW already constrains itself to Mon-Fri via fixedLabels.
   var byDay={},byDOW={};var dowNames=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   filtered.forEach(function(dd){
     var ddb=(dd.rescheduled_meeting_date||dd.date_demo_booked||'').split('T')[0];if(!ddb)return;
-    // Apply chart filter pill
-    var att=(dd.demo_attendance_status||'').trim()||'Blank';if(attChartCats.indexOf(att)===-1)att='Blank';
+    // Apply chart filter pill — when dim=att, drop deals whose attendance
+    // doesn't bucket (Blank). When dim=qo, keep the old Blank handling.
+    var att=_attBucket(dd.demo_attendance_status);
     var qo=(dd.demo_qualification_outcome||'').trim()||'Blank';if(qoChartCats.indexOf(qo)===-1)qo='Blank';
-    var filterKey=_eqChartDim==='att'?att:qo;
-    if(_eqChartStatus!=='all'&&filterKey!==_eqChartStatus)return;
+    if(_eqChartDim==='att'){
+      if(att==null)return; // unknown attendance → not in any of the 4 buckets
+      if(_eqChartStatus!=='all'&&att!==_eqChartStatus)return;
+    }else{
+      if(_eqChartStatus!=='all'&&qo!==_eqChartStatus)return;
+    }
     // Stack by rep
     var rep=ownerMap[dd.hubspot_owner_id]||'Unassigned';
-    if(!byDay[ddb])byDay[ddb]={};byDay[ddb][rep]=(byDay[ddb][rep]||0)+1;
-    var dow=new Date(ddb+'T12:00:00').getDay();var dowN=dowNames[dow];
+    var dow=new Date(ddb+'T12:00:00').getDay();
+    var isWeekend=(dow===0||dow===6);
+    if(!isWeekend){
+      if(!byDay[ddb])byDay[ddb]={};byDay[ddb][rep]=(byDay[ddb][rep]||0)+1;
+    }
+    var dowN=dowNames[dow];
     if(!byDOW[dowN])byDOW[dowN]={};byDOW[dowN][rep]=(byDOW[dowN][rep]||0)+1;
   });
 
@@ -3964,10 +3991,14 @@ function renderDemoQuality(){try{
   // Demos by Day
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;position:relative">';
   h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:#172C45">Demos by Day</div></div>';
-  // Mini avg per rep pills (full window)
+  // Mini avg per rep pills — weekday-only since the chart now excludes
+  // weekends. Count rep demos that landed in byDay (already weekday-filtered)
+  // and divide by the weekday-only day count for an apples-to-apples avg.
   h+='<div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">';
+  var weekdayDemosByRep={};
+  for(var _wdK in byDay){for(var _wdR in byDay[_wdK])weekdayDemosByRep[_wdR]=(weekdayDemosByRep[_wdR]||0)+byDay[_wdK][_wdR];}
   var numDaysAll=Object.keys(byDay).length||1;
-  for(var mri=0;mri<repSorted.length;mri++){var mrn=repSorted[mri][0];var mrAvg=(repSorted[mri][1]/numDaysAll).toFixed(1);
+  for(var mri=0;mri<repSorted.length;mri++){var mrn=repSorted[mri][0];var mrAvg=((weekdayDemosByRep[mrn]||0)/numDaysAll).toFixed(1);
   h+='<div style="display:flex;align-items:center;gap:0;background:var(--white);border:1px solid var(--border);border-radius:8px;overflow:hidden;border-left:3px solid '+(_rcm[mrn]||'#ccc')+'"><div style="padding:4px 8px"><div style="font-size:14px;font-weight:700;font-family:var(--font-h);color:var(--navy)">'+mrAvg+'</div><div style="font-size:8px;color:var(--grey)">'+mrn.split(' ')[0]+'/day</div></div></div>';}
   h+='</div>';
   h+='<canvas id="eq-byday" style="width:100%;height:200px;cursor:crosshair"></canvas><div id="eq-byday-tip" class="float-tip"></div></div>';
@@ -4258,7 +4289,7 @@ function renderDemoQuality(){try{
   h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Stage</span> ';
   h+=fp(_eqStageFilter==='all','All',"_eqStageFilter='all';renderDemoQuality()")+' ';
-  ['appointmentscheduled','1084214349','decisionmakerboughtin','contractsent','closedwon','closedlost','3453957850','1062974581'].forEach(function(v){h+=fp(_eqStageFilter===v,STAGE_LABELS[v]||v,"_eqStageFilter='"+v+"';renderDemoQuality()")+' ';});
+  ['appointmentscheduled','1084214349','decisionmakerboughtin','contractsent','closedwon','closedlost','3453957850','1062974581','3722491612'].forEach(function(v){h+=fp(_eqStageFilter===v,STAGE_LABELS[v]||v,"_eqStageFilter='"+v+"';renderDemoQuality()")+' ';});
   h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Attendance</span> ';
   h+=fp(_eqAttFilter==='all','All',"_eqAttFilter='all';renderDemoQuality()")+' ';
