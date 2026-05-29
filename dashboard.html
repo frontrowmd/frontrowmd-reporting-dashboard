@@ -750,7 +750,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r82';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r83';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -4179,12 +4179,24 @@ function renderDemoQuality(){try{
   var qoChartCol={'Qualified':'#16A34A','Disqualified':'#C62828','Not yet evaluated':'#64748B','Blank':'#9CA3AF'};
 
   // Build per-day/per-DOW data — stacked by REP across the full window.
-  // Buckets by EFFECTIVE date (rescheduled if set, else original) so a rescheduled demo lands on its new date.
-  // Weekends are excluded from byDay (the Demos by Day chart shows weekdays
-  // only); byDOW already constrains itself to Mon-Fri via fixedLabels.
+  // Buckets by EFFECTIVE date (rescheduled if set, else original) so a
+  // rescheduled demo lands on its new date.
+  //
+  // Clamp ddb to the page-level time selector window (d.period.from / .to).
+  // The worker returns deals whose ORIGINAL booking date was in the window,
+  // but a deal rescheduled to a later date would otherwise plot on that
+  // later day — making the chart show dates outside the user's selected
+  // timeframe (e.g. window = 5/4-5/8 but chart shows 5/12, 5/15).
+  // Weekends are excluded from byDay (the chart shows weekdays only);
+  // byDOW already constrains itself to Mon-Fri via fixedLabels.
+  var _eqWinFrom=d.period&&d.period.from?d.period.from:'';
+  var _eqWinTo=d.period&&d.period.to?d.period.to:'';
   var byDay={},byDOW={};var dowNames=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   filtered.forEach(function(dd){
     var ddb=(dd.rescheduled_meeting_date||dd.date_demo_booked||'').split('T')[0];if(!ddb)return;
+    // Skip demos whose effective date falls outside the page-level window
+    if(_eqWinFrom&&ddb<_eqWinFrom)return;
+    if(_eqWinTo&&ddb>_eqWinTo)return;
     // Apply chart filter pill — when dim=att, drop deals whose attendance
     // doesn't bucket (Blank). When dim=qo, keep the old Blank handling.
     var att=_attBucket(dd.demo_attendance_status);
