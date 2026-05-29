@@ -750,7 +750,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r78';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r79';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -2581,13 +2581,13 @@ function _renderIrfanMetaTables(d, channel){
 // order clockwise: Pre-launch → 0-10K → ... → 500K+. Each tier gets the same
 // color as the BD Dashboard and Demo Quality web-traffic palette.
 // Per the brand: the HubSpot tier value "Very Small" actually represents
-// Webinar leads, so the pie chart re-labels it. Counted as DEALS created
-// in the window with average_monthly_web_traffic__cloned_ = "Very Small"
-// (the deal-side query reliably returns the right number where the
-// contact-side has been flaky). Very Small is EXCLUDED from per-day
-// counts and Demos Booked averages — it's a separate funnel that only
-// surfaces on the pie. Other views (filter pills, table columns) keep
-// the raw "Very Small" label.
+// Webinar leads, so the pie chart re-labels it. Counted as contacts in
+// the "Webinar Registrations" segment (hs_object_source_detail_1 =
+// "Livestorm Webinars") created in the window. The worker ORs that
+// segment into fetchScheduledContacts so the natural pipeline buckets
+// them. Webinar contacts are EXCLUDED from per-day counts and Demos
+// Booked averages — a separate funnel that only surfaces on the pie.
+// Other views (filter pills, table columns) keep the raw "Very Small" label.
 const IRFAN_WT_LABELS={'Very Small':'Webinar','Pre-launch / just launching':'Pre-launch','0-10K monthly web visitors':'0-10K','10-25K monthly web visitors':'10-25K','25-50K monthly web visitors':'25-50K','50-100K monthly web visitors':'50-100K','100-200K monthly web visitors':'100-200K','200-500K monthly web visitors':'200-500K','500K+ monthly web visitors':'500K+'};
 const IRFAN_WT_ORDER=['Webinar','Pre-launch','0-10K','10-25K','25-50K','50-100K','100-200K','200-500K','500K+'];
 const IRFAN_WT_COLORS={'Webinar':'#6B7280','Pre-launch':'#9CA3AF','0-10K':'#72A4BF','10-25K':'#1D4053','25-50K':'#172C45','50-100K':'#0EA5E9','100-200K':'#7C3AED','200-500K':'#16A34A','500K+':'#F59E0B','(none)':'#E5E7EB'};

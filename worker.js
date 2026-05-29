@@ -563,90 +563,33 @@ async function fetchDisqualificationFormSubmissions(token, from, to) {
 }
 
 async function fetchScheduledContacts(token, from, to) {
-  return hsSearch(token, 'contacts', [{
-    filters: [
-      { propertyName: 'createdate', operator: 'GTE', value: String(toMsET(from)) },
-      { propertyName: 'createdate', operator: 'LTE', value: String(toMsET(to, true)) },
-      { propertyName: 'date_demo_booked', operator: 'HAS_PROPERTY' },
-    ],
-  }], ['createdate', 'date_demo_booked', 'email', 'website', 'company', 'average_monthly_web_traffic']);
-}
-
-// Count of DEALS created in the window with the Very Small web-traffic
-// tier (HubSpot stores this as the deal property
-// `average_monthly_web_traffic__cloned_`). This is the dashboard's
-// "Webinar" pie slice. Confirmed via HubSpot Search API direct call:
-// the deal-based count is reliable (26 in May 2026) where the
-// contact-based equivalent has been flaky.
-//
-// Returns -1 on probe error so the caller can distinguish "definitely
-// zero" from "couldn't ask"; never returns a negative number except
-// in that specific case.
-//
-// Strategy is layered to survive Search API quirks:
-//   1. EQ "Very Small" with no sort         (cheapest, mirrors MCP)
-//   2. EQ "Very Small" with explicit sort   (in case default sort breaks)
-//   3. HAS_PROPERTY paginate + client filter (bulletproof, last resort)
-async function fetchVerySmallDealsTotal(token, from, to) {
   const fMs = String(toMsET(from));
   const tMs = String(toMsET(to, true));
-  const url = 'https://api.hubapi.com/crm/v3/objects/deals/search';
-  const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
-
-  async function probe(body) {
-    try {
-      const r = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
-      if (!r.ok) { console.warn(`VS-deal probe ${r.status}:`, await r.text()); return -1; }
-      const j = await r.json();
-      return typeof j.total === 'number' ? j.total : 0;
-    } catch (e) { console.warn('VS-deal probe threw:', e && e.message); return -1; }
-  }
-
-  // 1. EQ + no sort
-  let n = await probe({
-    filterGroups: [{ filters: [
-      { propertyName: 'createdate', operator: 'GTE', value: fMs },
-      { propertyName: 'createdate', operator: 'LTE', value: tMs },
-      { propertyName: 'average_monthly_web_traffic__cloned_', operator: 'EQ', value: 'Very Small' },
-    ]}],
-    properties: ['createdate'],
-    limit: 1,
-  });
-  if (n > 0) return n;
-
-  // 2. EQ + explicit createdate DESC sort
-  if (n === 0) {
-    const n2 = await probe({
-      filterGroups: [{ filters: [
-        { propertyName: 'createdate', operator: 'GTE', value: fMs },
-        { propertyName: 'createdate', operator: 'LTE', value: tMs },
-        { propertyName: 'average_monthly_web_traffic__cloned_', operator: 'EQ', value: 'Very Small' },
-      ]}],
-      properties: ['createdate'],
-      limit: 1,
-      sorts: [{ propertyName: 'createdate', direction: 'DESCENDING' }],
-    });
-    if (n2 > 0) return n2;
-  }
-
-  // 3. Bulletproof: paginate HAS_PROPERTY and count by case-insensitive match.
-  try {
-    const all = await hsSearch(token, 'deals', [{
+  // Two ORed filter groups:
+  //   1. Contacts who booked a meeting (date_demo_booked SET) in the window.
+  //      This is the canonical "demos booked" population.
+  //   2. Contacts in the user's "Webinar Registrations" segment
+  //      (hs_object_source_detail_1 = "Livestorm Webinars") created in the
+  //      window. These typically don't carry date_demo_booked but should
+  //      still surface as the "Webinar" pie slice. processScheduledContacts
+  //      bucket-maps them into Very Small and skips them from byDay /
+  //      byDayScale / total per the dashboard spec.
+  return hsSearch(token, 'contacts', [
+    {
       filters: [
         { propertyName: 'createdate', operator: 'GTE', value: fMs },
         { propertyName: 'createdate', operator: 'LTE', value: tMs },
-        { propertyName: 'average_monthly_web_traffic__cloned_', operator: 'HAS_PROPERTY' },
+        { propertyName: 'date_demo_booked', operator: 'HAS_PROPERTY' },
       ],
-    }], ['createdate', 'average_monthly_web_traffic__cloned_'], 200);
-    const hit = all.filter(d => {
-      const v = ((d.properties && d.properties.average_monthly_web_traffic__cloned_) || '').trim().toLowerCase();
-      return v === 'very small';
-    }).length;
-    return hit;
-  } catch (e) {
-    console.warn('VS-deal HAS_PROPERTY fallback threw:', e && e.message);
-    return n >= 0 ? n : -1;
-  }
+    },
+    {
+      filters: [
+        { propertyName: 'createdate', operator: 'GTE', value: fMs },
+        { propertyName: 'createdate', operator: 'LTE', value: tMs },
+        { propertyName: 'hs_object_source_detail_1', operator: 'EQ', value: 'Livestorm Webinars' },
+      ],
+    },
+  ], ['createdate', 'date_demo_booked', 'email', 'website', 'company', 'average_monthly_web_traffic', 'hs_object_source_detail_1']);
 }
 
 // Contacts for Demo Quality — matched to deals by company name
@@ -940,22 +883,28 @@ function processScheduledContacts(contacts) {
   const byWebTraffic = {};  // count by raw web-traffic tier value (dashboard maps to display labels)
   let lowTrafficCount = 0;
   let dailyTotal = 0;       // total excluding Very Small (= Webinar tier)
+  // Dedupe: fetchScheduledContacts ORs two filter groups (meeting bookers +
+  // Livestorm Webinar registrants), so a contact could appear twice if they
+  // booked AND registered for a webinar. Key by id and skip dupes.
+  const seenIds = new Set();
   // Set of normalized company names + email domains flagged as Pre-launch.
   // Used downstream by processPipelineDeals to compute the scale-tier QDG count.
   const lowTrafficCompanies = new Set();
   for (const c of contacts) {
     const cd = c.properties?.createdate;
     if (!cd) continue;
+    if (c.id && seenIds.has(c.id)) continue;
+    if (c.id) seenIds.add(c.id);
     const wtRaw = c.properties?.average_monthly_web_traffic || '';
     const wt = wtRaw.toLowerCase();
-    // Very Small = "Webinar" tier. Per spec, exclude from daily counts
-    // and the overall Demos Booked total/average — webinar leads are a
-    // separate funnel and shouldn't pollute per-day/avg metrics. They
-    // still get counted in byWebTraffic so the pie can show a slice
-    // (and the worker downstream may override that count with the
-    // authoritative deal-based total).
-    const isVerySmall = wt === 'very small';
-    const tierKey = wtRaw || '(none)';
+    // "Webinar" tier = either (a) raw web-traffic value is "Very Small" OR
+    // (b) the contact came in via the Livestorm Webinars source. Either
+    // signal maps the contact into the Webinar slice on the pie. Per spec,
+    // Webinar contacts are EXCLUDED from byDay / byDayScale / total — they're
+    // a separate funnel and shouldn't pollute per-day/avg metrics.
+    const isLivestormWebinar = (c.properties?.hs_object_source_detail_1 || '') === 'Livestorm Webinars';
+    const isVerySmall = wt === 'very small' || isLivestormWebinar;
+    const tierKey = isLivestormWebinar ? 'Very Small' : (wtRaw || '(none)');
     byWebTraffic[tierKey] = (byWebTraffic[tierKey]||0) + 1;
     if (isVerySmall) continue;
     const d = new Date(cd);
@@ -2521,42 +2470,18 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   const priorData = prior ? buildPeriodData(prior, pW, pLI, pG, pSch, filterActiveBrands(pPipe), filterActiveBrands(pCW)) : null;
   const priorMonthData = priorMonth ? buildPeriodData(priorMonth, pmW, pmLI, pmG, pmSch, filterActiveBrands(pmPipe), filterActiveBrands(pmCW)) : null;
 
-  // Webinar tier ("Very Small") — sourced from DEALS, not contacts. Count
-  // deals created in the window with `average_monthly_web_traffic__cloned_
-  // = "Very Small"`. The deal-based query reliably returns the right
-  // number (confirmed 26 in May 2026 vs. 0 from the contact-based probe).
-  //
-  // Critical: Very Small is NOT included in Demos Booked daily counts
-  // or averages — that exclusion lives upstream in processScheduled-
-  // Contacts (Very Small contacts skip byDay/byDayScale/total). Here we
-  // just override the byWebTraffic bucket for the pie slice.
-  //
-  // KV-cached (15 min) so cache hits cost zero subrequests, and merge
-  // uses Math.max with the natural contact-bucket count so a probe
-  // failure never zeros out a real number.
-  try {
-    const _vsFetch = (p) => kvCachedFetch(env, `vsDealTotal:${p.from}:${p.to}`, 15 * 60,
-      () => fetchVerySmallDealsTotal(hsToken, p.from, p.to), -1);
-    const _wbProms = [_vsFetch(current).catch(() => -1)];
-    if (prior) _wbProms.push(_vsFetch(prior).catch(() => -1)); else _wbProms.push(Promise.resolve(-1));
-    if (priorMonth) _wbProms.push(_vsFetch(priorMonth).catch(() => -1)); else _wbProms.push(Promise.resolve(-1));
-    const [_wbCur, _wbPv, _wbPm] = await Promise.all(_wbProms);
-    const _maxMerge = (data, n) => {
-      if (!data || !data.scheduled) return;
-      data.scheduled.byWebTraffic = data.scheduled.byWebTraffic || {};
-      const natural = data.scheduled.byWebTraffic['Very Small'] || 0;
-      data.scheduled.byWebTraffic['Very Small'] = n >= 0 ? Math.max(natural, n) : natural;
-    };
-    _maxMerge(currentData, _wbCur);
-    if (priorData) _maxMerge(priorData, _wbPv);
-    if (priorMonthData) _maxMerge(priorMonthData, _wbPm);
-    currentData._webinarDebug = {
-      source: 'deals.average_monthly_web_traffic__cloned_=Very Small',
-      probe: { cur: _wbCur, prior: _wbPv, priorMonth: _wbPm },
-      finalCur: (currentData.scheduled.byWebTraffic || {})['Very Small'] || 0,
-    };
-    console.log(`Webinar tier (deals): probe cur=${_wbCur} prior=${_wbPv} pm=${_wbPm} → final cur=${currentData._webinarDebug.finalCur}`);
-  } catch (e) { console.error('Webinar tier deal fetch failed:', e && e.message); }
+  // Webinar tier ("Very Small") — sourced inline via fetchScheduledContacts
+  // which now ORs in the Livestorm Webinars segment. processScheduled-
+  // Contacts buckets those contacts into byWebTraffic['Very Small'] (and
+  // excludes them from byDay/byDayScale/total per spec). No separate
+  // override needed. Surface the final count on _webinarDebug for the
+  // Network-tab inspection.
+  currentData._webinarDebug = {
+    source: 'fetchScheduledContacts OR hs_object_source_detail_1=Livestorm Webinars',
+    finalCur: (currentData.scheduled?.byWebTraffic || {})['Very Small'] || 0,
+    finalPrior: (priorData?.scheduled?.byWebTraffic || {})['Very Small'] || 0,
+    finalPriorMonth: (priorMonthData?.scheduled?.byWebTraffic || {})['Very Small'] || 0,
+  };
 
   // signUpRate is no longer computed in /api/data — the dashboard fetches
   // it from the dedicated /api/signup-cohorts endpoint instead. Skipping
