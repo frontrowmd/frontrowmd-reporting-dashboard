@@ -572,6 +572,81 @@ async function fetchScheduledContacts(token, from, to) {
   }], ['createdate', 'date_demo_booked', 'email', 'website', 'company', 'average_monthly_web_traffic']);
 }
 
+// Count of ALL contacts with average_monthly_web_traffic = "Very Small"
+// created in the window — independent of date_demo_booked. This is the
+// "Webinar" tier on the dashboard pie. Returns -1 on probe error so the
+// caller can distinguish "definitely zero" from "couldn't ask"; the
+// caller pairs this with the natural processScheduledContacts count via
+// Math.max so a transient failure never lowers a real number.
+//
+// Strategy is layered to survive HubSpot Search API quirks we've seen:
+//   1. EQ "Very Small" with NO sort         (cheapest, mirrors MCP path)
+//   2. EQ "Very Small" with default sort    (in case sort is needed)
+//   3. HAS_PROPERTY paginate + client filter (bulletproof, last resort)
+async function fetchVerySmallTotal(token, from, to) {
+  const fMs = String(toMsET(from));
+  const tMs = String(toMsET(to, true));
+  const url = 'https://api.hubapi.com/crm/v3/objects/contacts/search';
+  const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+  // One-shot probe: reads `total` from the response, no pagination needed.
+  async function probe(body) {
+    try {
+      const r = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+      if (!r.ok) { console.warn(`VS probe ${r.status}:`, await r.text()); return -1; }
+      const j = await r.json();
+      return typeof j.total === 'number' ? j.total : 0;
+    } catch (e) { console.warn('VS probe threw:', e && e.message); return -1; }
+  }
+
+  // 1. EQ + no sort (matches the working MCP query pattern)
+  let n = await probe({
+    filterGroups: [{ filters: [
+      { propertyName: 'createdate', operator: 'GTE', value: fMs },
+      { propertyName: 'createdate', operator: 'LTE', value: tMs },
+      { propertyName: 'average_monthly_web_traffic', operator: 'EQ', value: 'Very Small' },
+    ]}],
+    properties: ['createdate'],
+    limit: 1,
+  });
+  if (n > 0) return n;
+
+  // 2. EQ + explicit hs_createdate sort (in case default sort behaves differently)
+  if (n === 0) {
+    const n2 = await probe({
+      filterGroups: [{ filters: [
+        { propertyName: 'createdate', operator: 'GTE', value: fMs },
+        { propertyName: 'createdate', operator: 'LTE', value: tMs },
+        { propertyName: 'average_monthly_web_traffic', operator: 'EQ', value: 'Very Small' },
+      ]}],
+      properties: ['createdate'],
+      limit: 1,
+      sorts: [{ propertyName: 'createdate', direction: 'DESCENDING' }],
+    });
+    if (n2 > 0) return n2;
+  }
+
+  // 3. Bulletproof fallback: paginate everyone with the property set and
+  // count by case-insensitive match. More expensive but reliable.
+  try {
+    const all = await hsSearch(token, 'contacts', [{
+      filters: [
+        { propertyName: 'createdate', operator: 'GTE', value: fMs },
+        { propertyName: 'createdate', operator: 'LTE', value: tMs },
+        { propertyName: 'average_monthly_web_traffic', operator: 'HAS_PROPERTY' },
+      ],
+    }], ['createdate', 'average_monthly_web_traffic'], 200);
+    const hit = all.filter(c => {
+      const v = ((c.properties && c.properties.average_monthly_web_traffic) || '').trim().toLowerCase();
+      return v === 'very small';
+    }).length;
+    return hit;
+  } catch (e) {
+    console.warn('VS HAS_PROPERTY fallback threw:', e && e.message);
+    return n >= 0 ? n : -1;
+  }
+}
+
 // Contacts for Demo Quality — matched to deals by company name
 async function fetchContactsForDQ(token, from, to) {
   return hsSearch(token, 'contacts', [{
@@ -2434,16 +2509,48 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   const priorData = prior ? buildPeriodData(prior, pW, pLI, pG, pSch, filterActiveBrands(pPipe), filterActiveBrands(pCW)) : null;
   const priorMonthData = priorMonth ? buildPeriodData(priorMonth, pmW, pmLI, pmG, pmSch, filterActiveBrands(pmPipe), filterActiveBrands(pmCW)) : null;
 
-  // Webinar tier ("Very Small") — counted via the natural processScheduledContacts
-  // flow, which already buckets contacts with date_demo_booked SET by
-  // average_monthly_web_traffic. That intersection IS the "Website HubSpot
-  // Meetings Booked + Very Small" segment the dashboard wants for the Webinar
-  // slice. No override needed.
+  // Webinar tier ("Very Small") — count ALL Very Small contacts in the
+  // window, regardless of whether date_demo_booked is set. Webinar leads
+  // come from Livestorm and similar integrations and typically don't carry
+  // date_demo_booked, so the natural processScheduledContacts flow misses
+  // most of them.
   //
-  // (Prior attempts here tried to count ALL Very Small contacts in the window
-  // regardless of date_demo_booked, but that produced inconsistent results
-  // from HubSpot's Search API and obscured the natural count. The natural
-  // count via the scheduled pipeline is the authoritative answer.)
+  // Two protections against historical "Webinar = 0" regressions:
+  //
+  // 1. KV cache (15 min) — the fetch is window-stable for short periods so
+  //    a cache hit costs zero subrequests, keeping the Webinar count alive
+  //    even when /api/data is hitting the subrequest ceiling.
+  //
+  // 2. Math.max with the natural count — if the all-VS probe returns -1
+  //    (error) or 0, we fall back to whatever processScheduledContacts
+  //    already bucketed for Very Small. The override can only INCREASE the
+  //    count, never zero out a real value.
+  try {
+    const _cacheKey = (label, p) => `vsTotal:${label}:${p.from}:${p.to}`;
+    const _vsFetch = (p) => kvCachedFetch(env, _cacheKey('vs', p), 15 * 60,
+      () => fetchVerySmallTotal(hsToken, p.from, p.to), -1);
+    const _wbProms = [_vsFetch(current).catch(() => -1)];
+    if (prior) _wbProms.push(_vsFetch(prior).catch(() => -1)); else _wbProms.push(Promise.resolve(-1));
+    if (priorMonth) _wbProms.push(_vsFetch(priorMonth).catch(() => -1)); else _wbProms.push(Promise.resolve(-1));
+    const [_wbCur, _wbPv, _wbPm] = await Promise.all(_wbProms);
+    const _maxMerge = (data, n) => {
+      if (!data || !data.scheduled) return;
+      data.scheduled.byWebTraffic = data.scheduled.byWebTraffic || {};
+      const natural = data.scheduled.byWebTraffic['Very Small'] || 0;
+      // n === -1 means probe failed → keep natural; n >= 0 → use the bigger value
+      data.scheduled.byWebTraffic['Very Small'] = n >= 0 ? Math.max(natural, n) : natural;
+    };
+    _maxMerge(currentData, _wbCur);
+    if (priorData) _maxMerge(priorData, _wbPv);
+    if (priorMonthData) _maxMerge(priorMonthData, _wbPm);
+    // Diagnostic — surfaces both the probe result and the final value, so
+    // the dashboard's Network tab makes it obvious which side wins.
+    currentData._webinarDebug = {
+      probe: { cur: _wbCur, prior: _wbPv, priorMonth: _wbPm },
+      finalCur: (currentData.scheduled.byWebTraffic || {})['Very Small'] || 0,
+    };
+    console.log(`Webinar tier: probe cur=${_wbCur} prior=${_wbPv} pm=${_wbPm} → final cur=${currentData._webinarDebug.finalCur}`);
+  } catch (e) { console.error('Webinar tier fetch failed:', e && e.message); }
 
   // signUpRate is no longer computed in /api/data — the dashboard fetches
   // it from the dedicated /api/signup-cohorts endpoint instead. Skipping
