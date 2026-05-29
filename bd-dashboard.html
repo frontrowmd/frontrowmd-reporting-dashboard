@@ -89,7 +89,16 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
 <script>
 var BD={data:null},_bdSort='closedate',_bdSortDir='desc',_bdHideBlanks=false,_bdAttrDim='_webTraffic';
 function _bdFirstOfMonth(){var _d=new Date();return _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-01';}
-var _bdBrandStatusF='Active',_bdStageF='all',_bdRepF='all',_bdSeRepF='all',_bdOpsRepF='all',_bdPkgF='all',_bdDateFrom=_bdFirstOfMonth(),_bdDateTo='',_bdDateMode='close';
+// _bdBrandStatusF = single-select bucket ('all' | 'Active' | 'Not Active').
+// _bdBrandStatusToggleF = multi-select array of specific brand_status values
+// (Signed / Paying / Paused / Churned / Never Implemented - Churned). When
+// the toggle array is non-empty, it takes precedence over the single-select
+// bucket (the bucket auto-resets to 'all' so the two UIs don't fight).
+var _bdBrandStatusF='Active',_bdBrandStatusToggleF=[],_bdStageF='all',_bdRepF='all',_bdSeRepF='all',_bdOpsRepF='all',_bdPkgF='all',_bdDateFrom=_bdFirstOfMonth(),_bdDateTo='',_bdDateMode='close';
+// Click handlers — single-select buttons clear the toggles; toggle clicks
+// auto-set the single-select bucket to 'all' so both modes can't be active.
+function bdBSSet(v){_bdBrandStatusF=v;_bdBrandStatusToggleF=[];renderBD();}
+function bdBSToggle(v){var i=_bdBrandStatusToggleF.indexOf(v);if(i>=0)_bdBrandStatusToggleF.splice(i,1);else _bdBrandStatusToggleF.push(v);if(_bdBrandStatusToggleF.length>0)_bdBrandStatusF='all';renderBD();}
 // Web Traffic filter is multi-select — array of selected raw tier values.
 // Empty array = no filter (all tiers shown).
 var _bdWebTrafficF=[];
@@ -260,8 +269,19 @@ function bdExportCSV(){
     {hsProp:'date_demo_booked',                      get:function(r){return (r.date_demo_booked||'').substring(0,10);}},
     {hsProp:'rescheduled_meeting_date',              get:function(r){return (r.rescheduled_meeting_date||'').substring(0,10);}},
     {hsProp:'createdate',                            get:function(r){return (r.createdate||'').substring(0,10);}},
-    {hsProp:'computed_days_to_demo',                 get:function(r){var v=bdToDemo(r);return v==null?'':v;}},
-    {hsProp:'computed_days_from_demo',               get:function(r){var v=bdFromDemo(r);return v==null?'':v;}},
+    {hsProp:'computed_days_to_demo',                 get:function(r){
+      if(!r||!r.createdate||!r.date_demo_booked)return '';
+      var t1=new Date(r.createdate).getTime(),t2=new Date(r.date_demo_booked).getTime();
+      if(isNaN(t1)||isNaN(t2)||t2<t1)return '';
+      return Math.round((t2-t1)/86400000);
+    }},
+    {hsProp:'computed_days_from_demo',               get:function(r){
+      if(!r||!r.closedate)return '';
+      var dd=r.rescheduled_meeting_date||r.date_demo_booked;if(!dd)return '';
+      var t1=new Date(dd).getTime(),t2=new Date(r.closedate).getTime();
+      if(isNaN(t1)||isNaN(t2)||t2<t1)return '';
+      return Math.round((t2-t1)/86400000);
+    }},
     {hsProp:'days_to_close',                         get:function(r){return r.days_to_close;}},
     {hsProp:'amount',                                get:function(r){return r.amount;}},
     {hsProp:'package_type',                          get:function(r){return r.package_type;}},
@@ -326,7 +346,7 @@ function f$(v){if(v==null||isNaN(v))return'\u2014';return'$'+Math.round(v).toLoc
 function fmtInput(el){var v=el.value.replace(/[^0-9]/g,'');el.value=v?parseInt(v).toLocaleString():'';}
 function parseInput(s){return parseFloat((s||'').replace(/[^0-9.]/g,''))||0;}
 function bdClearDate(){_bdDateFrom='';_bdDateTo='';renderBD();}
-function bdResetFilters(){_bdBrandStatusF='Active';_bdStageF='all';_bdRepF='all';_bdSeRepF='all';_bdOpsRepF='all';_bdPkgF='all';_bdWebTrafficF=[];_bdDateFrom=_bdFirstOfMonth();_bdDateTo='';_bdDateMode='close';renderBD();}
+function bdResetFilters(){_bdBrandStatusF='Active';_bdBrandStatusToggleF=[];_bdStageF='all';_bdRepF='all';_bdSeRepF='all';_bdOpsRepF='all';_bdPkgF='all';_bdWebTrafficF=[];_bdDateFrom=_bdFirstOfMonth();_bdDateTo='';_bdDateMode='close';renderBD();}
 // Toggle a single web-traffic tier in/out of the multi-select array.
 function bdWtToggle(tier){var i=_bdWebTrafficF.indexOf(tier);if(i>=0)_bdWebTrafficF.splice(i,1);else _bdWebTrafficF.push(tier);renderBD();}
 function bdWtClear(){_bdWebTrafficF=[];renderBD();}
@@ -390,9 +410,16 @@ function renderBD(){
   h+='</div>';
   // Shared Filtered
   var sharedFiltered=deals.filter(function(dd){
-    if(_bdBrandStatusF==='Active'){if(!['Signed','Paying'].includes(dd.brand_status))return false;}
-    else if(_bdBrandStatusF==='Not Active'){if(!['Paused','Churned','Never Implemented - Churned'].includes(dd.brand_status))return false;}
-    else if(_bdBrandStatusF!=='all'&&dd.brand_status!==_bdBrandStatusF)return false;
+    // Brand Status filter: multi-select toggles take precedence when any
+    // are active; otherwise fall back to the single-select bucket.
+    if(_bdBrandStatusToggleF.length>0){
+      if(_bdBrandStatusToggleF.indexOf(dd.brand_status)===-1)return false;
+    } else if(_bdBrandStatusF==='Active'){
+      if(!['Signed','Paying'].includes(dd.brand_status))return false;
+    } else if(_bdBrandStatusF==='Not Active'){
+      if(!['Paused','Churned','Never Implemented - Churned'].includes(dd.brand_status))return false;
+    }
+    // 'all' falls through with no filter applied.
     if(_bdStageF!=='all'&&dd.dealstage!==_bdStageF)return false;
     if(_bdRepF!=='all'){var rn=ownerMap[dd.hubspot_owner_id]||'Unassigned';if(rn!==_bdRepF)return false;}
     if(_bdSeRepF!=='all'){var sn=ownerMap[dd.se_rep_id]||'Unassigned';if(sn!==_bdSeRepF)return false;}
@@ -573,15 +600,20 @@ function renderBD(){
   deals.forEach(function(dd){if(dd.brand_status)uniqBS[dd.brand_status]=1;if(dd.dealstage)uniqStage[dd.dealstage]=1;if(dd.package_type)uniqPkg[dd.package_type]=1;});
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px 20px;margin-bottom:16px"><div style="display:flex;align-items:flex-start;gap:8px 12px;flex-wrap:wrap;margin-bottom:0">';
   h+='<span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px"><span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Brand Status</span> ';
-  h+=fp(_bdBrandStatusF==='all','All',"_bdBrandStatusF='all';renderBD()")+' ';
-  h+=fp(_bdBrandStatusF==='Active','Active',"_bdBrandStatusF='Active';renderBD()")+' ';
-  h+=fp(_bdBrandStatusF==='Not Active','Not Active',"_bdBrandStatusF='Not Active';renderBD()")+' ';
+  // Single-select bucket — active only when no toggle pills are active.
+  // Clicking these clears any active toggles (via bdBSSet).
+  var _bsToggleOff=(_bdBrandStatusToggleF.length===0);
+  h+=fp(_bsToggleOff&&_bdBrandStatusF==='all','All',"bdBSSet('all')")+' ';
+  h+=fp(_bsToggleOff&&_bdBrandStatusF==='Active','Active',"bdBSSet('Active')")+' ';
+  h+=fp(_bsToggleOff&&_bdBrandStatusF==='Not Active','Not Active',"bdBSSet('Not Active')")+' ';
   h+='<span style="display:inline-block;width:1px;height:14px;background:rgba(23,44,69,.2);margin:0 4px;vertical-align:middle"></span> ';
-  h+=fp(_bdBrandStatusF==='Signed','Signed',"_bdBrandStatusF='Signed';renderBD()")+' ';
-  h+=fp(_bdBrandStatusF==='Paying','Paying',"_bdBrandStatusF='Paying';renderBD()")+' ';
-  h+=fp(_bdBrandStatusF==='Paused','Paused',"_bdBrandStatusF='Paused';renderBD()")+' ';
-  h+=fp(_bdBrandStatusF==='Churned','Churned',"_bdBrandStatusF='Churned';renderBD()")+' ';
-  h+=fp(_bdBrandStatusF==='Never Implemented - Churned','Never Implemented',"_bdBrandStatusF='Never Implemented - Churned';renderBD()")+' ';
+  // Multi-select toggle pills — independent of each other; any combination
+  // can be active. Clicking auto-resets the single bucket to 'all'.
+  h+=fp(_bdBrandStatusToggleF.indexOf('Signed')>=0,'Signed',"bdBSToggle('Signed')")+' ';
+  h+=fp(_bdBrandStatusToggleF.indexOf('Paying')>=0,'Paying',"bdBSToggle('Paying')")+' ';
+  h+=fp(_bdBrandStatusToggleF.indexOf('Paused')>=0,'Paused',"bdBSToggle('Paused')")+' ';
+  h+=fp(_bdBrandStatusToggleF.indexOf('Churned')>=0,'Churned',"bdBSToggle('Churned')")+' ';
+  h+=fp(_bdBrandStatusToggleF.indexOf('Never Implemented - Churned')>=0,'Never Implemented',"bdBSToggle('Never Implemented - Churned')")+' ';
   h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Deal Stage</span> ';
   h+=fp(_bdStageF==='all','All',"_bdStageF='all';renderBD()")+' ';
@@ -632,7 +664,7 @@ function renderBD(){
   h+='<input type="date" value="'+_bdDateTo+'" onchange="_bdDateTo=this.value;renderBD()" style="padding:3px 8px;border:1.5px solid rgba(23,44,69,.12);border-radius:50px;font-size:10px;font-family:var(--font-b);color:var(--navy)">';
   h+='<button onclick="renderBD()" style="padding:3px 10px;border-radius:50px;border:1.5px solid var(--navy);background:var(--navy);color:#fff;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--font-b)">Go</button>';
   if(_bdDateFrom||_bdDateTo){h+='<button onclick="bdClearDate()" style="padding:3px 10px;border-radius:50px;border:1.5px solid rgba(23,44,69,.12);background:transparent;color:var(--navy);font-size:10px;cursor:pointer;font-family:var(--font-b)">Clear</button>';}
-  var anyF=_bdBrandStatusF!=='all'||_bdStageF!=='all'||_bdRepF!=='all'||_bdSeRepF!=='all'||_bdOpsRepF!=='all'||_bdPkgF!=='all'||_bdWebTrafficF.length>0||_bdDateFrom||_bdDateTo;
+  var anyF=_bdBrandStatusF!=='all'||_bdBrandStatusToggleF.length>0||_bdStageF!=='all'||_bdRepF!=='all'||_bdSeRepF!=='all'||_bdOpsRepF!=='all'||_bdPkgF!=='all'||_bdWebTrafficF.length>0||_bdDateFrom||_bdDateTo;
   if(anyF){h+='<button onclick="bdResetFilters()" style="padding:3px 12px;border-radius:50px;border:1.5px solid #C62828;background:rgba(198,40,40,.05);color:#C62828;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font-b);margin-left:auto">Reset All Filters</button>';}
   h+='</div></div>';
   // Table
