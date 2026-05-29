@@ -750,7 +750,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r81';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r82';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -1538,7 +1538,7 @@ function renderDash(){
   // (same colors, segment order Pre-launch → 500K+ clockwise, instant hover
   // tooltips, vs-prior pp-delta badges in the legend).
   if(typeof _renderIrfanWtPieInto==='function'){
-    _renderIrfanWtPieInto('t-webtraffic', d.demoTracking?.scheduledByWebTraffic, 'demos + webinars booked', d.demoTracking?.scheduledByWebTrafficPrior);
+    _renderIrfanWtPieInto('t-webtraffic', d.demoTracking?.scheduledByWebTraffic, 'demos +\nwebinars booked', d.demoTracking?.scheduledByWebTrafficPrior);
   }
 
   // ─── Conversion Funnel ──────────────────────────────
@@ -2654,11 +2654,26 @@ function _renderIrfanWtPieInto(targetId, rawBuckets, centerLabel, priorBuckets, 
     legend+='<div style="display:flex;align-items:center;gap:8px;white-space:nowrap"><span style="display:inline-block;width:10px;height:10px;background:'+col+';border-radius:2px;flex-shrink:0"></span><span style="font-weight:600;min-width:62px;color:var(--navy)">'+s.label+'</span><span style="color:var(--grey);min-width:24px;text-align:right;font-variant-numeric:tabular-nums">'+s.count+'</span><span style="color:var(--teal);font-weight:700;font-variant-numeric:tabular-nums;min-width:42px;text-align:right">'+pct+'%</span>'+deltaBadge+'</div>';
   }
   legend+='</div>';
+  // Center label — supports either a single string or '\n'-separated lines.
+  // Multi-line labels (e.g. "demos +\nwebinars booked") render as stacked
+  // tspans with slightly smaller font so both lines fit comfortably inside
+  // the donut hole without bumping into the total number above.
+  const _lblLines=(centerLabel||'').split('\n');
+  let _centerLblSvg='';
+  if(_lblLines.length>1){
+    const lblFs=Math.max(9,_centerLblFs-1);
+    const lineH=lblFs+2;
+    // Vertically center the block around the single-line baseline
+    const baseY=cy+Math.round(SIZE*15/280);
+    _centerLblSvg=_lblLines.map((line,i)=>'<text x="'+cx+'" y="'+(baseY+i*lineH)+'" text-anchor="middle" style="font-size:'+lblFs+'px;fill:var(--grey)">'+line+'</text>').join('');
+  } else {
+    _centerLblSvg='<text x="'+cx+'" y="'+(cy+Math.round(SIZE*18/280))+'" text-anchor="middle" style="font-size:'+_centerLblFs+'px;fill:var(--grey)">'+(centerLabel||'')+'</text>';
+  }
   target.innerHTML='<div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;justify-content:center;position:relative;padding:'+PAD_Y+'px 0">'
     +'<svg viewBox="0 0 '+SIZE+' '+SIZE+'" style="width:'+SIZE+'px;height:'+SIZE+'px;flex-shrink:0">'+paths+labels
     +'<circle cx="'+cx+'" cy="'+cy+'" r="'+rInner+'" fill="var(--white)"/>'
     +'<text x="'+cx+'" y="'+(cy-4)+'" text-anchor="middle" style="font-family:var(--font-h);font-size:'+_centerNumFs+'px;font-weight:700;fill:var(--navy)">'+total+'</text>'
-    +'<text x="'+cx+'" y="'+(cy+Math.round(SIZE*18/280))+'" text-anchor="middle" style="font-size:'+_centerLblFs+'px;fill:var(--grey)">'+(centerLabel||'')+'</text>'
+    +_centerLblSvg
     +'</svg>'+legend
     +'<div id="'+targetId+'-tip" style="display:none;position:fixed;background:#172C45;color:#fff;padding:6px 10px;border-radius:6px;font-size:12px;font-family:var(--font-b);pointer-events:none;z-index:999;box-shadow:0 4px 12px rgba(2,15,24,.25);white-space:nowrap"></div>'
     +'</div>';
@@ -2671,7 +2686,7 @@ function _renderIrfanWtPieInto(targetId, rawBuckets, centerLabel, priorBuckets, 
     el.addEventListener('mouseleave',function(){el.style.opacity='1';if(tip)tip.style.display='none';});
   });
 }
-function _renderIrfanWtPie(d){_renderIrfanWtPieInto('irfan-wt-pie', d.demoTracking?.scheduledByWebTraffic, 'demos + webinars booked', d.demoTracking?.scheduledByWebTrafficPrior);}
+function _renderIrfanWtPie(d){_renderIrfanWtPieInto('irfan-wt-pie', d.demoTracking?.scheduledByWebTraffic, 'demos +\nwebinars booked', d.demoTracking?.scheduledByWebTrafficPrior);}
 // Single signed-deals pie that reads the current toggle mode and renders into #irfan-signed-pie.
 function _renderIrfanSignedPie(d){
   const mode=S.irfan?.signed2Mode||'mtd';
