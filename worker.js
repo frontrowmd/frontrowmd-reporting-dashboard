@@ -577,23 +577,36 @@ async function fetchScheduledContacts(token, from, to) {
 // date_demo_booked, since most Webinar leads are inbound form fills that
 // haven't booked a demo yet but should still be visible in tier breakdowns.
 //
-// IMPORTANT: filter strategy uses HAS_PROPERTY + client-side string equality
-// instead of the obvious `EQ "Very Small"`. HubSpot's Search API was returning
-// 0 results for the EQ filter on this enum value (it's possible the recently-
-// added enum option hadn't propagated through the search index yet, or there's
-// a multi-word-value quirk). HAS_PROPERTY is a reliable fallback that returns
-// every contact with the enum set, and we count the "Very Small" subset on
-// our side. Cost: a few extra contact rows over the wire vs. the targeted
-// filter, but reliable.
+// Strategy: try the targeted `EQ "Very Small"` filter first (cheap, one
+// page is plenty for monthly volumes). If that returns 0 — which we've
+// observed transiently when the enum option hadn't propagated through
+// HubSpot's search index — fall back to HAS_PROPERTY + client-side
+// equality, which is guaranteed to surface the value if it exists.
 async function fetchWebinarContacts(token, from, to) {
-  const contacts = await hsSearch(token, 'contacts', [{
+  const fMs = String(toMsET(from));
+  const tMs = String(toMsET(to, true));
+  // Primary: targeted EQ filter
+  let contacts = await hsSearch(token, 'contacts', [{
     filters: [
-      { propertyName: 'createdate', operator: 'GTE', value: String(toMsET(from)) },
-      { propertyName: 'createdate', operator: 'LTE', value: String(toMsET(to, true)) },
+      { propertyName: 'createdate', operator: 'GTE', value: fMs },
+      { propertyName: 'createdate', operator: 'LTE', value: tMs },
+      { propertyName: 'average_monthly_web_traffic', operator: 'EQ', value: 'Very Small' },
+    ],
+  }], ['createdate', 'average_monthly_web_traffic'], 200);
+  if (contacts.length > 0) return contacts;
+  // Fallback: HAS_PROPERTY + client-side string equality (case-insensitive,
+  // tolerates whitespace differences) — catches index-propagation lag.
+  const all = await hsSearch(token, 'contacts', [{
+    filters: [
+      { propertyName: 'createdate', operator: 'GTE', value: fMs },
+      { propertyName: 'createdate', operator: 'LTE', value: tMs },
       { propertyName: 'average_monthly_web_traffic', operator: 'HAS_PROPERTY' },
     ],
   }], ['createdate', 'average_monthly_web_traffic'], 200);
-  return contacts.filter(c => (c.properties && c.properties.average_monthly_web_traffic) === 'Very Small');
+  return all.filter(c => {
+    const v = (c.properties && c.properties.average_monthly_web_traffic || '').trim().toLowerCase();
+    return v === 'very small';
+  });
 }
 
 // Contacts for Demo Quality — matched to deals by company name
@@ -2476,6 +2489,10 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     _override(currentData, _wbCur);
     if (priorData) _override(priorData, _wbPv);
     if (priorMonthData) _override(priorMonthData, _wbPm);
+    // Diagnostic — surfaces the raw fetch counts in the API response so we can
+    // verify the worker is reaching the right "Very Small" contacts even when
+    // some downstream rendering issue would mask a non-zero count.
+    currentData._webinarDebug = { cur: _wbCur.length, prior: _wbPv.length, priorMonth: _wbPm.length };
     console.log(`Webinar tier: cur=${_wbCur.length} prior=${_wbPv.length} pm=${_wbPm.length}`);
   } catch (e) { console.error('Webinar tier fetch failed:', e && e.message); }
 
