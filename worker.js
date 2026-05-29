@@ -572,41 +572,92 @@ async function fetchScheduledContacts(token, from, to) {
   }], ['createdate', 'date_demo_booked', 'email', 'website', 'company', 'average_monthly_web_traffic']);
 }
 
-// Contacts with average_monthly_web_traffic = "Very Small" — the "Webinar"
-// tier. Counted on the web-traffic pie REGARDLESS of whether the contact has
-// date_demo_booked, since most Webinar leads are inbound form fills that
-// haven't booked a demo yet but should still be visible in tier breakdowns.
+// Dedicated count fetch for the "Very Small" tier (= the dashboard's
+// "Webinar" pie slice). We need this count INDEPENDENT of the normal
+// scheduled-contacts pipeline because Webinar leads typically don't carry
+// date_demo_booked, so they never reach processScheduledContacts.
 //
-// Strategy: try the targeted `EQ "Very Small"` filter first (cheap, one
-// page is plenty for monthly volumes). If that returns 0 — which we've
-// observed transiently when the enum option hadn't propagated through
-// HubSpot's search index — fall back to HAS_PROPERTY + client-side
-// equality, which is guaranteed to surface the value if it exists.
-async function fetchWebinarContacts(token, from, to) {
+// This goes direct to HubSpot's Search API and reads the top-level
+// `total` field — that's the authoritative count across the entire result
+// set, no pagination needed and no per-page truncation risk. We try three
+// strategies in order and return the first one that yields a positive
+// number, so a single index-propagation hiccup or value-format quirk on
+// either side can't silently zero out the slice:
+//   1. `EQ "Very Small"`          — targeted, cheapest, the expected path.
+//   2. `EQ "very small"`          — case variant (HubSpot enum stores
+//                                    label as-typed in the picker; some
+//                                    workflows write it lowercase).
+//   3. `HAS_PROPERTY` + count rows whose value equals "very small" after
+//      trim+lowercase — the bulletproof fallback. Slightly more expensive
+//      because it paginates everyone with the property set, but reliable.
+// If all three return 0, returns 0 (real zero). Returns -1 only on a
+// total network/auth failure so the caller can distinguish "definitely
+// none" from "couldn't ask."
+async function fetchVerySmallCount(token, from, to) {
   const fMs = String(toMsET(from));
   const tMs = String(toMsET(to, true));
-  // Primary: targeted EQ filter
-  let contacts = await hsSearch(token, 'contacts', [{
-    filters: [
-      { propertyName: 'createdate', operator: 'GTE', value: fMs },
-      { propertyName: 'createdate', operator: 'LTE', value: tMs },
-      { propertyName: 'average_monthly_web_traffic', operator: 'EQ', value: 'Very Small' },
-    ],
-  }], ['createdate', 'average_monthly_web_traffic'], 200);
-  if (contacts.length > 0) return contacts;
-  // Fallback: HAS_PROPERTY + client-side string equality (case-insensitive,
-  // tolerates whitespace differences) — catches index-propagation lag.
-  const all = await hsSearch(token, 'contacts', [{
-    filters: [
-      { propertyName: 'createdate', operator: 'GTE', value: fMs },
-      { propertyName: 'createdate', operator: 'LTE', value: tMs },
-      { propertyName: 'average_monthly_web_traffic', operator: 'HAS_PROPERTY' },
-    ],
-  }], ['createdate', 'average_monthly_web_traffic'], 200);
-  return all.filter(c => {
-    const v = (c.properties && c.properties.average_monthly_web_traffic || '').trim().toLowerCase();
-    return v === 'very small';
-  });
+  const url = 'https://api.hubapi.com/crm/v3/objects/contacts/search';
+  const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+  // Helper: one-shot search that returns {total, results}. Limit=1 because
+  // we only need the `total` field for counting.
+  async function probe(eqValue) {
+    try {
+      const r = await fetch(url, {
+        method: 'POST', headers,
+        body: JSON.stringify({
+          filterGroups: [{
+            filters: [
+              { propertyName: 'createdate', operator: 'GTE', value: fMs },
+              { propertyName: 'createdate', operator: 'LTE', value: tMs },
+              { propertyName: 'average_monthly_web_traffic', operator: 'EQ', value: eqValue },
+            ],
+          }],
+          properties: ['createdate'],
+          limit: 1,
+          sorts: [{ propertyName: 'createdate', direction: 'DESCENDING' }],
+        }),
+      });
+      if (!r.ok) { console.warn(`Very Small probe (${eqValue}) ${r.status}:`, await r.text()); return -1; }
+      const j = await r.json();
+      return typeof j.total === 'number' ? j.total : 0;
+    } catch (e) { console.warn(`Very Small probe (${eqValue}) threw:`, e && e.message); return -1; }
+  }
+
+  // 1. Canonical case
+  let n = await probe('Very Small');
+  if (n > 0) return n;
+  // 2. Lowercase variant — only if canonical was 0 (not -1 = error)
+  if (n === 0) {
+    const n2 = await probe('very small');
+    if (n2 > 0) return n2;
+  }
+  // 3. Bulletproof: paginate HAS_PROPERTY and count by case-insensitive match
+  try {
+    const all = await hsSearch(token, 'contacts', [{
+      filters: [
+        { propertyName: 'createdate', operator: 'GTE', value: fMs },
+        { propertyName: 'createdate', operator: 'LTE', value: tMs },
+        { propertyName: 'average_monthly_web_traffic', operator: 'HAS_PROPERTY' },
+      ],
+    }], ['createdate', 'average_monthly_web_traffic'], 200);
+    const hit = all.filter(c => {
+      const v = (c.properties && c.properties.average_monthly_web_traffic || '').trim().toLowerCase();
+      return v === 'very small';
+    }).length;
+    return hit; // 0 here is a real zero — every avenue checked.
+  } catch (e) {
+    console.warn('Very Small HAS_PROPERTY fallback threw:', e && e.message);
+    return n >= 0 ? n : -1;
+  }
+}
+
+// Back-compat thin wrapper used by the byWebTraffic override below. Returns
+// an array whose length equals the count, so the override code can keep
+// using `arr.length` without thinking about the count vs. records change.
+async function fetchWebinarContacts(token, from, to) {
+  const n = await fetchVerySmallCount(token, from, to);
+  return n > 0 ? new Array(n) : [];
 }
 
 // Contacts for Demo Quality — matched to deals by company name
@@ -2472,28 +2523,29 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   const priorMonthData = priorMonth ? buildPeriodData(priorMonth, pmW, pmLI, pmG, pmSch, filterActiveBrands(pmPipe), filterActiveBrands(pmCW)) : null;
 
   // Webinar tier ("Very Small") — counted on the web-traffic pie without the
-  // date_demo_booked gate. Fetch per window in parallel, then OVERRIDE the
-  // count inside byWebTraffic so the pie shows the full Webinar tier volume
-  // (and prior/LM deltas use the same definition for an apples-to-apples
-  // comparison). The other tiers continue to require date_demo_booked.
+  // date_demo_booked gate. Uses the dedicated fetchVerySmallCount path which
+  // tries EQ → lowercase EQ → HAS_PROPERTY in sequence, returning the first
+  // positive count. OVERRIDE the byWebTraffic value in place so the pie
+  // (and prior/LM deltas) reflect Webinar tier volume.
   try {
-    const _wbProms = [fetchWebinarContacts(hsToken, current.from, current.to).catch(()=>[])];
-    if (prior) _wbProms.push(fetchWebinarContacts(hsToken, prior.from, prior.to).catch(()=>[])); else _wbProms.push(Promise.resolve([]));
-    if (priorMonth) _wbProms.push(fetchWebinarContacts(hsToken, priorMonth.from, priorMonth.to).catch(()=>[])); else _wbProms.push(Promise.resolve([]));
+    const _wbProms = [fetchVerySmallCount(hsToken, current.from, current.to).catch(()=>0)];
+    if (prior) _wbProms.push(fetchVerySmallCount(hsToken, prior.from, prior.to).catch(()=>0)); else _wbProms.push(Promise.resolve(0));
+    if (priorMonth) _wbProms.push(fetchVerySmallCount(hsToken, priorMonth.from, priorMonth.to).catch(()=>0)); else _wbProms.push(Promise.resolve(0));
     const [_wbCur, _wbPv, _wbPm] = await Promise.all(_wbProms);
-    const _override = (data, arr) => {
+    const _override = (data, n) => {
       if (!data || !data.scheduled) return;
       data.scheduled.byWebTraffic = data.scheduled.byWebTraffic || {};
-      data.scheduled.byWebTraffic['Very Small'] = arr.length;
+      // Treat -1 (error) as "leave existing alone"; treat 0+ as authoritative.
+      if (n >= 0) data.scheduled.byWebTraffic['Very Small'] = n;
     };
     _override(currentData, _wbCur);
     if (priorData) _override(priorData, _wbPv);
     if (priorMonthData) _override(priorMonthData, _wbPm);
-    // Diagnostic — surfaces the raw fetch counts in the API response so we can
-    // verify the worker is reaching the right "Very Small" contacts even when
-    // some downstream rendering issue would mask a non-zero count.
-    currentData._webinarDebug = { cur: _wbCur.length, prior: _wbPv.length, priorMonth: _wbPm.length };
-    console.log(`Webinar tier: cur=${_wbCur.length} prior=${_wbPv.length} pm=${_wbPm.length}`);
+    // Diagnostic — surfaces counts on the API response so we can verify the
+    // worker is fetching the right "Very Small" contacts even when something
+    // downstream might mask a non-zero count.
+    currentData._webinarDebug = { cur: _wbCur, prior: _wbPv, priorMonth: _wbPm };
+    console.log(`Webinar tier: cur=${_wbCur} prior=${_wbPv} pm=${_wbPm}`);
   } catch (e) { console.error('Webinar tier fetch failed:', e && e.message); }
 
   // signUpRate is no longer computed in /api/data — the dashboard fetches

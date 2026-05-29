@@ -750,7 +750,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r74';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r75';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -1789,15 +1789,22 @@ function renderIrfan(){
     const _ttl=`Clicked Continue but DQ'd (${fN(_dqViews||0)} /not-supported views) ÷ Clicked Schedule a Demo and Continue (${fN(_routed)} cal_routing_submitted). Note: cal_routing_submitted only started firing 2026-05-26, so this metric is still backfilling — current values may not reflect a full window.`;
     // "Still collecting" notice — cal_routing_submitted is a new GA4 event
     // (started 2026-05-26) so the denominator is incomplete until it has run
-    // for a full window. Two pieces, both unobtrusive: (1) a small corner
-    // badge top-right that flags the tile at a glance, (2) a high-contrast
-    // explanatory strip pinned to the bottom edge of the tile. Neither
-    // obscures the underlying value the way a centered scrim does.
-    const _cornerBadge=`<div style="position:absolute;top:10px;right:10px;display:inline-flex;align-items:center;gap:5px;font-family:var(--font-h);font-size:9.5px;font-weight:700;color:#92400E;background:#FEF3C7;border:1px solid rgba(245,158,11,.55);padding:3px 8px 3px 7px;border-radius:99px;letter-spacing:.05em;text-transform:uppercase;pointer-events:none;box-shadow:0 1px 2px rgba(0,0,0,.05)">`
-      +`<svg width="10" height="10" viewBox="0 0 16 16" fill="none" style="flex-shrink:0"><path d="M8 1.5L14.5 13.5H1.5L8 1.5Z" stroke="#92400E" stroke-width="1.5" stroke-linejoin="round"/><path d="M8 6.5V9.5" stroke="#92400E" stroke-width="1.5" stroke-linecap="round"/><circle cx="8" cy="11.5" r=".9" fill="#92400E"/></svg>`
+    // for a full window. Brand-aligned styling: muted gold (#D4A24C-family)
+    // matching our 500K+ tier color, with a translucent veil over the tile
+    // background (not the content) and a pill-shape footer that floats
+    // above the KPI footer row instead of sitting flush against it.
+    const _GOLD='#B8860B', _GOLD_BG='#FBE9C1', _GOLD_BG2='#F5D896', _GOLD_TXT='#5A3F0A';
+    const _veil=`<div style="position:absolute;inset:0;background:rgba(248,232,194,.18);pointer-events:none;border-radius:inherit"></div>`;
+    const _cornerBadge=`<div style="position:absolute;top:12px;right:12px;display:inline-flex;align-items:center;gap:6px;font-family:var(--font-h);font-size:9.5px;font-weight:700;color:${_GOLD_TXT};background:linear-gradient(135deg,${_GOLD_BG2} 0%,${_GOLD_BG} 100%);border:1px solid ${_GOLD};padding:4px 10px 4px 8px;border-radius:99px;letter-spacing:.06em;text-transform:uppercase;pointer-events:none;box-shadow:0 2px 6px rgba(184,134,11,.25),inset 0 1px 0 rgba(255,255,255,.5)">`
+      +`<svg width="11" height="11" viewBox="0 0 16 16" fill="none" style="flex-shrink:0"><path d="M8 1.5L14.5 13.5H1.5L8 1.5Z" fill="${_GOLD_BG}" stroke="${_GOLD_TXT}" stroke-width="1.4" stroke-linejoin="round"/><path d="M8 6.5V9.5" stroke="${_GOLD_TXT}" stroke-width="1.5" stroke-linecap="round"/><circle cx="8" cy="11.4" r="1" fill="${_GOLD_TXT}"/></svg>`
       +`Data incomplete</div>`;
-    const _bottomNote=`<div style="position:absolute;left:0;right:0;bottom:0;background:linear-gradient(180deg,rgba(254,243,199,0) 0%,rgba(254,243,199,.92) 35%);padding:8px 14px 10px;border-radius:0 0 inherit inherit;pointer-events:none;text-align:center"><div style="font-size:10.5px;color:#78350F;font-weight:500;line-height:1.35">Still collecting · <span style="font-family:ui-monospace,Menlo,monospace;font-size:10px">cal_routing_submitted</span> began firing 2026-05-26</div></div>`;
-    h+=`<div class="tile hero" style="border-left:3px solid ${_unqBC};border-top:1px solid rgba(245,158,11,.35);position:relative;overflow:hidden" title="${_ttl}"><div class="tlbl">% Disqualified Routing</div><div class="tval">${_unqRate!=null?_unqRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">Clicked Continue but DQ'd ÷ Clicked Schedule a Demo and Continue</div>${_irCalc(fN(_dqViews||0)+' ÷ '+fN(_routed))}${_irTileFooter(_unqRate,_unqPV,_unqLM,'%',true)}${_cornerBadge}${_bottomNote}</div>`;
+    const _bottomPill=`<div style="position:absolute;left:50%;transform:translateX(-50%);bottom:12px;display:inline-flex;align-items:center;gap:7px;font-size:10.5px;color:${_GOLD_TXT};background:linear-gradient(135deg,${_GOLD_BG2} 0%,${_GOLD_BG} 100%);border:1px solid ${_GOLD};padding:5px 14px;border-radius:99px;pointer-events:none;box-shadow:0 2px 8px rgba(184,134,11,.25),inset 0 1px 0 rgba(255,255,255,.5);font-weight:600;white-space:nowrap;max-width:calc(100% - 24px)">`
+      +`<span style="width:5px;height:5px;border-radius:50%;background:${_GOLD};box-shadow:0 0 0 3px rgba(184,134,11,.18);flex-shrink:0;animation:pulseGold 1.8s ease-in-out infinite"></span>`
+      +`Still collecting · <span style="font-family:ui-monospace,Menlo,monospace;font-size:10px;background:rgba(255,255,255,.45);padding:1px 6px;border-radius:4px">cal_routing_submitted</span> began firing 2026-05-26`
+      +`</div>`;
+    // Inject keyframes once
+    if(!document.getElementById('_dqPulseStyle')){const _st=document.createElement('style');_st.id='_dqPulseStyle';_st.textContent='@keyframes pulseGold{0%,100%{opacity:1;box-shadow:0 0 0 3px rgba(184,134,11,.18)}50%{opacity:.6;box-shadow:0 0 0 5px rgba(184,134,11,.08)}}';document.head.appendChild(_st);}
+    h+=`<div class="tile hero" style="border-left:3px solid ${_unqBC};border-top:1px solid ${_GOLD};position:relative;overflow:hidden;padding-bottom:46px" title="${_ttl}"><div class="tlbl">% Disqualified Routing</div><div class="tval">${_unqRate!=null?_unqRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">Clicked Continue but DQ'd ÷ Clicked Schedule a Demo and Continue</div>${_irCalc(fN(_dqViews||0)+' ÷ '+fN(_routed))}${_irTileFooter(_unqRate,_unqPV,_unqLM,'%',true)}${_veil}${_cornerBadge}${_bottomPill}</div>`;
   }
   h+='</div>';
 
