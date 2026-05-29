@@ -576,17 +576,24 @@ async function fetchScheduledContacts(token, from, to) {
 // tier. Counted on the web-traffic pie REGARDLESS of whether the contact has
 // date_demo_booked, since most Webinar leads are inbound form fills that
 // haven't booked a demo yet but should still be visible in tier breakdowns.
-// Fetched separately from fetchScheduledContacts (which gates on
-// date_demo_booked HAS_PROPERTY) and the count is merged into byWebTraffic
-// post-hoc in processRequest.
+//
+// IMPORTANT: filter strategy uses HAS_PROPERTY + client-side string equality
+// instead of the obvious `EQ "Very Small"`. HubSpot's Search API was returning
+// 0 results for the EQ filter on this enum value (it's possible the recently-
+// added enum option hadn't propagated through the search index yet, or there's
+// a multi-word-value quirk). HAS_PROPERTY is a reliable fallback that returns
+// every contact with the enum set, and we count the "Very Small" subset on
+// our side. Cost: a few extra contact rows over the wire vs. the targeted
+// filter, but reliable.
 async function fetchWebinarContacts(token, from, to) {
-  return hsSearch(token, 'contacts', [{
+  const contacts = await hsSearch(token, 'contacts', [{
     filters: [
       { propertyName: 'createdate', operator: 'GTE', value: String(toMsET(from)) },
       { propertyName: 'createdate', operator: 'LTE', value: String(toMsET(to, true)) },
-      { propertyName: 'average_monthly_web_traffic', operator: 'EQ', value: 'Very Small' },
+      { propertyName: 'average_monthly_web_traffic', operator: 'HAS_PROPERTY' },
     ],
-  }], ['createdate'], 200);
+  }], ['createdate', 'average_monthly_web_traffic'], 200);
+  return contacts.filter(c => (c.properties && c.properties.average_monthly_web_traffic) === 'Very Small');
 }
 
 // Contacts for Demo Quality — matched to deals by company name
