@@ -750,7 +750,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r71';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r72';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -1937,6 +1937,8 @@ window.irfanSortAud=function(col){const s=S.irfan.metaAudSort||(S.irfan.metaAudS
 window.irfanCampStageF=function(stage){S.irfan.metaCampStageF=stage;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
 window.irfanCreTagF=function(tag){S.irfan.metaCreTagF=tag;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
 window.irfanCreFlagF=function(flag){S.irfan.metaCreFlagF=flag;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
+window.irfanCampTagF=function(tag){S.irfan.metaCampTagF=tag;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
+window.irfanCampFlagF=function(flag){S.irfan.metaCampFlagF=flag;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
 // Switch the active ad channel on the Detailed Dashboard. Updates section
 // titles + colored dots + the active tab pill, then re-renders the 3 tables.
 window.dashSetAdChannel=function(ch){
@@ -2004,18 +2006,23 @@ function _renderIrfanMetaTables(d, channel){
   if(!S.irfan.metaCampStageF)S.irfan.metaCampStageF='all';
   if(!S.irfan.metaCreTagF)S.irfan.metaCreTagF='all';
   if(!S.irfan.metaCreFlagF)S.irfan.metaCreFlagF='all';
+  if(!S.irfan.metaCampTagF)S.irfan.metaCampTagF='all';
+  if(!S.irfan.metaCampFlagF)S.irfan.metaCampFlagF='all';
   if(S.irfan.metaAllExpanded==null)S.irfan.metaAllExpanded=false;
   const campSort=S.irfan.metaCampSort,creSort=S.irfan.metaCreSort,audSort=S.irfan.metaAudSort,stageF=S.irfan.metaCampStageF;
   const tagF=S.irfan.metaCreTagF,flagF=S.irfan.metaCreFlagF;
+  const campTagF=S.irfan.metaCampTagF,campFlagF=S.irfan.metaCampFlagF;
   const fatigueMap=meta.fatigueMap||{};
 
-  // Per-creative flag lookup (pause + fatigue) — built UP HERE so the
-  // Campaign table can surface aggregate badges next to each campaign name
-  // (Σ paused creatives, Σ fatigued creatives). Mirrors the percentile-based
-  // pause rule the creative table re-computes later on creAll — keep these in
-  // sync if either changes. Helpers (_pctileLocal, watchRateLocal) are
-  // inlined since the official watchRate/_pctile aren't defined yet here.
+  // Per-creative flag lookup (pause + fatigue + naming) — built UP HERE so
+  // the Campaign table can surface aggregate badges + filter pills based on
+  // these flags. Mirrors the percentile-based pause rule the creative table
+  // re-computes later on creAll — keep these in sync if either changes.
+  // Helpers (_pctileLocal, _wrLocal) are inlined since the official watchRate
+  // / _pctile aren't defined yet here. PAUSE rule includes a >10-day active
+  // gate so newly-launched ads aren't condemned before they have a chance.
   const _CAMP_PAUSE_SPEND_MIN=25;
+  const _PAUSE_MIN_ACTIVE_DAYS=10;
   const _flagsByName={};
   {
     const _all=(meta.creatives||[]).filter(c=>(c.spend||0)>0);
@@ -2030,7 +2037,7 @@ function _renderIrfanMetaTables(d, channel){
       const _cpdHigh=_pctileLocal(_cpdA,0.70);
       for(const c of _all){
         let pause=false;
-        if((c.spend||0)>=_CAMP_PAUSE_SPEND_MIN){
+        if((c.spend||0)>=_CAMP_PAUSE_SPEND_MIN && (c.activeDays||0)>_PAUSE_MIN_ACTIVE_DAYS){
           const ctrBad=_ctrLow!=null&&(c.ctr||0)<=_ctrLow;
           const wr=_wrLocal(c);
           const wrBad=_watchLow!=null&&c.impressions>0&&wr!=null&&wr<=_watchLow;
@@ -2038,7 +2045,9 @@ function _renderIrfanMetaTables(d, channel){
           pause=ctrBad&&wrBad&&cpdBad;
         }
         const fatigued=!!(fatigueMap['meta::'+(c.name||'').toLowerCase()]||{}).fatigued;
-        _flagsByName[(c.name||'').toLowerCase()]={pause,fatigued};
+        const _subj=(typeof detectSubject==='function')?detectSubject(c.name):{type:'talent'};
+        const naming=!!(_subj&&_subj.type==='unknown');
+        _flagsByName[(c.name||'').toLowerCase()]={pause,fatigued,naming};
       }
     }
   }
@@ -2058,21 +2067,68 @@ function _renderIrfanMetaTables(d, channel){
     _creByCamp[_k].push(_cr);
   }
   const _creByCampWorker=meta.creativeByCampaign||{};
-  // Compute Watch rate per campaign by summing nested creatives' video_p25 /
-  // impressions. Campaigns don't carry videoP25 directly (it's a creative-
-  // level field), so we aggregate.
+  // Build nested-creative union (worker breakdown + flat list, dedup by name,
+  // fuzzy fallback). Run ONCE per campaign upfront — attached to c._nested so
+  // the row loop, watch-rate calc, and aggregate flag counts all use the same
+  // set. Previously the row loop and the watch-rate loop computed _nested
+  // separately, which made adding the flag-based filter awkward.
+  function _buildCampNested(c){
+    const ck=(c.name||'').toLowerCase().trim();
+    const byName=new Map();
+    for(const cr of (_creByCampWorker[ck]||[]))byName.set(cr.name,cr);
+    for(const cr of (_creByCamp[ck]||[])){if(!byName.has(cr.name))byName.set(cr.name,cr);}
+    if(byName.size===0){
+      for(const k in _creByCampWorker){
+        if(k.length>3&&(k.indexOf(ck)>=0||ck.indexOf(k)>=0)){
+          for(const cr of (_creByCampWorker[k]||[]))byName.set(cr.name,cr);
+          break;
+        }
+      }
+    }
+    const arr=Array.from(byName.values());
+    arr.sort((a,b)=>{
+      const aA=a.status==='ACTIVE'?1:0, bA=b.status==='ACTIVE'?1:0;
+      if(aA!==bA)return bA-aA;
+      return (b.spend||0)-(a.spend||0);
+    });
+    return arr;
+  }
   for(const c of campRows){
-    const _k=(c.name||'').toLowerCase().trim();
-    let _nested=_creByCampWorker[_k]||_creByCamp[_k]||[];
+    c._nested=_buildCampNested(c);
+    // Watch rate = Σ videoP25 ÷ Σ impressions across nested creatives.
     let _vp25=0,_imp=0;
-    for(const n of _nested){_vp25+=(n.videoP25||0);_imp+=(n.impressions||0);}
+    for(const n of c._nested){_vp25+=(n.videoP25||0);_imp+=(n.impressions||0);}
     c.watch=_imp>0?(_vp25/_imp)*100:null;
+    // Aggregate flag counts (pause / fatigue / naming) — used by both the
+    // campaign-level badges and the new Flag filter pills.
+    let _pn=0,_fn=0,_nn=0;
+    for(const n of c._nested){
+      const f=_flagsByName[(n.name||'').toLowerCase()];
+      if(!f)continue;
+      if(f.pause)_pn++;
+      if(f.fatigued)_fn++;
+      if(f.naming)_nn++;
+    }
+    c._flagCounts={pause:_pn,fatigue:_fn,naming:_nn};
+    c._hasAnyFlag=(_pn+_fn+_nn)>0;
   }
   // Score and tag every campaign (relative ranking — uses same per-stage
   // formula as creatives). Per Item 8 from the spec.
   if(typeof scoreCreatives==='function'&&campRows.length>0){
     try{scoreCreatives(campRows);}catch(e){console.warn('scoreCreatives(campaigns) failed:',e);}
   }
+  // Apply campaign-level Tag + Flag filters (mirrors the creative table's
+  // tagF/flagF). Filter BEFORE the heatmap arrays + sort so heatmap shading
+  // reflects only what's visible.
+  if(campTagF!=='all')campRows=campRows.filter(c=>c._tag===campTagF);
+  if(campFlagF!=='all')campRows=campRows.filter(c=>{
+    const fc=c._flagCounts||{pause:0,fatigue:0,naming:0};
+    if(campFlagF==='pause')return fc.pause>0;
+    if(campFlagF==='fatigue')return fc.fatigue>0;
+    if(campFlagF==='naming')return fc.naming>0;
+    if(campFlagF==='any')return c._hasAnyFlag;
+    return true;
+  });
   campRows=_irfanSortRows(campRows,campSort.col,campSort.dir);
   // Heatmap value arrays (across visible rows)
   const cSp=campRows.map(c=>c.spend),cIm=campRows.map(c=>c.impressions||0),cCl=campRows.map(c=>c.clicks||0),cCt=campRows.map(c=>c.ctr||0),cDe=campRows.map(c=>c.demos||0),cCp=campRows.map(c=>c.demos>0?c.spend/c.demos:0),cQu=campRows.map(c=>c.qualified||0);
@@ -2084,6 +2140,17 @@ function _renderIrfanMetaTables(d, channel){
   campH+='<button onclick="irfanToggleAllCampCreatives()" style="padding:5px 12px;border-radius:50px;font-size:10px;font-weight:600;border:1px solid var(--teal);background:transparent;color:var(--teal);cursor:pointer;font-family:var(--font-h)">'+(S.irfan.metaAllExpanded?'▼ Collapse All':'▶ Expand All')+'</button>';
   campH+='<div style="flex:1"></div><span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em">Stage</span>';
   for(const s of stages){const isA=stageF===s.k;campH+='<button onclick="irfanCampStageF(\''+s.k+'\')" style="padding:5px 12px;border-radius:50px;font-size:10px;font-weight:'+(isA?'700':'500')+';border:'+(isA?'none':'1px solid '+s.c)+';background:'+(isA?s.c:'transparent')+';color:'+(isA?'#fff':s.c)+';cursor:pointer;font-family:var(--font-h)">'+s.l+'</button>';}
+  campH+='</div>';
+  // Second row — Tag + Flag filter pills (mirrors the creative table). Tag
+  // filters by the campaign's _tag (Winner/Testing/Loser); Flag filters by
+  // the precomputed aggregate flag counts (any nested creative).
+  const _campTagPills=[{k:'all',l:'All',c:'var(--grey)'},{k:'WINNER',l:'Winner',c:'#2ecc71'},{k:'TESTING',l:'Testing',c:'#f39c12'},{k:'LOSER',l:'Loser',c:'#e74c3c'}];
+  const _campFlagPills=[{k:'all',l:'All',c:'var(--grey)'},{k:'any',l:'Any flag',c:'var(--navy)'},{k:'pause',l:'PAUSE',c:'#DC2626'},{k:'fatigue',l:'Fatigue',c:'#e67e22'},{k:'naming',l:'Naming',c:'#7C3AED'}];
+  campH+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap"><span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;margin-right:2px">Tag</span>';
+  for(const p of _campTagPills){const isA=campTagF===p.k;campH+='<button onclick="irfanCampTagF(\''+p.k+'\')" style="padding:5px 12px;border-radius:50px;font-size:10px;font-weight:'+(isA?'700':'500')+';border:'+(isA?'none':'1px solid '+p.c)+';background:'+(isA?p.c:'transparent')+';color:'+(isA?'#fff':p.c)+';cursor:pointer;font-family:var(--font-h)">'+p.l+'</button>';}
+  campH+='<div style="width:1px;height:20px;background:var(--border);margin:0 4px"></div>';
+  campH+='<span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;margin-right:2px">Flags</span>';
+  for(const p of _campFlagPills){const isA=campFlagF===p.k;campH+='<button onclick="irfanCampFlagF(\''+p.k+'\')" style="padding:5px 12px;border-radius:50px;font-size:10px;font-weight:'+(isA?'700':'500')+';border:'+(isA?'none':'1px solid '+p.c)+';background:'+(isA?p.c:'transparent')+';color:'+(isA?'#fff':p.c)+';cursor:pointer;font-family:var(--font-h)">'+p.l+'</button>';}
   campH+='</div>';
   campH+='<div style="overflow-x:auto"><table class="irf-meta-table" style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr style="border-bottom:1.5px solid var(--border)">';
   campH+=_irfanSortableTh('Name','name',campSort,'irfanSortCamp','left');
@@ -2110,54 +2177,26 @@ function _renderIrfanMetaTables(d, channel){
     const nm=(c.name||'').length>56?(c.name||'').slice(0,53)+'…':(c.name||'');
     const stags=_irfanStages(c.name);
     let stagesCell='';for(const t of stags)stagesCell+='<span style="display:inline-block;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;background:'+t.c+'15;color:'+t.c+';margin-right:2px">'+t.l+'</span>';
-    // Check for nested creatives. Per-campaign breakdown is the AUTHORITATIVE
-    // source: it preserves every campaign each creative ran in (the flat list
-    // collapses each ad onto its single top-spend campaign, which silently
-    // drops ads from the dropdowns of their secondary campaigns). We union
-    // both sources and dedupe by ad name so no active creative gets missed.
-    const _campKey=(c.name||'').toLowerCase().trim();
-    const _byName=new Map();
-    // 1. Primary: worker's per-campaign breakdown for this exact campaign
-    for(const cr of (_creByCampWorker[_campKey]||[]))_byName.set(cr.name,cr);
-    // 2. Secondary: flat list filtered to ads whose top campaign is this one
-    for(const cr of (_creByCamp[_campKey]||[])){
-      if(_byName.has(cr.name))continue;
-      _byName.set(cr.name,cr);
-    }
-    // 3. Fuzzy fallback if both came up empty (campaign-name mismatch /
-    //    trimming differences between sources)
-    if(_byName.size===0){
-      for(const ck in _creByCampWorker){
-        if(ck.length>3&&(ck.indexOf(_campKey)>=0||_campKey.indexOf(ck)>=0)){
-          for(const cr of (_creByCampWorker[ck]||[]))_byName.set(cr.name,cr);
-          break;
-        }
-      }
-    }
-    let _nested=Array.from(_byName.values());
-    // Sort: ACTIVE creatives first, then by spend desc. Ensures recently-
-    // launched active ads (low spend so far) still appear near the top.
-    _nested.sort((a,b)=>{
-      const aA=a.status==='ACTIVE'?1:0, bA=b.status==='ACTIVE'?1:0;
-      if(aA!==bA)return bA-aA;
-      return (b.spend||0)-(a.spend||0);
-    });
+    // Use the precomputed nested array + flag counts from the upfront pass.
+    const _nested=c._nested||[];
     const _hasNested=_nested.length>0;
-    // Aggregate creative-level flags across the nested set → badges next to
-    // the campaign name. Uses the precomputed _flagsByName lookup.
-    let _campPauseN=0,_campFatigueN=0;
-    for(const _nn of _nested){
-      const _flags=_flagsByName[(_nn.name||'').toLowerCase()];
-      if(!_flags)continue;
-      if(_flags.pause)_campPauseN++;
-      if(_flags.fatigued)_campFatigueN++;
-    }
+    const _campPauseN=(c._flagCounts&&c._flagCounts.pause)||0;
+    const _campFatigueN=(c._flagCounts&&c._flagCounts.fatigue)||0;
     // Instant-hover tooltips via dbcTip (matches the existing creative Fatigue
-    // chip pattern) — native title= produced an ~800ms hover delay, which
-    // user flagged. Stop propagation so clicking the badge doesn't also
-    // expand/collapse the campaign row.
-    const _campPauseTip=_campPauseN+' nested creative'+(_campPauseN===1?'':'s')+' flagged PAUSE (Low CTR + Low Watch + High CPD)';
-    const _campFatigueTip=_campFatigueN+' nested creative'+(_campFatigueN===1?'':'s')+' flagged Fatigue (CTR declined >15% over 14d)';
+    // chip pattern). Tooltips list the actual flagged creative names (capped)
+    // so reps can see WHICH ads triggered the count instead of just the count.
+    // Stop propagation so clicking the badge doesn't toggle the row.
+    const _flaggedNames=function(predFn){
+      const out=[]; for(const n of _nested){const f=_flagsByName[(n.name||'').toLowerCase()];if(f&&predFn(f))out.push(n.name||'(unnamed)');} return out;
+    };
+    const _abbrevList=function(arr,max){
+      if(arr.length<=max)return arr.join(', ');
+      return arr.slice(0,max).join(', ')+' (+'+(arr.length-max)+' more)';
+    };
+    const _pausedNames=_campPauseN>0?_flaggedNames(f=>f.pause):[];
+    const _fatNames=_campFatigueN>0?_flaggedNames(f=>f.fatigued):[];
+    const _campPauseTip=_campPauseN>0?(_campPauseN+' PAUSE-flagged creative'+(_campPauseN===1?'':'s')+': '+_abbrevList(_pausedNames,5)+'. Trigger: Low CTR + Low Watch + High CPD, active >'+_PAUSE_MIN_ACTIVE_DAYS+'d, spend ≥$'+_CAMP_PAUSE_SPEND_MIN+'.'):'';
+    const _campFatigueTip=_campFatigueN>0?(_campFatigueN+' Fatigue-flagged creative'+(_campFatigueN===1?'':'s')+': '+_abbrevList(_fatNames,5)+'. Trigger: CTR declined >15% over 14 days.'):'';
     const _campFlagBadges=
       (_campPauseN>0?' <span data-tip="'+_campPauseTip.replace(/"/g,'&quot;')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" onclick="event.stopPropagation()" style="cursor:help;display:inline-block;font-family:var(--font-h);font-size:9px;font-weight:700;color:#fff;background:#DC2626;padding:2px 7px;border-radius:99px;letter-spacing:.04em;margin-left:6px">⚠ '+_campPauseN+' PAUSE</span>':'')
      +(_campFatigueN>0?' <span data-tip="'+_campFatigueTip.replace(/"/g,'&quot;')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" onclick="event.stopPropagation()" style="cursor:help;font-size:10px;background:rgba(243,156,18,.12);color:#e67e22;padding:1px 6px;border-radius:4px;font-weight:700;white-space:nowrap;margin-left:6px">⚠ '+_campFatigueN+' Fatigue</span>':'');
@@ -2208,9 +2247,15 @@ function _renderIrfanMetaTables(d, channel){
         const _nameBadge=_nameBad?' <span title="Name doesn\'t match {Format}_{Talent}_{Concept}_{Setting}_{Variant} convention" style="cursor:help;font-size:9px;background:rgba(124,58,237,.10);color:#7C3AED;padding:1px 6px;border-radius:4px;font-weight:700;white-space:nowrap;border:1px solid rgba(124,58,237,.30)">📝 Naming</span>':'';
         // PAUSE pill — uses the same precomputed _flagsByName as the
         // campaign-level aggregate so the per-creative pause indicator is
-        // consistent. dbcTip for instant hover (matches Fatigue chip).
+        // consistent. dbcTip for instant hover with creative-specific
+        // context (its own CTR/Watch/CPD + active-days/spend gate values).
         const _ncrFlags=_flagsByName[(ncr.name||'').toLowerCase()];
-        const _pauseBadge=(_ncrFlags&&_ncrFlags.pause)?' <span data-tip="Low CTR + Low Watch + High CPD — pause candidate" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" style="cursor:help;display:inline-block;font-family:var(--font-h);font-size:9px;font-weight:700;color:#fff;background:#DC2626;padding:1px 6px;border-radius:99px;letter-spacing:.04em">PAUSE</span>':'';
+        const _nCpd=(ncr.demos>0)?(ncr.spend/ncr.demos):null;
+        const _nCpdStr=_nCpd!=null?f$(_nCpd):'$— (0 demos)';
+        const _nCtrStr=ncr.ctr!=null?ncr.ctr.toFixed(2)+'%':'—';
+        const _nWrStr=nWr!=null?nWr.toFixed(1)+'%':'—';
+        const _ncrPauseTip=(_ncrFlags&&_ncrFlags.pause)?('Low CTR + Low Watch + High CPD — pause candidate. CTR '+_nCtrStr+', Watch '+_nWrStr+', CPD '+_nCpdStr+'. Active '+(ncr.activeDays||0)+'d, spend '+f$(ncr.spend)+'.'):'';
+        const _pauseBadge=(_ncrFlags&&_ncrFlags.pause)?' <span data-tip="'+_ncrPauseTip.replace(/"/g,'&quot;')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" style="cursor:help;display:inline-block;font-family:var(--font-h);font-size:9px;font-weight:700;color:#fff;background:#DC2626;padding:1px 6px;border-radius:99px;letter-spacing:.04em">PAUSE</span>':'';
         campH+='<tr class="'+_rowId+'-cre" style="display:'+(_showNested?'table-row':'none')+';background:rgba(114,164,191,.04);border-bottom:1px solid var(--border)">';
         campH+='<td style="padding:6px 6px 6px 30px;color:var(--navy);font-size:10px" title="'+(ncr.name||'').replace(/"/g,'&quot;')+'">'+_thumb+_pauseBadge+(_pauseBadge?' ':'')+nNm+_ftBadge+_nameBadge+'</td>';
         campH+='<td></td>';
@@ -2273,8 +2318,13 @@ function _renderIrfanMetaTables(d, channel){
   const _watchLow=_pctile(creAll.filter(c=>c.impressions>0).map(c=>watchRate(c)),0.30);
   const _cpdHigh=_pctile(creAll.filter(c=>c.demos>0).map(c=>c.spend/c.demos),0.70);
   const PAUSE_SPEND_MIN=25;
+  const PAUSE_MIN_ACTIVE_DAYS=10;
   const isPause=(c)=>{
     if((c.spend||0)<PAUSE_SPEND_MIN)return false;
+    // Time gate: only condemn creatives that have been running long enough
+    // for the percentile-based "bad" verdict to actually mean something —
+    // a brand-new ad with a few days of data is still in early-life noise.
+    if((c.activeDays||0)<=PAUSE_MIN_ACTIVE_DAYS)return false;
     const ctrBad=_ctrLow!=null&&(c.ctr||0)<=_ctrLow;
     const wr=watchRate(c);
     const wrBad=_watchLow!=null&&c.impressions>0&&wr!=null&&wr<=_watchLow;
@@ -2328,7 +2378,8 @@ function _renderIrfanMetaTables(d, channel){
   for(const p of _flagPills){const isA=flagF===p.k;creH+='<button onclick="irfanCreFlagF(\''+p.k+'\')" style="padding:5px 12px;border-radius:50px;font-size:10px;font-weight:'+(isA?'700':'500')+';border:'+(isA?'none':'1px solid '+p.c)+';background:'+(isA?p.c:'transparent')+';color:'+(isA?'#fff':p.c)+';cursor:pointer;font-family:var(--font-h)">'+p.l+'</button>';}
   creH+='</div>';
   creH+='<div style="overflow-x:auto"><table class="irf-meta-table" style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr style="border-bottom:1.5px solid var(--border)">';
-  creH+='<th style="width:48px;padding:8px 4px;text-align:center;font-size:9px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em" title="Pause candidates: bad on CTR + Watch + CPD">Flag</th>';
+  // Removed the standalone "Flag" column — PAUSE pill is now rendered inline
+  // with the creative name (matches the campaign table's flag treatment).
   creH+='<th style="width:68px;padding:8px 4px"></th>';
   creH+=_irfanSortableTh('Name','name',creSort,'irfanSortCre','left');
   creH+=_irfanSortableTh('Status','status',creSort,'irfanSortCre','center');
@@ -2358,10 +2409,24 @@ function _renderIrfanMetaTables(d, channel){
     // {Format}_{Talent}_{Concept}_{Setting}_{Variant} convention (precomputed)
     const _nameBad=!!c._namingBad;
     const _nameBadge=_nameBad?' <span title="Name doesn\'t match {Format}_{Talent}_{Concept}_{Setting}_{Variant} convention" style="cursor:help;font-size:9px;background:rgba(124,58,237,.10);color:#7C3AED;padding:1px 6px;border-radius:4px;font-weight:700;white-space:nowrap;border:1px solid rgba(124,58,237,.30)">📝 Naming</span>':'';
+    // PAUSE pill — now rendered inline next to the creative name (the
+    // standalone Flag column was removed). dbcTip instant hover with the
+    // full criterion tooltip; CPD detail interpolated so each ad shows its
+    // own numbers (e.g. "$420 CPD vs ≥$210 high-CPD threshold").
+    const _cpdNow=(c.demos>0)?(c.spend/c.demos):null;
+    const _cpdNowStr=_cpdNow!=null?f$(_cpdNow):'$— (0 demos)';
+    const _ctrNow=c.ctr!=null?c.ctr.toFixed(2)+'%':'—';
+    const _wrNow=watchRate(c);
+    const _wrNowStr=_wrNow!=null?_wrNow.toFixed(1)+'%':'—';
+    const _pauseTip=pause?('Low CTR + Low Watch + High CPD — pause candidate. '
+      +'CTR '+_ctrNow+' (≤ '+(_ctrLow!=null?_ctrLow.toFixed(2)+'%':'—')+'), '
+      +'Watch '+_wrNowStr+' (≤ '+(_watchLow!=null?_watchLow.toFixed(1)+'%':'—')+'), '
+      +'CPD '+_cpdNowStr+' (≥ '+(_cpdHigh!=null?f$(_cpdHigh):'—')+'). '
+      +'Active '+(c.activeDays||0)+'d (>'+PAUSE_MIN_ACTIVE_DAYS+'d gate), spend '+f$(c.spend)+' (≥$'+PAUSE_SPEND_MIN+' gate).'):'';
+    const _pauseBadge=pause?' <span data-tip="'+_pauseTip.replace(/"/g,'&quot;')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" style="cursor:help;display:inline-block;font-family:var(--font-h);font-size:9px;font-weight:700;color:#fff;background:#DC2626;padding:1px 6px;border-radius:99px;letter-spacing:.04em">PAUSE</span>':'';
     creH+='<tr style="border-bottom:1px solid var(--border);'+(pause?'background:rgba(220,38,38,.06)':'')+'">';
-    creH+='<td style="padding:6px 4px;text-align:center">'+(pause?'<span title="Low CTR + Low Watch + High CPD — pause candidate" style="display:inline-block;font-family:var(--font-h);font-size:9px;font-weight:700;color:#fff;background:#DC2626;padding:2px 7px;border-radius:99px;letter-spacing:.04em">PAUSE</span>':'')+'</td>';
     creH+='<td style="padding:6px 4px">'+thumb+'</td>';
-    creH+='<td style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(c.name||'').replace(/"/g,'&quot;')+'">'+nm+_ftBadge+_nameBadge+'</td>';
+    creH+='<td style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(c.name||'').replace(/"/g,'&quot;')+'">'+_pauseBadge+(_pauseBadge?' ':'')+nm+_ftBadge+_nameBadge+'</td>';
     creH+='<td style="text-align:center;padding:8px 6px">'+_irfanStatusBadge(c.status,c.spend)+'</td>';
     creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rSp,c.spend,true)+'">'+f$(c.spend)+'</td>';
     creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rDe,c.demos||0,false)+'">'+fN(c.demos||0)+'</td>';
@@ -2376,7 +2441,7 @@ function _renderIrfanMetaTables(d, channel){
     creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+(c._tag?scoreTag(c._tag):'—')+'</td>';
     creH+='</tr>';
   }
-  if(!creRows.length)creH+='<tr><td colspan="15" style="padding:16px;text-align:center;color:var(--grey)">No creatives match the current filters</td></tr>';
+  if(!creRows.length)creH+='<tr><td colspan="14" style="padding:16px;text-align:center;color:var(--grey)">No creatives match the current filters</td></tr>';
   creH+='</tbody></table></div>';
 
   // ── 3-column note card: PAUSE triggers · Scoring Formula · Naming ──
@@ -2399,7 +2464,7 @@ function _renderIrfanMetaTables(d, channel){
     +'<li><b>Low Watch</b> — bottom 30% of % impressions ≥25% &nbsp;<span style="color:var(--grey)">(≤ '+_watchLowStr+')</span></li>'
     +'<li><b>High CPD</b> — top 30%, or zero demos &nbsp;<span style="color:var(--grey)">(≥ '+_cpdHighStr+')</span></li>'
     +'</ul>'
-    +'<div style="margin-top:8px;color:var(--grey)">Spend gate: ≥ $'+PAUSE_SPEND_MIN+' required. One good metric protects from PAUSE.</div>'
+    +'<div style="margin-top:8px;color:var(--grey)">Spend gate: ≥ $'+PAUSE_SPEND_MIN+'. <b>Active gate:</b> &gt; '+PAUSE_MIN_ACTIVE_DAYS+' days of data so brand-new ads aren\'t condemned mid-ramp. One good metric protects from PAUSE.</div>'
     +'</div>';
   // Column 2 — Creative Scoring Formula (teal/navy)
   creH+='<div style="padding:14px 16px;background:rgba(114,164,191,.04);border:1px solid rgba(114,164,191,.20);border-left:3px solid var(--teal);border-radius:10px;font-size:11px;color:var(--navy);line-height:1.65">'
