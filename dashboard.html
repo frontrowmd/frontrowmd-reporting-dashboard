@@ -750,7 +750,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r70';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r71';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -2498,9 +2498,12 @@ function _renderIrfanMetaTables(d, channel){
 // Web-traffic-tier donut chart for Irfan Dashboard. Segments in fixed chronological
 // order clockwise: Pre-launch → 0-10K → ... → 500K+. Each tier gets the same
 // color as the BD Dashboard and Demo Quality web-traffic palette.
-const IRFAN_WT_LABELS={'Very Small':'Very Small','Pre-launch / just launching':'Pre-launch','0-10K monthly web visitors':'0-10K','10-25K monthly web visitors':'10-25K','25-50K monthly web visitors':'25-50K','50-100K monthly web visitors':'50-100K','100-200K monthly web visitors':'100-200K','200-500K monthly web visitors':'200-500K','500K+ monthly web visitors':'500K+'};
-const IRFAN_WT_ORDER=['Very Small','Pre-launch','0-10K','10-25K','25-50K','50-100K','100-200K','200-500K','500K+'];
-const IRFAN_WT_COLORS={'Very Small':'#6B7280','Pre-launch':'#9CA3AF','0-10K':'#72A4BF','10-25K':'#1D4053','25-50K':'#172C45','50-100K':'#0EA5E9','100-200K':'#7C3AED','200-500K':'#16A34A','500K+':'#F59E0B','(none)':'#E5E7EB'};
+// Per the brand: the HubSpot tier value "Very Small" actually represents
+// Webinar leads, so the pie chart re-labels it. Other views (filter pills,
+// table columns) keep the raw "Very Small" label.
+const IRFAN_WT_LABELS={'Very Small':'Webinar','Pre-launch / just launching':'Pre-launch','0-10K monthly web visitors':'0-10K','10-25K monthly web visitors':'10-25K','25-50K monthly web visitors':'25-50K','50-100K monthly web visitors':'50-100K','100-200K monthly web visitors':'100-200K','200-500K monthly web visitors':'200-500K','500K+ monthly web visitors':'500K+'};
+const IRFAN_WT_ORDER=['Webinar','Pre-launch','0-10K','10-25K','25-50K','50-100K','100-200K','200-500K','500K+'];
+const IRFAN_WT_COLORS={'Webinar':'#6B7280','Pre-launch':'#9CA3AF','0-10K':'#72A4BF','10-25K':'#1D4053','25-50K':'#172C45','50-100K':'#0EA5E9','100-200K':'#7C3AED','200-500K':'#16A34A','500K+':'#F59E0B','(none)':'#E5E7EB'};
 // Render a web-traffic donut into a target element. Inline % labels on each
 // segment >=4%, instant hover with a floating tooltip. Optional opts.size
 // shrinks the SVG (default 280) for cards with tighter vertical budget.
@@ -2867,10 +2870,13 @@ function renderOverviewOutcomeBreakdown(d){
 // Web-traffic tier isn't on demoQualityDeals directly — it lives in
 // contactInfoMap and is matched in by the same fuzzy logic that
 // renderDemoQuality uses (deal name ↔ company name / domain root).
-// _ovNsHideBlanks: when true, drop deals whose web-traffic tier is unknown
-// from all three sub-analyses so percentages renormalize cleanly. Defaults
-// to false — the "Hide blanks" toggle starts unchecked.
+// _ovNsHideBlanks: kept at false; the toggle UI was removed per request, so
+// unknown-tier deals are always shown.
 var _ovNsHideBlanks=false;
+// _ovNsTierMode: 'rate' | 'volume' — switches the Web Traffic tier card
+// between per-tier no-show RATE (default) and per-tier no-show VOLUME share.
+var _ovNsTierMode='rate';
+function ovNsSetTierMode(m){_ovNsTierMode=m;renderNoShowAnalysis(S.dashboard.data);}
 function renderNoShowAnalysis(d){
   try{
     var el=document.getElementById('ov-noshow-wrap');
@@ -3117,72 +3123,70 @@ function renderNoShowAnalysis(d){
 
     var h='';
 
-    // ── Hide blanks toggle — top-right of the section, same control pattern
-    // as the Deal Attribution "Hide blanks" checkbox on Demo Quality. Re-uses
-    // S.dashboard.data on change so we don't need to capture `d` in a closure.
-    h+='<div style="display:flex;justify-content:flex-end;align-items:center;margin-bottom:10px">';
-    h+='<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--grey);cursor:pointer">'
-      +'<input type="checkbox" '+(_ovNsHideBlanks?'checked':'')+' onchange="_ovNsHideBlanks=this.checked;renderNoShowAnalysis(S.dashboard.data)" style="margin:0;cursor:pointer">'
-      +'Hide blanks'
-      +(_ovNsHideBlanks&&blanksExcluded>0?' <span style="color:var(--teal);font-weight:600">('+blanksExcluded+' hidden)</span>':'')
-      +'</label>';
-    h+='</div>';
-
-    // ── Pair A: volume-by-tier + rate-per-tier, side by side ──
-    h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px;margin-bottom:14px">';
-
-    // ── 1. No-show volume by tier (% of all no-shows in each tier) ──
-    h+=_nsCardOpen('No-show volume by Web Traffic tier',totalNoShows+' total no shows · % of all no shows in each tier');
-    if(totalNoShows===0){
-      h+='<div style="color:var(--grey);font-size:12px;padding:8px 0;font-style:italic">No no-shows in this window.</div>';
-    }else{
-      h+=_insight(_ins1);
-      var distKeys=Object.keys(noShowByTier).sort(function(a,b){return (wtOrder[a]||99)-(wtOrder[b]||99);});
-      for(var dk=0;dk<distKeys.length;dk++){
-        var t=distKeys[dk];
-        var cnt=noShowByTier[t];
-        var pct=cnt/totalNoShows*100;
-        h+=_row(wtLabels[t]||t,t,pct,wtColors[t]||'#9CA3AF',pct.toFixed(1)+'% ('+cnt+')',80,(wtLabels[t]||t)+': '+cnt+' no-show'+(cnt===1?'':'s')+' · '+pct.toFixed(1)+'% of all no-shows');
-      }
-    }
-    h+=_nsCardClose();
-
-    // ── 2. No-show rate per tier ──
-    h+=_nsCardOpen('No-show rate per Web Traffic tier','No Show ÷ (Demo Given orig + resched + No Show), per tier');
-    if(totalDemos===0){
-      h+='<div style="color:var(--grey);font-size:12px;padding:8px 0;font-style:italic">No demos in this window.</div>';
-    }else{
-      h+=_insight(_ins2);
-      var rateKeys=Object.keys(demosByTier).sort(function(a,b){return (wtOrder[a]||99)-(wtOrder[b]||99);});
-      // Scale bars to the max rate so differences across tiers are visible
-      // (bars normalized to 100% otherwise compress at low absolute rates).
-      var maxRate=0,rates={};
-      for(var rk=0;rk<rateKeys.length;rk++){
-        var t2=rateKeys[rk];
-        var demos=demosByTier[t2];
-        var ns=noShowByTier[t2]||0;
-        var r=demos>0?(ns/demos*100):0;
-        rates[t2]={r:r,demos:demos,ns:ns};
-        if(r>maxRate)maxRate=r;
-      }
-      for(var rk2=0;rk2<rateKeys.length;rk2++){
-        var t3=rateKeys[rk2];
-        var rD=rates[t3];
-        var barPct=maxRate>0?(rD.r/maxRate*100):0;
-        h+=_row(wtLabels[t3]||t3,t3,barPct,wtColors[t3]||'#9CA3AF',rD.r.toFixed(1)+'% ('+rD.ns+' ÷ '+rD.demos+')',150,(wtLabels[t3]||t3)+': '+rD.r.toFixed(1)+'% no-show rate ('+rD.ns+' no-shows ÷ '+rD.demos+' demos)');
-      }
-    }
-    h+=_nsCardClose();
-
-    h+='</div>'; // close Pair A
-
-    // ── Pair B: LEFT column stacks weeks + rep cards · RIGHT column is the
-    // tall top-campaigns card. Default grid stretching matches left column's
-    // total height to the right card's height.
+    // ── Pair A: tier card (rate/volume toggle) + weeks rate, side by side ──
     h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px;margin-bottom:14px;align-items:stretch">';
-    h+='<div style="display:flex;flex-direction:column;gap:14px;min-width:0">';
 
-    // ── 3. No-show RATE by weeks-from-create-to-demo ──
+    // ── 1. Web Traffic tier card — Rate (default) / Volume toggle ──
+    // Header includes inline Rate/Volume pills that swap the bar content +
+    // subtitle + insight. Same data sources as before; only the renderer
+    // logic and labels change per mode.
+    var _isRate=_ovNsTierMode!=='volume';
+    var _tierTitle=_isRate?'No-show rate per Web Traffic tier':'No-show volume by Web Traffic tier';
+    var _tierSub=_isRate
+      ?'No Show ÷ (Demo Given orig + resched + No Show), per tier'
+      :(totalNoShows+' total no shows · % of all no shows in each tier');
+    h+=_nsCardOpen(_tierTitle,_tierSub);
+    // Inline Rate / Volume toggle pills, rendered as the first body element.
+    var _tierPill=function(active,label,mode){
+      return '<span onclick="ovNsSetTierMode(\''+mode+'\')" style="cursor:pointer;font-size:10px;font-weight:'+(active?'700':'600')+';padding:3px 11px;border-radius:50px;'
+        +(active?'background:var(--navy);color:#fff':'background:rgba(23,44,69,.06);color:var(--navy)')+'">'+label+'</span>';
+    };
+    h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap">'
+      +'<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.06em;margin-right:4px">View</span>'
+      +_tierPill(_isRate,'Rate','rate')
+      +_tierPill(!_isRate,'Volume','volume')
+      +'</div>';
+    if(_isRate){
+      if(totalDemos===0){
+        h+='<div style="color:var(--grey);font-size:12px;padding:8px 0;font-style:italic">No demos in this window.</div>';
+      }else{
+        h+=_insight(_ins2);
+        var rateKeys=Object.keys(demosByTier).sort(function(a,b){return (wtOrder[a]||99)-(wtOrder[b]||99);});
+        // Scale bars to the max rate so differences across tiers are visible
+        // (bars normalized to 100% otherwise compress at low absolute rates).
+        var maxRate=0,rates={};
+        for(var rk=0;rk<rateKeys.length;rk++){
+          var t2=rateKeys[rk];
+          var demos=demosByTier[t2];
+          var ns=noShowByTier[t2]||0;
+          var r=demos>0?(ns/demos*100):0;
+          rates[t2]={r:r,demos:demos,ns:ns};
+          if(r>maxRate)maxRate=r;
+        }
+        for(var rk2=0;rk2<rateKeys.length;rk2++){
+          var t3=rateKeys[rk2];
+          var rD=rates[t3];
+          var barPct=maxRate>0?(rD.r/maxRate*100):0;
+          h+=_row(wtLabels[t3]||t3,t3,barPct,wtColors[t3]||'#9CA3AF',rD.r.toFixed(1)+'% ('+rD.ns+' ÷ '+rD.demos+')',150,(wtLabels[t3]||t3)+': '+rD.r.toFixed(1)+'% no-show rate ('+rD.ns+' no-shows ÷ '+rD.demos+' demos)');
+        }
+      }
+    }else{
+      if(totalNoShows===0){
+        h+='<div style="color:var(--grey);font-size:12px;padding:8px 0;font-style:italic">No no-shows in this window.</div>';
+      }else{
+        h+=_insight(_ins1);
+        var distKeys=Object.keys(noShowByTier).sort(function(a,b){return (wtOrder[a]||99)-(wtOrder[b]||99);});
+        for(var dk=0;dk<distKeys.length;dk++){
+          var t=distKeys[dk];
+          var cnt=noShowByTier[t];
+          var pct=cnt/totalNoShows*100;
+          h+=_row(wtLabels[t]||t,t,pct,wtColors[t]||'#9CA3AF',pct.toFixed(1)+'% ('+cnt+')',80,(wtLabels[t]||t)+': '+cnt+' no-show'+(cnt===1?'':'s')+' · '+pct.toFixed(1)+'% of all no-shows');
+        }
+      }
+    }
+    h+=_nsCardClose();
+
+    // ── 2. No-show RATE by weeks-from-create-to-demo ──
     // For each weeks-ahead bucket: No Show ÷ (Demo Given orig + resched + No Show),
     // i.e. how often do demos booked X weeks out turn into no-shows. Bars scale
     // to the max rate so cross-bucket differences stay readable at low rates.
@@ -3226,7 +3230,12 @@ function renderNoShowAnalysis(d){
     }
     h+=_nsCardClose();
 
-    // ── 3b. No-show rate by rep ──
+    h+='</div>'; // close Pair A (tier + weeks)
+
+    // ── Pair B: rep rate + top campaigns, side by side ──
+    h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px;margin-bottom:14px;align-items:stretch">';
+
+    // ── 3. No-show rate by rep ──
     // Per-rep no-show rate, same denominator as the global Quality No-show
     // rate (Demo Given orig + resched + No Show). Min denom guard so a rep
     // with 1-2 demos can't claim the top spot in low-volume windows.
@@ -3278,8 +3287,6 @@ function renderNoShowAnalysis(d){
       }
     }
     h+=_nsCardClose();
-
-    h+='</div>'; // close LEFT column wrapper
 
     // ── 4. Top campaigns contributing to no-shows ──
     // Build a sorted list of (campaign, no-show count, demos count, rate).

@@ -572,6 +572,23 @@ async function fetchScheduledContacts(token, from, to) {
   }], ['createdate', 'date_demo_booked', 'email', 'website', 'company', 'average_monthly_web_traffic']);
 }
 
+// Contacts with average_monthly_web_traffic = "Very Small" — the "Webinar"
+// tier. Counted on the web-traffic pie REGARDLESS of whether the contact has
+// date_demo_booked, since most Webinar leads are inbound form fills that
+// haven't booked a demo yet but should still be visible in tier breakdowns.
+// Fetched separately from fetchScheduledContacts (which gates on
+// date_demo_booked HAS_PROPERTY) and the count is merged into byWebTraffic
+// post-hoc in processRequest.
+async function fetchWebinarContacts(token, from, to) {
+  return hsSearch(token, 'contacts', [{
+    filters: [
+      { propertyName: 'createdate', operator: 'GTE', value: String(toMsET(from)) },
+      { propertyName: 'createdate', operator: 'LTE', value: String(toMsET(to, true)) },
+      { propertyName: 'average_monthly_web_traffic', operator: 'EQ', value: 'Very Small' },
+    ],
+  }], ['createdate'], 200);
+}
+
 // Contacts for Demo Quality — matched to deals by company name
 async function fetchContactsForDQ(token, from, to) {
   return hsSearch(token, 'contacts', [{
@@ -2433,6 +2450,27 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   const currentData = buildPeriodData(current, cW, cLI, cG, cSch, filterActiveBrands(cPipe), filterActiveBrands(cCW));
   const priorData = prior ? buildPeriodData(prior, pW, pLI, pG, pSch, filterActiveBrands(pPipe), filterActiveBrands(pCW)) : null;
   const priorMonthData = priorMonth ? buildPeriodData(priorMonth, pmW, pmLI, pmG, pmSch, filterActiveBrands(pmPipe), filterActiveBrands(pmCW)) : null;
+
+  // Webinar tier ("Very Small") — counted on the web-traffic pie without the
+  // date_demo_booked gate. Fetch per window in parallel, then OVERRIDE the
+  // count inside byWebTraffic so the pie shows the full Webinar tier volume
+  // (and prior/LM deltas use the same definition for an apples-to-apples
+  // comparison). The other tiers continue to require date_demo_booked.
+  try {
+    const _wbProms = [fetchWebinarContacts(hsToken, current.from, current.to).catch(()=>[])];
+    if (prior) _wbProms.push(fetchWebinarContacts(hsToken, prior.from, prior.to).catch(()=>[])); else _wbProms.push(Promise.resolve([]));
+    if (priorMonth) _wbProms.push(fetchWebinarContacts(hsToken, priorMonth.from, priorMonth.to).catch(()=>[])); else _wbProms.push(Promise.resolve([]));
+    const [_wbCur, _wbPv, _wbPm] = await Promise.all(_wbProms);
+    const _override = (data, arr) => {
+      if (!data || !data.scheduled) return;
+      data.scheduled.byWebTraffic = data.scheduled.byWebTraffic || {};
+      data.scheduled.byWebTraffic['Very Small'] = arr.length;
+    };
+    _override(currentData, _wbCur);
+    if (priorData) _override(priorData, _wbPv);
+    if (priorMonthData) _override(priorMonthData, _wbPm);
+    console.log(`Webinar tier: cur=${_wbCur.length} prior=${_wbPv.length} pm=${_wbPm.length}`);
+  } catch (e) { console.error('Webinar tier fetch failed:', e && e.message); }
 
   // signUpRate is no longer computed in /api/data — the dashboard fetches
   // it from the dedicated /api/signup-cohorts endpoint instead. Skipping
