@@ -295,15 +295,42 @@ function renderPreDemo(){
   h+='<div data-rep="'+repSorted2[rs][0]+'" data-cnt="'+repSorted2[rs][1]+'" data-pct="'+Math.round(rPct)+'" style="width:'+rPct+'%;background:'+rCol+';display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:700;min-width:'+(rPct>10?'50':'20')+'px;overflow:hidden;white-space:nowrap;cursor:default;transition:opacity .15s">'+(rPct>8?Math.round(rPct)+'% ('+repSorted2[rs][1]+')':''+repSorted2[rs][1])+'</div>';}
   h+='</div><div id="sd-rep-tip" class="float-tip"></div></div>';
   } // end if _repFilter==='all'
-  // Demos by Day + DOW
+  // Demos by Day + DOW — strictly forward-looking. Four filters layered on
+  // top of the rep-filtered set so the chart + per-rep averages reflect ONLY
+  // upcoming demos that are still expected to occur:
+  //
+  //   1. Effective date >= today (no past dates).
+  //      The worker pre-filters by date_demo_booked OR rescheduled future,
+  //      but a deal can qualify via one and have the OTHER (the effective
+  //      date) in the past — those would otherwise plot in the past.
+  //
+  //   2. "Demos Supposed to Happen" — attendance is pending or blank
+  //      (not yet recorded). Concluded statuses (Demo Given, No Show,
+  //      Cancelled) are excluded because they're no longer "supposed to
+  //      happen" — they already did or were called off.
+  //
+  //   3. Weekends excluded (Sat/Sun). The chart shows weekday cadence;
+  //      the per-rep avg denominator (active days) also skips them.
+  //
+  //   4. Effective date present.
   var byDay={},byDOW={'Mon':{},'Tue':{},'Wed':{},'Thu':{},'Fri':{}};var dowNames=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   var repDayCount={};
+  var _preTodayMid=new Date();_preTodayMid.setHours(0,0,0,0);var _preTodayMs=_preTodayMid.getTime();
+  var _preConcludedStatuses={'Demo Given (originally scheduled)':1,'Demo Given (rescheduled)':1,'No Show':1,'Cancelled before demo':1};
   for(var di=0;di<filtered.length;di++){var dd=filtered[di];
     var day=(dd.rescheduled_meeting_date||dd.date_demo_booked||'').split('T')[0];if(!day)continue;
+    var dayMs=new Date(day+'T00:00:00').getTime();
+    if(isNaN(dayMs)||dayMs<_preTodayMs)continue; // (1) no past dates
+    var att=(dd.demo_attendance_status||'').trim();
+    if(_preConcludedStatuses[att])continue; // (2) Demos Supposed to Happen only
+    var dt=new Date(day+'T12:00:00');var dow=dt.getDay();
+    if(dow===0||dow===6)continue; // (3) weekday-only — affects byDay AND per-rep avg
     var rp3=ownerMap[dd.hubspot_owner_id]||'Unassigned';
     if(!byDay[day])byDay[day]={};byDay[day][rp3]=(byDay[day][rp3]||0)+1;
     if(!repDayCount[rp3])repDayCount[rp3]={days:{},total:0};repDayCount[rp3].days[day]=1;repDayCount[rp3].total++;
-    var dt=new Date(day+'T12:00:00');var dow=dt.getDay();if(dow>=1&&dow<=5){var dn2=dowNames[dow];if(!byDOW[dn2])byDOW[dn2]={};if(!byDOW[dn2][rp3])byDOW[dn2][rp3]=0;byDOW[dn2][rp3]++;}}
+    var dn2=dowNames[dow];
+    if(!byDOW[dn2])byDOW[dn2]={};if(!byDOW[dn2][rp3])byDOW[dn2][rp3]=0;byDOW[dn2][rp3]++;
+  }
   h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">';
   // Demos by Day card
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;position:relative">';
