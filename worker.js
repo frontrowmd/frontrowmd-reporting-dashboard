@@ -3452,8 +3452,11 @@ const BD_DEAL_PROPS = [
   'days_to_close','original_amount','average_monthly_web_traffic__cloned_',
   'of_products','month_minimum','of_free_reviews','of_total_reviews',
   'of_clinicianai','of_clinician_analysis','activation_fee','notes',
-  // Added for "From Demo" column / KPI on BD Tracker
-  'date_demo_booked',
+  // Added for "From Demo" column / KPI on BD Tracker. rescheduled_meeting_date
+  // is needed for the "rescheduled overrides original" effective-date logic
+  // (see bdFromDemo, the Date Demo Booked column highlight, and the date
+  // filter "Demo Date" mode in bd-dashboard.html).
+  'date_demo_booked','rescheduled_meeting_date',
   // Billing details group (new in v22)
   'invoice_date','approval_date','internal_recurly_link',
   'recurly_account_management_url','recurly_billing_intake_url',
@@ -3483,9 +3486,12 @@ async function fetchBDData(env) {
   // Load cached associations from KV so we don't re-fetch deals that we've
   // already mapped to a company. Same pattern as the companies cache.
   // Cache value per deal:
-  //   "12345"  → company ID string
-  //   null     → tried but no associated company (don't retry)
-  //   missing  → never tried → fetch this load
+  //   "12345"   → company ID string (stable; never re-checked)
+  //   {t: ts}   → tried at time ts and found no company; re-check after TTL
+  //               (so deals that have a company added later in HubSpot
+  //                eventually pick it up without a full cache wipe)
+  //   null      → LEGACY no-company (pre-TTL). Treated as expired → re-fetch.
+  //   missing   → never tried → fetch this load
   let assocCache = {};
   if (env.CONTENT_STORE) {
     try {
@@ -3493,14 +3499,26 @@ async function fetchBDData(env) {
       if (raw) assocCache = JSON.parse(raw);
     } catch(e) { console.warn('BD assoc cache load failed:', e.message); }
   }
+  const ASSOC_NULL_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+  const nowMs = Date.now();
+  // Re-fetch null entries either (a) legacy (no timestamp) or (b) older
+  // than TTL. String entries (= known company ID) stay valid forever.
+  function _assocStillValid(c) {
+    if (typeof c === 'string') return true;
+    if (c === null) return false; // legacy
+    if (c && typeof c === 'object' && typeof c.t === 'number') {
+      return (nowMs - c.t) < ASSOC_NULL_TTL_MS;
+    }
+    return false;
+  }
   const companyAssociations = {};
   for (const id of dealIds) {
     const cached = assocCache[id];
-    if (cached) companyAssociations[id] = cached; // string ID
-    // null → no associated company → leave companyAssociations[id] unset
+    if (typeof cached === 'string') companyAssociations[id] = cached;
+    // Object/null/expired → leave unset; will be re-fetched below
   }
   const cachedAssocCount = Object.keys(companyAssociations).length;
-  const missingDealIds = dealIds.filter(id => assocCache[id] === undefined);
+  const missingDealIds = dealIds.filter(id => !_assocStillValid(assocCache[id]));
   // Cap per-load association fetching to stay within Cloudflare's
   // subrequest budget (deal search + owner + assoc + company-cache-read
   // already use ~25-30 subrequests). 12 batches = 1200 deals per load.
@@ -3531,7 +3549,10 @@ async function fetchBDData(env) {
         returnedIds.add(dealId);
         const to = r.to || [];
         if (!to.length) {
-          assocCache[dealId] = null; // explicitly no company
+          // No associated company at this time → store timestamped no-company
+          // marker so we'll re-check after TTL (HubSpot user may add a company
+          // later, e.g. for newly-created deals or fixed data).
+          assocCache[dealId] = { t: nowMs };
           assocNoCompany++;
           continue;
         }
@@ -3553,16 +3574,16 @@ async function fetchBDData(env) {
           assocCache[dealId] = cidStr;
           assocMatched++;
         } else {
-          assocCache[dealId] = null;
+          assocCache[dealId] = { t: nowMs };
           assocNoCompany++;
         }
       }
       // Any deal in this batch NOT in returnedIds means HubSpot's batch read
       // didn't include it (typically: archived/deleted deal, or no
-      // associations at all). Mark as null so we don't re-fetch next load.
+      // associations at all). Mark with timestamp so it re-checks after TTL.
       for (const id of batch) {
-        if (!returnedIds.has(id) && assocCache[id] === undefined) {
-          assocCache[id] = null;
+        if (!returnedIds.has(id) && !_assocStillValid(assocCache[id])) {
+          assocCache[id] = { t: nowMs };
           assocNoCompany++;
         }
       }
@@ -3622,6 +3643,7 @@ async function fetchBDData(env) {
       activation_fee: parseFloat(p.activation_fee)||0,
       notes: p.notes||'',
       date_demo_booked: p.date_demo_booked||'',
+      rescheduled_meeting_date: p.rescheduled_meeting_date||'',
       // Billing details group (new in v22) — sourced from custom HubSpot
       // deal properties. Each is rendered as its own column on the BD
       // Tracker's "Billing Details" group.

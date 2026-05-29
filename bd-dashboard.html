@@ -230,6 +230,87 @@ function bdLookupMissingCompanies(attempt){
     }
   }).catch(function(e){console.warn('bdLookupMissingCompanies failed:',e);if(hint)hint.style.display='none';});
 }
+// CSV export of the current filtered + sorted Deal Table. Uses HubSpot
+// property names as column headers (so the file maps cleanly back to
+// HubSpot for analysis / re-import). Synthetic columns (id, companyId,
+// SE/Ops reps which are pulled from the company record, computed
+// to_demo / from_demo days) get explicit property-style names.
+function bdExportCSV(){
+  if(!BD||!BD._sorted||!BD._sorted.length){alert('Nothing to export — table is empty.');return;}
+  var ownerMap=BD._ownerMap||{};
+  // Field → {hsProp: HubSpot property name, get: row-extractor}
+  // Field order matches the table column order; companyName / SE Rep /
+  // Ops Rep are pulled from the associated company record in HubSpot
+  // (denoted with the "associated_company." prefix so it's unambiguous).
+  var EXPORT_FIELDS=[
+    {hsProp:'dealname',                              get:function(r){return r.dealname;}},
+    {hsProp:'hs_object_id',                          get:function(r){return r.id;}},
+    {hsProp:'associated_company.name',               get:function(r){return r.companyName;}},
+    {hsProp:'associated_company.hs_object_id',       get:function(r){return r.companyId;}},
+    {hsProp:'brand_status',                          get:function(r){return r.brand_status;}},
+    {hsProp:'dealstage',                             get:function(r){return r.dealstage;}},
+    {hsProp:'dealstage_label',                       get:function(r){return BD_STAGE_LABELS[r.dealstage]||r.dealstage||'';}},
+    {hsProp:'hubspot_owner_id',                      get:function(r){return r.hubspot_owner_id;}},
+    {hsProp:'hubspot_owner_name',                    get:function(r){return ownerMap[r.hubspot_owner_id]||'';}},
+    {hsProp:'associated_company.hubspot_owner_id',   get:function(r){return r.se_rep_id;}},
+    {hsProp:'associated_company.hubspot_owner_name', get:function(r){return ownerMap[r.se_rep_id]||'';}},
+    {hsProp:'associated_company.ops_owner',          get:function(r){return r.ops_owner_id;}},
+    {hsProp:'associated_company.ops_owner_name',     get:function(r){return ownerMap[r.ops_owner_id]||'';}},
+    {hsProp:'closedate',                             get:function(r){return (r.closedate||'').substring(0,10);}},
+    {hsProp:'date_demo_booked',                      get:function(r){return (r.date_demo_booked||'').substring(0,10);}},
+    {hsProp:'rescheduled_meeting_date',              get:function(r){return (r.rescheduled_meeting_date||'').substring(0,10);}},
+    {hsProp:'createdate',                            get:function(r){return (r.createdate||'').substring(0,10);}},
+    {hsProp:'computed_days_to_demo',                 get:function(r){var v=bdToDemo(r);return v==null?'':v;}},
+    {hsProp:'computed_days_from_demo',               get:function(r){var v=bdFromDemo(r);return v==null?'':v;}},
+    {hsProp:'days_to_close',                         get:function(r){return r.days_to_close;}},
+    {hsProp:'amount',                                get:function(r){return r.amount;}},
+    {hsProp:'package_type',                          get:function(r){return r.package_type;}},
+    {hsProp:'average_monthly_web_traffic__cloned_',  get:function(r){return r.average_monthly_web_traffic__cloned_;}},
+    {hsProp:'original_amount',                       get:function(r){return r.original_amount;}},
+    {hsProp:'of_products',                           get:function(r){return r.of_products;}},
+    {hsProp:'month_minimum',                         get:function(r){return r.month_minimum;}},
+    {hsProp:'of_free_reviews',                       get:function(r){return r.of_free_reviews;}},
+    {hsProp:'of_total_reviews',                      get:function(r){return r.of_total_reviews;}},
+    {hsProp:'price_per_review',                      get:function(r){return r.price_per_review;}},
+    {hsProp:'of_clinicianai',                        get:function(r){return r.of_clinicianai;}},
+    {hsProp:'of_clinician_analysis',                 get:function(r){return r.of_clinician_analysis;}},
+    {hsProp:'clinician_ai_price_per_product',        get:function(r){return r.clinician_ai_price_per_product;}},
+    {hsProp:'setup_fee',                             get:function(r){return r.setup_fee;}},
+    {hsProp:'months_until_upgrade',                  get:function(r){return r.months_until_upgrade;}},
+    {hsProp:'fee_after_upgrade',                     get:function(r){return r.fee_after_upgrade;}},
+    {hsProp:'notes',                                 get:function(r){return r.notes;}},
+    {hsProp:'invoice_date',                          get:function(r){return (r.invoice_date||'').substring(0,10);}},
+    {hsProp:'approval_date',                         get:function(r){return (r.approval_date||'').substring(0,10);}},
+    {hsProp:'internal_recurly_link',                 get:function(r){return r.internal_recurly_link;}},
+    {hsProp:'recurly_account_management_url',        get:function(r){return r.recurly_account_management_url;}},
+    {hsProp:'recurly_billing_intake_url',            get:function(r){return r.recurly_billing_intake_url;}},
+  ];
+  // RFC-4180 escape: wrap in quotes if the value contains comma, quote,
+  // newline, or carriage return; double-up internal quotes.
+  function csvEsc(v){
+    if(v==null)return '';
+    var s=String(v);
+    if(/[",\n\r]/.test(s))return '"'+s.replace(/"/g,'""')+'"';
+    return s;
+  }
+  var lines=[];
+  lines.push(EXPORT_FIELDS.map(function(f){return csvEsc(f.hsProp);}).join(','));
+  for(var i=0;i<BD._sorted.length;i++){
+    var row=BD._sorted[i];
+    lines.push(EXPORT_FIELDS.map(function(f){return csvEsc(f.get(row));}).join(','));
+  }
+  // Prepend UTF-8 BOM so Excel auto-detects encoding for non-ASCII names.
+  var csv='﻿'+lines.join('\r\n');
+  var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  // Stamp the filename with the current date so consecutive exports don't
+  // collide. (No Date.now() in worker scripts; this is browser-side and fine.)
+  var d=new Date();var stamp=d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'-'+String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0');
+  a.href=url;a.download='bd-tracker-'+stamp+'.csv';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  setTimeout(function(){URL.revokeObjectURL(url);},200);
+}
 function bdRefresh(){
   if(!BD.pw)return;
   var btn=document.getElementById('refreshBtn');btn.innerHTML='<span class="sp" style="width:12px;height:12px;border-width:2px;display:inline-block;vertical-align:middle"></span> Loading...';btn.disabled=true;
@@ -556,7 +637,11 @@ function renderBD(){
   h+='</div></div>';
   // Table
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:20px 24px">';
-  h+='<div style="display:flex;align-items:center;margin-bottom:12px"><div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">All Deals</div><div style="font-size:10px;color:var(--grey);margin-left:8px">'+sharedFiltered.length+' of '+deals.length+'<span id="bd-co-hint" style="display:none;color:var(--teal);font-weight:600"></span></div></div>';
+  h+='<div style="display:flex;align-items:center;margin-bottom:12px"><div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">All Deals</div><div style="font-size:10px;color:var(--grey);margin-left:8px">'+sharedFiltered.length+' of '+deals.length+'<span id="bd-co-hint" style="display:none;color:var(--teal);font-weight:600"></span></div>'
+    +'<button onclick="bdExportCSV()" title="Download current filtered + sorted rows as CSV (HubSpot property names as headers)" style="margin-left:auto;padding:5px 14px;border-radius:50px;border:1.5px solid var(--teal);background:rgba(114,164,191,.08);color:var(--teal);font-size:11px;font-weight:700;cursor:pointer;font-family:var(--font-b);display:inline-flex;align-items:center;gap:5px" onmouseover="this.style.background=\'var(--teal)\';this.style.color=\'#fff\'" onmouseout="this.style.background=\'rgba(114,164,191,.08)\';this.style.color=\'var(--teal)\'">'
+    +'<svg width="11" height="11" viewBox="0 0 16 16" fill="none" style="flex-shrink:0"><path d="M8 1V10M8 10L4.5 6.5M8 10L11.5 6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 12V14H14V12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+    +'Export CSV</button>'
+    +'</div>';
   // Generic sort that respects column type (numeric, enum-with-leading-num, tier-order, label, plain string).
   // Pulls first numeric token from strings like "$299", "3 Months", "2 (1 Free)" so numeric columns sort numerically even when stored as strings.
   function _bdLeadingNum(v){var m=String(v==null?'':v).match(/-?[\d.]+/);return m?parseFloat(m[0]):NaN;}
@@ -565,6 +650,9 @@ function renderBD(){
   // Enum-string fields where a leading number gives intuitive order (e.g., "$299 Upfront", "3 Months", "2 (1 Free)")
   var _BD_LEAD={setup_fee:1,months_until_upgrade:1,fee_after_upgrade:1,of_clinicianai:1};
   function _bdSortVal(d,k){
+    // Raw HubSpot record IDs sort numerically (they're large integers
+    // returned as strings; lexicographic sort breaks on mixed lengths).
+    if(k==='id'||k==='companyId'){var idv=parseFloat(d[k]);return isNaN(idv)?Infinity:idv;}
     if(k==='dealname'||k==='companyName'||k==='brand_status'||k==='notes')return (d[k]||'').toString().toLowerCase();
     if(k==='closedate'||k==='createdate'||k==='invoice_date'||k==='approval_date')return (d[k]||'').substring(0,10);
     // date_demo_booked sorts by EFFECTIVE demo date so the column matches
@@ -592,13 +680,18 @@ function renderBD(){
     }
     return _bdSortDir==='asc'?(av>bv?1:av<bv?-1:0):(av<bv?1:av>bv?-1:0);
   });
+  // Stash for the CSV export button. We snapshot the SORTED (filter-aware)
+  // rows + ownerMap so bdExportCSV() can rebuild the same view server-free.
+  BD._sorted=sorted; BD._ownerMap=ownerMap;
   // Column definitions. `group` attaches a column to a Plan Details / Billing
   // Details group (highlighted background + group header). `groupCollapse:true`
   // means the column is hidden by default and only shown when the group is
   // expanded via its toggle button.
   var cols=[
     {k:'dealname',l:'Deal Name',w:140},
+    {k:'id',l:'Deal ID',w:100},
     {k:'companyName',l:'Company',w:140},
+    {k:'companyId',l:'Company ID',w:100},
     {k:'brand_status',l:'Brand Status',w:100},
     {k:'dealstage',l:'Deal Stage',w:115},
     {k:'hubspot_owner_id',l:'Deal Rep',w:80},
@@ -694,6 +787,9 @@ function renderBD(){
     var _linkCell=function(u,lbl){var url=_safeUrl(u);if(!url)return dash;return '<a href="'+url+'" target="_blank" style="color:var(--teal);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;max-width:100%" title="'+u.replace(/"/g,'&quot;')+'">'+(lbl||u)+' \u2197</a>';};
     h+='<tr>';
     h+='<td><div style="display:flex;align-items:center;gap:4px;overflow:hidden"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+row.dealname+'">'+row.dealname+'</span><a href="https://app.hubspot.com/contacts/46815331/record/0-3/'+row.id+'" target="_blank" style="flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:4px;background:rgba(114,164,191,.1);color:var(--teal);font-size:9px;text-decoration:none">\u2197</a></div></td>';
+    // Deal ID cell \u2014 raw HubSpot record ID. Mono font + grey so it reads as
+    // a system identifier, not a label. Click-to-copy via title hint.
+    h+=_td('id','<td style="font-family:ui-monospace,Menlo,monospace;font-size:10px;color:var(--grey)" title="HubSpot Deal record ID">'+(row.id||dash)+'</td>');
     // Company cell \u2014 the name itself is now the clickable link to the
     // HubSpot company record (was a tiny arrow icon next to plain text).
     // If we have no companyId, render the name as-is or "\u2014".
@@ -708,6 +804,8 @@ function renderBD(){
       coCell=dash;
     }
     h+='<td>'+coCell+'</td>';
+    // Company ID cell \u2014 raw HubSpot record ID for the associated company.
+    h+=_td('companyId','<td style="font-family:ui-monospace,Menlo,monospace;font-size:10px;color:var(--grey)" title="HubSpot Company record ID">'+(row.companyId||dash)+'</td>');
     h+='<td>'+(row.brand_status?'<span class="pill" style="background:'+bsColor+'18;color:'+bsColor+'">'+row.brand_status+'</span>':dash)+'</td>';
     h+='<td><span class="pill" style="background:'+stageColor+'18;color:'+stageColor+'">'+stageLabel+'</span></td>';
     var repHidden=bdRepHidden(repName,BD_DEAL_REP_HIDE);
