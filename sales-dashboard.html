@@ -619,7 +619,11 @@ async function sdRunPrequal(){
   _dqPqRunning=false;renderPreDemo();
 }
 // ── Post-Demo Page ──
-var _pdRepFilter='all',_pdAttrDim='dealstage',_pdSort='date_demo_booked',_pdSortDir='desc',_pdChartStatus='all',_pdChartDim='att',_pdHideBlanks=false;
+// _pdChartStatus defaults to "Demos Supposed to Happen" — the umbrella over
+// Demo Held + No Show + Cancelled. Matches the Demo Quality page default so
+// the chart starts on the most useful slice (everything that was meant to
+// occur, regardless of outcome) instead of an aggregate "All" view.
+var _pdRepFilter='all',_pdAttrDim='dealstage',_pdSort='date_demo_booked',_pdSortDir='desc',_pdChartStatus='Demos Supposed to Happen',_pdChartDim='att',_pdHideBlanks=false;
 var _pdGlobalFrom='',_pdGlobalTo='';
 var _pdStageFilter='all',_pdPqFilter='all',_pdAttFilter='all',_pdQoFilter='all',_pdRepTblFilter='all',_pdIndustryFilter='all',_pdTzFilter='all',_pdStorylaneFilter='all',_pdWebTrafficFilter=[],_pdDateFrom='',_pdDateTo='',_pdDateMode='demo';
 function pdWtToggle(v){var i=_pdWebTrafficFilter.indexOf(v);if(i>=0)_pdWebTrafficFilter.splice(i,1);else _pdWebTrafficFilter.push(v);renderPostDemo();}
@@ -770,10 +774,26 @@ function renderPostDemo(){
     h+='</div><div id="pd-rep-tip" class="float-tip"></div></div>';
   }
 
-  // Chart filter dimensions: Attendance (raw HubSpot values) | Qual Outcome
-  var attChartCats=['Demo Given (originally scheduled)','Demo Given (rescheduled)','Scheduled — pending','Rescheduled — pending','No Show','Cancelled before demo','Blank'];
-  var attChartLbl={'Demo Given (originally scheduled)':'Demo Given (orig)','Demo Given (rescheduled)':'Demo Given (resched)','Scheduled — pending':'Scheduled — Pending','Rescheduled — pending':'Rescheduled — Pending','No Show':'No Show','Cancelled before demo':'Cancelled','Blank':'Blank'};
-  var attChartCol={'Demo Given (originally scheduled)':'#16A34A','Demo Given (rescheduled)':'#14B8A6','Scheduled — pending':'#F59E0B','Rescheduled — pending':'#8B5CF6','No Show':'#EF4444','Cancelled before demo':'#1E293B','Blank':'#9CA3AF'};
+  // Chart filter dimensions — Attendance is consolidated to 4 buckets matching
+  // the Demo Quality page (Demo Held / Pending / No Show / Cancelled) plus a
+  // "Demos Supposed to Happen" umbrella that ORs Demo Held + No Show +
+  // Cancelled. Previously the chart exposed the seven raw HubSpot values,
+  // which was both noisier and inconsistent with the DQ page. Qual Outcome
+  // (qo) stays 4-bucket.
+  var attChartCats=['Demos Supposed to Happen','Demo Held','Pending','No Show','Cancelled'];
+  var attChartLbl={'Demos Supposed to Happen':'Demos Supposed to Happen','Demo Held':'Demo Held','Pending':'Pending','No Show':'No Show','Cancelled':'Cancelled'};
+  var attChartCol={'Demos Supposed to Happen':'#475569','Demo Held':'#16A34A','Pending':'#F59E0B','No Show':'#EF4444','Cancelled':'#1E293B'};
+  var DSH_BUCKETS=['Demo Held','No Show','Cancelled'];
+  // Map raw HubSpot demo_attendance_status values into the 4-bucket scheme.
+  // Returns null for Blank/unknown — those deals are excluded from the chart.
+  function _attBucket(raw){
+    var s=(raw||'').trim();
+    if(s==='Demo Given (originally scheduled)'||s==='Demo Given (rescheduled)')return 'Demo Held';
+    if(s==='Scheduled — pending'||s==='Rescheduled — pending')return 'Pending';
+    if(s==='No Show')return 'No Show';
+    if(s==='Cancelled before demo')return 'Cancelled';
+    return null;
+  }
   var qoChartCats=['Qualified','Disqualified','Not yet evaluated','Blank'];
   var qoChartLbl={'Qualified':'Qualified','Disqualified':'Disqualified','Not yet evaluated':'Not Yet Evaluated','Blank':'Blank'};
   var qoChartCol={'Qualified':'#16A34A','Disqualified':'#C62828','Not yet evaluated':'#64748B','Blank':'#9CA3AF'};
@@ -795,8 +815,22 @@ function renderPostDemo(){
   var _pdRepDayCount={},_pdRepDemoTotal={};
   filtered.forEach(function(dd){
     var ddb=(dd.rescheduled_meeting_date||dd.date_demo_booked||'').split('T')[0];if(!ddb)return;
-    var att=(dd.demo_attendance_status||'').trim()||'Blank';if(attChartCats.indexOf(att)===-1)att='Blank';
+    // Apply chart filter pill — when dim=att, drop deals whose attendance
+    // doesn't bucket (Blank/unknown). "Demos Supposed to Happen" is the
+    // umbrella over Demo Held + No Show + Cancelled; everything else is
+    // an exact-bucket match. When dim=qo, exact-match on the qual outcome.
+    var att=_attBucket(dd.demo_attendance_status);
     var qo=(dd.demo_qualification_outcome||'').trim()||'Blank';if(qoChartCats.indexOf(qo)===-1)qo='Blank';
+    if(_pdChartDim==='att'){
+      if(att==null)return; // unknown attendance → not in any of the 4 buckets
+      if(_pdChartStatus==='Demos Supposed to Happen'){
+        if(DSH_BUCKETS.indexOf(att)===-1)return;
+      } else if(att!==_pdChartStatus){
+        return;
+      }
+    } else {
+      if(qo!==_pdChartStatus)return;
+    }
     var key=_pdChartDim==='att'?att:qo;
     var dow=new Date(ddb+'T12:00:00').getDay();
     var isWeekend=(dow===0||dow===6);
@@ -816,23 +850,26 @@ function renderPostDemo(){
   var dimLbl=_pdChartDim==='att'?attChartLbl:qoChartLbl;
   var dimCol=_pdChartDim==='att'?attChartCol:qoChartCol;
 
-  // Reset _pdChartStatus if it's not in the active dimension (e.g., switching from att to qo)
-  if(_pdChartStatus!=='all'&&dimCats.indexOf(_pdChartStatus)===-1){_pdChartStatus='all';}
+  // Reset _pdChartStatus to the active dimension's first bucket if the
+  // current selection isn't valid here (e.g., switching att ↔ qo).
+  if(dimCats.indexOf(_pdChartStatus)===-1)_pdChartStatus=dimCats[0];
 
-  // Two-tier filter UI: dimension toggle + value pills
+  // Two-tier filter UI: dimension toggle + value pills. No "All" pill —
+  // the chart shows exactly one bucket at a time, matching the DQ page.
+  // Switching dimensions resets to the sensible default for that dimension
+  // ("Demos Supposed to Happen" for att, "Qualified" for qo).
   h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Dimension</span> ';
-  h+=fp(_pdChartDim==='att','Attendance',"_pdChartDim='att';_pdChartStatus='all';renderPostDemo()");
-  h+=fp(_pdChartDim==='qo','Qual Outcome',"_pdChartDim='qo';_pdChartStatus='all';renderPostDemo()");
+  h+=fp(_pdChartDim==='att','Attendance',"_pdChartDim='att';_pdChartStatus='Demos Supposed to Happen';renderPostDemo()");
+  h+=fp(_pdChartDim==='qo','Qual Outcome',"_pdChartDim='qo';_pdChartStatus='Qualified';renderPostDemo()");
   h+='</div>';
   h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Filter</span> ';
-  h+=fp(_pdChartStatus==='all','All',"_pdChartStatus='all';renderPostDemo()");
   dimCats.forEach(function(sid){h+=fp(_pdChartStatus===sid,(dimLbl[sid]||sid),"_pdChartStatus='"+sid+"';renderPostDemo()")+'  ';});
   h+='</div>';
 
-  // Determine which buckets to show in charts
-  var chartStatIds=_pdChartStatus==='all'?dimCats:[_pdChartStatus];
+  // Determine which buckets to show in charts — always a single bucket.
+  var chartStatIds=[_pdChartStatus];
   var statusChartColors=dimCol;
   // Legacy alias for downstream code (if any)
   var statusIds=dimCats;
