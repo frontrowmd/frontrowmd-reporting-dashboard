@@ -322,7 +322,7 @@ function renderBD(){
     if(_bdDateFrom||_bdDateTo){
       var _bdDf;
       if(_bdDateMode==='create')_bdDf=(dd.createdate||dd.hs_createdate||'').substring(0,10);
-      else if(_bdDateMode==='demo')_bdDf=(dd.date_demo_booked||'').substring(0,10);
+      else if(_bdDateMode==='demo')_bdDf=(dd.rescheduled_meeting_date||dd.date_demo_booked||'').substring(0,10);
       else _bdDf=(dd.closedate||'').substring(0,10);
       if(_bdDateFrom&&_bdDf<_bdDateFrom)return false;
       if(_bdDateTo&&_bdDf>_bdDateTo)return false;
@@ -330,12 +330,16 @@ function renderBD(){
     return true;});
   // Plan name display: strip trailing parenthetical (e.g., "Hero (1 Product)" → "Hero")
   function bdPlanName(v){return (v||'').replace(/\s*\([^)]*\)\s*$/,'');}
-  // Days from date_demo_booked → closedate (rounded). Null if either field
-  // missing or closedate precedes the booking. Used in the "From Demo"
-  // table column and the Avg Days KPI tile.
+  // Days from EFFECTIVE demo date → closedate (rounded). Effective =
+  // rescheduled_meeting_date when set, else date_demo_booked — so if a deal
+  // was rescheduled, this measures days from the actual demo to close, not
+  // from a stale original booking. Null if no demo date present or closedate
+  // precedes it. Used in the "From Demo" table column + Avg Days KPI tile.
   function bdFromDemo(d){
-    if(!d||!d.closedate||!d.date_demo_booked)return null;
-    var t1=new Date(d.date_demo_booked).getTime();
+    if(!d||!d.closedate)return null;
+    var demoDate=d.rescheduled_meeting_date||d.date_demo_booked;
+    if(!demoDate)return null;
+    var t1=new Date(demoDate).getTime();
     var t2=new Date(d.closedate).getTime();
     if(isNaN(t1)||isNaN(t2)||t2<t1)return null;
     return Math.round((t2-t1)/86400000);
@@ -435,9 +439,11 @@ function renderBD(){
       var t1=new Date(dd.createdate).getTime(),t2=new Date(dd.closedate).getTime();
       if(!isNaN(t1)&&!isNaN(t2)&&t2>=t1){sfDaysSum+=(t2-t1)/86400000;sfDaysCount++;}
     }
-    // Close From Demo: Closed-Won only, from date_demo_booked → closedate
-    if(dd.dealstage==='closedwon'&&dd.date_demo_booked&&dd.closedate){
-      var td1=new Date(dd.date_demo_booked).getTime(),td2=new Date(dd.closedate).getTime();
+    // Close From Demo: Closed-Won only, from EFFECTIVE demo date → closedate
+    // (rescheduled_meeting_date wins when set, else date_demo_booked).
+    var _ddCloseDemoDate=dd.rescheduled_meeting_date||dd.date_demo_booked;
+    if(dd.dealstage==='closedwon'&&_ddCloseDemoDate&&dd.closedate){
+      var td1=new Date(_ddCloseDemoDate).getTime(),td2=new Date(dd.closedate).getTime();
       if(!isNaN(td1)&&!isNaN(td2)&&td2>=td1){sfDemoDaysSum+=(td2-td1)/86400000;sfDemoDaysCount++;}
     }
     // To Demo: any deal that has both createdate and date_demo_booked
@@ -560,7 +566,10 @@ function renderBD(){
   var _BD_LEAD={setup_fee:1,months_until_upgrade:1,fee_after_upgrade:1,of_clinicianai:1};
   function _bdSortVal(d,k){
     if(k==='dealname'||k==='companyName'||k==='brand_status'||k==='notes')return (d[k]||'').toString().toLowerCase();
-    if(k==='closedate'||k==='createdate'||k==='date_demo_booked'||k==='invoice_date'||k==='approval_date')return (d[k]||'').substring(0,10);
+    if(k==='closedate'||k==='createdate'||k==='invoice_date'||k==='approval_date')return (d[k]||'').substring(0,10);
+    // date_demo_booked sorts by EFFECTIVE demo date so the column matches
+    // what the cell renders (rescheduled overrides original when set).
+    if(k==='date_demo_booked')return ((d.rescheduled_meeting_date||d.date_demo_booked)||'').substring(0,10);
     if(k==='hubspot_owner_id')return (ownerMap[d.hubspot_owner_id]||'').toLowerCase();
     if(k==='ops_owner_id')return (ownerMap[d.ops_owner_id]||'').toLowerCase();
     if(k==='se_rep_id')return (ownerMap[d.se_rep_id]||'').toLowerCase();
@@ -710,8 +719,13 @@ function renderBD(){
     var opsName=ownerMap[row.ops_owner_id]||'';
     h+=_td('ops_owner_id','<td title="'+opsName+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(bdFirstName(opsName)||dash)+'</td>');
     h+=_td('closedate','<td>'+cd+'</td>');
-    var ddb=(row.date_demo_booked||'').substring(0,10)||dash;
-    h+=_td('date_demo_booked','<td>'+ddb+'</td>');
+    // Show EFFECTIVE demo date (rescheduled overrides original). Highlight
+    // rescheduled rows so the override is visible at a glance — purple/bold
+    // matches the rescheduled-pending color used elsewhere.
+    var _bdEffDemo=row.rescheduled_meeting_date||row.date_demo_booked;
+    var ddb=(_bdEffDemo||'').substring(0,10)||dash;
+    var _ddbStyle=row.rescheduled_meeting_date?' style="color:#7C3AED;font-weight:600"':'';
+    h+=_td('date_demo_booked','<td'+_ddbStyle+'>'+ddb+'</td>');
     h+=_td('createdate','<td style="font-size:10px">'+crd+'</td>');
     h+=_td('to_demo','<td style="text-align:center">'+(toDemoVal==null?dash:toDemoVal)+'</td>');
     var fromDemoVal=bdFromDemo(row);

@@ -1043,9 +1043,13 @@ function processPipelineDeals(deals, winFromUTC, winToUTC, winFromET, winToET, l
     if (att === 'No Show') {
       if (!isLow) noShowScaleCount++;
     }
-    // Stale scheduled: Scheduled — pending with date_demo_booked in the past (data hygiene)
+    // Stale scheduled: Scheduled — pending with EFFECTIVE demo date in the past
+    // (data hygiene). Effective = rescheduled_meeting_date when set, else
+    // date_demo_booked. A deal rescheduled INTO the future stops counting as
+    // stale; one rescheduled into the past starts counting.
     if (att === 'Scheduled — pending') {
-      const ddbMs = dateMs(p.date_demo_booked);
+      const _staleEff = p.rescheduled_meeting_date || p.date_demo_booked;
+      const ddbMs = dateMs(_staleEff);
       if (!isNaN(ddbMs) && ddbMs < todayMs) staleScheduledCount++;
     }
 
@@ -1099,8 +1103,10 @@ function processPipelineDeals(deals, winFromUTC, winToUTC, winFromET, winToET, l
     byStage[stage][cat]++;
     byStage[stage].total++;
 
-    // Daily chart
-    const ds = p.date_demo_booked ? p.date_demo_booked.substring(0,10) : null;
+    // Daily chart — bucket by EFFECTIVE demo date so rescheduled demos plot
+    // on the day they actually happen, not the original booked day.
+    const _dailyEff = p.rescheduled_meeting_date || p.date_demo_booked;
+    const ds = _dailyEff ? _dailyEff.substring(0,10) : null;
     if (ds) { if (!byDay[ds]) byDay[ds] = { deals:0, qualified:0 }; byDay[ds].deals++; if (cat==='qualified') byDay[ds].qualified++; }
   }
 
