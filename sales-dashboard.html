@@ -778,15 +778,36 @@ function renderPostDemo(){
   var qoChartLbl={'Qualified':'Qualified','Disqualified':'Disqualified','Not yet evaluated':'Not Yet Evaluated','Blank':'Blank'};
   var qoChartCol={'Qualified':'#16A34A','Disqualified':'#C62828','Not yet evaluated':'#64748B','Blank':'#9CA3AF'};
 
-  // Build per-day/per-DOW data for both dimensions — buckets by EFFECTIVE date (rescheduled if set).
+  // Build per-day/per-DOW data for both dimensions — buckets by EFFECTIVE date
+  // (rescheduled if set). The page-level _pdGlobalFrom/_pdGlobalTo date filter
+  // already excludes deals whose effective date is outside the window (see
+  // globalFiltered above), so byDay/byDOW are naturally bound to the timeframe.
+  //
+  // Weekends are excluded from byDay — matches the Demo Quality page; the
+  // chart shows weekday cadence and weekend bars were distracting noise. byDOW
+  // already constrains itself to Mon-Fri via the fixedLabels passed to
+  // drawStackedBar below.
+  //
+  // We ALSO track per-rep activity here (_pdRepDayCount + _pdRepDemoTotal) so
+  // the mini KPI pills can compute "demos per day worked" using each rep's own
+  // active days as the denominator instead of the chart's full date axis.
   var byDay={},byDOW={};var dowNames=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  var _pdRepDayCount={},_pdRepDemoTotal={};
   filtered.forEach(function(dd){
     var ddb=(dd.rescheduled_meeting_date||dd.date_demo_booked||'').split('T')[0];if(!ddb)return;
     var att=(dd.demo_attendance_status||'').trim()||'Blank';if(attChartCats.indexOf(att)===-1)att='Blank';
     var qo=(dd.demo_qualification_outcome||'').trim()||'Blank';if(qoChartCats.indexOf(qo)===-1)qo='Blank';
     var key=_pdChartDim==='att'?att:qo;
-    if(!byDay[ddb])byDay[ddb]={};byDay[ddb][key]=(byDay[ddb][key]||0)+1;
-    var dow=new Date(ddb+'T12:00:00').getDay();var dowN=dowNames[dow];
+    var dow=new Date(ddb+'T12:00:00').getDay();
+    var isWeekend=(dow===0||dow===6);
+    if(!isWeekend){
+      if(!byDay[ddb])byDay[ddb]={};byDay[ddb][key]=(byDay[ddb][key]||0)+1;
+      var _rep=ownerMap[dd.hubspot_owner_id]||'Unassigned';
+      if(!_pdRepDayCount[_rep])_pdRepDayCount[_rep]={};
+      _pdRepDayCount[_rep][ddb]=true;
+      _pdRepDemoTotal[_rep]=(_pdRepDemoTotal[_rep]||0)+1;
+    }
+    var dowN=dowNames[dow];
     if(!byDOW[dowN])byDOW[dowN]={};byDOW[dowN][key]=(byDOW[dowN][key]||0)+1;
   });
 
@@ -822,12 +843,20 @@ function renderPostDemo(){
   // Demos by Day
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;position:relative">';
   h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:#172C45">Demos by Day</div></div>';
-  // Mini avg per rep pills
+  // Mini avg per rep pills — per-rep daily average computed PER REP's own
+  // active days, not the chart's full date axis. Previously divided by every
+  // weekday with any demos, which crushed averages for reps who only worked a
+  // handful of days. Now reads as "demos per day worked" — the intuitive
+  // number. Matches the Demo Quality page's per-rep computation.
   if(_pdRepFilter==='all'){
     h+='<div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">';
-    var numDaysAll=Object.keys(byDay).length||1;
-    for(var mri=0;mri<repSorted.length;mri++){var mrn=repSorted[mri][0];var mrAvg=(repSorted[mri][1]/numDaysAll).toFixed(1);
-    h+='<div style="display:flex;align-items:center;gap:0;background:var(--white);border:1px solid var(--border);border-radius:8px;overflow:hidden;border-left:3px solid '+(_rcm[mrn]||'#ccc')+'"><div style="padding:4px 8px"><div style="font-size:14px;font-weight:700;font-family:var(--font-h);color:var(--navy)">'+mrAvg+'</div><div style="font-size:8px;color:var(--grey)">'+mrn.split(' ')[0]+'/day</div></div></div>';}
+    for(var mri=0;mri<repSorted.length;mri++){
+      var mrn=repSorted[mri][0];
+      var _repN=_pdRepDemoTotal[mrn]||0;
+      var _repD=_pdRepDayCount[mrn]?Object.keys(_pdRepDayCount[mrn]).length:0;
+      var mrAvg=_repD>0?(_repN/_repD).toFixed(1):'0.0';
+      h+='<div title="'+_repN+' demos across '+_repD+' day'+(_repD===1?'':'s')+' worked (current filter)" style="display:flex;align-items:center;gap:0;background:var(--white);border:1px solid var(--border);border-radius:8px;overflow:hidden;border-left:3px solid '+(_rcm[mrn]||'#ccc')+'"><div style="padding:4px 8px"><div style="font-size:14px;font-weight:700;font-family:var(--font-h);color:var(--navy)">'+mrAvg+'</div><div style="font-size:8px;color:var(--grey)">'+mrn.split(' ')[0]+'/day</div></div></div>';
+    }
     h+='</div>';
   }
   h+='<canvas id="pd-byday" style="width:100%;height:200px;cursor:crosshair"></canvas><div id="pd-byday-tip" class="float-tip"></div></div>';
