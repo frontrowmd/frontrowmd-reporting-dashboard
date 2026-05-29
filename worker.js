@@ -1661,7 +1661,7 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
   const executiveSummary = {
     totalDemosScheduled: buildTile(c.scheduled.total, p.scheduled?.total??null, pm.scheduled?.total??null, 'Contacts created in period with date_demo_booked set'),
     totalCpd: buildTile(cpdTotal, prior&&pTotalSch>0?pTotalS/pTotalSch:null, priorMonth&&pmTotalSch>0?pmTotalS/pmTotalSch:null, 'Total Ad Spend ÷ New Demos Scheduled'),
-    qualificationRate: buildTile(c.pipeline.qualificationRate, p.pipeline?.qualificationRate??null, pm.pipeline?.qualificationRate??null, 'Qualified ÷ (Qualified + Disqualified)'),
+    qualificationRate: buildTile(c.pipeline.qualificationRate, p.pipeline?.qualificationRate??null, pm.pipeline?.qualificationRate??null, 'Qualified ÷ Demos Held (Demo Given orig + resched)'),
     disqualificationRate: buildTile(c.pipeline.disqualificationRate, p.pipeline?.disqualificationRate??null, pm.pipeline?.disqualificationRate??null, 'Disqualified ÷ (Qualified + Disqualified)'),
     totalCpqd: buildTile(cpqdTotal, prior&&pTotalQual>0?pTotalS/pTotalQual:null, priorMonth&&pmTotalQual>0?pmTotalS/pmTotalQual:null, 'Total Ad Spend ÷ Demos Held (Demo Given orig + resched)'),
     totalTrueCpqd: buildTile(trueCpqdTotal, prior&&pTotalQualScale>0?pTotalS/pTotalQualScale:null, priorMonth&&pmTotalQualScale>0?pmTotalS/pmTotalQualScale:null, 'Total Ad Spend ÷ Demos Held excluding Pre-launch'),

@@ -750,7 +750,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5r87';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5r88';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -4133,7 +4133,7 @@ function renderDemoQuality(){try{
   h+=panelOpenC('Quality','#1D9E75');
   h+=statRowC('Prune rate','Cancelled before demo ÷ all settled outcomes',pruneC!=null?pruneC.toFixed(1)+'%':'—',fN(qmetaC.cancelledBeforeDemoCount||0)+' ÷ '+fN(qmetaC.pruneDenom||0),pruneC,pruneCPV,pruneCLMV,'%',{inv:true,warnIf:20});
   h+=statRowC('No-show rate','No Show ÷ (Demo Given orig + resched + No Show)',noShowC!=null?noShowC.toFixed(1)+'%':'—',fN(qmetaC.noShowCount||0)+' ÷ '+fN(qmetaC.noShowDenom||0),noShowC,noShowCPV,noShowCLMV,'%',{inv:true,warnIf:20});
-  h+=statRowC('Qualification rate','Qualified ÷ Demos Held',qualRateC!=null?qualRateC.toFixed(1)+'%':'—',fN(qmetaC.qualifiedRawCount||0)+' ÷ '+fN(demosHeldFullC),qualRateC,qualRateCPV,qualRateCLMV,'%',{noMargin:true});
+  h+=statRowC('Qualification rate','Qualified ÷ Demos Held (Demo Given orig + resched)',qualRateC!=null?qualRateC.toFixed(1)+'%':'—',fN(qmetaC.qualifiedRawCount||0)+' ÷ '+fN(demosHeldFullC),qualRateC,qualRateCPV,qualRateCLMV,'%',{noMargin:true});
   h+='</div>';
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding-bottom:10px;border-bottom:1px solid var(--border)"><div style="width:6px;height:6px;background:#9333EA;border-radius:50%"></div><div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy)">Demos Booked by Web-Traffic Range</div></div><div style="font-size:11px;color:var(--grey);margin:6px 0 4px">% of demos booked in each tier · ordered Pre-launch → 500K+ clockwise</div><div id="dq-webtraffic"></div></div>';
   h+='</div>';

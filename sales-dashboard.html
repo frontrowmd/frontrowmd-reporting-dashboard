@@ -646,12 +646,33 @@ async function sdRunPrequal(){
   _dqPqRunning=false;renderPreDemo();
 }
 // ── Post-Demo Page ──
-// _pdChartStatus defaults to "Demos Supposed to Happen" — the umbrella over
-// Demo Held + No Show + Cancelled. Matches the Demo Quality page default so
-// the chart starts on the most useful slice (everything that was meant to
-// occur, regardless of outcome) instead of an aggregate "All" view.
-var _pdRepFilter='all',_pdAttrDim='dealstage',_pdSort='date_demo_booked',_pdSortDir='desc',_pdChartStatus='Demos Supposed to Happen',_pdChartDim='att',_pdHideBlanks=false;
-var _pdGlobalFrom='',_pdGlobalTo='';
+// _pdChartStatus defaults to "Demo Held" — the most common starting view
+// for the Post-Demo report (completed demos only). Other buckets are still
+// reachable via the filter pills.
+var _pdRepFilter='all',_pdAttrDim='dealstage',_pdSort='date_demo_booked',_pdSortDir='desc',_pdChartStatus='Demo Held',_pdChartDim='att',_pdHideBlanks=false;
+// _pdGlobalWin = page-level timeframe preset ('last7' | 'mtd' | 'lm' | 'ytd'
+// | 'all' | 'custom'). Defaults to 'mtd' so the page loads scoped to the
+// current month; pdSetWindow() recomputes _pdGlobalFrom/_pdGlobalTo to
+// match. Manual date input edits switch _pdGlobalWin to 'custom'.
+var _pdGlobalWin='mtd',_pdGlobalFrom='',_pdGlobalTo='';
+(function(){
+  var n=new Date();
+  var z=function(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+  _pdGlobalFrom=z(new Date(n.getFullYear(),n.getMonth(),1));
+  _pdGlobalTo=z(n);
+})();
+function pdSetWindow(w){
+  _pdGlobalWin=w;
+  var n=new Date();
+  var z=function(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+  if(w==='mtd'){_pdGlobalFrom=z(new Date(n.getFullYear(),n.getMonth(),1));_pdGlobalTo=z(n);}
+  else if(w==='last7'){var d7=new Date(n);d7.setDate(d7.getDate()-6);_pdGlobalFrom=z(d7);_pdGlobalTo=z(n);}
+  else if(w==='lm'){_pdGlobalFrom=z(new Date(n.getFullYear(),n.getMonth()-1,1));_pdGlobalTo=z(new Date(n.getFullYear(),n.getMonth(),0));}
+  else if(w==='ytd'){_pdGlobalFrom=z(new Date(n.getFullYear(),0,1));_pdGlobalTo=z(n);}
+  else if(w==='all'){_pdGlobalFrom='';_pdGlobalTo='';}
+  // 'custom' leaves _pdGlobalFrom/_pdGlobalTo untouched — set by the date inputs
+  renderPostDemo();
+}
 var _pdStageFilter='all',_pdPqFilter='all',_pdAttFilter='all',_pdQoFilter='all',_pdRepTblFilter='all',_pdIndustryFilter='all',_pdTzFilter='all',_pdStorylaneFilter='all',_pdWebTrafficFilter=[],_pdDateFrom='',_pdDateTo='',_pdDateMode='demo';
 function pdWtToggle(v){var i=_pdWebTrafficFilter.indexOf(v);if(i>=0)_pdWebTrafficFilter.splice(i,1);else _pdWebTrafficFilter.push(v);renderPostDemo();}
 function pdWtClear(){_pdWebTrafficFilter=[];renderPostDemo();}
@@ -713,16 +734,26 @@ function renderPostDemo(){
   var h='';
   var fp=function(active,label,onclick){return '<span class="pill '+(active?'active':'')+'" style="cursor:pointer;'+(active?'background:var(--navy);color:#fff;':'background:rgba(23,44,69,.06);color:var(--navy);')+'font-size:11px;padding:4px 12px;font-weight:600" onclick="'+onclick+'">'+label+'</span>';};
 
-  // Rep tabs + date filter
+  // Rep tabs + timeframe presets + custom date range
   h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:16px;flex-wrap:wrap">';
   h+=fp(_pdRepFilter==='all','All ('+globalFiltered.length+')',"_pdRepFilter='all';renderPostDemo()");
   for(var rti=0;rti<repSorted.length;rti++){var rn=repSorted[rti][0];h+=fp(_pdRepFilter===rn,rn.split(' ')[0]+' ('+repSorted[rti][1]+')',"_pdRepFilter='"+rn.replace(/'/g,"\\'")+"';renderPostDemo()");}
   h+='<div style="flex:1"></div>';
-  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Date Range</span> ';
-  h+='<input type="date" value="'+_pdGlobalFrom+'" onchange="_pdGlobalFrom=this.value;renderPostDemo()" style="padding:4px 8px;border:1.5px solid rgba(23,44,69,.12);border-radius:50px;font-size:11px;font-family:var(--font-b);color:var(--navy)">';
+  // Timeframe preset pills — common windows. Clicking one recomputes
+  // _pdGlobalFrom/_pdGlobalTo to that window via pdSetWindow(). Manual
+  // edits to the date inputs flip _pdGlobalWin to 'custom' so the active
+  // pill reflects whether a preset is still applied.
+  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Timeframe</span> ';
+  h+=fp(_pdGlobalWin==='last7','Last 7 Days',"pdSetWindow('last7')");
+  h+=fp(_pdGlobalWin==='mtd','MTD',"pdSetWindow('mtd')");
+  h+=fp(_pdGlobalWin==='lm','Last Month',"pdSetWindow('lm')");
+  h+=fp(_pdGlobalWin==='ytd','YTD',"pdSetWindow('ytd')");
+  h+=fp(_pdGlobalWin==='all','All Time',"pdSetWindow('all')");
+  h+=fp(_pdGlobalWin==='custom','Custom',"pdSetWindow('custom')");
+  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase;margin-left:6px">Date Range</span> ';
+  h+='<input type="date" value="'+_pdGlobalFrom+'" onchange="_pdGlobalFrom=this.value;_pdGlobalWin=\'custom\';renderPostDemo()" style="padding:4px 8px;border:1.5px solid rgba(23,44,69,.12);border-radius:50px;font-size:11px;font-family:var(--font-b);color:var(--navy)">';
   h+=' <span style="font-size:10px;color:var(--grey)">to</span> ';
-  h+='<input type="date" value="'+_pdGlobalTo+'" onchange="_pdGlobalTo=this.value;renderPostDemo()" style="padding:4px 8px;border:1.5px solid rgba(23,44,69,.12);border-radius:50px;font-size:11px;font-family:var(--font-b);color:var(--navy)">';
-  if(_pdGlobalFrom||_pdGlobalTo){h+=' <button onclick="_pdGlobalFrom=\'\';_pdGlobalTo=\'\';renderPostDemo()" style="padding:3px 10px;border-radius:50px;border:1.5px solid rgba(23,44,69,.12);background:transparent;color:var(--navy);font-size:10px;cursor:pointer;font-family:var(--font-b)">Clear</button>';}
+  h+='<input type="date" value="'+_pdGlobalTo+'" onchange="_pdGlobalTo=this.value;_pdGlobalWin=\'custom\';renderPostDemo()" style="padding:4px 8px;border:1.5px solid rgba(23,44,69,.12);border-radius:50px;font-size:11px;font-family:var(--font-b);color:var(--navy)">';
   h+='</div>';
 
   // Classify deals using new attendance + qual outcome fields (with legacy fallback)
@@ -801,16 +832,14 @@ function renderPostDemo(){
     h+='</div><div id="pd-rep-tip" class="float-tip"></div></div>';
   }
 
-  // Chart filter dimensions — Attendance is consolidated to 4 buckets matching
-  // the Demo Quality page (Demo Held / Pending / No Show / Cancelled) plus a
-  // "Demos Supposed to Happen" umbrella that ORs Demo Held + No Show +
-  // Cancelled. Previously the chart exposed the seven raw HubSpot values,
-  // which was both noisier and inconsistent with the DQ page. Qual Outcome
-  // (qo) stays 4-bucket.
-  var attChartCats=['Demos Supposed to Happen','Demo Held','Pending','No Show','Cancelled'];
-  var attChartLbl={'Demos Supposed to Happen':'Demos Supposed to Happen','Demo Held':'Demo Held','Pending':'Pending','No Show':'No Show','Cancelled':'Cancelled'};
-  var attChartCol={'Demos Supposed to Happen':'#475569','Demo Held':'#16A34A','Pending':'#F59E0B','No Show':'#EF4444','Cancelled':'#1E293B'};
-  var DSH_BUCKETS=['Demo Held','No Show','Cancelled'];
+  // Chart filter dimensions — Attendance consolidated to 4 buckets
+  // (Demo Held / Pending / No Show / Cancelled), matching the Demo Quality
+  // page's bucket scheme. The Post-Demo page defaults to "Demo Held" since
+  // the report is centered on completed demos. Qual Outcome (qo) stays
+  // 4-bucket.
+  var attChartCats=['Demo Held','Pending','No Show','Cancelled'];
+  var attChartLbl={'Demo Held':'Demo Held','Pending':'Pending','No Show':'No Show','Cancelled':'Cancelled'};
+  var attChartCol={'Demo Held':'#16A34A','Pending':'#F59E0B','No Show':'#EF4444','Cancelled':'#1E293B'};
   // Map raw HubSpot demo_attendance_status values into the 4-bucket scheme.
   // Returns null for Blank/unknown — those deals are excluded from the chart.
   function _attBucket(raw){
@@ -843,18 +872,13 @@ function renderPostDemo(){
   filtered.forEach(function(dd){
     var ddb=(dd.rescheduled_meeting_date||dd.date_demo_booked||'').split('T')[0];if(!ddb)return;
     // Apply chart filter pill — when dim=att, drop deals whose attendance
-    // doesn't bucket (Blank/unknown). "Demos Supposed to Happen" is the
-    // umbrella over Demo Held + No Show + Cancelled; everything else is
-    // an exact-bucket match. When dim=qo, exact-match on the qual outcome.
+    // doesn't bucket (Blank/unknown) and keep only the selected bucket.
+    // When dim=qo, exact-match on the qual outcome bucket.
     var att=_attBucket(dd.demo_attendance_status);
     var qo=(dd.demo_qualification_outcome||'').trim()||'Blank';if(qoChartCats.indexOf(qo)===-1)qo='Blank';
     if(_pdChartDim==='att'){
       if(att==null)return; // unknown attendance → not in any of the 4 buckets
-      if(_pdChartStatus==='Demos Supposed to Happen'){
-        if(DSH_BUCKETS.indexOf(att)===-1)return;
-      } else if(att!==_pdChartStatus){
-        return;
-      }
+      if(att!==_pdChartStatus)return;
     } else {
       if(qo!==_pdChartStatus)return;
     }
@@ -882,12 +906,12 @@ function renderPostDemo(){
   if(dimCats.indexOf(_pdChartStatus)===-1)_pdChartStatus=dimCats[0];
 
   // Two-tier filter UI: dimension toggle + value pills. No "All" pill —
-  // the chart shows exactly one bucket at a time, matching the DQ page.
-  // Switching dimensions resets to the sensible default for that dimension
-  // ("Demos Supposed to Happen" for att, "Qualified" for qo).
+  // the chart shows exactly one bucket at a time. Switching dimensions
+  // resets to the sensible default for that dimension ("Demo Held" for
+  // att, "Qualified" for qo).
   h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Dimension</span> ';
-  h+=fp(_pdChartDim==='att','Attendance',"_pdChartDim='att';_pdChartStatus='Demos Supposed to Happen';renderPostDemo()");
+  h+=fp(_pdChartDim==='att','Attendance',"_pdChartDim='att';_pdChartStatus='Demo Held';renderPostDemo()");
   h+=fp(_pdChartDim==='qo','Qual Outcome',"_pdChartDim='qo';_pdChartStatus='Qualified';renderPostDemo()");
   h+='</div>';
   h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap">';
@@ -908,14 +932,14 @@ function renderPostDemo(){
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;position:relative">';
   h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:#172C45">Demos by Day</div></div>';
   // Mini avg per rep pills — per-rep daily average computed PER REP's own
-  // active days, not the chart's full date axis. Previously divided by every
-  // weekday with any demos, which crushed averages for reps who only worked a
-  // handful of days. Now reads as "demos per day worked" — the intuitive
-  // number. Matches the Demo Quality page's per-rep computation.
-  if(_pdRepFilter==='all'){
+  // active days. Reads as "demos per day worked" (matches the Demo Quality
+  // page). Shows all reps on the "All" tab; on a specific-rep tab shows
+  // just that rep's pill so the rep tab still gets a focused KPI.
+  var _pdMiniReps=_pdRepFilter==='all'?repSorted.map(function(r){return r[0];}):[_pdRepFilter];
+  if(_pdMiniReps.length){
     h+='<div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">';
-    for(var mri=0;mri<repSorted.length;mri++){
-      var mrn=repSorted[mri][0];
+    for(var mri=0;mri<_pdMiniReps.length;mri++){
+      var mrn=_pdMiniReps[mri];
       var _repN=_pdRepDemoTotal[mrn]||0;
       var _repD=_pdRepDayCount[mrn]?Object.keys(_pdRepDayCount[mrn]).length:0;
       var mrAvg=_repD>0?(_repN/_repD).toFixed(1):'0.0';
