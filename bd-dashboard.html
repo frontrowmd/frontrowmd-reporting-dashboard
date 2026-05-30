@@ -31,22 +31,25 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
 .stbl th{text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--grey);padding:8px 6px;border-bottom:2px solid var(--border);font-weight:700;white-space:nowrap;overflow:hidden;cursor:pointer;background:var(--white)}
 .stbl th:hover{color:var(--navy)}
 /* Body cells use a consistent 11px font (inherited from .stbl). Group-tinted
-   cells keep their background via inline styles; the table-layout:fixed
-   above lets the column widths defined in <colgroup> take effect. */
+   cells keep their background via inline styles. */
 .stbl td{padding:7px 6px;border-bottom:1px solid rgba(114,164,191,.06);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;background:var(--white)}
-.stbl tr:hover td{background:rgba(114,164,191,.04)}
-/* Sticky column headers — the main column header row sticks to the top of
-   the page during vertical scroll. The "Plan / Billing / Churn" group
-   banner row stays as a normal row (scrolls off naturally) so the two
-   header rows don't collide at the same sticky position. */
+/* Row hover uses a SOLID color (not rgba) so the frozen first column stays
+   fully opaque while other cells scroll under it horizontally — a
+   transparent hover would let scrolling content show through the sticky
+   cell. #F9FBFC = the exact solid equivalent of rgba(114,164,191,.04) on
+   white, so the visual feel matches the prior transparent hover. */
+.stbl tr:hover td{background:#F9FBFC}
+/* Sticky column headers — wrapper is the scroll container (max-height set
+   inline below), so position:sticky inside it actually sticks. The Plan /
+   Billing / Churn group banner row stays static (scrolls off naturally)
+   so the two header rows can't collide at the same sticky position. */
 .stbl thead tr:not(.bd-grp-row) th{position:sticky;top:0;z-index:5}
-/* Freeze the Deal Name (first) column so it stays visible during horizontal
-   scroll. The top-left corner cell is sticky on both axes; bumped z-index
-   keeps it above the row's other cells when they scroll under it. */
+/* Freeze the Deal Name (first) column during horizontal scroll. Corner
+   cell is sticky on both axes (z-index 7) over row-sticky (5) and
+   column-sticky (3) cells. */
 .stbl tbody td:first-child,
 .stbl thead tr:not(.bd-grp-row) th:first-child{position:sticky;left:0;z-index:3;box-shadow:2px 0 4px -2px rgba(23,44,69,.08)}
 .stbl thead tr:not(.bd-grp-row) th:first-child{z-index:7}
-.stbl tr:hover td:first-child{background:rgba(114,164,191,.04)}
 .float-tip{display:none;position:fixed;background:#172C45;color:#fff;padding:8px 12px;border-radius:8px;font-size:12px;pointer-events:none;z-index:999;box-shadow:0 4px 12px rgba(0,0,0,.15);max-width:320px;white-space:normal;line-height:1.4}
 .attr-row:hover{background:rgba(114,164,191,.04);border-radius:6px;margin-left:-8px;margin-right:-8px;padding-left:8px;padding-right:8px}
 .sp{display:inline-block;width:18px;height:18px;border:3px solid rgba(114,164,191,.2);border-top-color:var(--teal);border-radius:50%;animation:spin .6s linear infinite}
@@ -841,7 +844,11 @@ function renderBD(){
   var planChev=_bdPlanExpanded?'\u25BC':'\u25B6';
   var billingChev=_bdBillingExpanded?'\u25BC':'\u25B6';
   var churnChev=_bdChurnExpanded?'\u25BC':'\u25B6';
-  h+='<div style="overflow-x:auto"><table class="stbl" style="table-layout:fixed;width:auto;min-width:100%">'+colgroupHTML+'<thead>';
+  // Wrapper is a constrained scroll container so position:sticky on the
+  // column header row AND first column actually sticks. Without a
+  // max-height the wrapper expands to fit content and there's no internal
+  // vertical scroll — sticky cells would have nothing to stick against.
+  h+='<div style="overflow:auto;max-height:calc(100vh - 220px)"><table class="stbl" style="table-layout:fixed;width:auto;min-width:100%">'+colgroupHTML+'<thead>';
   // Group banner row (only shown when there's at least one group column visible)
   if(planCols>0||billingCols>0||churnCols>0){
     h+='<tr class="bd-grp-row">';
@@ -945,7 +952,7 @@ function renderBD(){
     h+=_td('setup_fee','<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+_planBg+'" title="'+row.setup_fee+'">'+tEnum(row.setup_fee)+'</td>');
     h+=_td('months_until_upgrade','<td style="'+_planBg+'">'+tEnum(row.months_until_upgrade)+'</td>');
     h+=_td('fee_after_upgrade','<td style="'+_planBg+'">'+tMoney(row.fee_after_upgrade)+'</td>');
-    h+=_td('notes','<td style="'+_planBg+'">'+tNotes(row.notes)+'</td>');
+    h+=_td('notes','<td data-always-tip="1" data-full="'+(row.notes||'').replace(/"/g,'&quot;')+'" style="'+_planBg+'">'+tNotes(row.notes)+'</td>');
     // ── Billing Details group cells (tinted gold) ──
     var invd=(row.invoice_date||'').substring(0,10)||dash;
     var appd=(row.approval_date||'').substring(0,10)||dash;
@@ -960,7 +967,7 @@ function renderBD(){
     h+=_td('pausechurn_date','<td style="'+_churnBg+'">'+pcd+'</td>');
     h+=_td('never_implemented_churn','<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+_churnBg+'" title="'+(row.never_implemented_churn||'').replace(/"/g,'&quot;')+'">'+tEnum(row.never_implemented_churn)+'</td>');
     h+=_td('churn_reason','<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+_churnBg+'" title="'+(row.churn_reason||'').replace(/"/g,'&quot;')+'">'+tEnum(row.churn_reason)+'</td>');
-    h+=_td('detailed_reason_for_churn','<td style="'+_churnBg+'">'+tNotes(row.detailed_reason_for_churn)+'</td>');
+    h+=_td('detailed_reason_for_churn','<td data-full="'+(row.detailed_reason_for_churn||'').replace(/"/g,'&quot;')+'" style="'+_churnBg+'">'+tNotes(row.detailed_reason_for_churn)+'</td>');
     h+=_td('paused_billing_length_months','<td style="text-align:center;'+_churnBg+'">'+tNum(row.paused_billing_length_months)+'</td>');
     h+=_td('temporary_pause_reason','<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+_churnBg+'" title="'+(row.temporary_pause_reason||'').replace(/"/g,'&quot;')+'">'+tEnum(row.temporary_pause_reason)+'</td>');
     h+=_td('paused_billing__billing_restart_date','<td style="'+_churnBg+'">'+brd+'</td>');
@@ -994,15 +1001,32 @@ function renderBD(){
   }
   if(_tbl){
     var _lastCell=null;
+    // Pull the BEST available "full text" for a cell:
+    //   1. data-full   \u2192 the unabbreviated value (set by tNotes-rendered cells
+    //                    so notes/detailed_reason_for_churn aren't capped at
+    //                    60 chars in the tooltip).
+    //   2. own title   \u2192 set by many cells with the full value when the
+    //                    visible content is short-form (e.g. setup_fee enum).
+    //   3. inner title \u2192 for cells whose long content sits inside a span
+    //                    (e.g. Notes uses <span title="...">first 60 chars\u2026</span>).
+    //   4. textContent \u2192 fall back to the cell's visible/CSS-truncated text.
+    function _bdCellFullText(td){
+      var v=td.getAttribute('data-full');if(v)return v.trim();
+      v=td.getAttribute('title');if(v)return v.trim();
+      var inner=td.querySelector('[title]:not([title=""])');
+      if(inner)return (inner.getAttribute('title')||'').trim();
+      return (td.textContent||'').trim();
+    }
     _tbl.addEventListener('mouseover',function(e){
       var td=e.target.closest('td');
       if(!td||td===_lastCell)return;
       _lastCell=td;
-      // Only show when content is actually truncated (otherwise the visible
-      // cell already shows the full value and a tooltip is just noise).
+      var alwaysTip=td.hasAttribute('data-always-tip');
+      var hasFullSrc=td.hasAttribute('data-full')||td.hasAttribute('title')||td.querySelector('[title]:not([title=""])');
+      // Truncation check uses the cell's own width (CSS ellipsis).
       var truncated=td.scrollWidth>td.clientWidth+1;
-      if(!truncated){_ttip.style.display='none';return;}
-      var text=(td.textContent||'').trim();
+      if(!alwaysTip&&!hasFullSrc&&!truncated){_ttip.style.display='none';return;}
+      var text=_bdCellFullText(td);
       if(!text||text==='\u2014'){_ttip.style.display='none';return;}
       _ttip.textContent=text;
       _ttip.style.display='block';
