@@ -27,11 +27,26 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
 .tval{font-family:var(--font-h);font-size:28px;font-weight:700;color:var(--navy)}
 .tdef{font-size:10px;color:var(--grey);margin-top:2px}
 .pill{display:inline-block;padding:3px 10px;border-radius:50px;font-size:10px;font-weight:600;font-family:var(--font-b);white-space:nowrap}
-.stbl{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed}
-.stbl th{text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--grey);padding:8px 6px;border-bottom:2px solid var(--border);font-weight:700;white-space:nowrap;overflow:hidden;cursor:pointer}
+.stbl{width:100%;border-collapse:separate;border-spacing:0;font-size:11px;table-layout:fixed}
+.stbl th{text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--grey);padding:8px 6px;border-bottom:2px solid var(--border);font-weight:700;white-space:nowrap;overflow:hidden;cursor:pointer;background:var(--white)}
 .stbl th:hover{color:var(--navy)}
-.stbl td{padding:7px 6px;border-bottom:1px solid rgba(114,164,191,.06);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.stbl tr:hover{background:rgba(114,164,191,.04)}
+/* Body cells use a consistent 11px font (inherited from .stbl). Group-tinted
+   cells keep their background via inline styles; the table-layout:fixed
+   above lets the column widths defined in <colgroup> take effect. */
+.stbl td{padding:7px 6px;border-bottom:1px solid rgba(114,164,191,.06);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;background:var(--white)}
+.stbl tr:hover td{background:rgba(114,164,191,.04)}
+/* Sticky column headers — the main column header row sticks to the top of
+   the page during vertical scroll. The "Plan / Billing / Churn" group
+   banner row stays as a normal row (scrolls off naturally) so the two
+   header rows don't collide at the same sticky position. */
+.stbl thead tr:not(.bd-grp-row) th{position:sticky;top:0;z-index:5}
+/* Freeze the Deal Name (first) column so it stays visible during horizontal
+   scroll. The top-left corner cell is sticky on both axes; bumped z-index
+   keeps it above the row's other cells when they scroll under it. */
+.stbl tbody td:first-child,
+.stbl thead tr:not(.bd-grp-row) th:first-child{position:sticky;left:0;z-index:3;box-shadow:2px 0 4px -2px rgba(23,44,69,.08)}
+.stbl thead tr:not(.bd-grp-row) th:first-child{z-index:7}
+.stbl tr:hover td:first-child{background:rgba(114,164,191,.04)}
 .float-tip{display:none;position:fixed;background:#172C45;color:#fff;padding:8px 12px;border-radius:8px;font-size:12px;pointer-events:none;z-index:999;box-shadow:0 4px 12px rgba(0,0,0,.15);max-width:320px;white-space:normal;line-height:1.4}
 .attr-row:hover{background:rgba(114,164,191,.04);border-radius:6px;margin-left:-8px;margin-right:-8px;padding-left:8px;padding-right:8px}
 .sp{display:inline-block;width:18px;height:18px;border:3px solid rgba(114,164,191,.2);border-top-color:var(--teal);border-radius:50%;animation:spin .6s linear infinite}
@@ -872,7 +887,7 @@ function renderBD(){
     h+='<td><div style="display:flex;align-items:center;gap:4px;overflow:hidden"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+row.dealname+'">'+row.dealname+'</span><a href="https://app.hubspot.com/contacts/46815331/record/0-3/'+row.id+'" target="_blank" style="flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:4px;background:rgba(114,164,191,.1);color:var(--teal);font-size:9px;text-decoration:none">\u2197</a></div></td>';
     // Deal ID cell \u2014 raw HubSpot record ID. Mono font + grey so it reads as
     // a system identifier, not a label. Click-to-copy via title hint.
-    h+=_td('id','<td style="font-family:ui-monospace,Menlo,monospace;font-size:10px;color:var(--grey)" title="HubSpot Deal record ID">'+(row.id||dash)+'</td>');
+    h+=_td('id','<td style="font-family:ui-monospace,Menlo,monospace;color:var(--grey)" title="HubSpot Deal record ID">'+(row.id||dash)+'</td>');
     // Company cell \u2014 the name itself is now the clickable link to the
     // HubSpot company record (was a tiny arrow icon next to plain text).
     // If we have no companyId, render the name as-is or "\u2014".
@@ -888,7 +903,7 @@ function renderBD(){
     }
     h+='<td>'+coCell+'</td>';
     // Company ID cell \u2014 raw HubSpot record ID for the associated company.
-    h+=_td('companyId','<td style="font-family:ui-monospace,Menlo,monospace;font-size:10px;color:var(--grey)" title="HubSpot Company record ID">'+(row.companyId||dash)+'</td>');
+    h+=_td('companyId','<td style="font-family:ui-monospace,Menlo,monospace;color:var(--grey)" title="HubSpot Company record ID">'+(row.companyId||dash)+'</td>');
     h+='<td>'+(row.brand_status?'<span class="pill" style="background:'+bsColor+'18;color:'+bsColor+'">'+row.brand_status+'</span>':dash)+'</td>';
     h+='<td><span class="pill" style="background:'+stageColor+'18;color:'+stageColor+'">'+stageLabel+'</span></td>';
     var repHidden=bdRepHidden(repName,BD_DEAL_REP_HIDE);
@@ -907,7 +922,7 @@ function renderBD(){
     var ddb=(_bdEffDemo||'').substring(0,10)||dash;
     var _ddbStyle=row.rescheduled_meeting_date?' style="color:#7C3AED;font-weight:600"':'';
     h+=_td('date_demo_booked','<td'+_ddbStyle+'>'+ddb+'</td>');
-    h+=_td('createdate','<td style="font-size:10px">'+crd+'</td>');
+    h+=_td('createdate','<td>'+crd+'</td>');
     h+=_td('to_demo','<td style="text-align:center">'+(toDemoVal==null?dash:toDemoVal)+'</td>');
     var fromDemoVal=bdFromDemo(row);
     h+=_td('from_demo','<td style="text-align:center">'+(fromDemoVal==null?dash:fromDemoVal)+'</td>');
@@ -927,25 +942,25 @@ function renderBD(){
     h+=_td('of_clinicianai','<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+_planBg+'" title="'+row.of_clinicianai+'">'+tEnum(row.of_clinicianai)+'</td>');
     h+=_td('of_clinician_analysis','<td style="text-align:center;'+_planBg+'">'+tNum(row.of_clinician_analysis)+'</td>');
     h+=_td('clinician_ai_price_per_product','<td style="'+_planBg+'">'+tMoney(row.clinician_ai_price_per_product)+'</td>');
-    h+=_td('setup_fee','<td style="font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+_planBg+'" title="'+row.setup_fee+'">'+tEnum(row.setup_fee)+'</td>');
+    h+=_td('setup_fee','<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+_planBg+'" title="'+row.setup_fee+'">'+tEnum(row.setup_fee)+'</td>');
     h+=_td('months_until_upgrade','<td style="'+_planBg+'">'+tEnum(row.months_until_upgrade)+'</td>');
     h+=_td('fee_after_upgrade','<td style="'+_planBg+'">'+tMoney(row.fee_after_upgrade)+'</td>');
-    h+=_td('notes','<td style="font-size:10px;'+_planBg+'">'+tNotes(row.notes)+'</td>');
+    h+=_td('notes','<td style="'+_planBg+'">'+tNotes(row.notes)+'</td>');
     // ── Billing Details group cells (tinted gold) ──
     var invd=(row.invoice_date||'').substring(0,10)||dash;
     var appd=(row.approval_date||'').substring(0,10)||dash;
     h+=_td('invoice_date','<td style="'+_billingBg+'">'+invd+'</td>');
     h+=_td('approval_date','<td style="'+_billingBg+'">'+appd+'</td>');
-    h+=_td('internal_recurly_link','<td style="font-size:10px;'+_billingBg+'">'+_linkCell(row.internal_recurly_link,'Recurly')+'</td>');
-    h+=_td('recurly_account_management_url','<td style="font-size:10px;'+_billingBg+'">'+_linkCell(row.recurly_account_management_url,'Account')+'</td>');
-    h+=_td('recurly_billing_intake_url','<td style="font-size:10px;'+_billingBg+'">'+_linkCell(row.recurly_billing_intake_url,'Intake')+'</td>');
+    h+=_td('internal_recurly_link','<td style="'+_billingBg+'">'+_linkCell(row.internal_recurly_link,'Recurly')+'</td>');
+    h+=_td('recurly_account_management_url','<td style="'+_billingBg+'">'+_linkCell(row.recurly_account_management_url,'Account')+'</td>');
+    h+=_td('recurly_billing_intake_url','<td style="'+_billingBg+'">'+_linkCell(row.recurly_billing_intake_url,'Intake')+'</td>');
     // ── Churn / Pause Details group cells (tinted light pink) ──
     var pcd=(row.pausechurn_date||'').substring(0,10)||dash;
     var brd=(row.paused_billing__billing_restart_date||'').substring(0,10)||dash;
     h+=_td('pausechurn_date','<td style="'+_churnBg+'">'+pcd+'</td>');
     h+=_td('never_implemented_churn','<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+_churnBg+'" title="'+(row.never_implemented_churn||'').replace(/"/g,'&quot;')+'">'+tEnum(row.never_implemented_churn)+'</td>');
     h+=_td('churn_reason','<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+_churnBg+'" title="'+(row.churn_reason||'').replace(/"/g,'&quot;')+'">'+tEnum(row.churn_reason)+'</td>');
-    h+=_td('detailed_reason_for_churn','<td style="font-size:10px;'+_churnBg+'">'+tNotes(row.detailed_reason_for_churn)+'</td>');
+    h+=_td('detailed_reason_for_churn','<td style="'+_churnBg+'">'+tNotes(row.detailed_reason_for_churn)+'</td>');
     h+=_td('paused_billing_length_months','<td style="text-align:center;'+_churnBg+'">'+tNum(row.paused_billing_length_months)+'</td>');
     h+=_td('temporary_pause_reason','<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+_churnBg+'" title="'+(row.temporary_pause_reason||'').replace(/"/g,'&quot;')+'">'+tEnum(row.temporary_pause_reason)+'</td>');
     h+=_td('paused_billing__billing_restart_date','<td style="'+_churnBg+'">'+brd+'</td>');
