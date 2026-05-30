@@ -132,7 +132,7 @@ function bdBSToggle(v){var i=_bdBrandStatusToggleF.indexOf(v);if(i>=0)_bdBrandSt
 var _bdWebTrafficF=[];
 // Plan Details / Billing Details column groups: extra columns are
 // collapsed by default; users toggle to expand.
-var _bdPlanExpanded=false, _bdBillingExpanded=false, _bdChurnExpanded=false;
+var _bdPlanExpanded=false, _bdBillingExpanded=false, _bdChurnExpanded=false, _bdAvgDaysExpanded=false;
 var BD_REP_COLORS=['#1565C0','#2E7D32','#72A4BF','#E65100','#5C6BC0','#00897B','#C62828','#6A1B9A','#EF6C00','#00695C'];
 var _bdArrGoal='',_bdAcvInput='';
 var BD_STAGE_LABELS={appointmentscheduled:'Scheduled','1084214349':'Demo Happened',decisionmakerboughtin:'Decision Maker',contractsent:'Contract Sent',closedwon:'Closed Won',closedlost:'Closed Lost','3453957850':'No Show','3453925110':'Churned','1062974581':'Not a Fit','3517067985':'Churned (Onb)','3722491612':'Interested, Circle Back'};
@@ -398,6 +398,7 @@ function bdWtClear(){_bdWebTrafficF=[];renderBD();}
 function bdTogglePlan(){_bdPlanExpanded=!_bdPlanExpanded;renderBD();}
 function bdToggleBilling(){_bdBillingExpanded=!_bdBillingExpanded;renderBD();}
 function bdToggleChurn(){_bdChurnExpanded=!_bdChurnExpanded;renderBD();}
+function bdToggleAvgDays(){_bdAvgDaysExpanded=!_bdAvgDaysExpanded;renderBD();}
 function bdCalc(){var el=document.getElementById('bd-calc-result');if(!el)return;var goal=parseInput(_bdArrGoal);var acvIn=parseInput(_bdAcvInput);if(!goal||!acvIn){el.textContent='\u2014';return;}var d=BD.data;if(!d)return;var cw=d.deals.filter(function(dd){return dd.dealstage==='closedwon';});var active=cw.filter(function(dd){return !['Paused','Churned','Never Implemented - Churned'].includes(dd.brand_status);});var currentARR=0;active.forEach(function(dd){currentARR+=dd.amount;});currentARR*=12;var gap=goal-currentARR;if(gap<=0){el.innerHTML='<span style="color:#16A34A">\u2713 Goal reached!</span>';return;}var needed=Math.ceil(gap/(acvIn*12));el.innerHTML='<span style="font-size:32px">'+needed+'</span> <span style="font-size:14px;color:var(--grey)">deals needed</span>';}
 // Display-name overrides \u2014 keyed by a substring found in the owner's full
 // HubSpot name. e.g. an owner whose HubSpot name is "Shealtiel <something>"
@@ -786,9 +787,14 @@ function renderBD(){
     {k:'closedate',l:'Close Date',w:90},
     {k:'date_demo_booked',l:'Date Demo Booked',w:100},
     {k:'createdate',l:'Create Date',w:90},
-    {k:'to_demo',l:'To Demo',w:75},
-    {k:'from_demo',l:'From Demo',w:75},
-    {k:'days_to_close',l:'From Created',w:80},
+    // ── Avg Days group ──
+    // Only "From Created" visible by default; To Demo and From Demo are
+    // tucked behind the group-collapse chevron. Light-grey tint
+    // distinguishes this from the blue Plan / amber Billing / pink Churn
+    // groups (slate-500 family).
+    {k:'days_to_close',l:'From Created',w:80, group:'avgDays'},
+    {k:'to_demo',l:'To Demo',w:75, group:'avgDays', groupCollapse:true},
+    {k:'from_demo',l:'From Demo',w:75, group:'avgDays', groupCollapse:true},
     // ── Plan Details group ──
     {k:'amount',l:'Amount',w:90, group:'plan'},
     {k:'package_type',l:'Plan Name',w:115, group:'plan'},
@@ -826,13 +832,15 @@ function renderBD(){
   ];
   // Apply the column-visibility toggles → produces the filtered visible cols.
   // - ID columns (Deal ID, Company ID) hide when _bdIdsVisible is false.
-  // - Plan/Billing/Churn collapse-only columns hide when their group is collapsed.
+  // - Plan/Billing/Churn/AvgDays collapse-only columns hide when their
+  //   group is collapsed.
   cols=cols.filter(function(c){
     if(c.idCol&&!_bdIdsVisible)return false;
     if(!c.group||!c.groupCollapse)return true;
     if(c.group==='plan')return _bdPlanExpanded;
     if(c.group==='billing')return _bdBillingExpanded;
     if(c.group==='churn')return _bdChurnExpanded;
+    if(c.group==='avgDays')return _bdAvgDaysExpanded;
     return true;
   });
   // Set of currently-visible column keys, used to conditionally render TDs
@@ -841,10 +849,12 @@ function renderBD(){
   // Build colgroup from visible cols
   var colgroupHTML='<colgroup>';for(var cgi=0;cgi<cols.length;cgi++){colgroupHTML+='<col style="width:'+cols[cgi].w+'px">';}colgroupHTML+='</colgroup>';
   // Group banner row \u2014 colspans match visible-column counts for each group
+  var avgDaysCols=cols.filter(function(c){return c.group==='avgDays';}).length;
   var planCols=cols.filter(function(c){return c.group==='plan';}).length;
   var billingCols=cols.filter(function(c){return c.group==='billing';}).length;
   var churnCols=cols.filter(function(c){return c.group==='churn';}).length;
   var preGroupCols=0;for(var pgi=0;pgi<cols.length;pgi++){if(cols[pgi].group)break;preGroupCols++;}
+  var avgDaysChev=_bdAvgDaysExpanded?'\u25BC':'\u25B6';
   var planChev=_bdPlanExpanded?'\u25BC':'\u25B6';
   var billingChev=_bdBillingExpanded?'\u25BC':'\u25B6';
   var churnChev=_bdChurnExpanded?'\u25BC':'\u25B6';
@@ -857,9 +867,10 @@ function renderBD(){
   // All cell backgrounds use SOLID color values (not rgba) \u2014 the row is sticky
   // at top:0 of the table wrapper, and transparent backgrounds would let
   // scrolling content show through.
-  if(planCols>0||billingCols>0||churnCols>0){
+  if(avgDaysCols>0||planCols>0||billingCols>0||churnCols>0){
     h+='<tr class="bd-grp-row">';
     if(preGroupCols>0)h+='<th colspan="'+preGroupCols+'" style="background:var(--white);border-bottom:none;padding-bottom:2px"></th>';
+    if(avgDaysCols>0)h+='<th colspan="'+avgDaysCols+'" style="background:#E6E9EC;border-bottom:1px solid rgba(100,116,139,.40);text-align:center;cursor:pointer;color:var(--navy);font-weight:700;letter-spacing:.06em;font-size:10px;padding:6px 8px" onclick="bdToggleAvgDays()" title="Toggle Avg Days columns"><span style="color:#64748B;margin-right:6px">'+avgDaysChev+'</span>Avg Days</th>';
     if(planCols>0)h+='<th colspan="'+planCols+'" style="background:#E8F0F5;border-bottom:1px solid rgba(114,164,191,.35);text-align:center;cursor:pointer;color:var(--navy);font-weight:700;letter-spacing:.06em;font-size:10px;padding:6px 8px" onclick="bdTogglePlan()" title="Toggle Plan Details columns"><span style="color:var(--teal);margin-right:6px">'+planChev+'</span>Plan Details</th>';
     if(billingCols>0)h+='<th colspan="'+billingCols+'" style="background:#FEF1DD;border-bottom:1px solid rgba(245,158,11,.40);text-align:center;cursor:pointer;color:var(--navy);font-weight:700;letter-spacing:.06em;font-size:10px;padding:6px 8px" onclick="bdToggleBilling()" title="Toggle Billing Details columns"><span style="color:#B45309;margin-right:6px">'+billingChev+'</span>Billing Details</th>';
     if(churnCols>0)h+='<th colspan="'+churnCols+'" style="background:#FCE2EF;border-bottom:1px solid rgba(236,72,153,.40);text-align:center;cursor:pointer;color:var(--navy);font-weight:700;letter-spacing:.06em;font-size:10px;padding:6px 8px" onclick="bdToggleChurn()" title="Toggle Churn Details columns"><span style="color:#BE185D;margin-right:6px">'+churnChev+'</span>Churn Details</th>';
@@ -870,7 +881,7 @@ function renderBD(){
   // backgrounds would let scrolling rows show through).
   h+='<tr>';
   for(var ci2=0;ci2<cols.length;ci2++){var c=cols[ci2];var isS=_bdSort===c.k;
-    var thBg=c.group==='plan'?'background:#F7FAFB;':(c.group==='billing'?'background:#FEF9F0;':(c.group==='churn'?'background:#FEF4F9;':''));
+    var thBg=c.group==='plan'?'background:#F7FAFB;':(c.group==='billing'?'background:#FEF9F0;':(c.group==='churn'?'background:#FEF4F9;':(c.group==='avgDays'?'background:#F6F7F8;':'')));
     h+='<th style="'+thBg+'" onclick="'+(c.k?"_bdSort='"+c.k+"';_bdSortDir=_bdSortDir==='asc'?'desc':'asc';renderBD()":"")+'">'+c.l+(isS?(_bdSortDir==='asc'?' \u25B2':' \u25BC'):'')+'</th>';
   }
   h+='</tr></thead><tbody>';
@@ -878,6 +889,7 @@ function renderBD(){
   var _planBg='background:rgba(114,164,191,.04)';
   var _billingBg='background:rgba(245,158,11,.04)';
   var _churnBg='background:rgba(236,72,153,.04)';
+  var _avgDaysBg='background:rgba(100,116,139,.04)';
   // Cell helpers
   var dash='<span style="color:#ccc">\u2014</span>';
   function tNum(v){if(v===''||v==null||v===0)return v===0?'0':dash;return v;}
@@ -939,10 +951,10 @@ function renderBD(){
     var _ddbStyle=row.rescheduled_meeting_date?' style="color:#7C3AED;font-weight:600"':'';
     h+=_td('date_demo_booked','<td'+_ddbStyle+'>'+ddb+'</td>');
     h+=_td('createdate','<td>'+crd+'</td>');
-    h+=_td('to_demo','<td style="text-align:center">'+(toDemoVal==null?dash:toDemoVal)+'</td>');
+    h+=_td('to_demo','<td style="text-align:center;'+_avgDaysBg+'">'+(toDemoVal==null?dash:toDemoVal)+'</td>');
     var fromDemoVal=bdFromDemo(row);
-    h+=_td('from_demo','<td style="text-align:center">'+(fromDemoVal==null?dash:fromDemoVal)+'</td>');
-    h+=_td('days_to_close','<td style="text-align:center">'+tNum(row.days_to_close)+'</td>');
+    h+=_td('from_demo','<td style="text-align:center;'+_avgDaysBg+'">'+(fromDemoVal==null?dash:fromDemoVal)+'</td>');
+    h+=_td('days_to_close','<td style="text-align:center;'+_avgDaysBg+'">'+tNum(row.days_to_close)+'</td>');
     // ── Plan Details group cells (tinted teal) ──
     h+=_td('amount','<td style="font-weight:600;'+_planBg+'">'+f$(row.amount)+'</td>');
     var pnClean=bdPlanName(row.package_type||'');
