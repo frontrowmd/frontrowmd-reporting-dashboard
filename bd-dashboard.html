@@ -976,6 +976,50 @@ function renderBD(){
     row.addEventListener('mousemove',function(e){var tw=at.offsetWidth||220,vw=window.innerWidth;var x=e.clientX+12;if(x+tw>vw-8){x=e.clientX-tw-12;}at.style.left=x+'px';at.style.top=(e.clientY-30)+'px';});
     row.addEventListener('mouseleave',function(){at.style.display='none';});
   });}
+  // Instant cell tooltip on the Deal Table \u2014 when a cell's content is
+  // truncated by ellipsis, hover shows the full text immediately (no
+  // ~800ms native-title delay). Uses event delegation on <tbody> so the
+  // listener count stays at 3 regardless of row count, and works for
+  // every render (the wrapper persists across renderBD calls).
+  var _tbl=el.querySelector('.stbl tbody');
+  // Singleton tooltip element (created once, reused across renders).
+  var _ttip=document.getElementById('bd-tbl-tip');
+  if(!_ttip){
+    _ttip=document.createElement('div');
+    _ttip.id='bd-tbl-tip';
+    _ttip.className='float-tip';
+    _ttip.style.maxWidth='420px';
+    _ttip.style.whiteSpace='normal';
+    document.body.appendChild(_ttip);
+  }
+  if(_tbl){
+    var _lastCell=null;
+    _tbl.addEventListener('mouseover',function(e){
+      var td=e.target.closest('td');
+      if(!td||td===_lastCell)return;
+      _lastCell=td;
+      // Only show when content is actually truncated (otherwise the visible
+      // cell already shows the full value and a tooltip is just noise).
+      var truncated=td.scrollWidth>td.clientWidth+1;
+      if(!truncated){_ttip.style.display='none';return;}
+      var text=(td.textContent||'').trim();
+      if(!text||text==='\u2014'){_ttip.style.display='none';return;}
+      _ttip.textContent=text;
+      _ttip.style.display='block';
+    });
+    _tbl.addEventListener('mousemove',function(e){
+      if(_ttip.style.display!=='block')return;
+      var tw=_ttip.offsetWidth||200,th=_ttip.offsetHeight||30;
+      var vw=window.innerWidth;
+      var x=e.clientX+14;
+      if(x+tw>vw-8)x=e.clientX-tw-14;
+      var y=e.clientY-th-12;
+      if(y<8)y=e.clientY+18;
+      _ttip.style.left=x+'px';
+      _ttip.style.top=y+'px';
+    });
+    _tbl.addEventListener('mouseleave',function(){_lastCell=null;_ttip.style.display='none';});
+  }
   // SVG chart hover
   el.querySelectorAll('.chart-dot').forEach(function(dot){
     var tip=dot.closest('.chart-wrap').querySelector('.float-tip');
