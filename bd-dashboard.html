@@ -95,6 +95,11 @@ function _bdFirstOfMonth(){var _d=new Date();return _d.getFullYear()+'-'+String(
 // the toggle array is non-empty, it takes precedence over the single-select
 // bucket (the bucket auto-resets to 'all' so the two UIs don't fight).
 var _bdBrandStatusF='Active',_bdBrandStatusToggleF=[],_bdStageF='all',_bdRepF='all',_bdSeRepF='all',_bdOpsRepF='all',_bdPkgF='all',_bdDateFrom=_bdFirstOfMonth(),_bdDateTo='',_bdDateMode='close';
+// Deal ID + Company ID columns are visible by default but collapsible via
+// the IDs toggle button above the table. Hiding them only suppresses the
+// table cells — the CSV export still includes both fields regardless.
+var _bdIdsVisible=true;
+function bdToggleIds(){_bdIdsVisible=!_bdIdsVisible;renderBD();}
 // Click handlers — single-select buttons clear the toggles; toggle clicks
 // auto-set the single-select bucket to 'all' so both modes can't be active.
 function bdBSSet(v){_bdBrandStatusF=v;_bdBrandStatusToggleF=[];renderBD();}
@@ -670,7 +675,10 @@ function renderBD(){
   // Table
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:20px 24px">';
   h+='<div style="display:flex;align-items:center;margin-bottom:12px"><div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">All Deals</div><div style="font-size:10px;color:var(--grey);margin-left:8px">'+sharedFiltered.length+' of '+deals.length+'<span id="bd-co-hint" style="display:none;color:var(--teal);font-weight:600"></span></div>'
-    +'<button onclick="bdExportCSV()" title="Download current filtered + sorted rows as CSV (HubSpot property names as headers)" style="margin-left:auto;padding:5px 14px;border-radius:50px;border:1.5px solid var(--teal);background:rgba(114,164,191,.08);color:var(--teal);font-size:11px;font-weight:700;cursor:pointer;font-family:var(--font-b);display:inline-flex;align-items:center;gap:5px" onmouseover="this.style.background=\'var(--teal)\';this.style.color=\'#fff\'" onmouseout="this.style.background=\'rgba(114,164,191,.08)\';this.style.color=\'var(--teal)\'">'
+    // Collapsible toggle for the Deal ID + Company ID columns. Chevron
+    // mirrors the Plan / Billing group toggles' direction (▼ shown, ▶ hidden).
+    +'<button onclick="bdToggleIds()" title="Toggle Deal ID and Company ID columns" style="margin-left:auto;margin-right:8px;padding:5px 12px;border-radius:50px;border:1.5px solid rgba(23,44,69,.15);background:'+(_bdIdsVisible?'rgba(23,44,69,.05)':'transparent')+';color:var(--navy);font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font-b);display:inline-flex;align-items:center;gap:5px"><span style="color:var(--teal);font-size:9px">'+(_bdIdsVisible?'▼':'▶')+'</span>'+(_bdIdsVisible?'Hide':'Show')+' IDs</button>'
+    +'<button onclick="bdExportCSV()" title="Download current filtered + sorted rows as CSV (HubSpot property names as headers)" style="padding:5px 14px;border-radius:50px;border:1.5px solid var(--teal);background:rgba(114,164,191,.08);color:var(--teal);font-size:11px;font-weight:700;cursor:pointer;font-family:var(--font-b);display:inline-flex;align-items:center;gap:5px" onmouseover="this.style.background=\'var(--teal)\';this.style.color=\'#fff\'" onmouseout="this.style.background=\'rgba(114,164,191,.08)\';this.style.color=\'var(--teal)\'">'
     +'<svg width="11" height="11" viewBox="0 0 16 16" fill="none" style="flex-shrink:0"><path d="M8 1V10M8 10L4.5 6.5M8 10L11.5 6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 12V14H14V12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
     +'Export CSV</button>'
     +'</div>';
@@ -721,9 +729,9 @@ function renderBD(){
   // expanded via its toggle button.
   var cols=[
     {k:'dealname',l:'Deal Name',w:140},
-    {k:'id',l:'Deal ID',w:100},
+    {k:'id',l:'Deal ID',w:100,idCol:true},
     {k:'companyName',l:'Company',w:140},
-    {k:'companyId',l:'Company ID',w:100},
+    {k:'companyId',l:'Company ID',w:100,idCol:true},
     {k:'brand_status',l:'Brand Status',w:100},
     {k:'dealstage',l:'Deal Stage',w:115},
     {k:'hubspot_owner_id',l:'Deal Rep',w:80},
@@ -759,8 +767,11 @@ function renderBD(){
     {k:'recurly_account_management_url',l:'Recurly Account Management',w:160, group:'billing', groupCollapse:true},
     {k:'recurly_billing_intake_url',l:'Recurly Billing Intake',w:140, group:'billing', groupCollapse:true},
   ];
-  // Apply the group-expansion toggles → produces the filtered visible cols
+  // Apply the column-visibility toggles → produces the filtered visible cols.
+  // - ID columns (Deal ID, Company ID) hide when _bdIdsVisible is false.
+  // - Plan/Billing collapse-only columns hide when their group is collapsed.
   cols=cols.filter(function(c){
+    if(c.idCol&&!_bdIdsVisible)return false;
     if(!c.group||!c.groupCollapse)return true;
     if(c.group==='plan')return _bdPlanExpanded;
     if(c.group==='billing')return _bdBillingExpanded;
