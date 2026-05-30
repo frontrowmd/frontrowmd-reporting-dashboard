@@ -929,11 +929,11 @@ function renderBD(){
     } else {
       coCell=dash;
     }
-    h+='<td>'+coCell+'</td>';
+    h+='<td data-no-tip="1">'+coCell+'</td>';
     // Company ID cell \u2014 raw HubSpot record ID for the associated company.
     h+=_td('companyId','<td style="font-family:ui-monospace,Menlo,monospace;color:var(--grey)" title="HubSpot Company record ID">'+(row.companyId||dash)+'</td>');
-    h+='<td>'+(row.brand_status?'<span class="pill" style="background:'+bsColor+'18;color:'+bsColor+'">'+row.brand_status+'</span>':dash)+'</td>';
-    h+='<td><span class="pill" style="background:'+stageColor+'18;color:'+stageColor+'">'+stageLabel+'</span></td>';
+    h+='<td data-no-tip="1">'+(row.brand_status?'<span class="pill" style="background:'+bsColor+'18;color:'+bsColor+'">'+row.brand_status+'</span>':dash)+'</td>';
+    h+='<td data-no-tip="1"><span class="pill" style="background:'+stageColor+'18;color:'+stageColor+'">'+stageLabel+'</span></td>';
     var repHidden=bdRepHidden(repName,BD_DEAL_REP_HIDE);
     h+='<td title="'+(repHidden?'':repName)+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(repHidden?dash:(bdFirstName(repName)||dash))+'</td>';
     // SE Rep — from the company record's hubspot_owner_id, resolved via ownerMap
@@ -959,7 +959,7 @@ function renderBD(){
     h+=_td('amount','<td style="font-weight:600;'+_planBg+'">'+f$(row.amount)+'</td>');
     var pnClean=bdPlanName(row.package_type||'');
     var pnColor=BD_PKG_COLORS[pnClean]||'#9CA3AF';
-    h+=_td('package_type','<td style="'+_planBg+'">'+(row.package_type?'<span class="pill" style="background:'+pnColor+'18;color:'+pnColor+'" title="'+row.package_type+'">'+pnClean+'</span>':dash)+'</td>');
+    h+=_td('package_type','<td data-no-tip="1" style="'+_planBg+'">'+(row.package_type?'<span class="pill" style="background:'+pnColor+'18;color:'+pnColor+'">'+pnClean+'</span>':dash)+'</td>');
     h+=_td('average_monthly_web_traffic__cloned_','<td data-no-tip="1" style="'+_planBg+'">'+(wtRaw?'<span class="pill" style="background:'+(BD_WT_COLORS[wtRaw]||'#9CA3AF')+'18;color:'+(BD_WT_COLORS[wtRaw]||'#9CA3AF')+'">'+wtLbl+'</span>':dash)+'</td>');
     h+=_td('original_amount','<td style="'+_planBg+'">'+(row.original_amount?f$(row.original_amount):dash)+'</td>');
     h+=_td('of_products','<td style="text-align:center;'+_planBg+'">'+tNum(row.of_products)+'</td>');
