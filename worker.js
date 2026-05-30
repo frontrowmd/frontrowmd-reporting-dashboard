@@ -3460,6 +3460,12 @@ const BD_DEAL_PROPS = [
   // Billing details group (new in v22)
   'invoice_date','approval_date','internal_recurly_link',
   'recurly_account_management_url','recurly_billing_intake_url',
+  // Churn / Pause details group (new in v23). pausechurn_date is the only
+  // column visible by default; the rest live behind the group-collapse
+  // chevron in the BD Tracker table.
+  'pausechurn_date','never_implemented_churn','churn_reason',
+  'detailed_reason_for_churn','paused_billing_length_months',
+  'temporary_pause_reason','paused_billing__billing_restart_date',
 ];
 
 async function fetchBDData(env) {
@@ -3652,6 +3658,15 @@ async function fetchBDData(env) {
       internal_recurly_link: p.internal_recurly_link||'',
       recurly_account_management_url: p.recurly_account_management_url||'',
       recurly_billing_intake_url: p.recurly_billing_intake_url||'',
+      // Churn / Pause group — surfaced on the BD Tracker behind a
+      // collapse chevron (only pausechurn_date is visible by default).
+      pausechurn_date: p.pausechurn_date||'',
+      never_implemented_churn: p.never_implemented_churn||'',
+      churn_reason: p.churn_reason||'',
+      detailed_reason_for_churn: p.detailed_reason_for_churn||'',
+      paused_billing_length_months: p.paused_billing_length_months||'',
+      temporary_pause_reason: p.temporary_pause_reason||'',
+      paused_billing__billing_restart_date: p.paused_billing__billing_restart_date||'',
       // Always include the associated companyId (from associations); the
       // companyName comes from the cache if available, else empty (client
       // will fill it in via /api/bd/lookup-companies).
