@@ -351,7 +351,16 @@ function f$(v){if(v==null||isNaN(v))return'\u2014';return'$'+Math.round(v).toLoc
 function fmtInput(el){var v=el.value.replace(/[^0-9]/g,'');el.value=v?parseInt(v).toLocaleString():'';}
 function parseInput(s){return parseFloat((s||'').replace(/[^0-9.]/g,''))||0;}
 function bdClearDate(){_bdDateFrom='';_bdDateTo='';renderBD();}
-function bdResetFilters(){_bdBrandStatusF='Active';_bdBrandStatusToggleF=[];_bdStageF='all';_bdRepF='all';_bdSeRepF='all';_bdOpsRepF='all';_bdPkgF='all';_bdWebTrafficF=[];_bdDateFrom=_bdFirstOfMonth();_bdDateTo='';_bdDateMode='close';renderBD();}
+// "Current Month Signed" preset — Active brand status (Signed + Paying)
+// + Close Date filter scoped to the current month. The gold always-visible
+// button in the table filter row calls this; it's the most common starting
+// view of the BD Tracker.
+function bdCurrentMonthSigned(){_bdBrandStatusF='Active';_bdBrandStatusToggleF=[];_bdStageF='all';_bdRepF='all';_bdSeRepF='all';_bdOpsRepF='all';_bdPkgF='all';_bdWebTrafficF=[];_bdDateFrom=_bdFirstOfMonth();_bdDateTo='';_bdDateMode='close';renderBD();}
+// "Clear All Filters" — wipes everything to a truly unfiltered state (no
+// brand status, no date range, no rep/stage/web-traffic filter). The red
+// dirty-only button calls this; only visible when at least one filter is
+// non-default.
+function bdClearAllFilters(){_bdBrandStatusF='all';_bdBrandStatusToggleF=[];_bdStageF='all';_bdRepF='all';_bdSeRepF='all';_bdOpsRepF='all';_bdPkgF='all';_bdWebTrafficF=[];_bdDateFrom='';_bdDateTo='';_bdDateMode='close';renderBD();}
 // Toggle a single web-traffic tier in/out of the multi-select array.
 function bdWtToggle(tier){var i=_bdWebTrafficF.indexOf(tier);if(i>=0)_bdWebTrafficF.splice(i,1);else _bdWebTrafficF.push(tier);renderBD();}
 function bdWtClear(){_bdWebTrafficF=[];renderBD();}
@@ -670,7 +679,13 @@ function renderBD(){
   h+='<button onclick="renderBD()" style="padding:3px 10px;border-radius:50px;border:1.5px solid var(--navy);background:var(--navy);color:#fff;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--font-b)">Go</button>';
   if(_bdDateFrom||_bdDateTo){h+='<button onclick="bdClearDate()" style="padding:3px 10px;border-radius:50px;border:1.5px solid rgba(23,44,69,.12);background:transparent;color:var(--navy);font-size:10px;cursor:pointer;font-family:var(--font-b)">Clear</button>';}
   var anyF=_bdBrandStatusF!=='all'||_bdBrandStatusToggleF.length>0||_bdStageF!=='all'||_bdRepF!=='all'||_bdSeRepF!=='all'||_bdOpsRepF!=='all'||_bdPkgF!=='all'||_bdWebTrafficF.length>0||_bdDateFrom||_bdDateTo;
-  if(anyF){h+='<button onclick="bdResetFilters()" style="padding:3px 12px;border-radius:50px;border:1.5px solid #C62828;background:rgba(198,40,40,.05);color:#C62828;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font-b);margin-left:auto">Reset All Filters</button>';}
+  // Always-visible gold preset button — the most common BD Tracker view
+  // (Active brand status + Close Date in current month).
+  h+='<button onclick="bdCurrentMonthSigned()" title="Active brand status + Close Date in current month" style="margin-left:auto;padding:3px 14px;border-radius:50px;border:1.5px solid #B8860B;background:linear-gradient(135deg,#F5D896 0%,#FBE9C1 100%);color:#5A3F0A;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--font-b);box-shadow:0 1px 3px rgba(184,134,11,.25),inset 0 1px 0 rgba(255,255,255,.5);letter-spacing:.02em">Current Month Signed</button>';
+  // Conditional red clear-all button — only shown when at least one filter
+  // is non-default. Wipes everything (vs. the gold preset which sets the
+  // common starting view).
+  if(anyF){h+='<button onclick="bdClearAllFilters()" title="Wipe all filters to a fully unfiltered state" style="margin-left:6px;padding:3px 14px;border-radius:50px;border:1.5px solid #C62828;background:rgba(198,40,40,.05);color:#C62828;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font-b)">Clear All Filters</button>';}
   h+='</div></div>';
   // Table
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:20px 24px">';
