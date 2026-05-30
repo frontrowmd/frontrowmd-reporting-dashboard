@@ -95,10 +95,11 @@ function _bdFirstOfMonth(){var _d=new Date();return _d.getFullYear()+'-'+String(
 // the toggle array is non-empty, it takes precedence over the single-select
 // bucket (the bucket auto-resets to 'all' so the two UIs don't fight).
 var _bdBrandStatusF='Active',_bdBrandStatusToggleF=[],_bdStageF='all',_bdRepF='all',_bdSeRepF='all',_bdOpsRepF='all',_bdPkgF='all',_bdDateFrom=_bdFirstOfMonth(),_bdDateTo='',_bdDateMode='close';
-// Deal ID + Company ID columns are visible by default but collapsible via
-// the IDs toggle button above the table. Hiding them only suppresses the
-// table cells — the CSV export still includes both fields regardless.
-var _bdIdsVisible=true;
+// Deal ID + Company ID columns are HIDDEN by default to reduce visual
+// clutter (they're technical identifiers, mostly useful for export and
+// debugging). Toggle button above the table reveals them on demand.
+// CSV export always includes both fields regardless of the on-screen toggle.
+var _bdIdsVisible=false;
 function bdToggleIds(){_bdIdsVisible=!_bdIdsVisible;renderBD();}
 // Click handlers — single-select buttons clear the toggles; toggle clicks
 // auto-set the single-select bucket to 'all' so both modes can't be active.
