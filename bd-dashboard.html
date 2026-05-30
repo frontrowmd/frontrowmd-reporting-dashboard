@@ -948,7 +948,7 @@ function renderBD(){
     var pnClean=bdPlanName(row.package_type||'');
     var pnColor=BD_PKG_COLORS[pnClean]||'#9CA3AF';
     h+=_td('package_type','<td style="'+_planBg+'">'+(row.package_type?'<span class="pill" style="background:'+pnColor+'18;color:'+pnColor+'" title="'+row.package_type+'">'+pnClean+'</span>':dash)+'</td>');
-    h+=_td('average_monthly_web_traffic__cloned_','<td style="'+_planBg+'">'+(wtRaw?'<span class="pill" style="background:'+(BD_WT_COLORS[wtRaw]||'#9CA3AF')+'18;color:'+(BD_WT_COLORS[wtRaw]||'#9CA3AF')+'" title="'+wtRaw+'">'+wtLbl+'</span>':dash)+'</td>');
+    h+=_td('average_monthly_web_traffic__cloned_','<td data-no-tip="1" style="'+_planBg+'">'+(wtRaw?'<span class="pill" style="background:'+(BD_WT_COLORS[wtRaw]||'#9CA3AF')+'18;color:'+(BD_WT_COLORS[wtRaw]||'#9CA3AF')+'">'+wtLbl+'</span>':dash)+'</td>');
     h+=_td('original_amount','<td style="'+_planBg+'">'+(row.original_amount?f$(row.original_amount):dash)+'</td>');
     h+=_td('of_products','<td style="text-align:center;'+_planBg+'">'+tNum(row.of_products)+'</td>');
     h+=_td('month_minimum','<td style="'+_planBg+'">'+(row.month_minimum?Math.round(row.month_minimum).toLocaleString():dash)+'</td>');
@@ -992,6 +992,21 @@ function renderBD(){
     row.addEventListener('mousemove',function(e){var tw=at.offsetWidth||220,vw=window.innerWidth;var x=e.clientX+12;if(x+tw>vw-8){x=e.clientX-tw-12;}at.style.left=x+'px';at.style.top=(e.clientY-30)+'px';});
     row.addEventListener('mouseleave',function(){at.style.display='none';});
   });}
+  // Align the sticky column-header row flush against the bottom of the
+  // sticky banner row. CSS uses a hard-coded `top: 28px` on the column
+  // header, but the banner row's actual rendered height varies by ~1-3px
+  // depending on font metrics. Any mismatch leaves a gap where scrolled
+  // data flashes through. Measure the banner row's offsetHeight after
+  // render and overwrite the column-header `top` to match exactly.
+  var _bdBanner=el.querySelector('.stbl thead tr.bd-grp-row');
+  if(_bdBanner){
+    var _bdBh=_bdBanner.offsetHeight;
+    el.querySelectorAll('.stbl thead tr:not(.bd-grp-row) th').forEach(function(th){th.style.top=_bdBh+'px';});
+  } else {
+    // No banner row visible (e.g. all groups collapsed AND no group cols)
+    // \u2192 column header sticks at top:0 directly.
+    el.querySelectorAll('.stbl thead tr:not(.bd-grp-row) th').forEach(function(th){th.style.top='0px';});
+  }
   // Instant cell tooltip on the Deal Table \u2014 when a cell's content is
   // truncated by ellipsis, hover shows the full text immediately (no
   // ~800ms native-title delay). Uses event delegation on <tbody> so the
@@ -1037,6 +1052,10 @@ function renderBD(){
       var td=e.target.closest('td');
       if(!td||td===_lastCell)return;
       _lastCell=td;
+      // Columns can opt out of the tooltip with data-no-tip="1" (e.g. the
+      // Web Traffic Tier pill where the visible label is already self-
+      // explanatory and a tooltip is just noise).
+      if(td.hasAttribute('data-no-tip')){_ttip.style.display='none';return;}
       var text=_bdCellFullText(td);
       // Only show for "longer" content (> 25 chars). Short cells (numbers,
       // dates, short labels, em-dash placeholders) don't need a tooltip
