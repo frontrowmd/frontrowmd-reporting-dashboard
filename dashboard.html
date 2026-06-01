@@ -750,7 +750,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s01';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s02';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -1877,22 +1877,44 @@ function _renderIrfanMetaTablesLoader(winOverride){
     _renderIrfanMetaTables(S.analyzer.data,_getCh());_updateCpdMatchRate(irfWin);return;
   }
   _setBoth('<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px"><span class="sp" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle"></span> Loading ad-channel data…</div>');
+  // Wrap the fetch with extra diagnostics so a failure surfaces the HTTP
+  // status + a snippet of the response body in the UI, not a vague
+  // "Failed to load … unknown". Particularly useful for shorter windows
+  // (e.g. Last 7 Days) where upstream timeouts or response-shape oddities
+  // would otherwise be invisible.
+  const _azT0=performance.now();
   fetch(AZ_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:PW,window:irfWin})})
-    .then(r=>r.json())
+    .then(async r=>{
+      const _ms=Math.round(performance.now()-_azT0);
+      const _txt=await r.text();
+      let ad=null;
+      try{ad=JSON.parse(_txt);}catch(e){
+        console.error('Analyzer non-JSON response (win='+irfWin+', '+_ms+'ms, HTTP '+r.status+'):',_txt.slice(0,500));
+        throw new Error('HTTP '+r.status+' · non-JSON response · '+_txt.slice(0,120));
+      }
+      if(!r.ok){
+        console.error('Analyzer HTTP '+r.status+' (win='+irfWin+', '+_ms+'ms):',ad);
+        throw new Error('HTTP '+r.status+' · '+(ad.detail||ad.error||'no detail'));
+      }
+      console.log('Analyzer OK (win='+irfWin+', '+_ms+'ms, channels='+Object.keys(ad.channels||{}).join(',')+')');
+      return ad;
+    })
     .then(ad=>{
       if(ad&&!ad.error&&ad.channels?.meta){
         S.irfan.analyzerCache[irfWin]=ad;
-        // Render if either page is active and on the matching window. The
-        // render function itself writes to whichever DOM targets are present.
         const onIrfan=AP==='irfan'&&(S.irfan?.win||'mtd')===irfWin;
         const onOverview=AP==='dashboard'&&(S.dashboard?.win||'mtd')===irfWin;
         if(onIrfan||onOverview)_renderIrfanMetaTables(ad,_getCh());
         _updateCpdMatchRate(irfWin);
       } else {
-        _setBoth('<div style="padding:24px;text-align:center;color:var(--red);font-size:12px">Failed to load analyzer data: '+(ad?.detail||ad?.error||'unknown')+'</div>');
+        var _why=ad?.error?('error: '+ad.error+(ad.detail?' · '+ad.detail:'')):
+                 (!ad?.channels?'response missing channels':
+                 (!ad.channels.meta?'response missing channels.meta':'unknown shape'));
+        console.error('Analyzer response unusable (win='+irfWin+'):',_why,ad);
+        _setBoth('<div style="padding:24px;text-align:center;color:var(--red);font-size:12px">Failed to load analyzer data ('+irfWin+'): '+_why+'</div>');
       }
     })
-    .catch(e=>{console.error('Irfan analyzer fetch failed:',e);_setBoth('<div style="padding:24px;text-align:center;color:var(--red);font-size:12px">Failed to load analyzer data: '+e.message+'</div>');});
+    .catch(e=>{console.error('Irfan analyzer fetch failed (win='+irfWin+'):',e);_setBoth('<div style="padding:24px;text-align:center;color:var(--red);font-size:12px">Failed to load analyzer data ('+irfWin+'): '+e.message+'</div>');});
 }
 
 // Meta Campaign + Ad Creative tables for the Irfan Dashboard.
