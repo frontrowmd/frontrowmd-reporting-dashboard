@@ -132,7 +132,7 @@ function bdBSToggle(v){var i=_bdBrandStatusToggleF.indexOf(v);if(i>=0)_bdBrandSt
 var _bdWebTrafficF=[];
 // Plan Details / Billing Details column groups: extra columns are
 // collapsed by default; users toggle to expand.
-var _bdPlanExpanded=false, _bdBillingExpanded=false, _bdChurnExpanded=false, _bdAvgDaysExpanded=false;
+var _bdPlanExpanded=false, _bdBillingExpanded=false, _bdChurnExpanded=false, _bdAvgDaysExpanded=false, _bdDatesExpanded=false;
 var BD_REP_COLORS=['#1565C0','#2E7D32','#72A4BF','#E65100','#5C6BC0','#00897B','#C62828','#6A1B9A','#EF6C00','#00695C'];
 var _bdArrGoal='',_bdAcvInput='';
 var BD_STAGE_LABELS={appointmentscheduled:'Scheduled','1084214349':'Demo Happened',decisionmakerboughtin:'Decision Maker',contractsent:'Contract Sent',closedwon:'Closed Won',closedlost:'Closed Lost','3453957850':'No Show','3453925110':'Churned','1062974581':'Not a Fit','3517067985':'Churned (Onb)','3722491612':'Interested, Circle Back'};
@@ -399,6 +399,7 @@ function bdTogglePlan(){_bdPlanExpanded=!_bdPlanExpanded;renderBD();}
 function bdToggleBilling(){_bdBillingExpanded=!_bdBillingExpanded;renderBD();}
 function bdToggleChurn(){_bdChurnExpanded=!_bdChurnExpanded;renderBD();}
 function bdToggleAvgDays(){_bdAvgDaysExpanded=!_bdAvgDaysExpanded;renderBD();}
+function bdToggleDates(){_bdDatesExpanded=!_bdDatesExpanded;renderBD();}
 function bdCalc(){var el=document.getElementById('bd-calc-result');if(!el)return;var goal=parseInput(_bdArrGoal);var acvIn=parseInput(_bdAcvInput);if(!goal||!acvIn){el.textContent='\u2014';return;}var d=BD.data;if(!d)return;var cw=d.deals.filter(function(dd){return dd.dealstage==='closedwon';});var active=cw.filter(function(dd){return !['Paused','Churned','Never Implemented - Churned'].includes(dd.brand_status);});var currentARR=0;active.forEach(function(dd){currentARR+=dd.amount;});currentARR*=12;var gap=goal-currentARR;if(gap<=0){el.innerHTML='<span style="color:#16A34A">\u2713 Goal reached!</span>';return;}var needed=Math.ceil(gap/(acvIn*12));el.innerHTML='<span style="font-size:32px">'+needed+'</span> <span style="font-size:14px;color:var(--grey)">deals needed</span>';}
 // Display-name overrides \u2014 keyed by a substring found in the owner's full
 // HubSpot name. e.g. an owner whose HubSpot name is "Shealtiel <something>"
@@ -784,9 +785,13 @@ function renderBD(){
     {k:'hubspot_owner_id',l:'Deal Rep',w:80},
     {k:'se_rep_id',l:'SE Rep',w:80},
     {k:'ops_owner_id',l:'Ops Rep',w:80},
-    {k:'closedate',l:'Close Date',w:90},
-    {k:'date_demo_booked',l:'Date Demo Booked',w:100},
-    {k:'createdate',l:'Create Date',w:90},
+    // ── Dates group ──
+    // Only Close Date visible by default; Demo Date + Create Date are tucked
+    // behind the group-collapse chevron. Soft-purple tint distinguishes this
+    // from the other groups (violet-500 family).
+    {k:'closedate',l:'Close Date',w:90, group:'dates'},
+    {k:'date_demo_booked',l:'Demo Date',w:100, group:'dates', groupCollapse:true},
+    {k:'createdate',l:'Create Date',w:90, group:'dates', groupCollapse:true},
     // ── Avg Days group ──
     // Only "From Created" visible by default; To Demo and From Demo are
     // tucked behind the group-collapse chevron. Light-grey tint
@@ -797,11 +802,11 @@ function renderBD(){
     {k:'from_demo',l:'From Demo',w:75, group:'avgDays', groupCollapse:true},
     // ── Plan Details group ──
     {k:'amount',l:'Amount',w:90, group:'plan'},
+    {k:'month_minimum',l:'Month Minimum',w:100, group:'plan'},
     {k:'package_type',l:'Plan Name',w:115, group:'plan'},
     {k:'average_monthly_web_traffic__cloned_',l:'Web Traffic Tier',w:100, group:'plan'},
     {k:'original_amount',l:'Original Amount',w:100, group:'plan', groupCollapse:true},
     {k:'of_products',l:'# of Products',w:80, group:'plan', groupCollapse:true},
-    {k:'month_minimum',l:'Month Minimum',w:100, group:'plan', groupCollapse:true},
     {k:'of_free_reviews',l:'# of Free Reviews',w:90, group:'plan', groupCollapse:true},
     {k:'of_total_reviews',l:'# of Total Reviews',w:95, group:'plan', groupCollapse:true},
     {k:'price_per_review',l:'Price Per Review',w:95, group:'plan', groupCollapse:true},
@@ -832,8 +837,8 @@ function renderBD(){
   ];
   // Apply the column-visibility toggles → produces the filtered visible cols.
   // - ID columns (Deal ID, Company ID) hide when _bdIdsVisible is false.
-  // - Plan/Billing/Churn/AvgDays collapse-only columns hide when their
-  //   group is collapsed.
+  // - Dates/Plan/Billing/Churn/AvgDays collapse-only columns hide when
+  //   their group is collapsed.
   cols=cols.filter(function(c){
     if(c.idCol&&!_bdIdsVisible)return false;
     if(!c.group||!c.groupCollapse)return true;
@@ -841,6 +846,7 @@ function renderBD(){
     if(c.group==='billing')return _bdBillingExpanded;
     if(c.group==='churn')return _bdChurnExpanded;
     if(c.group==='avgDays')return _bdAvgDaysExpanded;
+    if(c.group==='dates')return _bdDatesExpanded;
     return true;
   });
   // Set of currently-visible column keys, used to conditionally render TDs
@@ -849,11 +855,13 @@ function renderBD(){
   // Build colgroup from visible cols
   var colgroupHTML='<colgroup>';for(var cgi=0;cgi<cols.length;cgi++){colgroupHTML+='<col style="width:'+cols[cgi].w+'px">';}colgroupHTML+='</colgroup>';
   // Group banner row \u2014 colspans match visible-column counts for each group
+  var datesCols=cols.filter(function(c){return c.group==='dates';}).length;
   var avgDaysCols=cols.filter(function(c){return c.group==='avgDays';}).length;
   var planCols=cols.filter(function(c){return c.group==='plan';}).length;
   var billingCols=cols.filter(function(c){return c.group==='billing';}).length;
   var churnCols=cols.filter(function(c){return c.group==='churn';}).length;
   var preGroupCols=0;for(var pgi=0;pgi<cols.length;pgi++){if(cols[pgi].group)break;preGroupCols++;}
+  var datesChev=_bdDatesExpanded?'\u25BC':'\u25B6';
   var avgDaysChev=_bdAvgDaysExpanded?'\u25BC':'\u25B6';
   var planChev=_bdPlanExpanded?'\u25BC':'\u25B6';
   var billingChev=_bdBillingExpanded?'\u25BC':'\u25B6';
@@ -867,9 +875,10 @@ function renderBD(){
   // All cell backgrounds use SOLID color values (not rgba) \u2014 the row is sticky
   // at top:0 of the table wrapper, and transparent backgrounds would let
   // scrolling content show through.
-  if(avgDaysCols>0||planCols>0||billingCols>0||churnCols>0){
+  if(datesCols>0||avgDaysCols>0||planCols>0||billingCols>0||churnCols>0){
     h+='<tr class="bd-grp-row">';
     if(preGroupCols>0)h+='<th colspan="'+preGroupCols+'" style="background:var(--white);border-bottom:none;padding-bottom:2px"></th>';
+    if(datesCols>0)h+='<th colspan="'+datesCols+'" style="background:#F1E4FE;border-bottom:1px solid rgba(139,92,246,.40);text-align:center;cursor:pointer;color:var(--navy);font-weight:700;letter-spacing:.06em;font-size:10px;padding:6px 8px" onclick="bdToggleDates()" title="Toggle Dates columns"><span style="color:#7C3AED;margin-right:6px">'+datesChev+'</span>Dates</th>';
     if(avgDaysCols>0)h+='<th colspan="'+avgDaysCols+'" style="background:#E6E9EC;border-bottom:1px solid rgba(100,116,139,.40);text-align:center;cursor:pointer;color:var(--navy);font-weight:700;letter-spacing:.06em;font-size:10px;padding:6px 8px" onclick="bdToggleAvgDays()" title="Toggle Avg Days columns"><span style="color:#64748B;margin-right:6px">'+avgDaysChev+'</span>Avg Days</th>';
     if(planCols>0)h+='<th colspan="'+planCols+'" style="background:#E8F0F5;border-bottom:1px solid rgba(114,164,191,.35);text-align:center;cursor:pointer;color:var(--navy);font-weight:700;letter-spacing:.06em;font-size:10px;padding:6px 8px" onclick="bdTogglePlan()" title="Toggle Plan Details columns"><span style="color:var(--teal);margin-right:6px">'+planChev+'</span>Plan Details</th>';
     if(billingCols>0)h+='<th colspan="'+billingCols+'" style="background:#FEF1DD;border-bottom:1px solid rgba(245,158,11,.40);text-align:center;cursor:pointer;color:var(--navy);font-weight:700;letter-spacing:.06em;font-size:10px;padding:6px 8px" onclick="bdToggleBilling()" title="Toggle Billing Details columns"><span style="color:#B45309;margin-right:6px">'+billingChev+'</span>Billing Details</th>';
@@ -881,7 +890,7 @@ function renderBD(){
   // backgrounds would let scrolling rows show through).
   h+='<tr>';
   for(var ci2=0;ci2<cols.length;ci2++){var c=cols[ci2];var isS=_bdSort===c.k;
-    var thBg=c.group==='plan'?'background:#F7FAFB;':(c.group==='billing'?'background:#FEF9F0;':(c.group==='churn'?'background:#FEF4F9;':(c.group==='avgDays'?'background:#F6F7F8;':'')));
+    var thBg=c.group==='plan'?'background:#F7FAFB;':(c.group==='billing'?'background:#FEF9F0;':(c.group==='churn'?'background:#FEF4F9;':(c.group==='avgDays'?'background:#F6F7F8;':(c.group==='dates'?'background:#FAF5FE;':''))));
     h+='<th style="'+thBg+'" onclick="'+(c.k?"_bdSort='"+c.k+"';_bdSortDir=_bdSortDir==='asc'?'desc':'asc';renderBD()":"")+'">'+c.l+(isS?(_bdSortDir==='asc'?' \u25B2':' \u25BC'):'')+'</th>';
   }
   h+='</tr></thead><tbody>';
@@ -890,6 +899,7 @@ function renderBD(){
   var _billingBg='background:rgba(245,158,11,.04)';
   var _churnBg='background:rgba(236,72,153,.04)';
   var _avgDaysBg='background:rgba(100,116,139,.04)';
+  var _datesBg='background:rgba(139,92,246,.04)';
   // Cell helpers
   var dash='<span style="color:#ccc">\u2014</span>';
   function tNum(v){if(v===''||v==null||v===0)return v===0?'0':dash;return v;}
@@ -942,15 +952,15 @@ function renderBD(){
     // Ops Rep — from the company record's ops_owner field, resolved via ownerMap
     var opsName=ownerMap[row.ops_owner_id]||'';
     h+=_td('ops_owner_id','<td title="'+opsName+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(bdFirstName(opsName)||dash)+'</td>');
-    h+=_td('closedate','<td>'+cd+'</td>');
+    h+=_td('closedate','<td style="'+_datesBg+'">'+cd+'</td>');
     // Show EFFECTIVE demo date (rescheduled overrides original). Highlight
     // rescheduled rows so the override is visible at a glance — purple/bold
     // matches the rescheduled-pending color used elsewhere.
     var _bdEffDemo=row.rescheduled_meeting_date||row.date_demo_booked;
     var ddb=(_bdEffDemo||'').substring(0,10)||dash;
-    var _ddbStyle=row.rescheduled_meeting_date?' style="color:#7C3AED;font-weight:600"':'';
-    h+=_td('date_demo_booked','<td'+_ddbStyle+'>'+ddb+'</td>');
-    h+=_td('createdate','<td>'+crd+'</td>');
+    var _ddbStyle=row.rescheduled_meeting_date?'color:#7C3AED;font-weight:600;':'';
+    h+=_td('date_demo_booked','<td style="'+_ddbStyle+_datesBg+'">'+ddb+'</td>');
+    h+=_td('createdate','<td style="'+_datesBg+'">'+crd+'</td>');
     h+=_td('to_demo','<td style="text-align:center;'+_avgDaysBg+'">'+(toDemoVal==null?dash:toDemoVal)+'</td>');
     var fromDemoVal=bdFromDemo(row);
     h+=_td('from_demo','<td style="text-align:center;'+_avgDaysBg+'">'+(fromDemoVal==null?dash:fromDemoVal)+'</td>');
