@@ -966,14 +966,18 @@ function renderBD(){
     h+=_td('from_demo','<td style="text-align:center;'+_avgDaysBg+'">'+(fromDemoVal==null?dash:fromDemoVal)+'</td>');
     h+=_td('days_to_close','<td style="text-align:center;'+_avgDaysBg+'">'+tNum(row.days_to_close)+'</td>');
     // ── Plan Details group cells (tinted teal) ──
+    // Cell-render order must match the cols[] definition order so headers
+    // line up with values. Default-visible columns first
+    // (Amount → Month Minimum → Plan Name → Web Traffic Tier), then the
+    // collapse-only columns.
     h+=_td('amount','<td style="font-weight:600;'+_planBg+'">'+f$(row.amount)+'</td>');
+    h+=_td('month_minimum','<td style="'+_planBg+'">'+(row.month_minimum?Math.round(row.month_minimum).toLocaleString():dash)+'</td>');
     var pnClean=bdPlanName(row.package_type||'');
     var pnColor=BD_PKG_COLORS[pnClean]||'#9CA3AF';
     h+=_td('package_type','<td data-no-tip="1" style="'+_planBg+'">'+(row.package_type?'<span class="pill" style="background:'+pnColor+'18;color:'+pnColor+'">'+pnClean+'</span>':dash)+'</td>');
     h+=_td('average_monthly_web_traffic__cloned_','<td data-no-tip="1" style="'+_planBg+'">'+(wtRaw?'<span class="pill" style="background:'+(BD_WT_COLORS[wtRaw]||'#9CA3AF')+'18;color:'+(BD_WT_COLORS[wtRaw]||'#9CA3AF')+'">'+wtLbl+'</span>':dash)+'</td>');
     h+=_td('original_amount','<td style="'+_planBg+'">'+(row.original_amount?f$(row.original_amount):dash)+'</td>');
     h+=_td('of_products','<td style="text-align:center;'+_planBg+'">'+tNum(row.of_products)+'</td>');
-    h+=_td('month_minimum','<td style="'+_planBg+'">'+(row.month_minimum?Math.round(row.month_minimum).toLocaleString():dash)+'</td>');
     h+=_td('of_free_reviews','<td style="text-align:center;'+_planBg+'">'+tNum(row.of_free_reviews)+'</td>');
     h+=_td('of_total_reviews','<td style="text-align:center;'+_planBg+'">'+tNum(row.of_total_reviews)+'</td>');
     h+=_td('price_per_review','<td style="'+_planBg+'">'+tMoney(row.price_per_review)+'</td>');
