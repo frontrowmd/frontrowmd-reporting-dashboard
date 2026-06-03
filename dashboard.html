@@ -750,7 +750,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s05';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s06';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -1737,7 +1737,7 @@ function renderIrfan(){
   h+='<div class="irf-sec-title">Daily Trend & Web-Traffic Mix</div>';
   h+='<div style="display:grid;grid-template-columns:1.6fr 1fr;gap:16px;margin-bottom:28px">';
   // 1a — Demos Booked per Day (matches Overview). Reuses renderDemosPerDay for mini KPI cards + hover.
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div class="irf-card-title">Demos Booked per Day</div><div class="irf-card-sub">Contacts created with date_demo_booked set · average line shows daily mean</div><div id="irfan-daily-wrap"></div></div>';
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div class="irf-card-title">Demos Booked per Day</div><div class="irf-card-sub">Contacts created with date_demo_booked set · excludes pre-launch &amp; 0-10K web traffic tiers · average line shows daily mean</div><div id="irfan-daily-wrap"></div></div>';
   // 1b — Demos and Webinars Booked by Web-Traffic Range (donut, with % labels + hover)
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div class="irf-card-title">Demos and Webinars Booked by Web-Traffic Range</div><div class="irf-card-sub">% of demos booked in each tier · ordered Pre-launch → 500K+ clockwise</div><div id="irfan-wt-pie"></div></div>';
   h+='</div>';
@@ -3749,8 +3749,8 @@ function renderDemosPerDay(d, targetId){
   function fmtDC(cur,prev,fmt,inv,dec){if(cur==null||prev==null)return '<span style="color:var(--grey);font-size:10px">\u2014</span>';var nd=cur-prev;var pd=prev!==0?((cur-prev)/prev)*100:null;var arrow=nd>=0?'\u2191':'\u2193';var positive=nd>0;var good=inv?!positive:positive;var color=nd===0?'var(--grey)':(good?'var(--green)':'var(--red)');var nStr=nfmt(nd,fmt,dec);var pStr=pd!=null?'('+(pd>=0?'+':'')+pd.toFixed(1)+'%)':'';return '<span style="color:'+color+';font-size:10px;font-weight:600">'+arrow+' '+nStr+' '+pStr+'</span>';}
   const tileDeltaBlock=(cur,p,l,fmt,dec)=>`<div style="font-size:10px;line-height:1.5;margin-top:4px"><div style="display:flex;gap:6px;align-items:baseline"><span style="color:var(--grey);min-width:42px;font-size:10px">vs prior</span>${fmtDC(cur,p,fmt,false,dec)}</div><div style="display:flex;gap:6px;align-items:baseline"><span style="color:var(--grey);min-width:42px;font-size:10px">vs LM</span>${fmtDC(cur,l,fmt,false,dec)}</div></div>`;
   let h='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px">';
-  const _bookedLabel=_isScale?'Demos Booked (excl. pre-launch)':'Demos Booked';
-  h+=`<div class="tile accent" title="${_isScale?'Excludes pre-launch / just-launching brands':''}"><div class="tlbl">${_bookedLabel}</div><div class="tval">${fN(total)}</div>${tileDeltaBlock(total,priorTotal,lmTotal,'#')}</div>`;
+  const _bookedLabel=_isScale?'Demos Booked (excl. pre-launch & 0-10K)':'Demos Booked';
+  h+=`<div class="tile accent" title="${_isScale?'Excludes pre-launch / just-launching AND 0-10K web traffic brands':''}"><div class="tlbl">${_bookedLabel}</div><div class="tval">${fN(total)}</div>${tileDeltaBlock(total,priorTotal,lmTotal,'#')}</div>`;
   h+=`<div class="tile" title="Average across Mon–Fri only (weekend bookings excluded)"><div class="tlbl">Weekday Avg</div><div class="tval">${avg.toFixed(1)}</div>${tileDeltaBlock(avg,priorAvg,lmAvg,'',1)}</div>`;
   h+='</div>';
   if(!days.length){h+='<div style="color:var(--grey);font-size:12px">No daily data</div>';_target.innerHTML=h;return;}
