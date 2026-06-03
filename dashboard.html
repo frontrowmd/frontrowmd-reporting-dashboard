@@ -750,7 +750,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s04';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s05';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
@@ -3698,11 +3698,13 @@ function renderCPDTable(d){
 function dbcTip(e,el){let tip=document.getElementById('dbc-tip');if(!tip){tip=document.createElement('div');tip.id='dbc-tip';tip.style.cssText='position:fixed;background:var(--navy);color:#fff;padding:6px 10px;border-radius:6px;font-size:12px;font-family:var(--font-b);pointer-events:none;z-index:9999;box-shadow:0 4px 12px rgba(2,15,24,.25);white-space:nowrap;transition:opacity .08s ease;opacity:0';document.body.appendChild(tip);}tip.textContent=el.getAttribute('data-tip')||'';tip.style.opacity='1';dbcTipMove(e);}function dbcTipMove(e){const tip=document.getElementById('dbc-tip');if(!tip||tip.style.opacity==='0')return;tip.style.left=(e.clientX+12)+'px';tip.style.top=(e.clientY-32)+'px';}function dbcTipHide(){const tip=document.getElementById('dbc-tip');if(tip)tip.style.opacity='0';}
 function renderDemosPerDay(d, targetId){
   const _target=document.getElementById(targetId||'daily-wrap');if(!_target)return;
-  // Irfan Dashboard wants pre-launch brands EXCLUDED from the daily chart
-  // and from the tile totals/deltas. Detect via targetId — Irfan's container
-  // is 'irfan-daily-wrap'; everywhere else uses the unfiltered series.
+  // Irfan Dashboard wants pre-launch AND 0-10K tier brands EXCLUDED from
+  // the daily chart and from the tile totals/deltas. Detect via targetId
+  // — Irfan's container is 'irfan-daily-wrap'; everywhere else uses the
+  // unfiltered series. Falls back to the older scale series (pre-launch
+  // only) if the worker hasn't deployed the new field yet.
   const _isScale=!!(targetId&&targetId.indexOf('irfan')===0);
-  const sByDay=(_isScale?d.demoTracking.scheduledByDayScale:d.demoTracking.scheduledByDay)||{};
+  const sByDay=(_isScale?(d.demoTracking.scheduledByDayScale10KPlus||d.demoTracking.scheduledByDayScale):d.demoTracking.scheduledByDay)||{};
   const days=Object.entries(sByDay).sort((a,b)=>a[0].localeCompare(b[0])).map(([date,count])=>({date,count}));
   const total=days.reduce((s,x)=>s+x.count,0);
   // Weekday Avg — sum of weekday-only demo counts ÷ number of weekday days in
@@ -3714,13 +3716,17 @@ function renderDemosPerDay(d, targetId){
   const weekdayTotal=weekdays.reduce((s,x)=>s+x.count,0);
   const numWeekdays=weekdays.length||1;
   const avg=weekdayTotal/numWeekdays;
-  // vs prior (sameTimePrior) and vs LM (lastMonth). For scale mode, subtract
-  // the prior/LM pre-launch counts so the delta math matches the chart series.
+  // vs prior (sameTimePrior) and vs LM (lastMonth). For scale mode on
+  // Irfan, subtract the prior/LM (pre-launch + 0-10K) counts so the delta
+  // math matches the chart series. Falls back to the older pre-launch-only
+  // counts if the worker hasn't deployed the new fields yet.
   const _ltm=d.executiveSummary?.lowTrafficPct?._meta||{};
   const _priorRaw=d.demoTracking.totalScheduled?.sameTimePrior?.value;
   const _lmRaw=d.demoTracking.totalScheduled?.lastMonth?.value;
-  const priorTotal=_isScale&&_priorRaw!=null?(_priorRaw-(_ltm.lowTrafficPrior||0)):_priorRaw;
-  const lmTotal=_isScale&&_lmRaw!=null?(_lmRaw-(_ltm.lowTrafficLastMonth||0)):_lmRaw;
+  const _excPrior=(_ltm.low10KPrior!=null?_ltm.low10KPrior:(_ltm.lowTrafficPrior||0));
+  const _excLM=(_ltm.low10KLastMonth!=null?_ltm.low10KLastMonth:(_ltm.lowTrafficLastMonth||0));
+  const priorTotal=_isScale&&_priorRaw!=null?(_priorRaw-_excPrior):_priorRaw;
+  const lmTotal=_isScale&&_lmRaw!=null?(_lmRaw-_excLM):_lmRaw;
   const priorPeriod=d.priorPeriod;const priorMonthPeriod=d.priorMonthPeriod;
   // Count weekdays in the prior / LM ranges so the avg compares apples to apples.
   const _countWeekdays=(fromStr,toStr)=>{

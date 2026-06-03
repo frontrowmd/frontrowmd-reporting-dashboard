@@ -879,10 +879,12 @@ function processGA4(rows) {
 // ---------------------------------------------------------------------------
 function processScheduledContacts(contacts) {
   const byDay = {};
-  const byDayScale = {};    // per-day count excluding pre-launch (Irfan Dashboard daily chart)
-  const byWebTraffic = {};  // count by raw web-traffic tier value (dashboard maps to display labels)
-  let lowTrafficCount = 0;
-  let dailyTotal = 0;       // total excluding Very Small (= Webinar tier)
+  const byDayScale = {};         // per-day count excluding pre-launch
+  const byDayScale10KPlus = {};  // per-day count excluding pre-launch AND 0-10K (Irfan-only stricter view)
+  const byWebTraffic = {};       // count by raw web-traffic tier value (dashboard maps to display labels)
+  let lowTrafficCount = 0;       // contacts in the pre-launch tier
+  let low10KCount = 0;           // contacts in pre-launch OR 0-10K tier (denominator for the Irfan stricter chart)
+  let dailyTotal = 0;            // total excluding Very Small (= Webinar tier)
   // Dedupe: fetchScheduledContacts ORs two filter groups (meeting bookers +
   // Livestorm Webinar registrants), so a contact could appear twice if they
   // booked AND registered for a webinar. Key by id and skip dupes.
@@ -914,6 +916,9 @@ function processScheduledContacts(contacts) {
     byDay[ds] = (byDay[ds]||0) + 1;
     dailyTotal++;
     const isLow = wt.includes('pre-launch');
+    // The 0-10K tier label is "0-10K monthly web visitors"; lowercase check
+    // catches that exact string as well as any future formatting variants.
+    const is0to10K = wt.includes('0-10k');
     if (!isLow) {
       byDayScale[ds] = (byDayScale[ds]||0) + 1;
     } else {
@@ -929,8 +934,16 @@ function processScheduledContacts(contacts) {
         }
       }
     }
+    // Stricter daily series for the Irfan Dashboard — excludes pre-launch
+    // AND 0-10K (the user wants both tiers off the daily chart since they're
+    // not in the scale-tier funnel).
+    if (isLow || is0to10K) {
+      low10KCount++;
+    } else {
+      byDayScale10KPlus[ds] = (byDayScale10KPlus[ds]||0) + 1;
+    }
   }
-  return { total: dailyTotal, byDay, byDayScale, byWebTraffic, lowTrafficCount, lowTrafficCompanies };
+  return { total: dailyTotal, byDay, byDayScale, byDayScale10KPlus, byWebTraffic, lowTrafficCount, low10KCount, lowTrafficCompanies };
 }
 
 // ---------------------------------------------------------------------------
@@ -1683,6 +1696,12 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
     lowTraffic, totalScheduled,
     lowTrafficPrior: pLowTraffic,
     lowTrafficLastMonth: pmLowTraffic,
+    // pre-launch + 0-10K combined, current/prior/LM — used by the Irfan
+    // Dashboard's "Demos Booked per Day" delta math to subtract BOTH
+    // excluded tiers from the prior/LM totals.
+    low10K: c.scheduled.low10KCount || 0,
+    low10KPrior: p.scheduled?.low10KCount ?? null,
+    low10KLastMonth: pm.scheduled?.low10KCount ?? null,
   };
   const qualifiedDemos = totalScheduled - lowTraffic;
   const trueCpd = qualifiedDemos > 0 ? totalSpend / qualifiedDemos : null;
@@ -1804,6 +1823,9 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
     dailyChart: c.pipeline.byDay,
     scheduledByDay: c.scheduled.byDay,
     scheduledByDayScale: c.scheduled.byDayScale,
+    // Stricter daily series — excludes pre-launch AND 0-10K. Used by the
+    // Irfan Dashboard "Demos Booked per Day" chart.
+    scheduledByDayScale10KPlus: c.scheduled.byDayScale10KPlus,
     scheduledByWebTraffic: c.scheduled.byWebTraffic,
     scheduledByWebTrafficPrior: prior ? p.scheduled?.byWebTraffic || null : null,
     scheduledByWebTrafficLastMonth: priorMonth ? pm.scheduled?.byWebTraffic || null : null,
