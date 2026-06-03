@@ -14,13 +14,17 @@ const DASH_CHANNELS = ['meta', 'google', 'linkedin', 'tiktok', 'youtube'];
 const CHANNEL_LABELS = { meta: 'Meta', google: 'Google', linkedin: 'LinkedIn', tiktok: 'TikTok', youtube: 'YouTube' };
 
 const BUDGET_BY_MONTH = {
-  '2026-01': { meta: 45000, linkedin: 30000, google: 5000, tiktok: 5000, youtube: 5000 },
-  '2026-02': { meta: 70000, linkedin: 30000, google: 5000, tiktok: 10000, youtube: 5000 },
-  '2026-03': { meta: 90000, linkedin: 15000, google: 10000, tiktok: 30000, youtube: 0 },
+  '2026-01': { meta: 45000,  linkedin: 30000, google: 5000,  tiktok: 5000,  youtube: 5000 },
+  '2026-02': { meta: 70000,  linkedin: 30000, google: 5000,  tiktok: 10000, youtube: 5000 },
+  '2026-03': { meta: 90000,  linkedin: 15000, google: 10000, tiktok: 30000, youtube: 0 },
   '2026-04': { meta: 116667, linkedin: 34000, google: 16000, tiktok: 26667, youtube: 0 },
-  '2026-05': { meta: 99900, linkedin: 30900, google: 15500, tiktok: 24500, youtube: 0 },
+  '2026-05': { meta: 99900,  linkedin: 30900, google: 15500, tiktok: 24500, youtube: 0 },
+  // chatgpt is a new line item for June 2026 — not yet in DASH_CHANNELS so
+  // it won't render as a dedicated row, but the spend is tracked for any
+  // total/sum consumer that iterates the budget object.
+  '2026-06': { meta: 105000, linkedin: 35000, google: 25000, tiktok: 25000, youtube: 0, chatgpt: 10000 },
 };
-const BUDGET_FALLBACK = BUDGET_BY_MONTH['2026-05'];
+const BUDGET_FALLBACK = BUDGET_BY_MONTH['2026-06'];
 function getBudgetsForMonth(dateStr) {
   if (!dateStr) return BUDGET_FALLBACK;
   return BUDGET_BY_MONTH[dateStr.slice(0, 7)] || BUDGET_FALLBACK;
