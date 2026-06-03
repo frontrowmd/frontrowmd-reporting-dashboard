@@ -1938,8 +1938,13 @@ function buildPeriodData(period, windsorRows, linkedInDemos, ga4Rows, scheduledC
   const winFromET = toMsET(period.from), winToET = toMsET(period.to, true);
   const scheduled = processScheduledContacts(scheduledContacts);
   const pipeline = processPipelineDeals(pipelineDeals, winFromUTC, winToUTC, winFromET, winToET, scheduled.lowTrafficCompanies);
-  // Strip the Set from scheduled — it doesn't serialize and isn't needed downstream
-  const scheduledOut = { total: scheduled.total, byDay: scheduled.byDay, byDayScale: scheduled.byDayScale, byWebTraffic: scheduled.byWebTraffic, lowTrafficCount: scheduled.lowTrafficCount };
+  // Strip the Set from scheduled — it doesn't serialize and isn't needed downstream.
+  // Include the new stricter daily series (byDayScale10KPlus) + low10KCount
+  // so the Irfan Dashboard's "Demos Booked per Day" exclusion + delta math
+  // can see them. Without this, c.scheduled.byDayScale10KPlus is undefined
+  // in buildResponse and the dashboard falls back to the old pre-launch-only
+  // series.
+  const scheduledOut = { total: scheduled.total, byDay: scheduled.byDay, byDayScale: scheduled.byDayScale, byDayScale10KPlus: scheduled.byDayScale10KPlus, byWebTraffic: scheduled.byWebTraffic, lowTrafficCount: scheduled.lowTrafficCount, low10KCount: scheduled.low10KCount };
   return {
     period,
     adSpend: processAdSpend(windsorRows, linkedInDemos),
@@ -3320,6 +3325,13 @@ function buildAzResponse(period, prior, priorMonth, windsor, creatives, priorW, 
 }
 
 async function processAzRequest(windowType, customFrom, customTo, env, vsFrom, vsTo) {
+  // Guard: 'custom' window requires from + to. Without them, downstream
+  // toMsUTC(null) / toMsET(null) throw "Cannot read properties of null
+  // (reading 'split')" and the whole analyzer endpoint 500s. Return an
+  // explicit error so the dashboard surfaces a clear message instead.
+  if (windowType === 'custom' && (!customFrom || !customTo)) {
+    throw new Error('Custom window requires from + to date params');
+  }
   const apiKey = env.WINDSOR_API_KEY, hsToken = env.HUBSPOT_TOKEN;
   const { current, prior, priorMonth } = computeWindows(windowType, customFrom, customTo, vsFrom, vsTo);
   const isAllTime = windowType === 'allTime';
