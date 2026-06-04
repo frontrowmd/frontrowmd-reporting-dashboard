@@ -752,7 +752,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s11';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s12';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -1357,75 +1357,93 @@ function renderWebinarPerf(){
   h+='<div style="background:linear-gradient(135deg,#F1E4FE 0%,#FAF5FE 100%);border:1px solid rgba(139,92,246,.30);border-radius:10px;padding:10px 14px;margin-bottom:20px;font-size:11px;color:var(--navy);line-height:1.5"><strong style="color:#7C3AED">Routing rule:</strong> all sub-10K brands (Pre-launch / 0-10K / Very Small) funnel through webinars · all 10K+ brands funnel through standard demo booking (round robin). Clicks + spend are shared (one CTA form routes); spend is allocated proportionally by form-fills.</div>';
 
   // ── Section 1 · Side-by-side funnels ──
-  // Stage card helper — number + label + conversion-from-previous-stage badge
-  function _stageCard(stage,name,count,prevCount,priorCount,lmCount,extra){
+  // Stage card builder — uniform height, prominent count, prominent
+  // conversion-% badge themed to the column (purple webinar / teal demo).
+  // Stage 1 (Clicks) has no inbound conversion so the badge slot is empty
+  // but reserved (so both columns' cards align row-for-row).
+  function _stageCard(stage,name,count,prevCount,themeColor,subtext,opts){
+    opts=opts||{};
     const convPct = prevCount!=null && prevCount>0 ? (count/prevCount*100) : null;
-    return '<div style="background:var(--white);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:14px">'+
-      '<div style="width:24px;height:24px;border-radius:50%;background:rgba(114,164,191,.12);color:var(--teal);font-family:var(--font-h);font-weight:700;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+stage+'</div>'+
+    const labelHtml = opts.labelExtra ? (name+opts.labelExtra) : name;
+    const badge = convPct!=null
+      ? '<div style="background:'+(opts.badgeColor||themeColor)+';color:#fff;font-family:var(--font-h);font-weight:700;font-size:15px;padding:8px 12px;border-radius:8px;flex-shrink:0;text-align:center;min-width:74px;box-shadow:0 1px 2px rgba(0,0,0,.06)" title="Conversion from previous stage"><div style="line-height:1">'+convPct.toFixed(1)+'%</div></div>'
+      : '<div style="min-width:74px;flex-shrink:0"></div>';
+    return '<div style="background:var(--white);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:14px;min-height:80px">'+
+      '<div style="width:32px;height:32px;border-radius:50%;background:'+themeColor+'1A;color:'+themeColor+';font-family:var(--font-h);font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+stage+'</div>'+
       '<div style="flex:1;min-width:0">'+
-        '<div style="font-size:11px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">'+name+'</div>'+
-        '<div style="font-family:var(--font-h);font-size:22px;font-weight:700;color:var(--navy);line-height:1.1">'+_fN(count)+'</div>'+
-        (extra?'<div style="font-size:10px;color:var(--grey);margin-top:2px">'+extra+'</div>':'')+
+        '<div style="font-size:10px;color:var(--grey);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;font-weight:600">'+labelHtml+'</div>'+
+        '<div style="font-family:var(--font-h);font-size:28px;font-weight:700;color:var(--navy);line-height:1">'+_fN(count)+'</div>'+
+        (subtext?'<div style="font-size:10px;color:var(--grey);margin-top:3px;line-height:1.3">'+subtext+'</div>':'')+
       '</div>'+
-      (convPct!=null?'<div style="background:rgba(114,164,191,.10);color:var(--teal);font-weight:700;font-family:var(--font-h);font-size:11px;padding:4px 10px;border-radius:99px;flex-shrink:0" title="Conversion from previous stage">'+convPct.toFixed(1)+'%</div>':'')+
+      badge+
     '</div>';
   }
-  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">';
+  const PURPLE='#7C3AED', TEAL_HEX='#14B8A6';
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">';
   // Webinar column
-  h+='<div style="background:#FAF5FE;border:1px solid rgba(139,92,246,.30);border-radius:12px;padding:14px 16px">';
-  h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid rgba(139,92,246,.20)"><div style="width:8px;height:8px;background:#7C3AED;border-radius:50%"></div><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">Webinar Funnel</div><div style="font-size:11px;color:var(--grey)">(Sub-10K brands)</div></div>';
-  h+='<div style="display:flex;flex-direction:column;gap:8px">';
-  h+=_stageCard('1','Clicks',cur.clicks||0,null,prior&&prior.clicks,pm&&pm.clicks,'<em>shared with demo funnel</em>');
-  h+=_stageCard('2','Registered',w.registered||0,cur.clicks||0);
-  h+=_stageCard('3','Attended',w.attended||0,w.registered||0);
-  h+=_stageCard('4','No-show',w.noShow||0,w.registered||0,null,null,'past-dated webinars not attended');
-  // Stage 5 — Closed Won + baseline pill
+  h+='<div style="background:#FAF5FE;border:1px solid rgba(139,92,246,.30);border-radius:12px;padding:16px 18px">';
+  h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid rgba(139,92,246,.25)"><div style="width:9px;height:9px;background:'+PURPLE+';border-radius:50%"></div><div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">Webinar Funnel</div><div style="font-size:11px;color:var(--grey)">(Sub-10K brands)</div></div>';
+  h+='<div style="display:flex;flex-direction:column;gap:10px">';
+  h+=_stageCard('1','Clicks',cur.clicks||0,null,PURPLE,'shared with demo funnel');
+  h+=_stageCard('2','Registered',w.registered||0,cur.clicks||0,PURPLE,'from clicks above');
+  h+=_stageCard('3','Attended',w.attended||0,w.registered||0,PURPLE,'from registered above');
+  h+=_stageCard('4','No-show',w.noShow||0,w.registered||0,PURPLE,'past-dated webinars, not attended');
+  // Stage 5 — Closed Won + editable baseline pill
   const wAttCw=w.attended>0?(w.closedWon||0)/w.attended*100:null;
-  const baselineHtml='<div style="display:inline-flex;align-items:center;gap:6px;background:rgba(245,158,11,.10);color:#B45309;font-size:10px;font-weight:600;padding:2px 8px;border-radius:99px;margin-left:6px" title="Editable baseline · click to edit">Target: <span data-orig="'+baseline+'" onclick="wpEditBaseline(this)" style="cursor:text;font-weight:700">'+baseline+'</span>%</div>';
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:14px">'+
-    '<div style="width:24px;height:24px;border-radius:50%;background:rgba(22,163,74,.12);color:#16A34A;font-family:var(--font-h);font-weight:700;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0">5</div>'+
-    '<div style="flex:1;min-width:0">'+
-      '<div style="font-size:11px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Closed Won '+baselineHtml+'</div>'+
-      '<div style="font-family:var(--font-h);font-size:22px;font-weight:700;color:var(--navy);line-height:1.1">'+_fN(w.closedWon||0)+'</div>'+
-      '<div style="font-size:10px;color:var(--grey);margin-top:2px">attendees with ≥1 closed-won deal</div>'+
-    '</div>'+
-    (wAttCw!=null?'<div style="background:'+(wAttCw>=baseline?'rgba(22,163,74,.12)':'rgba(220,38,38,.10)')+';color:'+(wAttCw>=baseline?'#16A34A':'#DC2626')+';font-weight:700;font-family:var(--font-h);font-size:11px;padding:4px 10px;border-radius:99px;flex-shrink:0" title="Attended → Closed Won %">'+wAttCw.toFixed(1)+'%</div>':'')+
-  '</div>';
+  const goodVsBaseline=wAttCw!=null&&wAttCw>=baseline;
+  const cwBadgeColor=wAttCw==null?PURPLE:(goodVsBaseline?'#16A34A':'#DC2626');
+  const baselineHtml=' <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(245,158,11,.12);color:#B45309;font-size:9px;font-weight:700;padding:2px 7px;border-radius:99px;margin-left:6px;text-transform:none;letter-spacing:0" title="Editable baseline · click to edit">target: <span data-orig="'+baseline+'" onclick="wpEditBaseline(this)" style="cursor:text;font-weight:700">'+baseline+'</span>%</span>';
+  h+=_stageCard('5','Closed Won',w.closedWon||0,w.attended||0,PURPLE,'attendees with ≥1 closed-won deal',{labelExtra:baselineHtml,badgeColor:cwBadgeColor});
   h+='</div></div>';
   // Demo column
-  h+='<div style="background:#F7FAFB;border:1px solid rgba(114,164,191,.30);border-radius:12px;padding:14px 16px">';
-  h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid rgba(114,164,191,.20)"><div style="width:8px;height:8px;background:var(--teal);border-radius:50%"></div><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">Demo Funnel</div><div style="font-size:11px;color:var(--grey)">(10K+ brands · round robin)</div></div>';
-  h+='<div style="display:flex;flex-direction:column;gap:8px">';
-  h+=_stageCard('1','Clicks',cur.clicks||0,null,null,null,'<em>shared with webinar funnel</em>');
-  h+=_stageCard('2','Booked',dm.booked||0,cur.clicks||0);
-  h+=_stageCard('3','Held',dm.held||0,dm.booked||0);
-  h+=_stageCard('4','No-show / Cancelled',dm.noShow||0,dm.booked||0);
-  h+=_stageCard('5','Closed Won',dm.closedWon||0,dm.held||0);
+  h+='<div style="background:#F7FAFB;border:1px solid rgba(114,164,191,.30);border-radius:12px;padding:16px 18px">';
+  h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid rgba(114,164,191,.25)"><div style="width:9px;height:9px;background:'+TEAL_HEX+';border-radius:50%"></div><div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">Demo Funnel</div><div style="font-size:11px;color:var(--grey)">(10K+ brands · round robin)</div></div>';
+  h+='<div style="display:flex;flex-direction:column;gap:10px">';
+  h+=_stageCard('1','Clicks',cur.clicks||0,null,TEAL_HEX,'shared with webinar funnel');
+  h+=_stageCard('2','Booked',dm.booked||0,cur.clicks||0,TEAL_HEX,'contacts with date_demo_booked set');
+  h+=_stageCard('3','Held',dm.held||0,dm.booked||0,TEAL_HEX,'demo_attendance_status = Demo Given');
+  h+=_stageCard('4','No-show / Cancelled',dm.noShow||0,dm.booked||0,TEAL_HEX,'demo_attendance_status flagged');
+  h+=_stageCard('5','Closed Won',dm.closedWon||0,dm.held||0,TEAL_HEX,'deals that reached dealstage = closedwon');
   h+='</div></div>';
   h+='</div>';
 
-  // ── Section 2 · Comparison table ──
-  function _row(label,webinarVal,demoVal,fmt){
-    const wStr=fmt==='$'?_f$(webinarVal):(webinarVal==null?'—':_fN(webinarVal));
-    const dStr=fmt==='$'?_f$(demoVal):(demoVal==null?'—':_fN(demoVal));
-    return '<tr><td style="padding:8px 12px;color:var(--grey);font-weight:600">'+label+'</td><td style="padding:8px 12px;text-align:right;font-family:var(--font-h);font-weight:700;color:#7C3AED">'+wStr+'</td><td style="padding:8px 12px;text-align:right;font-family:var(--font-h);font-weight:700;color:var(--teal)">'+dStr+'</td></tr>';
+  // ── Section 2 · Side-by-Side Comparison ──
+  // Header bar with prominent title + subtitle; column headers as colored
+  // pill-style badges so the eye can scan webinar (purple) vs demo (teal)
+  // values at a glance. Alternating row tints + larger cell typography
+  // make individual rows easier to read.
+  function _row(label,webinarVal,demoVal,fmt,opts){
+    opts=opts||{};
+    const wStr=fmt==='$'?_f$(webinarVal):(webinarVal==null?'—':(fmt==='%'?_pct(webinarVal):_fN(webinarVal)));
+    const dStr=fmt==='$'?_f$(demoVal):(demoVal==null?'—':(fmt==='%'?_pct(demoVal):_fN(demoVal)));
+    const bg=opts.alt?'background:rgba(114,164,191,.03);':'';
+    return '<tr style="'+bg+'">'+
+      '<td style="padding:11px 16px;color:var(--navy);font-size:12px;font-weight:600;border-bottom:1px solid var(--border)">'+label+'</td>'+
+      '<td style="padding:11px 16px;text-align:right;font-family:var(--font-h);font-size:15px;font-weight:700;color:'+PURPLE+';border-bottom:1px solid var(--border)">'+wStr+'</td>'+
+      '<td style="padding:11px 16px;text-align:right;font-family:var(--font-h);font-size:15px;font-weight:700;color:'+TEAL_HEX+';border-bottom:1px solid var(--border)">'+dStr+'</td>'+
+    '</tr>';
   }
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:20px">';
-  h+='<div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:10px">Side-by-Side Comparison</div>';
-  h+='<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="border-bottom:2px solid var(--border)"><th style="text-align:left;padding:8px 12px;font-size:10px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em">Metric</th><th style="text-align:right;padding:8px 12px;font-size:10px;color:#7C3AED;text-transform:uppercase;letter-spacing:.04em">Webinar (Sub-10K)</th><th style="text-align:right;padding:8px 12px;font-size:10px;color:var(--teal);text-transform:uppercase;letter-spacing:.04em">Demo (10K+)</th></tr></thead><tbody>';
-  // Total Clicks spans both columns since the pool is shared (one CTA form
-  // routes by web traffic tier — clicks aren't pre-segmented at the ad level).
-  h+='<tr><td style="padding:8px 12px;color:var(--grey);font-weight:600">Total Clicks</td><td colspan="2" style="padding:8px 12px;text-align:center;font-family:var(--font-h);font-weight:700;color:var(--navy)">'+_fN(cur.clicks||0)+' <span style="font-size:10px;color:var(--grey);font-weight:500">(shared pool — one CTA form)</span></td></tr>';
-  h+=_row('Registered / Booked',w.registered||0,dm.booked||0);
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;margin-bottom:24px;overflow:hidden">';
+  // Section header bar
+  h+='<div style="padding:18px 22px;background:linear-gradient(135deg,#FAF5FE 0%,#F7FAFB 100%);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px">'+
+    '<div style="display:flex;align-items:center;gap:4px"><div style="width:10px;height:10px;background:'+PURPLE+';border-radius:50%"></div><div style="width:10px;height:10px;background:'+TEAL_HEX+';border-radius:50%"></div></div>'+
+    '<div><div style="font-family:var(--font-h);font-size:18px;font-weight:700;color:var(--navy);line-height:1.1">Side-by-Side Comparison</div>'+
+    '<div style="font-size:11px;color:var(--grey);margin-top:2px">Webinar funnel performance vs. Demo funnel performance for the selected window</div></div>'+
+  '</div>';
+  h+='<table style="width:100%;border-collapse:collapse"><thead><tr style="background:rgba(114,164,191,.04)">'+
+    '<th style="text-align:left;padding:10px 16px;font-size:10px;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;font-weight:700;border-bottom:1px solid var(--border)">Metric</th>'+
+    '<th style="text-align:right;padding:10px 16px;border-bottom:1px solid var(--border)"><span style="display:inline-block;background:'+PURPLE+';color:#fff;font-size:9.5px;font-weight:700;padding:3px 10px;border-radius:99px;text-transform:uppercase;letter-spacing:.04em">Webinar · Sub-10K</span></th>'+
+    '<th style="text-align:right;padding:10px 16px;border-bottom:1px solid var(--border)"><span style="display:inline-block;background:'+TEAL_HEX+';color:#fff;font-size:9.5px;font-weight:700;padding:3px 10px;border-radius:99px;text-transform:uppercase;letter-spacing:.04em">Demo · 10K+</span></th>'+
+  '</tr></thead><tbody>';
+  // Total Clicks spans both data columns since the pool is shared (one CTA form).
+  h+='<tr><td style="padding:11px 16px;color:var(--navy);font-size:12px;font-weight:600;border-bottom:1px solid var(--border)">Total Clicks</td>'+
+    '<td colspan="2" style="padding:11px 16px;text-align:center;font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);border-bottom:1px solid var(--border)">'+_fN(cur.clicks||0)+' <span style="font-size:10px;color:var(--grey);font-weight:500">shared pool · one CTA form routes to either funnel</span></td></tr>';
+  h+=_row('Registered / Booked',w.registered||0,dm.booked||0,null,{alt:true});
   h+=_row('Attended / Held',w.attended||0,dm.held||0);
-  h+=_row('Closed Won',w.closedWon||0,dm.closedWon||0);
+  h+=_row('Closed Won',w.closedWon||0,dm.closedWon||0,null,{alt:true});
   h+=_row('Spend Allocated',w.allocatedSpend||0,dm.allocatedSpend||0,'$');
-  h+='<tr><td style="padding:8px 12px;color:var(--grey);font-weight:600">Cost per Closed Won</td>'+
-    '<td style="padding:8px 12px;text-align:right;font-family:var(--font-h);font-weight:700;color:#7C3AED">'+(w.closedWon>0?_f$(w.allocatedSpend/w.closedWon):'—')+'</td>'+
-    '<td style="padding:8px 12px;text-align:right;font-family:var(--font-h);font-weight:700;color:var(--teal)">'+(dm.closedWon>0?_f$(dm.allocatedSpend/dm.closedWon):'—')+'</td></tr>';
-  h+='<tr><td style="padding:8px 12px;color:var(--grey);font-weight:600">% of total paid spend</td>'+
-    '<td style="padding:8px 12px;text-align:right;font-family:var(--font-h);font-weight:700;color:#7C3AED">'+_pct(w.spendSharePct)+'</td>'+
-    '<td style="padding:8px 12px;text-align:right;font-family:var(--font-h);font-weight:700;color:var(--teal)">'+_pct(dm.spendSharePct)+'</td></tr>';
+  h+=_row('Cost per Closed Won',w.closedWon>0?w.allocatedSpend/w.closedWon:null,dm.closedWon>0?dm.allocatedSpend/dm.closedWon:null,'$',{alt:true});
+  h+=_row('% of Total Paid Spend',w.spendSharePct,dm.spendSharePct,'%');
   h+='</tbody></table>';
   h+='</div>';
 
@@ -1451,15 +1469,17 @@ function renderWebinarPerf(){
   const lm_dh=(ld&&ld.booked>0?(ld.held/ld.booked*100):null);
   const lm_dcw=(ld&&ld.held>0?(ld.closedWon/ld.held*100):null);
   h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">';
-  // Webinar conversion + CPA panel
+  // Webinar conversion + CPA panel — 2-col grid matching demo panel.
+  // Each row is a stage: conversion-rate tile on the left, cost-per-stage
+  // tile on the right (Click→Registered | Cost/Registered, etc.).
   h+='<div style="background:#FAF5FE;border:1px solid rgba(139,92,246,.20);border-radius:12px;padding:14px 16px">';
   h+='<div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy);margin-bottom:10px">Webinar — Conversion & Cost</div>';
-  h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">';
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
   h+=_tile('Click → Registered',_pct(cur_r),cur_r,prior_r,lm_r,'%',{borderLeft:'#7C3AED'});
-  h+=_tile('Registered → Attended',_pct(cur_a),cur_a,prior_a,lm_a,'%',{borderLeft:'#7C3AED'});
-  h+=_tile('Attended → Closed Won',_pct(cur_cw),cur_cw,prior_cw,lm_cw,'%',{borderLeft:'#7C3AED',extra:'baseline '+baseline+'%'});
   h+=_tile('Cost / Registered',w.registered>0?_f$(w.allocatedSpend/w.registered):'—',w.registered>0?w.allocatedSpend/w.registered:null,pw&&pw.registered>0?pw.allocatedSpend/pw.registered:null,lw&&lw.registered>0?lw.allocatedSpend/lw.registered:null,'$',{borderLeft:'#7C3AED',inv:true});
+  h+=_tile('Registered → Attended',_pct(cur_a),cur_a,prior_a,lm_a,'%',{borderLeft:'#7C3AED'});
   h+=_tile('Cost / Attended',w.attended>0?_f$(w.allocatedSpend/w.attended):'—',w.attended>0?w.allocatedSpend/w.attended:null,pw&&pw.attended>0?pw.allocatedSpend/pw.attended:null,lw&&lw.attended>0?lw.allocatedSpend/lw.attended:null,'$',{borderLeft:'#7C3AED',inv:true});
+  h+=_tile('Attended → Closed Won',_pct(cur_cw),cur_cw,prior_cw,lm_cw,'%',{borderLeft:'#7C3AED',extra:'baseline '+baseline+'%'});
   h+=_tile('Cost / Closed Won',w.closedWon>0?_f$(w.allocatedSpend/w.closedWon):'—',w.closedWon>0?w.allocatedSpend/w.closedWon:null,pw&&pw.closedWon>0?pw.allocatedSpend/pw.closedWon:null,lw&&lw.closedWon>0?lw.allocatedSpend/lw.closedWon:null,'$',{borderLeft:'#7C3AED',inv:true});
   h+='</div></div>';
   // Demo conversion + CPA panel
@@ -1484,33 +1504,66 @@ function renderWebinarPerf(){
   h+='</div>';
 
   // ── Section 4 · Rep capacity (today, real-time) ──
+  // Each rep card shows a 2-color bar: held demos (green segment, already
+  // completed) + booked-but-not-yet-held demos (purple, scheduled later
+  // today) + empty capacity remainder (grey). Utilization = booked ÷ 10.
   const rc=d.repCapacity||{};const perRep=rc.perRep||[];
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:20px">';
-  h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">Rep Capacity — Today</div><div style="font-size:11px;color:var(--grey)">'+(rc.today||'')+' · '+(rc.capacityPerRep||10)+'/day capacity · real-time, ignores selector</div></div>';
+  const HELD_COLOR='#16A34A', BOOKED_COLOR='#7C3AED';
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:0;margin-bottom:24px;overflow:hidden">';
+  // Section header bar (mirrors the comparison-table header style)
+  h+='<div style="padding:18px 22px;background:linear-gradient(135deg,rgba(22,163,74,.06) 0%,rgba(124,58,237,.06) 100%);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-wrap:wrap">'+
+    '<div style="flex:1;min-width:200px"><div style="font-family:var(--font-h);font-size:18px;font-weight:700;color:var(--navy);line-height:1.1">Rep Capacity — Today</div>'+
+    '<div style="font-size:11px;color:var(--grey);margin-top:3px">'+(rc.today||'')+' · '+(rc.capacityPerRep||10)+' demos/day capacity · real-time, ignores time selector</div></div>'+
+    // Legend
+    '<div style="display:flex;align-items:center;gap:14px;font-size:10px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;font-weight:600">'+
+      '<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:11px;height:11px;background:'+HELD_COLOR+';border-radius:3px"></span>Held</span>'+
+      '<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:11px;height:11px;background:'+BOOKED_COLOR+';border-radius:3px"></span>Booked (not yet held)</span>'+
+      '<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:11px;height:11px;background:rgba(114,164,191,.18);border-radius:3px"></span>Available capacity</span>'+
+    '</div>'+
+  '</div>';
   const avgLT=rc.avgLeadTimeDays;
-  // Aggregate cards
   let totalBooked=0,totalHeld=0;perRep.forEach(r=>{totalBooked+=r.booked;totalHeld+=r.held;});
-  h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px">';
-  h+='<div style="background:rgba(114,164,191,.04);border:1px solid var(--border);border-radius:10px;padding:12px"><div style="font-size:10px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em">Booked today</div><div style="font-family:var(--font-h);font-size:24px;font-weight:700;color:var(--navy);margin-top:2px">'+totalBooked+'</div><div style="font-size:10px;color:var(--grey)">across Ash, Eisa, Elias, James</div></div>';
-  h+='<div style="background:rgba(22,163,74,.04);border:1px solid var(--border);border-radius:10px;padding:12px"><div style="font-size:10px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em">Held today</div><div style="font-family:var(--font-h);font-size:24px;font-weight:700;color:var(--navy);margin-top:2px">'+totalHeld+'</div><div style="font-size:10px;color:var(--grey)">demos that have already happened today</div></div>';
-  h+='<div style="background:rgba(139,92,246,.04);border:1px solid var(--border);border-radius:10px;padding:12px"><div style="font-size:10px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em">Avg calendar lead time</div><div style="font-family:var(--font-h);font-size:24px;font-weight:700;color:var(--navy);margin-top:2px">'+(avgLT!=null?avgLT.toFixed(1)+'d':'—')+'</div><div style="font-size:10px;color:var(--grey)">create→demo over '+(rc.leadTimeSampleSize||0)+' booked deals (selector window)</div></div>';
+  h+='<div style="padding:18px 22px">';
+  // Aggregate cards
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:18px">';
+  h+='<div style="background:rgba(124,58,237,.05);border:1px solid rgba(124,58,237,.15);border-radius:10px;padding:14px 16px"><div style="font-size:10px;color:'+BOOKED_COLOR+';text-transform:uppercase;letter-spacing:.05em;font-weight:700">Booked today</div><div style="font-family:var(--font-h);font-size:28px;font-weight:700;color:var(--navy);margin-top:3px;line-height:1">'+totalBooked+'</div><div style="font-size:10px;color:var(--grey);margin-top:3px">across Ash, Eisa, Elias, James</div></div>';
+  h+='<div style="background:rgba(22,163,74,.05);border:1px solid rgba(22,163,74,.15);border-radius:10px;padding:14px 16px"><div style="font-size:10px;color:'+HELD_COLOR+';text-transform:uppercase;letter-spacing:.05em;font-weight:700">Held today</div><div style="font-family:var(--font-h);font-size:28px;font-weight:700;color:var(--navy);margin-top:3px;line-height:1">'+totalHeld+'</div><div style="font-size:10px;color:var(--grey);margin-top:3px">demos that have already happened today</div></div>';
+  h+='<div style="background:rgba(114,164,191,.05);border:1px solid rgba(114,164,191,.15);border-radius:10px;padding:14px 16px"><div style="font-size:10px;color:var(--teal);text-transform:uppercase;letter-spacing:.05em;font-weight:700">Avg calendar lead time</div><div style="font-family:var(--font-h);font-size:28px;font-weight:700;color:var(--navy);margin-top:3px;line-height:1">'+(avgLT!=null?avgLT.toFixed(1)+'d':'—')+'</div><div style="font-size:10px;color:var(--grey);margin-top:3px">create→demo over '+(rc.leadTimeSampleSize||0)+' booked deals (selector window)</div></div>';
   h+='</div>';
-  // Per-rep utilization bars
-  h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">';
+  // Per-rep cards — each with a 2-color bar (held + booked-not-held) over a
+  // remaining-capacity background. Utilization label = booked / 10.
+  h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">';
   for(const r of perRep){
-    const u=Math.min(100,r.utilizationPct||0);
-    const barColor=u>=80?'#16A34A':(u>=50?'#F59E0B':'#9CA3AF');
-    h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:10px;padding:10px 12px">'+
-      '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px">'+
-        '<div style="font-family:var(--font-h);font-size:12px;font-weight:700;color:var(--navy)">'+r.rep+'</div>'+
-        '<div style="font-size:11px;color:var(--grey)">'+r.held+'/'+rc.capacityPerRep+'</div>'+
+    const cap=rc.capacityPerRep||10;
+    const booked=r.booked||0, held=r.held||0;
+    const pending=Math.max(0, booked-held);
+    // Use absolute percentages of the full 10-capacity bar so the segments
+    // visually represent N/10 each. Cap at 100% if over-booked (rare).
+    const heldW=Math.min(100,(held/cap)*100);
+    const pendingW=Math.min(100-heldW,(pending/cap)*100);
+    const utilization=Math.min(100,(booked/cap)*100);
+    // Pick a status pill color based on how full the rep's calendar is
+    const pillBg=utilization>=80?'rgba(22,163,74,.12)':(utilization>=50?'rgba(245,158,11,.12)':'rgba(114,164,191,.12)');
+    const pillTxt=utilization>=80?'#16A34A':(utilization>=50?'#B45309':'var(--teal)');
+    h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px 16px">'+
+      '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px">'+
+        '<div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">'+r.rep+'</div>'+
+        '<div style="display:inline-flex;align-items:baseline;gap:3px;background:'+pillBg+';color:'+pillTxt+';padding:3px 9px;border-radius:99px;font-family:var(--font-h);font-size:11px;font-weight:700"><span style="font-size:14px">'+booked+'</span><span style="font-size:11px;opacity:.7">/'+cap+'</span></div>'+
       '</div>'+
-      '<div style="height:8px;background:rgba(114,164,191,.08);border-radius:99px;overflow:hidden;margin-bottom:4px"><div style="height:100%;background:'+barColor+';width:'+u+'%;border-radius:99px;transition:width .3s"></div></div>'+
-      '<div style="font-size:10px;color:var(--grey)">'+r.booked+' booked · '+u.toFixed(0)+'% utilization</div>'+
+      '<div style="font-size:10px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;font-weight:600;margin-bottom:8px">'+utilization.toFixed(0)+'% utilization</div>'+
+      // 2-color bar — held first (green) → booked-not-held (purple) → empty (grey bg)
+      '<div style="height:10px;background:rgba(114,164,191,.10);border-radius:99px;overflow:hidden;display:flex">'+
+        '<div style="height:100%;background:'+HELD_COLOR+';width:'+heldW+'%;transition:width .3s"></div>'+
+        '<div style="height:100%;background:'+BOOKED_COLOR+';width:'+pendingW+'%;transition:width .3s"></div>'+
+      '</div>'+
+      '<div style="display:flex;justify-content:space-between;margin-top:8px;font-size:10px;color:var(--grey);font-weight:600">'+
+        '<span><span style="color:'+HELD_COLOR+';font-weight:700">'+held+'</span> held</span>'+
+        '<span><span style="color:'+BOOKED_COLOR+';font-weight:700">'+pending+'</span> upcoming</span>'+
+      '</div>'+
     '</div>';
   }
   h+='</div>';
-  h+='</div>';
+  h+='</div></div>';
 
   el.innerHTML=h;
 }

@@ -3429,9 +3429,26 @@ async function fetchWebinarRegistrants(token, from, to) {
   }], ['createdate','webinar_date','webinar_has_attended','email','average_monthly_web_traffic']);
 }
 
+// Contacts created in window with date_demo_booked HAS_PROPERTY. Used for
+// the demo-funnel "Booked" count so it matches the Irfan Dashboard's
+// contact-based calculation exactly (rather than the deal-based count
+// which can drift when a deal has multiple contacts or the cloned
+// web-traffic property is stale).
+async function fetchDemoBookerContacts(token, from, to) {
+  const fMs = String(toMsET(from)), tMs = String(toMsET(to, true));
+  return hsSearch(token, 'contacts', [{
+    filters: [
+      { propertyName: 'createdate', operator: 'GTE', value: fMs },
+      { propertyName: 'createdate', operator: 'LTE', value: tMs },
+      { propertyName: 'date_demo_booked', operator: 'HAS_PROPERTY' },
+    ],
+  }], ['createdate', 'date_demo_booked', 'average_monthly_web_traffic'], 200);
+}
+
 // Deals whose deal createdate is in window AND have a date_demo_booked. Used
-// for the demo funnel (we then filter to 10K+ tier client-side via the
-// deal-level cloned web traffic property).
+// for the demo funnel's downstream stages (Held / No-show / Closed Won)
+// since those statuses live on the DEAL, not the contact. The "Booked"
+// count itself is now contact-based via fetchDemoBookerContacts.
 async function fetchDemoFunnelDeals(token, from, to) {
   const fMs = String(toMsET(from)), tMs = String(toMsET(to, true));
   const deals = await hsSearch(token, 'deals', [{
@@ -3538,12 +3555,14 @@ async function processWebinarPerfRequest(windowType, customFrom, customTo, env, 
   const { current, prior, priorMonth } = computeWindows(windowType, customFrom, customTo, vsFrom, vsTo);
   const todayMs = todayET().getTime();
 
-  // Per-period metric builder — fetches webinar contacts + demo deals +
-  // Windsor totals in parallel, then derives funnel counts.
+  // Per-period metric builder — fetches webinar contacts + demo booker
+  // contacts + demo deals (for downstream stages) + Windsor totals in
+  // parallel, then derives funnel counts.
   async function periodMetrics(period) {
     if (!period) return null;
-    const [registrants, demoDeals, windsor] = await Promise.all([
+    const [registrants, demoBookers, demoDeals, windsor] = await Promise.all([
       fetchWebinarRegistrants(hsToken, period.from, period.to),
+      fetchDemoBookerContacts(hsToken, period.from, period.to),
       fetchDemoFunnelDeals(hsToken, period.from, period.to),
       fetchAzCampaigns(apiKey, wFrom(period.from), period.to),
     ]);
@@ -3563,11 +3582,20 @@ async function processWebinarPerfRequest(windowType, customFrom, customTo, env, 
     const attendeeIds = attendees.map(c => c.id).filter(Boolean);
     const webinarCW = await countAttendeesClosedWon(hsToken, attendeeIds);
     // ── Demo funnel (10K+ only) ──
+    // "Booked" is CONTACT-based so it matches the Irfan Dashboard's
+    // "Demos Booked per Day" exactly: contacts created in window with
+    // date_demo_booked set AND web traffic NOT in small-brands set.
+    // Downstream stages (Held / No-show / Closed Won) stay DEAL-based
+    // since those statuses live on the deal record. Funnel ratios mix
+    // contacts → deals as a deliberate trade-off.
+    const demoBooked = demoBookers.filter(c => {
+      const v = c.properties?.average_monthly_web_traffic;
+      return !WEBINAR_PERF_SUB10K_TIERS.has(v || '');
+    }).length;
     const scaleDeals = demoDeals.filter(d => {
       const v = d.properties?.average_monthly_web_traffic__cloned_;
       return !WEBINAR_PERF_SUB10K_TIERS.has(v || '');
     });
-    const demoBooked = scaleDeals.length;
     let demoHeld = 0, demoNoShow = 0, demoQualified = 0, demoCW = 0;
     // Lead time accumulator (over current window — reused if periodMetrics
     // is called for current).
@@ -3638,7 +3666,11 @@ async function processWebinarPerfRequest(windowType, customFrom, customTo, env, 
       rep: n,
       booked: repCap[n].booked,
       held: repCap[n].held,
-      utilizationPct: Math.min(100, (repCap[n].held / WEBINAR_PERF_DAILY_CAPACITY) * 100),
+      // Utilization = booked ÷ 10-per-day capacity (capped 100 for display).
+      // Dashboard renders a 2-color bar: held portion + booked-not-held
+      // portion + empty capacity remainder.
+      utilizationPct: Math.min(100, (repCap[n].booked / WEBINAR_PERF_DAILY_CAPACITY) * 100),
+      heldPct: Math.min(100, (repCap[n].held / WEBINAR_PERF_DAILY_CAPACITY) * 100),
     })),
     avgLeadTimeDays: curM && curM.leadTimeN > 0 ? curM.leadTimeSum / curM.leadTimeN : null,
     leadTimeSampleSize: curM ? curM.leadTimeN : 0,
