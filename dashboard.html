@@ -752,7 +752,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s13';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s14';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -1275,6 +1275,8 @@ function _wpSkeleton(){
   return h;
 }
 async function fdWebinarPerf(win, from, to, vsFrom, vsTo){
+  if(S.webinarPerf._fetching)return;
+  S.webinarPerf._fetching=true;
   win = win || S.webinarPerf.win || 'mtd';
   S.webinarPerf.win = win;
   const el = document.getElementById('wp-c'); if(el)el.innerHTML=_wpSkeleton();
@@ -1296,6 +1298,8 @@ async function fdWebinarPerf(win, from, to, vsFrom, vsTo){
   }catch(e){
     console.error('fdWebinarPerf failed:', e);
     if(el)el.innerHTML='<div style="padding:60px;text-align:center;color:var(--red);font-size:13px">Failed to load: '+e.message+'</div>';
+  } finally {
+    S.webinarPerf._fetching=false;
   }
 }
 
@@ -1343,7 +1347,15 @@ window.wpEditBaseline=function(spanEl){
 function renderWebinarPerf(){
   const d = S.webinarPerf.data;
   const el = document.getElementById('wp-c'); if(!el)return;
-  if(!d){el.innerHTML='<div style="padding:60px;text-align:center;color:var(--grey)">No data</div>';return;}
+  // If renderPage routes here before data has arrived (e.g. a nav click
+  // that bypassed switchDashSub's fetch trigger), show the skeleton AND
+  // kick off the fetch. The _fetching guard prevents double-fetching when
+  // fdWebinarPerf is already in flight.
+  if(!d){
+    el.innerHTML=_wpSkeleton();
+    if(!S.webinarPerf._fetching)fdWebinarPerf(S.webinarPerf.win||'mtd');
+    return;
+  }
   const cur=d.current||{}, prior=d.prior||null, pm=d.priorMonth||null;
   const w=cur.webinar||{}, dm=cur.demo||{};
   const pw=prior&&prior.webinar||null, pd=prior&&prior.demo||null;
@@ -1515,7 +1527,7 @@ function renderWebinarPerf(){
   h+=_tile('Cost / Registered',w.registered>0?_f$(w.allocatedSpend/w.registered):'—',w.registered>0?w.allocatedSpend/w.registered:null,pw&&pw.registered>0?pw.allocatedSpend/pw.registered:null,lw&&lw.registered>0?lw.allocatedSpend/lw.registered:null,'$',{borderLeft:'#7C3AED',inv:true});
   h+=_tile('Registered → Attended',_pct(cur_a),cur_a,prior_a,lm_a,'%',{borderLeft:'#7C3AED'});
   h+=_tile('Cost / Attended',w.attended>0?_f$(w.allocatedSpend/w.attended):'—',w.attended>0?w.allocatedSpend/w.attended:null,pw&&pw.attended>0?pw.allocatedSpend/pw.attended:null,lw&&lw.attended>0?lw.allocatedSpend/lw.attended:null,'$',{borderLeft:'#7C3AED',inv:true});
-  h+=_tile('Attended → Closed Won',_pct(cur_cw),cur_cw,prior_cw,lm_cw,'%',{borderLeft:'#7C3AED',extra:'baseline '+baseline+'%'});
+  h+=_tile('Attended → Closed Won',_pct(cur_cw),cur_cw,prior_cw,lm_cw,'%',{borderLeft:'#7C3AED'});
   h+=_tile('Cost / Closed Won',w.closedWon>0?_f$(w.allocatedSpend/w.closedWon):'—',w.closedWon>0?w.allocatedSpend/w.closedWon:null,pw&&pw.closedWon>0?pw.allocatedSpend/pw.closedWon:null,lw&&lw.closedWon>0?lw.allocatedSpend/lw.closedWon:null,'$',{borderLeft:'#7C3AED',inv:true});
   h+='</div></div>';
   // Demo conversion + CPA panel
@@ -1593,7 +1605,11 @@ function renderWebinarPerf(){
     // Pick a status pill color based on how full the rep's calendar is
     const pillBg=utilization>=80?'rgba(22,163,74,.12)':(utilization>=50?'rgba(245,158,11,.12)':'rgba(114,164,191,.12)');
     const pillTxt=utilization>=80?'#16A34A':(utilization>=50?'#B45309':'var(--teal)');
-    h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px 16px">'+
+    // Instant hover tooltip — reuses the dbcTip system from the Detailed
+    // Dashboard. The tip text breaks down the rep's day with concrete
+    // numbers so we don't have to fit them all into the card itself.
+    const tipText=r.rep+' · '+booked+'/'+cap+' booked ('+utilization.toFixed(0)+'%) · '+held+' held · '+pending+' upcoming';
+    h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px 16px;cursor:default;transition:box-shadow .15s,transform .15s" data-tip="'+tipText.replace(/"/g,'&quot;')+'" onmouseenter="dbcTip(event,this);this.style.boxShadow=\'0 4px 12px rgba(2,15,24,.08)\';this.style.transform=\'translateY(-1px)\'" onmousemove="dbcTipMove(event)" onmouseleave="dbcTipHide();this.style.boxShadow=\'\';this.style.transform=\'\'">'+
       '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px">'+
         '<div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">'+r.rep+'</div>'+
         '<div style="display:inline-flex;align-items:baseline;gap:3px;background:'+pillBg+';color:'+pillTxt+';padding:3px 9px;border-radius:99px;font-family:var(--font-h);font-size:11px;font-weight:700"><span style="font-size:14px">'+booked+'</span><span style="font-size:11px;opacity:.7">/'+cap+'</span></div>'+
