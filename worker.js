@@ -3379,6 +3379,270 @@ async function processAzRequest(windowType, customFrom, customTo, env, vsFrom, v
 }
 
 // ---------------------------------------------------------------------------
+// Webinar Performance Page
+// ---------------------------------------------------------------------------
+// Compares two parallel funnels:
+//   • Webinar funnel (sub-10K brands): Registered → Attended → Closed Won
+//   • Demo funnel (10K+ brands):       Booked → Held → Qualified → Closed Won
+// Shares a single click + spend pool at the top (one form-fill router; can't
+// pre-segment clicks). Spend is ALLOCATED proportionally by form-fills
+// (registrations + bookings) so per-funnel CPAs are meaningful.
+const WEBINAR_PERF_REPS = ['Ash', 'Eisa', 'Elias', 'James'];
+const WEBINAR_PERF_DAILY_CAPACITY = 10;
+const WEBINAR_PERF_SUB10K_TIERS = new Set(['Pre-launch / just launching', '0-10K monthly web visitors', 'Very Small']);
+const WEBINAR_BASELINE_KV_KEY = 'webinar_attended_to_cw_baseline_pct';
+const WEBINAR_BASELINE_DEFAULT = 17;
+
+// Contacts created in window with webinar_date set (= registered for a
+// webinar at some point). Properties cover the full webinar funnel
+// (registered + attended + no-show derivation).
+async function fetchWebinarRegistrants(token, from, to) {
+  const fMs = String(toMsET(from));
+  const tMs = String(toMsET(to, true));
+  return hsSearch(token, 'contacts', [{
+    filters: [
+      { propertyName: 'createdate', operator: 'GTE', value: fMs },
+      { propertyName: 'createdate', operator: 'LTE', value: tMs },
+      { propertyName: 'webinar_date', operator: 'HAS_PROPERTY' },
+    ],
+  }], ['createdate','webinar_date','webinar_has_attended','email','average_monthly_web_traffic']);
+}
+
+// Deals whose deal createdate is in window AND have a date_demo_booked. Used
+// for the demo funnel (we then filter to 10K+ tier client-side via the
+// deal-level cloned web traffic property).
+async function fetchDemoFunnelDeals(token, from, to) {
+  const fMs = String(toMsET(from)), tMs = String(toMsET(to, true));
+  const deals = await hsSearch(token, 'deals', [{
+    filters: [
+      { propertyName: 'hs_createdate', operator: 'GTE', value: fMs },
+      { propertyName: 'hs_createdate', operator: 'LTE', value: tMs },
+      { propertyName: 'date_demo_booked', operator: 'HAS_PROPERTY' },
+    ],
+  }], ['hs_createdate','createdate','date_demo_booked','rescheduled_meeting_date','demo_attendance_status','demo_qualification_outcome','dealstage','average_monthly_web_traffic__cloned_','hubspot_owner_id'], 200);
+  return [...new Map(deals.map(d => [d.id, d])).values()];
+}
+
+// For a cohort of attendee contact IDs, count how many have at least one
+// associated deal that reached dealstage = closedwon (any time). Uses two
+// batch reads — associations then deal stages — so the budget stays low
+// even with hundreds of attendees.
+async function countAttendeesClosedWon(token, contactIds) {
+  if (!contactIds || !contactIds.length) return 0;
+  const inputs = contactIds.map(id => ({ id: String(id) }));
+  let assocData;
+  try {
+    const r = await fetch('https://api.hubapi.com/crm/v4/associations/contacts/deals/batch/read', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inputs }),
+    });
+    if (!r.ok) { console.error('countAttendeesClosedWon assoc', r.status, await r.text()); return 0; }
+    assocData = await r.json();
+  } catch(e) { console.error('countAttendeesClosedWon assoc threw', e.message); return 0; }
+  const contactDeals = {};
+  const allDealIds = new Set();
+  for (const row of (assocData.results || [])) {
+    const cid = row.from?.id; if (!cid) continue;
+    contactDeals[cid] = (row.to || []).map(t => String(t.toObjectId)).filter(Boolean);
+    for (const did of contactDeals[cid]) allDealIds.add(did);
+  }
+  if (!allDealIds.size) return 0;
+  let dealData;
+  try {
+    const r = await fetch('https://api.hubapi.com/crm/v3/objects/deals/batch/read', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inputs: Array.from(allDealIds).map(id => ({ id })), properties: ['dealstage'] }),
+    });
+    if (!r.ok) { console.error('countAttendeesClosedWon deals', r.status, await r.text()); return 0; }
+    dealData = await r.json();
+  } catch(e) { console.error('countAttendeesClosedWon deals threw', e.message); return 0; }
+  const cwDealIds = new Set();
+  for (const d of (dealData.results || [])) {
+    if ((d.properties?.dealstage || '') === 'closedwon') cwDealIds.add(String(d.id));
+  }
+  let n = 0;
+  for (const cid in contactDeals) {
+    if (contactDeals[cid].some(did => cwDealIds.has(did))) n++;
+  }
+  return n;
+}
+
+// Today's bookings + held — single fetch scoped to today's date on either
+// date_demo_booked OR rescheduled_meeting_date.
+async function fetchTodayDeals(token) {
+  const todayStr = fmt(todayET());
+  const fMs = String(toMsUTC(todayStr));
+  const tMs = String(toMsUTC(todayStr, true));
+  const deals = await hsSearch(token, 'deals', [
+    { filters: [
+      { propertyName: 'date_demo_booked', operator: 'GTE', value: fMs },
+      { propertyName: 'date_demo_booked', operator: 'LTE', value: tMs },
+    ]},
+    { filters: [
+      { propertyName: 'rescheduled_meeting_date', operator: 'GTE', value: fMs },
+      { propertyName: 'rescheduled_meeting_date', operator: 'LTE', value: tMs },
+    ]},
+  ], ['date_demo_booked','rescheduled_meeting_date','demo_attendance_status','hubspot_owner_id'], 200);
+  return { deals: [...new Map(deals.map(d => [d.id, d])).values()], todayStr };
+}
+
+// Baseline value (Talar's "attended → closed won" benchmark) — stored in KV
+// so the page's inline edit can persist across sessions.
+async function readWebinarBaseline(env) {
+  if (!env.CONTENT_STORE) return WEBINAR_BASELINE_DEFAULT;
+  try {
+    const raw = await env.CONTENT_STORE.get(WEBINAR_BASELINE_KV_KEY);
+    if (!raw) return WEBINAR_BASELINE_DEFAULT;
+    const parsed = JSON.parse(raw);
+    const v = typeof parsed === 'number' ? parsed : parsed?.value;
+    return (typeof v === 'number' && isFinite(v)) ? v : WEBINAR_BASELINE_DEFAULT;
+  } catch(e) { return WEBINAR_BASELINE_DEFAULT; }
+}
+async function saveWebinarBaseline(env, valuePct) {
+  if (!env.CONTENT_STORE) return { ok: false, error: 'KV not configured' };
+  const n = parseFloat(valuePct);
+  if (!isFinite(n) || n < 0 || n > 100) return { ok: false, error: 'Value must be 0-100' };
+  await env.CONTENT_STORE.put(WEBINAR_BASELINE_KV_KEY, JSON.stringify({ value: n, savedAt: new Date().toISOString() }));
+  return { ok: true, value: n };
+}
+
+async function processWebinarPerfRequest(windowType, customFrom, customTo, env, vsFrom, vsTo) {
+  if (windowType === 'custom' && (!customFrom || !customTo)) {
+    throw new Error('Custom window requires from + to date params');
+  }
+  const hsToken = env.HUBSPOT_TOKEN;
+  const apiKey = env.WINDSOR_API_KEY;
+  const { current, prior, priorMonth } = computeWindows(windowType, customFrom, customTo, vsFrom, vsTo);
+  const todayMs = todayET().getTime();
+
+  // Per-period metric builder — fetches webinar contacts + demo deals +
+  // Windsor totals in parallel, then derives funnel counts.
+  async function periodMetrics(period) {
+    if (!period) return null;
+    const [registrants, demoDeals, windsor] = await Promise.all([
+      fetchWebinarRegistrants(hsToken, period.from, period.to),
+      fetchDemoFunnelDeals(hsToken, period.from, period.to),
+      fetchAzCampaigns(apiKey, wFrom(period.from), period.to),
+    ]);
+    // ── Webinar funnel ──
+    const registered = registrants.length;
+    const attendees = registrants.filter(c => (c.properties?.webinar_has_attended || '').toString().toLowerCase() === 'true');
+    const attended = attendees.length;
+    let noShow = 0;
+    for (const c of registrants) {
+      const wasAtt = (c.properties?.webinar_has_attended || '').toString().toLowerCase() === 'true';
+      if (wasAtt) continue;
+      const wd = c.properties?.webinar_date;
+      if (!wd) continue;
+      const wdMs = new Date((String(wd)).split('T')[0] + 'T00:00:00Z').getTime();
+      if (!isNaN(wdMs) && wdMs < todayMs) noShow++;
+    }
+    const attendeeIds = attendees.map(c => c.id).filter(Boolean);
+    const webinarCW = await countAttendeesClosedWon(hsToken, attendeeIds);
+    // ── Demo funnel (10K+ only) ──
+    const scaleDeals = demoDeals.filter(d => {
+      const v = d.properties?.average_monthly_web_traffic__cloned_;
+      return !WEBINAR_PERF_SUB10K_TIERS.has(v || '');
+    });
+    const demoBooked = scaleDeals.length;
+    let demoHeld = 0, demoNoShow = 0, demoQualified = 0, demoCW = 0;
+    // Lead time accumulator (over current window — reused if periodMetrics
+    // is called for current).
+    let leadTimeSum = 0, leadTimeN = 0;
+    for (const d of scaleDeals) {
+      const p = d.properties || {};
+      const att = (p.demo_attendance_status || '').trim();
+      const qo = (p.demo_qualification_outcome || '').trim();
+      if (att === 'Demo Given (originally scheduled)' || att === 'Demo Given (rescheduled)') demoHeld++;
+      if (att === 'No Show' || att === 'Cancelled before demo') demoNoShow++;
+      if (qo === 'Qualified') demoQualified++;
+      if ((p.dealstage || '') === 'closedwon') demoCW++;
+      const eff = p.rescheduled_meeting_date || p.date_demo_booked;
+      const cd = p.hs_createdate || p.createdate;
+      if (eff && cd) {
+        const t1 = new Date(cd).getTime(), t2 = new Date(eff).getTime();
+        if (!isNaN(t1) && !isNaN(t2) && t2 >= t1) { leadTimeSum += (t2 - t1) / 86400000; leadTimeN++; }
+      }
+    }
+    // ── Shared clicks + spend ──
+    let clicks = 0, spend = 0;
+    for (const ch of DASH_CHANNELS) {
+      const t = windsor[ch]?.totals;
+      if (!t) continue;
+      clicks += t.clicks || 0;
+      spend  += t.spend  || 0;
+    }
+    // ── Spend allocation by form-fills ──
+    const totalFills = registered + demoBooked;
+    const wShare = totalFills > 0 ? (registered / totalFills) : 0;
+    const dShare = totalFills > 0 ? (demoBooked / totalFills) : 0;
+    return {
+      clicks, spend,
+      webinar: { registered, attended, noShow, closedWon: webinarCW, allocatedSpend: spend * wShare, spendSharePct: wShare * 100 },
+      demo:    { booked: demoBooked, held: demoHeld, noShow: demoNoShow, qualified: demoQualified, closedWon: demoCW, allocatedSpend: spend * dShare, spendSharePct: dShare * 100 },
+      leadTimeSum, leadTimeN,
+    };
+  }
+
+  const [curM, priorM, pmM] = await Promise.all([
+    periodMetrics(current),
+    periodMetrics(prior),
+    periodMetrics(priorMonth),
+  ]);
+
+  // ── Rep capacity (today, real-time, ignores page selector) ──
+  const [ownerMap, todayBundle] = await Promise.all([fetchOwners(hsToken), fetchTodayDeals(hsToken)]);
+  // owner id → first name for the 4 watched reps
+  const watchedById = {};
+  for (const [oid, fullName] of Object.entries(ownerMap)) {
+    const first = (fullName || '').trim().split(' ')[0];
+    if (WEBINAR_PERF_REPS.indexOf(first) >= 0) watchedById[oid] = first;
+  }
+  const repCap = {};
+  for (const name of WEBINAR_PERF_REPS) repCap[name] = { rep: name, booked: 0, held: 0 };
+  for (const d of todayBundle.deals) {
+    const oid = d.properties?.hubspot_owner_id;
+    const repName = watchedById[oid];
+    if (!repName) continue;
+    repCap[repName].booked++;
+    const att = (d.properties?.demo_attendance_status || '').trim();
+    if (att === 'Demo Given (originally scheduled)' || att === 'Demo Given (rescheduled)') repCap[repName].held++;
+  }
+  const repCapacity = {
+    today: todayBundle.todayStr,
+    capacityPerRep: WEBINAR_PERF_DAILY_CAPACITY,
+    perRep: WEBINAR_PERF_REPS.map(n => ({
+      rep: n,
+      booked: repCap[n].booked,
+      held: repCap[n].held,
+      utilizationPct: Math.min(100, (repCap[n].held / WEBINAR_PERF_DAILY_CAPACITY) * 100),
+    })),
+    avgLeadTimeDays: curM && curM.leadTimeN > 0 ? curM.leadTimeSum / curM.leadTimeN : null,
+    leadTimeSampleSize: curM ? curM.leadTimeN : 0,
+  };
+
+  // ── Baseline ──
+  const baselineValue = await readWebinarBaseline(env);
+
+  // Strip lead-time accumulators from response (not needed client-side)
+  function stripLT(p) { if (!p) return null; const { leadTimeSum, leadTimeN, ...rest } = p; return rest; }
+
+  return {
+    period: current,
+    priorPeriod: prior,
+    priorMonthPeriod: priorMonth,
+    current: stripLT(curM),
+    prior: stripLT(priorM),
+    priorMonth: stripLT(pmM),
+    repCapacity,
+    baseline: { attendedToClosedWonPct: baselineValue },
+    meta: { generatedAt: new Date().toISOString(), windowType },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Worker Entry Point
 // ---------------------------------------------------------------------------
 // Content Studio static data — served by /api/content endpoint
@@ -4099,6 +4363,38 @@ export default {
         const result = await processSpecial1Request(env);
         return jr(result);
       } catch(err) { console.error('Special1 endpoint error:', err); return jr({ error: 'Internal error', detail: err.message }, 500); }
+    }
+
+    // POST /api/webinar-performance → Webinar vs Demo funnel comparison page
+    if (request.method === 'POST' && url.pathname === '/api/webinar-performance') {
+      let body;
+      try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
+      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      try {
+        const result = await processWebinarPerfRequest(body.window||'mtd', body.from||null, body.to||null, env, body.vsFrom||null, body.vsTo||null);
+        return jr(result);
+      } catch(err) { console.error('Webinar perf error:', err); return jr({ error: 'Internal error', detail: err.message }, 500); }
+    }
+
+    // POST /api/baseline → load editable webinar-funnel baselines from KV
+    if (request.method === 'POST' && url.pathname === '/api/baseline') {
+      let body;
+      try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
+      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      try {
+        const v = await readWebinarBaseline(env);
+        return jr({ ok: true, attendedToClosedWonPct: v });
+      } catch(err) { return jr({ error: 'Internal error', detail: err.message }, 500); }
+    }
+    // POST /api/baseline/save → persist a new baseline value to KV
+    if (request.method === 'POST' && url.pathname === '/api/baseline/save') {
+      let body;
+      try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
+      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      try {
+        const res = await saveWebinarBaseline(env, body.attendedToClosedWonPct);
+        return jr(res);
+      } catch(err) { return jr({ error: 'Internal error', detail: err.message }, 500); }
     }
 
     // POST /api/analyzer → Paid Channel Analyzer API

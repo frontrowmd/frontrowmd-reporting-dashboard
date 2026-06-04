@@ -534,6 +534,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
         <div class="ni sub" onclick="switchDashSub('overview')" data-page="dashboard" data-sub="overview"><span class="ic" style="font-size:12px">📊</span><span>Detailed Dashboard</span></div>
         <div class="ni sub" onclick="switchDashSub('signup')" data-page="dashboard" data-sub="signup"><span class="ic" style="font-size:12px">📋</span><span>Sign-Up Rate</span></div>
         <div class="ni sub" onclick="switchDashSub('demoQuality')" data-page="demoQuality" data-sub="demoQuality"><span class="ic" style="font-size:12px">🎯</span><span>Demo Quality</span></div>
+        <div class="ni sub" onclick="switchDashSub('webinarPerf')" data-page="webinarPerf" data-sub="webinarPerf"><span class="ic" style="font-size:12px">🎥</span><span>Webinar Performance</span></div>
         <div class="ni sub" onclick="switchDashSub('outbound')" data-page="outbound" data-sub="outbound"><span class="ic" style="font-size:12px">📨</span><span>Outbound</span></div>
         <div class="ni sub" onclick="switchPage('csession')" data-page="csession"><span class="ic" style="font-size:12px">🎨</span><span>Creative Session</span></div>
         <div class="ni sub" onclick="switchDashSub('strategy')" data-page="dashboard" data-sub="strategy"><span class="ic" style="font-size:12px">📋</span><span>Monthly Review</span></div>
@@ -726,6 +727,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 
     <div class="pg" id="page-irfan"><div id="irfan-date-header" style="margin-bottom:24px"></div><div id="irfan-c"></div></div>
     <div class="pg" id="page-demoQuality"><div id="dq-c"></div></div>
+    <div class="pg" id="page-webinarPerf"><div id="wp-c"></div></div>
     <div class="pg" id="page-csession"><div id="csession-c"></div></div>
 
     <div class="pg" id="page-content"><div id="content-c"></div></div>
@@ -750,16 +752,19 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s09';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s10';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
+const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
+const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
+const WP_BASELINE_SAVE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline/save':'/api/baseline/save';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
 let PW='';
-const S={dashboard:{win:'mtd',data:null,sub:'irfan'},irfan:{win:'mtd',data:null},strategy:{data:null,win:'lastMonth'},calculator:{win:'mtd',data:null},signup:{win:null,data:null},analyzer:{win:'mtd',data:null,tab:'overview',sub:'overview'},demoQuality:{win:'mtd',data:null},csession:{step:1},content:{data:null,sub:'cs-intel'},outbound:{data:null}};let AP='irfan';
+const S={dashboard:{win:'mtd',data:null,sub:'irfan'},irfan:{win:'mtd',data:null},strategy:{data:null,win:'lastMonth'},calculator:{win:'mtd',data:null},signup:{win:null,data:null},analyzer:{win:'mtd',data:null,tab:'overview',sub:'overview'},demoQuality:{win:'mtd',data:null},webinarPerf:{win:'mtd',data:null},csession:{step:1},content:{data:null,sub:'cs-intel'},outbound:{data:null}};let AP='irfan';
 const f$=v=>v==null?'—':'$'+Math.round(v).toLocaleString();
 const fN=v=>v==null?'—':Math.round(v).toLocaleString();
 const fP=(v,d=1)=>v==null?'—':v.toFixed(d)+'%';
-const T={dashboard:'Executive Dashboard',irfan:'Irfan Dashboard',resources:'Resources',calculator:'ARR Calculator',signup:'Sign-Up Rate',csession:'Creative Session',demoQuality:'Demo Quality',content:'Social Media Content',outbound:'Outbound Sequences'};
+const T={dashboard:'Executive Dashboard',irfan:'Irfan Dashboard',resources:'Resources',calculator:'ARR Calculator',signup:'Sign-Up Rate',csession:'Creative Session',demoQuality:'Demo Quality',webinarPerf:'Webinar Performance',content:'Social Media Content',outbound:'Outbound Sequences'};
 const W=[{k:'7d',l:'Last 7 Days'},{k:'mtd',l:'Month to Date'},{k:'lastMonth',l:'Last Month'},{k:'ytd',l:'Year to Date'},{k:'allTime',l:'All Time'},{k:'custom',l:'Custom'}];
 const AZ_TABS=[{k:'overview',l:'Overview'},{k:'meta',l:'Meta'},{k:'google',l:'Google'},{k:'linkedin',l:'LinkedIn'},{k:'tiktok',l:'TikTok'},{k:'youtube',l:'YouTube'}];
 function effM(cr){return cr>0?(1-Math.pow(1-cr,12))/cr:12;}
@@ -812,8 +817,8 @@ document.getElementById('pw').addEventListener('keydown',e=>{if(e.key==='Enter')
 
 // Filters
 function bldF(){const s=S[AP];var aiBtn=AI_PANEL_PAGES.indexOf(AP)>=0?'<button id="ai-panel-btn" onclick="toggleAIPanel()" class="fb" style="border:1.5px solid #B8860B;background:'+(_aiPanelOpen?'#B8860B':'#FFF8E1')+';color:'+(_aiPanelOpen?'#fff':'#8B6914')+';font-weight:700" onmouseover="this.style.background=\'#B8860B\';this.style.color=\'#fff\'" onmouseout="if(!_aiPanelOpen){this.style.background=\'#FFF8E1\';this.style.color=\'#8B6914\';}">✦ AI Analysis</button>':'';if(AP==='signup'){document.getElementById('filters').innerHTML='<span style="font-size:13px;color:var(--grey)">Fixed cohorts — independent of time filters</span>'+aiBtn+'<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>';return;}if(AP==='strategy'||AP==='csession'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='content'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='outbound'){document.getElementById('filters').innerHTML=aiBtn;document.getElementById('filters').style.display=aiBtn?'':'none';return;}else{document.getElementById('filters').style.display='';}let h='';for(const w of W)h+=`<button class="fb${s.win===w.k?' active':''}" data-w="${w.k}" onclick="selW('${w.k}')">${w.l}</button>`;h+=`<div class="cr${s.win==='custom'?' vis':''}" id="cr"><input type="date" id="cf"><span style="color:var(--grey)">→</span><input type="date" id="ct"><label class="cr-cmp-lbl"><input type="checkbox" id="cc" onchange="document.getElementById('crVs').classList.toggle('vis',this.checked)">Compare</label><span class="cr-vs" id="crVs"><span class="cr-vs-prefix">vs</span><input type="date" id="cvf"><span style="color:var(--grey)">→</span><input type="date" id="cvt"></span><button onclick="goC()">Go</button></div>`;h+=aiBtn;h+=`<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>`;document.getElementById('filters').innerHTML=h;}
-async function selW(w){S[AP].win=w;document.querySelectorAll('#filters .fb').forEach(b=>b.classList.toggle('active',b.dataset.w===w));const cr=document.getElementById('cr');if(cr)cr.classList.toggle('vis',w==='custom');if(w==='custom')return;await fd(w);}
-async function goC(){const f=document.getElementById('cf').value,t=document.getElementById('ct').value;if(!f||!t)return;const cc=document.getElementById('cc');let vsFrom=null,vsTo=null;if(cc&&cc.checked){vsFrom=document.getElementById('cvf').value||null;vsTo=document.getElementById('cvt').value||null;if(!vsFrom||!vsTo)return;}await fd('custom',f,t,vsFrom,vsTo);}
+async function selW(w){S[AP].win=w;document.querySelectorAll('#filters .fb').forEach(b=>b.classList.toggle('active',b.dataset.w===w));const cr=document.getElementById('cr');if(cr)cr.classList.toggle('vis',w==='custom');if(w==='custom')return;if(AP==='webinarPerf'){await fdWebinarPerf(w);return;}await fd(w);}
+async function goC(){const f=document.getElementById('cf').value,t=document.getElementById('ct').value;if(!f||!t)return;const cc=document.getElementById('cc');let vsFrom=null,vsTo=null;if(cc&&cc.checked){vsFrom=document.getElementById('cvf').value||null;vsTo=document.getElementById('cvt').value||null;if(!vsFrom||!vsTo)return;}if(AP==='webinarPerf'){await fdWebinarPerf('custom',f,t,vsFrom,vsTo);return;}await fd('custom',f,t,vsFrom,vsTo);}
 // Detailed Dashboard skeleton — replaces the full #page-dashboard innerHTML
 // with a 9-section layout matching the real page (Daily / Revenue / WT Pie /
 // Funnel / Executive Summary / Conversion Funnel / Demo Outcome / Ad Spend /
@@ -1229,7 +1234,283 @@ async function fdAnalyzer(win){
   if(AP==='csession')renderCreativeSession();
   return S.analyzer.data;
 }
-async function refreshData(){const btn=document.getElementById('rfb');if(btn){btn.classList.add('loading');btn.textContent='↻ Refreshing...';}if(AP==='signup'){await fdSignup();}else if(AP==='csession'){S.analyzer.data=null;await fdAnalyzer(S.analyzer.win||S.dashboard?.win||'mtd');}else{await fd(S[AP].win||'mtd');if(AP==='irfan')await fdSpecial1();}if(btn){btn.classList.remove('loading');btn.textContent='↻ Refresh';}}
+
+// ─────────────────────────────────────────────────────────────────────
+// Webinar Performance — fetch + render
+// ─────────────────────────────────────────────────────────────────────
+async function fdWebinarPerf(win, from, to, vsFrom, vsTo){
+  win = win || S.webinarPerf.win || 'mtd';
+  S.webinarPerf.win = win;
+  const el = document.getElementById('wp-c'); if(el)el.innerHTML='<div style="padding:60px;text-align:center;color:var(--grey);font-size:13px"><span class="sp" style="width:18px;height:18px;display:inline-block;vertical-align:middle"></span> &nbsp;Loading webinar performance…</div>';
+  // Show the page so loading state is visible
+  document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-webinarPerf').classList.add('active');
+  bldF();
+  const body = { password: PW, window: win };
+  if(from)body.from=from; if(to)body.to=to; if(vsFrom)body.vsFrom=vsFrom; if(vsTo)body.vsTo=vsTo;
+  try{
+    const r = await fetch(WP_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d = await r.json();
+    if(!r.ok || d.error){
+      if(el)el.innerHTML='<div style="padding:60px;text-align:center;color:var(--red);font-size:13px">Failed to load: '+(d.detail||d.error||('HTTP '+r.status))+'</div>';
+      return;
+    }
+    S.webinarPerf.data = d;
+    renderPage();
+  }catch(e){
+    console.error('fdWebinarPerf failed:', e);
+    if(el)el.innerHTML='<div style="padding:60px;text-align:center;color:var(--red);font-size:13px">Failed to load: '+e.message+'</div>';
+  }
+}
+
+// Save a new baseline value (Attended → Closed Won target). Persists to KV
+// via the worker and updates the in-memory data so the on-page rendering
+// reflects the change without a full refetch.
+async function wpSaveBaseline(newPct){
+  try{
+    const r = await fetch(WP_BASELINE_SAVE_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:PW,attendedToClosedWonPct:newPct})});
+    const d = await r.json();
+    if(!r.ok || !d.ok){alert('Failed to save baseline: '+(d.error||d.detail||'unknown'));return;}
+    if(S.webinarPerf.data && S.webinarPerf.data.baseline){
+      S.webinarPerf.data.baseline.attendedToClosedWonPct = d.value;
+    }
+    renderWebinarPerf();
+  }catch(e){alert('Save failed: '+e.message);}
+}
+// Click handler — the editable baseline pill becomes a focused input that
+// commits on blur or Enter.
+window.wpEditBaseline=function(spanEl){
+  spanEl.contentEditable='true';
+  spanEl.style.outline='2px solid #7C3AED';
+  spanEl.style.padding='1px 4px';
+  spanEl.style.borderRadius='4px';
+  spanEl.focus();
+  const range=document.createRange();range.selectNodeContents(spanEl);
+  const sel=window.getSelection();sel.removeAllRanges();sel.addRange(range);
+  const commit=()=>{
+    const txt=(spanEl.textContent||'').replace(/[^\d.]/g,'');
+    const v=parseFloat(txt);
+    spanEl.contentEditable='false';
+    spanEl.style.outline='none';
+    if(isFinite(v)&&v>=0&&v<=100)wpSaveBaseline(v);
+    else renderWebinarPerf();
+  };
+  spanEl.addEventListener('blur',commit,{once:true});
+  spanEl.addEventListener('keydown',function(e){
+    if(e.key==='Enter'){e.preventDefault();spanEl.blur();}
+    if(e.key==='Escape'){spanEl.textContent=spanEl.getAttribute('data-orig')||'';spanEl.blur();}
+  });
+};
+
+// Main render. Sections: header, side-by-side funnel, comparison table,
+// conv-rate + CPA tiles, rep capacity (today).
+function renderWebinarPerf(){
+  const d = S.webinarPerf.data;
+  const el = document.getElementById('wp-c'); if(!el)return;
+  if(!d){el.innerHTML='<div style="padding:60px;text-align:center;color:var(--grey)">No data</div>';return;}
+  const cur=d.current||{}, prior=d.prior||null, pm=d.priorMonth||null;
+  const w=cur.webinar||{}, dm=cur.demo||{};
+  const pw=prior&&prior.webinar||null, pd=prior&&prior.demo||null;
+  const lw=pm&&pm.webinar||null, ld=pm&&pm.demo||null;
+  const baseline=(d.baseline&&d.baseline.attendedToClosedWonPct)||17;
+  const fmtD=s=>{if(!s)return '';const p=String(s).split('-');return new Date(p[0],p[1]-1,p[2]).toLocaleDateString('en-US',{month:'long',day:'numeric'});};
+  const fmtDY=s=>{if(!s)return '';const p=String(s).split('-');return new Date(p[0],p[1]-1,p[2]).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});};
+  const _fN=n=>fN(n||0);
+  const _f$=n=>n==null?'—':f$(n);
+  const _pct=(v,dec=1)=>v==null||!isFinite(v)?'—':(v).toFixed(dec)+'%';
+  // Delta helpers — vs prior / vs LM
+  function _delta(cur,prev,fmt,inv){
+    if(cur==null||prev==null)return '<span style="color:var(--grey)">—</span>';
+    const nd=cur-prev;const pd=prev!==0?((cur-prev)/prev)*100:null;
+    const arrow=nd>=0?'↑':'↓';const positive=nd>0;const good=inv?!positive:positive;
+    const color=nd===0?'var(--grey)':(good?'var(--green)':'var(--red)');
+    let nStr;
+    if(fmt==='$')nStr=(nd>=0?'+':'-')+'$'+Math.round(Math.abs(nd)).toLocaleString();
+    else if(fmt==='%')nStr=(nd>=0?'+':'-')+Math.abs(nd).toFixed(1)+'%';
+    else nStr=(nd>=0?'+':'-')+Math.round(Math.abs(nd)).toLocaleString();
+    const pStr=pd!=null?'('+(pd>=0?'+':'')+pd.toFixed(1)+'%)':'';
+    return '<span style="color:'+color+';font-weight:600">'+arrow+' '+nStr+' '+pStr+'</span>';
+  }
+  function _deltaBlock(curV,priorV,lmV,fmt,inv){
+    return '<div style="display:flex;justify-content:flex-start;font-size:11px;line-height:1.6;gap:8px"><span style="color:var(--grey);min-width:42px">vs prior</span>'+_delta(curV,priorV,fmt,inv)+'</div>'+
+           '<div style="display:flex;justify-content:flex-start;font-size:11px;line-height:1.6;gap:8px"><span style="color:var(--grey);min-width:42px">vs LM</span>'+_delta(curV,lmV,fmt,inv)+'</div>';
+  }
+  function _tile(label,valueHTML,curV,priorV,lmV,fmt,opts){
+    opts=opts||{};
+    return '<div style="background:var(--white);border:1px solid var(--border);border-radius:10px;padding:12px 14px;'+(opts.borderLeft?'border-left:3px solid '+opts.borderLeft+';':'')+'">'+
+      '<div style="font-family:var(--font-h);font-size:10px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">'+label+'</div>'+
+      '<div style="font-family:var(--font-h);font-size:22px;font-weight:700;color:var(--navy);line-height:1.1;margin-bottom:6px">'+valueHTML+'</div>'+
+      (opts.extra?'<div style="font-size:10px;color:var(--grey);margin-bottom:4px">'+opts.extra+'</div>':'')+
+      _deltaBlock(curV,priorV,lmV,fmt,opts.inv)+
+    '</div>';
+  }
+  // Period header (mirrors Irfan)
+  let h='';
+  h+='<div style="margin-bottom:24px">';
+  if(d.period){
+    h+='<div style="font-family:var(--font-h);font-size:20px;font-weight:700;color:var(--navy)">'+(d.period.label||'')+': '+fmtD(d.period.from)+' – '+fmtDY(d.period.to)+'</div>';
+    if(d.priorPeriod)h+='<div style="font-size:12px;color:var(--grey);margin-top:4px">vs. Prior: '+fmtD(d.priorPeriod.from)+' – '+fmtD(d.priorPeriod.to)+'</div>';
+    if(d.priorMonthPeriod)h+='<div style="font-size:12px;color:var(--grey);margin-top:2px">vs. Last Month: '+fmtD(d.priorMonthPeriod.from)+' – '+fmtD(d.priorMonthPeriod.to)+'</div>';
+  }
+  h+='</div>';
+  // Routing-rule reminder banner
+  h+='<div style="background:linear-gradient(135deg,#F1E4FE 0%,#FAF5FE 100%);border:1px solid rgba(139,92,246,.30);border-radius:10px;padding:10px 14px;margin-bottom:20px;font-size:11px;color:var(--navy);line-height:1.5"><strong style="color:#7C3AED">Routing rule:</strong> all sub-10K brands (Pre-launch / 0-10K / Very Small) funnel through webinars · all 10K+ brands funnel through standard demo booking (round robin). Clicks + spend are shared (one CTA form routes); spend is allocated proportionally by form-fills.</div>';
+
+  // ── Section 1 · Side-by-side funnels ──
+  // Stage card helper — number + label + conversion-from-previous-stage badge
+  function _stageCard(stage,name,count,prevCount,priorCount,lmCount,extra){
+    const convPct = prevCount!=null && prevCount>0 ? (count/prevCount*100) : null;
+    return '<div style="background:var(--white);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:14px">'+
+      '<div style="width:24px;height:24px;border-radius:50%;background:rgba(114,164,191,.12);color:var(--teal);font-family:var(--font-h);font-weight:700;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+stage+'</div>'+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="font-size:11px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">'+name+'</div>'+
+        '<div style="font-family:var(--font-h);font-size:22px;font-weight:700;color:var(--navy);line-height:1.1">'+_fN(count)+'</div>'+
+        (extra?'<div style="font-size:10px;color:var(--grey);margin-top:2px">'+extra+'</div>':'')+
+      '</div>'+
+      (convPct!=null?'<div style="background:rgba(114,164,191,.10);color:var(--teal);font-weight:700;font-family:var(--font-h);font-size:11px;padding:4px 10px;border-radius:99px;flex-shrink:0" title="Conversion from previous stage">'+convPct.toFixed(1)+'%</div>':'')+
+    '</div>';
+  }
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">';
+  // Webinar column
+  h+='<div style="background:#FAF5FE;border:1px solid rgba(139,92,246,.30);border-radius:12px;padding:14px 16px">';
+  h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid rgba(139,92,246,.20)"><div style="width:8px;height:8px;background:#7C3AED;border-radius:50%"></div><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">Webinar Funnel</div><div style="font-size:11px;color:var(--grey)">(Sub-10K brands)</div></div>';
+  h+='<div style="display:flex;flex-direction:column;gap:8px">';
+  h+=_stageCard('1','Clicks',cur.clicks||0,null,prior&&prior.clicks,pm&&pm.clicks,'<em>shared with demo funnel</em>');
+  h+=_stageCard('2','Registered',w.registered||0,cur.clicks||0);
+  h+=_stageCard('3','Attended',w.attended||0,w.registered||0);
+  h+=_stageCard('4','No-show',w.noShow||0,w.registered||0,null,null,'past-dated webinars not attended');
+  // Stage 5 — Closed Won + baseline pill
+  const wAttCw=w.attended>0?(w.closedWon||0)/w.attended*100:null;
+  const baselineHtml='<div style="display:inline-flex;align-items:center;gap:6px;background:rgba(245,158,11,.10);color:#B45309;font-size:10px;font-weight:600;padding:2px 8px;border-radius:99px;margin-left:6px" title="Editable baseline · click to edit">Target: <span data-orig="'+baseline+'" onclick="wpEditBaseline(this)" style="cursor:text;font-weight:700">'+baseline+'</span>%</div>';
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:14px">'+
+    '<div style="width:24px;height:24px;border-radius:50%;background:rgba(22,163,74,.12);color:#16A34A;font-family:var(--font-h);font-weight:700;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0">5</div>'+
+    '<div style="flex:1;min-width:0">'+
+      '<div style="font-size:11px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Closed Won '+baselineHtml+'</div>'+
+      '<div style="font-family:var(--font-h);font-size:22px;font-weight:700;color:var(--navy);line-height:1.1">'+_fN(w.closedWon||0)+'</div>'+
+      '<div style="font-size:10px;color:var(--grey);margin-top:2px">attendees with ≥1 closed-won deal</div>'+
+    '</div>'+
+    (wAttCw!=null?'<div style="background:'+(wAttCw>=baseline?'rgba(22,163,74,.12)':'rgba(220,38,38,.10)')+';color:'+(wAttCw>=baseline?'#16A34A':'#DC2626')+';font-weight:700;font-family:var(--font-h);font-size:11px;padding:4px 10px;border-radius:99px;flex-shrink:0" title="Attended → Closed Won %">'+wAttCw.toFixed(1)+'%</div>':'')+
+  '</div>';
+  h+='</div></div>';
+  // Demo column
+  h+='<div style="background:#F7FAFB;border:1px solid rgba(114,164,191,.30);border-radius:12px;padding:14px 16px">';
+  h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid rgba(114,164,191,.20)"><div style="width:8px;height:8px;background:var(--teal);border-radius:50%"></div><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">Demo Funnel</div><div style="font-size:11px;color:var(--grey)">(10K+ brands · round robin)</div></div>';
+  h+='<div style="display:flex;flex-direction:column;gap:8px">';
+  h+=_stageCard('1','Clicks',cur.clicks||0,null,null,null,'<em>shared with webinar funnel</em>');
+  h+=_stageCard('2','Booked',dm.booked||0,cur.clicks||0);
+  h+=_stageCard('3','Held',dm.held||0,dm.booked||0);
+  h+=_stageCard('4','No-show / Cancelled',dm.noShow||0,dm.booked||0);
+  h+=_stageCard('5','Qualified',dm.qualified||0,dm.held||0);
+  h+=_stageCard('6','Closed Won',dm.closedWon||0,dm.qualified||0);
+  h+='</div></div>';
+  h+='</div>';
+
+  // ── Section 2 · Comparison table ──
+  function _row(label,webinarVal,demoVal,fmt){
+    const wStr=fmt==='$'?_f$(webinarVal):(webinarVal==null?'—':_fN(webinarVal));
+    const dStr=fmt==='$'?_f$(demoVal):(demoVal==null?'—':_fN(demoVal));
+    return '<tr><td style="padding:8px 12px;color:var(--grey);font-weight:600">'+label+'</td><td style="padding:8px 12px;text-align:right;font-family:var(--font-h);font-weight:700;color:#7C3AED">'+wStr+'</td><td style="padding:8px 12px;text-align:right;font-family:var(--font-h);font-weight:700;color:var(--teal)">'+dStr+'</td></tr>';
+  }
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:20px">';
+  h+='<div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:10px">Side-by-Side Comparison</div>';
+  h+='<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="border-bottom:2px solid var(--border)"><th style="text-align:left;padding:8px 12px;font-size:10px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em">Metric</th><th style="text-align:right;padding:8px 12px;font-size:10px;color:#7C3AED;text-transform:uppercase;letter-spacing:.04em">Webinar (Sub-10K)</th><th style="text-align:right;padding:8px 12px;font-size:10px;color:var(--teal);text-transform:uppercase;letter-spacing:.04em">Demo (10K+)</th></tr></thead><tbody>';
+  // Total Clicks spans both columns since the pool is shared (one CTA form
+  // routes by web traffic tier — clicks aren't pre-segmented at the ad level).
+  h+='<tr><td style="padding:8px 12px;color:var(--grey);font-weight:600">Total Clicks</td><td colspan="2" style="padding:8px 12px;text-align:center;font-family:var(--font-h);font-weight:700;color:var(--navy)">'+_fN(cur.clicks||0)+' <span style="font-size:10px;color:var(--grey);font-weight:500">(shared pool — one CTA form)</span></td></tr>';
+  h+=_row('Registered / Booked',w.registered||0,dm.booked||0);
+  h+=_row('Attended / Held',w.attended||0,dm.held||0);
+  h+=_row('Qualified',null,dm.qualified||0);
+  h+=_row('Closed Won',w.closedWon||0,dm.closedWon||0);
+  h+=_row('Spend Allocated',w.allocatedSpend||0,dm.allocatedSpend||0,'$');
+  h+='<tr><td style="padding:8px 12px;color:var(--grey);font-weight:600">Cost per Closed Won</td>'+
+    '<td style="padding:8px 12px;text-align:right;font-family:var(--font-h);font-weight:700;color:#7C3AED">'+(w.closedWon>0?_f$(w.allocatedSpend/w.closedWon):'—')+'</td>'+
+    '<td style="padding:8px 12px;text-align:right;font-family:var(--font-h);font-weight:700;color:var(--teal)">'+(dm.closedWon>0?_f$(dm.allocatedSpend/dm.closedWon):'—')+'</td></tr>';
+  h+='<tr><td style="padding:8px 12px;color:var(--grey);font-weight:600">% of total paid spend</td>'+
+    '<td style="padding:8px 12px;text-align:right;font-family:var(--font-h);font-weight:700;color:#7C3AED">'+_pct(w.spendSharePct)+'</td>'+
+    '<td style="padding:8px 12px;text-align:right;font-family:var(--font-h);font-weight:700;color:var(--teal)">'+_pct(dm.spendSharePct)+'</td></tr>';
+  h+='</tbody></table>';
+  h+='</div>';
+
+  // ── Section 3 · Conversion-rate + CPA tiles ──
+  const cur_r=(cur.clicks>0?(w.registered/cur.clicks*100):null);
+  const cur_a=(w.registered>0?(w.attended/w.registered*100):null);
+  const cur_cw=wAttCw;
+  const prior_r=(pw&&prior&&prior.clicks>0?(pw.registered/prior.clicks*100):null);
+  const prior_a=(pw&&pw.registered>0?(pw.attended/pw.registered*100):null);
+  const prior_cw=(pw&&pw.attended>0?(pw.closedWon/pw.attended*100):null);
+  const lm_r=(lw&&pm&&pm.clicks>0?(lw.registered/pm.clicks*100):null);
+  const lm_a=(lw&&lw.registered>0?(lw.attended/lw.registered*100):null);
+  const lm_cw=(lw&&lw.attended>0?(lw.closedWon/lw.attended*100):null);
+  const cur_db=(cur.clicks>0?(dm.booked/cur.clicks*100):null);
+  const cur_dh=(dm.booked>0?(dm.held/dm.booked*100):null);
+  const cur_dq=(dm.held>0?(dm.qualified/dm.held*100):null);
+  const cur_dcw=(dm.qualified>0?(dm.closedWon/dm.qualified*100):null);
+  const prior_db=(pd&&prior&&prior.clicks>0?(pd.booked/prior.clicks*100):null);
+  const prior_dh=(pd&&pd.booked>0?(pd.held/pd.booked*100):null);
+  const prior_dq=(pd&&pd.held>0?(pd.qualified/pd.held*100):null);
+  const prior_dcw=(pd&&pd.qualified>0?(pd.closedWon/pd.qualified*100):null);
+  const lm_db=(ld&&pm&&pm.clicks>0?(ld.booked/pm.clicks*100):null);
+  const lm_dh=(ld&&ld.booked>0?(ld.held/ld.booked*100):null);
+  const lm_dq=(ld&&ld.held>0?(ld.qualified/ld.held*100):null);
+  const lm_dcw=(ld&&ld.qualified>0?(ld.closedWon/ld.qualified*100):null);
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">';
+  // Webinar conversion + CPA panel
+  h+='<div style="background:#FAF5FE;border:1px solid rgba(139,92,246,.20);border-radius:12px;padding:14px 16px">';
+  h+='<div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy);margin-bottom:10px">Webinar — Conversion & Cost</div>';
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">';
+  h+=_tile('Click → Registered',_pct(cur_r),cur_r,prior_r,lm_r,'%',{borderLeft:'#7C3AED'});
+  h+=_tile('Registered → Attended',_pct(cur_a),cur_a,prior_a,lm_a,'%',{borderLeft:'#7C3AED'});
+  h+=_tile('Attended → Closed Won',_pct(cur_cw),cur_cw,prior_cw,lm_cw,'%',{borderLeft:'#7C3AED',extra:'baseline '+baseline+'%'});
+  h+=_tile('Cost / Registered',w.registered>0?_f$(w.allocatedSpend/w.registered):'—',w.registered>0?w.allocatedSpend/w.registered:null,pw&&pw.registered>0?pw.allocatedSpend/pw.registered:null,lw&&lw.registered>0?lw.allocatedSpend/lw.registered:null,'$',{borderLeft:'#7C3AED',inv:true});
+  h+=_tile('Cost / Attended',w.attended>0?_f$(w.allocatedSpend/w.attended):'—',w.attended>0?w.allocatedSpend/w.attended:null,pw&&pw.attended>0?pw.allocatedSpend/pw.attended:null,lw&&lw.attended>0?lw.allocatedSpend/lw.attended:null,'$',{borderLeft:'#7C3AED',inv:true});
+  h+=_tile('Cost / Closed Won',w.closedWon>0?_f$(w.allocatedSpend/w.closedWon):'—',w.closedWon>0?w.allocatedSpend/w.closedWon:null,pw&&pw.closedWon>0?pw.allocatedSpend/pw.closedWon:null,lw&&lw.closedWon>0?lw.allocatedSpend/lw.closedWon:null,'$',{borderLeft:'#7C3AED',inv:true});
+  h+='</div></div>';
+  // Demo conversion + CPA panel
+  h+='<div style="background:#F7FAFB;border:1px solid rgba(114,164,191,.20);border-radius:12px;padding:14px 16px">';
+  h+='<div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy);margin-bottom:10px">Demo — Conversion & Cost</div>';
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">';
+  h+=_tile('Click → Booked',_pct(cur_db),cur_db,prior_db,lm_db,'%',{borderLeft:'var(--teal)'});
+  h+=_tile('Booked → Held',_pct(cur_dh),cur_dh,prior_dh,lm_dh,'%',{borderLeft:'var(--teal)'});
+  h+=_tile('Held → Qualified',_pct(cur_dq),cur_dq,prior_dq,lm_dq,'%',{borderLeft:'var(--teal)'});
+  h+=_tile('Qualified → Closed Won',_pct(cur_dcw),cur_dcw,prior_dcw,lm_dcw,'%',{borderLeft:'var(--teal)'});
+  h+=_tile('Cost / Booked',dm.booked>0?_f$(dm.allocatedSpend/dm.booked):'—',dm.booked>0?dm.allocatedSpend/dm.booked:null,pd&&pd.booked>0?pd.allocatedSpend/pd.booked:null,ld&&ld.booked>0?ld.allocatedSpend/ld.booked:null,'$',{borderLeft:'var(--teal)',inv:true});
+  h+=_tile('Cost / Closed Won',dm.closedWon>0?_f$(dm.allocatedSpend/dm.closedWon):'—',dm.closedWon>0?dm.allocatedSpend/dm.closedWon:null,pd&&pd.closedWon>0?pd.allocatedSpend/pd.closedWon:null,ld&&ld.closedWon>0?ld.allocatedSpend/ld.closedWon:null,'$',{borderLeft:'var(--teal)',inv:true});
+  h+='</div></div>';
+  h+='</div>';
+
+  // ── Section 4 · Rep capacity (today, real-time) ──
+  const rc=d.repCapacity||{};const perRep=rc.perRep||[];
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:20px">';
+  h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">Rep Capacity — Today</div><div style="font-size:11px;color:var(--grey)">'+(rc.today||'')+' · '+(rc.capacityPerRep||10)+'/day capacity · real-time, ignores selector</div></div>';
+  const avgLT=rc.avgLeadTimeDays;
+  // Aggregate cards
+  let totalBooked=0,totalHeld=0;perRep.forEach(r=>{totalBooked+=r.booked;totalHeld+=r.held;});
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px">';
+  h+='<div style="background:rgba(114,164,191,.04);border:1px solid var(--border);border-radius:10px;padding:12px"><div style="font-size:10px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em">Booked today</div><div style="font-family:var(--font-h);font-size:24px;font-weight:700;color:var(--navy);margin-top:2px">'+totalBooked+'</div><div style="font-size:10px;color:var(--grey)">across Ash, Eisa, Elias, James</div></div>';
+  h+='<div style="background:rgba(22,163,74,.04);border:1px solid var(--border);border-radius:10px;padding:12px"><div style="font-size:10px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em">Held today</div><div style="font-family:var(--font-h);font-size:24px;font-weight:700;color:var(--navy);margin-top:2px">'+totalHeld+'</div><div style="font-size:10px;color:var(--grey)">demos that have already happened today</div></div>';
+  h+='<div style="background:rgba(139,92,246,.04);border:1px solid var(--border);border-radius:10px;padding:12px"><div style="font-size:10px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em">Avg calendar lead time</div><div style="font-family:var(--font-h);font-size:24px;font-weight:700;color:var(--navy);margin-top:2px">'+(avgLT!=null?avgLT.toFixed(1)+'d':'—')+'</div><div style="font-size:10px;color:var(--grey)">create→demo over '+(rc.leadTimeSampleSize||0)+' booked deals (selector window)</div></div>';
+  h+='</div>';
+  // Per-rep utilization bars
+  h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">';
+  for(const r of perRep){
+    const u=Math.min(100,r.utilizationPct||0);
+    const barColor=u>=80?'#16A34A':(u>=50?'#F59E0B':'#9CA3AF');
+    h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:10px;padding:10px 12px">'+
+      '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px">'+
+        '<div style="font-family:var(--font-h);font-size:12px;font-weight:700;color:var(--navy)">'+r.rep+'</div>'+
+        '<div style="font-size:11px;color:var(--grey)">'+r.held+'/'+rc.capacityPerRep+'</div>'+
+      '</div>'+
+      '<div style="height:8px;background:rgba(114,164,191,.08);border-radius:99px;overflow:hidden;margin-bottom:4px"><div style="height:100%;background:'+barColor+';width:'+u+'%;border-radius:99px;transition:width .3s"></div></div>'+
+      '<div style="font-size:10px;color:var(--grey)">'+r.booked+' booked · '+u.toFixed(0)+'% utilization</div>'+
+    '</div>';
+  }
+  h+='</div>';
+  h+='</div>';
+
+  el.innerHTML=h;
+}
+
+async function refreshData(){const btn=document.getElementById('rfb');if(btn){btn.classList.add('loading');btn.textContent='↻ Refreshing...';}if(AP==='signup'){await fdSignup();}else if(AP==='csession'){S.analyzer.data=null;await fdAnalyzer(S.analyzer.win||S.dashboard?.win||'mtd');}else if(AP==='webinarPerf'){S.webinarPerf.data=null;await fdWebinarPerf(S.webinarPerf.win||'mtd');}else{await fd(S[AP].win||'mtd');if(AP==='irfan')await fdSpecial1();}if(btn){btn.classList.remove('loading');btn.textContent='↻ Refresh';}}
 
 // Nav
 function toggleSidebar(){document.querySelector('.sidebar').classList.toggle('open');document.getElementById('sidebarOverlay').classList.toggle('open');}
@@ -1252,7 +1533,7 @@ function switchPage(pg){AP=pg;document.querySelectorAll('.ni').forEach(n=>n.clas
     return;
   }
   if(!S[pg].data){if(pg==='signup')fd('mtd');else if(pg==='content'){fdContent();return;}else fd(S[pg].win);return;}renderPage();}
-function renderPage(){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));if(AP==='dashboard')renderDash();else if(AP==='irfan')renderIrfan();else if(AP==='calculator')updCalc();else if(AP==='signup')renderSignUp();else if(AP==='strategy')renderStrategy();else if(AP==='demoQuality')renderDemoQuality();else if(AP==='csession')renderCreativeSession();else if(AP==='content')renderContent();else if(AP==='outbound')renderOutbound();document.getElementById('page-'+AP).classList.add('active');const d=S[AP].data;if(d){const ts=d.meta?.generatedAt;if(ts)document.getElementById('fts').textContent='Updated '+new Date(ts).toLocaleString();if(d.meta?.dataQuality&&!d.meta.dataQuality.complete)document.getElementById('dqb').classList.add('vis');}}
+function renderPage(){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));if(AP==='dashboard')renderDash();else if(AP==='irfan')renderIrfan();else if(AP==='calculator')updCalc();else if(AP==='signup')renderSignUp();else if(AP==='strategy')renderStrategy();else if(AP==='demoQuality')renderDemoQuality();else if(AP==='webinarPerf')renderWebinarPerf();else if(AP==='csession')renderCreativeSession();else if(AP==='content')renderContent();else if(AP==='outbound')renderOutbound();document.getElementById('page-'+AP).classList.add('active');const d=S[AP].data;if(d){const ts=d.meta?.generatedAt;if(ts)document.getElementById('fts').textContent='Updated '+new Date(ts).toLocaleString();if(d.meta?.dataQuality&&!d.meta.dataQuality.complete)document.getElementById('dqb').classList.add('vis');}}
 
 // ═══════════════ EXECUTIVE DASHBOARD ═══════════════
 function renderDash(){
@@ -5453,10 +5734,10 @@ async function loadOutbound(){
 function switchDashSub(sub){
   S.dashboard.sub=sub;
   // Map sub to AP
-  var apMap={overview:'dashboard',irfan:'irfan',signup:'signup',calculator:'calculator',strategy:'strategy',demoQuality:'demoQuality',outbound:'outbound'};
+  var apMap={overview:'dashboard',irfan:'irfan',signup:'signup',calculator:'calculator',strategy:'strategy',demoQuality:'demoQuality',outbound:'outbound',webinarPerf:'webinarPerf'};
   AP=apMap[sub]||'dashboard';
   // Update titles
-  var titleMap={overview:'Detailed Dashboard',irfan:'Irfan Dashboard',signup:'Sign-Up Rate',calculator:'ARR Calculator',strategy:'Monthly Review',demoQuality:'Demo Quality',outbound:'Outbound Sequences'};
+  var titleMap={overview:'Detailed Dashboard',irfan:'Irfan Dashboard',signup:'Sign-Up Rate',calculator:'ARR Calculator',strategy:'Monthly Review',demoQuality:'Demo Quality',outbound:'Outbound Sequences',webinarPerf:'Webinar Performance'};
   document.getElementById('ptitle').textContent=titleMap[sub]||'Executive Dashboard';
   // Highlight nav items
   document.querySelectorAll('.snav>.ni').forEach(n=>n.classList.toggle('active',n.dataset.page==='dashboard'));
@@ -5468,6 +5749,7 @@ function switchDashSub(sub){
   document.querySelector('.sidebar').classList.remove('open');document.getElementById('sidebarOverlay').classList.remove('open');
   bldF();
   if(AP==='outbound'){loadOutbound();return;}
+  if(AP==='webinarPerf'){if(!S.webinarPerf.data)fdWebinarPerf(S.webinarPerf.win||'mtd');else renderPage();return;}
   if(!S[AP].data){
     if(AP==='strategy'){renderPage();return;}
     if(AP==='signup')fdSignup();
