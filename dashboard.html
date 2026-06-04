@@ -752,7 +752,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s10';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s11';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -1400,8 +1400,7 @@ function renderWebinarPerf(){
   h+=_stageCard('2','Booked',dm.booked||0,cur.clicks||0);
   h+=_stageCard('3','Held',dm.held||0,dm.booked||0);
   h+=_stageCard('4','No-show / Cancelled',dm.noShow||0,dm.booked||0);
-  h+=_stageCard('5','Qualified',dm.qualified||0,dm.held||0);
-  h+=_stageCard('6','Closed Won',dm.closedWon||0,dm.qualified||0);
+  h+=_stageCard('5','Closed Won',dm.closedWon||0,dm.held||0);
   h+='</div></div>';
   h+='</div>';
 
@@ -1419,7 +1418,6 @@ function renderWebinarPerf(){
   h+='<tr><td style="padding:8px 12px;color:var(--grey);font-weight:600">Total Clicks</td><td colspan="2" style="padding:8px 12px;text-align:center;font-family:var(--font-h);font-weight:700;color:var(--navy)">'+_fN(cur.clicks||0)+' <span style="font-size:10px;color:var(--grey);font-weight:500">(shared pool — one CTA form)</span></td></tr>';
   h+=_row('Registered / Booked',w.registered||0,dm.booked||0);
   h+=_row('Attended / Held',w.attended||0,dm.held||0);
-  h+=_row('Qualified',null,dm.qualified||0);
   h+=_row('Closed Won',w.closedWon||0,dm.closedWon||0);
   h+=_row('Spend Allocated',w.allocatedSpend||0,dm.allocatedSpend||0,'$');
   h+='<tr><td style="padding:8px 12px;color:var(--grey);font-weight:600">Cost per Closed Won</td>'+
@@ -1443,16 +1441,15 @@ function renderWebinarPerf(){
   const lm_cw=(lw&&lw.attended>0?(lw.closedWon/lw.attended*100):null);
   const cur_db=(cur.clicks>0?(dm.booked/cur.clicks*100):null);
   const cur_dh=(dm.booked>0?(dm.held/dm.booked*100):null);
-  const cur_dq=(dm.held>0?(dm.qualified/dm.held*100):null);
-  const cur_dcw=(dm.qualified>0?(dm.closedWon/dm.qualified*100):null);
+  // Held → Closed Won (collapsed from prior Held → Qualified → CW since
+  // Qualified was removed from the demo funnel display)
+  const cur_dcw=(dm.held>0?(dm.closedWon/dm.held*100):null);
   const prior_db=(pd&&prior&&prior.clicks>0?(pd.booked/prior.clicks*100):null);
   const prior_dh=(pd&&pd.booked>0?(pd.held/pd.booked*100):null);
-  const prior_dq=(pd&&pd.held>0?(pd.qualified/pd.held*100):null);
-  const prior_dcw=(pd&&pd.qualified>0?(pd.closedWon/pd.qualified*100):null);
+  const prior_dcw=(pd&&pd.held>0?(pd.closedWon/pd.held*100):null);
   const lm_db=(ld&&pm&&pm.clicks>0?(ld.booked/pm.clicks*100):null);
   const lm_dh=(ld&&ld.booked>0?(ld.held/ld.booked*100):null);
-  const lm_dq=(ld&&ld.held>0?(ld.qualified/ld.held*100):null);
-  const lm_dcw=(ld&&ld.qualified>0?(ld.closedWon/ld.qualified*100):null);
+  const lm_dcw=(ld&&ld.held>0?(ld.closedWon/ld.held*100):null);
   h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">';
   // Webinar conversion + CPA panel
   h+='<div style="background:#FAF5FE;border:1px solid rgba(139,92,246,.20);border-radius:12px;padding:14px 16px">';
@@ -1468,12 +1465,20 @@ function renderWebinarPerf(){
   // Demo conversion + CPA panel
   h+='<div style="background:#F7FAFB;border:1px solid rgba(114,164,191,.20);border-radius:12px;padding:14px 16px">';
   h+='<div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy);margin-bottom:10px">Demo — Conversion & Cost</div>';
-  h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">';
+  // 2-col grid so each conversion-rate tile sits directly next to its
+  // matching cost-per-stage tile (Click→Booked | Cost/Booked, etc.).
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
+  // Tile order:
+  //   Click → Booked     |  Cost / Booked
+  //   Booked → Held      |  Cost / Held      (NEW — sits next to Booked → Held)
+  //   Held → Closed Won  |  Cost / Closed Won
+  // (3-row × 2-col grid — first column is the conversion rate flowing down
+  // the funnel, second column is the CPA for each stage at the same row.)
   h+=_tile('Click → Booked',_pct(cur_db),cur_db,prior_db,lm_db,'%',{borderLeft:'var(--teal)'});
-  h+=_tile('Booked → Held',_pct(cur_dh),cur_dh,prior_dh,lm_dh,'%',{borderLeft:'var(--teal)'});
-  h+=_tile('Held → Qualified',_pct(cur_dq),cur_dq,prior_dq,lm_dq,'%',{borderLeft:'var(--teal)'});
-  h+=_tile('Qualified → Closed Won',_pct(cur_dcw),cur_dcw,prior_dcw,lm_dcw,'%',{borderLeft:'var(--teal)'});
   h+=_tile('Cost / Booked',dm.booked>0?_f$(dm.allocatedSpend/dm.booked):'—',dm.booked>0?dm.allocatedSpend/dm.booked:null,pd&&pd.booked>0?pd.allocatedSpend/pd.booked:null,ld&&ld.booked>0?ld.allocatedSpend/ld.booked:null,'$',{borderLeft:'var(--teal)',inv:true});
+  h+=_tile('Booked → Held',_pct(cur_dh),cur_dh,prior_dh,lm_dh,'%',{borderLeft:'var(--teal)'});
+  h+=_tile('Cost / Held',dm.held>0?_f$(dm.allocatedSpend/dm.held):'—',dm.held>0?dm.allocatedSpend/dm.held:null,pd&&pd.held>0?pd.allocatedSpend/pd.held:null,ld&&ld.held>0?ld.allocatedSpend/ld.held:null,'$',{borderLeft:'var(--teal)',inv:true});
+  h+=_tile('Held → Closed Won',_pct(cur_dcw),cur_dcw,prior_dcw,lm_dcw,'%',{borderLeft:'var(--teal)'});
   h+=_tile('Cost / Closed Won',dm.closedWon>0?_f$(dm.allocatedSpend/dm.closedWon):'—',dm.closedWon>0?dm.allocatedSpend/dm.closedWon:null,pd&&pd.closedWon>0?pd.allocatedSpend/pd.closedWon:null,ld&&ld.closedWon>0?ld.allocatedSpend/ld.closedWon:null,'$',{borderLeft:'var(--teal)',inv:true});
   h+='</div></div>';
   h+='</div>';
@@ -1691,7 +1696,10 @@ function renderDash(){
   const demosHeldFull=esM.demosHeldCount||0;
   const demosHeldFullPV=esM.pDemosHeldCount==null?null:esM.pDemosHeldCount;
   const demosHeldFullLMV=esM.pmDemosHeldCount==null?null:esM.pmDemosHeldCount;
-  const demosHeldScale=esM.demosHeldScaleCount||0;
+  // True CPQD denominator — prefer the stricter count (excl. Pre-launch +
+  // 0-10K + Very Small) when the worker exposes it, fall back to the legacy
+  // scale count (excl. pre-launch only).
+  const demosHeldScale=(esM.demosHeldStrictCount!=null?esM.demosHeldStrictCount:esM.demosHeldScaleCount)||0;
   const demosHeldScalePV=esM.pDemosHeldScaleCount==null?null:esM.pDemosHeldScaleCount;
   const demosHeldScaleLMV=esM.pmDemosHeldScaleCount==null?null:esM.pmDemosHeldScaleCount;
   const totalScheduled=d.demoTracking.totalScheduled?.value||0;
@@ -1791,15 +1799,18 @@ function renderDash(){
   const _esE=d.executiveSummary||{};
   const tCpd=_esE.trueCpd?.value,tCpdPV=_esE.trueCpd?.sameTimePrior?.value,tCpdLMV=_esE.trueCpd?.lastMonth?.value;
   const tCpqd=_esE.totalTrueCpqd?.value,tCpqdPV=_esE.totalTrueCpqd?.sameTimePrior?.value,tCpqdLMV=_esE.totalTrueCpqd?.lastMonth?.value;
-  const _scaleSched=Math.max(0,(em.totalScheduled||em.totalWD||0)-(ltmeta.lowTraffic||0));
+  // True CPD / True CPQD denominators now exclude "small brands"
+  // (Pre-launch + 0-10K + Very Small). Falls back to the legacy pre-launch
+  // exclusion if the new low10K field isn't on the payload yet.
+  const _scaleSched=Math.max(0,(em.totalScheduled||em.totalWD||0)-((ltmeta.low10K!=null?ltmeta.low10K:ltmeta.lowTraffic)||0));
   // True CPD row: main card (True CPD) + mini card (regular CPD)
   oh+='<div style="display:grid;grid-template-columns:1.6fr 1fr;gap:8px;margin-bottom:10px">';
-  oh+=statRow('True CPD','Total ad spend \u00f7 Demos excluding pre-launch',tCpd!=null?f$(tCpd):'\u2014',`${f$(em.totalSpend||0)} \u00f7 ${fN(_scaleSched)}`,tCpd,tCpdPV,tCpdLMV,'$',{inv:true,noMargin:true,highlighted:true});
+  oh+=statRow('True CPD','Ad spend \u00f7 Demos excl. small brands',tCpd!=null?f$(tCpd):'\u2014',`${f$(em.totalSpend||0)} \u00f7 ${fN(_scaleSched)}`,tCpd,tCpdPV,tCpdLMV,'$',{inv:true,noMargin:true,highlighted:true});
   oh+=miniCard('CPD',cpd!=null?f$(cpd):'\u2014',`${f$(em.totalSpend||0)} \u00f7 ${fN(em.totalScheduled||em.totalWD||0)}`,cpd,cpdPV,cpdLMV,'$',true);
   oh+='</div>';
   // True CPQD row: main card + mini regular CPQD
   oh+='<div style="display:grid;grid-template-columns:1.6fr 1fr;gap:8px;margin-bottom:10px">';
-  oh+=statRow('True CPQD','Total ad spend \u00f7 Demos held excluding pre-launch',tCpqd!=null?f$(tCpqd):'\u2014',`${f$(em.totalSpend||0)} \u00f7 ${fN(demosHeldScale)}`,tCpqd,tCpqdPV,tCpqdLMV,'$',{inv:true,noMargin:true,highlighted:true});
+  oh+=statRow('True CPQD','Ad spend \u00f7 Demos held excl. small brands',tCpqd!=null?f$(tCpqd):'\u2014',`${f$(em.totalSpend||0)} \u00f7 ${fN(demosHeldScale)}`,tCpqd,tCpqdPV,tCpqdLMV,'$',{inv:true,noMargin:true,highlighted:true});
   oh+=miniCard('CPQD',cpqd!=null?f$(cpqd):'\u2014',`${f$(em.totalSpend||0)} \u00f7 ${fN(demosHeldFull)} held`,cpqd,cpqdPV,cpqdLMV,'$',true);
   oh+='</div>';
   // Paid ads CAC: full-width card
@@ -1932,7 +1943,7 @@ function renderDash(){
   let th='';
   th+=trendItem('Paid ad spend','Sum of spend across all paid channels',f$(cSpend));
   th+=trendItem('Demos held (excl. pre-launch)','Demo Given orig + resched, excluding pre-launch brands',fN(demosHeldScale));
-  th+=trendItem('True CPQD','Total ad spend \u00f7 Demos held excluding pre-launch',tCpqd!=null?f$(tCpqd):'\u2014');
+  th+=trendItem('True CPQD','Ad spend \u00f7 Demos held excl. small brands',tCpqd!=null?f$(tCpqd):'\u2014');
   th+=trendItem('Signed brands','Closed-won deals by closedate',fN(dealCount));
   th+=trendItem('Paid ads CAC','Total ad spend \u00f7 Closed-won deals',cac!=null?f$(cac):'\u2014');
   th+=trendItem('ACV','New MRR \u00f7 Closed-won deals',acv!=null?f$(acv):'\u2014');
@@ -1997,9 +2008,12 @@ function renderIrfan(){
   const noShowRate=dt.noShowRateScale?.value;const noShowPV=dt.noShowRateScale?.sameTimePrior?.value;const noShowLMV=dt.noShowRateScale?.lastMonth?.value;
 
   // ─ Numerator/denominator values for KPI calc subtext ─
+  // True CPD / True CPQD denominators exclude "small brands" (Pre-launch +
+  // 0-10K + Very Small). Falls back to pre-launch-only counts if the worker
+  // hasn't deployed the new fields yet.
   const _totalSpend=esM.totalSpend||0;
-  const _scaleSched=Math.max(0,(esM.totalScheduled||esM.totalWD||0)-(ltmeta.lowTraffic||0));
-  const _demosHeldScale=esM.demosHeldScaleCount||0;
+  const _scaleSched=Math.max(0,(esM.totalScheduled||esM.totalWD||0)-((ltmeta.low10K!=null?ltmeta.low10K:ltmeta.lowTraffic)||0));
+  const _demosHeldScale=(esM.demosHeldStrictCount!=null?esM.demosHeldStrictCount:esM.demosHeldScaleCount)||0;
   // Numerator + denominator for the TIGHT cohort (KPI #3 % Pruned).
   const _cancelledBefore=qmeta.cancelledBeforeDemoCountTight||0;
   const _pruneDenom=qmeta.pruneDenomTight||0;
@@ -2018,7 +2032,7 @@ function renderIrfan(){
   h+='<div class="irf-sec-title">Daily Trend & Web-Traffic Mix</div>';
   h+='<div style="display:grid;grid-template-columns:1.6fr 1fr;gap:16px;margin-bottom:28px">';
   // 1a — Demos Booked per Day (matches Overview). Reuses renderDemosPerDay for mini KPI cards + hover.
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div class="irf-card-title">Demos Booked per Day</div><div class="irf-card-sub">Contacts created with date_demo_booked set · excludes pre-launch &amp; 0-10K web traffic tiers · average line shows daily mean</div><div id="irfan-daily-wrap"></div></div>';
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div class="irf-card-title">Demos Booked per Day</div><div class="irf-card-sub">Contacts created with date_demo_booked set · excludes small brands (Pre-launch &amp; 0-10K web traffic tiers) · average line shows daily mean</div><div id="irfan-daily-wrap"></div></div>';
   // 1b — Demos and Webinars Booked by Web-Traffic Range (donut, with % labels + hover)
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div class="irf-card-title">Demos and Webinars Booked by Web-Traffic Range</div><div class="irf-card-sub">% of demos booked in each tier · ordered Pre-launch → 500K+ clockwise</div><div id="irfan-wt-pie"></div></div>';
   h+='</div>';
@@ -2027,9 +2041,9 @@ function renderIrfan(){
   h+='<div class="irf-sec-title">Key Metrics</div>';
   h+='<div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-bottom:28px">';
   // 2.1 True CPD
-  h+=`<div class="tile hero" style="border-left:3px solid var(--teal)"><div class="tlbl">True CPD</div><div class="tval">${tCpd!=null?f$(tCpd):'—'}</div><div class="tdef" style="margin-top:4px">Ad spend ÷ Demos excl. pre-launch</div>${_irCalc(f$(_totalSpend)+' ÷ '+fN(_scaleSched))}${_irTileFooter(tCpd,tCpdPV,tCpdLMV,'$',true)}</div>`;
+  h+=`<div class="tile hero" style="border-left:3px solid var(--teal)"><div class="tlbl">True CPD</div><div class="tval">${tCpd!=null?f$(tCpd):'—'}</div><div class="tdef" style="margin-top:4px">Ad spend ÷ Demos excl. small brands</div>${_irCalc(f$(_totalSpend)+' ÷ '+fN(_scaleSched))}${_irTileFooter(tCpd,tCpdPV,tCpdLMV,'$',true)}</div>`;
   // 2.2 True CPQD
-  h+=`<div class="tile hero" style="border-left:3px solid var(--teal)"><div class="tlbl">True CPQD</div><div class="tval">${tCpqd!=null?f$(tCpqd):'—'}</div><div class="tdef" style="margin-top:4px">Ad spend ÷ Demos held excl. pre-launch</div>${_irCalc(f$(_totalSpend)+' ÷ '+fN(_demosHeldScale))}${_irTileFooter(tCpqd,tCpqdPV,tCpqdLMV,'$',true)}</div>`;
+  h+=`<div class="tile hero" style="border-left:3px solid var(--teal)"><div class="tlbl">True CPQD</div><div class="tval">${tCpqd!=null?f$(tCpqd):'—'}</div><div class="tdef" style="margin-top:4px">Ad spend ÷ Demos held excl. small brands</div>${_irCalc(f$(_totalSpend)+' ÷ '+fN(_demosHeldScale))}${_irTileFooter(tCpqd,tCpqdPV,tCpqdLMV,'$',true)}</div>`;
   // 2.3 % Pruned — full orange border when >20%, teal accent when ≤20%
   const _pruneWarn=pruneRate!=null&&pruneRate>20;
   const _pruneStyle=_pruneWarn?'border:2px solid #F59E0B':'border-left:3px solid var(--teal)';
@@ -4037,9 +4051,10 @@ function renderDemosPerDay(d, targetId){
   function fmtDC(cur,prev,fmt,inv,dec){if(cur==null||prev==null)return '<span style="color:var(--grey);font-size:10px">\u2014</span>';var nd=cur-prev;var pd=prev!==0?((cur-prev)/prev)*100:null;var arrow=nd>=0?'\u2191':'\u2193';var positive=nd>0;var good=inv?!positive:positive;var color=nd===0?'var(--grey)':(good?'var(--green)':'var(--red)');var nStr=nfmt(nd,fmt,dec);var pStr=pd!=null?'('+(pd>=0?'+':'')+pd.toFixed(1)+'%)':'';return '<span style="color:'+color+';font-size:10px;font-weight:600">'+arrow+' '+nStr+' '+pStr+'</span>';}
   const tileDeltaBlock=(cur,p,l,fmt,dec)=>`<div style="font-size:10px;line-height:1.5;margin-top:4px"><div style="display:flex;gap:6px;align-items:baseline"><span style="color:var(--grey);min-width:42px;font-size:10px">vs prior</span>${fmtDC(cur,p,fmt,false,dec)}</div><div style="display:flex;gap:6px;align-items:baseline"><span style="color:var(--grey);min-width:42px;font-size:10px">vs LM</span>${fmtDC(cur,l,fmt,false,dec)}</div></div>`;
   let h='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px">';
-  const _bookedLabel=_isScale?'Demos Booked (excl. pre-launch & 0-10K)':'Demos Booked';
-  h+=`<div class="tile accent" title="${_isScale?'Excludes pre-launch / just-launching AND 0-10K web traffic brands':''}"><div class="tlbl">${_bookedLabel}</div><div class="tval">${fN(total)}</div>${tileDeltaBlock(total,priorTotal,lmTotal,'#')}</div>`;
-  h+=`<div class="tile" title="Average across Mon–Fri only (weekend bookings excluded)"><div class="tlbl">Weekday Avg</div><div class="tval">${avg.toFixed(1)}</div>${tileDeltaBlock(avg,priorAvg,lmAvg,'',1)}</div>`;
+  const _bookedLabel=_isScale?'Demos Booked (excl. small brands)':'Demos Booked';
+  const _avgLabel=_isScale?'Weekday Avg (excl. small brands)':'Weekday Avg';
+  h+=`<div class="tile accent" title="${_isScale?'Excludes Pre-launch / just-launching AND 0-10K web traffic brands (collectively "small brands")':''}"><div class="tlbl">${_bookedLabel}</div><div class="tval">${fN(total)}</div>${tileDeltaBlock(total,priorTotal,lmTotal,'#')}</div>`;
+  h+=`<div class="tile" title="${_isScale?'Average across Mon–Fri only (weekend bookings excluded) · excludes small brands':'Average across Mon–Fri only (weekend bookings excluded)'}"><div class="tlbl">${_avgLabel}</div><div class="tval">${avg.toFixed(1)}</div>${tileDeltaBlock(avg,priorAvg,lmAvg,'',1)}</div>`;
   h+='</div>';
   if(!days.length){h+='<div style="color:var(--grey);font-size:12px">No daily data</div>';_target.innerHTML=h;return;}
   const mx=Math.max(...days.map(x=>x.count),1),avgTop=220*(1-avg/mx);

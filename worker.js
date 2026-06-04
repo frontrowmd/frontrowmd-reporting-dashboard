@@ -994,8 +994,14 @@ function processPipelineDeals(deals, winFromUTC, winToUTC, winFromET, winToET, l
   // Scale-tier QDG: Demo Given (orig + resched) where matched contact's web traffic is NOT Pre-launch.
   // Used by Total True CPQD KPI on the Executive Overview page.
   let demoGivenScaleCount=0, noShowScaleCount=0;
+  // Stricter scale-tier counter — excludes BOTH pre-launch AND 0-10K AND
+  // Very Small (= "small brands"). Uses the deal-level cloned web-traffic
+  // property directly so it doesn't depend on contact-side company-name
+  // matching. Drives the new True CPD / True CPQD calcs (excl. small brands).
+  let demoGivenStrictCount=0;
   let qualifiedRawCount=0, disqualifiedRawCount=0, notYetEvalCount=0;
   let qualifiedRawScaleCount=0;  // Qualified count excluding Pre-launch brands (denominator for Total True CPQD)
+  const SMALL_BRAND_TIERS = new Set(['Pre-launch / just launching','0-10K monthly web visitors','Very Small']);
   let staleScheduledCount=0;  // Scheduled — pending with date_demo_booked in the past
   let cancelledBeforeDemoCount=0;  // Prune Rate numerator: demo_attendance_status = 'Cancelled before demo'
   // Tight-cohort counts for Irfan KPI #3 "% Pruned": only deals where BOTH
@@ -1055,6 +1061,11 @@ function processPipelineDeals(deals, winFromUTC, winToUTC, winFromET, winToET, l
     // Scale-tier QDG: Demo Given (orig + resched) excluding pre-launch brands
     if (att === 'Demo Given (originally scheduled)' || att === 'Demo Given (rescheduled)') {
       if (!isLow) demoGivenScaleCount++;
+      // Stricter version: also exclude 0-10K + Very Small via the deal's own
+      // web-traffic tier. The lowSet path above can miss 0-10K because the
+      // contact-side `lowTrafficCompanies` set is pre-launch-only.
+      const dealWT = p.average_monthly_web_traffic__cloned_ || '';
+      if (!isLow && !SMALL_BRAND_TIERS.has(dealWT)) demoGivenStrictCount++;
     }
     // Scale-tier No Show: No Show excluding pre-launch brands (used to compute Demos Held excl pre-launch)
     if (att === 'No Show') {
@@ -1173,7 +1184,7 @@ function processPipelineDeals(deals, winFromUTC, winToUTC, winFromET, winToET, l
     rescheduledCount, noShowCount, tooEarlyByCat, tooSmallByCat, prunedByCat,
     pendingEvalCount, pendingCount, qualRateDenom,
     // New raw counts surfaced for dashboards
-    totalExtended, demoGivenOrigCount, demoGivenReschedCount, demoGivenScaleCount, noShowScaleCount,
+    totalExtended, demoGivenOrigCount, demoGivenReschedCount, demoGivenScaleCount, demoGivenStrictCount, noShowScaleCount,
     qualifiedRawCount, disqualifiedRawCount, notYetEvalCount, qualifiedRawScaleCount,
     staleScheduledCount, cancelledBeforeDemoCount, pruneDenom,
     cancelledBeforeDemoCountTight, pruneDenomTightSettled, pruneRateTight,
@@ -1652,11 +1663,15 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
   const totalScheduled = c.scheduled.total || 0;
   const totalQual = c.pipeline.qualifiedCount || 0; // legacy — used elsewhere
   // CPQD denominator: Demos Held = Demo Given (orig) + Demo Given (resched) — No Show excluded
-  // True CPQD denominator: Demos Held excluding Pre-launch brands
+  // True CPQD denominator: Demos Held excluding "small brands" (Pre-launch + 0-10K + Very Small)
   const demosHeldCount = (c.pipeline.demoGivenOrigCount||0) + (c.pipeline.demoGivenReschedCount||0);
   const demosHeldScaleCount = (c.pipeline.demoGivenScaleCount||0);
+  // Stricter held count — excludes pre-launch + 0-10K + Very Small via the
+  // deal-level web traffic property. Falls back to demoGivenScaleCount if
+  // the stricter counter isn't populated yet (pre-deploy compat).
+  const demosHeldStrictCount = (c.pipeline.demoGivenStrictCount!=null ? c.pipeline.demoGivenStrictCount : demosHeldScaleCount);
   const totalQualified = demosHeldCount;       // CPQD denominator → Demos Held
-  const totalQualifiedScale = demosHeldScaleCount; // True CPQD denominator → Demos Held excl. pre-launch
+  const totalQualifiedScale = demosHeldStrictCount; // True CPQD denominator → Demos Held excl. small brands
   const cpdTotal = totalScheduled > 0 ? totalSpend/totalScheduled : null;
   const cpqdTotal = totalQualified > 0 ? totalSpend/totalQualified : null;
   const trueCpqdTotal = totalQualifiedScale > 0 ? totalSpend/totalQualifiedScale : null;
@@ -1667,13 +1682,13 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
   const pTotalQ = prior ? (p.pipeline?.qualifiedCount||0) : 0;
   // CPQD/True CPQD prior period denominators use Demos Held counts (orig + resched, no-show excluded)
   const pTotalQual = prior ? ((p.pipeline?.demoGivenOrigCount||0) + (p.pipeline?.demoGivenReschedCount||0)) : 0;
-  const pTotalQualScale = prior ? (p.pipeline?.demoGivenScaleCount||0) : 0;
+  const pTotalQualScale = prior ? (p.pipeline?.demoGivenStrictCount!=null ? p.pipeline.demoGivenStrictCount : (p.pipeline?.demoGivenScaleCount||0)) : 0;
   const pmTotalS = pm.adSpend?.total?.spend||0;
   const pmTotalWD = pm.adSpend?.total?.windsorDemos||0;
   const pmTotalSch = priorMonth ? (pm.scheduled?.total||0) : 0;
   const pmTotalQ = priorMonth ? (pm.pipeline?.qualifiedCount||0) : 0;
   const pmTotalQual = priorMonth ? ((pm.pipeline?.demoGivenOrigCount||0) + (pm.pipeline?.demoGivenReschedCount||0)) : 0;
-  const pmTotalQualScale = priorMonth ? (pm.pipeline?.demoGivenScaleCount||0) : 0;
+  const pmTotalQualScale = priorMonth ? (pm.pipeline?.demoGivenStrictCount!=null ? pm.pipeline.demoGivenStrictCount : (pm.pipeline?.demoGivenScaleCount||0)) : 0;
 
   const executiveSummary = {
     totalDemosScheduled: buildTile(c.scheduled.total, p.scheduled?.total??null, pm.scheduled?.total??null, 'Contacts created in period with date_demo_booked set'),
@@ -1681,10 +1696,10 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
     qualificationRate: buildTile(c.pipeline.qualificationRate, p.pipeline?.qualificationRate??null, pm.pipeline?.qualificationRate??null, 'Qualified ÷ Demos Held (Demo Given orig + resched)'),
     disqualificationRate: buildTile(c.pipeline.disqualificationRate, p.pipeline?.disqualificationRate??null, pm.pipeline?.disqualificationRate??null, 'Disqualified ÷ (Qualified + Disqualified)'),
     totalCpqd: buildTile(cpqdTotal, prior&&pTotalQual>0?pTotalS/pTotalQual:null, priorMonth&&pmTotalQual>0?pmTotalS/pmTotalQual:null, 'Total Ad Spend ÷ Demos Held (Demo Given orig + resched)'),
-    totalTrueCpqd: buildTile(trueCpqdTotal, prior&&pTotalQualScale>0?pTotalS/pTotalQualScale:null, priorMonth&&pmTotalQualScale>0?pmTotalS/pmTotalQualScale:null, 'Total Ad Spend ÷ Demos Held excluding Pre-launch'),
+    totalTrueCpqd: buildTile(trueCpqdTotal, prior&&pTotalQualScale>0?pTotalS/pTotalQualScale:null, priorMonth&&pmTotalQualScale>0?pmTotalS/pmTotalQualScale:null, 'Total Ad Spend ÷ Demos Held excl. small brands (Pre-launch + 0-10K)'),
     totalQualifiedDemos: buildTile(c.pipeline.qualifiedRawCount||0, p.pipeline?.qualifiedRawCount??null, pm.pipeline?.qualifiedRawCount??null, 'Deals with demo_qualification_outcome = Qualified'),
     pruneRate: buildTile(c.pipeline.pruneRate||0, p.pipeline?.pruneRate??null, pm.pipeline?.pruneRate??null, 'Cancelled before demo ÷ (Demo Given orig + Demo Given resched + No Show + Cancelled before demo)'),
-    _meta: { totalSpend, totalWD, totalScheduled, totalQual, totalQualified, totalQualifiedScale, demosHeldCount, demosHeldScaleCount, closedWonCount: c.closedWon.count, closedWonMRR: c.closedWon.mrr, pClosedWonCount: p.closedWon?.count??null, pClosedWonMRR: p.closedWon?.mrr??null, pmClosedWonCount: pm.closedWon?.count??null, pmClosedWonMRR: pm.closedWon?.mrr??null, pTotalSpend: pTotalS, pmTotalSpend: pmTotalS, pDemosHeldCount: prior?((p.pipeline?.demoGivenOrigCount||0)+(p.pipeline?.demoGivenReschedCount||0)):null, pmDemosHeldCount: priorMonth?((pm.pipeline?.demoGivenOrigCount||0)+(pm.pipeline?.demoGivenReschedCount||0)):null, pDemosHeldScaleCount: prior?(p.pipeline?.demoGivenScaleCount||0):null, pmDemosHeldScaleCount: priorMonth?(pm.pipeline?.demoGivenScaleCount||0):null },
+    _meta: { totalSpend, totalWD, totalScheduled, totalQual, totalQualified, totalQualifiedScale, demosHeldCount, demosHeldScaleCount, demosHeldStrictCount, closedWonCount: c.closedWon.count, closedWonMRR: c.closedWon.mrr, pClosedWonCount: p.closedWon?.count??null, pClosedWonMRR: p.closedWon?.mrr??null, pmClosedWonCount: pm.closedWon?.count??null, pmClosedWonMRR: pm.closedWon?.mrr??null, pTotalSpend: pTotalS, pmTotalSpend: pmTotalS, pDemosHeldCount: prior?((p.pipeline?.demoGivenOrigCount||0)+(p.pipeline?.demoGivenReschedCount||0)):null, pmDemosHeldCount: priorMonth?((pm.pipeline?.demoGivenOrigCount||0)+(pm.pipeline?.demoGivenReschedCount||0)):null, pDemosHeldScaleCount: prior?(p.pipeline?.demoGivenScaleCount||0):null, pmDemosHeldScaleCount: priorMonth?(pm.pipeline?.demoGivenScaleCount||0):null },
   };
   // Low-traffic demo metrics
   const lowTraffic = c.scheduled.lowTrafficCount || 0;
@@ -1707,13 +1722,19 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
     low10KPrior: p.scheduled?.low10KCount ?? null,
     low10KLastMonth: pm.scheduled?.low10KCount ?? null,
   };
-  const qualifiedDemos = totalScheduled - lowTraffic;
+  // True CPD denominator now excludes "small brands" — Pre-launch AND 0-10K
+  // AND Very Small. Falls back to pre-launch-only exclusion if the worker
+  // hasn't yet computed low10KCount (shouldn't happen post-deploy).
+  const _low10K = c.scheduled.low10KCount != null ? c.scheduled.low10KCount : lowTraffic;
+  const _pLow10K = p.scheduled?.low10KCount != null ? p.scheduled.low10KCount : pLowTraffic;
+  const _pmLow10K = pm.scheduled?.low10KCount != null ? pm.scheduled.low10KCount : pmLowTraffic;
+  const qualifiedDemos = totalScheduled - _low10K;
   const trueCpd = qualifiedDemos > 0 ? totalSpend / qualifiedDemos : null;
-  const pQualDemos = pLowTraffic != null ? (p.scheduled?.total||0) - pLowTraffic : null;
+  const pQualDemos = _pLow10K != null ? (p.scheduled?.total||0) - _pLow10K : null;
   const pTrueCpd = pQualDemos != null && pQualDemos > 0 && pTotalS > 0 ? pTotalS / pQualDemos : null;
-  const pmQualDemos = pmLowTraffic != null ? (pm.scheduled?.total||0) - pmLowTraffic : null;
+  const pmQualDemos = _pmLow10K != null ? (pm.scheduled?.total||0) - _pmLow10K : null;
   const pmTrueCpd = pmQualDemos != null && pmQualDemos > 0 && pmTotalS > 0 ? pmTotalS / pmQualDemos : null;
-  executiveSummary.trueCpd = buildTile(trueCpd, pTrueCpd, pmTrueCpd, 'Total Ad Spend ÷ Demos (excluding Pre-launch)');
+  executiveSummary.trueCpd = buildTile(trueCpd, pTrueCpd, pmTrueCpd, 'Total Ad Spend ÷ Demos excl. small brands (Pre-launch + 0-10K)');
 
   // ── Web Performance (guide Section 2 + Section 10 — CVR uses HubSpot demos / users) ──
   const cvr = c.ga4.users > 0 ? (c.scheduled.total / c.ga4.users) * 100 : 0;
