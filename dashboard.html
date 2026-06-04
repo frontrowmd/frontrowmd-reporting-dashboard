@@ -752,7 +752,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s14';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s15';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -1287,12 +1287,22 @@ async function fdWebinarPerf(win, from, to, vsFrom, vsTo){
   const body = { password: PW, window: win };
   if(from)body.from=from; if(to)body.to=to; if(vsFrom)body.vsFrom=vsFrom; if(vsTo)body.vsTo=vsTo;
   try{
+    const _t0=performance.now();
     const r = await fetch(WP_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d = await r.json();
+    const _ms=Math.round(performance.now()-_t0);
     if(!r.ok || d.error){
+      console.error('[Webinar Perf] '+_ms+'ms · HTTP '+r.status,d);
       if(el)el.innerHTML='<div style="padding:60px;text-align:center;color:var(--red);font-size:13px">Failed to load: '+(d.detail||d.error||('HTTP '+r.status))+'</div>';
       return;
     }
+    // Diagnostic — surfaces the raw shape of the response so a "page loads
+    // with all zeros" failure mode is debuggable from the console.
+    var _c=d.current||{},_w=_c.webinar||{},_dm=_c.demo||{};
+    console.log('[Webinar Perf] '+_ms+'ms · clicks='+(_c.clicks||0)+' spend=$'+(_c.spend||0).toFixed(0)
+      +' · webinar(reg='+(_w.registered||0)+',att='+(_w.attended||0)+',cw='+(_w.closedWon||0)+')'
+      +' · demo(booked='+(_dm.booked||0)+',held='+(_dm.held||0)+',cw='+(_dm.closedWon||0)+')'
+      +' · rep_capacity_per_rep='+JSON.stringify((d.repCapacity||{}).perRep||[]));
     S.webinarPerf.data = d;
     renderPage();
   }catch(e){
@@ -5942,7 +5952,11 @@ function switchDashSub(sub){
   document.querySelector('.sidebar').classList.remove('open');document.getElementById('sidebarOverlay').classList.remove('open');
   bldF();
   if(AP==='outbound'){loadOutbound();return;}
-  if(AP==='webinarPerf'){if(!S.webinarPerf.data)fdWebinarPerf(S.webinarPerf.win||'mtd');else renderPage();return;}
+  // Webinar Performance: always trigger a fresh fetch on nav click. A
+  // previous "skip if data exists" check could leave the user stuck on
+  // an empty/zero response from an earlier failed fetch — switching to
+  // the page should always pull fresh numbers.
+  if(AP==='webinarPerf'){fdWebinarPerf(S.webinarPerf.win||'mtd');return;}
   if(!S[AP].data){
     if(AP==='strategy'){renderPage();return;}
     if(AP==='signup')fdSignup();
