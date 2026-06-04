@@ -1150,14 +1150,13 @@ function processPipelineDeals(deals, winFromUTC, winToUTC, winFromET, winToET, l
   const pendingEvalCount = byCat.pendingEval || 0;
   const pendingCount = byCat.pending || 0;
 
-  // Qualification Rate = Qualified / (Qualified + Disqualified) — new field model
-  // qualRateDenom now uses Demos Held (orig + resched + no-show) per dashboard spec.
-  // Old denom (qualified + disqualified) preserved as legacy for any code still expecting it.
-  const qualRateDenomLegacy = qualifiedRawCount + disqualifiedRawCount;
-  const disqualificationRate = qualRateDenomLegacy > 0 ? (disqualifiedRawCount / qualRateDenomLegacy) * 100 : 0;
-  // qualRateDenom = Demos Held = orig + resched (no-show excluded — they didn't actually happen)
-  const _heldForQual = demoGivenOrigCount + demoGivenReschedCount;
-  const qualRateDenom = _heldForQual;
+  // Qualification Rate = Qualified ÷ (Qualified + Disqualified)
+  // (Was briefly switched to Qualified ÷ Demos Held — reverted per user spec
+  // so the rate isn't depressed by demos whose qual outcome is still
+  // "Not yet evaluated".)
+  const qualRateDenom = qualifiedRawCount + disqualifiedRawCount;
+  const qualRateDenomLegacy = qualRateDenom; // kept as alias for downstream readers
+  const disqualificationRate = qualRateDenom > 0 ? (disqualifiedRawCount / qualRateDenom) * 100 : 0;
   const qualificationRate = qualRateDenom > 0 ? (qualifiedRawCount / qualRateDenom) * 100 : 0;
 
   // No Show Rate = No Show / (Demo Given Orig + Demo Given Resched + No Show) — new field model
@@ -1693,7 +1692,7 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
   const executiveSummary = {
     totalDemosScheduled: buildTile(c.scheduled.total, p.scheduled?.total??null, pm.scheduled?.total??null, 'Contacts created in period with date_demo_booked set'),
     totalCpd: buildTile(cpdTotal, prior&&pTotalSch>0?pTotalS/pTotalSch:null, priorMonth&&pmTotalSch>0?pmTotalS/pmTotalSch:null, 'Total Ad Spend ÷ New Demos Scheduled'),
-    qualificationRate: buildTile(c.pipeline.qualificationRate, p.pipeline?.qualificationRate??null, pm.pipeline?.qualificationRate??null, 'Qualified ÷ Demos Held (Demo Given orig + resched)'),
+    qualificationRate: buildTile(c.pipeline.qualificationRate, p.pipeline?.qualificationRate??null, pm.pipeline?.qualificationRate??null, 'Qualified ÷ (Qualified + Disqualified)'),
     disqualificationRate: buildTile(c.pipeline.disqualificationRate, p.pipeline?.disqualificationRate??null, pm.pipeline?.disqualificationRate??null, 'Disqualified ÷ (Qualified + Disqualified)'),
     totalCpqd: buildTile(cpqdTotal, prior&&pTotalQual>0?pTotalS/pTotalQual:null, priorMonth&&pmTotalQual>0?pmTotalS/pmTotalQual:null, 'Total Ad Spend ÷ Demos Held (Demo Given orig + resched)'),
     totalTrueCpqd: buildTile(trueCpqdTotal, prior&&pTotalQualScale>0?pTotalS/pTotalQualScale:null, priorMonth&&pmTotalQualScale>0?pmTotalS/pmTotalQualScale:null, 'Total Ad Spend ÷ Demos Held excl. small brands (Pre-launch + 0-10K)'),
@@ -3408,7 +3407,7 @@ async function processAzRequest(windowType, customFrom, customTo, env, vsFrom, v
 // Shares a single click + spend pool at the top (one form-fill router; can't
 // pre-segment clicks). Spend is ALLOCATED proportionally by form-fills
 // (registrations + bookings) so per-funnel CPAs are meaningful.
-const WEBINAR_PERF_REPS = ['Ash', 'Eisa', 'Elias', 'James'];
+const WEBINAR_PERF_REPS = ['Ashley', 'Eisa', 'Elias', 'James'];
 const WEBINAR_PERF_DAILY_CAPACITY = 10;
 const WEBINAR_PERF_SUB10K_TIERS = new Set(['Pre-launch / just launching', '0-10K monthly web visitors', 'Very Small']);
 const WEBINAR_BASELINE_KV_KEY = 'webinar_attended_to_cw_baseline_pct';

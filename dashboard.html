@@ -532,9 +532,9 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
       <div id="dash-submenu" style="display:block;padding-left:24px">
         <div class="ni sub active" onclick="switchDashSub('irfan')" data-page="irfan" data-sub="irfan"><span class="ic" style="font-size:12px">⭐</span><span>Irfan Dashboard</span></div>
         <div class="ni sub" onclick="switchDashSub('overview')" data-page="dashboard" data-sub="overview"><span class="ic" style="font-size:12px">📊</span><span>Detailed Dashboard</span></div>
+        <div class="ni sub" onclick="switchDashSub('webinarPerf')" data-page="webinarPerf" data-sub="webinarPerf"><span class="ic" style="font-size:12px">🎥</span><span>Webinar Performance</span></div>
         <div class="ni sub" onclick="switchDashSub('signup')" data-page="dashboard" data-sub="signup"><span class="ic" style="font-size:12px">📋</span><span>Sign-Up Rate</span></div>
         <div class="ni sub" onclick="switchDashSub('demoQuality')" data-page="demoQuality" data-sub="demoQuality"><span class="ic" style="font-size:12px">🎯</span><span>Demo Quality</span></div>
-        <div class="ni sub" onclick="switchDashSub('webinarPerf')" data-page="webinarPerf" data-sub="webinarPerf"><span class="ic" style="font-size:12px">🎥</span><span>Webinar Performance</span></div>
         <div class="ni sub" onclick="switchDashSub('outbound')" data-page="outbound" data-sub="outbound"><span class="ic" style="font-size:12px">📨</span><span>Outbound</span></div>
         <div class="ni sub" onclick="switchPage('csession')" data-page="csession"><span class="ic" style="font-size:12px">🎨</span><span>Creative Session</span></div>
         <div class="ni sub" onclick="switchDashSub('strategy')" data-page="dashboard" data-sub="strategy"><span class="ic" style="font-size:12px">📋</span><span>Monthly Review</span></div>
@@ -752,7 +752,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s12';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s13';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -1238,10 +1238,46 @@ async function fdAnalyzer(win){
 // ─────────────────────────────────────────────────────────────────────
 // Webinar Performance — fetch + render
 // ─────────────────────────────────────────────────────────────────────
+// Page-shaped skeleton for the Webinar Performance page — mirrors the real
+// layout (header + side-by-side funnel + comparison table + conv panels +
+// rep capacity) so the loading state feels like the page is hydrating in
+// place rather than a generic spinner. Shimmer animation reuses the
+// .su-skel-bar class defined for the Irfan/Detailed skeletons.
+function _wpSkeleton(){
+  const bar=(w,h,r)=>'<div class="su-skel-bar" style="width:'+w+';height:'+h+'px;border-radius:'+(r||4)+'px"></div>';
+  const stage=()=>'<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:14px;min-height:80px"><div style="width:32px;height:32px;border-radius:50%;background:rgba(114,164,191,.10);flex-shrink:0"></div><div style="flex:1">'+bar('60%',9,3)+'<div style="height:6px"></div>'+bar('40%',22,4)+'</div>'+bar('74px',38,8)+'</div>';
+  const tile=()=>'<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 14px">'+bar('70%',9,3)+'<div style="height:6px"></div>'+bar('50%',22,4)+'<div style="height:8px"></div>'+bar('90%',7,3)+'<div style="height:4px"></div>'+bar('80%',7,3)+'</div>';
+  const col=(bg,bd)=>'<div style="background:'+bg+';border:1px solid '+bd+';border-radius:12px;padding:16px 18px">'+
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid '+bd+'">'+bar('40%',14,4)+'</div>'+
+    '<div style="display:flex;flex-direction:column;gap:10px">'+stage()+stage()+stage()+stage()+stage()+'</div></div>';
+  let h='';
+  h+='<div style="margin-bottom:24px">'+bar('40%',24,5)+'<div style="height:6px"></div>'+bar('25%',12,3)+'</div>';
+  h+='<div style="background:linear-gradient(135deg,#F1E4FE 0%,#FAF5FE 100%);border:1px solid rgba(139,92,246,.30);border-radius:10px;padding:12px 14px;margin-bottom:20px">'+bar('60%',12,3)+'</div>';
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">'+
+    col('#FAF5FE','rgba(139,92,246,.30)')+col('#F7FAFB','rgba(114,164,191,.30)')+'</div>';
+  // Comparison table skeleton
+  h+='<div style="background:#fff;border:1px solid var(--border);border-radius:12px;margin-bottom:24px;overflow:hidden">'+
+    '<div style="padding:18px 22px;background:linear-gradient(135deg,#FAF5FE 0%,#F7FAFB 100%);border-bottom:1px solid var(--border)">'+bar('35%',18,4)+'</div>'+
+    '<div style="padding:14px 22px">'+
+      ['','','','','','',''].map(()=>'<div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:14px;padding:10px 0;border-bottom:1px solid var(--border)">'+bar('80%',12,3)+bar('50%',16,4)+bar('50%',16,4)+'</div>').join('')+
+    '</div></div>';
+  // Conv & cost panels skeleton
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">';
+  for(let i=0;i<2;i++)h+='<div style="background:'+(i===0?'#FAF5FE':'#F7FAFB')+';border:1px solid '+(i===0?'rgba(139,92,246,.20)':'rgba(114,164,191,.20)')+';border-radius:12px;padding:14px 16px">'+bar('40%',13,4)+'<div style="height:10px"></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+tile()+tile()+tile()+tile()+tile()+tile()+'</div></div>';
+  h+='</div>';
+  // Rep capacity skeleton
+  h+='<div style="background:#fff;border:1px solid var(--border);border-radius:12px;margin-bottom:24px;overflow:hidden">'+
+    '<div style="padding:18px 22px;background:linear-gradient(135deg,rgba(22,163,74,.06) 0%,rgba(124,58,237,.06) 100%);border-bottom:1px solid var(--border)">'+bar('30%',18,4)+'</div>'+
+    '<div style="padding:18px 22px">'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:18px">'+tile()+tile()+tile()+'</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">'+tile()+tile()+tile()+tile()+'</div>'+
+    '</div></div>';
+  return h;
+}
 async function fdWebinarPerf(win, from, to, vsFrom, vsTo){
   win = win || S.webinarPerf.win || 'mtd';
   S.webinarPerf.win = win;
-  const el = document.getElementById('wp-c'); if(el)el.innerHTML='<div style="padding:60px;text-align:center;color:var(--grey);font-size:13px"><span class="sp" style="width:18px;height:18px;display:inline-block;vertical-align:middle"></span> &nbsp;Loading webinar performance…</div>';
+  const el = document.getElementById('wp-c'); if(el)el.innerHTML=_wpSkeleton();
   // Show the page so loading state is visible
   document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));
   document.getElementById('page-webinarPerf').classList.add('active');
@@ -1523,12 +1559,24 @@ function renderWebinarPerf(){
   '</div>';
   const avgLT=rc.avgLeadTimeDays;
   let totalBooked=0,totalHeld=0;perRep.forEach(r=>{totalBooked+=r.booked;totalHeld+=r.held;});
+  // Team utilization = avg of per-rep utilization% (booked / 10 capped).
+  // Counts ALL four reps including those with zero bookings (a rep at 0/10
+  // pulls the team avg down — which is the honest team-level picture).
+  const teamUtilization=perRep.length>0
+    ?(perRep.reduce(function(s,r){return s+(r.utilizationPct||0);},0)/perRep.length)
+    :null;
+  // Color the team util card by the same band thresholds as the per-rep
+  // pills: >=80% green, >=50% amber, else teal.
+  const teamUtilColor=teamUtilization==null?'var(--teal)':(teamUtilization>=80?'#16A34A':(teamUtilization>=50?'#B45309':'var(--teal)'));
+  const teamUtilBg=teamUtilization==null?'rgba(114,164,191,.05)':(teamUtilization>=80?'rgba(22,163,74,.05)':(teamUtilization>=50?'rgba(245,158,11,.05)':'rgba(114,164,191,.05)'));
+  const teamUtilBorder=teamUtilization==null?'rgba(114,164,191,.15)':(teamUtilization>=80?'rgba(22,163,74,.15)':(teamUtilization>=50?'rgba(245,158,11,.15)':'rgba(114,164,191,.15)'));
   h+='<div style="padding:18px 22px">';
-  // Aggregate cards
-  h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:18px">';
-  h+='<div style="background:rgba(124,58,237,.05);border:1px solid rgba(124,58,237,.15);border-radius:10px;padding:14px 16px"><div style="font-size:10px;color:'+BOOKED_COLOR+';text-transform:uppercase;letter-spacing:.05em;font-weight:700">Booked today</div><div style="font-family:var(--font-h);font-size:28px;font-weight:700;color:var(--navy);margin-top:3px;line-height:1">'+totalBooked+'</div><div style="font-size:10px;color:var(--grey);margin-top:3px">across Ash, Eisa, Elias, James</div></div>';
+  // Aggregate cards — 4 across: Booked, Held, Team Utilization, Avg Lead Time
+  h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px">';
+  h+='<div style="background:rgba(124,58,237,.05);border:1px solid rgba(124,58,237,.15);border-radius:10px;padding:14px 16px"><div style="font-size:10px;color:'+BOOKED_COLOR+';text-transform:uppercase;letter-spacing:.05em;font-weight:700">Booked today</div><div style="font-family:var(--font-h);font-size:28px;font-weight:700;color:var(--navy);margin-top:3px;line-height:1">'+totalBooked+'</div><div style="font-size:10px;color:var(--grey);margin-top:3px">across Ashley, Eisa, Elias, James</div></div>';
   h+='<div style="background:rgba(22,163,74,.05);border:1px solid rgba(22,163,74,.15);border-radius:10px;padding:14px 16px"><div style="font-size:10px;color:'+HELD_COLOR+';text-transform:uppercase;letter-spacing:.05em;font-weight:700">Held today</div><div style="font-family:var(--font-h);font-size:28px;font-weight:700;color:var(--navy);margin-top:3px;line-height:1">'+totalHeld+'</div><div style="font-size:10px;color:var(--grey);margin-top:3px">demos that have already happened today</div></div>';
-  h+='<div style="background:rgba(114,164,191,.05);border:1px solid rgba(114,164,191,.15);border-radius:10px;padding:14px 16px"><div style="font-size:10px;color:var(--teal);text-transform:uppercase;letter-spacing:.05em;font-weight:700">Avg calendar lead time</div><div style="font-family:var(--font-h);font-size:28px;font-weight:700;color:var(--navy);margin-top:3px;line-height:1">'+(avgLT!=null?avgLT.toFixed(1)+'d':'—')+'</div><div style="font-size:10px;color:var(--grey);margin-top:3px">create→demo over '+(rc.leadTimeSampleSize||0)+' booked deals (selector window)</div></div>';
+  h+='<div style="background:'+teamUtilBg+';border:1px solid '+teamUtilBorder+';border-radius:10px;padding:14px 16px"><div style="font-size:10px;color:'+teamUtilColor+';text-transform:uppercase;letter-spacing:.05em;font-weight:700">Team utilization</div><div style="font-family:var(--font-h);font-size:28px;font-weight:700;color:var(--navy);margin-top:3px;line-height:1">'+(teamUtilization!=null?teamUtilization.toFixed(0)+'%':'—')+'</div><div style="font-size:10px;color:var(--grey);margin-top:3px">avg utilization across the 4 reps</div></div>';
+  h+='<div style="background:rgba(114,164,191,.05);border:1px solid rgba(114,164,191,.15);border-radius:10px;padding:14px 16px"><div style="font-size:10px;color:var(--teal);text-transform:uppercase;letter-spacing:.05em;font-weight:700">Avg lead time</div><div style="font-family:var(--font-h);font-size:28px;font-weight:700;color:var(--navy);margin-top:3px;line-height:1">'+(avgLT!=null?avgLT.toFixed(1)+'d':'—')+'</div><div style="font-size:10px;color:var(--grey);margin-top:3px">create→demo over '+(rc.leadTimeSampleSize||0)+' deals</div></div>';
   h+='</div>';
   // Per-rep cards — each with a 2-color bar (held + booked-not-held) over a
   // remaining-capacity background. Utilization label = booked / 10.
@@ -1829,12 +1877,14 @@ function renderDash(){
   const heldScaleCur = qmeta.demoGivenScaleCount||demosHeldScale||0;
   const heldScalePV  = qmeta.demoGivenScaleCountPrior!=null ? qmeta.demoGivenScaleCountPrior : demosHeldScalePV;
   const heldScaleLMV = qmeta.demoGivenScaleCountLastMonth!=null ? qmeta.demoGivenScaleCountLastMonth : demosHeldScaleLMV;
-  // Qualification Rate denominator updated per request to the REGULAR Held
-  // total (Demo Given orig + Demo Given resched, including pre-launch). The
-  // numerator stays as the scale-tier qualified count.
-  const qualRateScale    = demosHeldFull>0 ? (qualScaleCur / demosHeldFull)*100 : null;
-  const qualRateScalePV  = (demosHeldFullPV!=null && demosHeldFullPV>0 && qualScalePV!=null) ? (qualScalePV / demosHeldFullPV)*100 : null;
-  const qualRateScaleLMV = (demosHeldFullLMV!=null && demosHeldFullLMV>0 && qualScaleLMV!=null) ? (qualScaleLMV / demosHeldFullLMV)*100 : null;
+  // Qualification Rate = Qualified ÷ (Qualified + Disqualified) — the
+  // worker now computes this for us (executiveSummary.qualificationRate);
+  // we just consume the value here so the calc-text + delta math stay in
+  // sync with the formula on the Demo Quality page.
+  const qualRateScale    = d.executiveSummary?.qualificationRate?.value;
+  const qualRateScalePV  = d.executiveSummary?.qualificationRate?.sameTimePrior?.value;
+  const qualRateScaleLMV = d.executiveSummary?.qualificationRate?.lastMonth?.value;
+  const qualPlusDisqualCur = (qmeta.qualifiedRawCount||0) + (qmeta.disqualifiedRawCount||0);
 
   oh+='<div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:12px;margin-bottom:24px">';
   oh+=panelOpen('Volume','#3B82F6');
@@ -1845,7 +1895,7 @@ function renderDash(){
   oh+=panelOpen('Quality','#1D9E75');
   oh+=statRow('Prune rate','Cancelled before demo \u00f7 all settled outcomes',prune!=null?prune.toFixed(1)+'%':'\u2014',`${fN(qmeta.cancelledBeforeDemoCount||0)} \u00f7 ${fN(qmeta.pruneDenom||0)}`,prune,prunePV,pruneLMV,'%',{inv:true,warnIf:20});
   oh+=statRow('No-show rate','No Show \u00f7 (Demo Given orig + resched + No Show)',noShow!=null?noShow.toFixed(1)+'%':'\u2014',`${fN(qmeta.noShowCount||0)} \u00f7 ${fN(qmeta.noShowDenom||0)}`,noShow,noShowPV,noShowLMV,'%',{inv:true,warnIf:20});
-  oh+=statRow('Qualification rate','Qualified \u00f7 Demos Held (Demo Given orig + resched)',qualRateScale!=null?qualRateScale.toFixed(1)+'%':'\u2014',`${fN(qualScaleCur)} \u00f7 ${fN(demosHeldFull)}`,qualRateScale,qualRateScalePV,qualRateScaleLMV,'%',{noMargin:true});
+  oh+=statRow('Qualification rate','Qualified \u00f7 (Qualified + Disqualified)',qualRateScale!=null?qualRateScale.toFixed(1)+'%':'\u2014',`${fN(qmeta.qualifiedRawCount||0)} \u00f7 ${fN(qualPlusDisqualCur)}`,qualRateScale,qualRateScalePV,qualRateScaleLMV,'%',{noMargin:true});
   oh+='</div>';
   oh+=panelOpen('Efficiency','#BA7517');
   // True CPD/CPQD priors via executiveSummary tile structure
@@ -1859,7 +1909,23 @@ function renderDash(){
   // True CPD row: main card (True CPD) + mini card (regular CPD)
   oh+='<div style="display:grid;grid-template-columns:1.6fr 1fr;gap:8px;margin-bottom:10px">';
   oh+=statRow('True CPD','Ad spend \u00f7 Demos excl. small brands',tCpd!=null?f$(tCpd):'\u2014',`${f$(em.totalSpend||0)} \u00f7 ${fN(_scaleSched)}`,tCpd,tCpdPV,tCpdLMV,'$',{inv:true,noMargin:true,highlighted:true});
-  oh+=miniCard('CPD',cpd!=null?f$(cpd):'\u2014',`${f$(em.totalSpend||0)} \u00f7 ${fN(em.totalScheduled||em.totalWD||0)}`,cpd,cpdPV,cpdLMV,'$',true);
+  // CPD denominator now includes webinar registrants (the "Demos + Webinars"
+  // total) so the metric covers the full funnel-entry population, not just
+  // demo bookers. Computed client-side from existing payload fields \u2014
+  // d.demoTracking.scheduledByWebTraffic['Very Small'] is the webinar count.
+  const _webCurDW=(d.demoTracking?.scheduledByWebTraffic||{})['Very Small']||0;
+  const _webPriorDW=(d.demoTracking?.scheduledByWebTrafficPrior||{})['Very Small']||0;
+  const _webLMDW=(d.demoTracking?.scheduledByWebTrafficLastMonth||{})['Very Small']||0;
+  const _schCurDW=em.totalScheduled||em.totalWD||0;
+  const _schPriorDW=d.demoTracking?.totalScheduled?.sameTimePrior?.value;
+  const _schLMDW=d.demoTracking?.totalScheduled?.lastMonth?.value;
+  const _denomCurDW=_schCurDW+_webCurDW;
+  const _denomPriorDW=(_schPriorDW!=null)?(_schPriorDW+_webPriorDW):null;
+  const _denomLMDW=(_schLMDW!=null)?(_schLMDW+_webLMDW):null;
+  const _cpdDW=_denomCurDW>0?(em.totalSpend||0)/_denomCurDW:null;
+  const _cpdDWPrior=_denomPriorDW>0&&em.pTotalSpend!=null?em.pTotalSpend/_denomPriorDW:null;
+  const _cpdDWLM=_denomLMDW>0&&em.pmTotalSpend!=null?em.pmTotalSpend/_denomLMDW:null;
+  oh+=miniCard('CPD',_cpdDW!=null?f$(_cpdDW):'\u2014',`${f$(em.totalSpend||0)} \u00f7 ${fN(_denomCurDW)} (Demos + Webinars)`,_cpdDW,_cpdDWPrior,_cpdDWLM,'$',true);
   oh+='</div>';
   // True CPQD row: main card + mini regular CPQD
   oh+='<div style="display:grid;grid-template-columns:1.6fr 1fr;gap:8px;margin-bottom:10px">';
@@ -1893,6 +1959,17 @@ function renderDash(){
   const visitorsPV=d.webPerformance.visitors?.sameTimePrior?.value,visitorsLMV=d.webPerformance.visitors?.lastMonth?.value;
   const demoClicks=wm2.demoClicks||0,demoClicksPV=wm2.demoClicksPrior,demoClicksLMV=wm2.demoClicksLastMonth;
   const scheduled=totalScheduled;
+  // Webinar registrants — surfaced on the Scheduled card + Website CVR
+  // chip as a "Demos + Webinars" split alongside the standard demo counts.
+  const _wbScheduled=(d.demoTracking?.scheduledByWebTraffic||{})['Very Small']||0;
+  const _wbSchedPrior=(d.demoTracking?.scheduledByWebTrafficPrior||{})['Very Small']||0;
+  const _wbSchedLM=(d.demoTracking?.scheduledByWebTrafficLastMonth||{})['Very Small']||0;
+  const _schedDW=scheduled+_wbScheduled;
+  const _schedDWPV=(totalScheduledPV!=null)?(totalScheduledPV+_wbSchedPrior):null;
+  const _schedDWLMV=(totalScheduledLMV!=null)?(totalScheduledLMV+_wbSchedLM):null;
+  const _cvrDW=visitors>0?(_schedDW/visitors*100):null;
+  const _cvrDWPrior=(visitorsPV>0&&_schedDWPV!=null)?(_schedDWPV/visitorsPV*100):null;
+  const _cvrDWLM=(visitorsLMV>0&&_schedDWLMV!=null)?(_schedDWLMV/visitorsLMV*100):null;
   const demosSupposed=qmeta.pruneDenom||0;
   const demosSupposedPV=qmeta.pruneDenomPrior,demosSupposedLMV=qmeta.pruneDenomLastMonth;
   // Conversion Funnel "Qualified" card uses the redefined metric:
@@ -1921,17 +1998,28 @@ function renderDash(){
   const r4=heldScaleCur>0?(qualified/heldScaleCur*100):null;
   const e2e=visitors>0?(qualified/visitors*100):null;
 
-  // Header: section description + Website CVR as a compact chip on the right
+  // Header: section description + Website CVR as a compact chip on the right.
+  // The CVR chip surfaces BOTH values: "Demos" (the existing demo-only rate)
+  // and "Demos + Webinars" (includes Livestorm registrants in the numerator).
   let fh=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:16px;flex-wrap:wrap">
     <div style="font-size:12px;color:var(--grey)">From website traffic to qualified demos</div>
-    <div style="display:inline-flex;align-items:center;gap:12px;background:linear-gradient(135deg,rgba(114,164,191,.05) 0%,rgba(114,164,191,.10) 100%);border:1px solid #A6CDDB;border-radius:8px;padding:8px 14px;box-shadow:inset 3px 0 0 var(--teal)">
-      <div style="display:flex;flex-direction:column;align-items:flex-start;line-height:1">
-        <span style="font-family:var(--font-h);font-size:9px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px">Website CVR</span>
-        <span style="font-family:var(--font-h);font-size:18px;font-weight:700;color:var(--navy);line-height:1">${cvr!=null?cvr.toFixed(2)+'%':'\u2014'}</span>
+    <div style="display:inline-flex;align-items:stretch;gap:0;background:linear-gradient(135deg,rgba(114,164,191,.05) 0%,rgba(114,164,191,.10) 100%);border:1px solid #A6CDDB;border-radius:8px;padding:0;box-shadow:inset 3px 0 0 var(--teal);overflow:hidden">
+      <div style="display:flex;flex-direction:column;align-items:flex-start;line-height:1;padding:8px 14px">
+        <span style="font-family:var(--font-h);font-size:9px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">CVR \u00b7 Demos</span>
+        <span style="font-family:var(--font-h);font-size:18px;font-weight:700;color:var(--navy);line-height:1;margin-bottom:3px">${cvr!=null?cvr.toFixed(2)+'%':'\u2014'}</span>
+        <div style="display:flex;flex-direction:column;font-size:9px;line-height:1.4;gap:1px;width:100%">
+          <div style="display:flex;gap:4px"><span style="color:var(--grey);min-width:38px;flex-shrink:0">vs prior</span>${fmtDC(cvr,cvrPV,'%',false,2)}</div>
+          <div style="display:flex;gap:4px"><span style="color:var(--grey);min-width:38px;flex-shrink:0">vs LM</span>${fmtDC(cvr,cvrLMV,'%',false,2)}</div>
+        </div>
       </div>
-      <div style="display:flex;flex-direction:column;align-items:flex-start;font-size:10px;line-height:1.4;gap:1px">
-        <div>${fmtDC(cvr,cvrPV,'%',false,2)}</div>
-        <div>${fmtDC(cvr,cvrLMV,'%',false,2)}</div>
+      <div style="width:1px;background:#A6CDDB"></div>
+      <div style="display:flex;flex-direction:column;align-items:flex-start;line-height:1;padding:8px 14px;background:rgba(124,58,237,.04)">
+        <span style="font-family:var(--font-h);font-size:9px;font-weight:700;color:#7C3AED;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">CVR \u00b7 Demos + Webinars</span>
+        <span style="font-family:var(--font-h);font-size:18px;font-weight:700;color:var(--navy);line-height:1;margin-bottom:3px">${_cvrDW!=null?_cvrDW.toFixed(2)+'%':'\u2014'}</span>
+        <div style="display:flex;flex-direction:column;font-size:9px;line-height:1.4;gap:1px;width:100%">
+          <div style="display:flex;gap:4px"><span style="color:var(--grey);min-width:38px;flex-shrink:0">vs prior</span>${fmtDC(_cvrDW,_cvrDWPrior,'%',false,2)}</div>
+          <div style="display:flex;gap:4px"><span style="color:var(--grey);min-width:38px;flex-shrink:0">vs LM</span>${fmtDC(_cvrDW,_cvrDWLM,'%',false,2)}</div>
+        </div>
       </div>
     </div>
   </div>`;
@@ -1942,7 +2030,28 @@ function renderDash(){
   fh+=funnelArrow(r1);
   fh+=funnelStage('Demo clicks',fN(demoClicks),demoClicks,demoClicksPV,demoClicksLMV,'#',false);
   fh+=funnelArrow(r2);
-  fh+=funnelStage('Scheduled',fN(scheduled),scheduled,totalScheduledPV,totalScheduledLMV,'#',false);
+  // Scheduled card — show BOTH numbers: standard demo count (top, navy) and
+  // the Demos + Webinars total (bottom, purple). Built inline since
+  // funnelStageSplit's red theme doesn't fit here.
+  fh+=`<div class="funnel-stage" style="padding:0;background:var(--white);border:1px solid var(--border);border-radius:8px;box-shadow:0 1px 2px rgba(2,15,24,.04);display:flex;flex-direction:column;overflow:hidden">
+    <div style="padding:8px 10px 6px;flex:1">
+      <div style="font-family:var(--font-h);font-size:9px;color:var(--grey);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px">Scheduled · Demos</div>
+      <div style="font-family:var(--font-h);font-size:18px;font-weight:700;color:var(--navy);line-height:1.1;margin-bottom:3px">${fN(scheduled)}</div>
+      <div style="display:flex;flex-direction:column;font-size:9px;line-height:1.4;gap:1px">
+        <div style="display:flex;gap:4px"><span style="color:var(--grey);min-width:38px;flex-shrink:0">vs prior</span>${fmtDC(scheduled,totalScheduledPV,'#')}</div>
+        <div style="display:flex;gap:4px"><span style="color:var(--grey);min-width:38px;flex-shrink:0">vs LM</span>${fmtDC(scheduled,totalScheduledLMV,'#')}</div>
+      </div>
+    </div>
+    <div style="height:1px;background:var(--border)"></div>
+    <div style="padding:6px 10px 8px;background:rgba(124,58,237,.04);flex:1">
+      <div style="font-family:var(--font-h);font-size:9px;color:#7C3AED;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px">+ Webinars</div>
+      <div style="font-family:var(--font-h);font-size:18px;font-weight:700;color:var(--navy);line-height:1.1;margin-bottom:3px">${fN(_schedDW)}</div>
+      <div style="display:flex;flex-direction:column;font-size:9px;line-height:1.4;gap:1px">
+        <div style="display:flex;gap:4px"><span style="color:var(--grey);min-width:38px;flex-shrink:0">vs prior</span>${fmtDC(_schedDW,_schedDWPV,'#')}</div>
+        <div style="display:flex;gap:4px"><span style="color:var(--grey);min-width:38px;flex-shrink:0">vs LM</span>${fmtDC(_schedDW,_schedDWLMV,'#')}</div>
+      </div>
+    </div>
+  </div>`;
   fh+='</div>';
 
   // Sub-flow section divider — replaces the verbose callout bar.
@@ -4517,7 +4626,7 @@ function renderDemoQuality(){try{
   h+=panelOpenC('Quality','#1D9E75');
   h+=statRowC('Prune rate','Cancelled before demo ÷ all settled outcomes',pruneC!=null?pruneC.toFixed(1)+'%':'—',fN(qmetaC.cancelledBeforeDemoCount||0)+' ÷ '+fN(qmetaC.pruneDenom||0),pruneC,pruneCPV,pruneCLMV,'%',{inv:true,warnIf:20});
   h+=statRowC('No-show rate','No Show ÷ (Demo Given orig + resched + No Show)',noShowC!=null?noShowC.toFixed(1)+'%':'—',fN(qmetaC.noShowCount||0)+' ÷ '+fN(qmetaC.noShowDenom||0),noShowC,noShowCPV,noShowCLMV,'%',{inv:true,warnIf:20});
-  h+=statRowC('Qualification rate','Qualified ÷ Demos Held (Demo Given orig + resched)',qualRateC!=null?qualRateC.toFixed(1)+'%':'—',fN(qmetaC.qualifiedRawCount||0)+' ÷ '+fN(demosHeldFullC),qualRateC,qualRateCPV,qualRateCLMV,'%',{noMargin:true});
+  h+=statRowC('Qualification rate','Qualified ÷ (Qualified + Disqualified)',qualRateC!=null?qualRateC.toFixed(1)+'%':'—',fN(qmetaC.qualifiedRawCount||0)+' ÷ '+fN((qmetaC.qualifiedRawCount||0)+(qmetaC.disqualifiedRawCount||0)),qualRateC,qualRateCPV,qualRateCLMV,'%',{noMargin:true});
   h+='</div>';
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding-bottom:10px;border-bottom:1px solid var(--border)"><div style="width:6px;height:6px;background:#9333EA;border-radius:50%"></div><div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy)">Demos Booked by Web-Traffic Range</div></div><div style="font-size:11px;color:var(--grey);margin:6px 0 4px">% of demos booked in each tier · ordered Pre-launch → 500K+ clockwise</div><div id="dq-webtraffic"></div></div>';
   h+='</div>';
