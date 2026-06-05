@@ -752,7 +752,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s16';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s17';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -4100,19 +4100,34 @@ function renderCPDTable(d){
   function cell(value,prior,lm,inv,valCol){var c=valCol||'var(--navy)';return '<div style="font-variant-numeric:tabular-nums;color:'+c+'">'+value+'</div><div style="margin-top:2px">'+cellDelta(prior,lm,inv)+'</div>';}
   var totalSpend=ad.total.value||0;
   var html='<style>.cpd-row:hover td{background:rgba(114,164,191,.10)!important;transition:background .15s ease}</style><table style="width:100%;font-size:12px;border-collapse:collapse;table-layout:fixed">';
-  // 9 cols total. Pacing 10%; Spend (with share chip) 16%; Channel 11%;
-  // metric cols (Demos/CPD/Qual/CPQD/Won/ARR) each ~10-11%. Tweaked to fit.
-  html+='<colgroup><col style="width:11%"><col style="width:10%"><col style="width:16%"><col style="width:9%"><col style="width:9%"><col style="width:9%"><col style="width:10%"><col style="width:8%"><col style="width:11%"></colgroup>';
+  // 10 cols total. Channel narrows since channel labels are short (Meta /
+  // Google / etc); Spend (share) takes the most because it carries the
+  // share-bar + $ value + 2 delta rows. ARR also runs wide because of
+  // 7-figure dollar amounts in delta lines. Padding tightened from 8px 6px
+  // to 7px 4px to claw back per-cell room without losing vertical rhythm.
+  html+='<colgroup>'+
+    '<col style="width:8%">'+   // Channel
+    '<col style="width:10%">'+  // Pacing
+    '<col style="width:9%">'+   // Budget
+    '<col style="width:15%">'+  // Spend (share)
+    '<col style="width:7%">'+   // Demos
+    '<col style="width:10%">'+  // CPD
+    '<col style="width:7%">'+   // Qual
+    '<col style="width:10%">'+  // CPQD
+    '<col style="width:8%">'+   // Won
+    '<col style="width:16%">'+  // ARR
+  '</colgroup>';
   html+='<thead><tr style="border-bottom:1px solid var(--border)">'+
-    '<th style="text-align:left;font-weight:600;color:var(--grey);padding:8px 6px;font-size:11px">Channel</th>'+
-    '<th style="text-align:center;font-weight:600;color:var(--grey);padding:8px 6px;font-size:11px">Pacing</th>'+
-    '<th style="text-align:left;font-weight:600;color:var(--grey);padding:8px 6px;font-size:11px">Spend (share)</th>'+
-    '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 6px;font-size:11px">Demos</th>'+
-    '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 6px;font-size:11px">CPD</th>'+
-    '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 6px;font-size:11px">Qual</th>'+
-    '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 6px;font-size:11px">CPQD</th>'+
-    '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 6px;font-size:11px" title="Closed-won deals attributed via UTMs">Won</th>'+
-    '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 6px;font-size:11px" title="Churn-adjusted ARR from UTM-attributed closed-won deals (MRR \u00d7 effective months)">ARR</th>'+
+    '<th style="text-align:left;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px">Channel</th>'+
+    '<th style="text-align:center;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px">Pacing</th>'+
+    '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px" title="Monthly ad budget for this channel">Budget</th>'+
+    '<th style="text-align:left;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px">Spend (share)</th>'+
+    '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px">Demos</th>'+
+    '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px">CPD</th>'+
+    '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px">Qual</th>'+
+    '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px">CPQD</th>'+
+    '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px" title="Closed-won deals attributed via UTMs">Won</th>'+
+    '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px" title="Churn-adjusted ARR from UTM-attributed closed-won deals (MRR \u00d7 effective months)">ARR</th>'+
     '</tr></thead><tbody>';
   var sumSp=0,sumD=0,sumQ=0,sumW=0,sumMRR=0,pSumSp=0,pSumD=0,pSumQ=0,pSumW=0,pSumMRR=0,pmSumSp=0,pmSumD=0,pmSumQ=0,pmSumW=0,pmSumMRR=0,hasPrior=false,hasPriorMonth=false;
   for(var k in channels){
@@ -4144,18 +4159,24 @@ function renderCPDTable(d){
     var chPaceColor=chBudget===0?'var(--grey)':(chPaceDiff>15?'var(--red)':(chPaceDiff>5?'var(--yellow)':(chPaceDiff<-15?'var(--red)':(chPaceDiff<-5?'var(--yellow)':'var(--green)'))));
     var chPaceDiffStr=chBudget===0?'':((chPaceDiff>=0?'+':'')+chPaceDiff.toFixed(0)+'pp');
     var pacingCell=chBudget===0
-      ?'<td style="padding:8px 4px;text-align:center"><span style="color:var(--grey);font-size:10px">no budget</span></td>'
-      :'<td style="padding:8px 4px"><div style="position:relative;height:6px;background:var(--lighter);border-radius:3px;overflow:visible" title="'+chPctSpent.toFixed(0)+'% spent \u00b7 '+chPctElapsed.toFixed(0)+'% of month elapsed \u00b7 '+chPaceDiffStr+'"><div style="position:absolute;left:0;top:0;height:6px;width:'+Math.min(chPctSpent,100)+'%;background:'+chPaceColor+';border-radius:3px;opacity:.85"></div><div style="position:absolute;left:'+Math.min(chPctElapsed,100)+'%;top:-2px;bottom:-2px;width:1.5px;background:var(--navy)"></div></div><div style="display:flex;justify-content:space-between;font-size:9px;margin-top:3px;line-height:1.2;align-items:baseline"><span style="font-variant-numeric:tabular-nums;color:var(--navy);font-weight:600">'+chPctSpent.toFixed(0)+'%</span><span style="color:'+chPaceColor+';font-weight:700;font-variant-numeric:tabular-nums">'+chPaceDiffStr+'</span></div></td>';
+      ?'<td style="padding:7px 4px;text-align:center"><span style="color:var(--grey);font-size:10px">no budget</span></td>'
+      :'<td style="padding:7px 4px"><div style="position:relative;height:6px;background:var(--lighter);border-radius:3px;overflow:visible" title="'+chPctSpent.toFixed(0)+'% spent \u00b7 '+chPctElapsed.toFixed(0)+'% of month elapsed \u00b7 '+chPaceDiffStr+'"><div style="position:absolute;left:0;top:0;height:6px;width:'+Math.min(chPctSpent,100)+'%;background:'+chPaceColor+';border-radius:3px;opacity:.85"></div><div style="position:absolute;left:'+Math.min(chPctElapsed,100)+'%;top:-2px;bottom:-2px;width:1.5px;background:var(--navy)"></div></div><div style="display:flex;justify-content:space-between;font-size:9px;margin-top:3px;line-height:1.2;align-items:baseline"><span style="font-variant-numeric:tabular-nums;color:var(--navy);font-weight:600">'+chPctSpent.toFixed(0)+'%</span><span style="color:'+chPaceColor+';font-weight:700;font-variant-numeric:tabular-nums">'+chPaceDiffStr+'</span></div></td>';
+    // Budget cell \u2014 raw monthly budget for the channel. Em dash when none
+    // configured (matches the "no budget" pacing cell semantically).
+    var budgetCell=chBudget>0
+      ?'<td style="padding:7px 4px;text-align:right;font-variant-numeric:tabular-nums;color:var(--navy)">'+f$(chBudget)+'</td>'
+      :'<td style="padding:7px 4px;text-align:right"><span style="color:var(--grey);font-size:10px">\u2014</span></td>';
     html+='<tr class="cpd-row" style="border-bottom:1px solid var(--border)">'+
-      '<td style="padding:8px 6px;font-weight:600;color:var(--navy)">'+info.label+'</td>'+
+      '<td style="padding:7px 4px;font-weight:600;color:var(--navy)">'+info.label+'</td>'+
       pacingCell+
-      '<td style="padding:8px 6px"><div style="display:flex;align-items:center;gap:6px"><div style="height:6px;width:60px;flex-shrink:0;background:var(--lighter);border-radius:3px;overflow:hidden"><div style="width:'+spendShare+'%;height:100%;background:var(--teal)"></div></div><span style="font-variant-numeric:tabular-nums;font-size:10px;font-weight:700;color:var(--teal);min-width:34px;text-align:right">'+spendShare.toFixed(1)+'%</span><span style="font-variant-numeric:tabular-nums;min-width:52px;text-align:right;margin-left:auto">'+f$(spend)+'</span></div>'+cellDelta2(spend,pSp,pmSp,'$',true)+'</td>'+
-      '<td style="padding:8px 6px;text-align:right">'+cell2(fN(demos),demos,pWD,pmWD,'#',false)+'</td>'+
-      '<td style="padding:8px 6px;text-align:right">'+cell2(channelCPD!=null?f$(channelCPD):'\u2014',channelCPD,pCPD,pmCPD,'$',true)+'</td>'+
-      '<td style="padding:8px 6px;text-align:right">'+cell2(fN(qual),qual,pQ,pmQ,'#',false)+'</td>'+
-      '<td style="padding:8px 6px;text-align:right">'+cell2(channelCPQD!=null?f$(channelCPQD):'\u2014',channelCPQD,pCPQD,pmCPQD,'$',true,cpqdColor)+'</td>'+
-      '<td style="padding:8px 6px;text-align:right">'+cell2(fN(won),won,pW,pmW,'#',false)+'</td>'+
-      '<td style="padding:8px 6px;text-align:right">'+cell2(wARR>0?f$(wARR):'\u2014',wARR,pARR,pmARR,'$',false)+'</td>'+
+      budgetCell+
+      '<td style="padding:7px 4px"><div style="display:flex;align-items:center;gap:6px"><div style="height:6px;width:48px;flex-shrink:0;background:var(--lighter);border-radius:3px;overflow:hidden"><div style="width:'+spendShare+'%;height:100%;background:var(--teal)"></div></div><span style="font-variant-numeric:tabular-nums;font-size:10px;font-weight:700;color:var(--teal);min-width:30px;text-align:right">'+spendShare.toFixed(1)+'%</span><span style="font-variant-numeric:tabular-nums;min-width:52px;text-align:right;margin-left:auto">'+f$(spend)+'</span></div>'+cellDelta2(spend,pSp,pmSp,'$',true)+'</td>'+
+      '<td style="padding:7px 4px;text-align:right">'+cell2(fN(demos),demos,pWD,pmWD,'#',false)+'</td>'+
+      '<td style="padding:7px 4px;text-align:right">'+cell2(channelCPD!=null?f$(channelCPD):'\u2014',channelCPD,pCPD,pmCPD,'$',true)+'</td>'+
+      '<td style="padding:7px 4px;text-align:right">'+cell2(fN(qual),qual,pQ,pmQ,'#',false)+'</td>'+
+      '<td style="padding:7px 4px;text-align:right">'+cell2(channelCPQD!=null?f$(channelCPQD):'\u2014',channelCPQD,pCPQD,pmCPQD,'$',true,cpqdColor)+'</td>'+
+      '<td style="padding:7px 4px;text-align:right">'+cell2(fN(won),won,pW,pmW,'#',false)+'</td>'+
+      '<td style="padding:7px 4px;text-align:right">'+cell2(wARR>0?f$(wARR):'\u2014',wARR,pARR,pmARR,'$',false)+'</td>'+
       '</tr>';
   }
   // Total row
@@ -4170,19 +4191,23 @@ function renderCPDTable(d){
   var totalPaceColor=totalBudget===0?'var(--grey)':(totalPaceDiff>15?'var(--red)':(totalPaceDiff>5?'var(--yellow)':(totalPaceDiff<-15?'var(--red)':(totalPaceDiff<-5?'var(--yellow)':'var(--green)'))));
   var totalPaceDiffStr=totalBudget===0?'':((totalPaceDiff>=0?'+':'')+totalPaceDiff.toFixed(0)+'pp');
   var totalPacingCell=totalBudget===0
-    ?'<td style="padding:8px 4px;text-align:center"><span style="color:var(--grey);font-size:10px">\u2014</span></td>'
-    :'<td style="padding:8px 4px"><div style="position:relative;height:6px;background:#fff;border-radius:3px;overflow:visible" title="'+totalPctSpent.toFixed(0)+'% spent \u00b7 '+totalPctElapsed.toFixed(0)+'% of month elapsed \u00b7 '+totalPaceDiffStr+'"><div style="position:absolute;left:0;top:0;height:6px;width:'+Math.min(totalPctSpent,100)+'%;background:'+totalPaceColor+';border-radius:3px;opacity:.85"></div><div style="position:absolute;left:'+Math.min(totalPctElapsed,100)+'%;top:-2px;bottom:-2px;width:1.5px;background:var(--navy)"></div></div><div style="display:flex;justify-content:space-between;font-size:9px;margin-top:3px;line-height:1.2;align-items:baseline"><span style="font-variant-numeric:tabular-nums;color:var(--navy);font-weight:600">'+totalPctSpent.toFixed(0)+'%</span><span style="color:'+totalPaceColor+';font-weight:700;font-variant-numeric:tabular-nums">'+totalPaceDiffStr+'</span></div></td>';
+    ?'<td style="padding:7px 4px;text-align:center"><span style="color:var(--grey);font-size:10px">\u2014</span></td>'
+    :'<td style="padding:7px 4px"><div style="position:relative;height:6px;background:#fff;border-radius:3px;overflow:visible" title="'+totalPctSpent.toFixed(0)+'% spent \u00b7 '+totalPctElapsed.toFixed(0)+'% of month elapsed \u00b7 '+totalPaceDiffStr+'"><div style="position:absolute;left:0;top:0;height:6px;width:'+Math.min(totalPctSpent,100)+'%;background:'+totalPaceColor+';border-radius:3px;opacity:.85"></div><div style="position:absolute;left:'+Math.min(totalPctElapsed,100)+'%;top:-2px;bottom:-2px;width:1.5px;background:var(--navy)"></div></div><div style="display:flex;justify-content:space-between;font-size:9px;margin-top:3px;line-height:1.2;align-items:baseline"><span style="font-variant-numeric:tabular-nums;color:var(--navy);font-weight:600">'+totalPctSpent.toFixed(0)+'%</span><span style="color:'+totalPaceColor+';font-weight:700;font-variant-numeric:tabular-nums">'+totalPaceDiffStr+'</span></div></td>';
+  var totalBudgetCell=totalBudget>0
+    ?'<td style="padding:7px 4px;text-align:right;font-variant-numeric:tabular-nums;color:var(--navy)">'+f$(totalBudget)+'</td>'
+    :'<td style="padding:7px 4px;text-align:right"><span style="color:var(--grey);font-size:10px">\u2014</span></td>';
   var tARR=sumMRR*eM,ptARR=hasPrior?(pSumMRR*eM):null,pmtARR=hasPriorMonth?(pmSumMRR*eM):null;
   html+='<tr style="background:var(--lighter);font-weight:600">'+
-    '<td style="padding:8px 6px;color:var(--navy)">Total</td>'+
+    '<td style="padding:7px 4px;color:var(--navy)">Total</td>'+
     totalPacingCell+
-    '<td style="padding:8px 6px"><div style="display:flex;align-items:center;gap:6px"><div style="height:6px;width:60px;flex-shrink:0;background:#fff;border-radius:3px;overflow:hidden"><div style="width:100%;height:100%;background:var(--teal)"></div></div><span style="font-variant-numeric:tabular-nums;font-size:10px;font-weight:700;color:var(--teal);min-width:34px;text-align:right">100.0%</span><span style="font-variant-numeric:tabular-nums;min-width:52px;text-align:right;margin-left:auto">'+f$(sumSp)+'</span></div>'+cellDelta2(sumSp,pSumSp,pmSumSp,'$',true)+'</td>'+
-    '<td style="padding:8px 6px;text-align:right;font-variant-numeric:tabular-nums">'+fN(sumD)+cellDelta2(sumD,pSumD,pmSumD,'#',false)+'</td>'+
-    '<td style="padding:8px 6px;text-align:right;font-variant-numeric:tabular-nums">'+(tCPD!=null?f$(tCPD):'\u2014')+cellDelta2(tCPD,ptCPD,pmtCPD,'$',true)+'</td>'+
-    '<td style="padding:8px 6px;text-align:right;font-variant-numeric:tabular-nums">'+fN(sumQ)+cellDelta2(sumQ,pSumQ,pmSumQ,'#',false)+'</td>'+
-    '<td style="padding:8px 6px;text-align:right;font-variant-numeric:tabular-nums">'+(tCPQD!=null?f$(tCPQD):'\u2014')+cellDelta2(tCPQD,ptCPQD,pmtCPQD,'$',true)+'</td>'+
-    '<td style="padding:8px 6px;text-align:right;font-variant-numeric:tabular-nums">'+fN(sumW)+cellDelta2(sumW,pSumW,pmSumW,'#',false)+'</td>'+
-    '<td style="padding:8px 6px;text-align:right;font-variant-numeric:tabular-nums">'+(tARR>0?f$(tARR):'\u2014')+cellDelta2(tARR,ptARR,pmtARR,'$',false)+'</td>'+
+    totalBudgetCell+
+    '<td style="padding:7px 4px"><div style="display:flex;align-items:center;gap:6px"><div style="height:6px;width:48px;flex-shrink:0;background:#fff;border-radius:3px;overflow:hidden"><div style="width:100%;height:100%;background:var(--teal)"></div></div><span style="font-variant-numeric:tabular-nums;font-size:10px;font-weight:700;color:var(--teal);min-width:30px;text-align:right">100.0%</span><span style="font-variant-numeric:tabular-nums;min-width:52px;text-align:right;margin-left:auto">'+f$(sumSp)+'</span></div>'+cellDelta2(sumSp,pSumSp,pmSumSp,'$',true)+'</td>'+
+    '<td style="padding:7px 4px;text-align:right;font-variant-numeric:tabular-nums">'+fN(sumD)+cellDelta2(sumD,pSumD,pmSumD,'#',false)+'</td>'+
+    '<td style="padding:7px 4px;text-align:right;font-variant-numeric:tabular-nums">'+(tCPD!=null?f$(tCPD):'\u2014')+cellDelta2(tCPD,ptCPD,pmtCPD,'$',true)+'</td>'+
+    '<td style="padding:7px 4px;text-align:right;font-variant-numeric:tabular-nums">'+fN(sumQ)+cellDelta2(sumQ,pSumQ,pmSumQ,'#',false)+'</td>'+
+    '<td style="padding:7px 4px;text-align:right;font-variant-numeric:tabular-nums">'+(tCPQD!=null?f$(tCPQD):'\u2014')+cellDelta2(tCPQD,ptCPQD,pmtCPQD,'$',true)+'</td>'+
+    '<td style="padding:7px 4px;text-align:right;font-variant-numeric:tabular-nums">'+fN(sumW)+cellDelta2(sumW,pSumW,pmSumW,'#',false)+'</td>'+
+    '<td style="padding:7px 4px;text-align:right;font-variant-numeric:tabular-nums">'+(tARR>0?f$(tARR):'\u2014')+cellDelta2(tARR,ptARR,pmtARR,'$',false)+'</td>'+
     '</tr>';
   html+='</tbody></table>';
   // Attribution match-rate row (populated by _updateCpdMatchRate after the

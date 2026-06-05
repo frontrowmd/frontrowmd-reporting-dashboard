@@ -387,9 +387,30 @@ function f$(v){if(v==null||isNaN(v))return'\u2014';return'$'+Math.round(v).toLoc
 function fmtInput(el){var v=el.value.replace(/[^0-9]/g,'');el.value=v?parseInt(v).toLocaleString():'';}
 function parseInput(s){return parseFloat((s||'').replace(/[^0-9.]/g,''))||0;}
 function bdClearDate(){_bdDateFrom='';_bdDateTo='';renderBD();}
+// Anchor the search box at ~25% from the top of the viewport so the user
+// can see filter context above + table results below while typing.
+// Idempotent: a no-op if the box is already at the target position
+// (within 2px) so repeated calls during typing don't cause jitter.
+function bdAnchorSearch(smooth){
+  var el=document.getElementById('bd-search-input');
+  if(!el)return;
+  var rect=el.getBoundingClientRect();
+  var vh=window.innerHeight||document.documentElement.clientHeight||800;
+  var targetTop=vh*0.25;
+  var delta=rect.top-targetTop;
+  if(Math.abs(delta)<2)return;
+  try{
+    window.scrollBy({top:delta,left:0,behavior:smooth?'smooth':'auto'});
+  }catch(e){
+    // Fallback for older browsers without scrollBy({...}) options
+    window.scrollBy(0,delta);
+  }
+}
 // Search-as-you-type handler. renderBD() rebuilds the whole page on each
 // keystroke, so we re-focus the input + restore the caret position
-// immediately after re-render to keep the typing experience smooth.
+// immediately after re-render to keep the typing experience smooth. Also
+// re-anchors the search box at top 1/4 of viewport in case rows above it
+// changed height between renders.
 function bdSetSearch(v){
   _bdSearchQ=v||'';
   renderBD();
@@ -398,6 +419,7 @@ function bdSetSearch(v){
     if(el){
       el.focus();
       try{var l=el.value.length;el.setSelectionRange(l,l);}catch(e){}
+      bdAnchorSearch(false);
     }
   },0);
 }
@@ -761,7 +783,7 @@ function renderBD(){
   // box has any text.
   h+='<div style="display:inline-flex;align-items:center;gap:4px;background:#fff;border:1.5px solid rgba(23,44,69,.12);border-radius:50px;padding:2px 4px 2px 10px;min-width:200px;'+(_bdSearchQ?'border-color:var(--teal);box-shadow:0 0 0 3px rgba(114,164,191,.12)':'')+'">';
   h+='<span style="font-size:11px;color:var(--grey);line-height:1">\u{1F50D}</span>';
-  h+='<input id="bd-search-input" type="search" placeholder="Search deals…" value="'+(_bdSearchQ||'').replace(/"/g,'&quot;')+'" oninput="bdSetSearch(this.value)" autocomplete="off" spellcheck="false" style="border:0;outline:none;background:transparent;font-size:11px;font-family:var(--font-b);color:var(--navy);padding:3px 4px;flex:1;min-width:140px">';
+  h+='<input id="bd-search-input" type="search" placeholder="Search deals…" value="'+(_bdSearchQ||'').replace(/"/g,'&quot;')+'" oninput="bdSetSearch(this.value)" onfocus="bdAnchorSearch(true)" autocomplete="off" spellcheck="false" style="border:0;outline:none;background:transparent;font-size:11px;font-family:var(--font-b);color:var(--navy);padding:3px 4px;flex:1;min-width:140px">';
   if(_bdSearchQ){h+='<button onclick="bdClearSearch()" title="Clear search" style="border:0;background:rgba(23,44,69,.08);color:var(--navy);width:18px;height:18px;border-radius:50%;font-size:11px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0">×</button>';}
   h+='</div>';
   var anyF=_bdBrandStatusF!=='all'||_bdBrandStatusToggleF.length>0||_bdStageF!=='all'||_bdRepF!=='all'||_bdSeRepF!=='all'||_bdOpsRepF!=='all'||_bdPkgF!=='all'||_bdWebTrafficF.length>0||_bdDateFrom||_bdDateTo||_bdSearchQ;
