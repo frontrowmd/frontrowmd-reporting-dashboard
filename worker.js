@@ -3497,19 +3497,32 @@ const WEBINAR_PERF_SUB10K_TIERS = new Set(['Pre-launch / just launching', '0-10K
 const WEBINAR_BASELINE_KV_KEY = 'webinar_attended_to_cw_baseline_pct';
 const WEBINAR_BASELINE_DEFAULT = 17;
 
-// Contacts created in window with webinar_date set (= registered for a
-// webinar at some point). Properties cover the full webinar funnel
-// (registered + attended + no-show derivation).
+// Contacts with `webinar_date` in window — i.e. people who attended (or
+// were scheduled to attend) a webinar that HAPPENED in the selected
+// window. Anchoring on webinar_date instead of createdate is what users
+// mean by "webinar performance for this period": the funnel for the
+// webinars that ran in this window, regardless of when each registrant
+// originally signed up.
+//
+// (Old behavior anchored on createdate, which meant a contact created
+// in May for a June 25 webinar landed in May's stats — surfacing as
+// "stats not updating" because attendance/no-show/CW couldn't yet be
+// known when the contact was first counted.)
+//
+// webinar_date is a HubSpot DATE property stored at midnight UTC, so
+// use toMsUTC bounds (no ET offset). Matches the convention already
+// used by fetchDealsByDemoDateWindow for date_demo_booked.
 async function fetchWebinarRegistrants(token, from, to) {
-  const fMs = String(toMsET(from));
-  const tMs = String(toMsET(to, true));
-  return hsSearch(token, 'contacts', [{
+  const fMs = String(toMsUTC(from));
+  const tMs = String(toMsUTC(to, true));
+  const rows = await hsSearch(token, 'contacts', [{
     filters: [
-      { propertyName: 'createdate', operator: 'GTE', value: fMs },
-      { propertyName: 'createdate', operator: 'LTE', value: tMs },
-      { propertyName: 'webinar_date', operator: 'HAS_PROPERTY' },
+      { propertyName: 'webinar_date', operator: 'GTE', value: fMs },
+      { propertyName: 'webinar_date', operator: 'LTE', value: tMs },
     ],
   }], ['createdate','webinar_date','webinar_has_attended','email','average_monthly_web_traffic']);
+  console.log(`fetchWebinarRegistrants(${from}..${to}): ${rows.length} contacts`);
+  return rows;
 }
 
 // Contacts created in window with date_demo_booked HAS_PROPERTY. Used for
@@ -3684,6 +3697,7 @@ async function processWebinarPerfRequest(windowType, customFrom, customTo, env, 
     }
     const attendeeIds = attendees.map(c => c.id).filter(Boolean);
     const webinarCW = await countAttendeesClosedWon(hsToken, attendeeIds);
+    console.log(`Webinar funnel ${period.from}..${period.to}: registered=${registered} attended=${attended} noShow=${noShow} closedWon=${webinarCW}`);
     // ── Demo funnel (10K+ only) ──
     // "Booked" is CONTACT-based so it matches the Irfan Dashboard's
     // "Demos Booked per Day" exactly: contacts created in window with
