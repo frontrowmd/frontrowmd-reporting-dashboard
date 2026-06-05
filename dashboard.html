@@ -752,7 +752,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s17';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s18';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -4132,6 +4132,25 @@ function renderCPDTable(d){
   var sumSp=0,sumD=0,sumQ=0,sumW=0,sumMRR=0,pSumSp=0,pSumD=0,pSumQ=0,pSumW=0,pSumMRR=0,pmSumSp=0,pmSumD=0,pmSumQ=0,pmSumW=0,pmSumMRR=0,hasPrior=false,hasPriorMonth=false;
   for(var k in channels){
     var info=channels[k];
+    // Pending channels (e.g. ChatGPT before the connector ships) appear as
+    // a stub row — budget cell only, every other cell renders as "—".
+    // They contribute neither to the Total sums (sumSp/sumD/…) nor to
+    // totalBudget so the Total row reflects only trackable channels.
+    if(info.pendingConnector){
+      var pBudget=info.budget||0;
+      var pBudgetCell=pBudget>0
+        ?'<td style="padding:7px 4px;text-align:right;font-variant-numeric:tabular-nums;color:var(--navy)">'+f$(pBudget)+'</td>'
+        :'<td style="padding:7px 4px;text-align:right"><span style="color:var(--grey);font-size:10px">—</span></td>';
+      var dashTd='<td style="padding:7px 4px;text-align:right"><span style="color:var(--grey);font-size:10px">—</span></td>';
+      html+='<tr class="cpd-row" style="border-bottom:1px solid var(--border)">'+
+        '<td style="padding:7px 4px;font-weight:600;color:var(--navy)">'+info.label+' <span style="font-size:9px;font-weight:600;color:var(--grey);background:rgba(114,164,191,.10);padding:1px 6px;border-radius:99px;margin-left:2px;vertical-align:middle">pending</span></td>'+
+        '<td style="padding:7px 4px;text-align:center"><span style="color:var(--grey);font-size:10px" title="Connector not wired up yet">—</span></td>'+
+        pBudgetCell+
+        '<td style="padding:7px 4px"><span style="color:var(--grey);font-size:10px">no data yet</span></td>'+
+        dashTd+dashTd+dashTd+dashTd+dashTd+dashTd+
+        '</tr>';
+      continue;
+    }
     var spend=info.spend||0,demos=info.windsorDemos||0,qual=info.qualified||0;
     var won=info.closedWon||0,wMRR=info.closedWonMRR||0,wARR=wMRR*eM;
     var channelCPD=demos>0?spend/demos:null,channelCPQD=qual>0?spend/qual:null;
@@ -4183,8 +4202,11 @@ function renderCPDTable(d){
   var tCPD=sumD>0?sumSp/sumD:null,tCPQD=sumQ>0?sumSp/sumQ:null;
   var ptCPD=(hasPrior&&pSumD>0)?pSumSp/pSumD:null,ptCPQD=(hasPrior&&pSumQ>0)?pSumSp/pSumQ:null;
   var pmtCPD=(hasPriorMonth&&pmSumD>0)?pmSumSp/pmSumD:null,pmtCPQD=(hasPriorMonth&&pmSumQ>0)?pmSumSp/pmSumQ:null;
-  // Total row: sum of channel budgets across channels with budget>0
-  var totalBudget=0;for(var k2 in channels){totalBudget+=(channels[k2].budget||0);}
+  // Total row: sum of channel budgets across channels with budget>0.
+  // Pending (no-connector-yet) channels are excluded so the Total row's
+  // pacing/spend math reflects only trackable channels — otherwise their
+  // budget would inflate the denominator while spend stays at 0.
+  var totalBudget=0;for(var k2 in channels){if(channels[k2].pendingConnector)continue;totalBudget+=(channels[k2].budget||0);}
   var totalPctSpent=totalBudget>0?(sumSp/totalBudget)*100:0;
   var totalPctElapsed=(function(){var t=new Date();return (t.getDate()/new Date(t.getFullYear(),t.getMonth()+1,0).getDate())*100;})();
   var totalPaceDiff=totalPctSpent-totalPctElapsed;
@@ -9381,9 +9403,19 @@ function renderAzOverview(d,cr,eM,crPct,isMTD){
   var bpc='';
   if(isMTD){
     bpc='<div class="sec"><div class="st">MTD Budget Pacing</div><div class="tg">';
-    var tBud=0,tSp=0;for(var k in ch){tBud+=ch[k].budget;tSp+=ch[k].spend;}
+    // Pending channels (e.g. ChatGPT without a connector yet) are excluded
+    // from the totals — their budget is allocated but spend is unknown, so
+    // counting it would skew pacing math.
+    var tBud=0,tSp=0;for(var k in ch){if(ch[k].pendingConnector)continue;tBud+=ch[k].budget;tSp+=ch[k].spend;}
     bpc+=mkT('Total',tSp,'$',null,fP((tSp/(tBud||1))*100)+' of '+f$(tBud),null,'accent',false,pac(tSp,tBud));
-    for(var k in ch)bpc+=mkT(ch[k].label,ch[k].spend,'$',null,fP((ch[k].spend/(ch[k].budget||1))*100)+' of '+f$(ch[k].budget),null,null,false,pac(ch[k].spend,ch[k].budget));
+    for(var k in ch){
+      if(ch[k].pendingConnector){
+        // Stub tile — budget only, no spend/pacing math
+        bpc+=mkT(ch[k].label+' (pending)',null,'$',null,f$(ch[k].budget)+' allocated · no data yet',null,null,false,null);
+      }else{
+        bpc+=mkT(ch[k].label,ch[k].spend,'$',null,fP((ch[k].spend/(ch[k].budget||1))*100)+' of '+f$(ch[k].budget),null,null,false,pac(ch[k].spend,ch[k].budget));
+      }
+    }
     bpc+='</div></div>';
   }
 
@@ -9398,6 +9430,13 @@ function renderAzTable(d,cr,eM){
   var tblR='',sumS=0,sumD=0,sumQ=0,sumNA=0,sumCW=0,sumMRR=0;
   var pSumS=0,pSumD=0,pSumQ=0,pSumNA=0,pSumCW=0,pSumMRR=0,hasPrior=false;
   for(var k in ch){var c=ch[k];
+    // Stub row for pending (no-connector-yet) channels \u2014 show only the label
+    // with a "pending" pill; every numeric cell is em-dashed and the row is
+    // excluded from the Total sums below.
+    if(c.pendingConnector){
+      tblR+='<tr style="color:var(--grey)"><td>'+c.label+' <span style="font-size:9px;font-weight:600;color:var(--grey);background:rgba(114,164,191,.10);padding:1px 6px;border-radius:99px;margin-left:2px;vertical-align:middle">pending</span></td><td class="n">\u2014</td><td class="n">\u2014</td><td class="n tbl-grn">\u2014</td><td class="n">\u2014</td><td class="n tbl-ylw">\u2014</td><td class="n">\u2014</td><td class="n tbl-ylw">\u2014</td><td class="n tbl-ylw">\u2014</td><td class="n tbl-ylw">\u2014</td></tr>';
+      continue;
+    }
     var q=c.qualified||0,wD=c.demos||0,na=c.unattributed||0;
     var cpd2=wD>0?c.spend/wD:null,cpqd2=q>0?c.spend/q:null;
     var a2=c.closedWonMRR*eM,roas2=c.spend>0?a2/c.spend:null;

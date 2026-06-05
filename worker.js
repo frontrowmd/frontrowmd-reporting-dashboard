@@ -9,9 +9,18 @@
 // Constants
 // ---------------------------------------------------------------------------
 
-const DASH_CHANNELS = ['meta', 'google', 'linkedin', 'tiktok', 'youtube'];
+const DASH_CHANNELS = ['meta', 'google', 'linkedin', 'tiktok', 'chatgpt', 'youtube'];
 
-const CHANNEL_LABELS = { meta: 'Meta', google: 'Google', linkedin: 'LinkedIn', tiktok: 'TikTok', youtube: 'YouTube' };
+const CHANNEL_LABELS = { meta: 'Meta', google: 'Google', linkedin: 'LinkedIn', tiktok: 'TikTok', chatgpt: 'ChatGPT', youtube: 'YouTube' };
+
+// Channels with no Windsor.ai (or equivalent) connector wired up yet — we
+// still want them visible in the Channel Performance table so the budget
+// allocation is transparent, but spend/demos/qual/won/ARR are all "—" until
+// the integration ships. Dashboard reads `pendingConnector: true` on the
+// channel payload and renders non-Budget cells as em-dashes; Total row
+// skips them. (Field name avoids collision with the analyzer payload's
+// existing `pending` demo-status count.)
+const PENDING_CHANNELS = new Set(['chatgpt']);
 
 const BUDGET_BY_MONTH = {
   '2026-01': { meta: 45000,  linkedin: 30000, google: 5000,  tiktok: 5000,  youtube: 5000 },
@@ -19,9 +28,10 @@ const BUDGET_BY_MONTH = {
   '2026-03': { meta: 90000,  linkedin: 15000, google: 10000, tiktok: 30000, youtube: 0 },
   '2026-04': { meta: 116667, linkedin: 34000, google: 16000, tiktok: 26667, youtube: 0 },
   '2026-05': { meta: 99900,  linkedin: 30900, google: 15500, tiktok: 24500, youtube: 0 },
-  // chatgpt is a new line item for June 2026 — not yet in DASH_CHANNELS so
-  // it won't render as a dedicated row, but the spend is tracked for any
-  // total/sum consumer that iterates the budget object.
+  // chatgpt joined DASH_CHANNELS as a pending (no-connector-yet) channel
+  // starting June 2026. Row appears in the Channel Performance table with
+  // only the Budget cell populated; all metric cells render as em-dashes
+  // until the data integration ships.
   '2026-06': { meta: 105000, linkedin: 35000, google: 25000, tiktok: 25000, youtube: 0, chatgpt: 10000 },
 };
 const BUDGET_FALLBACK = BUDGET_BY_MONTH['2026-06'];
@@ -1761,6 +1771,7 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
       windsorDemos: c.adSpend.channels[ch]?.windsorDemos||0,
       ctr: c.adSpend.channels[ch]?.ctr||0,
       budget: budgets[ch]||0,
+      pendingConnector: PENDING_CHANNELS.has(ch),
       // Prior-period stats (vs P delta)
       priorSpend: p.adSpend?.channels?.[ch]?.spend??null,
       priorWindsorDemos: p.adSpend?.channels?.[ch]?.windsorDemos??null,
@@ -3307,6 +3318,7 @@ function buildAzResponse(period, prior, priorMonth, windsor, creatives, priorW, 
       closedWon:cw.count, closedWonMRR:cw.mrr,
       cpqd:q>0?w.spend/q:null, qualifiedPct:w.demos>0?(q/w.demos)*100:0,
       budget:budgets[ch]||0,
+      pendingConnector:PENDING_CHANNELS.has(ch),
       // Prior
       priorSpend:pw?.spend??null, priorDemos:pw?.demos??null, priorCtr:pw?.ctr??null,
       priorImpressions:pw?.impressions??null, priorClicks:pw?.clicks??null,
