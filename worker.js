@@ -2501,9 +2501,26 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     const _pToMs = toMsET(prior.to, true);
     const _pFromMsUTC = toMsUTC(prior.from);
     const _pToMsUTC = toMsUTC(prior.to, true);
+    // pSch derivation: filter pmSch (priorMonth's contacts, already
+    // fetched with createdate-in-priorMonth) down to those whose createdate
+    // also falls in the prior window.
+    //
+    // CRITICAL: filter by `createdate`, NOT `date_demo_booked`. Two reasons:
+    //   1. fetchScheduledContacts itself filters by createdate, so a fresh
+    //      prior fetch returns "contacts created in prior window".
+    //   2. processScheduledContacts buckets each contact by ET-local
+    //      createdate when populating byDay/dailyTotal.
+    // The old date_demo_booked filter produced a population mismatch — e.g.
+    // a contact created May 20 (outside MTD-prior May 1..5) but with
+    // date_demo_booked May 3 would be included, while a contact created
+    // May 3 with date_demo_booked May 20 would be excluded. The resulting
+    // pSch counts didn't match a fresh same-window fetch, which is exactly
+    // the "MTD shows +30 but manual shows +12" symptom users reported.
+    // Use ET-anchored bounds (_pFromMs/_pToMs) since createdate is a
+    // datetime property and the source fetch uses toMsET().
     pSch = pmSch.filter(c => {
-      const ms = dateMs(c.properties?.date_demo_booked);
-      return !isNaN(ms) && ms >= _pFromMsUTC && ms <= _pToMsUTC;
+      const crMs = isoMs(c.properties?.createdate);
+      return !isNaN(crMs) && crMs >= _pFromMs && crMs <= _pToMs;
     });
     // Match fetchPipelineDeals's three OR filter groups:
     //   (1) date_demo_booked in window (UTC)

@@ -752,7 +752,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s21';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s22';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -4202,7 +4202,21 @@ function renderCPDTable(d){
     html+='<tr class="cpd-row" style="border-bottom:1px solid var(--border)">'+
       '<td style="padding:7px 4px;font-weight:600;color:var(--navy)">'+info.label+'</td>'+
       pacingCell+
-      '<td style="padding:7px 4px"><div style="display:flex;align-items:center;gap:6px;justify-content:center"><div style="height:6px;width:44px;flex-shrink:0;background:var(--lighter);border-radius:3px;overflow:hidden"><div style="width:'+spendShare+'%;height:100%;background:var(--teal)"></div></div><span style="font-variant-numeric:tabular-nums;font-size:10px;font-weight:700;color:var(--teal);text-align:right">'+spendShare.toFixed(1)+'%</span><span style="font-variant-numeric:tabular-nums;text-align:right">'+f$(spend)+'</span></div>'+cellDelta2(spend,pSp,pmSp,'$',true)+'</td>'+
+      // Spend (share) cell layout — three vertical rows inside the cell:
+      //   1. $ value, right-aligned (matches every other $ column)
+      //   2. Sparkgraph (bar) + share % chip, centered as a group below
+      //   3. vs P / vs LM delta lines, right-aligned (existing convention)
+      // Keeping $ right-aligned + delta right-aligned makes the numeric
+      // column read consistently; the bar gets its own visual row so it
+      // can be wider and properly centered per the column-layout spec.
+      '<td style="padding:7px 4px">'+
+        '<div style="text-align:right;font-variant-numeric:tabular-nums">'+f$(spend)+'</div>'+
+        '<div style="display:flex;align-items:center;gap:6px;justify-content:center;margin-top:3px">'+
+          '<div style="height:6px;width:64px;flex-shrink:0;background:var(--lighter);border-radius:3px;overflow:hidden"><div style="width:'+spendShare+'%;height:100%;background:var(--teal)"></div></div>'+
+          '<span style="font-variant-numeric:tabular-nums;font-size:10px;font-weight:700;color:var(--teal)">'+spendShare.toFixed(1)+'%</span>'+
+        '</div>'+
+        cellDelta2(spend,pSp,pmSp,'$',true)+
+      '</td>'+
       budgetCell+
       '<td style="padding:7px 4px;text-align:right">'+cell2(fN(demos),demos,pWD,pmWD,'#',false)+'</td>'+
       '<td style="padding:7px 4px;text-align:right">'+cell2(channelCPD!=null?f$(channelCPD):'\u2014',channelCPD,pCPD,pmCPD,'$',true)+'</td>'+
@@ -4236,7 +4250,14 @@ function renderCPDTable(d){
   html+='<tr style="background:var(--lighter);font-weight:600">'+
     '<td style="padding:7px 4px;color:var(--navy)">Total</td>'+
     totalPacingCell+
-    '<td style="padding:7px 4px"><div style="display:flex;align-items:center;gap:6px;justify-content:center"><div style="height:6px;width:44px;flex-shrink:0;background:#fff;border-radius:3px;overflow:hidden"><div style="width:100%;height:100%;background:var(--teal)"></div></div><span style="font-variant-numeric:tabular-nums;font-size:10px;font-weight:700;color:var(--teal);text-align:right">100.0%</span><span style="font-variant-numeric:tabular-nums;text-align:right">'+f$(sumSp)+'</span></div>'+cellDelta2(sumSp,pSumSp,pmSumSp,'$',true)+'</td>'+
+    '<td style="padding:7px 4px">'+
+      '<div style="text-align:right;font-variant-numeric:tabular-nums">'+f$(sumSp)+'</div>'+
+      '<div style="display:flex;align-items:center;gap:6px;justify-content:center;margin-top:3px">'+
+        '<div style="height:6px;width:64px;flex-shrink:0;background:#fff;border-radius:3px;overflow:hidden"><div style="width:100%;height:100%;background:var(--teal)"></div></div>'+
+        '<span style="font-variant-numeric:tabular-nums;font-size:10px;font-weight:700;color:var(--teal)">100.0%</span>'+
+      '</div>'+
+      cellDelta2(sumSp,pSumSp,pmSumSp,'$',true)+
+    '</td>'+
     totalBudgetCell+
     '<td style="padding:7px 4px;text-align:right;font-variant-numeric:tabular-nums">'+fN(sumD)+cellDelta2(sumD,pSumD,pmSumD,'#',false)+'</td>'+
     '<td style="padding:7px 4px;text-align:right;font-variant-numeric:tabular-nums">'+(tCPD!=null?f$(tCPD):'\u2014')+cellDelta2(tCPD,ptCPD,pmtCPD,'$',true)+'</td>'+
