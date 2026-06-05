@@ -87,6 +87,14 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
 .header-bar{display:flex;align-items:center;padding:16px 24px;background:linear-gradient(135deg,#020F18,#1D4053);border-bottom:1px solid rgba(114,164,191,.1)}
 .header-bar img{height:32px;margin-right:12px}
 .header-bar .title{font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--teal);letter-spacing:.1em;text-transform:uppercase}
+/* Hide the webkit/blink default ×-clear button on the BD search box —
+   we render our own × inside the pill so the browser native one would
+   produce a duplicate "two X's" UI. */
+#bd-search-input::-webkit-search-cancel-button,
+#bd-search-input::-webkit-search-decoration,
+#bd-search-input::-webkit-search-results-button,
+#bd-search-input::-webkit-search-results-decoration{-webkit-appearance:none;appearance:none;display:none}
+#bd-search-input{-moz-appearance:textfield}
 </style>
 </head><body>
 <div id="gate">
