@@ -752,7 +752,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s15';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s16';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -1352,8 +1352,77 @@ window.wpEditBaseline=function(spanEl){
   });
 };
 
+// Rep-capacity section renderer — shared between the "Today" snapshot and
+// the "Selected Window" view. rc is the per-rep capacity payload (today or
+// window), and opts contains the labels/subtext that differ between the two
+// instances. Same visual layout: aggregate cards row + per-rep bar cards.
+function _renderRepCapacitySection(rc, opts){
+  rc = rc || {};
+  opts = opts || {};
+  const perRep = rc.perRep || [];
+  const HELD_COLOR='#16A34A', BOOKED_COLOR='#7C3AED';
+  // Capacity per rep — for "today" this is 10/day; for the window it's
+  // 10 × business_days. Fall back to 10 if missing.
+  const cap = rc.capacityPerRep || 10;
+  let h='';
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:0;margin-bottom:24px;overflow:hidden">';
+  h+='<div style="padding:18px 22px;background:linear-gradient(135deg,rgba(22,163,74,.06) 0%,rgba(124,58,237,.06) 100%);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-wrap:wrap">'+
+    '<div style="flex:1;min-width:200px"><div style="font-family:var(--font-h);font-size:18px;font-weight:700;color:var(--navy);line-height:1.1">'+(opts.title||'Rep Capacity')+'</div>'+
+    '<div style="font-size:11px;color:var(--grey);margin-top:3px">'+(opts.subtitle||'')+'</div></div>'+
+    '<div style="display:flex;align-items:center;gap:14px;font-size:10px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;font-weight:600">'+
+      '<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:11px;height:11px;background:'+HELD_COLOR+';border-radius:3px"></span>Held</span>'+
+      '<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:11px;height:11px;background:'+BOOKED_COLOR+';border-radius:3px"></span>Booked (not yet held)</span>'+
+      '<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:11px;height:11px;background:rgba(114,164,191,.18);border-radius:3px"></span>Available capacity</span>'+
+    '</div>'+
+  '</div>';
+  const avgLT=rc.avgLeadTimeDays;
+  let totalBooked=0,totalHeld=0;perRep.forEach(r=>{totalBooked+=r.booked||0;totalHeld+=r.held||0;});
+  const teamUtilization=perRep.length>0
+    ?(perRep.reduce(function(s,r){return s+(r.utilizationPct||0);},0)/perRep.length)
+    :null;
+  const teamUtilColor=teamUtilization==null?'var(--teal)':(teamUtilization>=80?'#16A34A':(teamUtilization>=50?'#B45309':'var(--teal)'));
+  const teamUtilBg=teamUtilization==null?'rgba(114,164,191,.05)':(teamUtilization>=80?'rgba(22,163,74,.05)':(teamUtilization>=50?'rgba(245,158,11,.05)':'rgba(114,164,191,.05)'));
+  const teamUtilBorder=teamUtilization==null?'rgba(114,164,191,.15)':(teamUtilization>=80?'rgba(22,163,74,.15)':(teamUtilization>=50?'rgba(245,158,11,.15)':'rgba(114,164,191,.15)'));
+  h+='<div style="padding:18px 22px">';
+  h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px">';
+  h+='<div style="background:rgba(124,58,237,.05);border:1px solid rgba(124,58,237,.15);border-radius:10px;padding:14px 16px"><div style="font-size:10px;color:'+BOOKED_COLOR+';text-transform:uppercase;letter-spacing:.05em;font-weight:700">'+(opts.bookedLabel||'Booked')+'</div><div style="font-family:var(--font-h);font-size:28px;font-weight:700;color:var(--navy);margin-top:3px;line-height:1">'+totalBooked+'</div><div style="font-size:10px;color:var(--grey);margin-top:3px">across Ashley, Eisa, Elias, James</div></div>';
+  h+='<div style="background:rgba(22,163,74,.05);border:1px solid rgba(22,163,74,.15);border-radius:10px;padding:14px 16px"><div style="font-size:10px;color:'+HELD_COLOR+';text-transform:uppercase;letter-spacing:.05em;font-weight:700">'+(opts.heldLabel||'Held')+'</div><div style="font-family:var(--font-h);font-size:28px;font-weight:700;color:var(--navy);margin-top:3px;line-height:1">'+totalHeld+'</div><div style="font-size:10px;color:var(--grey);margin-top:3px">'+(opts.heldSub||'demos already completed')+'</div></div>';
+  h+='<div style="background:'+teamUtilBg+';border:1px solid '+teamUtilBorder+';border-radius:10px;padding:14px 16px"><div style="font-size:10px;color:'+teamUtilColor+';text-transform:uppercase;letter-spacing:.05em;font-weight:700">Team utilization</div><div style="font-family:var(--font-h);font-size:28px;font-weight:700;color:var(--navy);margin-top:3px;line-height:1">'+(teamUtilization!=null?teamUtilization.toFixed(0)+'%':'—')+'</div><div style="font-size:10px;color:var(--grey);margin-top:3px">avg utilization across the 4 reps</div></div>';
+  h+='<div style="background:rgba(114,164,191,.05);border:1px solid rgba(114,164,191,.15);border-radius:10px;padding:14px 16px"><div style="font-size:10px;color:var(--teal);text-transform:uppercase;letter-spacing:.05em;font-weight:700">Avg lead time</div><div style="font-family:var(--font-h);font-size:28px;font-weight:700;color:var(--navy);margin-top:3px;line-height:1">'+(avgLT!=null?avgLT.toFixed(1)+'d':'—')+'</div><div style="font-size:10px;color:var(--grey);margin-top:3px">create→demo over '+(rc.leadTimeSampleSize||0)+' deals</div></div>';
+  h+='</div>';
+  h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">';
+  for(const r of perRep){
+    const booked=r.booked||0, held=r.held||0;
+    const pending=Math.max(0, booked-held);
+    const heldW=Math.min(100,(held/cap)*100);
+    const pendingW=Math.min(100-heldW,(pending/cap)*100);
+    const utilization=Math.min(100,(booked/cap)*100);
+    const pillBg=utilization>=80?'rgba(22,163,74,.12)':(utilization>=50?'rgba(245,158,11,.12)':'rgba(114,164,191,.12)');
+    const pillTxt=utilization>=80?'#16A34A':(utilization>=50?'#B45309':'var(--teal)');
+    const tipText=r.rep+' · '+booked+'/'+cap+' booked ('+utilization.toFixed(0)+'%) · '+held+' held · '+pending+' upcoming';
+    h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px 16px;cursor:default;transition:box-shadow .15s,transform .15s" data-tip="'+tipText.replace(/"/g,'&quot;')+'" onmouseenter="dbcTip(event,this);this.style.boxShadow=\'0 4px 12px rgba(2,15,24,.08)\';this.style.transform=\'translateY(-1px)\'" onmousemove="dbcTipMove(event)" onmouseleave="dbcTipHide();this.style.boxShadow=\'\';this.style.transform=\'\'">'+
+      '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px">'+
+        '<div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">'+r.rep+'</div>'+
+        '<div style="display:inline-flex;align-items:baseline;gap:3px;background:'+pillBg+';color:'+pillTxt+';padding:3px 9px;border-radius:99px;font-family:var(--font-h);font-size:11px;font-weight:700"><span style="font-size:14px">'+booked+'</span><span style="font-size:11px;opacity:.7">/'+cap+'</span></div>'+
+      '</div>'+
+      '<div style="font-size:10px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;font-weight:600;margin-bottom:8px">'+utilization.toFixed(0)+'% utilization</div>'+
+      '<div style="height:10px;background:rgba(114,164,191,.10);border-radius:99px;overflow:hidden;display:flex">'+
+        '<div style="height:100%;background:'+HELD_COLOR+';width:'+heldW+'%;transition:width .3s"></div>'+
+        '<div style="height:100%;background:'+BOOKED_COLOR+';width:'+pendingW+'%;transition:width .3s"></div>'+
+      '</div>'+
+      '<div style="display:flex;justify-content:space-between;margin-top:8px;font-size:10px;color:var(--grey);font-weight:600">'+
+        '<span><span style="color:'+HELD_COLOR+';font-weight:700">'+held+'</span> held</span>'+
+        '<span><span style="color:'+BOOKED_COLOR+';font-weight:700">'+pending+'</span> upcoming</span>'+
+      '</div>'+
+    '</div>';
+  }
+  h+='</div>';
+  h+='</div></div>';
+  return h;
+}
+
 // Main render. Sections: header, side-by-side funnel, comparison table,
-// conv-rate + CPA tiles, rep capacity (today).
+// conv-rate + CPA tiles, rep capacity (today + selected window).
 function renderWebinarPerf(){
   const d = S.webinarPerf.data;
   const el = document.getElementById('wp-c'); if(!el)return;
@@ -1562,82 +1631,34 @@ function renderWebinarPerf(){
   h+='</div>';
 
   // ── Section 4 · Rep capacity (today, real-time) ──
-  // Each rep card shows a 2-color bar: held demos (green segment, already
-  // completed) + booked-but-not-yet-held demos (purple, scheduled later
-  // today) + empty capacity remainder (grey). Utilization = booked ÷ 10.
-  const rc=d.repCapacity||{};const perRep=rc.perRep||[];
-  const HELD_COLOR='#16A34A', BOOKED_COLOR='#7C3AED';
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:0;margin-bottom:24px;overflow:hidden">';
-  // Section header bar (mirrors the comparison-table header style)
-  h+='<div style="padding:18px 22px;background:linear-gradient(135deg,rgba(22,163,74,.06) 0%,rgba(124,58,237,.06) 100%);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-wrap:wrap">'+
-    '<div style="flex:1;min-width:200px"><div style="font-family:var(--font-h);font-size:18px;font-weight:700;color:var(--navy);line-height:1.1">Rep Capacity — Today</div>'+
-    '<div style="font-size:11px;color:var(--grey);margin-top:3px">'+(rc.today||'')+' · '+(rc.capacityPerRep||10)+' demos/day capacity · real-time, ignores time selector</div></div>'+
-    // Legend
-    '<div style="display:flex;align-items:center;gap:14px;font-size:10px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;font-weight:600">'+
-      '<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:11px;height:11px;background:'+HELD_COLOR+';border-radius:3px"></span>Held</span>'+
-      '<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:11px;height:11px;background:'+BOOKED_COLOR+';border-radius:3px"></span>Booked (not yet held)</span>'+
-      '<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:11px;height:11px;background:rgba(114,164,191,.18);border-radius:3px"></span>Available capacity</span>'+
-    '</div>'+
-  '</div>';
-  const avgLT=rc.avgLeadTimeDays;
-  let totalBooked=0,totalHeld=0;perRep.forEach(r=>{totalBooked+=r.booked;totalHeld+=r.held;});
-  // Team utilization = avg of per-rep utilization% (booked / 10 capped).
-  // Counts ALL four reps including those with zero bookings (a rep at 0/10
-  // pulls the team avg down — which is the honest team-level picture).
-  const teamUtilization=perRep.length>0
-    ?(perRep.reduce(function(s,r){return s+(r.utilizationPct||0);},0)/perRep.length)
-    :null;
-  // Color the team util card by the same band thresholds as the per-rep
-  // pills: >=80% green, >=50% amber, else teal.
-  const teamUtilColor=teamUtilization==null?'var(--teal)':(teamUtilization>=80?'#16A34A':(teamUtilization>=50?'#B45309':'var(--teal)'));
-  const teamUtilBg=teamUtilization==null?'rgba(114,164,191,.05)':(teamUtilization>=80?'rgba(22,163,74,.05)':(teamUtilization>=50?'rgba(245,158,11,.05)':'rgba(114,164,191,.05)'));
-  const teamUtilBorder=teamUtilization==null?'rgba(114,164,191,.15)':(teamUtilization>=80?'rgba(22,163,74,.15)':(teamUtilization>=50?'rgba(245,158,11,.15)':'rgba(114,164,191,.15)'));
-  h+='<div style="padding:18px 22px">';
-  // Aggregate cards — 4 across: Booked, Held, Team Utilization, Avg Lead Time
-  h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px">';
-  h+='<div style="background:rgba(124,58,237,.05);border:1px solid rgba(124,58,237,.15);border-radius:10px;padding:14px 16px"><div style="font-size:10px;color:'+BOOKED_COLOR+';text-transform:uppercase;letter-spacing:.05em;font-weight:700">Booked today</div><div style="font-family:var(--font-h);font-size:28px;font-weight:700;color:var(--navy);margin-top:3px;line-height:1">'+totalBooked+'</div><div style="font-size:10px;color:var(--grey);margin-top:3px">across Ashley, Eisa, Elias, James</div></div>';
-  h+='<div style="background:rgba(22,163,74,.05);border:1px solid rgba(22,163,74,.15);border-radius:10px;padding:14px 16px"><div style="font-size:10px;color:'+HELD_COLOR+';text-transform:uppercase;letter-spacing:.05em;font-weight:700">Held today</div><div style="font-family:var(--font-h);font-size:28px;font-weight:700;color:var(--navy);margin-top:3px;line-height:1">'+totalHeld+'</div><div style="font-size:10px;color:var(--grey);margin-top:3px">demos that have already happened today</div></div>';
-  h+='<div style="background:'+teamUtilBg+';border:1px solid '+teamUtilBorder+';border-radius:10px;padding:14px 16px"><div style="font-size:10px;color:'+teamUtilColor+';text-transform:uppercase;letter-spacing:.05em;font-weight:700">Team utilization</div><div style="font-family:var(--font-h);font-size:28px;font-weight:700;color:var(--navy);margin-top:3px;line-height:1">'+(teamUtilization!=null?teamUtilization.toFixed(0)+'%':'—')+'</div><div style="font-size:10px;color:var(--grey);margin-top:3px">avg utilization across the 4 reps</div></div>';
-  h+='<div style="background:rgba(114,164,191,.05);border:1px solid rgba(114,164,191,.15);border-radius:10px;padding:14px 16px"><div style="font-size:10px;color:var(--teal);text-transform:uppercase;letter-spacing:.05em;font-weight:700">Avg lead time</div><div style="font-family:var(--font-h);font-size:28px;font-weight:700;color:var(--navy);margin-top:3px;line-height:1">'+(avgLT!=null?avgLT.toFixed(1)+'d':'—')+'</div><div style="font-size:10px;color:var(--grey);margin-top:3px">create→demo over '+(rc.leadTimeSampleSize||0)+' deals</div></div>';
-  h+='</div>';
-  // Per-rep cards — each with a 2-color bar (held + booked-not-held) over a
-  // remaining-capacity background. Utilization label = booked / 10.
-  h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">';
-  for(const r of perRep){
-    const cap=rc.capacityPerRep||10;
-    const booked=r.booked||0, held=r.held||0;
-    const pending=Math.max(0, booked-held);
-    // Use absolute percentages of the full 10-capacity bar so the segments
-    // visually represent N/10 each. Cap at 100% if over-booked (rare).
-    const heldW=Math.min(100,(held/cap)*100);
-    const pendingW=Math.min(100-heldW,(pending/cap)*100);
-    const utilization=Math.min(100,(booked/cap)*100);
-    // Pick a status pill color based on how full the rep's calendar is
-    const pillBg=utilization>=80?'rgba(22,163,74,.12)':(utilization>=50?'rgba(245,158,11,.12)':'rgba(114,164,191,.12)');
-    const pillTxt=utilization>=80?'#16A34A':(utilization>=50?'#B45309':'var(--teal)');
-    // Instant hover tooltip — reuses the dbcTip system from the Detailed
-    // Dashboard. The tip text breaks down the rep's day with concrete
-    // numbers so we don't have to fit them all into the card itself.
-    const tipText=r.rep+' · '+booked+'/'+cap+' booked ('+utilization.toFixed(0)+'%) · '+held+' held · '+pending+' upcoming';
-    h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px 16px;cursor:default;transition:box-shadow .15s,transform .15s" data-tip="'+tipText.replace(/"/g,'&quot;')+'" onmouseenter="dbcTip(event,this);this.style.boxShadow=\'0 4px 12px rgba(2,15,24,.08)\';this.style.transform=\'translateY(-1px)\'" onmousemove="dbcTipMove(event)" onmouseleave="dbcTipHide();this.style.boxShadow=\'\';this.style.transform=\'\'">'+
-      '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px">'+
-        '<div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">'+r.rep+'</div>'+
-        '<div style="display:inline-flex;align-items:baseline;gap:3px;background:'+pillBg+';color:'+pillTxt+';padding:3px 9px;border-radius:99px;font-family:var(--font-h);font-size:11px;font-weight:700"><span style="font-size:14px">'+booked+'</span><span style="font-size:11px;opacity:.7">/'+cap+'</span></div>'+
-      '</div>'+
-      '<div style="font-size:10px;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;font-weight:600;margin-bottom:8px">'+utilization.toFixed(0)+'% utilization</div>'+
-      // 2-color bar — held first (green) → booked-not-held (purple) → empty (grey bg)
-      '<div style="height:10px;background:rgba(114,164,191,.10);border-radius:99px;overflow:hidden;display:flex">'+
-        '<div style="height:100%;background:'+HELD_COLOR+';width:'+heldW+'%;transition:width .3s"></div>'+
-        '<div style="height:100%;background:'+BOOKED_COLOR+';width:'+pendingW+'%;transition:width .3s"></div>'+
-      '</div>'+
-      '<div style="display:flex;justify-content:space-between;margin-top:8px;font-size:10px;color:var(--grey);font-weight:600">'+
-        '<span><span style="color:'+HELD_COLOR+';font-weight:700">'+held+'</span> held</span>'+
-        '<span><span style="color:'+BOOKED_COLOR+';font-weight:700">'+pending+'</span> upcoming</span>'+
-      '</div>'+
-    '</div>';
-  }
-  h+='</div>';
-  h+='</div></div>';
+  // Real-time snapshot of TODAY across Ashley, Eisa, Elias, James. Ignores
+  // the page-level time selector — always shows the team's calendar for
+  // today. Each card has a 2-color bar (held + booked-not-held).
+  const rc=d.repCapacity||{};
+  h+=_renderRepCapacitySection(rc, {
+    title:'Rep Capacity — Today',
+    subtitle:(rc.today||'')+' · '+(rc.capacityPerRep||10)+' demos/day capacity · real-time, ignores time selector',
+    bookedLabel:'Booked today',
+    heldLabel:'Held today',
+    heldSub:'demos that have already happened today'
+  });
+
+  // ── Section 5 · Rep capacity (selected window) ──
+  // Same layout as the Today section, but scaled to the page-level
+  // timeframe: capacityPerRep = 10/day × business_days in window. Booked &
+  // held are aggregated across the full window for each rep.
+  const rcw=d.repCapacityWindow||{};
+  const rcwDays=rcw.businessDays!=null?rcw.businessDays:0;
+  const rcwDaily=rcw.dailyCapacityPerRep||10;
+  const rcwCap=rcw.capacityPerRep!=null?rcw.capacityPerRep:(rcwDaily*rcwDays);
+  const rcwLabel=rcw.label||(rcw.from&&rcw.to?(rcw.from+' → '+rcw.to):'');
+  h+=_renderRepCapacitySection(rcw, {
+    title:'Rep Capacity — Selected Window',
+    subtitle:rcwLabel+' · '+rcwDays+' business day'+(rcwDays===1?'':'s')+' × '+rcwDaily+'/day = '+rcwCap+' demos capacity per rep',
+    bookedLabel:'Booked in window',
+    heldLabel:'Held in window',
+    heldSub:'demos that have already happened in window'
+  });
 
   el.innerHTML=h;
 }

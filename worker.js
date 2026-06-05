@@ -3506,12 +3506,12 @@ async function countAttendeesClosedWon(token, contactIds) {
   return n;
 }
 
-// Today's bookings + held — single fetch scoped to today's date on either
-// date_demo_booked OR rescheduled_meeting_date.
-async function fetchTodayDeals(token) {
-  const todayStr = fmt(todayET());
-  const fMs = String(toMsUTC(todayStr));
-  const tMs = String(toMsUTC(todayStr, true));
+// Deals filtered by EFFECTIVE demo date (date_demo_booked OR
+// rescheduled_meeting_date) within the given window. Used for both the
+// Today rep capacity card and the per-window rep capacity card.
+async function fetchDealsByDemoDateWindow(token, fromStr, toStr) {
+  const fMs = String(toMsUTC(fromStr));
+  const tMs = String(toMsUTC(toStr, true));
   const deals = await hsSearch(token, 'deals', [
     { filters: [
       { propertyName: 'date_demo_booked', operator: 'GTE', value: fMs },
@@ -3522,7 +3522,27 @@ async function fetchTodayDeals(token) {
       { propertyName: 'rescheduled_meeting_date', operator: 'LTE', value: tMs },
     ]},
   ], ['date_demo_booked','rescheduled_meeting_date','demo_attendance_status','hubspot_owner_id'], 200);
-  return { deals: [...new Map(deals.map(d => [d.id, d])).values()], todayStr };
+  return [...new Map(deals.map(d => [d.id, d])).values()];
+}
+async function fetchTodayDeals(token) {
+  const todayStr = fmt(todayET());
+  const deals = await fetchDealsByDemoDateWindow(token, todayStr, todayStr);
+  return { deals, todayStr };
+}
+// Count of weekdays (Mon–Fri) in an inclusive [from, to] window. Used as
+// the per-rep capacity denominator for window-scoped rep utilization
+// (utilization = booked ÷ (10 × business_days_in_window)).
+function countBusinessDays(fromStr, toStr) {
+  if (!fromStr || !toStr) return 0;
+  const f = new Date(fromStr + 'T00:00:00Z');
+  const t = new Date(toStr + 'T00:00:00Z');
+  if (isNaN(f) || isNaN(t)) return 0;
+  let n = 0;
+  for (let d = new Date(f); d <= t; d.setUTCDate(d.getUTCDate()+1)) {
+    const dow = d.getUTCDay();
+    if (dow !== 0 && dow !== 6) n++;
+  }
+  return n;
 }
 
 // Baseline value (Talar's "attended → closed won" benchmark) — stored in KV
@@ -3641,7 +3661,13 @@ async function processWebinarPerfRequest(windowType, customFrom, customTo, env, 
   ]);
 
   // ── Rep capacity (today, real-time, ignores page selector) ──
-  const [ownerMap, todayBundle] = await Promise.all([fetchOwners(hsToken), fetchTodayDeals(hsToken)]);
+  // We also fetch deals by EFFECTIVE demo date over the page window for the
+  // second "selected window" capacity card.
+  const [ownerMap, todayBundle, windowDealsForCapacity] = await Promise.all([
+    fetchOwners(hsToken),
+    fetchTodayDeals(hsToken),
+    fetchDealsByDemoDateWindow(hsToken, current.from, current.to),
+  ]);
   // owner id → first name for the 4 watched reps
   const watchedById = {};
   for (const [oid, fullName] of Object.entries(ownerMap)) {
@@ -3675,6 +3701,46 @@ async function processWebinarPerfRequest(windowType, customFrom, customTo, env, 
     leadTimeSampleSize: curM ? curM.leadTimeN : 0,
   };
 
+  // ── Rep capacity for the page-selected window ──
+  // Same per-rep / aggregate shape as the Today card, but counts demos whose
+  // EFFECTIVE date (rescheduled_meeting_date || date_demo_booked) falls
+  // within the page window. Per-rep utilization denominator scales with the
+  // weekday count in the window (10/day × business_days), so percentages
+  // are comparable across MTD / Last 7 Days / etc.
+  const repCapWin = {};
+  for (const name of WEBINAR_PERF_REPS) repCapWin[name] = { rep: name, booked: 0, held: 0 };
+  for (const d of windowDealsForCapacity) {
+    const oid = d.properties?.hubspot_owner_id;
+    const repName = watchedById[oid];
+    if (!repName) continue;
+    repCapWin[repName].booked++;
+    const att = (d.properties?.demo_attendance_status || '').trim();
+    if (att === 'Demo Given (originally scheduled)' || att === 'Demo Given (rescheduled)') repCapWin[repName].held++;
+  }
+  const windowBusinessDays = countBusinessDays(current.from, current.to);
+  const windowCapacityPerRep = WEBINAR_PERF_DAILY_CAPACITY * windowBusinessDays;
+  const repCapacityWindow = {
+    from: current.from,
+    to: current.to,
+    label: current.label,
+    businessDays: windowBusinessDays,
+    capacityPerRep: windowCapacityPerRep,
+    dailyCapacityPerRep: WEBINAR_PERF_DAILY_CAPACITY,
+    perRep: WEBINAR_PERF_REPS.map(n => ({
+      rep: n,
+      booked: repCapWin[n].booked,
+      held: repCapWin[n].held,
+      utilizationPct: windowCapacityPerRep > 0
+        ? Math.min(100, (repCapWin[n].booked / windowCapacityPerRep) * 100)
+        : 0,
+      heldPct: windowCapacityPerRep > 0
+        ? Math.min(100, (repCapWin[n].held / windowCapacityPerRep) * 100)
+        : 0,
+    })),
+    avgLeadTimeDays: curM && curM.leadTimeN > 0 ? curM.leadTimeSum / curM.leadTimeN : null,
+    leadTimeSampleSize: curM ? curM.leadTimeN : 0,
+  };
+
   // ── Baseline ──
   const baselineValue = await readWebinarBaseline(env);
 
@@ -3689,6 +3755,7 @@ async function processWebinarPerfRequest(windowType, customFrom, customTo, env, 
     prior: stripLT(priorM),
     priorMonth: stripLT(pmM),
     repCapacity,
+    repCapacityWindow,
     baseline: { attendedToClosedWonPct: baselineValue },
     meta: { generatedAt: new Date().toISOString(), windowType },
   };
