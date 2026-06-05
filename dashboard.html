@@ -752,7 +752,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s20';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s21';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -1566,6 +1566,14 @@ function renderWebinarPerf(){
   h+='<tr><td style="padding:11px 16px;color:var(--navy);font-size:12px;font-weight:600;border-bottom:1px solid var(--border)">Total Clicks</td>'+
     '<td colspan="2" style="padding:11px 16px;text-align:center;font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);border-bottom:1px solid var(--border)">'+_fN(cur.clicks||0)+' <span style="font-size:10px;color:var(--grey);font-weight:500">shared pool · one CTA form routes to either funnel</span></td></tr>';
   h+=_row('Registered / Booked',w.registered||0,dm.booked||0,null,{alt:true});
+  // % of Total Registered / Booked — each funnel's share of the combined
+  // top-of-funnel volume. Always sums to 100% (or shows — if total is 0).
+  // Shares the tint of the row above so it reads as a sub-row of its
+  // parent metric.
+  const _wReg=w.registered||0, _dBook=dm.booked||0, _rbTot=_wReg+_dBook;
+  const _wRegPct=_rbTot>0?(_wReg/_rbTot)*100:null;
+  const _dBookPct=_rbTot>0?(_dBook/_rbTot)*100:null;
+  h+=_row('% of Total Registered / Booked',_wRegPct,_dBookPct,'%',{alt:true});
   h+=_row('Attended / Held',w.attended||0,dm.held||0);
   h+=_row('Closed Won',w.closedWon||0,dm.closedWon||0,null,{alt:true});
   h+=_row('Spend Allocated',w.allocatedSpend||0,dm.allocatedSpend||0,'$');
@@ -4109,11 +4117,13 @@ function renderCPDTable(d){
   //   • CPD/CPQD: 9% — $ values with delta rows
   //   • ARR: 16% — 7-figure deltas need room ("-$989,172 (-93.6%)")
   // Padding tightened from 8px 6px → 7px 4px for breathing room.
+  // NOTE: Spend (share) sits LEFT of Budget — the share sparkgraph reads
+  // naturally alongside the pacing bar (both visualize % of budget).
   html+='<colgroup>'+
     '<col style="width:10%">'+  // Channel
     '<col style="width:10%">'+  // Pacing
-    '<col style="width:9%">'+   // Budget
     '<col style="width:14%">'+  // Spend (share)
+    '<col style="width:9%">'+   // Budget
     '<col style="width:7%">'+   // Demos
     '<col style="width:9%">'+   // CPD
     '<col style="width:7%">'+   // Qual
@@ -4124,8 +4134,8 @@ function renderCPDTable(d){
   html+='<thead><tr style="border-bottom:1px solid var(--border)">'+
     '<th style="text-align:left;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px">Channel</th>'+
     '<th style="text-align:center;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px">Pacing</th>'+
+    '<th style="text-align:center;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px">Spend (share)</th>'+
     '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px" title="Monthly ad budget for this channel">Budget</th>'+
-    '<th style="text-align:left;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px">Spend (share)</th>'+
     '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px">Demos</th>'+
     '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px">CPD</th>'+
     '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px">Qual</th>'+
@@ -4149,8 +4159,8 @@ function renderCPDTable(d){
       html+='<tr class="cpd-row" style="border-bottom:1px solid var(--border)">'+
         '<td style="padding:7px 4px;font-weight:600;color:var(--navy)">'+info.label+' <span style="font-size:9px;font-weight:600;color:var(--grey);background:rgba(114,164,191,.10);padding:1px 6px;border-radius:99px;margin-left:2px;vertical-align:middle">pending</span></td>'+
         '<td style="padding:7px 4px;text-align:center"><span style="color:var(--grey);font-size:10px" title="Connector not wired up yet">—</span></td>'+
+        '<td style="padding:7px 4px;text-align:center"><span style="color:var(--grey);font-size:10px;font-style:italic">no data yet</span></td>'+
         pBudgetCell+
-        '<td style="padding:7px 4px;text-align:right"><span style="color:var(--grey);font-size:10px;font-style:italic">no data yet</span></td>'+
         dashTd+dashTd+dashTd+dashTd+dashTd+dashTd+
         '</tr>';
       continue;
@@ -4192,8 +4202,8 @@ function renderCPDTable(d){
     html+='<tr class="cpd-row" style="border-bottom:1px solid var(--border)">'+
       '<td style="padding:7px 4px;font-weight:600;color:var(--navy)">'+info.label+'</td>'+
       pacingCell+
+      '<td style="padding:7px 4px"><div style="display:flex;align-items:center;gap:6px;justify-content:center"><div style="height:6px;width:44px;flex-shrink:0;background:var(--lighter);border-radius:3px;overflow:hidden"><div style="width:'+spendShare+'%;height:100%;background:var(--teal)"></div></div><span style="font-variant-numeric:tabular-nums;font-size:10px;font-weight:700;color:var(--teal);text-align:right">'+spendShare.toFixed(1)+'%</span><span style="font-variant-numeric:tabular-nums;text-align:right">'+f$(spend)+'</span></div>'+cellDelta2(spend,pSp,pmSp,'$',true)+'</td>'+
       budgetCell+
-      '<td style="padding:7px 4px"><div style="display:flex;align-items:center;gap:6px;justify-content:flex-end"><div style="height:6px;width:44px;flex-shrink:0;background:var(--lighter);border-radius:3px;overflow:hidden"><div style="width:'+spendShare+'%;height:100%;background:var(--teal)"></div></div><span style="font-variant-numeric:tabular-nums;font-size:10px;font-weight:700;color:var(--teal);text-align:right">'+spendShare.toFixed(1)+'%</span><span style="font-variant-numeric:tabular-nums;text-align:right">'+f$(spend)+'</span></div>'+cellDelta2(spend,pSp,pmSp,'$',true)+'</td>'+
       '<td style="padding:7px 4px;text-align:right">'+cell2(fN(demos),demos,pWD,pmWD,'#',false)+'</td>'+
       '<td style="padding:7px 4px;text-align:right">'+cell2(channelCPD!=null?f$(channelCPD):'\u2014',channelCPD,pCPD,pmCPD,'$',true)+'</td>'+
       '<td style="padding:7px 4px;text-align:right">'+cell2(fN(qual),qual,pQ,pmQ,'#',false)+'</td>'+
@@ -4226,8 +4236,8 @@ function renderCPDTable(d){
   html+='<tr style="background:var(--lighter);font-weight:600">'+
     '<td style="padding:7px 4px;color:var(--navy)">Total</td>'+
     totalPacingCell+
+    '<td style="padding:7px 4px"><div style="display:flex;align-items:center;gap:6px;justify-content:center"><div style="height:6px;width:44px;flex-shrink:0;background:#fff;border-radius:3px;overflow:hidden"><div style="width:100%;height:100%;background:var(--teal)"></div></div><span style="font-variant-numeric:tabular-nums;font-size:10px;font-weight:700;color:var(--teal);text-align:right">100.0%</span><span style="font-variant-numeric:tabular-nums;text-align:right">'+f$(sumSp)+'</span></div>'+cellDelta2(sumSp,pSumSp,pmSumSp,'$',true)+'</td>'+
     totalBudgetCell+
-    '<td style="padding:7px 4px"><div style="display:flex;align-items:center;gap:6px;justify-content:flex-end"><div style="height:6px;width:44px;flex-shrink:0;background:#fff;border-radius:3px;overflow:hidden"><div style="width:100%;height:100%;background:var(--teal)"></div></div><span style="font-variant-numeric:tabular-nums;font-size:10px;font-weight:700;color:var(--teal);text-align:right">100.0%</span><span style="font-variant-numeric:tabular-nums;text-align:right">'+f$(sumSp)+'</span></div>'+cellDelta2(sumSp,pSumSp,pmSumSp,'$',true)+'</td>'+
     '<td style="padding:7px 4px;text-align:right;font-variant-numeric:tabular-nums">'+fN(sumD)+cellDelta2(sumD,pSumD,pmSumD,'#',false)+'</td>'+
     '<td style="padding:7px 4px;text-align:right;font-variant-numeric:tabular-nums">'+(tCPD!=null?f$(tCPD):'\u2014')+cellDelta2(tCPD,ptCPD,pmtCPD,'$',true)+'</td>'+
     '<td style="padding:7px 4px;text-align:right;font-variant-numeric:tabular-nums">'+fN(sumQ)+cellDelta2(sumQ,pSumQ,pmSumQ,'#',false)+'</td>'+
