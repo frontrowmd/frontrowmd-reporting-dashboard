@@ -752,7 +752,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s19';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s20';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -4278,10 +4278,19 @@ function renderDemosPerDay(d, targetId){
   const weekdayTotal=weekdays.reduce((s,x)=>s+x.count,0);
   const numWeekdays=weekdays.length||1;
   const avg=weekdayTotal/numWeekdays;
-  // vs prior (sameTimePrior) and vs LM (lastMonth). For scale mode on
-  // Irfan, subtract the prior/LM (pre-launch + 0-10K) counts so the delta
-  // math matches the chart series. Falls back to the older pre-launch-only
-  // counts if the worker hasn't deployed the new fields yet.
+  // vs prior (sameTimePrior) and vs LM (lastMonth).
+  //
+  // TOTAL tile — full-week counts, both sides include weekend bookings.
+  //   • Default: prior/LM = d.demoTracking.totalScheduled.{sameTimePrior,lastMonth}.value
+  //   • Irfan scale: subtract that period's (pre-launch + 0-10K) count so
+  //     the deltas use the same exclusion filter as the chart series.
+  //
+  // WEEKDAY AVG tile — must compare weekday-only numerator ÷ weekday-only
+  // denominator on BOTH sides, otherwise prior avg is inflated whenever a
+  // weekend booking lands in the prior window. The worker now ships
+  // scheduledWeekdayTotal{,Prior,LastMonth} + Scale + Scale10KPlus
+  // variants; we pick the right one based on _isScale and fall back to
+  // the (buggy) full-week math if an older worker is still deployed.
   const _ltm=d.executiveSummary?.lowTrafficPct?._meta||{};
   const _priorRaw=d.demoTracking.totalScheduled?.sameTimePrior?.value;
   const _lmRaw=d.demoTracking.totalScheduled?.lastMonth?.value;
@@ -4290,7 +4299,19 @@ function renderDemosPerDay(d, targetId){
   const priorTotal=_isScale&&_priorRaw!=null?(_priorRaw-_excPrior):_priorRaw;
   const lmTotal=_isScale&&_lmRaw!=null?(_lmRaw-_excLM):_lmRaw;
   const priorPeriod=d.priorPeriod;const priorMonthPeriod=d.priorMonthPeriod;
-  // Count weekdays in the prior / LM ranges so the avg compares apples to apples.
+  // Pick worker-supplied weekday totals matching the current series:
+  //   • Irfan scale view → ...Scale10KPlus
+  //   • everyone else    → plain weekday totals
+  const _curWdTotal = _isScale
+    ? d.demoTracking.scheduledWeekdayTotalScale10KPlus
+    : d.demoTracking.scheduledWeekdayTotal;
+  const _priorWdTotalNew = _isScale
+    ? d.demoTracking.scheduledWeekdayTotalScale10KPlusPrior
+    : d.demoTracking.scheduledWeekdayTotalPrior;
+  const _lmWdTotalNew = _isScale
+    ? d.demoTracking.scheduledWeekdayTotalScale10KPlusLastMonth
+    : d.demoTracking.scheduledWeekdayTotalLastMonth;
+  // Count weekdays in each window — denominator for the weekday avg.
   const _countWeekdays=(fromStr,toStr)=>{
     if(!fromStr||!toStr)return null;
     const f=new Date(fromStr+'T00:00:00Z'),t=new Date(toStr+'T00:00:00Z');
@@ -4303,8 +4324,15 @@ function renderDemosPerDay(d, targetId){
   };
   const priorWd=priorPeriod?_countWeekdays(priorPeriod.from,priorPeriod.to):null;
   const lmWd=priorMonthPeriod?_countWeekdays(priorMonthPeriod.from,priorMonthPeriod.to):null;
-  const priorAvg=priorTotal!=null&&priorWd?priorTotal/priorWd:null;
-  const lmAvg=lmTotal!=null&&lmWd?lmTotal/lmWd:null;
+  // Prefer the new weekday-only totals; fall back to the legacy
+  // full-week-÷-weekday-count formula only if the worker hasn't shipped
+  // the field yet (e.g. during a partial deploy).
+  const priorAvg = (_priorWdTotalNew != null && priorWd)
+    ? _priorWdTotalNew / priorWd
+    : (priorTotal != null && priorWd ? priorTotal / priorWd : null);
+  const lmAvg = (_lmWdTotalNew != null && lmWd)
+    ? _lmWdTotalNew / lmWd
+    : (lmTotal != null && lmWd ? lmTotal / lmWd : null);
   // Reusable tile delta block: vs prior + vs LM, each as "↑ +N (+X.X%)"
   // Local nfmt + fmtDC mirrors helpers in renderDash (this function is a separate scope)
   function nfmt(n,fmt,dec){if(n==null)return '\u2014';var s=n>=0?'+':'-';var a=Math.abs(n);var d=dec!=null?dec:1;if(fmt==='$')return s+'$'+Math.round(a).toLocaleString();if(fmt==='#')return s+Math.round(a).toLocaleString();if(fmt==='%')return s+a.toFixed(d)+'%';if(fmt==='x')return s+a.toFixed(2)+'x';return s+a.toFixed(d);}

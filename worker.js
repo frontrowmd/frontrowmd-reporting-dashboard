@@ -899,6 +899,15 @@ function processScheduledContacts(contacts) {
   let lowTrafficCount = 0;       // contacts in the pre-launch tier
   let low10KCount = 0;           // contacts in pre-launch OR 0-10K tier (denominator for the Irfan stricter chart)
   let dailyTotal = 0;            // total excluding Very Small (= Webinar tier)
+  // Weekday-only totals — match the day-of-week filter the dashboard's
+  // "Weekday Avg" tile uses. Without these, the dashboard had to divide the
+  // full-week total by the weekday-only day count, inflating prior/LM avgs
+  // any time a contact happened to book on a Sat/Sun.
+  let weekdayTotal = 0;                  // excludes Very Small + weekends
+  let weekdayTotalScale = 0;             // excludes Very Small + Pre-launch + weekends
+  let weekdayTotalScale10KPlus = 0;      // excludes Very Small + Pre-launch + 0-10K + weekends
+  let lowTrafficCountWeekday = 0;        // Pre-launch contacts that landed on a weekday
+  let low10KCountWeekday = 0;            // Pre-launch + 0-10K contacts on a weekday
   // Dedupe: fetchScheduledContacts ORs two filter groups (meeting bookers +
   // Livestorm Webinar registrants), so a contact could appear twice if they
   // booked AND registered for a webinar. Key by id and skip dupes.
@@ -927,16 +936,23 @@ function processScheduledContacts(contacts) {
     const o = etOff(d);
     const et = new Date(d.getTime() + o * 3600000);
     const ds = fmt(et);
+    // ET-local day of week. `et` has its UTC fields shifted into ET, so
+    // getUTCDay() returns the ET-local DOW. 0=Sun, 6=Sat.
+    const etDow = et.getUTCDay();
+    const isWeekday = etDow !== 0 && etDow !== 6;
     byDay[ds] = (byDay[ds]||0) + 1;
     dailyTotal++;
+    if (isWeekday) weekdayTotal++;
     const isLow = wt.includes('pre-launch');
     // The 0-10K tier label is "0-10K monthly web visitors"; lowercase check
     // catches that exact string as well as any future formatting variants.
     const is0to10K = wt.includes('0-10k');
     if (!isLow) {
       byDayScale[ds] = (byDayScale[ds]||0) + 1;
+      if (isWeekday) weekdayTotalScale++;
     } else {
       lowTrafficCount++;
+      if (isWeekday) lowTrafficCountWeekday++;
       const company = (c.properties?.company || '').trim().toLowerCase();
       if (company) lowTrafficCompanies.add(company);
       const email = (c.properties?.email || '').toLowerCase();
@@ -953,11 +969,21 @@ function processScheduledContacts(contacts) {
     // not in the scale-tier funnel).
     if (isLow || is0to10K) {
       low10KCount++;
+      if (isWeekday) low10KCountWeekday++;
     } else {
       byDayScale10KPlus[ds] = (byDayScale10KPlus[ds]||0) + 1;
+      if (isWeekday) weekdayTotalScale10KPlus++;
     }
   }
-  return { total: dailyTotal, byDay, byDayScale, byDayScale10KPlus, byWebTraffic, lowTrafficCount, low10KCount, lowTrafficCompanies };
+  return {
+    total: dailyTotal, byDay, byDayScale, byDayScale10KPlus, byWebTraffic,
+    lowTrafficCount, low10KCount, lowTrafficCompanies,
+    // Weekday-only mirrors of total / low-tier counts, exposed so prior &
+    // last-month deltas in the Weekday Avg tile are apples-to-apples (only
+    // weekday demos in the numerator, weekday-day-count in the denominator).
+    weekdayTotal, weekdayTotalScale, weekdayTotalScale10KPlus,
+    lowTrafficCountWeekday, low10KCountWeekday,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1864,6 +1890,22 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
     scheduledByWebTraffic: c.scheduled.byWebTraffic,
     scheduledByWebTrafficPrior: prior ? p.scheduled?.byWebTraffic || null : null,
     scheduledByWebTrafficLastMonth: priorMonth ? pm.scheduled?.byWebTraffic || null : null,
+    // Weekday-only mirrors of total / scale / scale10KPlus, for current
+    // + prior + last-month. The dashboard's "Weekday Avg" tile divides
+    // these by the count of weekdays in the corresponding window so the
+    // numerator and denominator stay weekday-only on both sides of the
+    // delta. Without these, the prior avg was (full-week demos ÷
+    // weekday-count) which inflated whenever a weekend booking landed in
+    // the prior window.
+    scheduledWeekdayTotal: c.scheduled.weekdayTotal,
+    scheduledWeekdayTotalPrior: prior ? (p.scheduled?.weekdayTotal ?? null) : null,
+    scheduledWeekdayTotalLastMonth: priorMonth ? (pm.scheduled?.weekdayTotal ?? null) : null,
+    scheduledWeekdayTotalScale: c.scheduled.weekdayTotalScale,
+    scheduledWeekdayTotalScalePrior: prior ? (p.scheduled?.weekdayTotalScale ?? null) : null,
+    scheduledWeekdayTotalScaleLastMonth: priorMonth ? (pm.scheduled?.weekdayTotalScale ?? null) : null,
+    scheduledWeekdayTotalScale10KPlus: c.scheduled.weekdayTotalScale10KPlus,
+    scheduledWeekdayTotalScale10KPlusPrior: prior ? (p.scheduled?.weekdayTotalScale10KPlus ?? null) : null,
+    scheduledWeekdayTotalScale10KPlusLastMonth: priorMonth ? (pm.scheduled?.weekdayTotalScale10KPlus ?? null) : null,
   };
   demoTracking.demosPaidPct._meta = { windsorDemos: c.adSpend.total.windsorDemos, demosBooked: c.scheduled.total };
 
@@ -1979,7 +2021,20 @@ function buildPeriodData(period, windsorRows, linkedInDemos, ga4Rows, scheduledC
   // can see them. Without this, c.scheduled.byDayScale10KPlus is undefined
   // in buildResponse and the dashboard falls back to the old pre-launch-only
   // series.
-  const scheduledOut = { total: scheduled.total, byDay: scheduled.byDay, byDayScale: scheduled.byDayScale, byDayScale10KPlus: scheduled.byDayScale10KPlus, byWebTraffic: scheduled.byWebTraffic, lowTrafficCount: scheduled.lowTrafficCount, low10KCount: scheduled.low10KCount };
+  const scheduledOut = {
+    total: scheduled.total, byDay: scheduled.byDay,
+    byDayScale: scheduled.byDayScale, byDayScale10KPlus: scheduled.byDayScale10KPlus,
+    byWebTraffic: scheduled.byWebTraffic,
+    lowTrafficCount: scheduled.lowTrafficCount, low10KCount: scheduled.low10KCount,
+    // Weekday-only mirrors — buildResponse forwards these as
+    // scheduledWeekdayTotal{,Prior,LastMonth} so the Weekday Avg deltas
+    // compare like-for-like.
+    weekdayTotal: scheduled.weekdayTotal,
+    weekdayTotalScale: scheduled.weekdayTotalScale,
+    weekdayTotalScale10KPlus: scheduled.weekdayTotalScale10KPlus,
+    lowTrafficCountWeekday: scheduled.lowTrafficCountWeekday,
+    low10KCountWeekday: scheduled.low10KCountWeekday,
+  };
   return {
     period,
     adSpend: processAdSpend(windsorRows, linkedInDemos),
