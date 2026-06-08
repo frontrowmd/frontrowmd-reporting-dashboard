@@ -3512,6 +3512,15 @@ const WEBINAR_BASELINE_DEFAULT = 17;
 // webinar_date is a HubSpot DATE property stored at midnight UTC, so
 // use toMsUTC bounds (no ET offset). Matches the convention already
 // used by fetchDealsByDemoDateWindow for date_demo_booked.
+//
+// Pagination: hsSearch's default (limit 200 × maxPages 10 = 2000)
+// silently caps large webinars and — because the default sort is
+// hs_createdate ASC — drops the NEWEST contacts when capped. For a
+// webinar with thousands of registrants that would produce exactly the
+// "registered count is lower than HubSpot" symptom. We bump maxPages
+// to 50 (the 10k hard cap inside hsSearch) and switch to
+// webinar_date DESC so if we somehow still hit the cap, we drop the
+// oldest registrants in the window first — and we log when capped.
 async function fetchWebinarRegistrants(token, from, to) {
   const fMs = String(toMsUTC(from));
   const tMs = String(toMsUTC(to, true));
@@ -3520,8 +3529,12 @@ async function fetchWebinarRegistrants(token, from, to) {
       { propertyName: 'webinar_date', operator: 'GTE', value: fMs },
       { propertyName: 'webinar_date', operator: 'LTE', value: tMs },
     ],
-  }], ['createdate','webinar_date','webinar_has_attended','email','average_monthly_web_traffic']);
-  console.log(`fetchWebinarRegistrants(${from}..${to}): ${rows.length} contacts`);
+  }], ['createdate','webinar_date','webinar_has_attended','email','average_monthly_web_traffic'],
+     200,
+     [{ propertyName: 'webinar_date', direction: 'DESCENDING' }],
+     50);
+  const cappedWarning = rows.length >= 10000 ? ' ⚠ CAPPED at 10k — increase hsSearch internal limit' : '';
+  console.log(`fetchWebinarRegistrants(${from}..${to}): ${rows.length} contacts${cappedWarning}`);
   return rows;
 }
 
