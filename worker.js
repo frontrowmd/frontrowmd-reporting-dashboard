@@ -3513,29 +3513,60 @@ const WEBINAR_BASELINE_DEFAULT = 17;
 // use toMsUTC bounds (no ET offset). Matches the convention already
 // used by fetchDealsByDemoDateWindow for date_demo_booked.
 //
-// Pagination: hsSearch's default (limit 200 × maxPages 10 = 2000)
-// silently caps large webinars and — because the default sort is
-// hs_createdate ASC — drops the NEWEST contacts when capped. For a
-// webinar with thousands of registrants that would produce exactly the
-// "registered count is lower than HubSpot" symptom. We bump maxPages
-// to 50 (the 10k hard cap inside hsSearch) and switch to
-// webinar_date DESC so if we somehow still hit the cap, we drop the
-// oldest registrants in the window first — and we log when capped.
+// Two OR'd filter groups so we don't undercount vs HubSpot:
+//   A) webinar_date in window — captures registrants for webinars THAT
+//      RAN in the window, regardless of when each contact was created
+//   B) createdate in window AND webinar_date HAS_PROPERTY — captures
+//      contacts newly added this window who registered for SOME
+//      webinar (even if the webinar itself is outside the window —
+//      e.g. someone signed up this week for a webinar two weeks out)
+// Dedupe by id since a contact who matches both (created in window
+// AND webinar in window) would otherwise be double-counted.
+//
+// Pagination: explicit maxPages=50 (hsSearch's internal 10k hard cap)
+// and webinar_date DESC sort so any cap would drop the OLDEST in
+// window rather than the newest. ⚠ logs if even the 10k cap is hit.
 async function fetchWebinarRegistrants(token, from, to) {
-  const fMs = String(toMsUTC(from));
-  const tMs = String(toMsUTC(to, true));
-  const rows = await hsSearch(token, 'contacts', [{
-    filters: [
-      { propertyName: 'webinar_date', operator: 'GTE', value: fMs },
-      { propertyName: 'webinar_date', operator: 'LTE', value: tMs },
-    ],
-  }], ['createdate','webinar_date','webinar_has_attended','email','average_monthly_web_traffic'],
+  const fUTC = String(toMsUTC(from));
+  const tUTC = String(toMsUTC(to, true));
+  const fET = String(toMsET(from));
+  const tET = String(toMsET(to, true));
+  const rows = await hsSearch(token, 'contacts', [
+    { filters: [
+      { propertyName: 'webinar_date', operator: 'GTE', value: fUTC },
+      { propertyName: 'webinar_date', operator: 'LTE', value: tUTC },
+    ]},
+    { filters: [
+      { propertyName: 'createdate', operator: 'GTE', value: fET },
+      { propertyName: 'createdate', operator: 'LTE', value: tET },
+      { propertyName: 'webinar_date', operator: 'HAS_PROPERTY' },
+    ]},
+  ], ['createdate','webinar_date','webinar_has_attended','email','average_monthly_web_traffic'],
      200,
      [{ propertyName: 'webinar_date', direction: 'DESCENDING' }],
      50);
-  const cappedWarning = rows.length >= 10000 ? ' ⚠ CAPPED at 10k — increase hsSearch internal limit' : '';
-  console.log(`fetchWebinarRegistrants(${from}..${to}): ${rows.length} contacts${cappedWarning}`);
-  return rows;
+  // Dedupe — HubSpot returns the union of OR-groups but a contact
+  // matching both groups appears once in the response, so the dedupe is
+  // a safety net rather than load-bearing. Still cheap to do.
+  const deduped = [...new Map(rows.map(c => [c.id, c])).values()];
+  // Per-group classification for diagnostic logging: how many were
+  // matched by Group A only, Group B only, or both. Helps narrow down
+  // any future "lower than HubSpot" discrepancy without redeploying.
+  const fUTCn = Number(fUTC), tUTCn = Number(tUTC);
+  const fETn  = Number(fET),  tETn  = Number(tET);
+  let aOnly = 0, bOnly = 0, both = 0;
+  for (const c of deduped) {
+    const wd = c.properties?.webinar_date;
+    const cd = c.properties?.createdate;
+    const wdMs = wd ? (isoMs(wd) || dateMs(wd)) : NaN;
+    const cdMs = cd ? isoMs(cd) : NaN;
+    const inA = !isNaN(wdMs) && wdMs >= fUTCn && wdMs <= tUTCn;
+    const inB = !isNaN(cdMs) && cdMs >= fETn  && cdMs <= tETn && !isNaN(wdMs);
+    if (inA && inB) both++; else if (inA) aOnly++; else if (inB) bOnly++;
+  }
+  const capped = deduped.length >= 10000 ? ' ⚠ CAPPED at 10k' : '';
+  console.log(`fetchWebinarRegistrants(${from}..${to}): ${deduped.length} contacts (A-only=${aOnly} B-only=${bOnly} both=${both})${capped}`);
+  return deduped;
 }
 
 // Contacts created in window with date_demo_booked HAS_PROPERTY. Used for
