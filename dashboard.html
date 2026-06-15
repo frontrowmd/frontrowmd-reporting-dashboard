@@ -755,7 +755,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s26';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s27';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2629,6 +2629,11 @@ function _buildAdSetTableHTML(meta,channel,_flagsByName,fatigueMap){
     const rawNested=byAdset[key]||[];
     const nested=rawNested.map(rc=>_flatByName.get((rc.name||'').toLowerCase())||rc);
     r._nested=nested;
+    // Stage (TOF/MOF/BOF/Retarget) lives in the PARENT CAMPAIGN name in their
+    // naming convention, not the ad-set name — so detect from campaign first,
+    // then fall back to the ad-set name (covers ad sets that carry a stage
+    // token themselves). Used by both the Stage cell and the Stage filter.
+    r._stageSrc=((a.campaign||'')+' '+(a.name||'')).trim();
     // Watch = Σ videoP25 ÷ Σ impressions across nested creatives (same as camp).
     let vp25=0,imp=0,q=0,fSum=0,fN2=0,anyActive=false;
     for(const n of nested){
@@ -2649,8 +2654,8 @@ function _buildAdSetTableHTML(meta,channel,_flagsByName,fatigueMap){
     r._flagCounts={pause:pn,fatigue:fn,naming:nn};r._hasAnyFlag=(pn+fn+nn)>0;
     return r;
   });
-  // Stage filter
-  if(stageF!=='all')rows=rows.filter(c=>_irfanStages(c.name).some(t=>t.k===stageF));
+  // Stage filter (detect from campaign+adset name — see r._stageSrc)
+  if(stageF!=='all')rows=rows.filter(c=>_irfanStages(c._stageSrc).some(t=>t.k===stageF));
   // Score + tag (relative ranking, same formula as campaigns/creatives)
   if(typeof scoreCreatives==='function'&&rows.length>0){try{scoreCreatives(rows);}catch(e){}}
   // Tag + Flag filters
@@ -2695,15 +2700,21 @@ function _buildAdSetTableHTML(meta,channel,_flagsByName,fatigueMap){
   for(let i=0;i<rows.length;i++){
     const c=rows[i];const cpd=c.demos>0?c.spend/c.demos:null;
     const nm=(c.name||'').length>56?(c.name||'').slice(0,53)+'…':(c.name||'');
-    const stags=_irfanStages(c.name);
+    const stags=_irfanStages(c._stageSrc||c.name);
     let stagesCell='';for(const t of stags)stagesCell+='<span style="display:inline-block;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;background:'+t.c+'15;color:'+t.c+';margin-right:2px">'+t.l+'</span>';
     const _nested=c._nested||[];
     const _hasNested=_nested.length>0;
     const pauseN=(c._flagCounts&&c._flagCounts.pause)||0;
     const fatN=(c._flagCounts&&c._flagCounts.fatigue)||0;
+    // Aggregate-badge tooltips list WHICH nested creatives triggered the flag
+    // (capped) so the count is actionable — mirrors the Campaigns table.
+    const _flaggedNames=(predFn)=>{const out=[];for(const n of _nested){const f=_flagsByName[(n.name||'').toLowerCase()];if(f&&predFn(f))out.push(n.name||'(unnamed)');}return out;};
+    const _abbrevList=(arr,max)=>arr.length<=max?arr.join(', '):arr.slice(0,max).join(', ')+' (+'+(arr.length-max)+' more)';
+    const _pauseTip=pauseN>0?(pauseN+' PAUSE-flagged creative'+(pauseN===1?'':'s')+': '+_abbrevList(_flaggedNames(f=>f.pause),5)+'. Trigger: Low CTR + Low Watch + High CPD, active >10d, spend ≥$25.'):'';
+    const _fatTip=fatN>0?(fatN+' Fatigue-flagged creative'+(fatN===1?'':'s')+': '+_abbrevList(_flaggedNames(f=>f.fatigued),5)+'. Trigger: CTR declined >15% over 14 days.'):'';
     const _flagBadges=
-      (pauseN>0?' <span onclick="event.stopPropagation()" style="display:inline-block;font-family:var(--font-h);font-size:9px;font-weight:700;color:#fff;background:#DC2626;padding:2px 7px;border-radius:99px;letter-spacing:.04em;margin-left:6px">⚠ '+pauseN+' PAUSE</span>':'')
-     +(fatN>0?' <span onclick="event.stopPropagation()" style="font-size:10px;background:rgba(243,156,18,.12);color:#e67e22;padding:1px 6px;border-radius:4px;font-weight:700;white-space:nowrap;margin-left:6px">⚠ '+fatN+' Fatigue</span>':'');
+      (pauseN>0?' <span data-tip="'+_pauseTip.replace(/"/g,'&quot;')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" onclick="event.stopPropagation()" style="cursor:help;display:inline-block;font-family:var(--font-h);font-size:9px;font-weight:700;color:#fff;background:#DC2626;padding:2px 7px;border-radius:99px;letter-spacing:.04em;margin-left:6px">⚠ '+pauseN+' PAUSE</span>':'')
+     +(fatN>0?' <span data-tip="'+_fatTip.replace(/"/g,'&quot;')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" onclick="event.stopPropagation()" style="cursor:help;font-size:10px;background:rgba(243,156,18,.12);color:#e67e22;padding:1px 6px;border-radius:4px;font-weight:700;white-space:nowrap;margin-left:6px">⚠ '+fatN+' Fatigue</span>':'');
     const _rowId='irf-adset-'+i;
     const _showNested=S.irfan.metaAdsetAllExpanded;
     const _activeN=_nested.filter(n=>n.status==='ACTIVE'||(!n.status&&(n.spend||0)>0)).length;
@@ -2742,7 +2753,15 @@ function _buildAdSetTableHTML(meta,channel,_flagsByName,fatigueMap){
         const _nameBad=_subj&&_subj.type==='unknown';
         const _nameBadge=_nameBad?' <span title="Name doesn\'t match {Format}_{Talent}_{Concept}_{Setting}_{Variant} convention" style="cursor:help;font-size:9px;background:rgba(124,58,237,.10);color:#7C3AED;padding:1px 6px;border-radius:4px;font-weight:700;white-space:nowrap;border:1px solid rgba(124,58,237,.30)">📝 Naming</span>':'';
         const _ncrFlags=_flagsByName[(ncr.name||'').toLowerCase()];
-        const _pauseBadge=(_ncrFlags&&_ncrFlags.pause)?' <span style="display:inline-block;font-family:var(--font-h);font-size:9px;font-weight:700;color:#fff;background:#DC2626;padding:1px 6px;border-radius:99px;letter-spacing:.04em">PAUSE</span>':'';
+        // PAUSE pill — instant dbcTip hover explaining WHY (the creative's own
+        // CTR / Watch / CPD + the active-days & spend gates), matching the
+        // Campaigns + Ad Creatives tables.
+        const _nCpd=(ncr.demos>0)?(ncr.spend/ncr.demos):null;
+        const _nCpdStr=_nCpd!=null?f$(_nCpd):'$— (0 demos)';
+        const _nCtrStr=ncr.ctr!=null?ncr.ctr.toFixed(2)+'%':'—';
+        const _nWrStr=nWr!=null?nWr.toFixed(1)+'%':'—';
+        const _ncrPauseTip=(_ncrFlags&&_ncrFlags.pause)?('Low CTR + Low Watch + High CPD — pause candidate. CTR '+_nCtrStr+', Watch '+_nWrStr+', CPD '+_nCpdStr+'. Active '+(ncr.activeDays||0)+'d, spend '+f$(ncr.spend||0)+'.'):'';
+        const _pauseBadge=(_ncrFlags&&_ncrFlags.pause)?' <span data-tip="'+_ncrPauseTip.replace(/"/g,'&quot;')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" style="cursor:help;display:inline-block;font-family:var(--font-h);font-size:9px;font-weight:700;color:#fff;background:#DC2626;padding:1px 6px;border-radius:99px;letter-spacing:.04em">PAUSE</span>':'';
         h+='<tr class="'+_rowId+'-cre" style="display:'+(_showNested?'table-row':'none')+';background:rgba(114,164,191,.04);border-bottom:1px solid var(--border)">';
         h+='<td style="padding:6px 6px 6px 30px;color:var(--navy);font-size:10px" title="'+(ncr.name||'').replace(/"/g,'&quot;')+'">'+_thumb+_pauseBadge+(_pauseBadge?' ':'')+nNm+_ftBadge+_nameBadge+'</td>';
         h+='<td></td>';
