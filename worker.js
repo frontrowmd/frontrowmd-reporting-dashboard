@@ -2977,7 +2977,10 @@ async function fetchAzCreatives(apiKey, from, to) {
       const video = ch === 'meta' ? ',video_p25_watched_actions' : '';
       const placement = ch === 'meta' ? ',publisher_platform,platform_position' : '';
       const status = ch === 'meta' ? ',ad_status' : '';
-      promises.push(azWindsorFetch(apiKey, cfg.connector, from, to, base + extra + freq + video + placement + status).catch(e => { console.error(`Creative fetch ${ch}:`, e.message); return []; }));
+      // adset_name (Meta) / ad_group_name (Google, TikTok) lets us group
+      // creatives under their parent ad set for the Ad Sets table dropdown.
+      const adset = ch === 'meta' ? ',adset_name' : ((ch === 'google' || ch === 'tiktok') ? ',ad_group_name' : '');
+      promises.push(azWindsorFetch(apiKey, cfg.connector, from, to, base + extra + freq + video + placement + status + adset).catch(e => { console.error(`Creative fetch ${ch}:`, e.message); return []; }));
     }
     channels.push(ch);
   }
@@ -3017,6 +3020,7 @@ async function fetchAzCreatives(apiKey, from, to) {
     if (!rows || !rows.length) { results[ch] = null; continue; }
     const map = {};
     const campCreMap = {}; // Per-campaign creative breakdown
+    const adsetCreMap = {}; // Per-ad-set creative breakdown (Ad Sets dropdown)
     const placementMap = {}; // Placement aggregation (Meta only)
     const tm = thumbMaps[ch] || {};
     for (const row of rows) {
@@ -3097,6 +3101,33 @@ async function fetchAzCreatives(apiKey, from, to) {
         campCreMap[campKey][name].demos += (ch==='google'||ch==='youtube') ? Math.ceil(rawD2) : Math.round(rawD2);
       }
       if (cfg.hasFreq && row.frequency != null && row.frequency !== '') campCreMap[campKey][name].freqVals.push(parseFloat(row.frequency));
+      // Per-ad-set creative aggregation — mirrors campCreMap but keyed by
+      // adset_name (Meta) / ad_group_name (Google, TikTok). Powers the Ad Sets
+      // table's nested-creative dropdown. Skipped when the row has no ad-set
+      // name (e.g. LinkedIn, which has no ad-set concept).
+      const adsetName = (row.adset_name || row.ad_group_name || '').trim();
+      if (adsetName) {
+        const adsetKey = adsetName.toLowerCase();
+        if (!adsetCreMap[adsetKey]) adsetCreMap[adsetKey] = {};
+        if (!adsetCreMap[adsetKey][name]) adsetCreMap[adsetKey][name] = { name, spend:0, clicks:0, impressions:0, demos:0, freqVals:[], thumbnail: tm[name] || null, videoP25:0, _dates:[], _adsetName: adsetName, campaignName: campName, status:null, _statusDate:'' };
+        if (_rowStatus && _rowDate >= adsetCreMap[adsetKey][name]._statusDate) {
+          adsetCreMap[adsetKey][name].status = normStatus(_rowStatus);
+          adsetCreMap[adsetKey][name]._statusDate = _rowDate;
+        }
+        adsetCreMap[adsetKey][name].spend += parseFloat(row.spend)||0;
+        adsetCreMap[adsetKey][name].clicks += parseInt(row.clicks)||0;
+        adsetCreMap[adsetKey][name].impressions += parseInt(row.impressions)||0;
+        if (row.date) adsetCreMap[adsetKey][name]._dates.push(row.date);
+        if (row.video_p25_watched_actions) {
+          const vArr3 = Array.isArray(row.video_p25_watched_actions) ? row.video_p25_watched_actions : [];
+          for (const v of vArr3) { if (v && v.value) adsetCreMap[adsetKey][name].videoP25 += parseInt(v.value)||0; }
+        }
+        if (ch !== 'linkedin') {
+          const rawD3 = parseFloat(row[cfg.demoField])||0;
+          adsetCreMap[adsetKey][name].demos += (ch==='google'||ch==='youtube') ? Math.ceil(rawD3) : Math.round(rawD3);
+        }
+        if (cfg.hasFreq && row.frequency != null && row.frequency !== '') adsetCreMap[adsetKey][name].freqVals.push(parseFloat(row.frequency));
+      }
     }
     for (const c of Object.values(map)) {
       c.ctr = c.impressions > 0 ? (c.clicks/c.impressions)*100 : 0;
@@ -3144,13 +3175,32 @@ async function fetchAzCreatives(apiKey, from, to) {
         return c;
       }).sort((a,b)=>b.spend-a.spend);
     }
+    // Finalize per-ad-set creatives (same shape as campCreFinal, keyed by
+    // lowercased ad-set name). Used by the Ad Sets table dropdown.
+    const adsetCreFinal = {};
+    for (const [ak, cres] of Object.entries(adsetCreMap)) {
+      adsetCreFinal[ak] = Object.values(cres).map(c => {
+        c.ctr = c.impressions > 0 ? (c.clicks/c.impressions)*100 : 0;
+        c.cpd = c.demos > 0 ? c.spend/c.demos : null;
+        c.frequency = c.freqVals.length ? c.freqVals.reduce((a,b)=>a+b,0)/c.freqVals.length : null;
+        delete c.freqVals;
+        delete c._statusDate;
+        if (c._dates && c._dates.length) {
+          c._dates.sort(); const fd3=new Date(c._dates[0]+'T12:00:00Z'),ld3=new Date(c._dates[c._dates.length-1]+'T12:00:00Z');
+          c.activeDays=Math.round((ld3-fd3)/86400000)+1;
+        } else c.activeDays=0;
+        delete c._dates;
+        c.adsetName = c._adsetName || ak; delete c._adsetName;
+        return c;
+      }).sort((a,b)=>b.spend-a.spend);
+    }
     // Finalize overall placement summary
     const placementSummary = Object.values(placementMap).map(p => {
       p.ctr = p.impressions > 0 ? (p.clicks/p.impressions)*100 : 0;
       p.cpd = p.demos > 0 ? p.spend/p.demos : null;
       return p;
     }).sort((a,b)=>b.spend-a.spend);
-    results[ch] = { flat: Object.values(map).sort((a,b)=>b.spend-a.spend), byCampaign: campCreFinal, placements: placementSummary };
+    results[ch] = { flat: Object.values(map).sort((a,b)=>b.spend-a.spend), byCampaign: campCreFinal, byAdset: adsetCreFinal, placements: placementSummary };
   }
   return results;
 }
@@ -3351,6 +3401,7 @@ function buildAzResponse(period, prior, priorMonth, windsor, creatives, priorW, 
     const rawCreativeData = creatives?.[ch] || null;
     const rawCreatives = rawCreativeData?.flat || rawCreativeData; // support both new {flat,byCampaign} and old array format
     const creativeByCampaign = rawCreativeData?.byCampaign || null;
+    const creativeByAdset = rawCreativeData?.byAdset || null;
     let mergedCreatives = null;
     if (Array.isArray(rawCreatives) && rawCreatives.length) {
       const creativeAttr = {};
@@ -3406,6 +3457,7 @@ function buildAzResponse(period, prior, priorMonth, windsor, creatives, priorW, 
       campaigns: mergedCamps,
       creatives: mergedCreatives,
       creativeByCampaign: creativeByCampaign,
+      creativeByAdset: creativeByAdset,
       fatigueMap: Object.fromEntries(Object.entries(fatigue||{}).filter(([k])=>k.startsWith(ch+'::'))),
       audiences: audiences?.[ch] || null,
       placements: rawCreativeData?.placements || null,

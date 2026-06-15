@@ -622,6 +622,9 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
       <!-- Row 8: <channel> — Campaigns -->
       <div class="sec sec-card"><div class="st"><span class="ad-channel-dot" style="display:inline-block;width:8px;height:8px;background:#1877F2;border-radius:50%;margin-right:8px;vertical-align:middle"></span><span class="ad-channel-label">Meta</span> — Campaigns</div><div style="font-size:12px;color:var(--grey);margin-bottom:10px">Sortable · stage-filterable · sourced from the Paid Ads Dashboard payload</div><div id="ov-meta-campaigns"></div></div>
 
+      <!-- Row 8b: <channel> — Ad Sets (same layout/filters/dropdown as Campaigns) -->
+      <div class="sec sec-card"><div class="st"><span class="ad-channel-dot" style="display:inline-block;width:8px;height:8px;background:#1877F2;border-radius:50%;margin-right:8px;vertical-align:middle"></span><span class="ad-channel-label">Meta</span> — <span class="ad-channel-adsetlabel">Ad Sets</span></div><div style="font-size:12px;color:var(--grey);margin-bottom:10px">Sortable · stage- &amp; flag-filterable · expand a row to see its creatives · sourced from the Paid Ads Dashboard payload</div><div id="ov-meta-adsets"></div></div>
+
       <!-- Row 9: <channel> — Ad Creatives -->
       <div class="sec sec-card"><div class="st"><span class="ad-channel-dot" style="display:inline-block;width:8px;height:8px;background:#1877F2;border-radius:50%;margin-right:8px;vertical-align:middle"></span><span class="ad-channel-label">Meta</span> — Ad Creatives</div><div style="font-size:12px;color:var(--grey);margin-bottom:10px">Sortable · filterable by Tag &amp; Flags · all creatives across campaigns · sourced from the Paid Ads Dashboard payload</div><div id="ov-meta-creatives"></div></div>
 
@@ -752,7 +755,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s25';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s26';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -818,7 +821,14 @@ document.getElementById('pw').addEventListener('keydown',e=>{if(e.key==='Enter')
 // Filters
 function bldF(){const s=S[AP];var aiBtn=AI_PANEL_PAGES.indexOf(AP)>=0?'<button id="ai-panel-btn" onclick="toggleAIPanel()" class="fb" style="border:1.5px solid #B8860B;background:'+(_aiPanelOpen?'#B8860B':'#FFF8E1')+';color:'+(_aiPanelOpen?'#fff':'#8B6914')+';font-weight:700" onmouseover="this.style.background=\'#B8860B\';this.style.color=\'#fff\'" onmouseout="if(!_aiPanelOpen){this.style.background=\'#FFF8E1\';this.style.color=\'#8B6914\';}">✦ AI Analysis</button>':'';if(AP==='signup'){document.getElementById('filters').innerHTML='<span style="font-size:13px;color:var(--grey)">Fixed cohorts — independent of time filters</span>'+aiBtn+'<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>';return;}if(AP==='strategy'||AP==='csession'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='content'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='outbound'){document.getElementById('filters').innerHTML=aiBtn;document.getElementById('filters').style.display=aiBtn?'':'none';return;}else{document.getElementById('filters').style.display='';}let h='';for(const w of W)h+=`<button class="fb${s.win===w.k?' active':''}" data-w="${w.k}" onclick="selW('${w.k}')">${w.l}</button>`;h+=`<div class="cr${s.win==='custom'?' vis':''}" id="cr"><input type="date" id="cf"><span style="color:var(--grey)">→</span><input type="date" id="ct"><label class="cr-cmp-lbl"><input type="checkbox" id="cc" onchange="document.getElementById('crVs').classList.toggle('vis',this.checked)">Compare</label><span class="cr-vs" id="crVs"><span class="cr-vs-prefix">vs</span><input type="date" id="cvf"><span style="color:var(--grey)">→</span><input type="date" id="cvt"></span><button onclick="goC()">Go</button></div>`;h+=aiBtn;h+=`<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>`;document.getElementById('filters').innerHTML=h;}
 async function selW(w){S[AP].win=w;document.querySelectorAll('#filters .fb').forEach(b=>b.classList.toggle('active',b.dataset.w===w));const cr=document.getElementById('cr');if(cr)cr.classList.toggle('vis',w==='custom');if(w==='custom')return;if(AP==='webinarPerf'){await fdWebinarPerf(w);return;}await fd(w);}
-async function goC(){const f=document.getElementById('cf').value,t=document.getElementById('ct').value;if(!f||!t)return;const cc=document.getElementById('cc');let vsFrom=null,vsTo=null;if(cc&&cc.checked){vsFrom=document.getElementById('cvf').value||null;vsTo=document.getElementById('cvt').value||null;if(!vsFrom||!vsTo)return;}if(AP==='webinarPerf'){await fdWebinarPerf('custom',f,t,vsFrom,vsTo);return;}await fd('custom',f,t,vsFrom,vsTo);}
+async function goC(){const f=document.getElementById('cf').value,t=document.getElementById('ct').value;if(!f||!t)return;const cc=document.getElementById('cc');let vsFrom=null,vsTo=null;if(cc&&cc.checked){vsFrom=document.getElementById('cvf').value||null;vsTo=document.getElementById('cvt').value||null;if(!vsFrom||!vsTo)return;}
+  // Persist the custom range on the page state so secondary fetches (e.g. the
+  // Irfan/Detailed Meta Campaigns/Creatives/Audiences tables, which hit the
+  // analyzer endpoint on their own) can forward the same from/to. Without
+  // this they'd POST {window:'custom'} with no dates and the worker would
+  // reject the request — that's why those tables went blank on custom.
+  S[AP].cFrom=f;S[AP].cTo=t;S[AP].cVsFrom=vsFrom;S[AP].cVsTo=vsTo;
+  if(AP==='webinarPerf'){await fdWebinarPerf('custom',f,t,vsFrom,vsTo);return;}await fd('custom',f,t,vsFrom,vsTo);}
 // Detailed Dashboard skeleton — replaces the full #page-dashboard innerHTML
 // with a 9-section layout matching the real page (Daily / Revenue / WT Pie /
 // Funnel / Executive Summary / Conversion Funnel / Demo Outcome / Ad Spend /
@@ -1207,9 +1217,12 @@ async function fdSpecial1(){
 // Dashboard so we avoid a redundant fetch.
 async function fdAnalyzer(win){
   win = win || S.analyzer.win || S.dashboard?.win || 'mtd';
+  // Resolve custom dates + collision-safe cache key (mirrors the loader).
+  const _cr=_resolveCustomRange(win);
+  const _ck=_azCacheKey(win,_cr);
   // Reuse the cache that Detailed Dashboard / Irfan Dashboard populates
-  if(S.irfan?.analyzerCache?.[win]){
-    S.analyzer.data=S.irfan.analyzerCache[win];
+  if(S.irfan?.analyzerCache?.[_ck]){
+    S.analyzer.data=S.irfan.analyzerCache[_ck];
     S.analyzer.win=win;
     if(AP==='csession')renderCreativeSession();
     return S.analyzer.data;
@@ -1218,14 +1231,16 @@ async function fdAnalyzer(win){
   S.analyzer._fetching=true;
   if(AP==='csession')renderCreativeSession(); // show loading state
   try{
-    const r=await fetch(AZ_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:PW,window:win})});
+    const _body={password:PW,window:win};
+    if(win==='custom'){if(_cr.from)_body.from=_cr.from;if(_cr.to)_body.to=_cr.to;if(_cr.vsFrom)_body.vsFrom=_cr.vsFrom;if(_cr.vsTo)_body.vsTo=_cr.vsTo;}
+    const r=await fetch(AZ_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(_body)});
     const d=await r.json();
     if(r.ok&&!d.error&&d.channels){
       S.analyzer.data=d;
       S.analyzer.win=win;
       // Also stash in the shared cache so other pages benefit
       if(!S.irfan.analyzerCache)S.irfan.analyzerCache={};
-      S.irfan.analyzerCache[win]=d;
+      S.irfan.analyzerCache[_ck]=d;
     } else {
       console.error('Analyzer API error:',r.status,d);
     }
@@ -2348,6 +2363,7 @@ function renderIrfan(){
   // Meta Campaign + Creative tables — each in its own card. Both lazy-loaded
   // from the analyzer payload via _renderIrfanMetaTablesLoader.
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:16px"><div class="irf-card-title">Meta — Campaigns</div><div class="irf-card-sub">Sortable · stage-filterable · sourced from the Paid Ads Dashboard payload</div><div id="irfan-meta-campaigns"></div></div>';
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:16px"><div class="irf-card-title">Meta — Ad Sets</div><div class="irf-card-sub">Sortable · stage- &amp; flag-filterable · expand a row to see its creatives · sourced from the Paid Ads Dashboard payload</div><div id="irfan-meta-adsets"></div></div>';
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:16px"><div class="irf-card-title">Meta — Ad Creatives</div><div class="irf-card-sub">Sortable · filterable by Tag &amp; Flags · all creatives across campaigns · sourced from the Paid Ads Dashboard payload</div><div id="irfan-meta-creatives"></div></div>';
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:24px"><div class="irf-card-title">Meta — Audiences</div><div class="irf-card-sub">Sortable · ad-set level breakdown of spend, performance, and demos</div><div id="irfan-meta-audiences"></div></div>';
 
@@ -2364,6 +2380,25 @@ function renderIrfan(){
 // S.irfan.metaCache so we don't re-fetch on every Irfan render, and so we
 // don't clobber S.analyzer's own state. Falls back to S.analyzer.data if the
 // user happens to have just visited the analyzer for the same window.
+// Resolve the active custom date range for analyzer secondary fetches.
+// Returns {} for non-custom windows. For custom, prefers the current page's
+// stored range (set in goC), falling back to any page that has one — so the
+// Irfan/Detailed Meta tables can forward from/to even when invoked from a
+// render path that doesn't carry the dates directly.
+function _resolveCustomRange(win){
+  if(win!=='custom')return {};
+  const cand=[S[AP],S.dashboard,S.irfan,S.analyzer].filter(Boolean);
+  for(const s of cand){if(s.cFrom&&s.cTo)return {from:s.cFrom,to:s.cTo,vsFrom:s.cVsFrom||null,vsTo:s.cVsTo||null};}
+  return {};
+}
+// Cache key for the shared analyzer payload. Non-custom windows key by the
+// window string; custom windows must include the dates so two different
+// custom ranges don't collide on a single 'custom' bucket.
+function _azCacheKey(win,cr){
+  if(win!=='custom')return win;
+  cr=cr||{};
+  return 'custom:'+(cr.from||'')+':'+(cr.to||'')+(cr.vsFrom?':'+cr.vsFrom+':'+(cr.vsTo||''):'');
+}
 function _renderIrfanMetaTablesLoader(winOverride){
   // Look up BOTH possible target pairs (Irfan + Overview). The render function
   // writes to whichever are present in the DOM at render time, so a single
@@ -2371,8 +2406,9 @@ function _renderIrfanMetaTablesLoader(winOverride){
   const campTargets=[document.getElementById('irfan-meta-campaigns'),document.getElementById('ov-meta-campaigns')].filter(Boolean);
   const creTargets=[document.getElementById('irfan-meta-creatives'),document.getElementById('ov-meta-creatives')].filter(Boolean);
   const audTargets=[document.getElementById('irfan-meta-audiences'),document.getElementById('ov-meta-audiences')].filter(Boolean);
-  if(!campTargets.length&&!creTargets.length&&!audTargets.length)return;
-  const _setBoth=(html)=>{[...campTargets,...creTargets,...audTargets].forEach(el=>el.innerHTML=html);};
+  const adsetTargets=[document.getElementById('irfan-meta-adsets'),document.getElementById('ov-meta-adsets')].filter(Boolean);
+  if(!campTargets.length&&!creTargets.length&&!audTargets.length&&!adsetTargets.length)return;
+  const _setBoth=(html)=>{[...campTargets,...creTargets,...audTargets,...adsetTargets].forEach(el=>el.innerHTML=html);};
   // Window override lets callers (e.g. Overview/renderDash) request data for
   // a different selector window than the Irfan page is showing.
   const irfWin=winOverride||S.irfan?.win||'mtd';
@@ -2381,11 +2417,16 @@ function _renderIrfanMetaTablesLoader(winOverride){
   // the attribution match-rate footer on the Detailed Dashboard's Channel
   // Performance table and the Audiences table below Meta Creatives.
   if(!S.irfan.analyzerCache)S.irfan.analyzerCache={};
+  // Resolve custom dates + a collision-safe cache key. For custom windows the
+  // key embeds the from/to so two different custom ranges don't share a bucket.
+  const _cr=_resolveCustomRange(irfWin);
+  const _ck=_azCacheKey(irfWin,_cr);
   const _getCh=()=>AP==='dashboard'?(S.dashboard.activeAdChannel||'meta'):'meta';
-  if(S.irfan.analyzerCache[irfWin]){_renderIrfanMetaTables(S.irfan.analyzerCache[irfWin],_getCh());_updateCpdMatchRate(irfWin);return;}
-  // Reuse analyzer's already-loaded payload if same window
-  if(S.analyzer?.data?.channels?.meta&&S.analyzer.win===irfWin){
-    S.irfan.analyzerCache[irfWin]=S.analyzer.data;
+  if(S.irfan.analyzerCache[_ck]){_renderIrfanMetaTables(S.irfan.analyzerCache[_ck],_getCh());_updateCpdMatchRate(irfWin);return;}
+  // Reuse analyzer's already-loaded payload if same window. Skip for custom —
+  // S.analyzer.win==='custom' doesn't guarantee the same date range.
+  if(irfWin!=='custom'&&S.analyzer?.data?.channels?.meta&&S.analyzer.win===irfWin){
+    S.irfan.analyzerCache[_ck]=S.analyzer.data;
     _renderIrfanMetaTables(S.analyzer.data,_getCh());_updateCpdMatchRate(irfWin);return;
   }
   _setBoth('<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px"><span class="sp" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle"></span> Loading ad-channel data…</div>');
@@ -2395,7 +2436,11 @@ function _renderIrfanMetaTablesLoader(winOverride){
   // (e.g. Last 7 Days) where upstream timeouts or response-shape oddities
   // would otherwise be invisible.
   const _azT0=performance.now();
-  fetch(AZ_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:PW,window:irfWin})})
+  // Forward the custom from/to/vs dates so a custom window doesn't POST a
+  // dateless {window:'custom'} (which the worker rejects).
+  const _azBody={password:PW,window:irfWin};
+  if(irfWin==='custom'){if(_cr.from)_azBody.from=_cr.from;if(_cr.to)_azBody.to=_cr.to;if(_cr.vsFrom)_azBody.vsFrom=_cr.vsFrom;if(_cr.vsTo)_azBody.vsTo=_cr.vsTo;}
+  fetch(AZ_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(_azBody)})
     .then(async r=>{
       const _ms=Math.round(performance.now()-_azT0);
       const _txt=await r.text();
@@ -2413,7 +2458,7 @@ function _renderIrfanMetaTablesLoader(winOverride){
     })
     .then(ad=>{
       if(ad&&!ad.error&&ad.channels?.meta){
-        S.irfan.analyzerCache[irfWin]=ad;
+        S.irfan.analyzerCache[_ck]=ad;
         const onIrfan=AP==='irfan'&&(S.irfan?.win||'mtd')===irfWin;
         const onOverview=AP==='dashboard'&&(S.dashboard?.win||'mtd')===irfWin;
         if(onIrfan||onOverview)_renderIrfanMetaTables(ad,_getCh());
@@ -2513,12 +2558,35 @@ window.dashSetAdChannel=function(ch){
   const audSub=ch==='meta'?'Sortable · ad-set level breakdown of spend, performance, and demos':(ch==='linkedin'?'Sortable · audience-level breakdown':'Sortable · ad-group level breakdown of spend, performance, and demos');
   document.querySelectorAll('.ad-channel-audlabel').forEach(el=>el.textContent=audLbl);
   document.querySelectorAll('.ad-channel-audsub').forEach(el=>el.textContent=audSub);
+  // Ad Sets (Meta) vs Ad Groups (Google/TikTok) terminology for the rich table
+  const adsetLbl=(ch==='google'||ch==='tiktok')?'Ad Groups':'Ad Sets';
+  document.querySelectorAll('.ad-channel-adsetlabel').forEach(el=>el.textContent=adsetLbl);
   // Reset filters when switching channels (different campaigns/creatives)
   S.irfan.metaCampStageF='all';
   S.irfan.metaCreTagF='all';
   S.irfan.metaCreFlagF='all';
+  S.irfan.metaAdsetStageF='all';
+  S.irfan.metaAdsetTagF='all';
+  S.irfan.metaAdsetFlagF='all';
   // Re-render with the cached analyzer payload if we have one
   if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,ch);
+};
+// ── Ad Sets table interactions (mirror the campaign-table callbacks) ──
+window.irfanSortAdset=function(col){const s=S.irfan.metaAdsetSort||(S.irfan.metaAdsetSort={col:'cpd',dir:'desc'});if(s.col===col)s.dir=s.dir==='desc'?'asc':'desc';else{s.col=col;s.dir=(col==='name'||col==='status'||col==='stage')?'asc':'desc';}if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
+window.irfanAdsetStageF=function(stage){S.irfan.metaAdsetStageF=stage;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
+window.irfanAdsetTagF=function(tag){S.irfan.metaAdsetTagF=tag;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
+window.irfanAdsetFlagF=function(flag){S.irfan.metaAdsetFlagF=flag;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
+window.irfanToggleAdsetCreatives=function(rowId){
+  const rows=document.querySelectorAll('.'+rowId+'-cre');
+  if(!rows.length)return;
+  const isOpen=rows[0].style.display!=='none';
+  rows.forEach(r=>r.style.display=isOpen?'none':'table-row');
+  const chev=document.querySelector('.irf-adset-chev[data-row="'+rowId+'"]');
+  if(chev)chev.textContent=isOpen?'▶':'▼';
+};
+window.irfanToggleAllAdsetCreatives=function(){
+  S.irfan.metaAdsetAllExpanded=!S.irfan.metaAdsetAllExpanded;
+  if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());
 };
 // Toggle the visibility of a campaign's nested creative rows.
 window.irfanToggleCampCreatives=function(rowId){
@@ -2534,6 +2602,187 @@ window.irfanToggleAllCampCreatives=function(){
   S.irfan.metaAllExpanded=!S.irfan.metaAllExpanded;
   if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());
 };
+// ── Ad Sets table builder ──────────────────────────────────────────────
+// Returns the HTML for a campaign-style Ad Sets table: same columns, sort,
+// stage + tag + flag filters, expand-to-creatives dropdown, score/tag,
+// heatmap, and totals row as the Campaigns table — but rows are ad sets
+// (Meta) / ad groups (Google, TikTok). Row metrics come from the
+// authoritative ad-set fetch (meta.audiences); nested creatives + the
+// derived Watch/Qual/Freq/Status come from meta.creativeByAdset enriched
+// against the flat creative list. Reuses the shared _irfan* helpers +
+// scoreCreatives so behavior matches the Campaigns table.
+function _buildAdSetTableHTML(meta,channel,_flagsByName,fatigueMap){
+  const itemLabel=(channel==='google'||channel==='tiktok')?'ad group':'ad set';
+  const itemLabelPl=(channel==='google'||channel==='tiktok')?'ad groups':'ad sets';
+  const adSets=meta.audiences||[];
+  if(!adSets.length)return '<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px">No '+itemLabel+'-level data for this window</div>';
+  const byAdset=meta.creativeByAdset||{};
+  // Name→enriched-creative lookup (flat list carries qualified/fatigue and,
+  // after scoring, _score/_tag). We enrich each nested raw creative through it.
+  const _flatByName=new Map();
+  for(const c of (meta.creatives||[]))_flatByName.set((c.name||'').toLowerCase(),c);
+  const sortSt=S.irfan.metaAdsetSort,stageF=S.irfan.metaAdsetStageF,tagF=S.irfan.metaAdsetTagF,flagF=S.irfan.metaAdsetFlagF;
+  // Build rows with nested creatives + derived aggregates.
+  let rows=adSets.map(a=>{
+    const r=Object.assign({},a);
+    const key=(a.name||'').toLowerCase().trim();
+    const rawNested=byAdset[key]||[];
+    const nested=rawNested.map(rc=>_flatByName.get((rc.name||'').toLowerCase())||rc);
+    r._nested=nested;
+    // Watch = Σ videoP25 ÷ Σ impressions across nested creatives (same as camp).
+    let vp25=0,imp=0,q=0,fSum=0,fN2=0,anyActive=false;
+    for(const n of nested){
+      vp25+=(n.videoP25||0);imp+=(n.impressions||0);q+=(n.qualified||0);
+      if(n.frequency!=null){fSum+=n.frequency;fN2++;}
+      if(n.status==='ACTIVE'||(!n.status&&(n.spend||0)>0))anyActive=true;
+    }
+    r.watch=imp>0?(vp25/imp)*100:null;
+    r.videoP25=vp25; // lets the shared sorter rank the Watch column correctly
+    r.qualified=q;
+    r.frequency=fN2>0?fSum/fN2:null;
+    // Status: ACTIVE if any nested creative active; else PAUSED if we have
+    // nested rows; else fall back to spend>0 (no creative-level signal).
+    r.status=anyActive?'ACTIVE':(nested.length?'PAUSED':((r.spend||0)>0?'ACTIVE':'PAUSED'));
+    // Aggregate flag counts from nested creatives (pause/fatigue/naming).
+    let pn=0,fn=0,nn=0;
+    for(const n of nested){const f=_flagsByName[(n.name||'').toLowerCase()];if(!f)continue;if(f.pause)pn++;if(f.fatigued)fn++;if(f.naming)nn++;}
+    r._flagCounts={pause:pn,fatigue:fn,naming:nn};r._hasAnyFlag=(pn+fn+nn)>0;
+    return r;
+  });
+  // Stage filter
+  if(stageF!=='all')rows=rows.filter(c=>_irfanStages(c.name).some(t=>t.k===stageF));
+  // Score + tag (relative ranking, same formula as campaigns/creatives)
+  if(typeof scoreCreatives==='function'&&rows.length>0){try{scoreCreatives(rows);}catch(e){}}
+  // Tag + Flag filters
+  if(tagF!=='all')rows=rows.filter(c=>c._tag===tagF);
+  if(flagF!=='all')rows=rows.filter(c=>{const fc=c._flagCounts||{pause:0,fatigue:0,naming:0};if(flagF==='pause')return fc.pause>0;if(flagF==='fatigue')return fc.fatigue>0;if(flagF==='naming')return fc.naming>0;if(flagF==='any')return c._hasAnyFlag;return true;});
+  rows=_irfanSortRows(rows,sortSt.col,sortSt.dir);
+  // Heatmap arrays
+  const cSp=rows.map(c=>c.spend),cIm=rows.map(c=>c.impressions||0),cCl=rows.map(c=>c.clicks||0),cCt=rows.map(c=>c.ctr||0),cDe=rows.map(c=>c.demos||0),cCp=rows.map(c=>c.demos>0?c.spend/c.demos:0),cQu=rows.map(c=>c.qualified||0),cWa=rows.map(c=>c.watch||0),cFr=rows.map(c=>c.frequency||0),cSc=rows.map(c=>c._score||0);
+  const stages=[{k:'all',l:'All',c:'var(--grey)'},{k:'s1',l:'TOF',c:'#2980B9'},{k:'s2',l:'MOF',c:'#E67E22'},{k:'s3',l:'BOF',c:'#C0392B'},{k:'s4',l:'Retarget',c:'#7D3C98'}];
+  let h='';
+  h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap"><div style="font-size:11px;color:var(--grey);font-variant-numeric:tabular-nums">'+rows.length+' '+itemLabelPl+' · sort by '+sortSt.col+' '+sortSt.dir+'</div>';
+  h+='<button onclick="irfanToggleAllAdsetCreatives()" style="padding:5px 12px;border-radius:50px;font-size:10px;font-weight:600;border:1px solid var(--teal);background:transparent;color:var(--teal);cursor:pointer;font-family:var(--font-h)">'+(S.irfan.metaAdsetAllExpanded?'▼ Collapse All':'▶ Expand All')+'</button>';
+  h+='<div style="flex:1"></div><span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em">Stage</span>';
+  for(const s of stages){const isA=stageF===s.k;h+='<button onclick="irfanAdsetStageF(\''+s.k+'\')" style="padding:5px 12px;border-radius:50px;font-size:10px;font-weight:'+(isA?'700':'500')+';border:'+(isA?'none':'1px solid '+s.c)+';background:'+(isA?s.c:'transparent')+';color:'+(isA?'#fff':s.c)+';cursor:pointer;font-family:var(--font-h)">'+s.l+'</button>';}
+  h+='</div>';
+  // Tag + Flag filter pills
+  const _tagPills=[{k:'all',l:'All',c:'var(--grey)'},{k:'WINNER',l:'Winner',c:'#2ecc71'},{k:'TESTING',l:'Testing',c:'#f39c12'},{k:'LOSER',l:'Loser',c:'#e74c3c'}];
+  const _flagPills=[{k:'all',l:'All',c:'var(--grey)'},{k:'any',l:'Any flag',c:'var(--navy)'},{k:'pause',l:'PAUSE',c:'#DC2626'},{k:'fatigue',l:'Fatigue',c:'#e67e22'},{k:'naming',l:'Naming',c:'#7C3AED'}];
+  h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap"><span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;margin-right:2px">Tag</span>';
+  for(const p of _tagPills){const isA=tagF===p.k;h+='<button onclick="irfanAdsetTagF(\''+p.k+'\')" style="padding:5px 12px;border-radius:50px;font-size:10px;font-weight:'+(isA?'700':'500')+';border:'+(isA?'none':'1px solid '+p.c)+';background:'+(isA?p.c:'transparent')+';color:'+(isA?'#fff':p.c)+';cursor:pointer;font-family:var(--font-h)">'+p.l+'</button>';}
+  h+='<div style="width:1px;height:20px;background:var(--border);margin:0 4px"></div>';
+  h+='<span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;margin-right:2px">Flags</span>';
+  for(const p of _flagPills){const isA=flagF===p.k;h+='<button onclick="irfanAdsetFlagF(\''+p.k+'\')" style="padding:5px 12px;border-radius:50px;font-size:10px;font-weight:'+(isA?'700':'500')+';border:'+(isA?'none':'1px solid '+p.c)+';background:'+(isA?p.c:'transparent')+';color:'+(isA?'#fff':p.c)+';cursor:pointer;font-family:var(--font-h)">'+p.l+'</button>';}
+  h+='</div>';
+  h+='<div style="overflow-x:auto"><table class="irf-meta-table" style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr style="border-bottom:1.5px solid var(--border)">';
+  h+=_irfanSortableTh('Name','name',sortSt,'irfanSortAdset','left');
+  h+='<th style="text-align:left;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Stage</th>';
+  h+=_irfanSortableTh('Status','status',sortSt,'irfanSortAdset','center');
+  h+=_irfanSortableTh('Spend','spend',sortSt,'irfanSortAdset','right');
+  h+=_irfanSortableTh('Demos','demos',sortSt,'irfanSortAdset','right');
+  h+=_irfanSortableTh('CPD','cpd',sortSt,'irfanSortAdset','right');
+  h+=_irfanSortableTh('Impr','impressions',sortSt,'irfanSortAdset','right');
+  h+=_irfanSortableTh('Clicks','clicks',sortSt,'irfanSortAdset','right');
+  h+=_irfanSortableTh('CTR','ctr',sortSt,'irfanSortAdset','right');
+  h+=_irfanSortableTh('Watch','watch',sortSt,'irfanSortAdset','right');
+  h+=_irfanSortableTh('Freq.','frequency',sortSt,'irfanSortAdset','right');
+  h+=_irfanSortableTh('Qual','qualified',sortSt,'irfanSortAdset','right');
+  h+=_irfanSortableTh('Score','_score',sortSt,'irfanSortAdset','right');
+  h+=_irfanSortableTh('Tag','_tag',sortSt,'irfanSortAdset','right');
+  h+='</tr></thead><tbody>';
+  let tSp=0,tDe=0,tIm=0,tCl=0,tQu=0,tVp25=0;
+  for(let i=0;i<rows.length;i++){
+    const c=rows[i];const cpd=c.demos>0?c.spend/c.demos:null;
+    const nm=(c.name||'').length>56?(c.name||'').slice(0,53)+'…':(c.name||'');
+    const stags=_irfanStages(c.name);
+    let stagesCell='';for(const t of stags)stagesCell+='<span style="display:inline-block;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;background:'+t.c+'15;color:'+t.c+';margin-right:2px">'+t.l+'</span>';
+    const _nested=c._nested||[];
+    const _hasNested=_nested.length>0;
+    const pauseN=(c._flagCounts&&c._flagCounts.pause)||0;
+    const fatN=(c._flagCounts&&c._flagCounts.fatigue)||0;
+    const _flagBadges=
+      (pauseN>0?' <span onclick="event.stopPropagation()" style="display:inline-block;font-family:var(--font-h);font-size:9px;font-weight:700;color:#fff;background:#DC2626;padding:2px 7px;border-radius:99px;letter-spacing:.04em;margin-left:6px">⚠ '+pauseN+' PAUSE</span>':'')
+     +(fatN>0?' <span onclick="event.stopPropagation()" style="font-size:10px;background:rgba(243,156,18,.12);color:#e67e22;padding:1px 6px;border-radius:4px;font-weight:700;white-space:nowrap;margin-left:6px">⚠ '+fatN+' Fatigue</span>':'');
+    const _rowId='irf-adset-'+i;
+    const _showNested=S.irfan.metaAdsetAllExpanded;
+    const _activeN=_nested.filter(n=>n.status==='ACTIVE'||(!n.status&&(n.spend||0)>0)).length;
+    const _countLabel=_hasNested?(_activeN<_nested.length?_activeN+' active · '+_nested.length+' total':_nested.length+(_nested.length===1?' creative':' creatives')):'';
+    const _chev=_showNested?'▼':'▶';
+    h+='<tr style="border-bottom:1px solid var(--border)'+(_hasNested?';cursor:pointer':'')+'"'+(_hasNested?' onclick="irfanToggleAdsetCreatives(\''+_rowId+'\')"':'')+'>';
+    h+='<td style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(c.name||'').replace(/"/g,'&quot;')+'">'+(_hasNested?'<span class="irf-adset-chev" data-row="'+_rowId+'" style="display:inline-block;width:10px;color:var(--teal);margin-right:6px;font-size:9px">'+_chev+'</span>':'<span style="display:inline-block;width:10px;margin-right:6px"></span>')+nm+(_hasNested?' <span style="font-size:9px;color:var(--grey);font-weight:400">('+_countLabel+')</span>':'')+_flagBadges+'</td>';
+    h+='<td style="padding:8px 6px">'+stagesCell+'</td>';
+    h+='<td style="text-align:center;padding:8px 6px">'+_irfanStatusBadge(c.status,c.spend)+'</td>';
+    h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cSp,c.spend,true)+'">'+f$(c.spend||0)+'</td>';
+    h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cDe,c.demos||0,false)+'">'+fN(c.demos||0)+'</td>';
+    h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cCp,cpd||0,true)+'">'+(cpd!=null?f$(cpd):'—')+'</td>';
+    h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cIm,c.impressions||0,false)+'">'+fN(c.impressions||0)+'</td>';
+    h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cCl,c.clicks||0,false)+'">'+fN(c.clicks||0)+'</td>';
+    h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cCt,c.ctr||0,false)+'">'+(c.ctr!=null?c.ctr.toFixed(2)+'%':'—')+'</td>';
+    h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cWa,c.watch||0,false)+'" title="% impressions where viewer watched ≥25% of video (from nested creatives)">'+(c.watch!=null?c.watch.toFixed(1)+'%':'—')+'</td>';
+    h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cFr,c.frequency||0,true)+'">'+(c.frequency!=null?c.frequency.toFixed(2):'—')+'</td>';
+    h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cQu,c.qualified||0,false)+'">'+fN(c.qualified||0)+'</td>';
+    h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cSc,c._score||0,false)+'">'+(c._score!=null?scoreBadge(c._score):'—')+'</td>';
+    h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+(c._tag?scoreTag(c._tag):'—')+'</td>';
+    h+='</tr>';
+    tSp+=c.spend||0;tDe+=c.demos||0;tIm+=c.impressions||0;tCl+=c.clicks||0;tQu+=c.qualified||0;
+    for(const n of _nested)tVp25+=(n.videoP25||0);
+    // Nested creative rows
+    if(_hasNested){
+      if(typeof scoreCreatives==='function'&&_nested.length>0){try{scoreCreatives(_nested);}catch(e){}}
+      for(let ni=0;ni<_nested.length;ni++){
+        const ncr=_nested[ni];const ncCpd=ncr.demos>0?ncr.spend/ncr.demos:null;
+        const nWr=ncr.impressions>0?((ncr.videoP25||0)/ncr.impressions)*100:null;
+        const nNm=(ncr.name||'').length>52?(ncr.name||'').slice(0,49)+'…':(ncr.name||'');
+        let _thumb='';
+        if(ncr.thumbnail)_thumb='<img src="'+ncr.thumbnail+'" style="width:28px;height:28px;object-fit:cover;border-radius:4px;display:inline-block;vertical-align:middle;margin-right:8px" onerror="this.style.display=\'none\'">';
+        else _thumb='<span style="display:inline-block;width:28px;height:28px;border-radius:4px;background:var(--lighter);border:1px solid var(--border);text-align:center;line-height:26px;font-size:12px;margin-right:8px;vertical-align:middle">📷</span>';
+        const _ftBadge=(typeof fatigueBadgeFromMap==='function')?fatigueBadgeFromMap(fatigueMap,channel,ncr.name):'';
+        const _subj=(typeof detectSubject==='function')?detectSubject(ncr.name):{type:'talent'};
+        const _nameBad=_subj&&_subj.type==='unknown';
+        const _nameBadge=_nameBad?' <span title="Name doesn\'t match {Format}_{Talent}_{Concept}_{Setting}_{Variant} convention" style="cursor:help;font-size:9px;background:rgba(124,58,237,.10);color:#7C3AED;padding:1px 6px;border-radius:4px;font-weight:700;white-space:nowrap;border:1px solid rgba(124,58,237,.30)">📝 Naming</span>':'';
+        const _ncrFlags=_flagsByName[(ncr.name||'').toLowerCase()];
+        const _pauseBadge=(_ncrFlags&&_ncrFlags.pause)?' <span style="display:inline-block;font-family:var(--font-h);font-size:9px;font-weight:700;color:#fff;background:#DC2626;padding:1px 6px;border-radius:99px;letter-spacing:.04em">PAUSE</span>':'';
+        h+='<tr class="'+_rowId+'-cre" style="display:'+(_showNested?'table-row':'none')+';background:rgba(114,164,191,.04);border-bottom:1px solid var(--border)">';
+        h+='<td style="padding:6px 6px 6px 30px;color:var(--navy);font-size:10px" title="'+(ncr.name||'').replace(/"/g,'&quot;')+'">'+_thumb+_pauseBadge+(_pauseBadge?' ':'')+nNm+_ftBadge+_nameBadge+'</td>';
+        h+='<td></td>';
+        h+='<td style="text-align:center;padding:6px">'+_irfanStatusBadge(ncr.status,ncr.spend)+'</td>';
+        h+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+f$(ncr.spend||0)+'</td>';
+        h+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.demos||0)+'</td>';
+        h+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(ncCpd!=null?f$(ncCpd):'—')+'</td>';
+        h+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.impressions||0)+'</td>';
+        h+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.clicks||0)+'</td>';
+        h+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(ncr.ctr!=null?ncr.ctr.toFixed(2)+'%':'—')+'</td>';
+        h+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(nWr!=null?nWr.toFixed(1)+'%':'—')+'</td>';
+        h+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(ncr.frequency!=null?ncr.frequency.toFixed(2):'—')+'</td>';
+        h+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.qualified||0)+'</td>';
+        h+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(ncr._score!=null?scoreBadge(ncr._score):'—')+'</td>';
+        h+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(ncr._tag?scoreTag(ncr._tag):'—')+'</td>';
+        h+='</tr>';
+      }
+    }
+  }
+  if(!rows.length)h+='<tr><td colspan="14" style="padding:16px;text-align:center;color:var(--grey)">No '+itemLabelPl+' match</td></tr>';
+  if(rows.length){
+    const tCpd=tDe>0?tSp/tDe:null,tCtr=tIm>0?(tCl/tIm)*100:null,tWatch=tIm>0?(tVp25/tIm)*100:null;
+    h+='<tr style="background:var(--lighter);font-weight:700;border-top:2px solid var(--teal-30)">'
+      +'<td style="padding:10px 6px;color:var(--navy)">Total ('+rows.length+' '+itemLabelPl+')</td>'
+      +'<td></td><td></td>'
+      +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+f$(tSp)+'</td>'
+      +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+fN(tDe)+'</td>'
+      +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+(tCpd!=null?f$(tCpd):'—')+'</td>'
+      +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+fN(tIm)+'</td>'
+      +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+fN(tCl)+'</td>'
+      +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+(tCtr!=null?tCtr.toFixed(2)+'%':'—')+'</td>'
+      +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+(tWatch!=null?tWatch.toFixed(1)+'%':'—')+'</td>'
+      +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums;color:var(--grey)">—</td>'
+      +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+fN(tQu)+'</td>'
+      +'<td></td><td></td>'
+      +'</tr>';
+  }
+  h+='</tbody></table></div>';
+  return h;
+}
 function _renderIrfanMetaTables(d, channel){
   _irfanMetaD=d;
   // Default to 'meta' for back-compat; Detailed Dashboard passes the active
@@ -2549,12 +2798,13 @@ function _renderIrfanMetaTables(d, channel){
   const campTargets=[document.getElementById('irfan-meta-campaigns'),document.getElementById('ov-meta-campaigns')].filter(Boolean);
   const creTargets=[document.getElementById('irfan-meta-creatives'),document.getElementById('ov-meta-creatives')].filter(Boolean);
   const audTargets=[document.getElementById('irfan-meta-audiences'),document.getElementById('ov-meta-audiences')].filter(Boolean);
-  if(!campTargets.length&&!creTargets.length&&!audTargets.length)return;
+  const adsetTargets=[document.getElementById('irfan-meta-adsets'),document.getElementById('ov-meta-adsets')].filter(Boolean);
+  if(!campTargets.length&&!creTargets.length&&!audTargets.length&&!adsetTargets.length)return;
   // First target used for back-compat in any later code that still reads campTarget/creTarget.
   const campTarget=campTargets[0]||null;
   const creTarget=creTargets[0]||null;
   const meta=d&&d.channels&&d.channels[channel];
-  if(!meta){const empty='<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px">No '+chLabel+' data available for this window</div>';[...campTargets,...creTargets,...audTargets].forEach(el=>el.innerHTML=empty);return;}
+  if(!meta){const empty='<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px">No '+chLabel+' data available for this window</div>';[...campTargets,...creTargets,...audTargets,...adsetTargets].forEach(el=>el.innerHTML=empty);return;}
   // Defaults: sort by CPD descending (highest CPD first — worst performers
   // at the top so problems are immediately visible).
   if(!S.irfan.metaCampSort)S.irfan.metaCampSort={col:'cpd',dir:'desc'};
@@ -2566,6 +2816,12 @@ function _renderIrfanMetaTables(d, channel){
   if(!S.irfan.metaCampTagF)S.irfan.metaCampTagF='all';
   if(!S.irfan.metaCampFlagF)S.irfan.metaCampFlagF='all';
   if(S.irfan.metaAllExpanded==null)S.irfan.metaAllExpanded=false;
+  // Ad Sets table state — mirrors the campaign table's sort/filter/expand set.
+  if(!S.irfan.metaAdsetSort)S.irfan.metaAdsetSort={col:'cpd',dir:'desc'};
+  if(!S.irfan.metaAdsetStageF)S.irfan.metaAdsetStageF='all';
+  if(!S.irfan.metaAdsetTagF)S.irfan.metaAdsetTagF='all';
+  if(!S.irfan.metaAdsetFlagF)S.irfan.metaAdsetFlagF='all';
+  if(S.irfan.metaAdsetAllExpanded==null)S.irfan.metaAdsetAllExpanded=false;
   const campSort=S.irfan.metaCampSort,creSort=S.irfan.metaCreSort,audSort=S.irfan.metaAudSort,stageF=S.irfan.metaCampStageF;
   const tagF=S.irfan.metaCreTagF,flagF=S.irfan.metaCreFlagF;
   const campTagF=S.irfan.metaCampTagF,campFlagF=S.irfan.metaCampFlagF;
@@ -3108,10 +3364,19 @@ function _renderIrfanMetaTables(d, channel){
     audH='<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px">No audience-level data for this window</div>';
   }
 
+  // ── Ad Sets table — campaign-style layout (sort/stage+flag filters/dropdown
+  // to nested creatives/score+tag/heatmap/totals). Built by a dedicated helper
+  // that reuses the same shared helpers as the campaign table. Passes the
+  // per-creative flag lookup + fatigue map so badges stay consistent. ──
+  let adsetH='';
+  try{ adsetH=_buildAdSetTableHTML(meta,channel,_flagsByName,fatigueMap); }
+  catch(e){ console.warn('Ad Sets table render failed:',e); adsetH='<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px">Ad Sets table unavailable</div>'; }
+
   // Broadcast to ALL targets (Irfan + Overview)
   campTargets.forEach(el=>el.innerHTML=campH);
   creTargets.forEach(el=>el.innerHTML=creH);
   audTargets.forEach(el=>el.innerHTML=audH);
+  adsetTargets.forEach(el=>el.innerHTML=adsetH);
   // Back-compat aliases (campTarget/creTarget) retained above but no longer used.
   if(false&&campTarget)campTarget.innerHTML=campH;
   if(false&&creTarget)creTarget.innerHTML=creH;
@@ -4079,7 +4344,10 @@ function _updateCpdMatchRate(win){
   const el=document.getElementById('cpd-match-rate');
   if(!el)return;
   const w=win||S.dashboard?.win||S.irfan?.win||'mtd';
-  const mr=S.irfan?.analyzerCache?.[w]?.matchRate;
+  // Resolve the same collision-safe cache key the loader writes under so
+  // custom windows (keyed by their dates) still find their match-rate.
+  const _ck=_azCacheKey(w,_resolveCustomRange(w));
+  const mr=S.irfan?.analyzerCache?.[_ck]?.matchRate;
   if(!mr||mr.pct==null){
     el.innerHTML='<span style="color:var(--grey);font-style:italic">Computing attribution match rate…</span>';
     return;
