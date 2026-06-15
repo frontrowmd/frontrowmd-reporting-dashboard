@@ -40,6 +40,40 @@ function getBudgetsForMonth(dateStr) {
   return BUDGET_BY_MONTH[dateStr.slice(0, 7)] || BUDGET_FALLBACK;
 }
 
+// ── Meta "Leads (Form)" → Demos override ────────────────────────────────────
+// Some Meta campaigns run the Lead Generation objective and report their
+// primary result as on-Facebook instant-form leads ("Leads (Form)") instead
+// of the usual submit-application conversion. Those campaigns would otherwise
+// show ~0 Demos despite driving real lead volume. For campaigns in this
+// allowlist we ADD the lead-form count to Demos everywhere Meta demos are
+// computed from Windsor (Channel Performance / blended CPD, the analyzer
+// Campaigns + Ad Sets + Audiences tables). Matched by case-insensitive
+// substring of the campaign name — extend the list as more lead-gen
+// campaigns launch.
+const META_LEAD_AS_DEMO_CAMPAIGNS = [
+  's02 - mof - warm - retargeting - video viewers - lead generation - 052726',
+];
+function isMetaLeadAsDemoCampaign(campaignName) {
+  const n = (campaignName || '').toLowerCase();
+  return META_LEAD_AS_DEMO_CAMPAIGNS.some(s => n.includes(s));
+}
+// "Leads (Form)" count for a Meta row = on-Facebook grouped leads
+// (actions_onsite_conversion_lead_grouped), falling back to total leads
+// (actions_lead) when the grouped field is absent.
+function metaLeadFormCount(row) {
+  const grouped = Math.round(parseFloat(row.actions_onsite_conversion_lead_grouped) || 0);
+  if (grouped > 0) return grouped;
+  return Math.round(parseFloat(row.actions_lead) || 0);
+}
+// Extra demos a Meta row contributes via Leads (Form). 0 unless the row's
+// campaign is in the allowlist.
+function metaLeadDemos(campaignName, row) {
+  if (!isMetaLeadAsDemoCampaign(campaignName)) return 0;
+  return metaLeadFormCount(row);
+}
+// Windsor fields needed to read Leads (Form). Appended to Meta/Facebook fetches.
+const META_LEAD_FIELDS = ',actions_onsite_conversion_lead_grouped,actions_lead';
+
 // Demo status categorization — uses new dual-field model with legacy fallback.
 // Per demo-status-migration skill: prefer demo_attendance_status + demo_qualification_outcome,
 // fall back to legacy demo_given__status for any unmigrated deals.
@@ -286,7 +320,9 @@ async function windsorFetch(apiKey, from, to, fields, extra = '') {
 
 // Main ad data (guide Section 1)
 async function fetchWindsorAds(apiKey, from, to) {
-  const fields = 'date,datasource,campaign_name,spend,clicks,impressions,ctr,conversions,externalwebsiteconversions,conversions_submit_application_total,all_conversions';
+  // META_LEAD_FIELDS lets processAdSpend add "Leads (Form)" to Demos for
+  // allowlisted Meta lead-gen campaigns (see metaLeadDemos).
+  const fields = 'date,datasource,campaign_name,spend,clicks,impressions,ctr,conversions,externalwebsiteconversions,conversions_submit_application_total,all_conversions' + META_LEAD_FIELDS;
   return windsorFetch(apiKey, from, to, fields);
 }
 
@@ -846,7 +882,8 @@ function processAdSpend(rows, linkedInDemoOverride) {
 
     let demos = 0;
     if (key === 'meta') {
-      demos = parseInt(row.conversions_submit_application_total)||0;
+      // Allowlisted lead-gen campaigns count Leads (Form) toward Demos.
+      demos = (parseInt(row.conversions_submit_application_total)||0) + metaLeadDemos(row.campaign_name, row);
     } else if (key === 'linkedin') {
       demos = parseInt(row.externalwebsiteconversions)||0; // overridden below
     } else if (key === 'tiktok') {
@@ -2850,7 +2887,7 @@ async function fetchAzCampaigns(apiKey, from, to) {
   const base = 'date,campaign_name,spend,clicks,impressions';
   // LinkedIn per-connector endpoint uses 'campaign' not 'campaign_name'
   const [fbRows, gaRows, liCampRows, liDemoTotal, ttRows] = await Promise.all([
-    azWindsorFetch(apiKey, 'facebook', from, to, base+',conversions_submit_application_total,frequency,effective_status'),
+    azWindsorFetch(apiKey, 'facebook', from, to, base+',conversions_submit_application_total,frequency,effective_status'+META_LEAD_FIELDS),
     azWindsorFetch(apiKey, 'google_ads', from, to, base+',conversions,campaign_status'),
     azWindsorFetch(apiKey, 'linkedin', from, to, 'date,campaign,spend,clicks,impressions,campaign_status'),
     fetchLinkedInDemos(apiKey, from, to),
@@ -2883,6 +2920,8 @@ async function fetchAzCampaigns(apiKey, from, to) {
       if (!demoFilterFn || demoFilterFn(row)) {
         const rawD = parseFloat(row[cfg.demoField])||0;
         camps[name].demos += (ch==='google'||ch==='youtube') ? Math.ceil(rawD) : Math.round(rawD);
+        // Allowlisted Meta lead-gen campaigns: add Leads (Form) to Demos.
+        if (ch === 'meta') camps[name].demos += metaLeadDemos(name, row);
       }
       if (cfg.hasFreq && row.frequency != null && row.frequency !== '') camps[name].freqVals.push(parseFloat(row.frequency));
     }
@@ -3278,7 +3317,7 @@ async function fetchCreativeFatigue(apiKey) {
 async function fetchAzAudiences(apiKey, from, to) {
   const results = {};
   const configs = {
-    meta:   { connector:'facebook', fields:'date,adset_name,campaign_name,spend,clicks,impressions,conversions_submit_application_total', nameField:'adset_name', demoField:'conversions_submit_application_total' },
+    meta:   { connector:'facebook', fields:'date,adset_name,campaign_name,spend,clicks,impressions,conversions_submit_application_total'+META_LEAD_FIELDS, nameField:'adset_name', demoField:'conversions_submit_application_total' },
     google: { connector:'google_ads', fields:'date,ad_group_name,campaign_name,spend,clicks,impressions,conversions', nameField:'ad_group_name', demoField:'conversions' },
     tiktok: { connector:'tiktok', fields:'date,ad_group_name,campaign_name,spend,clicks,impressions,conversions', nameField:'ad_group_name', demoField:'conversions' },
   };
@@ -3306,6 +3345,8 @@ async function fetchAzAudiences(apiKey, from, to) {
       let d = parseFloat(row[cfg.demoField]) || 0;
       if (ch === 'google') d = Math.ceil(d); else d = Math.round(d);
       map[name].demos += d;
+      // Allowlisted Meta lead-gen campaigns: add Leads (Form) to ad-set Demos.
+      if (ch === 'meta') map[name].demos += metaLeadDemos(campName, row);
       if (!map[name].campaign && campName) map[name].campaign = campName;
     }
     const list = Object.values(map).map(a => {
