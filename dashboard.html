@@ -755,7 +755,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s27';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s28';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2588,13 +2588,44 @@ window.irfanToggleAllAdsetCreatives=function(){
   S.irfan.metaAdsetAllExpanded=!S.irfan.metaAdsetAllExpanded;
   if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());
 };
-// Toggle the visibility of a campaign's nested creative rows.
-window.irfanToggleCampCreatives=function(rowId){
-  const rows=document.querySelectorAll('.'+rowId+'-cre');
-  if(!rows.length)return;
-  const isOpen=rows[0].style.display!=='none';
-  rows.forEach(r=>r.style.display=isOpen?'none':'table-row');
-  const chev=document.querySelector('.irf-camp-chev[data-row="'+rowId+'"]');
+// Toggle a campaign row. 3-level hierarchy: a campaign expands to its AD
+// SETS (class `${campId}-as`); each ad set expands to its CREATIVES. When a
+// campaign has ad-set data we toggle the ad-set rows (and on collapse also
+// hide every descendant creative `${campId}-anycre` + reset ad-set chevrons).
+// Campaigns with no ad-set data fall back to toggling creatives directly
+// (legacy `${campId}-cre`).
+window.irfanToggleCampRow=function(campId){
+  const chev=document.querySelector('.irf-camp-chev[data-row="'+campId+'"]');
+  const asRows=document.querySelectorAll('.'+campId+'-as');
+  if(asRows.length){
+    const isOpen=asRows[0].style.display!=='none';
+    if(isOpen){
+      asRows.forEach(r=>r.style.display='none');
+      // Hide all descendant creative rows + collapse their ad-set chevrons.
+      document.querySelectorAll('.'+campId+'-anycre').forEach(r=>r.style.display='none');
+      document.querySelectorAll('.irf-adsetsub-chev[data-camp="'+campId+'"]').forEach(c=>c.textContent='▶');
+    } else {
+      asRows.forEach(r=>r.style.display='table-row');
+    }
+    if(chev)chev.textContent=isOpen?'▶':'▼';
+    return;
+  }
+  // Legacy fallback — campaign with creatives but no ad-set breakdown.
+  const creRows=document.querySelectorAll('.'+campId+'-cre');
+  if(!creRows.length)return;
+  const isOpen=creRows[0].style.display!=='none';
+  creRows.forEach(r=>r.style.display=isOpen?'none':'table-row');
+  if(chev)chev.textContent=isOpen?'▶':'▼';
+};
+// Back-compat alias (any older inline handlers).
+window.irfanToggleCampCreatives=window.irfanToggleCampRow;
+// Toggle an ad set's creatives inside the campaign dropdown.
+window.irfanToggleCampAdsetCre=function(asId){
+  const creRows=document.querySelectorAll('.'+asId+'-cre');
+  if(!creRows.length)return;
+  const isOpen=creRows[0].style.display!=='none';
+  creRows.forEach(r=>r.style.display=isOpen?'none':'table-row');
+  const chev=document.querySelector('.irf-adsetsub-chev[data-asrow="'+asId+'"]');
   if(chev)chev.textContent=isOpen?'▶':'▼';
 };
 // Expand All / Collapse All across every campaign row at once.
@@ -2925,8 +2956,116 @@ function _renderIrfanMetaTables(d, channel){
     });
     return arr;
   }
+  // ── Ad-set sub-rows for the Campaign dropdown ──
+  // Name→enriched-creative lookup (flat list carries qualified + scoring).
+  const _flatByNameCamp=new Map();
+  for(const _fc of (meta.creatives||[]))_flatByNameCamp.set((_fc.name||'').toLowerCase(),_fc);
+  const _byAdsetCamp=meta.creativeByAdset||{};
+  const _adSetsAllCamp=meta.audiences||[];
+  // Build a campaign's ad sets (from the audiences list), each enriched with
+  // its nested creatives + derived Watch/Qual/Freq/Status — so the campaign
+  // dropdown can show Ad Sets, and each ad set its own creative dropdown.
+  function _buildCampAdsets(c){
+    const ck=(c.name||'').toLowerCase().trim();
+    const sets=_adSetsAllCamp.filter(a=>((a.campaign||'').toLowerCase().trim())===ck);
+    return sets.map(a=>{
+      const r=Object.assign({},a);
+      const akey=(a.name||'').toLowerCase().trim();
+      const rawNested=_byAdsetCamp[akey]||[];
+      const nested=rawNested.map(rc=>_flatByNameCamp.get((rc.name||'').toLowerCase())||rc);
+      r._nested=nested;
+      let vp=0,im=0,q=0,fs=0,fn=0,act=false,pn=0,fln=0;
+      for(const n of nested){
+        vp+=(n.videoP25||0);im+=(n.impressions||0);q+=(n.qualified||0);
+        if(n.frequency!=null){fs+=n.frequency;fn++;}
+        if(n.status==='ACTIVE'||(!n.status&&(n.spend||0)>0))act=true;
+        const f=_flagsByName[(n.name||'').toLowerCase()];if(f){if(f.pause)pn++;if(f.fatigued)fln++;}
+      }
+      r.watch=im>0?(vp/im)*100:null;r.qualified=q;r.frequency=fn>0?fs/fn:null;
+      r.status=act?'ACTIVE':(nested.length?'PAUSED':((r.spend||0)>0?'ACTIVE':'PAUSED'));
+      r._stageSrc=((a.campaign||'')+' '+(a.name||'')).trim();
+      r._pauseN=pn;r._fatN=fln;
+      return r;
+    }).sort((a,b)=>{const aA=a.status==='ACTIVE'?1:0,bA=b.status==='ACTIVE'?1:0;if(aA!==bA)return bA-aA;return (b.spend||0)-(a.spend||0);});
+  }
+  // Render one creative sub-row. classAttr = space-separated class tokens used
+  // by the toggles to show/hide it; padLeft = indent; show = initial display.
+  function _renderCreRow(ncr, classAttr, padLeft, show){
+    const ncCpd=ncr.demos>0?ncr.spend/ncr.demos:null;
+    const nWr=ncr.impressions>0?((ncr.videoP25||0)/ncr.impressions)*100:null;
+    const nNm=(ncr.name||'').length>52?(ncr.name||'').slice(0,49)+'…':(ncr.name||'');
+    let _thumb='';
+    if(ncr.thumbnail)_thumb='<img src="'+ncr.thumbnail+'" style="width:28px;height:28px;object-fit:cover;border-radius:4px;display:inline-block;vertical-align:middle;margin-right:8px" onerror="this.style.display=\'none\'">';
+    else _thumb='<span style="display:inline-block;width:28px;height:28px;border-radius:4px;background:var(--lighter);border:1px solid var(--border);text-align:center;line-height:26px;font-size:12px;margin-right:8px;vertical-align:middle">📷</span>';
+    const _ftBadge=fatigueBadgeFromMap(fatigueMap,channel,ncr.name);
+    const _subj=(typeof detectSubject==='function')?detectSubject(ncr.name):{type:'talent'};
+    const _nameBadge=(_subj&&_subj.type==='unknown')?' <span title="Name doesn\'t match {Format}_{Talent}_{Concept}_{Setting}_{Variant} convention" style="cursor:help;font-size:9px;background:rgba(124,58,237,.10);color:#7C3AED;padding:1px 6px;border-radius:4px;font-weight:700;white-space:nowrap;border:1px solid rgba(124,58,237,.30)">📝 Naming</span>':'';
+    const _ncrFlags=_flagsByName[(ncr.name||'').toLowerCase()];
+    const _nCpdStr=(ncr.demos>0)?f$(ncr.spend/ncr.demos):'$— (0 demos)';
+    const _nCtrStr=ncr.ctr!=null?ncr.ctr.toFixed(2)+'%':'—';
+    const _nWrStr=nWr!=null?nWr.toFixed(1)+'%':'—';
+    const _ncrPauseTip=(_ncrFlags&&_ncrFlags.pause)?('Low CTR + Low Watch + High CPD — pause candidate. CTR '+_nCtrStr+', Watch '+_nWrStr+', CPD '+_nCpdStr+'. Active '+(ncr.activeDays||0)+'d, spend '+f$(ncr.spend||0)+'.'):'';
+    const _pauseBadge=(_ncrFlags&&_ncrFlags.pause)?' <span data-tip="'+_ncrPauseTip.replace(/"/g,'&quot;')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" style="cursor:help;display:inline-block;font-family:var(--font-h);font-size:9px;font-weight:700;color:#fff;background:#DC2626;padding:1px 6px;border-radius:99px;letter-spacing:.04em">PAUSE</span>':'';
+    let s='<tr class="'+classAttr+'" style="display:'+(show?'table-row':'none')+';background:rgba(114,164,191,.04);border-bottom:1px solid var(--border)">';
+    s+='<td style="padding:6px 6px 6px '+padLeft+'px;color:var(--navy);font-size:10px" title="'+(ncr.name||'').replace(/"/g,'&quot;')+'">'+_thumb+_pauseBadge+(_pauseBadge?' ':'')+nNm+_ftBadge+_nameBadge+'</td>';
+    s+='<td></td><td style="text-align:center;padding:6px">'+_irfanStatusBadge(ncr.status,ncr.spend)+'</td>';
+    s+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+f$(ncr.spend||0)+'</td>';
+    s+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.demos||0)+'</td>';
+    s+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(ncCpd!=null?f$(ncCpd):'—')+'</td>';
+    s+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.impressions||0)+'</td>';
+    s+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.clicks||0)+'</td>';
+    s+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(ncr.ctr!=null?ncr.ctr.toFixed(2)+'%':'—')+'</td>';
+    s+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(nWr!=null?nWr.toFixed(1)+'%':'—')+'</td>';
+    s+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(ncr.frequency!=null?ncr.frequency.toFixed(2):'—')+'</td>';
+    s+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.qualified||0)+'</td>';
+    s+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(ncr._score!=null?scoreBadge(ncr._score):'—')+'</td>';
+    s+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(ncr._tag?scoreTag(ncr._tag):'—')+'</td>';
+    s+='</tr>';
+    return s;
+  }
+  // Render an ad-set sub-row (level 1) + its nested creative rows (level 2).
+  // asId uniquely identifies the ad set; campId is its parent campaign row id.
+  function _renderCampAdsetRow(a, asId, campId, showAS, showCre){
+    const nested=a._nested||[];
+    const hasCre=nested.length>0;
+    const cpd=a.demos>0?a.spend/a.demos:null;
+    const nm=(a.name||'').length>50?(a.name||'').slice(0,47)+'…':(a.name||'');
+    const stags=_irfanStages(a._stageSrc||a.name);
+    let stagesCell='';for(const t of stags)stagesCell+='<span style="display:inline-block;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;background:'+t.c+'15;color:'+t.c+';margin-right:2px">'+t.l+'</span>';
+    const activeN=nested.filter(n=>n.status==='ACTIVE'||(!n.status&&(n.spend||0)>0)).length;
+    const countLabel=hasCre?(activeN<nested.length?activeN+' active · '+nested.length+' total':nested.length+(nested.length===1?' creative':' creatives')):'';
+    const chev=showCre?'▼':'▶';
+    const _flagged=(pred)=>{const o=[];for(const n of nested){const f=_flagsByName[(n.name||'').toLowerCase()];if(f&&pred(f))o.push(n.name||'(unnamed)');}return o;};
+    const _abbr=(arr,m)=>arr.length<=m?arr.join(', '):arr.slice(0,m).join(', ')+' (+'+(arr.length-m)+' more)';
+    const pTip=a._pauseN>0?(a._pauseN+' PAUSE-flagged creative'+(a._pauseN===1?'':'s')+': '+_abbr(_flagged(f=>f.pause),5)+'. Trigger: Low CTR + Low Watch + High CPD, active >10d, spend ≥$25.'):'';
+    const fTip=a._fatN>0?(a._fatN+' Fatigue-flagged creative'+(a._fatN===1?'':'s')+': '+_abbr(_flagged(f=>f.fatigued),5)+'. Trigger: CTR declined >15% over 14 days.'):'';
+    const flagBadges=(a._pauseN>0?' <span data-tip="'+pTip.replace(/"/g,'&quot;')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" onclick="event.stopPropagation()" style="cursor:help;display:inline-block;font-family:var(--font-h);font-size:9px;font-weight:700;color:#fff;background:#DC2626;padding:1px 6px;border-radius:99px;letter-spacing:.04em;margin-left:6px">⚠ '+a._pauseN+' PAUSE</span>':'')
+      +(a._fatN>0?' <span data-tip="'+fTip.replace(/"/g,'&quot;')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" onclick="event.stopPropagation()" style="cursor:help;font-size:10px;background:rgba(243,156,18,.12);color:#e67e22;padding:1px 6px;border-radius:4px;font-weight:700;white-space:nowrap;margin-left:6px">⚠ '+a._fatN+' Fatigue</span>':'');
+    const chevSpan=hasCre?'<span class="irf-adsetsub-chev" data-asrow="'+asId+'" data-camp="'+campId+'" style="display:inline-block;width:10px;color:var(--teal);margin-right:6px;font-size:9px">'+chev+'</span>':'<span style="display:inline-block;width:10px;margin-right:6px"></span>';
+    let s='<tr class="'+campId+'-as" style="display:'+(showAS?'table-row':'none')+';background:rgba(114,164,191,.07);border-bottom:1px solid var(--border)'+(hasCre?';cursor:pointer':'')+'"'+(hasCre?' onclick="irfanToggleCampAdsetCre(\''+asId+'\')"':'')+'>';
+    s+='<td style="padding:7px 6px 7px 28px;color:var(--navy);font-weight:600;font-size:10.5px" title="'+(a.name||'').replace(/"/g,'&quot;')+'">'+chevSpan+'<span style="font-size:8px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.05em;margin-right:5px">Ad Set</span>'+nm+(hasCre?' <span style="font-size:9px;color:var(--grey);font-weight:400">('+countLabel+')</span>':'')+flagBadges+'</td>';
+    s+='<td style="padding:7px 6px">'+stagesCell+'</td>';
+    s+='<td style="text-align:center;padding:7px 6px">'+_irfanStatusBadge(a.status,a.spend)+'</td>';
+    s+='<td style="text-align:right;padding:7px 6px;font-variant-numeric:tabular-nums;font-size:10.5px">'+f$(a.spend||0)+'</td>';
+    s+='<td style="text-align:right;padding:7px 6px;font-variant-numeric:tabular-nums;font-size:10.5px">'+fN(a.demos||0)+'</td>';
+    s+='<td style="text-align:right;padding:7px 6px;font-variant-numeric:tabular-nums;font-size:10.5px">'+(cpd!=null?f$(cpd):'—')+'</td>';
+    s+='<td style="text-align:right;padding:7px 6px;font-variant-numeric:tabular-nums;font-size:10.5px">'+fN(a.impressions||0)+'</td>';
+    s+='<td style="text-align:right;padding:7px 6px;font-variant-numeric:tabular-nums;font-size:10.5px">'+fN(a.clicks||0)+'</td>';
+    s+='<td style="text-align:right;padding:7px 6px;font-variant-numeric:tabular-nums;font-size:10.5px">'+(a.ctr!=null?a.ctr.toFixed(2)+'%':'—')+'</td>';
+    s+='<td style="text-align:right;padding:7px 6px;font-variant-numeric:tabular-nums;font-size:10.5px">'+(a.watch!=null?a.watch.toFixed(1)+'%':'—')+'</td>';
+    s+='<td style="text-align:right;padding:7px 6px;font-variant-numeric:tabular-nums;font-size:10.5px">'+(a.frequency!=null?a.frequency.toFixed(2):'—')+'</td>';
+    s+='<td style="text-align:right;padding:7px 6px;font-variant-numeric:tabular-nums;font-size:10.5px">'+fN(a.qualified||0)+'</td>';
+    s+='<td style="text-align:right;padding:7px 6px;color:var(--grey)">—</td><td style="text-align:right;padding:7px 6px;color:var(--grey)">—</td>';
+    s+='</tr>';
+    if(hasCre){
+      if(typeof scoreCreatives==='function'){try{scoreCreatives(nested);}catch(e){}}
+      for(const ncr of nested)s+=_renderCreRow(ncr, asId+'-cre '+campId+'-anycre', 52, showCre);
+    }
+    return s;
+  }
   for(const c of campRows){
     c._nested=_buildCampNested(c);
+    c._adsets=_buildCampAdsets(c);
     // Watch rate = Σ videoP25 ÷ Σ impressions across nested creatives.
     let _vp25=0,_imp=0;
     for(const n of c._nested){_vp25+=(n.videoP25||0);_imp+=(n.impressions||0);}
@@ -3011,7 +3150,10 @@ function _renderIrfanMetaTables(d, channel){
     let stagesCell='';for(const t of stags)stagesCell+='<span style="display:inline-block;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;background:'+t.c+'15;color:'+t.c+';margin-right:2px">'+t.l+'</span>';
     // Use the precomputed nested array + flag counts from the upfront pass.
     const _nested=c._nested||[];
-    const _hasNested=_nested.length>0;
+    const _adsets=c._adsets||[];
+    // Campaign is expandable if it has ad sets (preferred dropdown) OR, as a
+    // fallback, creatives directly. _hasNested drives the chevron + click.
+    const _hasNested=_adsets.length>0||_nested.length>0;
     const _campPauseN=(c._flagCounts&&c._flagCounts.pause)||0;
     const _campFatigueN=(c._flagCounts&&c._flagCounts.fatigue)||0;
     // Instant-hover tooltips via dbcTip (matches the existing creative Fatigue
@@ -3034,11 +3176,15 @@ function _renderIrfanMetaTables(d, channel){
      +(_campFatigueN>0?' <span data-tip="'+_campFatigueTip.replace(/"/g,'&quot;')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" onclick="event.stopPropagation()" style="cursor:help;font-size:10px;background:rgba(243,156,18,.12);color:#e67e22;padding:1px 6px;border-radius:4px;font-weight:700;white-space:nowrap;margin-left:6px">⚠ '+_campFatigueN+' Fatigue</span>':'');
     const _rowId='irf-camp-'+i;
     const _showNested=S.irfan.metaAllExpanded;
-    campH+='<tr style="border-bottom:1px solid var(--border)'+(_hasNested?';cursor:pointer':'')+'"'+(_hasNested?' onclick="irfanToggleCampCreatives(\''+_rowId+'\')"':'')+'>';
+    campH+='<tr style="border-bottom:1px solid var(--border)'+(_hasNested?';cursor:pointer':'')+'"'+(_hasNested?' onclick="irfanToggleCampRow(\''+_rowId+'\')"':'')+'>';
     // Active count: prefer explicit ACTIVE status; fall back to spend>0 when
     // status is missing (older payloads / non-Meta channels).
     const _activeN=_nested.filter(n=>n.status==='ACTIVE'||(!n.status&&(n.spend||0)>0)).length;
-    const _countLabel=_hasNested?(_activeN<_nested.length?_activeN+' active · '+_nested.length+' total':_nested.length+(_nested.length===1?' creative':' creatives')):'';
+    // Count label reflects the dropdown contents: ad sets when present, else
+    // the legacy creative count.
+    const _countLabel=_adsets.length
+      ? (_adsets.length+(_adsets.length===1?' ad set':' ad sets'))
+      : (_nested.length?(_activeN<_nested.length?_activeN+' active · '+_nested.length+' total':_nested.length+(_nested.length===1?' creative':' creatives')):'');
     const _chev=_showNested?'▼':'▶';
     campH+='<td style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(c.name||'').replace(/"/g,'&quot;')+'">'+(_hasNested?'<span class="irf-camp-chev" data-row="'+_rowId+'" style="display:inline-block;width:10px;color:var(--teal);margin-right:6px;font-size:9px">'+_chev+'</span>':'<span style="display:inline-block;width:10px;margin-right:6px"></span>')+nm+(_hasNested?' <span style="font-size:9px;color:var(--grey);font-weight:400">('+_countLabel+')</span>':'')+_campFlagBadges+'</td>';
     campH+='<td style="padding:8px 6px">'+stagesCell+'</td>';
@@ -3059,52 +3205,17 @@ function _renderIrfanMetaTables(d, channel){
     _tSp+=c.spend||0;_tDe+=c.demos||0;_tIm+=c.impressions||0;_tCl+=c.clicks||0;_tQu+=c.qualified||0;
     // Sum nested videoP25 for true weighted Watch in totals row
     for(const n of _nested)_tVp25+=(n.videoP25||0);
-    // Nested creative rows (hidden by default unless Expand-All is on)
-    if(_hasNested){
-      // Score the nested creatives so we can show Score + Tag inline
-      if(typeof scoreCreatives==='function'&&_nested.length>0){
-        try{scoreCreatives(_nested);}catch(e){}
+    // Dropdown contents (hidden by default unless Expand-All is on):
+    //  • If the campaign has ad sets → render Ad Set sub-rows, each of which
+    //    has its own dropdown to its creatives (Campaign → Ad Sets → Creatives).
+    //  • Else fall back to creatives directly under the campaign (legacy).
+    if(_adsets.length){
+      for(let asi=0;asi<_adsets.length;asi++){
+        campH+=_renderCampAdsetRow(_adsets[asi], _rowId+'-as'+asi, _rowId, _showNested, _showNested);
       }
-      for(let ni=0;ni<_nested.length;ni++){
-        const ncr=_nested[ni];const ncCpd=ncr.demos>0?ncr.spend/ncr.demos:null;
-        const nWr=ncr.impressions>0?((ncr.videoP25||0)/ncr.impressions)*100:null;
-        const nNm=(ncr.name||'').length>52?(ncr.name||'').slice(0,49)+'…':(ncr.name||'');
-        let _thumb='';
-        if(ncr.thumbnail)_thumb='<img src="'+ncr.thumbnail+'" style="width:28px;height:28px;object-fit:cover;border-radius:4px;display:inline-block;vertical-align:middle;margin-right:8px" onerror="this.style.display=\'none\'">';
-        else _thumb='<span style="display:inline-block;width:28px;height:28px;border-radius:4px;background:var(--lighter);border:1px solid var(--border);text-align:center;line-height:26px;font-size:12px;margin-right:8px;vertical-align:middle">📷</span>';
-        // Fatigue + naming-check badges inline next to name
-        const _ftBadge=fatigueBadgeFromMap(fatigueMap,channel,ncr.name);
-        const _subj=(typeof detectSubject==='function')?detectSubject(ncr.name):{type:'talent'};
-        const _nameBad=_subj&&_subj.type==='unknown';
-        const _nameBadge=_nameBad?' <span title="Name doesn\'t match {Format}_{Talent}_{Concept}_{Setting}_{Variant} convention" style="cursor:help;font-size:9px;background:rgba(124,58,237,.10);color:#7C3AED;padding:1px 6px;border-radius:4px;font-weight:700;white-space:nowrap;border:1px solid rgba(124,58,237,.30)">📝 Naming</span>':'';
-        // PAUSE pill — uses the same precomputed _flagsByName as the
-        // campaign-level aggregate so the per-creative pause indicator is
-        // consistent. dbcTip for instant hover with creative-specific
-        // context (its own CTR/Watch/CPD + active-days/spend gate values).
-        const _ncrFlags=_flagsByName[(ncr.name||'').toLowerCase()];
-        const _nCpd=(ncr.demos>0)?(ncr.spend/ncr.demos):null;
-        const _nCpdStr=_nCpd!=null?f$(_nCpd):'$— (0 demos)';
-        const _nCtrStr=ncr.ctr!=null?ncr.ctr.toFixed(2)+'%':'—';
-        const _nWrStr=nWr!=null?nWr.toFixed(1)+'%':'—';
-        const _ncrPauseTip=(_ncrFlags&&_ncrFlags.pause)?('Low CTR + Low Watch + High CPD — pause candidate. CTR '+_nCtrStr+', Watch '+_nWrStr+', CPD '+_nCpdStr+'. Active '+(ncr.activeDays||0)+'d, spend '+f$(ncr.spend)+'.'):'';
-        const _pauseBadge=(_ncrFlags&&_ncrFlags.pause)?' <span data-tip="'+_ncrPauseTip.replace(/"/g,'&quot;')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" style="cursor:help;display:inline-block;font-family:var(--font-h);font-size:9px;font-weight:700;color:#fff;background:#DC2626;padding:1px 6px;border-radius:99px;letter-spacing:.04em">PAUSE</span>':'';
-        campH+='<tr class="'+_rowId+'-cre" style="display:'+(_showNested?'table-row':'none')+';background:rgba(114,164,191,.04);border-bottom:1px solid var(--border)">';
-        campH+='<td style="padding:6px 6px 6px 30px;color:var(--navy);font-size:10px" title="'+(ncr.name||'').replace(/"/g,'&quot;')+'">'+_thumb+_pauseBadge+(_pauseBadge?' ':'')+nNm+_ftBadge+_nameBadge+'</td>';
-        campH+='<td></td>';
-        campH+='<td style="text-align:center;padding:6px">'+_irfanStatusBadge(ncr.status,ncr.spend)+'</td>';
-        campH+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+f$(ncr.spend)+'</td>';
-        campH+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.demos||0)+'</td>';
-        campH+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(ncCpd!=null?f$(ncCpd):'—')+'</td>';
-        campH+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.impressions||0)+'</td>';
-        campH+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.clicks||0)+'</td>';
-        campH+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(ncr.ctr!=null?ncr.ctr.toFixed(2)+'%':'—')+'</td>';
-        campH+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(nWr!=null?nWr.toFixed(1)+'%':'—')+'</td>';
-        campH+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(ncr.frequency!=null?ncr.frequency.toFixed(2):'—')+'</td>';
-        campH+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.qualified||0)+'</td>';
-        campH+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(ncr._score!=null?scoreBadge(ncr._score):'—')+'</td>';
-        campH+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(ncr._tag?scoreTag(ncr._tag):'—')+'</td>';
-        campH+='</tr>';
-      }
+    } else if(_nested.length){
+      if(typeof scoreCreatives==='function'){try{scoreCreatives(_nested);}catch(e){}}
+      for(const ncr of _nested)campH+=_renderCreRow(ncr, _rowId+'-cre', 30, _showNested);
     }
   }
   if(!campRows.length)campH+='<tr><td colspan="14" style="padding:16px;text-align:center;color:var(--grey)">No campaigns match</td></tr>';
