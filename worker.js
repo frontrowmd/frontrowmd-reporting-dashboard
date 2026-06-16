@@ -3019,7 +3019,11 @@ async function fetchAzCreatives(apiKey, from, to) {
       // adset_name (Meta) / ad_group_name (Google, TikTok) lets us group
       // creatives under their parent ad set for the Ad Sets table dropdown.
       const adset = ch === 'meta' ? ',adset_name' : ((ch === 'google' || ch === 'tiktok') ? ',ad_group_name' : '');
-      promises.push(azWindsorFetch(apiKey, cfg.connector, from, to, base + extra + freq + video + placement + status + adset).catch(e => { console.error(`Creative fetch ${ch}:`, e.message); return []; }));
+      // Lead-form fields (Meta) so allowlisted lead-gen campaigns count
+      // Leads (Form) toward Demos at the CREATIVE level too — Windsor returns
+      // these per ad_name, so each creative gets its own lead count.
+      const lead = ch === 'meta' ? META_LEAD_FIELDS : '';
+      promises.push(azWindsorFetch(apiKey, cfg.connector, from, to, base + extra + freq + video + placement + status + adset + lead).catch(e => { console.error(`Creative fetch ${ch}:`, e.message); return []; }));
     }
     channels.push(ch);
   }
@@ -3116,6 +3120,8 @@ async function fetchAzCreatives(apiKey, from, to) {
       if (ch !== 'linkedin') {
         const rawD = parseFloat(row[cfg.demoField])||0;
         map[name].demos += (ch==='google'||ch==='youtube') ? Math.ceil(rawD) : Math.round(rawD);
+        // Allowlisted Meta lead-gen campaigns: add Leads (Form) to creative Demos.
+        if (ch === 'meta') map[name].demos += metaLeadDemos(campName, row);
       }
       if (cfg.hasFreq && row.frequency != null && row.frequency !== '') map[name].freqVals.push(parseFloat(row.frequency));
       // Per-campaign creative aggregation
@@ -3138,6 +3144,7 @@ async function fetchAzCreatives(apiKey, from, to) {
       if (ch !== 'linkedin') {
         const rawD2 = parseFloat(row[cfg.demoField])||0;
         campCreMap[campKey][name].demos += (ch==='google'||ch==='youtube') ? Math.ceil(rawD2) : Math.round(rawD2);
+        if (ch === 'meta') campCreMap[campKey][name].demos += metaLeadDemos(campName, row);
       }
       if (cfg.hasFreq && row.frequency != null && row.frequency !== '') campCreMap[campKey][name].freqVals.push(parseFloat(row.frequency));
       // Per-ad-set creative aggregation — mirrors campCreMap but keyed by
@@ -3164,6 +3171,7 @@ async function fetchAzCreatives(apiKey, from, to) {
         if (ch !== 'linkedin') {
           const rawD3 = parseFloat(row[cfg.demoField])||0;
           adsetCreMap[adsetKey][name].demos += (ch==='google'||ch==='youtube') ? Math.ceil(rawD3) : Math.round(rawD3);
+          if (ch === 'meta') adsetCreMap[adsetKey][name].demos += metaLeadDemos(campName, row);
         }
         if (cfg.hasFreq && row.frequency != null && row.frequency !== '') adsetCreMap[adsetKey][name].freqVals.push(parseFloat(row.frequency));
       }
