@@ -755,7 +755,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s30';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s31';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2783,8 +2783,10 @@ function _buildAdSetTableHTML(meta,channel,_flagsByName,fatigueMap){
     // Nested creative rows
     if(_hasNested){
       if(typeof scoreCreatives==='function'&&_nested.length>0){try{scoreCreatives(_nested);}catch(e){}}
-      for(let ni=0;ni<_nested.length;ni++){
-        const ncr=_nested[ni];const ncCpd=ncr.demos>0?ncr.spend/ncr.demos:null;
+      // Sort creatives within the ad set by the table's active sort column.
+      const _nestedSorted=_irfanSortRows(_nested,sortSt.col,sortSt.dir);
+      for(let ni=0;ni<_nestedSorted.length;ni++){
+        const ncr=_nestedSorted[ni];const ncCpd=ncr.demos>0?ncr.spend/ncr.demos:null;
         const nWr=ncr.impressions>0?((ncr.videoP25||0)/ncr.impressions)*100:null;
         const nNm=(ncr.name||'').length>52?(ncr.name||'').slice(0,49)+'…':(ncr.name||'');
         let _thumb='';
@@ -2992,7 +2994,7 @@ function _renderIrfanMetaTables(d, channel){
         if(n.status==='ACTIVE'||(!n.status&&(n.spend||0)>0))act=true;
         const f=_flagsByName[(n.name||'').toLowerCase()];if(f){if(f.pause)pn++;if(f.fatigued)fln++;}
       }
-      r.watch=im>0?(vp/im)*100:null;r.qualified=q;r.frequency=fn>0?fs/fn:null;
+      r.watch=im>0?(vp/im)*100:null;r.videoP25=vp;r.qualified=q;r.frequency=fn>0?fs/fn:null;
       r.status=act?'ACTIVE':(nested.length?'PAUSED':((r.spend||0)>0?'ACTIVE':'PAUSED'));
       r._stageSrc=((a.campaign||'')+' '+(a.name||'')).trim();
       r._pauseN=pn;r._fatN=fln;
@@ -3070,7 +3072,9 @@ function _renderIrfanMetaTables(d, channel){
     s+='</tr>';
     if(hasCre){
       if(typeof scoreCreatives==='function'){try{scoreCreatives(nested);}catch(e){}}
-      for(const ncr of nested)s+=_renderCreRow(ncr, asId+'-cre '+campId+'-anycre', 52, showCre);
+      // Sort creatives within the ad set by the table's active sort column.
+      const _creSorted=_irfanSortRows(nested,campSort.col,campSort.dir);
+      for(const ncr of _creSorted)s+=_renderCreRow(ncr, asId+'-cre '+campId+'-anycre', 52, showCre);
     }
     return s;
   }
@@ -3221,12 +3225,15 @@ function _renderIrfanMetaTables(d, channel){
     //    has its own dropdown to its creatives (Campaign → Ad Sets → Creatives).
     //  • Else fall back to creatives directly under the campaign (legacy).
     if(_adsets.length){
-      for(let asi=0;asi<_adsets.length;asi++){
-        campH+=_renderCampAdsetRow(_adsets[asi], _rowId+'-as'+asi, _rowId, _showNested, _showNested);
+      // Sort the ad sets within the campaign by the table's active sort column.
+      const _adsetsSorted=_irfanSortRows(_adsets,campSort.col,campSort.dir);
+      for(let asi=0;asi<_adsetsSorted.length;asi++){
+        campH+=_renderCampAdsetRow(_adsetsSorted[asi], _rowId+'-as'+asi, _rowId, _showNested, _showNested);
       }
     } else if(_nested.length){
       if(typeof scoreCreatives==='function'){try{scoreCreatives(_nested);}catch(e){}}
-      for(const ncr of _nested)campH+=_renderCreRow(ncr, _rowId+'-cre', 30, _showNested);
+      const _nestedSorted=_irfanSortRows(_nested,campSort.col,campSort.dir);
+      for(const ncr of _nestedSorted)campH+=_renderCreRow(ncr, _rowId+'-cre', 30, _showNested);
     }
   }
   if(!campRows.length)campH+='<tr><td colspan="14" style="padding:16px;text-align:center;color:var(--grey)">No campaigns match</td></tr>';
