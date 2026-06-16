@@ -2883,6 +2883,22 @@ function normStatus(raw) {
   return s || null;
 }
 
+// Roll a daily row's status into an entity (campaign / ad set / creative).
+// Rule: latest date wins, but ACTIVE wins ties on that date. Windsor returns
+// effective_status at the child grain (one row per ad set/ad with its CURRENT
+// status), so a campaign with a mix of active + paused children produces both
+// ACTIVE and PAUSED rows on the same date. Picking the last-processed row
+// arbitrarily flagged delivering campaigns as Paused. Preferring ACTIVE among
+// the latest-date rows matches Meta's Delivery column: a parent is "Active"
+// if any child is active. obj must carry a `_statusDate` (init '') + `status`.
+function rollupStatus(obj, rawUpper, dateStr) {
+  if (!rawUpper) return;
+  const st = normStatus(rawUpper);
+  const d = dateStr || '';
+  if (d > (obj._statusDate || '')) { obj.status = st; obj._statusDate = d; }
+  else if (d === obj._statusDate && st === 'ACTIVE') { obj.status = 'ACTIVE'; }
+}
+
 async function fetchAzCampaigns(apiKey, from, to) {
   const base = 'date,campaign_name,spend,clicks,impressions';
   // LinkedIn per-connector endpoint uses 'campaign' not 'campaign_name'
@@ -2910,12 +2926,9 @@ async function fetchAzCampaigns(apiKey, from, to) {
       // produced inconsistent results across windows (e.g. a campaign paused
       // mid-month would show ACTIVE on MTD because an earlier row's status
       // overwrote the final paused row depending on Windsor's row order).
-      const rawSt = (row.effective_status || row.campaign_status || '').toUpperCase();
-      const _rd = row.date || '';
-      if (rawSt && _rd >= camps[name]._statusDate) {
-        camps[name].status = normStatus(rawSt);
-        camps[name]._statusDate = _rd;
-      }
+      // Latest date wins, ACTIVE wins ties (see rollupStatus) — so a campaign
+      // with both active and paused ad sets reads ACTIVE like Meta's Delivery.
+      rollupStatus(camps[name], (row.effective_status || row.campaign_status || '').toUpperCase(), row.date);
       // Only count demos if demoFilterFn passes (or no filter)
       if (!demoFilterFn || demoFilterFn(row)) {
         const rawD = parseFloat(row[cfg.demoField])||0;
@@ -2960,13 +2973,8 @@ async function fetchAzCampaigns(apiKey, from, to) {
       camps[name].clicks += parseInt(row.clicks)||0;
       camps[name].impressions += parseInt(row.impressions)||0;
       if (row.date) camps[name].dates.push(row.date);
-      // Latest-date-wins (see aggRows comment) — keeps status consistent across windows.
-      const st = row.campaign_status;
-      const _rd = row.date || '';
-      if (st && _rd >= camps[name]._statusDate) {
-        camps[name].status = normStatus(st);
-        camps[name]._statusDate = _rd;
-      }
+      // Latest date wins, ACTIVE wins ties (see rollupStatus).
+      rollupStatus(camps[name], (row.campaign_status || '').toUpperCase(), row.date);
     }
     let tS=0,tC=0,tI=0;
     for (const c of Object.values(camps)) {
@@ -3093,18 +3101,11 @@ async function fetchAzCreatives(apiKey, from, to) {
       }
       // Flat aggregation
       if (!map[name]) map[name] = { name, spend:0, clicks:0, impressions:0, demos:0, freqVals:[], thumbnail: tm[name] || null, campaignName: campName, videoP25:0, _dates:[], _placements:{}, status:null, _statusDate:'' };
-      // Roll up ad_status across daily rows by LATEST DATE. The previous
-      // "prefer ACTIVE — any single ACTIVE row wins" rule made creatives
-      // that were active early in the window then paused later still appear
-      // ACTIVE on long windows (e.g. MTD) while showing PAUSED on short
-      // windows (e.g. Last 7 Days). The displayed status now always reflects
-      // the most recent known state across whatever window is requested.
+      // Roll up ad_status: latest date wins, ACTIVE wins ties (see rollupStatus).
+      // _rowStatus/_rowDate are reused by the per-campaign + per-ad-set maps below.
       const _rowStatus = (row.ad_status || row.adStatus || row.effective_status || '').toString().toUpperCase();
       const _rowDate = row.date || '';
-      if (_rowStatus && _rowDate >= map[name]._statusDate) {
-        map[name].status = normStatus(_rowStatus);
-        map[name]._statusDate = _rowDate;
-      }
+      rollupStatus(map[name], _rowStatus, _rowDate);
       map[name].spend += parseFloat(row.spend)||0;
       if (!map[name]._campSpend) map[name]._campSpend = {};
       if (!map[name]._campSpend[campName]) map[name]._campSpend[campName] = 0;
@@ -3128,11 +3129,8 @@ async function fetchAzCreatives(apiKey, from, to) {
       const campKey = campName.toLowerCase().trim();
       if (!campCreMap[campKey]) campCreMap[campKey] = {};
       if (!campCreMap[campKey][name]) campCreMap[campKey][name] = { name, spend:0, clicks:0, impressions:0, demos:0, freqVals:[], thumbnail: tm[name] || null, videoP25:0, _dates:[], _campName: campName, status:null, _statusDate:'' };
-      // Same latest-date-wins status rollup as the flat map.
-      if (_rowStatus && _rowDate >= campCreMap[campKey][name]._statusDate) {
-        campCreMap[campKey][name].status = normStatus(_rowStatus);
-        campCreMap[campKey][name]._statusDate = _rowDate;
-      }
+      // Same status rollup as the flat map (latest date wins, ACTIVE wins ties).
+      rollupStatus(campCreMap[campKey][name], _rowStatus, _rowDate);
       campCreMap[campKey][name].spend += parseFloat(row.spend)||0;
       campCreMap[campKey][name].clicks += parseInt(row.clicks)||0;
       campCreMap[campKey][name].impressions += parseInt(row.impressions)||0;
@@ -3156,10 +3154,7 @@ async function fetchAzCreatives(apiKey, from, to) {
         const adsetKey = adsetName.toLowerCase();
         if (!adsetCreMap[adsetKey]) adsetCreMap[adsetKey] = {};
         if (!adsetCreMap[adsetKey][name]) adsetCreMap[adsetKey][name] = { name, spend:0, clicks:0, impressions:0, demos:0, freqVals:[], thumbnail: tm[name] || null, videoP25:0, _dates:[], _adsetName: adsetName, campaignName: campName, status:null, _statusDate:'' };
-        if (_rowStatus && _rowDate >= adsetCreMap[adsetKey][name]._statusDate) {
-          adsetCreMap[adsetKey][name].status = normStatus(_rowStatus);
-          adsetCreMap[adsetKey][name]._statusDate = _rowDate;
-        }
+        rollupStatus(adsetCreMap[adsetKey][name], _rowStatus, _rowDate);
         adsetCreMap[adsetKey][name].spend += parseFloat(row.spend)||0;
         adsetCreMap[adsetKey][name].clicks += parseInt(row.clicks)||0;
         adsetCreMap[adsetKey][name].impressions += parseInt(row.impressions)||0;
