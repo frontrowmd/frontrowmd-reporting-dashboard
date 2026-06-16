@@ -755,7 +755,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s28';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s29';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2741,7 +2741,7 @@ function _buildAdSetTableHTML(meta,channel,_flagsByName,fatigueMap){
     // (capped) so the count is actionable — mirrors the Campaigns table.
     const _flaggedNames=(predFn)=>{const out=[];for(const n of _nested){const f=_flagsByName[(n.name||'').toLowerCase()];if(f&&predFn(f))out.push(n.name||'(unnamed)');}return out;};
     const _abbrevList=(arr,max)=>arr.length<=max?arr.join(', '):arr.slice(0,max).join(', ')+' (+'+(arr.length-max)+' more)';
-    const _pauseTip=pauseN>0?(pauseN+' PAUSE-flagged creative'+(pauseN===1?'':'s')+': '+_abbrevList(_flaggedNames(f=>f.pause),5)+'. Trigger: Low CTR + Low Watch + High CPD, active >10d, spend ≥$25.'):'';
+    const _pauseTip=pauseN>0?(pauseN+' PAUSE-flagged creative'+(pauseN===1?'':'s')+': '+_abbrevList(_flaggedNames(f=>f.pause),5)+'. Trigger: Low CTR + Low Watch + High CPD, active >10d, spend ≥$200.'):'';
     const _fatTip=fatN>0?(fatN+' Fatigue-flagged creative'+(fatN===1?'':'s')+': '+_abbrevList(_flaggedNames(f=>f.fatigued),5)+'. Trigger: CTR declined >15% over 14 days.'):'';
     const _flagBadges=
       (pauseN>0?' <span data-tip="'+_pauseTip.replace(/"/g,'&quot;')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" onclick="event.stopPropagation()" style="cursor:help;display:inline-block;font-family:var(--font-h);font-size:9px;font-weight:700;color:#fff;background:#DC2626;padding:2px 7px;border-radius:99px;letter-spacing:.04em;margin-left:6px">⚠ '+pauseN+' PAUSE</span>':'')
@@ -2884,7 +2884,7 @@ function _renderIrfanMetaTables(d, channel){
   // Helpers (_pctileLocal, _wrLocal) are inlined since the official watchRate
   // / _pctile aren't defined yet here. PAUSE rule includes a >10-day active
   // gate so newly-launched ads aren't condemned before they have a chance.
-  const _CAMP_PAUSE_SPEND_MIN=25;
+  const _CAMP_PAUSE_SPEND_MIN=200;
   const _PAUSE_MIN_ACTIVE_DAYS=10;
   const _flagsByName={};
   {
@@ -3037,7 +3037,7 @@ function _renderIrfanMetaTables(d, channel){
     const chev=showCre?'▼':'▶';
     const _flagged=(pred)=>{const o=[];for(const n of nested){const f=_flagsByName[(n.name||'').toLowerCase()];if(f&&pred(f))o.push(n.name||'(unnamed)');}return o;};
     const _abbr=(arr,m)=>arr.length<=m?arr.join(', '):arr.slice(0,m).join(', ')+' (+'+(arr.length-m)+' more)';
-    const pTip=a._pauseN>0?(a._pauseN+' PAUSE-flagged creative'+(a._pauseN===1?'':'s')+': '+_abbr(_flagged(f=>f.pause),5)+'. Trigger: Low CTR + Low Watch + High CPD, active >10d, spend ≥$25.'):'';
+    const pTip=a._pauseN>0?(a._pauseN+' PAUSE-flagged creative'+(a._pauseN===1?'':'s')+': '+_abbr(_flagged(f=>f.pause),5)+'. Trigger: Low CTR + Low Watch + High CPD, active >10d, spend ≥$200.'):'';
     const fTip=a._fatN>0?(a._fatN+' Fatigue-flagged creative'+(a._fatN===1?'':'s')+': '+_abbr(_flagged(f=>f.fatigued),5)+'. Trigger: CTR declined >15% over 14 days.'):'';
     const flagBadges=(a._pauseN>0?' <span data-tip="'+pTip.replace(/"/g,'&quot;')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" onclick="event.stopPropagation()" style="cursor:help;display:inline-block;font-family:var(--font-h);font-size:9px;font-weight:700;color:#fff;background:#DC2626;padding:1px 6px;border-radius:99px;letter-spacing:.04em;margin-left:6px">⚠ '+a._pauseN+' PAUSE</span>':'')
       +(a._fatN>0?' <span data-tip="'+fTip.replace(/"/g,'&quot;')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" onclick="event.stopPropagation()" style="cursor:help;font-size:10px;background:rgba(243,156,18,.12);color:#e67e22;padding:1px 6px;border-radius:4px;font-weight:700;white-space:nowrap;margin-left:6px">⚠ '+a._fatN+' Fatigue</span>':'');
@@ -3260,7 +3260,7 @@ function _renderIrfanMetaTables(d, channel){
   const _ctrLow=_pctile(creAll.map(c=>c.ctr||0),0.30);
   const _watchLow=_pctile(creAll.filter(c=>c.impressions>0).map(c=>watchRate(c)),0.30);
   const _cpdHigh=_pctile(creAll.filter(c=>c.demos>0).map(c=>c.spend/c.demos),0.70);
-  const PAUSE_SPEND_MIN=25;
+  const PAUSE_SPEND_MIN=200;
   const PAUSE_MIN_ACTIVE_DAYS=10;
   const isPause=(c)=>{
     if((c.spend||0)<PAUSE_SPEND_MIN)return false;
