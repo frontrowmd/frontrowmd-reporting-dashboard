@@ -755,7 +755,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s31';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s32';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2239,16 +2239,16 @@ function renderIrfan(){
   const ltmeta=(es.lowTrafficPct&&es.lowTrafficPct._meta)||{};
   const tCpd=es.trueCpd?.value;const tCpdPV=es.trueCpd?.sameTimePrior?.value;const tCpdLMV=es.trueCpd?.lastMonth?.value;
   const tCpqd=es.totalTrueCpqd?.value;const tCpqdPV=es.totalTrueCpqd?.sameTimePrior?.value;const tCpqdLMV=es.totalTrueCpqd?.lastMonth?.value;
-  // % Pruned uses the TIGHT cohort per Irfan's spec: only deals where BOTH
-  // hs_createdate AND date_demo_booked land in the period (i.e., the user
-  // clicked Book Demo on our site in the period AND the demo was supposed
-  // to happen in the period). The loose es.pruneRate is left untouched so
-  // the Detailed Dashboard's Quality panel and any other consumers keep
-  // their existing behavior.
-  const pruneRate=qmeta.pruneRateTight!=null?qmeta.pruneRateTight:es.pruneRate?.value;
-  const prunePV=qmeta.pruneRateTightPrior;
-  const pruneLMV=qmeta.pruneRateTightLastMonth;
-  const noShowRate=dt.noShowRateScale?.value;const noShowPV=dt.noShowRateScale?.sameTimePrior?.value;const noShowLMV=dt.noShowRateScale?.lastMonth?.value;
+  // % Pruned / % No-Show — CANONICAL definition (consistent across every page):
+  // attendance status ÷ settled outcomes, over the page window, all tiers.
+  //   % Pruned  = Cancelled before demo ÷ (held + no-show + cancelled)
+  //   % No-Show = No Show ÷ (held + no-show)
+  // (Previously Irfan used a bespoke tight cohort for Pruned + scale-only for
+  // No-Show; dropped so the same number means the same thing everywhere.)
+  const pruneRate=es.pruneRate?.value;
+  const prunePV=es.pruneRate?.sameTimePrior?.value;
+  const pruneLMV=es.pruneRate?.lastMonth?.value;
+  const noShowRate=dt.noShowRate?.value;const noShowPV=dt.noShowRate?.sameTimePrior?.value;const noShowLMV=dt.noShowRate?.lastMonth?.value;
 
   // ─ Numerator/denominator values for KPI calc subtext ─
   // True CPD / True CPQD denominators exclude "small brands" (Pre-launch +
@@ -2257,11 +2257,11 @@ function renderIrfan(){
   const _totalSpend=esM.totalSpend||0;
   const _scaleSched=Math.max(0,(esM.totalScheduled||esM.totalWD||0)-((ltmeta.low10K!=null?ltmeta.low10K:ltmeta.lowTraffic)||0));
   const _demosHeldScale=(esM.demosHeldStrictCount!=null?esM.demosHeldStrictCount:esM.demosHeldScaleCount)||0;
-  // Numerator + denominator for the TIGHT cohort (KPI #3 % Pruned).
-  const _cancelledBefore=qmeta.cancelledBeforeDemoCountTight||0;
-  const _pruneDenom=qmeta.pruneDenomTight||0;
-  const _noShowScale=qmeta.noShowScaleCount||0;
-  const _noShowDenomScale=qmeta.noShowDenomScale||0;
+  // Numerator + denominator for the canonical % Pruned / % No-Show.
+  const _cancelledBefore=qmeta.cancelledBeforeDemoCount||0;
+  const _pruneDenom=qmeta.pruneDenom||0;
+  const _noShowNum=qmeta.noShowCount||0;
+  const _noShowDenom=qmeta.noShowDenom||0;
 
   // Local helpers — small inline delta line "↑ +N (+X.X%)" for tile footers
   function _irNfmt(n,fmt,dec){if(n==null)return '—';var s=n>=0?'+':'-';var a=Math.abs(n);var dc=dec!=null?dec:1;if(fmt==='$')return s+'$'+Math.round(a).toLocaleString();if(fmt==='%')return s+a.toFixed(dc)+'%';return s+Math.round(a).toLocaleString();}
@@ -2290,11 +2290,11 @@ function renderIrfan(){
   // 2.3 % Pruned — full orange border when >20%, teal accent when ≤20%
   const _pruneWarn=pruneRate!=null&&pruneRate>20;
   const _pruneStyle=_pruneWarn?'border:2px solid #F59E0B':'border-left:3px solid var(--teal)';
-  h+=`<div class="tile hero" style="${_pruneStyle}" title="Of demos that were BOTH scheduled in this period AND supposed to occur in this period, what % were pruned before the demo happened?"><div class="tlbl">% Pruned</div><div class="tval">${pruneRate!=null?pruneRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">Cancelled before demo ÷ settled outcomes (booked AND supposed to occur this period)</div>${_irCalc(fN(_cancelledBefore)+' ÷ '+fN(_pruneDenom))}${_irTileFooter(pruneRate,prunePV,pruneLMV,'%',true)}</div>`;
-  // 2.4 % No-Show — scale tier (excludes pre-launch). Full orange border when >20%.
+  h+=`<div class="tile hero" style="${_pruneStyle}" title="Of demos that reached a settled outcome this period, what % were cancelled before the demo happened?"><div class="tlbl">% Pruned</div><div class="tval">${pruneRate!=null?pruneRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">Cancelled before demo ÷ (held + no-show + cancelled)</div>${_irCalc(fN(_cancelledBefore)+' ÷ '+fN(_pruneDenom))}${_irTileFooter(pruneRate,prunePV,pruneLMV,'%',true)}</div>`;
+  // 2.4 % No-Show — canonical (No Show ÷ settled). Full orange border when >20%.
   const _noShowWarn=noShowRate!=null&&noShowRate>20;
   const _noShowStyle=_noShowWarn?'border:2px solid #F59E0B':'border-left:3px solid var(--teal)';
-  h+=`<div class="tile hero" style="${_noShowStyle}"><div class="tlbl">% No-Show</div><div class="tval">${noShowRate!=null?noShowRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">No Show ÷ (Demo Given orig + resched + No Show), excl. pre-launch</div>${_irCalc(fN(_noShowScale)+' ÷ '+fN(_noShowDenomScale))}${_irTileFooter(noShowRate,noShowPV,noShowLMV,'%',true)}</div>`;
+  h+=`<div class="tile hero" style="${_noShowStyle}" title="Of demos that reached a settled outcome this period, what % were no-shows?"><div class="tlbl">% No-Show</div><div class="tval">${noShowRate!=null?noShowRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">No Show ÷ (Demo Given orig + resched + No Show)</div>${_irCalc(fN(_noShowNum)+' ÷ '+fN(_noShowDenom))}${_irTileFooter(noShowRate,noShowPV,noShowLMV,'%',true)}</div>`;
   // 2.5 % Disqualified Routing — "Clicked Continue but DQ'd" ÷ "Clicked
   // Schedule a Demo and Continue".
   //   numerator   = /not-supported page VIEWS (people routed to the DQ page) —
@@ -3729,8 +3729,8 @@ function _buildIrfanSpecial1Inner(d, mode){
   const _bookedWindow=_s1Mode==='mtd'?'in this month so far':'in prior month';
   h+='<div class="irf-mini-kpi-grid" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-top:10px">';
   h+=`<div class="irf-mini-kpi small" title="Appointment Scheduled + Demo Happened + Decision Maker + Contract Sent ÷ Qualified Demos Held"><div class="irf-mini-kpi-label">% Pending</div><div class="irf-mini-kpi-value">${_irPCM.pctPending.toFixed(1)}%</div><div class="irf-mini-kpi-calc">${fN(_pendingNum)} ÷ ${fN(_irPCM.heldScale)}</div></div>`;
-  h+=`<div class="irf-mini-kpi small" title="Not a Fit ÷ all deals booked ${_bookedWindow} (excl. pre-launch)"><div class="irf-mini-kpi-label">% Pruned</div><div class="irf-mini-kpi-value">${_irPCM.pctPruned.toFixed(1)}%</div><div class="irf-mini-kpi-calc">${fN(_sc.notAFit||0)} ÷ ${fN(_irPCM.allBooked||0)}</div></div>`;
-  h+=`<div class="irf-mini-kpi small" title="No Show ÷ all deals booked ${_bookedWindow} (excl. pre-launch)"><div class="irf-mini-kpi-label">% No Show</div><div class="irf-mini-kpi-value">${_irPCM.pctNoShow.toFixed(1)}%</div><div class="irf-mini-kpi-calc">${fN(_sc.noShow||0)} ÷ ${fN(_irPCM.allBooked||0)}</div></div>`;
+  h+=`<div class="irf-mini-kpi small" title="Cancelled before demo ÷ settled outcomes (held + no-show + cancelled), ${_bookedWindow}"><div class="irf-mini-kpi-label">% Pruned</div><div class="irf-mini-kpi-value">${_irPCM.pctPruned.toFixed(1)}%</div><div class="irf-mini-kpi-calc">${fN(_irPCM.prunedNum||0)} ÷ ${fN(_irPCM.pruneDenom||0)}</div></div>`;
+  h+=`<div class="irf-mini-kpi small" title="No Show ÷ (held + no-show), ${_bookedWindow}"><div class="irf-mini-kpi-label">% No Show</div><div class="irf-mini-kpi-value">${_irPCM.pctNoShow.toFixed(1)}%</div><div class="irf-mini-kpi-calc">${fN(_irPCM.noShowNum||0)} ÷ ${fN(_irPCM.noShowDenom||0)}</div></div>`;
   h+='</div>';
   return h;
 }
@@ -6022,9 +6022,15 @@ function _suRecomputeMetrics(shadows){
   let cntWon=0,cntAppt=0,cntDH=0,cntDM=0,cntCS=0,cntNS=0,cntNF=0,sumMrr=0;
   let daysToCloseSum=0,daysToCloseN=0,daysFromCreatedSum=0,daysFromCreatedN=0;
   let daysToDemoSum=0,daysToDemoN=0;  // hs_createdate → date_demo_booked, all shadows
+  // Attendance-based settled-outcome counts for canonical % Pruned / % No-Show.
+  let attHeld=0,attNoShow=0,attCancelled=0;
   const todayMs=_suTodayMs();
   for(const sh of shadows){
     const stage=sh.s;
+    const att=sh.at||'';
+    if(att==='Demo Given (originally scheduled)'||att==='Demo Given (rescheduled)')attHeld++;
+    else if(att==='No Show')attNoShow++;
+    else if(att==='Cancelled before demo')attCancelled++;
     // "To Demo" is computed for ALL shadows (mirrors worker logic), not just won.
     {
       const ddbMs=sh.d?new Date(sh.d).getTime():NaN;
@@ -6050,12 +6056,16 @@ function _suRecomputeMetrics(shadows){
   const allBooked=shadows.length;
   const demosHeld=cntWon+cntAppt+cntDH+cntDM+cntCS;
   const cntPending=cntAppt+cntDH+cntDM+cntCS;
+  // Canonical % Pruned / % No-Show — attendance ÷ settled outcomes (matches worker).
+  const _noShowDenom=attHeld+attNoShow, _pruneDenom=attHeld+attNoShow+attCancelled;
   return {
     allBooked, signed:cntWon, demosHeld,
     pctSigned:demosHeld>0?(cntWon/demosHeld)*100:0,
     pctPending:demosHeld>0?(cntPending/demosHeld)*100:0,
-    pctPruned:allBooked>0?(cntNF/allBooked)*100:0,
-    pctNoShow:allBooked>0?(cntNS/allBooked)*100:0,
+    pctPruned:_pruneDenom>0?(attCancelled/_pruneDenom)*100:0,
+    pctNoShow:_noShowDenom>0?(attNoShow/_noShowDenom)*100:0,
+    prunedNum:attCancelled, pruneDenom:_pruneDenom, noShowNum:attNoShow, noShowDenom:_noShowDenom,
+    attHeld, attNoShow, attCancelled,
     stageCounts:{won:cntWon,appt:cntAppt,demoHappened:cntDH,dm:cntDM,cs:cntCS,noShow:cntNS,notAFit:cntNF},
     mrr:sumMrr, newArr:sumMrr*12,
     acv:cntWon>0?sumMrr/cntWon:0,
@@ -6252,8 +6262,8 @@ function renderSignUp(){
     const _pendingNum=(_sc.appt||0)+(_sc.demoHappened||0)+(_sc.dm||0)+(_sc.cs||0);
     let row2='<div class="su-row2">';
     row2+=`<div class="su-r2-item" title="Appointment Scheduled + Demo Happened + Decision Maker + Contract Sent ÷ Demos Held"><div class="su-label">% Pending</div><div class="su-value">${fmtPct(c.pctPending)}</div><div style="font-size:10px;color:var(--grey);margin-top:2px">${fN(_pendingNum)} ÷ ${fN(c.demosHeld)}</div></div>`;
-    row2+=`<div class="su-r2-item" title="Not a Fit ÷ all deals booked in month"><div class="su-label">% Pruned</div><div class="su-value">${fmtPct(c.pctPruned)}</div><div style="font-size:10px;color:var(--grey);margin-top:2px">${fN(_sc.notAFit||0)} ÷ ${fN(c.allBooked||0)}</div></div>`;
-    row2+=`<div class="su-r2-item" title="No Show ÷ all deals booked in month"><div class="su-label">% No Show</div><div class="su-value">${fmtPct(c.pctNoShow)}</div><div style="font-size:10px;color:var(--grey);margin-top:2px">${fN(_sc.noShow||0)} ÷ ${fN(c.allBooked||0)}</div></div>`;
+    row2+=`<div class="su-r2-item" title="Cancelled before demo ÷ settled outcomes (held + no-show + cancelled)"><div class="su-label">% Pruned</div><div class="su-value">${fmtPct(c.pctPruned)}</div><div style="font-size:10px;color:var(--grey);margin-top:2px">${fN(c.prunedNum||0)} ÷ ${fN(c.pruneDenom||0)}</div></div>`;
+    row2+=`<div class="su-r2-item" title="No Show ÷ (held + no-show)"><div class="su-label">% No Show</div><div class="su-value">${fmtPct(c.pctNoShow)}</div><div style="font-size:10px;color:var(--grey);margin-top:2px">${fN(c.noShowNum||0)} ÷ ${fN(c.noShowDenom||0)}</div></div>`;
     row2+='</div>';
 
     // ── Per-rep table — 12 cols: Rep · %Signed* · Won* · Qual Demos · New ARR · ACV ·

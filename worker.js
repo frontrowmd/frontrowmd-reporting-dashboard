@@ -1360,6 +1360,31 @@ const ALL_DEMO_HAPPENED = [
   'Not Qualified after the demo',
 ];
 
+// ── Canonical % Pruned / % No-Show ─────────────────────────────────────────
+// One definition used everywhere (Irfan, Detailed, Demo Quality, Sign-Up):
+// sourced from demo_attendance_status, over SETTLED outcomes only.
+//   held      = Demo Given (originally scheduled) + Demo Given (rescheduled)
+//   noShow    = No Show
+//   cancelled = Cancelled before demo
+//   % No-Show = noShow    ÷ (held + noShow)
+//   % Pruned  = cancelled ÷ (held + noShow + cancelled)
+// Pending/future demos are excluded from both denominators so the rates
+// aren't deflated by demos that haven't reached an outcome yet.
+function attBump(o, att) {
+  if (att === 'Demo Given (originally scheduled)' || att === 'Demo Given (rescheduled)') o.attHeld++;
+  else if (att === 'No Show') o.attNoShow++;
+  else if (att === 'Cancelled before demo') o.attCancelled++;
+}
+function attRates(held, noShow, cancelled) {
+  const noShowDenom = held + noShow;
+  const pruneDenom = held + noShow + cancelled;
+  return {
+    pctNoShow: noShowDenom > 0 ? (noShow / noShowDenom) * 100 : 0,
+    pctPruned: pruneDenom > 0 ? (cancelled / pruneDenom) * 100 : 0,
+    noShowNum: noShow, noShowDenom, prunedNum: cancelled, pruneDenom,
+  };
+}
+
 function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
   // Sign-Up Rate cohorts use the SAME stage-based definition as the Irfan
   // Dashboard's Special #1 "Signed Deals from Last Month" card. For each
@@ -1387,6 +1412,10 @@ function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
     allBooked: 0,
     cntWon: 0, cntAppt: 0, cntDemoHappened: 0, cntDM: 0, cntCS: 0,
     cntNoShow: 0, cntNotAFit: 0,
+    // Attendance-based counts for the canonical % Pruned / % No-Show (settled-
+    // outcome denominator), separate from the stage counts above which still
+    // drive Signed / Pending columns.
+    attHeld: 0, attNoShow: 0, attCancelled: 0,
     signedMrrSum: 0,
     // Pre-launch brands are filtered out from cohort metrics (matches Special #1
     // card behavior — pre-launch demos aren't qualified for sign-up tracking).
@@ -1447,6 +1476,7 @@ function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
 
     const b = buckets[label];
     const stage = (p.dealstage || '').trim();
+    const att = (p.demo_attendance_status || '').trim();
     const amt = parseFloat(p.amount) || 0;
     const oid = p.hubspot_owner_id || 'unassigned';
 
@@ -1467,6 +1497,8 @@ function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
 
     b.allBooked++;
     b.byRep[oid].allBooked++;
+    // Attendance-based settled-outcome counts (canonical % Pruned / % No-Show).
+    attBump(b, att); attBump(b.byRep[oid], att);
 
     // "To Demo" = date_demo_booked − hs_createdate, across ALL booked deals
     // in the cohort (not just signed). Mirrors the BD Tracker's interpretation.
@@ -1488,6 +1520,7 @@ function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
     b.dealShadows.push({
       d: ddb,                                  // date_demo_booked (YYYY-MM-DD)
       s: stage,                                // dealstage
+      at: att,                                 // demo_attendance_status (canonical prune/no-show)
       a: amt,                                  // amount
       cd: p.closedate || '',                   // closedate
       hd: p.hs_createdate || '',               // hs_createdate
@@ -1541,6 +1574,8 @@ function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
   function deriveMetrics(b) {
     const demosHeld = b.cntWon + b.cntAppt + b.cntDemoHappened + b.cntDM + b.cntCS;
     const cntPending = b.cntAppt + b.cntDemoHappened + b.cntDM + b.cntCS;
+    // Canonical % Pruned / % No-Show — attendance ÷ settled outcomes.
+    const _ar = attRates(b.attHeld, b.attNoShow, b.attCancelled);
     return {
       allBooked: b.allBooked,
       prelaunchExcluded: b.prelaunchExcluded || 0,
@@ -1548,8 +1583,12 @@ function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
       demosHeld,
       pctSigned:  demosHeld    > 0 ? (b.cntWon     / demosHeld)    * 100 : 0,
       pctPending: demosHeld    > 0 ? (cntPending   / demosHeld)    * 100 : 0,
-      pctPruned:  b.allBooked  > 0 ? (b.cntNotAFit / b.allBooked)  * 100 : 0,
-      pctNoShow:  b.allBooked  > 0 ? (b.cntNoShow  / b.allBooked)  * 100 : 0,
+      pctPruned:  _ar.pctPruned,
+      pctNoShow:  _ar.pctNoShow,
+      // Numerator/denominator for the canonical rates (for calc subtext).
+      prunedNum: _ar.prunedNum, pruneDenom: _ar.pruneDenom,
+      noShowNum: _ar.noShowNum, noShowDenom: _ar.noShowDenom,
+      attHeld: b.attHeld, attNoShow: b.attNoShow, attCancelled: b.attCancelled,
       stageCounts: {
         won: b.cntWon, appt: b.cntAppt, demoHappened: b.cntDemoHappened,
         dm: b.cntDM, cs: b.cntCS, noShow: b.cntNoShow, notAFit: b.cntNotAFit,
@@ -2221,6 +2260,8 @@ function buildSpecial1Cohort(dealsArr, fromStr, toStr) {
   const _parseDt = (v) => { if (!v) return NaN; return /^\d+$/.test(v) ? parseInt(v) : new Date(v).getTime(); };
   let allBooked = 0, cntWon = 0, cntAppt = 0, cntDemoHappened = 0, cntDM = 0, cntCS = 0;
   let cntNoShow = 0, cntNotAFit = 0, signedMrrSum = 0;
+  // Attendance-based counts for canonical % Pruned / % No-Show.
+  const _att = { attHeld: 0, attNoShow: 0, attCancelled: 0 };
   let daysFromBookedSum = 0, daysFromBookedN = 0;
   let daysFromCreatedSum = 0, daysFromCreatedN = 0;
   let daysToDemoSum = 0, daysToDemoN = 0;   // hs_createdate → date_demo_booked, all deals
@@ -2232,6 +2273,7 @@ function buildSpecial1Cohort(dealsArr, fromStr, toStr) {
     const wt = (p.average_monthly_web_traffic__cloned_ || p.average_monthly_web_traffic || '').toLowerCase();
     if (wt.indexOf('pre-launch') >= 0) { prelaunchExcluded++; continue; }
     allBooked++;
+    attBump(_att, (p.demo_attendance_status || '').trim());
     // "To Demo" — hs_createdate → date_demo_booked, computed across all
     // non-prelaunch booked deals (not gated on STAGE_WON).
     {
@@ -2264,13 +2306,18 @@ function buildSpecial1Cohort(dealsArr, fromStr, toStr) {
   }
   const demosHeld = cntWon + cntAppt + cntDemoHappened + cntDM + cntCS;
   const cntPending = cntAppt + cntDemoHappened + cntDM + cntCS;
+  // Canonical % Pruned / % No-Show — attendance ÷ settled outcomes.
+  const _ar = attRates(_att.attHeld, _att.attNoShow, _att.attCancelled);
   return {
     heldScale: demosHeld, signed: cntWon,
     pctSigned: demosHeld > 0 ? (cntWon / demosHeld) * 100 : 0,
     allBooked,
     pctPending: demosHeld > 0 ? (cntPending / demosHeld) * 100 : 0,
-    pctPruned:  allBooked > 0 ? (cntNotAFit / allBooked) * 100 : 0,
-    pctNoShow:  allBooked > 0 ? (cntNoShow / allBooked) * 100 : 0,
+    pctPruned:  _ar.pctPruned,
+    pctNoShow:  _ar.pctNoShow,
+    prunedNum: _ar.prunedNum, pruneDenom: _ar.pruneDenom,
+    noShowNum: _ar.noShowNum, noShowDenom: _ar.noShowDenom,
+    attHeld: _att.attHeld, attNoShow: _att.attNoShow, attCancelled: _att.attCancelled,
     stageCounts: { won: cntWon, appt: cntAppt, demoHappened: cntDemoHappened, dm: cntDM, cs: cntCS, noShow: cntNoShow, notAFit: cntNotAFit },
     newArr: signedMrrSum * 12,
     acv: cntWon > 0 ? signedMrrSum / cntWon : 0,
