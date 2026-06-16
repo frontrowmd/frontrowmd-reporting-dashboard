@@ -1072,6 +1072,10 @@ function processPipelineDeals(deals, winFromUTC, winToUTC, winFromET, winToET, l
   // property directly so it doesn't depend on contact-side company-name
   // matching. Drives the new True CPD / True CPQD calcs (excl. small brands).
   let demoGivenStrictCount=0;
+  // Strict (small-brand-excluded) No Show + Cancelled counts — the canonical
+  // % No-Show / % Pruned denominators+numerators exclude Pre-launch + 0-10K +
+  // Very Small, matching True CPD/CPQD.
+  let noShowStrictCount=0, cancelledStrictCount=0;
   let qualifiedRawCount=0, disqualifiedRawCount=0, notYetEvalCount=0;
   let qualifiedRawScaleCount=0;  // Qualified count excluding Pre-launch brands (denominator for Total True CPQD)
   const SMALL_BRAND_TIERS = new Set(['Pre-launch / just launching','0-10K monthly web visitors','Very Small']);
@@ -1140,9 +1144,13 @@ function processPipelineDeals(deals, winFromUTC, winToUTC, winFromET, winToET, l
       const dealWT = p.average_monthly_web_traffic__cloned_ || '';
       if (!isLow && !SMALL_BRAND_TIERS.has(dealWT)) demoGivenStrictCount++;
     }
+    // isSmall = Pre-launch (isLow) OR the deal's cloned tier is 0-10K / Very
+    // Small. Drives the canonical % No-Show / % Pruned (small brands excluded).
+    const _dealWTsmall = isLow || SMALL_BRAND_TIERS.has(p.average_monthly_web_traffic__cloned_ || '');
     // Scale-tier No Show: No Show excluding pre-launch brands (used to compute Demos Held excl pre-launch)
     if (att === 'No Show') {
       if (!isLow) noShowScaleCount++;
+      if (!_dealWTsmall) noShowStrictCount++;   // canonical (excl. small brands)
     }
     // Stale scheduled: Scheduled — pending with EFFECTIVE demo date in the past
     // (data hygiene). Effective = rescheduled_meeting_date when set, else
@@ -1155,7 +1163,10 @@ function processPipelineDeals(deals, winFromUTC, winToUTC, winFromET, winToET, l
     }
 
     // Prune Rate numerator: demos cancelled before they happened
-    if (att === 'Cancelled before demo') cancelledBeforeDemoCount++;
+    if (att === 'Cancelled before demo') {
+      cancelledBeforeDemoCount++;
+      if (!_dealWTsmall) cancelledStrictCount++;   // canonical (excl. small brands)
+    }
 
     // Tight-cohort counters — only deals where BOTH date_demo_booked and
     // hs_createdate are in the current window. ddb already passed the
@@ -1232,18 +1243,24 @@ function processPipelineDeals(deals, winFromUTC, winToUTC, winFromET, winToET, l
   const disqualificationRate = qualRateDenom > 0 ? (disqualifiedRawCount / qualRateDenom) * 100 : 0;
   const qualificationRate = qualRateDenom > 0 ? (qualifiedRawCount / qualRateDenom) * 100 : 0;
 
-  // No Show Rate = No Show / (Demo Given Orig + Demo Given Resched + No Show) — new field model
-  const noShowDenom = demoGivenOrigCount + demoGivenReschedCount + noShowCount;
-  const noShowRate = noShowDenom > 0 ? (noShowCount / noShowDenom) * 100 : 0;
-  // Scale-tier No Show Rate — same formula but restricted to non-pre-launch demos.
-  // Counters tracked at lines 638/642 already exclude pre-launch via the isLow check.
+  // CANONICAL No Show Rate / Prune Rate — small brands (Pre-launch + 0-10K +
+  // Very Small) EXCLUDED, matching True CPD/CPQD. Sourced from
+  // demo_attendance_status over settled outcomes only.
+  //   held(strict)   = Demo Given orig+resched, excl. small brands
+  //   noShow(strict) = No Show, excl. small brands
+  //   cancel(strict) = Cancelled before demo, excl. small brands
+  const noShowDenom = demoGivenStrictCount + noShowStrictCount;            // held + no-show (excl. small)
+  const noShowRate = noShowDenom > 0 ? (noShowStrictCount / noShowDenom) * 100 : 0;
+  const pruneDenom = demoGivenStrictCount + noShowStrictCount + cancelledStrictCount;  // + cancelled
+  const pruneRate = pruneDenom > 0 ? (cancelledStrictCount / pruneDenom) * 100 : 0;
+  // All-tier variants (kept for any legacy reader / diagnostics).
+  const noShowDenomAll = demoGivenOrigCount + demoGivenReschedCount + noShowCount;
+  const noShowRateAll = noShowDenomAll > 0 ? (noShowCount / noShowDenomAll) * 100 : 0;
+  const pruneDenomAll = demoGivenOrigCount + demoGivenReschedCount + noShowCount + cancelledBeforeDemoCount;
+  const pruneRateAll = pruneDenomAll > 0 ? (cancelledBeforeDemoCount / pruneDenomAll) * 100 : 0;
+  // Scale-tier No Show Rate (pre-launch-only exclusion) — legacy.
   const noShowDenomScale = demoGivenScaleCount + noShowScaleCount;
   const noShowRateScale = noShowDenomScale > 0 ? (noShowScaleCount / noShowDenomScale) * 100 : 0;
-
-  // Prune Rate = Cancelled before demo / (Demo Given Orig + Demo Given Resched + No Show + Cancelled before demo)
-  // Denominator: demos with any settled outcome (excludes still-pending so pending demos don't deflate the rate).
-  const pruneDenom = demoGivenOrigCount + demoGivenReschedCount + noShowCount + cancelledBeforeDemoCount;
-  const pruneRate = pruneDenom > 0 ? (cancelledBeforeDemoCount / pruneDenom) * 100 : 0;
   // Tight Prune Rate — same formula but on the tight cohort (hs_createdate AND
   // date_demo_booked both in window). Used by Irfan KPI #3 "% Pruned".
   const pruneRateTight = pruneDenomTightSettled > 0 ? (cancelledBeforeDemoCountTight / pruneDenomTightSettled) * 100 : 0;
@@ -1257,6 +1274,8 @@ function processPipelineDeals(deals, winFromUTC, winToUTC, winFromET, winToET, l
     pendingEvalCount, pendingCount, qualRateDenom,
     // New raw counts surfaced for dashboards
     totalExtended, demoGivenOrigCount, demoGivenReschedCount, demoGivenScaleCount, demoGivenStrictCount, noShowScaleCount,
+    // Strict (small-brand-excluded) numerators for the canonical rates.
+    noShowStrictCount, cancelledStrictCount,
     qualifiedRawCount, disqualifiedRawCount, notYetEvalCount, qualifiedRawScaleCount,
     staleScheduledCount, cancelledBeforeDemoCount, pruneDenom,
     cancelledBeforeDemoCountTight, pruneDenomTightSettled, pruneRateTight,
@@ -1374,6 +1393,13 @@ function attBump(o, att) {
   if (att === 'Demo Given (originally scheduled)' || att === 'Demo Given (rescheduled)') o.attHeld++;
   else if (att === 'No Show') o.attNoShow++;
   else if (att === 'Cancelled before demo') o.attCancelled++;
+}
+// "Small brands" = Pre-launch + 0-10K + Very Small. Lowercase-substring match
+// so it works on both the cloned tier string and the live property. The
+// canonical % Pruned / % No-Show exclude these (matching True CPD/CPQD).
+function isSmallBrandWT(wt) {
+  const s = (wt || '').toLowerCase();
+  return s.indexOf('pre-launch') >= 0 || s.indexOf('0-10k') >= 0 || s.indexOf('very small') >= 0;
 }
 function attRates(held, noShow, cancelled) {
   const noShowDenom = held + noShow;
@@ -1498,7 +1524,9 @@ function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
     b.allBooked++;
     b.byRep[oid].allBooked++;
     // Attendance-based settled-outcome counts (canonical % Pruned / % No-Show).
-    attBump(b, att); attBump(b.byRep[oid], att);
+    // Small brands (0-10K / Very Small; pre-launch already excluded above) are
+    // left out of these so the rates match the rest of the dashboard.
+    if (!isSmallBrandWT(wt)) { attBump(b, att); attBump(b.byRep[oid], att); }
 
     // "To Demo" = date_demo_booked − hs_createdate, across ALL booked deals
     // in the cohort (not just signed). Mirrors the BD Tracker's interpretation.
@@ -1809,7 +1837,7 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
     totalCpqd: buildTile(cpqdTotal, prior&&pTotalQual>0?pTotalS/pTotalQual:null, priorMonth&&pmTotalQual>0?pmTotalS/pmTotalQual:null, 'Total Ad Spend ÷ Demos Held (Demo Given orig + resched)'),
     totalTrueCpqd: buildTile(trueCpqdTotal, prior&&pTotalQualScale>0?pTotalS/pTotalQualScale:null, priorMonth&&pmTotalQualScale>0?pmTotalS/pmTotalQualScale:null, 'Total Ad Spend ÷ Demos Held excl. small brands (Pre-launch + 0-10K)'),
     totalQualifiedDemos: buildTile(c.pipeline.qualifiedRawCount||0, p.pipeline?.qualifiedRawCount??null, pm.pipeline?.qualifiedRawCount??null, 'Deals with demo_qualification_outcome = Qualified'),
-    pruneRate: buildTile(c.pipeline.pruneRate||0, p.pipeline?.pruneRate??null, pm.pipeline?.pruneRate??null, 'Cancelled before demo ÷ (Demo Given orig + Demo Given resched + No Show + Cancelled before demo)'),
+    pruneRate: buildTile(c.pipeline.pruneRate||0, p.pipeline?.pruneRate??null, pm.pipeline?.pruneRate??null, 'Cancelled before demo ÷ (held + no-show + cancelled), excl. small brands (Pre-launch + 0-10K + Very Small)'),
     _meta: { totalSpend, totalWD, totalScheduled, totalQual, totalQualified, totalQualifiedScale, demosHeldCount, demosHeldScaleCount, demosHeldStrictCount, closedWonCount: c.closedWon.count, closedWonMRR: c.closedWon.mrr, pClosedWonCount: p.closedWon?.count??null, pClosedWonMRR: p.closedWon?.mrr??null, pmClosedWonCount: pm.closedWon?.count??null, pmClosedWonMRR: pm.closedWon?.mrr??null, pTotalSpend: pTotalS, pmTotalSpend: pmTotalS, pDemosHeldCount: prior?((p.pipeline?.demoGivenOrigCount||0)+(p.pipeline?.demoGivenReschedCount||0)):null, pmDemosHeldCount: priorMonth?((pm.pipeline?.demoGivenOrigCount||0)+(pm.pipeline?.demoGivenReschedCount||0)):null, pDemosHeldScaleCount: prior?(p.pipeline?.demoGivenScaleCount||0):null, pmDemosHeldScaleCount: priorMonth?(pm.pipeline?.demoGivenScaleCount||0):null },
   };
   // Low-traffic demo metrics
@@ -1902,7 +1930,7 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
     demosHappened: buildTile(c.pipeline.demosHappened, p.pipeline?.demosHappened??null, pm.pipeline?.demosHappened??null, 'Deals where demo actually happened'),
     qualifiedOccurred: buildTile(c.pipeline.qualifiedCount, p.pipeline?.qualifiedCount??null, pm.pipeline?.qualifiedCount??null, 'Deals where demo was given AND outcome = Qualified'),
     demoShowRate: buildTile(c.pipeline.demoShowRate, p.pipeline?.demoShowRate??null, pm.pipeline?.demoShowRate??null, 'Demos Happened ÷ Demos to Occur × 100'),
-    noShowRate: buildTile(c.pipeline.noShowRate, p.pipeline?.noShowRate??null, pm.pipeline?.noShowRate??null, 'No Show ÷ (Demo Given orig + Demo Given resched + No Show)'),
+    noShowRate: buildTile(c.pipeline.noShowRate, p.pipeline?.noShowRate??null, pm.pipeline?.noShowRate??null, 'No Show ÷ (held + No Show), excl. small brands (Pre-launch + 0-10K + Very Small)'),
     noShowRateScale: buildTile(c.pipeline.noShowRateScale, p.pipeline?.noShowRateScale??null, pm.pipeline?.noShowRateScale??null, 'No Show ÷ (Demo Given orig + Demo Given resched + No Show), excluding pre-launch'),
     _qualMeta: {
       qualCount: c.pipeline.qualifiedCount||0, reschCount: c.pipeline.rescheduledCount||0,
@@ -1938,6 +1966,14 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
       pruneDenom: c.pipeline.pruneDenom||0,
       pruneDenomPrior: p.pipeline?.pruneDenom ?? null,
       pruneDenomLastMonth: pm.pipeline?.pruneDenom ?? null,
+      // Strict (small-brand-excluded) numerators + held count — the canonical
+      // % Pruned / % No-Show subtext reads these so it matches the rate, and
+      // demoGivenStrictCount is the "held" term in the settled-outcome denom.
+      noShowStrictCount: c.pipeline.noShowStrictCount||0,
+      cancelledStrictCount: c.pipeline.cancelledStrictCount||0,
+      demoGivenStrictCount: c.pipeline.demoGivenStrictCount||0,
+      demoGivenStrictCountPrior: p.pipeline?.demoGivenStrictCount ?? null,
+      demoGivenStrictCountLastMonth: pm.pipeline?.demoGivenStrictCount ?? null,
       // Tight prune-rate cohort (denominator = deals where BOTH date_demo_booked
       // AND hs_createdate land in the window). Used by Irfan KPI #3.
       cancelledBeforeDemoCountTight: c.pipeline.cancelledBeforeDemoCountTight||0,
@@ -2273,7 +2309,8 @@ function buildSpecial1Cohort(dealsArr, fromStr, toStr) {
     const wt = (p.average_monthly_web_traffic__cloned_ || p.average_monthly_web_traffic || '').toLowerCase();
     if (wt.indexOf('pre-launch') >= 0) { prelaunchExcluded++; continue; }
     allBooked++;
-    attBump(_att, (p.demo_attendance_status || '').trim());
+    // Canonical prune/no-show exclude small brands (0-10K / Very Small).
+    if (!isSmallBrandWT(wt)) attBump(_att, (p.demo_attendance_status || '').trim());
     // "To Demo" — hs_createdate → date_demo_booked, computed across all
     // non-prelaunch booked deals (not gated on STAGE_WON).
     {
@@ -2741,6 +2778,9 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
       utm_medium: p.utm_medium || '',
       utm_campaign: p.utm_campaign || '',
       utm_content: p.utm_content || '',
+      // Cloned web-traffic tier — lets the client-side prune/no-show recomputes
+      // exclude small brands consistently with the worker (same source field).
+      wtCloned: p.average_monthly_web_traffic__cloned_ || '',
       website: '',
     };
   });

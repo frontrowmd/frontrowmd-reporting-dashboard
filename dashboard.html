@@ -755,7 +755,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s32';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s33';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -767,6 +767,10 @@ const S={dashboard:{win:'mtd',data:null,sub:'irfan'},irfan:{win:'mtd',data:null}
 const f$=v=>v==null?'—':'$'+Math.round(v).toLocaleString();
 const fN=v=>v==null?'—':Math.round(v).toLocaleString();
 const fP=(v,d=1)=>v==null?'—':v.toFixed(d)+'%';
+// "Small brands" = Pre-launch + 0-10K + Very Small. The canonical % Pruned /
+// % No-Show exclude these (matching True CPD/CPQD + the worker). Lowercase
+// substring so it works on cloned tier strings or live values.
+const isSmallBrandWT=wt=>{const s=(wt||'').toLowerCase();return s.indexOf('pre-launch')>=0||s.indexOf('0-10k')>=0||s.indexOf('very small')>=0;};
 const T={dashboard:'Executive Dashboard',irfan:'Irfan Dashboard',resources:'Resources',calculator:'ARR Calculator',signup:'Sign-Up Rate',csession:'Creative Session',demoQuality:'Demo Quality',webinarPerf:'Webinar Performance',content:'Social Media Content',outbound:'Outbound Sequences'};
 const W=[{k:'7d',l:'Last 7 Days'},{k:'mtd',l:'Month to Date'},{k:'lastMonth',l:'Last Month'},{k:'ytd',l:'Year to Date'},{k:'allTime',l:'All Time'},{k:'custom',l:'Custom'}];
 const AZ_TABS=[{k:'overview',l:'Overview'},{k:'meta',l:'Meta'},{k:'google',l:'Google'},{k:'linkedin',l:'LinkedIn'},{k:'tiktok',l:'TikTok'},{k:'youtube',l:'YouTube'}];
@@ -1970,12 +1974,12 @@ function renderDash(){
   oh+='<div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:12px;margin-bottom:24px">';
   oh+=panelOpen('Volume','#3B82F6');
   oh+=statRow('Demos to occur','Deals by date_demo_booked in window',fN(demosToOccur),null,demosToOccur,demosToOccurPV,demosToOccurLMV,'#');
-  oh+=statRow('Demos supposed to happen','Demos held + No shows + Pruned',fN(qmeta.pruneDenom||0),`${fN((qmeta.demoGivenOrigCount||0)+(qmeta.demoGivenReschedCount||0))} held + ${fN(qmeta.noShowCount||0)} no-show + ${fN(qmeta.cancelledBeforeDemoCount||0)} pruned`,qmeta.pruneDenom||0,qmeta.pruneDenomPrior,qmeta.pruneDenomLastMonth,'#');
+  oh+=statRow('Demos supposed to happen','Held + No shows + Pruned, excl. small brands',fN(qmeta.pruneDenom||0),`${fN(qmeta.demoGivenStrictCount||0)} held + ${fN(qmeta.noShowStrictCount||0)} no-show + ${fN(qmeta.cancelledStrictCount||0)} pruned`,qmeta.pruneDenom||0,qmeta.pruneDenomPrior,qmeta.pruneDenomLastMonth,'#');
   oh+=statRow('Demos held (excl. pre-launch)','Demo Given orig + resched, excluding pre-launch brands',fN(heldScaleCur),null,heldScaleCur,heldScalePV,heldScaleLMV,'#',{noMargin:true});
   oh+='</div>';
   oh+=panelOpen('Quality','#1D9E75');
-  oh+=statRow('Prune rate','Cancelled before demo \u00f7 all settled outcomes',prune!=null?prune.toFixed(1)+'%':'\u2014',`${fN(qmeta.cancelledBeforeDemoCount||0)} \u00f7 ${fN(qmeta.pruneDenom||0)}`,prune,prunePV,pruneLMV,'%',{inv:true,warnIf:20});
-  oh+=statRow('No-show rate','No Show \u00f7 (Demo Given orig + resched + No Show)',noShow!=null?noShow.toFixed(1)+'%':'\u2014',`${fN(qmeta.noShowCount||0)} \u00f7 ${fN(qmeta.noShowDenom||0)}`,noShow,noShowPV,noShowLMV,'%',{inv:true,warnIf:20});
+  oh+=statRow('Prune rate','Cancelled before demo \u00f7 settled outcomes, excl. small brands',prune!=null?prune.toFixed(1)+'%':'\u2014',`${fN(qmeta.cancelledStrictCount||0)} \u00f7 ${fN(qmeta.pruneDenom||0)}`,prune,prunePV,pruneLMV,'%',{inv:true,warnIf:20});
+  oh+=statRow('No-show rate','No Show \u00f7 (held + No Show), excl. small brands',noShow!=null?noShow.toFixed(1)+'%':'\u2014',`${fN(qmeta.noShowStrictCount||0)} \u00f7 ${fN(qmeta.noShowDenom||0)}`,noShow,noShowPV,noShowLMV,'%',{inv:true,warnIf:20});
   oh+=statRow('Qualification rate','Qualified \u00f7 (Qualified + Disqualified)',qualRateScale!=null?qualRateScale.toFixed(1)+'%':'\u2014',`${fN(qmeta.qualifiedRawCount||0)} \u00f7 ${fN(qualPlusDisqualCur)}`,qualRateScale,qualRateScalePV,qualRateScaleLMV,'%',{noMargin:true});
   oh+='</div>';
   oh+=panelOpen('Efficiency','#BA7517');
@@ -2257,10 +2261,11 @@ function renderIrfan(){
   const _totalSpend=esM.totalSpend||0;
   const _scaleSched=Math.max(0,(esM.totalScheduled||esM.totalWD||0)-((ltmeta.low10K!=null?ltmeta.low10K:ltmeta.lowTraffic)||0));
   const _demosHeldScale=(esM.demosHeldStrictCount!=null?esM.demosHeldStrictCount:esM.demosHeldScaleCount)||0;
-  // Numerator + denominator for the canonical % Pruned / % No-Show.
-  const _cancelledBefore=qmeta.cancelledBeforeDemoCount||0;
+  // Numerator + denominator for the canonical % Pruned / % No-Show — strict
+  // (small brands excluded), matching es.pruneRate / dt.noShowRate.
+  const _cancelledBefore=qmeta.cancelledStrictCount||0;
   const _pruneDenom=qmeta.pruneDenom||0;
-  const _noShowNum=qmeta.noShowCount||0;
+  const _noShowNum=qmeta.noShowStrictCount||0;
   const _noShowDenom=qmeta.noShowDenom||0;
 
   // Local helpers — small inline delta line "↑ +N (+X.X%)" for tile footers
@@ -2290,11 +2295,11 @@ function renderIrfan(){
   // 2.3 % Pruned — full orange border when >20%, teal accent when ≤20%
   const _pruneWarn=pruneRate!=null&&pruneRate>20;
   const _pruneStyle=_pruneWarn?'border:2px solid #F59E0B':'border-left:3px solid var(--teal)';
-  h+=`<div class="tile hero" style="${_pruneStyle}" title="Of demos that reached a settled outcome this period, what % were cancelled before the demo happened?"><div class="tlbl">% Pruned</div><div class="tval">${pruneRate!=null?pruneRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">Cancelled before demo ÷ (held + no-show + cancelled)</div>${_irCalc(fN(_cancelledBefore)+' ÷ '+fN(_pruneDenom))}${_irTileFooter(pruneRate,prunePV,pruneLMV,'%',true)}</div>`;
+  h+=`<div class="tile hero" style="${_pruneStyle}" title="Of demos that reached a settled outcome this period, what % were cancelled before the demo happened?"><div class="tlbl">% Pruned</div><div class="tval">${pruneRate!=null?pruneRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">Cancelled before demo ÷ (held + no-show + cancelled) · excl. small brands</div>${_irCalc(fN(_cancelledBefore)+' ÷ '+fN(_pruneDenom))}${_irTileFooter(pruneRate,prunePV,pruneLMV,'%',true)}</div>`;
   // 2.4 % No-Show — canonical (No Show ÷ settled). Full orange border when >20%.
   const _noShowWarn=noShowRate!=null&&noShowRate>20;
   const _noShowStyle=_noShowWarn?'border:2px solid #F59E0B':'border-left:3px solid var(--teal)';
-  h+=`<div class="tile hero" style="${_noShowStyle}" title="Of demos that reached a settled outcome this period, what % were no-shows?"><div class="tlbl">% No-Show</div><div class="tval">${noShowRate!=null?noShowRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">No Show ÷ (Demo Given orig + resched + No Show)</div>${_irCalc(fN(_noShowNum)+' ÷ '+fN(_noShowDenom))}${_irTileFooter(noShowRate,noShowPV,noShowLMV,'%',true)}</div>`;
+  h+=`<div class="tile hero" style="${_noShowStyle}" title="Of demos that reached a settled outcome this period, what % were no-shows?"><div class="tlbl">% No-Show</div><div class="tval">${noShowRate!=null?noShowRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">No Show ÷ (held + No Show) · excl. small brands</div>${_irCalc(fN(_noShowNum)+' ÷ '+fN(_noShowDenom))}${_irTileFooter(noShowRate,noShowPV,noShowLMV,'%',true)}</div>`;
   // 2.5 % Disqualified Routing — "Clicked Continue but DQ'd" ÷ "Clicked
   // Schedule a Demo and Continue".
   //   numerator   = /not-supported page VIEWS (people routed to the DQ page) —
@@ -3858,11 +3863,15 @@ function renderOverviewOutcomeBreakdown(d){
     for(var bi=0;bi<rows.length;bi++){var br=rows[bi];
       var brd=buildAttRow(br.deals);var brt=brd.total||1;
       var qod=buildQoRow(br.deals);var qrt=qod.total||1;
+      // Prune / No-Show mini-KPIs use the CANONICAL definition — small brands
+      // (Pre-launch + 0-10K + Very Small) excluded — so they match the headline
+      // rates. The distribution bars above still show the full mix.
+      var brdS=buildAttRow(br.deals.filter(function(dd){return !isSmallBrandWT(dd.wtCloned);}));
       // Mini KPI calculations using QUALITY-SECTION FORMULAS:
-      var origN=brd['Demo Given (originally scheduled)']||0;
-      var reschN=brd['Demo Given (rescheduled)']||0;
-      var nsN=brd['No Show']||0;
-      var cancN=brd['Cancelled before demo']||0;
+      var origN=brdS['Demo Given (originally scheduled)']||0;
+      var reschN=brdS['Demo Given (rescheduled)']||0;
+      var nsN=brdS['No Show']||0;
+      var cancN=brdS['Cancelled before demo']||0;
       var noShowDenom=origN+reschN+nsN;        // matches Quality No-show rate denom
       var pruneDenom=origN+reschN+nsN+cancN;   // matches Quality Prune rate denom
       var qN=qod['Qualified']||0,dqN=qod['Disqualified']||0;
@@ -5193,12 +5202,12 @@ function renderDemoQuality(){try{
   h+='<div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:12px;margin-bottom:20px">';
   h+=panelOpenC('Volume','#3B82F6');
   h+=statRowC('Demos to occur','Deals by date_demo_booked in window',fN(demosToOccurC),null,demosToOccurC,demosToOccurCPV,demosToOccurCLMV,'#');
-  h+=statRowC('Demos supposed to happen','Demos held + No shows + Pruned',fN(qmetaC.pruneDenom||0),fN((qmetaC.demoGivenOrigCount||0)+(qmetaC.demoGivenReschedCount||0))+' held + '+fN(qmetaC.noShowCount||0)+' no-show + '+fN(qmetaC.cancelledBeforeDemoCount||0)+' pruned',qmetaC.pruneDenom||0,qmetaC.pruneDenomPrior,qmetaC.pruneDenomLastMonth,'#');
+  h+=statRowC('Demos supposed to happen','Held + No shows + Pruned, excl. small brands',fN(qmetaC.pruneDenom||0),fN(qmetaC.demoGivenStrictCount||0)+' held + '+fN(qmetaC.noShowStrictCount||0)+' no-show + '+fN(qmetaC.cancelledStrictCount||0)+' pruned',qmetaC.pruneDenom||0,qmetaC.pruneDenomPrior,qmetaC.pruneDenomLastMonth,'#');
   h+=statRowC('Demos held (excl. pre-launch)','Demo Given orig + resched, excluding pre-launch brands',fN(demosHeldScaleC),null,demosHeldScaleC,demosHeldScaleCPV,demosHeldScaleCLMV,'#',{noMargin:true});
   h+='</div>';
   h+=panelOpenC('Quality','#1D9E75');
-  h+=statRowC('Prune rate','Cancelled before demo ÷ all settled outcomes',pruneC!=null?pruneC.toFixed(1)+'%':'—',fN(qmetaC.cancelledBeforeDemoCount||0)+' ÷ '+fN(qmetaC.pruneDenom||0),pruneC,pruneCPV,pruneCLMV,'%',{inv:true,warnIf:20});
-  h+=statRowC('No-show rate','No Show ÷ (Demo Given orig + resched + No Show)',noShowC!=null?noShowC.toFixed(1)+'%':'—',fN(qmetaC.noShowCount||0)+' ÷ '+fN(qmetaC.noShowDenom||0),noShowC,noShowCPV,noShowCLMV,'%',{inv:true,warnIf:20});
+  h+=statRowC('Prune rate','Cancelled before demo ÷ settled outcomes, excl. small brands',pruneC!=null?pruneC.toFixed(1)+'%':'—',fN(qmetaC.cancelledStrictCount||0)+' ÷ '+fN(qmetaC.pruneDenom||0),pruneC,pruneCPV,pruneCLMV,'%',{inv:true,warnIf:20});
+  h+=statRowC('No-show rate','No Show ÷ (held + No Show), excl. small brands',noShowC!=null?noShowC.toFixed(1)+'%':'—',fN(qmetaC.noShowStrictCount||0)+' ÷ '+fN(qmetaC.noShowDenom||0),noShowC,noShowCPV,noShowCLMV,'%',{inv:true,warnIf:20});
   h+=statRowC('Qualification rate','Qualified ÷ (Qualified + Disqualified)',qualRateC!=null?qualRateC.toFixed(1)+'%':'—',fN(qmetaC.qualifiedRawCount||0)+' ÷ '+fN((qmetaC.qualifiedRawCount||0)+(qmetaC.disqualifiedRawCount||0)),qualRateC,qualRateCPV,qualRateCLMV,'%',{noMargin:true});
   h+='</div>';
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding-bottom:10px;border-bottom:1px solid var(--border)"><div style="width:6px;height:6px;background:#9333EA;border-radius:50%"></div><div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy)">Demos Booked by Web-Traffic Range</div></div><div style="font-size:11px;color:var(--grey);margin:6px 0 4px">% of demos booked in each tier · ordered Pre-launch → 500K+ clockwise</div><div id="dq-webtraffic"></div></div>';
@@ -6027,10 +6036,13 @@ function _suRecomputeMetrics(shadows){
   const todayMs=_suTodayMs();
   for(const sh of shadows){
     const stage=sh.s;
-    const att=sh.at||'';
-    if(att==='Demo Given (originally scheduled)'||att==='Demo Given (rescheduled)')attHeld++;
-    else if(att==='No Show')attNoShow++;
-    else if(att==='Cancelled before demo')attCancelled++;
+    // Canonical prune/no-show exclude small brands (matches worker).
+    if(!isSmallBrandWT(sh.w)){
+      const att=sh.at||'';
+      if(att==='Demo Given (originally scheduled)'||att==='Demo Given (rescheduled)')attHeld++;
+      else if(att==='No Show')attNoShow++;
+      else if(att==='Cancelled before demo')attCancelled++;
+    }
     // "To Demo" is computed for ALL shadows (mirrors worker logic), not just won.
     {
       const ddbMs=sh.d?new Date(sh.d).getTime():NaN;
