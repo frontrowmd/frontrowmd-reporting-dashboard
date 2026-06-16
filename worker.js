@@ -2407,7 +2407,9 @@ async function processSignupRequest(env) {
   for (let i = 0; i <= 3; i++) {
     const s = new Date(Date.UTC(yd.getUTCFullYear(), yd.getUTCMonth()-i, 1));
     const e = i === 0 ? yd : new Date(Date.UTC(yd.getUTCFullYear(), yd.getUTCMonth()-i+1, 0));
-    cohortMonths.push({ from: fmt(s), to: fmt(e), label: s.toLocaleDateString('en-US',{month:'long',year:'numeric',timeZone:'UTC'}) });
+    // i===0 is the current calendar month; its `to` is today (not month-end).
+    // Flag it so the dashboard can default its demo-date filter to "up to today".
+    cohortMonths.push({ from: fmt(s), to: fmt(e), label: s.toLocaleDateString('en-US',{month:'long',year:'numeric',timeZone:'UTC'}), isCurrent: i === 0 });
   }
   // Owners + cohort fetches in parallel — both are cheap and independent.
   const [ownerMap, cohortRes] = await Promise.all([

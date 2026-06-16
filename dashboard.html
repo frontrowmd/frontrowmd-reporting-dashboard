@@ -755,7 +755,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s33';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s34';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -6217,6 +6217,17 @@ function renderSignUp(){
   // + signedByWebTraffic from the filtered dealShadows list.
   if(!S.signup.dateFilters)S.signup.dateFilters={};
   if(!S.signup.wtFilters)S.signup.wtFilters={};
+  // Default the CURRENT-month cohort's demo-date filter to "up to today"
+  // (period.to = today per the worker) so demos booked for later this month
+  // — which haven't happened yet — don't skew the cohort. One-time per
+  // session so a manual change/clear sticks.
+  if(!S.signup._curMonthDefaulted){
+    S.signup._curMonthDefaulted=true;
+    const _curC=s.cohorts.find(c=>c.period&&c.period.isCurrent);
+    if(_curC&&!S.signup.dateFilters[_curC.period.label]){
+      S.signup.dateFilters[_curC.period.label]={from:'',to:_curC.period.to};
+    }
+  }
   for(let _ci=0;_ci<s.cohorts.length;_ci++){
     let c=s.cohorts[_ci];
     const _filt=S.signup.dateFilters[c.period.label]||{from:'',to:''};
