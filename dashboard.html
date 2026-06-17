@@ -755,7 +755,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s34';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s35';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -5830,7 +5830,7 @@ var batch=batches[bi];
 var rows=batch.map(function(d2){return{id:d2.id,name:d2.dealname,website:d2.website,email:d2.email};});
 var prompt='You are prequalifying demo leads for FrontrowMD.\n\nFrontrowMD connects DTC wellness/health brands with clinicians who write reviews and power ClinicianAI on product pages.\n\nFor EACH lead below, use web_search to look up their website and verify whether they have a DTC ecommerce store (add-to-cart on their own domain) selling health/wellness products.\n\nQUALIFICATION CRITERIA:\n- Y = Has a DTC ecommerce store on their own website selling health/wellness/beauty/supplement products with add-to-cart functionality\n- N = No online store (services only, agencies, clinics, gyms, B2B-only, marketplace-only with no DTC site, no health/wellness angle)\n- ? = Cannot determine (website is down, no URL provided, insufficient info)\n\nGUIDANCE:\n- Search for "[brand name] website" or visit the URL provided to check for an online store\n- Skincare, beauty devices, supplements, functional beverages, hair health, wellness products = Y if they have their own ecommerce\n- Brands that ONLY sell on Amazon/marketplaces with no own-site checkout = N\n- Services, agencies, clinics, gyms, B2B platforms, software companies = N\n- If the URL is missing and the email is gmail/yahoo/hotmail with no clear brand = ?\n- Lean Y generously for health/wellness brands with any form of DTC checkout\n\nAfter researching ALL leads, return ONLY a JSON array (no other text):\n[{"id":"...","pq":"Y|N|?","reason":"1 sentence explaining what you found"}]\n\nLeads to evaluate:\n'+JSON.stringify(rows);
 try{
-var data=await csAI({model:'claude-sonnet-4-20250514',max_tokens:4000,messages:[{role:'user',content:prompt}],tools:[{type:'web_search_20250305',name:'web_search',max_uses:10}]});
+var data=await csAI({model:'claude-haiku-4-5-20251001',max_tokens:4000,messages:[{role:'user',content:prompt}],tools:[{type:'web_search_20250305',name:'web_search',max_uses:10}]});
 if(data.error)throw new Error(data.message);
 // Extract text from mixed content blocks (web search produces tool_use + tool_result + text blocks)
 var t='';if(data.content)data.content.forEach(function(b){if(b.type==='text')t+=b.text;});
