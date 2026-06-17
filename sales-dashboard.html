@@ -444,7 +444,7 @@ function renderPreDemo(){
   h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Stage</span> ';
   h+=fp(_tblStageFilter==='all','All',"_tblStageFilter='all';renderPreDemo()")+' ';
-  ['appointmentscheduled','1084214349','decisionmakerboughtin','contractsent','closedwon','closedlost','3453957850','1062974581'].forEach(function(v){h+=fp(_tblStageFilter===v,STAGE_LABELS[v]||v,"_tblStageFilter='"+v+"';renderPreDemo()")+' ';});
+  ['appointmentscheduled','1084214349','decisionmakerboughtin','contractsent','closedwon','closedlost','3453957850','1062974581','3741686471','3741686470'].forEach(function(v){h+=fp(_tblStageFilter===v,STAGE_LABELS[v]||v,"_tblStageFilter='"+v+"';renderPreDemo()")+' ';});
   h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Attendance</span> ';
   h+=fp(_tblAttFilter==='all','All',"_tblAttFilter='all';renderPreDemo()")+' ';
@@ -1143,7 +1143,7 @@ function renderPostDemo(){
   h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Stage</span> ';
   h+=fp(_pdStageFilter==='all','All',"_pdStageFilter='all';renderPostDemo()")+' ';
-  ['appointmentscheduled','1084214349','decisionmakerboughtin','contractsent','closedwon','closedlost','3453957850','1062974581'].forEach(function(v){h+=fp(_pdStageFilter===v,STAGE_LABELS[v]||v,"_pdStageFilter='"+v+"';renderPostDemo()")+' ';});
+  ['appointmentscheduled','1084214349','decisionmakerboughtin','contractsent','closedwon','closedlost','3453957850','1062974581','3741686471','3741686470'].forEach(function(v){h+=fp(_pdStageFilter===v,STAGE_LABELS[v]||v,"_pdStageFilter='"+v+"';renderPostDemo()")+' ';});
   h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Attendance</span> ';
   h+=fp(_pdAttFilter==='all','All',"_pdAttFilter='all';renderPostDemo()")+' ';

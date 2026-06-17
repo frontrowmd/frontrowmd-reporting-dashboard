@@ -152,6 +152,10 @@ var _bdArrGoal='',_bdAcvInput='';
 var BD_STAGE_LABELS={appointmentscheduled:'Scheduled','1084214349':'Demo Happened',decisionmakerboughtin:'Decision Maker',contractsent:'Contract Sent',closedwon:'Closed Won',closedlost:'Closed Lost','3453957850':'No Show','3453925110':'Churned','1062974581':'Not a Fit','3517067985':'Churned (Onb)','3722491612':'Interested, Circle Back','3741686471':'Webinar Attended','3741686470':'Webinar Registered'};
 var BD_STAGE_COLORS={appointmentscheduled:'#F59E0B','1084214349':'#0EA5E9',decisionmakerboughtin:'#7C3AED',contractsent:'#1565C0',closedwon:'#16A34A',closedlost:'#9CA3AF','3453957850':'#EF4444','3453925110':'#EF4444','1062974581':'#64748B','3517067985':'#DC2626','3722491612':'#EC4899','3741686471':'#38BDF8','3741686470':'#9CA3AF'};
 var BD_STATUS_COLORS={Signed:'#16A34A',Paying:'#172C45',Paused:'#F59E0B',Churned:'#DC2626','Never Implemented - Churned':'#9CA3AF'};
+// Curated display order for the Deal Stage filter pills (funnel order, then
+// Not a Fit, then the Webinar stages, then late-stage). Stages not listed
+// fall to the end. Replaces the raw-id alphabetical sort.
+var BD_STAGE_ORDER=['appointmentscheduled','1084214349','decisionmakerboughtin','contractsent','closedwon','closedlost','3453957850','1062974581','3741686471','3741686470','3722491612','3453925110','3517067985'];
 // Plan color palette. New main plans (Hero/Core/Portfolio) get the most
 // prominent colors; legacy plans are muted. Distinct enough to read on
 // stage badges and the Deal Attribution chart side-by-side.
@@ -737,7 +741,7 @@ function renderBD(){
   h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Deal Stage</span> ';
   h+=fp(_bdStageF==='all','All',"_bdStageF='all';renderBD()")+' ';
-  Object.keys(uniqStage).sort().forEach(function(v){h+=fp(_bdStageF===v,BD_STAGE_LABELS[v]||v,"_bdStageF='"+v+"';renderBD()")+' ';});
+  Object.keys(uniqStage).sort(function(a,b){var ia=BD_STAGE_ORDER.indexOf(a),ib=BD_STAGE_ORDER.indexOf(b);if(ia<0)ia=999;if(ib<0)ib=999;return ia-ib||(a<b?-1:a>b?1:0);}).forEach(function(v){h+=fp(_bdStageF===v,BD_STAGE_LABELS[v]||v,"_bdStageF='"+v+"';renderBD()")+' ';});
   h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Deal Rep</span> ';
   h+=fp(_bdRepF==='all','All',"_bdRepF='all';renderBD()")+' ';
