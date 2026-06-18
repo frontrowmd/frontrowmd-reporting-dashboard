@@ -124,7 +124,7 @@ function _bdFirstOfMonth(){var _d=new Date();return _d.getFullYear()+'-'+String(
 // (Signed / Paying / Paused / Churned / Never Implemented - Churned). When
 // the toggle array is non-empty, it takes precedence over the single-select
 // bucket (the bucket auto-resets to 'all' so the two UIs don't fight).
-var _bdBrandStatusF='Active',_bdBrandStatusToggleF=[],_bdStageF='all',_bdRepF='all',_bdSeRepF='all',_bdOpsRepF='all',_bdPkgF='all',_bdDateFrom=_bdFirstOfMonth(),_bdDateTo='',_bdDateMode='close';
+var _bdBrandStatusF='Active',_bdBrandStatusToggleF=[],_bdStageF='all',_bdRepF='all',_bdAcctMgrF='all',_bdSeRepF='all',_bdOpsRepF='all',_bdPkgF='all',_bdDateFrom=_bdFirstOfMonth(),_bdDateTo='',_bdDateMode='close';
 // Live deal-table search query — case-insensitive substring match across
 // dealname, companyName, brand_status, notes, dealstage label, and the
 // three rep-name fields (resolved via ownerMap). Applied inside the same
@@ -262,8 +262,14 @@ function bdLookupMissingCompanies(attempt){
     // name (placeholder for archived/deleted companies) still mark the
     // deal as "resolved" \u2014 we just leave companyName as ''.
     BD.data.deals.forEach(function(deal){
-      if(deal.companyId&&!deal.companyName&&nameMap[deal.companyId]){
-        deal.companyName=nameMap[deal.companyId].name||'';
+      var co=deal.companyId&&nameMap[deal.companyId];
+      if(co){
+        if(!deal.companyName)deal.companyName=co.name||'';
+        // Fill the company-sourced rep fields too — these come back empty from
+        // /api/bd when the company wasn't in the cache, so patch them here.
+        if(!deal.se_rep_id&&co.se_owner)deal.se_rep_id=co.se_owner;
+        if(!deal.ops_owner_id&&co.ops_owner)deal.ops_owner_id=co.ops_owner;
+        if(!deal.account_manager&&co.account_manager)deal.account_manager=co.account_manager;
       }
     });
     // Any ID returned by the server (even with empty name = unresolved
@@ -307,6 +313,8 @@ function bdExportCSV(){
     {hsProp:'dealstage_label',                       get:function(r){return BD_STAGE_LABELS[r.dealstage]||r.dealstage||'';}},
     {hsProp:'hubspot_owner_id',                      get:function(r){return r.hubspot_owner_id;}},
     {hsProp:'hubspot_owner_name',                    get:function(r){return ownerMap[r.hubspot_owner_id]||'';}},
+    {hsProp:'associated_company.account_manager',    get:function(r){return r.account_manager;}},
+    {hsProp:'associated_company.account_manager_name',get:function(r){return ownerMap[r.account_manager]||r.account_manager||'';}},
     {hsProp:'associated_company.hubspot_owner_id',   get:function(r){return r.se_rep_id;}},
     {hsProp:'associated_company.hubspot_owner_name', get:function(r){return ownerMap[r.se_rep_id]||'';}},
     {hsProp:'associated_company.ops_owner',          get:function(r){return r.ops_owner_id;}},
@@ -440,12 +448,12 @@ function bdClearSearch(){_bdSearchQ='';renderBD();}
 // + Close Date filter scoped to the current month. The gold always-visible
 // button in the table filter row calls this; it's the most common starting
 // view of the BD Tracker.
-function bdCurrentMonthSigned(){_bdBrandStatusF='Active';_bdBrandStatusToggleF=[];_bdStageF='all';_bdRepF='all';_bdSeRepF='all';_bdOpsRepF='all';_bdPkgF='all';_bdWebTrafficF=[];_bdDateFrom=_bdFirstOfMonth();_bdDateTo='';_bdDateMode='close';_bdSearchQ='';renderBD();}
+function bdCurrentMonthSigned(){_bdBrandStatusF='Active';_bdBrandStatusToggleF=[];_bdStageF='all';_bdRepF='all';_bdAcctMgrF='all';_bdSeRepF='all';_bdOpsRepF='all';_bdPkgF='all';_bdWebTrafficF=[];_bdDateFrom=_bdFirstOfMonth();_bdDateTo='';_bdDateMode='close';_bdSearchQ='';renderBD();}
 // "Clear All Filters" — wipes everything to a truly unfiltered state (no
 // brand status, no date range, no rep/stage/web-traffic filter). The red
 // dirty-only button calls this; only visible when at least one filter is
 // non-default.
-function bdClearAllFilters(){_bdBrandStatusF='all';_bdBrandStatusToggleF=[];_bdStageF='all';_bdRepF='all';_bdSeRepF='all';_bdOpsRepF='all';_bdPkgF='all';_bdWebTrafficF=[];_bdDateFrom='';_bdDateTo='';_bdDateMode='close';_bdSearchQ='';renderBD();}
+function bdClearAllFilters(){_bdBrandStatusF='all';_bdBrandStatusToggleF=[];_bdStageF='all';_bdRepF='all';_bdAcctMgrF='all';_bdSeRepF='all';_bdOpsRepF='all';_bdPkgF='all';_bdWebTrafficF=[];_bdDateFrom='';_bdDateTo='';_bdDateMode='close';_bdSearchQ='';renderBD();}
 // Toggle a single web-traffic tier in/out of the multi-select array.
 function bdWtToggle(tier){var i=_bdWebTrafficF.indexOf(tier);if(i>=0)_bdWebTrafficF.splice(i,1);else _bdWebTrafficF.push(tier);renderBD();}
 function bdWtClear(){_bdWebTrafficF=[];renderBD();}
@@ -522,6 +530,7 @@ function renderBD(){
       var _bdRepName=(ownerMap[dd.hubspot_owner_id]||'').toLowerCase();
       var _bdSeName=(ownerMap[dd.se_rep_id]||'').toLowerCase();
       var _bdOpsName=(ownerMap[dd.ops_owner_id]||'').toLowerCase();
+      var _bdAmName=(ownerMap[dd.account_manager]||dd.account_manager||'').toLowerCase();
       var _bdStageLbl=(BD_STAGE_LABELS[dd.dealstage]||dd.dealstage||'').toLowerCase();
       var _bdHay=(
         (dd.dealname||'').toLowerCase()+' '+
@@ -530,7 +539,7 @@ function renderBD(){
         _bdStageLbl+' '+
         (dd.package_type||'').toLowerCase()+' '+
         (dd.notes||'').toLowerCase()+' '+
-        _bdRepName+' '+_bdSeName+' '+_bdOpsName
+        _bdRepName+' '+_bdAmName+' '+_bdSeName+' '+_bdOpsName
       );
       if(_bdHay.indexOf(_bdSQ)===-1)return false;
     }
@@ -546,6 +555,7 @@ function renderBD(){
     // 'all' falls through with no filter applied.
     if(_bdStageF!=='all'&&dd.dealstage!==_bdStageF)return false;
     if(_bdRepF!=='all'){var rn=ownerMap[dd.hubspot_owner_id]||'Unassigned';if(rn!==_bdRepF)return false;}
+    if(_bdAcctMgrF!=='all'){var amf=ownerMap[dd.account_manager]||dd.account_manager||'Unassigned';if(amf!==_bdAcctMgrF)return false;}
     if(_bdSeRepF!=='all'){var sn=ownerMap[dd.se_rep_id]||'Unassigned';if(sn!==_bdSeRepF)return false;}
     if(_bdOpsRepF!=='all'){var on=ownerMap[dd.ops_owner_id]||'Unassigned';if(on!==_bdOpsRepF)return false;}
     if(_bdPkgF!=='all'&&dd.package_type!==_bdPkgF)return false;
@@ -595,14 +605,17 @@ function renderBD(){
   var repCount={};
   var opsCount={};
   var seCount={};
+  var acctMgrCount={};
   deals.forEach(function(dd){
     var rn=ownerMap[dd.hubspot_owner_id]||'Unassigned';repCount[rn]=(repCount[rn]||0)+1;
     if(dd.ops_owner_id){var on=ownerMap[dd.ops_owner_id]||'Unassigned';opsCount[on]=(opsCount[on]||0)+1;}
     if(dd.se_rep_id){var sn=ownerMap[dd.se_rep_id]||'Unassigned';seCount[sn]=(seCount[sn]||0)+1;}
+    if(dd.account_manager){var am=ownerMap[dd.account_manager]||dd.account_manager||'Unassigned';acctMgrCount[am]=(acctMgrCount[am]||0)+1;}
   });
   var repSorted=Object.entries(repCount).sort(function(a,b){return b[1]-a[1];});
   var opsSorted=Object.entries(opsCount).sort(function(a,b){return b[1]-a[1];});
   var seSorted=Object.entries(seCount).sort(function(a,b){return b[1]-a[1];});
+  var acctMgrSorted=Object.entries(acctMgrCount).sort(function(a,b){return b[1]-a[1];});
   var BD_REP_CMAP={};for(var rci=0;rci<repSorted.length;rci++){BD_REP_CMAP[repSorted[rci][0]]=BD_REP_COLORS[rci%BD_REP_COLORS.length];}
   // Attribution with MRR
   // Dimension order: Web Traffic Tier first (default), Plan Name second,
@@ -747,6 +760,10 @@ function renderBD(){
   h+=fp(_bdRepF==='all','All',"_bdRepF='all';renderBD()")+' ';
   repSorted.forEach(function(rs){var rn=rs[0];if(bdRepHidden(rn,BD_DEAL_REP_HIDE))return;h+=fp(_bdRepF===rn,bdFirstName(rn)||rn,"_bdRepF='"+rn.replace(/'/g,"\\'")+"';renderBD()")+' ';});
   h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
+  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Acct Mgr</span> ';
+  h+=fp(_bdAcctMgrF==='all','All',"_bdAcctMgrF='all';renderBD()")+' ';
+  acctMgrSorted.forEach(function(rs){var rn=rs[0];h+=fp(_bdAcctMgrF===rn,bdFirstName(rn)||rn,"_bdAcctMgrF='"+rn.replace(/'/g,"\\'")+"';renderBD()")+' ';});
+  h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">SE Rep</span> ';
   h+=fp(_bdSeRepF==='all','All',"_bdSeRepF='all';renderBD()")+' ';
   seSorted.forEach(function(rs){var rn=rs[0];if(bdRepHidden(rn,BD_SE_REP_HIDE))return;h+=fp(_bdSeRepF===rn,bdFirstName(rn)||rn,"_bdSeRepF='"+rn.replace(/'/g,"\\'")+"';renderBD()")+' ';});
@@ -798,7 +815,7 @@ function renderBD(){
   h+='<input id="bd-search-input" type="search" placeholder="Search deals…" value="'+(_bdSearchQ||'').replace(/"/g,'&quot;')+'" oninput="bdSetSearch(this.value)" onfocus="bdAnchorSearch(true)" autocomplete="off" spellcheck="false" style="border:0;outline:none;background:transparent;font-size:11px;font-family:var(--font-b);color:var(--navy);padding:3px 4px;flex:1;min-width:140px">';
   if(_bdSearchQ){h+='<button onclick="bdClearSearch()" title="Clear search" style="border:0;background:rgba(23,44,69,.08);color:var(--navy);width:18px;height:18px;border-radius:50%;font-size:11px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0">×</button>';}
   h+='</div>';
-  var anyF=_bdBrandStatusF!=='all'||_bdBrandStatusToggleF.length>0||_bdStageF!=='all'||_bdRepF!=='all'||_bdSeRepF!=='all'||_bdOpsRepF!=='all'||_bdPkgF!=='all'||_bdWebTrafficF.length>0||_bdDateFrom||_bdDateTo||_bdSearchQ;
+  var anyF=_bdBrandStatusF!=='all'||_bdBrandStatusToggleF.length>0||_bdStageF!=='all'||_bdRepF!=='all'||_bdAcctMgrF!=='all'||_bdSeRepF!=='all'||_bdOpsRepF!=='all'||_bdPkgF!=='all'||_bdWebTrafficF.length>0||_bdDateFrom||_bdDateTo||_bdSearchQ;
   // Always-visible gold preset button — the most common BD Tracker view
   // (Active brand status + Close Date in current month).
   h+='<button onclick="bdCurrentMonthSigned()" title="Active brand status + Close Date in current month" style="margin-left:auto;padding:3px 14px;border-radius:50px;border:1.5px solid #B8860B;background:linear-gradient(135deg,#F5D896 0%,#FBE9C1 100%);color:#5A3F0A;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--font-b);box-shadow:0 1px 3px rgba(184,134,11,.25),inset 0 1px 0 rgba(255,255,255,.5);letter-spacing:.02em">Current Month Signed</button>';
@@ -834,6 +851,7 @@ function renderBD(){
     // what the cell renders (rescheduled overrides original when set).
     if(k==='date_demo_booked')return ((d.rescheduled_meeting_date||d.date_demo_booked)||'').substring(0,10);
     if(k==='hubspot_owner_id')return (ownerMap[d.hubspot_owner_id]||'').toLowerCase();
+    if(k==='account_manager')return (ownerMap[d.account_manager]||d.account_manager||'').toLowerCase();
     if(k==='ops_owner_id')return (ownerMap[d.ops_owner_id]||'').toLowerCase();
     if(k==='se_rep_id')return (ownerMap[d.se_rep_id]||'').toLowerCase();
     if(k==='to_demo'){var td=bdToDemo(d);return td==null?Infinity:td;}
@@ -870,6 +888,7 @@ function renderBD(){
     {k:'brand_status',l:'Brand Status',w:100},
     {k:'dealstage',l:'Deal Stage',w:115},
     {k:'hubspot_owner_id',l:'Deal Rep',w:80},
+    {k:'account_manager',l:'Acct Mgr',w:80},
     {k:'se_rep_id',l:'SE Rep',w:80},
     {k:'ops_owner_id',l:'Ops Rep',w:80},
     // ── Dates group ──
@@ -1033,6 +1052,10 @@ function renderBD(){
     h+='<td data-no-tip="1"><span class="pill" style="background:'+stageColor+'18;color:'+stageColor+'">'+stageLabel+'</span></td>';
     var repHidden=bdRepHidden(repName,BD_DEAL_REP_HIDE);
     h+='<td title="'+(repHidden?'':repName)+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(repHidden?dash:(bdFirstName(repName)||dash))+'</td>';
+    // Account Manager — from the company record's account_manager field;
+    // resolve via ownerMap (owner-id property), falling back to the raw value.
+    var amName=ownerMap[row.account_manager]||row.account_manager||'';
+    h+=_td('account_manager','<td title="'+amName.replace(/"/g,'&quot;')+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(bdFirstName(amName)||dash)+'</td>');
     // SE Rep — from the company record's hubspot_owner_id, resolved via ownerMap
     var seHidden=bdRepHidden(seName,BD_SE_REP_HIDE);
     h+=_td('se_rep_id','<td title="'+(seHidden?'':seName)+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(seHidden?dash:(bdFirstName(seName)||dash))+'</td>');

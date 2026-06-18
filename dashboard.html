@@ -755,7 +755,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s38';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s39';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2300,61 +2300,37 @@ function renderIrfan(){
   const _noShowWarn=noShowRate!=null&&noShowRate>20;
   const _noShowStyle=_noShowWarn?'border:2px solid #F59E0B':'border-left:3px solid var(--teal)';
   h+=`<div class="tile hero" style="${_noShowStyle}" title="Of demos that reached a settled outcome this period, what % were no-shows?"><div class="tlbl">% No-Show</div><div class="tval">${noShowRate!=null?noShowRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">No Show ÷ (held + No Show) · excl. small brands</div>${_irCalc(fN(_noShowNum)+' ÷ '+fN(_noShowDenom))}${_irTileFooter(noShowRate,noShowPV,noShowLMV,'%',true)}</div>`;
-  // 2.5 % Disqualified Routing — "Clicked Continue but DQ'd" ÷ "Clicked
-  // Schedule a Demo and Continue".
-  //   numerator   = /not-supported page VIEWS (people routed to the DQ page) —
-  //                 unchanged from before (HubSpot form views, GA4 fallback)
-  //   denominator = cal_routing_submitted GA4 events (people who submitted the
-  //                 cal routing form), per-window via d.irfan.calRouting
-  const _dqForm=d.irfan?.dqForm;const _dqFormErr=d.irfan?.dqFormError;
-  const _dqViews=_dqForm?_dqForm.views:null;
-  const _dqSubs=_dqForm?_dqForm.count:null;
-  const _calR=d.irfan?.calRouting;
-  const _routed=(_calR&&_calR.current)?_calR.current.routed:0;  // cal_routing_submitted, current window
-  const _unqRate=(_dqViews!=null&&_routed>0)?(_dqViews/_routed)*100:null;
-  // Prior / LM rates from the per-window GA4 series (the only source with daily
-  // history for both metrics). routed===0 → no data for that window → null.
-  const _crRate=function(o){return (o&&o.routed>0)?(o.views/o.routed)*100:null;};
-  const _unqPV=_calR?_crRate(_calR.prior):null;
-  const _unqLM=_calR?_crRate(_calR.priorMonth):null;
-  if(_dqFormErr){
-    h+=`<div class="tile" style="border:1.5px dashed #FCA5A5;background:rgba(220,38,38,.04)"><div class="tlbl" style="color:#991B1B">% Disqualified Routing</div><div class="tval" style="color:#991B1B">—</div><div class="tdef" style="margin-top:4px;color:#7F1D1D">Failed to fetch Disqualification Form</div><div style="font-size:10px;color:#991B1B;margin-top:6px;font-style:italic">${_dqFormErr}</div></div>`;
-  } else if(_dqForm&&!_dqForm.formFound){
-    h+='<div class="tile" style="border:1.5px dashed #FCD34D;background:rgba(245,158,11,.04)"><div class="tlbl" style="color:#D97706">% Disqualified Routing</div><div class="tval" style="color:#D97706">—</div><div class="tdef" style="margin-top:4px;color:#92400E">No HubSpot form found matching "Disqualification"</div></div>';
-  } else if(_dqForm&&_dqForm.views==null){
-    // Form found but the analytics endpoint didn't return view data. Show the
-    // exact reason (HTTP status, scope problem, etc.) reported by the worker
-    // so we can act on it instead of guessing.
-    const _vErr=_dqForm.viewError||'analytics v2 returned no view counts';
-    h+=`<div class="tile" style="border:1.5px dashed #FCD34D;background:rgba(245,158,11,.04)"><div class="tlbl" style="color:#D97706">% Disqualified Routing</div><div class="tval" style="color:#D97706">—</div><div class="tdef" style="margin-top:4px;color:#92400E">Form view analytics unavailable</div><div style="font-size:10px;color:#92400E;margin-top:6px;word-break:break-word">${fN(_dqSubs||0)} submissions logged in window<br><span style="font-style:italic;opacity:.85">${_vErr}</span></div></div>`;
+  // 2.5 Ad Budget Pacing — total ad spend this period (+ vs prior / vs LM) with
+  // a mini bar showing current-month pacing: % of monthly budget spent (fill)
+  // vs % of month elapsed (vertical line). Mirrors the Channel Performance
+  // pacing logic + excludes pending (no-connector) channels from the budget so
+  // it matches the Channel Performance Total. (Replaced % Disqualified Routing.)
+  const _periodSpend=d.adSpend?.total?.value||0;
+  const _spendPV=d.adSpend?.total?.sameTimePrior?.value??null;
+  const _spendLM=d.adSpend?.total?.lastMonth?.value??null;
+  let _monthBudget=0;
+  if(d.adSpend&&d.adSpend.channels){for(var _bk in d.adSpend.channels){if(d.adSpend.channels[_bk].pendingConnector)continue;_monthBudget+=(d.adSpend.channels[_bk].budget||0);}}
+  const _nowD=new Date();
+  const _pctElapsed=(_nowD.getDate()/new Date(_nowD.getFullYear(),_nowD.getMonth()+1,0).getDate())*100;
+  const _pctSpent=_monthBudget>0?(_periodSpend/_monthBudget)*100:0;
+  const _paceDiff=_pctSpent-_pctElapsed;
+  const _absPace=Math.abs(_paceDiff);
+  const _paceColor=_monthBudget===0?'var(--grey)':(_absPace<=5?'var(--green)':(_absPace<=15?'#B45309':'var(--red)'));
+  const _paceDiffStr=(_paceDiff>=0?'+':'')+_paceDiff.toFixed(0)+'pp';
+  const _paceWord=_monthBudget===0?'no budget set':(_paceDiff>5?'ahead of pace':(_paceDiff<-5?'behind pace':'on pace'));
+  let _paceGraph;
+  if(_monthBudget===0){
+    _paceGraph='<div style="margin-top:8px;font-size:10px;color:var(--grey)">No monthly budget set</div>';
   } else {
-    const _unqBC=_unqRate!=null&&_unqRate>20?'#F59E0B':'var(--teal)';
-    const _ttl=`Clicked Continue but DQ'd (${fN(_dqViews||0)} /not-supported views) ÷ Clicked Schedule a Demo and Continue (${fN(_routed)} cal_routing_submitted). Note: cal_routing_submitted only started firing 2026-05-26, so this metric is still backfilling — current values may not reflect a full window.`;
-    // "Still collecting" notice — cal_routing_submitted is a new GA4 event
-    // (2026-05-26) so the denominator is incomplete. Brand-aligned gold
-    // styling. Single responsive bottom strip replaces the prior top-badge
-    // + bottom-pill pair (which collided with the title and overflowed the
-    // tile on narrow displays). Wraps gracefully and tucks against the
-    // bottom edge so it never obscures the KPI value or footer rows.
-    const _GOLD='#B8860B', _GOLD_BG='#FBE9C1', _GOLD_BG2='#F5D896', _GOLD_TXT='#5A3F0A';
-    const _veil=`<div style="position:absolute;inset:0;background:rgba(248,232,194,.14);pointer-events:none;border-radius:inherit"></div>`;
-    // Tiny corner indicator — a single 16px warning chip that flags the
-    // tile at a glance without colliding with the title. No text.
-    const _cornerDot=`<div style="position:absolute;top:10px;right:10px;width:18px;height:18px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,${_GOLD_BG2} 0%,${_GOLD_BG} 100%);border:1px solid ${_GOLD};border-radius:50%;pointer-events:none;box-shadow:0 1px 3px rgba(184,134,11,.3)" aria-label="Data incomplete">`
-      +`<svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M8 2.2L13.5 12.5H2.5L8 2.2Z" stroke="${_GOLD_TXT}" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 6.5V9.4" stroke="${_GOLD_TXT}" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="11.2" r="1" fill="${_GOLD_TXT}"/></svg>`
-      +`</div>`;
-    // Responsive bottom notice — single block, wraps onto multiple lines
-    // on narrow tiles. Uses border-radius:12px (not 99px pill) so wrapped
-    // content still looks intentional. No max-width clamping; the strip
-    // spans the tile width with comfortable side margins.
-    const _bottomNote=`<div style="position:absolute;left:10px;right:10px;bottom:10px;display:flex;align-items:center;justify-content:center;gap:7px;flex-wrap:wrap;font-size:10.5px;color:${_GOLD_TXT};background:linear-gradient(135deg,${_GOLD_BG2} 0%,${_GOLD_BG} 100%);border:1px solid ${_GOLD};padding:6px 10px;border-radius:12px;pointer-events:none;box-shadow:0 2px 6px rgba(184,134,11,.22),inset 0 1px 0 rgba(255,255,255,.55);font-weight:600;line-height:1.35;text-align:center">`
-      +`<span style="display:inline-flex;align-items:center;gap:6px;flex-shrink:0"><span style="width:5px;height:5px;border-radius:50%;background:${_GOLD};box-shadow:0 0 0 3px rgba(184,134,11,.18);animation:pulseGold 1.8s ease-in-out infinite"></span><strong style="font-weight:700">Data incomplete</strong></span>`
-      +`<span style="display:inline-flex;align-items:center;gap:5px;flex-wrap:wrap;justify-content:center">still collecting <span style="font-family:ui-monospace,Menlo,monospace;font-size:9.5px;background:rgba(255,255,255,.5);padding:1px 5px;border-radius:4px;word-break:break-all">cal_routing_submitted</span></span>`
-      +`</div>`;
-    // Inject keyframes once
-    if(!document.getElementById('_dqPulseStyle')){const _st=document.createElement('style');_st.id='_dqPulseStyle';_st.textContent='@keyframes pulseGold{0%,100%{opacity:1;box-shadow:0 0 0 3px rgba(184,134,11,.18)}50%{opacity:.6;box-shadow:0 0 0 5px rgba(184,134,11,.08)}}';document.head.appendChild(_st);}
-    h+=`<div class="tile hero" style="border-left:3px solid ${_unqBC};border-top:1px solid ${_GOLD};position:relative;overflow:hidden;padding-bottom:54px" title="${_ttl}"><div class="tlbl">% Disqualified Routing</div><div class="tval">${_unqRate!=null?_unqRate.toFixed(1)+'%':'—'}</div><div class="tdef" style="margin-top:4px">Clicked Continue but DQ'd ÷ Clicked Schedule a Demo and Continue</div>${_irCalc(fN(_dqViews||0)+' ÷ '+fN(_routed))}${_irTileFooter(_unqRate,_unqPV,_unqLM,'%',true)}${_veil}${_cornerDot}${_bottomNote}</div>`;
+    _paceGraph='<div style="margin-top:8px" title="'+_pctSpent.toFixed(0)+'% of '+f$(_monthBudget)+' monthly budget spent · '+_pctElapsed.toFixed(0)+'% of month elapsed · '+_paceDiffStr+'">'
+      +'<div style="position:relative;height:8px;background:var(--lighter);border-radius:4px;overflow:visible">'
+      +'<div style="position:absolute;left:0;top:0;height:8px;width:'+Math.min(_pctSpent,100)+'%;background:'+_paceColor+';border-radius:4px;opacity:.85"></div>'
+      +'<div style="position:absolute;left:'+Math.min(_pctElapsed,100)+'%;top:-2px;bottom:-2px;width:1.5px;background:var(--navy)" title="'+_pctElapsed.toFixed(0)+'% of month elapsed"></div>'
+      +'</div>'
+      +'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:4px;font-size:10px"><span style="color:var(--grey)"><span style="font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+_pctSpent.toFixed(0)+'%</span> of '+f$(_monthBudget)+'</span><span style="color:'+_paceColor+';font-weight:700;font-variant-numeric:tabular-nums">'+_paceDiffStr+' · '+_paceWord+'</span></div>'
+      +'</div>';
   }
+  h+=`<div class="tile hero" style="border-left:3px solid var(--teal)" title="Total ad spend this period. Mini bar shows current-month pacing: spend vs monthly budget (fill) against % of month elapsed (line). Budget excludes pending (no-connector) channels."><div class="tlbl">Ad Budget Pacing</div><div class="tval">${f$(_periodSpend)}</div><div class="tdef" style="margin-top:4px">Total ad spend this period</div>${_paceGraph}${_irTileFooter(_periodSpend,_spendPV,_spendLM,'$',false)}</div>`;
   h+='</div>';
 
   // ═══════ Section 3 — Special Time-Bound Tiles ═══════

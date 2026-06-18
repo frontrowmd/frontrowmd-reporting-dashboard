@@ -4362,7 +4362,7 @@ async function fetchBDData(env) {
   let companyMap = {};
   if (env.CONTENT_STORE) {
     try {
-      const raw = await env.CONTENT_STORE.get('bd_company_cache_v3');
+      const raw = await env.CONTENT_STORE.get('bd_company_cache_v4');
       if (raw) companyMap = JSON.parse(raw);
     } catch(e) { console.warn('BD cache load failed:', e.message); }
   }
@@ -4426,6 +4426,9 @@ async function fetchBDData(env) {
       // se_rep_id from the COMPANY record's hubspot_owner_id (the company
       // owner — typically the SE assigned to that account).
       se_rep_id: company?.se_owner||'',
+      // account_manager from the COMPANY record (resolved client-side via
+      // ownerMap, falling back to the raw value). Surfaces as "Acct Mgr".
+      account_manager: company?.account_manager||'',
     };
   });
 
@@ -4443,7 +4446,7 @@ async function lookupBDCompanies(env, companyIds) {
   let companyMap = {};
   if (env.CONTENT_STORE) {
     try {
-      const raw = await env.CONTENT_STORE.get('bd_company_cache_v3');
+      const raw = await env.CONTENT_STORE.get('bd_company_cache_v4');
       if (raw) companyMap = JSON.parse(raw);
     } catch(e) { console.warn('BD lookup cache load failed:', e.message); }
   }
@@ -4466,7 +4469,7 @@ async function lookupBDCompanies(env, companyIds) {
       const coRes = await fetch('https://api.hubapi.com/crm/v3/objects/companies/batch/read?archived=true', {
         method: 'POST',
         headers: { Authorization: `Bearer ${hsToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inputs: batch.map(id => ({ id })), properties: ['name','domain','website','ops_owner','hubspot_owner_id'] }),
+        body: JSON.stringify({ inputs: batch.map(id => ({ id })), properties: ['name','domain','website','ops_owner','hubspot_owner_id','account_manager'] }),
       });
       if (!coRes.ok) {
         const txt = await coRes.text();
@@ -4479,7 +4482,8 @@ async function lookupBDCompanies(env, companyIds) {
         const ops_owner = co.properties?.ops_owner || '';
         // SE Rep = the company record's hubspot_owner_id
         const se_owner = co.properties?.hubspot_owner_id || '';
-        companyMap[co.id] = { name, id: co.id, archived: !!co.archived, ops_owner, se_owner };
+        const account_manager = co.properties?.account_manager || '';
+        companyMap[co.id] = { name, id: co.id, archived: !!co.archived, ops_owner, se_owner, account_manager };
         if (name) fetched++;
       }
     } catch(e) { console.error('BD lookup batch error:', e); }
@@ -4498,7 +4502,7 @@ async function lookupBDCompanies(env, companyIds) {
   // unresolved-placeholder write also lands)
   if (env.CONTENT_STORE && attempted.size > 0) {
     try {
-      await env.CONTENT_STORE.put('bd_company_cache_v3', JSON.stringify(companyMap));
+      await env.CONTENT_STORE.put('bd_company_cache_v4', JSON.stringify(companyMap));
     } catch(e) { console.warn('BD lookup cache save failed:', e.message); }
   }
   // Build response: include every requested ID (resolved OR unresolved placeholder)
@@ -5420,7 +5424,7 @@ export default {
     // Dedicated endpoint so it gets its own fresh subrequest budget,
     // separate from /api/bd which spends most of its budget on deal
     // pagination + association batches. Results are written to KV
-    // (key 'bd_company_cache_v3') so /api/bd picks them up on next load.
+    // (key 'bd_company_cache_v4') so /api/bd picks them up on next load.
     if (request.method === 'POST' && url.pathname === '/api/bd/lookup-companies') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
