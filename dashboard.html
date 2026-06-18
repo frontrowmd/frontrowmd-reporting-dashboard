@@ -755,7 +755,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s39';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s40';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2310,16 +2310,24 @@ function renderIrfan(){
   const _spendLM=d.adSpend?.total?.lastMonth?.value??null;
   let _monthBudget=0;
   if(d.adSpend&&d.adSpend.channels){for(var _bk in d.adSpend.channels){if(d.adSpend.channels[_bk].pendingConnector)continue;_monthBudget+=(d.adSpend.channels[_bk].budget||0);}}
+  // Pacing bar only renders on MONTH timeframes (MTD / Last Month). On 7d /
+  // YTD / All Time / custom the window spend vs a full-month budget would be
+  // misleading, so those windows show just the spend total + deltas.
+  const _pacingWin=(S.irfan&&S.irfan.win)||'mtd';
+  const _isMonthWin=(_pacingWin==='mtd'||_pacingWin==='lastMonth');
   const _nowD=new Date();
-  const _pctElapsed=(_nowD.getDate()/new Date(_nowD.getFullYear(),_nowD.getMonth()+1,0).getDate())*100;
+  // Last Month is a completed month → 100% elapsed; MTD → progress so far.
+  const _pctElapsed=_pacingWin==='lastMonth'?100:(_nowD.getDate()/new Date(_nowD.getFullYear(),_nowD.getMonth()+1,0).getDate())*100;
   const _pctSpent=_monthBudget>0?(_periodSpend/_monthBudget)*100:0;
   const _paceDiff=_pctSpent-_pctElapsed;
   const _absPace=Math.abs(_paceDiff);
   const _paceColor=_monthBudget===0?'var(--grey)':(_absPace<=5?'var(--green)':(_absPace<=15?'#B45309':'var(--red)'));
   const _paceDiffStr=(_paceDiff>=0?'+':'')+_paceDiff.toFixed(0)+'pp';
   const _paceWord=_monthBudget===0?'no budget set':(_paceDiff>5?'ahead of pace':(_paceDiff<-5?'behind pace':'on pace'));
-  let _paceGraph;
-  if(_monthBudget===0){
+  let _paceGraph='';
+  if(!_isMonthWin){
+    _paceGraph='';  // non-month window → no pacing bar (spend total only)
+  } else if(_monthBudget===0){
     _paceGraph='<div style="margin-top:8px;font-size:10px;color:var(--grey)">No monthly budget set</div>';
   } else {
     _paceGraph='<div style="margin-top:8px" title="'+_pctSpent.toFixed(0)+'% of '+f$(_monthBudget)+' monthly budget spent · '+_pctElapsed.toFixed(0)+'% of month elapsed · '+_paceDiffStr+'">'
