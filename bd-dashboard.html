@@ -117,7 +117,7 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
   <div class="main" id="bd-content"></div>
 </div>
 <script>
-var BD={data:null},_bdSort='closedate',_bdSortDir='desc',_bdHideBlanks=false,_bdAttrDim='_webTraffic';
+var BD={data:null},_bdSort='closedate',_bdSortDir='desc',_bdHideBlanks=false,_bdAttrDim='package_type';
 function _bdFirstOfMonth(){var _d=new Date();return _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-01';}
 // _bdBrandStatusF = single-select bucket ('all' | 'Active' | 'Not Active').
 // _bdBrandStatusToggleF = multi-select array of specific brand_status values
@@ -494,10 +494,10 @@ function renderBD(){
   var h='';
   // KPIs
   h+='<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px;align-items:stretch">';
-  h+='<div class="tile hero" style="border-left:3px solid #16A34A;display:flex;flex-direction:column;justify-content:center"><div class="tlbl">Signed Brands</div><div class="tval">'+activeDeals.length+'</div><div class="tdef">Closed Won excl. Paused/Churned</div></div>';
+  h+='<div class="tile hero" style="border-left:3px solid #16A34A;display:flex;flex-direction:column;justify-content:center"><div class="tlbl">Active Brands</div><div class="tval">'+activeDeals.length+'</div><div class="tdef">Closed Won excl. Paused/Churned</div></div>';
   h+='<div class="tile hero" style="border-left:3px solid #172C45;display:flex;flex-direction:column;justify-content:center"><div class="tlbl">Signed ARR</div><div class="tval">'+f$(totalARR)+'</div><div class="tdef">MRR \u00d7 12</div></div>';
   h+='<div class="tile hero" style="border-left:3px solid var(--teal);display:flex;flex-direction:column;justify-content:center"><div class="tlbl">Signed MRR</div><div class="tval">'+f$(totalMRR)+'</div><div class="tdef">Sum of amount on active deals</div></div>';
-  h+='<div class="tile hero" style="border-left:3px solid #7C3AED;display:flex;flex-direction:column;justify-content:center"><div class="tlbl">Signed ACV</div><div class="tval">'+f$(acv)+'</div><div class="tdef">MRR \u00f7 Signed Brands</div></div>';
+  h+='<div class="tile hero" style="border-left:3px solid #7C3AED;display:flex;flex-direction:column;justify-content:center"><div class="tlbl">Avg ACV of Active Brands</div><div class="tval">'+f$(acv)+'</div><div class="tdef">MRR \u00f7 Active Brands</div></div>';
   // Calculator
   h+='<div class="tile" style="border:1.5px solid var(--teal);background:rgba(114,164,191,.04)">';
   h+='<div class="tlbl" style="color:var(--teal)">Deals to Hit Monthly Goal</div>';
@@ -514,10 +514,26 @@ function renderBD(){
   var _chartMonths=Object.keys(_chartMonthMap).sort();
   var _cumB=[],_cumA=[],_cumL=[];var rB=0,rA=0;var mN=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   for(var mi=0;mi<_chartMonths.length;mi++){var md=_chartMonthMap[_chartMonths[mi]];rB+=md.added;rA+=md.addedMRR*12;_cumB.push(rB);_cumA.push(rA);var p=_chartMonths[mi].split('-');_cumL.push(mN[parseInt(p[1])-1]+' '+p[0].substring(2));}
+  // ARR by week — total new ARR (MRR×12) signed each week, keyed by the Monday
+  // of the week the deal closed. Same population as Signed ARR (Paying+Signed
+  // closed-won). Gap weeks are filled with 0 so the time axis stays uniform;
+  // rendered full-width in blue to distinguish from the green cumulative chart.
+  function _bdMonday(ds){var p=(ds||'').substring(0,10).split('-');if(p.length<3)return null;var dt=new Date(parseInt(p[0],10),parseInt(p[1],10)-1,parseInt(p[2],10));if(isNaN(dt.getTime()))return null;var dow=dt.getDay();dt.setDate(dt.getDate()+(dow===0?-6:1-dow));return dt;}
+  function _bdWkKey(dt){return dt.getFullYear()+'-'+('0'+(dt.getMonth()+1)).slice(-2)+'-'+('0'+dt.getDate()).slice(-2);}
+  var _wkMap={};chartDeals.forEach(function(dd){if(!dd.closedate)return;var mo=_bdMonday(dd.closedate);if(!mo)return;var k=_bdWkKey(mo);_wkMap[k]=(_wkMap[k]||0)+dd.amount*12;});
+  var _wkKeys=Object.keys(_wkMap).sort();var _wkL=[],_wkV=[],_wkTotal=0;
+  if(_wkKeys.length){
+    var _wfp=_wkKeys[0].split('-'),_wlp=_wkKeys[_wkKeys.length-1].split('-');
+    var _wcur=new Date(parseInt(_wfp[0],10),parseInt(_wfp[1],10)-1,parseInt(_wfp[2],10));
+    var _wend=new Date(parseInt(_wlp[0],10),parseInt(_wlp[1],10)-1,parseInt(_wlp[2],10));
+    while(_wcur.getTime()<=_wend.getTime()){var _wk=_bdWkKey(_wcur);_wkL.push(mN[_wcur.getMonth()]+' '+_wcur.getDate());_wkV.push(_wkMap[_wk]||0);_wkTotal+=(_wkMap[_wk]||0);_wcur.setDate(_wcur.getDate()+7);}
+  }
   h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;min-width:0">';
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;position:relative;min-width:0;overflow:hidden;display:flex;flex-direction:column" class="chart-wrap"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Signed Brands <span style="font-size:11px;color:var(--grey);font-family:var(--font-b);font-weight:400">'+rB+' total</span></div>'+buildSVGChart(_cumL,_cumB,'#172C45',' brands',false)+'<div id="bd-brands-tip" class="float-tip"></div></div>';
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;position:relative;min-width:0;overflow:hidden;display:flex;flex-direction:column" class="chart-wrap"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Active Brands <span style="font-size:11px;color:var(--grey);font-family:var(--font-b);font-weight:400">'+rB+' total</span></div>'+buildSVGChart(_cumL,_cumB,'#172C45',' brands',false)+'<div id="bd-brands-tip" class="float-tip"></div></div>';
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;position:relative;min-width:0;overflow:hidden;display:flex;flex-direction:column" class="chart-wrap"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Signed ARR <span style="font-size:11px;color:var(--grey);font-family:var(--font-b);font-weight:400">'+f$(rA)+'</span></div>'+buildSVGChart(_cumL,_cumA,'#16A34A','',true)+'<div id="bd-arr-tip" class="float-tip"></div></div>';
   h+='</div>';
+  // Full-width ARR-by-week chart (blue) — non-cumulative weekly signings.
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;position:relative;min-width:0;overflow:hidden;display:flex;flex-direction:column;margin-bottom:20px" class="chart-wrap"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">ARR by Week <span style="font-size:11px;color:var(--grey);font-family:var(--font-b);font-weight:400">new ARR signed per week · '+f$(_wkTotal)+' total</span></div>'+buildSVGChart(_wkL,_wkV,'#2563EB','',true,'Week of ')+'<div id="bd-arrweek-tip" class="float-tip"></div></div>';
   // Shared Filtered
   // Precompute lowered search query once per render so the per-row filter
   // doesn't pay toLowerCase()/trim() on each call.
@@ -618,9 +634,9 @@ function renderBD(){
   var acctMgrSorted=Object.entries(acctMgrCount).sort(function(a,b){return b[1]-a[1];});
   var BD_REP_CMAP={};for(var rci=0;rci<repSorted.length;rci++){BD_REP_CMAP[repSorted[rci][0]]=BD_REP_COLORS[rci%BD_REP_COLORS.length];}
   // Attribution with MRR
-  // Dimension order: Web Traffic Tier first (default), Plan Name second,
+  // Dimension order: Plan Name first (default), Web Traffic Tier second,
   // then the other dimensions.
-  var attrDims=[{k:'_webTraffic',l:'Web Traffic Tier'},{k:'package_type',l:'Plan Name'},{k:'_rep',l:'Deal Rep'},{k:'_seRep',l:'SE Rep'},{k:'_opsRep',l:'Ops Rep'},{k:'brand_status',l:'Brand Status'},{k:'dealstage',l:'Deal Stage'}];
+  var attrDims=[{k:'package_type',l:'Plan Name'},{k:'_webTraffic',l:'Web Traffic Tier'},{k:'_rep',l:'Deal Rep'},{k:'_seRep',l:'SE Rep'},{k:'_opsRep',l:'Ops Rep'},{k:'brand_status',l:'Brand Status'},{k:'dealstage',l:'Deal Stage'}];
   var attrData={},attrMRR={};for(var ai=0;ai<sharedFiltered.length;ai++){var ad=sharedFiltered[ai];var dimVal='';
     if(_bdAttrDim==='dealstage')dimVal=BD_STAGE_LABELS[ad.dealstage]||ad.dealstage||'(none)';
     else if(_bdAttrDim==='_rep')dimVal=ownerMap[ad.hubspot_owner_id]||'Unassigned';
@@ -646,6 +662,88 @@ function renderBD(){
   // Deal Attribution bars match the table's stage badge colors exactly.
   var bdStageLabelColors={};Object.keys(BD_STAGE_LABELS).forEach(function(k){bdStageLabelColors[BD_STAGE_LABELS[k]]=BD_STAGE_COLORS[k]||'#72A4BF';});
   var attrColors=Object.assign({},BD_STAGE_COLORS,BD_STATUS_COLORS,BD_PKG_COLORS,BD_REP_CMAP,bdStageLabelColors,{'Pre-launch':'#9CA3AF','0-10K':'#72A4BF','10-25K':'#1D4053','25-50K':'#172C45','50-100K':'#0EA5E9','100-200K':'#7C3AED','200-500K':'#16A34A','500K+':'#F59E0B','(none)':'#9CA3AF','Unassigned':'#9CA3AF'});
+  // ===== Filters (relocated above Deal Attribution) =====
+  // Filters drive the Deal Attribution chart, the summary metrics, and the
+  // All Deals table below — everything reflects the active filter set.
+  var uniqBS={},uniqStage={},uniqPkg={};
+  deals.forEach(function(dd){if(dd.brand_status)uniqBS[dd.brand_status]=1;if(dd.dealstage)uniqStage[dd.dealstage]=1;if(dd.package_type)uniqPkg[dd.package_type]=1;});
+  // Multi-select pill renderer (Web Traffic) — teal border always, navy fill when selected.
+  var fpMulti=function(active,label,onclick){
+    var bg=active?'background:var(--navy);color:#fff;':'background:#fff;color:var(--navy);';
+    var border='border:1.5px solid '+(active?'var(--navy)':'var(--teal)')+';';
+    var prefix=active?'<span style="margin-right:4px;font-size:10px;line-height:1">✓</span>':'';
+    return '<span class="pill" style="cursor:pointer;'+bg+border+'font-size:11px;padding:2.5px 10px;font-weight:600;display:inline-flex;align-items:center" onclick="'+onclick+'">'+prefix+label+'</span>';
+  };
+  // Single-select dropdown for rep-type dimensions. value 'all' = no filter;
+  // option values carry the FULL name (matching sharedFiltered comparisons),
+  // labels use bdFirstName + deal count. Teal border when a value is active.
+  var bdSelect=function(label,curVal,stateVar,sorted,hideList){
+    var active=(curVal!=='all');
+    var s='<label style="display:inline-flex;flex-direction:column;gap:3px;min-width:148px"><span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.03em">'+label+'</span>';
+    s+='<select onchange="'+stateVar+'=this.value;renderBD()" style="padding:6px 28px 6px 10px;border:1.5px solid '+(active?'var(--teal)':'rgba(23,44,69,.18)')+';border-radius:8px;font-size:12px;font-family:var(--font-b);color:var(--navy);background:#fff;cursor:pointer;'+(active?'box-shadow:0 0 0 2px rgba(114,164,191,.12);':'')+'">';
+    s+='<option value="all"'+(curVal==='all'?' selected':'')+'>All</option>';
+    sorted.forEach(function(rs){var rn=rs[0];if(hideList&&bdRepHidden(rn,hideList))return;s+='<option value="'+rn.replace(/&/g,'&amp;').replace(/"/g,'&quot;')+'"'+(curVal===rn?' selected':'')+'>'+(bdFirstName(rn)||rn)+' ('+rs[1]+')</option>';});
+    s+='</select></label>';
+    return s;
+  };
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-bottom:20px">';
+  h+='<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:14px;flex-wrap:wrap"><div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">Filters</div><div style="font-size:11px;color:var(--grey);flex:1;min-width:200px">Refine the Deal Attribution chart, summary metrics, and All Deals table below — all three update together.</div></div>';
+  // Row 1: pill filters — Brand Status, Deal Stage, Package, Web Traffic
+  h+='<div style="display:flex;align-items:flex-start;gap:8px 12px;flex-wrap:wrap">';
+  h+='<span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px"><span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Brand Status</span> ';
+  var _bsToggleOff=(_bdBrandStatusToggleF.length===0);
+  h+=fp(_bsToggleOff&&_bdBrandStatusF==='all','All',"bdBSSet('all')")+' ';
+  h+=fp(_bsToggleOff&&_bdBrandStatusF==='Active','Active',"bdBSSet('Active')")+' ';
+  h+=fp(_bsToggleOff&&_bdBrandStatusF==='Not Active','Not Active',"bdBSSet('Not Active')")+' ';
+  h+='<span style="display:inline-block;width:1px;height:14px;background:rgba(23,44,69,.2);margin:0 4px;vertical-align:middle"></span> ';
+  h+=fp(_bdBrandStatusToggleF.indexOf('Signed')>=0,'Signed',"bdBSToggle('Signed')")+' ';
+  h+=fp(_bdBrandStatusToggleF.indexOf('Paying')>=0,'Paying',"bdBSToggle('Paying')")+' ';
+  h+=fp(_bdBrandStatusToggleF.indexOf('Paused')>=0,'Paused',"bdBSToggle('Paused')")+' ';
+  h+=fp(_bdBrandStatusToggleF.indexOf('Churned')>=0,'Churned',"bdBSToggle('Churned')")+' ';
+  h+=fp(_bdBrandStatusToggleF.indexOf('Never Implemented - Churned')>=0,'Never Implemented',"bdBSToggle('Never Implemented - Churned')")+' ';
+  h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
+  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Deal Stage</span> ';
+  h+=fp(_bdStageF==='all','All',"_bdStageF='all';renderBD()")+' ';
+  Object.keys(uniqStage).sort(function(a,b){var ia=BD_STAGE_ORDER.indexOf(a),ib=BD_STAGE_ORDER.indexOf(b);if(ia<0)ia=999;if(ib<0)ib=999;return ia-ib||(a<b?-1:a>b?1:0);}).forEach(function(v){h+=fp(_bdStageF===v,BD_STAGE_LABELS[v]||v,"_bdStageF='"+v+"';renderBD()")+' ';});
+  h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
+  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Package</span> ';
+  h+=fp(_bdPkgF==='all','All',"_bdPkgF='all';renderBD()")+' ';
+  Object.keys(uniqPkg).sort(function(a,b){return (BD_PKG_ORDER[bdPlanName(a)]||99)-(BD_PKG_ORDER[bdPlanName(b)]||99);}).forEach(function(v){h+=fp(_bdPkgF===v,bdPlanName(v),"_bdPkgF='"+v+"';renderBD()")+' ';});
+  h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
+  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Web Traffic</span>';
+  h+='<span style="font-size:8.5px;font-weight:600;color:var(--teal);text-transform:none;letter-spacing:.02em;margin-left:-2px;margin-right:2px;font-style:italic">(multi-select)</span> ';
+  h+=fpMulti(_bdWebTrafficF.length===0,'All',"bdWtClear()")+' ';
+  Object.keys(uniqWebTrafficBD).sort(function(a,b){return(BD_WT_ORDER[a]||99)-(BD_WT_ORDER[b]||99);}).forEach(function(v){h+=fpMulti(_bdWebTrafficF.indexOf(v)>=0,BD_WT_LABELS[v]||v,"bdWtToggle('"+v.replace(/'/g,"\\'")+"')")+' ';});
+  h+='</span></div>';
+  // Row 2: rep dropdowns — Deal Rep, Acct Mgr, SE Rep, Ops Rep
+  h+='<div style="display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid rgba(23,44,69,.06)">';
+  h+=bdSelect('Deal Rep',_bdRepF,'_bdRepF',repSorted,BD_DEAL_REP_HIDE);
+  h+=bdSelect('Acct Mgr',_bdAcctMgrF,'_bdAcctMgrF',acctMgrSorted,null);
+  h+=bdSelect('SE Rep',_bdSeRepF,'_bdSeRepF',seSorted,BD_SE_REP_HIDE);
+  h+=bdSelect('Ops Rep',_bdOpsRepF,'_bdOpsRepF',opsSorted,null);
+  h+='</div>';
+  // Row 3: date range (prominent) + presets
+  var anyF=_bdBrandStatusF!=='all'||_bdBrandStatusToggleF.length>0||_bdStageF!=='all'||_bdRepF!=='all'||_bdAcctMgrF!=='all'||_bdSeRepF!=='all'||_bdOpsRepF!=='all'||_bdPkgF!=='all'||_bdWebTrafficF.length>0||_bdDateFrom||_bdDateTo||_bdSearchQ;
+  h+='<div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid rgba(23,44,69,.06)">';
+  h+='<span style="display:inline-flex;flex-direction:column;gap:4px"><span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.03em">Date Range</span>';
+  h+='<span style="display:inline-flex;align-items:center;background:rgba(23,44,69,.05);border-radius:50px;padding:3px;gap:2px;flex-shrink:0">';
+  h+=fp(_bdDateMode==='close','Close Date',"_bdDateMode='close';renderBD()");
+  h+=fp(_bdDateMode==='demo','Demo Date',"_bdDateMode='demo';renderBD()");
+  h+=fp(_bdDateMode==='create','Create Date',"_bdDateMode='create';renderBD()");
+  h+='</span></span>';
+  h+='<span style="display:inline-flex;align-items:center;gap:8px">';
+  h+='<input type="date" value="'+_bdDateFrom+'" onchange="_bdDateFrom=this.value;renderBD()" style="padding:7px 12px;border:1.5px solid '+(_bdDateFrom?'var(--teal)':'rgba(23,44,69,.18)')+';border-radius:8px;font-size:13px;font-family:var(--font-b);color:var(--navy)">';
+  h+='<span style="font-size:12px;color:var(--grey)">to</span>';
+  h+='<input type="date" value="'+_bdDateTo+'" onchange="_bdDateTo=this.value;renderBD()" style="padding:7px 12px;border:1.5px solid '+(_bdDateTo?'var(--teal)':'rgba(23,44,69,.18)')+';border-radius:8px;font-size:13px;font-family:var(--font-b);color:var(--navy)">';
+  h+='<button onclick="renderBD()" style="padding:7px 16px;border-radius:8px;border:1.5px solid var(--navy);background:var(--navy);color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font-b)">Go</button>';
+  if(_bdDateFrom||_bdDateTo){h+='<button onclick="bdClearDate()" style="padding:7px 14px;border-radius:8px;border:1.5px solid rgba(23,44,69,.12);background:transparent;color:var(--navy);font-size:12px;cursor:pointer;font-family:var(--font-b)">Clear</button>';}
+  h+='</span>';
+  h+='<span style="margin-left:auto;display:inline-flex;align-items:center;gap:8px">';
+  h+='<button onclick="bdCurrentMonthSigned()" title="Active brand status + Close Date in current month" style="padding:7px 16px;border-radius:50px;border:1.5px solid #B8860B;background:linear-gradient(135deg,#F5D896 0%,#FBE9C1 100%);color:#5A3F0A;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--font-b);box-shadow:0 1px 3px rgba(184,134,11,.25),inset 0 1px 0 rgba(255,255,255,.5);letter-spacing:.02em">Current Month Signed</button>';
+  if(anyF){h+='<button onclick="bdClearAllFilters()" title="Wipe all filters to a fully unfiltered state" style="padding:7px 14px;border-radius:50px;border:1.5px solid #C62828;background:rgba(198,40,40,.05);color:#C62828;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font-b)">Clear All Filters</button>';}
+  h+='</span>';
+  h+='</div></div>';
+  // ===== end Filters =====
   h+='<div style="border-top:2px solid var(--border);margin:24px 0 20px"></div>';
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:20px;position:relative">';
   h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap"><div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">Deal Attribution</div><div style="font-size:10px;color:var(--grey);margin-left:4px">'+attrVisTotal+' deals \u00b7 '+f$(attrVisMRR)+' MRR'+(_bdHideBlanks&&attrVisTotal<sharedFiltered.length?' ('+sharedFiltered.length+' total)':'')+'</div><div style="flex:1"></div>';
@@ -732,101 +830,17 @@ function renderBD(){
   h+='<div class="tile '+(sfStatusFilled&&sfPaused/sfStatusFilled>.15?'warn':'hero')+'" style="flex:1"><div class="tlbl">% Paused</div><div class="tval" style="font-size:22px">'+(sfStatusFilled?(sfPaused/sfStatusFilled*100).toFixed(1):0)+'%</div><div class="tdef">'+sfPaused+' \u00f7 '+sfStatusFilled+' brands w/ status \u00b7 '+f$(sfPausedMRR)+' MRR</div></div>';
   h+='<div class="tile '+(sfStatusFilled&&sfChurned/sfStatusFilled>.2?'warn':'hero')+'" style="flex:1"><div class="tlbl">% Churned</div><div class="tval" style="font-size:22px">'+(sfStatusFilled?(sfChurned/sfStatusFilled*100).toFixed(1):0)+'%</div><div class="tdef">Churned dealstage '+sfChurned+' \u00f7 '+sfStatusFilled+' brands w/ status \u00b7 '+f$(sfChurnedMRR)+' MRR</div></div>';
   h+='</div>';
-  // Filters
-  var uniqBS={},uniqStage={},uniqPkg={};
-  deals.forEach(function(dd){if(dd.brand_status)uniqBS[dd.brand_status]=1;if(dd.dealstage)uniqStage[dd.dealstage]=1;if(dd.package_type)uniqPkg[dd.package_type]=1;});
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px 20px;margin-bottom:16px"><div style="display:flex;align-items:flex-start;gap:8px 12px;flex-wrap:wrap;margin-bottom:0">';
-  h+='<span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px"><span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Brand Status</span> ';
-  // Single-select bucket — active only when no toggle pills are active.
-  // Clicking these clears any active toggles (via bdBSSet).
-  var _bsToggleOff=(_bdBrandStatusToggleF.length===0);
-  h+=fp(_bsToggleOff&&_bdBrandStatusF==='all','All',"bdBSSet('all')")+' ';
-  h+=fp(_bsToggleOff&&_bdBrandStatusF==='Active','Active',"bdBSSet('Active')")+' ';
-  h+=fp(_bsToggleOff&&_bdBrandStatusF==='Not Active','Not Active',"bdBSSet('Not Active')")+' ';
-  h+='<span style="display:inline-block;width:1px;height:14px;background:rgba(23,44,69,.2);margin:0 4px;vertical-align:middle"></span> ';
-  // Multi-select toggle pills — independent of each other; any combination
-  // can be active. Clicking auto-resets the single bucket to 'all'.
-  h+=fp(_bdBrandStatusToggleF.indexOf('Signed')>=0,'Signed',"bdBSToggle('Signed')")+' ';
-  h+=fp(_bdBrandStatusToggleF.indexOf('Paying')>=0,'Paying',"bdBSToggle('Paying')")+' ';
-  h+=fp(_bdBrandStatusToggleF.indexOf('Paused')>=0,'Paused',"bdBSToggle('Paused')")+' ';
-  h+=fp(_bdBrandStatusToggleF.indexOf('Churned')>=0,'Churned',"bdBSToggle('Churned')")+' ';
-  h+=fp(_bdBrandStatusToggleF.indexOf('Never Implemented - Churned')>=0,'Never Implemented',"bdBSToggle('Never Implemented - Churned')")+' ';
-  h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
-  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Deal Stage</span> ';
-  h+=fp(_bdStageF==='all','All',"_bdStageF='all';renderBD()")+' ';
-  Object.keys(uniqStage).sort(function(a,b){var ia=BD_STAGE_ORDER.indexOf(a),ib=BD_STAGE_ORDER.indexOf(b);if(ia<0)ia=999;if(ib<0)ib=999;return ia-ib||(a<b?-1:a>b?1:0);}).forEach(function(v){h+=fp(_bdStageF===v,BD_STAGE_LABELS[v]||v,"_bdStageF='"+v+"';renderBD()")+' ';});
-  h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
-  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Deal Rep</span> ';
-  h+=fp(_bdRepF==='all','All',"_bdRepF='all';renderBD()")+' ';
-  repSorted.forEach(function(rs){var rn=rs[0];if(bdRepHidden(rn,BD_DEAL_REP_HIDE))return;h+=fp(_bdRepF===rn,bdFirstName(rn)||rn,"_bdRepF='"+rn.replace(/'/g,"\\'")+"';renderBD()")+' ';});
-  h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
-  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Acct Mgr</span> ';
-  h+=fp(_bdAcctMgrF==='all','All',"_bdAcctMgrF='all';renderBD()")+' ';
-  acctMgrSorted.forEach(function(rs){var rn=rs[0];h+=fp(_bdAcctMgrF===rn,bdFirstName(rn)||rn,"_bdAcctMgrF='"+rn.replace(/'/g,"\\'")+"';renderBD()")+' ';});
-  h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
-  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">SE Rep</span> ';
-  h+=fp(_bdSeRepF==='all','All',"_bdSeRepF='all';renderBD()")+' ';
-  seSorted.forEach(function(rs){var rn=rs[0];if(bdRepHidden(rn,BD_SE_REP_HIDE))return;h+=fp(_bdSeRepF===rn,bdFirstName(rn)||rn,"_bdSeRepF='"+rn.replace(/'/g,"\\'")+"';renderBD()")+' ';});
-  h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
-  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Ops Rep</span> ';
-  h+=fp(_bdOpsRepF==='all','All',"_bdOpsRepF='all';renderBD()")+' ';
-  opsSorted.forEach(function(rs){var rn=rs[0];h+=fp(_bdOpsRepF===rn,bdFirstName(rn)||rn,"_bdOpsRepF='"+rn.replace(/'/g,"\\'")+"';renderBD()")+' ';});
-  h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
-  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Package</span> ';
-  h+=fp(_bdPkgF==='all','All',"_bdPkgF='all';renderBD()")+' ';
-  Object.keys(uniqPkg).sort(function(a,b){return (BD_PKG_ORDER[bdPlanName(a)]||99)-(BD_PKG_ORDER[bdPlanName(b)]||99);}).forEach(function(v){h+=fp(_bdPkgF===v,bdPlanName(v),"_bdPkgF='"+v+"';renderBD()")+' ';});
-  h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
-  // Web Traffic — multi-select. Differentiated from the single-select rows by
-  // a 1.5px teal border around every pill, a ✓ prefix on selected pills, and
-  // a "(multi-select)" sublabel next to the header.
-  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Web Traffic</span>';
-  h+='<span style="font-size:8.5px;font-weight:600;color:var(--teal);text-transform:none;letter-spacing:.02em;margin-left:-2px;margin-right:2px;font-style:italic">(multi-select)</span> ';
-  // Custom pill renderer for multi-select: teal border always, navy fill when selected.
-  var fpMulti=function(active,label,onclick){
-    var bg=active?'background:var(--navy);color:#fff;':'background:#fff;color:var(--navy);';
-    var border='border:1.5px solid '+(active?'var(--navy)':'var(--teal)')+';';
-    var prefix=active?'<span style="margin-right:4px;font-size:10px;line-height:1">✓</span>':'';
-    return '<span class="pill" style="cursor:pointer;'+bg+border+'font-size:11px;padding:2.5px 10px;font-weight:600;display:inline-flex;align-items:center" onclick="'+onclick+'">'+prefix+label+'</span>';
-  };
-  h+=fpMulti(_bdWebTrafficF.length===0,'All',"bdWtClear()")+' ';
-  Object.keys(uniqWebTrafficBD).sort(function(a,b){return(BD_WT_ORDER[a]||99)-(BD_WT_ORDER[b]||99);}).forEach(function(v){h+=fpMulti(_bdWebTrafficF.indexOf(v)>=0,BD_WT_LABELS[v]||v,"bdWtToggle('"+v.replace(/'/g,"\\'")+"')")+' ';});
-  h+='</span></div>';
-  // Date filter row — always its own row, last. Toggle selects which date field the from/to apply to.
-  h+='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid rgba(23,44,69,.06)">';
-  // Segmented toggle (Close Date · Demo Date · Create Date)
-  h+='<span style="display:inline-flex;align-items:center;background:rgba(23,44,69,.05);border-radius:50px;padding:2px;gap:2px;flex-shrink:0">';
-  h+=fp(_bdDateMode==='close','Close Date',"_bdDateMode='close';renderBD()");
-  h+=fp(_bdDateMode==='demo','Demo Date',"_bdDateMode='demo';renderBD()");
-  h+=fp(_bdDateMode==='create','Create Date',"_bdDateMode='create';renderBD()");
-  h+='</span>';
-  // From / To inputs (single set; persist when toggling)
-  h+='<input type="date" value="'+_bdDateFrom+'" onchange="_bdDateFrom=this.value;renderBD()" style="padding:3px 8px;border:1.5px solid rgba(23,44,69,.12);border-radius:50px;font-size:10px;font-family:var(--font-b);color:var(--navy)">';
-  h+='<span style="font-size:10px;color:var(--grey)">to</span>';
-  h+='<input type="date" value="'+_bdDateTo+'" onchange="_bdDateTo=this.value;renderBD()" style="padding:3px 8px;border:1.5px solid rgba(23,44,69,.12);border-radius:50px;font-size:10px;font-family:var(--font-b);color:var(--navy)">';
-  h+='<button onclick="renderBD()" style="padding:3px 10px;border-radius:50px;border:1.5px solid var(--navy);background:var(--navy);color:#fff;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--font-b)">Go</button>';
-  if(_bdDateFrom||_bdDateTo){h+='<button onclick="bdClearDate()" style="padding:3px 10px;border-radius:50px;border:1.5px solid rgba(23,44,69,.12);background:transparent;color:var(--navy);font-size:10px;cursor:pointer;font-family:var(--font-b)">Clear</button>';}
-  // Live search box — sits inline with the date filter row, after the
-  // From/To inputs. Updates `_bdSearchQ` on every keystroke; bdSetSearch
-  // re-runs the render and restores focus + caret position immediately so
-  // typing feels uninterrupted. A small clear (×) button appears once the
-  // box has any text.
-  h+='<div style="display:inline-flex;align-items:center;gap:4px;background:#fff;border:1.5px solid rgba(23,44,69,.12);border-radius:50px;padding:2px 4px 2px 10px;min-width:200px;'+(_bdSearchQ?'border-color:var(--teal);box-shadow:0 0 0 3px rgba(114,164,191,.12)':'')+'">';
-  h+='<span style="font-size:11px;color:var(--grey);line-height:1">\u{1F50D}</span>';
-  h+='<input id="bd-search-input" type="search" placeholder="Search deals…" value="'+(_bdSearchQ||'').replace(/"/g,'&quot;')+'" oninput="bdSetSearch(this.value)" onfocus="bdAnchorSearch(true)" autocomplete="off" spellcheck="false" style="border:0;outline:none;background:transparent;font-size:11px;font-family:var(--font-b);color:var(--navy);padding:3px 4px;flex:1;min-width:140px">';
-  if(_bdSearchQ){h+='<button onclick="bdClearSearch()" title="Clear search" style="border:0;background:rgba(23,44,69,.08);color:var(--navy);width:18px;height:18px;border-radius:50%;font-size:11px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0">×</button>';}
-  h+='</div>';
-  var anyF=_bdBrandStatusF!=='all'||_bdBrandStatusToggleF.length>0||_bdStageF!=='all'||_bdRepF!=='all'||_bdAcctMgrF!=='all'||_bdSeRepF!=='all'||_bdOpsRepF!=='all'||_bdPkgF!=='all'||_bdWebTrafficF.length>0||_bdDateFrom||_bdDateTo||_bdSearchQ;
-  // Always-visible gold preset button — the most common BD Tracker view
-  // (Active brand status + Close Date in current month).
-  h+='<button onclick="bdCurrentMonthSigned()" title="Active brand status + Close Date in current month" style="margin-left:auto;padding:3px 14px;border-radius:50px;border:1.5px solid #B8860B;background:linear-gradient(135deg,#F5D896 0%,#FBE9C1 100%);color:#5A3F0A;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--font-b);box-shadow:0 1px 3px rgba(184,134,11,.25),inset 0 1px 0 rgba(255,255,255,.5);letter-spacing:.02em">Current Month Signed</button>';
-  // Conditional red clear-all button — only shown when at least one filter
-  // is non-default. Wipes everything (vs. the gold preset which sets the
-  // common starting view).
-  if(anyF){h+='<button onclick="bdClearAllFilters()" title="Wipe all filters to a fully unfiltered state" style="margin-left:6px;padding:3px 14px;border-radius:50px;border:1.5px solid #C62828;background:rgba(198,40,40,.05);color:#C62828;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font-b)">Clear All Filters</button>';}
-  h+='</div></div>';
   // Table
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:20px 24px">';
   h+='<div style="display:flex;align-items:center;margin-bottom:12px"><div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">All Deals</div><div style="font-size:10px;color:var(--grey);margin-left:8px">'+sharedFiltered.length+' of '+deals.length+'<span id="bd-co-hint" style="display:none;color:var(--teal);font-weight:600"></span></div>'
+    // Live search box — relocated here, next to the All Deals header and made
+    // more prominent. Updates `_bdSearchQ` per keystroke; bdSetSearch re-runs
+    // the render and restores focus + caret immediately so typing stays smooth.
+    +'<div style="display:inline-flex;align-items:center;gap:6px;margin-left:16px;background:#fff;border:1.5px solid '+(_bdSearchQ?'var(--teal)':'rgba(23,44,69,.18)')+';border-radius:50px;padding:4px 6px 4px 12px;min-width:260px;'+(_bdSearchQ?'box-shadow:0 0 0 3px rgba(114,164,191,.12)':'')+'">'
+    +'<span style="font-size:13px;color:var(--grey);line-height:1">\u{1F50D}</span>'
+    +'<input id="bd-search-input" type="search" placeholder="Search deals…" value="'+(_bdSearchQ||'').replace(/"/g,'&quot;')+'" oninput="bdSetSearch(this.value)" onfocus="bdAnchorSearch(true)" autocomplete="off" spellcheck="false" style="border:0;outline:none;background:transparent;font-size:13px;font-family:var(--font-b);color:var(--navy);padding:4px 4px;flex:1;min-width:160px">'
+    +(_bdSearchQ?'<button onclick="bdClearSearch()" title="Clear search" style="border:0;background:rgba(23,44,69,.08);color:var(--navy);width:20px;height:20px;border-radius:50%;font-size:12px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0">×</button>':'')
+    +'</div>'
     // Collapsible toggle for the Deal ID + Company ID columns. Chevron
     // mirrors the Plan / Billing group toggles' direction (▼ shown, ▶ hidden).
     +'<button onclick="bdToggleIds()" title="Toggle Deal ID and Company ID columns" style="margin-left:auto;margin-right:8px;padding:5px 12px;border-radius:50px;border:1.5px solid rgba(23,44,69,.15);background:'+(_bdIdsVisible?'rgba(23,44,69,.05)':'transparent')+';color:var(--navy);font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font-b);display:inline-flex;align-items:center;gap:5px"><span style="color:var(--teal);font-size:9px">'+(_bdIdsVisible?'▼':'▶')+'</span>'+(_bdIdsVisible?'Hide':'Show')+' IDs</button>'
@@ -1221,7 +1235,7 @@ function renderBD(){
     dot.addEventListener('mouseleave',function(){if(tip){tip.style.display='none';}});
   });
 }
-function buildSVGChart(labels,values,color,suffix,isMoney){
+function buildSVGChart(labels,values,color,suffix,isMoney,tipPrefix){
   if(!values||!values.length)return '<div style="height:220px;display:flex;align-items:center;justify-content:center;color:var(--grey);font-size:12px">No data</div>';
   var w=700,ht=240,pad={t:24,r:24,b:40,l:58};
   var pw=w-pad.l-pad.r,ph=ht-pad.t-pad.b;
@@ -1260,7 +1274,7 @@ function buildSVGChart(labels,values,color,suffix,isMoney){
   // Dots
   for(var di=0;di<pts.length;di++){
     svg+='<circle cx="'+pts[di].x+'" cy="'+pts[di].y+'" r="3.5" fill="'+color+'" stroke="white" stroke-width="1.5"/>';
-    var tipText=pts[di].l+': '+(isMoney?'$'+Math.round(pts[di].v).toLocaleString():pts[di].v.toLocaleString()+(suffix||''));
+    var tipText=(tipPrefix||'')+pts[di].l+': '+(isMoney?'$'+Math.round(pts[di].v).toLocaleString():pts[di].v.toLocaleString()+(suffix||''));
     svg+='<circle class="chart-dot" cx="'+pts[di].x+'" cy="'+pts[di].y+'" r="14" fill="transparent" style="cursor:crosshair" data-tip="'+tipText.replace(/"/g,'&quot;')+'"/>';
   }
   // Last value label
