@@ -755,7 +755,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s40';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s41';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2658,7 +2658,10 @@ function _buildAdSetTableHTML(meta,channel,_flagsByName,fatigueMap){
     const r=Object.assign({},a);
     const key=(a.name||'').toLowerCase().trim();
     const rawNested=byAdset[key]||[];
-    const nested=rawNested.map(rc=>_flatByName.get((rc.name||'').toLowerCase())||rc);
+    // Ad-set-scoped creative rows (see _buildCampAdsets) — not the account-wide
+    // flat creative, so each creative's numbers are its contribution to THIS
+    // ad set, summing to the ad-set total rather than its global total.
+    const nested=rawNested;
     r._nested=nested;
     // Stage (TOF/MOF/BOF/Retarget) lives in the PARENT CAMPAIGN name in their
     // naming convention, not the ad-set name — so detect from campaign first,
@@ -2974,7 +2977,13 @@ function _renderIrfanMetaTables(d, channel){
       const r=Object.assign({},a);
       const akey=(a.name||'').toLowerCase().trim();
       const rawNested=_byAdsetCamp[akey]||[];
-      const nested=rawNested.map(rc=>_flatByNameCamp.get((rc.name||'').toLowerCase())||rc);
+      // Use the AD-SET-SCOPED creative rows directly (spend/demos/impr/etc.
+      // are this creative's numbers WITHIN this ad set). Do NOT swap in the
+      // flat/account-wide creative — that was making every ad set show each
+      // creative's total across all ad sets (and inflating demos far past the
+      // campaign's). Badges (PAUSE/fatigue/naming) are name-keyed so they
+      // still resolve; _score/_tag are recomputed per-ad-set via scoreCreatives.
+      const nested=rawNested;
       r._nested=nested;
       let vp=0,im=0,q=0,fs=0,fn=0,act=false,pn=0,fln=0;
       for(const n of nested){
@@ -3070,6 +3079,12 @@ function _renderIrfanMetaTables(d, channel){
   for(const c of campRows){
     c._nested=_buildCampNested(c);
     c._adsets=_buildCampAdsets(c);
+    // Derive the campaign's displayed Status from its ad sets (a campaign is
+    // delivering if ANY ad set is active — which is active if any creative is).
+    // The worker's campaign-grain effective_status can read e.g.
+    // "ADSET_PAUSED" even when ad sets are live; deriving keeps the campaign
+    // row consistent with what the dropdowns show.
+    if(c._adsets.length)c.status=c._adsets.some(function(a){return a.status==='ACTIVE';})?'ACTIVE':'PAUSED';
     // Watch rate = Σ videoP25 ÷ Σ impressions across nested creatives.
     let _vp25=0,_imp=0;
     for(const n of c._nested){_vp25+=(n.videoP25||0);_imp+=(n.impressions||0);}

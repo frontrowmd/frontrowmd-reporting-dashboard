@@ -2966,7 +2966,10 @@ async function azWindsorFetch(apiKey, connector, from, to, fields) {
 function normStatus(raw) {
   const s = (raw||'').toUpperCase().trim();
   if (['ACTIVE','ENABLED','CAMPAIGN_STATUS_ENABLE'].includes(s)) return 'ACTIVE';
-  if (['PAUSED','CAMPAIGN_PAUSED','CAMPAIGN_STATUS_DISABLE'].includes(s)) return 'PAUSED';
+  // ADSET_PAUSED / AD_PAUSED = the entity's own status is on, but a parent
+  // (ad set / campaign) is paused → not delivering → treat as PAUSED so it
+  // doesn't leak through as raw badge text.
+  if (['PAUSED','CAMPAIGN_PAUSED','ADSET_PAUSED','AD_PAUSED','CAMPAIGN_STATUS_DISABLE'].includes(s)) return 'PAUSED';
   if (s === 'COMPLETED') return 'COMPLETED';
   if (s === 'REMOVED' || s === 'DELETED' || s === 'ARCHIVED') return 'REMOVED';
   return s || null;
