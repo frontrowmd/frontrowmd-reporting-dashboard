@@ -2728,6 +2728,21 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     console.log(`allTime fetched: cw (${allTimeClosedWon.length}), funnel-qualified (${allTimeQualifiedForFunnel.length}), rep-qualified (${allTimeQualifiedForReps.length})`);
   }
 
+  // Backfill prior / priorMonth closed-won from the cached all-time set when the
+  // dedicated prior closed-won fetch came back empty. Those fetches run late in
+  // the handler and can hit the per-invocation subrequest budget; hsSearch then
+  // returns [] *silently* (no throw), which previously zeroed out the MRR / ARR
+  // vs-prior & vs-LM deltas (they showed the full current value as the delta).
+  // For MTD, prior is derived from pmCW, so an empty May fetch zeroed BOTH prior
+  // and last-month. allTimeClosedWon is KV-cached + uses the identical
+  // dealstage=closedwon filter, so a closedate-window slice matches a working
+  // dedicated fetch (count/MRR); it lacks utm props, so per-channel attribution
+  // stays empty in this fallback — same as the broken state it replaces.
+  if (allTimeClosedWon && allTimeClosedWon.length) {
+    const _cwWin = (deals, from, to) => { const lo=toMsET(from), hi=toMsET(to,true); return deals.filter(d=>{ const ms=isoMs(d.properties&&d.properties.closedate); return !isNaN(ms)&&ms>=lo&&ms<=hi; }); };
+    if (prior && (!pCW || pCW.length===0)) { pCW = _cwWin(allTimeClosedWon, prior.from, prior.to); console.log(`backfilled pCW from all-time closed-won: ${pCW.length}`); }
+    if (priorMonth && (!pmCW || pmCW.length===0)) { pmCW = _cwWin(allTimeClosedWon, priorMonth.from, priorMonth.to); console.log(`backfilled pmCW from all-time closed-won: ${pmCW.length}`); }
+  }
   // ── Build period data (filter out Paused/Churned deals via deal-level brand_status on ALL windows) ──
   const currentData = buildPeriodData(current, cW, cLI, cG, cSch, filterActiveBrands(cPipe), filterActiveBrands(cCW));
   const priorData = prior ? buildPeriodData(prior, pW, pLI, pG, pSch, filterActiveBrands(pPipe), filterActiveBrands(pCW)) : null;
