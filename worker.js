@@ -4365,7 +4365,7 @@ async function fetchBDData(env) {
   let companyMap = {};
   if (env.CONTENT_STORE) {
     try {
-      const raw = await env.CONTENT_STORE.get('bd_company_cache_v4');
+      const raw = await env.CONTENT_STORE.get('bd_company_cache_v5');
       if (raw) companyMap = JSON.parse(raw);
     } catch(e) { console.warn('BD cache load failed:', e.message); }
   }
@@ -4449,7 +4449,7 @@ async function lookupBDCompanies(env, companyIds) {
   let companyMap = {};
   if (env.CONTENT_STORE) {
     try {
-      const raw = await env.CONTENT_STORE.get('bd_company_cache_v4');
+      const raw = await env.CONTENT_STORE.get('bd_company_cache_v5');
       if (raw) companyMap = JSON.parse(raw);
     } catch(e) { console.warn('BD lookup cache load failed:', e.message); }
   }
@@ -4505,7 +4505,7 @@ async function lookupBDCompanies(env, companyIds) {
   // unresolved-placeholder write also lands)
   if (env.CONTENT_STORE && attempted.size > 0) {
     try {
-      await env.CONTENT_STORE.put('bd_company_cache_v4', JSON.stringify(companyMap));
+      await env.CONTENT_STORE.put('bd_company_cache_v5', JSON.stringify(companyMap));
     } catch(e) { console.warn('BD lookup cache save failed:', e.message); }
   }
   // Build response: include every requested ID (resolved OR unresolved placeholder)
@@ -5427,7 +5427,7 @@ export default {
     // Dedicated endpoint so it gets its own fresh subrequest budget,
     // separate from /api/bd which spends most of its budget on deal
     // pagination + association batches. Results are written to KV
-    // (key 'bd_company_cache_v4') so /api/bd picks them up on next load.
+    // (key 'bd_company_cache_v5') so /api/bd picks them up on next load.
     if (request.method === 'POST' && url.pathname === '/api/bd/lookup-companies') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }

@@ -703,7 +703,7 @@ function renderBD(){
     var s='<label style="display:inline-flex;flex-direction:column;gap:3px;min-width:148px"><span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.03em">'+label+'</span>';
     s+='<select onchange="'+stateVar+'=this.value;renderBD()" style="padding:6px 28px 6px 10px;border:1.5px solid '+(active?'var(--teal)':'rgba(23,44,69,.18)')+';border-radius:8px;font-size:12px;font-family:var(--font-b);color:var(--navy);background:#fff;cursor:pointer;'+(active?'box-shadow:0 0 0 2px rgba(114,164,191,.12);':'')+'">';
     s+='<option value="all"'+(curVal==='all'?' selected':'')+'>All</option>';
-    sorted.forEach(function(rs){var rn=rs[0];if(hideList&&bdRepHidden(rn,hideList))return;s+='<option value="'+rn.replace(/&/g,'&amp;').replace(/"/g,'&quot;')+'"'+(curVal===rn?' selected':'')+'>'+(bdFirstName(rn)||rn)+' ('+rs[1]+')</option>';});
+    sorted.forEach(function(rs){var rn=rs[0];if(hideList&&bdRepHidden(rn,hideList))return;s+='<option value="'+rn.replace(/&/g,'&amp;').replace(/"/g,'&quot;')+'"'+(curVal===rn?' selected':'')+'>'+(bdFirstName(rn)||rn)+'</option>';});
     s+='</select></label>';
     return s;
   };
