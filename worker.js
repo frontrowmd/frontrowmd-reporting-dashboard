@@ -2728,25 +2728,27 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     console.log(`allTime fetched: cw (${allTimeClosedWon.length}), funnel-qualified (${allTimeQualifiedForFunnel.length}), rep-qualified (${allTimeQualifiedForReps.length})`);
   }
 
-  // Backfill prior / priorMonth closed-won from the cached all-time set when the
-  // dedicated prior closed-won fetch came back empty. Those fetches run late in
-  // the handler and can hit the per-invocation subrequest budget; hsSearch then
-  // returns [] *silently* (no throw), which previously zeroed out the MRR / ARR
-  // vs-prior & vs-LM deltas (they showed the full current value as the delta).
-  // For MTD, prior is derived from pmCW, so an empty May fetch zeroed BOTH prior
-  // and last-month. allTimeClosedWon is KV-cached + uses the identical
-  // dealstage=closedwon filter, so a closedate-window slice matches a working
-  // dedicated fetch (count/MRR); it lacks utm props, so per-channel attribution
-  // stays empty in this fallback — same as the broken state it replaces.
-  if (allTimeClosedWon && allTimeClosedWon.length) {
-    const _cwWin = (deals, from, to) => { const lo=toMsET(from), hi=toMsET(to,true); return deals.filter(d=>{ const ms=isoMs(d.properties&&d.properties.closedate); return !isNaN(ms)&&ms>=lo&&ms<=hi; }); };
-    if (prior && (!pCW || pCW.length===0)) { pCW = _cwWin(allTimeClosedWon, prior.from, prior.to); console.log(`backfilled pCW from all-time closed-won: ${pCW.length}`); }
-    if (priorMonth && (!pmCW || pmCW.length===0)) { pmCW = _cwWin(allTimeClosedWon, priorMonth.from, priorMonth.to); console.log(`backfilled pmCW from all-time closed-won: ${pmCW.length}`); }
-  }
   // ── Build period data (filter out Paused/Churned deals via deal-level brand_status on ALL windows) ──
   const currentData = buildPeriodData(current, cW, cLI, cG, cSch, filterActiveBrands(cPipe), filterActiveBrands(cCW));
   const priorData = prior ? buildPeriodData(prior, pW, pLI, pG, pSch, filterActiveBrands(pPipe), filterActiveBrands(pCW)) : null;
   const priorMonthData = priorMonth ? buildPeriodData(priorMonth, pmW, pmLI, pmG, pmSch, filterActiveBrands(pmPipe), filterActiveBrands(pmCW)) : null;
+  // The Revenue Outcome (MRR/ARR) vs-prior & vs-LM deltas read prior/last-month
+  // closed-won MRR + count. The dedicated prior fetches run late in the handler
+  // and can return empty/partial under the subrequest budget (hsSearch swallows
+  // errors and returns []), which made those deltas unreliable / stale even on
+  // Refresh. Recompute prior + last-month closed-won MRR + count UNCONDITIONALLY
+  // from the KV-cached all-time closed-won set (same dealstage=closedwon filter,
+  // active-brands only), sliced to each window by closedate. Past windows are
+  // settled so the ≤15-min-cached set is exact for them. Only mrr + count are
+  // overridden — byRep / byChannel (Channel Performance attribution) are left as
+  // the dedicated fetch produced them. Current stays on its own fresh fetch.
+  if (allTimeClosedWon && allTimeClosedWon.length) {
+    const _activeAll = filterActiveBrands(allTimeClosedWon);
+    const _cwWin = (from, to) => { const lo=toMsET(from), hi=toMsET(to,true); return _activeAll.filter(dd=>{ const ms=isoMs(dd.properties&&dd.properties.closedate); return !isNaN(ms)&&ms>=lo&&ms<=hi; }); };
+    const _cwSum = (arr) => arr.reduce((s,dd)=>s+(parseFloat(dd.properties&&dd.properties.amount)||0),0);
+    if (priorData && prior) { const a=_cwWin(prior.from, prior.to); priorData.closedWon.mrr=_cwSum(a); priorData.closedWon.count=a.length; }
+    if (priorMonthData && priorMonth) { const a=_cwWin(priorMonth.from, priorMonth.to); priorMonthData.closedWon.mrr=_cwSum(a); priorMonthData.closedWon.count=a.length; }
+  }
 
   // Webinar tier ("Very Small") — sourced inline via fetchScheduledContacts
   // which now ORs in the Livestorm Webinars segment. processScheduled-
@@ -4805,7 +4807,7 @@ export default {
       // recent payload is served instead. The Refresh button sends fresh:true to
       // bypass; only successful (non-error) payloads are cached.
       const _win = body.window || '7d';
-      const _ck = 'apidata_resp_v2_' + _win + '_' + (body.from||'') + '_' + (body.to||'') + '_' + (body.vsFrom||'') + '_' + (body.vsTo||'');
+      const _ck = 'apidata_resp_v3_' + _win + '_' + (body.from||'') + '_' + (body.to||'') + '_' + (body.vsFrom||'') + '_' + (body.vsTo||'');
       if (!body.fresh && env.CONTENT_STORE) {
         try {
           const raw = await env.CONTENT_STORE.get(_ck);
