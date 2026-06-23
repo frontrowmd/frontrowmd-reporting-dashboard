@@ -755,7 +755,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s51';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s52';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -779,23 +779,32 @@ function effM(cr){return cr>0?(1-Math.pow(1-cr,12))/cr:12;}
 // Churn state
 let _churnPct=0;
 function getChurnRate(){return _churnPct/100;}
+// Live Revenue Outcome data from the dedicated /api/revenue-outcome endpoint
+// (always-accurate current/prior/LM closed-won). _roSeq guards out-of-order
+// responses so a stale window's result can't clobber the current one.
+var _revOutcome=null,_roSeq=0;
 // Shared Revenue Outcome card (dark navy). Headline metric = Signed ARR
 // (MRR × 12). ROAS keeps the product-standard churn-adjusted definition
 // (churn-adjusted ARR ÷ spend) so it matches the ROAS used elsewhere. Used by
 // both the Detailed Dashboard (renderDash) and the Irfan Dashboard.
 function _buildRevenueOutcomeCard(d){
-  var mrr=(d.mrrArr&&d.mrrArr.mrr&&d.mrrArr.mrr.value)||0;
-  var dealCount=(d.mrrArr&&d.mrrArr.dealCount&&d.mrrArr.dealCount.value)||0;
+  // Prefer the dedicated /api/revenue-outcome live result (accurate prior/LM)
+  // when it's loaded for this page's current window; otherwise fall back to the
+  // (cached) /api/data mrrArr so the card still renders immediately.
+  var _win=((typeof AP!=='undefined'&&S[AP])?S[AP].win:null)||'mtd';
+  var _ro=(_revOutcome&&_revOutcome.win===_win)?_revOutcome:null;
+  var mrr=_ro?((_ro.current&&_ro.current.mrr)||0):((d.mrrArr&&d.mrrArr.mrr&&d.mrrArr.mrr.value)||0);
+  var dealCount=_ro?((_ro.current&&_ro.current.count)||0):((d.mrrArr&&d.mrrArr.dealCount&&d.mrrArr.dealCount.value)||0);
+  var pMRR=_ro?(_ro.prior?_ro.prior.mrr:null):((d.mrrArr&&d.mrrArr.mrr&&d.mrrArr.mrr.sameTimePrior)?d.mrrArr.mrr.sameTimePrior.value:null);
+  var pmMRR=_ro?(_ro.priorMonth?_ro.priorMonth.mrr:null):((d.mrrArr&&d.mrrArr.mrr&&d.mrrArr.mrr.lastMonth)?d.mrrArr.mrr.lastMonth.value:null);
+  var pDeal=_ro?(_ro.prior?_ro.prior.count:null):((d.mrrArr&&d.mrrArr.dealCount&&d.mrrArr.dealCount.sameTimePrior)?d.mrrArr.dealCount.sameTimePrior.value:null);
+  var pmDeal=_ro?(_ro.priorMonth?_ro.priorMonth.count:null):((d.mrrArr&&d.mrrArr.dealCount&&d.mrrArr.dealCount.lastMonth)?d.mrrArr.dealCount.lastMonth.value:null);
   var spend=(d.adSpend&&d.adSpend.total&&d.adSpend.total.value)||0;
   var cr=getChurnRate(),eM=effM(cr);
   var signedARR=mrr*12;            // headline
   var adjARR=mrr*eM;               // churn-adjusted ARR — used only for the ROAS row
   var acv=dealCount>0?mrr/dealCount:null;
   var roas=spend>0?adjARR/spend:null;
-  var pMRR=(d.mrrArr&&d.mrrArr.mrr&&d.mrrArr.mrr.sameTimePrior)?d.mrrArr.mrr.sameTimePrior.value:null;
-  var pmMRR=(d.mrrArr&&d.mrrArr.mrr&&d.mrrArr.mrr.lastMonth)?d.mrrArr.mrr.lastMonth.value:null;
-  var pDeal=(d.mrrArr&&d.mrrArr.dealCount&&d.mrrArr.dealCount.sameTimePrior)?d.mrrArr.dealCount.sameTimePrior.value:null;
-  var pmDeal=(d.mrrArr&&d.mrrArr.dealCount&&d.mrrArr.dealCount.lastMonth)?d.mrrArr.dealCount.lastMonth.value:null;
   var pSpend=(d.adSpend&&d.adSpend.total&&d.adSpend.total.sameTimePrior)?d.adSpend.total.sameTimePrior.value:null;
   var pmSpend=(d.adSpend&&d.adSpend.total&&d.adSpend.total.lastMonth)?d.adSpend.total.lastMonth.value:null;
   var pSignedARR=pMRR!=null?pMRR*12:null, pmSignedARR=pmMRR!=null?pmMRR*12:null;
@@ -836,6 +845,21 @@ function _buildRevenueOutcomeCard(d){
       +'</div>'
     +'</div>'
   +'</div>';
+}
+// Fetch the dedicated, UNCACHED Revenue Outcome data (live current/prior/LM
+// closed-won) and re-render whichever Revenue Outcome card is on screen. Fire-
+// and-forget after each /api/data load. _roSeq drops out-of-order responses.
+async function fdRevenueOutcome(win,from,to,vsFrom,vsTo){
+  var my=++_roSeq;
+  try{
+    var b={password:PW,window:win};if(from)b.from=from;if(to)b.to=to;if(vsFrom)b.vsFrom=vsFrom;if(vsTo)b.vsTo=vsTo;
+    var r=await fetch(API.replace('/api/data','/api/revenue-outcome'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
+    if(!r.ok)return;var d=await r.json();if(!d||d.error)return;
+    if(my!==_roSeq)return; // a newer window/refresh superseded this fetch
+    _revOutcome={win:win,current:d.current,prior:d.prior,priorMonth:d.priorMonth};
+    if(AP==='dashboard'&&S.dashboard&&S.dashboard.data){var de=document.getElementById('t-revenue');if(de)de.innerHTML=_buildRevenueOutcomeCard(S.dashboard.data);}
+    if(AP==='irfan'&&S.irfan&&S.irfan.data){var ie=document.getElementById('irfan-revoutcome');if(ie)ie.innerHTML=_buildRevenueOutcomeCard(S.irfan.data);}
+  }catch(e){console.error('fdRevenueOutcome',e);}
 }
 function churnBg(v){return `linear-gradient(90deg,var(--teal) ${v*10}%,var(--teal-30) ${v*10}%)`;}
 function syncSliders(){
@@ -1157,6 +1181,13 @@ async function fd(w,from,to,vsFrom,vsTo,fresh){
   // shifts when the page selector changes. First call fetches; subsequent
   // calls re-use S.irfan.special1Data, so changing windows doesn't re-fetch.
   if(AP==='irfan'&&!S.irfan.special1Data&&typeof fdSpecial1==='function'){fdSpecial1();}
+  // Live Revenue Outcome (dedicated uncached endpoint) — fire-and-forget after
+  // each successful load; re-renders the card with accurate prior/LM deltas.
+  if(mySeq===_fdSeq&&(AP==='irfan'||AP==='dashboard')&&typeof fdRevenueOutcome==='function'){
+    var _row=S[AP].win||'mtd';
+    if(_row==='custom')fdRevenueOutcome('custom',S[AP].cFrom,S[AP].cTo,S[AP].cVsFrom,S[AP].cVsTo);
+    else fdRevenueOutcome(_row);
+  }
 }
 // Compute the 4 cohort month labels (current + 3 prior, newest first) so the
 // loading skeleton can show real labels (e.g. "May 2026") instead of generic
@@ -2406,7 +2437,7 @@ function renderIrfan(){
   h+=`<div class="tile hero" style="border-left:3px solid var(--teal)" title="Total ad spend this period. Mini bar shows current-month pacing: spend vs monthly budget (fill) against % of month elapsed (line). Budget excludes pending (no-connector) channels."><div class="tlbl">Ad Budget Pacing</div><div class="tval">${f$(_periodSpend)}</div><div class="tdef" style="margin-top:4px">Total ad spend this period</div>${_paceGraph}${_irTileFooter(_periodSpend,_spendPV,_spendLM,'$',false)}</div>`;
   h+='</div>';
   // Revenue Outcome (Signed ARR) — same card as the Detailed Dashboard.
-  h+='<div style="margin-bottom:28px">'+_buildRevenueOutcomeCard(d)+'</div>';
+  h+='<div id="irfan-revoutcome" style="margin-bottom:28px">'+_buildRevenueOutcomeCard(d)+'</div>';
 
   // ═══════ Section 3 — Special Time-Bound Tiles ═══════
   h+='<div class="irf-sec-title" style="margin-bottom:4px">Time-Bound Insights</div>';

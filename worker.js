@@ -2427,6 +2427,28 @@ async function processSignupRequest(env) {
   return { signUpRate, _meta: { generatedAt: new Date().toISOString() } };
 }
 
+// Dedicated, UNCACHED Revenue Outcome endpoint. Computes current / prior /
+// last-month closed-won MRR + count LIVE in its own invocation (fresh
+// subrequest budget) — so the Revenue Outcome card's vs-prior / vs-LM deltas
+// are always accurate, independent of the heavy (and cached) /api/data fetch
+// chain whose late prior fetches get starved by the per-invocation subrequest
+// budget. Three small same-filter closed-won fetches; nothing cached.
+async function processRevenueOutcome(env, windowType, customFrom, customTo, vsFrom, vsTo) {
+  const hsToken = env.HUBSPOT_TOKEN;
+  const { current, prior, priorMonth } = computeWindows(windowType, customFrom, customTo, vsFrom, vsTo);
+  const [cCW, pCW, pmCW] = await Promise.all([
+    fetchClosedWonDeals(hsToken, current.from, current.to),
+    prior ? fetchClosedWonDeals(hsToken, prior.from, prior.to) : Promise.resolve(null),
+    priorMonth ? fetchClosedWonDeals(hsToken, priorMonth.from, priorMonth.to) : Promise.resolve(null),
+  ]);
+  const tot = (deals) => { if (!deals) return null; const a = filterActiveBrands(deals); let m = 0; for (const d of a) m += parseFloat(d.properties && d.properties.amount) || 0; return { mrr: m, count: a.length }; };
+  return {
+    current: tot(cCW), prior: tot(pCW), priorMonth: tot(pmCW),
+    period: current, priorPeriod: prior, priorMonthPeriod: priorMonth,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
 async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsTo) {
   const apiKey = env.WINDSOR_API_KEY, hsToken = env.HUBSPOT_TOKEN;
   const { current, prior, priorMonth } = computeWindows(windowType, customFrom, customTo, vsFrom, vsTo);
@@ -4821,6 +4843,20 @@ export default {
         }
         return jr(result);
       } catch(err) { console.error('Error:', err); return jr({ error: 'Internal error', detail: (err && (err.message || String(err))) || 'unknown', stack: (err && err.stack ? String(err.stack).split('\n').slice(0,4).join(' | ') : null) }, 500); }
+    }
+
+    // POST /api/revenue-outcome → dedicated, UNCACHED Revenue Outcome endpoint.
+    // Its own fresh subrequest budget computes current/prior/last-month
+    // closed-won MRR + count live, so the card's vs-prior / vs-LM deltas are
+    // always accurate (not starved by /api/data's big fetch chain, not cached).
+    if (request.method === 'POST' && url.pathname === '/api/revenue-outcome') {
+      let body;
+      try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
+      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      try {
+        const result = await processRevenueOutcome(env, body.window||'mtd', body.from||null, body.to||null, body.vsFrom||null, body.vsTo||null);
+        return jr(result);
+      } catch(err) { console.error('revenue-outcome error:', err); return jr({ error: 'Internal error', detail: (err && (err.message || String(err))) || 'unknown' }, 500); }
     }
 
     // POST /api/signup-cohorts → dedicated SignUp Rate endpoint.
