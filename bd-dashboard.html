@@ -1318,14 +1318,16 @@ function buildSVGChart(labels,values,color,suffix,isMoney,tipPrefix,opts){
   var hitR=Math.max(5,Math.min(14,_spc*0.5));
   var _tipL=opts.tipLabels||labels;
   for(var di=0;di<pts.length;di++){
-    svg+='<circle cx="'+pts[di].x+'" cy="'+pts[di].y+'" r="'+dotR+'" fill="'+color+'" stroke="white" stroke-width="'+(dotR<3?1:1.5)+'"/>';
+    svg+='<circle cx="'+pts[di].x+'" cy="'+pts[di].y+'" r="'+dotR+'" fill="'+color+'" stroke="white" stroke-width="'+(dotR<3?1:1.5)+'" pointer-events="none"/>';
     var tipText=(tipPrefix||'')+(_tipL[di]!=null?_tipL[di]:pts[di].l)+': '+(isMoney?'$'+Math.round(pts[di].v).toLocaleString():pts[di].v.toLocaleString()+(suffix||''));
     svg+='<circle class="chart-dot" cx="'+pts[di].x+'" cy="'+pts[di].y+'" r="'+hitR+'" fill="transparent" style="cursor:crosshair" data-tip="'+tipText.replace(/"/g,'&quot;')+'"/>';
   }
   // Last value label
   var last=pts[pts.length-1];
   var lastTxt=isMoney?(last.v>=1e6?'$'+(last.v/1e6).toFixed(1)+'M':'$'+Math.round(last.v).toLocaleString()):last.v.toLocaleString();
-  svg+='<text x="'+(last.x-6)+'" y="'+(last.y-12)+'" text-anchor="end" fill="'+color+'" font-size="13" font-weight="bold" font-family="Inter,sans-serif">'+lastTxt+'</text>';
+  // pointer-events:none so this label never sits over (and blocks the hover of)
+  // the last data point — SVG text with a fill captures pointer events by default.
+  svg+='<text x="'+(last.x-6)+'" y="'+(last.y-12)+'" text-anchor="end" fill="'+color+'" font-size="13" font-weight="bold" font-family="Inter,sans-serif" pointer-events="none">'+lastTxt+'</text>';
   svg+='</svg>';
   // opts.aspect → size the chart by aspect-ratio (uniform scaling at any width)
   // instead of flex/min-height (which can distort a full-width chart).
