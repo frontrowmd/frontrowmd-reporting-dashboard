@@ -541,16 +541,17 @@ function renderBD(){
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;position:relative;min-width:0;overflow:hidden;display:flex;flex-direction:column" class="chart-wrap"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Signed ARR <span style="font-size:11px;color:var(--grey);font-family:var(--font-b);font-weight:400">'+f$(rA)+'</span></div>'+buildSVGChart(_cumL,_cumA,'#16A34A','',true)+'<div id="bd-arr-tip" class="float-tip"></div></div>';
   h+='</div>';
   // Full-width ARR-by-week chart (blue) — non-cumulative weekly signings.
-  // Fixed height + a wide viewBox so the fonts and dot spacing match the two
-  // charts above; a 700-wide viewBox stretched to full width would scale both up.
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;position:relative;min-width:0;overflow:hidden;display:flex;flex-direction:column;margin-bottom:20px;height:300px" class="chart-wrap">';
+  // Wide viewBox (1400×240) + a CSS aspect-ratio on the chart area (not a fixed
+  // pixel height) so the SVG scales UNIFORMLY at any container width — a fixed
+  // height made x stretch ~1.4x while y stayed ~1x on wide screens, squishing it.
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;position:relative;min-width:0;overflow:hidden;display:flex;flex-direction:column;margin-bottom:20px" class="chart-wrap">';
   h+='<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px;flex-wrap:wrap">';
   h+='<div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">ARR by Week <span style="font-size:11px;color:var(--grey);font-family:var(--font-b);font-weight:400">new ARR signed per week · '+f$(_wkTotal)+' total</span></div>';
   h+='<div style="display:flex;gap:10px;flex-shrink:0">';
   h+='<div style="background:rgba(37,99,235,.06);border:1px solid rgba(37,99,235,.20);border-radius:8px;padding:5px 14px;text-align:right;line-height:1.15"><div style="font-size:8px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em">Current Month ARR</div><div style="font-size:17px;font-weight:700;color:#2563EB;font-family:var(--font-h)">'+f$(_cmARR)+'</div></div>';
   h+='<div style="background:rgba(23,44,69,.04);border:1px solid rgba(23,44,69,.12);border-radius:8px;padding:5px 14px;text-align:right;line-height:1.15"><div style="font-size:8px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em">Last Month ARR</div><div style="font-size:17px;font-weight:700;color:var(--navy);font-family:var(--font-h)">'+f$(_lmARR)+'</div></div>';
   h+='</div></div>';
-  h+=buildSVGChart(_wkL,_wkV,'#2563EB','',true,'Week of ',{w:1400,tipLabels:_wkTip});
+  h+=buildSVGChart(_wkL,_wkV,'#2563EB','',true,'Week of ',{w:1400,tipLabels:_wkTip,aspect:true});
   h+='<div id="bd-arrweek-tip" class="float-tip"></div></div>';
   // Shared Filtered
   // Precompute lowered search query once per render so the per-row filter
@@ -709,7 +710,7 @@ function renderBD(){
   };
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-bottom:20px">';
   h+='<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:14px;flex-wrap:wrap"><div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">Filters</div><div style="font-size:11px;color:var(--grey);flex:1;min-width:200px">Refine the Deal Attribution chart, summary metrics, and All Deals table below — all three update together.</div></div>';
-  // Row 1: pill filters — Brand Status, Deal Stage, Package, Web Traffic
+  // Row 1: Brand Status + Web Traffic pills
   h+='<div style="display:flex;align-items:flex-start;gap:8px 12px;flex-wrap:wrap">';
   h+='<span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px"><span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Brand Status</span> ';
   var _bsToggleOff=(_bdBrandStatusToggleF.length===0);
@@ -723,27 +724,31 @@ function renderBD(){
   h+=fp(_bdBrandStatusToggleF.indexOf('Churned')>=0,'Churned',"bdBSToggle('Churned')")+' ';
   h+=fp(_bdBrandStatusToggleF.indexOf('Never Implemented - Churned')>=0,'Never Implemented',"bdBSToggle('Never Implemented - Churned')")+' ';
   h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
-  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Deal Stage</span> ';
-  h+=fp(_bdStageF==='all','All',"_bdStageF='all';renderBD()")+' ';
-  Object.keys(uniqStage).sort(function(a,b){var ia=BD_STAGE_ORDER.indexOf(a),ib=BD_STAGE_ORDER.indexOf(b);if(ia<0)ia=999;if(ib<0)ib=999;return ia-ib||(a<b?-1:a>b?1:0);}).forEach(function(v){h+=fp(_bdStageF===v,BD_STAGE_LABELS[v]||v,"_bdStageF='"+v+"';renderBD()")+' ';});
-  h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
-  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Package</span> ';
-  h+=fp(_bdPkgF==='all','All',"_bdPkgF='all';renderBD()")+' ';
-  Object.keys(uniqPkg).sort(function(a,b){return (BD_PKG_ORDER[bdPlanName(a)]||99)-(BD_PKG_ORDER[bdPlanName(b)]||99);}).forEach(function(v){h+=fp(_bdPkgF===v,bdPlanName(v),"_bdPkgF='"+v+"';renderBD()")+' ';});
-  h+='</span><span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Web Traffic</span>';
   h+='<span style="font-size:8.5px;font-weight:600;color:var(--teal);text-transform:none;letter-spacing:.02em;margin-left:-2px;margin-right:2px;font-style:italic">(multi-select)</span> ';
   h+=fpMulti(_bdWebTrafficF.length===0,'All',"bdWtClear()")+' ';
   Object.keys(uniqWebTrafficBD).sort(function(a,b){return(BD_WT_ORDER[a]||99)-(BD_WT_ORDER[b]||99);}).forEach(function(v){h+=fpMulti(_bdWebTrafficF.indexOf(v)>=0,BD_WT_LABELS[v]||v,"bdWtToggle('"+v.replace(/'/g,"\\'")+"')")+' ';});
   h+='</span></div>';
-  // Row 2: rep dropdowns — Deal Rep, Acct Mgr, SE Rep, Ops Rep
+  // Row 2: Deal Stage (own row)
+  h+='<div style="display:flex;align-items:center;gap:4px 6px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid rgba(23,44,69,.06)">';
+  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase;flex-shrink:0;margin-right:2px">Deal Stage</span> ';
+  h+=fp(_bdStageF==='all','All',"_bdStageF='all';renderBD()")+' ';
+  Object.keys(uniqStage).sort(function(a,b){var ia=BD_STAGE_ORDER.indexOf(a),ib=BD_STAGE_ORDER.indexOf(b);if(ia<0)ia=999;if(ib<0)ib=999;return ia-ib||(a<b?-1:a>b?1:0);}).forEach(function(v){h+=fp(_bdStageF===v,BD_STAGE_LABELS[v]||v,"_bdStageF='"+v+"';renderBD()")+' ';});
+  h+='</div>';
+  // Row 3: Package (own row)
+  h+='<div style="display:flex;align-items:center;gap:4px 6px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid rgba(23,44,69,.06)">';
+  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase;flex-shrink:0;margin-right:2px">Package</span> ';
+  h+=fp(_bdPkgF==='all','All',"_bdPkgF='all';renderBD()")+' ';
+  Object.keys(uniqPkg).sort(function(a,b){return (BD_PKG_ORDER[bdPlanName(a)]||99)-(BD_PKG_ORDER[bdPlanName(b)]||99);}).forEach(function(v){h+=fp(_bdPkgF===v,bdPlanName(v),"_bdPkgF='"+v+"';renderBD()")+' ';});
+  h+='</div>';
+  // Row 4: rep dropdowns — Deal Rep, Acct Mgr, SE Rep, Ops Rep
   h+='<div style="display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid rgba(23,44,69,.06)">';
   h+=bdSelect('Deal Rep',_bdRepF,'_bdRepF',repSorted,BD_DEAL_REP_HIDE);
   h+=bdSelect('Acct Mgr',_bdAcctMgrF,'_bdAcctMgrF',acctMgrSorted,null);
   h+=bdSelect('SE Rep',_bdSeRepF,'_bdSeRepF',seSorted,BD_SE_REP_HIDE);
   h+=bdSelect('Ops Rep',_bdOpsRepF,'_bdOpsRepF',opsSorted,null);
   h+='</div>';
-  // Row 3: date range (prominent) + presets
+  // Row 5: date range (prominent) + presets
   var anyF=_bdBrandStatusF!=='all'||_bdBrandStatusToggleF.length>0||_bdStageF!=='all'||_bdRepF!=='all'||_bdAcctMgrF!=='all'||_bdSeRepF!=='all'||_bdOpsRepF!=='all'||_bdPkgF!=='all'||_bdWebTrafficF.length>0||_bdDateFrom||_bdDateTo||_bdSearchQ;
   h+='<div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid rgba(23,44,69,.06)">';
   h+='<span style="display:inline-flex;flex-direction:column;gap:4px"><span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.03em">Date Range</span>';
@@ -1310,7 +1315,10 @@ function buildSVGChart(labels,values,color,suffix,isMoney,tipPrefix,opts){
   var lastTxt=isMoney?(last.v>=1e6?'$'+(last.v/1e6).toFixed(1)+'M':'$'+Math.round(last.v).toLocaleString()):last.v.toLocaleString();
   svg+='<text x="'+(last.x-6)+'" y="'+(last.y-12)+'" text-anchor="end" fill="'+color+'" font-size="13" font-weight="bold" font-family="Inter,sans-serif">'+lastTxt+'</text>';
   svg+='</svg>';
-  return '<div style="width:100%;flex:1;min-height:180px;min-width:0">'+svg+'</div>';
+  // opts.aspect → size the chart by aspect-ratio (uniform scaling at any width)
+  // instead of flex/min-height (which can distort a full-width chart).
+  var _wrapStyle=opts.aspect?('width:100%;aspect-ratio:'+w+'/'+ht+';min-width:0'):'width:100%;flex:1;min-height:180px;min-width:0';
+  return '<div style="'+_wrapStyle+'">'+svg+'</div>';
 }
 
 </script>
