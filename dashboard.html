@@ -755,7 +755,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s47';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s48';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -779,6 +779,46 @@ function effM(cr){return cr>0?(1-Math.pow(1-cr,12))/cr:12;}
 // Churn state
 let _churnPct=0;
 function getChurnRate(){return _churnPct/100;}
+// Shared Revenue Outcome card (dark navy). Headline metric = Signed ARR
+// (MRR × 12). ROAS keeps the product-standard churn-adjusted definition
+// (churn-adjusted ARR ÷ spend) so it matches the ROAS used elsewhere. Used by
+// both the Detailed Dashboard (renderDash) and the Irfan Dashboard.
+function _buildRevenueOutcomeCard(d){
+  var mrr=(d.mrrArr&&d.mrrArr.mrr&&d.mrrArr.mrr.value)||0;
+  var dealCount=(d.mrrArr&&d.mrrArr.dealCount&&d.mrrArr.dealCount.value)||0;
+  var spend=(d.adSpend&&d.adSpend.total&&d.adSpend.total.value)||0;
+  var cr=getChurnRate(),eM=effM(cr);
+  var signedARR=mrr*12;            // headline
+  var adjARR=mrr*eM;               // churn-adjusted ARR — used only for the ROAS row
+  var acv=dealCount>0?mrr/dealCount:null;
+  var roas=spend>0?adjARR/spend:null;
+  var pMRR=(d.mrrArr&&d.mrrArr.mrr&&d.mrrArr.mrr.sameTimePrior)?d.mrrArr.mrr.sameTimePrior.value:null;
+  var pmMRR=(d.mrrArr&&d.mrrArr.mrr&&d.mrrArr.mrr.lastMonth)?d.mrrArr.mrr.lastMonth.value:null;
+  var pDeal=(d.mrrArr&&d.mrrArr.dealCount&&d.mrrArr.dealCount.sameTimePrior)?d.mrrArr.dealCount.sameTimePrior.value:null;
+  var pmDeal=(d.mrrArr&&d.mrrArr.dealCount&&d.mrrArr.dealCount.lastMonth)?d.mrrArr.dealCount.lastMonth.value:null;
+  var pSpend=(d.adSpend&&d.adSpend.total&&d.adSpend.total.sameTimePrior)?d.adSpend.total.sameTimePrior.value:null;
+  var pmSpend=(d.adSpend&&d.adSpend.total&&d.adSpend.total.lastMonth)?d.adSpend.total.lastMonth.value:null;
+  var pSignedARR=pMRR!=null?pMRR*12:null, pmSignedARR=pmMRR!=null?pmMRR*12:null;
+  var pAdjARR=pMRR!=null?pMRR*eM:null, pmAdjARR=pmMRR!=null?pmMRR*eM:null;
+  var pROAS=(pAdjARR!=null&&pSpend>0)?pAdjARR/pSpend:null, pmROAS=(pmAdjARR!=null&&pmSpend>0)?pmAdjARR/pmSpend:null;
+  var pACV=(pDeal>0&&pMRR!=null)?pMRR/pDeal:null, pmACV=(pmDeal>0&&pmMRR!=null)?pmMRR/pmDeal:null;
+  function nf(n,fmt,dec){if(n==null)return '—';var s=n>=0?'+':'-';var a=Math.abs(n);var dd=dec!=null?dec:1;if(fmt==='$')return s+'$'+Math.round(a).toLocaleString();if(fmt==='#')return s+Math.round(a).toLocaleString();if(fmt==='%')return s+a.toFixed(dd)+'%';if(fmt==='x')return s+a.toFixed(2)+'x';return s+a.toFixed(dd);}
+  function dk(cur,prev,fmt,sz){if(cur==null||prev==null)return '<span style="color:rgba(255,255,255,.4);font-size:'+(sz||11)+'px">—</span>';var nd=cur-prev;var pd=prev!==0?((cur-prev)/prev)*100:null;var arrow=nd>=0?'↑':'↓';var color=nd===0?'rgba(255,255,255,.5)':(nd>0?'#4ADE80':'#FCA5A5');var pStr=pd!=null?'('+(pd>=0?'+':'')+pd.toFixed(1)+'%)':'';return '<span style="color:'+color+';font-weight:600;font-size:'+(sz||11)+'px">'+arrow+' '+nf(nd,fmt)+' '+pStr+'</span>';}
+  function deltaBlock(cur,p,lm,fmt){return '<div style="display:flex;align-items:baseline;font-size:11px;line-height:1.7;gap:8px"><span style="color:rgba(255,255,255,.55);flex-shrink:0;min-width:42px">vs prior</span>'+dk(cur,p,fmt)+'</div><div style="display:flex;align-items:baseline;font-size:11px;line-height:1.7;gap:8px"><span style="color:rgba(255,255,255,.55);flex-shrink:0;min-width:42px">vs LM</span>'+dk(cur,lm,fmt)+'</div>';}
+  function revRow(label,value,cur,p,lm,fmt){return '<div style="display:flex;align-items:baseline;padding:5px 0;font-size:12px;gap:12px"><div style="font-family:var(--font-h);font-size:11px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.06em;width:90px;flex-shrink:0">'+label+'</div><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:#fff;min-width:60px;flex-shrink:0;text-align:left">'+value+'</div><div style="display:flex;flex-direction:column;align-items:flex-start;gap:1px;line-height:1.4"><div>'+dk(cur,p,fmt,10)+'</div><div>'+dk(cur,lm,fmt,10)+'</div></div></div>';}
+  return '<div style="background:linear-gradient(135deg,#020F18 0%,#172C45 60%,#1D4053 100%);border:1px solid var(--mid-navy);border-radius:12px;padding:18px 20px;box-shadow:inset 3px 0 0 var(--teal),0 4px 16px rgba(2,15,24,.15);color:#fff;height:100%;display:flex;flex-direction:column">'
+    +'<div style="font-family:var(--font-h);font-size:11px;color:rgba(255,255,255,.55);margin-bottom:4px;text-transform:uppercase;letter-spacing:.08em">Revenue outcome</div>'
+    +'<div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--teal);margin-bottom:1px;text-transform:uppercase;letter-spacing:.04em">Signed ARR</div>'
+    +'<div style="font-size:11px;color:rgba(255,255,255,.5);margin-bottom:10px">MRR × 12</div>'
+    +'<div style="font-family:var(--font-h);font-size:38px;font-weight:700;color:#fff;line-height:1;margin-bottom:8px">'+f$(signedARR)+'</div>'
+    +'<div style="margin-bottom:12px">'+deltaBlock(signedARR,pSignedARR,pmSignedARR,'$')+'</div>'
+    +'<div style="border-top:1px solid rgba(114,164,191,.25);padding-top:6px">'
+    +revRow('MRR',f$(mrr),mrr,pMRR,pmMRR,'$')
+    +revRow('ROAS',roas!=null?roas.toFixed(2)+'x':'—',roas,pROAS,pmROAS,'x')
+    +revRow('ACV',acv!=null?f$(acv):'—',acv,pACV,pmACV,'$')
+    +revRow('Closed deals',fN(dealCount),dealCount,pDeal,pmDeal,'#')
+    +'</div></div>';
+}
 function churnBg(v){return `linear-gradient(90deg,var(--teal) ${v*10}%,var(--teal-30) ${v*10}%)`;}
 function syncSliders(){
   const v=_churnPct,bg=churnBg(v);
@@ -2025,7 +2065,9 @@ function renderDash(){
   document.getElementById('t-overview').innerHTML=oh;
   // Row 1: Revenue Outcome (right slot, 30% of row)
   const revEl=document.getElementById('t-revenue');
-  if(revEl)revEl.innerHTML=revH;
+  // Detailed Dashboard Revenue Outcome now uses the shared Signed-ARR card
+  // (the old churn-adjusted `revH` above is left unused).
+  if(revEl)revEl.innerHTML=_buildRevenueOutcomeCard(d);
   // Inject Total ad spend card into its own section above Channel Performance
   document.getElementById('t-adspend').innerHTML=adH;
 
@@ -2340,6 +2382,8 @@ function renderIrfan(){
   }
   h+=`<div class="tile hero" style="border-left:3px solid var(--teal)" title="Total ad spend this period. Mini bar shows current-month pacing: spend vs monthly budget (fill) against % of month elapsed (line). Budget excludes pending (no-connector) channels."><div class="tlbl">Ad Budget Pacing</div><div class="tval">${f$(_periodSpend)}</div><div class="tdef" style="margin-top:4px">Total ad spend this period</div>${_paceGraph}${_irTileFooter(_periodSpend,_spendPV,_spendLM,'$',false)}</div>`;
   h+='</div>';
+  // Revenue Outcome (Signed ARR) — same card as the Detailed Dashboard.
+  h+='<div style="margin-bottom:28px">'+_buildRevenueOutcomeCard(d)+'</div>';
 
   // ═══════ Section 3 — Special Time-Bound Tiles ═══════
   h+='<div class="irf-sec-title" style="margin-bottom:4px">Time-Bound Insights</div>';
