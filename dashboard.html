@@ -755,7 +755,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s48';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s49';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -804,20 +804,38 @@ function _buildRevenueOutcomeCard(d){
   var pACV=(pDeal>0&&pMRR!=null)?pMRR/pDeal:null, pmACV=(pmDeal>0&&pmMRR!=null)?pmMRR/pmDeal:null;
   function nf(n,fmt,dec){if(n==null)return '—';var s=n>=0?'+':'-';var a=Math.abs(n);var dd=dec!=null?dec:1;if(fmt==='$')return s+'$'+Math.round(a).toLocaleString();if(fmt==='#')return s+Math.round(a).toLocaleString();if(fmt==='%')return s+a.toFixed(dd)+'%';if(fmt==='x')return s+a.toFixed(2)+'x';return s+a.toFixed(dd);}
   function dk(cur,prev,fmt,sz){if(cur==null||prev==null)return '<span style="color:rgba(255,255,255,.4);font-size:'+(sz||11)+'px">—</span>';var nd=cur-prev;var pd=prev!==0?((cur-prev)/prev)*100:null;var arrow=nd>=0?'↑':'↓';var color=nd===0?'rgba(255,255,255,.5)':(nd>0?'#4ADE80':'#FCA5A5');var pStr=pd!=null?'('+(pd>=0?'+':'')+pd.toFixed(1)+'%)':'';return '<span style="color:'+color+';font-weight:600;font-size:'+(sz||11)+'px">'+arrow+' '+nf(nd,fmt)+' '+pStr+'</span>';}
-  function deltaBlock(cur,p,lm,fmt){return '<div style="display:flex;align-items:baseline;font-size:11px;line-height:1.7;gap:8px"><span style="color:rgba(255,255,255,.55);flex-shrink:0;min-width:42px">vs prior</span>'+dk(cur,p,fmt)+'</div><div style="display:flex;align-items:baseline;font-size:11px;line-height:1.7;gap:8px"><span style="color:rgba(255,255,255,.55);flex-shrink:0;min-width:42px">vs LM</span>'+dk(cur,lm,fmt)+'</div>';}
-  function revRow(label,value,cur,p,lm,fmt){return '<div style="display:flex;align-items:baseline;padding:5px 0;font-size:12px;gap:12px"><div style="font-family:var(--font-h);font-size:11px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.06em;width:90px;flex-shrink:0">'+label+'</div><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:#fff;min-width:60px;flex-shrink:0;text-align:left">'+value+'</div><div style="display:flex;flex-direction:column;align-items:flex-start;gap:1px;line-height:1.4"><div>'+dk(cur,p,fmt,10)+'</div><div>'+dk(cur,lm,fmt,10)+'</div></div></div>';}
-  return '<div style="background:linear-gradient(135deg,#020F18 0%,#172C45 60%,#1D4053 100%);border:1px solid var(--mid-navy);border-radius:12px;padding:18px 20px;box-shadow:inset 3px 0 0 var(--teal),0 4px 16px rgba(2,15,24,.15);color:#fff;height:100%;display:flex;flex-direction:column">'
-    +'<div style="font-family:var(--font-h);font-size:11px;color:rgba(255,255,255,.55);margin-bottom:4px;text-transform:uppercase;letter-spacing:.08em">Revenue outcome</div>'
-    +'<div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--teal);margin-bottom:1px;text-transform:uppercase;letter-spacing:.04em">Signed ARR</div>'
-    +'<div style="font-size:11px;color:rgba(255,255,255,.5);margin-bottom:10px">MRR × 12</div>'
-    +'<div style="font-family:var(--font-h);font-size:38px;font-weight:700;color:#fff;line-height:1;margin-bottom:8px">'+f$(signedARR)+'</div>'
-    +'<div style="margin-bottom:12px">'+deltaBlock(signedARR,pSignedARR,pmSignedARR,'$')+'</div>'
-    +'<div style="border-top:1px solid rgba(114,164,191,.25);padding-top:6px">'
-    +revRow('MRR',f$(mrr),mrr,pMRR,pmMRR,'$')
-    +revRow('ROAS',roas!=null?roas.toFixed(2)+'x':'—',roas,pROAS,pmROAS,'x')
-    +revRow('ACV',acv!=null?f$(acv):'—',acv,pACV,pmACV,'$')
-    +revRow('Closed deals',fN(dealCount),dealCount,pDeal,pmDeal,'#')
-    +'</div></div>';
+  // Headline vs-prior / vs-LM line (clear label + colored delta).
+  function hdRow(lbl,cur,p2,fmt){return '<div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;line-height:1.9"><span style="color:rgba(255,255,255,.5);min-width:46px;flex-shrink:0">'+lbl+'</span>'+dk(cur,p2,fmt,11.5)+'</div>';}
+  // Metric row: label + value on the left; prior & LM deltas (each labeled) on the right.
+  function metricRow(label,value,cur,p2,lm,fmt){
+    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;padding:9px 0;border-top:1px solid rgba(114,164,191,.14)">'
+      +'<div style="display:flex;flex-direction:column;gap:1px;min-width:0">'
+        +'<span style="font-family:var(--font-h);font-size:9.5px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.07em">'+label+'</span>'
+        +'<span style="font-family:var(--font-h);font-size:18px;font-weight:700;color:#fff;line-height:1.1;font-variant-numeric:tabular-nums">'+value+'</span>'
+      +'</div>'
+      +'<div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0">'
+        +'<div style="display:flex;align-items:baseline;justify-content:flex-end;gap:6px"><span style="font-size:8px;color:rgba(255,255,255,.38);text-transform:uppercase;letter-spacing:.05em">prior</span>'+dk(cur,p2,fmt,10.5)+'</div>'
+        +'<div style="display:flex;align-items:baseline;justify-content:flex-end;gap:6px"><span style="font-size:8px;color:rgba(255,255,255,.38);text-transform:uppercase;letter-spacing:.05em">LM</span>'+dk(cur,lm,fmt,10.5)+'</div>'
+      +'</div>'
+    +'</div>';
+  }
+  return '<div style="background:linear-gradient(135deg,#020F18 0%,#172C45 58%,#1D4053 100%);border:1px solid var(--mid-navy);border-radius:14px;padding:20px 24px;box-shadow:inset 3px 0 0 var(--teal),0 6px 20px rgba(2,15,24,.18);color:#fff;height:100%">'
+    +'<div style="font-family:var(--font-h);font-size:10.5px;color:rgba(255,255,255,.5);margin-bottom:14px;text-transform:uppercase;letter-spacing:.1em">Revenue Outcome</div>'
+    +'<div style="display:flex;flex-wrap:wrap;gap:18px 36px;align-items:flex-start">'
+      +'<div style="flex:1 1 190px;min-width:180px">'
+        +'<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:3px"><span style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.05em">Signed ARR</span><span style="font-size:10.5px;color:rgba(255,255,255,.45)">MRR × 12</span></div>'
+        +'<div style="font-family:var(--font-h);font-size:40px;font-weight:700;color:#fff;line-height:1.05;margin-bottom:10px;font-variant-numeric:tabular-nums">'+f$(signedARR)+'</div>'
+        +hdRow('vs prior',signedARR,pSignedARR,'$')
+        +hdRow('vs LM',signedARR,pmSignedARR,'$')
+      +'</div>'
+      +'<div style="flex:1.6 1 300px;min-width:260px">'
+        +metricRow('MRR',f$(mrr),mrr,pMRR,pmMRR,'$')
+        +metricRow('ROAS',roas!=null?roas.toFixed(2)+'x':'—',roas,pROAS,pmROAS,'x')
+        +metricRow('ACV',acv!=null?f$(acv):'—',acv,pACV,pmACV,'$')
+        +metricRow('Closed Deals',fN(dealCount),dealCount,pDeal,pmDeal,'#')
+      +'</div>'
+    +'</div>'
+  +'</div>';
 }
 function churnBg(v){return `linear-gradient(90deg,var(--teal) ${v*10}%,var(--teal-30) ${v*10}%)`;}
 function syncSliders(){
@@ -1059,7 +1077,7 @@ function _updateIrfanSkeletonProgress(pct, step){
   const pctEl=document.querySelector('#irfan-c .su-skel-banner-pct');if(pctEl)pctEl.textContent=Math.round(pct)+'%';
 }
 
-async function fd(w,from,to,vsFrom,vsTo){
+async function fd(w,from,to,vsFrom,vsTo,fresh){
   const mySeq=++_fdSeq;
   const ldEl=document.getElementById('loading');
   document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));
@@ -1102,9 +1120,14 @@ async function fd(w,from,to,vsFrom,vsTo){
     else if(isDash){curPct=Math.min(6+si*10,92);_updateDashSkeletonProgress(curPct,steps[Math.min(si,steps.length-1)]);}
     else{const pct=Math.min(5+si*15,92);if(pf)pf.style.width=pct+'%';if(pl)pl.textContent=steps[Math.min(si,steps.length-1)];}
   },2300);
-  const b={password:PW,window:w};if(from)b.from=from;if(to)b.to=to;if(vsFrom)b.vsFrom=vsFrom;if(vsTo)b.vsTo=vsTo;
+  const b={password:PW,window:w};if(from)b.from=from;if(to)b.to=to;if(vsFrom)b.vsFrom=vsFrom;if(vsTo)b.vsTo=vsTo;if(fresh)b.fresh=true;
+  // Hard timeout (90s) so a slow/unresponsive worker can never freeze the UI
+  // (skeleton + dead tabs/Refresh) indefinitely — on timeout we abort, the
+  // catch shows an error, and interaction recovers.
+  const _ac=(typeof AbortController!=='undefined')?new AbortController():null;
+  const _toId=setTimeout(()=>{try{if(_ac)_ac.abort();}catch(e){}},90000);
   try{
-    const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
+    const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b),signal:_ac?_ac.signal:undefined});
     const d=await r.json();
     clearInterval(iv);
     if(mySeq!==_fdSeq){return;}
@@ -1127,7 +1150,7 @@ async function fd(w,from,to,vsFrom,vsTo){
     else if(pl)pl.textContent='Connection error';
     await new Promise(ok=>setTimeout(ok,1000));
   }
-  finally{if(mySeq===_fdSeq){if(!useSkeleton&&ldEl)ldEl.style.display='none';if(!useSkeleton&&pw2)pw2.style.display='none';}}
+  finally{clearTimeout(_toId);if(mySeq===_fdSeq){if(!useSkeleton&&ldEl)ldEl.style.display='none';if(!useSkeleton&&pw2)pw2.style.display='none';}}
   if(mySeq===_fdSeq)renderPage();
   // Kick off Special #1 fetch for the irfan page (in parallel, fire-and-forget).
   // Lives on its own endpoint so it's time-bound to MTD + Last Month and never
@@ -1738,8 +1761,8 @@ async function refreshData(){const btn=document.getElementById('rfb');if(btn){bt
   // never appear and Status stays frozen until a full page reload.
   S.irfan.analyzerCache={};S.analyzer.data=null;
   var _rw=S[AP].win||'mtd';
-  if(_rw==='custom')await fd('custom',S[AP].cFrom,S[AP].cTo,S[AP].cVsFrom,S[AP].cVsTo);
-  else await fd(_rw);
+  if(_rw==='custom')await fd('custom',S[AP].cFrom,S[AP].cTo,S[AP].cVsFrom,S[AP].cVsTo,true);
+  else await fd(_rw,null,null,null,null,true);
   if(AP==='irfan')await fdSpecial1();
 }if(btn){btn.classList.remove('loading');btn.textContent='↻ Refresh';}}
 

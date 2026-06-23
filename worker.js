@@ -4798,8 +4798,25 @@ export default {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
       if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      // Short (60s) response cache. Rapid refreshes / tab-switches otherwise
+      // re-run the full HubSpot fetch chain every time; under repeated use that
+      // rate-limits HubSpot and makes the worker slow/unresponsive, which froze
+      // the dashboard (the fetch never returns) and returned partial data. A
+      // recent payload is served instead. The Refresh button sends fresh:true to
+      // bypass; only successful (non-error) payloads are cached.
+      const _win = body.window || '7d';
+      const _ck = 'apidata_resp_v2_' + _win + '_' + (body.from||'') + '_' + (body.to||'') + '_' + (body.vsFrom||'') + '_' + (body.vsTo||'');
+      if (!body.fresh && env.CONTENT_STORE) {
+        try {
+          const raw = await env.CONTENT_STORE.get(_ck);
+          if (raw) { const p = JSON.parse(raw); if (p && typeof p.t === 'number' && (Date.now() - p.t) < 60000 && p.data) return jr(p.data); }
+        } catch(e) { /* fall through to live compute */ }
+      }
       try {
-        const result = await processRequest(body.window||'7d', body.from||null, body.to||null, env, body.vsFrom||null, body.vsTo||null);
+        const result = await processRequest(_win, body.from||null, body.to||null, env, body.vsFrom||null, body.vsTo||null);
+        if (env.CONTENT_STORE && result && !result.error) {
+          try { const blob = JSON.stringify({ t: Date.now(), data: result }); if (blob.length < 20*1024*1024) await env.CONTENT_STORE.put(_ck, blob, { expirationTtl: 120 }); } catch(e) { /* best-effort */ }
+        }
         return jr(result);
       } catch(err) { console.error('Error:', err); return jr({ error: 'Internal error', detail: (err && (err.message || String(err))) || 'unknown', stack: (err && err.stack ? String(err.stack).split('\n').slice(0,4).join(' | ') : null) }, 500); }
     }
