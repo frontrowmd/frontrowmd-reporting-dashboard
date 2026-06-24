@@ -755,7 +755,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s53';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s54';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2086,12 +2086,11 @@ function renderDash(){
   // exclusion if the new low10K field isn't on the payload yet.
   const _scaleSched=Math.max(0,(em.totalScheduled||em.totalWD||0)-((ltmeta.low10K!=null?ltmeta.low10K:ltmeta.lowTraffic)||0));
   // True CPD row: main card (True CPD) + mini card (regular CPD)
-  // \u2500\u2500 Top row: CPD by web-traffic segment \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-  // CPD = total ad spend (not segmentable by tier) \u00f7 booked demos in each
-  // segment. The three segments partition the full Demos + Webinars population:
-  //   Normal       = web traffic above 10K  (total demos \u2212 pre-launch \u2212 0-10K)
-  //   Small Brands = 0-10K only             ((pre-launch + 0-10K) \u2212 pre-launch)
-  //   Pre-Launch   = pre-launch + webinar   (webinar = the "Very Small" tier)
+  // ── Top row: CPD by web-traffic segment (Normal vs Small Brands) ──
+  // CPD = total ad spend (not segmentable by tier) ÷ booked demos in the
+  // segment. Normal + Small Brands together = the full Demos + Webinars population:
+  //   Normal       = web traffic above 10K (total demos minus pre-launch & 0-10K)
+  //   Small Brands = webinar + pre-launch + 0-10K
   const _wtDW=d.demoTracking||{};
   const _webC=(_wtDW.scheduledByWebTraffic||{})['Very Small']||0;
   const _webP=(_wtDW.scheduledByWebTrafficPrior||{})['Very Small']||0;
@@ -2102,20 +2101,18 @@ function renderDash(){
   const _l10C=(ltmeta.low10K!=null?ltmeta.low10K:(ltmeta.lowTraffic||0));
   const _l10P=(ltmeta.low10KPrior!=null?ltmeta.low10KPrior:ltmeta.lowTrafficPrior);
   const _l10L=(ltmeta.low10KLastMonth!=null?ltmeta.low10KLastMonth:ltmeta.lowTrafficLastMonth);
-  const _plC=ltmeta.lowTraffic||0,_plP=ltmeta.lowTrafficPrior,_plL=ltmeta.lowTrafficLastMonth;
   // Segment demo counts (current / prior / LM); null when the source window is absent.
+  //   Normal       = web traffic above 10K  (total demos - pre-launch - 0-10K)
+  //   Small Brands = webinar + pre-launch + 0-10K  (low10K = pre-launch + 0-10K, plus the Very Small/webinar tier)
   const _nNormC=Math.max(0,_schC-_l10C),_nNormP=(_schP!=null&&_l10P!=null)?Math.max(0,_schP-_l10P):null,_nNormL=(_schL!=null&&_l10L!=null)?Math.max(0,_schL-_l10L):null;
-  const _nSmallC=Math.max(0,_l10C-_plC),_nSmallP=(_l10P!=null&&_plP!=null)?Math.max(0,_l10P-_plP):null,_nSmallL=(_l10L!=null&&_plL!=null)?Math.max(0,_l10L-_plL):null;
-  const _nPreC=_plC+_webC,_nPreP=(_plP!=null)?(_plP+_webP):null,_nPreL=(_plL!=null)?(_plL+_webL):null;
+  const _nSmallC=_l10C+_webC,_nSmallP=(_l10P!=null)?(_l10P+_webP):null,_nSmallL=(_l10L!=null)?(_l10L+_webL):null;
   const _spC=em.totalSpend||0,_spP=em.pTotalSpend,_spL=em.pmTotalSpend;
   const _cpdSeg=(sp,n)=>(n!=null&&n>0&&sp!=null)?sp/n:null;
   const _cNormC=_cpdSeg(_spC,_nNormC),_cNormP=_cpdSeg(_spP,_nNormP),_cNormL=_cpdSeg(_spL,_nNormL);
   const _cSmallC=_cpdSeg(_spC,_nSmallC),_cSmallP=_cpdSeg(_spP,_nSmallP),_cSmallL=_cpdSeg(_spL,_nSmallL);
-  const _cPreC=_cpdSeg(_spC,_nPreC),_cPreP=_cpdSeg(_spP,_nPreP),_cPreL=_cpdSeg(_spL,_nPreL);
-  oh+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">';
-  oh+=statRow('CPD \u00b7 Normal','Total ad spend \u00f7 demos from >10K web-traffic brands',_cNormC!=null?f$(_cNormC):'\u2014',f$(_spC)+' \u00f7 '+fN(_nNormC),_cNormC,_cNormP,_cNormL,'$',{inv:true,noMargin:true,highlighted:true});
-  oh+=statRow('CPD \u00b7 Small Brands','Total ad spend \u00f7 demos from 0-10K web-traffic brands',_cSmallC!=null?f$(_cSmallC):'\u2014',f$(_spC)+' \u00f7 '+fN(_nSmallC),_cSmallC,_cSmallP,_cSmallL,'$',{inv:true,noMargin:true,highlighted:true});
-  oh+=statRow('CPD \u00b7 Pre-Launch','Total ad spend \u00f7 pre-launch + webinar demos',_cPreC!=null?f$(_cPreC):'\u2014',f$(_spC)+' \u00f7 '+fN(_nPreC),_cPreC,_cPreP,_cPreL,'$',{inv:true,noMargin:true,highlighted:true});
+  oh+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">';
+  oh+=statRow('True CPD \u00b7 Normal','Total ad spend \u00f7 demos from >10K web-traffic brands',_cNormC!=null?f$(_cNormC):'\u2014',f$(_spC)+' \u00f7 '+fN(_nNormC),_cNormC,_cNormP,_cNormL,'$',{inv:true,noMargin:true,highlighted:true});
+  oh+=statRow('CPD \u00b7 Small Brands','Total ad spend \u00f7 webinar + pre-launch + 0-10K demos',_cSmallC!=null?f$(_cSmallC):'\u2014',f$(_spC)+' \u00f7 '+fN(_nSmallC),_cSmallC,_cSmallP,_cSmallL,'$',{inv:true,noMargin:true,highlighted:true});
   oh+='</div>';
   // True CPQD row: main card + mini regular CPQD
   oh+='<div style="display:grid;grid-template-columns:1.6fr 1fr;gap:8px;margin-bottom:10px">';
