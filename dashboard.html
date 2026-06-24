@@ -755,7 +755,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s54';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s55';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2106,13 +2106,17 @@ function renderDash(){
   //   Small Brands = webinar + pre-launch + 0-10K  (low10K = pre-launch + 0-10K, plus the Very Small/webinar tier)
   const _nNormC=Math.max(0,_schC-_l10C),_nNormP=(_schP!=null&&_l10P!=null)?Math.max(0,_schP-_l10P):null,_nNormL=(_schL!=null&&_l10L!=null)?Math.max(0,_schL-_l10L):null;
   const _nSmallC=_l10C+_webC,_nSmallP=(_l10P!=null)?(_l10P+_webP):null,_nSmallL=(_l10L!=null)?(_l10L+_webL):null;
+  // All = every demo + webinar (= Normal + Small Brands).
+  const _nAllC=_schC+_webC,_nAllP=(_schP!=null)?(_schP+_webP):null,_nAllL=(_schL!=null)?(_schL+_webL):null;
   const _spC=em.totalSpend||0,_spP=em.pTotalSpend,_spL=em.pmTotalSpend;
   const _cpdSeg=(sp,n)=>(n!=null&&n>0&&sp!=null)?sp/n:null;
   const _cNormC=_cpdSeg(_spC,_nNormC),_cNormP=_cpdSeg(_spP,_nNormP),_cNormL=_cpdSeg(_spL,_nNormL);
   const _cSmallC=_cpdSeg(_spC,_nSmallC),_cSmallP=_cpdSeg(_spP,_nSmallP),_cSmallL=_cpdSeg(_spL,_nSmallL);
-  oh+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">';
+  const _cAllC=_cpdSeg(_spC,_nAllC),_cAllP=_cpdSeg(_spP,_nAllP),_cAllL=_cpdSeg(_spL,_nAllL);
+  oh+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">';
   oh+=statRow('True CPD \u00b7 Normal','Total ad spend \u00f7 demos from >10K web-traffic brands',_cNormC!=null?f$(_cNormC):'\u2014',f$(_spC)+' \u00f7 '+fN(_nNormC),_cNormC,_cNormP,_cNormL,'$',{inv:true,noMargin:true,highlighted:true});
   oh+=statRow('CPD \u00b7 Small Brands','Total ad spend \u00f7 webinar + pre-launch + 0-10K demos',_cSmallC!=null?f$(_cSmallC):'\u2014',f$(_spC)+' \u00f7 '+fN(_nSmallC),_cSmallC,_cSmallP,_cSmallL,'$',{inv:true,noMargin:true,highlighted:true});
+  oh+=statRow('CPD \u00b7 All','Total ad spend \u00f7 all demos + webinars',_cAllC!=null?f$(_cAllC):'\u2014',f$(_spC)+' \u00f7 '+fN(_nAllC),_cAllC,_cAllP,_cAllL,'$',{inv:true,noMargin:true,highlighted:true});
   oh+='</div>';
   // True CPQD row: main card + mini regular CPQD
   oh+='<div style="display:grid;grid-template-columns:1.6fr 1fr;gap:8px;margin-bottom:10px">';
