@@ -755,7 +755,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s55';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s56';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2142,7 +2142,7 @@ function renderDash(){
   // (same colors, segment order Pre-launch → 500K+ clockwise, instant hover
   // tooltips, vs-prior pp-delta badges in the legend).
   if(typeof _renderIrfanWtPieInto==='function'){
-    _renderIrfanWtPieInto('t-webtraffic', d.demoTracking?.scheduledByWebTraffic, 'demos +\nwebinars booked', d.demoTracking?.scheduledByWebTrafficPrior);
+    _renderIrfanWtPieInto('t-webtraffic', (d.demoTracking?.scheduledByWebTrafficTrue||d.demoTracking?.scheduledByWebTraffic),'demos +\nwebinars booked', (d.demoTracking?.scheduledByWebTrafficTruePrior||d.demoTracking?.scheduledByWebTrafficPrior));
   }
 
   // ─── Conversion Funnel ──────────────────────────────
@@ -3747,7 +3747,7 @@ function _renderIrfanWtPieInto(targetId, rawBuckets, centerLabel, priorBuckets, 
     el.addEventListener('mouseleave',function(){el.style.opacity='1';if(tip)tip.style.display='none';});
   });
 }
-function _renderIrfanWtPie(d){_renderIrfanWtPieInto('irfan-wt-pie', d.demoTracking?.scheduledByWebTraffic, 'demos +\nwebinars booked', d.demoTracking?.scheduledByWebTrafficPrior);}
+function _renderIrfanWtPie(d){_renderIrfanWtPieInto('irfan-wt-pie', (d.demoTracking?.scheduledByWebTrafficTrue||d.demoTracking?.scheduledByWebTraffic),'demos +\nwebinars booked', (d.demoTracking?.scheduledByWebTrafficTruePrior||d.demoTracking?.scheduledByWebTrafficPrior));}
 // Single signed-deals pie that reads the current toggle mode and renders into #irfan-signed-pie.
 function _renderIrfanSignedPie(d){
   const mode=S.irfan?.signed2Mode||'mtd';
@@ -5818,6 +5818,8 @@ function renderDemoQuality(){try{
     if(_eqSort==='_timezone'){av=(a._co&&a._co.timezone)||'';bv=(b._co&&b._co.timezone)||'';}
     if(_eqSort==='_pq'){av=a._pq||'';bv=b._pq||'';}
     if(_eqSort==='_webTraffic'){av=wtOrder[(a._ci&&a._ci.webTraffic)||'']||0;bv=wtOrder[(b._ci&&b._ci.webTraffic)||'']||0;}
+    if(_eqSort==='_webinarDate'){av=(a._ci&&a._ci.webinarDate)||'';bv=(b._ci&&b._ci.webinarDate)||'';}
+    if(_eqSort==='_webinar'){av=(a._ci&&a._ci.webinarAttended)?1:0;bv=(b._ci&&b._ci.webinarAttended)?1:0;}
     if(_eqSort==='_storylane'){av=(a._ci&&a._ci.slName)?1:0;bv=(b._ci&&b._ci.slName)?1:0;}
     if(_eqSort==='_slPct'){av=parseFloat((a._ci&&a._ci.slPct)||0);bv=parseFloat((b._ci&&b._ci.slPct)||0);}
     if(_eqSort==='_opens'){av=(a._ci&&a._ci.hasOpen)?1:0;bv=(b._ci&&b._ci.hasOpen)?1:0;}
@@ -5826,9 +5828,9 @@ function renderDemoQuality(){try{
     return _eqSortDir==='asc'?(av>bv?1:av<bv?-1:0):(av<bv?1:av>bv?-1:0);});
   h+='<div style="font-size:10px;color:var(--grey);margin-bottom:8px">Showing '+sorted.length+' of '+filtered.length+'</div>';
   h+='<div class="tbl-resp"><table class="stbl" style="min-width:2500px"><colgroup>';
-  h+='<col style="width:7%"><col style="width:4%"><col style="width:4.5%"><col style="width:4%"><col style="width:4%"><col style="width:3.5%"><col style="width:2.5%"><col style="width:3%"><col style="width:3.5%"><col style="width:3.5%"><col style="width:3.5%"><col style="width:3.5%"><col style="width:7%"><col style="width:5%"><col style="width:2%"><col style="width:2%"><col style="width:2%"><col style="width:2%"><col style="width:2%"><col style="width:5%"><col style="width:5%"><col style="width:6%"><col style="width:6%"><col style="width:2%">';
+  h+='<col style="width:7%"><col style="width:4%"><col style="width:4.5%"><col style="width:4%"><col style="width:4%"><col style="width:3.5%"><col style="width:2.5%"><col style="width:3%"><col style="width:3.5%"><col style="width:3.5%"><col style="width:3.5%"><col style="width:3.5%"><col style="width:4%"><col style="width:2.5%"><col style="width:7%"><col style="width:5%"><col style="width:2%"><col style="width:2%"><col style="width:2%"><col style="width:2%"><col style="width:2%"><col style="width:5%"><col style="width:5%"><col style="width:6%"><col style="width:6%"><col style="width:2%">';
   h+='</colgroup><thead><tr>';
-  var cols=[{k:'dealname',l:'Deal Name'},{k:'website',l:'Website'},{k:'_contact',l:'Contact'},{k:'date_demo_booked',l:'Demo Date'},{k:'createdate',l:'Create Date'},{k:'rescheduled_meeting_date',l:'Resched Date'},{k:'hubspot_owner_id',l:'Rep'},{k:'_pq',l:'PQ'},{k:'dealstage',l:'Stage'},{k:'demo_attendance_status',l:'Attendance'},{k:'demo_qualification_outcome',l:'Qual'},{k:'_webTraffic',l:'Web Traffic'},{k:'_industry',l:'Industry'},{k:'_timezone',l:'Time Zone'},{k:'_opens',l:'Opens'},{k:'_replies',l:'Replies'},{k:'_seq',l:'Seq'},{k:'_storylane',l:'SL'},{k:'_slPct',l:'SL %'},{k:'utm_source',l:'Source'},{k:'utm_medium',l:'Medium'},{k:'utm_campaign',l:'Campaign'},{k:'utm_content',l:'Content'},{k:'',l:''}];
+  var cols=[{k:'dealname',l:'Deal Name'},{k:'website',l:'Website'},{k:'_contact',l:'Contact'},{k:'date_demo_booked',l:'Demo Date'},{k:'createdate',l:'Create Date'},{k:'rescheduled_meeting_date',l:'Resched Date'},{k:'hubspot_owner_id',l:'Rep'},{k:'_pq',l:'PQ'},{k:'dealstage',l:'Stage'},{k:'demo_attendance_status',l:'Attendance'},{k:'demo_qualification_outcome',l:'Qual'},{k:'_webTraffic',l:'Web Traffic'},{k:'_webinarDate',l:'Webinar Date'},{k:'_webinar',l:'Webinar'},{k:'_industry',l:'Industry'},{k:'_timezone',l:'Time Zone'},{k:'_opens',l:'Opens'},{k:'_replies',l:'Replies'},{k:'_seq',l:'Seq'},{k:'_storylane',l:'SL'},{k:'_slPct',l:'SL %'},{k:'utm_source',l:'Source'},{k:'utm_medium',l:'Medium'},{k:'utm_campaign',l:'Campaign'},{k:'utm_content',l:'Content'},{k:'',l:''}];
   for(var ci2=0;ci2<cols.length;ci2++){var c=cols[ci2];var isS=_eqSort===c.k;
   h+='<th onclick="'+(c.k?"_eqSort='"+c.k+"';_eqSortDir=_eqSortDir==='asc'?'desc':'asc';renderDemoQuality()":"")+'">'+c.l+(isS?(_eqSortDir==='asc'?' ▲':' ▼'):'')+'</th>';}
   h+='</tr></thead><tbody>';
@@ -5859,6 +5861,9 @@ function renderDemoQuality(){try{
     h+='<td style="text-align:center">'+qoBadge(row.demo_qualification_outcome)+'</td>';
     var wtRaw=(ciR.webTraffic)||'';var wtLabel=wtLabels[wtRaw]||wtRaw||'—';var wtColor=wtColors[wtRaw]||'#9CA3AF';
     h+='<td style="text-align:center">'+(wtRaw?'<span class="pill" style="background:'+wtColor+'18;color:'+wtColor+'">'+wtLabel+'</span>':'<span style="color:#ccc">—</span>')+'</td>';
+    var _wbDate=(ciR.webinarDate||'').split('T')[0]||'';
+    h+='<td style="font-size:10px;color:'+(_wbDate?'var(--navy)':'#ccc')+'">'+(_wbDate||'—')+'</td>';
+    h+='<td style="text-align:center">'+(ciR.webinarAttended?'<span style="color:#9333EA;font-weight:700">✓</span>':'')+'</td>';
     h+='<td style="font-size:10px" title="'+industry+'">'+(industry.length>24?industry.substring(0,24)+'…':industry||'—')+'</td>';
     h+='<td style="font-size:9px" title="'+tz+'">'+(tz||'—')+'</td>';
     h+='<td style="text-align:center">'+(ciR.hasOpen?'<span style="color:#1565C0;font-weight:700">✓</span>':'<span style="color:#ccc">—</span>')+'</td>';
@@ -5892,7 +5897,7 @@ function renderDemoQuality(){try{
   requestAnimationFrame(function(){
     // Demos Booked by Web-Traffic Range donut — reuse the Irfan/Detailed renderer.
     if(typeof _renderIrfanWtPieInto==='function'){
-      _renderIrfanWtPieInto('dq-webtraffic', d.demoTracking&&d.demoTracking.scheduledByWebTraffic, 'demos booked', d.demoTracking&&d.demoTracking.scheduledByWebTrafficPrior);
+      _renderIrfanWtPieInto('dq-webtraffic', d.demoTracking&&(d.demoTracking.scheduledByWebTrafficTrue||d.demoTracking.scheduledByWebTraffic), 'demos booked', d.demoTracking&&(d.demoTracking.scheduledByWebTrafficTruePrior||d.demoTracking.scheduledByWebTrafficPrior));
     }
     drawStackedBar('eq-byday',byDay,repIds,_rcm,null);
     drawStackedBar('eq-bydow',byDOW,repIds,_rcm,['Mon','Tue','Wed','Thu','Fri']);

@@ -653,7 +653,8 @@ async function fetchContactsForDQ(token, from, to) {
        'hs_sales_email_last_opened', 'hs_sales_email_last_clicked', 'hs_sales_email_last_replied',
        'notes_last_contacted', 'hs_sequences_is_enrolled', 'hs_latest_sequence_enrolled',
        'hs_latest_sequence_enrolled_date',
-       'average_monthly_web_traffic', 'sl_last_demo_name', 'sl_last_demo_completion_percent']);
+       'average_monthly_web_traffic', 'sl_last_demo_name', 'sl_last_demo_completion_percent',
+       'webinar_date', 'webinar_has_attended']);
 }
 
 // Pipeline deals (guide Section 4 — multiple filterGroups OR)
@@ -932,7 +933,8 @@ function processScheduledContacts(contacts) {
   const byDay = {};
   const byDayScale = {};         // per-day count excluding pre-launch
   const byDayScale10KPlus = {};  // per-day count excluding pre-launch AND 0-10K (Irfan-only stricter view)
-  const byWebTraffic = {};       // count by raw web-traffic tier value (dashboard maps to display labels)
+  const byWebTraffic = {};       // count by raw web-traffic tier value (Livestorm → "Very Small"/Webinar) — webinar count for CPD cards
+  const byWebTrafficTrue = {};   // count by the contact's ACTUAL web-traffic tier (webinar regs counted in their real tier, NOT lumped into "Webinar") — drives the Demos+Webinars pie
   let lowTrafficCount = 0;       // contacts in the pre-launch tier
   let low10KCount = 0;           // contacts in pre-launch OR 0-10K tier (denominator for the Irfan stricter chart)
   let dailyTotal = 0;            // total excluding Very Small (= Webinar tier)
@@ -968,6 +970,11 @@ function processScheduledContacts(contacts) {
     const isVerySmall = wt === 'very small' || isLivestormWebinar;
     const tierKey = isLivestormWebinar ? 'Very Small' : (wtRaw || '(none)');
     byWebTraffic[tierKey] = (byWebTraffic[tierKey]||0) + 1;
+    // True-tier bucket for the pie: use the contact's real web-traffic tier so
+    // pre-launch / 0-10K brands that funnel through webinars land in their own
+    // slice instead of the catch-all "Webinar" (Very Small) slice.
+    const trueTier = wtRaw || '(none)';
+    byWebTrafficTrue[trueTier] = (byWebTrafficTrue[trueTier]||0) + 1;
     if (isVerySmall) continue;
     const d = new Date(cd);
     const o = etOff(d);
@@ -1013,7 +1020,7 @@ function processScheduledContacts(contacts) {
     }
   }
   return {
-    total: dailyTotal, byDay, byDayScale, byDayScale10KPlus, byWebTraffic,
+    total: dailyTotal, byDay, byDayScale, byDayScale10KPlus, byWebTraffic, byWebTrafficTrue,
     lowTrafficCount, low10KCount, lowTrafficCompanies,
     // Weekday-only mirrors of total / low-tier counts, exposed so prior &
     // last-month deltas in the Weekday Avg tile are apples-to-apples (only
@@ -2002,6 +2009,10 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
     scheduledByWebTraffic: c.scheduled.byWebTraffic,
     scheduledByWebTrafficPrior: prior ? p.scheduled?.byWebTraffic || null : null,
     scheduledByWebTrafficLastMonth: priorMonth ? pm.scheduled?.byWebTraffic || null : null,
+    // True-tier breakdown (webinar regs counted by their real web-traffic tier) — drives the pie.
+    scheduledByWebTrafficTrue: c.scheduled.byWebTrafficTrue,
+    scheduledByWebTrafficTruePrior: prior ? p.scheduled?.byWebTrafficTrue || null : null,
+    scheduledByWebTrafficTrueLastMonth: priorMonth ? pm.scheduled?.byWebTrafficTrue || null : null,
     // Weekday-only mirrors of total / scale / scale10KPlus, for current
     // + prior + last-month. The dashboard's "Weekday Avg" tile divides
     // these by the count of weekdays in the corresponding window so the
@@ -2136,7 +2147,7 @@ function buildPeriodData(period, windsorRows, linkedInDemos, ga4Rows, scheduledC
   const scheduledOut = {
     total: scheduled.total, byDay: scheduled.byDay,
     byDayScale: scheduled.byDayScale, byDayScale10KPlus: scheduled.byDayScale10KPlus,
-    byWebTraffic: scheduled.byWebTraffic,
+    byWebTraffic: scheduled.byWebTraffic, byWebTrafficTrue: scheduled.byWebTrafficTrue,
     lowTrafficCount: scheduled.lowTrafficCount, low10KCount: scheduled.low10KCount,
     // Weekday-only mirrors — buildResponse forwards these as
     // scheduledWeekdayTotal{,Prior,LastMonth} so the Weekday Avg deltas
@@ -2590,6 +2601,8 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
       webTraffic: p.average_monthly_web_traffic || '',
       slName: p.sl_last_demo_name || '',
       slPct: p.sl_last_demo_completion_percent || '',
+      webinarDate: p.webinar_date || '',
+      webinarAttended: (p.webinar_has_attended || '').toString().toLowerCase() === 'true',
     };
     if (company) contactInfoMap[company] = info;
     const personalDomains = ['gmail.com','yahoo.com','hotmail.com','aol.com','outlook.com','icloud.com','protonmail.com'];
@@ -4829,7 +4842,7 @@ export default {
       // recent payload is served instead. The Refresh button sends fresh:true to
       // bypass; only successful (non-error) payloads are cached.
       const _win = body.window || '7d';
-      const _ck = 'apidata_resp_v3_' + _win + '_' + (body.from||'') + '_' + (body.to||'') + '_' + (body.vsFrom||'') + '_' + (body.vsTo||'');
+      const _ck = 'apidata_resp_v4_' + _win + '_' + (body.from||'') + '_' + (body.to||'') + '_' + (body.vsFrom||'') + '_' + (body.vsTo||'');
       if (!body.fresh && env.CONTENT_STORE) {
         try {
           const raw = await env.CONTENT_STORE.get(_ck);
