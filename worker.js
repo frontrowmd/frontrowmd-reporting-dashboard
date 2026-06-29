@@ -649,12 +649,34 @@ async function fetchContactsForDQ(token, from, to) {
       { propertyName: 'date_demo_booked', operator: 'GTE', value: String(toMsUTC(from)) },
       { propertyName: 'date_demo_booked', operator: 'LTE', value: String(toMsUTC(to, true)) },
     ],
+  }, {
+    // Webinar registrants created in the window (have webinar_date) so the Demo
+    // Quality table's webinar rows can match their contact (Webinar Date / Webinar columns).
+    filters: [
+      { propertyName: 'createdate', operator: 'GTE', value: String(toMsET(from)) },
+      { propertyName: 'createdate', operator: 'LTE', value: String(toMsET(to, true)) },
+      { propertyName: 'webinar_date', operator: 'HAS_PROPERTY' },
+    ],
   }], ['date_demo_booked', 'firstname', 'lastname', 'email', 'website', 'company', 'role_at_company',
        'hs_sales_email_last_opened', 'hs_sales_email_last_clicked', 'hs_sales_email_last_replied',
        'notes_last_contacted', 'hs_sequences_is_enrolled', 'hs_latest_sequence_enrolled',
        'hs_latest_sequence_enrolled_date',
        'average_monthly_web_traffic', 'sl_last_demo_name', 'sl_last_demo_completion_percent',
        'webinar_date', 'webinar_has_attended']);
+}
+
+// Webinar-stage deals (Webinar Registered / Webinar Attended) created in the
+// window. They have no demo date so they're NOT caught by fetchPipelineDeals;
+// surfaced as extra rows on the Demo Quality TABLE only (kept out of demo metrics).
+async function fetchWebinarStageDeals(token, from, to) {
+  return hsSearch(token, 'deals', [{
+    filters: [
+      { propertyName: 'dealstage', operator: 'IN', values: ['3741686470', '3741686471'] },
+      { propertyName: 'createdate', operator: 'GTE', value: String(toMsET(from)) },
+      { propertyName: 'createdate', operator: 'LTE', value: String(toMsET(to, true)) },
+    ],
+  }], ['dealname','dealstage','date_demo_booked','demo_attendance_status','demo_qualification_outcome','rescheduled_meeting_date','disqualification_reason','createdate','hs_createdate','hubspot_owner_id','utm_source','utm_medium','utm_campaign','utm_content','brand_status','average_monthly_web_traffic__cloned_'],
+  200, [{ propertyName: 'createdate', direction: 'DESCENDING' }], 10);
 }
 
 // Pipeline deals (guide Section 4 — multiple filterGroups OR)
@@ -2574,6 +2596,9 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   }
   const cPipe = await fetchPipelineDeals(hsToken, current.from, pipeEndDate);
   console.log(`cPipe: ${cPipe.length} deals (${current.from} to ${pipeEndDate})`);
+  // Webinar-stage deals (no demo date) — extra Demo Quality table rows only.
+  const cWebinar = await fetchWebinarStageDeals(hsToken, current.from, pipeEndDate);
+  console.log(`cWebinar: ${cWebinar.length} webinar-stage deals`);
   // Fetch contacts for Demo Quality — website + engagement data matched by company name
   const dqContacts = await fetchContactsForDQ(hsToken, current.from, pipeEndDate);
   console.log(`dqContacts: ${dqContacts.length} contacts for DQ matching`);
@@ -2811,9 +2836,7 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   currentData.marketingFunnel = buildMarketingFunnel(monthlyAdSpend, allTimeQualifiedForFunnel, filterActiveBrands(allTimeClosedWon));
 
   // ── Demo Quality page: use cPipe directly (already fetched through end of month above) ──
-  const dqDealsRaw = filterActiveBrands(cPipe);
-  
-  const demoQualityDeals = dqDealsRaw.map(d => {
+  const _mapDQDeal = (d) => {
     const p = d.properties || {};
     return {
       id: String(d.id),
@@ -2837,11 +2860,20 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
       wtCloned: p.average_monthly_web_traffic__cloned_ || '',
       website: '',
     };
-  });
+  };
+  const demoQualityDeals = filterActiveBrands(cPipe).map(_mapDQDeal);
   console.log(`demoQualityDeals: ${demoQualityDeals.length}`);
+
+  // Webinar-stage deals (Webinar Registered / Attended, no demo date) — extra
+  // rows for the Demo Quality TABLE only (kept out of demo metrics). Deduped
+  // against the demo deals by id.
+  const _dqIds = new Set(demoQualityDeals.map(x => x.id));
+  const webinarDeals = filterActiveBrands(cWebinar || []).map(_mapDQDeal).filter(x => !_dqIds.has(x.id));
+  console.log(`webinarDeals: ${webinarDeals.length}`);
 
   const resp = buildResponse(currentData, priorData, priorMonthData, isAllTime, ownerMap, windowType);
   resp.demoQualityDeals = demoQualityDeals;
+  resp.webinarDeals = webinarDeals;
   resp.contactInfoMap = contactInfoMap;
   resp.companyInfoMap = companyInfoMap;
 
@@ -4842,7 +4874,7 @@ export default {
       // recent payload is served instead. The Refresh button sends fresh:true to
       // bypass; only successful (non-error) payloads are cached.
       const _win = body.window || '7d';
-      const _ck = 'apidata_resp_v4_' + _win + '_' + (body.from||'') + '_' + (body.to||'') + '_' + (body.vsFrom||'') + '_' + (body.vsTo||'');
+      const _ck = 'apidata_resp_v5_' + _win + '_' + (body.from||'') + '_' + (body.to||'') + '_' + (body.vsFrom||'') + '_' + (body.vsTo||'');
       if (!body.fresh && env.CONTENT_STORE) {
         try {
           const raw = await env.CONTENT_STORE.get(_ck);

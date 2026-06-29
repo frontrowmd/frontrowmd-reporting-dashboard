@@ -755,7 +755,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s56';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s57';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -5169,9 +5169,9 @@ function renderDemoQuality(){try{
   var el=document.getElementById('dq-c');
   var deals=d.demoQualityDeals||[],ownerMap=d.ownerMap||{},ciMap=d.contactInfoMap||{},coMap=d.companyInfoMap||{};
 
-  // Match deals to contacts/companies (same fuzzy logic as pre-demo)
-  for(var i=0;i<deals.length;i++){
-    var dn=deals[i].dealname.trim().toLowerCase();
+  // Match a deal row to its contact/company/PQ (same fuzzy logic as pre-demo).
+  function _eqEnrich(row){
+    var dn=(row.dealname||'').trim().toLowerCase();
     var dnClean=dn.replace(/[^a-z0-9]/g,'');
     var ci=ciMap[dn]||null;
     if(!ci){var keys=Object.keys(ciMap);for(var ki=0;ki<keys.length;ki++){
@@ -5179,7 +5179,7 @@ function renderDemoQuality(){try{
       if(domRoot.length>2&&(dnClean.indexOf(domRoot)>=0||domRoot.indexOf(dnClean)>=0)){ci=ciMap[keys[ki]];break;}}
       else{var ciKey=keys[ki].replace(/[^a-z0-9]/g,'');if(ciKey.length>2&&(dnClean.indexOf(ciKey)>=0||ciKey.indexOf(dnClean)>=0)){ci=ciMap[keys[ki]];break;}}
     }}
-    if(ci){deals[i]._ci=ci;deals[i]._eng=ci;if(ci.website&&!deals[i].website)deals[i].website=ci.website;}
+    if(ci){row._ci=ci;row._eng=ci;if(ci.website&&!row.website)row.website=ci.website;}
     var domain='';
     if(ci&&ci.website){var ws=ci.website.replace(/^https?:\/\//,'').replace(/^www\./,'').replace(/\/$/,'');domain=ws.split('/')[0].toLowerCase();}
     var co=domain?coMap[domain]:null;
@@ -5188,9 +5188,13 @@ function renderDemoQuality(){try{
       if(coName.length>2&&(dnClean.indexOf(coName)>=0||coName.indexOf(dnClean)>=0)){co=coMap[coKeys[cki]];break;}}
       else{var coD=coKeys[cki].replace(/[^a-z0-9]/g,'');if(coD.length>2&&(dnClean===coD||dnClean.indexOf(coD)>=0)){co=coMap[coKeys[cki]];break;}}
     }}
-    deals[i]._co=co;if(!deals[i]._eng)deals[i]._eng=null;
-    var pqEntry=_dqPqMap[deals[i].id];deals[i]._pq=pqEntry?(typeof pqEntry==='string'?pqEntry:pqEntry.pq||''):'';deals[i]._pqReason=pqEntry&&typeof pqEntry==='object'?pqEntry.reason||'':'';
+    row._co=co;if(!row._eng)row._eng=null;
+    var pqEntry=_dqPqMap[row.id];row._pq=pqEntry?(typeof pqEntry==='string'?pqEntry:pqEntry.pq||''):'';row._pqReason=pqEntry&&typeof pqEntry==='object'?pqEntry.reason||'':'';
   }
+  for(var i=0;i<deals.length;i++){_eqEnrich(deals[i]);}
+  // Webinar-stage deals (no demo date) — extra table rows; enrich the same way.
+  var _eqWebinarDeals=d.webinarDeals||[];
+  for(var _wei=0;_wei<_eqWebinarDeals.length;_wei++){_eqEnrich(_eqWebinarDeals[_wei]);}
 
   // No global rep/date filter — slicing is handled by table-level filters below.
   var filtered=deals;
@@ -5601,7 +5605,7 @@ function renderDemoQuality(){try{
   var wtOrder={'Very Small':0,'Pre-launch / just launching':1,'0-10K monthly web visitors':2,'10-25K monthly web visitors':3,'25-50K monthly web visitors':4,'50-100K monthly web visitors':5,'100-200K monthly web visitors':6,'200-500K monthly web visitors':7,'500K+ monthly web visitors':8};
   var tzShort=function(tz){return(tz||'').replace(/^utc/,'UTC').replace(/_/g,' ').replace(/\(.+?\)/,'').trim();};
 
-  var sharedFiltered=filtered.filter(function(dd){
+  function _eqRowMatch(dd){
     if(_eqPqFilter!=='all'){if(_eqPqFilter==='—'){if(dd._pq)return false;}else{if(dd._pq!==_eqPqFilter)return false;}}
     if(_eqStageFilter!=='all'&&dd.dealstage!==_eqStageFilter)return false;
     if(_eqAttFilter!=='all'){var alF=ATT_LABELS[dd.demo_attendance_status]||(dd.demo_attendance_status||'Blank');if(alF!==_eqAttFilter)return false;}
@@ -5618,7 +5622,8 @@ function renderDemoQuality(){try{
       if(_eqDateTo&&_eqDf>_eqDateTo)return false;
     }
     return true;
-  });
+  }
+  var sharedFiltered=filtered.filter(_eqRowMatch);
 
   // ── Rep × Web Traffic Tier matrix ────────────────────────────────────────
   // Fairness audit: each cell shows count + that rep's share of its own row.
@@ -5802,7 +5807,10 @@ function renderDemoQuality(){try{
   // ── Table ──
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:20px 24px">';
   h+='<div style="display:flex;align-items:center;margin-bottom:12px"><div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">Demos</div><div style="font-size:10px;color:var(--grey);margin-left:8px">'+sharedFiltered.length+' of '+filtered.length+'</div></div>';
-  var tblFiltered=sharedFiltered;
+  // Table also includes webinar-stage rows (no demo date), filtered the same
+  // way. They're table-only — sharedFiltered (used by charts/KPIs/attribution)
+  // stays demos-only so those metrics aren't skewed.
+  var tblFiltered=sharedFiltered.concat((_eqWebinarDeals||[]).filter(_eqRowMatch));
 
   // Sort
   var sorted=tblFiltered.slice().sort(function(a,b){
@@ -5826,7 +5834,7 @@ function renderDemoQuality(){try{
     if(_eqSort==='_replies'){av=(a._ci&&a._ci.hasReply)?1:0;bv=(b._ci&&b._ci.hasReply)?1:0;}
     if(_eqSort==='_seq'){av=(a._ci&&a._ci.inSequence)?1:0;bv=(b._ci&&b._ci.inSequence)?1:0;}
     return _eqSortDir==='asc'?(av>bv?1:av<bv?-1:0):(av<bv?1:av>bv?-1:0);});
-  h+='<div style="font-size:10px;color:var(--grey);margin-bottom:8px">Showing '+sorted.length+' of '+filtered.length+'</div>';
+  h+='<div style="font-size:10px;color:var(--grey);margin-bottom:8px">Showing '+sorted.length+' of '+(filtered.length+(_eqWebinarDeals||[]).length)+'</div>';
   h+='<div class="tbl-resp"><table class="stbl" style="min-width:2500px"><colgroup>';
   h+='<col style="width:7%"><col style="width:4%"><col style="width:4.5%"><col style="width:4%"><col style="width:4%"><col style="width:3.5%"><col style="width:2.5%"><col style="width:3%"><col style="width:3.5%"><col style="width:3.5%"><col style="width:3.5%"><col style="width:3.5%"><col style="width:4%"><col style="width:2.5%"><col style="width:7%"><col style="width:5%"><col style="width:2%"><col style="width:2%"><col style="width:2%"><col style="width:2%"><col style="width:2%"><col style="width:5%"><col style="width:5%"><col style="width:6%"><col style="width:6%"><col style="width:2%">';
   h+='</colgroup><thead><tr>';
