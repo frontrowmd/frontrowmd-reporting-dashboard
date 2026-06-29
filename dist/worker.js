@@ -4874,7 +4874,7 @@ export default {
       // recent payload is served instead. The Refresh button sends fresh:true to
       // bypass; only successful (non-error) payloads are cached.
       const _win = body.window || '7d';
-      const _ck = 'apidata_resp_v5_' + _win + '_' + (body.from||'') + '_' + (body.to||'') + '_' + (body.vsFrom||'') + '_' + (body.vsTo||'');
+      const _ck = 'apidata_resp_v6_' + _win + '_' + (body.from||'') + '_' + (body.to||'') + '_' + (body.vsFrom||'') + '_' + (body.vsTo||'');
       if (!body.fresh && env.CONTENT_STORE) {
         try {
           const raw = await env.CONTENT_STORE.get(_ck);
@@ -4883,7 +4883,16 @@ export default {
       }
       try {
         const result = await processRequest(_win, body.from||null, body.to||null, env, body.vsFrom||null, body.vsTo||null);
-        if (env.CONTENT_STORE && result && !result.error) {
+        // Only cache COMPLETE responses. A transient partial fetch (subrequest
+        // budget / HubSpot rate limit) yields blank current metrics (True CPD)
+        // and/or missing prior data; caching that would persist blank cards and
+        // dead vs-prior / vs-LM deltas across every page for the full TTL.
+        // Healthy = current True CPD present AND, when a prior window exists,
+        // its prior comparison present. Degraded responses are still returned
+        // (so the user sees something) but NOT cached, so the next load retries.
+        const _tc = result && result.executiveSummary && result.executiveSummary.trueCpd;
+        const _healthy = result && !result.error && _tc && _tc.value != null && (!result.priorPeriod || _tc.sameTimePrior != null);
+        if (env.CONTENT_STORE && _healthy) {
           try { const blob = JSON.stringify({ t: Date.now(), data: result }); if (blob.length < 20*1024*1024) await env.CONTENT_STORE.put(_ck, blob, { expirationTtl: 120 }); } catch(e) { /* best-effort */ }
         }
         return jr(result);
