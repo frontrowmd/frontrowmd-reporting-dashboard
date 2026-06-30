@@ -755,7 +755,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s60';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s61';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2651,6 +2651,7 @@ window.irfanCreTagF=function(tag){S.irfan.metaCreTagF=tag;if(_irfanMetaD)_render
 window.irfanCreFlagF=function(flag){S.irfan.metaCreFlagF=flag;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
 window.irfanCampTagF=function(tag){S.irfan.metaCampTagF=tag;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
 window.irfanCampFlagF=function(flag){S.irfan.metaCampFlagF=flag;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
+window.irfanCampStatusF=function(st){S.irfan.metaCampStatusF=st;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
 // Switch the active ad channel on the Detailed Dashboard. Updates section
 // titles + colored dots + the active tab pill, then re-renders the 3 tables.
 window.dashSetAdChannel=function(ch){
@@ -2980,6 +2981,7 @@ function _renderIrfanMetaTables(d, channel){
   if(!S.irfan.metaCreFlagF)S.irfan.metaCreFlagF='all';
   if(!S.irfan.metaCampTagF)S.irfan.metaCampTagF='all';
   if(!S.irfan.metaCampFlagF)S.irfan.metaCampFlagF='all';
+  if(!S.irfan.metaCampStatusF)S.irfan.metaCampStatusF='all';
   if(S.irfan.metaAllExpanded==null)S.irfan.metaAllExpanded=false;
   // Ad Sets table state — mirrors the campaign table's sort/filter/expand set.
   if(!S.irfan.metaAdsetSort)S.irfan.metaAdsetSort={col:'cpd',dir:'desc'};
@@ -2989,7 +2991,7 @@ function _renderIrfanMetaTables(d, channel){
   if(S.irfan.metaAdsetAllExpanded==null)S.irfan.metaAdsetAllExpanded=false;
   const campSort=S.irfan.metaCampSort,creSort=S.irfan.metaCreSort,audSort=S.irfan.metaAudSort,stageF=S.irfan.metaCampStageF;
   const tagF=S.irfan.metaCreTagF,flagF=S.irfan.metaCreFlagF;
-  const campTagF=S.irfan.metaCampTagF,campFlagF=S.irfan.metaCampFlagF;
+  const campTagF=S.irfan.metaCampTagF,campFlagF=S.irfan.metaCampFlagF,campStatusF=S.irfan.metaCampStatusF;
   const fatigueMap=meta.fatigueMap||{};
 
   // Per-creative flag lookup (pause + fatigue + naming) — built UP HERE so
@@ -3217,9 +3219,11 @@ function _renderIrfanMetaTables(d, channel){
   if(typeof scoreCreatives==='function'&&campRows.length>0){
     try{scoreCreatives(campRows);}catch(e){console.warn('scoreCreatives(campaigns) failed:',e);}
   }
-  // Apply campaign-level Tag + Flag filters (mirrors the creative table's
-  // tagF/flagF). Filter BEFORE the heatmap arrays + sort so heatmap shading
-  // reflects only what's visible.
+  // Apply campaign-level Status + Tag + Flag filters (mirrors the creative
+  // table's tagF/flagF). Filter BEFORE the heatmap arrays + sort so heatmap
+  // shading reflects only what's visible. Status uses the rolled-up c.status
+  // (ACTIVE if any nested ad set is delivering); 'paused' = anything not active.
+  if(campStatusF!=='all')campRows=campRows.filter(c=>{const act=c.status==='ACTIVE'||(!c.status&&(c.spend||0)>0);return campStatusF==='active'?act:!act;});
   if(campTagF!=='all')campRows=campRows.filter(c=>c._tag===campTagF);
   if(campFlagF!=='all')campRows=campRows.filter(c=>{
     const fc=c._flagCounts||{pause:0,fatigue:0,naming:0};
@@ -3246,7 +3250,11 @@ function _renderIrfanMetaTables(d, channel){
   // the precomputed aggregate flag counts (any nested creative).
   const _campTagPills=[{k:'all',l:'All',c:'var(--grey)'},{k:'WINNER',l:'Winner',c:'#2ecc71'},{k:'TESTING',l:'Testing',c:'#f39c12'},{k:'LOSER',l:'Loser',c:'#e74c3c'}];
   const _campFlagPills=[{k:'all',l:'All',c:'var(--grey)'},{k:'any',l:'Any flag',c:'var(--navy)'},{k:'pause',l:'PAUSE',c:'#DC2626'},{k:'fatigue',l:'Fatigue',c:'#e67e22'},{k:'naming',l:'Naming',c:'#7C3AED'}];
-  campH+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap"><span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;margin-right:2px">Tag</span>';
+  const _campStatusPills=[{k:'all',l:'All',c:'var(--grey)'},{k:'active',l:'Active',c:'#16A34A'},{k:'paused',l:'Paused',c:'#94A3B8'}];
+  campH+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap"><span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;margin-right:2px">Status</span>';
+  for(const p of _campStatusPills){const isA=campStatusF===p.k;campH+='<button onclick="irfanCampStatusF(\''+p.k+'\')" style="padding:5px 12px;border-radius:50px;font-size:10px;font-weight:'+(isA?'700':'500')+';border:'+(isA?'none':'1px solid '+p.c)+';background:'+(isA?p.c:'transparent')+';color:'+(isA?'#fff':p.c)+';cursor:pointer;font-family:var(--font-h)">'+p.l+'</button>';}
+  campH+='<div style="width:1px;height:20px;background:var(--border);margin:0 4px"></div>';
+  campH+='<span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;margin-right:2px">Tag</span>';
   for(const p of _campTagPills){const isA=campTagF===p.k;campH+='<button onclick="irfanCampTagF(\''+p.k+'\')" style="padding:5px 12px;border-radius:50px;font-size:10px;font-weight:'+(isA?'700':'500')+';border:'+(isA?'none':'1px solid '+p.c)+';background:'+(isA?p.c:'transparent')+';color:'+(isA?'#fff':p.c)+';cursor:pointer;font-family:var(--font-h)">'+p.l+'</button>';}
   campH+='<div style="width:1px;height:20px;background:var(--border);margin:0 4px"></div>';
   campH+='<span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;margin-right:2px">Flags</span>';

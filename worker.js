@@ -3079,8 +3079,9 @@ const AZ_CONNECTORS = {
   tiktok:   { connector:'tiktok',     demoField:'conversions', hasFreq:true, thumbField:null },
 };
 
+const AZ_PAGE_SIZE = 5000;
 async function azWindsorFetch(apiKey, connector, from, to, fields) {
-  const url = `https://connectors.windsor.ai/${connector}?api_key=${apiKey}&date_from=${from}&date_to=${to}&fields=${fields}&page_size=5000`;
+  const url = `https://connectors.windsor.ai/${connector}?api_key=${apiKey}&date_from=${from}&date_to=${to}&fields=${fields}&page_size=${AZ_PAGE_SIZE}`;
   for (let i = 0; i < 3; i++) {
     try {
       const r = await fetch(url);
@@ -3089,6 +3090,35 @@ async function azWindsorFetch(apiKey, connector, from, to, fields) {
     } catch(e) { if (i < 2) await sleep(1000*(i+1)); else { console.error(`Az Windsor ${connector}:`, e.message); return []; } }
   }
   return [];
+}
+
+// Windsor's connectors API has NO offset/page pagination — one request is capped
+// at page_size rows (5000). For high-cardinality fetches (Meta creatives come
+// back at date × ad × placement × ad-set grain — ~600 rows/DAY) a multi-week
+// window blows past 5000 and Windsor silently drops the overflow. It returns
+// earliest dates first, so recently-launched creatives disappear from the tables
+// entirely (the reported "missing creative" bug). Fetch in date sub-ranges and,
+// whenever a range comes back AT the cap (= truncated), bisect it and retry — so
+// coverage self-adjusts to however many rows/day the account actually has.
+async function azWindsorFetchAll(apiKey, connector, from, to, fields, chunkDays = 30) {
+  const addDays = (ds, n) => { const d = new Date(ds + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return fmt(d); };
+  const daysBetween = (a, b) => Math.round((new Date(b + 'T00:00:00Z') - new Date(a + 'T00:00:00Z')) / 86400000);
+  const out = [];
+  const stack = [];
+  let s = from, seed = 0;
+  while (s <= to && seed++ < 800) { let e = addDays(s, chunkDays - 1); if (e > to) e = to; stack.push([s, e]); s = addDays(e, 1); }
+  let calls = 0;
+  while (stack.length && calls++ < 800) {
+    const [a, b] = stack.pop();
+    const rows = await azWindsorFetch(apiKey, connector, a, b, fields);
+    if (rows.length >= AZ_PAGE_SIZE && a !== b) {
+      const mid = addDays(a, Math.floor(daysBetween(a, b) / 2));
+      stack.push([a, mid], [addDays(mid, 1), b]);  // truncated → split & retry
+    } else {
+      out.push(...rows);
+    }
+  }
+  return out;
 }
 
 // Normalize campaign status across connectors
@@ -3125,11 +3155,11 @@ async function fetchAzCampaigns(apiKey, from, to) {
   const base = 'date,campaign_name,spend,clicks,impressions';
   // LinkedIn per-connector endpoint uses 'campaign' not 'campaign_name'
   const [fbRows, gaRows, liCampRows, liDemoTotal, ttRows] = await Promise.all([
-    azWindsorFetch(apiKey, 'facebook', from, to, base+',conversions_submit_application_total,frequency,effective_status'+META_LEAD_FIELDS),
-    azWindsorFetch(apiKey, 'google_ads', from, to, base+',conversions,campaign_status'),
-    azWindsorFetch(apiKey, 'linkedin', from, to, 'date,campaign,spend,clicks,impressions,campaign_status'),
+    azWindsorFetchAll(apiKey, 'facebook', from, to, base+',conversions_submit_application_total,frequency,effective_status'+META_LEAD_FIELDS),
+    azWindsorFetchAll(apiKey, 'google_ads', from, to, base+',conversions,campaign_status'),
+    azWindsorFetchAll(apiKey, 'linkedin', from, to, 'date,campaign,spend,clicks,impressions,campaign_status'),
     fetchLinkedInDemos(apiKey, from, to),
-    azWindsorFetch(apiKey, 'tiktok', from, to, base+',conversions,frequency,campaign_status'),
+    azWindsorFetchAll(apiKey, 'tiktok', from, to, base+',conversions,frequency,campaign_status'),
   ]);
 
   function aggRows(rows, ch, cfg, filterFn, demoFilterFn) {
@@ -3253,7 +3283,7 @@ async function fetchAzCreatives(apiKey, from, to) {
       // Leads (Form) toward Demos at the CREATIVE level too — Windsor returns
       // these per ad_name, so each creative gets its own lead count.
       const lead = ch === 'meta' ? META_LEAD_FIELDS : '';
-      promises.push(azWindsorFetch(apiKey, cfg.connector, from, to, base + extra + freq + video + placement + status + adset + lead).catch(e => { console.error(`Creative fetch ${ch}:`, e.message); return []; }));
+      promises.push(azWindsorFetchAll(apiKey, cfg.connector, from, to, base + extra + freq + video + placement + status + adset + lead, 7).catch(e => { console.error(`Creative fetch ${ch}:`, e.message); return []; }));
     }
     channels.push(ch);
   }
@@ -3549,7 +3579,7 @@ async function fetchAzAudiences(apiKey, from, to) {
 
   const promises = [], chKeys = [];
   for (const [ch, cfg] of Object.entries(configs)) {
-    promises.push(azWindsorFetch(apiKey, cfg.connector, from, to, cfg.fields).catch(e => { console.error(`Audience fetch ${ch}:`, e.message); return []; }));
+    promises.push(azWindsorFetchAll(apiKey, cfg.connector, from, to, cfg.fields).catch(e => { console.error(`Audience fetch ${ch}:`, e.message); return []; }));
     chKeys.push(ch);
   }
 
