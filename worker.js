@@ -2632,67 +2632,6 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   // Webinar-stage deals (no demo date) — extra Demo Quality table rows only.
   const cWebinar = await fetchWebinarStageDeals(hsToken, current.from, pipeEndDate);
   console.log(`cWebinar: ${cWebinar.length} webinar-stage deals`);
-  // Fetch contacts for Demo Quality — website + engagement data matched by company name
-  const dqContacts = await fetchContactsForDQ(hsToken, current.from, pipeEndDate);
-  console.log(`dqContacts: ${dqContacts.length} contacts for DQ matching`);
-  const contactInfoMap = {}; // keyed by normalized company name
-  const dqUniqueDomains = new Set();
-  for (const c of dqContacts) {
-    const p = c.properties || {};
-    const company = (p.company || '').trim().toLowerCase();
-    const email = (p.email || '');
-    const domain = email.includes('@') ? email.split('@')[1].toLowerCase() : '';
-    const info = {
-      contactId: c.id,
-      name: ((p.firstname||'') + ' ' + (p.lastname||'')).trim(),
-      website: p.website || '',
-      aboutContact: p.role_at_company || '',
-      lastOpen: p.hs_sales_email_last_opened || null,
-      lastClick: p.hs_sales_email_last_clicked || null,
-      lastReply: p.hs_sales_email_last_replied || null,
-      lastContacted: p.notes_last_contacted || null,
-      hasOpen: !!p.hs_sales_email_last_opened,
-      hasClick: !!p.hs_sales_email_last_clicked,
-      hasReply: !!p.hs_sales_email_last_replied,
-      inSequence: p.hs_sequences_is_enrolled === 'true',
-      sequenceName: p.hs_latest_sequence_enrolled || '',
-      webTraffic: p.average_monthly_web_traffic || '',
-      slName: p.sl_last_demo_name || '',
-      slPct: p.sl_last_demo_completion_percent || '',
-      webinarDate: p.webinar_date || '',
-      webinarAttended: (p.webinar_has_attended || '').toString().toLowerCase() === 'true',
-    };
-    if (company) contactInfoMap[company] = info;
-    const personalDomains = ['gmail.com','yahoo.com','hotmail.com','aol.com','outlook.com','icloud.com','protonmail.com'];
-    if (domain && !personalDomains.includes(domain)) {
-      contactInfoMap['_domain_' + domain] = info;
-      dqUniqueDomains.add(domain);
-    }
-  }
-  // Build companyInfoMap (industry/timezone/size/web traffic) — keyed by domain + _name_<companyName>
-  const companyInfoMap = {};
-  const dqDomainArr = [...dqUniqueDomains];
-  for (let ci = 0; ci < dqDomainArr.length; ci += 50) {
-    const batch = dqDomainArr.slice(ci, ci + 50);
-    const companyResults = await hsSearch(hsToken, 'companies', [{
-      filters: [{ propertyName: 'domain', operator: 'IN', values: batch }],
-    }], ['domain','name','industry','company_time_zone','company_size_bucket','revenue_tier',
-         'monthly_visitor_tier','demo_prep_briefing','main_products','target_customer_description','description']);
-    for (const co of companyResults) {
-      const cp = co.properties || {};
-      const d = (cp.domain || '').toLowerCase();
-      if (d) companyInfoMap[d] = {
-        industry: cp.industry || '', timezone: cp.company_time_zone || '',
-        size: cp.company_size_bucket || '', revenue: cp.revenue_tier || '',
-        webTraffic: cp.monthly_visitor_tier || '', demoPrep: cp.demo_prep_briefing || '',
-        mainProducts: cp.main_products || '', targetCustomer: cp.target_customer_description || '',
-        description: cp.description || '',
-      };
-      const nm = (cp.name || '').trim().toLowerCase();
-      if (nm) companyInfoMap['_name_' + nm] = companyInfoMap[d];
-    }
-  }
-  console.log(`Executive DQ: ${Object.keys(companyInfoMap).length} companies matched`);
   const cCW = await fetchClosedWonDeals(hsToken, current.from, current.to);
 
   // Fetch priorMonth FIRST so we can derive prior from it in-memory when prior
@@ -2769,6 +2708,73 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     pPipe = await kvCachedFetchNE(env, 'p_pipe_' + _pK, 3600, () => fetchPipelineDeals(hsToken, prior.from, prior.to));
     pCW = await kvCachedFetchNE(env, 'p_cw_' + _pK, 3600, () => fetchClosedWonDeals(hsToken, prior.from, prior.to));
   }
+
+  // ── DQ enrichment (contacts + companies) — moved AFTER the prior/priorMonth
+  // fetches so those stable, delta-critical calls claim subrequest budget first.
+  // The companies loop below can fire 50-100+ paginated searches; running it
+  // last means a budget/rate-limit wall degrades DQ enrichment (graceful) rather
+  // than blanking vs-prior / vs-LM deltas (which it was doing).
+  // Fetch contacts for Demo Quality — website + engagement data matched by company name
+  const dqContacts = await fetchContactsForDQ(hsToken, current.from, pipeEndDate);
+  console.log(`dqContacts: ${dqContacts.length} contacts for DQ matching`);
+  const contactInfoMap = {}; // keyed by normalized company name
+  const dqUniqueDomains = new Set();
+  for (const c of dqContacts) {
+    const p = c.properties || {};
+    const company = (p.company || '').trim().toLowerCase();
+    const email = (p.email || '');
+    const domain = email.includes('@') ? email.split('@')[1].toLowerCase() : '';
+    const info = {
+      contactId: c.id,
+      name: ((p.firstname||'') + ' ' + (p.lastname||'')).trim(),
+      website: p.website || '',
+      aboutContact: p.role_at_company || '',
+      lastOpen: p.hs_sales_email_last_opened || null,
+      lastClick: p.hs_sales_email_last_clicked || null,
+      lastReply: p.hs_sales_email_last_replied || null,
+      lastContacted: p.notes_last_contacted || null,
+      hasOpen: !!p.hs_sales_email_last_opened,
+      hasClick: !!p.hs_sales_email_last_clicked,
+      hasReply: !!p.hs_sales_email_last_replied,
+      inSequence: p.hs_sequences_is_enrolled === 'true',
+      sequenceName: p.hs_latest_sequence_enrolled || '',
+      webTraffic: p.average_monthly_web_traffic || '',
+      slName: p.sl_last_demo_name || '',
+      slPct: p.sl_last_demo_completion_percent || '',
+      webinarDate: p.webinar_date || '',
+      webinarAttended: (p.webinar_has_attended || '').toString().toLowerCase() === 'true',
+    };
+    if (company) contactInfoMap[company] = info;
+    const personalDomains = ['gmail.com','yahoo.com','hotmail.com','aol.com','outlook.com','icloud.com','protonmail.com'];
+    if (domain && !personalDomains.includes(domain)) {
+      contactInfoMap['_domain_' + domain] = info;
+      dqUniqueDomains.add(domain);
+    }
+  }
+  // Build companyInfoMap (industry/timezone/size/web traffic) — keyed by domain + _name_<companyName>
+  const companyInfoMap = {};
+  const dqDomainArr = [...dqUniqueDomains];
+  for (let ci = 0; ci < dqDomainArr.length; ci += 50) {
+    const batch = dqDomainArr.slice(ci, ci + 50);
+    const companyResults = await hsSearch(hsToken, 'companies', [{
+      filters: [{ propertyName: 'domain', operator: 'IN', values: batch }],
+    }], ['domain','name','industry','company_time_zone','company_size_bucket','revenue_tier',
+         'monthly_visitor_tier','demo_prep_briefing','main_products','target_customer_description','description']);
+    for (const co of companyResults) {
+      const cp = co.properties || {};
+      const d = (cp.domain || '').toLowerCase();
+      if (d) companyInfoMap[d] = {
+        industry: cp.industry || '', timezone: cp.company_time_zone || '',
+        size: cp.company_size_bucket || '', revenue: cp.revenue_tier || '',
+        webTraffic: cp.monthly_visitor_tier || '', demoPrep: cp.demo_prep_briefing || '',
+        mainProducts: cp.main_products || '', targetCustomer: cp.target_customer_description || '',
+        description: cp.description || '',
+      };
+      const nm = (cp.name || '').trim().toLowerCase();
+      if (nm) companyInfoMap['_name_' + nm] = companyInfoMap[d];
+    }
+  }
+  console.log(`Executive DQ: ${Object.keys(companyInfoMap).length} companies matched`);
 
   // Owners change rarely — cache 30 min so this isn't re-paginated every load.
   const ownerMap = await kvCachedFetch(env, 'owners_cache_v1', 1800, () => fetchOwners(hsToken), {});
