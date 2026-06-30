@@ -755,7 +755,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s61';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s62';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2640,6 +2640,19 @@ function _irfanStatusBadge(st,sp){
   const lbl=a?'Active':(p?'Paused':(st||'—'));
   return '<span style="display:inline-block;font-size:9px;font-weight:700;color:'+col+';background:'+col+'15;padding:2px 8px;border-radius:99px">'+lbl+'</span>';
 }
+// ── Status Date / Status Days helpers ──
+// Status Date = when the entity entered its current status. Windsor has no
+// per-creative status-change timestamp, so we derive it: ACTIVE → launch
+// (ad_created_time, else first delivery date); PAUSED → last delivery date
+// (≈ when it was turned off). _statusDateOf works on a creative-like object;
+// _rollupStatusDate rolls children up to a parent (ad set / campaign).
+function _fmtShortDate(ds){if(!ds)return '—';const p=(''+ds).split('-');if(p.length!==3)return ds;const mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(p[1],10)-1]||p[1];return mo+' '+parseInt(p[2],10);}
+function _daysSince(ds){if(!ds)return null;const p=(''+ds).split('-');if(p.length!==3)return null;const a=new Date(parseInt(p[0],10),parseInt(p[1],10)-1,parseInt(p[2],10));const n=new Date();const t=new Date(n.getFullYear(),n.getMonth(),n.getDate());return Math.max(0,Math.round((t-a)/86400000));}
+function _isActiveRow(o){return !!o&&(o.status==='ACTIVE'||(!o.status&&(o.spend||0)>0));}
+function _statusDateOf(o){if(!o)return null;return _isActiveRow(o)?(o.createdDate||o.firstDate||null):(o.lastDate||o.createdDate||o.firstDate||null);}
+function _rollupStatusDate(parentActive,kids){const ds=[],actDs=[];for(const k of (kids||[])){const sd=_statusDateOf(k);if(!sd)continue;ds.push(sd);if(_isActiveRow(k))actDs.push(sd);}if(!ds.length)return null;if(parentActive){const pool=actDs.length?actDs:ds;pool.sort();return pool[0];}ds.sort();return ds[ds.length-1];}
+// Returns the two <td>s (Status Date + Status Days) for a row. align defaults center.
+function _statusCells(sd){const days=_daysSince(sd);return '<td style="text-align:center;padding:8px 6px;font-size:10px;color:var(--navy);white-space:nowrap;font-variant-numeric:tabular-nums">'+(sd?_fmtShortDate(sd):'—')+'</td><td style="text-align:right;padding:8px 6px;font-size:10px;color:var(--grey);font-variant-numeric:tabular-nums">'+(days!=null?days+'d':'—')+'</td>';}
 // Callbacks invoked by header clicks / stage filter pills. On Detailed
 // Dashboard we render the user-selected channel; on Irfan it's always meta.
 function _curAdCh(){return AP==='dashboard'?(S.dashboard.activeAdChannel||'meta'):'meta';}
@@ -2649,6 +2662,7 @@ window.irfanSortAud=function(col){const s=S.irfan.metaAudSort||(S.irfan.metaAudS
 window.irfanCampStageF=function(stage){S.irfan.metaCampStageF=stage;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
 window.irfanCreTagF=function(tag){S.irfan.metaCreTagF=tag;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
 window.irfanCreFlagF=function(flag){S.irfan.metaCreFlagF=flag;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
+window.irfanCreStatusF=function(st){S.irfan.metaCreStatusF=st;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
 window.irfanCampTagF=function(tag){S.irfan.metaCampTagF=tag;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
 window.irfanCampFlagF=function(flag){S.irfan.metaCampFlagF=flag;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
 window.irfanCampStatusF=function(st){S.irfan.metaCampStatusF=st;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
@@ -2674,11 +2688,14 @@ window.dashSetAdChannel=function(ch){
   document.querySelectorAll('.ad-channel-adsetlabel').forEach(el=>el.textContent=adsetLbl);
   // Reset filters when switching channels (different campaigns/creatives)
   S.irfan.metaCampStageF='all';
+  S.irfan.metaCampStatusF='all';
   S.irfan.metaCreTagF='all';
   S.irfan.metaCreFlagF='all';
+  S.irfan.metaCreStatusF='all';
   S.irfan.metaAdsetStageF='all';
   S.irfan.metaAdsetTagF='all';
   S.irfan.metaAdsetFlagF='all';
+  S.irfan.metaAdsetStatusF='all';
   // Re-render with the cached analyzer payload if we have one
   if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,ch);
 };
@@ -2687,6 +2704,7 @@ window.irfanSortAdset=function(col){const s=S.irfan.metaAdsetSort||(S.irfan.meta
 window.irfanAdsetStageF=function(stage){S.irfan.metaAdsetStageF=stage;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
 window.irfanAdsetTagF=function(tag){S.irfan.metaAdsetTagF=tag;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
 window.irfanAdsetFlagF=function(flag){S.irfan.metaAdsetFlagF=flag;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
+window.irfanAdsetStatusF=function(st){S.irfan.metaAdsetStatusF=st;if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
 window.irfanToggleAdsetCreatives=function(rowId){
   const rows=document.querySelectorAll('.'+rowId+'-cre');
   if(!rows.length)return;
@@ -2763,7 +2781,7 @@ function _buildAdSetTableHTML(meta,channel,_flagsByName,fatigueMap){
   // after scoring, _score/_tag). We enrich each nested raw creative through it.
   const _flatByName=new Map();
   for(const c of (meta.creatives||[]))_flatByName.set((c.name||'').toLowerCase(),c);
-  const sortSt=S.irfan.metaAdsetSort,stageF=S.irfan.metaAdsetStageF,tagF=S.irfan.metaAdsetTagF,flagF=S.irfan.metaAdsetFlagF;
+  const sortSt=S.irfan.metaAdsetSort,stageF=S.irfan.metaAdsetStageF,tagF=S.irfan.metaAdsetTagF,flagF=S.irfan.metaAdsetFlagF,statusF=S.irfan.metaAdsetStatusF||'all';
   // Build rows with nested creatives + derived aggregates.
   let rows=adSets.map(a=>{
     const r=Object.assign({},a);
@@ -2805,6 +2823,7 @@ function _buildAdSetTableHTML(meta,channel,_flagsByName,fatigueMap){
   if(typeof scoreCreatives==='function'&&rows.length>0){try{scoreCreatives(rows);}catch(e){}}
   // Tag + Flag filters
   if(tagF!=='all')rows=rows.filter(c=>c._tag===tagF);
+  if(statusF!=='all')rows=rows.filter(c=>{const act=_isActiveRow(c);return statusF==='active'?act:!act;});
   if(flagF!=='all')rows=rows.filter(c=>{const fc=c._flagCounts||{pause:0,fatigue:0,naming:0};if(flagF==='pause')return fc.pause>0;if(flagF==='fatigue')return fc.fatigue>0;if(flagF==='naming')return fc.naming>0;if(flagF==='any')return c._hasAnyFlag;return true;});
   rows=_irfanSortRows(rows,sortSt.col,sortSt.dir);
   // Heatmap arrays
@@ -2819,7 +2838,11 @@ function _buildAdSetTableHTML(meta,channel,_flagsByName,fatigueMap){
   // Tag + Flag filter pills
   const _tagPills=[{k:'all',l:'All',c:'var(--grey)'},{k:'WINNER',l:'Winner',c:'#2ecc71'},{k:'TESTING',l:'Testing',c:'#f39c12'},{k:'LOSER',l:'Loser',c:'#e74c3c'}];
   const _flagPills=[{k:'all',l:'All',c:'var(--grey)'},{k:'any',l:'Any flag',c:'var(--navy)'},{k:'pause',l:'PAUSE',c:'#DC2626'},{k:'fatigue',l:'Fatigue',c:'#e67e22'},{k:'naming',l:'Naming',c:'#7C3AED'}];
-  h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap"><span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;margin-right:2px">Tag</span>';
+  const _statusPills=[{k:'all',l:'All',c:'var(--grey)'},{k:'active',l:'Active',c:'#16A34A'},{k:'paused',l:'Paused',c:'#94A3B8'}];
+  h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap"><span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;margin-right:2px">Status</span>';
+  for(const p of _statusPills){const isA=statusF===p.k;h+='<button onclick="irfanAdsetStatusF(\''+p.k+'\')" style="padding:5px 12px;border-radius:50px;font-size:10px;font-weight:'+(isA?'700':'500')+';border:'+(isA?'none':'1px solid '+p.c)+';background:'+(isA?p.c:'transparent')+';color:'+(isA?'#fff':p.c)+';cursor:pointer;font-family:var(--font-h)">'+p.l+'</button>';}
+  h+='<div style="width:1px;height:20px;background:var(--border);margin:0 4px"></div>';
+  h+='<span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;margin-right:2px">Tag</span>';
   for(const p of _tagPills){const isA=tagF===p.k;h+='<button onclick="irfanAdsetTagF(\''+p.k+'\')" style="padding:5px 12px;border-radius:50px;font-size:10px;font-weight:'+(isA?'700':'500')+';border:'+(isA?'none':'1px solid '+p.c)+';background:'+(isA?p.c:'transparent')+';color:'+(isA?'#fff':p.c)+';cursor:pointer;font-family:var(--font-h)">'+p.l+'</button>';}
   h+='<div style="width:1px;height:20px;background:var(--border);margin:0 4px"></div>';
   h+='<span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;margin-right:2px">Flags</span>';
@@ -2829,6 +2852,7 @@ function _buildAdSetTableHTML(meta,channel,_flagsByName,fatigueMap){
   h+=_irfanSortableTh('Name','name',sortSt,'irfanSortAdset','left');
   h+='<th style="text-align:left;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Stage</th>';
   h+=_irfanSortableTh('Status','status',sortSt,'irfanSortAdset','center');
+  h+='<th style="text-align:center;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Status Date</th><th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)" title="Days since the status date">Status Days</th>';
   h+=_irfanSortableTh('Spend','spend',sortSt,'irfanSortAdset','right');
   h+=_irfanSortableTh('Demos','demos',sortSt,'irfanSortAdset','right');
   h+=_irfanSortableTh('CPD','cpd',sortSt,'irfanSortAdset','right');
@@ -2869,6 +2893,7 @@ function _buildAdSetTableHTML(meta,channel,_flagsByName,fatigueMap){
     h+='<td style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(c.name||'').replace(/"/g,'&quot;')+'">'+(_hasNested?'<span class="irf-adset-chev" data-row="'+_rowId+'" style="display:inline-block;width:10px;color:var(--teal);margin-right:6px;font-size:9px">'+_chev+'</span>':'<span style="display:inline-block;width:10px;margin-right:6px"></span>')+nm+(_hasNested?' <span style="font-size:9px;color:var(--grey);font-weight:400">('+_countLabel+')</span>':'')+_flagBadges+'</td>';
     h+='<td style="padding:8px 6px">'+stagesCell+'</td>';
     h+='<td style="text-align:center;padding:8px 6px">'+_irfanStatusBadge(c.status,c.spend)+'</td>';
+    h+=_statusCells(_rollupStatusDate(_isActiveRow(c),_nested));
     h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cSp,c.spend,true)+'">'+f$(c.spend||0)+'</td>';
     h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cDe,c.demos||0,false)+'">'+fN(c.demos||0)+'</td>';
     h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cCp,cpd||0,true)+'">'+(cpd!=null?f$(cpd):'—')+'</td>';
@@ -2913,6 +2938,7 @@ function _buildAdSetTableHTML(meta,channel,_flagsByName,fatigueMap){
         h+='<td style="padding:6px 6px 6px 30px;color:var(--navy);font-size:10px" title="'+(ncr.name||'').replace(/"/g,'&quot;')+'">'+_thumb+_pauseBadge+(_pauseBadge?' ':'')+nNm+_ftBadge+_nameBadge+'</td>';
         h+='<td></td>';
         h+='<td style="text-align:center;padding:6px">'+_irfanStatusBadge(ncr.status,ncr.spend)+'</td>';
+        h+=_statusCells(_statusDateOf(ncr));
         h+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+f$(ncr.spend||0)+'</td>';
         h+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.demos||0)+'</td>';
         h+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(ncCpd!=null?f$(ncCpd):'—')+'</td>';
@@ -2928,12 +2954,12 @@ function _buildAdSetTableHTML(meta,channel,_flagsByName,fatigueMap){
       }
     }
   }
-  if(!rows.length)h+='<tr><td colspan="14" style="padding:16px;text-align:center;color:var(--grey)">No '+itemLabelPl+' match</td></tr>';
+  if(!rows.length)h+='<tr><td colspan="16" style="padding:16px;text-align:center;color:var(--grey)">No '+itemLabelPl+' match</td></tr>';
   if(rows.length){
     const tCpd=tDe>0?tSp/tDe:null,tCtr=tIm>0?(tCl/tIm)*100:null,tWatch=tIm>0?(tVp25/tIm)*100:null;
     h+='<tr style="background:var(--lighter);font-weight:700;border-top:2px solid var(--teal-30)">'
       +'<td style="padding:10px 6px;color:var(--navy)">Total ('+rows.length+' '+itemLabelPl+')</td>'
-      +'<td></td><td></td>'
+      +'<td></td><td></td><td></td><td></td>'
       +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+f$(tSp)+'</td>'
       +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+fN(tDe)+'</td>'
       +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+(tCpd!=null?f$(tCpd):'—')+'</td>'
@@ -2990,7 +3016,7 @@ function _renderIrfanMetaTables(d, channel){
   if(!S.irfan.metaAdsetFlagF)S.irfan.metaAdsetFlagF='all';
   if(S.irfan.metaAdsetAllExpanded==null)S.irfan.metaAdsetAllExpanded=false;
   const campSort=S.irfan.metaCampSort,creSort=S.irfan.metaCreSort,audSort=S.irfan.metaAudSort,stageF=S.irfan.metaCampStageF;
-  const tagF=S.irfan.metaCreTagF,flagF=S.irfan.metaCreFlagF;
+  const tagF=S.irfan.metaCreTagF,flagF=S.irfan.metaCreFlagF,creStatusF=S.irfan.metaCreStatusF||'all';
   const campTagF=S.irfan.metaCampTagF,campFlagF=S.irfan.metaCampFlagF,campStatusF=S.irfan.metaCampStatusF;
   const fatigueMap=meta.fatigueMap||{};
 
@@ -3132,6 +3158,7 @@ function _renderIrfanMetaTables(d, channel){
     let s='<tr class="'+classAttr+'" style="display:'+(show?'table-row':'none')+';background:rgba(114,164,191,.04);border-bottom:1px solid var(--border)">';
     s+='<td style="padding:6px 6px 6px '+padLeft+'px;color:var(--navy);font-size:10px" title="'+(ncr.name||'').replace(/"/g,'&quot;')+'">'+_thumb+_pauseBadge+(_pauseBadge?' ':'')+nNm+_ftBadge+_nameBadge+'</td>';
     s+='<td></td><td style="text-align:center;padding:6px">'+_irfanStatusBadge(ncr.status,ncr.spend)+'</td>';
+    s+=_statusCells(_statusDateOf(ncr));
     s+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+f$(ncr.spend||0)+'</td>';
     s+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.demos||0)+'</td>';
     s+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(ncCpd!=null?f$(ncCpd):'—')+'</td>';
@@ -3169,6 +3196,7 @@ function _renderIrfanMetaTables(d, channel){
     s+='<td style="padding:7px 6px 7px 28px;color:var(--navy);font-weight:600;font-size:10.5px" title="'+(a.name||'').replace(/"/g,'&quot;')+'">'+chevSpan+'<span style="font-size:8px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.05em;margin-right:5px">Ad Set</span>'+nm+(hasCre?' <span style="font-size:9px;color:var(--grey);font-weight:400">('+countLabel+')</span>':'')+flagBadges+'</td>';
     s+='<td style="padding:7px 6px">'+stagesCell+'</td>';
     s+='<td style="text-align:center;padding:7px 6px">'+_irfanStatusBadge(a.status,a.spend)+'</td>';
+    s+=_statusCells(_rollupStatusDate(_isActiveRow(a),(a._nested||[])));
     s+='<td style="text-align:right;padding:7px 6px;font-variant-numeric:tabular-nums;font-size:10.5px">'+f$(a.spend||0)+'</td>';
     s+='<td style="text-align:right;padding:7px 6px;font-variant-numeric:tabular-nums;font-size:10.5px">'+fN(a.demos||0)+'</td>';
     s+='<td style="text-align:right;padding:7px 6px;font-variant-numeric:tabular-nums;font-size:10.5px">'+(cpd!=null?f$(cpd):'—')+'</td>';
@@ -3264,6 +3292,7 @@ function _renderIrfanMetaTables(d, channel){
   campH+=_irfanSortableTh('Name','name',campSort,'irfanSortCamp','left');
   campH+='<th style="text-align:left;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Stage</th>';
   campH+=_irfanSortableTh('Status','status',campSort,'irfanSortCamp','center');
+  campH+='<th style="text-align:center;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Status Date</th><th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)" title="Days since the status date">Status Days</th>';
   campH+=_irfanSortableTh('Spend','spend',campSort,'irfanSortCamp','right');
   campH+=_irfanSortableTh('Demos','demos',campSort,'irfanSortCamp','right');
   campH+=_irfanSortableTh('CPD','cpd',campSort,'irfanSortCamp','right');
@@ -3326,6 +3355,7 @@ function _renderIrfanMetaTables(d, channel){
     campH+='<td style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(c.name||'').replace(/"/g,'&quot;')+'">'+(_hasNested?'<span class="irf-camp-chev" data-row="'+_rowId+'" style="display:inline-block;width:10px;color:var(--teal);margin-right:6px;font-size:9px">'+_chev+'</span>':'<span style="display:inline-block;width:10px;margin-right:6px"></span>')+nm+(_hasNested?' <span style="font-size:9px;color:var(--grey);font-weight:400">('+_countLabel+')</span>':'')+_campFlagBadges+'</td>';
     campH+='<td style="padding:8px 6px">'+stagesCell+'</td>';
     campH+='<td style="text-align:center;padding:8px 6px">'+_irfanStatusBadge(c.status,c.spend)+'</td>';
+    campH+=_statusCells(_rollupStatusDate(_isActiveRow(c),_nested.length?_nested:_adsets.reduce(function(acc,x){return acc.concat(x._nested||[]);},[])));
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cSp,c.spend,true)+'">'+f$(c.spend)+'</td>';
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cDe,c.demos||0,false)+'">'+fN(c.demos||0)+'</td>';
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cCp,cpd||0,true)+'">'+(cpd!=null?f$(cpd):'—')+'</td>';
@@ -3358,7 +3388,7 @@ function _renderIrfanMetaTables(d, channel){
       for(const ncr of _nestedSorted)campH+=_renderCreRow(ncr, _rowId+'-cre', 30, _showNested);
     }
   }
-  if(!campRows.length)campH+='<tr><td colspan="14" style="padding:16px;text-align:center;color:var(--grey)">No campaigns match</td></tr>';
+  if(!campRows.length)campH+='<tr><td colspan="16" style="padding:16px;text-align:center;color:var(--grey)">No campaigns match</td></tr>';
   // Totals row — sum spend/demos/impressions/clicks/qual; weighted CPD/CTR/Watch
   if(campRows.length){
     const _tCpd=_tDe>0?_tSp/_tDe:null;
@@ -3366,6 +3396,8 @@ function _renderIrfanMetaTables(d, channel){
     const _tWatch=_tIm>0?(_tVp25/_tIm)*100:null;
     campH+='<tr style="background:var(--lighter);font-weight:700;border-top:2px solid var(--teal-30)">'
       +'<td style="padding:10px 6px;color:var(--navy)">Total ('+campRows.length+' campaigns)</td>'
+      +'<td></td>'
+      +'<td></td>'
       +'<td></td>'
       +'<td></td>'
       +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+f$(_tSp)+'</td>'
@@ -3425,6 +3457,7 @@ function _renderIrfanMetaTables(d, channel){
   // Apply Tag + Flag filters (default: 'all', so no-op)
   let creRows=creAll.slice();
   if(tagF!=='all')creRows=creRows.filter(c=>c._tag===tagF);
+  if(creStatusF!=='all')creRows=creRows.filter(c=>{const act=_isActiveRow(c);return creStatusF==='active'?act:!act;});
   if(flagF!=='all')creRows=creRows.filter(c=>{
     if(flagF==='pause')return c._pause;
     if(flagF==='fatigue')return c._fatigued;
@@ -3454,7 +3487,11 @@ function _renderIrfanMetaTables(d, channel){
   // Tag + Flag filter pills
   const _tagPills=[{k:'all',l:'All',c:'var(--grey)'},{k:'WINNER',l:'Winner',c:'#2ecc71'},{k:'TESTING',l:'Testing',c:'#f39c12'},{k:'LOSER',l:'Loser',c:'#e74c3c'}];
   const _flagPills=[{k:'all',l:'All',c:'var(--grey)'},{k:'any',l:'Any flag',c:'var(--navy)'},{k:'pause',l:'PAUSE',c:'#DC2626'},{k:'fatigue',l:'Fatigue',c:'#e67e22'},{k:'naming',l:'Naming',c:'#7C3AED'}];
-  creH+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap"><span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;margin-right:2px">Tag</span>';
+  const _statusPills=[{k:'all',l:'All',c:'var(--grey)'},{k:'active',l:'Active',c:'#16A34A'},{k:'paused',l:'Paused',c:'#94A3B8'}];
+  creH+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap"><span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;margin-right:2px">Status</span>';
+  for(const p of _statusPills){const isA=creStatusF===p.k;creH+='<button onclick="irfanCreStatusF(\''+p.k+'\')" style="padding:5px 12px;border-radius:50px;font-size:10px;font-weight:'+(isA?'700':'500')+';border:'+(isA?'none':'1px solid '+p.c)+';background:'+(isA?p.c:'transparent')+';color:'+(isA?'#fff':p.c)+';cursor:pointer;font-family:var(--font-h)">'+p.l+'</button>';}
+  creH+='<div style="width:1px;height:20px;background:var(--border);margin:0 4px"></div>';
+  creH+='<span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;margin-right:2px">Tag</span>';
   for(const p of _tagPills){const isA=tagF===p.k;creH+='<button onclick="irfanCreTagF(\''+p.k+'\')" style="padding:5px 12px;border-radius:50px;font-size:10px;font-weight:'+(isA?'700':'500')+';border:'+(isA?'none':'1px solid '+p.c)+';background:'+(isA?p.c:'transparent')+';color:'+(isA?'#fff':p.c)+';cursor:pointer;font-family:var(--font-h)">'+p.l+'</button>';}
   creH+='<div style="width:1px;height:20px;background:var(--border);margin:0 4px"></div>';
   creH+='<span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;margin-right:2px">Flags</span>';
@@ -3466,6 +3503,7 @@ function _renderIrfanMetaTables(d, channel){
   creH+='<th style="width:68px;padding:8px 4px"></th>';
   creH+=_irfanSortableTh('Name','name',creSort,'irfanSortCre','left');
   creH+=_irfanSortableTh('Status','status',creSort,'irfanSortCre','center');
+  creH+='<th style="text-align:center;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Status Date</th><th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)" title="Days since the status date">Status Days</th>';
   creH+=_irfanSortableTh('Spend','spend',creSort,'irfanSortCre','right');
   creH+=_irfanSortableTh('Demos','demos',creSort,'irfanSortCre','right');
   creH+=_irfanSortableTh('CPD','cpd',creSort,'irfanSortCre','right');
@@ -3511,6 +3549,7 @@ function _renderIrfanMetaTables(d, channel){
     creH+='<td style="padding:6px 4px">'+thumb+'</td>';
     creH+='<td style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(c.name||'').replace(/"/g,'&quot;')+'">'+_pauseBadge+(_pauseBadge?' ':'')+nm+_ftBadge+_nameBadge+'</td>';
     creH+='<td style="text-align:center;padding:8px 6px">'+_irfanStatusBadge(c.status,c.spend)+'</td>';
+    creH+=_statusCells(_statusDateOf(c));
     creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rSp,c.spend,true)+'">'+f$(c.spend)+'</td>';
     creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rDe,c.demos||0,false)+'">'+fN(c.demos||0)+'</td>';
     creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rCp,cpd||0,true)+'">'+(cpd!=null?f$(cpd):'—')+'</td>';
@@ -3524,7 +3563,7 @@ function _renderIrfanMetaTables(d, channel){
     creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+(c._tag?scoreTag(c._tag):'—')+'</td>';
     creH+='</tr>';
   }
-  if(!creRows.length)creH+='<tr><td colspan="14" style="padding:16px;text-align:center;color:var(--grey)">No creatives match the current filters</td></tr>';
+  if(!creRows.length)creH+='<tr><td colspan="16" style="padding:16px;text-align:center;color:var(--grey)">No creatives match the current filters</td></tr>';
   creH+='</tbody></table></div>';
 
   // ── 3-column note card: PAUSE triggers · Scoring Formula · Naming ──

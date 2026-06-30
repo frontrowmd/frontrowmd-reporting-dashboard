@@ -3276,6 +3276,9 @@ async function fetchAzCreatives(apiKey, from, to) {
       const video = ch === 'meta' ? ',video_p25_watched_actions' : '';
       const placement = ch === 'meta' ? ',publisher_platform,platform_position' : '';
       const status = ch === 'meta' ? ',ad_status' : '';
+      // ad_created_time (Meta) → the creative's launch date, window-independent.
+      // Powers the "Status Date" column (Active → launch; Paused → last run).
+      const created = ch === 'meta' ? ',ad_created_time' : '';
       // adset_name (Meta) / ad_group_name (Google, TikTok) lets us group
       // creatives under their parent ad set for the Ad Sets table dropdown.
       const adset = ch === 'meta' ? ',adset_name' : ((ch === 'google' || ch === 'tiktok') ? ',ad_group_name' : '');
@@ -3283,7 +3286,7 @@ async function fetchAzCreatives(apiKey, from, to) {
       // Leads (Form) toward Demos at the CREATIVE level too — Windsor returns
       // these per ad_name, so each creative gets its own lead count.
       const lead = ch === 'meta' ? META_LEAD_FIELDS : '';
-      promises.push(azWindsorFetchAll(apiKey, cfg.connector, from, to, base + extra + freq + video + placement + status + adset + lead, 7).catch(e => { console.error(`Creative fetch ${ch}:`, e.message); return []; }));
+      promises.push(azWindsorFetchAll(apiKey, cfg.connector, from, to, base + extra + freq + video + placement + status + created + adset + lead, 7).catch(e => { console.error(`Creative fetch ${ch}:`, e.message); return []; }));
     }
     channels.push(ch);
   }
@@ -3357,7 +3360,9 @@ async function fetchAzCreatives(apiKey, from, to) {
       // _rowStatus/_rowDate are reused by the per-campaign + per-ad-set maps below.
       const _rowStatus = (row.ad_status || row.adStatus || row.effective_status || '').toString().toUpperCase();
       const _rowDate = row.date || '';
+      const _rowCreated = (row.ad_created_time || '').slice(0, 10);  // YYYY-MM-DD launch date, constant per ad
       rollupStatus(map[name], _rowStatus, _rowDate);
+      if (_rowCreated && !map[name].createdDate) map[name].createdDate = _rowCreated;
       map[name].spend += parseFloat(row.spend)||0;
       if (!map[name]._campSpend) map[name]._campSpend = {};
       if (!map[name]._campSpend[campName]) map[name]._campSpend[campName] = 0;
@@ -3383,6 +3388,7 @@ async function fetchAzCreatives(apiKey, from, to) {
       if (!campCreMap[campKey][name]) campCreMap[campKey][name] = { name, spend:0, clicks:0, impressions:0, demos:0, freqVals:[], thumbnail: tm[name] || null, videoP25:0, _dates:[], _campName: campName, status:null, _statusDate:'' };
       // Same status rollup as the flat map (latest date wins, ACTIVE wins ties).
       rollupStatus(campCreMap[campKey][name], _rowStatus, _rowDate);
+      if (_rowCreated && !campCreMap[campKey][name].createdDate) campCreMap[campKey][name].createdDate = _rowCreated;
       campCreMap[campKey][name].spend += parseFloat(row.spend)||0;
       campCreMap[campKey][name].clicks += parseInt(row.clicks)||0;
       campCreMap[campKey][name].impressions += parseInt(row.impressions)||0;
@@ -3407,6 +3413,7 @@ async function fetchAzCreatives(apiKey, from, to) {
         if (!adsetCreMap[adsetKey]) adsetCreMap[adsetKey] = {};
         if (!adsetCreMap[adsetKey][name]) adsetCreMap[adsetKey][name] = { name, spend:0, clicks:0, impressions:0, demos:0, freqVals:[], thumbnail: tm[name] || null, videoP25:0, _dates:[], _adsetName: adsetName, campaignName: campName, status:null, _statusDate:'' };
         rollupStatus(adsetCreMap[adsetKey][name], _rowStatus, _rowDate);
+        if (_rowCreated && !adsetCreMap[adsetKey][name].createdDate) adsetCreMap[adsetKey][name].createdDate = _rowCreated;
         adsetCreMap[adsetKey][name].spend += parseFloat(row.spend)||0;
         adsetCreMap[adsetKey][name].clicks += parseInt(row.clicks)||0;
         adsetCreMap[adsetKey][name].impressions += parseInt(row.impressions)||0;
@@ -3433,6 +3440,7 @@ async function fetchAzCreatives(apiKey, from, to) {
       if (c._dates && c._dates.length) {
         c._dates.sort(); const fd=new Date(c._dates[0]+'T12:00:00Z'),ld=new Date(c._dates[c._dates.length-1]+'T12:00:00Z');
         c.activeDays=Math.round((ld-fd)/86400000)+1;
+        c.firstDate=c._dates[0]; c.lastDate=c._dates[c._dates.length-1];
       } else c.activeDays=0;
       delete c._dates;
       if (c._campSpend) {
@@ -3463,6 +3471,7 @@ async function fetchAzCreatives(apiKey, from, to) {
         if (c._dates && c._dates.length) {
           c._dates.sort(); const fd2=new Date(c._dates[0]+'T12:00:00Z'),ld2=new Date(c._dates[c._dates.length-1]+'T12:00:00Z');
           c.activeDays=Math.round((ld2-fd2)/86400000)+1;
+          c.firstDate=c._dates[0]; c.lastDate=c._dates[c._dates.length-1];
         } else c.activeDays=0;
         delete c._dates;
         c.campaignName = c._campName || ck; delete c._campName;
@@ -3482,6 +3491,7 @@ async function fetchAzCreatives(apiKey, from, to) {
         if (c._dates && c._dates.length) {
           c._dates.sort(); const fd3=new Date(c._dates[0]+'T12:00:00Z'),ld3=new Date(c._dates[c._dates.length-1]+'T12:00:00Z');
           c.activeDays=Math.round((ld3-fd3)/86400000)+1;
+          c.firstDate=c._dates[0]; c.lastDate=c._dates[c._dates.length-1];
         } else c.activeDays=0;
         delete c._dates;
         c.adsetName = c._adsetName || ak; delete c._adsetName;
