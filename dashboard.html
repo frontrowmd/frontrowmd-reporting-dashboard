@@ -755,7 +755,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s58';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s59';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -5156,13 +5156,15 @@ function drawStackedBar(canvasId,dataObj,repIds,colorMap,fixedLabels){
 // KPIs measure. The chart filter has no "All" option; switching dimensions
 // resets to that dim's first bucket.
 var _eqAttrDim='dealstage',_eqSort='date_demo_booked',_eqSortDir='desc',_eqChartStatus='Demos Supposed to Happen',_eqChartDim='att',_eqHideBlanks=false;
-var _eqStageFilter='all',_eqPqFilter='all',_eqAttFilter='all',_eqQoFilter='all',_eqRepTblFilter='all',_eqIndustryFilter='all',_eqTzFilter='all',_eqStorylaneFilter='all',_eqWebTrafficFilter=[],_eqDateFrom='',_eqDateTo='',_eqDateMode='demo';
+var _eqStageFilterArr=[],_eqPqFilter='all',_eqAttFilter='all',_eqQoFilter='all',_eqRepTblFilter='all',_eqIndustryFilter='all',_eqTzFilter='all',_eqStorylaneFilter='all',_eqWebTrafficFilter=[],_eqDateFrom='',_eqDateTo='',_eqDateMode='demo';
 function eqWtToggle(v){var i=_eqWebTrafficFilter.indexOf(v);if(i>=0)_eqWebTrafficFilter.splice(i,1);else _eqWebTrafficFilter.push(v);renderDemoQuality();}
 function eqWtClear(){_eqWebTrafficFilter=[];renderDemoQuality();}
+function eqStageToggle(v){var i=_eqStageFilterArr.indexOf(v);if(i>=0)_eqStageFilterArr.splice(i,1);else _eqStageFilterArr.push(v);renderDemoQuality();}
+function eqStageClear(){_eqStageFilterArr=[];renderDemoQuality();}
 var _eqSourceFilter='all',_eqMediumFilter='all',_eqCampaignFilter='all',_eqContentFilter='all';
 var _rcm={};  // rep color map (set during render)
 function eqClearDate(){_eqDateFrom='';_eqDateTo='';renderDemoQuality();}
-function eqResetFilters(){_eqPqFilter='all';_eqStageFilter='all';_eqAttFilter='all';_eqQoFilter='all';_eqRepTblFilter='all';_eqIndustryFilter='all';_eqTzFilter='all';_eqStorylaneFilter='all';_eqWebTrafficFilter=[];_eqDateFrom='';_eqDateTo='';_eqDateMode='demo';_eqSourceFilter='all';_eqMediumFilter='all';_eqCampaignFilter='all';_eqContentFilter='all';renderDemoQuality();}
+function eqResetFilters(){_eqPqFilter='all';_eqStageFilterArr=[];_eqAttFilter='all';_eqQoFilter='all';_eqRepTblFilter='all';_eqIndustryFilter='all';_eqTzFilter='all';_eqStorylaneFilter='all';_eqWebTrafficFilter=[];_eqDateFrom='';_eqDateTo='';_eqDateMode='demo';_eqSourceFilter='all';_eqMediumFilter='all';_eqCampaignFilter='all';_eqContentFilter='all';renderDemoQuality();}
 
 function renderDemoQuality(){try{
   var d=S.demoQuality.data;if(!d||!d.demoQualityDeals)return;
@@ -5607,7 +5609,7 @@ function renderDemoQuality(){try{
 
   function _eqRowMatch(dd){
     if(_eqPqFilter!=='all'){if(_eqPqFilter==='—'){if(dd._pq)return false;}else{if(dd._pq!==_eqPqFilter)return false;}}
-    if(_eqStageFilter!=='all'&&dd.dealstage!==_eqStageFilter)return false;
+    if(_eqStageFilterArr.length>0&&_eqStageFilterArr.indexOf(dd.dealstage)<0)return false;
     if(_eqAttFilter!=='all'){var alF=ATT_LABELS[dd.demo_attendance_status]||(dd.demo_attendance_status||'Blank');if(alF!==_eqAttFilter)return false;}
     if(_eqQoFilter!=='all'){var qlF=QO_LABELS[dd.demo_qualification_outcome]||(dd.demo_qualification_outcome||'Blank');if(qlF!==_eqQoFilter)return false;}
     if(_eqRepTblFilter!=='all'){var rn=ownerMap[dd.hubspot_owner_id]||'Unassigned';if(rn!==_eqRepTblFilter)return false;}
@@ -5758,6 +5760,7 @@ function renderDemoQuality(){try{
   h+='<div style="border-top:3px solid rgba(23,44,69,.28);border-radius:2px;margin:8px 0 18px"></div>';
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-bottom:20px">';
   h+='<div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);margin-bottom:14px">Filters</div>';
+  var fpMultiEq=function(active,label,onclick){var bg=active?'background:var(--navy);color:#fff;':'background:#fff;color:var(--navy);';var border='border:1.5px solid '+(active?'var(--navy)':'var(--teal)')+';';var prefix=active?'<span style="margin-right:4px;font-size:10px;line-height:1">✓</span>':'';return '<span class="pill" style="cursor:pointer;'+bg+border+'font-size:11px;padding:2.5px 10px;font-weight:600;display:inline-flex;align-items:center" onclick="'+onclick+'">'+prefix+label+'</span>';};
   // Row 1: Rep + PQ
   h+='<div style="display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap">';
   h+='<span style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px"><span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase">Rep</span> ';
@@ -5768,9 +5771,10 @@ function renderDemoQuality(){try{
   h+='</span></div>';
   // Row 2: Stage (own row)
   h+='<div style="display:flex;align-items:center;gap:4px 6px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid rgba(23,44,69,.06)">';
-  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase;flex-shrink:0;margin-right:2px">Stage</span> ';
-  h+=fp(_eqStageFilter==='all','All',"_eqStageFilter='all';renderDemoQuality()")+' ';
-  ['appointmentscheduled','1084214349','decisionmakerboughtin','contractsent','closedwon','closedlost','3453957850','1062974581','3741686471','3741686470','3722491612'].forEach(function(v){h+=fp(_eqStageFilter===v,STAGE_LABELS[v]||v,"_eqStageFilter='"+v+"';renderDemoQuality()")+' ';});
+  h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase;flex-shrink:0">Stage</span>';
+  h+='<span style="font-size:8.5px;font-weight:600;color:var(--teal);text-transform:none;letter-spacing:.02em;margin-right:4px;font-style:italic">(multi-select)</span> ';
+  h+=fpMultiEq(_eqStageFilterArr.length===0,'All','eqStageClear()')+' ';
+  ['appointmentscheduled','1084214349','decisionmakerboughtin','contractsent','closedwon','closedlost','3453957850','1062974581','3741686471','3741686470','3722491612'].forEach(function(v){h+=fpMultiEq(_eqStageFilterArr.indexOf(v)>=0,STAGE_LABELS[v]||v,"eqStageToggle('"+v+"')")+' ';});
   h+='</div>';
   // Row 3: Attendance + Qual Outcome
   h+='<div style="display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid rgba(23,44,69,.06)">';
@@ -5785,7 +5789,6 @@ function renderDemoQuality(){try{
   h+='<div style="display:flex;align-items:center;gap:4px 6px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid rgba(23,44,69,.06)">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase;flex-shrink:0">Web Traffic</span>';
   h+='<span style="font-size:8.5px;font-weight:600;color:var(--teal);text-transform:none;letter-spacing:.02em;margin-right:4px;font-style:italic">(multi-select)</span> ';
-  var fpMultiEq=function(active,label,onclick){var bg=active?'background:var(--navy);color:#fff;':'background:#fff;color:var(--navy);';var border='border:1.5px solid '+(active?'var(--navy)':'var(--teal)')+';';var prefix=active?'<span style="margin-right:4px;font-size:10px;line-height:1">✓</span>':'';return '<span class="pill" style="cursor:pointer;'+bg+border+'font-size:11px;padding:2.5px 10px;font-weight:600;display:inline-flex;align-items:center" onclick="'+onclick+'">'+prefix+label+'</span>';};
   h+=fpMultiEq(_eqWebTrafficFilter.length===0,'All','eqWtClear()')+' ';
   Object.keys(uniqWebTraffic).sort(function(a,b){return(wtOrder[a]||0)-(wtOrder[b]||0);}).forEach(function(v){h+=fpMultiEq(_eqWebTrafficFilter.indexOf(v)>=0,wtLabels[v]||v,"eqWtToggle('"+v.replace(/'/g,"\\'").replace(/\//g,'\\/')+"')")+' ';});
   h+='</div>';
@@ -5800,7 +5803,7 @@ function renderDemoQuality(){try{
   h+='<input type="date" value="'+_eqDateTo+'" onchange="_eqDateTo=this.value" style="padding:3px 8px;border:1.5px solid rgba(23,44,69,.12);border-radius:50px;font-size:10px;font-family:var(--font-b);color:var(--navy)">';
   h+='<button onclick="renderDemoQuality()" style="padding:3px 10px;border-radius:50px;border:1.5px solid var(--navy);background:var(--navy);color:#fff;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--font-b)">Go</button>';
   if(_eqDateFrom||_eqDateTo){h+='<button onclick="eqClearDate()" style="padding:3px 10px;border-radius:50px;border:1.5px solid rgba(23,44,69,.12);background:transparent;color:var(--navy);font-size:10px;cursor:pointer;font-family:var(--font-b)">Clear</button>';}
-  var anyF=_eqPqFilter!=='all'||_eqStageFilter!=='all'||_eqAttFilter!=='all'||_eqQoFilter!=='all'||_eqRepTblFilter!=='all'||_eqIndustryFilter!=='all'||_eqTzFilter!=='all'||_eqStorylaneFilter!=='all'||_eqWebTrafficFilter.length>0||_eqDateFrom||_eqDateTo;
+  var anyF=_eqPqFilter!=='all'||_eqStageFilterArr.length>0||_eqAttFilter!=='all'||_eqQoFilter!=='all'||_eqRepTblFilter!=='all'||_eqIndustryFilter!=='all'||_eqTzFilter!=='all'||_eqStorylaneFilter!=='all'||_eqWebTrafficFilter.length>0||_eqDateFrom||_eqDateTo;
   if(anyF){h+='<button onclick="eqResetFilters()" style="padding:3px 12px;border-radius:50px;border:1.5px solid #C62828;background:rgba(198,40,40,.05);color:#C62828;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font-b);margin-left:auto">Reset All Filters</button>';}
   h+='</div></div>';
   // Deal Attribution — rendered BELOW the filter section (built into attrH above).

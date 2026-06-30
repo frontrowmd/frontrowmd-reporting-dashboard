@@ -491,6 +491,39 @@ async function kvCachedFetch(env, key, ttlSec, fetchFn, fallback) {
   return data;
 }
 
+// Like kvCachedFetch, but for WINDOW-STABLE list fetches (prior / last-month
+// periods are PAST and don't change) that must NEVER cache an empty result —
+// an empty array almost always means a failed/rate-limited fetch, not "no
+// data", and caching it would blank out vs-prior / vs-LM deltas for the TTL.
+// Caches only non-empty arrays; on an empty/failed live fetch, serves the last
+// good cached value (even if past the freshness window — past data is stable).
+async function kvCachedFetchNE(env, key, ttlSec, fetchFn) {
+  let stale = null;
+  if (env && env.CONTENT_STORE) {
+    try {
+      const raw = await env.CONTENT_STORE.get(key);
+      if (raw) {
+        const p = JSON.parse(raw);
+        if (p && Array.isArray(p.data) && p.data.length) {
+          stale = p.data;
+          if (typeof p.t === 'number' && (Date.now() - p.t) < ttlSec * 1000) return p.data;
+        }
+      }
+    } catch (e) { /* fall through to live fetch */ }
+  }
+  let data;
+  try { data = await fetchFn(); } catch (e) { return stale || []; }
+  if (Array.isArray(data) && data.length) {
+    if (env && env.CONTENT_STORE) {
+      try { const blob = JSON.stringify({ t: Date.now(), data }); if (blob.length < 20*1024*1024) await env.CONTENT_STORE.put(key, blob, { expirationTtl: Math.max(ttlSec*6, 3600) }); } catch (e) { /* best-effort */ }
+    }
+    return data;
+  }
+  // Live fetch came back empty (likely a transient failure) — prefer the last
+  // good cached value over an empty set so deltas stay populated.
+  return (stale && stale.length) ? stale : (data || []);
+}
+
 // Demos Booked = contacts created in window with date_demo_booked set (guide Section 3)
 // Windsor date clamp — don't query before ad data exists
 function wFrom(dateStr) { return dateStr < WINDSOR_EPOCH ? WINDSOR_EPOCH : dateStr; }
@@ -2666,9 +2699,13 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   // is a strict subset (saves 3 HubSpot calls = up to ~15 subrequests).
   let pmSch, pmPipe, pmCW;
   if (priorMonth) {
-    pmSch = await fetchScheduledContacts(hsToken, priorMonth.from, priorMonth.to);
-    pmPipe = await fetchPipelineDeals(hsToken, priorMonth.from, priorMonth.to);
-    pmCW = await fetchClosedWonDeals(hsToken, priorMonth.from, priorMonth.to);
+    // Cache last-month fetches — these windows are PAST and stable, so caching
+    // keeps vs-prior / vs-LM deltas reliable even when live HubSpot calls get
+    // rate-limited/starved (which was zeroing them out), and cuts load.
+    const _pmK = priorMonth.from + '_' + priorMonth.to;
+    pmSch = await kvCachedFetchNE(env, 'pm_sch_' + _pmK, 3600, () => fetchScheduledContacts(hsToken, priorMonth.from, priorMonth.to));
+    pmPipe = await kvCachedFetchNE(env, 'pm_pipe_' + _pmK, 3600, () => fetchPipelineDeals(hsToken, priorMonth.from, priorMonth.to));
+    pmCW = await kvCachedFetchNE(env, 'pm_cw_' + _pmK, 3600, () => fetchClosedWonDeals(hsToken, priorMonth.from, priorMonth.to));
   }
 
   // For MTD: prior = April 1..(today-of-month) and priorMonth = April 1..30.
@@ -2725,9 +2762,12 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     });
     console.log(`prior derived from priorMonth in-memory (saved 3 fetches): pSch=${pSch.length} pPipe=${pPipe.length} pCW=${pCW.length}`);
   } else if (prior) {
-    pSch = await fetchScheduledContacts(hsToken, prior.from, prior.to);
-    pPipe = await fetchPipelineDeals(hsToken, prior.from, prior.to);
-    pCW = await fetchClosedWonDeals(hsToken, prior.from, prior.to);
+    // Disjoint prior window (7d / lastMonth / custom) — also a stable past
+    // period, so cache it (non-empty only) for reliable deltas.
+    const _pK = prior.from + '_' + prior.to;
+    pSch = await kvCachedFetchNE(env, 'p_sch_' + _pK, 3600, () => fetchScheduledContacts(hsToken, prior.from, prior.to));
+    pPipe = await kvCachedFetchNE(env, 'p_pipe_' + _pK, 3600, () => fetchPipelineDeals(hsToken, prior.from, prior.to));
+    pCW = await kvCachedFetchNE(env, 'p_cw_' + _pK, 3600, () => fetchClosedWonDeals(hsToken, prior.from, prior.to));
   }
 
   // Owners change rarely — cache 30 min so this isn't re-paginated every load.
