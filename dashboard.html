@@ -755,7 +755,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s62';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s63';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2519,9 +2519,13 @@ function _renderIrfanMetaTablesLoader(winOverride){
   const adsetTargets=[document.getElementById('irfan-meta-adsets'),document.getElementById('ov-meta-adsets')].filter(Boolean);
   if(!campTargets.length&&!creTargets.length&&!audTargets.length&&!adsetTargets.length)return;
   const _setBoth=(html)=>{[...campTargets,...creTargets,...audTargets,...adsetTargets].forEach(el=>el.innerHTML=html);};
-  // Window override lets callers (e.g. Overview/renderDash) request data for
-  // a different selector window than the Irfan page is showing.
-  const irfWin=winOverride||S.irfan?.win||'mtd';
+  // The Meta tables carry their OWN date window (S.irfan.metaWin), driven by the
+  // date bar rendered atop each table — decoupled from the page's KPI window so
+  // the Campaign/Ad Set/Creative/Audience tables can be scoped independently.
+  // Defaults to MTD (independent of the page KPI window), then persists until
+  // the user changes it via the date bar.
+  if(!S.irfan.metaWin)S.irfan.metaWin='mtd';
+  const irfWin=S.irfan.metaWin;
   // Full analyzer payload cache (Meta data + matchRate + audiences + fatigue).
   // Previously only stored the meta channel; expanded so we can also surface
   // the attribution match-rate footer on the Detailed Dashboard's Channel
@@ -2529,7 +2533,7 @@ function _renderIrfanMetaTablesLoader(winOverride){
   if(!S.irfan.analyzerCache)S.irfan.analyzerCache={};
   // Resolve custom dates + a collision-safe cache key. For custom windows the
   // key embeds the from/to so two different custom ranges don't share a bucket.
-  const _cr=_resolveCustomRange(irfWin);
+  const _cr=irfWin==='custom'?{from:S.irfan.metaCF||'',to:S.irfan.metaCT||''}:{};
   const _ck=_azCacheKey(irfWin,_cr);
   const _getCh=()=>AP==='dashboard'?(S.dashboard.activeAdChannel||'meta'):'meta';
   if(S.irfan.analyzerCache[_ck]){_renderIrfanMetaTables(S.irfan.analyzerCache[_ck],_getCh());_updateCpdMatchRate(irfWin);return;}
@@ -2582,6 +2586,33 @@ function _renderIrfanMetaTablesLoader(winOverride){
       }
     })
     .catch(e=>{console.error('Irfan analyzer fetch failed (win='+irfWin+'):',e);_setBoth('<div style="padding:24px;text-align:center;color:var(--red);font-size:12px">Failed to load analyzer data ('+irfWin+'): '+e.message+'</div>');});
+}
+
+// ── Meta-tables date window control ──────────────────────────────────────────
+// The Campaign/Ad Set/Creative/Audience tables share one date window
+// (S.irfan.metaWin), independent of the page's KPI selector. _metaDateBar()
+// renders the picker atop each table; changing it reloads all four for the new
+// window and re-fetches the proper data.
+function _fmtDateY(ds){if(!ds)return '';var p=(''+ds).split('-');if(p.length!==3)return ds;var mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(p[1],10)-1]||p[1];return mo+' '+parseInt(p[2],10)+', '+p[0];}
+window.irfanMetaWin=function(win){S.irfan.metaWin=win;if(win==='custom'){if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());}else{_renderIrfanMetaTablesLoader();}};
+window.irfanMetaCustomApply=function(){var cf=document.getElementById('_metaCF'),ct=document.getElementById('_metaCT');if(cf&&cf.value)S.irfan.metaCF=cf.value;if(ct&&ct.value)S.irfan.metaCT=ct.value;if(!S.irfan.metaCF||!S.irfan.metaCT){alert('Pick both a start and end date.');return;}S.irfan.metaWin='custom';_renderIrfanMetaTablesLoader();};
+function _metaDateBar(){
+  var win=S.irfan.metaWin||'mtd';
+  var wins=[{k:'7d',l:'7 Days'},{k:'mtd',l:'MTD'},{k:'lastMonth',l:'Last Month'},{k:'ytd',l:'YTD'},{k:'allTime',l:'All Time'},{k:'custom',l:'Custom'}];
+  var mm=_irfanMetaD&&_irfanMetaD.meta?_irfanMetaD.meta:null;
+  var rangeStr=(mm&&mm.from&&mm.to)?(_fmtShortDate(mm.from)+' – '+_fmtDateY(mm.to)):'';
+  var h='<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding:8px 12px;background:var(--teal-8);border:1px solid var(--teal-30);border-radius:8px">';
+  h+='<span style="font-size:10px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.04em;margin-right:2px">📅 Table Dates</span>';
+  for(var i=0;i<wins.length;i++){var p=wins[i];var isA=win===p.k;h+='<button onclick="irfanMetaWin(\''+p.k+'\')" style="padding:4px 12px;border-radius:50px;font-size:10px;font-weight:'+(isA?'700':'500')+';border:'+(isA?'none':'1px solid var(--teal)')+';background:'+(isA?'var(--navy)':'#fff')+';color:'+(isA?'#fff':'var(--navy)')+';cursor:pointer;font-family:var(--font-h)">'+p.l+'</button>';}
+  if(win==='custom'){
+    h+='<input type="date" id="_metaCF" value="'+(S.irfan.metaCF||'')+'" style="font-size:10px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;margin-left:4px">';
+    h+='<span style="font-size:10px;color:var(--grey)">to</span>';
+    h+='<input type="date" id="_metaCT" value="'+(S.irfan.metaCT||'')+'" style="font-size:10px;padding:3px 6px;border:1px solid var(--border);border-radius:6px">';
+    h+='<button onclick="irfanMetaCustomApply()" style="padding:4px 12px;border-radius:50px;font-size:10px;font-weight:700;border:none;background:var(--teal);color:#fff;cursor:pointer;font-family:var(--font-h)">Apply</button>';
+  }
+  if(rangeStr)h+='<span style="font-size:11px;color:var(--navy);font-weight:600;margin-left:auto;font-variant-numeric:tabular-nums" title="Date range these tables are calculating">'+rangeStr+'</span>';
+  h+='</div>';
+  return h;
 }
 
 // Meta Campaign + Ad Creative tables for the Irfan Dashboard.
@@ -2810,7 +2841,10 @@ function _buildAdSetTableHTML(meta,channel,_flagsByName,fatigueMap){
     r.frequency=fN2>0?fSum/fN2:null;
     // Status: ACTIVE if any nested creative active; else PAUSED if we have
     // nested rows; else fall back to spend>0 (no creative-level signal).
-    r.status=anyActive?'ACTIVE':(nested.length?'PAUSED':((r.spend||0)>0?'ACTIVE':'PAUSED'));
+    // Prefer the ad set's OWN status from the audiences payload (authoritative —
+    // reflects the Off/On toggle + parent-campaign state). Only fall back to
+    // deriving from nested creatives when it's absent (non-Meta channels).
+    if(!r.status)r.status=anyActive?'ACTIVE':(nested.length?'PAUSED':((r.spend||0)>0?'ACTIVE':'PAUSED'));
     // Aggregate flag counts from nested creatives (pause/fatigue/naming).
     let pn=0,fn=0,nn=0;
     for(const n of nested){const f=_flagsByName[(n.name||'').toLowerCase()];if(!f)continue;if(f.pause)pn++;if(f.fatigued)fn++;if(f.naming)nn++;}
@@ -2830,6 +2864,7 @@ function _buildAdSetTableHTML(meta,channel,_flagsByName,fatigueMap){
   const cSp=rows.map(c=>c.spend),cIm=rows.map(c=>c.impressions||0),cCl=rows.map(c=>c.clicks||0),cCt=rows.map(c=>c.ctr||0),cDe=rows.map(c=>c.demos||0),cCp=rows.map(c=>c.demos>0?c.spend/c.demos:0),cQu=rows.map(c=>c.qualified||0),cWa=rows.map(c=>c.watch||0),cFr=rows.map(c=>c.frequency||0),cSc=rows.map(c=>c._score||0);
   const stages=[{k:'all',l:'All',c:'var(--grey)'},{k:'s1',l:'TOF',c:'#2980B9'},{k:'s2',l:'MOF',c:'#E67E22'},{k:'s3',l:'BOF',c:'#C0392B'},{k:'s4',l:'Retarget',c:'#7D3C98'}];
   let h='';
+  h+=_metaDateBar();
   h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap"><div style="font-size:11px;color:var(--grey);font-variant-numeric:tabular-nums">'+rows.length+' '+itemLabelPl+' · sort by '+sortSt.col+' '+sortSt.dir+'</div>';
   h+='<button onclick="irfanToggleAllAdsetCreatives()" style="padding:5px 12px;border-radius:50px;font-size:10px;font-weight:600;border:1px solid var(--teal);background:transparent;color:var(--teal);cursor:pointer;font-family:var(--font-h)">'+(S.irfan.metaAdsetAllExpanded?'▼ Collapse All':'▶ Expand All')+'</button>';
   h+='<div style="flex:1"></div><span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em">Stage</span>';
@@ -3131,7 +3166,7 @@ function _renderIrfanMetaTables(d, channel){
         const f=_flagsByName[(n.name||'').toLowerCase()];if(f){if(f.pause)pn++;if(f.fatigued)fln++;}
       }
       r.watch=im>0?(vp/im)*100:null;r.videoP25=vp;r.qualified=q;r.frequency=fn>0?fs/fn:null;
-      r.status=act?'ACTIVE':(nested.length?'PAUSED':((r.spend||0)>0?'ACTIVE':'PAUSED'));
+      if(!r.status)r.status=act?'ACTIVE':(nested.length?'PAUSED':((r.spend||0)>0?'ACTIVE':'PAUSED'));
       r._stageSrc=((a.campaign||'')+' '+(a.name||'')).trim();
       r._pauseN=pn;r._fatN=fln;
       return r;
@@ -3267,6 +3302,7 @@ function _renderIrfanMetaTables(d, channel){
   // Stage filter pills
   const stages=[{k:'all',l:'All',c:'var(--grey)'},{k:'s1',l:'TOF',c:'#2980B9'},{k:'s2',l:'MOF',c:'#E67E22'},{k:'s3',l:'BOF',c:'#C0392B'},{k:'s4',l:'Retarget',c:'#7D3C98'}];
   let campH='';
+  campH+=_metaDateBar();
   campH+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap"><div style="font-size:11px;color:var(--grey);font-variant-numeric:tabular-nums">'+campRows.length+' rows · sort by '+campSort.col+' '+campSort.dir+'</div>';
   // Expand All / Collapse All button — toggles every campaign row's nested creatives at once
   campH+='<button onclick="irfanToggleAllCampCreatives()" style="padding:5px 12px;border-radius:50px;font-size:10px;font-weight:600;border:1px solid var(--teal);background:transparent;color:var(--teal);cursor:pointer;font-family:var(--font-h)">'+(S.irfan.metaAllExpanded?'▼ Collapse All':'▶ Expand All')+'</button>';
@@ -3475,6 +3511,7 @@ function _renderIrfanMetaTables(d, channel){
   let namingBadCount=0; for(const c of creAll) if(c._namingBad) namingBadCount++;
 
   let creH='';
+  creH+=_metaDateBar();
   // Row count + counts of each flag type across the FULL set (so it stays stable on filter)
   creH+='<div style="font-size:11px;color:var(--grey);font-variant-numeric:tabular-nums;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">'
     +'<span>'+creRows.length+' rows'+(creRows.length!==creAll.length?' of '+creAll.length:'')+' · sort by '+creSort.col+' '+creSort.dir+'</span>'
@@ -3609,6 +3646,7 @@ function _renderIrfanMetaTables(d, channel){
 
   // ── Audiences table (rendered to its own target div, not appended to creH) ──
   let audH='';
+  audH+=_metaDateBar();
   const audiences=meta.audiences||[];
   if(audiences.length){
     // Sort by the user-selected column (default: cpd desc)

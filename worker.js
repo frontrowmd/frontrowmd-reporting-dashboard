@@ -3275,7 +3275,11 @@ async function fetchAzCreatives(apiKey, from, to) {
       const freq = cfg.hasFreq ? ',frequency' : '';
       const video = ch === 'meta' ? ',video_p25_watched_actions' : '';
       const placement = ch === 'meta' ? ',publisher_platform,platform_position' : '';
-      const status = ch === 'meta' ? ',ad_status' : '';
+      // effective_status (not ad_status) so an ad whose parent ad set / campaign
+      // is OFF reports ADSET_PAUSED / CAMPAIGN_PAUSED (→ PAUSED) instead of its
+      // own ACTIVE toggle. ad_status alone made paused ad sets look Active
+      // because the ads inside were still toggled on. Keep ad_status as fallback.
+      const status = ch === 'meta' ? ',ad_status,effective_status' : '';
       // ad_created_time (Meta) → the creative's launch date, window-independent.
       // Powers the "Status Date" column (Active → launch; Paused → last run).
       const created = ch === 'meta' ? ',ad_created_time' : '';
@@ -3358,7 +3362,7 @@ async function fetchAzCreatives(apiKey, from, to) {
       if (!map[name]) map[name] = { name, spend:0, clicks:0, impressions:0, demos:0, freqVals:[], thumbnail: tm[name] || null, campaignName: campName, videoP25:0, _dates:[], _placements:{}, status:null, _statusDate:'' };
       // Roll up ad_status: latest date wins, ACTIVE wins ties (see rollupStatus).
       // _rowStatus/_rowDate are reused by the per-campaign + per-ad-set maps below.
-      const _rowStatus = (row.ad_status || row.adStatus || row.effective_status || '').toString().toUpperCase();
+      const _rowStatus = (row.effective_status || row.ad_status || row.adStatus || '').toString().toUpperCase();
       const _rowDate = row.date || '';
       const _rowCreated = (row.ad_created_time || '').slice(0, 10);  // YYYY-MM-DD launch date, constant per ad
       rollupStatus(map[name], _rowStatus, _rowDate);
@@ -3582,7 +3586,7 @@ async function fetchCreativeFatigue(apiKey) {
 async function fetchAzAudiences(apiKey, from, to) {
   const results = {};
   const configs = {
-    meta:   { connector:'facebook', fields:'date,adset_name,campaign_name,spend,clicks,impressions,conversions_submit_application_total'+META_LEAD_FIELDS, nameField:'adset_name', demoField:'conversions_submit_application_total' },
+    meta:   { connector:'facebook', fields:'date,adset_name,campaign_name,spend,clicks,impressions,conversions_submit_application_total,adset_status,adset_effective_status'+META_LEAD_FIELDS, nameField:'adset_name', demoField:'conversions_submit_application_total', statusField:'adset_effective_status', statusFallback:'adset_status' },
     google: { connector:'google_ads', fields:'date,ad_group_name,campaign_name,spend,clicks,impressions,conversions', nameField:'ad_group_name', demoField:'conversions' },
     tiktok: { connector:'tiktok', fields:'date,ad_group_name,campaign_name,spend,clicks,impressions,conversions', nameField:'ad_group_name', demoField:'conversions' },
   };
@@ -3603,7 +3607,12 @@ async function fetchAzAudiences(apiKey, from, to) {
       const campName = row.campaign_name || '';
       // Google: filter out YouTube campaigns
       if (ch === 'google' && /\byt\b|youtube/i.test(campName)) continue;
-      if (!map[name]) map[name] = { name, campaign: '', spend: 0, clicks: 0, impressions: 0, demos: 0 };
+      if (!map[name]) map[name] = { name, campaign: '', spend: 0, clicks: 0, impressions: 0, demos: 0, status: null, _statusDate: '' };
+      // Authoritative ad-set status (effective_status → PAUSED when the ad set /
+      // its campaign is OFF). This is the source of truth for the row's status,
+      // instead of guessing "active if any creative is active" (which read each
+      // ad's own toggle and so showed paused ad sets as Active).
+      if (cfg.statusField) rollupStatus(map[name], (row[cfg.statusField] || row[cfg.statusFallback] || '').toUpperCase(), row.date);
       map[name].spend += parseFloat(row.spend) || 0;
       map[name].clicks += parseInt(row.clicks) || 0;
       map[name].impressions += parseInt(row.impressions) || 0;
@@ -3618,6 +3627,7 @@ async function fetchAzAudiences(apiKey, from, to) {
       a.ctr = a.impressions > 0 ? (a.clicks / a.impressions) * 100 : 0;
       a.cpd = a.demos > 0 ? a.spend / a.demos : null;
       a.cpc = a.clicks > 0 ? a.spend / a.clicks : null;
+      delete a._statusDate;
       return a;
     }).sort((a, b) => b.spend - a.spend);
     results[ch] = list;
@@ -3786,7 +3796,7 @@ function buildAzResponse(period, prior, priorMonth, windsor, creatives, priorW, 
     overview, channels,
     funnelColors: FUNNEL_COLORS, funnelLabels: FUNNEL_LABELS, funnelOrder: FUNNEL_ORDER,
     matchRate:{ attributed:totalAttr, windsorDemos:tD, pct:tD>0?r2((totalAttr/tD)*100):0 },
-    meta:{ generatedAt:new Date().toISOString(), windowType },
+    meta:{ generatedAt:new Date().toISOString(), windowType, from:period&&period.from, to:period&&period.to },
   };
 }
 
