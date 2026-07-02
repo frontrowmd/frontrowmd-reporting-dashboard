@@ -755,7 +755,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s64';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s65';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2732,10 +2732,10 @@ function _statusDateOf(o){if(!o)return null;return _isActiveRow(o)?(o.createdDat
 function _rollupStatusDate(parentActive,kids){const ds=[],actDs=[];for(const k of (kids||[])){const sd=_statusDateOf(k);if(!sd)continue;ds.push(sd);if(_isActiveRow(k))actDs.push(sd);}if(!ds.length)return null;if(parentActive){const pool=actDs.length?actDs:ds;pool.sort();return pool[0];}ds.sort();return ds[ds.length-1];}
 // Returns the two <td>s (Status Date + Status Days) for a row. align defaults center.
 function _statusCells(sd){const days=_daysSince(sd);return '<td style="text-align:center;padding:8px 6px;font-size:10px;color:var(--navy);white-space:nowrap;font-variant-numeric:tabular-nums">'+(sd?_fmtShortDate(sd):'—')+'</td><td style="text-align:right;padding:8px 6px;font-size:10px;color:var(--grey);font-variant-numeric:tabular-nums">'+(days!=null?days+'d':'—')+'</td>';}
-// Small subtext under a Demos value naming its CAPI source (Meta only): demoConv
-// = submit-application conversions (Demo); webinarLead = Leads(Form) on
-// allowlisted lead-gen campaigns (Webinar). Blank when no demos or non-Meta.
-function _capiSub(o,channel){if(channel!=='meta'||!o)return '';var d=(o.demoConv||0)>0,w=(o.webinarLead||0)>0;var lbl=(d&&w)?'CAPI · Demo + Webinar':(w?'CAPI · Webinar':(d?'CAPI · Demo':''));return lbl?'<div style="font-size:8px;color:var(--grey);font-weight:400;text-transform:none;line-height:1.1;margin-top:1px;white-space:nowrap">'+lbl+'</div>':'';}
+// Small subtext under a Demos value naming the CAPI custom conversion the row's
+// campaign/ad set is configured to use (worker-side capiConvLabel: only the CAPI
+// campaigns get a label). Meta only; blank for everything else.
+function _capiSub(o,channel){if(channel!=='meta'||!o||!o.capiConv)return '';return '<div style="font-size:8px;color:var(--grey);font-weight:400;text-transform:none;line-height:1.1;margin-top:1px;white-space:nowrap">CAPI · '+o.capiConv+'</div>';}
 // Callbacks invoked by header clicks / stage filter pills. On Detailed
 // Dashboard we render the user-selected channel; on Irfan it's always meta.
 function _curAdCh(){return AP==='dashboard'?(S.dashboard.activeAdChannel||'meta'):'meta';}

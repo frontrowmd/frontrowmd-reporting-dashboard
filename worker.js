@@ -74,6 +74,26 @@ function metaLeadDemos(campaignName, row) {
 // Windsor fields needed to read Leads (Form). Appended to Meta/Facebook fetches.
 const META_LEAD_FIELDS = ',actions_onsite_conversion_lead_grouped,actions_lead';
 
+// ── CAPI custom-conversion labeling ─────────────────────────────────────────
+// Only these campaigns run CAPI custom conversions; the subtext under Demos in
+// the ad tables names which one. "Combined Ad Sets - Blended Conversion" uses a
+// single blended Demo+Webinar conversion for all its ad sets. "Skincare & Beauty
+// Brands" splits it per ad set (its "…- Demo" ad set → Demo, "…- Webinar" ad set
+// → Webinar). Any other campaign returns '' (no CAPI conversion → no subtext).
+// Match by case-insensitive substring of the campaign / ad-set name; extend as
+// more CAPI campaigns launch. Returns 'Demo' | 'Webinar' | 'Demo + Webinar' | ''.
+function capiConvLabel(campaignName, adsetName) {
+  const c = (campaignName || '').toLowerCase();
+  const a = (adsetName || '').toLowerCase();
+  if (c.includes('combined ad sets') || c.includes('blended conversion')) return 'Demo + Webinar';
+  if (c.includes('skincare & beauty brands') || c.includes('skincare & clean beauty')) {
+    if (a.includes('webinar')) return 'Webinar';
+    if (a.includes('demo')) return 'Demo';
+    return 'Demo + Webinar';  // campaign row / unknown ad set → spans both
+  }
+  return '';
+}
+
 // Demo status categorization — uses new dual-field model with legacy fallback.
 // Per demo-status-migration skill: prefer demo_attendance_status + demo_qualification_outcome,
 // fall back to legacy demo_given__status for any unmigrated deals.
@@ -3214,6 +3234,7 @@ async function fetchAzCampaigns(apiKey, from, to) {
         c.activeDays = Math.round((ld-fd)/86400000)+1;
       } else { c.firstDate=null; c.lastDate=null; c.activeDays=0; }
       delete c.dates;
+      c.capiConv = capiConvLabel(c.name, null);  // campaign-level (spans its ad sets)
     }
     return { campaigns:camps, totals:{ spend:tS, clicks:tC, impressions:tI, demos:tD, ctr:tI>0?(tC/tI)*100:0, cpd:tD>0?tS/tD:null, frequency:fAll.length?fAll.reduce((a,b)=>a+b,0)/fAll.length:null }};
   }
@@ -3373,6 +3394,9 @@ async function fetchAzCreatives(apiKey, from, to) {
       const _rowCreated = (row.ad_created_time || '').slice(0, 10);  // YYYY-MM-DD launch date, constant per ad
       rollupStatus(map[name], _rowStatus, _rowDate);
       if (_rowCreated && !map[name].createdDate) map[name].createdDate = _rowCreated;
+      // A flat creative can run in both a Demo and a Webinar ad set — accumulate
+      // whichever CAPI conversions its ad sets use, then combine at finalize.
+      { const _cl = capiConvLabel(campName, row.adset_name); if (_cl === 'Demo' || _cl === 'Demo + Webinar') map[name]._capiDemo = 1; if (_cl === 'Webinar' || _cl === 'Demo + Webinar') map[name]._capiWeb = 1; }
       map[name].spend += parseFloat(row.spend)||0;
       if (!map[name]._campSpend) map[name]._campSpend = {};
       if (!map[name]._campSpend[campName]) map[name]._campSpend[campName] = 0;
@@ -3471,6 +3495,8 @@ async function fetchAzCreatives(apiKey, from, to) {
         }).sort((a,b)=>b.spend-a.spend);
       }
       delete c._placements;
+      c.capiConv = (c._capiDemo && c._capiWeb) ? 'Demo + Webinar' : (c._capiWeb ? 'Webinar' : (c._capiDemo ? 'Demo' : ''));
+      delete c._capiDemo; delete c._capiWeb;
     }
     // Finalize per-campaign creatives
     const campCreFinal = {};
@@ -3488,6 +3514,7 @@ async function fetchAzCreatives(apiKey, from, to) {
         } else c.activeDays=0;
         delete c._dates;
         c.campaignName = c._campName || ck; delete c._campName;
+        c.capiConv = capiConvLabel(c.campaignName, null);  // campaign-level fallback (no single ad set)
         return c;
       }).sort((a,b)=>b.spend-a.spend);
     }
@@ -3508,6 +3535,7 @@ async function fetchAzCreatives(apiKey, from, to) {
         } else c.activeDays=0;
         delete c._dates;
         c.adsetName = c._adsetName || ak; delete c._adsetName;
+        c.capiConv = capiConvLabel(c.campaignName, c.adsetName);  // ad-set-specific
         return c;
       }).sort((a,b)=>b.spend-a.spend);
     }
@@ -3636,6 +3664,7 @@ async function fetchAzAudiences(apiKey, from, to) {
       a.ctr = a.impressions > 0 ? (a.clicks / a.impressions) * 100 : 0;
       a.cpd = a.demos > 0 ? a.spend / a.demos : null;
       a.cpc = a.clicks > 0 ? a.spend / a.clicks : null;
+      a.capiConv = capiConvLabel(a.campaign, a.name);  // ad-set-specific
       delete a._statusDate;
       return a;
     }).sort((a, b) => b.spend - a.spend);
