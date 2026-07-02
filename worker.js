@@ -99,6 +99,41 @@ function capiConvLabel(campaignName, adsetName) {
   return '';
 }
 
+// Windsor scalar fields for the CAPI custom conversions (the demo/webinar
+// "Results" for campaigns that optimize for a CAPI custom conversion instead of
+// the submit-application pixel event). Appended to Meta fetches.
+const META_CAPI_FIELDS = ',actions_capi_demo,actions_capi_webinar,actions_capi_demo_webinar';
+// Demos a Meta row contributes via its configured CAPI custom conversion, or -1
+// when the row's campaign doesn't use CAPI (caller falls back to
+// submit_application). Mirrors capiConvLabel: the TEST "Combined Ad Sets"
+// campaign uses ONE blended demo+webinar conversion; the TEST "Skincare" campaign
+// splits it per ad set (Demo→capi_demo, Webinar→capi_webinar, campaign row→both
+// summed). Only the TEST campaigns run CAPI (they have no submit_application), so
+// counting this is purely additive — every other campaign returns -1 (unchanged).
+function metaCapiDemoCount(row) {
+  const c = (row.campaign_name || '').toLowerCase();
+  if (!c.includes('test')) return -1;
+  const a = (row.adset_name || row.ad_group_name || '').toLowerCase();
+  const D = Math.round(parseFloat(row.actions_capi_demo) || 0);
+  const W = Math.round(parseFloat(row.actions_capi_webinar) || 0);
+  const DW = Math.round(parseFloat(row.actions_capi_demo_webinar) || 0);
+  if (c.includes('combined ad sets') || c.includes('blended conversion')) return DW;
+  if (c.includes('skincare & beauty brands') || c.includes('skincare & clean beauty')) {
+    if (a.includes('webinar')) return W;
+    if (a.includes('demo')) return D;
+    return D + W;  // campaign row / unknown ad set → its two ad-set conversions summed
+  }
+  return -1;
+}
+// Total demos for a Meta row: the CAPI conversion when the campaign uses one,
+// else the submit-application conversion; plus Leads(Form) on allowlisted
+// lead-gen campaigns. One source of truth for Meta demo counting.
+function metaDemos(row) {
+  const capi = metaCapiDemoCount(row);
+  const base = capi >= 0 ? capi : Math.round(parseFloat(row.conversions_submit_application_total) || 0);
+  return base + metaLeadDemos(row.campaign_name, row);
+}
+
 // Demo status categorization — uses new dual-field model with legacy fallback.
 // Per demo-status-migration skill: prefer demo_attendance_status + demo_qualification_outcome,
 // fall back to legacy demo_given__status for any unmigrated deals.
@@ -3185,7 +3220,7 @@ async function fetchAzCampaigns(apiKey, from, to) {
   const base = 'date,campaign_name,spend,clicks,impressions';
   // LinkedIn per-connector endpoint uses 'campaign' not 'campaign_name'
   const [fbRows, gaRows, liCampRows, liDemoTotal, ttRows] = await Promise.all([
-    azWindsorFetchAll(apiKey, 'facebook', from, to, base+',conversions_submit_application_total,frequency,effective_status'+META_LEAD_FIELDS),
+    azWindsorFetchAll(apiKey, 'facebook', from, to, base+',conversions_submit_application_total,frequency,effective_status'+META_LEAD_FIELDS+META_CAPI_FIELDS),
     azWindsorFetchAll(apiKey, 'google_ads', from, to, base+',conversions,campaign_status'),
     azWindsorFetchAll(apiKey, 'linkedin', from, to, 'date,campaign,spend,clicks,impressions,campaign_status'),
     fetchLinkedInDemos(apiKey, from, to),
@@ -3213,11 +3248,8 @@ async function fetchAzCampaigns(apiKey, from, to) {
       rollupStatus(camps[name], (row.effective_status || row.campaign_status || '').toUpperCase(), row.date);
       // Only count demos if demoFilterFn passes (or no filter)
       if (!demoFilterFn || demoFilterFn(row)) {
-        const rawD = parseFloat(row[cfg.demoField])||0;
-        const dConv = (ch==='google'||ch==='youtube') ? Math.ceil(rawD) : Math.round(rawD);
-        camps[name].demos += dConv; camps[name].demoConv = (camps[name].demoConv||0) + dConv;
-        // Allowlisted Meta lead-gen campaigns: add Leads (Form) to Demos (CAPI Webinar).
-        if (ch === 'meta') { const wl = metaLeadDemos(name, row); camps[name].demos += wl; camps[name].webinarLead = (camps[name].webinarLead||0) + wl; }
+        if (ch === 'meta') { camps[name].demos += metaDemos(row); }
+        else { const rawD = parseFloat(row[cfg.demoField])||0; camps[name].demos += (ch==='google'||ch==='youtube') ? Math.ceil(rawD) : Math.round(rawD); }
       }
       if (cfg.hasFreq && row.frequency != null && row.frequency !== '') camps[name].freqVals.push(parseFloat(row.frequency));
     }
@@ -3322,7 +3354,10 @@ async function fetchAzCreatives(apiKey, from, to) {
       // Leads (Form) toward Demos at the CREATIVE level too — Windsor returns
       // these per ad_name, so each creative gets its own lead count.
       const lead = ch === 'meta' ? META_LEAD_FIELDS : '';
-      promises.push(azWindsorFetchAll(apiKey, cfg.connector, from, to, base + extra + freq + video + placement + status + created + adset + lead, 7).catch(e => { console.error(`Creative fetch ${ch}:`, e.message); return []; }));
+      // CAPI custom-conversion counts (Demo / Webinar / Demo+Webinar) — the real
+      // "Results" for campaigns that optimize for a CAPI conversion.
+      const capi = ch === 'meta' ? META_CAPI_FIELDS : '';
+      promises.push(azWindsorFetchAll(apiKey, cfg.connector, from, to, base + extra + freq + video + placement + status + created + adset + lead + capi, 7).catch(e => { console.error(`Creative fetch ${ch}:`, e.message); return []; }));
     }
     channels.push(ch);
   }
@@ -3415,11 +3450,8 @@ async function fetchAzCreatives(apiKey, from, to) {
         for (const v of vArr) { if (v && v.value) map[name].videoP25 += parseInt(v.value)||0; }
       }
       if (ch !== 'linkedin') {
-        const rawD = parseFloat(row[cfg.demoField])||0;
-        const dConv = (ch==='google'||ch==='youtube') ? Math.ceil(rawD) : Math.round(rawD);
-        map[name].demos += dConv; map[name].demoConv = (map[name].demoConv||0) + dConv;
-        // Allowlisted Meta lead-gen campaigns: add Leads (Form) to Demos (CAPI Webinar).
-        if (ch === 'meta') { const wl = metaLeadDemos(campName, row); map[name].demos += wl; map[name].webinarLead = (map[name].webinarLead||0) + wl; }
+        if (ch === 'meta') { map[name].demos += metaDemos(row); }
+        else { const rawD = parseFloat(row[cfg.demoField])||0; map[name].demos += (ch==='google'||ch==='youtube') ? Math.ceil(rawD) : Math.round(rawD); }
       }
       if (cfg.hasFreq && row.frequency != null && row.frequency !== '') map[name].freqVals.push(parseFloat(row.frequency));
       // Per-campaign creative aggregation
@@ -3438,10 +3470,8 @@ async function fetchAzCreatives(apiKey, from, to) {
         for (const v of vArr2) { if (v && v.value) campCreMap[campKey][name].videoP25 += parseInt(v.value)||0; }
       }
       if (ch !== 'linkedin') {
-        const rawD2 = parseFloat(row[cfg.demoField])||0;
-        const dConv2 = (ch==='google'||ch==='youtube') ? Math.ceil(rawD2) : Math.round(rawD2);
-        campCreMap[campKey][name].demos += dConv2; campCreMap[campKey][name].demoConv = (campCreMap[campKey][name].demoConv||0) + dConv2;
-        if (ch === 'meta') { const wl2 = metaLeadDemos(campName, row); campCreMap[campKey][name].demos += wl2; campCreMap[campKey][name].webinarLead = (campCreMap[campKey][name].webinarLead||0) + wl2; }
+        if (ch === 'meta') { campCreMap[campKey][name].demos += metaDemos(row); }
+        else { const rawD2 = parseFloat(row[cfg.demoField])||0; campCreMap[campKey][name].demos += (ch==='google'||ch==='youtube') ? Math.ceil(rawD2) : Math.round(rawD2); }
       }
       if (cfg.hasFreq && row.frequency != null && row.frequency !== '') campCreMap[campKey][name].freqVals.push(parseFloat(row.frequency));
       // Per-ad-set creative aggregation — mirrors campCreMap but keyed by
@@ -3464,10 +3494,8 @@ async function fetchAzCreatives(apiKey, from, to) {
           for (const v of vArr3) { if (v && v.value) adsetCreMap[adsetKey][name].videoP25 += parseInt(v.value)||0; }
         }
         if (ch !== 'linkedin') {
-          const rawD3 = parseFloat(row[cfg.demoField])||0;
-          const dConv3 = (ch==='google'||ch==='youtube') ? Math.ceil(rawD3) : Math.round(rawD3);
-          adsetCreMap[adsetKey][name].demos += dConv3; adsetCreMap[adsetKey][name].demoConv = (adsetCreMap[adsetKey][name].demoConv||0) + dConv3;
-          if (ch === 'meta') { const wl3 = metaLeadDemos(campName, row); adsetCreMap[adsetKey][name].demos += wl3; adsetCreMap[adsetKey][name].webinarLead = (adsetCreMap[adsetKey][name].webinarLead||0) + wl3; }
+          if (ch === 'meta') { adsetCreMap[adsetKey][name].demos += metaDemos(row); }
+          else { const rawD3 = parseFloat(row[cfg.demoField])||0; adsetCreMap[adsetKey][name].demos += (ch==='google'||ch==='youtube') ? Math.ceil(rawD3) : Math.round(rawD3); }
         }
         if (cfg.hasFreq && row.frequency != null && row.frequency !== '') adsetCreMap[adsetKey][name].freqVals.push(parseFloat(row.frequency));
       }
@@ -3628,7 +3656,7 @@ async function fetchCreativeFatigue(apiKey) {
 async function fetchAzAudiences(apiKey, from, to) {
   const results = {};
   const configs = {
-    meta:   { connector:'facebook', fields:'date,adset_name,campaign_name,spend,clicks,impressions,conversions_submit_application_total,adset_status,adset_effective_status'+META_LEAD_FIELDS, nameField:'adset_name', demoField:'conversions_submit_application_total', statusField:'adset_effective_status', statusFallback:'adset_status' },
+    meta:   { connector:'facebook', fields:'date,adset_name,campaign_name,spend,clicks,impressions,conversions_submit_application_total,adset_status,adset_effective_status'+META_LEAD_FIELDS+META_CAPI_FIELDS, nameField:'adset_name', demoField:'conversions_submit_application_total', statusField:'adset_effective_status', statusFallback:'adset_status' },
     google: { connector:'google_ads', fields:'date,ad_group_name,campaign_name,spend,clicks,impressions,conversions', nameField:'ad_group_name', demoField:'conversions' },
     tiktok: { connector:'tiktok', fields:'date,ad_group_name,campaign_name,spend,clicks,impressions,conversions', nameField:'ad_group_name', demoField:'conversions' },
   };
@@ -3658,11 +3686,8 @@ async function fetchAzAudiences(apiKey, from, to) {
       map[name].spend += parseFloat(row.spend) || 0;
       map[name].clicks += parseInt(row.clicks) || 0;
       map[name].impressions += parseInt(row.impressions) || 0;
-      let d = parseFloat(row[cfg.demoField]) || 0;
-      if (ch === 'google') d = Math.ceil(d); else d = Math.round(d);
-      map[name].demos += d; map[name].demoConv = (map[name].demoConv||0) + d;
-      // Allowlisted Meta lead-gen campaigns: add Leads (Form) to ad-set Demos (CAPI Webinar).
-      if (ch === 'meta') { const wl = metaLeadDemos(campName, row); map[name].demos += wl; map[name].webinarLead = (map[name].webinarLead||0) + wl; }
+      if (ch === 'meta') { map[name].demos += metaDemos(row); }
+      else { let d = parseFloat(row[cfg.demoField]) || 0; if (ch === 'google') d = Math.ceil(d); else d = Math.round(d); map[name].demos += d; }
       if (!map[name].campaign && campName) map[name].campaign = campName;
     }
     const list = Object.values(map).map(a => {
