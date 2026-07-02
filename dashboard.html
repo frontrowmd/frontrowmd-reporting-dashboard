@@ -755,7 +755,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s63';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s64';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2451,6 +2451,10 @@ function renderIrfan(){
   // Revenue Outcome (Signed ARR) — same card as the Detailed Dashboard.
   h+='<div id="irfan-revoutcome" style="margin-bottom:28px">'+_buildRevenueOutcomeCard(d)+'</div>';
 
+  // True CPD per Week — trend of total ad spend ÷ demos (excl. small brands) by
+  // calendar week within the selected window. Points + instant hover.
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:28px"><div class="irf-card-title">True CPD per Week</div><div class="irf-card-sub">Total ad spend ÷ demos booked excl. small brands (Pre-launch &amp; 0-10K), bucketed by week (Mon–Sun) within the selected window</div><div id="irfan-truecpd-week"></div></div>';
+
   // ═══════ Section 3 — Special Time-Bound Tiles ═══════
   h+='<div class="irf-sec-title" style="margin-bottom:4px">Time-Bound Insights</div>';
   h+='<div class="irf-sec-sub" style="margin-top:0">Independent of the time selector above — uses fixed windows (prior month, last 2 weeks)</div>';
@@ -2481,9 +2485,53 @@ function renderIrfan(){
 
   // Render charts — daily uses the same renderer as Overview (mini KPI cards + hover come for free)
   renderDemosPerDay(d,'irfan-daily-wrap');
+  _renderTrueCpdWeek(d,'irfan-truecpd-week');
   _renderIrfanWtPie(d);
   if(!d.irfan?.last14Error)_renderIrfanSignedPie(d);
   _renderIrfanMetaTablesLoader();
+}
+
+// True CPD per Week (Irfan). Buckets daily total ad spend + daily demos (excl.
+// small brands) into Mon–Sun weeks within the selected window, then plots
+// True CPD = weekSpend ÷ weekDemos with value labels + instant hover.
+function _renderTrueCpdWeek(d, elId){
+  var el=document.getElementById(elId); if(!el) return;
+  var dt=(d&&d.demoTracking)||{};
+  var spendByDay=dt.spendByDay||{};
+  var demoByDay=dt.scheduledByDayScale10KPlus||dt.scheduledByDayScale||{};
+  var seen={}; Object.keys(spendByDay).forEach(function(k){seen[k]=1;}); Object.keys(demoByDay).forEach(function(k){seen[k]=1;});
+  var days=Object.keys(seen).filter(function(k){return /^\d{4}-\d{2}-\d{2}$/.test(k);}).sort();
+  if(!days.length){el.innerHTML='<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px">No weekly data for this window</div>';return;}
+  function weekStartMon(ds){var p=ds.split('-');var dd=new Date(Date.UTC(+p[0],+p[1]-1,+p[2]));var dow=dd.getUTCDay();dd.setUTCDate(dd.getUTCDate()-(dow===0?6:dow-1));return dd.getUTCFullYear()+'-'+String(dd.getUTCMonth()+1).padStart(2,'0')+'-'+String(dd.getUTCDate()).padStart(2,'0');}
+  function fmtWk(wk){var p=wk.split('-');return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+p[1]-1]+' '+(+p[2]);}
+  function wkEnd(wk){var p=wk.split('-');var dd=new Date(Date.UTC(+p[0],+p[1]-1,+p[2]));dd.setUTCDate(dd.getUTCDate()+6);return fmtWk(dd.getUTCFullYear()+'-'+String(dd.getUTCMonth()+1).padStart(2,'0')+'-'+String(dd.getUTCDate()).padStart(2,'0'));}
+  var weeks={};
+  days.forEach(function(ds){var wk=weekStartMon(ds);if(!weeks[wk])weeks[wk]={spend:0,demos:0};weeks[wk].spend+=(spendByDay[ds]||0);weeks[wk].demos+=(demoByDay[ds]||0);});
+  var pts=Object.keys(weeks).sort().map(function(wk){var w=weeks[wk];return {wk:wk,spend:w.spend,demos:w.demos,cpd:w.demos>0?w.spend/w.demos:null};});
+  var plot=pts.filter(function(p){return p.cpd!=null;});
+  if(!plot.length){el.innerHTML='<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px">No demos in any week of this window</div>';return;}
+  var W=900,H=260,padL=54,padR=20,padT=22,padB=44,innerW=W-padL-padR,innerH=H-padT-padB;
+  var maxCpd=Math.max.apply(null,plot.map(function(p){return p.cpd;}));
+  var yMax=(maxCpd*1.15)||1;
+  var n=pts.length;
+  function xAt(i){return padL+(n<=1?innerW/2:(i/(n-1))*innerW);}
+  function yAt(v){return padT+innerH-(v/yMax)*innerH;}
+  var idx={}; pts.forEach(function(p,i){idx[p.wk]=i;});
+  var svg='<div style="overflow-x:auto"><svg viewBox="0 0 '+W+' '+H+'" style="width:100%;min-width:520px;height:auto;font-family:var(--font-b)">';
+  for(var t=0;t<=4;t++){var v=yMax*t/4,y=yAt(v);svg+='<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="rgba(23,44,69,.08)" stroke-width="1"/><text x="'+(padL-8)+'" y="'+(y+3)+'" text-anchor="end" font-size="9" fill="var(--grey)">'+f$(Math.round(v))+'</text>';}
+  if(plot.length>1)svg+='<polyline points="'+plot.map(function(p){return xAt(idx[p.wk])+','+yAt(p.cpd);}).join(' ')+'" fill="none" stroke="var(--teal)" stroke-width="2.5"/>';
+  pts.forEach(function(p,i){
+    var x=xAt(i);
+    svg+='<text x="'+x+'" y="'+(H-padB+16)+'" text-anchor="middle" font-size="8.5" fill="var(--grey)">'+fmtWk(p.wk)+'</text>';
+    if(p.cpd!=null){
+      var y=yAt(p.cpd);
+      var tip='Week of '+fmtWk(p.wk)+' – '+wkEnd(p.wk)+'  ·  True CPD '+f$(Math.round(p.cpd))+'  ·  '+f$(Math.round(p.spend))+' ÷ '+fN(p.demos)+' demos';
+      svg+='<circle cx="'+x+'" cy="'+y+'" r="4.5" fill="var(--teal)" stroke="#fff" stroke-width="1.5" style="cursor:pointer" data-tip="'+tip.replace(/"/g,'&quot;')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()"/>';
+      svg+='<text x="'+x+'" y="'+(y-9)+'" text-anchor="middle" font-size="8.5" font-weight="700" fill="var(--navy)">'+f$(Math.round(p.cpd))+'</text>';
+    }
+  });
+  svg+='</svg></div>';
+  el.innerHTML=svg;
 }
 
 // Lazily load Meta campaign+creative data for Irfan. Caches per-window on
@@ -2684,6 +2732,10 @@ function _statusDateOf(o){if(!o)return null;return _isActiveRow(o)?(o.createdDat
 function _rollupStatusDate(parentActive,kids){const ds=[],actDs=[];for(const k of (kids||[])){const sd=_statusDateOf(k);if(!sd)continue;ds.push(sd);if(_isActiveRow(k))actDs.push(sd);}if(!ds.length)return null;if(parentActive){const pool=actDs.length?actDs:ds;pool.sort();return pool[0];}ds.sort();return ds[ds.length-1];}
 // Returns the two <td>s (Status Date + Status Days) for a row. align defaults center.
 function _statusCells(sd){const days=_daysSince(sd);return '<td style="text-align:center;padding:8px 6px;font-size:10px;color:var(--navy);white-space:nowrap;font-variant-numeric:tabular-nums">'+(sd?_fmtShortDate(sd):'—')+'</td><td style="text-align:right;padding:8px 6px;font-size:10px;color:var(--grey);font-variant-numeric:tabular-nums">'+(days!=null?days+'d':'—')+'</td>';}
+// Small subtext under a Demos value naming its CAPI source (Meta only): demoConv
+// = submit-application conversions (Demo); webinarLead = Leads(Form) on
+// allowlisted lead-gen campaigns (Webinar). Blank when no demos or non-Meta.
+function _capiSub(o,channel){if(channel!=='meta'||!o)return '';var d=(o.demoConv||0)>0,w=(o.webinarLead||0)>0;var lbl=(d&&w)?'CAPI · Demo + Webinar':(w?'CAPI · Webinar':(d?'CAPI · Demo':''));return lbl?'<div style="font-size:8px;color:var(--grey);font-weight:400;text-transform:none;line-height:1.1;margin-top:1px;white-space:nowrap">'+lbl+'</div>':'';}
 // Callbacks invoked by header clicks / stage filter pills. On Detailed
 // Dashboard we render the user-selected channel; on Irfan it's always meta.
 function _curAdCh(){return AP==='dashboard'?(S.dashboard.activeAdChannel||'meta'):'meta';}
@@ -2930,7 +2982,7 @@ function _buildAdSetTableHTML(meta,channel,_flagsByName,fatigueMap){
     h+='<td style="text-align:center;padding:8px 6px">'+_irfanStatusBadge(c.status,c.spend)+'</td>';
     h+=_statusCells(_rollupStatusDate(_isActiveRow(c),_nested));
     h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cSp,c.spend,true)+'">'+f$(c.spend||0)+'</td>';
-    h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cDe,c.demos||0,false)+'">'+fN(c.demos||0)+'</td>';
+    h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cDe,c.demos||0,false)+'">'+fN(c.demos||0)+_capiSub(c,channel)+'</td>';
     h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cCp,cpd||0,true)+'">'+(cpd!=null?f$(cpd):'—')+'</td>';
     h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cIm,c.impressions||0,false)+'">'+fN(c.impressions||0)+'</td>';
     h+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cCl,c.clicks||0,false)+'">'+fN(c.clicks||0)+'</td>';
@@ -2975,7 +3027,7 @@ function _buildAdSetTableHTML(meta,channel,_flagsByName,fatigueMap){
         h+='<td style="text-align:center;padding:6px">'+_irfanStatusBadge(ncr.status,ncr.spend)+'</td>';
         h+=_statusCells(_statusDateOf(ncr));
         h+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+f$(ncr.spend||0)+'</td>';
-        h+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.demos||0)+'</td>';
+        h+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.demos||0)+_capiSub(ncr,channel)+'</td>';
         h+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(ncCpd!=null?f$(ncCpd):'—')+'</td>';
         h+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.impressions||0)+'</td>';
         h+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.clicks||0)+'</td>';
@@ -3195,7 +3247,7 @@ function _renderIrfanMetaTables(d, channel){
     s+='<td></td><td style="text-align:center;padding:6px">'+_irfanStatusBadge(ncr.status,ncr.spend)+'</td>';
     s+=_statusCells(_statusDateOf(ncr));
     s+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+f$(ncr.spend||0)+'</td>';
-    s+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.demos||0)+'</td>';
+    s+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.demos||0)+_capiSub(ncr,channel)+'</td>';
     s+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(ncCpd!=null?f$(ncCpd):'—')+'</td>';
     s+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.impressions||0)+'</td>';
     s+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.clicks||0)+'</td>';
@@ -3233,7 +3285,7 @@ function _renderIrfanMetaTables(d, channel){
     s+='<td style="text-align:center;padding:7px 6px">'+_irfanStatusBadge(a.status,a.spend)+'</td>';
     s+=_statusCells(_rollupStatusDate(_isActiveRow(a),(a._nested||[])));
     s+='<td style="text-align:right;padding:7px 6px;font-variant-numeric:tabular-nums;font-size:10.5px">'+f$(a.spend||0)+'</td>';
-    s+='<td style="text-align:right;padding:7px 6px;font-variant-numeric:tabular-nums;font-size:10.5px">'+fN(a.demos||0)+'</td>';
+    s+='<td style="text-align:right;padding:7px 6px;font-variant-numeric:tabular-nums;font-size:10.5px">'+fN(a.demos||0)+_capiSub(a,channel)+'</td>';
     s+='<td style="text-align:right;padding:7px 6px;font-variant-numeric:tabular-nums;font-size:10.5px">'+(cpd!=null?f$(cpd):'—')+'</td>';
     s+='<td style="text-align:right;padding:7px 6px;font-variant-numeric:tabular-nums;font-size:10.5px">'+fN(a.impressions||0)+'</td>';
     s+='<td style="text-align:right;padding:7px 6px;font-variant-numeric:tabular-nums;font-size:10.5px">'+fN(a.clicks||0)+'</td>';
@@ -3393,7 +3445,7 @@ function _renderIrfanMetaTables(d, channel){
     campH+='<td style="text-align:center;padding:8px 6px">'+_irfanStatusBadge(c.status,c.spend)+'</td>';
     campH+=_statusCells(_rollupStatusDate(_isActiveRow(c),_nested.length?_nested:_adsets.reduce(function(acc,x){return acc.concat(x._nested||[]);},[])));
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cSp,c.spend,true)+'">'+f$(c.spend)+'</td>';
-    campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cDe,c.demos||0,false)+'">'+fN(c.demos||0)+'</td>';
+    campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cDe,c.demos||0,false)+'">'+fN(c.demos||0)+_capiSub(c,channel)+'</td>';
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cCp,cpd||0,true)+'">'+(cpd!=null?f$(cpd):'—')+'</td>';
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cIm,c.impressions||0,false)+'">'+fN(c.impressions||0)+'</td>';
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cCl,c.clicks||0,false)+'">'+fN(c.clicks||0)+'</td>';
@@ -3588,7 +3640,7 @@ function _renderIrfanMetaTables(d, channel){
     creH+='<td style="text-align:center;padding:8px 6px">'+_irfanStatusBadge(c.status,c.spend)+'</td>';
     creH+=_statusCells(_statusDateOf(c));
     creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rSp,c.spend,true)+'">'+f$(c.spend)+'</td>';
-    creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rDe,c.demos||0,false)+'">'+fN(c.demos||0)+'</td>';
+    creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rDe,c.demos||0,false)+'">'+fN(c.demos||0)+_capiSub(c,channel)+'</td>';
     creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rCp,cpd||0,true)+'">'+(cpd!=null?f$(cpd):'—')+'</td>';
     creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rIm,c.impressions||0,false)+'">'+fN(c.impressions||0)+'</td>';
     creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rCl,c.clicks||0,false)+'">'+fN(c.clicks||0)+'</td>';

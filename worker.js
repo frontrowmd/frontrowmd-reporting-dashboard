@@ -918,6 +918,7 @@ function processAdSpend(rows, linkedInDemoOverride) {
   const ch = {};
   for (const c of DASH_CHANNELS) ch[c] = { spend:0, clicks:0, impressions:0, windsorDemos:0 };
   let tSpend=0, tClicks=0, tImpr=0, tDemos=0;
+  const spendByDay = {};  // date (YYYY-MM-DD) → total spend across all channels — powers True CPD per week
 
   for (const row of rows) {
     const ds = (row.datasource||'').toLowerCase();
@@ -950,6 +951,7 @@ function processAdSpend(rows, linkedInDemoOverride) {
 
     ch[key].spend += spend; ch[key].clicks += clicks; ch[key].impressions += impr; ch[key].windsorDemos += demos;
     tSpend += spend; tClicks += clicks; tImpr += impr; tDemos += demos;
+    if (row.date) spendByDay[row.date] = (spendByDay[row.date]||0) + spend;
   }
 
   // LinkedIn demo override (guide Section 1)
@@ -963,7 +965,7 @@ function processAdSpend(rows, linkedInDemoOverride) {
     ch[c].ctr = ch[c].impressions > 0 ? (ch[c].clicks / ch[c].impressions) * 100 : 0;
   }
 
-  return { total: { spend:tSpend, clicks:tClicks, impressions:tImpr, windsorDemos:tDemos }, channels: ch };
+  return { total: { spend:tSpend, clicks:tClicks, impressions:tImpr, windsorDemos:tDemos }, channels: ch, spendByDay };
 }
 
 // ---------------------------------------------------------------------------
@@ -2061,6 +2063,9 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
     // Stricter daily series — excludes pre-launch AND 0-10K. Used by the
     // Irfan Dashboard "Demos Booked per Day" chart.
     scheduledByDayScale10KPlus: c.scheduled.byDayScale10KPlus,
+    // Daily total ad spend (all channels) — powers the Irfan "True CPD per Week"
+    // chart (weekly spend ÷ weekly demos excl. small brands).
+    spendByDay: c.adSpend.spendByDay || {},
     scheduledByWebTraffic: c.scheduled.byWebTraffic,
     scheduledByWebTrafficPrior: prior ? p.scheduled?.byWebTraffic || null : null,
     scheduledByWebTrafficLastMonth: priorMonth ? pm.scheduled?.byWebTraffic || null : null,
@@ -3184,9 +3189,10 @@ async function fetchAzCampaigns(apiKey, from, to) {
       // Only count demos if demoFilterFn passes (or no filter)
       if (!demoFilterFn || demoFilterFn(row)) {
         const rawD = parseFloat(row[cfg.demoField])||0;
-        camps[name].demos += (ch==='google'||ch==='youtube') ? Math.ceil(rawD) : Math.round(rawD);
-        // Allowlisted Meta lead-gen campaigns: add Leads (Form) to Demos.
-        if (ch === 'meta') camps[name].demos += metaLeadDemos(name, row);
+        const dConv = (ch==='google'||ch==='youtube') ? Math.ceil(rawD) : Math.round(rawD);
+        camps[name].demos += dConv; camps[name].demoConv = (camps[name].demoConv||0) + dConv;
+        // Allowlisted Meta lead-gen campaigns: add Leads (Form) to Demos (CAPI Webinar).
+        if (ch === 'meta') { const wl = metaLeadDemos(name, row); camps[name].demos += wl; camps[name].webinarLead = (camps[name].webinarLead||0) + wl; }
       }
       if (cfg.hasFreq && row.frequency != null && row.frequency !== '') camps[name].freqVals.push(parseFloat(row.frequency));
     }
@@ -3381,9 +3387,10 @@ async function fetchAzCreatives(apiKey, from, to) {
       }
       if (ch !== 'linkedin') {
         const rawD = parseFloat(row[cfg.demoField])||0;
-        map[name].demos += (ch==='google'||ch==='youtube') ? Math.ceil(rawD) : Math.round(rawD);
-        // Allowlisted Meta lead-gen campaigns: add Leads (Form) to creative Demos.
-        if (ch === 'meta') map[name].demos += metaLeadDemos(campName, row);
+        const dConv = (ch==='google'||ch==='youtube') ? Math.ceil(rawD) : Math.round(rawD);
+        map[name].demos += dConv; map[name].demoConv = (map[name].demoConv||0) + dConv;
+        // Allowlisted Meta lead-gen campaigns: add Leads (Form) to Demos (CAPI Webinar).
+        if (ch === 'meta') { const wl = metaLeadDemos(campName, row); map[name].demos += wl; map[name].webinarLead = (map[name].webinarLead||0) + wl; }
       }
       if (cfg.hasFreq && row.frequency != null && row.frequency !== '') map[name].freqVals.push(parseFloat(row.frequency));
       // Per-campaign creative aggregation
@@ -3403,8 +3410,9 @@ async function fetchAzCreatives(apiKey, from, to) {
       }
       if (ch !== 'linkedin') {
         const rawD2 = parseFloat(row[cfg.demoField])||0;
-        campCreMap[campKey][name].demos += (ch==='google'||ch==='youtube') ? Math.ceil(rawD2) : Math.round(rawD2);
-        if (ch === 'meta') campCreMap[campKey][name].demos += metaLeadDemos(campName, row);
+        const dConv2 = (ch==='google'||ch==='youtube') ? Math.ceil(rawD2) : Math.round(rawD2);
+        campCreMap[campKey][name].demos += dConv2; campCreMap[campKey][name].demoConv = (campCreMap[campKey][name].demoConv||0) + dConv2;
+        if (ch === 'meta') { const wl2 = metaLeadDemos(campName, row); campCreMap[campKey][name].demos += wl2; campCreMap[campKey][name].webinarLead = (campCreMap[campKey][name].webinarLead||0) + wl2; }
       }
       if (cfg.hasFreq && row.frequency != null && row.frequency !== '') campCreMap[campKey][name].freqVals.push(parseFloat(row.frequency));
       // Per-ad-set creative aggregation — mirrors campCreMap but keyed by
@@ -3428,8 +3436,9 @@ async function fetchAzCreatives(apiKey, from, to) {
         }
         if (ch !== 'linkedin') {
           const rawD3 = parseFloat(row[cfg.demoField])||0;
-          adsetCreMap[adsetKey][name].demos += (ch==='google'||ch==='youtube') ? Math.ceil(rawD3) : Math.round(rawD3);
-          if (ch === 'meta') adsetCreMap[adsetKey][name].demos += metaLeadDemos(campName, row);
+          const dConv3 = (ch==='google'||ch==='youtube') ? Math.ceil(rawD3) : Math.round(rawD3);
+          adsetCreMap[adsetKey][name].demos += dConv3; adsetCreMap[adsetKey][name].demoConv = (adsetCreMap[adsetKey][name].demoConv||0) + dConv3;
+          if (ch === 'meta') { const wl3 = metaLeadDemos(campName, row); adsetCreMap[adsetKey][name].demos += wl3; adsetCreMap[adsetKey][name].webinarLead = (adsetCreMap[adsetKey][name].webinarLead||0) + wl3; }
         }
         if (cfg.hasFreq && row.frequency != null && row.frequency !== '') adsetCreMap[adsetKey][name].freqVals.push(parseFloat(row.frequency));
       }
@@ -3618,9 +3627,9 @@ async function fetchAzAudiences(apiKey, from, to) {
       map[name].impressions += parseInt(row.impressions) || 0;
       let d = parseFloat(row[cfg.demoField]) || 0;
       if (ch === 'google') d = Math.ceil(d); else d = Math.round(d);
-      map[name].demos += d;
-      // Allowlisted Meta lead-gen campaigns: add Leads (Form) to ad-set Demos.
-      if (ch === 'meta') map[name].demos += metaLeadDemos(campName, row);
+      map[name].demos += d; map[name].demoConv = (map[name].demoConv||0) + d;
+      // Allowlisted Meta lead-gen campaigns: add Leads (Form) to ad-set Demos (CAPI Webinar).
+      if (ch === 'meta') { const wl = metaLeadDemos(campName, row); map[name].demos += wl; map[name].webinarLead = (map[name].webinarLead||0) + wl; }
       if (!map[name].campaign && campName) map[name].campaign = campName;
     }
     const list = Object.values(map).map(a => {
