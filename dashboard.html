@@ -755,7 +755,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s68';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s69';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2396,7 +2396,14 @@ function renderIrfan(){
   // True CPD per Week — trend of total ad spend ÷ demos (excl. small brands) by
   // calendar week within the selected window. Points + instant hover. Sits above
   // Key Metrics.
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-bottom:28px"><div class="irf-card-title">True CPD per Week</div><div class="irf-card-sub">Total ad spend ÷ demos booked excl. small brands (Pre-launch &amp; 0-10K), bucketed by week (Mon–Sun) within the selected window</div><div id="irfan-truecpd-week"></div></div>';
+  var _tcTile=(d.executiveSummary&&d.executiveSummary.trueCpd)||{};
+  var _mtdTcpd=_tcTile.value!=null?f$(Math.round(_tcTile.value)):'—';
+  var _lmTcpd=(_tcTile.lastMonth&&_tcTile.lastMonth.value!=null)?f$(Math.round(_tcTile.lastMonth.value)):'—';
+  var _tcMini=function(lbl,val){return '<div style="flex:1;min-width:150px;background:var(--lighter);border:1px solid var(--border);border-radius:10px;padding:12px 16px"><div style="font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em">'+lbl+'</div><div style="font-family:var(--font-h);font-size:24px;font-weight:700;color:var(--navy);margin-top:3px">'+val+'</div></div>';};
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-bottom:28px">'
+    +'<div class="irf-card-title">True CPD per Week</div><div class="irf-card-sub">Total ad spend ÷ demos booked excl. small brands (Pre-launch &amp; 0-10K), bucketed by week (Mon–Sun) within the selected window</div>'
+    +'<div style="display:flex;gap:12px;margin:12px 0 16px;flex-wrap:wrap">'+_tcMini('MTD True CPD',_mtdTcpd)+_tcMini('Last Month True CPD',_lmTcpd)+'</div>'
+    +'<div id="irfan-truecpd-week"></div></div>';
 
   // ═══════ Section 2 — KPI Tiles ═══════
   h+='<div class="irf-sec-title">Key Metrics</div>';
