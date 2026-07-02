@@ -74,23 +74,28 @@ function metaLeadDemos(campaignName, row) {
 // Windsor fields needed to read Leads (Form). Appended to Meta/Facebook fetches.
 const META_LEAD_FIELDS = ',actions_onsite_conversion_lead_grouped,actions_lead';
 
-// ── CAPI custom-conversion labeling ─────────────────────────────────────────
-// Only these campaigns run CAPI custom conversions; the subtext under Demos in
-// the ad tables names which one. "Combined Ad Sets - Blended Conversion" uses a
-// single blended Demo+Webinar conversion for all its ad sets. "Skincare & Beauty
-// Brands" splits it per ad set (its "…- Demo" ad set → Demo, "…- Webinar" ad set
-// → Webinar). Any other campaign returns '' (no CAPI conversion → no subtext).
-// Match by case-insensitive substring of the campaign / ad-set name; extend as
-// more CAPI campaigns launch. Returns 'Demo' | 'Webinar' | 'Demo + Webinar' | ''.
+// ── Demos source labeling (subtext under Demos in the ad tables) ─────────────
+// Returns the FULL subtext label (incl. any prefix) for a campaign / ad set, or
+// '' for none. CAPI custom conversions run only on the TEST campaigns:
+//   • "Combined Ad Sets - Blended Conversion" → one blended Demo+Webinar
+//     conversion for all its ad sets.
+//   • "Skincare & Beauty Brands" (the TEST one) → per ad set: "…- Demo" ad set →
+//     Demo, "…- Webinar" ad set → Webinar. The 'test' gate excludes the
+//     production "…- 020626" Skincare campaign, which does NOT use CAPI.
+// Separately, the S02 MOF lead-gen retargeting campaign reports Meta Lead Forms
+// (not a CAPI conversion) → "Lead Forms". Extend as new campaigns launch.
 function capiConvLabel(campaignName, adsetName) {
   const c = (campaignName || '').toLowerCase();
   const a = (adsetName || '').toLowerCase();
-  if (c.includes('combined ad sets') || c.includes('blended conversion')) return 'Demo + Webinar';
-  if (c.includes('skincare & beauty brands') || c.includes('skincare & clean beauty')) {
-    if (a.includes('webinar')) return 'Webinar';
-    if (a.includes('demo')) return 'Demo';
-    return 'Demo + Webinar';  // campaign row / unknown ad set → spans both
+  if (c.includes('test')) {
+    if (c.includes('combined ad sets') || c.includes('blended conversion')) return 'CAPI · Demo + Webinar';
+    if (c.includes('skincare & beauty brands') || c.includes('skincare & clean beauty')) {
+      if (a.includes('webinar')) return 'CAPI · Webinar';
+      if (a.includes('demo')) return 'CAPI · Demo';
+      return 'CAPI · Demo + Webinar';  // campaign row / unknown ad set → spans both
+    }
   }
+  if (isMetaLeadAsDemoCampaign(campaignName)) return 'Lead Forms';
   return '';
 }
 
@@ -3396,7 +3401,7 @@ async function fetchAzCreatives(apiKey, from, to) {
       if (_rowCreated && !map[name].createdDate) map[name].createdDate = _rowCreated;
       // A flat creative can run in both a Demo and a Webinar ad set — accumulate
       // whichever CAPI conversions its ad sets use, then combine at finalize.
-      { const _cl = capiConvLabel(campName, row.adset_name); if (_cl === 'Demo' || _cl === 'Demo + Webinar') map[name]._capiDemo = 1; if (_cl === 'Webinar' || _cl === 'Demo + Webinar') map[name]._capiWeb = 1; }
+      { const _cl = capiConvLabel(campName, row.adset_name); if (_cl.indexOf('Demo') >= 0) map[name]._capiDemo = 1; if (_cl.indexOf('Webinar') >= 0) map[name]._capiWeb = 1; if (_cl === 'Lead Forms') map[name]._capiLead = 1; }
       map[name].spend += parseFloat(row.spend)||0;
       if (!map[name]._campSpend) map[name]._campSpend = {};
       if (!map[name]._campSpend[campName]) map[name]._campSpend[campName] = 0;
@@ -3495,8 +3500,8 @@ async function fetchAzCreatives(apiKey, from, to) {
         }).sort((a,b)=>b.spend-a.spend);
       }
       delete c._placements;
-      c.capiConv = (c._capiDemo && c._capiWeb) ? 'Demo + Webinar' : (c._capiWeb ? 'Webinar' : (c._capiDemo ? 'Demo' : ''));
-      delete c._capiDemo; delete c._capiWeb;
+      c.capiConv = (c._capiDemo && c._capiWeb) ? 'CAPI · Demo + Webinar' : (c._capiWeb ? 'CAPI · Webinar' : (c._capiDemo ? 'CAPI · Demo' : (c._capiLead ? 'Lead Forms' : '')));
+      delete c._capiDemo; delete c._capiWeb; delete c._capiLead;
     }
     // Finalize per-campaign creatives
     const campCreFinal = {};
