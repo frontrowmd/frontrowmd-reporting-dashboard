@@ -33,8 +33,9 @@ const BUDGET_BY_MONTH = {
   // only the Budget cell populated; all metric cells render as em-dashes
   // until the data integration ships.
   '2026-06': { meta: 105000, linkedin: 35000, google: 25000, tiktok: 25000, youtube: 0, chatgpt: 10000 },
+  '2026-07': { meta: 74077.40, linkedin: 15000, google: 14424.11, tiktok: 3000, youtube: 0, chatgpt: 0 },
 };
-const BUDGET_FALLBACK = BUDGET_BY_MONTH['2026-06'];
+const BUDGET_FALLBACK = BUDGET_BY_MONTH['2026-07'];
 function getBudgetsForMonth(dateStr) {
   if (!dateStr) return BUDGET_FALLBACK;
   return BUDGET_BY_MONTH[dateStr.slice(0, 7)] || BUDGET_FALLBACK;
