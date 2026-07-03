@@ -758,7 +758,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s70';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s71';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2503,12 +2503,20 @@ function renderIrfan(){
 // div _renderTrueCpdWeek() targets (must be unique per page).
 function _trueCpdWeekCard(d, chartId){
   var t=(d.executiveSummary&&d.executiveSummary.trueCpd)||{};
-  var mtd=t.value!=null?f$(Math.round(t.value)):'—';
-  var lm=(t.lastMonth&&t.lastMonth.value!=null)?f$(Math.round(t.lastMonth.value)):'—';
+  var win=(d.meta&&d.meta.windowType)||'mtd';
+  // Card 1 = the selected window's True CPD. Card 2 = the prior month: use the
+  // full last-month value when present (MTD/YTD), else fall back to the "vs prior"
+  // period — which for the Last Month view IS the full month before (e.g. May
+  // when viewing June). Labels adapt so they never mislabel the period.
+  var curV=t.value;
+  var priorV=(t.lastMonth&&t.lastMonth.value!=null)?t.lastMonth.value:((t.sameTimePrior&&t.sameTimePrior.value!=null)?t.sameTimePrior.value:null);
+  var LB={mtd:['MTD True CPD','Last Month True CPD'],lastMonth:['Last Month True CPD','Prior Month True CPD'],ytd:['YTD True CPD','Last Month True CPD'],'7d':['Last 7 Days True CPD','Prior Period True CPD'],allTime:['All Time True CPD','Last Month True CPD'],custom:['Selected True CPD','Prior Period True CPD']};
+  var lb=LB[win]||LB.mtd;
+  var fmtC=function(v){return v!=null?f$(Math.round(v)):'—';};
   var mini=function(lbl,val){return '<div style="flex:1;min-width:150px;background:var(--lighter);border:1px solid var(--border);border-radius:10px;padding:12px 16px"><div style="font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em">'+lbl+'</div><div style="font-family:var(--font-h);font-size:24px;font-weight:700;color:var(--navy);margin-top:3px">'+val+'</div></div>';};
   return '<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-bottom:16px">'
     +'<div class="irf-card-title">True CPD per Week</div><div class="irf-card-sub">Total ad spend ÷ demos booked excl. small brands (Pre-launch &amp; 0-10K), bucketed by week (Mon–Sun) within the selected window</div>'
-    +'<div style="display:flex;gap:12px;margin:12px 0 16px;flex-wrap:wrap">'+mini('MTD True CPD',mtd)+mini('Last Month True CPD',lm)+'</div>'
+    +'<div style="display:flex;gap:12px;margin:12px 0 16px;flex-wrap:wrap">'+mini(lb[0],fmtC(curV))+mini(lb[1],fmtC(priorV))+'</div>'
     +'<div id="'+chartId+'"></div></div>';
 }
 
@@ -2533,15 +2541,18 @@ function _renderTrueCpdWeek(d, elId){
   if(!plot.length){el.innerHTML='<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px">No demos in any week of this window</div>';return;}
   var W=1000,H=180,padL=52,padR=24,padT=18,padB=34,innerW=W-padL-padR,innerH=H-padT-padB;
   var maxCpd=Math.max.apply(null,plot.map(function(p){return p.cpd;}));
-  // Round the top of the axis up to a whole $100, leaving headroom so the highest
-  // point isn't flush against the top; gridlines/labels step by $100.
-  var yMax=Math.ceil(maxCpd/100)*100; if(!yMax||maxCpd/yMax>0.9)yMax+=100;
+  // Pick a "nice" $ step so the axis has at most ~5 intervals — avoids the
+  // crowded $100 gridlines when weekly CPD runs into four figures. Round the top
+  // up to that step, with headroom so the highest point isn't flush against it.
+  var _steps=[100,200,250,500,1000,2000,2500,5000,10000],_step=_steps[_steps.length-1];
+  for(var _si=0;_si<_steps.length;_si++){if(maxCpd/_steps[_si]<=5){_step=_steps[_si];break;}}
+  var yMax=Math.ceil(maxCpd/_step)*_step; if(!yMax||maxCpd/yMax>0.9)yMax+=_step;
   var n=pts.length;
   function xAt(i){return padL+(n<=1?innerW/2:(i/(n-1))*innerW);}
   function yAt(v){return padT+innerH-(v/yMax)*innerH;}
   var idx={}; pts.forEach(function(p,i){idx[p.wk]=i;});
   var svg='<div style="overflow-x:auto"><svg viewBox="0 0 '+W+' '+H+'" style="width:100%;min-width:520px;height:auto;font-family:var(--font-b)">';
-  for(var v=0;v<=yMax;v+=100){var y=yAt(v);svg+='<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="rgba(23,44,69,.08)" stroke-width="1"/><text x="'+(padL-8)+'" y="'+(y+3)+'" text-anchor="end" font-size="9" fill="var(--grey)">'+f$(v)+'</text>';}
+  for(var v=0;v<=yMax;v+=_step){var y=yAt(v);svg+='<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="rgba(23,44,69,.08)" stroke-width="1"/><text x="'+(padL-8)+'" y="'+(y+3)+'" text-anchor="end" font-size="9" fill="var(--grey)">'+f$(v)+'</text>';}
   if(plot.length>1)svg+='<polyline points="'+plot.map(function(p){return xAt(idx[p.wk])+','+yAt(p.cpd);}).join(' ')+'" fill="none" stroke="var(--teal)" stroke-width="2.5"/>';
   pts.forEach(function(p,i){
     var x=xAt(i);
