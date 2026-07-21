@@ -1178,13 +1178,20 @@ function processPipelineDeals(deals, winFromUTC, winToUTC, winFromET, winToET, l
   // windows (last7/lastMonth/custom), this equals total.
   // We re-filter `deals` (the full input) to count any deal with a valid date_demo_booked
   // or rescheduled_meeting_date — irrespective of whether it falls in the narrow window.
-  let totalExtended = 0;
+  // Small-brand web-traffic tiers (Pre-launch + 0-10K + Very Small) — used for
+  // every "excl. small brands" variant in this function.
+  const SMALL_BRAND_TIERS = new Set(['Pre-launch / just launching','0-10K monthly web visitors','Very Small']);
+  let totalExtended = 0, totalExtendedStrict = 0;
   for (const d of deals) {
     const ddb = d.properties?.date_demo_booked;
     const rmd = d.properties?.rescheduled_meeting_date;
     const eff = rmd || ddb;
     const effMs = dateMs(eff);
-    if (!isNaN(effMs)) totalExtended++;
+    if (!isNaN(effMs)) {
+      totalExtended++;
+      // "excl. small brands" variant — keyed off the deal-level cloned tier.
+      if (!SMALL_BRAND_TIERS.has(d.properties?.average_monthly_web_traffic__cloned_ || '')) totalExtendedStrict++;
+    }
   }
   let demosHappened=0, tooEarlyCount=0, tooSmallCount=0, notQualCount=0;
   // New raw counters (from demo_attendance_status / demo_qualification_outcome)
@@ -1203,7 +1210,6 @@ function processPipelineDeals(deals, winFromUTC, winToUTC, winFromET, winToET, l
   let noShowStrictCount=0, cancelledStrictCount=0;
   let qualifiedRawCount=0, disqualifiedRawCount=0, notYetEvalCount=0;
   let qualifiedRawScaleCount=0;  // Qualified count excluding Pre-launch brands (denominator for Total True CPQD)
-  const SMALL_BRAND_TIERS = new Set(['Pre-launch / just launching','0-10K monthly web visitors','Very Small']);
   let staleScheduledCount=0;  // Scheduled — pending with date_demo_booked in the past
   let cancelledBeforeDemoCount=0;  // Prune Rate numerator: demo_attendance_status = 'Cancelled before demo'
   // Tight-cohort counts for Irfan KPI #3 "% Pruned": only deals where BOTH
@@ -1398,7 +1404,7 @@ function processPipelineDeals(deals, winFromUTC, winToUTC, winFromET, winToET, l
     rescheduledCount, noShowCount, tooEarlyByCat, tooSmallByCat, prunedByCat,
     pendingEvalCount, pendingCount, qualRateDenom,
     // New raw counts surfaced for dashboards
-    totalExtended, demoGivenOrigCount, demoGivenReschedCount, demoGivenScaleCount, demoGivenStrictCount, noShowScaleCount,
+    totalExtended, totalExtendedStrict, demoGivenOrigCount, demoGivenReschedCount, demoGivenScaleCount, demoGivenStrictCount, noShowScaleCount,
     // Strict (small-brand-excluded) numerators for the canonical rates.
     noShowStrictCount, cancelledStrictCount,
     qualifiedRawCount, disqualifiedRawCount, notYetEvalCount, qualifiedRawScaleCount,
@@ -2052,6 +2058,7 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
   const demoTracking = {
     totalScheduled: buildTile(c.scheduled.total, p.scheduled?.total??null, pm.scheduled?.total??null, 'Contacts created in period with date_demo_booked set'),
     demosToOccur: buildTile(c.pipeline.totalExtended, p.pipeline?.totalExtended??null, pm.pipeline?.totalExtended??null, 'Total deals scheduled in the time window (incl. future-dated for MTD/YTD)'),
+    demosToOccurStrict: buildTile(c.pipeline.totalExtendedStrict, p.pipeline?.totalExtendedStrict??null, pm.pipeline?.totalExtendedStrict??null, 'Deals scheduled in the window, excluding small brands (Pre-launch + 0-10K + Very Small)'),
     demosHappened: buildTile(c.pipeline.demosHappened, p.pipeline?.demosHappened??null, pm.pipeline?.demosHappened??null, 'Deals where demo actually happened'),
     qualifiedOccurred: buildTile(c.pipeline.qualifiedCount, p.pipeline?.qualifiedCount??null, pm.pipeline?.qualifiedCount??null, 'Deals where demo was given AND outcome = Qualified'),
     demoShowRate: buildTile(c.pipeline.demoShowRate, p.pipeline?.demoShowRate??null, pm.pipeline?.demoShowRate??null, 'Demos Happened ÷ Demos to Occur × 100'),

@@ -758,7 +758,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s79';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s80';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2076,15 +2076,40 @@ function renderDash(){
   const qualRateScaleLMV = d.executiveSummary?.qualificationRate?.lastMonth?.value;
   const qualPlusDisqualCur = (qmeta.qualifiedRawCount||0) + (qmeta.disqualifiedRawCount||0);
 
-  oh+='<div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:12px;margin-bottom:24px">';
-  oh+=panelOpen('Volume','#3B82F6');
-  oh+=statRow('Demos to occur','Deals by date_demo_booked in window',fN(demosToOccur),null,demosToOccur,demosToOccurPV,demosToOccurLMV,'#');
-  oh+=statRow('Demos supposed to happen','Held + No shows + Pruned, excl. small brands',fN(qmeta.pruneDenom||0),`${fN(qmeta.demoGivenStrictCount||0)} held + ${fN(qmeta.noShowStrictCount||0)} no-show + ${fN(qmeta.cancelledStrictCount||0)} pruned`,qmeta.pruneDenom||0,qmeta.pruneDenomPrior,qmeta.pruneDenomLastMonth,'#');
-  oh+=statRow('Demos held (excl. pre-launch)','Demo Given orig + resched, excluding pre-launch brands',fN(heldScaleCur),null,heldScaleCur,heldScalePV,heldScaleLMV,'#',{noMargin:true});
-  oh+='</div>';
+  // \u2500\u2500 Volume \u2014 two columns: All Traffic (left) vs Excluding Small Brands
+  // (right). "Small brands" = Pre-launch + 0-10K + Very Small web-traffic tiers.
+  const _exTag='<span style="display:inline-block;font-size:8px;font-weight:700;color:#2563EB;background:rgba(37,99,235,.12);padding:1px 6px;border-radius:99px;margin-left:6px;text-transform:none;letter-spacing:0;vertical-align:middle">Excl. Small Brands</span>';
+  const _heldAllC=demosHeldFull,_heldAllP=demosHeldFullPV,_heldAllL=demosHeldFullLMV;
+  const _heldExC=qmeta.demoGivenStrictCount||0,_heldExP=qmeta.demoGivenStrictCountPrior,_heldExL=qmeta.demoGivenStrictCountLastMonth;
+  const _nsAllC=qmeta.noShowCount||0,_nsAllP=qmeta.noShowCountPrior,_nsAllL=qmeta.noShowCountLastMonth;
+  const _cxAllC=qmeta.cancelledBeforeDemoCount||0,_cxAllP=qmeta.cancelledBeforeDemoCountPrior,_cxAllL=qmeta.cancelledBeforeDemoCountLastMonth;
+  const _supAllC=_heldAllC+_nsAllC+_cxAllC;
+  const _supAllP=(_heldAllP!=null&&_nsAllP!=null&&_cxAllP!=null)?_heldAllP+_nsAllP+_cxAllP:null;
+  const _supAllL=(_heldAllL!=null&&_nsAllL!=null&&_cxAllL!=null)?_heldAllL+_nsAllL+_cxAllL:null;
+  const _supExC=qmeta.pruneDenom||0,_supExP=qmeta.pruneDenomPrior,_supExL=qmeta.pruneDenomLastMonth;
+  const _occExC=d.demoTracking.demosToOccurStrict?.value,_occExP=d.demoTracking.demosToOccurStrict?.sameTimePrior?.value,_occExL=d.demoTracking.demosToOccurStrict?.lastMonth?.value;
+  // All-traffic Quality rates (NO small-brand exclusion)
+  const _pruneAllC=_supAllC>0?(_cxAllC/_supAllC)*100:null;
+  const _pruneAllP=(_supAllP&&_supAllP>0&&_cxAllP!=null)?(_cxAllP/_supAllP)*100:null;
+  const _pruneAllL=(_supAllL&&_supAllL>0&&_cxAllL!=null)?(_cxAllL/_supAllL)*100:null;
+  const _nsDenAllC=_heldAllC+_nsAllC,_nsDenAllP=(_heldAllP!=null&&_nsAllP!=null)?_heldAllP+_nsAllP:null,_nsDenAllL=(_heldAllL!=null&&_nsAllL!=null)?_heldAllL+_nsAllL:null;
+  const _noShowAllC=_nsDenAllC>0?(_nsAllC/_nsDenAllC)*100:null;
+  const _noShowAllP=(_nsDenAllP&&_nsDenAllP>0&&_nsAllP!=null)?(_nsAllP/_nsDenAllP)*100:null;
+  const _noShowAllL=(_nsDenAllL&&_nsDenAllL>0&&_nsAllL!=null)?(_nsAllL/_nsDenAllL)*100:null;
+  oh+='<div style="margin-bottom:16px">'+panelOpen('Volume','#3B82F6');
+  oh+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+  oh+=statRow('Demos to occur','Deals by date_demo_booked in window',fN(demosToOccur),null,demosToOccur,demosToOccurPV,demosToOccurLMV,'#',{noMargin:true});
+  oh+=statRow('Demos to occur'+_exTag,'Deals by date_demo_booked in window',_occExC!=null?fN(_occExC):'\u2014',null,_occExC,_occExP,_occExL,'#',{noMargin:true});
+  oh+=statRow('Demos supposed to happen','Held + No shows + Pruned, all traffic',fN(_supAllC),`${fN(_heldAllC)} held + ${fN(_nsAllC)} no-show + ${fN(_cxAllC)} pruned`,_supAllC,_supAllP,_supAllL,'#',{noMargin:true});
+  oh+=statRow('Demos supposed to happen'+_exTag,'Held + No shows + Pruned, excl. small brands',fN(_supExC),`${fN(_heldExC)} held + ${fN(qmeta.noShowStrictCount||0)} no-show + ${fN(qmeta.cancelledStrictCount||0)} pruned`,_supExC,_supExP,_supExL,'#',{noMargin:true});
+  oh+=statRow('Demos held','Demo Given orig + resched, all traffic',fN(_heldAllC),null,_heldAllC,_heldAllP,_heldAllL,'#',{noMargin:true});
+  oh+=statRow('Demos held'+_exTag,'Demo Given orig + resched, excl. small brands',fN(_heldExC),null,_heldExC,_heldExP,_heldExL,'#',{noMargin:true});
+  oh+='</div></div></div>';
+  // \u2500\u2500 Quality (all traffic \u2014 small brands NOT excluded) + Efficiency \u2500\u2500
+  oh+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px">';
   oh+=panelOpen('Quality','#1D9E75');
-  oh+=statRow('Prune rate','Cancelled before demo \u00f7 settled outcomes, excl. small brands',prune!=null?prune.toFixed(1)+'%':'\u2014',`${fN(qmeta.cancelledStrictCount||0)} \u00f7 ${fN(qmeta.pruneDenom||0)}`,prune,prunePV,pruneLMV,'%',{inv:true,warnIf:20});
-  oh+=statRow('No-show rate','No Show \u00f7 (held + No Show), excl. small brands',noShow!=null?noShow.toFixed(1)+'%':'\u2014',`${fN(qmeta.noShowStrictCount||0)} \u00f7 ${fN(qmeta.noShowDenom||0)}`,noShow,noShowPV,noShowLMV,'%',{inv:true,warnIf:20});
+  oh+=statRow('Prune rate','Cancelled before demo \u00f7 settled outcomes, all traffic',_pruneAllC!=null?_pruneAllC.toFixed(1)+'%':'\u2014',`${fN(_cxAllC)} \u00f7 ${fN(_supAllC)}`,_pruneAllC,_pruneAllP,_pruneAllL,'%',{inv:true,warnIf:20});
+  oh+=statRow('No-show rate','No Show \u00f7 (held + No Show), all traffic',_noShowAllC!=null?_noShowAllC.toFixed(1)+'%':'\u2014',`${fN(_nsAllC)} \u00f7 ${fN(_nsDenAllC)}`,_noShowAllC,_noShowAllP,_noShowAllL,'%',{inv:true,warnIf:20});
   oh+=statRow('Qualification rate','Qualified \u00f7 (Qualified + Disqualified)',qualRateScale!=null?qualRateScale.toFixed(1)+'%':'\u2014',`${fN(qmeta.qualifiedRawCount||0)} \u00f7 ${fN(qualPlusDisqualCur)}`,qualRateScale,qualRateScalePV,qualRateScaleLMV,'%',{noMargin:true});
   oh+='</div>';
   oh+=panelOpen('Efficiency','#BA7517');
