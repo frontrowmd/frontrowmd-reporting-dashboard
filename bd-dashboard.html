@@ -523,17 +523,25 @@ function renderBD(){
   var _cumB=[],_cumA=[],_cumL=[];var rB=0,rA=0;var mN=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   for(var mi=0;mi<_chartMonths.length;mi++){var md=_chartMonthMap[_chartMonths[mi]];rB+=md.added;rA+=md.addedMRR*12;_cumB.push(rB);_cumA.push(rA);var p=_chartMonths[mi].split('-');_cumL.push(mN[parseInt(p[1])-1]+' '+p[0].substring(2));}
   // Snapshot series — the book that WAS active at each month, incl. brands that
-  // later churned/paused. +1 brand / +ARR at the signing month (closedate),
-  // −1 / −ARR at the pause/churn month (pausechurn_date). ALL closed-won deals
-  // count (not just survivors), on a continuous monthly axis from the first
-  // signing through the current month, so churn attrition shows as dips.
+  // later churned/paused. A brand counts from its SIGNING month through the
+  // month it paused/churned. Churned/paused deals leave the 'closedwon' stage
+  // and usually have a BLANK closedate, so signing = closedate →
+  // hs_date_entered_closedwon (the signing timestamp, persists after churn) →
+  // createdate. Population = every deal that reached a signed state (Signed /
+  // Paying / Paused / Churned / Never Implemented), NOT just current closed-won
+  // — otherwise churned brands (which move to a Churned dealstage) are missing.
+  // Continuous monthly axis from first signing → current month; churns dip it.
+  function _bdMonthOf(v){if(!v)return '';var s=String(v);if(/^\d{4}-\d{2}/.test(s))return s.substring(0,7);var n=parseInt(s,10);if(!isNaN(n)&&n>1e11){var dt=new Date(n);return dt.getFullYear()+'-'+('0'+(dt.getMonth()+1)).slice(-2);}return '';}
+  var _SIGNED_STATES=['Signed','Paying','Paused','Churned','Never Implemented - Churned'];
   var _snSign={},_snSignMRR={},_snChurn={},_snChurnMRR={},_snFirst=null;
-  closedWonDeals.forEach(function(dd){
-    if(dd.closedate){var _sm=dd.closedate.substring(0,7);_snSign[_sm]=(_snSign[_sm]||0)+1;_snSignMRR[_sm]=(_snSignMRR[_sm]||0)+dd.amount;if(!_snFirst||_sm<_snFirst)_snFirst=_sm;}
+  deals.forEach(function(dd){
+    if(_SIGNED_STATES.indexOf(dd.brand_status)<0)return;
+    var _sm=_bdMonthOf(dd.closedate)||_bdMonthOf(dd.entered_closedwon)||_bdMonthOf(dd.createdate);
+    if(_sm){_snSign[_sm]=(_snSign[_sm]||0)+1;_snSignMRR[_sm]=(_snSignMRR[_sm]||0)+dd.amount;if(!_snFirst||_sm<_snFirst)_snFirst=_sm;}
     var _snInactive=['Paused','Churned','Never Implemented - Churned'].indexOf(dd.brand_status)>=0;
-    if(_snInactive&&dd.pausechurn_date){var _cm=dd.pausechurn_date.substring(0,7);_snChurn[_cm]=(_snChurn[_cm]||0)+1;_snChurnMRR[_cm]=(_snChurnMRR[_cm]||0)+dd.amount;}
+    if(_snInactive&&dd.pausechurn_date){var _cm=_bdMonthOf(dd.pausechurn_date);if(_cm){_snChurn[_cm]=(_snChurn[_cm]||0)+1;_snChurnMRR[_cm]=(_snChurnMRR[_cm]||0)+dd.amount;}}
   });
-  var _cumBSnap=[],_cumASnap=[],_cumLSnap=[];var _rbs=0,_ras=0;
+  var _cumBSnap=[],_cumASnap=[],_cumLSnap=[];var _rbs=0,_ras=0;var _snByMonth={};
   if(_snFirst){
     var _sfp=_snFirst.split('-');var _scur=new Date(parseInt(_sfp[0],10),parseInt(_sfp[1],10)-1,1);
     var _snow=new Date();var _send=new Date(_snow.getFullYear(),_snow.getMonth(),1);
@@ -542,6 +550,7 @@ function renderBD(){
       var _smk=_scur.getFullYear()+'-'+('0'+(_scur.getMonth()+1)).slice(-2);
       _rbs+=(_snSign[_smk]||0)-(_snChurn[_smk]||0);
       _ras+=((_snSignMRR[_smk]||0)-(_snChurnMRR[_smk]||0))*12;
+      _snByMonth[_smk]={b:_rbs,a:_ras};
       _cumBSnap.push(_rbs);_cumASnap.push(_ras);_cumLSnap.push(mN[_scur.getMonth()]+' '+String(_scur.getFullYear()).slice(-2));
       _scur.setMonth(_scur.getMonth()+1);
     }
@@ -552,9 +561,9 @@ function renderBD(){
   var _brA=_bdChartMode==='snapshot'?_cumASnap:_cumA;
   var _brBtot=_brB.length?_brB[_brB.length-1]:0;
   var _brAtot=_brA.length?_brA[_brA.length-1]:0;
-  var _cmSeg='<span style="display:inline-flex;background:rgba(23,44,69,.06);border-radius:50px;padding:2px;gap:2px;flex-shrink:0">'
-    +'<span style="cursor:pointer;font-size:10px;padding:3px 11px;border-radius:50px;font-weight:600;font-family:var(--font-b);'+(_bdChartMode==='current'?'background:var(--navy);color:#fff;':'color:var(--navy);')+'" onclick="_bdChartMode=\'current\';renderBD()">Current</span>'
-    +'<span style="cursor:pointer;font-size:10px;padding:3px 11px;border-radius:50px;font-weight:600;font-family:var(--font-b);'+(_bdChartMode==='snapshot'?'background:var(--navy);color:#fff;':'color:var(--navy);')+'" onclick="_bdChartMode=\'snapshot\';renderBD()">Snapshot</span>'
+  var _cmSeg='<span title="Current = brands still active today · Snapshot = the book that was active as of each month, incl. brands that later churned" style="display:inline-flex;align-items:center;background:rgba(23,44,69,.07);border:1.5px solid rgba(23,44,69,.16);border-radius:50px;padding:3px;gap:3px;flex-shrink:0;box-shadow:inset 0 1px 2px rgba(2,15,24,.06)">'
+    +'<span style="cursor:pointer;font-size:12px;padding:5px 16px;border-radius:50px;font-weight:700;font-family:var(--font-b);transition:all .12s ease;'+(_bdChartMode==='current'?'background:var(--navy);color:#fff;box-shadow:0 1px 3px rgba(2,15,24,.28)':'color:var(--navy)')+'" onclick="_bdChartMode=\'current\';renderBD()">Current</span>'
+    +'<span style="cursor:pointer;font-size:12px;padding:5px 16px;border-radius:50px;font-weight:700;font-family:var(--font-b);transition:all .12s ease;'+(_bdChartMode==='snapshot'?'background:var(--teal);color:#fff;box-shadow:0 1px 3px rgba(2,15,24,.28)':'color:var(--navy)')+'" onclick="_bdChartMode=\'snapshot\';renderBD()">Snapshot</span>'
     +'</span>';
   // ARR by week — total new ARR (MRR×12) signed each week, keyed by the Monday
   // of the week the deal closed. Same population as Signed ARR (Paying+Signed
@@ -580,6 +589,16 @@ function renderBD(){
   var _lmARR=_chartMonthMap[_lmKey]?_chartMonthMap[_lmKey].addedMRR*12:0;
   var _cmDeals=_chartMonthMap[_cmKey]?_chartMonthMap[_cmKey].added:0;
   var _lmDeals=_chartMonthMap[_lmKey]?_chartMonthMap[_lmKey].added:0;
+  // Mode-aware mini card labels + values. Current = new signings that month
+  // (survivors). Snapshot = the active book (brands/ARR) as of that month-end,
+  // so the cards match the snapshot line.
+  var _snapMode=_bdChartMode==='snapshot';
+  var _snapChartOpts=_snapMode?{dashed:true,hatch:true}:{};
+  var _snCM=_snByMonth[_cmKey]||{b:0,a:0},_snLM=_snByMonth[_lmKey]||{b:0,a:0};
+  var _miBrCurL=_snapMode?'Active — This Month':'Current Month Signed Deals',_miBrCurV=_snapMode?_snCM.b:_cmDeals;
+  var _miBrLmL=_snapMode?'Active — Last Month':'Last Month Signed Deals',_miBrLmV=_snapMode?_snLM.b:_lmDeals;
+  var _miArCurL=_snapMode?'Active ARR — This Month':'Current Month ARR',_miArCurV=_snapMode?f$(_snCM.a):f$(_cmARR);
+  var _miArLmL=_snapMode?'Active ARR — Last Month':'Last Month ARR',_miArLmV=_snapMode?f$(_snLM.a):f$(_lmARR);
   // Compact mini stat card for chart headers. col = accent (chart) color for the
   // "current month" card; pass null for the neutral "last month" card.
   var _miniStat=function(label,val,col){
@@ -588,11 +607,11 @@ function renderBD(){
   };
   h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;min-width:0">';
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;position:relative;min-width:0;overflow:hidden;display:flex;flex-direction:column" class="chart-wrap">';
-  h+='<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px;flex-wrap:wrap"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">Active Brands <span style="font-size:11px;color:var(--grey);font-family:var(--font-b);font-weight:400">'+_brBtot+' total</span></div><div style="display:flex;gap:8px;align-items:center;flex-shrink:0">'+_cmSeg+_miniStat('Current Month Signed Deals',_cmDeals,'#172C45')+_miniStat('Last Month Signed Deals',_lmDeals,null)+'</div></div>';
-  h+=buildSVGChart(_brL,_brB,'#172C45',' brands',false)+'<div id="bd-brands-tip" class="float-tip"></div></div>';
+  h+='<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px;flex-wrap:wrap"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">Active Brands <span style="font-size:11px;color:var(--grey);font-family:var(--font-b);font-weight:400">'+_brBtot+' total</span></div><div style="display:flex;gap:8px;align-items:center;flex-shrink:0">'+_cmSeg+_miniStat(_miBrCurL,_miBrCurV,'#172C45')+_miniStat(_miBrLmL,_miBrLmV,null)+'</div></div>';
+  h+=buildSVGChart(_brL,_brB,'#172C45',' brands',false,'',_snapChartOpts)+'<div id="bd-brands-tip" class="float-tip"></div></div>';
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;position:relative;min-width:0;overflow:hidden;display:flex;flex-direction:column" class="chart-wrap">';
-  h+='<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px;flex-wrap:wrap"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">Signed ARR <span style="font-size:11px;color:var(--grey);font-family:var(--font-b);font-weight:400">'+f$(_brAtot)+'</span></div><div style="display:flex;gap:8px;align-items:center;flex-shrink:0">'+_cmSeg+_miniStat('Current Month ARR',f$(_cmARR),'#16A34A')+_miniStat('Last Month ARR',f$(_lmARR),null)+'</div></div>';
-  h+=buildSVGChart(_brL,_brA,'#16A34A','',true)+'<div id="bd-arr-tip" class="float-tip"></div></div>';
+  h+='<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px;flex-wrap:wrap"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">Signed ARR <span style="font-size:11px;color:var(--grey);font-family:var(--font-b);font-weight:400">'+f$(_brAtot)+'</span></div><div style="display:flex;gap:8px;align-items:center;flex-shrink:0">'+_cmSeg+_miniStat(_miArCurL,_miArCurV,'#16A34A')+_miniStat(_miArLmL,_miArLmV,null)+'</div></div>';
+  h+=buildSVGChart(_brL,_brA,'#16A34A','',true,'',_snapChartOpts)+'<div id="bd-arr-tip" class="float-tip"></div></div>';
   h+='</div>';
   // Full-width ARR-by-week chart (blue) — non-cumulative weekly signings.
   // Wide viewBox (1400×240) + a CSS aspect-ratio on the chart area (not a fixed
@@ -1350,11 +1369,18 @@ function buildSVGChart(labels,values,color,suffix,isMoney,tipPrefix,opts){
   var aPath='M'+pts[0].x+' '+pts[0].y;
   for(var ai2=1;ai2<pts.length;ai2++)aPath+=' L'+pts[ai2].x+' '+pts[ai2].y;
   aPath+=' L'+pts[pts.length-1].x+' '+(pad.t+ph)+' L'+pts[0].x+' '+(pad.t+ph)+' Z';
-  svg+='<path d="'+aPath+'" fill="'+color+'" fill-opacity="0.06"/>';
-  // Line
+  // Area — flat tint, or a diagonal-hatch texture when opts.hatch (snapshot view).
+  var _areaFill='"'+color+'" fill-opacity="0.06"';
+  if(opts.hatch){
+    var _pid='bdhatch'+(window._bdChartUid=(window._bdChartUid||0)+1);
+    svg+='<defs><pattern id="'+_pid+'" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(45)"><rect width="7" height="7" fill="'+color+'" fill-opacity="0.05"/><line x1="0" y1="0" x2="0" y2="7" stroke="'+color+'" stroke-width="1.4" stroke-opacity="0.3"/></pattern></defs>';
+    _areaFill='"url(#'+_pid+')"';
+  }
+  svg+='<path d="'+aPath+'" fill='+_areaFill+'/>';
+  // Line — dashed in the snapshot view so it reads as a point-in-time series.
   var lPath='M'+pts[0].x+' '+pts[0].y;
   for(var li2=1;li2<pts.length;li2++)lPath+=' L'+pts[li2].x+' '+pts[li2].y;
-  svg+='<path d="'+lPath+'" fill="none" stroke="'+color+'" stroke-width="2.5" stroke-linejoin="round"/>';
+  svg+='<path d="'+lPath+'" fill="none" stroke="'+color+'" stroke-width="2.5" stroke-linejoin="round"'+(opts.dashed?' stroke-dasharray="7 4"':'')+'/>';
   // Dots — the transparent hover hit-area radius scales with point spacing so
   // densely-packed series (e.g. weekly) don't get overlapping hit targets that
   // make the hover land on the wrong point. opts.tipLabels overrides the hover

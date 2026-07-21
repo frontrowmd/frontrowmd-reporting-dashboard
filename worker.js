@@ -4466,6 +4466,11 @@ const BD_DEAL_PROPS = [
   'pausechurn_date','never_implemented_churn','churn_reason',
   'detailed_reason_for_churn','paused_billing_length_months',
   'temporary_pause_reason','paused_billing__billing_restart_date',
+  // Timestamp the deal first entered closed-won — the true signing date, which
+  // PERSISTS after a brand churns (closedate is often blank on churned deals).
+  // Used by the BD "Snapshot" chart to place churned brands in the months they
+  // were actually active.
+  'hs_date_entered_closedwon',
 ];
 
 async function fetchBDData(env) {
@@ -4629,7 +4634,7 @@ async function fetchBDData(env) {
     return {
       id: d.id, dealname: p.dealname||'', dealstage: p.dealstage||'',
       brand_status: p.brand_status||'', amount: parseFloat(p.amount)||0,
-      closedate: p.closedate||'', createdate: p.createdate||'',
+      closedate: p.closedate||'', createdate: p.createdate||'', entered_closedwon: p.hs_date_entered_closedwon||'',
       price_per_review: p.price_per_review||'', package_type: p.package_type||'',
       setup_fee: p.setup_fee||'', months_until_upgrade: p.months_until_upgrade||'',
       fee_after_upgrade: p.fee_after_upgrade||'',
