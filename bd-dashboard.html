@@ -522,41 +522,57 @@ function renderBD(){
   var _chartMonths=Object.keys(_chartMonthMap).sort();
   var _cumB=[],_cumA=[],_cumL=[];var rB=0,rA=0;var mN=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   for(var mi=0;mi<_chartMonths.length;mi++){var md=_chartMonthMap[_chartMonths[mi]];rB+=md.added;rA+=md.addedMRR*12;_cumB.push(rB);_cumA.push(rA);var p=_chartMonths[mi].split('-');_cumL.push(mN[parseInt(p[1])-1]+' '+p[0].substring(2));}
-  // Snapshot series — the book that WAS active at each month, incl. brands that
-  // later churned/paused. A brand counts from its SIGNING month through the
-  // month it paused/churned. Churned/paused deals leave the 'closedwon' stage
-  // and usually have a BLANK closedate, so signing = closedate →
-  // hs_date_entered_closedwon (the signing timestamp, persists after churn) →
-  // createdate. Population = every deal that reached a signed state (Signed /
-  // Paying / Paused / Churned / Never Implemented), NOT just current closed-won
-  // — otherwise churned brands (which move to a Churned dealstage) are missing.
-  // Continuous monthly axis from first signing → current month; churns dip it.
+  // Snapshot series — "what WAS active at each month-end". Definition (validated
+  // against HubSpot: Jun 2026 = 735 brands / $15,326,664):
+  //   snapshot(M) = the current active book signed by month-end M
+  //               + brands that were still active at M but have SINCE
+  //                 paused/churned (pause/churn date AFTER month M).
+  // The base is the SAME survivor population as the current line (Paying/Signed,
+  // cumulated by closedate), so month-over-month it equals the live Active
+  // Brands number (e.g. 717 through Jun). The add-back is any Paused/Churned/
+  // Never-Implemented deal that was signed by M and whose pause/churn date is
+  // after M — it was active then, but has since left (e.g. the 18 that churned
+  // in Jul, $341,856 ARR, get added to Jun → 735). Undated churns can't be
+  // placed in time, so they're excluded. Resumed pauses need no special case:
+  // once billing restarts the deal is Paying again and re-enters via the base.
   function _bdMonthOf(v){if(!v)return '';var s=String(v);if(/^\d{4}-\d{2}/.test(s))return s.substring(0,7);var n=parseInt(s,10);if(!isNaN(n)&&n>1e11){var dt=new Date(n);return dt.getFullYear()+'-'+('0'+(dt.getMonth()+1)).slice(-2);}return '';}
-  var _SIGNED_STATES=['Signed','Paying','Paused','Churned','Never Implemented - Churned'];
-  var _snSign={},_snSignMRR={},_snChurn={},_snChurnMRR={},_snResume={},_snResumeMRR={},_snFirst=null;
+  var _SURV_STATES=['Paying','Signed'];
+  var _INACT_STATES=['Paused','Churned','Never Implemented - Churned'];
+  // Base: survivor signings by closedate month (identical to the current line).
+  var _snBaseB={},_snBaseA={},_snFirst=null;
   deals.forEach(function(dd){
-    if(_SIGNED_STATES.indexOf(dd.brand_status)<0)return;
+    if(_SURV_STATES.indexOf(dd.brand_status)<0)return;
     var _sm=_bdMonthOf(dd.closedate)||_bdMonthOf(dd.entered_closedwon)||_bdMonthOf(dd.createdate);
-    if(_sm){_snSign[_sm]=(_snSign[_sm]||0)+1;_snSignMRR[_sm]=(_snSignMRR[_sm]||0)+dd.amount;if(!_snFirst||_sm<_snFirst)_snFirst=_sm;}
-    var _snInactive=['Paused','Churned','Never Implemented - Churned'].indexOf(dd.brand_status)>=0;
-    if(_snInactive&&dd.pausechurn_date){var _cm=_bdMonthOf(dd.pausechurn_date);if(_cm){_snChurn[_cm]=(_snChurn[_cm]||0)+1;_snChurnMRR[_cm]=(_snChurnMRR[_cm]||0)+dd.amount;}}
-    // A paused brand that RESUMED comes back on its billing-restart month, so a
-    // temporary pause reads as a dip, not a permanent loss. The cumulative loop
-    // stops at the current month, so a FUTURE restart is never re-added (the
-    // brand stays paused for now); only a past restart brings it back.
-    if(dd.brand_status==='Paused'&&dd.paused_billing__billing_restart_date){var _rm=_bdMonthOf(dd.paused_billing__billing_restart_date);if(_rm){_snResume[_rm]=(_snResume[_rm]||0)+1;_snResumeMRR[_rm]=(_snResumeMRR[_rm]||0)+dd.amount;}}
+    if(!_sm)return;
+    _snBaseB[_sm]=(_snBaseB[_sm]||0)+1;_snBaseA[_sm]=(_snBaseA[_sm]||0)+dd.amount;
+    if(!_snFirst||_sm<_snFirst)_snFirst=_sm;
   });
-  var _cumBSnap=[],_cumASnap=[],_cumLSnap=[];var _rbs=0,_ras=0;var _snByMonth={};
+  // Add-back pool: each inactive deal was active from its signing month until
+  // its pause/churn month. Store [signMonth s, churnMonth c, MRR m] so each
+  // month can add back the ones still active then (s <= M < c).
+  var _snInact=[];
+  deals.forEach(function(dd){
+    if(_INACT_STATES.indexOf(dd.brand_status)<0)return;
+    if(!dd.pausechurn_date)return;
+    var _cm=_bdMonthOf(dd.pausechurn_date);if(!_cm)return;
+    var _sm=_bdMonthOf(dd.entered_closedwon)||_bdMonthOf(dd.createdate)||_bdMonthOf(dd.closedate)||_cm;
+    if(_sm>_cm)_sm=_cm;
+    if(!_snFirst||_sm<_snFirst)_snFirst=_sm;
+    _snInact.push({s:_sm,c:_cm,m:dd.amount});
+  });
+  var _cumBSnap=[],_cumASnap=[],_cumLSnap=[];var _snByMonth={};
   if(_snFirst){
     var _sfp=_snFirst.split('-');var _scur=new Date(parseInt(_sfp[0],10),parseInt(_sfp[1],10)-1,1);
     var _snow=new Date();var _send=new Date(_snow.getFullYear(),_snow.getMonth(),1);
-    var _sGuard=0;
+    var _baseB=0,_baseA=0,_sGuard=0;
     while(_scur.getTime()<=_send.getTime()&&_sGuard++<600){
       var _smk=_scur.getFullYear()+'-'+('0'+(_scur.getMonth()+1)).slice(-2);
-      _rbs+=(_snSign[_smk]||0)-(_snChurn[_smk]||0)+(_snResume[_smk]||0);
-      _ras+=((_snSignMRR[_smk]||0)-(_snChurnMRR[_smk]||0)+(_snResumeMRR[_smk]||0))*12;
-      _snByMonth[_smk]={b:_rbs,a:_ras};
-      _cumBSnap.push(_rbs);_cumASnap.push(_ras);_cumLSnap.push(mN[_scur.getMonth()]+' '+String(_scur.getFullYear()).slice(-2));
+      _baseB+=(_snBaseB[_smk]||0);_baseA+=(_snBaseA[_smk]||0);
+      var _addB=0,_addA=0;
+      for(var _ii=0;_ii<_snInact.length;_ii++){var _r=_snInact[_ii];if(_r.s<=_smk&&_r.c>_smk){_addB++;_addA+=_r.m;}}
+      var _tb=_baseB+_addB,_ta=(_baseA+_addA)*12;
+      _snByMonth[_smk]={b:_tb,a:_ta};
+      _cumBSnap.push(_tb);_cumASnap.push(_ta);_cumLSnap.push(mN[_scur.getMonth()]+' '+String(_scur.getFullYear()).slice(-2));
       _scur.setMonth(_scur.getMonth()+1);
     }
   }
