@@ -945,6 +945,21 @@ async function fetchClosedWonDeals(token, from, to) {
   }], ['amount','closedate','hs_createdate','utm_source','utm_medium','utm_campaign','utm_content','hubspot_owner_id','brand_status','average_monthly_web_traffic__cloned_','average_monthly_web_traffic']);
 }
 
+// Deals that reached a Churned stage (Churned / Churned Onboarding) but still
+// carry a Close Date in the window. Added to the Marketing Funnel "Signed
+// Brands" count so brands that signed in-period and later churned are still
+// counted (Close Date basis, per request — churned deals often have closedate
+// cleared, so this only recovers the ones that retained it).
+async function fetchChurnedByCloseDate(token, from, to) {
+  return hsSearch(token, 'deals', [{
+    filters: [
+      { propertyName: 'dealstage', operator: 'IN', values: ['3453925110','3517067985'] },
+      { propertyName: 'closedate', operator: 'GTE', value: String(toMsET(from)) },
+      { propertyName: 'closedate', operator: 'LTE', value: String(toMsET(to, true)) },
+    ],
+  }], ['amount','closedate','brand_status','dealstage']);
+}
+
 // Deals by hs_createdate — for Demo Quality table (shows deals created/booked in the window)
 async function fetchDealsByCreateDate(token, from, to) {
   const fMs = String(toMsET(from)), tMs = String(toMsET(to, true));
@@ -2239,6 +2254,7 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
     ownerMap,
     quarterlyHistory: c.quarterlyHistory || null,
     marketingFunnel: c.marketingFunnel || null,
+    signedChurnedByCloseCount: c.signedChurnedByCloseCount || 0,
     multiTouchAttribution: (() => {
       const stages = c.pipeline.stageOrder || [];
       const byStage = c.pipeline.byStage || {};
@@ -2706,6 +2722,10 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   const cWebinar = await fetchWebinarStageDeals(hsToken, current.from, pipeEndDate);
   console.log(`cWebinar: ${cWebinar.length} webinar-stage deals`);
   const cCW = await fetchClosedWonDeals(hsToken, current.from, current.to);
+  // Churned deals that still carry a Close Date in the window — added to the
+  // Marketing Funnel "Signed Brands" count (Close Date basis, per request).
+  const cChurnedByClose = await fetchChurnedByCloseDate(hsToken, current.from, current.to);
+  console.log(`cChurnedByClose: ${cChurnedByClose.length} churned deals with closedate in window`);
 
   // Fetch priorMonth FIRST so we can derive prior from it in-memory when prior
   // is a strict subset (saves 3 HubSpot calls = up to ~15 subrequests).
@@ -2949,6 +2969,9 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   // reads. quarterlyHistory remains here since it's used by Detailed
   // Dashboard's All Time view.
   currentData.quarterlyHistory = isAllTime ? buildQuarterlyHistory(filterActiveBrands(cCW), current.from, current.to) : null;
+  // Signed Brands (Marketing Funnel) counts closed-won brands + churned deals
+  // that still carry a Close Date in the window (per request).
+  currentData.signedChurnedByCloseCount = cChurnedByClose.length;
 
   // ── Marketing Funnel (monthly historical table) ──
   // Uses KPI-aligned definition: count of deals with demo_attendance_status IN [Demo Given orig, Demo Given resched].
