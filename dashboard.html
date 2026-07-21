@@ -758,7 +758,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s83';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s84';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -812,7 +812,7 @@ function _buildRevenueOutcomeCard(d){
   var cr=getChurnRate(),eM=effM(cr);
   var signedARR=mrr*12;            // headline
   var adjARR=mrr*eM;               // churn-adjusted ARR — used only for the ROAS row
-  var acv=dealCount>0?mrr/dealCount:null;
+  var acv=signedBrands>0?mrr/signedBrands:null;  // per Signed Brand (incl. churned by closedate)
   var roas=spend>0?adjARR/spend:null;
   var pSpend=(d.adSpend&&d.adSpend.total&&d.adSpend.total.sameTimePrior)?d.adSpend.total.sameTimePrior.value:null;
   var pmSpend=(d.adSpend&&d.adSpend.total&&d.adSpend.total.lastMonth)?d.adSpend.total.lastMonth.value:null;
@@ -2339,13 +2339,19 @@ function renderDash(){
   function sparkline(values,color){if(!values.length)return '';const valid=values.filter(v=>v!=null&&!isNaN(v));if(!valid.length)return '<div style="height:24px;color:var(--grey);font-size:10px">No history</div>';const min=Math.min(...valid),max=Math.max(...valid),range=max-min||1;const points=values.map((v,i)=>{const x=values.length>1?(i/(values.length-1))*100:50;const y=v==null||isNaN(v)?22:22-((v-min)/range)*18;return `${x},${y}`;}).join(' ');const lastVal=values[values.length-1];const lastY=lastVal==null||isNaN(lastVal)?22:22-((lastVal-min)/range)*18;return `<svg viewBox="0 0 100 24" preserveAspectRatio="none" style="width:100%;height:24px"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.5"/><circle cx="100" cy="${lastY}" r="2" fill="${color}"/></svg>`;}
   // Compact Trends: label + value + calc subtext, no sparklines
   function trendItem(label,calcText,currentValueStr){return `<div style="padding:10px 0;border-bottom:1px solid var(--border)"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px"><div style="font-size:13px;color:var(--navy);font-weight:600;line-height:1.3">${label}</div><div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);white-space:nowrap">${currentValueStr}</div></div><div style="font-size:11px;color:var(--grey);margin-top:3px;line-height:1.4">${calcText}</div></div>`;}
+  // Signed Brands basis (closed-won + churned deals w/ closedate in window)
+  // drives the Marketing Funnel CAC + ACV, per request.
+  const _sbCount=dealCount+(d.signedChurnedByCloseCount||0);
+  const _acvSB=_sbCount>0?mrr/_sbCount:null;
+  const _cacSB=(_sbCount>0&&(em.totalSpend||cSpend))?(em.totalSpend||cSpend)/_sbCount:null;
   let th='';
   th+=trendItem('Paid ad spend','Sum of spend across all paid channels',f$(cSpend));
   th+=trendItem('Qualified Demos (Demos Held)','Demo Given orig + resched, all traffic',fN(demosHeldFull));
   th+=trendItem('CPQD','Ad spend \u00f7 Qualified Demos (Demos Held)',cpqd!=null?f$(cpqd):'\u2014');
-  th+=trendItem('Signed brands','Closed-won + churned deals, by closedate',fN(dealCount+(d.signedChurnedByCloseCount||0)));
-  th+=trendItem('Paid ads CAC','Total ad spend \u00f7 Closed-won deals',cac!=null?f$(cac):'\u2014');
-  th+=trendItem('ACV','New MRR \u00f7 Closed-won deals',acv!=null?f$(acv):'\u2014');
+  th+=trendItem('Signed brands','Closed-won + churned deals, by closedate',fN(_sbCount));
+  th+=trendItem('Paid ads CAC','Total ad spend \u00f7 Signed Brands',_cacSB!=null?f$(_cacSB):'\u2014');
+  th+=trendItem('ACV','New MRR \u00f7 Signed Brands',_acvSB!=null?f$(_acvSB):'\u2014');
+  th+=trendItem('New MRR','Sum of new MRR from signed brands',f$(mrr));
   th+=trendItem('New ARR','MRR \u00d7 '+eM.toFixed(1)+' eff. months (churn-adj)',f$(adjARR));
   document.getElementById('t-trends').innerHTML=th;
 
