@@ -125,6 +125,10 @@ function _bdFirstOfMonth(){var _d=new Date();return _d.getFullYear()+'-'+String(
 // the toggle array is non-empty, it takes precedence over the single-select
 // bucket (the bucket auto-resets to 'all' so the two UIs don't fight).
 var _bdBrandStatusF='Active',_bdBrandStatusToggleF=[],_bdStageF='all',_bdRepF='all',_bdAcctMgrF='all',_bdSeRepF='all',_bdOpsRepF='all',_bdPkgF='all',_bdDateFrom=_bdFirstOfMonth(),_bdDateTo='',_bdDateMode='close';
+// Active Brands / Signed ARR chart view: 'current' = cumulative of brands still
+// active today (survivors only); 'snapshot' = the book that WAS active at each
+// month (signings add, pause/churns subtract on their pausechurn_date).
+var _bdChartMode='current';
 // Live deal-table search query — case-insensitive substring match across
 // dealname, companyName, brand_status, notes, dealstage label, and the
 // three rep-name fields (resolved via ownerMap). Applied inside the same
@@ -518,6 +522,40 @@ function renderBD(){
   var _chartMonths=Object.keys(_chartMonthMap).sort();
   var _cumB=[],_cumA=[],_cumL=[];var rB=0,rA=0;var mN=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   for(var mi=0;mi<_chartMonths.length;mi++){var md=_chartMonthMap[_chartMonths[mi]];rB+=md.added;rA+=md.addedMRR*12;_cumB.push(rB);_cumA.push(rA);var p=_chartMonths[mi].split('-');_cumL.push(mN[parseInt(p[1])-1]+' '+p[0].substring(2));}
+  // Snapshot series — the book that WAS active at each month, incl. brands that
+  // later churned/paused. +1 brand / +ARR at the signing month (closedate),
+  // −1 / −ARR at the pause/churn month (pausechurn_date). ALL closed-won deals
+  // count (not just survivors), on a continuous monthly axis from the first
+  // signing through the current month, so churn attrition shows as dips.
+  var _snSign={},_snSignMRR={},_snChurn={},_snChurnMRR={},_snFirst=null;
+  closedWonDeals.forEach(function(dd){
+    if(dd.closedate){var _sm=dd.closedate.substring(0,7);_snSign[_sm]=(_snSign[_sm]||0)+1;_snSignMRR[_sm]=(_snSignMRR[_sm]||0)+dd.amount;if(!_snFirst||_sm<_snFirst)_snFirst=_sm;}
+    var _snInactive=['Paused','Churned','Never Implemented - Churned'].indexOf(dd.brand_status)>=0;
+    if(_snInactive&&dd.pausechurn_date){var _cm=dd.pausechurn_date.substring(0,7);_snChurn[_cm]=(_snChurn[_cm]||0)+1;_snChurnMRR[_cm]=(_snChurnMRR[_cm]||0)+dd.amount;}
+  });
+  var _cumBSnap=[],_cumASnap=[],_cumLSnap=[];var _rbs=0,_ras=0;
+  if(_snFirst){
+    var _sfp=_snFirst.split('-');var _scur=new Date(parseInt(_sfp[0],10),parseInt(_sfp[1],10)-1,1);
+    var _snow=new Date();var _send=new Date(_snow.getFullYear(),_snow.getMonth(),1);
+    var _sGuard=0;
+    while(_scur.getTime()<=_send.getTime()&&_sGuard++<600){
+      var _smk=_scur.getFullYear()+'-'+('0'+(_scur.getMonth()+1)).slice(-2);
+      _rbs+=(_snSign[_smk]||0)-(_snChurn[_smk]||0);
+      _ras+=((_snSignMRR[_smk]||0)-(_snChurnMRR[_smk]||0))*12;
+      _cumBSnap.push(_rbs);_cumASnap.push(_ras);_cumLSnap.push(mN[_scur.getMonth()]+' '+String(_scur.getFullYear()).slice(-2));
+      _scur.setMonth(_scur.getMonth()+1);
+    }
+  }
+  // Resolve the active view for the two cumulative charts.
+  var _brL=_bdChartMode==='snapshot'?_cumLSnap:_cumL;
+  var _brB=_bdChartMode==='snapshot'?_cumBSnap:_cumB;
+  var _brA=_bdChartMode==='snapshot'?_cumASnap:_cumA;
+  var _brBtot=_brB.length?_brB[_brB.length-1]:0;
+  var _brAtot=_brA.length?_brA[_brA.length-1]:0;
+  var _cmSeg='<span style="display:inline-flex;background:rgba(23,44,69,.06);border-radius:50px;padding:2px;gap:2px;flex-shrink:0">'
+    +'<span style="cursor:pointer;font-size:10px;padding:3px 11px;border-radius:50px;font-weight:600;font-family:var(--font-b);'+(_bdChartMode==='current'?'background:var(--navy);color:#fff;':'color:var(--navy);')+'" onclick="_bdChartMode=\'current\';renderBD()">Current</span>'
+    +'<span style="cursor:pointer;font-size:10px;padding:3px 11px;border-radius:50px;font-weight:600;font-family:var(--font-b);'+(_bdChartMode==='snapshot'?'background:var(--navy);color:#fff;':'color:var(--navy);')+'" onclick="_bdChartMode=\'snapshot\';renderBD()">Snapshot</span>'
+    +'</span>';
   // ARR by week — total new ARR (MRR×12) signed each week, keyed by the Monday
   // of the week the deal closed. Same population as Signed ARR (Paying+Signed
   // closed-won). Gap weeks are filled with 0 so the time axis stays uniform;
@@ -550,11 +588,11 @@ function renderBD(){
   };
   h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;min-width:0">';
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;position:relative;min-width:0;overflow:hidden;display:flex;flex-direction:column" class="chart-wrap">';
-  h+='<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px;flex-wrap:wrap"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">Active Brands <span style="font-size:11px;color:var(--grey);font-family:var(--font-b);font-weight:400">'+rB+' total</span></div><div style="display:flex;gap:8px;flex-shrink:0">'+_miniStat('Current Month Signed Deals',_cmDeals,'#172C45')+_miniStat('Last Month Signed Deals',_lmDeals,null)+'</div></div>';
-  h+=buildSVGChart(_cumL,_cumB,'#172C45',' brands',false)+'<div id="bd-brands-tip" class="float-tip"></div></div>';
+  h+='<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px;flex-wrap:wrap"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">Active Brands <span style="font-size:11px;color:var(--grey);font-family:var(--font-b);font-weight:400">'+_brBtot+' total</span></div><div style="display:flex;gap:8px;align-items:center;flex-shrink:0">'+_cmSeg+_miniStat('Current Month Signed Deals',_cmDeals,'#172C45')+_miniStat('Last Month Signed Deals',_lmDeals,null)+'</div></div>';
+  h+=buildSVGChart(_brL,_brB,'#172C45',' brands',false)+'<div id="bd-brands-tip" class="float-tip"></div></div>';
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;position:relative;min-width:0;overflow:hidden;display:flex;flex-direction:column" class="chart-wrap">';
-  h+='<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px;flex-wrap:wrap"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">Signed ARR <span style="font-size:11px;color:var(--grey);font-family:var(--font-b);font-weight:400">'+f$(rA)+'</span></div><div style="display:flex;gap:8px;flex-shrink:0">'+_miniStat('Current Month ARR',f$(_cmARR),'#16A34A')+_miniStat('Last Month ARR',f$(_lmARR),null)+'</div></div>';
-  h+=buildSVGChart(_cumL,_cumA,'#16A34A','',true)+'<div id="bd-arr-tip" class="float-tip"></div></div>';
+  h+='<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px;flex-wrap:wrap"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">Signed ARR <span style="font-size:11px;color:var(--grey);font-family:var(--font-b);font-weight:400">'+f$(_brAtot)+'</span></div><div style="display:flex;gap:8px;align-items:center;flex-shrink:0">'+_cmSeg+_miniStat('Current Month ARR',f$(_cmARR),'#16A34A')+_miniStat('Last Month ARR',f$(_lmARR),null)+'</div></div>';
+  h+=buildSVGChart(_brL,_brA,'#16A34A','',true)+'<div id="bd-arr-tip" class="float-tip"></div></div>';
   h+='</div>';
   // Full-width ARR-by-week chart (blue) — non-cumulative weekly signings.
   // Wide viewBox (1400×240) + a CSS aspect-ratio on the chart area (not a fixed
