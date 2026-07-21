@@ -533,13 +533,18 @@ function renderBD(){
   // Continuous monthly axis from first signing → current month; churns dip it.
   function _bdMonthOf(v){if(!v)return '';var s=String(v);if(/^\d{4}-\d{2}/.test(s))return s.substring(0,7);var n=parseInt(s,10);if(!isNaN(n)&&n>1e11){var dt=new Date(n);return dt.getFullYear()+'-'+('0'+(dt.getMonth()+1)).slice(-2);}return '';}
   var _SIGNED_STATES=['Signed','Paying','Paused','Churned','Never Implemented - Churned'];
-  var _snSign={},_snSignMRR={},_snChurn={},_snChurnMRR={},_snFirst=null;
+  var _snSign={},_snSignMRR={},_snChurn={},_snChurnMRR={},_snResume={},_snResumeMRR={},_snFirst=null;
   deals.forEach(function(dd){
     if(_SIGNED_STATES.indexOf(dd.brand_status)<0)return;
     var _sm=_bdMonthOf(dd.closedate)||_bdMonthOf(dd.entered_closedwon)||_bdMonthOf(dd.createdate);
     if(_sm){_snSign[_sm]=(_snSign[_sm]||0)+1;_snSignMRR[_sm]=(_snSignMRR[_sm]||0)+dd.amount;if(!_snFirst||_sm<_snFirst)_snFirst=_sm;}
     var _snInactive=['Paused','Churned','Never Implemented - Churned'].indexOf(dd.brand_status)>=0;
     if(_snInactive&&dd.pausechurn_date){var _cm=_bdMonthOf(dd.pausechurn_date);if(_cm){_snChurn[_cm]=(_snChurn[_cm]||0)+1;_snChurnMRR[_cm]=(_snChurnMRR[_cm]||0)+dd.amount;}}
+    // A paused brand that RESUMED comes back on its billing-restart month, so a
+    // temporary pause reads as a dip, not a permanent loss. The cumulative loop
+    // stops at the current month, so a FUTURE restart is never re-added (the
+    // brand stays paused for now); only a past restart brings it back.
+    if(dd.brand_status==='Paused'&&dd.paused_billing__billing_restart_date){var _rm=_bdMonthOf(dd.paused_billing__billing_restart_date);if(_rm){_snResume[_rm]=(_snResume[_rm]||0)+1;_snResumeMRR[_rm]=(_snResumeMRR[_rm]||0)+dd.amount;}}
   });
   var _cumBSnap=[],_cumASnap=[],_cumLSnap=[];var _rbs=0,_ras=0;var _snByMonth={};
   if(_snFirst){
@@ -548,8 +553,8 @@ function renderBD(){
     var _sGuard=0;
     while(_scur.getTime()<=_send.getTime()&&_sGuard++<600){
       var _smk=_scur.getFullYear()+'-'+('0'+(_scur.getMonth()+1)).slice(-2);
-      _rbs+=(_snSign[_smk]||0)-(_snChurn[_smk]||0);
-      _ras+=((_snSignMRR[_smk]||0)-(_snChurnMRR[_smk]||0))*12;
+      _rbs+=(_snSign[_smk]||0)-(_snChurn[_smk]||0)+(_snResume[_smk]||0);
+      _ras+=((_snSignMRR[_smk]||0)-(_snChurnMRR[_smk]||0)+(_snResumeMRR[_smk]||0))*12;
       _snByMonth[_smk]={b:_rbs,a:_ras};
       _cumBSnap.push(_rbs);_cumASnap.push(_ras);_cumLSnap.push(mN[_scur.getMonth()]+' '+String(_scur.getFullYear()).slice(-2));
       _scur.setMonth(_scur.getMonth()+1);
