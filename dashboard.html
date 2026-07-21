@@ -758,7 +758,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s78';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s79';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -908,15 +908,21 @@ async function doLogin(){
 document.getElementById('pw').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
 
 // Filters
-function bldF(){const s=S[AP];var aiBtn=AI_PANEL_PAGES.indexOf(AP)>=0?'<button id="ai-panel-btn" onclick="toggleAIPanel()" class="fb" style="border:1.5px solid #B8860B;background:'+(_aiPanelOpen?'#B8860B':'#FFF8E1')+';color:'+(_aiPanelOpen?'#fff':'#8B6914')+';font-weight:700" onmouseover="this.style.background=\'#B8860B\';this.style.color=\'#fff\'" onmouseout="if(!_aiPanelOpen){this.style.background=\'#FFF8E1\';this.style.color=\'#8B6914\';}">✦ AI Analysis</button>':'';if(AP==='signup'){document.getElementById('filters').innerHTML='<span style="font-size:13px;color:var(--grey)">Fixed cohorts — independent of time filters</span>'+aiBtn+'<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>';return;}if(AP==='strategy'||AP==='csession'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='content'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='outbound'){document.getElementById('filters').innerHTML=aiBtn;document.getElementById('filters').style.display=aiBtn?'':'none';return;}else{document.getElementById('filters').style.display='';}let h='';for(const w of W)h+=`<button class="fb${s.win===w.k?' active':''}" data-w="${w.k}" onclick="selW('${w.k}')">${w.l}</button>`;h+=`<div class="cr${s.win==='custom'?' vis':''}" id="cr"><input type="date" id="cf"><span style="color:var(--grey)">→</span><input type="date" id="ct"><label class="cr-cmp-lbl"><input type="checkbox" id="cc" onchange="document.getElementById('crVs').classList.toggle('vis',this.checked)">Compare</label><span class="cr-vs" id="crVs"><span class="cr-vs-prefix">vs</span><input type="date" id="cvf"><span style="color:var(--grey)">→</span><input type="date" id="cvt"></span><button onclick="goC()">Go</button></div>`;h+=aiBtn;h+=`<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>`;document.getElementById('filters').innerHTML=h;}
-async function selW(w){S[AP].win=w;document.querySelectorAll('#filters .fb').forEach(b=>b.classList.toggle('active',b.dataset.w===w));const cr=document.getElementById('cr');if(cr)cr.classList.toggle('vis',w==='custom');if(w==='custom')return;if(AP==='webinarPerf'){await fdWebinarPerf(w);return;}await fd(w);}
+function bldF(){const s=S[AP];var aiBtn=AI_PANEL_PAGES.indexOf(AP)>=0?'<button id="ai-panel-btn" onclick="toggleAIPanel()" class="fb" style="border:1.5px solid #B8860B;background:'+(_aiPanelOpen?'#B8860B':'#FFF8E1')+';color:'+(_aiPanelOpen?'#fff':'#8B6914')+';font-weight:700" onmouseover="this.style.background=\'#B8860B\';this.style.color=\'#fff\'" onmouseout="if(!_aiPanelOpen){this.style.background=\'#FFF8E1\';this.style.color=\'#8B6914\';}">✦ AI Analysis</button>':'';if(AP==='signup'){document.getElementById('filters').innerHTML='<span style="font-size:13px;color:var(--grey)">Fixed cohorts — independent of time filters</span>'+aiBtn+'<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>';return;}if(AP==='strategy'||AP==='csession'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='content'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='outbound'){document.getElementById('filters').innerHTML=aiBtn;document.getElementById('filters').style.display=aiBtn?'':'none';return;}else{document.getElementById('filters').style.display='';}let h='';for(const w of W){const _aw=(w.k==='custom')?(s.win==='custom'&&!s.quarterKey):(s.win===w.k);h+=`<button class="fb${_aw?' active':''}" data-w="${w.k}" onclick="selW('${w.k}')">${w.l}</button>`;}for(const q of _completedQuarters())h+=`<button class="fb${(s.win==='custom'&&s.quarterKey===q.from+'_'+q.to)?' active':''}" data-q="${q.from}_${q.to}" onclick="selQ('${q.from}','${q.to}')">${q.l}</button>`;h+=`<div class="cr${(s.win==='custom'&&!s.quarterKey)?' vis':''}" id="cr"><input type="date" id="cf"><span style="color:var(--grey)">→</span><input type="date" id="ct"><label class="cr-cmp-lbl"><input type="checkbox" id="cc" onchange="document.getElementById('crVs').classList.toggle('vis',this.checked)">Compare</label><span class="cr-vs" id="crVs"><span class="cr-vs-prefix">vs</span><input type="date" id="cvf"><span style="color:var(--grey)">→</span><input type="date" id="cvt"></span><button onclick="goC()">Go</button></div>`;h+=aiBtn;h+=`<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>`;document.getElementById('filters').innerHTML=h;}
+async function selW(w){S[AP].win=w;S[AP].quarterKey=null;document.querySelectorAll('#filters .fb').forEach(b=>b.classList.toggle('active',b.dataset.w===w));const cr=document.getElementById('cr');if(cr)cr.classList.toggle('vis',w==='custom');if(w==='custom')return;if(AP==='webinarPerf'){await fdWebinarPerf(w);return;}await fd(w);}
+// Completed calendar quarters from 2026-Q1 up to the last quarter that has
+// fully ended (end date before today). A new quarter's pill appears
+// automatically once it completes — Q3 after Sep 30, Q4 after Dec 31, etc.
+function _completedQuarters(){var out=[],now=new Date(),startY=2026,todayMs=Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),now.getUTCDate());for(var y=startY;y<=now.getUTCFullYear();y++){for(var q=0;q<4;q++){var toM=q*3+2,lastDay=new Date(Date.UTC(y,toM+1,0));if(lastDay.getTime()>=todayMs)continue;var from=y+'-'+String(q*3+1).padStart(2,'0')+'-01',to=y+'-'+String(toM+1).padStart(2,'0')+'-'+String(lastDay.getUTCDate()).padStart(2,'0');out.push({l:'Q'+(q+1)+' '+y,from:from,to:to});}}return out;}
+// Quarter pill → resolves to a custom window on the quarter's exact dates.
+async function selQ(f,t){S[AP].win='custom';S[AP].cFrom=f;S[AP].cTo=t;S[AP].cVsFrom=null;S[AP].cVsTo=null;S[AP].quarterKey=f+'_'+t;document.querySelectorAll('#filters .fb').forEach(function(b){b.classList.toggle('active',b.dataset.q===f+'_'+t);});const cr=document.getElementById('cr');if(cr)cr.classList.remove('vis');const cf=document.getElementById('cf'),ct=document.getElementById('ct');if(cf)cf.value=f;if(ct)ct.value=t;if(AP==='webinarPerf'){await fdWebinarPerf('custom',f,t);return;}await fd('custom',f,t);}
 async function goC(){const f=document.getElementById('cf').value,t=document.getElementById('ct').value;if(!f||!t)return;const cc=document.getElementById('cc');let vsFrom=null,vsTo=null;if(cc&&cc.checked){vsFrom=document.getElementById('cvf').value||null;vsTo=document.getElementById('cvt').value||null;if(!vsFrom||!vsTo)return;}
   // Persist the custom range on the page state so secondary fetches (e.g. the
   // Irfan/Detailed Meta Campaigns/Creatives/Audiences tables, which hit the
   // analyzer endpoint on their own) can forward the same from/to. Without
   // this they'd POST {window:'custom'} with no dates and the worker would
   // reject the request — that's why those tables went blank on custom.
-  S[AP].cFrom=f;S[AP].cTo=t;S[AP].cVsFrom=vsFrom;S[AP].cVsTo=vsTo;
+  S[AP].cFrom=f;S[AP].cTo=t;S[AP].cVsFrom=vsFrom;S[AP].cVsTo=vsTo;S[AP].quarterKey=null;
   if(AP==='webinarPerf'){await fdWebinarPerf('custom',f,t,vsFrom,vsTo);return;}await fd('custom',f,t,vsFrom,vsTo);}
 // Detailed Dashboard skeleton — replaces the full #page-dashboard innerHTML
 // with a 9-section layout matching the real page (Daily / Revenue / WT Pie /
@@ -1148,11 +1154,13 @@ async function fd(w,from,to,vsFrom,vsTo,fresh){
     else{const pct=Math.min(5+si*15,92);if(pf)pf.style.width=pct+'%';if(pl)pl.textContent=steps[Math.min(si,steps.length-1)];}
   },2300);
   const b={password:PW,window:w};if(from)b.from=from;if(to)b.to=to;if(vsFrom)b.vsFrom=vsFrom;if(vsTo)b.vsTo=vsTo;if(fresh)b.fresh=true;
-  // Hard timeout (90s) so a slow/unresponsive worker can never freeze the UI
+  // Hard timeout so a slow/unresponsive worker can never freeze the UI
   // (skeleton + dead tabs/Refresh) indefinitely — on timeout we abort, the
-  // catch shows an error, and interaction recovers.
+  // catch shows an error, and interaction recovers. Wide custom windows (e.g. a
+  // full quarter = ~3× a month of sequential HubSpot pages) legitimately take
+  // longer than a monthly view, so the ceiling is 180s, not 90s.
   const _ac=(typeof AbortController!=='undefined')?new AbortController():null;
-  const _toId=setTimeout(()=>{try{if(_ac)_ac.abort();}catch(e){}},90000);
+  const _toId=setTimeout(()=>{try{if(_ac)_ac.abort();}catch(e){}},180000);
   try{
     const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b),signal:_ac?_ac.signal:undefined});
     const d=await r.json();
