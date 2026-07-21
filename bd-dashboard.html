@@ -610,6 +610,7 @@ function renderBD(){
       var _bdDf;
       if(_bdDateMode==='create')_bdDf=(dd.createdate||dd.hs_createdate||'').substring(0,10);
       else if(_bdDateMode==='demo')_bdDf=(dd.rescheduled_meeting_date||dd.date_demo_booked||'').substring(0,10);
+      else if(_bdDateMode==='churn')_bdDf=(dd.pausechurn_date||'').substring(0,10);
       else _bdDf=(dd.closedate||'').substring(0,10);
       if(_bdDateFrom&&_bdDf<_bdDateFrom)return false;
       if(_bdDateTo&&_bdDf>_bdDateTo)return false;
@@ -768,6 +769,7 @@ function renderBD(){
   h+=fp(_bdDateMode==='close','Close Date',"_bdDateMode='close';renderBD()");
   h+=fp(_bdDateMode==='demo','Demo Date',"_bdDateMode='demo';renderBD()");
   h+=fp(_bdDateMode==='create','Create Date',"_bdDateMode='create';renderBD()");
+  h+=fp(_bdDateMode==='churn','Churn Date',"_bdDateMode='churn';renderBD()");
   h+='</span></span>';
   h+='<span style="display:inline-flex;align-items:center;gap:8px">';
   h+='<input type="date" value="'+_bdDateFrom+'" onchange="_bdDateFrom=this.value;renderBD()" style="padding:7px 12px;border:1.5px solid '+(_bdDateFrom?'var(--teal)':'rgba(23,44,69,.18)')+';border-radius:8px;font-size:13px;font-family:var(--font-b);color:var(--navy)">';
