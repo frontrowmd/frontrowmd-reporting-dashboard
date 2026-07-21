@@ -758,7 +758,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s80';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s81';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2102,8 +2102,8 @@ function renderDash(){
   oh+=statRow('Demos to occur'+_exTag,'Deals by date_demo_booked in window',_occExC!=null?fN(_occExC):'\u2014',null,_occExC,_occExP,_occExL,'#',{noMargin:true});
   oh+=statRow('Demos supposed to happen','Held + No shows + Pruned, all traffic',fN(_supAllC),`${fN(_heldAllC)} held + ${fN(_nsAllC)} no-show + ${fN(_cxAllC)} pruned`,_supAllC,_supAllP,_supAllL,'#',{noMargin:true});
   oh+=statRow('Demos supposed to happen'+_exTag,'Held + No shows + Pruned, excl. small brands',fN(_supExC),`${fN(_heldExC)} held + ${fN(qmeta.noShowStrictCount||0)} no-show + ${fN(qmeta.cancelledStrictCount||0)} pruned`,_supExC,_supExP,_supExL,'#',{noMargin:true});
-  oh+=statRow('Demos held','Demo Given orig + resched, all traffic',fN(_heldAllC),null,_heldAllC,_heldAllP,_heldAllL,'#',{noMargin:true});
-  oh+=statRow('Demos held'+_exTag,'Demo Given orig + resched, excl. small brands',fN(_heldExC),null,_heldExC,_heldExP,_heldExL,'#',{noMargin:true});
+  oh+=statRow('Qualified Demos (Demos Held)','Demo Given orig + resched, all traffic',fN(_heldAllC),null,_heldAllC,_heldAllP,_heldAllL,'#',{noMargin:true});
+  oh+=statRow('Qualified Demos (Demos Held)'+_exTag,'Demo Given orig + resched, excl. small brands',fN(_heldExC),null,_heldExC,_heldExP,_heldExL,'#',{noMargin:true});
   oh+='</div></div></div>';
   // \u2500\u2500 Quality (all traffic \u2014 small brands NOT excluded) + Efficiency \u2500\u2500
   oh+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px">';
@@ -2199,8 +2199,11 @@ function renderDash(){
   const _cvrDW=visitors>0?(_schedDW/visitors*100):null;
   const _cvrDWPrior=(visitorsPV>0&&_schedDWPV!=null)?(_schedDWPV/visitorsPV*100):null;
   const _cvrDWLM=(visitorsLMV>0&&_schedDWLMV!=null)?(_schedDWLMV/visitorsLMV*100):null;
-  const demosSupposed=qmeta.pruneDenom||0;
-  const demosSupposedPV=qmeta.pruneDenomPrior,demosSupposedLMV=qmeta.pruneDenomLastMonth;
+  // All-traffic "Demos supposed to happen" (matches the Volume all-traffic card
+  // and keeps the sub-flow internally consistent: supposed = held + prune +
+  // no-show, all measured across every traffic tier). _supAllC/P/L computed above.
+  const demosSupposed=_supAllC;
+  const demosSupposedPV=_supAllP,demosSupposedLMV=_supAllL;
   // Conversion Funnel "Qualified" card uses the redefined metric:
   // Of Demos Held (excl. pre-launch), how many had demo_qualification_outcome = Qualified.
   // qualScaleCur / qualScalePV / qualScaleLMV are computed earlier in renderDash
@@ -2225,7 +2228,9 @@ function renderDash(){
   // (Demos Held excl. pre-launch) so the arrow matches the Qualified card's
   // new calculation.
   const r4=heldScaleCur>0?(qualified/heldScaleCur*100):null;
-  const e2e=visitors>0?(qualified/visitors*100):null;
+  // End-to-end now targets Qualified Demos (Demos Held) — the funnel's terminal
+  // card since the separate "Qualified" step was removed.
+  const e2e=visitors>0?(held/visitors*100):null;
 
   // Header: section description + Website CVR as a compact chip on the right.
   // The CVR chip surfaces BOTH values: "Demos" (the existing demo-only rate)
@@ -2293,15 +2298,12 @@ function renderDash(){
 
   // Bottom row wrapped in a subtle teal-tinted panel for visual grouping
   fh+='<div style="background:rgba(114,164,191,.03);border:1px solid var(--teal-30);border-radius:10px;padding:14px 12px;margin-bottom:14px">';
-  fh+='<div style="display:grid;grid-template-columns:1fr 44px 1.3fr 44px 1fr 44px 1fr;gap:6px;align-items:stretch">';
+  fh+='<div style="display:grid;grid-template-columns:1fr 44px 1.3fr 44px 1fr;gap:6px;align-items:stretch">';
   fh+=funnelStage('Demos supposed to happen',fN(demosSupposed),demosSupposed,demosSupposedPV,demosSupposedLMV,'#',false);
   fh+=funnelArrow(rPruneRate);
   fh+=funnelStageSplit('Prune',fN(cancelledN),cancelledN,cancelledPV,cancelledLMV,'No Show',fN(noShowN),noShowN,noShowPriorV,noShowLastMonthV);
   fh+=funnelArrow(rHeldOverall);
-  fh+=funnelStage('Held',fN(held),held,heldPV,heldLMV,'#',false,'teal');
-  fh+=funnelArrow(r4);
-  // Deltas use the SAME scale-tier priors as the displayed value (qualScaleCur).
-  fh+=funnelStage('Qualified',fN(qualified),qualScaleCur,qualScalePV,qualScaleLMV,'#',true);
+  fh+=funnelStage('Qualified Demos (Demos Held)',fN(held),held,heldPV,heldLMV,'#',false,'teal');
   fh+='</div>';
   fh+='</div>';
 
@@ -2316,7 +2318,7 @@ function renderDash(){
     <div style="display:flex;align-items:baseline;gap:8px">
       <span style="font-family:var(--font-h);font-size:10px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.06em">End-to-end</span>
       <span style="font-family:var(--font-h);color:var(--navy);font-size:14px;font-weight:700">${e2e!=null?e2e.toFixed(2)+'%':'\u2014'}</span>
-      <span>visitor \u2192 qualified</span>
+      <span>visitor \u2192 qualified demos</span>
     </div>
     ${biggest?`<div style="display:flex;align-items:baseline;gap:8px">
       <span style="font-family:var(--font-h);font-size:10px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.06em">Biggest drop</span>
