@@ -257,13 +257,13 @@ function doLogin(){
 // deferred work). Safety counter caps recursion at 8 waves.
 function bdLookupMissingCompanies(attempt){
   attempt=attempt||0;
-  if(attempt>=8){var hSafety=document.getElementById('bd-co-hint');if(hSafety)hSafety.style.display='none';return;}
+  if(attempt>=8){BD._fresh=false;var hSafety=document.getElementById('bd-co-hint');if(hSafety)hSafety.style.display='none';return;}
   if(!BD.pw||!BD.data||!BD.data.missingCompanyIds||!BD.data.missingCompanyIds.length)return;
   var ids=BD.data.missingCompanyIds.slice();
   var beforeCount=ids.length;
   var hint=document.getElementById('bd-co-hint');
   if(hint){hint.textContent=' \u00b7 loading '+ids.length+' company names\u2026';hint.style.display='inline';}
-  fetch('/api/bd/lookup-companies',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:BD.pw,companyIds:ids})}).then(function(r){return r.json();}).then(function(d){
+  fetch('/api/bd/lookup-companies',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:BD.pw,companyIds:ids,fresh:!!BD._fresh})}).then(function(r){return r.json();}).then(function(d){
     if(!d||!d.ok||!d.companies){if(hint)hint.style.display='none';return;}
     var nameMap=d.companies;
     // Patch each deal's companyName from the lookup. Entries with empty
@@ -273,11 +273,12 @@ function bdLookupMissingCompanies(attempt){
       var co=deal.companyId&&nameMap[deal.companyId];
       if(co){
         if(!deal.companyName)deal.companyName=co.name||'';
-        // Fill the company-sourced rep fields too — these come back empty from
-        // /api/bd when the company wasn't in the cache, so patch them here.
-        if(!deal.se_rep_id&&co.se_owner)deal.se_rep_id=co.se_owner;
-        if(!deal.ops_owner_id&&co.ops_owner)deal.ops_owner_id=co.ops_owner;
-        if(!deal.account_manager&&co.account_manager)deal.account_manager=co.account_manager;
+        // Owner fields (Acct Mgr / SE Rep / Ops Rep) change in HubSpot, so
+        // OVERWRITE them from the fresh lookup rather than fill-if-empty —
+        // otherwise a stale cached value would never update on refresh.
+        if('se_owner' in co)deal.se_rep_id=co.se_owner||'';
+        if('ops_owner' in co)deal.ops_owner_id=co.ops_owner||'';
+        if('account_manager' in co)deal.account_manager=co.account_manager||'';
       }
     });
     // Any ID returned by the server (even with empty name = unresolved
@@ -295,6 +296,7 @@ function bdLookupMissingCompanies(attempt){
       if(hint)hint.textContent=' \u00b7 '+afterCount+' more queued\u2026';
       bdLookupMissingCompanies(attempt+1);
     } else {
+      BD._fresh=false;
       if(hint)hint.style.display='none';
     }
   }).catch(function(e){console.warn('bdLookupMissingCompanies failed:',e);if(hint)hint.style.display='none';});
@@ -404,7 +406,8 @@ function bdRefresh(){
   if(!BD.pw)return;
   var btn=document.getElementById('refreshBtn');btn.innerHTML='<span class="sp" style="width:12px;height:12px;border-width:2px;display:inline-block;vertical-align:middle"></span> Loading...';btn.disabled=true;
   _bdStartSkeleton();
-  fetch('/api/bd',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:BD.pw})}).then(function(r){return r.json();}).then(function(d){
+  BD._fresh=true;  // force a re-fetch of company owner fields (Acct Mgr / SE Rep / Ops Rep)
+  fetch('/api/bd',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:BD.pw,fresh:true})}).then(function(r){return r.json();}).then(function(d){
     if(!d.error){BD.data=d;_bdStopSkeleton();setTimeout(function(){renderBD();bdLookupMissingCompanies();},120);}
     else{_bdStopSkeleton();}
     btn.innerHTML='\u21bb Refresh';btn.disabled=false;

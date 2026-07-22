@@ -4513,7 +4513,19 @@ const BD_DEAL_PROPS = [
   'hs_date_entered_closedwon',
 ];
 
-async function fetchBDData(env) {
+// Company owner fields (Acct Mgr / SE Rep / Ops Rep) live on the associated
+// company record and DO change (rep reassignments), but the company cache is
+// otherwise permanent. Entries are re-fetched once older than this TTL, and
+// immediately when the client passes fresh:true (the Refresh button) — so
+// owner changes propagate on refresh instead of sticking to the cached value.
+const BD_COMPANY_TTL_MS = 4 * 60 * 60 * 1000; // 4h
+function _bdCompanyStale(entry, fresh, now){
+  if (!entry) return true;              // not cached → fetch
+  if (entry._unresolved) return false;  // known-unresolvable → don't keep retrying
+  if (fresh) return true;               // explicit refresh → refetch owners
+  return !entry.t || (now - entry.t) >= BD_COMPANY_TTL_MS;
+}
+async function fetchBDData(env, fresh) {
   const hsToken = env.HUBSPOT_TOKEN;
   // hsSearch defaults to maxPages=10 → 2000 deals. We bump to 50 (10k cap, matches hsSearch's hard cap)
   // since BD pulls every late-funnel/won/churned deal across all time.
@@ -4663,8 +4675,12 @@ async function fetchBDData(env) {
       if (raw) companyMap = JSON.parse(raw);
     } catch(e) { console.warn('BD cache load failed:', e.message); }
   }
+  const _now = Date.now();
   const cachedHits = uniqueCompanyIds.filter(id => companyMap[id]).length;
-  const missingCompanyIds = uniqueCompanyIds.filter(id => !companyMap[id]);
+  // Include cache entries whose owner fields are stale (or every resolved entry
+  // when fresh=true) so the client re-looks them up and Acct Mgr / SE Rep /
+  // Ops Rep changes surface on refresh.
+  const missingCompanyIds = uniqueCompanyIds.filter(id => _bdCompanyStale(companyMap[id], fresh, _now));
   console.log(`BD companies (cache-only): ${cachedHits} cache hits · ${missingCompanyIds.length} missing → client will lookup via /api/bd/lookup-companies (total unique: ${uniqueCompanyIds.length})`);
 
   const mappedDeals = deals.map(d => {
@@ -4736,7 +4752,7 @@ async function fetchBDData(env) {
 // subrequest budget — separate from /api/bd's deal + association work —
 // which is the only way to handle portals with 2500+ unique BD companies
 // without blowing Cloudflare's per-invocation subrequest limit.
-async function lookupBDCompanies(env, companyIds) {
+async function lookupBDCompanies(env, companyIds, fresh) {
   const hsToken = env.HUBSPOT_TOKEN;
   if (!Array.isArray(companyIds) || companyIds.length === 0) return { companies: {}, deferred: 0, fetched: 0, cacheHits: 0 };
   // Load cache
@@ -4748,8 +4764,10 @@ async function lookupBDCompanies(env, companyIds) {
     } catch(e) { console.warn('BD lookup cache load failed:', e.message); }
   }
   // Filter to IDs not in cache
+  const _now = Date.now();
   const cacheHits = companyIds.filter(id => companyMap[id]).length;
-  const missingIds = companyIds.filter(id => !companyMap[id]);
+  // Re-fetch absent, stale, or (on fresh=true) all requested entries.
+  const missingIds = companyIds.filter(id => _bdCompanyStale(companyMap[id], fresh, _now));
   // Cap to 30 batches (3000 companies) per request — plenty of headroom on
   // any plan, leaves room for the KV write at the end.
   const MAX_BATCHES = 30;
@@ -4780,7 +4798,7 @@ async function lookupBDCompanies(env, companyIds) {
         // SE Rep = the company record's hubspot_owner_id
         const se_owner = co.properties?.hubspot_owner_id || '';
         const account_manager = co.properties?.account_manager || '';
-        companyMap[co.id] = { name, id: co.id, archived: !!co.archived, ops_owner, se_owner, account_manager };
+        companyMap[co.id] = { name, id: co.id, archived: !!co.archived, ops_owner, se_owner, account_manager, t: Date.now() };
         if (name) fetched++;
       }
     } catch(e) { console.error('BD lookup batch error:', e); }
@@ -5752,7 +5770,7 @@ export default {
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
       if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
       try {
-        const result = await fetchBDData(env);
+        const result = await fetchBDData(env, body.fresh === true);
         return jr(result);
       } catch(err) { console.error('BD API error:', err); return jr({ error: 'Internal error', detail: err.message }, 500); }
     }
@@ -5767,7 +5785,7 @@ export default {
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
       if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
       try {
-        const result = await lookupBDCompanies(env, body.companyIds || []);
+        const result = await lookupBDCompanies(env, body.companyIds || [], body.fresh === true);
         return jr({ ok: true, ...result });
       } catch(err) { console.error('BD lookup error:', err); return jr({ ok: false, error: 'Internal error', detail: err.message }, 500); }
     }
