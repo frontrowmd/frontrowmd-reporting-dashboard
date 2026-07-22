@@ -1079,6 +1079,7 @@ function processScheduledContacts(contacts) {
   let weekdayTotal = 0;                  // excludes Very Small + weekends
   let weekdayTotalScale = 0;             // excludes Very Small + Pre-launch + weekends
   let weekdayTotalScale10KPlus = 0;      // excludes Very Small + Pre-launch + 0-10K + weekends
+  let weekdayTotalAll = 0;               // INCLUDES Very Small (webinars); excludes weekends
   let lowTrafficCountWeekday = 0;        // Pre-launch contacts that landed on a weekday
   let low10KCountWeekday = 0;            // Pre-launch + 0-10K contacts on a weekday
   // Dedupe: fetchScheduledContacts ORs two filter groups (meeting bookers +
@@ -1111,7 +1112,7 @@ function processScheduledContacts(contacts) {
     byWebTrafficTrue[trueTier] = (byWebTrafficTrue[trueTier]||0) + 1;
     // Webinar-inclusive daily series (bucketed by createdate in ET) — feeds the
     // "CPD per Week" chart so it aggregates to the Efficiency "CPD · All" card.
-    { const _ad = new Date(cd); const _ads = fmt(new Date(_ad.getTime() + etOff(_ad) * 3600000)); byDayAll[_ads] = (byDayAll[_ads]||0) + 1; }
+    { const _ad = new Date(cd); const _aet = new Date(_ad.getTime() + etOff(_ad) * 3600000); byDayAll[fmt(_aet)] = (byDayAll[fmt(_aet)]||0) + 1; const _adow = _aet.getUTCDay(); if (_adow !== 0 && _adow !== 6) weekdayTotalAll++; }
     if (isVerySmall) continue;
     const d = new Date(cd);
     const o = etOff(d);
@@ -1162,7 +1163,7 @@ function processScheduledContacts(contacts) {
     // Weekday-only mirrors of total / low-tier counts, exposed so prior &
     // last-month deltas in the Weekday Avg tile are apples-to-apples (only
     // weekday demos in the numerator, weekday-day-count in the denominator).
-    weekdayTotal, weekdayTotalScale, weekdayTotalScale10KPlus,
+    weekdayTotal, weekdayTotalScale, weekdayTotalScale10KPlus, weekdayTotalAll,
     lowTrafficCountWeekday, low10KCountWeekday,
   };
 }
@@ -2177,6 +2178,9 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
     scheduledWeekdayTotalScale10KPlus: c.scheduled.weekdayTotalScale10KPlus,
     scheduledWeekdayTotalScale10KPlusPrior: prior ? (p.scheduled?.weekdayTotalScale10KPlus ?? null) : null,
     scheduledWeekdayTotalScale10KPlusLastMonth: priorMonth ? (pm.scheduled?.weekdayTotalScale10KPlus ?? null) : null,
+    scheduledWeekdayTotalAll: c.scheduled.weekdayTotalAll,
+    scheduledWeekdayTotalAllPrior: prior ? (p.scheduled?.weekdayTotalAll ?? null) : null,
+    scheduledWeekdayTotalAllLastMonth: priorMonth ? (pm.scheduled?.weekdayTotalAll ?? null) : null,
   };
   demoTracking.demosPaidPct._meta = { windsorDemos: c.adSpend.total.windsorDemos, demosBooked: c.scheduled.total };
 
@@ -2304,6 +2308,7 @@ function buildPeriodData(period, windsorRows, linkedInDemos, ga4Rows, scheduledC
     weekdayTotal: scheduled.weekdayTotal,
     weekdayTotalScale: scheduled.weekdayTotalScale,
     weekdayTotalScale10KPlus: scheduled.weekdayTotalScale10KPlus,
+    weekdayTotalAll: scheduled.weekdayTotalAll,
     lowTrafficCountWeekday: scheduled.lowTrafficCountWeekday,
     low10KCountWeekday: scheduled.low10KCountWeekday,
   };
