@@ -583,7 +583,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
       <div id="date-header" style="margin-bottom:24px"></div>
 
       <!-- Row 1: Daily Activity (70%) + Revenue Outcome (30%) -->
-      <div class="sec" id="sec-row1" style="display:grid;grid-template-columns:7fr 3fr;gap:16px"><div id="sec-daily" class="sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:#3B82F6;border-radius:50%;margin-right:8px;vertical-align:middle"></span>Daily Activity</div><div style="font-size:11px;color:var(--grey);margin:-2px 0 12px;line-height:1.45">Contacts created with date_demo_booked set · excludes small brands (Pre-launch &amp; 0-10K web traffic tiers) · average line shows daily mean</div><div id="daily-wrap"></div></div><div id="t-revenue"></div></div>
+      <div class="sec" id="sec-row1" style="display:grid;grid-template-columns:7fr 3fr;gap:16px"><div id="sec-daily" class="sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:#3B82F6;border-radius:50%;margin-right:8px;vertical-align:middle"></span>Daily Activity</div><div style="font-size:11px;color:var(--grey);margin:-2px 0 12px;line-height:1.45">Contacts created with date_demo_booked set · average line shows daily mean</div><div id="daily-wrap"></div></div><div id="t-revenue"></div></div>
 
       <!-- Row 1b: True CPD per Week (full width, below Daily Activity + Revenue Outcome) -->
       <div class="sec" id="ov-truecpd-wrap"></div>
@@ -758,7 +758,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s88';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s89';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2443,7 +2443,7 @@ function renderIrfan(){
   h+='<div class="irf-sec-title">Daily Trend & Web-Traffic Mix</div>';
   h+='<div style="display:grid;grid-template-columns:1.6fr 1fr;gap:16px;margin-bottom:28px">';
   // 1a — Demos Booked per Day (matches Overview). Reuses renderDemosPerDay for mini KPI cards + hover.
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div class="irf-card-title">Demos Booked per Day</div><div class="irf-card-sub">Contacts created with date_demo_booked set · excludes small brands (Pre-launch &amp; 0-10K web traffic tiers) · average line shows daily mean</div><div id="irfan-daily-wrap"></div></div>';
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div class="irf-card-title">Demos Booked per Day</div><div class="irf-card-sub">Contacts created with date_demo_booked set · average line shows daily mean</div><div id="irfan-daily-wrap"></div></div>';
   // 1b — Demos and Webinars Booked by Web-Traffic Range (donut, with % labels + hover)
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div class="irf-card-title">Demos and Webinars Booked by Web-Traffic Range</div><div class="irf-card-sub">% of demos booked in each tier · ordered Pre-launch → 500K+ clockwise</div><div id="irfan-wt-pie"></div></div>';
   h+='</div>';
@@ -5050,14 +5050,19 @@ function renderCPDTable(d){
   renderNoShowAnalysis(d);
 }
 function dbcTip(e,el){let tip=document.getElementById('dbc-tip');if(!tip){tip=document.createElement('div');tip.id='dbc-tip';tip.style.cssText='position:fixed;background:var(--navy);color:#fff;padding:6px 10px;border-radius:6px;font-size:12px;font-family:var(--font-b);pointer-events:none;z-index:9999;box-shadow:0 4px 12px rgba(2,15,24,.25);white-space:nowrap;transition:opacity .08s ease;opacity:0';document.body.appendChild(tip);}tip.textContent=el.getAttribute('data-tip')||'';tip.style.opacity='1';dbcTipMove(e);}function dbcTipMove(e){const tip=document.getElementById('dbc-tip');if(!tip||tip.style.opacity==='0')return;var tw=tip.offsetWidth||0,th=tip.offsetHeight||0,pad=12;var left=e.clientX+pad;if(left+tw+8>window.innerWidth)left=e.clientX-tw-pad;if(left<4)left=4;var top=e.clientY-th-8;if(top<4)top=e.clientY+pad;tip.style.left=left+'px';tip.style.top=top+'px';}function dbcTipHide(){const tip=document.getElementById('dbc-tip');if(tip)tip.style.opacity='0';}
+// Daily Activity mode toggle (per section): 'excl' (exclude small brands) or
+// 'all'. Re-renders the section in place from the stashed dashboard data.
+function toggleDailyMode(tid,mode){window._dailyMode=window._dailyMode||{};window._dailyMode[tid]=mode;if(window._dailyData&&window._dailyData[tid])renderDemosPerDay(window._dailyData[tid],tid);}
 function renderDemosPerDay(d, targetId){
-  const _target=document.getElementById(targetId||'daily-wrap');if(!_target)return;
-  // Both the Irfan and Detailed dashboards EXCLUDE small brands (Pre-launch
-  // AND 0-10K web-traffic tiers) from the daily chart + the tile totals/deltas
-  // so the two pages match. Uses scheduledByDayScale10KPlus, falling back to
-  // the older scale series (pre-launch only) if the worker hasn't shipped the
-  // new field yet.
-  const _isScale=true;
+  const _tid=targetId||'daily-wrap';
+  const _target=document.getElementById(_tid);if(!_target)return;
+  // Daily chart + tiles can show ALL demos or EXCLUDE small brands (Pre-launch
+  // AND 0-10K web-traffic tiers), toggled per section. Excl-small uses
+  // scheduledByDayScale10KPlus (fallback to the pre-launch-only scale series);
+  // All uses scheduledByDay. Stash d so the toggle can re-render in place.
+  window._dailyData=window._dailyData||{};window._dailyData[_tid]=d;
+  const _mode=(window._dailyMode&&window._dailyMode[_tid])||'excl';
+  const _isScale=(_mode!=='all');
   const sByDay=(_isScale?(d.demoTracking.scheduledByDayScale10KPlus||d.demoTracking.scheduledByDayScale):d.demoTracking.scheduledByDay)||{};
   if(_isScale){
     var _hasNew=d.demoTracking.scheduledByDayScale10KPlus!=null;
@@ -5137,7 +5142,9 @@ function renderDemosPerDay(d, targetId){
   function nfmt(n,fmt,dec){if(n==null)return '\u2014';var s=n>=0?'+':'-';var a=Math.abs(n);var d=dec!=null?dec:1;if(fmt==='$')return s+'$'+Math.round(a).toLocaleString();if(fmt==='#')return s+Math.round(a).toLocaleString();if(fmt==='%')return s+a.toFixed(d)+'%';if(fmt==='x')return s+a.toFixed(2)+'x';return s+a.toFixed(d);}
   function fmtDC(cur,prev,fmt,inv,dec){if(cur==null||prev==null)return '<span style="color:var(--grey);font-size:10px">\u2014</span>';var nd=cur-prev;var pd=prev!==0?((cur-prev)/prev)*100:null;var arrow=nd>=0?'\u2191':'\u2193';var positive=nd>0;var good=inv?!positive:positive;var color=nd===0?'var(--grey)':(good?'var(--green)':'var(--red)');var nStr=nfmt(nd,fmt,dec);var pStr=pd!=null?'('+(pd>=0?'+':'')+pd.toFixed(1)+'%)':'';return '<span style="color:'+color+';font-size:10px;font-weight:600">'+arrow+' '+nStr+' '+pStr+'</span>';}
   const tileDeltaBlock=(cur,p,l,fmt,dec)=>`<div style="font-size:10px;line-height:1.5;margin-top:4px"><div style="display:flex;gap:6px;align-items:baseline"><span style="color:var(--grey);min-width:42px;font-size:10px">vs prior</span>${fmtDC(cur,p,fmt,false,dec)}</div><div style="display:flex;gap:6px;align-items:baseline"><span style="color:var(--grey);min-width:42px;font-size:10px">vs LM</span>${fmtDC(cur,l,fmt,false,dec)}</div></div>`;
-  let h='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px">';
+  var _pill=function(m,lbl){var on=(_mode===m);return '<button onclick="toggleDailyMode(\''+_tid+'\',\''+m+'\')" style="font-family:var(--font-h);font-size:10px;font-weight:700;letter-spacing:.03em;padding:5px 12px;border:none;background:'+(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+';cursor:pointer;transition:background .15s,color .15s">'+lbl+'</button>';};
+  let h='<div style="display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:12px">'+_pill('all','All Demos')+_pill('excl','Excluding Small Brands')+'</div>';
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px">';
   const _bookedLabel=_isScale?'Demos Booked (excl. small brands)':'Demos Booked';
   const _avgLabel=_isScale?'Weekday Avg (excl. small brands)':'Weekday Avg';
   h+=`<div class="tile accent" title="${_isScale?'Excludes Pre-launch / just-launching AND 0-10K web traffic brands (collectively "small brands")':''}"><div class="tlbl">${_bookedLabel}</div><div class="tval">${fN(total)}</div>${tileDeltaBlock(total,priorTotal,lmTotal,'#')}</div>`;
