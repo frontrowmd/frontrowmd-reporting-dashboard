@@ -1066,6 +1066,7 @@ function processScheduledContacts(contacts) {
   const byDay = {};
   const byDayScale = {};         // per-day count excluding pre-launch
   const byDayScale10KPlus = {};  // per-day count excluding pre-launch AND 0-10K (Irfan-only stricter view)
+  const byDayAll = {};           // per-day count INCLUDING webinars (Very Small) — matches "CPD · All"
   const byWebTraffic = {};       // count by raw web-traffic tier value (Livestorm → "Very Small"/Webinar) — webinar count for CPD cards
   const byWebTrafficTrue = {};   // count by the contact's ACTUAL web-traffic tier (webinar regs counted in their real tier, NOT lumped into "Webinar") — drives the Demos+Webinars pie
   let lowTrafficCount = 0;       // contacts in the pre-launch tier
@@ -1108,6 +1109,9 @@ function processScheduledContacts(contacts) {
     // slice instead of the catch-all "Webinar" (Very Small) slice.
     const trueTier = wtRaw || '(none)';
     byWebTrafficTrue[trueTier] = (byWebTrafficTrue[trueTier]||0) + 1;
+    // Webinar-inclusive daily series (bucketed by createdate in ET) — feeds the
+    // "CPD per Week" chart so it aggregates to the Efficiency "CPD · All" card.
+    { const _ad = new Date(cd); const _ads = fmt(new Date(_ad.getTime() + etOff(_ad) * 3600000)); byDayAll[_ads] = (byDayAll[_ads]||0) + 1; }
     if (isVerySmall) continue;
     const d = new Date(cd);
     const o = etOff(d);
@@ -1153,7 +1157,7 @@ function processScheduledContacts(contacts) {
     }
   }
   return {
-    total: dailyTotal, byDay, byDayScale, byDayScale10KPlus, byWebTraffic, byWebTrafficTrue,
+    total: dailyTotal, byDay, byDayScale, byDayScale10KPlus, byDayAll, byWebTraffic, byWebTrafficTrue,
     lowTrafficCount, low10KCount, lowTrafficCompanies,
     // Weekday-only mirrors of total / low-tier counts, exposed so prior &
     // last-month deltas in the Weekday Avg tile are apples-to-apples (only
@@ -2142,6 +2146,7 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
     ),
     dailyChart: c.pipeline.byDay,
     scheduledByDay: c.scheduled.byDay,
+    scheduledByDayAll: c.scheduled.byDayAll,
     scheduledByDayScale: c.scheduled.byDayScale,
     // Stricter daily series — excludes pre-launch AND 0-10K. Used by the
     // Irfan Dashboard "Demos Booked per Day" chart.
@@ -2290,7 +2295,7 @@ function buildPeriodData(period, windsorRows, linkedInDemos, ga4Rows, scheduledC
   // series.
   const scheduledOut = {
     total: scheduled.total, byDay: scheduled.byDay,
-    byDayScale: scheduled.byDayScale, byDayScale10KPlus: scheduled.byDayScale10KPlus,
+    byDayScale: scheduled.byDayScale, byDayScale10KPlus: scheduled.byDayScale10KPlus, byDayAll: scheduled.byDayAll,
     byWebTraffic: scheduled.byWebTraffic, byWebTrafficTrue: scheduled.byWebTrafficTrue,
     lowTrafficCount: scheduled.lowTrafficCount, low10KCount: scheduled.low10KCount,
     // Weekday-only mirrors — buildResponse forwards these as

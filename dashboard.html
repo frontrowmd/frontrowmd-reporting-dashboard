@@ -758,7 +758,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s86';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s87';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2551,21 +2551,34 @@ function renderIrfan(){
 // weekly chart. Used by both the Irfan and Detailed dashboards. chartId is the
 // div _renderTrueCpdWeek() targets (must be unique per page).
 function _trueCpdWeekCard(d, chartId){
-  var t=(d.executiveSummary&&d.executiveSummary.totalCpd)||{};  // all demos (small brands no longer excluded)
+  // CPD = Total ad spend ÷ ALL demos + webinars — same inputs as the Efficiency
+  // "CPD · All" card so the numbers tie out. Card 1 = the selected window;
+  // Card 2 = last month when available, else the prior period (labels adapt).
+  var esm=(d.executiveSummary&&d.executiveSummary._meta)||{};
+  var dtk=d.demoTracking||{};
   var win=(d.meta&&d.meta.windowType)||'mtd';
-  // Card 1 = the selected window's True CPD. Card 2 = the prior month: use the
-  // full last-month value when present (MTD/YTD), else fall back to the "vs prior"
-  // period — which for the Last Month view IS the full month before (e.g. May
-  // when viewing June). Labels adapt so they never mislabel the period.
-  var curV=t.value;
-  var priorV=(t.lastMonth&&t.lastMonth.value!=null)?t.lastMonth.value:((t.sameTimePrior&&t.sameTimePrior.value!=null)?t.sameTimePrior.value:null);
-  var LB={mtd:['MTD True CPD','Last Month True CPD'],lastMonth:['Last Month True CPD','Prior Month True CPD'],ytd:['YTD True CPD','Last Month True CPD'],'7d':['Last 7 Days True CPD','Prior Period True CPD'],allTime:['All Time True CPD','Last Month True CPD'],custom:['Selected True CPD','Prior Period True CPD']};
+  var _spC=esm.totalSpend||0,_spP=esm.pTotalSpend,_spL=esm.pmTotalSpend;
+  var _tsch=dtk.totalScheduled||{};
+  var _schC=esm.totalScheduled||esm.totalWD||0;
+  var _schP=(_tsch.sameTimePrior&&_tsch.sameTimePrior.value!=null)?_tsch.sameTimePrior.value:null;
+  var _schL=(_tsch.lastMonth&&_tsch.lastMonth.value!=null)?_tsch.lastMonth.value:null;
+  var _webC=(dtk.scheduledByWebTraffic||{})['Very Small']||0;
+  var _webP=(dtk.scheduledByWebTrafficPrior||{})['Very Small']||0;
+  var _webL=(dtk.scheduledByWebTrafficLastMonth||{})['Very Small']||0;
+  var _allC=_schC+_webC,_allP=(_schP!=null)?_schP+_webP:null,_allL=(_schL!=null)?_schL+_webL:null;
+  var cpd=function(sp,n){return (n!=null&&n>0&&sp!=null)?sp/n:null;};
+  var curV=cpd(_spC,_allC);
+  var useLM=(_allL!=null&&_spL!=null);
+  var priorV=useLM?cpd(_spL,_allL):cpd(_spP,_allP);
+  var curCalc=f$(Math.round(_spC))+' ÷ '+fN(_allC);
+  var priorCalc=useLM?(f$(Math.round(_spL||0))+' ÷ '+fN(_allL||0)):((_allP!=null)?(f$(Math.round(_spP||0))+' ÷ '+fN(_allP||0)):'');
+  var LB={mtd:['MTD CPD','Last Month CPD'],lastMonth:['Last Month CPD','Prior Month CPD'],ytd:['YTD CPD','Last Month CPD'],'7d':['Last 7 Days CPD','Prior Period CPD'],allTime:['All Time CPD','Last Month CPD'],custom:['Selected CPD','Prior Period CPD']};
   var lb=LB[win]||LB.mtd;
   var fmtC=function(v){return v!=null?f$(Math.round(v)):'—';};
-  var mini=function(lbl,val){return '<div style="flex:1;min-width:150px;background:var(--lighter);border:1px solid var(--border);border-radius:10px;padding:12px 16px"><div style="font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em">'+lbl+'</div><div style="font-family:var(--font-h);font-size:24px;font-weight:700;color:var(--navy);margin-top:3px">'+val+'</div></div>';};
+  var mini=function(lbl,val,calc){return '<div style="flex:1;min-width:150px;background:var(--lighter);border:1px solid var(--border);border-radius:10px;padding:12px 16px"><div style="font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em">'+lbl+'</div><div style="font-family:var(--font-h);font-size:24px;font-weight:700;color:var(--navy);margin-top:3px">'+val+'</div>'+(calc?'<div style="font-size:9.5px;color:var(--grey);margin-top:4px">'+calc+'</div>':'')+'</div>';};
   return '<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-bottom:16px">'
-    +'<div class="irf-card-title">True CPD per Week</div><div class="irf-card-sub">Total ad spend ÷ all demos booked, bucketed by week (Mon–Sun) within the selected window</div>'
-    +'<div style="display:flex;gap:12px;margin:12px 0 16px;flex-wrap:wrap">'+mini(lb[0],fmtC(curV))+mini(lb[1],fmtC(priorV))+'</div>'
+    +'<div class="irf-card-title">CPD per Week</div><div class="irf-card-sub">Total ad spend ÷ all demos + webinars booked, bucketed by week (Mon–Sun) within the selected window</div>'
+    +'<div style="display:flex;gap:12px;margin:12px 0 16px;flex-wrap:wrap">'+mini(lb[0],fmtC(curV),curCalc)+mini(lb[1],fmtC(priorV),priorCalc)+'</div>'
     +'<div id="'+chartId+'"></div></div>';
 }
 
@@ -2576,7 +2589,7 @@ function _renderTrueCpdWeek(d, elId){
   var el=document.getElementById(elId); if(!el) return;
   var dt=(d&&d.demoTracking)||{};
   var spendByDay=dt.spendByDay||{};
-  var demoByDay=dt.scheduledByDay||{};  // all demos — small brands no longer excluded
+  var demoByDay=dt.scheduledByDayAll||dt.scheduledByDay||{};  // all demos + webinars (matches CPD · All)
   var seen={}; Object.keys(spendByDay).forEach(function(k){seen[k]=1;}); Object.keys(demoByDay).forEach(function(k){seen[k]=1;});
   var days=Object.keys(seen).filter(function(k){return /^\d{4}-\d{2}-\d{2}$/.test(k);}).sort();
   if(!days.length){el.innerHTML='<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px">No weekly data for this window</div>';return;}
@@ -2608,7 +2621,7 @@ function _renderTrueCpdWeek(d, elId){
     svg+='<text x="'+x+'" y="'+(H-padB+16)+'" text-anchor="middle" font-size="8.5" fill="var(--grey)">'+fmtWk(p.wk)+'</text>';
     if(p.cpd!=null){
       var y=yAt(p.cpd);
-      var tip='Week of '+fmtWk(p.wk)+' – '+wkEnd(p.wk)+'  ·  True CPD '+f$(Math.round(p.cpd))+'  ·  '+f$(Math.round(p.spend))+' ÷ '+fN(p.demos)+' demos';
+      var tip='Week of '+fmtWk(p.wk)+' – '+wkEnd(p.wk)+'  ·  CPD '+f$(Math.round(p.cpd))+'  ·  '+f$(Math.round(p.spend))+' ÷ '+fN(p.demos)+' demos';
       svg+='<circle cx="'+x+'" cy="'+y+'" r="4.5" fill="var(--teal)" stroke="#fff" stroke-width="1.5" style="cursor:pointer" data-tip="'+tip.replace(/"/g,'&quot;')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()"/>';
       svg+='<text x="'+x+'" y="'+(y-9)+'" text-anchor="middle" font-size="8.5" font-weight="700" fill="var(--navy)">'+f$(Math.round(p.cpd))+'</text>';
     }
@@ -5036,7 +5049,7 @@ function renderCPDTable(d){
   // weeks from create→booked). Runs against the same demoQualityDeals window.
   renderNoShowAnalysis(d);
 }
-function dbcTip(e,el){let tip=document.getElementById('dbc-tip');if(!tip){tip=document.createElement('div');tip.id='dbc-tip';tip.style.cssText='position:fixed;background:var(--navy);color:#fff;padding:6px 10px;border-radius:6px;font-size:12px;font-family:var(--font-b);pointer-events:none;z-index:9999;box-shadow:0 4px 12px rgba(2,15,24,.25);white-space:nowrap;transition:opacity .08s ease;opacity:0';document.body.appendChild(tip);}tip.textContent=el.getAttribute('data-tip')||'';tip.style.opacity='1';dbcTipMove(e);}function dbcTipMove(e){const tip=document.getElementById('dbc-tip');if(!tip||tip.style.opacity==='0')return;tip.style.left=(e.clientX+12)+'px';tip.style.top=(e.clientY-32)+'px';}function dbcTipHide(){const tip=document.getElementById('dbc-tip');if(tip)tip.style.opacity='0';}
+function dbcTip(e,el){let tip=document.getElementById('dbc-tip');if(!tip){tip=document.createElement('div');tip.id='dbc-tip';tip.style.cssText='position:fixed;background:var(--navy);color:#fff;padding:6px 10px;border-radius:6px;font-size:12px;font-family:var(--font-b);pointer-events:none;z-index:9999;box-shadow:0 4px 12px rgba(2,15,24,.25);white-space:nowrap;transition:opacity .08s ease;opacity:0';document.body.appendChild(tip);}tip.textContent=el.getAttribute('data-tip')||'';tip.style.opacity='1';dbcTipMove(e);}function dbcTipMove(e){const tip=document.getElementById('dbc-tip');if(!tip||tip.style.opacity==='0')return;var tw=tip.offsetWidth||0,th=tip.offsetHeight||0,pad=12;var left=e.clientX+pad;if(left+tw+8>window.innerWidth)left=e.clientX-tw-pad;if(left<4)left=4;var top=e.clientY-th-8;if(top<4)top=e.clientY+pad;tip.style.left=left+'px';tip.style.top=top+'px';}function dbcTipHide(){const tip=document.getElementById('dbc-tip');if(tip)tip.style.opacity='0';}
 function renderDemosPerDay(d, targetId){
   const _target=document.getElementById(targetId||'daily-wrap');if(!_target)return;
   // Both the Irfan and Detailed dashboards EXCLUDE small brands (Pre-launch
