@@ -758,7 +758,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s94';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s95';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -6562,7 +6562,7 @@ function renderSignUp(){
   // small-brand deal-shadows before each cohort's metrics recompute.
   const _exclSmall=!!S.signup.exclSmall;
   const _suIsSmall=(w)=>{const t=String(w||'').toLowerCase();return t.includes('pre-launch')||t.includes('0-10k')||t.includes('very small');};
-  const _exclLabel=_exclSmall?'excl. small brands':'excl. pre-launch';
+  const _exclSuffix=_exclSmall?' (excl. small brands)':'';
   const _suScopePill=(m,lbl)=>{const on=(_exclSmall?'excl':'all')===m;return '<button onclick="signupSetScope(\''+m+'\')" style="font-family:var(--font-h);font-size:12px;font-weight:700;letter-spacing:.02em;padding:7px 16px;border:none;background:'+(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+';cursor:pointer;transition:background .15s,color .15s">'+lbl+'</button>';};
   let h='<div style="display:inline-flex;border:1.5px solid var(--mid-navy);border-radius:10px;overflow:hidden;margin-bottom:14px;background:var(--lighter);box-shadow:inset 0 1px 2px rgba(2,15,24,.08)">'+_suScopePill('all','All Deals')+_suScopePill('excl','Excluding Small Brands')+'</div>';
   h+='<div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);margin-bottom:14px">Monthly Cohorts</div>';
@@ -6654,13 +6654,13 @@ function renderSignUp(){
     row1+='<div class="su-r1-item primary">';
     row1+='<div class="su-label">% Signed</div>';
     row1+=`<div class="su-value">${c.pctSigned.toFixed(1)}%</div>`;
-    row1+=`<div class="su-calc">${fN(c.signed)} ÷ ${fN(c.demosHeld)} qual demos held (${_exclLabel})</div>`;
+    row1+=`<div class="su-calc">${fN(c.signed)} ÷ ${fN(c.demosHeld)} qual demos held${_exclSuffix}</div>`;
     row1+='</div>';
     row1+=`<div class="su-r1-item"><div class="su-label">New ARR</div><div class="su-value">${c.signed>0?f$(c.newArr):'—'}</div></div>`;
     row1+=`<div class="su-r1-item"><div class="su-label">ACV</div><div class="su-value">${c.signed>0?f$(c.acv):'—'}</div></div>`;
     // Bottom row
     row1+=`<div class="su-r1-item"><div class="su-label">Closed Won</div><div class="su-value">${fN(c.signed)}</div></div>`;
-    row1+=`<div class="su-r1-item" title="Deals where date_demo_booked is in ${c.period.label} AND dealstage is Closed Won, Demo Happened, Decision Maker Brought In, Contract Sent, or Appointment Scheduled (with past date). Pre-launch brands excluded${c.prelaunchExcluded?' ('+fN(c.prelaunchExcluded)+' filtered out)':''}."><div class="su-label">Qual Demos Held<span style="font-size:9px;font-weight:500;color:var(--grey);margin-left:4px;text-transform:none;letter-spacing:0">${_exclLabel}</span></div><div class="su-value">${fN(c.demosHeld)}</div></div>`;
+    row1+=`<div class="su-r1-item" title="Deals where date_demo_booked is in ${c.period.label} AND dealstage is Closed Won, Demo Happened, Decision Maker Brought In, Contract Sent, or Appointment Scheduled (with past date)."><div class="su-label">Qual Demos Held${_exclSmall?'<span style="font-size:9px;font-weight:500;color:var(--grey);margin-left:4px;text-transform:none;letter-spacing:0">excl. small brands</span>':''}</div><div class="su-value">${fN(c.demosHeld)}</div></div>`;
     row1+=`<div class="su-r1-item" title="Avg days across the cohort — To Demo across all booked deals; Close From Demo / Close From Created across signed deals only"><div class="su-label">Avg Days</div>${_avgDaysCell(c.avgDaysToDemo, c.avgDaysFromBooked!=null?c.avgDaysFromBooked:c.avgDaysToClose, c.avgDaysFromCreated)}</div>`;
     row1+='</div>';
 
@@ -6729,7 +6729,7 @@ function renderSignUp(){
     const diagPieces=[
       fetched!=null?`HubSpot fetch: <b${failed?' style="color:#DC2626"':''}>${fN(fetched)} deals</b>${statusLabel}`:null,
       `In ${c.period.label} window: <b>${fN(c.allBooked||0)} deals</b>${c.prelaunchExcluded?' <span style="color:#92400E">(' + fN(c.prelaunchExcluded) + ' pre-launch excluded)</span>':''}`,
-      `Qual Demos Held (${_exclLabel}) = ${fN(_sc.won||0)} CW + ${fN(_sc.demoHappened||0)} DH + ${fN(_sc.dm||0)} DM + ${fN(_sc.cs||0)} CS + ${fN(_sc.appt||0)} Appt(past) = <b>${fN(c.demosHeld)}</b>`,
+      `Qual Demos Held${_exclSuffix} = ${fN(_sc.won||0)} CW + ${fN(_sc.demoHappened||0)} DH + ${fN(_sc.dm||0)} DM + ${fN(_sc.cs||0)} CS + ${fN(_sc.appt||0)} Appt(past) = <b>${fN(c.demosHeld)}</b>`,
     ].filter(Boolean);
     const diagBar=`<div style="font-size:10px;color:var(--grey);padding:6px 10px;background:rgba(23,44,69,.03);border-radius:4px;margin-bottom:10px;font-variant-numeric:tabular-nums;line-height:1.6">${diagPieces.join(' &nbsp;·&nbsp; ')}</div>`;
 
@@ -6791,7 +6791,7 @@ function renderSignUp(){
           ${_signupSortableTh('Rep','name')}
           ${_signupSortableTh('% Signed','pctSigned',{highlight:true})}
           ${_signupSortableTh('Won','signed',{highlight:true,title:'Deals where dealstage = Closed Won'})}
-          ${_signupSortableTh('Qual Demos ('+_exclLabel+')','demosHeld',{title:'Deals where date_demo_booked is in this cohort month AND dealstage is Closed Won, Demo Happened, Decision Maker Brought In, Contract Sent, or Appointment Scheduled (with past date). Pre-launch brands excluded.'})}
+          ${_signupSortableTh('Qual Demos'+_exclSuffix,'demosHeld',{title:'Deals where date_demo_booked is in this cohort month AND dealstage is Closed Won, Demo Happened, Decision Maker Brought In, Contract Sent, or Appointment Scheduled (with past date).'})}
           ${_signupSortableTh('New ARR','newArr')}
           ${_signupSortableTh('ACV','acv')}
           ${_signupSortableTh('From Booked','avgDaysFromBooked',{title:'Average days from date_demo_booked to closedate across signed deals'})}

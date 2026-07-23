@@ -1661,16 +1661,11 @@ function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
       b.byRep[oid] = emptyBucket(ownerMap[oid] || (oid === 'unassigned' ? 'Unassigned' : oid));
     }
 
-    // Exclude pre-launch brands from the cohort (same as Special #1 card).
-    // Pre-launch deals don't qualify for sign-up rate tracking — they're
-    // prospects, not yet-launched brands ready to certify. Prefer the cloned
-    // snapshot (signed-time value) over the live property.
+    // All traffic tiers are included in the base — matches the Detailed
+    // Dashboard's all-traffic "Qualified Demos (Held)". The client's
+    // "Excluding Small Brands" toggle removes Pre-launch / 0-10K / Very Small
+    // on demand; the worker no longer drops pre-launch here.
     const wt = (p.average_monthly_web_traffic__cloned_ || p.average_monthly_web_traffic || '').toLowerCase();
-    if (wt.indexOf('pre-launch') >= 0) {
-      b.prelaunchExcluded++;
-      b.byRep[oid].prelaunchExcluded++;
-      continue;
-    }
 
     b.allBooked++;
     b.byRep[oid].allBooked++;
