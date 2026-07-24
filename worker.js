@@ -1540,8 +1540,12 @@ const ALL_DEMO_HAPPENED = [
 //   % Pruned  = cancelled ÷ (held + noShow + cancelled)
 // Pending/future demos are excluded from both denominators so the rates
 // aren't deflated by demos that haven't reached an outcome yet.
-function attBump(o, att) {
-  if (att === 'Demo Given (originally scheduled)' || att === 'Demo Given (rescheduled)') o.attHeld++;
+function attBump(o, att, isWon) {
+  // isWon (optional): a Closed Won deal definitionally had its demo happen, so
+  // it counts as "held" even if the demo_attendance_status stamp is missing.
+  // This guarantees signed ⊆ held (so % Signed + % Pending = 100%). Callers
+  // that omit isWon keep the pure attendance behavior.
+  if (isWon || att === 'Demo Given (originally scheduled)' || att === 'Demo Given (rescheduled)') o.attHeld++;
   else if (att === 'No Show') o.attNoShow++;
   else if (att === 'Cancelled before demo') o.attCancelled++;
 }
@@ -1563,16 +1567,19 @@ function attRates(held, noShow, cancelled) {
 }
 
 function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
-  // Sign-Up Rate cohorts use the SAME stage-based definition as the Irfan
-  // Dashboard's Special #1 "Signed Deals from Last Month" card. For each
-  // cohort month (date_demo_booked within month):
-  //   demosHeld  = won + appt + demoHappened + dm + cs
-  //   signed     = won
-  //   pctSigned  = signed ÷ demosHeld
-  //   pctPending = (appt + demoHappened + dm + cs) ÷ demosHeld
-  //   pctPruned  = notAFit ÷ allBooked
-  //   pctNoShow  = noShow ÷ allBooked
+  // Sign-Up Rate cohorts use a single ATTENDANCE basis for all four rates. For
+  // each cohort month (date_demo_booked within month):
+  //   held       = demo_attendance_status ∈ {Demo Given orig, Demo Given resched}
+  //                OR dealstage = Closed Won (a won deal's demo happened)
+  //   signed     = won                       (⊆ held)
+  //   pctSigned  = signed ÷ held
+  //   pctPending = (held − signed) ÷ held    (held demos not yet signed)
+  //   pctPruned  = cancelled ÷ (held + noShow + cancelled)   (attendance)
+  //   pctNoShow  = noShow ÷ (held + noShow)                  (attendance)
   //   avgDaysToClose = mean(closedate − date_demo_booked) across signed deals
+  // Tier scope (all tiers vs excl. small brands) is applied by the client
+  // toggle, which filters the deal shadows before recomputing — so no
+  // small-brand gate lives in this default (all-tiers) build.
   // Per-rep buckets include cntCS / cntDM so the rep table can show
   // "# Contract Sent" and "# Decision Maker" columns explicitly.
   const STAGE_APPT = 'appointmentscheduled';
@@ -1669,10 +1676,12 @@ function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
 
     b.allBooked++;
     b.byRep[oid].allBooked++;
-    // Attendance-based settled-outcome counts (canonical % Pruned / % No-Show).
-    // Small brands (0-10K / Very Small; pre-launch already excluded above) are
-    // left out of these so the rates match the rest of the dashboard.
-    if (!isSmallBrandWT(wt)) { attBump(b, att); attBump(b.byRep[oid], att); }
+    // Attendance-based counts drive ALL four Sign-Up rates now (held / signed /
+    // pending / pruned / no-show share one basis). No small-brand gate here —
+    // the client's All Deals / Excluding Small Brands toggle filters tiers on
+    // demand, so the default (server) cohort includes every tier.
+    attBump(b, att, stage === STAGE_WON);
+    attBump(b.byRep[oid], att, stage === STAGE_WON);
 
     // "To Demo" = date_demo_booked − hs_createdate, across ALL booked deals
     // in the cohort (not just signed). Mirrors the BD Tracker's interpretation.
@@ -1746,9 +1755,15 @@ function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
 
   // Derive metric block for a bucket (works for both global cohort + per-rep)
   function deriveMetrics(b) {
-    const demosHeld = b.cntWon + b.cntAppt + b.cntDemoHappened + b.cntDM + b.cntCS;
-    const cntPending = b.cntAppt + b.cntDemoHappened + b.cntDM + b.cntCS;
-    // Canonical % Pruned / % No-Show — attendance ÷ settled outcomes.
+    // Attendance basis: "held" = demos that actually happened (demo_attendance_status
+    // = Demo Given orig/resched, or Closed Won which implies a demo). Signed,
+    // Pending, Pruned and No-Show all key off this single basis.
+    //   demosHeld  = attHeld
+    //   signed     = cntWon           (⊆ attHeld, since Won counts as held)
+    //   pending    = attHeld − cntWon (held demos not yet signed)
+    const demosHeld = b.attHeld;
+    const cntPending = Math.max(0, b.attHeld - b.cntWon);
+    // % Pruned / % No-Show — attendance ÷ settled outcomes (same held basis).
     const _ar = attRates(b.attHeld, b.attNoShow, b.attCancelled);
     return {
       allBooked: b.allBooked,
