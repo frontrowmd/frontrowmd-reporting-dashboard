@@ -758,7 +758,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5s98';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5s99';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -6667,12 +6667,16 @@ function renderSignUp(){
     row1+='</div>';
 
     // ── Row 2: % Pending · % Pruned · % No Show
+    // All three recompute over the same tier-scoped shadow set as row 1, so
+    // they respond to the All Deals / Excluding Small Brands toggle. The
+    // _r2Tag caption makes that scope visible (mirrors row 1's Qual Demos Held).
     const _sc=c.stageCounts||{};
     const _pendingNum=Math.max(0,(c.demosHeld||0)-(c.signed||0));
+    const _r2Tag=_exclSmall?'<span style="font-size:9px;font-weight:500;color:var(--grey);margin-left:4px;text-transform:none;letter-spacing:0">excl. small brands</span>':'';
     let row2='<div class="su-row2">';
-    row2+=`<div class="su-r2-item" title="Held demos not yet signed ÷ demos held (attendance basis)"><div class="su-label">% Pending</div><div class="su-value">${fmtPct(c.pctPending)}</div><div style="font-size:10px;color:var(--grey);margin-top:2px">${fN(_pendingNum)} ÷ ${fN(c.demosHeld)}</div></div>`;
-    row2+=`<div class="su-r2-item" title="Cancelled before demo ÷ settled outcomes (held + no-show + cancelled)"><div class="su-label">% Pruned</div><div class="su-value">${fmtPct(c.pctPruned)}</div><div style="font-size:10px;color:var(--grey);margin-top:2px">${fN(c.prunedNum||0)} ÷ ${fN(c.pruneDenom||0)}</div></div>`;
-    row2+=`<div class="su-r2-item" title="No Show ÷ (held + no-show)"><div class="su-label">% No Show</div><div class="su-value">${fmtPct(c.pctNoShow)}</div><div style="font-size:10px;color:var(--grey);margin-top:2px">${fN(c.noShowNum||0)} ÷ ${fN(c.noShowDenom||0)}</div></div>`;
+    row2+=`<div class="su-r2-item" title="Held demos not yet signed ÷ demos held (attendance basis)"><div class="su-label">% Pending${_r2Tag}</div><div class="su-value">${fmtPct(c.pctPending)}</div><div style="font-size:10px;color:var(--grey);margin-top:2px">${fN(_pendingNum)} ÷ ${fN(c.demosHeld)}</div></div>`;
+    row2+=`<div class="su-r2-item" title="Cancelled before demo ÷ settled outcomes (held + no-show + cancelled)"><div class="su-label">% Pruned${_r2Tag}</div><div class="su-value">${fmtPct(c.pctPruned)}</div><div style="font-size:10px;color:var(--grey);margin-top:2px">${fN(c.prunedNum||0)} ÷ ${fN(c.pruneDenom||0)}</div></div>`;
+    row2+=`<div class="su-r2-item" title="No Show ÷ (held + no-show)"><div class="su-label">% No Show${_r2Tag}</div><div class="su-value">${fmtPct(c.pctNoShow)}</div><div style="font-size:10px;color:var(--grey);margin-top:2px">${fN(c.noShowNum||0)} ÷ ${fN(c.noShowDenom||0)}</div></div>`;
     row2+='</div>';
 
     // ── Per-rep table — 12 cols: Rep · %Signed* · Won* · Qual Demos · New ARR · ACV ·
