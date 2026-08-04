@@ -9,9 +9,9 @@
 // Constants
 // ---------------------------------------------------------------------------
 
-const DASH_CHANNELS = ['meta', 'google', 'linkedin', 'tiktok', 'chatgpt', 'youtube'];
+const DASH_CHANNELS = ['meta', 'linkedin', 'google', 'reddit', 'chatgpt', 'tiktok'];
 
-const CHANNEL_LABELS = { meta: 'Meta', google: 'Google', linkedin: 'LinkedIn', tiktok: 'TikTok', chatgpt: 'ChatGPT', youtube: 'YouTube' };
+const CHANNEL_LABELS = { meta: 'Meta', google: 'Google', linkedin: 'LinkedIn', tiktok: 'TikTok', chatgpt: 'ChatGPT', reddit: 'Reddit', youtube: 'YouTube' };
 
 // Channels with no Windsor.ai (or equivalent) connector wired up yet — we
 // still want them visible in the Channel Performance table so the budget
@@ -20,7 +20,7 @@ const CHANNEL_LABELS = { meta: 'Meta', google: 'Google', linkedin: 'LinkedIn', t
 // channel payload and renders non-Budget cells as em-dashes; Total row
 // skips them. (Field name avoids collision with the analyzer payload's
 // existing `pending` demo-status count.)
-const PENDING_CHANNELS = new Set(['chatgpt']);
+const PENDING_CHANNELS = new Set(['chatgpt', 'reddit']);
 
 const BUDGET_BY_MONTH = {
   '2026-01': { meta: 45000,  linkedin: 30000, google: 5000,  tiktok: 5000,  youtube: 5000 },
