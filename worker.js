@@ -34,8 +34,11 @@ const BUDGET_BY_MONTH = {
   // until the data integration ships.
   '2026-06': { meta: 105000, linkedin: 35000, google: 25000, tiktok: 25000, youtube: 0, chatgpt: 10000 },
   '2026-07': { meta: 43080, linkedin: 13260, google: 7215, tiktok: 1445, youtube: 0, chatgpt: 0 },
+  // August plan — concentrated on Meta ("Facebook") with LinkedIn/Google
+  // keep-alive; TikTok/YouTube/ChatGPT off. Total = $27,500.
+  '2026-08': { meta: 20500, linkedin: 5000, google: 2000, tiktok: 0, youtube: 0, chatgpt: 0 },
 };
-const BUDGET_FALLBACK = BUDGET_BY_MONTH['2026-07'];
+const BUDGET_FALLBACK = BUDGET_BY_MONTH['2026-08'];
 function getBudgetsForMonth(dateStr) {
   if (!dateStr) return BUDGET_FALLBACK;
   return BUDGET_BY_MONTH[dateStr.slice(0, 7)] || BUDGET_FALLBACK;
