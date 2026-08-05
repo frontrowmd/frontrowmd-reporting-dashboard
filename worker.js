@@ -3276,7 +3276,7 @@ async function fetchAzCampaigns(apiKey, from, to) {
   const [fbRows, gaRows, liCampRows, liDemoTotal, ttRows] = await Promise.all([
     azWindsorFetchAll(apiKey, 'facebook', from, to, base+',conversions_submit_application_total,frequency,effective_status'+META_LEAD_FIELDS+META_CAPI_FIELDS),
     azWindsorFetchAll(apiKey, 'google_ads', from, to, base+',conversions,campaign_status'),
-    azWindsorFetchAll(apiKey, 'linkedin', from, to, 'date,campaign,spend,clicks,impressions,campaign_status'),
+    azWindsorFetchAll(apiKey, 'linkedin', from, to, 'date,campaign,campaign_group_name,spend,clicks,impressions,campaign_status'),
     fetchLinkedInDemos(apiKey, from, to),
     azWindsorFetchAll(apiKey, 'tiktok', from, to, base+',conversions,frequency,campaign_status'),
   ]);
@@ -3332,36 +3332,51 @@ async function fetchAzCampaigns(apiKey, from, to) {
 
   const liDemoFilter = r => (r.conversion_name||'').toLowerCase().includes('demo request');
 
-  // LinkedIn: build from spend rows, then overlay demo counts from demo rows
+  // LinkedIn hierarchy differs from Meta: Campaign Group (≈ Meta Campaign) →
+  // Campaign (≈ Meta ad set) → Creative. Windsor's `campaign` field is the
+  // mid-level Campaign; `campaign_group_name` is the top-level group. So the
+  // Campaigns table is built from GROUPS and the Ad Sets table from the
+  // individual campaigns. Per-connector rows use `campaign`, no `datasource`.
   function aggLinkedIn(rows, totalDemos) {
-    const camps = {};
-    // Per-connector endpoint returns 'campaign' not 'campaign_name', no 'datasource' field
+    const _mk = (name) => ({ name, campaign:'', spend:0, clicks:0, impressions:0, demos:0, dates:[], status:null, _statusDate:'' });
+    const groups = {}, sets = {};
     for (const row of rows) {
-      const name = row.campaign || row.campaign_name || '(no name)';
-      if (!camps[name]) camps[name] = { name, spend:0, clicks:0, impressions:0, demos:0, freqVals:[], dates:[], status:null, _statusDate:'' };
-      camps[name].spend += parseFloat(row.spend)||0;
-      camps[name].clicks += parseInt(row.clicks)||0;
-      camps[name].impressions += parseInt(row.impressions)||0;
-      if (row.date) camps[name].dates.push(row.date);
-      // Latest date wins, ACTIVE wins ties (see rollupStatus).
-      rollupStatus(camps[name], (row.campaign_status || '').toUpperCase(), row.date);
+      const setName = row.campaign || row.campaign_name || '(no name)';
+      const grpName = row.campaign_group_name || setName; // fall back to campaign when group missing
+      if (!sets[setName]) { sets[setName] = _mk(setName); sets[setName].campaign = grpName; }
+      if (!groups[grpName]) groups[grpName] = _mk(grpName);
+      for (const b of [sets[setName], groups[grpName]]) {
+        b.spend += parseFloat(row.spend)||0;
+        b.clicks += parseInt(row.clicks)||0;
+        b.impressions += parseInt(row.impressions)||0;
+        if (row.date) b.dates.push(row.date);
+        // Latest date wins, ACTIVE wins ties (see rollupStatus).
+        rollupStatus(b, (row.campaign_status || '').toUpperCase(), row.date);
+      }
     }
-    let tS=0,tC=0,tI=0;
-    for (const c of Object.values(camps)) {
-      tS+=c.spend; tC+=c.clicks; tI+=c.impressions;
-      c.ctr = c.impressions>0?(c.clicks/c.impressions)*100:0;
-      c.frequency = null; delete c.freqVals;
-      delete c._statusDate;
-      if (c.dates.length) {
-        c.dates.sort(); c.firstDate=c.dates[0]; c.lastDate=c.dates[c.dates.length-1];
-        const fd=new Date(c.firstDate+'T12:00:00Z'),ld=new Date(c.lastDate+'T12:00:00Z');
-        c.activeDays=Math.round((ld-fd)/86400000)+1;
-      } else { c.firstDate=null; c.lastDate=null; c.activeDays=0; }
-      delete c.dates;
-    }
+    const _finalize = (obj) => {
+      let tS=0,tC=0,tI=0;
+      for (const c of Object.values(obj)) {
+        tS+=c.spend; tC+=c.clicks; tI+=c.impressions;
+        c.ctr = c.impressions>0?(c.clicks/c.impressions)*100:0;
+        c.frequency = null; c.cpd = null;
+        delete c._statusDate;
+        if (c.dates.length) {
+          c.dates.sort(); c.firstDate=c.dates[0]; c.lastDate=c.dates[c.dates.length-1];
+          const fd=new Date(c.firstDate+'T12:00:00Z'),ld=new Date(c.lastDate+'T12:00:00Z');
+          c.activeDays=Math.round((ld-fd)/86400000)+1;
+        } else { c.firstDate=null; c.lastDate=null; c.activeDays=0; }
+        delete c.dates;
+      }
+      return { tS, tC, tI };
+    };
+    const g = _finalize(groups); _finalize(sets);
     const tD = totalDemos || 0;
-    for (const c of Object.values(camps)) c.cpd = null;
-    return { campaigns:camps, totals:{ spend:tS, clicks:tC, impressions:tI, demos:tD, ctr:tI>0?(tC/tI)*100:0, cpd:tD>0?tS/tD:null, frequency:null }};
+    return {
+      campaigns: groups,                                     // Campaigns table = campaign groups
+      adsets: Object.values(sets).sort((a,b)=>b.spend-a.spend), // Ad Sets table = individual campaigns
+      totals:{ spend:g.tS, clicks:g.tC, impressions:g.tI, demos:tD, ctr:g.tI>0?(g.tC/g.tI)*100:0, cpd:tD>0?g.tS/tD:null, frequency:null }
+    };
   }
 
   return {
@@ -3823,13 +3838,27 @@ function buildAzResponse(period, prior, priorMonth, windsor, creatives, priorW, 
     for (const [key,ca] of Object.entries(attr.byCampaign)) {
       if (key.startsWith(ch+'::')) campAttr[key.slice(ch.length+2)] = ca;
     }
+    // LinkedIn: build ad-set (Campaign-level) rows for the Ad Sets table, joining
+    // HubSpot UTM demo attribution per ad set (utm_campaign matches the LinkedIn
+    // Campaign, not the group). Roll those demos up per campaign group so the
+    // Campaigns table (grouped by campaign_group_name) shows demo totals too.
+    let liAdsets = null; const liGroupDemos = {};
+    if (ch === 'linkedin') {
+      liAdsets = (windsor.linkedin?.adsets || []).map(a => {
+        const ca = campAttr[(a.name || '').toLowerCase()] || {};
+        const demos = ca.total || 0;
+        if (a.campaign) liGroupDemos[a.campaign] = (liGroupDemos[a.campaign] || 0) + demos;
+        return { ...a, demos, cpd: demos > 0 ? a.spend / demos : null, qualified:ca.qualified||0, pruned:ca.pruned||0, pendingEval:ca.pendingEval||0, rescheduled:ca.rescheduled||0, noShow:ca.noShow||0, pending:ca.pending||0, blank:ca.blank||0, attributedTotal:demos };
+      });
+    }
     const mergedCamps = [];
     for (const c of Object.values(windsor[ch]?.campaigns||{})) {
       const campKey = c.name.toLowerCase();
       const ca = campAttr[campKey]||{};
       const attrTotal = ca.total||0;
-      // LinkedIn: Windsor can't split demos per campaign, use HubSpot UTM attribution instead
-      const demos = ch === 'linkedin' ? attrTotal : c.demos;
+      // LinkedIn: Windsor can't split demos per campaign. Campaign groups sum the
+      // UTM-attributed demos of their child ad sets; other channels use Windsor.
+      const demos = ch === 'linkedin' ? (liGroupDemos[c.name] || 0) : c.demos;
       const cpd = demos > 0 ? c.spend / demos : null;
       mergedCamps.push({ ...c, demos, cpd, qualified:ca.qualified||0, pruned:ca.pruned||0, pendingEval:ca.pendingEval||0, rescheduled:ca.rescheduled||0, noShow:ca.noShow||0, pending:ca.pending||0, blank:ca.blank||0, attributedTotal:attrTotal });
     }
@@ -3897,7 +3926,7 @@ function buildAzResponse(period, prior, priorMonth, windsor, creatives, priorW, 
       creativeByCampaign: creativeByCampaign,
       creativeByAdset: creativeByAdset,
       fatigueMap: Object.fromEntries(Object.entries(fatigue||{}).filter(([k])=>k.startsWith(ch+'::'))),
-      audiences: audiences?.[ch] || null,
+      audiences: ch === 'linkedin' ? liAdsets : (audiences?.[ch] || null),
       placements: rawCreativeData?.placements || null,
       demoQuality: dqFunnel, priorDemoQuality: priorDqFunnel, pmDemoQuality: pmDqFunnel,
     };
