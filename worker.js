@@ -106,8 +106,6 @@ function capiConvLabel(campaignName, adsetName) {
 // Windsor scalar fields for the CAPI custom conversions (the demo/webinar
 // "Results" for campaigns that optimize for a CAPI custom conversion instead of
 // the submit-application pixel event). Appended to Meta fetches.
-const META_CAPI_FIELDS = ',actions_capi_demo,actions_capi_webinar,actions_capi_demo_webinar';
-
 // ── Meta optimization target (real "conversion result name") ────────────────
 // Windsor exposes the account's custom conversions two ways, and BOTH are
 // needed because neither is complete on its own:
@@ -132,8 +130,20 @@ const META_CUSTOM_CONVERSIONS = [
   { field: 'actions_combined_demos_webinars',         id: '1028010476340460',  label: 'Combined -- Demos + Webinars' },
   { field: 'actions_fake_test',                       id: '2352065058650788',  label: 'Fake test' },
 ];
-const META_CC_BY_ID = {};
-for (const _cc of META_CUSTOM_CONVERSIONS) META_CC_BY_ID[_cc.id] = _cc.label;
+const META_CC_BY_ID = {};        // custom_conversion_id → display name
+const META_CC_FIELD_BY_ID = {};  // custom_conversion_id → Windsor count column
+for (const _cc of META_CUSTOM_CONVERSIONS) { META_CC_BY_ID[_cc.id] = _cc.label; META_CC_FIELD_BY_ID[_cc.id] = _cc.field; }
+
+// All nine custom-conversion count columns. These are flat NUMERIC metrics —
+// verified to add NO rows to a spend query (unlike the custom_conversion_action_name
+// dimension, which fans rows out ~36x). Appended to Meta fetches.
+const META_CAPI_FIELDS = ',' + META_CUSTOM_CONVERSIONS.map(c => c.field).join(',');
+// Ad-set field carrying the configured optimization target. Ad-set grain, so
+// only append it to fetches that are already at ad-set/ad grain, or to
+// single-connector PAGINATED fetches (azWindsorFetchAll). Never to
+// fetchWindsorAds — that one is a single 5000-row page with no pagination, so
+// increasing its grain risks silently truncating spend on long windows.
+const META_PROMOTED_OBJ_FIELD = ',adset_promoted_object';
 
 // Optimization target for a Meta ad set, parsed from adset_promoted_object
 // ("the object this ad set is optimizing for" — a JSON-encoded STRING).
@@ -141,15 +151,28 @@ for (const _cc of META_CUSTOM_CONVERSIONS) META_CC_BY_ID[_cc.id] = _cc.label;
 // a custom conversion); otherwise the standard pixel event IS the target
 // (e.g. SUBMIT_APPLICATION → "Submit Application"). '' when unknown.
 function metaOptTarget(promotedObjectRaw) {
-  if (!promotedObjectRaw) return '';
-  let o;
-  try { o = JSON.parse(promotedObjectRaw); } catch (e) { return ''; }
-  if (!o || typeof o !== 'object') return '';
+  const o = _metaParsePromoted(promotedObjectRaw);
+  if (!o) return '';
   const ccId = o.custom_conversion_id != null ? String(o.custom_conversion_id) : '';
   if (ccId) return META_CC_BY_ID[ccId] || ('Custom conversion ' + ccId);
   const evt = String(o.custom_event_type || '').trim();
   if (!evt || evt === 'OTHER') return '';
   return evt.split('_').map(w => w ? w.charAt(0) + w.slice(1).toLowerCase() : '').join(' ');
+}
+function _metaParsePromoted(raw) {
+  if (!raw) return null;
+  let o;
+  try { o = JSON.parse(raw); } catch (e) { return null; }
+  return (o && typeof o === 'object') ? o : null;
+}
+// Windsor count column holding THIS row's optimized conversion, or '' when the
+// row doesn't optimize for a custom conversion (or adset_promoted_object wasn't
+// fetched). Lets demo counting follow the campaign's real target.
+function metaTargetField(row) {
+  const o = _metaParsePromoted(row.adset_promoted_object);
+  if (!o) return '';
+  const id = o.custom_conversion_id != null ? String(o.custom_conversion_id) : '';
+  return id ? (META_CC_FIELD_BY_ID[id] || '') : '';
 }
 // Demos a Meta row contributes via its configured CAPI custom conversion, or -1
 // when the row's campaign doesn't use CAPI (caller falls back to
@@ -159,6 +182,13 @@ function metaOptTarget(promotedObjectRaw) {
 // summed). Only the TEST campaigns run CAPI (they have no submit_application), so
 // counting this is purely additive — every other campaign returns -1 (unchanged).
 function metaCapiDemoCount(row) {
+  // PREFERRED: count the conversion this row actually optimizes for, read from
+  // adset_promoted_object. Works for every campaign, not just the two the old
+  // name heuristic below knew about.
+  const tf = metaTargetField(row);
+  if (tf) return Math.round(parseFloat(row[tf]) || 0);
+  // FALLBACK: legacy campaign-name heuristic, for rows from fetches that don't
+  // carry adset_promoted_object (e.g. fetchWindsorAds). Unchanged behavior.
   const c = (row.campaign_name || '').toLowerCase();
   if (!c.includes('test')) return -1;
   const a = (row.adset_name || row.ad_group_name || '').toLowerCase();
@@ -3318,7 +3348,10 @@ async function fetchAzCampaigns(apiKey, from, to) {
   const base = 'date,campaign_name,spend,clicks,impressions';
   // LinkedIn per-connector endpoint uses 'campaign' not 'campaign_name'
   const [fbRows, gaRows, liCampRows, liDemoTotal, ttRows] = await Promise.all([
-    azWindsorFetchAll(apiKey, 'facebook', from, to, base+',conversions_submit_application_total,frequency,effective_status'+META_LEAD_FIELDS+META_CAPI_FIELDS),
+    // adset_promoted_object drops this to ad-set grain; aggRows re-aggregates by
+    // campaign_name so spend/demo totals are unchanged, and azWindsorFetchAll
+    // paginates so the extra rows can't be truncated.
+    azWindsorFetchAll(apiKey, 'facebook', from, to, base+',conversions_submit_application_total,frequency,effective_status'+META_LEAD_FIELDS+META_CAPI_FIELDS+META_PROMOTED_OBJ_FIELD),
     azWindsorFetchAll(apiKey, 'google_ads', from, to, base+',conversions,campaign_status'),
     azWindsorFetchAll(apiKey, 'linkedin', from, to, 'date,campaign,campaign_group_name,spend,clicks,impressions,campaign_status'),
     fetchLinkedInDemos(apiKey, from, to),
@@ -3462,7 +3495,9 @@ async function fetchAzCreatives(apiKey, from, to) {
       const created = ch === 'meta' ? ',ad_created_time' : '';
       // adset_name (Meta) / ad_group_name (Google, TikTok) lets us group
       // creatives under their parent ad set for the Ad Sets table dropdown.
-      const adset = ch === 'meta' ? ',adset_name' : ((ch === 'google' || ch === 'tiktok') ? ',ad_group_name' : '');
+      // adset_promoted_object rides along on Meta (already ad grain, so no extra
+      // rows) to let metaDemos count each creative's real optimized conversion.
+      const adset = ch === 'meta' ? (',adset_name' + META_PROMOTED_OBJ_FIELD) : ((ch === 'google' || ch === 'tiktok') ? ',ad_group_name' : '');
       // Lead-form fields (Meta) so allowlisted lead-gen campaigns count
       // Leads (Form) toward Demos at the CREATIVE level too — Windsor returns
       // these per ad_name, so each creative gets its own lead count.
