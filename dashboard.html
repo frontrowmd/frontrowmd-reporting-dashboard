@@ -170,6 +170,9 @@ html,body{height:100%}body{font-family:var(--font-b);font-size:15px;color:var(--
 .su-rep-table tbody tr:hover td.highlight{background:rgba(114,164,191,.16)}
 .su-rep-table tfoot td{background:var(--teal-8);font-weight:700;border-top:1.5px solid var(--teal-30);border-bottom:none}
 .su-rep-table tfoot td.highlight{background:rgba(114,164,191,.20)}
+/* Ad-table Name column — full campaign/ad-set/creative names (no truncation).
+   Wide min-width so names get real room; wraps instead of ellipsing. */
+.irf-meta-table .irf-nm{min-width:280px;max-width:560px;white-space:normal;word-break:break-word;line-height:1.35}
 .irf-meta-table tbody tr{transition:background .15s ease,box-shadow .15s ease}
 .irf-meta-table tbody tr:hover td{background:rgba(114,164,191,.10)}
 .irf-meta-table tbody tr:hover{box-shadow:inset 3px 0 0 var(--teal)}
@@ -760,7 +763,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t01';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t02';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2813,11 +2816,11 @@ function _irfanSortRows(rows,col,dir){
   };
   return rows.slice().sort(cmp);
 }
-function _irfanSortableTh(label,col,sortState,cbName,align){
+function _irfanSortableTh(label,col,sortState,cbName,align,cls){
   const isAct=sortState.col===col;
   const arrow=isAct?(sortState.dir==='desc'?' ↓':' ↑'):'';
   const col2=isAct?'var(--teal)':'var(--grey)';
-  return '<th onclick="'+cbName+'(\''+col+'\')" style="text-align:'+(align||'right')+';padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;cursor:pointer;color:'+col2+';user-select:none;white-space:nowrap">'+label+arrow+'</th>';
+  return '<th'+(cls?' class="'+cls+'"':'')+' onclick="'+cbName+'(\''+col+'\')" style="text-align:'+(align||'right')+';padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;cursor:pointer;color:'+col2+';user-select:none;white-space:nowrap">'+label+arrow+'</th>';
 }
 function _irfanStatusBadge(st,sp){
   const a=st==='ACTIVE'||(!st&&sp>0);
@@ -2839,11 +2842,20 @@ function _statusDateOf(o){if(!o)return null;return _isActiveRow(o)?(o.createdDat
 function _rollupStatusDate(parentActive,kids){const ds=[],actDs=[];for(const k of (kids||[])){const sd=_statusDateOf(k);if(!sd)continue;ds.push(sd);if(_isActiveRow(k))actDs.push(sd);}if(!ds.length)return null;if(parentActive){const pool=actDs.length?actDs:ds;pool.sort();return pool[0];}ds.sort();return ds[ds.length-1];}
 // Returns the two <td>s (Status Date + Status Days) for a row. align defaults center.
 function _statusCells(sd){const days=_daysSince(sd);return '<td style="text-align:center;padding:8px 6px;font-size:10px;color:var(--navy);white-space:nowrap;font-variant-numeric:tabular-nums">'+(sd?_fmtShortDate(sd):'—')+'</td><td style="text-align:right;padding:8px 6px;font-size:10px;color:var(--grey);font-variant-numeric:tabular-nums">'+(days!=null?days+'d':'—')+'</td>';}
-// Small subtext under a Demos value naming the demos source the row's
-// campaign/ad set is configured for (worker-side capiConvLabel returns the full
-// label, e.g. "CAPI · Demo" or "Lead Forms"; '' for campaigns with neither).
-// Meta only.
-function _capiSub(o,channel){if(channel!=='meta'||!o||!o.capiConv)return '';return '<div style="font-size:8px;color:var(--grey);font-weight:400;text-transform:none;line-height:1.1;margin-top:1px;white-space:nowrap">'+o.capiConv+'</div>';}
+// Small subtext under a Conversions value naming the conversion event the row's
+// campaign / ad set is optimizing for — i.e. what the number actually counts.
+// Meta rows carry a per-campaign/ad-set label from the worker (capiConvLabel →
+// "CAPI · Demo", "Lead Forms"); everything else falls back to the channel's
+// single conversion source. withDefault=true (campaign table) shows the channel
+// fallback when there's no row-specific label, so every campaign is labeled;
+// without it the label only appears where the worker set one (legacy behavior
+// for the ad-set / creative / nested tables, which stay uncluttered).
+const _CONV_SRC={meta:'Submit Application',google:'Google Ads conv.',linkedin:'Demo Request (UTM)',tiktok:'TikTok conv.'};
+function _capiSub(o,channel,withDefault){
+  const lbl=(o&&o.capiConv)?o.capiConv:(withDefault?(_CONV_SRC[channel]||''):'');
+  if(!lbl||(!withDefault&&channel!=='meta'))return '';
+  return '<div style="font-size:8px;color:var(--grey);font-weight:400;text-transform:none;line-height:1.1;margin-top:1px;white-space:nowrap">'+lbl+'</div>';
+}
 // Callbacks invoked by header clicks / stage filter pills. On Detailed
 // Dashboard we render the user-selected channel; on Irfan it's always meta.
 function _curAdCh(){return S.dashboard.activeAdChannel||'meta';}
@@ -3054,12 +3066,12 @@ function _buildAdSetTableHTML(meta,channel,_flagsByName,fatigueMap){
   for(const p of _flagPills){const isA=flagF===p.k;h+='<button onclick="irfanAdsetFlagF(\''+p.k+'\')" style="padding:5px 12px;border-radius:50px;font-size:10px;font-weight:'+(isA?'700':'500')+';border:'+(isA?'none':'1px solid '+p.c)+';background:'+(isA?p.c:'transparent')+';color:'+(isA?'#fff':p.c)+';cursor:pointer;font-family:var(--font-h)">'+p.l+'</button>';}
   h+='</div>';
   h+='<div style="overflow-x:auto"><table class="irf-meta-table" style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr style="border-bottom:1.5px solid var(--border)">';
-  h+=_irfanSortableTh('Name','name',sortSt,'irfanSortAdset','left');
+  h+=_irfanSortableTh('Name','name',sortSt,'irfanSortAdset','left','irf-nm');
   h+='<th style="text-align:left;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Stage</th>';
   h+=_irfanSortableTh('Status','status',sortSt,'irfanSortAdset','center');
   h+='<th style="text-align:center;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Status Date</th><th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)" title="Days since the status date">Status Days</th>';
   h+=_irfanSortableTh('Spend','spend',sortSt,'irfanSortAdset','right');
-  h+=_irfanSortableTh('Demos','demos',sortSt,'irfanSortAdset','right');
+  h+=_irfanSortableTh('Conversions','demos',sortSt,'irfanSortAdset','right');
   h+=_irfanSortableTh('CPD','cpd',sortSt,'irfanSortAdset','right');
   h+=_irfanSortableTh('Impr','impressions',sortSt,'irfanSortAdset','right');
   h+=_irfanSortableTh('Clicks','clicks',sortSt,'irfanSortAdset','right');
@@ -3073,7 +3085,7 @@ function _buildAdSetTableHTML(meta,channel,_flagsByName,fatigueMap){
   let tSp=0,tDe=0,tIm=0,tCl=0,tQu=0,tVp25=0;
   for(let i=0;i<rows.length;i++){
     const c=rows[i];const cpd=c.demos>0?c.spend/c.demos:null;
-    const nm=(c.name||'').length>56?(c.name||'').slice(0,53)+'…':(c.name||'');
+    const nm=(c.name||'');  // full name — Name column wraps (see .irf-meta-name)
     const stags=_irfanStages(c._stageSrc||c.name);
     let stagesCell='';for(const t of stags)stagesCell+='<span style="display:inline-block;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;background:'+t.c+'15;color:'+t.c+';margin-right:2px">'+t.l+'</span>';
     const _nested=c._nested||[];
@@ -3095,7 +3107,7 @@ function _buildAdSetTableHTML(meta,channel,_flagsByName,fatigueMap){
     const _countLabel=_hasNested?(_activeN<_nested.length?_activeN+' active · '+_nested.length+' total':_nested.length+(_nested.length===1?' creative':' creatives')):'';
     const _chev=_showNested?'▼':'▶';
     h+='<tr style="border-bottom:1px solid var(--border)'+(_hasNested?';cursor:pointer':'')+'"'+(_hasNested?' onclick="irfanToggleAdsetCreatives(\''+_rowId+'\')"':'')+'>';
-    h+='<td style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(c.name||'').replace(/"/g,'&quot;')+'">'+(_hasNested?'<span class="irf-adset-chev" data-row="'+_rowId+'" style="display:inline-block;width:10px;color:var(--teal);margin-right:6px;font-size:9px">'+_chev+'</span>':'<span style="display:inline-block;width:10px;margin-right:6px"></span>')+nm+(_hasNested?' <span style="font-size:9px;color:var(--grey);font-weight:400">('+_countLabel+')</span>':'')+_flagBadges+'</td>';
+    h+='<td class="irf-nm" style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(c.name||'').replace(/"/g,'&quot;')+'">'+(_hasNested?'<span class="irf-adset-chev" data-row="'+_rowId+'" style="display:inline-block;width:10px;color:var(--teal);margin-right:6px;font-size:9px">'+_chev+'</span>':'<span style="display:inline-block;width:10px;margin-right:6px"></span>')+nm+(_hasNested?' <span style="font-size:9px;color:var(--grey);font-weight:400">('+_countLabel+')</span>':'')+_flagBadges+'</td>';
     h+='<td style="padding:8px 6px">'+stagesCell+'</td>';
     h+='<td style="text-align:center;padding:8px 6px">'+_irfanStatusBadge(c.status,c.spend)+'</td>';
     h+=_statusCells(_rollupStatusDate(_isActiveRow(c),_nested));
@@ -3121,7 +3133,7 @@ function _buildAdSetTableHTML(meta,channel,_flagsByName,fatigueMap){
       for(let ni=0;ni<_nestedSorted.length;ni++){
         const ncr=_nestedSorted[ni];const ncCpd=ncr.demos>0?ncr.spend/ncr.demos:null;
         const nWr=ncr.impressions>0?((ncr.videoP25||0)/ncr.impressions)*100:null;
-        const nNm=(ncr.name||'').length>52?(ncr.name||'').slice(0,49)+'…':(ncr.name||'');
+        const nNm=(ncr.name||'');  // full name — Name column wraps
         let _thumb='';
         if(ncr.thumbnail)_thumb='<img src="'+ncr.thumbnail+'" style="width:28px;height:28px;object-fit:cover;border-radius:4px;display:inline-block;vertical-align:middle;margin-right:8px" onerror="this.style.display=\'none\'">';
         else _thumb='<span style="display:inline-block;width:28px;height:28px;border-radius:4px;background:var(--lighter);border:1px solid var(--border);text-align:center;line-height:26px;font-size:12px;margin-right:8px;vertical-align:middle">📷</span>';
@@ -3140,7 +3152,7 @@ function _buildAdSetTableHTML(meta,channel,_flagsByName,fatigueMap){
         const _ncrPauseTip=(_ncrFlags&&_ncrFlags.pause)?('Low CTR + Low Watch + High CPD — pause candidate. CTR '+_nCtrStr+', Watch '+_nWrStr+', CPD '+_nCpdStr+'. Active '+(ncr.activeDays||0)+'d, spend '+f$(ncr.spend||0)+'.'):'';
         const _pauseBadge=(_ncrFlags&&_ncrFlags.pause)?' <span data-tip="'+_ncrPauseTip.replace(/"/g,'&quot;')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" style="cursor:help;display:inline-block;font-family:var(--font-h);font-size:9px;font-weight:700;color:#fff;background:#DC2626;padding:1px 6px;border-radius:99px;letter-spacing:.04em">PAUSE</span>':'';
         h+='<tr class="'+_rowId+'-cre" style="display:'+(_showNested?'table-row':'none')+';background:rgba(114,164,191,.04);border-bottom:1px solid var(--border)">';
-        h+='<td style="padding:6px 6px 6px 30px;color:var(--navy);font-size:10px" title="'+(ncr.name||'').replace(/"/g,'&quot;')+'">'+_thumb+_pauseBadge+(_pauseBadge?' ':'')+nNm+_ftBadge+_nameBadge+'</td>';
+        h+='<td class="irf-nm" style="padding:6px 6px 6px 30px;color:var(--navy);font-size:10px" title="'+(ncr.name||'').replace(/"/g,'&quot;')+'">'+_thumb+_pauseBadge+(_pauseBadge?' ':'')+nNm+_ftBadge+_nameBadge+'</td>';
         h+='<td></td>';
         h+='<td style="text-align:center;padding:6px">'+_irfanStatusBadge(ncr.status,ncr.spend)+'</td>';
         h+=_statusCells(_statusDateOf(ncr));
@@ -3347,7 +3359,7 @@ function _renderIrfanMetaTables(d, channel){
   function _renderCreRow(ncr, classAttr, padLeft, show){
     const ncCpd=ncr.demos>0?ncr.spend/ncr.demos:null;
     const nWr=ncr.impressions>0?((ncr.videoP25||0)/ncr.impressions)*100:null;
-    const nNm=(ncr.name||'').length>52?(ncr.name||'').slice(0,49)+'…':(ncr.name||'');
+    const nNm=(ncr.name||'');  // full name — Name column wraps
     let _thumb='';
     if(ncr.thumbnail)_thumb='<img src="'+ncr.thumbnail+'" style="width:28px;height:28px;object-fit:cover;border-radius:4px;display:inline-block;vertical-align:middle;margin-right:8px" onerror="this.style.display=\'none\'">';
     else _thumb='<span style="display:inline-block;width:28px;height:28px;border-radius:4px;background:var(--lighter);border:1px solid var(--border);text-align:center;line-height:26px;font-size:12px;margin-right:8px;vertical-align:middle">📷</span>';
@@ -3361,7 +3373,7 @@ function _renderIrfanMetaTables(d, channel){
     const _ncrPauseTip=(_ncrFlags&&_ncrFlags.pause)?('Low CTR + Low Watch + High CPD — pause candidate. CTR '+_nCtrStr+', Watch '+_nWrStr+', CPD '+_nCpdStr+'. Active '+(ncr.activeDays||0)+'d, spend '+f$(ncr.spend||0)+'.'):'';
     const _pauseBadge=(_ncrFlags&&_ncrFlags.pause)?' <span data-tip="'+_ncrPauseTip.replace(/"/g,'&quot;')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" style="cursor:help;display:inline-block;font-family:var(--font-h);font-size:9px;font-weight:700;color:#fff;background:#DC2626;padding:1px 6px;border-radius:99px;letter-spacing:.04em">PAUSE</span>':'';
     let s='<tr class="'+classAttr+'" style="display:'+(show?'table-row':'none')+';background:rgba(114,164,191,.04);border-bottom:1px solid var(--border)">';
-    s+='<td style="padding:6px 6px 6px '+padLeft+'px;color:var(--navy);font-size:10px" title="'+(ncr.name||'').replace(/"/g,'&quot;')+'">'+_thumb+_pauseBadge+(_pauseBadge?' ':'')+nNm+_ftBadge+_nameBadge+'</td>';
+    s+='<td class="irf-nm" style="padding:6px 6px 6px '+padLeft+'px;color:var(--navy);font-size:10px" title="'+(ncr.name||'').replace(/"/g,'&quot;')+'">'+_thumb+_pauseBadge+(_pauseBadge?' ':'')+nNm+_ftBadge+_nameBadge+'</td>';
     s+='<td></td><td style="text-align:center;padding:6px">'+_irfanStatusBadge(ncr.status,ncr.spend)+'</td>';
     s+=_statusCells(_statusDateOf(ncr));
     s+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+f$(ncr.spend||0)+'</td>';
@@ -3384,7 +3396,7 @@ function _renderIrfanMetaTables(d, channel){
     const nested=a._nested||[];
     const hasCre=nested.length>0;
     const cpd=a.demos>0?a.spend/a.demos:null;
-    const nm=(a.name||'').length>50?(a.name||'').slice(0,47)+'…':(a.name||'');
+    const nm=(a.name||'');  // full name — Name column wraps
     const stags=_irfanStages(a._stageSrc||a.name);
     let stagesCell='';for(const t of stags)stagesCell+='<span style="display:inline-block;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;background:'+t.c+'15;color:'+t.c+';margin-right:2px">'+t.l+'</span>';
     const activeN=nested.filter(n=>n.status==='ACTIVE'||(!n.status&&(n.spend||0)>0)).length;
@@ -3398,7 +3410,7 @@ function _renderIrfanMetaTables(d, channel){
       +(a._fatN>0?' <span data-tip="'+fTip.replace(/"/g,'&quot;')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" onclick="event.stopPropagation()" style="cursor:help;font-size:10px;background:rgba(243,156,18,.12);color:#e67e22;padding:1px 6px;border-radius:4px;font-weight:700;white-space:nowrap;margin-left:6px">⚠ '+a._fatN+' Fatigue</span>':'');
     const chevSpan=hasCre?'<span class="irf-adsetsub-chev" data-asrow="'+asId+'" data-camp="'+campId+'" style="display:inline-block;width:10px;color:var(--teal);margin-right:6px;font-size:9px">'+chev+'</span>':'<span style="display:inline-block;width:10px;margin-right:6px"></span>';
     let s='<tr class="'+campId+'-as" style="display:'+(showAS?'table-row':'none')+';background:rgba(114,164,191,.07);border-bottom:1px solid var(--border)'+(hasCre?';cursor:pointer':'')+'"'+(hasCre?' onclick="irfanToggleCampAdsetCre(\''+asId+'\')"':'')+'>';
-    s+='<td style="padding:7px 6px 7px 28px;color:var(--navy);font-weight:600;font-size:10.5px" title="'+(a.name||'').replace(/"/g,'&quot;')+'">'+chevSpan+'<span style="font-size:8px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.05em;margin-right:5px">Ad Set</span>'+nm+(hasCre?' <span style="font-size:9px;color:var(--grey);font-weight:400">('+countLabel+')</span>':'')+flagBadges+'</td>';
+    s+='<td class="irf-nm" style="padding:7px 6px 7px 28px;color:var(--navy);font-weight:600;font-size:10.5px" title="'+(a.name||'').replace(/"/g,'&quot;')+'">'+chevSpan+'<span style="font-size:8px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.05em;margin-right:5px">Ad Set</span>'+nm+(hasCre?' <span style="font-size:9px;color:var(--grey);font-weight:400">('+countLabel+')</span>':'')+flagBadges+'</td>';
     s+='<td style="padding:7px 6px">'+stagesCell+'</td>';
     s+='<td style="text-align:center;padding:7px 6px">'+_irfanStatusBadge(a.status,a.spend)+'</td>';
     s+=_statusCells(_rollupStatusDate(_isActiveRow(a),(a._nested||[])));
@@ -3495,12 +3507,12 @@ function _renderIrfanMetaTables(d, channel){
   for(const p of _campFlagPills){const isA=campFlagF===p.k;campH+='<button onclick="irfanCampFlagF(\''+p.k+'\')" style="padding:5px 12px;border-radius:50px;font-size:10px;font-weight:'+(isA?'700':'500')+';border:'+(isA?'none':'1px solid '+p.c)+';background:'+(isA?p.c:'transparent')+';color:'+(isA?'#fff':p.c)+';cursor:pointer;font-family:var(--font-h)">'+p.l+'</button>';}
   campH+='</div>';
   campH+='<div style="overflow-x:auto"><table class="irf-meta-table" style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr style="border-bottom:1.5px solid var(--border)">';
-  campH+=_irfanSortableTh('Name','name',campSort,'irfanSortCamp','left');
+  campH+=_irfanSortableTh('Name','name',campSort,'irfanSortCamp','left','irf-nm');
   campH+='<th style="text-align:left;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Stage</th>';
   campH+=_irfanSortableTh('Status','status',campSort,'irfanSortCamp','center');
   campH+='<th style="text-align:center;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Status Date</th><th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)" title="Days since the status date">Status Days</th>';
   campH+=_irfanSortableTh('Spend','spend',campSort,'irfanSortCamp','right');
-  campH+=_irfanSortableTh('Demos','demos',campSort,'irfanSortCamp','right');
+  campH+=_irfanSortableTh('Conversions','demos',campSort,'irfanSortCamp','right');
   campH+=_irfanSortableTh('CPD','cpd',campSort,'irfanSortCamp','right');
   campH+=_irfanSortableTh('Impr','impressions',campSort,'irfanSortCamp','right');
   campH+=_irfanSortableTh('Clicks','clicks',campSort,'irfanSortCamp','right');
@@ -3517,7 +3529,7 @@ function _renderIrfanMetaTables(d, channel){
   let _tSp=0,_tDe=0,_tIm=0,_tCl=0,_tQu=0,_tVp25=0;
   for(let i=0;i<campRows.length;i++){
     const c=campRows[i];const cpd=c.demos>0?c.spend/c.demos:null;
-    const nm=(c.name||'').length>56?(c.name||'').slice(0,53)+'…':(c.name||'');
+    const nm=(c.name||'');  // full name — Name column wraps (see .irf-meta-name)
     const stags=_irfanStages(c.name);
     let stagesCell='';for(const t of stags)stagesCell+='<span style="display:inline-block;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;background:'+t.c+'15;color:'+t.c+';margin-right:2px">'+t.l+'</span>';
     // Use the precomputed nested array + flag counts from the upfront pass.
@@ -3558,12 +3570,12 @@ function _renderIrfanMetaTables(d, channel){
       ? (_adsets.length+(_adsets.length===1?' ad set':' ad sets'))
       : (_nested.length?(_activeN<_nested.length?_activeN+' active · '+_nested.length+' total':_nested.length+(_nested.length===1?' creative':' creatives')):'');
     const _chev=_showNested?'▼':'▶';
-    campH+='<td style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(c.name||'').replace(/"/g,'&quot;')+'">'+(_hasNested?'<span class="irf-camp-chev" data-row="'+_rowId+'" style="display:inline-block;width:10px;color:var(--teal);margin-right:6px;font-size:9px">'+_chev+'</span>':'<span style="display:inline-block;width:10px;margin-right:6px"></span>')+nm+(_hasNested?' <span style="font-size:9px;color:var(--grey);font-weight:400">('+_countLabel+')</span>':'')+_campFlagBadges+'</td>';
+    campH+='<td class="irf-nm" style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(c.name||'').replace(/"/g,'&quot;')+'">'+(_hasNested?'<span class="irf-camp-chev" data-row="'+_rowId+'" style="display:inline-block;width:10px;color:var(--teal);margin-right:6px;font-size:9px">'+_chev+'</span>':'<span style="display:inline-block;width:10px;margin-right:6px"></span>')+nm+(_hasNested?' <span style="font-size:9px;color:var(--grey);font-weight:400">('+_countLabel+')</span>':'')+_campFlagBadges+'</td>';
     campH+='<td style="padding:8px 6px">'+stagesCell+'</td>';
     campH+='<td style="text-align:center;padding:8px 6px">'+_irfanStatusBadge(c.status,c.spend)+'</td>';
     campH+=_statusCells(_rollupStatusDate(_isActiveRow(c),_nested.length?_nested:_adsets.reduce(function(acc,x){return acc.concat(x._nested||[]);},[])));
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cSp,c.spend,true)+'">'+f$(c.spend)+'</td>';
-    campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cDe,c.demos||0,false)+'">'+fN(c.demos||0)+_capiSub(c,channel)+'</td>';
+    campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cDe,c.demos||0,false)+'">'+fN(c.demos||0)+_capiSub(c,channel,true)+'</td>';
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cCp,cpd||0,true)+'">'+(cpd!=null?f$(cpd):'—')+'</td>';
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cIm,c.impressions||0,false)+'">'+fN(c.impressions||0)+'</td>';
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cCl,c.clicks||0,false)+'">'+fN(c.clicks||0)+'</td>';
@@ -3708,11 +3720,11 @@ function _renderIrfanMetaTables(d, channel){
   // Removed the standalone "Flag" column — PAUSE pill is now rendered inline
   // with the creative name (matches the campaign table's flag treatment).
   creH+='<th style="width:68px;padding:8px 4px"></th>';
-  creH+=_irfanSortableTh('Name','name',creSort,'irfanSortCre','left');
+  creH+=_irfanSortableTh('Name','name',creSort,'irfanSortCre','left','irf-nm');
   creH+=_irfanSortableTh('Status','status',creSort,'irfanSortCre','center');
   creH+='<th style="text-align:center;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Status Date</th><th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)" title="Days since the status date">Status Days</th>';
   creH+=_irfanSortableTh('Spend','spend',creSort,'irfanSortCre','right');
-  creH+=_irfanSortableTh('Demos','demos',creSort,'irfanSortCre','right');
+  creH+=_irfanSortableTh('Conversions','demos',creSort,'irfanSortCre','right');
   creH+=_irfanSortableTh('CPD','cpd',creSort,'irfanSortCre','right');
   creH+=_irfanSortableTh('Impr','impressions',creSort,'irfanSortCre','right');
   creH+=_irfanSortableTh('Clicks','clicks',creSort,'irfanSortCre','right');
@@ -3725,7 +3737,7 @@ function _renderIrfanMetaTables(d, channel){
   creH+='</tr></thead><tbody>';
   for(let i=0;i<creRows.length;i++){
     const c=creRows[i];const cpd=c.demos>0?c.spend/c.demos:null;
-    const nm=(c.name||'').length>56?(c.name||'').slice(0,53)+'…':(c.name||'');
+    const nm=(c.name||'');  // full name — Name column wraps (see .irf-meta-name)
     const wr=watchRate(c);
     const pause=c._pause; // precomputed on creAll above
     let thumb='';
@@ -3754,7 +3766,7 @@ function _renderIrfanMetaTables(d, channel){
     const _pauseBadge=pause?' <span data-tip="'+_pauseTip.replace(/"/g,'&quot;')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" style="cursor:help;display:inline-block;font-family:var(--font-h);font-size:9px;font-weight:700;color:#fff;background:#DC2626;padding:1px 6px;border-radius:99px;letter-spacing:.04em">PAUSE</span>':'';
     creH+='<tr style="border-bottom:1px solid var(--border);'+(pause?'background:rgba(220,38,38,.06)':'')+'">';
     creH+='<td style="padding:6px 4px">'+thumb+'</td>';
-    creH+='<td style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(c.name||'').replace(/"/g,'&quot;')+'">'+_pauseBadge+(_pauseBadge?' ':'')+nm+_ftBadge+_nameBadge+'</td>';
+    creH+='<td class="irf-nm" style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(c.name||'').replace(/"/g,'&quot;')+'">'+_pauseBadge+(_pauseBadge?' ':'')+nm+_ftBadge+_nameBadge+'</td>';
     creH+='<td style="text-align:center;padding:8px 6px">'+_irfanStatusBadge(c.status,c.spend)+'</td>';
     creH+=_statusCells(_statusDateOf(c));
     creH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(rSp,c.spend,true)+'">'+f$(c.spend)+'</td>';
@@ -3838,22 +3850,22 @@ function _renderIrfanMetaTables(d, channel){
     let aTSp=0,aTDe=0,aTIm=0,aTCl=0;
     audH+='<div style="font-size:11px;color:var(--grey);font-variant-numeric:tabular-nums;margin-bottom:10px">'+sorted.length+' '+audItemLabel+(sorted.length===1?'':'s')+' · sort by '+audSort.col+' '+audSort.dir+'</div>';
     audH+='<div style="overflow-x:auto"><table class="irf-meta-table" style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr style="border-bottom:1.5px solid var(--border)">';
-    audH+=_irfanSortableTh(audSectionLabel==='Audiences'?'Audience':'Ad Group','name',audSort,'irfanSortAud','left');
+    audH+=_irfanSortableTh(audSectionLabel==='Audiences'?'Audience':'Ad Group','name',audSort,'irfanSortAud','left','irf-nm');
     audH+=_irfanSortableTh('Spend','spend',audSort,'irfanSortAud','right');
     audH+=_irfanSortableTh('Impr','impressions',audSort,'irfanSortAud','right');
     audH+=_irfanSortableTh('Clicks','clicks',audSort,'irfanSortAud','right');
     audH+=_irfanSortableTh('CTR','ctr',audSort,'irfanSortAud','right');
     audH+=_irfanSortableTh('CPC','cpc',audSort,'irfanSortAud','right');
-    audH+=_irfanSortableTh('Demos','demos',audSort,'irfanSortAud','right');
+    audH+=_irfanSortableTh('Conversions','demos',audSort,'irfanSortAud','right');
     audH+=_irfanSortableTh('CPD','cpd',audSort,'irfanSortAud','right');
     audH+='</tr></thead><tbody>';
     for(const a of sorted){
-      const nm=(a.name||'').length>56?(a.name||'').slice(0,53)+'…':(a.name||'');
+      const nm=(a.name||'');  // full name — Name column wraps
       const cpd=a.demos>0?a.spend/a.demos:null;
       const cpc=a.clicks>0?a.spend/a.clicks:null;
       aTSp+=a.spend||0;aTDe+=a.demos||0;aTIm+=a.impressions||0;aTCl+=a.clicks||0;
       audH+='<tr style="border-bottom:1px solid var(--border)">';
-      audH+='<td style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(a.name||'').replace(/"/g,'&quot;')+'">'+nm+'</td>';
+      audH+='<td class="irf-nm" style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(a.name||'').replace(/"/g,'&quot;')+'">'+nm+'</td>';
       audH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(aSp,a.spend,true)+'">'+f$(a.spend||0)+'</td>';
       audH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+fN(a.impressions||0)+'</td>';
       audH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+fN(a.clicks||0)+'</td>';
@@ -4913,19 +4925,19 @@ function renderCPDTable(d){
     '<col style="width:10%">'+  // Pacing
     '<col style="width:14%">'+  // Spend (share)
     '<col style="width:9%">'+   // Budget
-    '<col style="width:7%">'+   // Demos
+    '<col style="width:9%">'+   // Conversions (wider than the old "Demos" label)
     '<col style="width:9%">'+   // CPD
     '<col style="width:7%">'+   // Qual
     '<col style="width:9%">'+   // CPQD
     '<col style="width:7%">'+   // Won
-    '<col style="width:18%">'+  // ARR
+    '<col style="width:16%">'+  // ARR
   '</colgroup>';
   html+='<thead><tr style="border-bottom:1px solid var(--border)">'+
     '<th style="text-align:left;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px">Channel</th>'+
     '<th style="text-align:center;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px">Pacing</th>'+
     '<th style="text-align:center;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px">Spend (share)</th>'+
     '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px" title="Monthly ad budget for this channel">Budget</th>'+
-    '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px">Demos</th>'+
+    '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px">Conversions</th>'+
     '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px">CPD</th>'+
     '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px">Qual</th>'+
     '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px">CPQD</th>'+
@@ -10359,7 +10371,7 @@ function renderAzTable(d,cr,eM){
   tblR+='<tr style="font-weight:700;background:var(--teal-8)"><td>Total</td><td class="n">'+f$(sumS)+' '+(hasPrior?dtxt(sumS,pSumS,true):'')+'</td><td class="n">'+fN(sumD)+' '+(hasPrior?dtxt(sumD,pSumD):'')+'</td><td class="n tbl-grn">'+(tCpd!=null?f$(tCpd):'\u2014')+' '+dtxt(tCpd,pTCpd,true)+'</td><td class="n">'+fN(sumQ)+'<span class="sub">'+tQP+'</span>'+(hasPrior?dtxt(sumQ,pSumQ):'')+'</td><td class="n tbl-ylw">'+(tCpqd!=null?f$(tCpqd):'\u2014')+' '+dtxt(tCpqd,pTCpqd,true)+'</td><td class="n">'+fN(sumNA)+'<span class="sub">'+tNAP+'</span></td><td class="n tbl-ylw">'+fN(sumCW)+'<span class="sub">'+tCWP+'</span>'+(hasPrior?dtxt(sumCW,pSumCW):'')+'</td><td class="n tbl-ylw">'+f$(tArr)+' '+dtxt(tArr,pTArr)+'</td><td class="n tbl-ylw">'+(tRoas!=null?tRoas.toFixed(2)+'x':'\u2014')+'</td></tr>';
   var legend='<div style="font-size:10px;color:var(--grey);margin-top:8px;display:flex;gap:16px;align-items:center"><div style="display:flex;align-items:center;gap:4px"><div style="width:12px;height:12px;border-radius:2px;background:rgba(16,185,129,.12)"></div>Windsor data</div><div style="display:flex;align-items:center;gap:4px"><div style="width:12px;height:12px;border-radius:2px;background:rgba(245,158,11,.12)"></div>May not be 100% accurate due to data hygiene lag in HubSpot</div></div>';
   var el=document.getElementById('az-tbl');
-  if(el)el.innerHTML='<table class="ctbl"><thead><tr><th>Channel</th><th class="n">Spend</th><th class="n">Demos</th><th class="n tbl-grn">CPD</th><th class="n">Qualified</th><th class="n tbl-ylw">CPQD</th><th class="n">Unattr.</th><th class="n tbl-ylw">Won</th><th class="n tbl-ylw">ARR</th><th class="n tbl-ylw">ROAS</th></tr></thead><tbody>'+tblR+'</tbody></table>'+legend;
+  if(el)el.innerHTML='<table class="ctbl"><thead><tr><th>Channel</th><th class="n">Spend</th><th class="n">Conversions</th><th class="n tbl-grn">CPD</th><th class="n">Qualified</th><th class="n tbl-ylw">CPQD</th><th class="n">Unattr.</th><th class="n tbl-ylw">Won</th><th class="n tbl-ylw">ARR</th><th class="n tbl-ylw">ROAS</th></tr></thead><tbody>'+tblR+'</tbody></table>'+legend;
 }
 
 function renderAzChannel(d,chKey,cr,eM,crPct,isMTD){
@@ -10525,7 +10537,7 @@ function renderAzChannel(d,chKey,cr,eM,crPct,isMTD){
     ctrl+='</div>';
     ctrl+='<div style="width:1px;height:20px;background:var(--border);margin:0 4px"></div>';
     ctrl+='<span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:1px">Sort</span>';
-    var _campSortOpts=[{v:'demos',l:'Demos'},{v:'spend',l:'Spend'},{v:'cpd',l:'CPD'},{v:'qualified',l:'Qual'},{v:'ctr',l:'CTR'},{v:'score',l:'Score'},{v:'tag',l:'Tag'},{v:'name',l:'Name'},{v:'stage',l:'Stage'},{v:'impressions',l:'Impr.'}];
+    var _campSortOpts=[{v:'demos',l:'Conversions'},{v:'spend',l:'Spend'},{v:'cpd',l:'CPD'},{v:'qualified',l:'Qual'},{v:'ctr',l:'CTR'},{v:'score',l:'Score'},{v:'tag',l:'Tag'},{v:'name',l:'Name'},{v:'stage',l:'Stage'},{v:'impressions',l:'Impr.'}];
     _campSortOpts.forEach(function(o){
       var isAct=_azSort.col===o.v;
       ctrl+='<button onclick="_azSort.col===\''+o.v+'\'?_azSort.dir=_azSort.dir===\'desc\'?\'asc\':\'desc\':(_azSort.col=\''+o.v+'\',_azSort.dir=\''+o.v+'\'===\'name\'?\'asc\':\'desc\');renderAzChannel(S.analyzer.data,\''+chKey+'\','+cr+','+eM+','+crPct+','+isMTD+')" style="border:none;border-radius:50px;padding:4px 12px;font-size:10px;font-family:var(--font-h);cursor:pointer;transition:all .15s;background:'+(isAct?'var(--teal)':'var(--teal-8)')+';color:'+(isAct?'#fff':'var(--navy)')+'">'+o.l+(isAct?(_azSort.dir==='desc'?' \u2193':' \u2191'):'')+'</button>';
@@ -10548,7 +10560,7 @@ function renderAzChannel(d,chKey,cr,eM,crPct,isMTD){
     var rows='';
     for(var i=0;i<list.length;i++){var it=list[i];
       var cpd3=it.demos>0?it.spend/it.demos:null;
-      var nm=it.name.length>48?it.name.slice(0,45)+'...':it.name;
+      var nm=it.name;  // full name — cell ellipsizes via .ctbl td if it overflows
       var stags=getStages(it.name);
       var campKey=it.name.toLowerCase().trim();
 
@@ -10599,7 +10611,7 @@ function renderAzChannel(d,chKey,cr,eM,crPct,isMTD){
         rows+='<td></td><td style="padding-left:28px;font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.5px">Creatives ('+sortedCr.length+') <button onclick="event.stopPropagation();generateVariants(\'campaign\',\''+chKey+'\',\''+it.name.replace(/'/g,"\\'")+'\');" style="background:var(--teal);color:#fff;border:none;padding:4px 12px;border-radius:50px;font-size:10px;font-weight:700;cursor:pointer;margin-left:8px;vertical-align:middle;font-family:var(--font-h);box-shadow:0 1px 4px rgba(114,164,191,.25)">Generate Variants</button></td><td></td>';
         rows+='<td class="n" style="'+_hdr+'">Spend</td><td class="n" style="'+_hdr+'">Impr</td><td class="n" style="'+_hdr+'">Clicks</td><td class="n" style="'+_hdr+'">CTR</td>';
         if(hasF)rows+='<td class="n" style="'+_hdr+'">Freq</td>';
-        rows+='<td class="n" style="'+_hdr+'">Demos</td><td class="n" style="'+_hdr+'">CPD</td><td class="n" style="'+_hdr+'">Qual</td><td class="n" style="'+_hdr+'">Pruned</td><td class="n" style="'+_hdr+';color:#0891B2">Pend Eval</td>';
+        rows+='<td class="n" style="'+_hdr+'">Conversions</td><td class="n" style="'+_hdr+'">CPD</td><td class="n" style="'+_hdr+'">Qual</td><td class="n" style="'+_hdr+'">Pruned</td><td class="n" style="'+_hdr+';color:#0891B2">Pend Eval</td>';
         rows+='<td class="n" style="'+_hdr+'">Resch</td><td class="n" style="'+_hdr+'">No Show</td><td class="n" style="'+_hdr+'">Score</td><td class="n" style="'+_hdr+'">Tag</td></tr>';
         sortedCr.forEach(function(cr3,ci){
           var crCpd=cr3.demos>0?cr3.spend/cr3.demos:null;
@@ -10640,7 +10652,7 @@ function renderAzChannel(d,chKey,cr,eM,crPct,isMTD){
     rows+='<td class="n">'+fN(tQ)+'</td><td class="n">'+fN(tPR)+'</td><td class="n" style="color:#0891B2">'+fN(tPE)+'</td>';
     rows+='<td class="n">'+fN(tRS)+'</td><td class="n">'+fN(tNS)+'</td><td></td><td></td></tr>';
 
-    return '<div class="sec"><div class="st">Campaigns</div>'+ctrl+'<div class="tw" style="max-height:none;overflow:visible"><table class="ctbl" style="table-layout:fixed;width:100%"><colgroup><col style="width:24px"><col style="width:20%"><col style="width:6%"><col style="width:5%"><col style="width:5%"><col style="width:4.5%"><col style="width:3.8%">'+(hasF?'<col style="width:3.5%">':'')+'<col style="width:4.5%"><col style="width:4.5%"><col style="width:3.5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:3.8%"><col style="width:4.5%"></colgroup><thead><tr><th title="Status">\u25CF</th><th>Name</th><th class="n">Stage</th><th class="n">Spend</th><th class="n">Impr.</th><th class="n">Clicks</th><th class="n">CTR</th>'+(hasF?'<th class="n">Freq.</th>':'')+'<th class="n">Demos</th><th class="n">CPD</th><th class="n">Qual</th><th class="n">Pruned</th><th class="n" style="color:#0891B2">Pend Eval</th><th class="n">Resch.</th><th class="n">No Show</th><th class="n">Score</th><th class="n">Tag</th></tr></thead><tbody>'+rows+'</tbody></table></div><div style="font-size:10px;color:var(--grey);margin-top:6px;font-style:italic">Note: Creatives with zero activity in the selected time window are not returned by Windsor and cannot be shown here.</div><div style="font-size:10px;color:var(--grey);margin-top:8px;line-height:1.6;padding:10px 12px;background:rgba(114,164,191,.04);border-radius:8px;border:1px solid rgba(114,164,191,.1)"><strong style="color:var(--navy)">Creative Scoring Formula</strong><br><strong>TOF (S01):</strong> 25% CTR + 20% Video Views + 20% Impression Share + 15% Qual Rate + 10% CPA\u207B\u00B9 + 10% Demo Volume<br><strong>MOF (S02):</strong> 25% Clicks + 25% CPA\u207B\u00B9 + 20% Qual Rate + 15% CTR + 15% Demo Volume<br><strong>BOF/Retargeting (S03+):</strong> 30% CPA\u207B\u00B9 + 25% Qual Rate + 20% Demo Volume + 15% CTR + 10% Clicks<br><strong>Tags:</strong> WINNER \u2265 65 \u00b7 TESTING 35\u201364 \u00b7 LOSER &lt; 35<br><strong>New (&lt;7d):</strong> Protected from LOSER tag (still learning)<br><strong>Auto-LOSER:</strong> Active &gt;14 days + score &lt;35 \u00b7 Spend \u2265 avg creative spend + score &lt;35 \u00b7 Both + score &lt;50 \u00b7 Spend \u2265 avg + Qual Rate &lt;20% + 3+ demos<br><strong>Scoring:</strong> Per-campaign relative ranking (not global aggregate) \u00b7 <strong>Naming:</strong> {Format}_{Talent}_{Concept}_{Setting}_{Variant}</div><div id="gv-out-campaigns"></div></div>';
+    return '<div class="sec"><div class="st">Campaigns</div>'+ctrl+'<div class="tw" style="max-height:none;overflow:visible"><table class="ctbl" style="table-layout:fixed;width:100%"><colgroup><col style="width:24px"><col style="width:24%"><col style="width:6%"><col style="width:5%"><col style="width:5%"><col style="width:4.5%"><col style="width:3.8%">'+(hasF?'<col style="width:3.5%">':'')+'<col style="width:7%"><col style="width:4.5%"><col style="width:3.5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:3.8%"><col style="width:4.5%"></colgroup><thead><tr><th title="Status">\u25CF</th><th>Name</th><th class="n">Stage</th><th class="n">Spend</th><th class="n">Impr.</th><th class="n">Clicks</th><th class="n">CTR</th>'+(hasF?'<th class="n">Freq.</th>':'')+'<th class="n">Conversions</th><th class="n">CPD</th><th class="n">Qual</th><th class="n">Pruned</th><th class="n" style="color:#0891B2">Pend Eval</th><th class="n">Resch.</th><th class="n">No Show</th><th class="n">Score</th><th class="n">Tag</th></tr></thead><tbody>'+rows+'</tbody></table></div><div style="font-size:10px;color:var(--grey);margin-top:6px;font-style:italic">Note: Creatives with zero activity in the selected time window are not returned by Windsor and cannot be shown here.</div><div style="font-size:10px;color:var(--grey);margin-top:8px;line-height:1.6;padding:10px 12px;background:rgba(114,164,191,.04);border-radius:8px;border:1px solid rgba(114,164,191,.1)"><strong style="color:var(--navy)">Creative Scoring Formula</strong><br><strong>TOF (S01):</strong> 25% CTR + 20% Video Views + 20% Impression Share + 15% Qual Rate + 10% CPA\u207B\u00B9 + 10% Demo Volume<br><strong>MOF (S02):</strong> 25% Clicks + 25% CPA\u207B\u00B9 + 20% Qual Rate + 15% CTR + 15% Demo Volume<br><strong>BOF/Retargeting (S03+):</strong> 30% CPA\u207B\u00B9 + 25% Qual Rate + 20% Demo Volume + 15% CTR + 10% Clicks<br><strong>Tags:</strong> WINNER \u2265 65 \u00b7 TESTING 35\u201364 \u00b7 LOSER &lt; 35<br><strong>New (&lt;7d):</strong> Protected from LOSER tag (still learning)<br><strong>Auto-LOSER:</strong> Active &gt;14 days + score &lt;35 \u00b7 Spend \u2265 avg creative spend + score &lt;35 \u00b7 Both + score &lt;50 \u00b7 Spend \u2265 avg + Qual Rate &lt;20% + 3+ demos<br><strong>Scoring:</strong> Per-campaign relative ranking (not global aggregate) \u00b7 <strong>Naming:</strong> {Format}_{Talent}_{Concept}_{Setting}_{Variant}</div><div id="gv-out-campaigns"></div></div>';
   }
 
   // ── Build creatives flat table ──
@@ -10659,7 +10671,7 @@ function renderAzChannel(d,chKey,cr,eM,crPct,isMTD){
       var rows='';
       for(var i=0;i<list.length;i++){var it=list[i];
         var cpd3=it.demos>0?it.spend/it.demos:null;
-        var nm=it.name.length>50?it.name.slice(0,47)+'...':it.name;
+        var nm=it.name;  // full name — cell ellipsizes via .ctbl td if it overflows
         var thumbCell='';
         if(it.thumbnail)thumbCell='<td style="width:44px;padding:4px"><img src="'+it.thumbnail+'" style="width:40px;height:40px;object-fit:cover;border-radius:4px;display:block" onerror="this.style.display=\'none\'"></td>';
         else thumbCell='<td style="width:44px;padding:4px"><div style="width:40px;height:40px;border-radius:4px;background:var(--light-bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--teal)">\uD83D\uDCF7</div></td>';
@@ -10684,14 +10696,14 @@ function renderAzChannel(d,chKey,cr,eM,crPct,isMTD){
         else{pc.style.background='var(--teal-8)';pc.style.color='var(--navy)';pc.textContent=pc.dataset.label;}
       }
     };
-    var crSortOpts=[{v:'spend',l:'Spend'},{v:'demos',l:'Demos'},{v:'cpd',l:'CPD'},{v:'ctr',l:'CTR'},{v:'score',l:'Score'},{v:'tag',l:'Tag'},{v:'impressions',l:'Impr.'},{v:'name',l:'Name'}];
+    var crSortOpts=[{v:'spend',l:'Spend'},{v:'demos',l:'Conversions'},{v:'cpd',l:'CPD'},{v:'ctr',l:'CTR'},{v:'score',l:'Score'},{v:'tag',l:'Tag'},{v:'impressions',l:'Impr.'},{v:'name',l:'Name'}];
     var crCtrl='<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap"><span style="font-size:10px;color:var(--grey);text-transform:uppercase;letter-spacing:1px;font-weight:700">Sort</span>';
     crSortOpts.forEach(function(o){
       var isAct=o.v==='spend';
       crCtrl+='<button class="cr-pill" data-col="'+o.v+'" data-label="'+o.l+'" onclick="_crReSort(\''+o.v+'\')" style="border:none;border-radius:50px;padding:4px 12px;font-size:11px;font-family:var(--font-h);cursor:pointer;transition:all .15s;background:'+(isAct?'var(--teal)':'var(--teal-8)')+';color:'+(isAct?'#fff':'var(--navy)')+'">'+o.l+(isAct?' \u2193':'')+'</button>';
     });
     crCtrl+='</div>';
-    return '<div class="sec"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px"><div class="st" style="margin:0">Creatives</div><button onclick="generateVariants(\'table\')" style="background:var(--teal);color:#fff;border:none;padding:8px 20px;border-radius:50px;font-family:var(--font-h);font-weight:700;font-size:12px;cursor:pointer;transition:all .15s;box-shadow:0 2px 8px rgba(114,164,191,.3)" onmouseover="this.style.background=\'#5E8CA8\';this.style.transform=\'translateY(-1px)\'" onmouseout="this.style.background=\'var(--teal)\';this.style.transform=\'none\'">Generate Variants</button></div>'+crCtrl+'<div id="gv-out-creatives"></div><div class="tw" style="max-height:none;overflow:visible"><table class="ctbl"><thead><tr><th style="width:32px" title="Status">\u25CF</th><th style="width:44px"></th><th>Name</th><th class="n">Spend</th><th class="n">Impr.</th><th class="n">Clicks</th><th class="n">CTR</th>'+(hasF?'<th class="n">Freq.</th>':'')+'<th class="n">Demos</th><th class="n">CPD</th><th class="n">Qual</th><th class="n">Pruned</th><th class="n" style="color:#0891B2">Pend Eval</th><th class="n">Resch.</th><th class="n">No Show</th><th class="n" style="width:40px">Score</th><th class="n" style="width:60px">Tag</th></tr></thead><tbody id="cr-tbody">'+window._crBuild()+'</tbody></table></div></div>';
+    return '<div class="sec"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px"><div class="st" style="margin:0">Creatives</div><button onclick="generateVariants(\'table\')" style="background:var(--teal);color:#fff;border:none;padding:8px 20px;border-radius:50px;font-family:var(--font-h);font-weight:700;font-size:12px;cursor:pointer;transition:all .15s;box-shadow:0 2px 8px rgba(114,164,191,.3)" onmouseover="this.style.background=\'#5E8CA8\';this.style.transform=\'translateY(-1px)\'" onmouseout="this.style.background=\'var(--teal)\';this.style.transform=\'none\'">Generate Variants</button></div>'+crCtrl+'<div id="gv-out-creatives"></div><div class="tw" style="max-height:none;overflow:visible"><table class="ctbl"><thead><tr><th style="width:32px" title="Status">\u25CF</th><th style="width:44px"></th><th>Name</th><th class="n">Spend</th><th class="n">Impr.</th><th class="n">Clicks</th><th class="n">CTR</th>'+(hasF?'<th class="n">Freq.</th>':'')+'<th class="n">Conversions</th><th class="n">CPD</th><th class="n">Qual</th><th class="n">Pruned</th><th class="n" style="color:#0891B2">Pend Eval</th><th class="n">Resch.</th><th class="n">No Show</th><th class="n" style="width:40px">Score</th><th class="n" style="width:60px">Tag</th></tr></thead><tbody id="cr-tbody">'+window._crBuild()+'</tbody></table></div></div>';
   }
 
 
@@ -10800,7 +10812,7 @@ function renderAzChannel(d,chKey,cr,eM,crPct,isMTD){
       var rows='';
       for(var ai=0;ai<items.length;ai++){
         var a=items[ai];
-        var nm2=a.name.length>45?a.name.slice(0,42)+'...':a.name;
+        var nm2=a.name;  // full name — cell ellipsizes via .ctbl td if it overflows
         var cpd4=a.demos>0?a.spend/a.demos:null;
         var cpc2=a.clicks>0?a.spend/a.clicks:null;
         rows+='<tr><td title="'+a.name+'">'+nm2+'</td>';
@@ -10828,7 +10840,7 @@ function renderAzChannel(d,chKey,cr,eM,crPct,isMTD){
         else{pc.style.background='var(--teal-8)';pc.style.color='var(--navy)';pc.textContent=pc.dataset.label;}
       }
     };
-    var sortOpts=[{v:'spend',l:'Spend'},{v:'demos',l:'Demos'},{v:'cpd',l:'CPD'},{v:'ctr',l:'CTR'},{v:'cpc',l:'CPC'},{v:'impressions',l:'Impr.'},{v:'name',l:'Name'}];
+    var sortOpts=[{v:'spend',l:'Spend'},{v:'demos',l:'Conversions'},{v:'cpd',l:'CPD'},{v:'ctr',l:'CTR'},{v:'cpc',l:'CPC'},{v:'impressions',l:'Impr.'},{v:'name',l:'Name'}];
     var audCtrl='<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap"><span style="font-size:10px;color:var(--grey);text-transform:uppercase;letter-spacing:1px;font-weight:700">Sort</span>';
     sortOpts.forEach(function(o){
       var isActive=o.v==='spend';
@@ -10837,7 +10849,7 @@ function renderAzChannel(d,chKey,cr,eM,crPct,isMTD){
     audCtrl+='</div>';
     h+='<div class="sec"><div class="st">'+(chKey==='meta'?'Audiences':'Ad Groups')+'</div>'+audCtrl;
     h+='<div class="tw" style="max-height:none;overflow:visible"><table class="ctbl"><thead><tr>';
-    h+='<th>'+(chKey==='meta'?'Audience':'Ad Group')+'</th><th class="n">Spend</th><th class="n">Impr.</th><th class="n">Clicks</th><th class="n">CTR</th><th class="n">CPC</th><th class="n">Demos</th><th class="n">CPD</th>';
+    h+='<th>'+(chKey==='meta'?'Audience':'Ad Group')+'</th><th class="n">Spend</th><th class="n">Impr.</th><th class="n">Clicks</th><th class="n">CTR</th><th class="n">CPC</th><th class="n">Conversions</th><th class="n">CPD</th>';
     h+='</tr></thead><tbody id="aud-tbody">'+window._audBuild()+'</tbody></table></div></div>';
   }
 
@@ -11781,7 +11793,7 @@ function csStep6Placements(az){
       hh+=_dimSortTh('Spend','spend',dim);
       hh+=_dimSortTh('Share','sharePct',dim);
       hh+=_dimSortTh('CTR','ctr',dim);
-      hh+=_dimSortTh('Demos','demos',dim);
+      hh+=_dimSortTh('Conversions','demos',dim);
       hh+=_dimSortTh('CPD','cpd',dim);
       hh+='</tr></thead><tbody>';
       for(var i=0;i<sorted.length;i++){var g=sorted[i];
@@ -11842,7 +11854,7 @@ function csStep6Placements(az){
       h+='<span style="font-size:10px;color:var(--grey)">— Format + Talent + Concept · ≥2 creatives</span>';
       h+='<div style="flex:1"></div>';
       h+='<span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;margin-right:4px">Sort</span>';
-      [{c:'spend',l:'Spend'},{c:'sharePct',l:'Share'},{c:'demos',l:'Demos'},{c:'cpd',l:'CPD'},{c:'ctr',l:'CTR'}].forEach(function(p){
+      [{c:'spend',l:'Spend'},{c:'sharePct',l:'Share'},{c:'demos',l:'Conversions'},{c:'cpd',l:'CPD'},{c:'ctr',l:'CTR'}].forEach(function(p){
         var isA=cSort.col===p.c;
         h+='<button onclick="csSortCombos(\''+p.c+'\')" style="background:'+(isA?'var(--teal)':'var(--teal-8)')+';color:'+(isA?'#fff':'var(--navy)')+';border:none;border-radius:50px;padding:3px 10px;font-size:10px;font-family:var(--font-h);cursor:pointer">'+p.l+(isA?(cSort.dir==='desc'?' ↓':' ↑'):'')+'</button>';
       });
@@ -11880,12 +11892,12 @@ function csStep6Placements(az){
         rows+='<tr style="font-size:12px"><td style="font-weight:600;padding:6px 8px">'+g.label+'</td><td class="n" style="'+spHeat+';padding:6px 8px">$'+Math.round(g.spend).toLocaleString()+'</td><td class="n" style="padding:6px 8px">'+Math.round(g.impressions).toLocaleString()+'</td><td class="n" style="padding:6px 8px">'+Math.round(g.clicks).toLocaleString()+'</td><td class="n" style="'+ctrHeat+';padding:6px 8px">'+g.ctr.toFixed(2)+'%</td><td class="n" style="padding:6px 8px">'+g.demos+'</td><td class="n" style="'+cpdHeat+';padding:6px 8px">'+(g.cpd!=null?'$'+Math.round(g.cpd):'—')+'</td></tr>';
       }return rows;};
     window._plReSort=function(col){var s=window._plSort;if(s.col===col)s.dir=s.dir==='desc'?'asc':'desc';else{s.col=col;s.dir='desc';}window._plSort=s;document.getElementById('pl-tbody').innerHTML=window._plBuild();document.querySelectorAll('.pl-pill').forEach(function(b){var c=b.dataset.col;var isAct=c===s.col;b.style.background=isAct?'var(--teal)':'var(--teal-8)';b.style.color=isAct?'#fff':'var(--navy)';b.textContent=b.dataset.label+(isAct?(s.dir==='desc'?' ↓':' ↑'):'');});};
-    var plSortOpts=[{v:'label',l:'Placement'},{v:'spend',l:'Spend'},{v:'impressions',l:'Impr.'},{v:'clicks',l:'Clicks'},{v:'ctr',l:'CTR'},{v:'demos',l:'Demos'},{v:'cpd',l:'CPD'}];
+    var plSortOpts=[{v:'label',l:'Placement'},{v:'spend',l:'Spend'},{v:'impressions',l:'Impr.'},{v:'clicks',l:'Clicks'},{v:'ctr',l:'CTR'},{v:'demos',l:'Conversions'},{v:'cpd',l:'CPD'}];
     var plCtrl='<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap"><span style="font-size:10px;color:var(--grey);text-transform:uppercase;letter-spacing:1px;font-weight:700">Sort</span>';
     plSortOpts.forEach(function(o){var isAct=o.v==='spend';plCtrl+='<button class="pl-pill" data-col="'+o.v+'" data-label="'+o.l+'" onclick="_plReSort(\''+o.v+'\')" style="border:none;border-radius:50px;padding:4px 12px;font-size:11px;font-family:var(--font-h);cursor:pointer;transition:all .15s;background:'+(isAct?'var(--teal)':'var(--teal-8)')+';color:'+(isAct?'#fff':'var(--navy)')+'">'+o.l+(isAct?' ↓':'')+'</button>';});
     plCtrl+='</div>';
     h+=plCtrl;
-    h+='<div class="tw" style="max-height:none;overflow:visible"><table class="ctbl" style="font-size:12px"><thead><tr><th>Placement</th><th class="n">Spend</th><th class="n">Impr.</th><th class="n">Clicks</th><th class="n">CTR</th><th class="n">Demos</th><th class="n">CPD</th></tr></thead><tbody id="pl-tbody">'+window._plBuild()+'</tbody></table></div>';
+    h+='<div class="tw" style="max-height:none;overflow:visible"><table class="ctbl" style="font-size:12px"><thead><tr><th>Placement</th><th class="n">Spend</th><th class="n">Impr.</th><th class="n">Clicks</th><th class="n">CTR</th><th class="n">Conversions</th><th class="n">CPD</th></tr></thead><tbody id="pl-tbody">'+window._plBuild()+'</tbody></table></div>';
   }
   h+='</div>';
   // ── TALENT/SUBJECT ANALYSIS ──
@@ -11907,12 +11919,12 @@ function csStep6Placements(az){
         rows+='<tr style="font-size:12px"><td style="font-weight:600;padding:6px 8px">'+s.label+'</td><td style="padding:6px 8px"><span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:50px;background:'+typeCol+'15;color:'+typeCol+'">'+s.type+'</span></td><td class="n" style="padding:6px 8px">'+s.count+'</td><td class="n" style="'+spHeat+';padding:6px 8px">$'+Math.round(s.spend).toLocaleString()+'</td><td class="n" style="padding:6px 8px">'+Math.round(s.impressions).toLocaleString()+'</td><td class="n" style="padding:6px 8px">'+Math.round(s.clicks).toLocaleString()+'</td><td class="n" style="'+ctrHeat+';padding:6px 8px">'+s.ctr.toFixed(2)+'%</td><td class="n" style="padding:6px 8px">'+s.demos+'</td><td class="n" style="'+cpdHeat+';padding:6px 8px">'+(s.cpd!=null?'$'+Math.round(s.cpd):'—')+'</td></tr>';
       }return rows;};
     window._sjReSort=function(col){var s=window._sjSort;if(s.col===col)s.dir=s.dir==='desc'?'asc':'desc';else{s.col=col;s.dir='desc';}window._sjSort=s;document.getElementById('sj-tbody').innerHTML=window._sjBuild();document.querySelectorAll('.sj-pill').forEach(function(b){var c=b.dataset.col;var isAct=c===s.col;b.style.background=isAct?'var(--teal)':'var(--teal-8)';b.style.color=isAct?'#fff':'var(--navy)';b.textContent=b.dataset.label+(isAct?(s.dir==='desc'?' ↓':' ↑'):'');});};
-    var sjSortOpts=[{v:'label',l:'Subject'},{v:'type',l:'Type'},{v:'count',l:'Ads'},{v:'spend',l:'Spend'},{v:'impressions',l:'Impr.'},{v:'clicks',l:'Clicks'},{v:'ctr',l:'CTR'},{v:'demos',l:'Demos'},{v:'cpd',l:'CPD'}];
+    var sjSortOpts=[{v:'label',l:'Subject'},{v:'type',l:'Type'},{v:'count',l:'Ads'},{v:'spend',l:'Spend'},{v:'impressions',l:'Impr.'},{v:'clicks',l:'Clicks'},{v:'ctr',l:'CTR'},{v:'demos',l:'Conversions'},{v:'cpd',l:'CPD'}];
     var sjCtrl='<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap"><span style="font-size:10px;color:var(--grey);text-transform:uppercase;letter-spacing:1px;font-weight:700">Sort</span>';
     sjSortOpts.forEach(function(o){var isAct=o.v==='spend';sjCtrl+='<button class="sj-pill" data-col="'+o.v+'" data-label="'+o.l+'" onclick="_sjReSort(\''+o.v+'\')" style="border:none;border-radius:50px;padding:4px 12px;font-size:11px;font-family:var(--font-h);cursor:pointer;transition:all .15s;background:'+(isAct?'var(--teal)':'var(--teal-8)')+';color:'+(isAct?'#fff':'var(--navy)')+'">'+o.l+(isAct?' ↓':'')+'</button>';});
     sjCtrl+='</div>';
     h+=sjCtrl;
-    h+='<div class="tw" style="max-height:none;overflow:visible"><table class="ctbl" style="font-size:12px"><thead><tr><th>Subject</th><th>Type</th><th class="n">Ads</th><th class="n">Spend</th><th class="n">Impr.</th><th class="n">Clicks</th><th class="n">CTR</th><th class="n">Demos</th><th class="n">CPD</th></tr></thead><tbody id="sj-tbody">'+window._sjBuild()+'</tbody></table></div>';
+    h+='<div class="tw" style="max-height:none;overflow:visible"><table class="ctbl" style="font-size:12px"><thead><tr><th>Subject</th><th>Type</th><th class="n">Ads</th><th class="n">Spend</th><th class="n">Impr.</th><th class="n">Clicks</th><th class="n">CTR</th><th class="n">Conversions</th><th class="n">CPD</th></tr></thead><tbody id="sj-tbody">'+window._sjBuild()+'</tbody></table></div>';
   }
   if(untaggedCount>0)h+='<div style="margin-top:10px;font-size:11px;color:var(--grey)">'+untaggedCount+' creatives have no detectable subject in their ad name.</div>';
   h+='</div>';
