@@ -443,8 +443,9 @@ function mapUtmToChannel(src, med) {
 // ---------------------------------------------------------------------------
 // Windsor Fetching
 // ---------------------------------------------------------------------------
+const WINDSOR_PAGE_SIZE = 5000;
 async function windsorFetch(apiKey, from, to, fields, extra = '') {
-  const url = `https://connectors.windsor.ai/all?api_key=${apiKey}&date_from=${from}&date_to=${to}&fields=${fields}&page_size=5000${extra}`;
+  const url = `https://connectors.windsor.ai/all?api_key=${apiKey}&date_from=${from}&date_to=${to}&fields=${fields}&page_size=${WINDSOR_PAGE_SIZE}${extra}`;
   for (let i = 0; i < 3; i++) {
     try {
       const r = await fetch(url);
@@ -456,12 +457,56 @@ async function windsorFetch(apiKey, from, to, fields, extra = '') {
   return [];
 }
 
+// Paginated variant of windsorFetch for the all-connectors endpoint. Windsor
+// has no offset pagination — it SILENTLY truncates at page_size — so we chunk
+// by date and bisect any chunk that comes back at the cap (same strategy as
+// azWindsorFetchAll). Without this, a high-cardinality or long-window fetch
+// quietly loses rows and undercounts spend.
+async function windsorFetchAll(apiKey, from, to, fields, extra = '', chunkDays = 30) {
+  const addDays = (ds, n) => { const d = new Date(ds + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return fmt(d); };
+  const daysBetween = (a, b) => Math.round((new Date(b + 'T00:00:00Z') - new Date(a + 'T00:00:00Z')) / 86400000);
+  const out = [];
+  const stack = [];
+  let s = from, seed = 0;
+  while (s <= to && seed++ < 800) { let e = addDays(s, chunkDays - 1); if (e > to) e = to; stack.push([s, e]); s = addDays(e, 1); }
+  let calls = 0;
+  while (stack.length && calls++ < 800) {
+    const [a, b] = stack.pop();
+    const rows = await windsorFetch(apiKey, a, b, fields, extra);
+    if (rows.length >= WINDSOR_PAGE_SIZE && a !== b) {
+      const mid = addDays(a, Math.floor(daysBetween(a, b) / 2));
+      stack.push([a, mid], [addDays(mid, 1), b]);  // truncated → split & retry
+    } else {
+      // A single day at the cap can't be split any further, so this is the one
+      // case where rows are genuinely lost. Never let that pass silently —
+      // spend/demos would be undercounted with no visible signal.
+      if (rows.length >= WINDSOR_PAGE_SIZE) {
+        console.error(`windsorFetchAll: ${a} hit the ${WINDSOR_PAGE_SIZE}-row cap and cannot be split further — data for this day is TRUNCATED (fields: ${fields.slice(0, 120)})`);
+      }
+      out.push(...rows);
+    }
+  }
+  return out;
+}
+
 // Main ad data (guide Section 1)
 async function fetchWindsorAds(apiKey, from, to) {
   // META_LEAD_FIELDS lets processAdSpend add "Leads (Form)" to Demos for
   // allowlisted Meta lead-gen campaigns (see metaLeadDemos).
-  const fields = 'date,datasource,campaign_name,spend,clicks,impressions,ctr,conversions,externalwebsiteconversions,conversions_submit_application_total,all_conversions' + META_LEAD_FIELDS;
-  return windsorFetch(apiKey, from, to, fields);
+  // META_CAPI_FIELDS + META_PROMOTED_OBJ_FIELD let processAdSpend count each
+  // Meta campaign's REAL optimized conversion, so the channel total matches the
+  // per-campaign numbers in the ad tables (see metaDemos).
+  const base = 'date,datasource,campaign_name,spend,clicks,impressions,ctr,conversions,externalwebsiteconversions,conversions_submit_application_total,all_conversions' + META_LEAD_FIELDS + META_CAPI_FIELDS;
+  // adset_promoted_object is a Meta ad-set dimension on a MIXED-connector query.
+  // It's now safe row-count-wise (windsorFetchAll paginates), but if the /all
+  // endpoint rejects the field for the other connectors we'd get nothing back —
+  // and empty ad data would zero out spend. So fall back to the field-free
+  // query rather than ever returning an empty set because of it.
+  const withTarget = await windsorFetchAll(apiKey, from, to, base + META_PROMOTED_OBJ_FIELD);
+  if (withTarget.length) return withTarget;
+  const plain = await windsorFetchAll(apiKey, from, to, base);
+  if (plain.length) console.error('fetchWindsorAds: adset_promoted_object query returned 0 rows; fell back without it (channel demos use the legacy definition for this window)');
+  return plain;
 }
 
 // LinkedIn demo override (guide Section 1 — separate conversion_name fetch)
@@ -1092,8 +1137,12 @@ function processAdSpend(rows, linkedInDemoOverride) {
 
     let demos = 0;
     if (key === 'meta') {
-      // Allowlisted lead-gen campaigns count Leads (Form) toward Demos.
-      demos = (parseInt(row.conversions_submit_application_total)||0) + metaLeadDemos(row.campaign_name, row);
+      // Same definition as the ad tables (metaDemos): the campaign's REAL
+      // optimized conversion when adset_promoted_object identifies one, else
+      // submit_application; plus Leads (Form) on allowlisted lead-gen campaigns.
+      // Unified so the Channel Performance total agrees with the per-campaign
+      // Conversions column instead of using a second, narrower definition.
+      demos = metaDemos(row);
     } else if (key === 'linkedin') {
       demos = parseInt(row.externalwebsiteconversions)||0; // overridden below
     } else if (key === 'tiktok') {
