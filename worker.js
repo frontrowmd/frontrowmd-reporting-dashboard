@@ -107,6 +107,50 @@ function capiConvLabel(campaignName, adsetName) {
 // "Results" for campaigns that optimize for a CAPI custom conversion instead of
 // the submit-application pixel event). Appended to Meta fetches.
 const META_CAPI_FIELDS = ',actions_capi_demo,actions_capi_webinar,actions_capi_demo_webinar';
+
+// ── Meta optimization target (real "conversion result name") ────────────────
+// Windsor exposes the account's custom conversions two ways, and BOTH are
+// needed because neither is complete on its own:
+//   • one flat NUMERIC column per custom conversion (actions_capi_*) — safe to
+//     add to a spend query, no row multiplication;
+//   • the configured target id inside adset_promoted_object (ad-set grain).
+// The human-readable NAME lives only in the Windsor field LABEL — there is no
+// dimension that returns it alongside spend (custom_conversion_action_name is a
+// dimension that fans rows out ~36x and inflates spend), so the id→name map is
+// mirrored here. Verified verbatim against get_fields on the facebook connector.
+// NOTE: several names exist under multiple ids in Meta (e.g. "CAPI -- Demo +
+// Webinar" has 4); only the id below carries an actions_* column, so an ad set
+// optimizing for a duplicate id resolves by name here but has no count column.
+const META_CUSTOM_CONVERSIONS = [
+  { field: 'actions_capi_clinicians',                 id: '1403040218341205',  label: 'CAPI -- Clinicians' },
+  { field: 'actions_capi_demo_webinar_ebook_disqual', id: '27583605861331174', label: 'CAPI -- Demo + Webinar + Ebook + Disqual' },
+  { field: 'actions_capi_disqual',                    id: '2138656430023236',  label: 'CAPI -- Disqual' },
+  { field: 'actions_capi_ebook',                      id: '990268934047832',   label: 'CAPI -- Ebook' },
+  { field: 'actions_capi_demo_webinar',               id: '1489552102408235',  label: 'CAPI -- Demo + Webinar' },
+  { field: 'actions_capi_webinar',                    id: '986373240899325',   label: 'CAPI -- Webinar' },
+  { field: 'actions_capi_demo',                       id: '910686358708623',   label: 'CAPI -- Demo' },
+  { field: 'actions_combined_demos_webinars',         id: '1028010476340460',  label: 'Combined -- Demos + Webinars' },
+  { field: 'actions_fake_test',                       id: '2352065058650788',  label: 'Fake test' },
+];
+const META_CC_BY_ID = {};
+for (const _cc of META_CUSTOM_CONVERSIONS) META_CC_BY_ID[_cc.id] = _cc.label;
+
+// Optimization target for a Meta ad set, parsed from adset_promoted_object
+// ("the object this ad set is optimizing for" — a JSON-encoded STRING).
+// custom_conversion_id is present only when custom_event_type === 'OTHER' (i.e.
+// a custom conversion); otherwise the standard pixel event IS the target
+// (e.g. SUBMIT_APPLICATION → "Submit Application"). '' when unknown.
+function metaOptTarget(promotedObjectRaw) {
+  if (!promotedObjectRaw) return '';
+  let o;
+  try { o = JSON.parse(promotedObjectRaw); } catch (e) { return ''; }
+  if (!o || typeof o !== 'object') return '';
+  const ccId = o.custom_conversion_id != null ? String(o.custom_conversion_id) : '';
+  if (ccId) return META_CC_BY_ID[ccId] || ('Custom conversion ' + ccId);
+  const evt = String(o.custom_event_type || '').trim();
+  if (!evt || evt === 'OTHER') return '';
+  return evt.split('_').map(w => w ? w.charAt(0) + w.slice(1).toLowerCase() : '').join(' ');
+}
 // Demos a Meta row contributes via its configured CAPI custom conversion, or -1
 // when the row's campaign doesn't use CAPI (caller falls back to
 // submit_application). Mirrors capiConvLabel: the TEST "Combined Ad Sets"
@@ -3725,7 +3769,10 @@ async function fetchCreativeFatigue(apiKey) {
 async function fetchAzAudiences(apiKey, from, to) {
   const results = {};
   const configs = {
-    meta:   { connector:'facebook', fields:'date,adset_name,campaign_name,spend,clicks,impressions,conversions_submit_application_total,adset_status,adset_effective_status'+META_LEAD_FIELDS+META_CAPI_FIELDS, nameField:'adset_name', demoField:'conversions_submit_application_total', statusField:'adset_effective_status', statusFallback:'adset_status' },
+    // adset_promoted_object carries the real optimization target. It's an
+    // Ad-table field but this query is already ad-set grain, so it adds no rows
+    // (verified: same 13 rows / same spend total as without it).
+    meta:   { connector:'facebook', fields:'date,adset_name,campaign_name,spend,clicks,impressions,conversions_submit_application_total,adset_status,adset_effective_status,adset_promoted_object'+META_LEAD_FIELDS+META_CAPI_FIELDS, nameField:'adset_name', demoField:'conversions_submit_application_total', statusField:'adset_effective_status', statusFallback:'adset_status' },
     google: { connector:'google_ads', fields:'date,ad_group_name,campaign_name,spend,clicks,impressions,conversions', nameField:'ad_group_name', demoField:'conversions' },
     tiktok: { connector:'tiktok', fields:'date,ad_group_name,campaign_name,spend,clicks,impressions,conversions', nameField:'ad_group_name', demoField:'conversions' },
   };
@@ -3746,7 +3793,13 @@ async function fetchAzAudiences(apiKey, from, to) {
       const campName = row.campaign_name || '';
       // Google: filter out YouTube campaigns
       if (ch === 'google' && /\byt\b|youtube/i.test(campName)) continue;
-      if (!map[name]) map[name] = { name, campaign: '', spend: 0, clicks: 0, impressions: 0, demos: 0, status: null, _statusDate: '' };
+      if (!map[name]) map[name] = { name, campaign: '', spend: 0, clicks: 0, impressions: 0, demos: 0, status: null, _statusDate: '', optTarget: '' };
+      // Real optimization target from the platform (Meta only). Same for every
+      // row of an ad set, so first non-empty wins.
+      if (ch === 'meta' && !map[name].optTarget) {
+        const _ot = metaOptTarget(row.adset_promoted_object);
+        if (_ot) map[name].optTarget = _ot;
+      }
       // Authoritative ad-set status (effective_status → PAUSED when the ad set /
       // its campaign is OFF). This is the source of truth for the row's status,
       // instead of guessing "active if any creative is active" (which read each
@@ -3851,6 +3904,16 @@ function buildAzResponse(period, prior, priorMonth, windsor, creatives, priorW, 
         return { ...a, demos, cpd: demos > 0 ? a.spend / demos : null, qualified:ca.qualified||0, pruned:ca.pruned||0, pendingEval:ca.pendingEval||0, rescheduled:ca.rescheduled||0, noShow:ca.noShow||0, pending:ca.pending||0, blank:ca.blank||0, attributedTotal:demos };
       });
     }
+    // Campaign-level optimization target, rolled up from its ad sets (the target
+    // is configured per ad set). One distinct target → that name; several → the
+    // distinct names joined, so a mixed campaign isn't mislabeled as one thing.
+    const campOptTargets = {};
+    for (const a of (audiences?.[ch] || [])) {
+      if (!a || !a.optTarget || !a.campaign) continue;
+      const k = a.campaign.toLowerCase();
+      if (!campOptTargets[k]) campOptTargets[k] = [];
+      if (campOptTargets[k].indexOf(a.optTarget) < 0) campOptTargets[k].push(a.optTarget);
+    }
     const mergedCamps = [];
     for (const c of Object.values(windsor[ch]?.campaigns||{})) {
       const campKey = c.name.toLowerCase();
@@ -3860,7 +3923,8 @@ function buildAzResponse(period, prior, priorMonth, windsor, creatives, priorW, 
       // UTM-attributed demos of their child ad sets; other channels use Windsor.
       const demos = ch === 'linkedin' ? (liGroupDemos[c.name] || 0) : c.demos;
       const cpd = demos > 0 ? c.spend / demos : null;
-      mergedCamps.push({ ...c, demos, cpd, qualified:ca.qualified||0, pruned:ca.pruned||0, pendingEval:ca.pendingEval||0, rescheduled:ca.rescheduled||0, noShow:ca.noShow||0, pending:ca.pending||0, blank:ca.blank||0, attributedTotal:attrTotal });
+      const optTarget = (campOptTargets[campKey] || []).join(' · ');
+      mergedCamps.push({ ...c, demos, cpd, optTarget, qualified:ca.qualified||0, pruned:ca.pruned||0, pendingEval:ca.pendingEval||0, rescheduled:ca.rescheduled||0, noShow:ca.noShow||0, pending:ca.pending||0, blank:ca.blank||0, attributedTotal:attrTotal });
     }
     mergedCamps.sort((a,b)=>b.demos-a.demos);
 
