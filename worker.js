@@ -462,7 +462,14 @@ async function windsorFetch(apiKey, from, to, fields, extra = '') {
 // by date and bisect any chunk that comes back at the cap (same strategy as
 // azWindsorFetchAll). Without this, a high-cardinality or long-window fetch
 // quietly loses rows and undercounts spend.
-async function windsorFetchAll(apiKey, from, to, fields, extra = '', chunkDays = 30) {
+// chunkDays defaults to the WHOLE range (one request) on purpose. fetchWindsorAds
+// runs 3x per /api/data call (current + prior + prior-month), and Cloudflare caps
+// subrequests per invocation — pre-chunking by 30 days multiplied those 3 calls
+// into dozens and blew the budget, which made ad spend come back empty across the
+// dashboard. Starting with a single request keeps the normal case at 1 subrequest;
+// the bisect-on-truncation path below still protects windows that actually exceed
+// the row cap, so we get the safety without the cost.
+async function windsorFetchAll(apiKey, from, to, fields, extra = '', chunkDays = 3650) {
   const addDays = (ds, n) => { const d = new Date(ds + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return fmt(d); };
   const daysBetween = (a, b) => Math.round((new Date(b + 'T00:00:00Z') - new Date(a + 'T00:00:00Z')) / 86400000);
   const out = [];
@@ -496,17 +503,15 @@ async function fetchWindsorAds(apiKey, from, to) {
   // META_CAPI_FIELDS + META_PROMOTED_OBJ_FIELD let processAdSpend count each
   // Meta campaign's REAL optimized conversion, so the channel total matches the
   // per-campaign numbers in the ad tables (see metaDemos).
-  const base = 'date,datasource,campaign_name,spend,clicks,impressions,ctr,conversions,externalwebsiteconversions,conversions_submit_application_total,all_conversions' + META_LEAD_FIELDS + META_CAPI_FIELDS;
-  // adset_promoted_object is a Meta ad-set dimension on a MIXED-connector query.
-  // It's now safe row-count-wise (windsorFetchAll paginates), but if the /all
-  // endpoint rejects the field for the other connectors we'd get nothing back —
-  // and empty ad data would zero out spend. So fall back to the field-free
-  // query rather than ever returning an empty set because of it.
-  const withTarget = await windsorFetchAll(apiKey, from, to, base + META_PROMOTED_OBJ_FIELD);
-  if (withTarget.length) return withTarget;
-  const plain = await windsorFetchAll(apiKey, from, to, base);
-  if (plain.length) console.error('fetchWindsorAds: adset_promoted_object query returned 0 rows; fell back without it (channel demos use the legacy definition for this window)');
-  return plain;
+  // Deliberately does NOT request adset_promoted_object. It's a Meta ad-set
+  // dimension on the MIXED-connector /all endpoint; sending it risks changing or
+  // emptying the response for the other connectors, and an empty response here
+  // zeroes out spend everywhere downstream. Channel-total Meta demos therefore
+  // keep the submit_application + lead-forms definition (see processAdSpend).
+  // Unifying with the per-campaign definition needs a way to verify the live
+  // response first — see the note in processAdSpend.
+  const fields = 'date,datasource,campaign_name,spend,clicks,impressions,ctr,conversions,externalwebsiteconversions,conversions_submit_application_total,all_conversions' + META_LEAD_FIELDS;
+  return windsorFetchAll(apiKey, from, to, fields);
 }
 
 // LinkedIn demo override (guide Section 1 — separate conversion_name fetch)
@@ -1137,12 +1142,12 @@ function processAdSpend(rows, linkedInDemoOverride) {
 
     let demos = 0;
     if (key === 'meta') {
-      // Same definition as the ad tables (metaDemos): the campaign's REAL
-      // optimized conversion when adset_promoted_object identifies one, else
-      // submit_application; plus Leads (Form) on allowlisted lead-gen campaigns.
-      // Unified so the Channel Performance total agrees with the per-campaign
-      // Conversions column instead of using a second, narrower definition.
-      demos = metaDemos(row);
+      // Allowlisted lead-gen campaigns count Leads (Form) toward Demos.
+      // NOT unified with the ad tables' metaDemos(): that needs
+      // adset_promoted_object, which fetchWindsorAds can't safely request off
+      // the mixed-connector endpoint (see the note there). So the channel total
+      // may differ slightly from the sum of the per-campaign Conversions column.
+      demos = (parseInt(row.conversions_submit_application_total)||0) + metaLeadDemos(row.campaign_name, row);
     } else if (key === 'linkedin') {
       demos = parseInt(row.externalwebsiteconversions)||0; // overridden below
     } else if (key === 'tiktok') {
