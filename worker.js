@@ -3340,6 +3340,13 @@ const AZ_CONNECTORS = {
   youtube:  { connector:'google_ads', demoField:'conversions', hasFreq:false, thumbField:null },
   linkedin: { connector:'linkedin',   demoField:'externalwebsiteconversions', hasFreq:false, thumbField:'creative_thumbnail' },
   tiktok:   { connector:'tiktok',     demoField:'conversions', hasFreq:true, thumbField:null },
+  // demoField null: neither connector reports a demo-equivalent conversion.
+  // Reddit only exposes per-action counters (conversion_page_visit_clicks etc.
+  // — page visits, not demos, so counting them as Conversions would mislead);
+  // OpenAI Ads has no conversion metric at all. Spend/clicks/impressions are
+  // real. Matches the 0 these channels show in Channel Performance.
+  reddit:   { connector:'reddit',     demoField:null, hasFreq:false, thumbField:null },
+  chatgpt:  { connector:'openai_ads', demoField:null, hasFreq:false, thumbField:null },
 };
 
 const AZ_PAGE_SIZE = 5000;
@@ -3417,7 +3424,10 @@ function rollupStatus(obj, rawUpper, dateStr) {
 async function fetchAzCampaigns(apiKey, from, to) {
   const base = 'date,campaign_name,spend,clicks,impressions';
   // LinkedIn per-connector endpoint uses 'campaign' not 'campaign_name'
-  const [fbRows, gaRows, liCampRows, liDemoTotal, ttRows] = await Promise.all([
+  // Reddit uses campaign_name; OpenAI Ads only has `campaign` (no _name).
+  // Both are .catch-guarded so a failure on these newer connectors can't reject
+  // Promise.all and take the established channels down with them.
+  const [fbRows, gaRows, liCampRows, liDemoTotal, ttRows, rdRows, oaRows] = await Promise.all([
     // adset_promoted_object drops this to ad-set grain; aggRows re-aggregates by
     // campaign_name so spend/demo totals are unchanged, and azWindsorFetchAll
     // paginates so the extra rows can't be truncated.
@@ -3426,13 +3436,16 @@ async function fetchAzCampaigns(apiKey, from, to) {
     azWindsorFetchAll(apiKey, 'linkedin', from, to, 'date,campaign,campaign_group_name,spend,clicks,impressions,campaign_status'),
     fetchLinkedInDemos(apiKey, from, to),
     azWindsorFetchAll(apiKey, 'tiktok', from, to, base+',conversions,frequency,campaign_status'),
+    azWindsorFetchAll(apiKey, 'reddit', from, to, base+',campaign_status').catch(e => { console.error('Reddit campaign fetch:', e.message); return []; }),
+    azWindsorFetchAll(apiKey, 'openai_ads', from, to, 'date,campaign,spend,clicks,impressions,campaign_status').catch(e => { console.error('OpenAI campaign fetch:', e.message); return []; }),
   ]);
 
   function aggRows(rows, ch, cfg, filterFn, demoFilterFn) {
     const camps = {};
     for (const row of rows) {
       if (filterFn && !filterFn(row)) continue;
-      const name = row.campaign_name || '(no name)';
+      // OpenAI Ads returns `campaign`, every other connector `campaign_name`.
+      const name = row.campaign_name || row.campaign || '(no name)';
       if (!camps[name]) camps[name] = { name, spend:0, clicks:0, impressions:0, demos:0, freqVals:[], dates:[], status:null, _statusDate:'' };
       camps[name].spend += parseFloat(row.spend)||0;
       camps[name].clicks += parseInt(row.clicks)||0;
@@ -3532,6 +3545,8 @@ async function fetchAzCampaigns(apiKey, from, to) {
     youtube:  aggRows(gaRows, 'youtube', AZ_CONNECTORS.youtube, r => /\byt\b|youtube/i.test(r.campaign_name||'')),
     linkedin: aggLinkedIn(liCampRows, liDemoTotal),
     tiktok:   aggRows(ttRows, 'tiktok', AZ_CONNECTORS.tiktok),
+    reddit:   aggRows(rdRows, 'reddit', AZ_CONNECTORS.reddit),
+    chatgpt:  aggRows(oaRows, 'chatgpt', AZ_CONNECTORS.chatgpt),
   };
 }
 
@@ -3880,6 +3895,10 @@ async function fetchAzAudiences(apiKey, from, to) {
     meta:   { connector:'facebook', fields:'date,adset_name,campaign_name,spend,clicks,impressions,conversions_submit_application_total,adset_status,adset_effective_status,adset_promoted_object'+META_LEAD_FIELDS+META_CAPI_FIELDS, nameField:'adset_name', demoField:'conversions_submit_application_total', statusField:'adset_effective_status', statusFallback:'adset_status' },
     google: { connector:'google_ads', fields:'date,ad_group_name,campaign_name,spend,clicks,impressions,conversions', nameField:'ad_group_name', demoField:'conversions' },
     tiktok: { connector:'tiktok', fields:'date,ad_group_name,campaign_name,spend,clicks,impressions,conversions', nameField:'ad_group_name', demoField:'conversions' },
+    // Reddit groups by ad_group_name; OpenAI Ads by ad_group (and `campaign`,
+    // not campaign_name). Neither reports a demo-equivalent conversion.
+    reddit: { connector:'reddit', fields:'date,ad_group_name,campaign_name,spend,clicks,impressions', nameField:'ad_group_name', demoField:null },
+    chatgpt: { connector:'openai_ads', fields:'date,ad_group,campaign,spend,clicks,impressions', nameField:'ad_group', demoField:null },
   };
 
   const promises = [], chKeys = [];
@@ -3895,7 +3914,7 @@ async function fetchAzAudiences(apiKey, from, to) {
     for (const row of rows) {
       const name = (row[cfg.nameField] || '').trim();
       if (!name) continue;
-      const campName = row.campaign_name || '';
+      const campName = row.campaign_name || row.campaign || '';  // OpenAI Ads uses `campaign`
       // Google: filter out YouTube campaigns
       if (ch === 'google' && /\byt\b|youtube/i.test(campName)) continue;
       if (!map[name]) map[name] = { name, campaign: '', spend: 0, clicks: 0, impressions: 0, demos: 0, status: null, _statusDate: '', optTarget: '' };
