@@ -20,7 +20,11 @@ const CHANNEL_LABELS = { meta: 'Meta', google: 'Google', linkedin: 'LinkedIn', t
 // channel payload and renders non-Budget cells as em-dashes; Total row
 // skips them. (Field name avoids collision with the analyzer payload's
 // existing `pending` demo-status count.)
-const PENDING_CHANNELS = new Set(['chatgpt', 'reddit']);
+// Reddit + OpenAI Ads connectors went live 2026-08, so they now report real
+// spend and are no longer stubs. Note neither exposes a conversion metric via
+// the shared /all endpoint, so their Demos/CPD/CPQD read 0 — that's a source
+// limitation, not a missing connector (see processAdSpend).
+const PENDING_CHANNELS = new Set([]);
 
 const BUDGET_BY_MONTH = {
   '2026-01': { meta: 45000,  linkedin: 30000, google: 5000,  tiktok: 5000,  youtube: 5000 },
@@ -34,9 +38,9 @@ const BUDGET_BY_MONTH = {
   // until the data integration ships.
   '2026-06': { meta: 105000, linkedin: 35000, google: 25000, tiktok: 25000, youtube: 0, chatgpt: 10000 },
   '2026-07': { meta: 43080, linkedin: 13260, google: 7215, tiktok: 1445, youtube: 0, chatgpt: 0 },
-  // August plan — concentrated on Meta ("Facebook") with LinkedIn/Google
-  // keep-alive; TikTok/YouTube/ChatGPT off. Total = $27,500.
-  '2026-08': { meta: 20500, linkedin: 5000, google: 2000, tiktok: 0, youtube: 0, chatgpt: 0 },
+  // August plan — Meta scaled up, LinkedIn/Google keep-alive, and new Reddit +
+  // ChatGPT (OpenAI) tests. TikTok/YouTube off. Total = $42,500.
+  '2026-08': { meta: 25500, linkedin: 5000, google: 2000, reddit: 5000, chatgpt: 5000, tiktok: 0, youtube: 0 },
 };
 const BUDGET_FALLBACK = BUDGET_BY_MONTH['2026-08'];
 function getBudgetsForMonth(dateStr) {
@@ -436,6 +440,8 @@ function mapUtmToChannel(src, med) {
   if (s === 'google' && (m === 'cpc' || m === 'paid')) return 'google';
   if (s === 'linkedin') return 'linkedin';
   if (['tiktok','tik_tok','tt','tiktok_ads'].includes(s)) return 'tiktok';
+  if (['reddit','reddit_ads'].includes(s)) return 'reddit';
+  if (['openai','openai_ads','chatgpt','chat_gpt'].includes(s)) return 'chatgpt';
   if (s === 'youtube') return 'youtube';
   return null;
 }
@@ -1133,6 +1139,10 @@ function processAdSpend(rows, linkedInDemoOverride) {
     if (/facebook|meta|fb|ig|instagram/.test(ds)) key = 'meta';
     else if (/linkedin/.test(ds)) key = 'linkedin';
     else if (/tiktok/.test(ds)) key = 'tiktok';
+    else if (/reddit/.test(ds)) key = 'reddit';
+    // Windsor's datasource for OpenAI Ads is literally "openai_ads" — match on
+    // the substring, not an exact "openai"/"chatgpt".
+    else if (/openai|chatgpt/.test(ds)) key = 'chatgpt';
     else if (/google/.test(ds)) key = isYT ? 'youtube' : 'google';
     else continue;
 
@@ -1152,6 +1162,12 @@ function processAdSpend(rows, linkedInDemoOverride) {
       demos = parseInt(row.externalwebsiteconversions)||0; // overridden below
     } else if (key === 'tiktok') {
       demos = parseInt(row.conversions)||0;
+    } else if (key === 'reddit' || key === 'chatgpt') {
+      // Neither connector exposes a conversion metric on the /all endpoint:
+      // Reddit splits conversions into per-action fields (conversion_*_clicks)
+      // that aren't shared across connectors, and OpenAI Ads has none at all.
+      // Spend / clicks / impressions are real; conversions stay 0 by design.
+      demos = 0;
     } else {
       demos = Math.ceil(parseFloat(row.conversions)||0);
     }
