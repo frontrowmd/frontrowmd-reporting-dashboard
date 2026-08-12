@@ -449,6 +449,11 @@ function mapUtmToChannel(src, med) {
 // ---------------------------------------------------------------------------
 // Windsor Fetching
 // ---------------------------------------------------------------------------
+// /api/data response-cache version. Bump on any payload-shape change so a new
+// deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
+// channels added, PENDING_CHANNELS emptied.
+const API_CACHE_VER = 'v7';
+
 const WINDSOR_PAGE_SIZE = 5000;
 async function windsorFetch(apiKey, from, to, fields, extra = '') {
   const url = `https://connectors.windsor.ai/all?api_key=${apiKey}&date_from=${from}&date_to=${to}&fields=${fields}&page_size=${WINDSOR_PAGE_SIZE}${extra}`;
@@ -5332,7 +5337,12 @@ export default {
       // recent payload is served instead. The Refresh button sends fresh:true to
       // bypass; only successful (non-error) payloads are cached.
       const _win = body.window || '7d';
-      const _ck = 'apidata_resp_v6_' + _win + '_' + (body.from||'') + '_' + (body.to||'') + '_' + (body.vsFrom||'') + '_' + (body.vsTo||'');
+      // BUMP API_CACHE_VER whenever the payload SHAPE changes (new channels,
+      // renamed fields, changed metric definitions). The key is otherwise
+      // deploy-independent, so a new build would keep serving the previous
+      // build's cached payload until the TTL lapsed — which reads as "I
+      // deployed/refreshed but the data didn't change".
+      const _ck = 'apidata_resp_' + API_CACHE_VER + '_' + _win + '_' + (body.from||'') + '_' + (body.to||'') + '_' + (body.vsFrom||'') + '_' + (body.vsTo||'');
       if (!body.fresh && env.CONTENT_STORE) {
         try {
           const raw = await env.CONTENT_STORE.get(_ck);

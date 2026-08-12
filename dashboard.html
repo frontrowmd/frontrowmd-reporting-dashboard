@@ -777,7 +777,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t08';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t09';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2850,10 +2850,12 @@ function buildSectionNav(page){
     h+='<button class="secnav-btn" data-t="'+el.id+'" onclick="secNavGo(\''+el.id+'\')" title="'+raw.replace(/"/g,'&quot;')+'">'+lbl+'</button>';
   });
   h+='</div>';
-  // Sit BELOW the time-frame selector (#date-header / #irfan-date-header) so
-  // that bar stays put; the nav then sticks to the top as you scroll past it.
+  // Attach directly under the time-frame header (#date-header /
+  // #irfan-date-header): collapse that header's bottom margin so the two read
+  // as one block, then the nav sticks to the top once you scroll past it.
   const hdr=root.querySelector('#date-header, #irfan-date-header');
-  if(hdr)hdr.insertAdjacentHTML('afterend',h); else root.insertAdjacentHTML('afterbegin',h);
+  if(hdr){ hdr.style.marginBottom='0'; hdr.insertAdjacentHTML('afterend',h); }
+  else root.insertAdjacentHTML('afterbegin',h);
   _secNavSpy();
 }
 function _secNavMain(){return document.querySelector('.main');}
@@ -5170,7 +5172,7 @@ function renderDemosPerDay(d, targetId){
   // scheduledByDayScale10KPlus (fallback to the pre-launch-only scale series);
   // All uses scheduledByDay. Stash d so the toggle can re-render in place.
   window._dailyData=window._dailyData||{};window._dailyData[_tid]=d;
-  const _mode=(window._dailyMode&&window._dailyMode[_tid])||'excl';
+  const _mode=(window._dailyMode&&window._dailyMode[_tid])||'all';   // default: All Demos
   const _isScale=(_mode==='excl');                 // exclude small brands
   const _isAllWeb=(_mode==='allweb');              // all demos + webinars
   const sByDay=(_isAllWeb?(d.demoTracking.scheduledByDayAll||d.demoTracking.scheduledByDay):(_isScale?(d.demoTracking.scheduledByDayScale10KPlus||d.demoTracking.scheduledByDayScale):d.demoTracking.scheduledByDay))||{};
