@@ -452,7 +452,7 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v9';
+const API_CACHE_VER = 'v10';
 
 const WINDSOR_PAGE_SIZE = 5000;
 async function windsorFetch(apiKey, from, to, fields, extra = '') {
@@ -508,42 +508,39 @@ async function windsorFetchAll(apiKey, from, to, fields, extra = '', chunkDays =
 }
 
 // Main ad data (guide Section 1)
+// Per-connector ad fetch. Each connector is queried on its OWN endpoint with
+// only the fields it actually has, then tagged with a `datasource` so
+// processAdSpend routes it exactly as before.
+//
+// WHY NOT /all: that endpoint spans every connected connector with ONE shared
+// field list. Connecting Reddit + OpenAI Ads broke it — openai_ads has no
+// campaign_name, and neither new connector has
+// conversions_submit_application_total / externalwebsiteconversions — so the
+// combined query failed, windsorFetch returned [], and every spend figure read
+// as a legitimate $0. Scoping /all with a multi-connector param was also
+// unproven. This uses azWindsorFetch, the same per-connector call the ad tables
+// already rely on, so each connector only ever sees fields it supports and one
+// failing connector can never blank the others.
+const WINDSOR_AD_SOURCES = [
+  { connector:'facebook',   fields:'date,campaign_name,spend,clicks,impressions,ctr,conversions_submit_application_total' + META_LEAD_FIELDS },
+  { connector:'google_ads', fields:'date,campaign_name,spend,clicks,impressions,ctr,conversions' },
+  { connector:'linkedin',   fields:'date,campaign,spend,clicks,impressions,ctr,externalwebsiteconversions' },
+  { connector:'tiktok',     fields:'date,campaign_name,spend,clicks,impressions,ctr,conversions' },
+  { connector:'reddit',     fields:'date,campaign_name,spend,clicks,impressions,ctr' },
+  { connector:'openai_ads', fields:'date,campaign,spend,clicks,impressions,ctr' },
+];
 async function fetchWindsorAds(apiKey, from, to) {
-  // META_LEAD_FIELDS lets processAdSpend add "Leads (Form)" to Demos for
-  // allowlisted Meta lead-gen campaigns (see metaLeadDemos).
-  // META_CAPI_FIELDS + META_PROMOTED_OBJ_FIELD let processAdSpend count each
-  // Meta campaign's REAL optimized conversion, so the channel total matches the
-  // per-campaign numbers in the ad tables (see metaDemos).
-  // Deliberately does NOT request adset_promoted_object. It's a Meta ad-set
-  // dimension on the MIXED-connector /all endpoint; sending it risks changing or
-  // emptying the response for the other connectors, and an empty response here
-  // zeroes out spend everywhere downstream. Channel-total Meta demos therefore
-  // keep the submit_application + lead-forms definition (see processAdSpend).
-  // Unifying with the per-campaign definition needs a way to verify the live
-  // response first — see the note in processAdSpend.
-  const fields = 'date,datasource,campaign_name,spend,clicks,impressions,ctr,conversions,externalwebsiteconversions,conversions_submit_application_total,all_conversions' + META_LEAD_FIELDS;
-  // REVERTED to a single direct windsorFetch (the pre-s5t05 call). Routing this
-  // through windsorFetchAll coincided with ad spend reporting $0 across the
-  // dashboard, and this is the one fetch every spend/CPD/CAC/ROAS figure depends
-  // on — so it stays on the long-known-good path until the diagnostics below
-  // prove a paginated version behaves identically. windsorFetchAll is still used
-  // by nothing here; the truncation trade-off is documented on it.
-  // Scope the query to the connectors whose field shapes match `fields`.
-  // ROOT CAUSE of ad spend returning 0 rows: /all spans EVERY connected
-  // connector, and connecting Reddit + OpenAI Ads added connectors that don't
-  // have these columns (openai_ads has no campaign_name, and neither has
-  // conversions_submit_application_total / externalwebsiteconversions), which
-  // makes the combined query fail — windsorFetch then swallows the error and
-  // returns [], so spend read as a legitimate $0 everywhere.
-  const core = await windsorFetch(apiKey, from, to, fields, '&connectors=facebook,google_ads,linkedin,tiktok');
-  // Reddit and OpenAI Ads are fetched separately with their own field shapes and
-  // merged in, so a failure on either can never blank out the core channels.
-  const [rd, oa] = await Promise.all([
-    windsorFetch(apiKey, from, to, 'date,datasource,campaign_name,spend,clicks,impressions,ctr', '&connectors=reddit').catch(e => { console.error('Reddit ad fetch:', e.message); return []; }),
-    windsorFetch(apiKey, from, to, 'date,datasource,campaign,spend,clicks,impressions,ctr', '&connectors=openai_ads').catch(e => { console.error('OpenAI ad fetch:', e.message); return []; }),
-  ]);
-  return core.concat(rd || [], oa || []);
+  const per = await Promise.all(WINDSOR_AD_SOURCES.map(src =>
+    azWindsorFetch(apiKey, src.connector, from, to, src.fields)
+      .then(rows => (rows || []).map(r => Object.assign({}, r, {
+        datasource: src.connector,                          // drives channel routing
+        campaign_name: r.campaign_name || r.campaign || '',  // LinkedIn/OpenAI use `campaign`
+      })))
+      .catch(e => { console.error(`Windsor ad fetch ${src.connector}:`, e.message); return []; })
+  ));
+  return per.flat();
 }
+
 
 // LinkedIn demo override (guide Section 1 — separate conversion_name fetch)
 async function fetchLinkedInDemos(apiKey, from, to) {
