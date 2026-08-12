@@ -452,7 +452,7 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v7';
+const API_CACHE_VER = 'v8';
 
 const WINDSOR_PAGE_SIZE = 5000;
 async function windsorFetch(apiKey, from, to, fields, extra = '') {
@@ -522,7 +522,13 @@ async function fetchWindsorAds(apiKey, from, to) {
   // Unifying with the per-campaign definition needs a way to verify the live
   // response first — see the note in processAdSpend.
   const fields = 'date,datasource,campaign_name,spend,clicks,impressions,ctr,conversions,externalwebsiteconversions,conversions_submit_application_total,all_conversions' + META_LEAD_FIELDS;
-  return windsorFetchAll(apiKey, from, to, fields);
+  // REVERTED to a single direct windsorFetch (the pre-s5t05 call). Routing this
+  // through windsorFetchAll coincided with ad spend reporting $0 across the
+  // dashboard, and this is the one fetch every spend/CPD/CAC/ROAS figure depends
+  // on — so it stays on the long-known-good path until the diagnostics below
+  // prove a paginated version behaves identically. windsorFetchAll is still used
+  // by nothing here; the truncation trade-off is documented on it.
+  return windsorFetch(apiKey, from, to, fields);
 }
 
 // LinkedIn demo override (guide Section 1 — separate conversion_name fetch)
@@ -2804,6 +2810,40 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   let pW, pLI, pG; if (prior) { pW = windsorResults[wIdx++]; pLI = windsorResults[wIdx++]; pG = windsorResults[wIdx++]; }
   let pmW, pmLI, pmG; if (priorMonth) { pmW = windsorResults[wIdx++]; pmLI = windsorResults[wIdx++]; pmG = windsorResults[wIdx++]; }
 
+  // ── Fetch diagnostics ──────────────────────────────────────────────────────
+  // Surfaced on the payload (meta.fetchDiag) and rendered by the dashboard, so a
+  // silently-empty upstream fetch is visible instead of just showing $0. Windsor
+  // helpers swallow their own errors and return [], which is why an outage looks
+  // like a legitimate zero — this makes the difference observable.
+  const _diagSpend = (rows) => {
+    if (!Array.isArray(rows)) return null;
+    let s = 0, ds = {};
+    for (const r of rows) {
+      s += parseFloat(r.spend) || 0;
+      const k = (r.datasource || '?').toLowerCase();
+      ds[k] = (ds[k] || 0) + (parseFloat(r.spend) || 0);
+    }
+    return { rows: rows.length, spend: Math.round(s * 100) / 100, byDatasource: ds };
+  };
+  const fetchDiag = {
+    windsorAds:        _diagSpend(cW),
+    windsorAdsPrior:   prior ? _diagSpend(pW) : null,
+    windsorAdsLastMon: priorMonth ? _diagSpend(pmW) : null,
+    linkedInDemos:     (cLI == null ? 'FAILED/EMPTY' : cLI),
+    ga4Rows:           Array.isArray(cG) ? cG.length : (cG ? 'object' : 'FAILED/EMPTY'),
+    monthlyAdSpendRows: Array.isArray(monthlyAdSpend) ? monthlyAdSpend.length : (monthlyAdSpend ? 'object' : 'FAILED/EMPTY'),
+    window: { from: wFrom(current.from), to: current.to },
+  };
+  // Name the fetches that came back with nothing — the actionable bit.
+  fetchDiag.failed = [
+    (!cW || !cW.length) && 'windsorAds(current)',
+    prior && (!pW || !pW.length) && 'windsorAds(prior)',
+    priorMonth && (!pmW || !pmW.length) && 'windsorAds(lastMonth)',
+    (!cG || (Array.isArray(cG) && !cG.length)) && 'ga4',
+    (!monthlyAdSpend || (Array.isArray(monthlyAdSpend) && !monthlyAdSpend.length)) && 'monthlyAdSpend',
+  ].filter(Boolean);
+  if (fetchDiag.failed.length) console.error('fetchDiag: empty fetches →', fetchDiag.failed.join(', '), JSON.stringify(fetchDiag.windsorAds));
+
   // Irfan KPI #5 — Disqualification Form submissions + form views.
   // HubSpot's /analytics/v2/reports/forms/total?start=&end=&f=<id> returns
   // the same formViews/submissions/conversion shown in HubSpot's Forms
@@ -3186,6 +3226,7 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   console.log(`webinarDeals: ${webinarDeals.length}`);
 
   const resp = buildResponse(currentData, priorData, priorMonthData, isAllTime, ownerMap, windowType);
+  if (resp.meta) resp.meta.fetchDiag = fetchDiag;   // upstream fetch visibility
   resp.demoQualityDeals = demoQualityDeals;
   resp.webinarDeals = webinarDeals;
   resp.contactInfoMap = contactInfoMap;

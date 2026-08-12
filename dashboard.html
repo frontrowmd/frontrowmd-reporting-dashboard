@@ -182,6 +182,10 @@ html,body{height:100%}body{font-family:var(--font-b);font-size:15px;color:var(--
   transition:background .15s,color .15s,border-color .15s}
 .secnav-btn:hover{background:var(--teal-8);border-color:var(--teal-30)}
 .secnav-btn.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+/* Attach the nav to the timeframe header. These headers carry an inline
+   margin-bottom:24px, so !important is required to beat it — and doing it in CSS
+   (not an inline style set from JS) survives the header being re-rendered. */
+#date-header,#irfan-date-header{margin-bottom:0!important}
 @media(max-width:900px){.secnav{padding:8px 16px;margin:0 -32px 14px}}
 
 /* Ad-table Name column — full campaign/ad-set/creative names (no truncation).
@@ -579,7 +583,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
   </nav>
   <div class="main">
     <div class="topbar"><div style="display:flex;align-items:center;gap:12px"><button class="hamburger" id="hamburger" onclick="toggleSidebar()"><span></span><span></span><span></span></button><div class="ttl" id="ptitle" style="margin-bottom:0">Executive Dashboard</div></div><div class="flt" id="filters"></div></div>
-    <div class="dqb" id="dqb">⚠️ Some data sources may not have fully loaded. <button class="rfb" onclick="refreshData()" style="margin-left:8px;padding:6px 14px">Refresh</button></div>
+    <div class="dqb" id="dqb">⚠️ Some data sources may not have fully loaded. <button class="rfb" onclick="refreshData()" style="margin-left:8px;padding:6px 14px">Refresh</button><span id="dqb-diag" style="display:block;margin-top:8px;font-size:11px;font-family:var(--font-b);color:#92400E;line-height:1.6"></span></div>
     <!-- AI Analysis Panel -->
     <div id="ai-panel-overlay" onclick="toggleAIPanel()" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(2,15,24,.3);z-index:998;transition:opacity .25s;opacity:0"></div>
     <div id="ai-panel" style="position:fixed;top:0;right:-530px;width:520px;height:100vh;background:linear-gradient(180deg,#F8FAFC,#F0F5F9);border-left:1px solid #D4E6EF;z-index:999;transition:right .3s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;box-shadow:-8px 0 32px rgba(2,15,24,.1)">
@@ -777,7 +781,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t09';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t10';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -1854,7 +1858,25 @@ function switchPage(pg){AP=pg;document.querySelectorAll('.ni').forEach(n=>n.clas
     return;
   }
   if(!S[pg].data){if(pg==='signup')fd('mtd');else if(pg==='content'){fdContent();return;}else fd(S[pg].win);return;}renderPage();}
-function renderPage(){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));if(AP==='dashboard')renderDash();else if(AP==='irfan')renderIrfan();else if(AP==='calculator')updCalc();else if(AP==='signup')renderSignUp();else if(AP==='strategy')renderStrategy();else if(AP==='demoQuality')renderDemoQuality();else if(AP==='webinarPerf')renderWebinarPerf();else if(AP==='csession')renderCreativeSession();else if(AP==='content')renderContent();else if(AP==='outbound')renderOutbound();document.getElementById('page-'+AP).classList.add('active');if(typeof buildSectionNav==='function')buildSectionNav(AP);const d=S[AP].data;if(d){const ts=d.meta?.generatedAt;if(ts)document.getElementById('fts').textContent='Updated '+new Date(ts).toLocaleString();if(d.meta?.dataQuality&&!d.meta.dataQuality.complete)document.getElementById('dqb').classList.add('vis');}}
+function renderPage(){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));if(AP==='dashboard')renderDash();else if(AP==='irfan')renderIrfan();else if(AP==='calculator')updCalc();else if(AP==='signup')renderSignUp();else if(AP==='strategy')renderStrategy();else if(AP==='demoQuality')renderDemoQuality();else if(AP==='webinarPerf')renderWebinarPerf();else if(AP==='csession')renderCreativeSession();else if(AP==='content')renderContent();else if(AP==='outbound')renderOutbound();document.getElementById('page-'+AP).classList.add('active');if(typeof buildSectionNav==='function')buildSectionNav(AP);const d=S[AP].data;if(d){const ts=d.meta?.generatedAt;if(ts)document.getElementById('fts').textContent='Updated '+new Date(ts).toLocaleString();if(d.meta?.dataQuality&&!d.meta.dataQuality.complete)document.getElementById('dqb').classList.add('vis');_renderFetchDiag(d.meta&&d.meta.fetchDiag);}}
+// Renders upstream fetch diagnostics into the data-quality banner so an empty
+// Windsor/GA4 fetch is visible as a named failure instead of a silent $0.
+function _renderFetchDiag(fd){
+  const el=document.getElementById('dqb-diag'); if(!el)return;
+  if(!fd){el.innerHTML='';return;}
+  const w=fd.windsorAds||{};
+  const bits=[];
+  bits.push('<b>Ad spend fetch:</b> '+(w.rows!=null?w.rows+' rows · $'+(w.spend!=null?w.spend.toLocaleString():'?'):'no response'));
+  if(w.byDatasource&&Object.keys(w.byDatasource).length){
+    bits.push('<b>By source:</b> '+Object.entries(w.byDatasource).map(([k,v])=>k+' $'+Math.round(v).toLocaleString()).join(' · '));
+  }
+  if(fd.window)bits.push('<b>Window:</b> '+fd.window.from+' → '+fd.window.to);
+  if(fd.failed&&fd.failed.length)bits.push('<b style="color:#B91C1C">Empty fetches:</b> '+fd.failed.join(', '));
+  el.innerHTML=bits.join('<br>');
+  // Surface the banner on a failed fetch even when dataQuality reads complete —
+  // a zeroed ad-spend fetch otherwise renders as a legitimate $0.
+  if(fd.failed&&fd.failed.length){const b=document.getElementById('dqb');if(b)b.classList.add('vis');}
+}
 
 // ═══════════════ EXECUTIVE DASHBOARD ═══════════════
 function renderDash(){
@@ -2854,7 +2876,7 @@ function buildSectionNav(page){
   // #irfan-date-header): collapse that header's bottom margin so the two read
   // as one block, then the nav sticks to the top once you scroll past it.
   const hdr=root.querySelector('#date-header, #irfan-date-header');
-  if(hdr){ hdr.style.marginBottom='0'; hdr.insertAdjacentHTML('afterend',h); }
+  if(hdr)hdr.insertAdjacentHTML('afterend',h);   // margin collapse handled in CSS
   else root.insertAdjacentHTML('afterbegin',h);
   _secNavSpy();
 }
