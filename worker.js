@@ -23,6 +23,13 @@ function isClinicianCampaign(campaignName) {
 // own row in Channel Performance and get their own ad-table tabs — they just
 // don't move the headline numbers.
 const KPI_EXCLUDED_CHANNELS = new Set(['clinician']);
+// Clinician Targeting campaigns optimize for the "CAPI -- Clinicians" custom
+// conversion, NOT the submit-application pixel event Meta's other campaigns use,
+// so the channel counts that column instead (see META_CUSTOM_CONVERSIONS).
+const CLINICIAN_CONV_FIELD = 'actions_capi_clinicians';
+// Meta and Clinician share the facebook connector, so both need the Meta-only
+// field set on every fetch.
+function isMetaConnectorCh(ch) { return ch === 'meta' || ch === 'clinician'; }
 
 const CHANNEL_LABELS = { meta: 'Meta', clinician: 'Clinician', google: 'Google', linkedin: 'LinkedIn', tiktok: 'TikTok', chatgpt: 'ChatGPT', reddit: 'Reddit', youtube: 'YouTube' };
 
@@ -465,7 +472,7 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v11';
+const API_CACHE_VER = 'v12';
 
 const WINDSOR_PAGE_SIZE = 5000;
 async function windsorFetch(apiKey, from, to, fields, extra = '') {
@@ -535,7 +542,7 @@ async function windsorFetchAll(apiKey, from, to, fields, extra = '', chunkDays =
 // already rely on, so each connector only ever sees fields it supports and one
 // failing connector can never blank the others.
 const WINDSOR_AD_SOURCES = [
-  { connector:'facebook',   fields:'date,campaign_name,spend,clicks,impressions,ctr,conversions_submit_application_total' + META_LEAD_FIELDS },
+  { connector:'facebook',   fields:'date,campaign_name,spend,clicks,impressions,ctr,conversions_submit_application_total' + META_LEAD_FIELDS + META_CAPI_FIELDS },
   { connector:'google_ads', fields:'date,campaign_name,spend,clicks,impressions,ctr,conversions' },
   { connector:'linkedin',   fields:'date,campaign,spend,clicks,impressions,ctr,externalwebsiteconversions' },
   { connector:'tiktok',     fields:'date,campaign_name,spend,clicks,impressions,ctr,conversions' },
@@ -1198,6 +1205,9 @@ function processAdSpend(rows, linkedInDemoOverride) {
       demos = parseInt(row.externalwebsiteconversions)||0; // overridden below
     } else if (key === 'tiktok') {
       demos = parseInt(row.conversions)||0;
+    } else if (key === 'clinician') {
+      // Its optimized conversion — not submit_application.
+      demos = Math.round(parseFloat(row[CLINICIAN_CONV_FIELD]) || 0);
     } else if (key === 'reddit' || key === 'chatgpt') {
       // Neither connector exposes a conversion metric on the /all endpoint:
       // Reddit splits conversions into per-action fields (conversion_*_clicks)
@@ -3425,7 +3435,7 @@ const AZ_CONNECTORS = {
   // OpenAI Ads has no conversion metric at all. Spend/clicks/impressions are
   // real. Matches the 0 these channels show in Channel Performance.
   // Same Meta connector/fields; the campaign-name filter is what separates them.
-  clinician:{ connector:'facebook',   demoField:'conversions_submit_application_total', hasFreq:true, thumbField:'thumbnail_url' },
+  clinician:{ connector:'facebook',   demoField:CLINICIAN_CONV_FIELD, hasFreq:true, thumbField:'thumbnail_url' },
   reddit:   { connector:'reddit',     demoField:null, hasFreq:false, thumbField:null },
   chatgpt:  { connector:'openai_ads', demoField:null, hasFreq:false, thumbField:null },
 };
@@ -3652,28 +3662,28 @@ async function fetchAzCreatives(apiKey, from, to) {
     } else {
       const extra = cfg.demoField === 'conversions_submit_application_total' ? ',conversions_submit_application_total' : ',conversions';
       const freq = cfg.hasFreq ? ',frequency' : '';
-      const video = ch === 'meta' ? ',video_p25_watched_actions' : '';
-      const placement = ch === 'meta' ? ',publisher_platform,platform_position' : '';
+      const video = isMetaConnectorCh(ch) ? ',video_p25_watched_actions' : '';
+      const placement = isMetaConnectorCh(ch) ? ',publisher_platform,platform_position' : '';
       // effective_status (not ad_status) so an ad whose parent ad set / campaign
       // is OFF reports ADSET_PAUSED / CAMPAIGN_PAUSED (→ PAUSED) instead of its
       // own ACTIVE toggle. ad_status alone made paused ad sets look Active
       // because the ads inside were still toggled on. Keep ad_status as fallback.
-      const status = ch === 'meta' ? ',ad_status,effective_status' : '';
+      const status = isMetaConnectorCh(ch) ? ',ad_status,effective_status' : '';
       // ad_created_time (Meta) → the creative's launch date, window-independent.
       // Powers the "Status Date" column (Active → launch; Paused → last run).
-      const created = ch === 'meta' ? ',ad_created_time' : '';
+      const created = isMetaConnectorCh(ch) ? ',ad_created_time' : '';
       // adset_name (Meta) / ad_group_name (Google, TikTok) lets us group
       // creatives under their parent ad set for the Ad Sets table dropdown.
       // adset_promoted_object rides along on Meta (already ad grain, so no extra
       // rows) to let metaDemos count each creative's real optimized conversion.
-      const adset = ch === 'meta' ? (',adset_name' + META_PROMOTED_OBJ_FIELD) : ((ch === 'google' || ch === 'tiktok') ? ',ad_group_name' : '');
+      const adset = isMetaConnectorCh(ch) ? (',adset_name' + META_PROMOTED_OBJ_FIELD) : ((ch === 'google' || ch === 'tiktok') ? ',ad_group_name' : '');
       // Lead-form fields (Meta) so allowlisted lead-gen campaigns count
       // Leads (Form) toward Demos at the CREATIVE level too — Windsor returns
       // these per ad_name, so each creative gets its own lead count.
-      const lead = ch === 'meta' ? META_LEAD_FIELDS : '';
+      const lead = isMetaConnectorCh(ch) ? META_LEAD_FIELDS : '';
       // CAPI custom-conversion counts (Demo / Webinar / Demo+Webinar) — the real
       // "Results" for campaigns that optimize for a CAPI conversion.
-      const capi = ch === 'meta' ? META_CAPI_FIELDS : '';
+      const capi = isMetaConnectorCh(ch) ? META_CAPI_FIELDS : '';
       promises.push(azWindsorFetchAll(apiKey, cfg.connector, from, to, base + extra + freq + video + placement + status + created + adset + lead + capi, 7).catch(e => { console.error(`Creative fetch ${ch}:`, e.message); return []; }));
     }
     channels.push(ch);
@@ -3985,7 +3995,7 @@ async function fetchAzAudiences(apiKey, from, to) {
     tiktok: { connector:'tiktok', fields:'date,ad_group_name,campaign_name,spend,clicks,impressions,conversions', nameField:'ad_group_name', demoField:'conversions' },
     // Reddit groups by ad_group_name; OpenAI Ads by ad_group (and `campaign`,
     // not campaign_name). Neither reports a demo-equivalent conversion.
-    clinician: { connector:'facebook', fields:'date,adset_name,campaign_name,spend,clicks,impressions,conversions_submit_application_total,adset_status,adset_effective_status,adset_promoted_object'+META_LEAD_FIELDS+META_CAPI_FIELDS, nameField:'adset_name', demoField:'conversions_submit_application_total', statusField:'adset_effective_status', statusFallback:'adset_status', onlyClinician:true },
+    clinician: { connector:'facebook', fields:'date,adset_name,campaign_name,spend,clicks,impressions,conversions_submit_application_total,adset_status,adset_effective_status,adset_promoted_object'+META_LEAD_FIELDS+META_CAPI_FIELDS, nameField:'adset_name', demoField:CLINICIAN_CONV_FIELD, statusField:'adset_effective_status', statusFallback:'adset_status', onlyClinician:true },
     reddit: { connector:'reddit', fields:'date,ad_group_name,campaign_name,spend,clicks,impressions', nameField:'ad_group_name', demoField:null },
     chatgpt: { connector:'openai_ads', fields:'date,ad_group,campaign,spend,clicks,impressions', nameField:'ad_group', demoField:null },
   };
