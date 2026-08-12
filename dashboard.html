@@ -635,6 +635,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px 14px">
           <span style="font-family:var(--font-h);font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.08em;margin-right:4px">Ad Channel</span>
           <button class="dash-ad-tab active" data-ch="meta" onclick="dashSetAdChannel('meta')"><span class="dash-ad-tab-dot" style="background:#1877F2"></span>Meta</button>
+          <button class="dash-ad-tab" data-ch="clinician" onclick="dashSetAdChannel('clinician')"><span class="dash-ad-tab-dot" style="background:#7C3AED"></span>Clinician</button>
           <button class="dash-ad-tab" data-ch="linkedin" onclick="dashSetAdChannel('linkedin')"><span class="dash-ad-tab-dot" style="background:#0A66C2"></span>LinkedIn</button>
           <button class="dash-ad-tab" data-ch="google" onclick="dashSetAdChannel('google')"><span class="dash-ad-tab-dot" style="background:#4285F4"></span>Google</button>
           <button class="dash-ad-tab" data-ch="reddit" onclick="dashSetAdChannel('reddit')"><span class="dash-ad-tab-dot" style="background:#FF4500"></span>Reddit</button>
@@ -781,7 +782,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t12';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t13';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2518,7 +2519,7 @@ function renderIrfan(){
   const _spendPV=d.adSpend?.total?.sameTimePrior?.value??null;
   const _spendLM=d.adSpend?.total?.lastMonth?.value??null;
   let _monthBudget=0;
-  if(d.adSpend&&d.adSpend.channels){for(var _bk in d.adSpend.channels){if(d.adSpend.channels[_bk].pendingConnector)continue;_monthBudget+=(d.adSpend.channels[_bk].budget||0);}}
+  if(d.adSpend&&d.adSpend.channels){for(var _bk in d.adSpend.channels){var _bc=d.adSpend.channels[_bk];if(_bc.pendingConnector||_bc.kpiExcluded)continue;_monthBudget+=(_bc.budget||0);}}
   // Pacing bar only renders on MONTH timeframes (MTD / Last Month). On 7d /
   // YTD / All Time / custom the window spend vs a full-month budget would be
   // misleading, so those windows show just the spend total + deltas.
@@ -2951,7 +2952,7 @@ function _statusCells(sd){const days=_daysSince(sd);return '<td style="text-alig
 // Priority: optTarget = the REAL optimization target read from the ad platform
 // (Meta adset_promoted_object → custom conversion name, e.g. "CAPI -- Clinicians");
 // then capiConv = the older campaign-name heuristic; then the channel default.
-const _CONV_SRC={meta:'Submit Application',google:'Google Ads conv.',linkedin:'Demo Request (UTM)',tiktok:'TikTok conv.'};
+const _CONV_SRC={meta:'Submit Application',clinician:'Submit Application',google:'Google Ads conv.',linkedin:'Demo Request (UTM)',tiktok:'TikTok conv.'};
 function _capiSub(o,channel,withDefault){
   const lbl=(o&&o.optTarget)?o.optTarget:((o&&o.capiConv)?o.capiConv:(withDefault?(_CONV_SRC[channel]||''):''));
   if(!lbl||(!withDefault&&channel!=='meta'))return '';
@@ -2966,7 +2967,7 @@ function _curAdCh(){return S.dashboard.activeAdChannel||'meta';}
 // Shared ad-channel tab bar markup (used by the Detailed Dashboard static HTML
 // and injected into the Irfan Dashboard). activeCh drives the .active pill.
 function _adChannelTabsHTML(activeCh){
-  const chs=[['meta','Meta','#1877F2'],['linkedin','LinkedIn','#0A66C2'],['google','Google','#4285F4'],['reddit','Reddit','#FF4500'],['chatgpt','ChatGPT','#10A37F'],['tiktok','TikTok','#FF0050']];
+  const chs=[['meta','Meta','#1877F2'],['clinician','Clinician','#7C3AED'],['linkedin','LinkedIn','#0A66C2'],['google','Google','#4285F4'],['reddit','Reddit','#FF4500'],['chatgpt','ChatGPT','#10A37F'],['tiktok','TikTok','#FF0050']];
   let b='';
   for(const [id,lbl,color] of chs){
     b+='<button class="dash-ad-tab'+(activeCh===id?' active':'')+'" data-ch="'+id+'" onclick="dashSetAdChannel(\''+id+'\')"><span class="dash-ad-tab-dot" style="background:'+color+'"></span>'+lbl+'</button>';
@@ -2991,8 +2992,8 @@ window.dashSetAdChannel=function(ch){
   // Update active tab pill state
   document.querySelectorAll('.dash-ad-tab').forEach(p=>p.classList.toggle('active',p.dataset.ch===ch));
   // Update section labels + colored dots to match the chosen channel
-  const labels={meta:'Meta',tiktok:'TikTok',linkedin:'LinkedIn',google:'Google',reddit:'Reddit',chatgpt:'ChatGPT',youtube:'YouTube'};
-  const colors={meta:'#1877F2',tiktok:'#FF0050',linkedin:'#0A66C2',google:'#4285F4',reddit:'#FF4500',chatgpt:'#10A37F',youtube:'#FF0000'};
+  const labels={meta:'Meta',clinician:'Clinician',tiktok:'TikTok',linkedin:'LinkedIn',google:'Google',reddit:'Reddit',chatgpt:'ChatGPT',youtube:'YouTube'};
+  const colors={meta:'#1877F2',clinician:'#7C3AED',tiktok:'#FF0050',linkedin:'#0A66C2',google:'#4285F4',reddit:'#FF4500',chatgpt:'#10A37F',youtube:'#FF0000'};
   document.querySelectorAll('.ad-channel-label').forEach(el=>el.textContent=labels[ch]||ch);
   document.querySelectorAll('.ad-channel-dot').forEach(el=>el.style.background=colors[ch]||'var(--teal)');
   // Audiences vs Ad Groups terminology
@@ -3301,7 +3302,7 @@ function _renderIrfanMetaTables(d, channel){
   // Default to 'meta' for back-compat; Detailed Dashboard passes the active
   // ad-channel tab. Irfan Dashboard always passes 'meta' (no tabs there).
   channel = channel || 'meta';
-  const chLabel={meta:'Meta',tiktok:'TikTok',linkedin:'LinkedIn',google:'Google',reddit:'Reddit',chatgpt:'ChatGPT',youtube:'YouTube'}[channel]||channel;
+  const chLabel={meta:'Meta',clinician:'Clinician',tiktok:'TikTok',linkedin:'LinkedIn',google:'Google',reddit:'Reddit',chatgpt:'ChatGPT',youtube:'YouTube'}[channel]||channel;
   // For non-Meta channels, the ad-set/ad-group terminology differs
   const audSectionLabel=channel==='meta'?'Audiences':(channel==='linkedin'?'Audiences':'Ad Groups');
   const audItemLabel=channel==='meta'?'audience':(channel==='linkedin'?'audience':'ad group');
@@ -5081,9 +5082,13 @@ function renderCPDTable(d){
     var pARR=pMRR!=null?pMRR*eM:null,pmARR=pmMRR!=null?pmMRR*eM:null;
     var pCPD=(pSp!=null&&pWD>0)?pSp/pWD:null,pmCPD=(pmSp!=null&&pmWD>0)?pmSp/pmWD:null;
     var pCPQD=(pSp!=null&&pQ>0)?pSp/pQ:null,pmCPQD=(pmSp!=null&&pmQ>0)?pmSp/pmQ:null;
-    sumSp+=spend;sumD+=demos;sumQ+=qual;sumW+=won;sumMRR+=wMRR;
-    if(pSp!=null){hasPrior=true;pSumSp+=(pSp||0);pSumD+=(pWD||0);pSumQ+=(pQ||0);pSumW+=(pW||0);pSumMRR+=(pMRR||0);}
-    if(pmSp!=null){hasPriorMonth=true;pmSumSp+=(pmSp||0);pmSumD+=(pmWD||0);pmSumQ+=(pmQ||0);pmSumW+=(pmW||0);pmSumMRR+=(pmMRR||0);}
+    // KPI-excluded channels (e.g. Clinician) still render their own row, but are
+    // left out of the Total so it matches the headline KPI figures.
+    if(!info.kpiExcluded){
+      sumSp+=spend;sumD+=demos;sumQ+=qual;sumW+=won;sumMRR+=wMRR;
+      if(pSp!=null){hasPrior=true;pSumSp+=(pSp||0);pSumD+=(pWD||0);pSumQ+=(pQ||0);pSumW+=(pW||0);pSumMRR+=(pMRR||0);}
+      if(pmSp!=null){hasPriorMonth=true;pmSumSp+=(pmSp||0);pmSumD+=(pmWD||0);pmSumQ+=(pmQ||0);pmSumW+=(pmW||0);pmSumMRR+=(pmMRR||0);}
+    }
     var cpqdColor='var(--navy)';
     if(channelCPQD!=null&&totalCpqdBlended!=null){if(channelCPQD<totalCpqdBlended)cpqdColor='var(--green)';else if(channelCPQD<totalCpqdBlended*2)cpqdColor='var(--yellow)';else cpqdColor='var(--red)';}
     // Per-channel pacing: spend / monthly budget vs days elapsed in current month.
@@ -5105,7 +5110,7 @@ function renderCPDTable(d){
       ?'<td style="padding:7px 4px;text-align:right;font-variant-numeric:tabular-nums;color:var(--navy)">'+f$(chBudget)+'</td>'
       :'<td style="padding:7px 4px;text-align:right"><span style="color:var(--grey);font-size:10px">\u2014</span></td>';
     html+='<tr class="cpd-row" style="border-bottom:1px solid var(--border)">'+
-      '<td style="padding:7px 4px;font-weight:600;color:var(--navy)">'+info.label+'</td>'+
+      '<td style="padding:7px 4px;font-weight:600;color:var(--navy)">'+info.label+(info.kpiExcluded?' <span title="Tracked separately \u2014 excluded from the Total row and from all KPI calculations" style="font-size:9px;font-weight:600;color:#7C3AED;background:rgba(124,58,237,.10);padding:1px 6px;border-radius:99px;margin-left:2px;vertical-align:middle;cursor:help">excl. from KPIs</span>':'')+'</td>'+
       pacingCell+
       // Spend (share) cell layout — three vertical rows inside the cell:
       //   1. $ value, right-aligned (matches every other $ column)
@@ -5139,7 +5144,7 @@ function renderCPDTable(d){
   // Pending (no-connector-yet) channels are excluded so the Total row's
   // pacing/spend math reflects only trackable channels — otherwise their
   // budget would inflate the denominator while spend stays at 0.
-  var totalBudget=0;for(var k2 in channels){if(channels[k2].pendingConnector)continue;totalBudget+=(channels[k2].budget||0);}
+  var totalBudget=0;for(var k2 in channels){if(channels[k2].pendingConnector||channels[k2].kpiExcluded)continue;totalBudget+=(channels[k2].budget||0);}
   var totalPctSpent=totalBudget>0?(sumSp/totalBudget)*100:0;
   var totalPctElapsed=(function(){var t=new Date();return (t.getDate()/new Date(t.getFullYear(),t.getMonth()+1,0).getDate())*100;})();
   var totalPaceDiff=totalPctSpent-totalPctElapsed;

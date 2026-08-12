@@ -9,9 +9,22 @@
 // Constants
 // ---------------------------------------------------------------------------
 
-const DASH_CHANNELS = ['meta', 'linkedin', 'google', 'reddit', 'chatgpt', 'tiktok'];
+const DASH_CHANNELS = ['meta', 'clinician', 'linkedin', 'google', 'reddit', 'chatgpt', 'tiktok'];
 
-const CHANNEL_LABELS = { meta: 'Meta', google: 'Google', linkedin: 'LinkedIn', tiktok: 'TikTok', chatgpt: 'ChatGPT', reddit: 'Reddit', youtube: 'YouTube' };
+// "Clinician" is not a separate ad platform — it's the Meta campaigns whose name
+// contains "Clinician Targeting", split out into their own channel. Those rows
+// are removed from Meta entirely (spend, stats, budget) so nothing is counted
+// twice.
+function isClinicianCampaign(campaignName) {
+  return /clinician\s*targeting/i.test(campaignName || '');
+}
+// Channels deliberately EXCLUDED from every roll-up KPI (total ad spend, CPD,
+// CPQD, CAC, ROAS, budget pacing) on both dashboards. They still render as their
+// own row in Channel Performance and get their own ad-table tabs — they just
+// don't move the headline numbers.
+const KPI_EXCLUDED_CHANNELS = new Set(['clinician']);
+
+const CHANNEL_LABELS = { meta: 'Meta', clinician: 'Clinician', google: 'Google', linkedin: 'LinkedIn', tiktok: 'TikTok', chatgpt: 'ChatGPT', reddit: 'Reddit', youtube: 'YouTube' };
 
 // Channels with no Windsor.ai (or equivalent) connector wired up yet — we
 // still want them visible in the Channel Performance table so the budget
@@ -40,7 +53,7 @@ const BUDGET_BY_MONTH = {
   '2026-07': { meta: 43080, linkedin: 13260, google: 7215, tiktok: 1445, youtube: 0, chatgpt: 0 },
   // August plan — Meta scaled up, LinkedIn/Google keep-alive, and new Reddit +
   // ChatGPT (OpenAI) tests. TikTok/YouTube off. Total = $42,500.
-  '2026-08': { meta: 25500, linkedin: 5000, google: 2000, reddit: 5000, chatgpt: 5000, tiktok: 0, youtube: 0 },
+  '2026-08': { meta: 25500, clinician: 20000, linkedin: 5000, google: 2000, reddit: 5000, chatgpt: 5000, tiktok: 0, youtube: 0 },
 };
 const BUDGET_FALLBACK = BUDGET_BY_MONTH['2026-08'];
 function getBudgetsForMonth(dateStr) {
@@ -452,7 +465,7 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v10';
+const API_CACHE_VER = 'v11';
 
 const WINDSOR_PAGE_SIZE = 5000;
 async function windsorFetch(apiKey, from, to, fields, extra = '') {
@@ -1158,7 +1171,8 @@ function processAdSpend(rows, linkedInDemoOverride) {
 
     const isYT = /\byt\b|youtube/i.test(camp);
     let key;
-    if (/facebook|meta|fb|ig|instagram/.test(ds)) key = 'meta';
+    // Clinician Targeting campaigns are their own channel, not Meta.
+    if (/facebook|meta|fb|ig|instagram/.test(ds)) key = isClinicianCampaign(row.campaign_name) ? 'clinician' : 'meta';
     else if (/linkedin/.test(ds)) key = 'linkedin';
     else if (/tiktok/.test(ds)) key = 'tiktok';
     else if (/reddit/.test(ds)) key = 'reddit';
@@ -1195,6 +1209,9 @@ function processAdSpend(rows, linkedInDemoOverride) {
     }
 
     ch[key].spend += spend; ch[key].clicks += clicks; ch[key].impressions += impr; ch[key].windsorDemos += demos;
+    // KPI-excluded channels keep their own per-channel row but contribute
+    // nothing to the totals behind CPD / CPQD / CAC / ROAS / spend-by-day.
+    if (KPI_EXCLUDED_CHANNELS.has(key)) continue;
     tSpend += spend; tClicks += clicks; tImpr += impr; tDemos += demos;
     if (row.date) spendByDay[row.date] = (spendByDay[row.date]||0) + spend;
   }
@@ -2218,7 +2235,9 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
 
   // ── Ad Spend ──
   const budgets = getBudgetsForMonth(c.period.from);
-  const totalBudget = Object.values(budgets).reduce((s,v)=>s+v, 0);
+  // Budget total also skips KPI-excluded channels, so pacing compares like with
+  // like against the KPI spend total above.
+  const totalBudget = Object.entries(budgets).reduce((s,[k,v]) => s + (KPI_EXCLUDED_CHANNELS.has(k) ? 0 : v), 0);
   const adSpend = {
     total: buildTile(c.adSpend.total.spend, p.adSpend?.total?.spend??null, pm.adSpend?.total?.spend??null, 'Sum of all channel spend'),
     channels: {}, budgets, totalBudget,
@@ -2232,6 +2251,9 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
       ctr: c.adSpend.channels[ch]?.ctr||0,
       budget: budgets[ch]||0,
       pendingConnector: PENDING_CHANNELS.has(ch),
+      // Renders as its own row but must not feed any roll-up KPI (spend total,
+      // budget total, CPD/CPQD/CAC/ROAS, pacing). Client honours this too.
+      kpiExcluded: KPI_EXCLUDED_CHANNELS.has(ch),
       // Prior-period stats (vs P delta)
       priorSpend: p.adSpend?.channels?.[ch]?.spend??null,
       priorWindsorDemos: p.adSpend?.channels?.[ch]?.windsorDemos??null,
@@ -3402,6 +3424,8 @@ const AZ_CONNECTORS = {
   // — page visits, not demos, so counting them as Conversions would mislead);
   // OpenAI Ads has no conversion metric at all. Spend/clicks/impressions are
   // real. Matches the 0 these channels show in Channel Performance.
+  // Same Meta connector/fields; the campaign-name filter is what separates them.
+  clinician:{ connector:'facebook',   demoField:'conversions_submit_application_total', hasFreq:true, thumbField:'thumbnail_url' },
   reddit:   { connector:'reddit',     demoField:null, hasFreq:false, thumbField:null },
   chatgpt:  { connector:'openai_ads', demoField:null, hasFreq:false, thumbField:null },
 };
@@ -3597,7 +3621,10 @@ async function fetchAzCampaigns(apiKey, from, to) {
   }
 
   return {
-    meta:     aggRows(fbRows, 'meta', AZ_CONNECTORS.meta),
+    // One facebook fetch, split two ways — Meta excludes Clinician Targeting and
+    // Clinician takes only those, so no campaign is counted in both.
+    meta:     aggRows(fbRows, 'meta', AZ_CONNECTORS.meta, r => !isClinicianCampaign(r.campaign_name)),
+    clinician: aggRows(fbRows, 'clinician', AZ_CONNECTORS.clinician, r => isClinicianCampaign(r.campaign_name)),
     google:   aggRows(gaRows, 'google', AZ_CONNECTORS.google, r => !/\byt\b|youtube/i.test(r.campaign_name||'')),
     youtube:  aggRows(gaRows, 'youtube', AZ_CONNECTORS.youtube, r => /\byt\b|youtube/i.test(r.campaign_name||'')),
     linkedin: aggLinkedIn(liCampRows, liDemoTotal),
@@ -3695,6 +3722,10 @@ async function fetchAzCreatives(apiKey, from, to) {
       const isYT = /\byt\b|youtube/i.test(campName);
       const rCh = /google/.test(cfg.connector) ? (isYT ? 'youtube' : 'google') : ch;
       if (rCh !== ch) continue;
+      // Meta and Clinician share the facebook connector, so split its creatives
+      // by campaign name — each creative lands in exactly one of the two.
+      if (ch === 'clinician' && !isClinicianCampaign(campName)) continue;
+      if (ch === 'meta' && isClinicianCampaign(campName)) continue;
       const name = row.ad_name || '(no creative)';
       // Placement tracking (Meta only — other connectors don't return these fields)
       if (row.publisher_platform || row.platform_position) {
@@ -3954,6 +3985,7 @@ async function fetchAzAudiences(apiKey, from, to) {
     tiktok: { connector:'tiktok', fields:'date,ad_group_name,campaign_name,spend,clicks,impressions,conversions', nameField:'ad_group_name', demoField:'conversions' },
     // Reddit groups by ad_group_name; OpenAI Ads by ad_group (and `campaign`,
     // not campaign_name). Neither reports a demo-equivalent conversion.
+    clinician: { connector:'facebook', fields:'date,adset_name,campaign_name,spend,clicks,impressions,conversions_submit_application_total,adset_status,adset_effective_status,adset_promoted_object'+META_LEAD_FIELDS+META_CAPI_FIELDS, nameField:'adset_name', demoField:'conversions_submit_application_total', statusField:'adset_effective_status', statusFallback:'adset_status', onlyClinician:true },
     reddit: { connector:'reddit', fields:'date,ad_group_name,campaign_name,spend,clicks,impressions', nameField:'ad_group_name', demoField:null },
     chatgpt: { connector:'openai_ads', fields:'date,ad_group,campaign,spend,clicks,impressions', nameField:'ad_group', demoField:null },
   };
@@ -3972,6 +4004,10 @@ async function fetchAzAudiences(apiKey, from, to) {
       const name = (row[cfg.nameField] || '').trim();
       if (!name) continue;
       const campName = row.campaign_name || row.campaign || '';  // OpenAI Ads uses `campaign`
+      // Clinician Targeting ad sets belong to the Clinician channel only, and
+      // are correspondingly excluded from Meta.
+      if (cfg.onlyClinician && !isClinicianCampaign(campName)) continue;
+      if (ch === 'meta' && isClinicianCampaign(campName)) continue;
       // Google: filter out YouTube campaigns
       if (ch === 'google' && /\byt\b|youtube/i.test(campName)) continue;
       if (!map[name]) map[name] = { name, campaign: '', spend: 0, clicks: 0, impressions: 0, demos: 0, status: null, _statusDate: '', optTarget: '' };
@@ -4154,6 +4190,7 @@ function buildAzResponse(period, prior, priorMonth, windsor, creatives, priorW, 
       cpqd:q>0?w.spend/q:null, qualifiedPct:w.demos>0?(q/w.demos)*100:0,
       budget:budgets[ch]||0,
       pendingConnector:PENDING_CHANNELS.has(ch),
+      kpiExcluded:KPI_EXCLUDED_CHANNELS.has(ch),
       // Prior
       priorSpend:pw?.spend??null, priorDemos:pw?.demos??null, priorCtr:pw?.ctr??null,
       priorImpressions:pw?.impressions??null, priorClicks:pw?.clicks??null,
