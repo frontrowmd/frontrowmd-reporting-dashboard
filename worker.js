@@ -452,7 +452,7 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v8';
+const API_CACHE_VER = 'v9';
 
 const WINDSOR_PAGE_SIZE = 5000;
 async function windsorFetch(apiKey, from, to, fields, extra = '') {
@@ -528,7 +528,21 @@ async function fetchWindsorAds(apiKey, from, to) {
   // on — so it stays on the long-known-good path until the diagnostics below
   // prove a paginated version behaves identically. windsorFetchAll is still used
   // by nothing here; the truncation trade-off is documented on it.
-  return windsorFetch(apiKey, from, to, fields);
+  // Scope the query to the connectors whose field shapes match `fields`.
+  // ROOT CAUSE of ad spend returning 0 rows: /all spans EVERY connected
+  // connector, and connecting Reddit + OpenAI Ads added connectors that don't
+  // have these columns (openai_ads has no campaign_name, and neither has
+  // conversions_submit_application_total / externalwebsiteconversions), which
+  // makes the combined query fail — windsorFetch then swallows the error and
+  // returns [], so spend read as a legitimate $0 everywhere.
+  const core = await windsorFetch(apiKey, from, to, fields, '&connectors=facebook,google_ads,linkedin,tiktok');
+  // Reddit and OpenAI Ads are fetched separately with their own field shapes and
+  // merged in, so a failure on either can never blank out the core channels.
+  const [rd, oa] = await Promise.all([
+    windsorFetch(apiKey, from, to, 'date,datasource,campaign_name,spend,clicks,impressions,ctr', '&connectors=reddit').catch(e => { console.error('Reddit ad fetch:', e.message); return []; }),
+    windsorFetch(apiKey, from, to, 'date,datasource,campaign,spend,clicks,impressions,ctr', '&connectors=openai_ads').catch(e => { console.error('OpenAI ad fetch:', e.message); return []; }),
+  ]);
+  return core.concat(rd || [], oa || []);
 }
 
 // LinkedIn demo override (guide Section 1 — separate conversion_name fetch)

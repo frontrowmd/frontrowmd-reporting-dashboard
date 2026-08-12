@@ -173,20 +173,20 @@ html,body{height:100%}body{font-family:var(--font-b);font-size:15px;color:var(--
 /* Sticky section nav (Detailed + Irfan dashboards). The scroll container is
    .main, not the window, so position:sticky anchors to that. Negative margins
    cancel .pg's 32px padding so the bar spans the full width. */
-.secnav{position:sticky;top:0;z-index:9;display:flex;gap:5px;flex-wrap:wrap;align-items:center;
-  background:rgba(248,250,252,.94);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
-  border-bottom:1px solid var(--border);padding:10px 32px;margin:0 -32px 18px}
+/* Lives as the last row INSIDE .topbar, which is already position:sticky — so
+   the nav is attached to the bottom of the time-frame bar and pins with it.
+   Negative margins cancel .topbar's 20px/32px/16px padding so the row spans the
+   full width and sits flush on its bottom edge. */
+.secnav{display:flex;gap:5px;flex-wrap:wrap;align-items:center;
+  background:rgba(248,250,252,.7);border-top:1px solid var(--border);
+  padding:9px 32px;margin:16px -32px -16px}
 .secnav-lbl{font-family:var(--font-h);font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.08em;margin-right:2px}
 .secnav-btn{font-family:var(--font-h);font-size:10.5px;font-weight:600;color:var(--navy);background:transparent;
   border:1px solid var(--border);border-radius:50px;padding:4px 11px;cursor:pointer;white-space:nowrap;
   transition:background .15s,color .15s,border-color .15s}
 .secnav-btn:hover{background:var(--teal-8);border-color:var(--teal-30)}
 .secnav-btn.active{background:var(--navy);color:#fff;border-color:var(--navy)}
-/* Attach the nav to the timeframe header. These headers carry an inline
-   margin-bottom:24px, so !important is required to beat it — and doing it in CSS
-   (not an inline style set from JS) survives the header being re-rendered. */
-#date-header,#irfan-date-header{margin-bottom:0!important}
-@media(max-width:900px){.secnav{padding:8px 16px;margin:0 -32px 14px}}
+@media(max-width:900px){.secnav{padding:8px 16px;margin:12px -16px -12px}}
 
 /* Ad-table Name column — full campaign/ad-set/creative names (no truncation).
    Wide min-width so names get real room; wraps instead of ellipsing. */
@@ -781,7 +781,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t10';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t11';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2861,7 +2861,8 @@ const _SECNAV_SEL={dashboard:'#page-dashboard .st', irfan:'#irfan-c .irf-card-ti
 function buildSectionNav(page){
   const sel=_SECNAV_SEL[page]; if(!sel)return;
   const root=document.getElementById('page-'+page); if(!root)return;
-  const old=root.querySelector('.secnav'); if(old)old.remove();
+  const bar=document.querySelector('.main .topbar'); if(!bar)return;
+  const old=document.querySelector('.main .secnav'); if(old)old.remove();
   const heads=Array.from(document.querySelectorAll(sel)).filter(el=>(el.textContent||'').trim());
   if(heads.length<2)return;
   let h='<div class="secnav"><span class="secnav-lbl">Jump to</span>';
@@ -2872,29 +2873,32 @@ function buildSectionNav(page){
     h+='<button class="secnav-btn" data-t="'+el.id+'" onclick="secNavGo(\''+el.id+'\')" title="'+raw.replace(/"/g,'&quot;')+'">'+lbl+'</button>';
   });
   h+='</div>';
-  // Attach directly under the time-frame header (#date-header /
-  // #irfan-date-header): collapse that header's bottom margin so the two read
-  // as one block, then the nav sticks to the top once you scroll past it.
-  const hdr=root.querySelector('#date-header, #irfan-date-header');
-  if(hdr)hdr.insertAdjacentHTML('afterend',h);   // margin collapse handled in CSS
-  else root.insertAdjacentHTML('afterbegin',h);
+  // Append INSIDE .topbar (the bar holding the title + time-frame pills) as its
+  // last row, so the nav is attached to the bottom of it on page load and
+  // inherits the topbar's existing position:sticky — no separate sticky layer,
+  // no overlap math against it.
+  bar.insertAdjacentHTML('beforeend',h);
   _secNavSpy();
 }
 function _secNavMain(){return document.querySelector('.main');}
+// The whole .topbar (title + time-frame pills + nav) is sticky, so a target must
+// clear ITS full height, not just the nav row's.
+function _secNavOffset(){
+  const tb=document.querySelector('.main .topbar');
+  return (tb?tb.getBoundingClientRect().height:0)+12;
+}
 window.secNavGo=function(id){
   const el=document.getElementById(id),main=_secNavMain(); if(!el||!main)return;
-  const bar=main.querySelector('.pg.active .secnav');
-  const off=(bar?bar.offsetHeight:0)+14;
   const delta=el.getBoundingClientRect().top-main.getBoundingClientRect().top;
-  main.scrollTo({top:Math.max(0,main.scrollTop+delta-off),behavior:'smooth'});
+  main.scrollTo({top:Math.max(0,main.scrollTop+delta-_secNavOffset()),behavior:'smooth'});
 };
 // Highlight whichever section is currently at the top of the viewport.
 function _secNavSpy(){
   const main=_secNavMain(); if(!main)return;
-  const bar=main.querySelector('.pg.active .secnav'); if(!bar)return;
+  const bar=main.querySelector('.secnav'); if(!bar)return;
   const btns=Array.from(bar.querySelectorAll('.secnav-btn'));
   if(!btns.length)return;
-  const mainTop=main.getBoundingClientRect().top+bar.offsetHeight+20;
+  const mainTop=main.getBoundingClientRect().top+_secNavOffset()+8;
   let act=0;
   btns.forEach((b,i)=>{
     const el=document.getElementById(b.dataset.t);
