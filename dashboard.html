@@ -782,7 +782,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t14';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t15';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2628,11 +2628,75 @@ function _trueCpdWeekCard(d, chartId){
   var lb=LB[win]||LB.mtd;
   var fmtC=function(v){return v!=null?f$(Math.round(v)):'—';};
   var mini=function(lbl,val,calc){return '<div style="flex:1;min-width:150px;background:var(--lighter);border:1px solid var(--border);border-radius:10px;padding:12px 16px"><div style="font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em">'+lbl+'</div><div style="font-family:var(--font-h);font-size:24px;font-weight:700;color:var(--navy);margin-top:3px">'+val+'</div>'+(calc?'<div style="font-size:9.5px;color:var(--grey);margin-top:4px">'+calc+'</div>':'')+'</div>';};
+  // Mode-aware minis. Denominators come from summing the SAME daily series the
+  // chart plots, so the cards can never disagree with the chart below them.
+  window._cpdwData=window._cpdwData||{}; window._cpdwData[chartId]=d;
+  var _m=_cpdwMode(chartId);
+  var _tot=_cpdwTotals(d,_m);
+  var _mkMini=function(){
+    var t=_cpdwTotals(d,_cpdwMode(chartId));
+    return mini(lb[0],fmtC(t.curV),t.curCalc)+mini(lb[1],fmtC(t.priorV),t.priorCalc);
+  };
+  window._cpdwMini=window._cpdwMini||{}; window._cpdwMini[chartId]=_mkMini;
+  var _pill=function(mode,label){
+    var on=_m===mode;
+    return '<button onclick="toggleCpdWeekMode(\''+chartId+'\',\''+mode+'\')" style="font-family:var(--font-h);font-size:11px;font-weight:700;letter-spacing:.02em;padding:6px 14px;border:none;background:'+(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+';cursor:pointer;transition:background .15s,color .15s">'+label+'</button>';
+  };
+  var _toggle='<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;margin:10px 0 2px">'
+    +_pill('all','All Demos')+_pill('excl','Excluding Small Brands')+_pill('allweb','All Demos + Webinars')+'</div>';
   return '<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-bottom:16px">'
-    +'<div class="irf-card-title">CPD per Week</div><div class="irf-card-sub">Total ad spend ÷ all demos + webinars booked, bucketed by week (Mon–Sun) within the selected window</div>'
-    +'<div style="display:flex;gap:12px;margin:12px 0 16px;flex-wrap:wrap">'+mini(lb[0],fmtC(curV),curCalc)+mini(lb[1],fmtC(priorV),priorCalc)+'</div>'
+    +'<div class="irf-card-title">CPD per Week</div><div class="irf-card-sub">Total ad spend ÷ demos booked, bucketed by week (Mon–Sun) within the selected window</div>'
+    +_toggle
+    +'<div id="cpdw-mini-'+chartId+'" style="display:flex;gap:12px;margin:12px 0 16px;flex-wrap:wrap">'+_mkMini()+'</div>'
     +'<div id="'+chartId+'"></div></div>';
 }
+
+// ── CPD per Week toggle (mirrors the Daily Activity 3-way toggle) ────────────
+function _cpdwMode(chartId){ return (window._cpdwMode&&window._cpdwMode[chartId])||'all'; }
+// Same series mapping the Demos Booked per Day chart uses, so the two agree.
+function _cpdwSeries(d,mode){
+  var dt=(d&&d.demoTracking)||{};
+  if(mode==='allweb') return dt.scheduledByDayAll||dt.scheduledByDay||{};
+  if(mode==='excl')   return dt.scheduledByDayScale10KPlus||dt.scheduledByDayScale||{};
+  return dt.scheduledByDay||{};
+}
+// Window totals for the minis: current = sum of the mode's daily series;
+// prior/last-month come from the matching aggregate tiles so the comparison
+// keeps the same scope as the value above it.
+function _cpdwTotals(d,mode){
+  var esm=(d.executiveSummary&&d.executiveSummary._meta)||{};
+  var dtk=d.demoTracking||{};
+  var _sum=function(o){return Object.keys(o||{}).reduce(function(s,k){return /^\d{4}-\d{2}-\d{2}$/.test(k)?s+(o[k]||0):s;},0);};
+  var curN=_sum(_cpdwSeries(d,mode));
+  var t=dtk.totalScheduled||{};
+  var pBase=(t.sameTimePrior&&t.sameTimePrior.value!=null)?t.sameTimePrior.value:null;
+  var lBase=(t.lastMonth&&t.lastMonth.value!=null)?t.lastMonth.value:null;
+  // Prior/LM aggregates are the excl-small baseline; add the small-brand tier
+  // back for the all-inclusive modes so both sides of the comparison match.
+  var addP=(dtk.scheduledByWebTrafficPrior||{})['Very Small']||0;
+  var addL=(dtk.scheduledByWebTrafficLastMonth||{})['Very Small']||0;
+  var inclSmall=(mode!=='excl');
+  var pN=(pBase!=null)?(pBase+(inclSmall?addP:0)):null;
+  var lN=(lBase!=null)?(lBase+(inclSmall?addL:0)):null;
+  var spC=esm.totalSpend||0, spP=esm.pTotalSpend, spL=esm.pmTotalSpend;
+  var cpd=function(sp,n){return (n!=null&&n>0&&sp!=null)?sp/n:null;};
+  var useLM=(lN!=null&&spL!=null);
+  return {
+    curV:cpd(spC,curN),
+    priorV:useLM?cpd(spL,lN):cpd(spP,pN),
+    curCalc:f$(Math.round(spC))+' ÷ '+fN(curN),
+    priorCalc:useLM?(f$(Math.round(spL||0))+' ÷ '+fN(lN||0)):((pN!=null)?(f$(Math.round(spP||0))+' ÷ '+fN(pN||0)):''),
+  };
+}
+window.toggleCpdWeekMode=function(chartId,mode){
+  window._cpdwMode=window._cpdwMode||{}; window._cpdwMode[chartId]=mode;
+  var d=window._cpdwData&&window._cpdwData[chartId]; if(!d)return;
+  // Rebuild the whole card so the pills, minis and chart all reflect the mode.
+  var chart=document.getElementById(chartId); if(!chart)return;
+  var card=chart.parentElement; if(!card)return;
+  card.outerHTML=_trueCpdWeekCard(d,chartId);
+  _renderTrueCpdWeek(d,chartId);
+};
 
 // True CPD per Week (Irfan). Buckets daily total ad spend + daily demos (excl.
 // small brands) into Mon–Sun weeks within the selected window, then plots
@@ -2641,7 +2705,7 @@ function _renderTrueCpdWeek(d, elId){
   var el=document.getElementById(elId); if(!el) return;
   var dt=(d&&d.demoTracking)||{};
   var spendByDay=dt.spendByDay||{};
-  var demoByDay=dt.scheduledByDayAll||dt.scheduledByDay||{};  // all demos + webinars (matches CPD · All)
+  var demoByDay=_cpdwSeries(d,_cpdwMode(elId));  // follows the card's All / Excl-small / +Webinars toggle
   var seen={}; Object.keys(spendByDay).forEach(function(k){seen[k]=1;}); Object.keys(demoByDay).forEach(function(k){seen[k]=1;});
   var days=Object.keys(seen).filter(function(k){return /^\d{4}-\d{2}-\d{2}$/.test(k);}).sort();
   if(!days.length){el.innerHTML='<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px">No weekly data for this window</div>';return;}
