@@ -1784,7 +1784,7 @@ const CLINICIAN_ALL_STAGE_IDS = CLINICIAN_STAGES.map(x => x.id).concat([CLINICIA
 const CLINICIAN_ENTERED_PROPS = CLINICIAN_ALL_STAGE_IDS.map(id => 'hs_date_entered_' + id);
 const CLINICIAN_DEAL_PROPS = [
   'dealstage', 'pipeline', 'clinician_meeting_date', 'clinician_meeting_booked_date',
-  'clinician_attendance_status', 'clinician_qualification_outcome',
+  'clinician_attendance_status', 'clinician_qualification_outcome', 'createdate',
 ].concat(CLINICIAN_ENTERED_PROPS);
 const CLINICIAN_CONTACT_PROPS = [
   'firstname','lastname','email','phone','clinician_specialty','clinician_type',
@@ -1792,15 +1792,21 @@ const CLINICIAN_CONTACT_PROPS = [
   'medical_degree_status','samples_arrival_date','number_of_samples_shipped',
 ];
 
-// Deals in the Clinician pipeline whose MEETING DATE (clinician_meeting_date --
-// the day the meeting occurs, not the booked-at timestamp) falls in the window.
+// Deals in the Clinician pipeline created within the window. Cohorting on
+// createdate (not clinician_meeting_date) means a deal is counted from the
+// moment it enters the pipeline, so early-stage deals with no meeting booked
+// yet are included -- the meeting-date basis silently dropped them.
+// createdate is a datetime, so it filters on epoch ms (toMsET), not YYYY-MM-DD.
 async function fetchClinicianDeals(token, from, to) {
+  const fMs = String(toMsET(from));
+  const tMs = String(toMsET(to, true));
   return hsSearch(token, 'deals', [{
     filters: [
       { propertyName: 'pipeline', operator: 'EQ', value: CLINICIAN_PIPELINE_ID },
-      { propertyName: 'clinician_meeting_date', operator: 'BETWEEN', value: from, highValue: to },
+      { propertyName: 'createdate', operator: 'GTE', value: fMs },
+      { propertyName: 'createdate', operator: 'LTE', value: tMs },
     ],
-  }], CLINICIAN_DEAL_PROPS, 200, [{ propertyName: 'clinician_meeting_date', direction: 'DESCENDING' }], 20);
+  }], CLINICIAN_DEAL_PROPS, 200, [{ propertyName: 'createdate', direction: 'DESCENDING' }], 20);
 }
 
 // deal → associated contact properties, via two batch reads (associations then
@@ -5652,7 +5658,7 @@ export default {
           meta: {
             generatedAt: new Date().toISOString(),
             dealsFetched: deals.length,
-            cohortField: 'clinician_meeting_date',
+            cohortField: 'createdate',
             pipeline: CLINICIAN_PIPELINE_ID,
           },
         });
