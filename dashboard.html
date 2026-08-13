@@ -784,7 +784,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t28';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t29';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3006,17 +3006,16 @@ function renderClinician(){
   const seg=S.clinician.seg||'all';
   const segData=d[seg]||d.all||{};
   const fn=(segData.funnel)||[];
-  const allFn=(d.all&&d.all.funnel)||[];
   const pctS=v=>v==null?'\u2014':v.toFixed(1)+'%';
   // Scale the TRACK by ever-reached so the funnel actually tapers. Scaling by
   // current-stage left 6 of 7 bars at 1-4% width and non-monotonic (Signed Up
   // rendered narrower than Form Submitted), which read as broken.
-  const maxN=allFn.reduce((m,x)=>Math.max(m,x.reachedCount||0),0)||1;
+  const maxN=fn.reduce((m,x)=>Math.max(m,x.reachedCount||0),0)||1;
 
   // Funnel bars (always ALL clinicians — the toggle scopes the stat card only)
   let fh='';
-  for(let i=0;i<allFn.length;i++){
-    const st=allFn[i], w=Math.max(1.5,((st.count||0)/maxN)*100);
+  for(let i=0;i<fn.length;i++){
+    const st=fn[i], w=Math.max(1.5,((st.count||0)/maxN)*100);
     const conv=st.convToNext;
     const col=CLINICIAN_STAGE_COLORS[st.label]||'var(--teal)';
     const rc=st.reachedCount||0, cc=st.count||0;
@@ -3030,10 +3029,10 @@ function renderClinician(){
       +'<div style="background:rgba(114,164,191,.07);border-radius:6px;height:26px;overflow:hidden">'
       +'<div title="'+fN(rc)+' ever reached \u00b7 '+fN(cc)+' still in this stage" style="height:100%;width:'+trackW+'%;background:'+col+'33;border:1px solid '+col+';border-radius:6px;overflow:hidden;transition:width .3s">'
       +'<div style="height:100%;width:'+fillW+'%;background:'+col+'"></div></div></div>'
-      +(conv!=null?'<div style="font-size:12px;font-weight:700;color:var(--teal);margin-top:4px">\u2193 '+pctS(conv)+'<span style="font-weight:500;color:var(--grey)"> to '+allFn[i+1].label+' \u00b7 '+fN(st.convNum||0)+' \u00f7 '+fN(st.convDenom||0)+' (deals that ever reached each stage)</span></div>':'')
+      +(conv!=null?'<div style="font-size:12px;font-weight:700;color:var(--teal);margin-top:4px">\u2193 '+pctS(conv)+'<span style="font-weight:500;color:var(--grey)"> to '+fn[i+1].label+' \u00b7 '+fN(st.convNum||0)+' \u00f7 '+fN(st.convDenom||0)+' (deals that ever reached each stage)</span></div>':'')
       +'</div>';
   }
-  const exits=(d.all&&d.all.exits)||[];
+  const exits=segData.exits||[];
   if(exits.length){
     fh+='<div style="display:flex;gap:10px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">';
     for(const x of exits){const xc=CLINICIAN_STAGE_COLORS[x.label]||'var(--grey)';
@@ -3054,9 +3053,14 @@ function renderClinician(){
     +'<span style="font-family:var(--font-h);font-size:23px;font-weight:700;color:'+vc+'">'+val+'</span>'
     +(calc?'<span style="font-size:10.5px;color:var(--grey);font-variant-numeric:tabular-nums">'+calc+'</span>':'')+'</div>'
     +(src?'<div style="font-size:9px;color:var(--grey);margin-top:2px;line-height:1.4">'+src+'</div>':'')+'</div>';};
-  let sh='<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap;margin:0 0 8px">'
-    +segPill('all','All')+segPill('mddo','MD/DO')+segPill('nonmddo','Non-MD/DO')+'</div>';
-  sh+='<div style="font-size:10px;color:var(--grey);margin-bottom:4px">'+fN(segData.total||0)+' deal'+((segData.total||0)===1?'':'s')+' in segment</div>';
+  // Section-level scope control: sits above the funnel/stat split and drives the
+  // bars, exits and stats together, so both halves always describe one segment.
+  const segBar='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:2px 0 14px">'
+    +'<span style="font-family:var(--font-h);font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.08em">Clinician Type</span>'
+    +'<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap">'
+    +segPill('all','All')+segPill('mddo','MD/DO')+segPill('nonmddo','Non-MD/DO')+'</div>'
+    +'<span style="font-size:10.5px;color:var(--grey)">'+fN(segData.total||0)+' deal'+((segData.total||0)===1?'':'s')+' in segment</span></div>';
+  let sh='';
   const R=' (ever-reached counts)';
   sh+=stat('Show Rate',pctS(st.showRate),fN(st.showNum||0)+' \u00f7 '+fN(st.showDenom||0),
     'Meeting Happened \u00f7 Meeting Scheduled'+R,'Of clinicians who booked, how many showed up');
@@ -3073,7 +3077,7 @@ function renderClinician(){
     'Cancelled Before Demo \u00f7 meetings supposed to occur',true,true);
   let h=card('Clinician Funnel',
     'Deals created in the Clinician pipeline during the selected window \u00b7 '+fN((d.meta&&d.meta.dealsFetched)||0)+' deals'+((d.excludedFuture||0)?' \u00b7 '+fN(d.excludedFuture)+' future-dated meeting'+(d.excludedFuture===1?'':'s')+' excluded':'')+' \u00b7 bar length = how many ever reached the stage, solid = how many are there now',
-    '<div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">'
+    segBar+'<div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">'
       +'<div style="flex:1 1 73%;min-width:340px">'+fh+'</div>'
       +'<div style="flex:0 1 25%;min-width:230px;background:var(--lighter);border:1px solid var(--border);border-radius:10px;padding:12px 14px">'+sh+'</div>'
     +'</div>');
