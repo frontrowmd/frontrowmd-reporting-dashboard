@@ -1850,6 +1850,48 @@ async function fetchClinicianContacts(token, dealIds) {
   return out;
 }
 
+// Meetings booked per day. Buckets on clinician_meeting_booked_date (when the
+// booking happened), falling back to createdate when that stamp is missing.
+// Deliberately uses the RAW deal list — the future-meeting exclusion applies to
+// funnel outcomes, but a meeting booked today for next week is still a booking
+// today, so filtering it here would undercount activity.
+function buildClinicianDaily(deals, from, to) {
+  const byDay = {};
+  const dayKey = (v) => {
+    if (!v) return null;
+    if (/^\d{4}-\d{2}-\d{2}/.test(String(v))) return String(v).slice(0, 10);
+    const t = /^\d+$/.test(String(v)) ? parseInt(v) : new Date(v).getTime();
+    if (isNaN(t)) return null;
+    const d = new Date(t);
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+  };
+  // Seed every day in the window so gaps render as zero rather than collapsing.
+  let cur = from;
+  let guard = 0;
+  while (cur <= to && guard++ < 800) {
+    byDay[cur] = 0;
+    const d = new Date(cur + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + 1);
+    cur = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+  }
+  let total = 0, noDate = 0;
+  for (const deal of deals) {
+    const p = deal.properties || {};
+    const k = dayKey(p.clinician_meeting_booked_date) || dayKey(p.createdate);
+    if (!k) { noDate++; continue; }
+    if (k < from || k > to) continue;   // booked outside the window
+    byDay[k] = (byDay[k] || 0) + 1;
+    total++;
+  }
+  // Weekday average ignores Sat/Sun, matching the Detailed Dashboard's tile.
+  let wdSum = 0, wdN = 0;
+  for (const k in byDay) {
+    const dow = new Date(k + 'T12:00:00Z').getUTCDay();
+    if (dow === 0 || dow === 6) continue;
+    wdSum += byDay[k]; wdN++;
+  }
+  return { byDay, total, noDate, weekdayAvg: wdN ? wdSum / wdN : null, weekdayDays: wdN };
+}
+
 function buildClinicianFunnel(deals, contactsByDeal) {
   const _ms = (v) => { if (!v) return NaN; return /^\d+$/.test(String(v)) ? parseInt(v) : new Date(v).getTime(); };
   // A deal "reached" a stage if HubSpot stamped its entered-date; fall back to
@@ -5695,9 +5737,11 @@ export default {
         const deals = await fetchClinicianDeals(token, cur.from, cur.to);
         const contactsByDeal = await fetchClinicianContacts(token, deals.map(d => d.id));
         const funnel = buildClinicianFunnel(deals, contactsByDeal);
+        const daily = buildClinicianDaily(deals, cur.from, cur.to);
         return jr({
           period: cur,
           ...funnel,
+          daily,
           meta: {
             generatedAt: new Date().toISOString(),
             dealsFetched: deals.length,
