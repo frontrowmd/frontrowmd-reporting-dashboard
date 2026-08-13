@@ -1762,6 +1762,151 @@ function attRates(held, noShow, cancelled) {
   };
 }
 
+// ── Clinician Funnel ────────────────────────────────────────────────────────
+// Pipeline "Clinician" (2486191840). Order verified against HubSpot; note the
+// non-obvious sequence — Form Submitted comes AFTER Meeting Happened/Signed Up.
+const CLINICIAN_PIPELINE_ID = '2486191840';
+const CLINICIAN_STAGES = [
+  { id: '4128510704', label: 'Meeting Scheduled' },
+  { id: '4128510705', label: 'Meeting Happened' },
+  { id: '4128510709', label: 'Signed Up' },
+  { id: '4133870316', label: 'Form Submitted' },
+  { id: '4133870317', label: 'Clinician Approved' },
+  { id: '4135230193', label: 'Fully Onboarded' },
+  { id: '4133870318', label: '1st Sample Shipped' },
+];
+const CLINICIAN_STAGE_NO_SHOW = '4128854721';
+const CLINICIAN_STAGE_NOT_A_FIT = '4128510710';
+const CLINICIAN_ALL_STAGE_IDS = CLINICIAN_STAGES.map(x => x.id).concat([CLINICIAN_STAGE_NO_SHOW, CLINICIAN_STAGE_NOT_A_FIT]);
+// hs_date_entered_<stageId> is auto-maintained by HubSpot, so it gives a true
+// "ever reached this stage" signal (and stage timestamps for velocity) rather
+// than a current-stage snapshot, which would undercount anyone further along.
+const CLINICIAN_ENTERED_PROPS = CLINICIAN_ALL_STAGE_IDS.map(id => 'hs_date_entered_' + id);
+const CLINICIAN_DEAL_PROPS = [
+  'dealstage', 'pipeline', 'clinician_meeting_date', 'clinician_meeting_booked_date',
+  'clinician_attendance_status', 'clinician_qualification_outcome',
+].concat(CLINICIAN_ENTERED_PROPS);
+const CLINICIAN_CONTACT_PROPS = [
+  'firstname','lastname','email','phone','clinician_specialty','clinician_type',
+  'clinician_referral_source','npi_number','photo_verification_status',
+  'medical_degree_status','samples_arrival_date','number_of_samples_shipped',
+];
+
+// Deals in the Clinician pipeline whose MEETING DATE (clinician_meeting_date --
+// the day the meeting occurs, not the booked-at timestamp) falls in the window.
+async function fetchClinicianDeals(token, from, to) {
+  return hsSearch(token, 'deals', [{
+    filters: [
+      { propertyName: 'pipeline', operator: 'EQ', value: CLINICIAN_PIPELINE_ID },
+      { propertyName: 'clinician_meeting_date', operator: 'BETWEEN', value: from, highValue: to },
+    ],
+  }], CLINICIAN_DEAL_PROPS, 200, [{ propertyName: 'clinician_meeting_date', direction: 'DESCENDING' }], 20);
+}
+
+// deal → associated contact properties, via two batch reads (associations then
+// contacts) so the subrequest cost stays flat regardless of cohort size.
+async function fetchClinicianContacts(token, dealIds) {
+  const out = {};
+  if (!dealIds || !dealIds.length) return out;
+  const chunk = (arr, n) => { const o = []; for (let i = 0; i < arr.length; i += n) o.push(arr.slice(i, i + n)); return o; };
+  const dealToContact = {};
+  const contactIds = new Set();
+  for (const batch of chunk(dealIds, 100)) {
+    try {
+      const r = await fetch('https://api.hubapi.com/crm/v4/associations/deals/contacts/batch/read', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inputs: batch.map(id => ({ id: String(id) })) }),
+      });
+      if (!r.ok) { console.error('clinician assoc', r.status); continue; }
+      const j = await r.json();
+      for (const row of (j.results || [])) {
+        const did = row.from && row.from.id; if (!did) continue;
+        const first = (row.to || [])[0];
+        if (first && first.toObjectId) { dealToContact[did] = String(first.toObjectId); contactIds.add(String(first.toObjectId)); }
+      }
+    } catch (e) { console.error('clinician assoc threw', e.message); }
+  }
+  const byContact = {};
+  for (const batch of chunk(Array.from(contactIds), 100)) {
+    try {
+      const r = await fetch('https://api.hubapi.com/crm/v3/objects/contacts/batch/read', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ properties: CLINICIAN_CONTACT_PROPS, inputs: batch.map(id => ({ id })) }),
+      });
+      if (!r.ok) { console.error('clinician contacts', r.status); continue; }
+      const j = await r.json();
+      for (const c of (j.results || [])) byContact[String(c.id)] = c.properties || {};
+    } catch (e) { console.error('clinician contacts threw', e.message); }
+  }
+  for (const did in dealToContact) { const cp = byContact[dealToContact[did]]; if (cp) out[did] = cp; }
+  return out;
+}
+
+function buildClinicianFunnel(deals, contactsByDeal) {
+  const _ms = (v) => { if (!v) return NaN; return /^\d+$/.test(String(v)) ? parseInt(v) : new Date(v).getTime(); };
+  // A deal "reached" a stage if HubSpot stamped its entered-date; fall back to
+  // the current stage's position so deals predating stage tracking still count.
+  const rows = deals.map(d => {
+    const p = d.properties || {};
+    const cur = (p.dealstage || '').trim();
+    const curIdx = CLINICIAN_STAGES.findIndex(x => x.id === cur);
+    const reached = CLINICIAN_STAGES.map((st, i) => !!p['hs_date_entered_' + st.id] || (curIdx >= 0 && curIdx >= i));
+    const cp = contactsByDeal[d.id] || {};
+    return {
+      cur, reached,
+      att: (p.clinician_attendance_status || '').trim(),
+      qual: (p.clinician_qualification_outcome || '').trim(),
+      type: (cp.clinician_type || '').trim(),
+      tMS: _ms(p['hs_date_entered_' + CLINICIAN_STAGES[0].id]),
+      tFO: _ms(p['hs_date_entered_' + CLINICIAN_STAGES[5].id]),
+    };
+  });
+
+  const seg = (pred) => {
+    const rs = rows.filter(pred);
+    const cnt = CLINICIAN_STAGES.map((st, i) => rs.filter(r => r.reached[i]).length);
+    // No Show excludes anyone whose attendance was Rescheduled (they were
+    // re-booked, not a no-show).
+    const noShow = rs.filter(r => r.cur === CLINICIAN_STAGE_NO_SHOW && !/rescheduled/i.test(r.att)).length;
+    const notAFit = rs.filter(r => r.cur === CLINICIAN_STAGE_NOT_A_FIT).length;
+    const pct = (n, d) => (d > 0 ? (n / d) * 100 : null);
+    const vel = rs.filter(r => !isNaN(r.tMS) && !isNaN(r.tFO) && r.tFO >= r.tMS).map(r => (r.tFO - r.tMS) / 86400000);
+    return {
+      total: rs.length,
+      funnel: CLINICIAN_STAGES.map((st, i) => ({
+        id: st.id, label: st.label, count: cnt[i],
+        convToNext: i < CLINICIAN_STAGES.length - 1 ? pct(cnt[i + 1], cnt[i]) : null,
+      })),
+      exits: [
+        { label: 'No Show', count: rs.filter(r => r.cur === CLINICIAN_STAGE_NO_SHOW).length },
+        { label: 'Not a Fit', count: notAFit },
+      ],
+      stats: {
+        showRate: pct(cnt[1], cnt[0]),                 // Meeting Scheduled → Meeting Happened
+        closeRate: pct(cnt[3], cnt[1]),                // Meeting Happened → Form Submitted
+        noShowRate: pct(noShow, cnt[0]),               // excl. Rescheduled
+        disqualRate: pct(notAFit, cnt[1]),             // Not a Fit ÷ Meeting Happened
+        velocityDays: vel.length ? vel.reduce((a, b) => a + b, 0) / vel.length : null,
+        velocityN: vel.length,
+        noShowNum: noShow, noShowDenom: cnt[0],
+        disqualNum: notAFit, disqualDenom: cnt[1],
+        showNum: cnt[1], showDenom: cnt[0],
+        closeNum: cnt[3], closeDenom: cnt[1],
+      },
+    };
+  };
+  const isMD = (t) => /^md\/do$/i.test(t);
+  return {
+    all: seg(() => true),
+    mddo: seg(r => isMD(r.type)),
+    nonmddo: seg(r => !isMD(r.type)),
+    stageOrder: CLINICIAN_STAGES.map(x => x.label),
+    contactsMatched: Object.keys(contactsByDeal).length,
+  };
+}
+
 function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
   // Sign-Up Rate cohorts use a single ATTENDANCE basis for all four rates. For
   // each cohort month (date_demo_booked within month):
@@ -5484,6 +5629,32 @@ export default {
     // Runs JUST the per-month cohort fetch + owners, builds cohorts. No
     // Phase 2 / Windsor / Irfan PCM work. Lets older months (Feb, March)
     // get a fresh subrequest budget so they actually return data.
+    // POST /api/clinician → Clinician Funnel. Cohorts on clinician_meeting_date
+    // (the meeting day) within the selected window, and joins each deal to its
+    // associated contact so the funnel can be segmented by Clinician Type.
+    if (request.method === 'POST' && url.pathname === '/api/clinician') {
+      let body;
+      try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
+      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      try {
+        const token = env.HUBSPOT_TOKEN;
+        const { current: cur } = computeWindows(body.window || 'mtd', body.from || null, body.to || null, body.vsFrom || null, body.vsTo || null);
+        const deals = await fetchClinicianDeals(token, cur.from, cur.to);
+        const contactsByDeal = await fetchClinicianContacts(token, deals.map(d => d.id));
+        const funnel = buildClinicianFunnel(deals, contactsByDeal);
+        return jr({
+          period: cur,
+          ...funnel,
+          meta: {
+            generatedAt: new Date().toISOString(),
+            dealsFetched: deals.length,
+            cohortField: 'clinician_meeting_date',
+            pipeline: CLINICIAN_PIPELINE_ID,
+          },
+        });
+      } catch(err) { console.error('Clinician endpoint error:', err); return jr({ error: 'Internal error', detail: err.message }, 500); }
+    }
+
     if (request.method === 'POST' && url.pathname === '/api/signup-cohorts') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }

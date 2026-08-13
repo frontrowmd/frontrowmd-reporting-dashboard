@@ -784,7 +784,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t18';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t19';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -941,7 +941,7 @@ document.getElementById('pw').addEventListener('keydown',e=>{if(e.key==='Enter')
 
 // Filters
 function bldF(){const s=S[AP];var aiBtn=AI_PANEL_PAGES.indexOf(AP)>=0?'<button id="ai-panel-btn" onclick="toggleAIPanel()" class="fb" style="border:1.5px solid #B8860B;background:'+(_aiPanelOpen?'#B8860B':'#FFF8E1')+';color:'+(_aiPanelOpen?'#fff':'#8B6914')+';font-weight:700" onmouseover="this.style.background=\'#B8860B\';this.style.color=\'#fff\'" onmouseout="if(!_aiPanelOpen){this.style.background=\'#FFF8E1\';this.style.color=\'#8B6914\';}">✦ AI Analysis</button>':'';if(AP==='signup'){document.getElementById('filters').innerHTML='<span style="font-size:13px;color:var(--grey)">Fixed cohorts — independent of time filters</span>'+aiBtn+'<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>';return;}if(AP==='strategy'||AP==='csession'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='content'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='outbound'){document.getElementById('filters').innerHTML=aiBtn;document.getElementById('filters').style.display=aiBtn?'':'none';return;}else{document.getElementById('filters').style.display='';}let h='';for(const w of W){const _aw=(w.k==='custom')?(s.win==='custom'&&!s.quarterKey):(s.win===w.k);h+=`<button class="fb${_aw?' active':''}" data-w="${w.k}" onclick="selW('${w.k}')">${w.l}</button>`;}for(const q of _completedQuarters())h+=`<button class="fb${(s.win==='custom'&&s.quarterKey===q.from+'_'+q.to)?' active':''}" data-q="${q.from}_${q.to}" onclick="selQ('${q.from}','${q.to}')">${q.l}</button>`;h+=`<div class="cr${(s.win==='custom'&&!s.quarterKey)?' vis':''}" id="cr"><input type="date" id="cf"><span style="color:var(--grey)">→</span><input type="date" id="ct"><label class="cr-cmp-lbl"><input type="checkbox" id="cc" onchange="document.getElementById('crVs').classList.toggle('vis',this.checked)">Compare</label><span class="cr-vs" id="crVs"><span class="cr-vs-prefix">vs</span><input type="date" id="cvf"><span style="color:var(--grey)">→</span><input type="date" id="cvt"></span><button onclick="goC()">Go</button></div>`;h+=aiBtn;h+=`<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>`;document.getElementById('filters').innerHTML=h;}
-async function selW(w){S[AP].win=w;S[AP].quarterKey=null;document.querySelectorAll('#filters .fb').forEach(b=>b.classList.toggle('active',b.dataset.w===w));const cr=document.getElementById('cr');if(cr)cr.classList.toggle('vis',w==='custom');if(w==='custom')return;if(AP==='webinarPerf'){await fdWebinarPerf(w);return;}await fd(w);}
+async function selW(w){S[AP].win=w;S[AP].quarterKey=null;document.querySelectorAll('#filters .fb').forEach(b=>b.classList.toggle('active',b.dataset.w===w));const cr=document.getElementById('cr');if(cr)cr.classList.toggle('vis',w==='custom');if(w==='custom')return;if(AP==='webinarPerf'){await fdWebinarPerf(w);return;}if(AP==='clinician'){await fdClinician(w);return;}await fd(w);}
 // Completed calendar quarters from 2026-Q1 up to the last quarter that has
 // fully ended (end date before today). A new quarter's pill appears
 // automatically once it completes — Q3 after Sep 30, Q4 after Dec 31, etc.
@@ -1827,7 +1827,7 @@ function renderWebinarPerf(){
   el.innerHTML=h;
 }
 
-async function refreshData(){const btn=document.getElementById('rfb');if(btn){btn.classList.add('loading');btn.textContent='↻ Refreshing...';}if(AP==='signup'){await fdSignup();}else if(AP==='csession'){S.analyzer.data=null;await fdAnalyzer(S.analyzer.win||S.dashboard?.win||'mtd');}else if(AP==='webinarPerf'){S.webinarPerf.data=null;await fdWebinarPerf(S.webinarPerf.win||'mtd');}else{
+async function refreshData(){const btn=document.getElementById('rfb');if(btn){btn.classList.add('loading');btn.textContent='↻ Refreshing...';}if(AP==='clinician'){S.clinician.data=null;await fdClinician(S.clinician.win||'mtd');}else if(AP==='signup'){await fdSignup();}else if(AP==='csession'){S.analyzer.data=null;await fdAnalyzer(S.analyzer.win||S.dashboard?.win||'mtd');}else if(AP==='webinarPerf'){S.webinarPerf.data=null;await fdWebinarPerf(S.webinarPerf.win||'mtd');}else{
   // Bust the shared analyzer cache + analyzer payload so the Meta
   // Campaigns/Ad Sets/Creatives tables (Status + which assets are listed)
   // re-fetch from Windsor on Refresh. Without this, _renderIrfanMetaTablesLoader
@@ -2924,14 +2924,14 @@ function _irfanSortRows(rows,col,dir){
 // Shell only: header (time-frame pills + Refresh come from the shared .topbar,
 // Jump To from _SECNAV_SEL) plus the verified HubSpot field reference. Sections
 // get added as they're defined.
-const CLINICIAN_DEAL_PROPS = [
+const CLINICIAN_DEAL_PROPS_REF = [
   ['clinician_meeting_booked_date','Clinician Meeting Booked Date','datetime'],
   ['clinician_meeting_date','Clinician Meeting Date','date'],
   ['clinician_attendance_status','Clinician Attendance Status','enum \u00b7 6 values'],
   ['clinician_qualification_outcome','Clinician Qualification Outcome','enum \u00b7 Qualified / Disqualified / Not yet evaluated'],
   ['dealstage','Deal Stage','enum \u00b7 clinician pipeline'],
 ];
-const CLINICIAN_CONTACT_PROPS = [
+const CLINICIAN_CONTACT_PROPS_REF = [
   ['firstname','First Name','string'],['lastname','Last Name','string'],
   ['email','Email','string'],['phone','Phone Number','string'],
   ['clinician_specialty','Clinician Specialty','enum \u00b7 6'],
@@ -2949,6 +2949,25 @@ const CLINICIAN_CONTACT_PROPS = [
   ['number_of_samples_shipped','Number of Samples Shipped','number'],
   ['which_samples_shipped','Which Samples Shipped?','string (free text)'],
 ];
+const CLINICIAN_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/clinician':'/api/clinician';
+async function fdClinician(win){
+  const el=document.getElementById('clinician-c');
+  if(el)el.innerHTML='<div style="padding:40px;text-align:center;color:var(--grey);font-size:12px">Loading clinician funnel\u2026</div>';
+  try{
+    const b={password:PW,window:win||S.clinician.win||'mtd'};
+    if(S.clinician.cFrom)b.from=S.clinician.cFrom;
+    if(S.clinician.cTo)b.to=S.clinician.cTo;
+    const r=await fetch(CLINICIAN_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
+    const d=await r.json();
+    if(!r.ok||d.error){throw new Error(d.error||('HTTP '+r.status));}
+    S.clinician.data=d; renderClinician();
+  }catch(e){
+    if(el)el.innerHTML='<div style="padding:32px;text-align:center"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:#C62828;margin-bottom:6px">Clinician funnel failed to load</div><div style="font-size:12px;color:var(--grey)">'+(e.message||e)+'</div></div>';
+  }
+}
+// MD/DO vs non-MD/DO segment for the stat card only (the funnel always shows all).
+window.clinicianSetSeg=function(seg){S.clinician.seg=seg;renderClinician();};
+
 function renderClinician(){
   const d=S.clinician.data;
   const dhEl=document.getElementById('clinician-date-header');
@@ -2969,12 +2988,61 @@ function renderClinician(){
     +'<th style="text-align:left;padding:8px 6px;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Type</th></tr></thead><tbody>'
     +rows.map(r=>'<tr style="border-bottom:1px solid var(--border)"><td style="padding:7px 6px;color:var(--navy);font-weight:500">'+r[1]+'</td><td style="padding:7px 6px;color:var(--grey);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px">'+r[0]+'</td><td style="padding:7px 6px;color:var(--grey)">'+r[2]+'</td></tr>').join('')
     +'</tbody></table></div>';
-  let h='';
-  h+=card('Clinician Metrics','Sections will be added here as each is defined.',
-    '<div style="padding:22px;text-align:center;color:var(--grey);font-size:12px;background:var(--lighter);border-radius:10px">'
-    +'Page shell ready \u2014 time-frame filters, Jump To nav and Refresh are wired. No metrics defined yet.</div>');
-  h+=card('Deal Fields','Verified against HubSpot \u00b7 all present',tbl(CLINICIAN_DEAL_PROPS));
-  h+=card('Contact Fields','Verified against HubSpot \u00b7 all present',tbl(CLINICIAN_CONTACT_PROPS));
+  if(!d){el.innerHTML='<div style="padding:40px;text-align:center;color:var(--grey);font-size:12px">Loading clinician funnel\u2026</div>';return;}
+
+  // ── Section 1: Clinician Funnel ──
+  const seg=S.clinician.seg||'all';
+  const segData=d[seg]||d.all||{};
+  const fn=(segData.funnel)||[];
+  const allFn=(d.all&&d.all.funnel)||[];
+  const pctS=v=>v==null?'\u2014':v.toFixed(1)+'%';
+  const maxN=allFn.reduce((m,x)=>Math.max(m,x.count||0),0)||1;
+
+  // Funnel bars (always ALL clinicians — the toggle scopes the stat card only)
+  let fh='';
+  for(let i=0;i<allFn.length;i++){
+    const st=allFn[i], w=Math.max(1.5,((st.count||0)/maxN)*100);
+    const conv=st.convToNext;
+    fh+='<div style="margin-bottom:9px">'
+      +'<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px">'
+      +'<span style="font-size:11.5px;font-weight:600;color:var(--navy)">'+st.label+'</span>'
+      +'<span style="font-size:11px;color:var(--grey);font-variant-numeric:tabular-nums">'+fN(st.count||0)+'</span></div>'
+      +'<div style="background:rgba(114,164,191,.10);border-radius:5px;height:22px;position:relative;overflow:hidden">'
+      +'<div style="height:100%;width:'+w+'%;background:linear-gradient(90deg,var(--navy),var(--teal));border-radius:5px;transition:width .3s"></div></div>'
+      +(conv!=null?'<div style="font-size:10px;color:var(--teal);margin-top:2px">\u2193 '+pctS(conv)+' to '+allFn[i+1].label+'</div>':'')
+      +'</div>';
+  }
+  const exits=(d.all&&d.all.exits)||[];
+  if(exits.length){
+    fh+='<div style="display:flex;gap:10px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">';
+    for(const x of exits)fh+='<div style="flex:1;background:var(--lighter);border:1px solid var(--border);border-radius:8px;padding:8px 10px"><div style="font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em">'+x.label+'</div><div style="font-family:var(--font-h);font-size:17px;font-weight:700;color:var(--navy)">'+fN(x.count||0)+'</div></div>';
+    fh+='</div>';
+  }
+
+  // Stat card (segment-aware)
+  const st=segData.stats||{};
+  const segPill=(k,lbl)=>{const on=seg===k;return '<button onclick="clinicianSetSeg(\''+k+'\')" style="font-family:var(--font-h);font-size:11px;font-weight:700;letter-spacing:.02em;padding:6px 14px;border:none;background:'+(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+';cursor:pointer;transition:background .15s,color .15s">'+lbl+'</button>';};
+  const stat=(lbl,val,calc,tip)=>'<div title="'+(tip||'').replace(/"/g,'&quot;')+'" style="padding:11px 0;border-bottom:1px solid var(--border)">'
+    +'<div style="font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em;line-height:1.3">'+lbl+'</div>'
+    +'<div style="font-family:var(--font-h);font-size:22px;font-weight:700;color:var(--navy);margin-top:2px">'+val+'</div>'
+    +(calc?'<div style="font-size:9.5px;color:var(--grey);margin-top:2px">'+calc+'</div>':'')+'</div>';
+  let sh='<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap;margin:0 0 8px">'
+    +segPill('all','All')+segPill('mddo','MD/DO')+segPill('nonmddo','Non-MD/DO')+'</div>';
+  sh+='<div style="font-size:10px;color:var(--grey);margin-bottom:4px">'+fN(segData.total||0)+' deal'+((segData.total||0)===1?'':'s')+' in segment</div>';
+  sh+=stat('Show Rate',pctS(st.showRate),fN(st.showNum||0)+' \u00f7 '+fN(st.showDenom||0),'Meeting Scheduled \u2192 Meeting Happened');
+  sh+=stat('Close Rate',pctS(st.closeRate),fN(st.closeNum||0)+' \u00f7 '+fN(st.closeDenom||0),'Meeting Happened \u2192 Form Submitted');
+  sh+=stat('No-Show Rate',pctS(st.noShowRate),fN(st.noShowNum||0)+' \u00f7 '+fN(st.noShowDenom||0),'No Show \u00f7 Meeting Scheduled, excluding Clinician Attendance Status = Rescheduled');
+  sh+=stat('Disqualification Rate',pctS(st.disqualRate),fN(st.disqualNum||0)+' \u00f7 '+fN(st.disqualDenom||0),'Not a Fit \u00f7 Meeting Happened');
+  sh+=stat('Pipeline Velocity',st.velocityDays!=null?(Math.round(st.velocityDays*10)/10)+'d':'\u2014',st.velocityN?('avg across '+fN(st.velocityN)+' onboarded'):'no onboarded deals yet','Mean days from entering Meeting Scheduled to entering Fully Onboarded');
+
+  let h=card('Clinician Funnel',
+    'Deals in the Clinician pipeline with a meeting date in the selected window \u00b7 counts are "ever reached" per stage \u00b7 '+fN((d.meta&&d.meta.dealsFetched)||0)+' deals',
+    '<div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">'
+      +'<div style="flex:1 1 78%;min-width:340px">'+fh+'</div>'
+      +'<div style="flex:0 1 20%;min-width:190px;background:var(--lighter);border:1px solid var(--border);border-radius:10px;padding:12px 14px">'+sh+'</div>'
+    +'</div>');
+  h+=card('Deal Fields','Verified against HubSpot \u00b7 all present',tbl(CLINICIAN_DEAL_PROPS_REF));
+  h+=card('Contact Fields','Verified against HubSpot \u00b7 all present',tbl(CLINICIAN_CONTACT_PROPS_REF));
   el.innerHTML=h;
   buildSectionNav('clinician');
 }
@@ -7173,6 +7241,7 @@ function switchDashSub(sub){
   // an empty/zero response from an earlier failed fetch — switching to
   // the page should always pull fresh numbers.
   if(AP==='webinarPerf'){fdWebinarPerf(S.webinarPerf.win||'mtd');return;}
+  if(AP==='clinician'){fdClinician(S.clinician.win||'mtd');return;}
   if(!S[AP].data){
     if(AP==='strategy'){renderPage();return;}
     if(AP==='signup')fdSignup();
