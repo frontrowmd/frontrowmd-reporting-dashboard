@@ -784,7 +784,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t21';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t22';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2949,6 +2949,12 @@ const CLINICIAN_CONTACT_PROPS_REF = [
   ['number_of_samples_shipped','Number of Samples Shipped','number'],
   ['which_samples_shipped','Which Samples Shipped?','string (free text)'],
 ];
+// Stage colours mirrored from the HubSpot Clinician pipeline settings so the
+// funnel reads the same as the pipeline board.
+const CLINICIAN_STAGE_COLORS={
+  'Meeting Scheduled':'#F3EDD8','Meeting Happened':'#E6C55C','Signed Up':'#DCEAE4',
+  'Form Submitted':'#E07A54','Clinician Approved':'#5E9CB4','Fully Onboarded':'#7B75D4',
+  '1st Sample Shipped':'#6DB79A','No Show':'#4C5A70','Not a Fit':'#CC5B54'};
 const CLINICIAN_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/clinician':'/api/clinician';
 async function fdClinician(win){
   // renderPage() is what applies .active to #page-clinician. switchDashSub
@@ -2985,7 +2991,9 @@ function renderClinician(){
     if(d.priorMonthPeriod)dh+='<div style="font-size:12px;color:var(--grey);margin-top:2px">vs. Last Month: '+fmtD(d.priorMonthPeriod.from)+' \u2013 '+fmtD(d.priorMonthPeriod.to)+'</div>';
     dhEl.innerHTML=dh;
   }
-  const card=(title,sub,body)=>'<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:16px"><div class="irf-card-title">'+title+'</div><div class="irf-card-sub">'+sub+'</div>'+body+'</div>';
+  const card=(title,sub,body)=>'<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:16px">'
+    +'<div class="irf-card-title" style="font-size:22px;font-weight:700;letter-spacing:-.01em;border-left:4px solid var(--teal);padding-left:11px;line-height:1.2">'+title+'</div>'
+    +'<div class="irf-card-sub" style="margin-left:15px">'+sub+'</div>'+body+'</div>';
   const tbl=(rows)=>'<div style="overflow-x:auto"><table class="irf-meta-table" style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr style="border-bottom:1.5px solid var(--border)">'
     +'<th style="text-align:left;padding:8px 6px;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Field</th>'
     +'<th style="text-align:left;padding:8px 6px;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Internal name</th>'
@@ -3007,13 +3015,14 @@ function renderClinician(){
   for(let i=0;i<allFn.length;i++){
     const st=allFn[i], w=Math.max(1.5,((st.count||0)/maxN)*100);
     const conv=st.convToNext;
-    fh+='<div style="margin-bottom:9px">'
-      +'<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px">'
-      +'<span style="font-size:11.5px;font-weight:600;color:var(--navy)">'+st.label+'</span>'
-      +'<span style="font-size:11px;color:var(--grey);font-variant-numeric:tabular-nums">'+fN(st.count||0)+'</span></div>'
-      +'<div style="background:rgba(114,164,191,.10);border-radius:5px;height:22px;position:relative;overflow:hidden">'
-      +'<div style="height:100%;width:'+w+'%;background:linear-gradient(90deg,var(--navy),var(--teal));border-radius:5px;transition:width .3s"></div></div>'
-      +(conv!=null?'<div style="font-size:10px;color:var(--teal);margin-top:2px">\u2193 '+pctS(conv)+' to '+allFn[i+1].label+'</div>':'')
+    const col=CLINICIAN_STAGE_COLORS[st.label]||'var(--teal)';
+    fh+='<div style="margin-bottom:14px">'
+      +'<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:5px">'
+      +'<span style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:'+col+';border:1px solid rgba(2,15,24,.15);margin-right:7px;vertical-align:middle"></span>'+st.label+'</span>'
+      +'<span style="font-family:var(--font-h);font-size:19px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+fN(st.count||0)+'</span></div>'
+      +'<div style="background:rgba(114,164,191,.10);border-radius:6px;height:26px;position:relative;overflow:hidden">'
+      +'<div style="height:100%;width:'+w+'%;background:'+col+';border-right:1px solid rgba(2,15,24,.10);border-radius:6px;transition:width .3s"></div></div>'
+      +(conv!=null?'<div style="font-size:12px;font-weight:700;color:var(--teal);margin-top:4px">\u2193 '+pctS(conv)+'<span style="font-weight:500;color:var(--grey)"> to '+allFn[i+1].label+' \u00b7 '+fN(allFn[i+1].count||0)+' \u00f7 '+fN(st.count||0)+' (deals currently in each stage)</span></div>':'')
       +'</div>';
   }
   const exits=(d.all&&d.all.exits)||[];
@@ -3026,18 +3035,32 @@ function renderClinician(){
   // Stat card (segment-aware)
   const st=segData.stats||{};
   const segPill=(k,lbl)=>{const on=seg===k;return '<button onclick="clinicianSetSeg(\''+k+'\')" style="font-family:var(--font-h);font-size:11px;font-weight:700;letter-spacing:.02em;padding:6px 14px;border:none;background:'+(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+';cursor:pointer;transition:background .15s,color .15s">'+lbl+'</button>';};
-  const stat=(lbl,val,calc,tip)=>'<div title="'+(tip||'').replace(/"/g,'&quot;')+'" style="padding:11px 0;border-bottom:1px solid var(--border)">'
+  // last=true drops the divider so the card doesn't end on a rule.
+  const stat=(lbl,val,calc,src,tip,last)=>'<div title="'+(tip||'').replace(/"/g,'&quot;')+'" style="padding:11px 0'+(last?'':';border-bottom:1px solid var(--border)')+'">'
     +'<div style="font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em;line-height:1.3">'+lbl+'</div>'
     +'<div style="font-family:var(--font-h);font-size:22px;font-weight:700;color:var(--navy);margin-top:2px">'+val+'</div>'
-    +(calc?'<div style="font-size:9.5px;color:var(--grey);margin-top:2px">'+calc+'</div>':'')+'</div>';
+    +(calc?'<div style="font-size:10px;color:var(--navy);margin-top:3px;font-variant-numeric:tabular-nums">'+calc+'</div>':'')
+    +(src?'<div style="font-size:9.5px;color:var(--grey);margin-top:2px;line-height:1.45">'+src+'</div>':'')+'</div>';
   let sh='<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap;margin:0 0 8px">'
     +segPill('all','All')+segPill('mddo','MD/DO')+segPill('nonmddo','Non-MD/DO')+'</div>';
   sh+='<div style="font-size:10px;color:var(--grey);margin-bottom:4px">'+fN(segData.total||0)+' deal'+((segData.total||0)===1?'':'s')+' in segment</div>';
-  sh+=stat('Show Rate',pctS(st.showRate),fN(st.showNum||0)+' \u00f7 '+fN(st.showDenom||0),'Meeting Scheduled \u2192 Meeting Happened');
-  sh+=stat('Close Rate',pctS(st.closeRate),fN(st.closeNum||0)+' \u00f7 '+fN(st.closeDenom||0),'Meeting Happened \u2192 Form Submitted');
-  sh+=stat('No-Show Rate',pctS(st.noShowRate),fN(st.noShowNum||0)+' \u00f7 '+fN(st.noShowDenom||0),'No Show \u00f7 Meeting Scheduled, excluding Clinician Attendance Status = Rescheduled');
-  sh+=stat('Disqualification Rate',pctS(st.disqualRate),fN(st.disqualNum||0)+' \u00f7 '+fN(st.disqualDenom||0),'Not a Fit \u00f7 Meeting Happened');
-  sh+=stat('Pipeline Velocity',st.velocityDays!=null?(Math.round(st.velocityDays*10)/10)+'d':'\u2014',st.velocityN?('avg across '+fN(st.velocityN)+' onboarded'):'no onboarded deals yet','Mean days from entering Meeting Scheduled to entering Fully Onboarded');
+  const REACHED='deals that ever reached the stage (not the current-stage bars)';
+  sh+=stat('Show Rate',pctS(st.showRate),fN(st.showNum||0)+' \u00f7 '+fN(st.showDenom||0),
+    'Meeting Happened \u00f7 Meeting Scheduled \u2014 both are '+REACHED,'Of clinicians who booked, how many showed up');
+  sh+=stat('Close Rate',pctS(st.closeRate),fN(st.closeNum||0)+' \u00f7 '+fN(st.closeDenom||0),
+    'Form Submitted \u00f7 Meeting Happened \u2014 both are '+REACHED,'Of clinicians who met, how many submitted the form');
+  sh+=stat('No-Show Rate',pctS(st.noShowRate),fN(st.noShowNum||0)+' \u00f7 '+fN(st.noShowDenom||0),
+    'Deals now in No Show (excluding Attendance = Rescheduled) \u00f7 reached Meeting Scheduled','No Show \u00f7 Meeting Scheduled, excluding Rescheduled');
+  sh+=stat('Disqualification Rate',pctS(st.disqualRate),fN(st.disqualNum||0)+' \u00f7 '+fN(st.disqualDenom||0),
+    'Deals now in Not a Fit \u00f7 reached Meeting Happened','Not a Fit \u00f7 Meeting Happened');
+  const velSub=st.velocityN
+    ? ('Mean days: entered Meeting Scheduled \u2192 entered Fully Onboarded, across '+fN(st.velocityN)+' deal'+(st.velocityN===1?'':'s'))
+    : ((st.velocityFOReached||0)>0
+        ? (fN(st.velocityFOReached)+' deal'+(st.velocityFOReached===1?'':'s')+' reached Fully Onboarded but none carry both stage timestamps HubSpot needs')
+        : 'No deals have reached Fully Onboarded in this window');
+  sh+=stat('Pipeline Velocity',st.velocityDays!=null?(Math.round(st.velocityDays*10)/10)+'d':'\u2014',
+    st.velocityN?fN(st.velocityN)+' deal'+(st.velocityN===1?'':'s')+' measured':'',velSub,
+    'Mean days from entering Meeting Scheduled to entering Fully Onboarded',true);
 
   let h=card('Clinician Funnel',
     'Deals created in the Clinician pipeline during the selected window \u00b7 deals currently in each stage \u00b7 '+fN((d.meta&&d.meta.dealsFetched)||0)+' deals',

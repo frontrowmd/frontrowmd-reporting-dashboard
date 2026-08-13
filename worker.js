@@ -1865,8 +1865,15 @@ function buildClinicianFunnel(deals, contactsByDeal) {
       att: (p.clinician_attendance_status || '').trim(),
       qual: (p.clinician_qualification_outcome || '').trim(),
       type: (cp.clinician_type || '').trim(),
-      tMS: _ms(p['hs_date_entered_' + CLINICIAN_STAGES[0].id]),
+      // Velocity endpoints. hs_date_entered_* is HubSpot's stage-entry stamp;
+      // fall back to the meeting date / createdate for deals that predate stage
+      // tracking, otherwise velocity silently reports nothing.
+      tMS: (function(){ const a=_ms(p['hs_date_entered_' + CLINICIAN_STAGES[0].id]); if(!isNaN(a))return a;
+                        const b=_ms(p.clinician_meeting_date); if(!isNaN(b))return b;
+                        return _ms(p.createdate); })(),
       tFO: _ms(p['hs_date_entered_' + CLINICIAN_STAGES[5].id]),
+      hasEnteredMS: !!p['hs_date_entered_' + CLINICIAN_STAGES[0].id],
+      hasEnteredFO: !!p['hs_date_entered_' + CLINICIAN_STAGES[5].id],
     };
   });
 
@@ -1900,6 +1907,10 @@ function buildClinicianFunnel(deals, contactsByDeal) {
         disqualRate: pct(notAFit, cnt[1]),             // Not a Fit ÷ Meeting Happened
         velocityDays: vel.length ? vel.reduce((a, b) => a + b, 0) / vel.length : null,
         velocityN: vel.length,
+        // Why velocity may be blank: how many deals ever reached Fully Onboarded
+        // vs how many actually carry the stage timestamps it needs.
+        velocityFOReached: rs.filter(r => r.reached[5]).length,
+        velocityStamped: rs.filter(r => r.hasEnteredMS && r.hasEnteredFO).length,
         noShowNum: noShow, noShowDenom: cnt[0],
         disqualNum: notAFit, disqualDenom: cnt[1],
         showNum: cnt[1], showDenom: cnt[0],
