@@ -1788,7 +1788,7 @@ const CLINICIAN_DEAL_PROPS = [
 ].concat(CLINICIAN_ENTERED_PROPS);
 const CLINICIAN_CONTACT_PROPS = [
   'firstname','lastname','email','phone','clinician_specialty','clinician_type',
-  'clinician_referral_source','npi_number','photo_verification_status',
+  'clinician_referral_source','npi_number','photo_verification_status','createdate',
   'medical_degree_status','samples_arrival_date','number_of_samples_shipped',
 ];
 
@@ -1843,19 +1843,20 @@ async function fetchClinicianContacts(token, dealIds) {
       });
       if (!r.ok) { console.error('clinician contacts', r.status); continue; }
       const j = await r.json();
-      for (const c of (j.results || [])) byContact[String(c.id)] = c.properties || {};
+      for (const c of (j.results || [])) byContact[String(c.id)] = Object.assign({ __cid: String(c.id) }, c.properties || {});
     } catch (e) { console.error('clinician contacts threw', e.message); }
   }
   for (const did in dealToContact) { const cp = byContact[dealToContact[did]]; if (cp) out[did] = cp; }
   return out;
 }
 
-// Meetings booked per day, bucketed on createdate (the deal's creation day) —
-// the same basis the funnel cohorts on, so the two sections line up.
+// Clinician CONTACTS created per day, bucketed on the contact's createdate and
+// deduped by contact id. Sourced from the contacts associated with the cohort's
+// deals, so scope still follows the funnel's deal cohort.
 // Deliberately uses the RAW deal list — the future-meeting exclusion applies to
 // funnel outcomes, but a meeting booked today for next week is still a booking
 // today, so filtering it here would undercount activity.
-function buildClinicianDaily(deals, from, to) {
+function buildClinicianDaily(deals, contactsByDeal, from, to) {
   const byDay = {};
   const dayKey = (v) => {
     if (!v) return null;
@@ -1873,12 +1874,19 @@ function buildClinicianDaily(deals, from, to) {
     const d = new Date(cur + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + 1);
     cur = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
   }
-  let total = 0, noDate = 0;
+  // Counts CONTACTS, not deals, bucketed on the contact's own createdate.
+  // Deduped by contact id — one clinician with two deals is one person.
+  let total = 0, noDate = 0, noContact = 0, outside = 0;
+  const seen = new Set();
   for (const deal of deals) {
-    const p = deal.properties || {};
-    const k = dayKey(p.createdate);
+    const cp = contactsByDeal[deal.id];
+    if (!cp) { noContact++; continue; }
+    const cid = cp.__cid || ('deal:' + deal.id);
+    if (seen.has(cid)) continue;
+    seen.add(cid);
+    const k = dayKey(cp.createdate);
     if (!k) { noDate++; continue; }
-    if (k < from || k > to) continue;   // booked outside the window
+    if (k < from || k > to) { outside++; continue; }
     byDay[k] = (byDay[k] || 0) + 1;
     total++;
   }
@@ -1889,7 +1897,7 @@ function buildClinicianDaily(deals, from, to) {
     if (dow === 0 || dow === 6) continue;
     wdSum += byDay[k]; wdN++;
   }
-  return { byDay, total, noDate, weekdayAvg: wdN ? wdSum / wdN : null, weekdayDays: wdN };
+  return { byDay, total, noDate, noContact, outside, contacts: seen.size, weekdayAvg: wdN ? wdSum / wdN : null, weekdayDays: wdN };
 }
 
 function buildClinicianFunnel(deals, contactsByDeal) {
@@ -5737,7 +5745,7 @@ export default {
         const deals = await fetchClinicianDeals(token, cur.from, cur.to);
         const contactsByDeal = await fetchClinicianContacts(token, deals.map(d => d.id));
         const funnel = buildClinicianFunnel(deals, contactsByDeal);
-        const daily = buildClinicianDaily(deals, cur.from, cur.to);
+        const daily = buildClinicianDaily(deals, contactsByDeal, cur.from, cur.to);
         return jr({
           period: cur,
           ...funnel,
