@@ -553,6 +553,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
       <div id="dash-submenu" style="display:block;padding-left:24px">
         <div class="ni sub active" onclick="switchDashSub('irfan')" data-page="irfan" data-sub="irfan"><span class="ic" style="font-size:12px">⭐</span><span>Irfan Dashboard</span></div>
         <div class="ni sub" onclick="switchDashSub('overview')" data-page="dashboard" data-sub="overview"><span class="ic" style="font-size:12px">📊</span><span>Detailed Dashboard</span></div>
+        <div class="ni sub" onclick="switchDashSub('clinician')" data-page="clinician" data-sub="clinician"><span class="ic" style="font-size:12px">🩺</span><span>Clinician Dashboard</span></div>
         <div class="ni sub" onclick="switchDashSub('webinarPerf')" data-page="webinarPerf" data-sub="webinarPerf"><span class="ic" style="font-size:12px">🎥</span><span>Webinar Performance</span></div>
         <div class="ni sub" onclick="switchDashSub('signup')" data-page="dashboard" data-sub="signup"><span class="ic" style="font-size:12px">📋</span><span>Sign-Up Rate</span></div>
         <div class="ni sub" onclick="switchDashSub('demoQuality')" data-page="demoQuality" data-sub="demoQuality"><span class="ic" style="font-size:12px">🎯</span><span>Demo Quality</span></div>
@@ -756,6 +757,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
     </div>
 
     <div class="pg" id="page-irfan"><div id="irfan-date-header" style="margin-bottom:24px"></div><div id="irfan-c"></div></div>
+    <div class="pg" id="page-clinician"><div id="clinician-date-header" style="margin-bottom:24px"></div><div id="clinician-c"></div></div>
     <div class="pg" id="page-demoQuality"><div id="dq-c"></div></div>
     <div class="pg" id="page-webinarPerf"><div id="wp-c"></div></div>
     <div class="pg" id="page-csession"><div id="csession-c"></div></div>
@@ -782,7 +784,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t17';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t18';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -790,7 +792,7 @@ const WP_BASELINE_SAVE_API=location.protocol==='file:'?'https://frontrowmd-dashb
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
 let PW='';
-const S={dashboard:{win:'mtd',data:null,sub:'irfan'},irfan:{win:'mtd',data:null},strategy:{data:null,win:'lastMonth'},calculator:{win:'mtd',data:null},signup:{win:null,data:null},analyzer:{win:'mtd',data:null,tab:'overview',sub:'overview'},demoQuality:{win:'mtd',data:null},webinarPerf:{win:'mtd',data:null},csession:{step:1},content:{data:null,sub:'cs-intel'},outbound:{data:null}};let AP='irfan';
+const S={dashboard:{win:'mtd',data:null,sub:'irfan'},irfan:{win:'mtd',data:null},strategy:{data:null,win:'lastMonth'},calculator:{win:'mtd',data:null},signup:{win:null,data:null},clinician:{win:'mtd',data:null},analyzer:{win:'mtd',data:null,tab:'overview',sub:'overview'},demoQuality:{win:'mtd',data:null},webinarPerf:{win:'mtd',data:null},csession:{step:1},content:{data:null,sub:'cs-intel'},outbound:{data:null}};let AP='irfan';
 const f$=v=>v==null?'—':'$'+Math.round(v).toLocaleString();
 const fN=v=>v==null?'—':Math.round(v).toLocaleString();
 const fP=(v,d=1)=>v==null?'—':v.toFixed(d)+'%';
@@ -1859,7 +1861,7 @@ function switchPage(pg){AP=pg;document.querySelectorAll('.ni').forEach(n=>n.clas
     return;
   }
   if(!S[pg].data){if(pg==='signup')fd('mtd');else if(pg==='content'){fdContent();return;}else fd(S[pg].win);return;}renderPage();}
-function renderPage(){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));if(AP==='dashboard')renderDash();else if(AP==='irfan')renderIrfan();else if(AP==='calculator')updCalc();else if(AP==='signup')renderSignUp();else if(AP==='strategy')renderStrategy();else if(AP==='demoQuality')renderDemoQuality();else if(AP==='webinarPerf')renderWebinarPerf();else if(AP==='csession')renderCreativeSession();else if(AP==='content')renderContent();else if(AP==='outbound')renderOutbound();document.getElementById('page-'+AP).classList.add('active');if(typeof buildSectionNav==='function')buildSectionNav(AP);const d=S[AP].data;if(d){const ts=d.meta?.generatedAt;if(ts)document.getElementById('fts').textContent='Updated '+new Date(ts).toLocaleString();if(d.meta?.dataQuality&&!d.meta.dataQuality.complete)document.getElementById('dqb').classList.add('vis');_renderFetchDiag(d.meta&&d.meta.fetchDiag);}}
+function renderPage(){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));if(AP==='dashboard')renderDash();else if(AP==='irfan')renderIrfan();else if(AP==='clinician')renderClinician();else if(AP==='calculator')updCalc();else if(AP==='signup')renderSignUp();else if(AP==='strategy')renderStrategy();else if(AP==='demoQuality')renderDemoQuality();else if(AP==='webinarPerf')renderWebinarPerf();else if(AP==='csession')renderCreativeSession();else if(AP==='content')renderContent();else if(AP==='outbound')renderOutbound();document.getElementById('page-'+AP).classList.add('active');if(typeof buildSectionNav==='function')buildSectionNav(AP);const d=S[AP].data;if(d){const ts=d.meta?.generatedAt;if(ts)document.getElementById('fts').textContent='Updated '+new Date(ts).toLocaleString();if(d.meta?.dataQuality&&!d.meta.dataQuality.complete)document.getElementById('dqb').classList.add('vis');_renderFetchDiag(d.meta&&d.meta.fetchDiag);}}
 // Renders upstream fetch diagnostics into the data-quality banner so an empty
 // Windsor/GA4 fetch is visible as a named failure instead of a silent $0.
 function _renderFetchDiag(fd){
@@ -2918,11 +2920,70 @@ function _irfanSortRows(rows,col,dir){
   };
   return rows.slice().sort(cmp);
 }
+// ── Clinician Dashboard ─────────────────────────────────────────────────────
+// Shell only: header (time-frame pills + Refresh come from the shared .topbar,
+// Jump To from _SECNAV_SEL) plus the verified HubSpot field reference. Sections
+// get added as they're defined.
+const CLINICIAN_DEAL_PROPS = [
+  ['clinician_meeting_booked_date','Clinician Meeting Booked Date','datetime'],
+  ['clinician_meeting_date','Clinician Meeting Date','date'],
+  ['clinician_attendance_status','Clinician Attendance Status','enum \u00b7 6 values'],
+  ['clinician_qualification_outcome','Clinician Qualification Outcome','enum \u00b7 Qualified / Disqualified / Not yet evaluated'],
+  ['dealstage','Deal Stage','enum \u00b7 clinician pipeline'],
+];
+const CLINICIAN_CONTACT_PROPS = [
+  ['firstname','First Name','string'],['lastname','Last Name','string'],
+  ['email','Email','string'],['phone','Phone Number','string'],
+  ['clinician_specialty','Clinician Specialty','enum \u00b7 6'],
+  ['clinician_type','Clinician Type','enum \u00b7 6'],
+  ['clinician_referral_source','Clinician Referral Source','enum \u00b7 8'],
+  ['npi_number','NPI Number','string'],['message','Message','string'],
+  ['photo_verification_status','Photo Verification Status','enum \u00b7 Approved / Not Approved / Pending'],
+  ['proof_link','Proof Link','string'],
+  ['sample_preferences_notes','Sample Preferences Notes','string'],
+  ['address','Street Address','string'],
+  ['clinician_license_credential_files','Submitted Credentials','string'],
+  ['medical_degree_status','Credentials Status','enum \u00b7 Approved / Not Approved / Pending'],
+  ['samples_arrival_date','Samples Arrival Date','date'],
+  ['samples_tracking_number','Samples Tracking Number','string'],
+  ['number_of_samples_shipped','Number of Samples Shipped','number'],
+  ['which_samples_shipped','Which Samples Shipped?','string (free text)'],
+];
+function renderClinician(){
+  const d=S.clinician.data;
+  const dhEl=document.getElementById('clinician-date-header');
+  const el=document.getElementById('clinician-c'); if(!el)return;
+  // Date header mirrors Overview / Irfan so the window context reads the same.
+  if(dhEl&&d&&d.period){
+    const fmtD=x=>{const p=x.split('-');return new Date(p[0],p[1]-1,p[2]).toLocaleDateString('en-US',{month:'long',day:'numeric'});};
+    const fmtDY=x=>{const p=x.split('-');return new Date(p[0],p[1]-1,p[2]).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});};
+    let dh='<div style="font-family:var(--font-h);font-size:20px;font-weight:700;color:var(--navy)">'+d.period.label+': '+(d.period.from.slice(0,4)!==d.period.to.slice(0,4)?fmtDY(d.period.from):fmtD(d.period.from))+' \u2013 '+fmtDY(d.period.to)+'</div>';
+    if(d.priorPeriod)dh+='<div style="font-size:12px;color:var(--grey);margin-top:4px">vs. Prior: '+fmtD(d.priorPeriod.from)+' \u2013 '+fmtD(d.priorPeriod.to)+'</div>';
+    if(d.priorMonthPeriod)dh+='<div style="font-size:12px;color:var(--grey);margin-top:2px">vs. Last Month: '+fmtD(d.priorMonthPeriod.from)+' \u2013 '+fmtD(d.priorMonthPeriod.to)+'</div>';
+    dhEl.innerHTML=dh;
+  }
+  const card=(title,sub,body)=>'<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:16px"><div class="irf-card-title">'+title+'</div><div class="irf-card-sub">'+sub+'</div>'+body+'</div>';
+  const tbl=(rows)=>'<div style="overflow-x:auto"><table class="irf-meta-table" style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr style="border-bottom:1.5px solid var(--border)">'
+    +'<th style="text-align:left;padding:8px 6px;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Field</th>'
+    +'<th style="text-align:left;padding:8px 6px;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Internal name</th>'
+    +'<th style="text-align:left;padding:8px 6px;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Type</th></tr></thead><tbody>'
+    +rows.map(r=>'<tr style="border-bottom:1px solid var(--border)"><td style="padding:7px 6px;color:var(--navy);font-weight:500">'+r[1]+'</td><td style="padding:7px 6px;color:var(--grey);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px">'+r[0]+'</td><td style="padding:7px 6px;color:var(--grey)">'+r[2]+'</td></tr>').join('')
+    +'</tbody></table></div>';
+  let h='';
+  h+=card('Clinician Metrics','Sections will be added here as each is defined.',
+    '<div style="padding:22px;text-align:center;color:var(--grey);font-size:12px;background:var(--lighter);border-radius:10px">'
+    +'Page shell ready \u2014 time-frame filters, Jump To nav and Refresh are wired. No metrics defined yet.</div>');
+  h+=card('Deal Fields','Verified against HubSpot \u00b7 all present',tbl(CLINICIAN_DEAL_PROPS));
+  h+=card('Contact Fields','Verified against HubSpot \u00b7 all present',tbl(CLINICIAN_CONTACT_PROPS));
+  el.innerHTML=h;
+  buildSectionNav('clinician');
+}
+
 // ── Sticky section nav ──────────────────────────────────────────────────────
 // Auto-derived from the headings already on the page (no per-section markup),
 // so it stays correct as sections are added or renamed. Scroll container is
 // .main, not the window.
-const _SECNAV_SEL={dashboard:'#page-dashboard .st', irfan:'#irfan-c .irf-card-title'};
+const _SECNAV_SEL={dashboard:'#page-dashboard .st', irfan:'#irfan-c .irf-card-title', clinician:'#clinician-c .irf-card-title'};
 function buildSectionNav(page){
   const sel=_SECNAV_SEL[page]; if(!sel)return;
   const root=document.getElementById('page-'+page); if(!root)return;
@@ -7092,10 +7153,10 @@ async function loadOutbound(){
 function switchDashSub(sub){
   S.dashboard.sub=sub;
   // Map sub to AP
-  var apMap={overview:'dashboard',irfan:'irfan',signup:'signup',calculator:'calculator',strategy:'strategy',demoQuality:'demoQuality',outbound:'outbound',webinarPerf:'webinarPerf'};
+  var apMap={overview:'dashboard',clinician:'clinician',irfan:'irfan',signup:'signup',calculator:'calculator',strategy:'strategy',demoQuality:'demoQuality',outbound:'outbound',webinarPerf:'webinarPerf'};
   AP=apMap[sub]||'dashboard';
   // Update titles
-  var titleMap={overview:'Detailed Dashboard',irfan:'Irfan Dashboard',signup:'Sign-Up Rate',calculator:'ARR Calculator',strategy:'Monthly Review',demoQuality:'Demo Quality',outbound:'Outbound Sequences',webinarPerf:'Webinar Performance'};
+  var titleMap={overview:'Detailed Dashboard',clinician:'Clinician Dashboard',irfan:'Irfan Dashboard',signup:'Sign-Up Rate',calculator:'ARR Calculator',strategy:'Monthly Review',demoQuality:'Demo Quality',outbound:'Outbound Sequences',webinarPerf:'Webinar Performance'};
   document.getElementById('ptitle').textContent=titleMap[sub]||'Executive Dashboard';
   // Highlight nav items
   document.querySelectorAll('.snav>.ni').forEach(n=>n.classList.toggle('active',n.dataset.page==='dashboard'));
