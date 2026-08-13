@@ -1886,15 +1886,30 @@ function buildClinicianFunnel(deals, contactsByDeal) {
     const cnt = CLINICIAN_STAGES.map((st, i) => rs.filter(r => r.reached[i]).length);
     // No Show excludes anyone whose attendance was Rescheduled (they were
     // re-booked, not a no-show).
+    const isCancelled = (r) => /cancelled before demo/i.test(r.att);
     const noShow = rs.filter(r => r.cur === CLINICIAN_STAGE_NO_SHOW && !/rescheduled/i.test(r.att)).length;
     const notAFit = rs.filter(r => r.cur === CLINICIAN_STAGE_NOT_A_FIT).length;
+    // Disqualifications exclude anyone cancelled before the demo — they were
+    // pruned, never assessed, so counting them as disqualified overstates it.
+    const notAFitQual = rs.filter(r => r.cur === CLINICIAN_STAGE_NOT_A_FIT && !isCancelled(r)).length;
+    const cancelled = rs.filter(isCancelled).length;
+    // Two different "supposed to occur" sets, per spec:
+    //   no-show  → reached Meeting Happened + No Show
+    //   prune    → reached Meeting Happened + No Show + Not a Fit
+    // No Show uses the same excl-Rescheduled basis as the numerator so the rate
+    // isn't diluted by deals that were simply re-booked.
+    const supposedNS = cnt[1] + noShow;
+    const supposedPrune = cnt[1] + noShow + notAFit;
     const pct = (n, d) => (d > 0 ? (n / d) * 100 : null);
     const vel = rs.filter(r => !isNaN(r.tMS) && !isNaN(r.tFO) && r.tFO >= r.tMS).map(r => (r.tFO - r.tMS) / 86400000);
     return {
       total: rs.length,
       funnel: CLINICIAN_STAGES.map((st, i) => ({
         id: st.id, label: st.label, count: cntCur[i], reachedCount: cnt[i],
-        convToNext: i < CLINICIAN_STAGES.length - 1 ? pct(cntCur[i + 1], cntCur[i]) : null,
+        // Conversion uses EVER-REACHED counts so it reads as a true funnel
+        // (monotonic, never >100%); the bar itself still shows current stage.
+        convToNext: i < CLINICIAN_STAGES.length - 1 ? pct(cnt[i + 1], cnt[i]) : null,
+        convNum: i < CLINICIAN_STAGES.length - 1 ? cnt[i + 1] : null, convDenom: cnt[i],
       })),
       exits: [
         { label: 'No Show', count: rs.filter(r => r.cur === CLINICIAN_STAGE_NO_SHOW).length },
@@ -1903,16 +1918,19 @@ function buildClinicianFunnel(deals, contactsByDeal) {
       stats: {
         showRate: pct(cnt[1], cnt[0]),                 // Meeting Scheduled → Meeting Happened
         closeRate: pct(cnt[3], cnt[1]),                // Meeting Happened → Form Submitted
-        noShowRate: pct(noShow, cnt[0]),               // excl. Rescheduled
-        disqualRate: pct(notAFit, cnt[1]),             // Not a Fit ÷ Meeting Happened
+        noShowRate: pct(noShow, supposedNS),           // ÷ meetings supposed to occur
+        disqualRate: pct(notAFitQual, cnt[1]),         // excl. cancelled-before-demo
+        pruneRate: pct(cancelled, supposedPrune),
         velocityDays: vel.length ? vel.reduce((a, b) => a + b, 0) / vel.length : null,
         velocityN: vel.length,
         // Why velocity may be blank: how many deals ever reached Fully Onboarded
         // vs how many actually carry the stage timestamps it needs.
         velocityFOReached: rs.filter(r => r.reached[5]).length,
         velocityStamped: rs.filter(r => r.hasEnteredMS && r.hasEnteredFO).length,
-        noShowNum: noShow, noShowDenom: cnt[0],
-        disqualNum: notAFit, disqualDenom: cnt[1],
+        noShowNum: noShow, noShowDenom: supposedNS,
+        disqualNum: notAFitQual, disqualDenom: cnt[1],
+        pruneNum: cancelled, pruneDenom: supposedPrune,
+        notAFitAll: notAFit,
         showNum: cnt[1], showDenom: cnt[0],
         closeNum: cnt[3], closeDenom: cnt[1],
       },
