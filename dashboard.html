@@ -784,7 +784,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t19';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t20';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2951,6 +2951,10 @@ const CLINICIAN_CONTACT_PROPS_REF = [
 ];
 const CLINICIAN_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/clinician':'/api/clinician';
 async function fdClinician(win){
+  // renderPage() is what applies .active to #page-clinician. switchDashSub
+  // returns early for this page, so without this call the container stays
+  // display:none and the page appears never to load.
+  renderPage();
   const el=document.getElementById('clinician-c');
   if(el)el.innerHTML='<div style="padding:40px;text-align:center;color:var(--grey);font-size:12px">Loading clinician funnel\u2026</div>';
   try{
@@ -2960,7 +2964,7 @@ async function fdClinician(win){
     const r=await fetch(CLINICIAN_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
     const d=await r.json();
     if(!r.ok||d.error){throw new Error(d.error||('HTTP '+r.status));}
-    S.clinician.data=d; renderClinician();
+    S.clinician.data=d; renderPage();
   }catch(e){
     if(el)el.innerHTML='<div style="padding:32px;text-align:center"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:#C62828;margin-bottom:6px">Clinician funnel failed to load</div><div style="font-size:12px;color:var(--grey)">'+(e.message||e)+'</div></div>';
   }
@@ -3036,7 +3040,7 @@ function renderClinician(){
   sh+=stat('Pipeline Velocity',st.velocityDays!=null?(Math.round(st.velocityDays*10)/10)+'d':'\u2014',st.velocityN?('avg across '+fN(st.velocityN)+' onboarded'):'no onboarded deals yet','Mean days from entering Meeting Scheduled to entering Fully Onboarded');
 
   let h=card('Clinician Funnel',
-    'Deals in the Clinician pipeline with a meeting date in the selected window \u00b7 counts are "ever reached" per stage \u00b7 '+fN((d.meta&&d.meta.dealsFetched)||0)+' deals',
+    'Deals in the Clinician pipeline with a meeting date in the selected window \u00b7 deals currently in each stage \u00b7 '+fN((d.meta&&d.meta.dealsFetched)||0)+' deals',
     '<div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">'
       +'<div style="flex:1 1 78%;min-width:340px">'+fh+'</div>'
       +'<div style="flex:0 1 20%;min-width:190px;background:var(--lighter);border:1px solid var(--border);border-radius:10px;padding:12px 14px">'+sh+'</div>'

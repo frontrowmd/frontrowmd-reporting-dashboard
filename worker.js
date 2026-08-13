@@ -1866,6 +1866,10 @@ function buildClinicianFunnel(deals, contactsByDeal) {
 
   const seg = (pred) => {
     const rs = rows.filter(pred);
+    // Funnel bars show deals CURRENTLY in each stage (per Alex).
+    const cntCur = CLINICIAN_STAGES.map(st => rs.filter(r => r.cur === st.id).length);
+    // Rates stay on "ever reached" — a current-stage denominator would exclude
+    // everyone who already progressed, making show/close rates read far too low.
     const cnt = CLINICIAN_STAGES.map((st, i) => rs.filter(r => r.reached[i]).length);
     // No Show excludes anyone whose attendance was Rescheduled (they were
     // re-booked, not a no-show).
@@ -1876,8 +1880,8 @@ function buildClinicianFunnel(deals, contactsByDeal) {
     return {
       total: rs.length,
       funnel: CLINICIAN_STAGES.map((st, i) => ({
-        id: st.id, label: st.label, count: cnt[i],
-        convToNext: i < CLINICIAN_STAGES.length - 1 ? pct(cnt[i + 1], cnt[i]) : null,
+        id: st.id, label: st.label, count: cntCur[i], reachedCount: cnt[i],
+        convToNext: i < CLINICIAN_STAGES.length - 1 ? pct(cntCur[i + 1], cntCur[i]) : null,
       })),
       exits: [
         { label: 'No Show', count: rs.filter(r => r.cur === CLINICIAN_STAGE_NO_SHOW).length },
