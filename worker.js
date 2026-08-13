@@ -1854,7 +1854,20 @@ function buildClinicianFunnel(deals, contactsByDeal) {
   const _ms = (v) => { if (!v) return NaN; return /^\d+$/.test(String(v)) ? parseInt(v) : new Date(v).getTime(); };
   // A deal "reached" a stage if HubSpot stamped its entered-date; fall back to
   // the current stage's position so deals predating stage tracking still count.
-  const rows = deals.map(d => {
+  // Meetings still in the future haven't had their chance to happen yet, so
+  // counting them drags Show Rate down and inflates the Meeting Scheduled bar.
+  // Excluded here (deals with NO meeting date are kept — they're unscheduled,
+  // not future-dated). Count is reported so the drop is visible, not silent.
+  const _today = new Date();
+  const _todayEnd = Date.UTC(_today.getUTCFullYear(), _today.getUTCMonth(), _today.getUTCDate(), 23, 59, 59, 999);
+  let excludedFuture = 0;
+  const rows = deals.filter(d => {
+    const md = (d.properties || {}).clinician_meeting_date;
+    if (!md) return true;
+    const t = /^\d+$/.test(String(md)) ? parseInt(md) : new Date(md).getTime();
+    if (!isNaN(t) && t > _todayEnd) { excludedFuture++; return false; }
+    return true;
+  }).map(d => {
     const p = d.properties || {};
     const cur = (p.dealstage || '').trim();
     const curIdx = CLINICIAN_STAGES.findIndex(x => x.id === cur);
@@ -1943,6 +1956,7 @@ function buildClinicianFunnel(deals, contactsByDeal) {
     nonmddo: seg(r => !isMD(r.type)),
     stageOrder: CLINICIAN_STAGES.map(x => x.label),
     contactsMatched: Object.keys(contactsByDeal).length,
+    excludedFuture,
   };
 }
 
