@@ -1850,8 +1850,8 @@ async function fetchClinicianContacts(token, dealIds) {
   return out;
 }
 
-// Meetings booked per day. Buckets on clinician_meeting_booked_date (when the
-// booking happened), falling back to createdate when that stamp is missing.
+// Meetings booked per day, bucketed on createdate (the deal's creation day) —
+// the same basis the funnel cohorts on, so the two sections line up.
 // Deliberately uses the RAW deal list — the future-meeting exclusion applies to
 // funnel outcomes, but a meeting booked today for next week is still a booking
 // today, so filtering it here would undercount activity.
@@ -1876,7 +1876,7 @@ function buildClinicianDaily(deals, from, to) {
   let total = 0, noDate = 0;
   for (const deal of deals) {
     const p = deal.properties || {};
-    const k = dayKey(p.clinician_meeting_booked_date) || dayKey(p.createdate);
+    const k = dayKey(p.createdate);
     if (!k) { noDate++; continue; }
     if (k < from || k > to) continue;   // booked outside the window
     byDay[k] = (byDay[k] || 0) + 1;
