@@ -1916,6 +1916,33 @@ function buildClinicianDaily(deals, contactsByDeal, from, to) {
   return { byDay, total, noDate, noContact, outside, contacts: seen.size, weekdayAvg: wdN ? wdSum / wdN : null, weekdayDays: wdN };
 }
 
+// Clinician composition: unique CONTACTS broken down by type and specialty.
+// Deduped by contact id for the same reason Daily Activity is — one clinician
+// with two deals is one person, and counting deals would skew the mix toward
+// whoever has the most pipeline activity.
+function buildClinicianComposition(deals, contactsByDeal) {
+  const seen = new Set();
+  const byType = {}, bySpec = {};
+  let contacts = 0;
+  for (const deal of deals) {
+    const cp = contactsByDeal[deal.id];
+    if (!cp) continue;
+    const cid = cp.__cid || ('deal:' + deal.id);
+    if (seen.has(cid)) continue;
+    seen.add(cid);
+    contacts++;
+    const t = (cp.clinician_type || '').trim() || 'Not set';
+    const sp = (cp.clinician_specialty || '').trim() || 'Not set';
+    byType[t] = (byType[t] || 0) + 1;
+    bySpec[sp] = (bySpec[sp] || 0) + 1;
+  }
+  // Largest first, but "Not set" is pinned last so it never leads the legend.
+  const toList = (o) => Object.entries(o)
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => (a.label === 'Not set') - (b.label === 'Not set') || b.count - a.count);
+  return { contacts, type: toList(byType), specialty: toList(bySpec) };
+}
+
 function buildClinicianFunnel(deals, contactsByDeal) {
   const _ms = (v) => { if (!v) return NaN; return /^\d+$/.test(String(v)) ? parseInt(v) : new Date(v).getTime(); };
   // A deal "reached" a stage if HubSpot stamped its entered-date; fall back to
@@ -5762,10 +5789,12 @@ export default {
         const contactsByDeal = await fetchClinicianContacts(token, deals.map(d => d.id));
         const funnel = buildClinicianFunnel(deals, contactsByDeal);
         const daily = buildClinicianDaily(deals, contactsByDeal, cur.from, cur.to);
+        const composition = buildClinicianComposition(deals, contactsByDeal);
         return jr({
           period: cur,
           ...funnel,
           daily,
+          composition,
           meta: {
             generatedAt: new Date().toISOString(),
             dealsFetched: deals.length,

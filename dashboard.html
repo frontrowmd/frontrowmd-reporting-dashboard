@@ -784,7 +784,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t33';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t34';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2978,6 +2978,45 @@ async function fdClinician(win){
 // MD/DO vs non-MD/DO segment for the stat card only (the funnel always shows all).
 window.clinicianSetSeg=function(seg){S.clinician.seg=seg;renderClinician();};
 
+// Pie chart for the Clinician Composition cards. Percentages sit on the slices,
+// a legend runs underneath, and each slice carries an instant hover (dbcTip)
+// reading "count (pct) - name".
+const CLINICIAN_PIE_COLORS=['#172C45','#72A4BF','#E6C55C','#6DB79A','#7B75D4','#E07A54','#5E9CB4','#CC5B54','#9AA7B4'];
+function _clinicianPie(rows,total){
+  if(!rows||!rows.length||!total)return '<div style="padding:28px;text-align:center;color:var(--grey);font-size:12px">No data in this window</div>';
+  const R=82,CX=100,CY=100;
+  const pctOf=(n)=>(n/total)*100;
+  let ang=-Math.PI/2,svg='',leg='';
+  for(let i=0;i<rows.length;i++){
+    const r=rows[i],col=CLINICIAN_PIE_COLORS[i%CLINICIAN_PIE_COLORS.length];
+    const pct=pctOf(r.count), frac=r.count/total, sweep=frac*Math.PI*2;
+    const tip=fN(r.count)+' ('+pct.toFixed(1)+'%) \u2014 '+r.label;
+    const hov=' data-tip="'+tip.replace(/"/g,'&quot;')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" style="cursor:pointer"';
+    if(frac>=0.9999){
+      // A single 100% slice can't be drawn as an arc — the endpoints coincide.
+      svg+='<circle cx="'+CX+'" cy="'+CY+'" r="'+R+'" fill="'+col+'"'+hov+'></circle>';
+    }else{
+      const a2=ang+sweep;
+      const x1=CX+R*Math.cos(ang),y1=CY+R*Math.sin(ang);
+      const x2=CX+R*Math.cos(a2),y2=CY+R*Math.sin(a2);
+      svg+='<path d="M '+CX+' '+CY+' L '+x1.toFixed(2)+' '+y1.toFixed(2)+' A '+R+' '+R+' 0 '+(sweep>Math.PI?1:0)+' 1 '+x2.toFixed(2)+' '+y2.toFixed(2)+' Z" fill="'+col+'" stroke="#fff" stroke-width="1.5"'+hov+'></path>';
+      // Only label slices with room for the text, otherwise they collide.
+      if(pct>=5){
+        const mid=ang+sweep/2, lr=R*0.62;
+        svg+='<text x="'+(CX+lr*Math.cos(mid)).toFixed(1)+'" y="'+(CY+lr*Math.sin(mid)+4).toFixed(1)+'" text-anchor="middle" font-family="var(--font-h)" font-size="12" font-weight="700" fill="'+(i===0?'#fff':'rgba(2,15,24,.82)')+'" pointer-events="none">'+pct.toFixed(0)+'%</text>';
+      }
+      ang=a2;
+    }
+    leg+='<div'+hov.replace('style="cursor:pointer"','style="cursor:pointer;display:flex;align-items:center;gap:7px;padding:3px 0"')+'>'
+      +'<span style="width:10px;height:10px;border-radius:2px;background:'+col+';flex-shrink:0"></span>'
+      +'<span style="font-size:11.5px;color:var(--navy);flex:1;min-width:0">'+r.label+'</span>'
+      +'<span style="font-size:11.5px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+fN(r.count)+'</span>'
+      +'<span style="font-size:10.5px;color:var(--grey);width:42px;text-align:right">'+pctOf(r.count).toFixed(1)+'%</span></div>';
+  }
+  return '<div style="display:flex;flex-direction:column;align-items:center;gap:10px">'
+    +'<svg viewBox="0 0 200 200" style="width:100%;max-width:210px;height:auto;display:block">'+svg+'</svg>'
+    +'<div style="width:100%;border-top:1px solid var(--border);padding-top:8px">'+leg+'</div></div>';
+}
 function renderClinician(){
   const d=S.clinician.data;
   const dhEl=document.getElementById('clinician-date-header');
@@ -3137,6 +3176,19 @@ function renderClinician(){
     if(dly.noDate)notes.push(fN(dly.noDate)+' contact'+(dly.noDate===1?'':'s')+' had no create date');
     if(notes.length)dh2+='<div style="font-size:10px;color:var(--grey);margin-top:8px;font-style:italic">Not plotted: '+notes.join(' \u00b7 ')+'.</div>';
     h+=card('Daily Activity','Clinician contacts created per day \u00b7 bucketed on Contact Create Date, deduped per person \u00b7 dashed line = weekday average (excludes Sat/Sun)',dh2);
+  }
+  // ── Section 3: Clinician Composition ──
+  const comp=d.composition||{};
+  if((comp.contacts||0)>0){
+    const panel=(t,rows)=>'<div style="flex:1 1 46%;min-width:260px;background:var(--lighter);border:1px solid var(--border);border-radius:10px;padding:14px 16px">'
+      +'<div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:2px">'+t+'</div>'
+      +'<div style="font-size:10.5px;color:var(--grey);margin-bottom:10px">'+fN(comp.contacts)+' clinician'+(comp.contacts===1?'':'s')+'</div>'
+      +_clinicianPie(rows,comp.contacts)+'</div>';
+    h+=card('Clinician Composition','Unique clinician contacts in the selected window \u00b7 deduped per person \u00b7 hover any slice for the count',
+      '<div style="display:flex;gap:16px;align-items:stretch;flex-wrap:wrap">'
+       +panel('Type of Clinician',comp.type||[])
+       +panel('Specialty Breakdown',comp.specialty||[])
+      +'</div>');
   }
   h+=card('Deal Fields','Verified against HubSpot \u00b7 all present',tbl(CLINICIAN_DEAL_PROPS_REF));
   h+=card('Contact Fields','Verified against HubSpot \u00b7 all present',tbl(CLINICIAN_CONTACT_PROPS_REF));
