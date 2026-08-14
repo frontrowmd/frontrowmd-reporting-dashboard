@@ -785,7 +785,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t37';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t38';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2986,7 +2986,7 @@ const CLINICIAN_PIE_COLORS=['#172C45','#72A4BF','#E6C55C','#6DB79A','#7B75D4','#
 const CLINICIAN_PIE_NOTSET='#9AA7B4';   // neutral — "Not set" is absence, not a category
 function _clinicianPie(rows,total){
   if(!rows||!rows.length||!total)return '<div style="padding:28px;text-align:center;color:var(--grey);font-size:12px">No data in this window</div>';
-  const R=78,CX=100,CY=100;   // leaves room for the 7px rounding stroke
+  const R=80,CX=100,CY=100;   // 5px stroke straddles the arc, so 80+2.5 fits the 100 half-viewBox
   const pctOf=(n)=>(n/total)*100;
   let ang=-Math.PI/2,svg='',leg='';
   for(let i=0;i<rows.length;i++){
@@ -3001,7 +3001,7 @@ function _clinicianPie(rows,total){
       const a2=ang+sweep;
       const x1=CX+R*Math.cos(ang),y1=CY+R*Math.sin(ang);
       const x2=CX+R*Math.cos(a2),y2=CY+R*Math.sin(a2);
-      svg+='<path d="M '+CX+' '+CY+' L '+x1.toFixed(2)+' '+y1.toFixed(2)+' A '+R+' '+R+' 0 '+(sweep>Math.PI?1:0)+' 1 '+x2.toFixed(2)+' '+y2.toFixed(2)+' Z" fill="'+col+'" stroke="#fff" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"'+hov+'></path>';
+      svg+='<path d="M '+CX+' '+CY+' L '+x1.toFixed(2)+' '+y1.toFixed(2)+' A '+R+' '+R+' 0 '+(sweep>Math.PI?1:0)+' 1 '+x2.toFixed(2)+' '+y2.toFixed(2)+' Z" fill="'+col+'" stroke="#fff" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"'+hov+'></path>';
       // Only label slices with room for the text, otherwise they collide.
       if(pct>=5){
         const mid=ang+sweep/2, lr=R*0.62;
