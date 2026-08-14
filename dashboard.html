@@ -785,7 +785,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t47';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t48';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3289,17 +3289,23 @@ function renderClinician(){
       +(calc?'<div style="font-size:10.5px;color:rgba(255,255,255,.72);margin-top:3px;font-variant-numeric:tabular-nums">'+calc+'</div>':'')
       +(extra||'')
       +(sub?'<div style="font-size:9px;color:rgba(255,255,255,.52);margin-top:3px;line-height:1.4">'+sub+'</div>':'')+'</div>';
-    // Pacing sparkline: cumulative spend as % of budget across the window, against
-    // a dashed ideal-pace diagonal, so ahead/behind reads at a glance.
-    const spark=(series,pace)=>{
-      if(!series||series.length<2)return '';
-      const W=150,H=30,mx=Math.max(100,pace||0,...series);
-      const pts=series.map((v,i)=>[(i/(series.length-1))*W,H-(v/mx)*H]);
-      const d=pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
-      return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:30px;display:block;margin-top:7px;overflow:visible">'
-        +'<line x1="0" y1="'+(H-(100/mx)*H).toFixed(1)+'" x2="'+W+'" y2="0" stroke="rgba(255,255,255,.28)" stroke-width="1" stroke-dasharray="3 3"></line>'
-        +'<path d="'+d+'" fill="none" stroke="#8FD3B6" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></path>'
-        +'<circle cx="'+pts[pts.length-1][0].toFixed(1)+'" cy="'+pts[pts.length-1][1].toFixed(1)+'" r="2.6" fill="#8FD3B6"></circle></svg>';
+    // Pacing progress bar: spend against budget, with a marker showing where an
+    // on-pace spend would sit (percent of the window elapsed). Overspend beyond
+    // 100% is clamped for the fill but still shown in the value above.
+    const paceBar=(pct,elapsed)=>{
+      if(pct==null)return '';
+      const w=Math.max(0,Math.min(100,pct));
+      const over=pct>100;
+      const fill=over?'#FF9B8F':(elapsed!=null&&pct>elapsed+10?'#F0C36A':'#8FD3B6');
+      let h='<div style="margin-top:9px"><div style="position:relative;height:8px;background:rgba(255,255,255,.16);border-radius:50px;overflow:visible">'
+        +'<div style="height:100%;width:'+w.toFixed(1)+'%;background:'+fill+';border-radius:50px;transition:width .3s"></div>';
+      if(elapsed!=null){
+        const e=Math.max(0,Math.min(100,elapsed));
+        h+='<div title="On-pace marker" style="position:absolute;top:-3px;bottom:-3px;left:'+e.toFixed(1)+'%;width:2px;background:rgba(255,255,255,.75);border-radius:2px"></div>';
+      }
+      h+='</div><div style="display:flex;justify-content:space-between;margin-top:4px;font-size:9px;color:rgba(255,255,255,.55)">'
+        +'<span>'+f$0(ads.spend)+' spent</span><span>'+f$0(ads.budget)+' budget</span></div></div>';
+      return h;
     };
     let kh='';
     if(ads.error){
@@ -3312,7 +3318,7 @@ function renderClinician(){
       const paceTone=(dpp!=null&&dpp>10)?'#FF9B8F':'#fff';
       kh+=kpi('Ad Budget Pacing',(pace!=null?pace.toFixed(0)+'%':'\u2014'),
         f$0(ads.spend)+' \u00f7 '+f$0(ads.budget),
-        (dpp!=null?((dpp>=0?'+':'')+dpp.toFixed(0)+'pp vs '+el.toFixed(0)+'% of window elapsed'):'Clinician channel budget'),paceTone,spark(ads.paceSeries,pace));
+        (dpp!=null?((dpp>=0?'+':'')+dpp.toFixed(0)+'pp vs '+el.toFixed(0)+'% of window elapsed'):'Clinician channel budget'),paceTone,paceBar(pace,el));
       kh+=kpi('CPD',f$0(ads.cpd),f$0(ads.spend)+' \u00f7 '+fN(ads.cpdDenom||0),'Clinician ad spend \u00f7 clinicians added');
       kh+=kpi('True CPD',f$0(ads.trueCpd),f$0(ads.spend)+' \u00f7 '+fN(ads.trueCpdDenom||0),'\u00f7 clinicians Qualified with a meeting Given');
       kh+=kpi('CAC',f$0(ads.cac),f$0(ads.spend)+' \u00f7 '+fN(ads.cacDenom||0),'\u00f7 clinicians who reached Fully Onboarded');
