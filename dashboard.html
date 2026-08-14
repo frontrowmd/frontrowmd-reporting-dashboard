@@ -785,7 +785,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t35';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t36';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3001,7 +3001,7 @@ function _clinicianPie(rows,total){
       const a2=ang+sweep;
       const x1=CX+R*Math.cos(ang),y1=CY+R*Math.sin(ang);
       const x2=CX+R*Math.cos(a2),y2=CY+R*Math.sin(a2);
-      svg+='<path d="M '+CX+' '+CY+' L '+x1.toFixed(2)+' '+y1.toFixed(2)+' A '+R+' '+R+' 0 '+(sweep>Math.PI?1:0)+' 1 '+x2.toFixed(2)+' '+y2.toFixed(2)+' Z" fill="'+col+'" stroke="#fff" stroke-width="1.5"'+hov+'></path>';
+      svg+='<path d="M '+CX+' '+CY+' L '+x1.toFixed(2)+' '+y1.toFixed(2)+' A '+R+' '+R+' 0 '+(sweep>Math.PI?1:0)+' 1 '+x2.toFixed(2)+' '+y2.toFixed(2)+' Z" fill="'+col+'" stroke="#fff" stroke-width="3" stroke-linejoin="round"'+hov+'></path>';
       // Only label slices with room for the text, otherwise they collide.
       if(pct>=5){
         const mid=ang+sweep/2, lr=R*0.62;
@@ -3009,7 +3009,7 @@ function _clinicianPie(rows,total){
       }
       ang=a2;
     }
-    leg+='<div class="cln-leg"'+hov.replace('style="cursor:pointer"','style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:5px"')+'>'
+    leg+='<div class="cln-leg"'+hov.replace('style="cursor:pointer"','style="cursor:pointer;display:flex;align-items:center;gap:9px;padding:5px 7px;border-radius:6px"')+'>'
       +'<span style="width:10px;height:10px;border-radius:2px;background:'+col+';flex-shrink:0"></span>'
       +'<span style="font-size:11.5px;color:var(--navy);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+r.label+'</span>'
       +'<span style="font-size:12px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+fN(r.count)+'</span>'
@@ -3018,9 +3018,11 @@ function _clinicianPie(rows,total){
   // Pie beside the legend rather than above it: the old stacked layout left the
   // chart marooned in a wide panel and stretched legend rows so far that a name
   // and its number sat ~800px apart.
-  return '<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">'
-    +'<svg viewBox="0 0 200 200" style="flex:0 0 auto;width:172px;height:172px;display:block">'+svg+'</svg>'
-    +'<div style="flex:1 1 200px;min-width:190px">'+leg+'</div></div>';
+  // Legend is capped and the pair is centred: letting the legend fill a ~950px
+  // panel pushed each name ~700px from its own count.
+  return '<div style="display:flex;align-items:center;justify-content:center;gap:26px;flex-wrap:wrap">'
+    +'<svg viewBox="0 0 200 200" style="flex:0 0 auto;width:196px;height:196px;display:block">'+svg+'</svg>'
+    +'<div style="flex:1 1 260px;min-width:230px;max-width:340px">'+leg+'</div></div>';
 }
 function renderClinician(){
   const d=S.clinician.data;
@@ -3185,13 +3187,13 @@ function renderClinician(){
   // ── Section 3: Clinician Composition ──
   const comp=d.composition||{};
   if((comp.contacts||0)>0){
-    const panel=(t,rows)=>'<div style="flex:1 1 44%;min-width:330px;background:var(--white);border:1px solid var(--border);border-radius:10px;padding:15px 17px">'
-      +'<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:12px;padding-bottom:9px;border-bottom:1px solid var(--border)">'
+    const panel=(t,rows)=>'<div style="flex:1 1 44%;min-width:330px;background:var(--white);border:1px solid var(--border);border-radius:10px;padding:16px 18px 18px">'
+      +'<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--border)">'
       +'<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">'+t+'</span>'
       +'<span style="font-size:10px;color:var(--grey);white-space:nowrap">'+fN(comp.contacts)+' clinician'+(comp.contacts===1?'':'s')+' \u00b7 '+fN(rows.length)+' categories</span></div>'
       +_clinicianPie(rows,comp.contacts)+'</div>';
     h+=card('Clinician Composition','Unique clinician contacts in the selected window \u00b7 deduped per person \u00b7 hover any slice for the count',
-      '<div style="display:flex;gap:16px;align-items:stretch;flex-wrap:wrap">'
+      '<div style="display:flex;gap:18px;align-items:stretch;flex-wrap:wrap">'
        +panel('Type of Clinician',comp.type||[])
        +panel('Specialty Breakdown',comp.specialty||[])
       +'</div>');
