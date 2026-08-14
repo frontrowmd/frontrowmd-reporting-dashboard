@@ -785,7 +785,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t43';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t44';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3091,8 +3091,13 @@ function renderClinician(){
       +'<div style="height:100%;width:'+fillW+'%;background:'+col+'"></div></div></div>'
       // Conversion to the next stage: solid pill so the number reads at a glance,
       // with the target stage and its inputs as quieter context beside it.
-      +(conv!=null?'<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:6px;flex-wrap:wrap">'
-        +'<span style="display:inline-flex;align-items:center;gap:4px;background:var(--teal);color:#fff;font-family:var(--font-h);font-size:13.5px;font-weight:700;padding:3px 12px;border-radius:50px;box-shadow:0 1px 3px rgba(114,164,191,.35);white-space:nowrap">\u2193 '+pctS(conv)+'</span>'
+      // padding-left:50% puts the pill's left edge at the row midpoint, then the
+      // negative margin (half the fixed pill width) pulls it back so the pill is
+      // centred. Fixed min-width means every pill is identical, so they all land
+      // on the same x no matter how long the trailing text is — centring the
+      // whole group made them drift with the text length.
+      +(conv!=null?'<div style="display:flex;align-items:center;gap:9px;margin-top:6px;padding-left:50%">'
+        +'<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;flex:0 0 auto;min-width:78px;margin-left:-39px;background:var(--teal);color:#fff;font-family:var(--font-h);font-size:13.5px;font-weight:700;padding:3px 12px;border-radius:50px;box-shadow:0 1px 3px rgba(114,164,191,.35);white-space:nowrap">\u2193 '+pctS(conv)+'</span>'
         +'<span style="font-size:11px;color:var(--grey)">to <b style="color:var(--navy);font-weight:600">'+fn[i+1].label+'</b> \u00b7 '+fN(st.convNum||0)+' \u00f7 '+fN(st.convDenom||0)+' reached</span>'
         +'</div>':'')
       +'</div>';
