@@ -1794,10 +1794,12 @@ const CLINICIAN_ENTERED_PROPS = CLINICIAN_ALL_STAGE_IDS.map(id => 'hs_date_enter
 const CLINICIAN_DEAL_PROPS = [
   'dealstage', 'pipeline', 'clinician_meeting_date', 'clinician_meeting_booked_date',
   'clinician_attendance_status', 'clinician_qualification_outcome', 'createdate',
+  'utm_source', 'utm_medium', 'utm_campaign',
 ].concat(CLINICIAN_ENTERED_PROPS);
 const CLINICIAN_CONTACT_PROPS = [
   'firstname','lastname','email','phone','clinician_specialty','clinician_type',
   'clinician_referral_source','npi_number','photo_verification_status','createdate',
+  'utm_source','utm_medium','utm_campaign',
   'medical_degree_status','samples_arrival_date','number_of_samples_shipped',
 ];
 
@@ -1923,6 +1925,7 @@ function buildClinicianDaily(deals, contactsByDeal, from, to) {
 function buildClinicianComposition(deals, contactsByDeal) {
   const seen = new Set();
   const byType = {}, bySpec = {};
+  const byRef = {}, byUtmS = {}, byUtmM = {}, byUtmC = {};
   let contacts = 0;
   for (const deal of deals) {
     const cp = contactsByDeal[deal.id];
@@ -1935,12 +1938,39 @@ function buildClinicianComposition(deals, contactsByDeal) {
     const sp = (cp.clinician_specialty || '').trim() || 'Not set';
     byType[t] = (byType[t] || 0) + 1;
     bySpec[sp] = (bySpec[sp] || 0) + 1;
+    // Acquisition. UTMs may sit on either object, so take the contact's value and
+    // fall back to the deal's rather than assuming one of them.
+    const dp = deal.properties || {};
+    const pick = (k) => ((cp[k] || dp[k] || '').trim()) || 'Not set';
+    const rs = (cp.clinician_referral_source || '').trim() || 'Not set';
+    byRef[rs] = (byRef[rs] || 0) + 1;
+    const us = pick('utm_source'), um = pick('utm_medium'), uc = pick('utm_campaign');
+    byUtmS[us] = (byUtmS[us] || 0) + 1;
+    byUtmM[um] = (byUtmM[um] || 0) + 1;
+    byUtmC[uc] = (byUtmC[uc] || 0) + 1;
   }
   // Largest first, but "Not set" is pinned last so it never leads the legend.
   const toList = (o) => Object.entries(o)
     .map(([label, count]) => ({ label, count }))
     .sort((a, b) => (a.label === 'Not set') - (b.label === 'Not set') || b.count - a.count);
-  return { contacts, type: toList(byType), specialty: toList(bySpec) };
+  // Cap slice count so a high-cardinality dimension (utm_campaign especially)
+  // stays readable; the remainder is rolled into one labelled bucket rather than
+  // dropped, so the total still reconciles.
+  const capped = (o, max) => {
+    const l = toList(o);
+    if (l.length <= max) return l;
+    const head = l.slice(0, max - 1);
+    const tail = l.slice(max - 1);
+    const rest = tail.reduce((n, x) => n + x.count, 0);
+    head.push({ label: `Other (${tail.length} more)`, count: rest });
+    return head;
+  };
+  return {
+    contacts,
+    type: toList(byType), specialty: toList(bySpec),
+    referral: toList(byRef),
+    utmSource: capped(byUtmS, 8), utmMedium: capped(byUtmM, 8), utmCampaign: capped(byUtmC, 8),
+  };
 }
 
 function buildClinicianFunnel(deals, contactsByDeal) {

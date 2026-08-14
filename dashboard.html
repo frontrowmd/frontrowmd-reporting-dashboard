@@ -785,7 +785,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t44';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t45';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2978,6 +2978,8 @@ async function fdClinician(win){
 }
 // MD/DO vs non-MD/DO segment for the stat card only (the funnel always shows all).
 window.clinicianSetSeg=function(seg){S.clinician.seg=seg;renderClinician();};
+// Which UTM dimension the right-hand Acquisition pie shows.
+window.clinicianSetUtm=function(dim){S.clinician.utmDim=dim;renderClinician();};
 
 // Pie chart for the Clinician Composition cards. Percentages sit on the slices,
 // a legend runs underneath, and each slice carries an instant hover (dbcTip)
@@ -3224,6 +3226,26 @@ function renderClinician(){
       '<div style="display:flex;gap:18px;align-items:stretch;flex-wrap:wrap">'
        +panel('Type of Clinician',comp.type||[])
        +panel('Specialty Breakdown',comp.specialty||[])
+      +'</div>');
+  }
+  // ── Section 4: Acquisition ──
+  if((comp.contacts||0)>0){
+    const UD=[['utmSource','UTM Source'],['utmMedium','UTM Medium'],['utmCampaign','UTM Campaign']];
+    const ud=S.clinician.utmDim||'utmSource';
+    const udLabel=(UD.find(x=>x[0]===ud)||UD[0])[1];
+    const udPill=(k,lbl)=>{const on=ud===k;return '<button onclick="clinicianSetUtm(\''+k+'\')" style="font-family:var(--font-h);font-size:11px;font-weight:700;letter-spacing:.02em;padding:6px 14px;border:none;background:'+(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+';cursor:pointer;transition:background .15s,color .15s">'+lbl+'</button>';};
+    const acqPanel=(t,rows,extra)=>'<div style="flex:1 1 44%;min-width:330px;background:var(--white);border:1px solid var(--border);border-radius:10px;padding:16px 18px 18px">'
+      +'<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:'+(extra?'10':'16')+'px;padding-bottom:10px;border-bottom:1px solid var(--border)">'
+      +'<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">'+t+'</span>'
+      +'<span style="font-size:10px;color:var(--grey);white-space:nowrap">'+fN(comp.contacts)+' clinician'+(comp.contacts===1?'':'s')+' \u00b7 '+fN(rows.length)+' categories</span></div>'
+      +(extra||'')
+      +_clinicianPie(rows,comp.contacts)+'</div>';
+    const utmToggle='<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap;margin:0 0 14px">'
+      +UD.map(x=>udPill(x[0],x[1])).join('')+'</div>';
+    h+=card('Acquisition','Where clinicians came from \u00b7 unique contacts, deduped per person \u00b7 UTMs read from the contact, falling back to the deal',
+      '<div style="display:flex;gap:18px;align-items:stretch;flex-wrap:wrap">'
+       +acqPanel('Clinician Referral Source',comp.referral||[])
+       +acqPanel(udLabel,comp[ud]||[],utmToggle)
       +'</div>');
   }
   h+=card('Deal Fields','Verified against HubSpot \u00b7 all present',tbl(CLINICIAN_DEAL_PROPS_REF));
