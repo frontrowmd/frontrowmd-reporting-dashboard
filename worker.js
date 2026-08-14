@@ -318,19 +318,28 @@ const AD_EPOCH = '2024-01-01';
 const WINDSOR_EPOCH = '2025-11-01'; // Windsor ad data starts here; HubSpot can go back further
 
 // ---------------------------------------------------------------------------
-// Date Helpers (ET via offset — Workers run UTC)
+// Date Helpers (US PACIFIC via offset — Workers run UTC)
 // ---------------------------------------------------------------------------
-function isEDT(date) {
+// Every date boundary on every page routes through ptOff(), so switching the
+// dashboard's timezone is this one function. The *ET-named* helpers below
+// (etOff / todayET / toMsET) are kept as-is because ~40 call sites use them;
+// they now return PACIFIC values. Prefer the PT names in new code.
+//
+// DST: Pacific shares the US transition DATES with Eastern (2nd Sunday March,
+// 1st Sunday November) but flips at 2am LOCAL, i.e. 10:00 UTC entering PDT and
+// 9:00 UTC leaving it — 3h later than the Eastern instants this used before.
+function isPDT(date) {
   const y = date.getUTCFullYear();
   const mar1 = new Date(Date.UTC(y, 2, 1));
   const marSun2 = new Date(Date.UTC(y, 2, 8 + (7 - mar1.getUTCDay()) % 7));
-  const dstStart = new Date(Date.UTC(y, 2, marSun2.getUTCDate(), 7, 0, 0));
+  const dstStart = new Date(Date.UTC(y, 2, marSun2.getUTCDate(), 10, 0, 0));
   const nov1 = new Date(Date.UTC(y, 10, 1));
   const novSun1 = new Date(Date.UTC(y, 10, 1 + (7 - nov1.getUTCDay()) % 7));
-  const dstEnd = new Date(Date.UTC(y, 10, novSun1.getUTCDate(), 6, 0, 0));
+  const dstEnd = new Date(Date.UTC(y, 10, novSun1.getUTCDate(), 9, 0, 0));
   return date >= dstStart && date < dstEnd;
 }
-function etOff(d) { return isEDT(d) ? -4 : -5; }
+function ptOff(d) { return isPDT(d) ? -7 : -8; }   // PDT / PST
+function etOff(d) { return ptOff(d); }             // legacy name, now Pacific
 
 function todayET() {
   const n = new Date(), o = etOff(n);
