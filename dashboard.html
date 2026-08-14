@@ -784,7 +784,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t32';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t33';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3101,6 +3101,8 @@ function renderClinician(){
       +'<div style="font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em">'+lbl+'</div>'
       +'<div style="font-family:var(--font-h);font-size:24px;font-weight:700;color:var(--navy);margin-top:3px">'+val+'</div>'
       +(sub?'<div style="font-size:9.5px;color:var(--grey);margin-top:4px">'+sub+'</div>':'')+'</div>';
+    const CH=190;        // bar-area height
+    const SCALE=0.86;    // tallest bar tops out here, leaving room for its label
     let dh2='<div style="display:flex;gap:12px;margin:12px 0 18px;flex-wrap:wrap">'
       +mini('Clinicians Added',fN(dly.total||0),'contacts created in the selected window')
       +mini('Weekday Avg',avg!=null?(Math.round(avg*10)/10):'\u2014',(dly.weekdayDays||0)+' weekdays \u00b7 excludes Sat/Sun')
@@ -3110,11 +3112,11 @@ function renderClinician(){
     for(const k of dDays){
       const n=dly.byDay[k]||0, dt=new Date(k+'T12:00:00Z'), dow=dt.getUTCDay();
       const isW=(dow===0||dow===6);
-      const hPct=Math.max(n>0?4:1.5,(n/dMax)*100);
+      const hPct=Math.max(n>0?4:1.5,(n/dMax)*100*SCALE);
       const lbl=(dt.getUTCMonth()+1)+'/'+dt.getUTCDate();
       const tip=DOW[dow]+' '+lbl+' \u2014 '+n+' meeting'+(n===1?'':'s')+' booked';
       dh2+='<div style="flex:1;min-width:20px;display:flex;flex-direction:column;align-items:center;gap:3px">'
-        +'<div style="width:100%;height:170px;display:flex;align-items:flex-end;justify-content:center">'
+        +'<div style="width:100%;height:'+CH+'px;display:flex;align-items:flex-end;justify-content:center">'
         +'<div class="dbc-bar'+(isW?' wknd':'')+'" data-tip="'+tip.replace(/"/g,'&quot;')+'" style="height:'+hPct+'%;width:100%;max-width:34px;cursor:pointer" onmouseover="dbcTip(event,this)" onmouseout="dbcTipHide()" onmousemove="dbcTipMove(event)">'
         +'<div class="dbc-cnt">'+(n||'')+'</div></div></div>'
         +'<div class="dbc-lbl dow">'+DOW[dow]+'</div><div class="dbc-lbl">'+lbl+'</div></div>';
@@ -3123,7 +3125,7 @@ function renderClinician(){
     // Weekday-average reference line, drawn over the 170px bar area. Columns all
     // start at the top of the row, so a single absolute offset lines up on every bar.
     if(avg!=null&&dMax>0){
-      const topPx=(1-Math.min(1,avg/dMax))*170;
+      const topPx=CH-(Math.min(1,avg/dMax)*CH*SCALE);
       dh2+='<div style="position:absolute;left:0;right:0;top:'+topPx.toFixed(1)+'px;border-top:2px dashed var(--teal);opacity:.8;pointer-events:none">'
         +'<span style="position:absolute;right:0;top:-15px;font-size:9.5px;font-weight:700;color:var(--teal);background:var(--white);padding:0 5px;border-radius:3px">weekday avg '+(Math.round(avg*10)/10)+'</span></div>';
     }
