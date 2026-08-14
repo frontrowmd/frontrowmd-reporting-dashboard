@@ -785,7 +785,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t40';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t41';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3081,11 +3081,11 @@ function renderClinician(){
     const rc=st.reachedCount||0, cc=st.count||0;
     const trackW=Math.max(2,(rc/maxN)*100);
     const fillW=rc>0?Math.min(100,(cc/rc)*100):0;   // share of reached still sitting here
-    fh+='<div style="margin-bottom:13px">'
-      +'<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:5px;gap:10px">'
+    fh+='<div style="margin-bottom:11px">'
+      +'<div style="display:flex;align-items:baseline;margin-bottom:5px;gap:9px;flex-wrap:wrap">'
       +'<span style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:'+col+';border:1px solid rgba(2,15,24,.18);margin-right:7px;vertical-align:middle"></span>'+st.label+'</span>'
-      +'<span style="white-space:nowrap"><span style="font-family:var(--font-h);font-size:19px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+fN(cc)+'</span>'
-      +'<span style="font-size:11px;color:var(--grey);margin-left:5px">here now \u00b7 '+fN(rc)+' reached</span></span></div>'
+      +'<span style="white-space:nowrap"><span style="font-family:var(--font-h);font-size:18px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+fN(rc)+'</span>'
+      +'<span style="font-size:11px;color:var(--grey);margin-left:5px">reached \u00b7 '+fN(cc)+' here now</span></span></div>'
       +'<div style="background:rgba(114,164,191,.07);border-radius:6px;height:26px;overflow:hidden">'
       +'<div title="'+fN(rc)+' ever reached \u00b7 '+fN(cc)+' still in this stage" style="height:100%;width:'+trackW+'%;background:'+col+'33;border:1px solid '+col+';border-radius:6px;overflow:hidden;transition:width .3s">'
       +'<div style="height:100%;width:'+fillW+'%;background:'+col+'"></div></div></div>'
@@ -3098,11 +3098,19 @@ function renderClinician(){
       +'</div>';
   }
   const exits=segData.exits||[];
+  // Exit counts render in the stat column, not under the funnel: as compact rows
+  // they fill the empty space beneath the stats and sit next to the rates that
+  // are computed from them.
+  let exitH='';
   if(exits.length){
-    fh+='<div style="display:flex;gap:10px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">';
+    exitH='<div style="margin-top:14px;padding-top:11px;border-top:1px solid var(--border)">'
+      +'<div style="font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Exited Pipeline</div>';
     for(const x of exits){const xc=CLINICIAN_STAGE_COLORS[x.label]||'var(--grey)';
-      fh+='<div style="flex:1;background:var(--lighter);border:1px solid var(--border);border-left:3px solid '+xc+';border-radius:8px;padding:8px 11px"><div style="font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em">'+x.label+'</div><div style="font-family:var(--font-h);font-size:18px;font-weight:700;color:var(--navy)">'+fN(x.count||0)+'</div></div>';}
-    fh+='</div>';
+      exitH+='<div style="display:flex;align-items:center;gap:8px;padding:5px 0">'
+        +'<span style="width:9px;height:9px;border-radius:50%;background:'+xc+';flex-shrink:0"></span>'
+        +'<span style="font-size:11.5px;color:var(--navy);flex:1">'+x.label+'</span>'
+        +'<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+fN(x.count||0)+'</span></div>';}
+    exitH+='</div>';
   }
 
   // Stat card (segment-aware)
@@ -3140,6 +3148,7 @@ function renderClinician(){
   sh+=stat('Prune Rate',pctS(st.pruneRate),fN(st.pruneNum||0)+' \u00f7 '+fN(st.pruneDenom||0),
     'Cancelled Before Demo \u00f7 Meeting Happened + No Show + Not a Fit',
     'Cancelled Before Demo \u00f7 meetings supposed to occur',true,true);
+  sh+=exitH;
   let h=card('Clinician Funnel',
     'Deals created in the Clinician pipeline during the selected window \u00b7 '+fN((d.meta&&d.meta.dealsFetched)||0)+' deals'+((d.excludedFuture||0)?' \u00b7 '+fN(d.excludedFuture)+' future-dated meeting'+(d.excludedFuture===1?'':'s')+' excluded':'')+' \u00b7 bar length = how many ever reached the stage, solid = how many are there now',
     segBar+'<div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">'
