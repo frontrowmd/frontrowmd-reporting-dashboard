@@ -785,7 +785,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t52';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t53';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2958,6 +2958,7 @@ const CLINICIAN_STAGE_COLORS={
   '1st Sample Shipped':'#6DB79A','No Show':'#4C5A70','Not a Fit':'#CC5B54'};
 const CLINICIAN_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/clinician':'/api/clinician';
 async function fdClinician(win){
+  S.clinician._loading=true;
   // renderPage() is what applies .active to #page-clinician. switchDashSub
   // returns early for this page, so without this call the container stays
   // display:none and the page appears never to load.
@@ -2971,8 +2972,9 @@ async function fdClinician(win){
     const r=await fetch(CLINICIAN_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
     const d=await r.json();
     if(!r.ok||d.error){throw new Error(d.error||('HTTP '+r.status));}
-    S.clinician.data=d; renderPage();
+    S.clinician.data=d; S.clinician._loading=false; renderPage();
   }catch(e){
+    S.clinician._loading=false;
     if(el)el.innerHTML='<div style="padding:32px;text-align:center"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:#C62828;margin-bottom:6px">Clinician funnel failed to load</div><div style="font-size:12px;color:var(--grey)">'+(e.message||e)+'</div></div>';
   }
 }
@@ -3117,7 +3119,14 @@ function renderClinician(){
     +'<th style="text-align:left;padding:8px 6px;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Type</th></tr></thead><tbody>'
     +rows.map(r=>'<tr style="border-bottom:1px solid var(--border)"><td style="padding:7px 6px;color:var(--navy);font-weight:500">'+r[1]+'</td><td style="padding:7px 6px;color:var(--grey);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px">'+r[0]+'</td><td style="padding:7px 6px;color:var(--grey)">'+r[2]+'</td></tr>').join('')
     +'</tbody></table></div>';
-  if(!d){el.innerHTML=_clinicianSkeleton();return;}
+  if(!d){
+    el.innerHTML=_clinicianSkeleton();
+    // Self-trigger: whatever route reached this page, a missing payload starts
+    // exactly one fetch. The _loading guard stops re-entry, since fdClinician
+    // calls renderPage() which lands back here.
+    if(!S.clinician._loading)fdClinician(S.clinician.win||'mtd');
+    return;
+  }
 
   // ── Section 1: Clinician Funnel ──
   const seg=S.clinician.seg||'all';
