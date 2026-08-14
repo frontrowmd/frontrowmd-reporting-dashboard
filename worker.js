@@ -1867,12 +1867,19 @@ async function fetchClinicianContacts(token, dealIds) {
 // today, so filtering it here would undercount activity.
 function buildClinicianDaily(deals, contactsByDeal, from, to) {
   const byDay = {};
+  // Bucket by PACIFIC calendar day, matching every other date boundary.
+  // Previously a loose /^\d{4}-\d{2}-\d{2}/ (no anchor at the end) matched
+  // HubSpot's full ISO timestamp and sliced off the UTC date, so a contact
+  // created 7pm PDT (= 02:00Z next day) was counted on the FOLLOWING day.
+  // Only a bare YYYY-MM-DD value is taken as-is; anything with a time
+  // component is shifted into Pacific first.
   const dayKey = (v) => {
     if (!v) return null;
-    if (/^\d{4}-\d{2}-\d{2}/.test(String(v))) return String(v).slice(0, 10);
-    const t = /^\d+$/.test(String(v)) ? parseInt(v) : new Date(v).getTime();
+    const str = String(v);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;          // date-only: already local
+    const t = /^\d+$/.test(str) ? parseInt(str) : new Date(str).getTime();
     if (isNaN(t)) return null;
-    const d = new Date(t);
+    const d = new Date(t + ptOff(new Date(t)) * 3600000);
     return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
   };
   // Seed every day in the window so gaps render as zero rather than collapsing.
