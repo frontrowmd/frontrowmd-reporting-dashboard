@@ -785,7 +785,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t51';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t52';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2963,7 +2963,7 @@ async function fdClinician(win){
   // display:none and the page appears never to load.
   renderPage();
   const el=document.getElementById('clinician-c');
-  if(el)el.innerHTML='<div style="padding:40px;text-align:center;color:var(--grey);font-size:12px">Loading clinician funnel\u2026</div>';
+  if(el)el.innerHTML=_clinicianSkeleton();
   try{
     const b={password:PW,window:win||S.clinician.win||'mtd'};
     if(S.clinician.cFrom)b.from=S.clinician.cFrom;
@@ -3070,6 +3070,31 @@ function _clnStripFilterBars(){
     });
   }
 }
+// Skeleton shown while the Clinician payload loads — reuses the shared su-skel-*
+// shimmer so it matches the other pages rather than a bare "Loading" line.
+function _clinicianSkeleton(){
+  const bar=(w,h)=>'<div class="su-skel-bar" style="width:'+w+';height:'+h+'px"></div>';
+  const head=(w)=>'<div class="su-skel-head"><div class="su-skel-title">'+bar(w,20)+'</div>'+bar('120px',14)+'</div>';
+  let h='<div class="su-skel-grid">';
+  // Funnel: stage rows + stat column
+  h+='<div class="su-skel-card">'+head('190px')
+    +'<div style="display:flex;gap:16px;flex-wrap:wrap"><div style="flex:1 1 70%;min-width:320px">';
+  for(let i=0;i<6;i++)h+='<div style="margin-bottom:14px">'+bar((92-i*11)+'%',26)+'</div>';
+  h+='</div><div style="flex:0 1 24%;min-width:210px">';
+  for(let i=0;i<5;i++)h+='<div style="margin-bottom:14px">'+bar('100%',38)+'</div>';
+  h+='</div></div></div>';
+  // Daily activity
+  h+='<div class="su-skel-card">'+head('150px')+bar('100%',150)+'</div>';
+  // Two-up sections (composition, acquisition, verification)
+  for(let k=0;k<3;k++){
+    h+='<div class="su-skel-card">'+head('200px')
+      +'<div style="display:flex;gap:18px;flex-wrap:wrap">'
+      +'<div style="flex:1 1 44%;min-width:300px">'+bar('100%',170)+'</div>'
+      +'<div style="flex:1 1 44%;min-width:300px">'+bar('100%',170)+'</div></div></div>';
+  }
+  h+='</div>';
+  return h;
+}
 function renderClinician(){
   const d=S.clinician.data;
   const dhEl=document.getElementById('clinician-date-header');
@@ -3092,7 +3117,7 @@ function renderClinician(){
     +'<th style="text-align:left;padding:8px 6px;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Type</th></tr></thead><tbody>'
     +rows.map(r=>'<tr style="border-bottom:1px solid var(--border)"><td style="padding:7px 6px;color:var(--navy);font-weight:500">'+r[1]+'</td><td style="padding:7px 6px;color:var(--grey);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px">'+r[0]+'</td><td style="padding:7px 6px;color:var(--grey)">'+r[2]+'</td></tr>').join('')
     +'</tbody></table></div>';
-  if(!d){el.innerHTML='<div style="padding:40px;text-align:center;color:var(--grey);font-size:12px">Loading clinician funnel\u2026</div>';return;}
+  if(!d){el.innerHTML=_clinicianSkeleton();return;}
 
   // ── Section 1: Clinician Funnel ──
   const seg=S.clinician.seg||'all';
@@ -7588,7 +7613,9 @@ function switchDashSub(sub){
   // an empty/zero response from an earlier failed fetch — switching to
   // the page should always pull fresh numbers.
   if(AP==='webinarPerf'){fdWebinarPerf(S.webinarPerf.win||'mtd');return;}
-  if(AP==='clinician'){fdClinician(S.clinician.win||'mtd');return;}
+  // Load once. Nav clicks re-render from cached data; a refetch only happens on a
+  // time-frame change (selW) or the Refresh button (refreshData clears .data).
+  if(AP==='clinician'){ if(S.clinician.data){renderPage();} else {fdClinician(S.clinician.win||'mtd');} return; }
   if(!S[AP].data){
     if(AP==='strategy'){renderPage();return;}
     if(AP==='signup')fdSignup();
