@@ -185,6 +185,7 @@ html,body{height:100%}body{font-family:var(--font-b);font-size:15px;color:var(--
   border:1px solid var(--border);border-radius:50px;padding:4px 11px;cursor:pointer;white-space:nowrap;
   transition:background .15s,color .15s,border-color .15s}
 .secnav-btn:hover{background:var(--teal-8);border-color:var(--teal-30)}
+.cln-leg:hover{background:rgba(114,164,191,.12)}
 .secnav-btn.active{background:var(--navy);color:#fff;border-color:var(--navy)}
 @media(max-width:900px){.secnav{padding:8px 16px;margin:12px -16px -12px}}
 
@@ -784,7 +785,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t34';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t35';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2981,14 +2982,15 @@ window.clinicianSetSeg=function(seg){S.clinician.seg=seg;renderClinician();};
 // Pie chart for the Clinician Composition cards. Percentages sit on the slices,
 // a legend runs underneath, and each slice carries an instant hover (dbcTip)
 // reading "count (pct) - name".
-const CLINICIAN_PIE_COLORS=['#172C45','#72A4BF','#E6C55C','#6DB79A','#7B75D4','#E07A54','#5E9CB4','#CC5B54','#9AA7B4'];
+const CLINICIAN_PIE_COLORS=['#172C45','#72A4BF','#E6C55C','#6DB79A','#7B75D4','#E07A54','#CC5B54','#0F766E','#B08D57'];
+const CLINICIAN_PIE_NOTSET='#9AA7B4';   // neutral — "Not set" is absence, not a category
 function _clinicianPie(rows,total){
   if(!rows||!rows.length||!total)return '<div style="padding:28px;text-align:center;color:var(--grey);font-size:12px">No data in this window</div>';
   const R=82,CX=100,CY=100;
   const pctOf=(n)=>(n/total)*100;
   let ang=-Math.PI/2,svg='',leg='';
   for(let i=0;i<rows.length;i++){
-    const r=rows[i],col=CLINICIAN_PIE_COLORS[i%CLINICIAN_PIE_COLORS.length];
+    const r=rows[i],col=(r.label==='Not set')?CLINICIAN_PIE_NOTSET:CLINICIAN_PIE_COLORS[i%CLINICIAN_PIE_COLORS.length];
     const pct=pctOf(r.count), frac=r.count/total, sweep=frac*Math.PI*2;
     const tip=fN(r.count)+' ('+pct.toFixed(1)+'%) \u2014 '+r.label;
     const hov=' data-tip="'+tip.replace(/"/g,'&quot;')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" style="cursor:pointer"';
@@ -3007,15 +3009,18 @@ function _clinicianPie(rows,total){
       }
       ang=a2;
     }
-    leg+='<div'+hov.replace('style="cursor:pointer"','style="cursor:pointer;display:flex;align-items:center;gap:7px;padding:3px 0"')+'>'
+    leg+='<div class="cln-leg"'+hov.replace('style="cursor:pointer"','style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:5px"')+'>'
       +'<span style="width:10px;height:10px;border-radius:2px;background:'+col+';flex-shrink:0"></span>'
-      +'<span style="font-size:11.5px;color:var(--navy);flex:1;min-width:0">'+r.label+'</span>'
-      +'<span style="font-size:11.5px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+fN(r.count)+'</span>'
-      +'<span style="font-size:10.5px;color:var(--grey);width:42px;text-align:right">'+pctOf(r.count).toFixed(1)+'%</span></div>';
+      +'<span style="font-size:11.5px;color:var(--navy);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+r.label+'</span>'
+      +'<span style="font-size:12px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+fN(r.count)+'</span>'
+      +'<span style="font-size:10.5px;color:var(--grey);width:44px;text-align:right;font-variant-numeric:tabular-nums">'+pctOf(r.count).toFixed(1)+'%</span></div>';
   }
-  return '<div style="display:flex;flex-direction:column;align-items:center;gap:10px">'
-    +'<svg viewBox="0 0 200 200" style="width:100%;max-width:210px;height:auto;display:block">'+svg+'</svg>'
-    +'<div style="width:100%;border-top:1px solid var(--border);padding-top:8px">'+leg+'</div></div>';
+  // Pie beside the legend rather than above it: the old stacked layout left the
+  // chart marooned in a wide panel and stretched legend rows so far that a name
+  // and its number sat ~800px apart.
+  return '<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">'
+    +'<svg viewBox="0 0 200 200" style="flex:0 0 auto;width:172px;height:172px;display:block">'+svg+'</svg>'
+    +'<div style="flex:1 1 200px;min-width:190px">'+leg+'</div></div>';
 }
 function renderClinician(){
   const d=S.clinician.data;
@@ -3180,9 +3185,10 @@ function renderClinician(){
   // ── Section 3: Clinician Composition ──
   const comp=d.composition||{};
   if((comp.contacts||0)>0){
-    const panel=(t,rows)=>'<div style="flex:1 1 46%;min-width:260px;background:var(--lighter);border:1px solid var(--border);border-radius:10px;padding:14px 16px">'
-      +'<div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);margin-bottom:2px">'+t+'</div>'
-      +'<div style="font-size:10.5px;color:var(--grey);margin-bottom:10px">'+fN(comp.contacts)+' clinician'+(comp.contacts===1?'':'s')+'</div>'
+    const panel=(t,rows)=>'<div style="flex:1 1 44%;min-width:330px;background:var(--white);border:1px solid var(--border);border-radius:10px;padding:15px 17px">'
+      +'<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:12px;padding-bottom:9px;border-bottom:1px solid var(--border)">'
+      +'<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">'+t+'</span>'
+      +'<span style="font-size:10px;color:var(--grey);white-space:nowrap">'+fN(comp.contacts)+' clinician'+(comp.contacts===1?'':'s')+' \u00b7 '+fN(rows.length)+' categories</span></div>'
       +_clinicianPie(rows,comp.contacts)+'</div>';
     h+=card('Clinician Composition','Unique clinician contacts in the selected window \u00b7 deduped per person \u00b7 hover any slice for the count',
       '<div style="display:flex;gap:16px;align-items:stretch;flex-wrap:wrap">'
