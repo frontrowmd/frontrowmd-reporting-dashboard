@@ -785,7 +785,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t46';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t47';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2776,10 +2776,10 @@ function _renderIrfanMetaTablesLoader(winOverride){
   // Look up BOTH possible target pairs (Irfan + Overview). The render function
   // writes to whichever are present in the DOM at render time, so a single
   // fetch hydrates both pages.
-  const campTargets=[document.getElementById('irfan-meta-campaigns'),document.getElementById('ov-meta-campaigns')].filter(Boolean);
-  const creTargets=[document.getElementById('irfan-meta-creatives'),document.getElementById('ov-meta-creatives')].filter(Boolean);
-  const audTargets=[document.getElementById('irfan-meta-audiences'),document.getElementById('ov-meta-audiences')].filter(Boolean);
-  const adsetTargets=[document.getElementById('irfan-meta-adsets'),document.getElementById('ov-meta-adsets')].filter(Boolean);
+  const campTargets=[document.getElementById('irfan-meta-campaigns'),document.getElementById('ov-meta-campaigns'),document.getElementById('cln-meta-campaigns')].filter(Boolean);
+  const creTargets=[document.getElementById('irfan-meta-creatives'),document.getElementById('ov-meta-creatives'),document.getElementById('cln-meta-creatives')].filter(Boolean);
+  const audTargets=[document.getElementById('irfan-meta-audiences'),document.getElementById('ov-meta-audiences'),document.getElementById('cln-meta-audiences')].filter(Boolean);
+  const adsetTargets=[document.getElementById('irfan-meta-adsets'),document.getElementById('ov-meta-adsets'),document.getElementById('cln-meta-adsets')].filter(Boolean);
   if(!campTargets.length&&!creTargets.length&&!audTargets.length&&!adsetTargets.length)return;
   const _setBoth=(html)=>{[...campTargets,...creTargets,...audTargets,...adsetTargets].forEach(el=>el.innerHTML=html);};
   // The Meta tables carry their OWN date window (S.irfan.metaWin), driven by the
@@ -2798,7 +2798,7 @@ function _renderIrfanMetaTablesLoader(winOverride){
   // key embeds the from/to so two different custom ranges don't share a bucket.
   const _cr=irfWin==='custom'?{from:S.irfan.metaCF||'',to:S.irfan.metaCT||''}:{};
   const _ck=_azCacheKey(irfWin,_cr);
-  const _getCh=()=>S.dashboard.activeAdChannel||'meta';
+  const _getCh=()=>AP==='clinician'?'clinician':(S.dashboard.activeAdChannel||'meta');
   if(S.irfan.analyzerCache[_ck]){_renderIrfanMetaTables(S.irfan.analyzerCache[_ck],_getCh());_updateCpdMatchRate(irfWin);return;}
   // Reuse analyzer's already-loaded payload if same window. Skip for custom —
   // S.analyzer.win==='custom' doesn't guarantee the same date range.
@@ -3040,6 +3040,36 @@ function _clinicianPie(rows,total){
     +'<svg viewBox="0 0 200 200" style="flex:0 0 auto;width:196px;height:196px;display:block">'+svg+'</svg>'
     +'<div style="flex:1 1 260px;min-width:230px;max-width:340px">'+leg+'</div></div>';
 }
+// ── Clinician Ads: one filter set for all four tables ───────────────────────
+// The shared table renderer builds a filter bar per table. On this page those are
+// removed after render and replaced by a single bar that writes every table's
+// state key at once, so the four tables always agree.
+const CLN_ADS_FILTERS=[
+  ['stage','Stage',[['all','All'],['s1','TOF'],['s2','MOF'],['s3','BOF'],['s4','Retargeting']],['metaCampStageF','metaAdsetStageF']],
+  ['status','Status',[['all','All'],['active','Active'],['paused','Paused']],['metaCampStatusF','metaCreStatusF','metaAdsetStatusF']],
+  ['tag','Tag',[['all','All'],['WINNER','Winner'],['TESTING','Testing'],['LOSER','Loser']],['metaCampTagF','metaCreTagF','metaAdsetTagF']],
+  ['flag','Flags',[['all','All'],['any','Any flag'],['pause','PAUSE'],['fatigue','Fatigue'],['naming','Naming']],['metaCampFlagF','metaCreFlagF','metaAdsetFlagF']],
+];
+window.clnAdsFilter=function(kind,val){
+  const def=CLN_ADS_FILTERS.find(f=>f[0]===kind); if(!def)return;
+  S.clinician.adsF=S.clinician.adsF||{};
+  S.clinician.adsF[kind]=val;
+  for(const key of def[3])S.irfan[key]=val;   // drive every table from one control
+  if(typeof _irfanMetaD!=='undefined'&&_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,'clinician');
+  renderClinician();
+};
+// Removes the per-table filter bars inside the Clinician ads card, identified by
+// the filter callbacks they contain (safer than assuming a child position).
+function _clnStripFilterBars(){
+  const ids=['cln-meta-campaigns','cln-meta-adsets','cln-meta-creatives','cln-meta-audiences'];
+  for(const id of ids){
+    const host=document.getElementById(id); if(!host)continue;
+    Array.from(host.children).forEach(ch=>{
+      if(ch.querySelector&&ch.querySelector('table'))return;              // keep the table
+      if(/irfan(Camp|Adset|Cre)(Stage|Tag|Flag|Status)F\(|irfanMetaWin\(|irfanToggleAll/.test(ch.innerHTML||''))ch.remove();
+    });
+  }
+}
 function renderClinician(){
   const d=S.clinician.data;
   const dhEl=document.getElementById('clinician-date-header');
@@ -3252,11 +3282,25 @@ function renderClinician(){
   const ads=d.ads||null;
   if(ads){
     const f$0=v=>v==null?'\u2014':f$(Math.round(v));
-    const kpi=(lbl,val,calc,sub,tone)=>'<div style="flex:1 1 190px;min-width:180px;background:var(--white);border:1px solid var(--border);border-radius:10px;padding:14px 16px">'
-      +'<div style="font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em">'+lbl+'</div>'
-      +'<div style="font-family:var(--font-h);font-size:24px;font-weight:700;color:'+(tone||'var(--navy)')+';margin-top:3px">'+val+'</div>'
-      +(calc?'<div style="font-size:10.5px;color:var(--grey);margin-top:3px;font-variant-numeric:tabular-nums">'+calc+'</div>':'')
-      +(sub?'<div style="font-size:9px;color:var(--grey);margin-top:3px;line-height:1.4">'+sub+'</div>':'')+'</div>';
+    // Inverted cards: dark ground, light type.
+    const kpi=(lbl,val,calc,sub,tone,extra)=>'<div style="flex:1 1 190px;min-width:180px;background:linear-gradient(160deg,var(--navy),var(--midnight));border:1px solid rgba(255,255,255,.10);border-radius:10px;padding:14px 16px;box-shadow:0 2px 8px rgba(2,15,24,.16)">'
+      +'<div style="font-size:9.5px;font-weight:700;color:rgba(255,255,255,.62);text-transform:uppercase;letter-spacing:.05em">'+lbl+'</div>'
+      +'<div style="font-family:var(--font-h);font-size:24px;font-weight:700;color:'+(tone||'#fff')+';margin-top:3px">'+val+'</div>'
+      +(calc?'<div style="font-size:10.5px;color:rgba(255,255,255,.72);margin-top:3px;font-variant-numeric:tabular-nums">'+calc+'</div>':'')
+      +(extra||'')
+      +(sub?'<div style="font-size:9px;color:rgba(255,255,255,.52);margin-top:3px;line-height:1.4">'+sub+'</div>':'')+'</div>';
+    // Pacing sparkline: cumulative spend as % of budget across the window, against
+    // a dashed ideal-pace diagonal, so ahead/behind reads at a glance.
+    const spark=(series,pace)=>{
+      if(!series||series.length<2)return '';
+      const W=150,H=30,mx=Math.max(100,pace||0,...series);
+      const pts=series.map((v,i)=>[(i/(series.length-1))*W,H-(v/mx)*H]);
+      const d=pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
+      return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:30px;display:block;margin-top:7px;overflow:visible">'
+        +'<line x1="0" y1="'+(H-(100/mx)*H).toFixed(1)+'" x2="'+W+'" y2="0" stroke="rgba(255,255,255,.28)" stroke-width="1" stroke-dasharray="3 3"></line>'
+        +'<path d="'+d+'" fill="none" stroke="#8FD3B6" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></path>'
+        +'<circle cx="'+pts[pts.length-1][0].toFixed(1)+'" cy="'+pts[pts.length-1][1].toFixed(1)+'" r="2.6" fill="#8FD3B6"></circle></svg>';
+    };
     let kh='';
     if(ads.error){
       kh='<div style="padding:18px;background:var(--lighter);border-radius:10px;font-size:12px;color:#C0392B">Ad spend unavailable: '+ads.error+'</div>';
@@ -3265,10 +3309,10 @@ function renderClinician(){
       // spend at 40% of budget means little without knowing how far in we are.
       const pace=ads.pacePct, el=ads.elapsedPct;
       const dpp=(pace!=null&&el!=null)?(pace-el):null;
-      const paceTone=(dpp!=null&&dpp>10)?'#C0392B':'var(--navy)';
+      const paceTone=(dpp!=null&&dpp>10)?'#FF9B8F':'#fff';
       kh+=kpi('Ad Budget Pacing',(pace!=null?pace.toFixed(0)+'%':'\u2014'),
         f$0(ads.spend)+' \u00f7 '+f$0(ads.budget),
-        (dpp!=null?((dpp>=0?'+':'')+dpp.toFixed(0)+'pp vs '+el.toFixed(0)+'% of window elapsed'):'Clinician channel budget'),paceTone);
+        (dpp!=null?((dpp>=0?'+':'')+dpp.toFixed(0)+'pp vs '+el.toFixed(0)+'% of window elapsed'):'Clinician channel budget'),paceTone,spark(ads.paceSeries,pace));
       kh+=kpi('CPD',f$0(ads.cpd),f$0(ads.spend)+' \u00f7 '+fN(ads.cpdDenom||0),'Clinician ad spend \u00f7 clinicians added');
       kh+=kpi('True CPD',f$0(ads.trueCpd),f$0(ads.spend)+' \u00f7 '+fN(ads.trueCpdDenom||0),'\u00f7 clinicians Qualified with a meeting Given');
       kh+=kpi('CAC',f$0(ads.cac),f$0(ads.spend)+' \u00f7 '+fN(ads.cacDenom||0),'\u00f7 clinicians who reached Fully Onboarded');
@@ -3276,9 +3320,37 @@ function renderClinician(){
     h+=card('Ads','Clinician ad channel only \u2014 Meta campaigns matching \u201cClinician Targeting\u201d \u00b7 excluded from all other dashboard KPIs',
       '<div style="display:flex;gap:14px;flex-wrap:wrap">'+kh+'</div>');
   }
+  // ── Section 5 card 2: Clinician ad tables, one shared filter set ──
+  {
+    const af=S.clinician.adsF||{};
+    const fpill=(kind,k,lbl)=>{const on=(af[kind]||'all')===k;
+      return '<button onclick="clnAdsFilter(\''+kind+'\',\''+k+'\')" style="font-family:var(--font-h);font-size:10px;font-weight:700;padding:4px 11px;border:none;background:'+(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+';cursor:pointer;transition:background .15s,color .15s">'+lbl+'</button>';};
+    const WINS=[['7d','Last 7 Days'],['mtd','MTD'],['lastMonth','Last Month'],['ytd','YTD'],['allTime','All Time']];
+    const mw=S.irfan.metaWin||'mtd';
+    const wpill=(k,lbl)=>{const on=mw===k;
+      return '<button onclick="irfanMetaWin(\''+k+'\')" style="font-family:var(--font-h);font-size:10px;font-weight:700;padding:4px 11px;border:none;background:'+(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+';cursor:pointer;transition:background .15s,color .15s">'+lbl+'</button>';};
+    const grp=(lbl,inner)=>'<div style="display:flex;align-items:center;gap:7px">'
+      +'<span style="font-family:var(--font-h);font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.07em">'+lbl+'</span>'
+      +'<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap">'+inner+'</div></div>';
+    let fb='<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border)">';
+    fb+=grp('Table Dates',WINS.map(w=>wpill(w[0],w[1])).join(''));
+    for(const F of CLN_ADS_FILTERS)fb+=grp(F[1],F[2].map(o=>fpill(F[0],o[0],o[1])).join(''));
+    fb+='</div>';
+    const sub=(t,id,note)=>'<div style="margin-bottom:18px">'
+      +'<div style="font-family:var(--font-h);font-size:13.5px;font-weight:700;color:var(--navy);margin-bottom:2px">'+t+'</div>'
+      +'<div style="font-size:10px;color:var(--grey);margin-bottom:8px">'+note+'</div>'
+      +'<div id="'+id+'"></div></div>';
+    h+=card('Clinician Ad Tables','Clinician channel only \u00b7 one filter set drives all four tables \u00b7 expand a row for its child rows',
+      fb
+      +sub('Campaigns','cln-meta-campaigns','Expand a campaign to see its ad sets, then each ad set for its creatives')
+      +sub('Ad Sets','cln-meta-adsets','Expand an ad set to see its creatives')
+      +sub('Ad Creatives','cln-meta-creatives','All creatives across Clinician campaigns')
+      +sub('Audiences','cln-meta-audiences','Ad-set level breakdown'));
+  }
   h+=card('Deal Fields','Verified against HubSpot \u00b7 all present',tbl(CLINICIAN_DEAL_PROPS_REF));
   h+=card('Contact Fields','Verified against HubSpot \u00b7 all present',tbl(CLINICIAN_CONTACT_PROPS_REF));
   el.innerHTML=h;
+  if(typeof _renderIrfanMetaTablesLoader==='function')_renderIrfanMetaTablesLoader();
   buildSectionNav('clinician');
 }
 
@@ -3391,7 +3463,7 @@ function _capiSub(o,channel,withDefault){
 }
 // Callbacks invoked by header clicks / stage filter pills. On Detailed
 // Dashboard we render the user-selected channel; on Irfan it's always meta.
-function _curAdCh(){return S.dashboard.activeAdChannel||'meta';}
+function _curAdCh(){return AP==='clinician'?'clinician':(S.dashboard.activeAdChannel||'meta');}
 // Shared ad-channel tab bar markup (used by the Detailed Dashboard static HTML
 // and injected into the Irfan Dashboard). activeCh drives the .active pill.
 function _adChannelTabsHTML(activeCh){
@@ -3737,10 +3809,10 @@ function _renderIrfanMetaTables(d, channel){
   // Collect ALL possible render targets (Irfan + Overview). The function
   // writes to whichever are present in the DOM at this moment, so a single
   // call hydrates both pages.
-  const campTargets=[document.getElementById('irfan-meta-campaigns'),document.getElementById('ov-meta-campaigns')].filter(Boolean);
-  const creTargets=[document.getElementById('irfan-meta-creatives'),document.getElementById('ov-meta-creatives')].filter(Boolean);
-  const audTargets=[document.getElementById('irfan-meta-audiences'),document.getElementById('ov-meta-audiences')].filter(Boolean);
-  const adsetTargets=[document.getElementById('irfan-meta-adsets'),document.getElementById('ov-meta-adsets')].filter(Boolean);
+  const campTargets=[document.getElementById('irfan-meta-campaigns'),document.getElementById('ov-meta-campaigns'),document.getElementById('cln-meta-campaigns')].filter(Boolean);
+  const creTargets=[document.getElementById('irfan-meta-creatives'),document.getElementById('ov-meta-creatives'),document.getElementById('cln-meta-creatives')].filter(Boolean);
+  const audTargets=[document.getElementById('irfan-meta-audiences'),document.getElementById('ov-meta-audiences'),document.getElementById('cln-meta-audiences')].filter(Boolean);
+  const adsetTargets=[document.getElementById('irfan-meta-adsets'),document.getElementById('ov-meta-adsets'),document.getElementById('cln-meta-adsets')].filter(Boolean);
   if(!campTargets.length&&!creTargets.length&&!audTargets.length&&!adsetTargets.length)return;
   // First target used for back-compat in any later code that still reads campTarget/creTarget.
   const campTarget=campTargets[0]||null;
@@ -4439,6 +4511,7 @@ function _renderIrfanMetaTables(d, channel){
   creTargets.forEach(el=>el.innerHTML=creH);
   audTargets.forEach(el=>el.innerHTML=audH);
   adsetTargets.forEach(el=>el.innerHTML=adsetH);
+  if(typeof _clnStripFilterBars==='function')_clnStripFilterBars();
   // Back-compat aliases (campTarget/creTarget) retained above but no longer used.
   if(false&&campTarget)campTarget.innerHTML=campH;
   if(false&&creTarget)creTarget.innerHTML=creH;

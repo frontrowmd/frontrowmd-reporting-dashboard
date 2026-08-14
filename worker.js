@@ -1926,13 +1926,17 @@ function buildClinicianDaily(deals, contactsByDeal, from, to) {
 // rows the rest of the dashboard uses, filtered to Meta rows whose campaign name
 // marks them as Clinician Targeting — the identical predicate that splits the
 // channel elsewhere, so this can't drift from Channel Performance.
-function buildClinicianAds(windsorRows, budgets, funnelAll, cliniciansAdded, rows) {
+function buildClinicianAds(windsorRows, budgets, funnelAll, cliniciansAdded, rows, from, to) {
   let spend = 0;
+  const byDay = {};
   for (const r of (windsorRows || [])) {
     const ds = (r.datasource || '').toLowerCase();
     if (!/facebook|meta|fb|ig|instagram/.test(ds)) continue;
     if (!isClinicianCampaign(r.campaign_name)) continue;
-    spend += parseFloat(r.spend) || 0;
+    const v = parseFloat(r.spend) || 0;
+    spend += v;
+    const k = String(r.date || '').slice(0, 10);
+    if (k) byDay[k] = (byDay[k] || 0) + v;
   }
   const budget = (budgets && budgets.clinician) || 0;
   // "True" denominator: qualified AND the meeting actually happened.
@@ -1941,8 +1945,20 @@ function buildClinicianAds(windsorRows, budgets, funnelAll, cliniciansAdded, row
   ).length;
   const fo = (funnelAll && funnelAll[5] && funnelAll[5].reachedCount) || 0;
   const div = (n, d) => (d > 0 ? n / d : null);
+  // Cumulative spend as a % of budget, one point per day — the sparkline series.
+  let paceSeries = null;
+  if (budget > 0 && from && to) {
+    paceSeries = [];
+    let run = 0, cur = from, guard = 0;
+    while (cur <= to && guard++ < 400) {
+      run += byDay[cur] || 0;
+      paceSeries.push(Math.round((run / budget) * 1000) / 10);
+      const d = new Date(cur + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + 1);
+      cur = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+    }
+  }
   return {
-    spend, budget,
+    spend, budget, paceSeries,
     pacePct: budget > 0 ? (spend / budget) * 100 : null,
     cpd: div(spend, cliniciansAdded), cpdDenom: cliniciansAdded,
     trueCpd: div(spend, qualGiven), trueCpdDenom: qualGiven,
@@ -5856,7 +5872,7 @@ export default {
         let ads = null;
         try {
           const wRows = await fetchWindsorAds(env.WINDSOR_API_KEY, wFrom(cur.from), cur.to);
-          ads = buildClinicianAds(wRows, getBudgetsForMonth(cur.from), funnel.all && funnel.all.funnel, daily.total || 0, funnel.rows || []);
+          ads = buildClinicianAds(wRows, getBudgetsForMonth(cur.from), funnel.all && funnel.all.funnel, daily.total || 0, funnel.rows || [], cur.from, cur.to);
           ads.elapsedPct = elapsedPct;
         } catch (e) { console.error('Clinician ads fetch:', e.message); ads = { error: e.message, elapsedPct }; }
         return jr({
