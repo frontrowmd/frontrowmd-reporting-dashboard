@@ -785,7 +785,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t45';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t46';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3247,6 +3247,34 @@ function renderClinician(){
        +acqPanel('Clinician Referral Source',comp.referral||[])
        +acqPanel(udLabel,comp[ud]||[],utmToggle)
       +'</div>');
+  }
+  // ── Section 5: Ads (card 1 — KPI row) ──
+  const ads=d.ads||null;
+  if(ads){
+    const f$0=v=>v==null?'\u2014':f$(Math.round(v));
+    const kpi=(lbl,val,calc,sub,tone)=>'<div style="flex:1 1 190px;min-width:180px;background:var(--white);border:1px solid var(--border);border-radius:10px;padding:14px 16px">'
+      +'<div style="font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em">'+lbl+'</div>'
+      +'<div style="font-family:var(--font-h);font-size:24px;font-weight:700;color:'+(tone||'var(--navy)')+';margin-top:3px">'+val+'</div>'
+      +(calc?'<div style="font-size:10.5px;color:var(--grey);margin-top:3px;font-variant-numeric:tabular-nums">'+calc+'</div>':'')
+      +(sub?'<div style="font-size:9px;color:var(--grey);margin-top:3px;line-height:1.4">'+sub+'</div>':'')+'</div>';
+    let kh='';
+    if(ads.error){
+      kh='<div style="padding:18px;background:var(--lighter);border-radius:10px;font-size:12px;color:#C0392B">Ad spend unavailable: '+ads.error+'</div>';
+    }else{
+      // Pacing: spend vs budget, with % of the window elapsed as the reference —
+      // spend at 40% of budget means little without knowing how far in we are.
+      const pace=ads.pacePct, el=ads.elapsedPct;
+      const dpp=(pace!=null&&el!=null)?(pace-el):null;
+      const paceTone=(dpp!=null&&dpp>10)?'#C0392B':'var(--navy)';
+      kh+=kpi('Ad Budget Pacing',(pace!=null?pace.toFixed(0)+'%':'\u2014'),
+        f$0(ads.spend)+' \u00f7 '+f$0(ads.budget),
+        (dpp!=null?((dpp>=0?'+':'')+dpp.toFixed(0)+'pp vs '+el.toFixed(0)+'% of window elapsed'):'Clinician channel budget'),paceTone);
+      kh+=kpi('CPD',f$0(ads.cpd),f$0(ads.spend)+' \u00f7 '+fN(ads.cpdDenom||0),'Clinician ad spend \u00f7 clinicians added');
+      kh+=kpi('True CPD',f$0(ads.trueCpd),f$0(ads.spend)+' \u00f7 '+fN(ads.trueCpdDenom||0),'\u00f7 clinicians Qualified with a meeting Given');
+      kh+=kpi('CAC',f$0(ads.cac),f$0(ads.spend)+' \u00f7 '+fN(ads.cacDenom||0),'\u00f7 clinicians who reached Fully Onboarded');
+    }
+    h+=card('Ads','Clinician ad channel only \u2014 Meta campaigns matching \u201cClinician Targeting\u201d \u00b7 excluded from all other dashboard KPIs',
+      '<div style="display:flex;gap:14px;flex-wrap:wrap">'+kh+'</div>');
   }
   h+=card('Deal Fields','Verified against HubSpot \u00b7 all present',tbl(CLINICIAN_DEAL_PROPS_REF));
   h+=card('Contact Fields','Verified against HubSpot \u00b7 all present',tbl(CLINICIAN_CONTACT_PROPS_REF));

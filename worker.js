@@ -1922,6 +1922,34 @@ function buildClinicianDaily(deals, contactsByDeal, from, to) {
 // Deduped by contact id for the same reason Daily Activity is — one clinician
 // with two deals is one person, and counting deals would skew the mix toward
 // whoever has the most pipeline activity.
+// Ad metrics for the Clinician channel only. Spend comes from the same Windsor
+// rows the rest of the dashboard uses, filtered to Meta rows whose campaign name
+// marks them as Clinician Targeting — the identical predicate that splits the
+// channel elsewhere, so this can't drift from Channel Performance.
+function buildClinicianAds(windsorRows, budgets, funnelAll, cliniciansAdded, rows) {
+  let spend = 0;
+  for (const r of (windsorRows || [])) {
+    const ds = (r.datasource || '').toLowerCase();
+    if (!/facebook|meta|fb|ig|instagram/.test(ds)) continue;
+    if (!isClinicianCampaign(r.campaign_name)) continue;
+    spend += parseFloat(r.spend) || 0;
+  }
+  const budget = (budgets && budgets.clinician) || 0;
+  // "True" denominator: qualified AND the meeting actually happened.
+  const qualGiven = (rows || []).filter(r =>
+    /^qualified$/i.test(r.qual || '') && /demo given/i.test(r.att || '')
+  ).length;
+  const fo = (funnelAll && funnelAll[5] && funnelAll[5].reachedCount) || 0;
+  const div = (n, d) => (d > 0 ? n / d : null);
+  return {
+    spend, budget,
+    pacePct: budget > 0 ? (spend / budget) * 100 : null,
+    cpd: div(spend, cliniciansAdded), cpdDenom: cliniciansAdded,
+    trueCpd: div(spend, qualGiven), trueCpdDenom: qualGiven,
+    cac: div(spend, fo), cacDenom: fo,
+  };
+}
+
 function buildClinicianComposition(deals, contactsByDeal) {
   const seen = new Set();
   const byType = {}, bySpec = {};
@@ -2077,6 +2105,7 @@ function buildClinicianFunnel(deals, contactsByDeal) {
     all: seg(() => true),
     mddo: seg(r => isMD(r.type)),
     nonmddo: seg(r => !isMD(r.type)),
+    rows: rows.map(r => ({ qual: r.qual, att: r.att, type: r.type })),
     stageOrder: CLINICIAN_STAGES.map(x => x.label),
     contactsMatched: Object.keys(contactsByDeal).length,
     excludedFuture,
@@ -5820,11 +5849,22 @@ export default {
         const funnel = buildClinicianFunnel(deals, contactsByDeal);
         const daily = buildClinicianDaily(deals, contactsByDeal, cur.from, cur.to);
         const composition = buildClinicianComposition(deals, contactsByDeal);
+        // Percent of the window elapsed, so pacing can be compared against spend.
+        const _wEnd = Math.min(Date.now(), toMsET(cur.to, true));
+        const _wStart = toMsET(cur.from);
+        const elapsedPct = _wEnd > _wStart ? Math.min(100, ((_wEnd - _wStart) / (toMsET(cur.to, true) - _wStart)) * 100) : 100;
+        let ads = null;
+        try {
+          const wRows = await fetchWindsorAds(env.WINDSOR_API_KEY, wFrom(cur.from), cur.to);
+          ads = buildClinicianAds(wRows, getBudgetsForMonth(cur.from), funnel.all && funnel.all.funnel, daily.total || 0, funnel.rows || []);
+          ads.elapsedPct = elapsedPct;
+        } catch (e) { console.error('Clinician ads fetch:', e.message); ads = { error: e.message, elapsedPct }; }
         return jr({
           period: cur,
           ...funnel,
           daily,
           composition,
+          ads,
           meta: {
             generatedAt: new Date().toISOString(),
             dealsFetched: deals.length,
