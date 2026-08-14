@@ -785,7 +785,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t54';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t55';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -926,13 +926,17 @@ async function doLogin(){
   try{
     const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw,window:S[AP]?.win||'7d'})});
     if(r.status===401){document.getElementById('gerr').style.display='block';btn.disabled=false;btn.textContent='Log In →';return;}
-    const d=await r.json();for(const k of Object.keys(S)){if(k!=='analyzer'&&k!=='content')S[k].data=d;}
+    const d=await r.json();for(const k of Object.keys(S)){if(k!=='analyzer'&&k!=='content'&&k!=='clinician')S[k].data=d;}
     document.getElementById('gate').style.display='none';document.getElementById('app').classList.add('active');
     document.getElementById('loading').style.display='none';
     document.getElementById('prgWrap').style.display='none';
     // Pull synced PQ results from KV before first render (non-blocking — render proceeds either way)
     pqLoadFromKV().then(function(){ try{ if(typeof renderDemoQuality==='function')renderDemoQuality(); }catch(e){} });
     bldF();renderPage();
+    // Preload the Clinician payload in the background so the page is warm on
+    // first visit. Non-blocking and failure-tolerant: it renders only if that
+    // page is the active one when it lands.
+    setTimeout(function(){ try{ if(!S.clinician.data&&!S.clinician._loading)fdClinician(S.clinician.win||'mtd'); }catch(e){console.error('clinician preload',e);} },0);
   }catch(e){
     document.getElementById('gerr').textContent='Connection error. Try again.';document.getElementById('gerr').style.display='block';
     btn.disabled=false;btn.textContent='Log In →';
@@ -2959,12 +2963,12 @@ const CLINICIAN_STAGE_COLORS={
 const CLINICIAN_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/clinician':'/api/clinician';
 async function fdClinician(win){
   S.clinician._loading=true;
-  // renderPage() is what applies .active to #page-clinician. switchDashSub
-  // returns early for this page, so without this call the container stays
-  // display:none and the page appears never to load.
-  renderPage();
+  // renderPage() applies .active to #page-clinician (switchDashSub returns early
+  // for this page). Guarded by AP so a background preload can't re-render or
+  // disturb whichever page the user is actually on.
+  if(AP==='clinician')renderPage();
   const el=document.getElementById('clinician-c');
-  if(el)el.innerHTML=_clinicianSkeleton();
+  if(el&&AP==='clinician')el.innerHTML=_clinicianSkeleton();
   try{
     const b={password:PW,window:win||S.clinician.win||'mtd'};
     if(S.clinician.cFrom)b.from=S.clinician.cFrom;
@@ -2972,10 +2976,10 @@ async function fdClinician(win){
     const r=await fetch(CLINICIAN_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
     const d=await r.json();
     if(!r.ok||d.error){throw new Error(d.error||('HTTP '+r.status));}
-    S.clinician.data=d; S.clinician._loading=false; renderPage();
+    S.clinician.data=d; S.clinician._loading=false; if(AP==='clinician')renderPage();
   }catch(e){
     S.clinician._loading=false;
-    if(el)el.innerHTML='<div style="padding:32px;text-align:center"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:#C62828;margin-bottom:6px">Clinician funnel failed to load</div><div style="font-size:12px;color:var(--grey)">'+(e.message||e)+'</div></div>';
+    if(el&&AP==='clinician')el.innerHTML='<div style="padding:32px;text-align:center"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:#C62828;margin-bottom:6px">Clinician funnel failed to load</div><div style="font-size:12px;color:var(--grey)">'+(e.message||e)+'</div></div>';
   }
 }
 // MD/DO vs non-MD/DO segment for the stat card only (the funnel always shows all).
