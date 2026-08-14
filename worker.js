@@ -1989,6 +1989,11 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
     const cid = cp.__cid || ('deal:' + deal.id);
     if (seen.has(cid)) continue;
     seen.add(cid);
+    // ONE scope for the whole section: the contact's own create date must fall in
+    // the window. Previously only Verification applied this, so Composition and
+    // Acquisition were built from a wider population and their totals disagreed.
+    const ck = _clnDayKey(cp.createdate);
+    if (from && to && (!ck || ck < from || ck > to)) continue;
     contacts++;
     const t = (cp.clinician_type || '').trim() || 'Not set';
     const sp = (cp.clinician_specialty || '').trim() || 'Not set';
@@ -2005,11 +2010,6 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
     byUtmM[um] = (byUtmM[um] || 0) + 1;
     byUtmC[uc] = (byUtmC[uc] || 0) + 1;
     // Verification: medical_degree_status is labelled "Credentials Status" in HubSpot.
-    // Verification is scoped by the CONTACT's own create date in the window, not
-    // just by having a deal created in it — a clinician onboarded months ago
-    // shouldn't count toward this window's verification mix.
-    const ck = _clnDayKey(cp.createdate);
-    if (from && to && (!ck || ck < from || ck > to)) continue;
     verifContacts++;
     const cr = (cp.medical_degree_status || '').trim() || 'Not set';
     const ph = (cp.photo_verification_status || '').trim() || 'Not set';

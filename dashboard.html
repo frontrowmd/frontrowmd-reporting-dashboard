@@ -785,7 +785,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t50';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t51';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3252,7 +3252,7 @@ function renderClinician(){
       +'<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">'+t+'</span>'
       +'<span style="font-size:10px;color:var(--grey);white-space:nowrap">'+fN(comp.contacts)+' clinician'+(comp.contacts===1?'':'s')+' \u00b7 '+fN(rows.length)+' categories</span></div>'
       +_clinicianPie(rows,comp.contacts)+'</div>';
-    h+=card('Clinician Composition','Unique clinician contacts in the selected window \u00b7 deduped per person \u00b7 hover any slice for the count',
+    h+=card('Clinician Composition','Clinician contacts created in the selected window \u00b7 deduped per person \u00b7 hover any slice for the count',
       '<div style="display:flex;gap:18px;align-items:stretch;flex-wrap:wrap">'
        +panel('Type of Clinician',comp.type||[])
        +panel('Specialty Breakdown',comp.specialty||[])
@@ -3272,7 +3272,7 @@ function renderClinician(){
       +_clinicianPie(rows,comp.contacts)+'</div>';
     const utmToggle='<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap;margin:0 0 14px">'
       +UD.map(x=>udPill(x[0],x[1])).join('')+'</div>';
-    h+=card('Acquisition','Where clinicians came from \u00b7 unique contacts, deduped per person \u00b7 UTMs read from the contact, falling back to the deal',
+    h+=card('Acquisition','Where clinicians came from \u00b7 contacts created in the selected window, deduped per person \u00b7 UTMs read from the contact, falling back to the deal',
       '<div style="display:flex;gap:18px;align-items:stretch;flex-wrap:wrap">'
        +acqPanel('Clinician Referral Source',comp.referral||[])
        +acqPanel(udLabel,comp[ud]||[],utmToggle)
