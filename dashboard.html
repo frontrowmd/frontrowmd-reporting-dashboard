@@ -785,7 +785,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t48';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t49';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3352,6 +3352,39 @@ function renderClinician(){
       +sub('Ad Sets','cln-meta-adsets','Expand an ad set to see its creatives')
       +sub('Ad Creatives','cln-meta-creatives','All creatives across Clinician campaigns')
       +sub('Audiences','cln-meta-audiences','Ad-set level breakdown'));
+  }
+  // ── Section 6: Verification Funnel ──
+  if((comp.contacts||0)>0&&(comp.credentials||comp.photoVerification)){
+    // Status drives colour, so Approved/Pending/Not Approved read the same in
+    // both charts regardless of their order or size.
+    const VC={'Approved':'#2E9E6B','Pending':'#E0A93A','Not Approved':'#CC5B54','Not set':'#9AA7B4'};
+    const vbars=(rows)=>{
+      if(!rows||!rows.length)return '<div style="padding:20px;text-align:center;color:var(--grey);font-size:12px">No data in this window</div>';
+      const tot=rows.reduce((a,b)=>a+(b.count||0),0)||1;
+      const mx=Math.max(1,...rows.map(r=>r.count||0));
+      let o='';
+      for(const r of rows){
+        const c=r.count||0,pct=(c/tot)*100,col=VC[r.label]||'var(--teal)';
+        const tip=fN(c)+' ('+pct.toFixed(1)+'%) \u2014 '+r.label;
+        o+='<div data-tip="'+tip.replace(/"/g,'&quot;')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" style="margin-bottom:13px;cursor:pointer">'
+          +'<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:5px">'
+          +'<span style="font-size:12.5px;font-weight:600;color:var(--navy)"><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:'+col+';margin-right:7px;vertical-align:middle"></span>'+r.label+'</span>'
+          +'<span style="white-space:nowrap"><span style="font-family:var(--font-h);font-size:17px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+fN(c)+'</span>'
+          +'<span style="font-size:10.5px;color:var(--grey);margin-left:6px">'+pct.toFixed(1)+'%</span></span></div>'
+          +'<div style="background:rgba(114,164,191,.10);border-radius:5px;height:20px;overflow:hidden">'
+          +'<div style="height:100%;width:'+Math.max(1.5,(c/mx)*100).toFixed(1)+'%;background:'+col+';border-radius:5px;transition:width .3s"></div></div></div>';
+      }
+      return o;
+    };
+    const vpanel=(t,rows,note)=>'<div style="flex:1 1 44%;min-width:300px;background:var(--white);border:1px solid var(--border);border-radius:10px;padding:16px 18px">'
+      +'<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border)">'
+      +'<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">'+t+'</span>'
+      +'<span style="font-size:10px;color:var(--grey);white-space:nowrap">'+note+'</span></div>'+vbars(rows)+'</div>';
+    h+=card('Verification Funnel','Unique clinician contacts in the selected window \u00b7 deduped per person \u00b7 bar length is relative to the largest status',
+      '<div style="display:flex;gap:18px;align-items:stretch;flex-wrap:wrap">'
+       +vpanel('Credentials Status',comp.credentials||[],'medical_degree_status')
+       +vpanel('Photo Verification Status',comp.photoVerification||[],'photo_verification_status')
+      +'</div>');
   }
   h+=card('Deal Fields','Verified against HubSpot \u00b7 all present',tbl(CLINICIAN_DEAL_PROPS_REF));
   h+=card('Contact Fields','Verified against HubSpot \u00b7 all present',tbl(CLINICIAN_CONTACT_PROPS_REF));

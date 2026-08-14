@@ -1970,6 +1970,7 @@ function buildClinicianComposition(deals, contactsByDeal) {
   const seen = new Set();
   const byType = {}, bySpec = {};
   const byRef = {}, byUtmS = {}, byUtmM = {}, byUtmC = {};
+  const byCred = {}, byPhoto = {};
   let contacts = 0;
   for (const deal of deals) {
     const cp = contactsByDeal[deal.id];
@@ -1992,6 +1993,11 @@ function buildClinicianComposition(deals, contactsByDeal) {
     byUtmS[us] = (byUtmS[us] || 0) + 1;
     byUtmM[um] = (byUtmM[um] || 0) + 1;
     byUtmC[uc] = (byUtmC[uc] || 0) + 1;
+    // Verification: medical_degree_status is labelled "Credentials Status" in HubSpot.
+    const cr = (cp.medical_degree_status || '').trim() || 'Not set';
+    const ph = (cp.photo_verification_status || '').trim() || 'Not set';
+    byCred[cr] = (byCred[cr] || 0) + 1;
+    byPhoto[ph] = (byPhoto[ph] || 0) + 1;
   }
   // Largest first, but "Not set" is pinned last so it never leads the legend.
   const toList = (o) => Object.entries(o)
@@ -2000,6 +2006,12 @@ function buildClinicianComposition(deals, contactsByDeal) {
   // Cap slice count so a high-cardinality dimension (utm_campaign especially)
   // stays readable; the remainder is rolled into one labelled bucket rather than
   // dropped, so the total still reconciles.
+  const STATUS_ORDER = ['Approved', 'Pending', 'Not Approved'];
+  const statusList = (o) => {
+    const keys = Object.keys(o);
+    const rank = (k) => { const i = STATUS_ORDER.indexOf(k); return i >= 0 ? i : (k === 'Not set' ? 99 : 50); };
+    return keys.sort((a, b) => rank(a) - rank(b) || o[b] - o[a]).map(label => ({ label, count: o[label] }));
+  };
   const capped = (o, max) => {
     const l = toList(o);
     if (l.length <= max) return l;
@@ -2013,6 +2025,9 @@ function buildClinicianComposition(deals, contactsByDeal) {
     contacts,
     type: toList(byType), specialty: toList(bySpec),
     referral: toList(byRef),
+    // Fixed review order rather than by size, so the two charts stay comparable
+    // and a status doesn't jump position as counts change.
+    credentials: statusList(byCred), photoVerification: statusList(byPhoto),
     utmSource: capped(byUtmS, 8), utmMedium: capped(byUtmM, 8), utmCampaign: capped(byUtmC, 8),
   };
 }
