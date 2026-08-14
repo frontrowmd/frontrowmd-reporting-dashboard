@@ -785,7 +785,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t49';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t50';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3354,7 +3354,7 @@ function renderClinician(){
       +sub('Audiences','cln-meta-audiences','Ad-set level breakdown'));
   }
   // ── Section 6: Verification Funnel ──
-  if((comp.contacts||0)>0&&(comp.credentials||comp.photoVerification)){
+  if((comp.verifContacts||0)>0){
     // Status drives colour, so Approved/Pending/Not Approved read the same in
     // both charts regardless of their order or size.
     const VC={'Approved':'#2E9E6B','Pending':'#E0A93A','Not Approved':'#CC5B54','Not set':'#9AA7B4'};
@@ -3380,7 +3380,7 @@ function renderClinician(){
       +'<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border)">'
       +'<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">'+t+'</span>'
       +'<span style="font-size:10px;color:var(--grey);white-space:nowrap">'+note+'</span></div>'+vbars(rows)+'</div>';
-    h+=card('Verification Funnel','Unique clinician contacts in the selected window \u00b7 deduped per person \u00b7 bar length is relative to the largest status',
+    h+=card('Verification Funnel',fN(comp.verifContacts)+' clinician contact'+((comp.verifContacts||0)===1?'':'s')+' CREATED in the selected window \u00b7 deduped per person \u00b7 bar length is relative to the largest status',
       '<div style="display:flex;gap:18px;align-items:stretch;flex-wrap:wrap">'
        +vpanel('Credentials Status',comp.credentials||[],'medical_degree_status')
        +vpanel('Photo Verification Status',comp.photoVerification||[],'photo_verification_status')

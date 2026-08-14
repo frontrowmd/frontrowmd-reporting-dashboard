@@ -1966,11 +1966,22 @@ function buildClinicianAds(windsorRows, budgets, funnelAll, cliniciansAdded, row
   };
 }
 
-function buildClinicianComposition(deals, contactsByDeal) {
+// Pacific calendar day for a HubSpot timestamp (same rule as Daily Activity).
+function _clnDayKey(v) {
+  if (!v) return null;
+  const str = String(v);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  const t = /^\d+$/.test(str) ? parseInt(str) : new Date(str).getTime();
+  if (isNaN(t)) return null;
+  const d = new Date(t + ptOff(new Date(t)) * 3600000);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+function buildClinicianComposition(deals, contactsByDeal, from, to) {
   const seen = new Set();
   const byType = {}, bySpec = {};
   const byRef = {}, byUtmS = {}, byUtmM = {}, byUtmC = {};
   const byCred = {}, byPhoto = {};
+  let verifContacts = 0;   // contacts CREATED in the window (verification scope)
   let contacts = 0;
   for (const deal of deals) {
     const cp = contactsByDeal[deal.id];
@@ -1994,6 +2005,12 @@ function buildClinicianComposition(deals, contactsByDeal) {
     byUtmM[um] = (byUtmM[um] || 0) + 1;
     byUtmC[uc] = (byUtmC[uc] || 0) + 1;
     // Verification: medical_degree_status is labelled "Credentials Status" in HubSpot.
+    // Verification is scoped by the CONTACT's own create date in the window, not
+    // just by having a deal created in it — a clinician onboarded months ago
+    // shouldn't count toward this window's verification mix.
+    const ck = _clnDayKey(cp.createdate);
+    if (from && to && (!ck || ck < from || ck > to)) continue;
+    verifContacts++;
     const cr = (cp.medical_degree_status || '').trim() || 'Not set';
     const ph = (cp.photo_verification_status || '').trim() || 'Not set';
     byCred[cr] = (byCred[cr] || 0) + 1;
@@ -2022,7 +2039,7 @@ function buildClinicianComposition(deals, contactsByDeal) {
     return head;
   };
   return {
-    contacts,
+    contacts, verifContacts,
     type: toList(byType), specialty: toList(bySpec),
     referral: toList(byRef),
     // Fixed review order rather than by size, so the two charts stay comparable
@@ -5879,7 +5896,7 @@ export default {
         const contactsByDeal = await fetchClinicianContacts(token, deals.map(d => d.id));
         const funnel = buildClinicianFunnel(deals, contactsByDeal);
         const daily = buildClinicianDaily(deals, contactsByDeal, cur.from, cur.to);
-        const composition = buildClinicianComposition(deals, contactsByDeal);
+        const composition = buildClinicianComposition(deals, contactsByDeal, cur.from, cur.to);
         // Percent of the window elapsed, so pacing can be compared against spend.
         const _wEnd = Math.min(Date.now(), toMsET(cur.to, true));
         const _wStart = toMsET(cur.from);
