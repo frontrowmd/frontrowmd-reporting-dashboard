@@ -2078,11 +2078,12 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
     // Verification: medical_degree_status is labelled "Credentials Status" in HubSpot.
     // Verification only applies once the meeting has actually happened — before
     // that there is nothing to verify, so Meeting Scheduled deals would pad the
-    // mix with a meaningless "Pending"/"Not set". Exited deals (No Show, Not a
-    // Fit) are kept: they reached an outcome.
+    // mix with a meaningless "Pending"/"Not set". No Show is excluded for the
+    // same reason: the meeting never took place. Not a Fit is kept — that deal
+    // met and was then disqualified, so its verification state is real.
     const vStage = (dp.dealstage || '').trim();
     const vIdx = CLINICIAN_STAGES.findIndex(x => x.id === vStage);
-    const vExited = (vStage === CLINICIAN_STAGE_NO_SHOW || vStage === CLINICIAN_STAGE_NOT_A_FIT);
+    const vExited = (vStage === CLINICIAN_STAGE_NOT_A_FIT);
     if (vIdx >= 1 || vExited) {
       verifContacts++;
       const cr = (cp.medical_degree_status || '').trim() || 'Not set';
