@@ -1794,11 +1794,14 @@ const CLINICIAN_ENTERED_PROPS = CLINICIAN_ALL_STAGE_IDS.map(id => 'hs_date_enter
 const CLINICIAN_DEAL_PROPS = [
   'dealstage', 'pipeline', 'clinician_meeting_date', 'clinician_meeting_booked_date',
   'clinician_attendance_status', 'clinician_qualification_outcome', 'createdate',
+  'dealname', 'hubspot_owner_id',
   'utm_source', 'utm_medium', 'utm_campaign',
 ].concat(CLINICIAN_ENTERED_PROPS);
 const CLINICIAN_CONTACT_PROPS = [
   'firstname','lastname','email','phone','clinician_specialty','clinician_type',
   'clinician_referral_source','npi_number','photo_verification_status','createdate',
+  'message','proof_link','sample_preferences_notes','address','samples_tracking_number',
+  'which_samples_shipped','clinician_license_credential_files',
   'utm_source','utm_medium','utm_campaign',
   'medical_degree_status','samples_arrival_date','number_of_samples_shipped',
 ];
@@ -1976,6 +1979,63 @@ function _clnDayKey(v) {
   const d = new Date(t + ptOff(new Date(t)) * 3600000);
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 }
+// owner id → name for the Deal Rep column. Paged; failures degrade to ids.
+async function fetchClinicianOwners(token) {
+  const map = {};
+  try {
+    let after = '';
+    for (let i = 0; i < 5; i++) {
+      const url = 'https://api.hubapi.com/crm/v3/owners?limit=100' + (after ? '&after=' + after : '');
+      const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!r.ok) break;
+      const j = await r.json();
+      for (const o of (j.results || [])) {
+        const nm = [o.firstName, o.lastName].filter(Boolean).join(' ').trim() || o.email || String(o.id);
+        map[String(o.id)] = nm;
+      }
+      after = j.paging && j.paging.next && j.paging.next.after;
+      if (!after) break;
+    }
+  } catch (e) { console.error('clinician owners:', e.message); }
+  return map;
+}
+
+// Flat row per deal for the All Clinicians table. Uses the RAW cohort (no
+// future-meeting exclusion) — a data table should list everything in the window.
+function buildClinicianTable(deals, contactsByDeal, ownerMap) {
+  const stageLabel = {};
+  for (const st of CLINICIAN_STAGES) stageLabel[st.id] = st.label;
+  stageLabel[CLINICIAN_STAGE_NO_SHOW] = 'No Show';
+  stageLabel[CLINICIAN_STAGE_NOT_A_FIT] = 'Not a Fit';
+  return deals.map(d => {
+    const p = d.properties || {}, c = contactsByDeal[d.id] || {};
+    const stage = (p.dealstage || '').trim();
+    return {
+      dealId: String(d.id),
+      contactId: c.__cid || null,
+      dealName: p.dealname || '(no name)',
+      contactName: [c.firstname, c.lastname].filter(Boolean).join(' ').trim() || c.email || '',
+      stage, stageLabel: stageLabel[stage] || stage || '\u2014',
+      rep: ownerMap[String(p.hubspot_owner_id || '')] || '',
+      createdate: p.createdate || '',
+      bookedDate: p.clinician_meeting_booked_date || '',
+      meetingDate: p.clinician_meeting_date || '',
+      attendance: (p.clinician_attendance_status || '').trim(),
+      qualification: (p.clinician_qualification_outcome || '').trim(),
+      specialty: c.clinician_specialty || '', clinicianType: c.clinician_type || '',
+      npi: c.npi_number || '', message: c.message || '',
+      referral: c.clinician_referral_source || '',
+      photoStatus: c.photo_verification_status || '', credStatus: c.medical_degree_status || '',
+      address: c.address || '', proofLink: c.proof_link || '',
+      samplePrefs: c.sample_preferences_notes || '',
+      samplesArrival: c.samples_arrival_date || '', samplesTracking: c.samples_tracking_number || '',
+      samplesCount: c.number_of_samples_shipped || '', whichSamples: c.which_samples_shipped || '',
+      utmSource: c.utm_source || p.utm_source || '', utmMedium: c.utm_medium || p.utm_medium || '',
+      utmCampaign: c.utm_campaign || p.utm_campaign || '',
+    };
+  });
+}
+
 function buildClinicianComposition(deals, contactsByDeal, from, to) {
   const seen = new Set();
   const byType = {}, bySpec = {};
@@ -5897,6 +5957,8 @@ export default {
         const funnel = buildClinicianFunnel(deals, contactsByDeal);
         const daily = buildClinicianDaily(deals, contactsByDeal, cur.from, cur.to);
         const composition = buildClinicianComposition(deals, contactsByDeal, cur.from, cur.to);
+        const ownerMap = await fetchClinicianOwners(token);
+        const table = buildClinicianTable(deals, contactsByDeal, ownerMap);
         // Percent of the window elapsed, so pacing can be compared against spend.
         const _wEnd = Math.min(Date.now(), toMsET(cur.to, true));
         const _wStart = toMsET(cur.from);
@@ -5912,6 +5974,7 @@ export default {
           ...funnel,
           daily,
           composition,
+          table,
           ads,
           meta: {
             generatedAt: new Date().toISOString(),

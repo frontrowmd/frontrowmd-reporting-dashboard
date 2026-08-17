@@ -785,7 +785,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t55';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t56';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3110,6 +3110,121 @@ window.clinicianNav=function(){
   catch(e){ console.error('switchDashSub(clinician) threw:',e); AP='clinician'; try{renderPage();}catch(e2){console.error(e2);} }
   if(!S.clinician.data&&!S.clinician._loading)fdClinician(S.clinician.win||'mtd');
 };
+// ── All Clinicians table ────────────────────────────────────────────────────
+const CLN_HS='https://app.hubspot.com/contacts/46815331/record/';
+// Collapsible column groups. `collapsed` lists the column keys that stay visible
+// when the group is closed (Samples Shipped intentionally shows two).
+const CLN_GROUPS=[
+  {k:'dates',n:'Dates',bg:'rgba(124,58,237,.07)',cols:['createdate','bookedDate','meetingDate'],collapsed:['createdate']},
+  {k:'intake',n:'Intake Form',bg:'rgba(114,164,191,.10)',cols:['specialty','clinicianType','npi','message','referral'],collapsed:['specialty']},
+  {k:'creds',n:'Credentials',bg:'rgba(230,197,92,.14)',cols:['photoStatus','credStatus','address','proofLink','samplePrefs'],collapsed:['photoStatus','credStatus']},
+  {k:'samples',n:'Samples Shipped',bg:'rgba(109,183,154,.13)',cols:['samplesArrival','samplesTracking','samplesCount','whichSamples'],collapsed:['samplesArrival']},
+  {k:'utms',n:'UTMs',bg:'rgba(154,167,180,.14)',cols:['utmSource','utmMedium','utmCampaign'],collapsed:['utmSource']},
+];
+const CLN_COLS={
+  createdate:'Create Date',bookedDate:'Demo Booked',meetingDate:'Demo Happened',
+  specialty:'Clinician Specialty',clinicianType:'Clinician Type',npi:'NPI Number',message:'Message',referral:'Referral Source',
+  photoStatus:'Photo Verification',credStatus:'Credentials Status',address:'Street Address',proofLink:'Proof Link',samplePrefs:'Sample Pref Notes',
+  samplesArrival:'Samples Arrival',samplesTracking:'Tracking #',samplesCount:'# Shipped',whichSamples:'Which Samples',
+  utmSource:'UTM Source',utmMedium:'UTM Medium',utmCampaign:'UTM Campaign',
+};
+const CLN_STATUS_C={'Approved':'#2E9E6B','Pending':'#E0A93A','Not Approved':'#CC5B54'};
+function _clnT(){ S.clinician.tbl=S.clinician.tbl||{f:{},sort:{c:'createdate',d:'desc'},q:'',open:{},sampleMonth:false}; return S.clinician.tbl; }
+window.clnTblSort=function(c){const t=_clnT();if(t.sort.c===c)t.sort.d=t.sort.d==='desc'?'asc':'desc';else{t.sort.c=c;t.sort.d='desc';}renderClinician();};
+window.clnTblFilter=function(k,v){const t=_clnT();if(v==='all')delete t.f[k];else t.f[k]=v;renderClinician();};
+window.clnTblSearch=function(v){_clnT().q=v;renderClinician();};
+window.clnTblGroup=function(k){const t=_clnT();t.open[k]=!t.open[k];renderClinician();};
+window.clnTblDateBasis=function(v){_clnT().dateBasis=v;renderClinician();};
+window.clnTblClear=function(){const t=_clnT();t.f={};t.q='';t.sampleMonth=false;const el=document.getElementById('cln-tbl-q');if(el)el.value='';renderClinician();};
+// "Current Month Samples Shipped": rows whose samples arrival date falls in the
+// current calendar month — the shipping team's working view.
+window.clnTblSampleMonth=function(){const t=_clnT();t.sampleMonth=!t.sampleMonth;renderClinician();};
+function _clnTable(rows,stageColors){
+  const t=_clnT();
+  const basis=t.dateBasis||'createdate';
+  const esc=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+  const dfmt=v=>{if(!v)return '';const ms=/^\d+$/.test(String(v))?parseInt(v):new Date(v).getTime();if(isNaN(ms))return '';const d=new Date(ms);return (d.getUTCMonth()+1)+'/'+d.getUTCDate()+'/'+String(d.getUTCFullYear()).slice(2);};
+  // filters
+  const opts=(key,get)=>{const set={};for(const r of rows){const v=(get(r)||'').trim();if(v)set[v]=(set[v]||0)+1;}return Object.keys(set).sort();};
+  const FILTERS=[
+    ['stage','Deal Stage',opts('stage',r=>r.stageLabel),r=>r.stageLabel],
+    ['rep','Deal Owner',opts('rep',r=>r.rep),r=>r.rep],
+    ['attendance','Clinician Attendance Status',opts('attendance',r=>r.attendance),r=>r.attendance],
+    ['qualification','Clinician Qualification Outcome',opts('qualification',r=>r.qualification),r=>r.qualification],
+  ];
+  let out=rows.slice();
+  for(const [k,,,get] of FILTERS){const v=t.f[k];if(v)out=out.filter(r=>(get(r)||'').trim()===v);}
+  if(t.q){const q=t.q.toLowerCase();out=out.filter(r=>[r.dealName,r.contactName,r.rep,r.npi,r.utmCampaign,r.samplesTracking].some(x=>(x||'').toLowerCase().includes(q)));}
+  if(t.sampleMonth){const n=new Date(),ym=n.getUTCFullYear()+'-'+String(n.getUTCMonth()+1).padStart(2,'0');
+    out=out.filter(r=>{const v=r.samplesArrival;if(!v)return false;const ms=/^\d+$/.test(String(v))?parseInt(v):new Date(v).getTime();if(isNaN(ms))return false;const d=new Date(ms);return (d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0'))===ym;});}
+  // sort
+  const sc=t.sort.c,sd=t.sort.d==='desc'?-1:1;
+  const num=k=>['samplesCount'].includes(k), dt=k=>['createdate','bookedDate','meetingDate','samplesArrival'].includes(k);
+  out.sort((a,b)=>{let x=a[sc],y=b[sc];
+    if(dt(sc)){x=x?(/^\d+$/.test(String(x))?+x:new Date(x).getTime()):0;y=y?(/^\d+$/.test(String(y))?+y:new Date(y).getTime()):0;}
+    else if(num(sc)){x=parseFloat(x)||0;y=parseFloat(y)||0;}
+    else {x=String(x||'').toLowerCase();y=String(y||'').toLowerCase();}
+    return x<y?-1*sd:x>y?1*sd:0;});
+  // filter rows, one per line
+  const pill=(k,v,lbl,on)=>'<button onclick="clnTblFilter(\''+k+'\',\''+esc(v)+'\')" style="font-family:var(--font-h);font-size:10px;font-weight:700;padding:4px 11px;border:none;background:'+(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+';cursor:pointer">'+esc(lbl)+'</button>';
+  let fh='';
+  for(const [k,label,vals] of FILTERS){
+    fh+='<div style="display:flex;align-items:center;gap:9px;margin-bottom:7px;flex-wrap:wrap">'
+      +'<span style="font-family:var(--font-h);font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.07em;min-width:190px">'+label+'</span>'
+      +'<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap">'
+      +pill(k,'all','All',!t.f[k])+vals.map(v=>pill(k,v,v,t.f[k]===v)).join('')+'</div></div>';
+  }
+  fh+='<div style="display:flex;align-items:center;gap:9px;margin-bottom:7px;flex-wrap:wrap">'
+    +'<span style="font-family:var(--font-h);font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.07em;min-width:190px">Date Filter</span>'
+    +'<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden">'
+    +['createdate','bookedDate'].map(b=>'<button onclick="clnTblDateBasis(\''+b+'\')" style="font-family:var(--font-h);font-size:10px;font-weight:700;padding:4px 11px;border:none;background:'+(basis===b?'var(--navy)':'transparent')+';color:'+(basis===b?'#fff':'var(--grey)')+';cursor:pointer">'+(b==='createdate'?'Create Date':'Booked Date')+'</button>').join('')
+    +'</div></div>';
+  fh+='<div style="display:flex;align-items:center;gap:10px;margin-top:11px;flex-wrap:wrap">'
+    +'<button onclick="clnTblSampleMonth()" style="font-family:var(--font-h);font-size:10.5px;font-weight:700;padding:6px 14px;border-radius:50px;border:1.5px solid '+(t.sampleMonth?'var(--navy)':'var(--border)')+';background:'+(t.sampleMonth?'var(--navy)':'transparent')+';color:'+(t.sampleMonth?'#fff':'var(--navy)')+';cursor:pointer">Filter for Current Month Samples Shipped</button>'
+    +'<button onclick="clnTblClear()" style="font-family:var(--font-h);font-size:10.5px;font-weight:700;padding:6px 14px;border-radius:50px;border:1.5px solid #C62828;background:rgba(198,40,40,.05);color:#C62828;cursor:pointer">Clear All Filters</button>'
+    +'<input id="cln-tbl-q" value="'+esc(t.q)+'" oninput="clnTblSearch(this.value)" placeholder="Search name, contact, rep, NPI, campaign, tracking\u2026" style="flex:1;min-width:240px;padding:6px 12px;border:1.5px solid var(--border);border-radius:50px;font-size:11.5px;font-family:var(--font-b);color:var(--navy)">'
+    +'<span style="font-size:11px;color:var(--grey);white-space:nowrap">'+fN(out.length)+' of '+fN(rows.length)+'</span></div>';
+  // header
+  const th=(k,lbl,extra)=>'<th onclick="clnTblSort(\''+k+'\')" style="text-align:left;padding:7px 8px;font-family:var(--font-h);font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:'+(sc===k?'var(--teal)':'var(--grey)')+';cursor:pointer;white-space:nowrap;'+(extra||'')+'">'+lbl+(sc===k?(sd<0?' \u2193':' \u2191'):'')+'</th>';
+  let head='<tr style="border-bottom:1.5px solid var(--border)">'+th('dealName','Deal Name')+th('contactName','Contact')+th('stageLabel','Deal Stage')+th('rep','Deal Rep');
+  let grpRow='<tr>'+'<th colspan="4"></th>';
+  for(const g of CLN_GROUPS){
+    const open=!!t.open[g.k];
+    const shown=open?g.cols:g.collapsed;
+    grpRow+='<th colspan="'+shown.length+'" style="background:'+g.bg+';padding:5px 8px;text-align:left;border-left:2px solid rgba(2,15,24,.07)">'
+      +'<button onclick="clnTblGroup(\''+g.k+'\')" style="background:transparent;border:none;cursor:pointer;font-family:var(--font-h);font-size:9.5px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.05em;padding:0">'
+      +(open?'\u25be ':'\u25b8 ')+g.n+' <span style="color:var(--grey);font-weight:500">('+g.cols.length+')</span></button></th>';
+    for(const c of shown)head+=th(c,CLN_COLS[c],'background:'+g.bg+(c===shown[0]?';border-left:2px solid rgba(2,15,24,.07)':''));
+  }
+  grpRow+='</tr>'; head+='</tr>';
+  // body
+  const badge=(v,col)=>v?'<span style="display:inline-block;font-size:9.5px;font-weight:700;padding:2px 8px;border-radius:99px;white-space:nowrap;background:'+col+'1f;color:'+col+';border:1px solid '+col+'40">'+esc(v)+'</span>':'';
+  const hov=v=>v?' data-tip="'+esc(v).replace(/\n/g,' ')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" style="cursor:help"':'';
+  const trunc=(v,n)=>{v=String(v||'');return v.length>n?v.slice(0,n-1)+'\u2026':v;};
+  let body='';
+  for(const r of out){
+    body+='<tr style="border-bottom:1px solid var(--border)">';
+    body+='<td style="padding:7px 8px;max-width:230px"><a href="'+CLN_HS+'0-3/'+r.dealId+'" target="_blank" style="color:var(--navy);font-weight:600;text-decoration:none;border-bottom:1px dotted var(--teal)">'+esc(trunc(r.dealName,44))+'</a></td>';
+    body+='<td style="padding:7px 8px">'+(r.contactId?'<a href="'+CLN_HS+'0-1/'+r.contactId+'" target="_blank" style="color:var(--navy);text-decoration:none;border-bottom:1px dotted var(--teal)">'+esc(trunc(r.contactName||'(contact)',26))+'</a>':'<span style="color:var(--grey)">\u2014</span>')+'</td>';
+    body+='<td style="padding:7px 8px">'+badge(r.stageLabel,stageColors[r.stageLabel]||'#9AA7B4')+'</td>';
+    body+='<td style="padding:7px 8px;font-size:11px;white-space:nowrap">'+esc(r.rep||'\u2014')+'</td>';
+    for(const g of CLN_GROUPS){
+      const shown=(t.open[g.k]?g.cols:g.collapsed);
+      for(const c of shown){
+        let v=r[c],cell;
+        if(['createdate','bookedDate','meetingDate','samplesArrival'].includes(c))cell=esc(dfmt(v))||'\u2014';
+        else if(c==='photoStatus'||c==='credStatus')cell=badge(v,CLN_STATUS_C[v]||'#9AA7B4')||'\u2014';
+        else if(c==='proofLink')cell=v?'<a href="'+esc(v)+'" target="_blank" style="color:var(--teal);text-decoration:none;border-bottom:1px dotted var(--teal)">Link</a>':'\u2014';
+        else if(c==='message'||c==='whichSamples'||c==='samplePrefs'||c==='address')cell=v?'<span'+hov(v)+'>'+esc(trunc(v,26))+'</span>':'\u2014';
+        else cell=esc(trunc(v,24))||'\u2014';
+        body+='<td style="padding:7px 8px;font-size:11px;background:'+g.bg+(c===shown[0]?';border-left:2px solid rgba(2,15,24,.07)':'')+'">'+cell+'</td>';
+      }
+    }
+    body+='</tr>';
+  }
+  if(!out.length)body='<tr><td colspan="40" style="padding:24px;text-align:center;color:var(--grey);font-size:12px">No clinicians match these filters</td></tr>';
+  return fh+'<div style="overflow-x:auto;margin-top:14px"><table style="width:100%;border-collapse:collapse;font-size:11.5px"><thead>'+grpRow+head+'</thead><tbody>'+body+'</tbody></table></div>';
+}
 function renderClinician(){
   const d=S.clinician.data;
   const dhEl=document.getElementById('clinician-date-header');
@@ -3432,6 +3547,11 @@ function renderClinician(){
        +vpanel('Credentials Status',comp.credentials||[],'medical_degree_status')
        +vpanel('Photo Verification Status',comp.photoVerification||[],'photo_verification_status')
       +'</div>');
+  }
+  // ── Section 7: All Clinicians ──
+  if(Array.isArray(d.table)&&d.table.length){
+    h+=card('All Clinicians','Every deal in the Clinician pipeline for the selected window \u00b7 click a Deal Name or Contact to open it in HubSpot \u00b7 collapse or expand a column group with its header',
+      _clnTable(d.table,CLINICIAN_STAGE_COLORS));
   }
   h+=card('Deal Fields','Verified against HubSpot \u00b7 all present',tbl(CLINICIAN_DEAL_PROPS_REF));
   h+=card('Contact Fields','Verified against HubSpot \u00b7 all present',tbl(CLINICIAN_CONTACT_PROPS_REF));
