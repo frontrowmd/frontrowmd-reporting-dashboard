@@ -675,6 +675,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
       <!-- Row 10: <channel> — Audiences -->
       <div class="sec sec-card"><div class="st"><span class="ad-channel-dot" style="display:inline-block;width:8px;height:8px;background:#1877F2;border-radius:50%;margin-right:8px;vertical-align:middle"></span><span class="ad-channel-label">Meta</span> — <span class="ad-channel-audlabel">Audiences</span></div><div style="font-size:12px;color:var(--grey);margin-bottom:10px"><span class="ad-channel-audsub">Sortable · ad-set level breakdown of spend, performance, and demos</span></div><div id="ov-meta-audiences"></div></div>
 
+       <div class="sec" id="sec-field-ref"></div>
     </div>
     <div class="pg" id="page-calculator"><div class="sec">
       <div class="st">ARR Calculator</div>
@@ -800,7 +801,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t76';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t77';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -1932,6 +1933,86 @@ function _renderFetchDiag(fd){
 }
 
 // ═══════════════ EXECUTIVE DASHBOARD ═══════════════
+// ── Shared HubSpot field reference (Detailed + Irfan) ───────────────────────
+// Both pages render from the same /api/data payload, so they read the same
+// fields — one list, rendered on both. Labels and types were read back from the
+// portal's property definitions on 2026-08-17, not copied from the fetch code,
+// so a renamed or retyped property shows up here as a mismatch.
+const DASH_DEAL_PROPS_REF=[
+  ['dealname','Deal Name','string'],
+  ['dealstage','Deal Stage','enum · sales + clinician pipelines'],
+  ['amount','Amount','number'],
+  ['createdate','Create Date','datetime'],
+  ['hs_createdate','Create Date (system)','datetime · system'],
+  ['closedate','Close Date','datetime'],
+  ['hs_date_entered_closedwon','Entered Closed Won','datetime · stage entry'],
+  ['date_demo_booked','Date Demo Booked','date'],
+  ['demo_given_date','Demo Given Date','date'],
+  ['rescheduled_meeting_date','Rescheduled/Follow Up Meeting Date','date'],
+  ['demo_attendance_status','Demo Attendance Status','enum · 7 values'],
+  ['demo_given__status','Demo Given - Status','enum · 8 values'],
+  ['demo_qualification_outcome','Demo Qualification Outcome','enum · Qualified / Disqualified / Not yet evaluated'],
+  ['disqualification_reason','Disqualification Reason','enum · 10 values'],
+  ['brand_status','Brand Status','enum · 6 values'],
+  ['average_monthly_web_traffic__cloned_','Web Traffic Tier','enum · 10 values'],
+  ['hubspot_owner_id','Deal owner','enum · owner id'],
+  ['utm_source','utm_source','string'],
+  ['utm_medium','utm_medium','string'],
+  ['utm_campaign','utm_campaign','string'],
+  ['utm_content','utm_content','string'],
+];
+const DASH_CONTACT_PROPS_REF=[
+  ['firstname','First Name','string'],
+  ['lastname','Last Name','string'],
+  ['email','Email','string'],
+  ['company','Company Name','string'],
+  ['website','Website URL','string'],
+  ['role_at_company','About Contact','string'],
+  ['createdate','Create Date','datetime'],
+  ['date_demo_booked','Date Demo Booked','date'],
+  ['average_monthly_web_traffic','Average Monthly Web Traffic','enum · 9 values'],
+  ['hs_object_source_detail_1','Record source detail 1','string'],
+  ['webinar_date','Webinar Date','datetime'],
+  ['webinar_has_attended','Webinar Has Attended','bool'],
+  ['notes_last_contacted','Last Contacted','datetime'],
+  ['hs_sales_email_last_opened','Recent Sales Email Opened Date','datetime'],
+  ['hs_sales_email_last_clicked','Recent Sales Email Clicked Date','datetime'],
+  ['hs_sales_email_last_replied','Recent Sales Email Replied Date','datetime'],
+  ['hs_sequences_is_enrolled','Currently in Sequence','bool'],
+  ['hs_latest_sequence_enrolled','Last sequence enrolled','number · sequence id'],
+  ['hs_latest_sequence_enrolled_date','Last sequence enrolled date','datetime'],
+  ['sl_last_demo_name','Storylane Demo Name','string'],
+  ['sl_last_demo_completion_percent','Storylane Demo Complete (%)','number'],
+];
+function _fieldRefTbl(rows){
+  const th='text-align:left;padding:8px 6px;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)';
+  return '<div style="overflow-x:auto"><table class="irf-meta-table" style="width:100%;font-size:11px;border-collapse:collapse">'
+    +'<thead><tr style="border-bottom:1.5px solid var(--border)"><th style="'+th+'">Field</th>'
+    +'<th style="'+th+'">Internal name</th><th style="'+th+'">Type</th></tr></thead><tbody>'
+    +rows.map(r=>'<tr style="border-bottom:1px solid var(--border)">'
+      +'<td style="padding:7px 6px;color:var(--navy);font-weight:500">'+r[1]+'</td>'
+      +'<td style="padding:7px 6px;color:var(--grey);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px">'+r[0]+'</td>'
+      +'<td style="padding:7px 6px;color:var(--grey)">'+r[2]+'</td></tr>').join('')
+    +'</tbody></table></div>';
+}
+// kind 'irfan' uses the Irfan card shell (.irf-card-title); 'dashboard' uses the
+// Detailed page's .sec-card/.st shell. Each page's Jump To nav keys off its own
+// heading class, so matching the shell is what puts these in the nav.
+function _fieldRefCards(kind){
+  const dSub=DASH_DEAL_PROPS_REF.length+' deal properties read from HubSpot · the Detailed and Irfan dashboards share one payload, so they read the same fields';
+  const cSub=DASH_CONTACT_PROPS_REF.length+' contact properties read from HubSpot · verified against the portal';
+  if(kind==='irfan'){
+    const card=(t,s,b)=>'<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:16px">'
+      +'<div class="irf-card-title" style="font-size:22px;font-weight:700;letter-spacing:-.01em;border-left:4px solid var(--teal);padding-left:11px;line-height:1.2">'+t+'</div>'
+      +'<div class="irf-card-sub" style="margin-left:15px">'+s+'</div>'+b+'</div>';
+    return card('Deal Fields',dSub,_fieldRefTbl(DASH_DEAL_PROPS_REF))
+      +card('Contact Fields',cSub,_fieldRefTbl(DASH_CONTACT_PROPS_REF));
+  }
+  const card=(t,s,b)=>'<div class="sec sec-card"><div class="st">'+t+'</div>'
+    +'<div style="font-size:11.5px;color:var(--grey);margin-top:-10px;margin-bottom:14px">'+s+'</div>'+b+'</div>';
+  return card('Deal Fields',dSub,_fieldRefTbl(DASH_DEAL_PROPS_REF))
+    +card('Contact Fields',cSub,_fieldRefTbl(DASH_CONTACT_PROPS_REF));
+}
 function renderDash(){
   const d=S.dashboard.data;
   if(!d||d.error)return; // skeleton stays up; fd() banner shows the error state
@@ -2470,6 +2551,8 @@ function renderDash(){
   if(typeof dashSetAdChannel==='function'&&S.dashboard?.activeAdChannel&&S.dashboard.activeAdChannel!=='meta'){
     dashSetAdChannel(S.dashboard.activeAdChannel);
   }
+  var _fr=document.getElementById('sec-field-ref');
+  if(_fr)_fr.innerHTML=_fieldRefCards('dashboard');
 }
 
 // ═══════════════ IRFAN DASHBOARD ═══════════════
@@ -2635,6 +2718,7 @@ function renderIrfan(){
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:16px"><div class="irf-card-title">'+_irfDot+'<span class="ad-channel-label">Meta</span> — Ad Creatives</div><div class="irf-card-sub">Sortable · filterable by Tag &amp; Flags · all creatives across campaigns · sourced from the Paid Ads Dashboard payload</div><div id="irfan-meta-creatives"></div></div>';
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:24px"><div class="irf-card-title">'+_irfDot+'<span class="ad-channel-label">Meta</span> — <span class="ad-channel-audlabel">Audiences</span></div><div class="irf-card-sub"><span class="ad-channel-audsub">Sortable · ad-set level breakdown of spend, performance, and demos</span></div><div id="irfan-meta-audiences"></div></div>';
 
+  h+=_fieldRefCards('irfan');
   document.getElementById('irfan-c').innerHTML=h;
 
   // Render charts — daily uses the same renderer as Overview (mini KPI cards + hover come for free)
