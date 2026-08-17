@@ -1810,7 +1810,6 @@ const CLINICIAN_CONTACT_PROPS = [
   'which_samples_shipped','clinician_license_credential_files',
   'utm_source','utm_medium','utm_campaign',
   'medical_degree_status','samples_arrival_date','number_of_samples_shipped',
-  'hubspot_owner_id',   // contact owner — often a different person than the deal owner
 ];
 
 // Deals in the Clinician pipeline created within the window. Cohorting on
@@ -2024,8 +2023,6 @@ function buildClinicianTable(deals, contactsByDeal, ownerMap) {
       contactName: [c.firstname, c.lastname].filter(Boolean).join(' ').trim() || c.email || '',
       stage, stageLabel: stageLabel[stage] || stage || '\u2014',
       rep: ownerMap[String(p.hubspot_owner_id || '')] || '',
-      // Same portal-wide owner map: /crm/v3/owners covers deal and contact owners alike.
-      contactRep: ownerMap[String(c.hubspot_owner_id || '')] || '',
       createdate: p.createdate || '',
       bookedDate: p.clinician_meeting_booked_date || '',
       meetingDate: p.clinician_meeting_date || '',

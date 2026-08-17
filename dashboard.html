@@ -801,7 +801,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t82';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t83';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3416,7 +3416,7 @@ function _clnTable(rows,stageColors){
   fh+=an;
   // header
   const th=(k,lbl,extra)=>'<th onclick="clnTblSort(\''+k+'\')" style="text-align:left;padding:7px 8px;font-family:var(--font-h);font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:'+(sc===k?'var(--teal)':'var(--grey)')+';cursor:pointer;white-space:nowrap;'+(extra||'')+'">'+lbl+(sc===k?(sd<0?' \u2193':' \u2191'):'')+'</th>';
-  let head='<tr style="border-bottom:1.5px solid var(--border)">'+th('dealName','Deal Name')+th('contactName','Contact')+th('stageLabel','Deal Stage')+th('rep','Deal Rep')+th('contactRep','Contact Owner');
+  let head='<tr style="border-bottom:1.5px solid var(--border)">'+th('dealName','Deal Name')+th('contactName','Contact')+th('stageLabel','Deal Stage')+th('rep','Deal Rep');
   let grpRow='<tr>'+'<th colspan="4"></th>';
   for(const g of CLN_GROUPS){
     const open=!!t.open[g.k];
@@ -3448,7 +3448,6 @@ function _clnTable(rows,stageColors){
     body+='<td style="padding:7px 8px">'+(r.contactId?'<a href="'+CLN_HS+'0-1/'+r.contactId+'" target="_blank" style="color:var(--navy);text-decoration:none;border-bottom:1px dotted var(--teal)">'+esc(trunc(r.contactName||'(contact)',26))+'</a>':'<span style="color:var(--grey)">\u2014</span>')+'</td>';
     body+='<td style="padding:7px 8px">'+badge(r.stageLabel,stageColors[r.stageLabel]||'#9AA7B4')+'</td>';
     body+='<td style="padding:7px 8px;font-size:11px;white-space:nowrap">'+esc(r.rep||'\u2014')+'</td>';
-    body+='<td style="padding:7px 8px;font-size:11px;white-space:nowrap">'+esc(r.contactRep||'\u2014')+'</td>';
     for(const g of CLN_GROUPS){
       const shown=(t.open[g.k]?g.cols:g.collapsed);
       for(const c of shown){
