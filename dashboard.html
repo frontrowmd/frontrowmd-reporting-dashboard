@@ -801,7 +801,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t77';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t78';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -10798,12 +10798,14 @@ function renderResDataKey(el){
 
   h+=mkSec('Ad Spend Metrics',[
     ['Total Ad Spend','Windsor','spend','Sum across all channels per time window'],
-    ['Channel Spend','Windsor','spend (per datasource)','Grouped by: facebook, google_ads, linkedin, tiktok, youtube'],
+    ['Channel Spend','Windsor','spend (per datasource)','One request per connector: facebook, google_ads, linkedin, reddit, openai_ads, tiktok'],
     ['Impressions','Windsor','impressions','Per channel from per-connector endpoints'],
     ['Clicks','Windsor','clicks','Per channel from per-connector endpoints'],
     ['CTR','Windsor','ctr or clicks/impressions','Meta: direct ctr field. Others: calculated'],
     ['Frequency','Windsor','frequency','Meta + TikTok only'],
-    ['Ad Demos (Windsor)','Windsor','conversions_submit_application_total (Meta), conversions (Google/TikTok), externalwebsiteconversions (LinkedIn)','Pixel/event tracked. Differs from HubSpot demos'],
+    ['Conversions','Windsor','conversions_submit_application_total (Meta), conversions (Google/TikTok), externalwebsiteconversions (LinkedIn)','Pixel/event tracked \u2014 differs from HubSpot demos. Reddit and ChatGPT report no conversion field, so their Conversions columns stay blank'],
+    ['Meta Conversion Goal','Windsor','adset_promoted_object \u2192 custom_conversion_id \u2192 label','The campaign\u2019s real optimization target (e.g. \u201cCAPI \u2014 Clinicians\u201d). Never paired with spend: custom_conversion_action_name is a dimension and fans spend out ~36\u00d7'],
+    ['Clinician Channel','Windsor','facebook connector, campaigns matching \u201cClinician Targeting\u201d','Split fully out of Meta with its own budget. Excluded from every other KPI \u2014 spend, budget, CPD, ROAS'],
   ]);
 
   h+=mkSec('Campaign & Creative Metrics',[
@@ -10855,15 +10857,28 @@ function renderResDataKey(el){
     ['Traffic Sources','GA4','sessionDefaultChannelGrouping, session_source','Channel breakdown table'],
   ]);
 
+  h+=mkSec('Clinician Dashboard',[
+    ['Clinician Cohort','HubSpot','deals: pipeline = 2486191840 AND createdate in window','Cohorts on deal CREATE date. A meeting-date basis silently drops clinicians with no meeting booked yet'],
+    ['Pipeline Stages','HubSpot','dealstage \u2014 12 stages','Meeting Scheduled \u2192 Meeting Happened \u2192 Signed Up \u2192 Form Submitted \u2192 Clinician Approved \u2192 Fully Onboarded \u2192 1st Sample Shipped \u2192 1st/2nd/3rd Review Submitted. Exits: No Show, Not a Fit'],
+    ['Meeting Date','HubSpot','clinician_meeting_date (date)','NOT clinician_meeting_booked_date \u2014 that one is when the booking happened, not the meeting'],
+    ['Attendance','HubSpot','clinician_attendance_status','Values use em dashes: \u201cDemo Given \u2014 Originally Scheduled\u201d, \u201cDemo Given \u2014 Rescheduled\u201d, plus Scheduled / Rescheduled / No Show / Cancelled Before Demo'],
+    ['Conversion %','Calculated','ever-reached count \u00f7 previous stage ever-reached','Ever-reached, not current-stage, so the funnel does not shrink as deals advance'],
+    ['No Show Rate','Calculated','No Show \u00f7 (Meeting Happened + No Show)','Denominator is meetings supposed to occur'],
+    ['Disqualification Rate','Calculated','Not a Fit \u00f7 cohort','Excludes deals with attendance = Cancelled Before Demo'],
+    ['Daily Activity','HubSpot','contacts by createdate, bucketed in PT','Contacts, not deals. Weekday average shown as a dashed line'],
+    ['Composition','HubSpot','clinician_type, clinician_specialty','Deduped per person, contacts created in the window'],
+    ['Verification Funnel','HubSpot','photo_verification_status, medical_degree_status','Contacts at Meeting Happened or beyond (incl. exited), by create date'],
+  ]);
+
   h+=mkSec('Budget & Pacing',[
-    ['Monthly Budgets','Calculated','BUDGET_BY_MONTH in worker.js','May 2026: Meta $99,900 \u00b7 LI $30,900 \u00b7 TikTok $24,500 \u00b7 Google $15,500'],
+    ['Monthly Budgets','Calculated','BUDGET_BY_MONTH in worker.js','Aug 2026: Meta $25,500 \u00b7 Clinician $20,000 \u00b7 LinkedIn $5,000 \u00b7 Reddit $5,000 \u00b7 ChatGPT $5,000 \u00b7 Google $2,000'],
     ['Pacing %','Calculated','(day_of_month / days_in_month) \u00d7 100','Expected spend progress vs actual'],
     ['Budget Consumed %','Calculated','Channel Spend \u00f7 Monthly Budget \u00d7 100','Per-channel progress bar'],
   ]);
 
   h+=mkSec('Timezone & Date Handling',[
     ['Timezone','Calculated','America/Los_Angeles (PT)','All date boundaries use Pacific time'],
-    ['Date Boundaries','Calculated','new Date("YYYY-MM-DDT00:00:00.000") \u2014 no Z suffix','Z suffix forces UTC; omitting uses ET'],
+    ['Date Boundaries','Calculated','new Date("YYYY-MM-DDT00:00:00.000") \u2014 no Z suffix','Z suffix forces UTC; omitting it lets the offset helper apply PT (\u22127 PDT / \u22128 PST)'],
     ['HubSpot Dates','HubSpot','Millisecond timestamps as string values','date_demo_booked is DATE type (midnight UTC ms)'],
     ['Windsor Dates','Windsor','YYYY-MM-DD format, capped at yesterday','Today data always incomplete'],
   ]);
