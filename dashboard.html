@@ -785,7 +785,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t62';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t63';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3138,7 +3138,11 @@ const CLN_ACTIONS={
   'Clinician Approved':'<b>Rep:</b> submit the Admin form',
   'Fully Onboarded':'<b>Ops:</b> ready to prepare the sample shipment',
   '1st Sample Shipped':'<b>Rep:</b> submit the Accept Samples flow',
+  'No Show':'<b>Rep:</b> call to reschedule and enrol the clinician in the no-show sequence',
+  'Not a Fit':'Clinician has been disqualified \u2014 no further action',
 };
+// Terminal stages: nothing advances out of them, so they render below a divider.
+const CLN_EXIT_STAGES=['No Show','Not a Fit'];
 const CLN_STATUS_C={'Approved':'#2E9E6B','Pending':'#E0A93A','Not Approved':'#CC5B54'};
 function _clnT(){ S.clinician.tbl=S.clinician.tbl||{f:{},sort:{c:'createdate',d:'desc'},q:'',open:{},sampleMonth:false}; return S.clinician.tbl; }
 window.clnTblSort=function(c){const t=_clnT();if(t.sort.c===c)t.sort.d=t.sort.d==='desc'?'asc':'desc';else{t.sort.c=c;t.sort.d='desc';}renderClinician();};
@@ -3235,31 +3239,30 @@ function _clnTable(rows,stageColors){
       +'<span style="font-size:10.5px;color:var(--grey)">deal'+(n3===1?'':'s')+' waiting</span></div>'
       +'<div style="font-size:14px;color:var(--navy);line-height:1.5">'+CLN_ACTIONS[selStage]+'</div></div>';
   }else{
-    an+='<div style="background:var(--lighter);border:1px solid var(--border);border-radius:9px;padding:4px 14px">';
+    // Each stage is its own tile with a colour accent, the count as a badge, and
+    // the action beside it. Terminal stages sit below a divider since nothing
+    // advances out of them.
+    an+='<div style="display:flex;flex-direction:column;gap:6px">';
+    let wroteDivider=false;
     for(const st of anStages){
       const n3=out.filter(r=>r.stageLabel===st).length;
       const col=stageColors[st]||'#9AA7B4';
-      an+='<div style="display:flex;align-items:baseline;gap:12px;padding:9px 0;border-bottom:1px solid rgba(2,15,24,.06);opacity:'+(n3===0?'.4':'1')+'">'
-        +'<span style="flex:0 0 158px;font-size:12px;font-weight:700;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'
-        +'<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:'+col+';margin-right:7px;vertical-align:middle"></span>'+esc(st)+'</span>'
-        +'<span style="flex:0 0 46px;font-family:var(--font-h);font-size:17px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+fN(n3)+'</span>'
-        +'<span style="flex:1;font-size:13px;color:var(--navy);line-height:1.45">'+CLN_ACTIONS[st]+'</span></div>';
+      const zero=(n3===0);
+      if(!wroteDivider&&CLN_EXIT_STAGES.indexOf(st)>=0){
+        wroteDivider=true;
+        an+='<div style="display:flex;align-items:center;gap:9px;margin:5px 0 1px">'
+          +'<span style="font-family:var(--font-h);font-size:8.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.09em;white-space:nowrap">Exited Pipeline</span>'
+          +'<span style="flex:1;height:1px;background:var(--border)"></span></div>';
+      }
+      an+='<div style="display:flex;align-items:center;gap:14px;background:'+(zero?'transparent':'var(--white)')+';border:1px solid '+(zero?'transparent':'var(--border)')+';border-left:4px solid '+(zero?'rgba(2,15,24,.10)':col)+';border-radius:8px;padding:10px 14px;opacity:'+(zero?'.5':'1')+'">'
+        +'<span style="flex:0 0 auto;min-width:52px;text-align:center;font-family:var(--font-h);font-size:19px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;line-height:1">'+fN(n3)+'</span>'
+        +'<span style="flex:0 0 152px;font-family:var(--font-h);font-size:11.5px;font-weight:700;color:var(--navy);line-height:1.3">'+esc(st)+'</span>'
+        +'<span style="flex:1;font-size:13px;color:var(--navy);line-height:1.5">'+CLN_ACTIONS[st]+'</span></div>';
     }
     an+='</div>';
   }
   an+='</div>';
   fh+=an;
-  let sc2='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:13px;border-top:1px solid var(--border)">';
-  for(const st of Object.keys(stageColors)){
-    const n2=out.filter(r=>r.stageLabel===st).length;
-    const col=stageColors[st], dim=(n2===0);
-    // Read-only: these report the filtered distribution, they don't filter.
-    sc2+='<div style="flex:1 1 118px;min-width:110px;background:var(--white);border:1px solid var(--border);border-left:3px solid '+col+';border-radius:8px;padding:7px 10px;opacity:'+(dim?'.55':'1')+'">'
-      +'<div style="font-size:8.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(st)+'</div>'
-      +'<div style="font-family:var(--font-h);font-size:19px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+fN(n2)+'</div></div>';
-  }
-  sc2+='</div>';
-  fh+=sc2;
   // header
   const th=(k,lbl,extra)=>'<th onclick="clnTblSort(\''+k+'\')" style="text-align:left;padding:7px 8px;font-family:var(--font-h);font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:'+(sc===k?'var(--teal)':'var(--grey)')+';cursor:pointer;white-space:nowrap;'+(extra||'')+'">'+lbl+(sc===k?(sd<0?' \u2193':' \u2191'):'')+'</th>';
   let head='<tr style="border-bottom:1.5px solid var(--border)">'+th('dealName','Deal Name')+th('contactName','Contact')+th('stageLabel','Deal Stage')+th('rep','Deal Rep');
