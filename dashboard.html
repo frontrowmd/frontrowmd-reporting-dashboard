@@ -795,7 +795,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t68';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t69';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3161,7 +3161,7 @@ const CLN_EXIT_STAGES=['No Show','Not a Fit'];
 const CLN_STATUS_C={'Approved':'#2E9E6B','Pending':'#E0A93A','Not Approved':'#CC5B54'};
 function _clnT(){ // Default view is the active middle of the pipeline — the stages with work in
 // them — rather than all 370 deals including the Meeting Scheduled backlog.
-S.clinician.tbl=S.clinician.tbl||{f:{},stages:['Meeting Happened','Signed Up','Form Submitted','Clinician Approved'],sort:{c:'createdate',d:'desc'},q:'',open:{},sampleMonth:false}; return S.clinician.tbl; }
+S.clinician.tbl=S.clinician.tbl||{f:{},stages:['Meeting Happened','Signed Up','Form Submitted','Clinician Approved'],sort:{c:'createdate',d:'asc'},q:'',open:{},sampleMonth:false}; return S.clinician.tbl; }
 window.clnTblSort=function(c){const t=_clnT();if(t.sort.c===c)t.sort.d=t.sort.d==='desc'?'asc':'desc';else{t.sort.c=c;t.sort.d='desc';}renderClinician();};
 window.clnTblFilter=function(k,v){const t=_clnT();if(v==='all')delete t.f[k];else t.f[k]=v;renderClinician();};
 // Deal Stage is multi-select: 'all' clears, any value toggles its membership.
@@ -3287,9 +3287,9 @@ function _clnTable(rows,stageColors){
     // Total across the stages shown, so a multi-stage view has a headline number.
     if(anStages.length>1){
       const tot=anStages.reduce((n,st)=>n+out.filter(r=>r.stageLabel===st).length,0);
-      an+='<div style="display:flex;align-items:baseline;gap:8px;margin-top:8px;padding-left:14px">'
-        +'<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+fN(tot)+'</span>'
-        +'<span style="font-size:10.5px;color:var(--grey)">deal'+(tot===1?'':'s')+' across '+anStages.length+' stages shown</span></div>';
+      an+='<div style="display:flex;align-items:center;gap:12px;margin-top:9px;background:linear-gradient(160deg,var(--navy),var(--midnight));border-radius:9px;padding:12px 18px;box-shadow:0 2px 8px rgba(2,15,24,.16)">'
+        +'<span style="font-family:var(--font-h);font-size:28px;font-weight:700;color:#fff;font-variant-numeric:tabular-nums;line-height:1">'+fN(tot)+'</span>'
+        +'<span style="font-size:11.5px;color:rgba(255,255,255,.78);line-height:1.35">deal'+(tot===1?'':'s')+' needing action<br><span style="font-size:10px;color:rgba(255,255,255,.55)">across '+anStages.length+' stages shown</span></span></div>';
     }
     an+='</div>';
   }
