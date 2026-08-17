@@ -791,7 +791,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t73';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t74';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -1872,7 +1872,37 @@ function switchPage(pg){AP=pg;document.querySelectorAll('.ni').forEach(n=>n.clas
     return;
   }
   if(!S[pg].data){if(pg==='signup')fd('mtd');else if(pg==='content'){fdContent();return;}else fd(S[pg].win);return;}renderPage();}
-function renderPage(){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));if(AP==='dashboard')renderDash();else if(AP==='irfan')renderIrfan();else if(AP==='clinician')renderClinician();else if(AP==='calculator')updCalc();else if(AP==='signup')renderSignUp();else if(AP==='strategy')renderStrategy();else if(AP==='demoQuality')renderDemoQuality();else if(AP==='webinarPerf')renderWebinarPerf();else if(AP==='csession')renderCreativeSession();else if(AP==='content')renderContent();else if(AP==='outbound')renderOutbound();document.getElementById('page-'+AP).classList.add('active');if(typeof buildSectionNav==='function')buildSectionNav(AP);const d=S[AP].data;if(d){const ts=d.meta?.generatedAt;if(ts)document.getElementById('fts').textContent='Updated '+new Date(ts).toLocaleString();if(d.meta?.dataQuality&&!d.meta.dataQuality.complete)document.getElementById('dqb').classList.add('vis');_renderFetchDiag(d.meta&&d.meta.fetchDiag);}}
+// ── Sidebar active-item highlight ───────────────────────────────────────────
+// One place decides what is highlighted, driven by the current page. The old
+// logic assumed every dashboard lived under one parent group and keyed off
+// data-page==='dashboard', so after the restructure Irfan and Clinician never
+// lit up and the Additional Insights parent stayed lit permanently.
+function _navToken(){
+  const map={irfan:"switchDashSub('irfan')",dashboard:"switchDashSub('overview')",clinician:"clinicianNav()",
+    signup:"switchDashSub('signup')",webinarPerf:"switchDashSub('webinarPerf')",demoQuality:"switchDashSub('demoQuality')",
+    outbound:"switchDashSub('outbound')",strategy:"switchDashSub('strategy')",calculator:"switchToCalculator()",
+    csession:"switchPage('csession')"};
+  if(AP==='content')return "switchContent('"+((S.content&&S.content.sub)||'cs-intel')+"')";
+  return map[AP]||null;
+}
+function _syncNav(){
+  const tok=_navToken();
+  const items=Array.from(document.querySelectorAll('.snav .ni'));
+  items.forEach(n=>n.classList.remove('active'));
+  if(!tok)return;
+  const hit=items.find(n=>(n.getAttribute('onclick')||'').indexOf(tok)>=0);
+  if(!hit)return;
+  hit.classList.add('active');
+  // If the match lives in a collapsed group, open that group so the highlight
+  // is actually visible.
+  const grp=hit.closest('[id$="-submenu"]');
+  if(grp&&grp.style.display==='none'){
+    grp.style.display='block';
+    const arrow=document.getElementById(grp.id.replace('-submenu','-arrow'));
+    if(arrow)arrow.textContent='\u25BC';
+  }
+}
+function renderPage(){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));if(AP==='dashboard')renderDash();else if(AP==='irfan')renderIrfan();else if(AP==='clinician')renderClinician();else if(AP==='calculator')updCalc();else if(AP==='signup')renderSignUp();else if(AP==='strategy')renderStrategy();else if(AP==='demoQuality')renderDemoQuality();else if(AP==='webinarPerf')renderWebinarPerf();else if(AP==='csession')renderCreativeSession();else if(AP==='content')renderContent();else if(AP==='outbound')renderOutbound();document.getElementById('page-'+AP).classList.add('active');if(typeof buildSectionNav==='function')buildSectionNav(AP);if(typeof _syncNav==='function')_syncNav();const d=S[AP].data;if(d){const ts=d.meta?.generatedAt;if(ts)document.getElementById('fts').textContent='Updated '+new Date(ts).toLocaleString();if(d.meta?.dataQuality&&!d.meta.dataQuality.complete)document.getElementById('dqb').classList.add('vis');_renderFetchDiag(d.meta&&d.meta.fetchDiag);}}
 // Renders upstream fetch diagnostics into the data-quality banner so an empty
 // Windsor/GA4 fetch is visible as a named failure instead of a silent $0.
 function _renderFetchDiag(fd){
@@ -7875,8 +7905,7 @@ function switchDashSub(sub){
   var titleMap={overview:'Detailed Dashboard',clinician:'Clinician Dashboard',irfan:'Irfan Dashboard',signup:'Sign-Up Rate',calculator:'ARR Calculator',strategy:'Monthly Review',demoQuality:'Demo Quality',outbound:'Outbound Sequences',webinarPerf:'Webinar Performance'};
   document.getElementById('ptitle').textContent=titleMap[sub]||'Executive Dashboard';
   // Highlight nav items
-  document.querySelectorAll('.snav>.ni').forEach(n=>n.classList.toggle('active',n.dataset.page==='dashboard'));
-  document.querySelectorAll('#dash-submenu .ni').forEach(n=>n.classList.toggle('active',n.dataset.sub===sub));
+  // highlighting handled centrally by _syncNav() on render
   // Ensure dash submenu open, others closed
   document.getElementById('dash-submenu').style.display='block';
   document.getElementById('dash-arrow').textContent='\u25BC';
