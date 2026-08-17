@@ -785,7 +785,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t57';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t58';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3181,9 +3181,23 @@ function _clnTable(rows,stageColors){
     +'</div></div>';
   fh+='<div style="display:flex;align-items:center;gap:10px;margin-top:11px;flex-wrap:wrap">'
     +'<button onclick="clnTblSampleMonth()" style="font-family:var(--font-h);font-size:10.5px;font-weight:700;padding:6px 14px;border-radius:50px;border:1.5px solid '+(t.sampleMonth?'var(--navy)':'var(--border)')+';background:'+(t.sampleMonth?'var(--navy)':'transparent')+';color:'+(t.sampleMonth?'#fff':'var(--navy)')+';cursor:pointer">Filter for Current Month Samples Shipped</button>'
-    +'<button onclick="clnTblClear()" style="font-family:var(--font-h);font-size:10.5px;font-weight:700;padding:6px 14px;border-radius:50px;border:1.5px solid #C62828;background:rgba(198,40,40,.05);color:#C62828;cursor:pointer">Clear All Filters</button>'
-    +'<input id="cln-tbl-q" value="'+esc(t.q)+'" oninput="clnTblSearch(this.value)" placeholder="Search name, contact, rep, NPI, campaign, tracking\u2026" style="flex:1;min-width:240px;padding:6px 12px;border:1.5px solid var(--border);border-radius:50px;font-size:11.5px;font-family:var(--font-b);color:var(--navy)">'
-    +'<span style="font-size:11px;color:var(--grey);white-space:nowrap">'+fN(out.length)+' of '+fN(rows.length)+'</span></div>';
+    +'<button onclick="clnTblClear()" style="font-family:var(--font-h);font-size:10.5px;font-weight:700;padding:6px 14px;border-radius:50px;border:1.5px solid #C62828;background:rgba(198,40,40,.05);color:#C62828;cursor:pointer">Clear All Filters</button></div>';
+  fh+='<div style="display:flex;align-items:center;gap:10px;margin-top:9px">'
+    +'<input id="cln-tbl-q" value="'+esc(t.q)+'" oninput="clnTblSearch(this.value)" placeholder="Search name, contact, rep, NPI, campaign, tracking\u2026" style="width:340px;max-width:100%;padding:6px 12px;border:1.5px solid var(--border);border-radius:50px;font-size:11.5px;font-family:var(--font-b);color:var(--navy)">'
+    +'<span style="font-size:11px;color:var(--grey);white-space:nowrap">'+fN(out.length)+' of '+fN(rows.length)+' deals</span></div>';
+  // Stage counts for the CURRENT filtered set, every pipeline stage shown so a
+  // zero is visible rather than the stage vanishing. Chips toggle the stage filter.
+  let sc2='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:13px;border-top:1px solid var(--border)">';
+  for(const st of Object.keys(stageColors)){
+    const n2=out.filter(r=>r.stageLabel===st).length;
+    const col=stageColors[st], on=t.f.stage===st, dim=(n2===0&&!on);
+    sc2+='<button onclick="clnTblFilter(\'stage\',\''+(on?'all':esc(st))+'\')" title="'+esc(st)+' \u2014 click to '+(on?'clear':'filter')+'" '
+      +'style="flex:1 1 118px;min-width:110px;text-align:left;cursor:pointer;background:'+(on?'rgba(23,44,69,.06)':'var(--white)')+';border:1px solid '+(on?'var(--navy)':'var(--border)')+';border-left:3px solid '+col+';border-radius:8px;padding:7px 10px;opacity:'+(dim?'.55':'1')+'">'
+      +'<div style="font-size:8.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(st)+'</div>'
+      +'<div style="font-family:var(--font-h);font-size:19px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+fN(n2)+'</div></button>';
+  }
+  sc2+='</div>';
+  fh+=sc2;
   // header
   const th=(k,lbl,extra)=>'<th onclick="clnTblSort(\''+k+'\')" style="text-align:left;padding:7px 8px;font-family:var(--font-h);font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:'+(sc===k?'var(--teal)':'var(--grey)')+';cursor:pointer;white-space:nowrap;'+(extra||'')+'">'+lbl+(sc===k?(sd<0?' \u2193':' \u2191'):'')+'</th>';
   let head='<tr style="border-bottom:1.5px solid var(--border)">'+th('dealName','Deal Name')+th('contactName','Contact')+th('stageLabel','Deal Stage')+th('rep','Deal Rep');
@@ -3239,7 +3253,8 @@ function _clnTable(rows,stageColors){
     +'<style>#cln-tbl tbody tr:nth-child(even) td{background-image:linear-gradient(rgba(2,15,24,.022),rgba(2,15,24,.022))}'
     +'#cln-tbl tbody tr:hover td{background-image:linear-gradient(rgba(114,164,191,.13),rgba(114,164,191,.13))}'
     +'#cln-tbl thead th{position:sticky;background:#fff;z-index:2}'
-    +'#cln-tbl thead tr:first-child th{top:0}#cln-tbl thead tr:last-child th{top:26px}</style>'
+    +'#cln-tbl thead tr:first-child th{top:0}'
+    +'#cln-tbl thead tr:last-child th{top:26px;box-shadow:inset 0 -2px 0 var(--border)}</style>'
     +'<div style="overflow:auto;max-height:620px;margin-top:14px;border:1px solid var(--border);border-radius:8px">'
     +'<table id="cln-tbl" style="width:100%;border-collapse:collapse;font-size:11.5px">'
     +'<thead>'+grpRow+head+'</thead><tbody>'+body+'</tbody></table></div>';
