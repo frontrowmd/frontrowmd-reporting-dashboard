@@ -785,7 +785,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t64';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t65';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3144,14 +3144,19 @@ const CLN_ACTIONS={
 // Terminal stages: nothing advances out of them, so they render below a divider.
 const CLN_EXIT_STAGES=['No Show','Not a Fit'];
 const CLN_STATUS_C={'Approved':'#2E9E6B','Pending':'#E0A93A','Not Approved':'#CC5B54'};
-function _clnT(){ S.clinician.tbl=S.clinician.tbl||{f:{},sort:{c:'createdate',d:'desc'},q:'',open:{},sampleMonth:false}; return S.clinician.tbl; }
+function _clnT(){ S.clinician.tbl=S.clinician.tbl||{f:{},stages:[],sort:{c:'createdate',d:'desc'},q:'',open:{},sampleMonth:false}; return S.clinician.tbl; }
 window.clnTblSort=function(c){const t=_clnT();if(t.sort.c===c)t.sort.d=t.sort.d==='desc'?'asc':'desc';else{t.sort.c=c;t.sort.d='desc';}renderClinician();};
 window.clnTblFilter=function(k,v){const t=_clnT();if(v==='all')delete t.f[k];else t.f[k]=v;renderClinician();};
+// Deal Stage is multi-select: 'all' clears, any value toggles its membership.
+window.clnTblStage=function(v){const t=_clnT();t.stages=t.stages||[];
+  if(v==='all'){t.stages=[];}
+  else{const i=t.stages.indexOf(v);if(i>=0)t.stages.splice(i,1);else t.stages.push(v);}
+  renderClinician();};
 window.clnTblSearch=function(v){_clnT().q=v;renderClinician();};
 window.clnTblGroup=function(k){const t=_clnT();t.open[k]=!t.open[k];renderClinician();};
 window.clnTblDateBasis=function(v){_clnT().dateBasis=v;renderClinician();};
 window.clnTblDateRange=function(which,v){const t=_clnT();if(which==='from')t.dFrom=v;else t.dTo=v;renderClinician();};
-window.clnTblClear=function(){const t=_clnT();t.f={};t.q='';t.sampleMonth=false;t.dFrom='';t.dTo='';const el=document.getElementById('cln-tbl-q');if(el)el.value='';renderClinician();};
+window.clnTblClear=function(){const t=_clnT();t.f={};t.stages=[];t.q='';t.sampleMonth=false;t.dFrom='';t.dTo='';const el=document.getElementById('cln-tbl-q');if(el)el.value='';renderClinician();};
 // "Current Month Samples Shipped": rows whose samples arrival date falls in the
 // current calendar month — the shipping team's working view.
 window.clnTblSampleMonth=function(){const t=_clnT();t.sampleMonth=!t.sampleMonth;renderClinician();};
@@ -3166,11 +3171,13 @@ function _clnTable(rows,stageColors){
   // work actually moves through.
   const stageVals=Object.keys(stageColors).filter(x=>rows.some(r=>r.stageLabel===x));
   const FILTERS=[
-    ['stage','Deal Stage',stageVals,r=>r.stageLabel],
+    ['stage','Deal Stage',stageVals,r=>r.stageLabel,true],
     ['rep','Deal Owner',opts('rep',r=>r.rep),r=>r.rep],
   ];
   let out=rows.slice();
-  for(const [k,,,get] of FILTERS){const v=t.f[k];if(v)out=out.filter(r=>(get(r)||'').trim()===v);}
+  const selStages=t.stages||[];
+  if(selStages.length)out=out.filter(r=>selStages.indexOf(r.stageLabel)>=0);
+  for(const [k,,,get,multi] of FILTERS){if(multi)continue;const v=t.f[k];if(v)out=out.filter(r=>(get(r)||'').trim()===v);}
   if(t.q){const q=t.q.toLowerCase();out=out.filter(r=>[r.dealName,r.contactName,r.rep,r.npi,r.utmCampaign,r.samplesTracking].some(x=>(x||'').toLowerCase().includes(q)));}
   // Date range on the selected basis. dkey mirrors dfmt's UTC day so the filter
   // always agrees with the date shown in the cell.
@@ -3194,11 +3201,15 @@ function _clnTable(rows,stageColors){
   // filter rows, one per line
   const pill=(k,v,lbl,on)=>'<button onclick="clnTblFilter(\''+k+'\',\''+esc(v)+'\')" style="font-family:var(--font-h);font-size:10px;font-weight:700;padding:4px 11px;border:none;background:'+(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+';cursor:pointer">'+esc(lbl)+'</button>';
   let fh='';
-  for(const [k,label,vals] of FILTERS){
+  const mpill=(v,lbl,on)=>'<button onclick="clnTblStage(\''+esc(v)+'\')" style="font-family:var(--font-h);font-size:10px;font-weight:700;padding:4px 11px;border:none;background:'+(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+';cursor:pointer">'+(on&&v!=='all'?'\u2713 ':'')+esc(lbl)+'</button>';
+  for(const [k,label,vals,,multi] of FILTERS){
+    const inner=multi
+      ? mpill('all','All',!selStages.length)+vals.map(v=>mpill(v,v,selStages.indexOf(v)>=0)).join('')
+      : pill(k,'all','All',!t.f[k])+vals.map(v=>pill(k,v,v,t.f[k]===v)).join('');
     fh+='<div style="display:flex;align-items:center;gap:9px;min-height:30px;margin-bottom:6px">'
-      +'<span style="font-family:var(--font-h);font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.07em;flex:0 0 210px;line-height:1.3">'+label+'</span>'
-      +'<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap">'
-      +pill(k,'all','All',!t.f[k])+vals.map(v=>pill(k,v,v,t.f[k]===v)).join('')+'</div></div>';
+      +'<span style="font-family:var(--font-h);font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.07em;flex:0 0 210px;line-height:1.3">'+label
+      +(multi&&selStages.length>1?' <span style="color:var(--teal)">('+selStages.length+')</span>':'')+'</span>'
+      +'<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap">'+inner+'</div></div>';
   }
   fh+='<div style="display:flex;align-items:center;gap:9px;min-height:30px;margin-bottom:6px;flex-wrap:wrap">'
     +'<span style="font-family:var(--font-h);font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.07em;flex:0 0 210px;line-height:1.3">Date Filter</span>'
@@ -3223,8 +3234,9 @@ function _clnTable(rows,stageColors){
   // Stages with nothing waiting are dimmed so the live work stands out.
   // With a stage selected, show only that stage's action — the other rows are
   // noise once you've narrowed to one stage.
-  const selStage=t.f.stage&&CLN_ACTIONS[t.f.stage]?t.f.stage:null;
-  const anStages=selStage?[selStage]:Object.keys(CLN_ACTIONS);
+  const known=selStages.filter(x=>CLN_ACTIONS[x]);
+  const selStage=known.length===1?known[0]:null;                       // focused view
+  const anStages=known.length?known:Object.keys(CLN_ACTIONS);          // else the picked set, or all
   let an='<div style="margin-top:14px;padding-top:13px;border-top:1px solid var(--border)">'
     +'<div style="font-family:var(--font-h);font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Action Needed</div>';
   if(selStage){
