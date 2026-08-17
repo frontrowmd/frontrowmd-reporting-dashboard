@@ -560,30 +560,26 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
   <nav class="sidebar">
     <div class="sh"><img class="logo-full" src="https://raw.githubusercontent.com/frontrowmd/frontrowmd-reporting-dashboard/main/FrontrowMD_White_Logo.png" alt="frontrowMD" style="height:36px"><img class="logo-icon" src="https://raw.githubusercontent.com/frontrowmd/frontrowmd-reporting-dashboard/main/White_Graphic_Logo.png" alt="frontrowMD" style="height:28px;display:none"></div>
     <div class="snav">
-      <div class="ni active" onclick="autoExpand();toggleDashMenu()" data-page="dashboard" id="dash-menu-parent" title="Executive Dashboard"><span class="ic">📊</span><span>Executive Dashboard</span><span id="dash-arrow" style="margin-left:auto;font-size:10px;transition:transform .2s">▼</span></div>
+      <div class="ni" onclick="switchDashSub('irfan')" data-page="irfan" data-sub="irfan"><span class="ic" style="font-size:12px">⭐</span><span>Irfan Dashboard</span></div>
+      <div class="ni" onclick="switchDashSub('overview')" data-page="dashboard" data-sub="overview"><span class="ic" style="font-size:12px">📊</span><span>Detailed Dashboard</span></div>
+      <div class="ni" onclick="clinicianNav()" data-page="clinician" data-sub="clinician"><span class="ic" style="font-size:12px">🩺</span><span>Clinician Dashboard</span></div>
+      <div class="ni active" onclick="autoExpand();toggleDashMenu()" data-page="dashboard" id="dash-menu-parent" title="Additional Insights"><span class="ic">📊</span><span>Additional Insights</span><span id="dash-arrow" style="margin-left:auto;font-size:10px;transition:transform .2s">▼</span></div>
       <div id="dash-submenu" style="display:block;padding-left:24px">
-        <div class="ni sub active" onclick="switchDashSub('irfan')" data-page="irfan" data-sub="irfan"><span class="ic" style="font-size:12px">⭐</span><span>Irfan Dashboard</span></div>
-        <div class="ni sub" onclick="switchDashSub('overview')" data-page="dashboard" data-sub="overview"><span class="ic" style="font-size:12px">📊</span><span>Detailed Dashboard</span></div>
-        <div class="ni sub" onclick="clinicianNav()" data-page="clinician" data-sub="clinician"><span class="ic" style="font-size:12px">🩺</span><span>Clinician Dashboard</span></div>
-        <div class="ni sub" onclick="switchDashSub('webinarPerf')" data-page="webinarPerf" data-sub="webinarPerf"><span class="ic" style="font-size:12px">🎥</span><span>Webinar Performance</span></div>
         <div class="ni sub" onclick="switchDashSub('signup')" data-page="dashboard" data-sub="signup"><span class="ic" style="font-size:12px">📋</span><span>Sign-Up Rate</span></div>
+        <div class="ni sub" onclick="switchDashSub('webinarPerf')" data-page="webinarPerf" data-sub="webinarPerf"><span class="ic" style="font-size:12px">🎥</span><span>Webinar Performance</span></div>
         <div class="ni sub" onclick="switchDashSub('demoQuality')" data-page="demoQuality" data-sub="demoQuality"><span class="ic" style="font-size:12px">🎯</span><span>Demo Quality</span></div>
         <div class="ni sub" onclick="switchDashSub('outbound')" data-page="outbound" data-sub="outbound"><span class="ic" style="font-size:12px">📨</span><span>Outbound</span></div>
-        <div class="ni sub" onclick="switchPage('csession')" data-page="csession"><span class="ic" style="font-size:12px">🎨</span><span>Creative Session</span></div>
         <div class="ni sub" onclick="switchDashSub('strategy')" data-page="dashboard" data-sub="strategy"><span class="ic" style="font-size:12px">📋</span><span>Monthly Review</span></div>
       </div>
-      <div class="ni" onclick="autoExpand();toggleContentMenu()" data-page="content" id="content-menu-parent" title="Social Media"><span class="ic">📱</span><span>Social Media</span><span id="content-arrow" style="margin-left:auto;font-size:10px;transition:transform .2s">▼</span></div>
-      <div id="content-submenu" style="display:block;padding-left:24px">
+      <div class="ni" onclick="autoExpand();toggleContentMenu()" data-page="content" id="content-menu-parent" title="Social Content"><span class="ic">📱</span><span>Social Content</span><span id="content-arrow" style="margin-left:auto;font-size:10px;transition:transform .2s">▼</span></div>
+      <div id="content-submenu" style="display:none;padding-left:24px">
+        <div class="ni sub" onclick="switchPage('csession')" data-page="csession"><span class="ic" style="font-size:12px">🎨</span><span>Creative Session</span></div>
         <div class="ni sub" onclick="switchContent('cs-intel')" data-page="content"><span class="ic" style="font-size:12px">📰</span><span>Intelligence</span></div>
         <div class="ni sub" onclick="switchContent('cs-writer')" data-page="content"><span class="ic" style="font-size:12px">✍️</span><span>Content Writer</span></div>
         <div class="ni sub" onclick="switchContent('cs-calendar')" data-page="content"><span class="ic" style="font-size:12px">📅</span><span>Calendar</span></div>
-        <div class="ni sub" onclick="switchContent('cs-today')" data-page="content"><span class="ic" style="font-size:12px">⚡</span><span>Today</span></div>
-        <div class="ni sub" onclick="switchContent('cs-ideas')" data-page="content"><span class="ic" style="font-size:12px">💡</span><span>Ideas</span></div>
-        <div class="ni sub" onclick="switchContent('cs-benchmarks')" data-page="content"><span class="ic" style="font-size:12px">📊</span><span>Organic Summary</span></div>
-        <div class="ni sub" onclick="switchContent('cs-rules')" data-page="content"><span class="ic" style="font-size:12px">📐</span><span>Brand Rules</span></div>
       </div>
       <div class="ni" onclick="autoExpand();toggleResMenu()" data-page="resources" id="res-menu-parent" title="Resources"><span class="ic">📚</span><span>Resources</span><span id="res-arrow" style="margin-left:auto;font-size:10px;transition:transform .2s">▼</span></div>
-      <div id="res-submenu" style="display:block;padding-left:24px">
+      <div id="res-submenu" style="display:none;padding-left:24px">
         <div class="ni sub" onclick="window.open('/bd','_blank')" data-page="resources" data-sub="bd-dash"><span class="ic" style="font-size:12px">💼</span><span>BD Tracker</span><span style="margin-left:auto;font-size:9px;opacity:.5">↗</span></div>
         <div class="ni sub" onclick="window.open('/sales','_blank')" data-page="resources" data-sub="sales-dash"><span class="ic" style="font-size:12px">📋</span><span>Sales Dashboard</span><span style="margin-left:auto;font-size:9px;opacity:.5">↗</span></div>
         <div class="ni sub" onclick="switchToCalculator()" data-page="resources" data-sub="calculator"><span class="ic" style="font-size:12px">🧮</span><span>ARR Calculator</span></div>
@@ -795,7 +791,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t71';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t73';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
