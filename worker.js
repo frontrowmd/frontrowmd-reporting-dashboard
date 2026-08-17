@@ -2203,6 +2203,9 @@ function buildClinicianFunnel(deals, contactsByDeal) {
         { label: 'Not a Fit', count: notAFit },
       ],
       stats: {
+        // Of clinicians who received samples, how many submitted their 1st review.
+        reviewRate: pct(cnt[7], cnt[6]),
+        reviewNum: cnt[7], reviewDenom: cnt[6],
         showRate: pct(cnt[1], cnt[0]),                 // Meeting Scheduled → Meeting Happened
         closeRate: pct(cnt[3], cnt[1]),                // Meeting Happened → Form Submitted
         noShowRate: pct(noShow, supposedNS),           // ÷ meetings supposed to occur
