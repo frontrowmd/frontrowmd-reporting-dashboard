@@ -785,7 +785,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t58';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t59';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3190,11 +3190,11 @@ function _clnTable(rows,stageColors){
   let sc2='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:13px;border-top:1px solid var(--border)">';
   for(const st of Object.keys(stageColors)){
     const n2=out.filter(r=>r.stageLabel===st).length;
-    const col=stageColors[st], on=t.f.stage===st, dim=(n2===0&&!on);
-    sc2+='<button onclick="clnTblFilter(\'stage\',\''+(on?'all':esc(st))+'\')" title="'+esc(st)+' \u2014 click to '+(on?'clear':'filter')+'" '
-      +'style="flex:1 1 118px;min-width:110px;text-align:left;cursor:pointer;background:'+(on?'rgba(23,44,69,.06)':'var(--white)')+';border:1px solid '+(on?'var(--navy)':'var(--border)')+';border-left:3px solid '+col+';border-radius:8px;padding:7px 10px;opacity:'+(dim?'.55':'1')+'">'
+    const col=stageColors[st], dim=(n2===0);
+    // Read-only: these report the filtered distribution, they don't filter.
+    sc2+='<div style="flex:1 1 118px;min-width:110px;background:var(--white);border:1px solid var(--border);border-left:3px solid '+col+';border-radius:8px;padding:7px 10px;opacity:'+(dim?'.55':'1')+'">'
       +'<div style="font-size:8.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(st)+'</div>'
-      +'<div style="font-family:var(--font-h);font-size:19px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+fN(n2)+'</div></button>';
+      +'<div style="font-family:var(--font-h);font-size:19px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+fN(n2)+'</div></div>';
   }
   sc2+='</div>';
   fh+=sc2;
