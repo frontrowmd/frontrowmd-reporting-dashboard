@@ -785,7 +785,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t56';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t57';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3169,13 +3169,13 @@ function _clnTable(rows,stageColors){
   const pill=(k,v,lbl,on)=>'<button onclick="clnTblFilter(\''+k+'\',\''+esc(v)+'\')" style="font-family:var(--font-h);font-size:10px;font-weight:700;padding:4px 11px;border:none;background:'+(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+';cursor:pointer">'+esc(lbl)+'</button>';
   let fh='';
   for(const [k,label,vals] of FILTERS){
-    fh+='<div style="display:flex;align-items:center;gap:9px;margin-bottom:7px;flex-wrap:wrap">'
-      +'<span style="font-family:var(--font-h);font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.07em;min-width:190px">'+label+'</span>'
+    fh+='<div style="display:flex;align-items:flex-start;gap:9px;margin-bottom:7px">'
+      +'<span style="font-family:var(--font-h);font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.07em;flex:0 0 210px;line-height:1.3">'+label+'</span>'
       +'<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap">'
       +pill(k,'all','All',!t.f[k])+vals.map(v=>pill(k,v,v,t.f[k]===v)).join('')+'</div></div>';
   }
   fh+='<div style="display:flex;align-items:center;gap:9px;margin-bottom:7px;flex-wrap:wrap">'
-    +'<span style="font-family:var(--font-h);font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.07em;min-width:190px">Date Filter</span>'
+    +'<span style="font-family:var(--font-h);font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.07em;flex:0 0 210px;line-height:1.3">Date Filter</span>'
     +'<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden">'
     +['createdate','bookedDate'].map(b=>'<button onclick="clnTblDateBasis(\''+b+'\')" style="font-family:var(--font-h);font-size:10px;font-weight:700;padding:4px 11px;border:none;background:'+(basis===b?'var(--navy)':'transparent')+';color:'+(basis===b?'#fff':'var(--grey)')+';cursor:pointer">'+(b==='createdate'?'Create Date':'Booked Date')+'</button>').join('')
     +'</div></div>';
@@ -3191,14 +3191,24 @@ function _clnTable(rows,stageColors){
   for(const g of CLN_GROUPS){
     const open=!!t.open[g.k];
     const shown=open?g.cols:g.collapsed;
-    grpRow+='<th colspan="'+shown.length+'" style="background:'+g.bg+';padding:5px 8px;text-align:left;border-left:2px solid rgba(2,15,24,.07)">'
+    grpRow+='<th colspan="'+shown.length+'" style="background-image:linear-gradient('+g.bg+','+g.bg+');padding:5px 8px;text-align:left;border-left:2px solid rgba(2,15,24,.07)">'
       +'<button onclick="clnTblGroup(\''+g.k+'\')" style="background:transparent;border:none;cursor:pointer;font-family:var(--font-h);font-size:9.5px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.05em;padding:0">'
       +(open?'\u25be ':'\u25b8 ')+g.n+' <span style="color:var(--grey);font-weight:500">('+g.cols.length+')</span></button></th>';
-    for(const c of shown)head+=th(c,CLN_COLS[c],'background:'+g.bg+(c===shown[0]?';border-left:2px solid rgba(2,15,24,.07)':''));
+    for(const c of shown)head+=th(c,CLN_COLS[c],'background-image:linear-gradient('+g.bg+','+g.bg+')'+(c===shown[0]?';border-left:2px solid rgba(2,15,24,.07)':''));
   }
   grpRow+='</tr>'; head+='</tr>';
   // body
-  const badge=(v,col)=>v?'<span style="display:inline-block;font-size:9.5px;font-weight:700;padding:2px 8px;border-radius:99px;white-space:nowrap;background:'+col+'1f;color:'+col+';border:1px solid '+col+'40">'+esc(v)+'</span>':'';
+  // HubSpot's stage palette includes very light colours (cream, mint). A tinted
+  // background with same-colour text made those unreadable, so light colours get
+  // a solid fill with dark text instead.
+  const _lum=(hex)=>{const c=String(hex).replace('#','');if(c.length<6)return .5;
+    return (0.299*parseInt(c.slice(0,2),16)+0.587*parseInt(c.slice(2,4),16)+0.114*parseInt(c.slice(4,6),16))/255;};
+  const badge=(v,col)=>{
+    if(!v)return '';
+    const light=_lum(col)>0.70;
+    const bg=light?col:col+'22', tx=light?'#2B2410':col, bd=light?'rgba(2,15,24,.22)':col+'55';
+    return '<span style="display:inline-block;font-size:9.5px;font-weight:700;padding:2px 9px;border-radius:99px;white-space:nowrap;background:'+bg+';color:'+tx+';border:1px solid '+bd+'">'+esc(v)+'</span>';
+  };
   const hov=v=>v?' data-tip="'+esc(v).replace(/\n/g,' ')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" style="cursor:help"':'';
   const trunc=(v,n)=>{v=String(v||'');return v.length>n?v.slice(0,n-1)+'\u2026':v;};
   let body='';
@@ -3223,7 +3233,16 @@ function _clnTable(rows,stageColors){
     body+='</tr>';
   }
   if(!out.length)body='<tr><td colspan="40" style="padding:24px;text-align:center;color:var(--grey);font-size:12px">No clinicians match these filters</td></tr>';
-  return fh+'<div style="overflow-x:auto;margin-top:14px"><table style="width:100%;border-collapse:collapse;font-size:11.5px"><thead>'+grpRow+head+'</thead><tbody>'+body+'</tbody></table></div>';
+  // max-height + sticky thead so the group and column headers stay put while
+  // scrolling 300+ rows; zebra + hover make a wide row traceable across columns.
+  return fh
+    +'<style>#cln-tbl tbody tr:nth-child(even) td{background-image:linear-gradient(rgba(2,15,24,.022),rgba(2,15,24,.022))}'
+    +'#cln-tbl tbody tr:hover td{background-image:linear-gradient(rgba(114,164,191,.13),rgba(114,164,191,.13))}'
+    +'#cln-tbl thead th{position:sticky;background:#fff;z-index:2}'
+    +'#cln-tbl thead tr:first-child th{top:0}#cln-tbl thead tr:last-child th{top:26px}</style>'
+    +'<div style="overflow:auto;max-height:620px;margin-top:14px;border:1px solid var(--border);border-radius:8px">'
+    +'<table id="cln-tbl" style="width:100%;border-collapse:collapse;font-size:11.5px">'
+    +'<thead>'+grpRow+head+'</thead><tbody>'+body+'</tbody></table></div>';
 }
 function renderClinician(){
   const d=S.clinician.data;
