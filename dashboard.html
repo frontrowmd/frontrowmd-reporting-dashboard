@@ -795,7 +795,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t69';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t70';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -1876,7 +1876,7 @@ function switchPage(pg){AP=pg;document.querySelectorAll('.ni').forEach(n=>n.clas
     return;
   }
   if(!S[pg].data){if(pg==='signup')fd('mtd');else if(pg==='content'){fdContent();return;}else fd(S[pg].win);return;}renderPage();}
-function renderPage(){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));if(AP==='dashboard')renderDash();else if(AP==='irfan')renderIrfan();else if(AP==='clinician')renderClinician();else if(AP==='calculator')updCalc();else if(AP==='signup')renderSignUp();else if(AP==='strategy')renderStrategy();else if(AP==='demoQuality')renderDemoQuality();else if(AP==='webinarPerf')renderWebinarPerf();else if(AP==='csession')renderCreativeSession();else if(AP==='content')renderContent();else if(AP==='outbound')renderOutbound();document.getElementById('page-'+AP).classList.add('active');if(typeof buildSectionNav==='function')buildSectionNav(AP);const d=S[AP].data;if(d){const ts=d.meta?.generatedAt;if(ts)document.getElementById('fts').textContent='Updated '+new Date(ts).toLocaleString();if(d.meta?.dataQuality&&!d.meta.dataQuality.complete)document.getElementById('dqb').classList.add('vis');_renderFetchDiag(d.meta&&d.meta.fetchDiag);}}
+function renderPage(){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));if(AP==='dashboard')renderDash();else if(AP==='irfan')renderIrfan();else if(AP==='clinician')renderClinician();else if(AP==='calculator')updCalc();else if(AP==='signup')renderSignUp();else if(AP==='strategy')renderStrategy();else if(AP==='demoQuality')renderDemoQuality();else if(AP==='webinarPerf')renderWebinarPerf();else if(AP==='csession')renderCreativeSession();else if(AP==='content')renderContent();else if(AP==='outbound')renderOutbound();document.getElementById('page-'+AP).classList.add('active');if(typeof buildSectionNav==='function')buildSectionNav(AP);   // also clears it on pages that have noneconst d=S[AP].data;if(d){const ts=d.meta?.generatedAt;if(ts)document.getElementById('fts').textContent='Updated '+new Date(ts).toLocaleString();if(d.meta?.dataQuality&&!d.meta.dataQuality.complete)document.getElementById('dqb').classList.add('vis');_renderFetchDiag(d.meta&&d.meta.fetchDiag);}}
 // Renders upstream fetch diagnostics into the data-quality banner so an empty
 // Windsor/GA4 fetch is visible as a named failure instead of a silent $0.
 function _renderFetchDiag(fd){
@@ -3701,10 +3701,13 @@ function renderClinician(){
 // .main, not the window.
 const _SECNAV_SEL={dashboard:'#page-dashboard .st', irfan:'#irfan-c .irf-card-title', clinician:'#clinician-c .irf-card-title'};
 function buildSectionNav(page){
-  const sel=_SECNAV_SEL[page]; if(!sel)return;
+  // Clear any existing bar FIRST. The nav lives in .main .topbar, which persists
+  // across pages, so returning early for a page without a selector used to leave
+  // the previous page's Jump To bar stranded there.
+  const old=document.querySelector('.main .secnav'); if(old)old.remove();
+  const sel=_SECNAV_SEL[page]; if(!sel)return;   // only Irfan / Detailed / Clinician
   const root=document.getElementById('page-'+page); if(!root)return;
   const bar=document.querySelector('.main .topbar'); if(!bar)return;
-  const old=document.querySelector('.main .secnav'); if(old)old.remove();
   const heads=Array.from(document.querySelectorAll(sel)).filter(el=>(el.textContent||'').trim());
   if(heads.length<2)return;
   let h='<div class="secnav"><span class="secnav-lbl">Jump to</span>';
