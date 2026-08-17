@@ -800,7 +800,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t75';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t76';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3608,7 +3608,9 @@ function renderClinician(){
        +acqPanel(udLabel,comp[ud]||[],utmToggle)
       +'</div>');
   }
-  // ── Section 5: Ads (card 1 — KPI row) ──
+  // ── Section 6: Ads (card 1 — KPI row) ──
+  // Buffered, not appended: Verification Funnel renders above Ads, but is built after it.
+  let adsH='';
   const ads=d.ads||null;
   if(ads){
     const f$0=v=>v==null?'\u2014':f$(Math.round(v));
@@ -3653,10 +3655,10 @@ function renderClinician(){
       kh+=kpi('True CPD',f$0(ads.trueCpd),f$0(ads.spend)+' \u00f7 '+fN(ads.trueCpdDenom||0),'\u00f7 clinicians Qualified with a meeting Given');
       kh+=kpi('CAC',f$0(ads.cac),f$0(ads.spend)+' \u00f7 '+fN(ads.cacDenom||0),'\u00f7 clinicians who reached Fully Onboarded');
     }
-    h+=card('Ads','Clinician ad channel only \u2014 Meta campaigns matching \u201cClinician Targeting\u201d \u00b7 excluded from all other dashboard KPIs',
+    adsH+=card('Ads','Clinician ad channel only \u2014 Meta campaigns matching \u201cClinician Targeting\u201d \u00b7 excluded from all other dashboard KPIs',
       '<div style="display:flex;gap:14px;flex-wrap:wrap">'+kh+'</div>');
   }
-  // ── Section 5 card 2: Clinician ad tables, one shared filter set ──
+  // ── Section 6 card 2: Clinician ad tables, one shared filter set ──
   {
     const af=S.clinician.adsF||{};
     const fpill=(kind,k,lbl)=>{const on=(af[kind]||'all')===k;
@@ -3676,14 +3678,14 @@ function renderClinician(){
       +'<div style="font-family:var(--font-h);font-size:13.5px;font-weight:700;color:var(--navy);margin-bottom:2px">'+t+'</div>'
       +'<div style="font-size:10px;color:var(--grey);margin-bottom:8px">'+note+'</div>'
       +'<div id="'+id+'"></div></div>';
-    h+=card('Clinician Ad Tables','Clinician channel only \u00b7 one filter set drives all four tables \u00b7 expand a row for its child rows',
+    adsH+=card('Clinician Ad Tables','Clinician channel only \u00b7 one filter set drives all four tables \u00b7 expand a row for its child rows',
       fb
       +sub('Campaigns','cln-meta-campaigns','Expand a campaign to see its ad sets, then each ad set for its creatives')
       +sub('Ad Sets','cln-meta-adsets','Expand an ad set to see its creatives')
       +sub('Ad Creatives','cln-meta-creatives','All creatives across Clinician campaigns')
       +sub('Audiences','cln-meta-audiences','Ad-set level breakdown'));
   }
-  // ── Section 6: Verification Funnel ──
+  // ── Section 5: Verification Funnel ──
   if((comp.verifContacts||0)>0){
     // Status drives colour, so Approved/Pending/Not Approved read the same in
     // both charts regardless of their order or size.
@@ -3716,6 +3718,7 @@ function renderClinician(){
        +vpanel('Photo Verification Status',comp.photoVerification||[],'photo_verification_status')
       +'</div>');
   }
+  h+=adsH;   // Ads sits below Verification Funnel
   // ── Section 7: All Clinicians ──
   let allClinH='';
   if(Array.isArray(d.table)&&d.table.length){
