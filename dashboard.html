@@ -186,6 +186,16 @@ html,body{height:100%}body{font-family:var(--font-b);font-size:15px;color:var(--
   transition:background .15s,color .15s,border-color .15s}
 .secnav-btn:hover{background:var(--teal-8);border-color:var(--teal-30)}
 .cln-leg:hover{background:rgba(114,164,191,.12)}
+/* All Clinicians filters. Pills are individually rounded and wrap, rather than
+   living in one rounded container that broke apart mid-wrap on laptop widths.
+   Under 1250px the label stacks above its pills instead of eating 210px. */
+.cln-frow{display:flex;align-items:flex-start;gap:10px;margin-bottom:8px}
+.cln-flabel{font-family:var(--font-h);font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.07em;flex:0 0 150px;line-height:1.35;padding-top:5px}
+.cln-fpills{display:flex;flex-wrap:wrap;gap:5px;flex:1;min-width:0}
+.cln-fp{font-family:var(--font-h);font-size:10px;font-weight:700;padding:4px 11px;border:1px solid var(--border);border-radius:50px;background:transparent;color:var(--grey);cursor:pointer;white-space:nowrap;transition:background .15s,color .15s}
+.cln-fp:hover{background:var(--teal-8)}
+.cln-fp.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+@media(max-width:1250px){.cln-frow{flex-direction:column;gap:4px}.cln-flabel{flex:none;padding-top:0}}
 .secnav-btn.active{background:var(--navy);color:#fff;border-color:var(--navy)}
 @media(max-width:900px){.secnav{padding:8px 16px;margin:12px -16px -12px}}
 
@@ -785,7 +795,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t65';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t66';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3199,28 +3209,25 @@ function _clnTable(rows,stageColors){
     else {x=String(x||'').toLowerCase();y=String(y||'').toLowerCase();}
     return x<y?-1*sd:x>y?1*sd:0;});
   // filter rows, one per line
-  const pill=(k,v,lbl,on)=>'<button onclick="clnTblFilter(\''+k+'\',\''+esc(v)+'\')" style="font-family:var(--font-h);font-size:10px;font-weight:700;padding:4px 11px;border:none;background:'+(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+';cursor:pointer">'+esc(lbl)+'</button>';
+  const pill=(k,v,lbl,on)=>'<button class="cln-fp'+(on?' on':'')+'" onclick="clnTblFilter(\''+k+'\',\''+esc(v)+'\')">'+esc(lbl)+'</button>';
   let fh='';
-  const mpill=(v,lbl,on)=>'<button onclick="clnTblStage(\''+esc(v)+'\')" style="font-family:var(--font-h);font-size:10px;font-weight:700;padding:4px 11px;border:none;background:'+(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+';cursor:pointer">'+(on&&v!=='all'?'\u2713 ':'')+esc(lbl)+'</button>';
+  const mpill=(v,lbl,on)=>'<button class="cln-fp'+(on?' on':'')+'" onclick="clnTblStage(\''+esc(v)+'\')">'+(on&&v!=='all'?'\u2713 ':'')+esc(lbl)+'</button>';
   for(const [k,label,vals,,multi] of FILTERS){
     const inner=multi
       ? mpill('all','All',!selStages.length)+vals.map(v=>mpill(v,v,selStages.indexOf(v)>=0)).join('')
       : pill(k,'all','All',!t.f[k])+vals.map(v=>pill(k,v,v,t.f[k]===v)).join('');
-    fh+='<div style="display:flex;align-items:center;gap:9px;min-height:30px;margin-bottom:6px">'
-      +'<span style="font-family:var(--font-h);font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.07em;flex:0 0 210px;line-height:1.3">'+label
+    fh+='<div class="cln-frow"><span class="cln-flabel">'+label
       +(multi&&selStages.length>1?' <span style="color:var(--teal)">('+selStages.length+')</span>':'')+'</span>'
-      +'<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap">'+inner+'</div></div>';
+      +'<div class="cln-fpills">'+inner+'</div></div>';
   }
-  fh+='<div style="display:flex;align-items:center;gap:9px;min-height:30px;margin-bottom:6px;flex-wrap:wrap">'
-    +'<span style="font-family:var(--font-h);font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.07em;flex:0 0 210px;line-height:1.3">Date Filter</span>'
-    +'<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden">'
-    +['createdate','bookedDate'].map(b=>'<button onclick="clnTblDateBasis(\''+b+'\')" style="font-family:var(--font-h);font-size:10px;font-weight:700;padding:4px 11px;border:none;background:'+(basis===b?'var(--navy)':'transparent')+';color:'+(basis===b?'#fff':'var(--grey)')+';cursor:pointer">'+(b==='createdate'?'Create Date':'Booked Date')+'</button>').join('')
-    +'</div>'
+  fh+='<div class="cln-frow"><span class="cln-flabel">Date Filter</span>'
+    +'<div class="cln-fpills">'
+    +['createdate','bookedDate'].map(b=>'<button class="cln-fp'+(basis===b?' on':'')+'" onclick="clnTblDateBasis(\''+b+'\')">'+(b==='createdate'?'Create Date':'Booked Date')+'</button>').join('')
     +'<input type="date" value="'+esc(t.dFrom||'')+'" oninput="clnTblDateRange(\'from\',this.value)" style="padding:4px 9px;border:1.5px solid var(--border);border-radius:50px;font-size:10.5px;font-family:var(--font-b);color:var(--navy)">'
     +'<span style="font-size:10.5px;color:var(--grey)">\u2192</span>'
     +'<input type="date" value="'+esc(t.dTo||'')+'" oninput="clnTblDateRange(\'to\',this.value)" style="padding:4px 9px;border:1.5px solid var(--border);border-radius:50px;font-size:10.5px;font-family:var(--font-b);color:var(--navy)">'
-    +((t.dFrom||t.dTo)?'<button onclick="clnTblDateRange(\'from\',\'\');clnTblDateRange(\'to\',\'\')" style="padding:4px 10px;border-radius:50px;border:1.5px solid #C62828;background:rgba(198,40,40,.05);color:#C62828;font-family:var(--font-h);font-size:10px;font-weight:700;cursor:pointer">Clear dates</button>':'')
-    +'</div>';
+    +((t.dFrom||t.dTo)?'<button onclick="clnTblDateRange(\'from\',\'\');clnTblDateRange(\'to\',\'\')" style="padding:4px 10px;border-radius:50px;border:1px solid #C62828;background:rgba(198,40,40,.05);color:#C62828;font-family:var(--font-h);font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap">Clear dates</button>':'')
+    +'</div></div>';
   fh+='<div style="display:flex;align-items:center;gap:10px;margin-top:12px;padding-top:11px;border-top:1px solid var(--border)">'
     +'<span style="position:relative;display:inline-block;width:340px;max-width:100%">'
     +'<span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--grey);pointer-events:none">\ud83d\udd0d</span>'
@@ -3652,17 +3659,19 @@ function renderClinician(){
       +'<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border)">'
       +'<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">'+t+'</span>'
       +'<span style="font-size:10px;color:var(--grey);white-space:nowrap">'+note+'</span></div>'+vbars(rows)+'</div>';
-    h+=card('Verification Funnel',fN(comp.verifContacts)+' clinician contact'+((comp.verifContacts||0)===1?'':'s')+' CREATED in the selected window \u00b7 deduped per person \u00b7 bar length is relative to the largest status',
+    h+=card('Verification Funnel',fN(comp.verifContacts)+' clinician contact'+((comp.verifContacts||0)===1?'':'s')+' at Meeting Happened or beyond (incl. exited), created in the selected window \u00b7 deduped per person \u00b7 bar length is relative to the largest status',
       '<div style="display:flex;gap:18px;align-items:stretch;flex-wrap:wrap">'
        +vpanel('Credentials Status',comp.credentials||[],'medical_degree_status')
        +vpanel('Photo Verification Status',comp.photoVerification||[],'photo_verification_status')
       +'</div>');
   }
   // ── Section 7: All Clinicians ──
+  let allClinH='';
   if(Array.isArray(d.table)&&d.table.length){
-    h+=card('All Clinicians','Every deal in the Clinician pipeline for the selected window \u00b7 click a Deal Name or Contact to open it in HubSpot \u00b7 collapse or expand a column group with its header',
+    allClinH=card('All Clinicians','Every deal in the Clinician pipeline for the selected window \u00b7 click a Deal Name or Contact to open it in HubSpot \u00b7 collapse or expand a column group with its header',
       _clnTable(d.table,CLINICIAN_STAGE_COLORS));
   }
+  h=allClinH+h;   // promote to the top of the page
   h+=card('Deal Fields','Verified against HubSpot \u00b7 all present',tbl(CLINICIAN_DEAL_PROPS_REF));
   h+=card('Contact Fields','Verified against HubSpot \u00b7 all present',tbl(CLINICIAN_CONTACT_PROPS_REF));
   el.innerHTML=h;

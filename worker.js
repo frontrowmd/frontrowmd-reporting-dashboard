@@ -2070,11 +2070,20 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
     byUtmM[um] = (byUtmM[um] || 0) + 1;
     byUtmC[uc] = (byUtmC[uc] || 0) + 1;
     // Verification: medical_degree_status is labelled "Credentials Status" in HubSpot.
-    verifContacts++;
-    const cr = (cp.medical_degree_status || '').trim() || 'Not set';
-    const ph = (cp.photo_verification_status || '').trim() || 'Not set';
-    byCred[cr] = (byCred[cr] || 0) + 1;
-    byPhoto[ph] = (byPhoto[ph] || 0) + 1;
+    // Verification only applies once the meeting has actually happened — before
+    // that there is nothing to verify, so Meeting Scheduled deals would pad the
+    // mix with a meaningless "Pending"/"Not set". Exited deals (No Show, Not a
+    // Fit) are kept: they reached an outcome.
+    const vStage = (dp.dealstage || '').trim();
+    const vIdx = CLINICIAN_STAGES.findIndex(x => x.id === vStage);
+    const vExited = (vStage === CLINICIAN_STAGE_NO_SHOW || vStage === CLINICIAN_STAGE_NOT_A_FIT);
+    if (vIdx >= 1 || vExited) {
+      verifContacts++;
+      const cr = (cp.medical_degree_status || '').trim() || 'Not set';
+      const ph = (cp.photo_verification_status || '').trim() || 'Not set';
+      byCred[cr] = (byCred[cr] || 0) + 1;
+      byPhoto[ph] = (byPhoto[ph] || 0) + 1;
+    }
   }
   // Largest first, but "Not set" is pinned last so it never leads the legend.
   const toList = (o) => Object.entries(o)
