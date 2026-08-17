@@ -785,7 +785,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t63';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t64';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3133,12 +3133,12 @@ const CLN_COLS={
 const CLN_ACTIONS={
   'Meeting Scheduled':'<b>Rep:</b> hold the scheduled meeting with the clinician',
   'Meeting Happened':'<b>Rep:</b> move the deal to Signed Up if the clinician agreed to join',
-  'Signed Up':'<b>Rep:</b> enrol the clinician in the follow-up sequence to get the credentials form submitted',
+  'Signed Up':'<b>Rep:</b> enroll the clinician in the follow-up sequence to get the credentials form submitted',
   'Form Submitted':'<b>Dr. Jones:</b> review the submitted credentials \u00b7 <b>Rep:</b> complete photo verification',
   'Clinician Approved':'<b>Rep:</b> submit the Admin form',
   'Fully Onboarded':'<b>Ops:</b> ready to prepare the sample shipment',
   '1st Sample Shipped':'<b>Rep:</b> submit the Accept Samples flow',
-  'No Show':'<b>Rep:</b> call to reschedule and enrol the clinician in the no-show sequence',
+  'No Show':'<b>Rep:</b> call to reschedule and enroll the clinician in the no-show sequence',
   'Not a Fit':'Clinician has been disqualified \u2014 no further action',
 };
 // Terminal stages: nothing advances out of them, so they render below a divider.
@@ -3195,12 +3195,12 @@ function _clnTable(rows,stageColors){
   const pill=(k,v,lbl,on)=>'<button onclick="clnTblFilter(\''+k+'\',\''+esc(v)+'\')" style="font-family:var(--font-h);font-size:10px;font-weight:700;padding:4px 11px;border:none;background:'+(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+';cursor:pointer">'+esc(lbl)+'</button>';
   let fh='';
   for(const [k,label,vals] of FILTERS){
-    fh+='<div style="display:flex;align-items:flex-start;gap:9px;margin-bottom:7px">'
+    fh+='<div style="display:flex;align-items:center;gap:9px;min-height:30px;margin-bottom:6px">'
       +'<span style="font-family:var(--font-h);font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.07em;flex:0 0 210px;line-height:1.3">'+label+'</span>'
       +'<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap">'
       +pill(k,'all','All',!t.f[k])+vals.map(v=>pill(k,v,v,t.f[k]===v)).join('')+'</div></div>';
   }
-  fh+='<div style="display:flex;align-items:center;gap:9px;margin-bottom:7px;flex-wrap:wrap">'
+  fh+='<div style="display:flex;align-items:center;gap:9px;min-height:30px;margin-bottom:6px;flex-wrap:wrap">'
     +'<span style="font-family:var(--font-h);font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.07em;flex:0 0 210px;line-height:1.3">Date Filter</span>'
     +'<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden">'
     +['createdate','bookedDate'].map(b=>'<button onclick="clnTblDateBasis(\''+b+'\')" style="font-family:var(--font-h);font-size:10px;font-weight:700;padding:4px 11px;border:none;background:'+(basis===b?'var(--navy)':'transparent')+';color:'+(basis===b?'#fff':'var(--grey)')+';cursor:pointer">'+(b==='createdate'?'Create Date':'Booked Date')+'</button>').join('')
@@ -3210,14 +3210,13 @@ function _clnTable(rows,stageColors){
     +'<input type="date" value="'+esc(t.dTo||'')+'" oninput="clnTblDateRange(\'to\',this.value)" style="padding:4px 9px;border:1.5px solid var(--border);border-radius:50px;font-size:10.5px;font-family:var(--font-b);color:var(--navy)">'
     +((t.dFrom||t.dTo)?'<button onclick="clnTblDateRange(\'from\',\'\');clnTblDateRange(\'to\',\'\')" style="padding:4px 10px;border-radius:50px;border:1.5px solid #C62828;background:rgba(198,40,40,.05);color:#C62828;font-family:var(--font-h);font-size:10px;font-weight:700;cursor:pointer">Clear dates</button>':'')
     +'</div>';
-  fh+='<div style="display:flex;align-items:center;gap:10px;margin-top:11px;flex-wrap:wrap">'
-    +'<button onclick="clnTblClear()" style="font-family:var(--font-h);font-size:10.5px;font-weight:700;padding:6px 14px;border-radius:50px;border:1.5px solid #C62828;background:rgba(198,40,40,.05);color:#C62828;cursor:pointer">Clear All Filters</button></div>';
-  fh+='<div style="display:flex;align-items:center;gap:10px;margin-top:9px">'
+  fh+='<div style="display:flex;align-items:center;gap:10px;margin-top:12px;padding-top:11px;border-top:1px solid var(--border)">'
     +'<span style="position:relative;display:inline-block;width:340px;max-width:100%">'
     +'<span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--grey);pointer-events:none">\ud83d\udd0d</span>'
     +'<input id="cln-tbl-q" value="'+esc(t.q)+'" oninput="clnTblSearch(this.value)" placeholder="Search name, contact, rep, NPI, campaign, tracking\u2026" style="width:100%;padding:6px 12px 6px 33px;border:1.5px solid var(--border);border-radius:50px;font-size:11.5px;font-family:var(--font-b);color:var(--navy)">'
     +'</span>'
-    +'<span style="font-size:11px;color:var(--grey);white-space:nowrap">'+fN(out.length)+' of '+fN(rows.length)+' deals</span></div>';
+    +'<span style="font-size:11px;color:var(--grey);white-space:nowrap">'+fN(out.length)+' of '+fN(rows.length)+' deals</span>'
+    +'<button onclick="clnTblClear()" style="margin-left:auto;font-family:var(--font-h);font-size:10.5px;font-weight:700;padding:6px 14px;border-radius:50px;border:1.5px solid #C62828;background:rgba(198,40,40,.05);color:#C62828;cursor:pointer;white-space:nowrap">Clear All Filters</button></div>';
   // Stage counts for the CURRENT filtered set, every pipeline stage shown so a
   // zero is visible rather than the stage vanishing. Chips toggle the stage filter.
   // Action Needed — one line per pipeline stage with its count and next step.
