@@ -785,7 +785,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t60';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t61';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3192,28 +3192,47 @@ function _clnTable(rows,stageColors){
     +['createdate','bookedDate'].map(b=>'<button onclick="clnTblDateBasis(\''+b+'\')" style="font-family:var(--font-h);font-size:10px;font-weight:700;padding:4px 11px;border:none;background:'+(basis===b?'var(--navy)':'transparent')+';color:'+(basis===b?'#fff':'var(--grey)')+';cursor:pointer">'+(b==='createdate'?'Create Date':'Booked Date')+'</button>').join('')
     +'</div></div>';
   fh+='<div style="display:flex;align-items:center;gap:10px;margin-top:11px;flex-wrap:wrap">'
-    +'<button onclick="clnTblSampleMonth()" style="font-family:var(--font-h);font-size:10.5px;font-weight:700;padding:6px 14px;border-radius:50px;border:1.5px solid '+(t.sampleMonth?'var(--navy)':'var(--border)')+';background:'+(t.sampleMonth?'var(--navy)':'transparent')+';color:'+(t.sampleMonth?'#fff':'var(--navy)')+';cursor:pointer">Filter for Current Month Samples Shipped</button>'
     +'<button onclick="clnTblClear()" style="font-family:var(--font-h);font-size:10.5px;font-weight:700;padding:6px 14px;border-radius:50px;border:1.5px solid #C62828;background:rgba(198,40,40,.05);color:#C62828;cursor:pointer">Clear All Filters</button></div>';
   fh+='<div style="display:flex;align-items:center;gap:10px;margin-top:9px">'
-    +'<input id="cln-tbl-q" value="'+esc(t.q)+'" oninput="clnTblSearch(this.value)" placeholder="Search name, contact, rep, NPI, campaign, tracking\u2026" style="width:340px;max-width:100%;padding:6px 12px;border:1.5px solid var(--border);border-radius:50px;font-size:11.5px;font-family:var(--font-b);color:var(--navy)">'
+    +'<span style="position:relative;display:inline-block;width:340px;max-width:100%">'
+    +'<span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--grey);pointer-events:none">\ud83d\udd0d</span>'
+    +'<input id="cln-tbl-q" value="'+esc(t.q)+'" oninput="clnTblSearch(this.value)" placeholder="Search name, contact, rep, NPI, campaign, tracking\u2026" style="width:100%;padding:6px 12px 6px 33px;border:1.5px solid var(--border);border-radius:50px;font-size:11.5px;font-family:var(--font-b);color:var(--navy)">'
+    +'</span>'
     +'<span style="font-size:11px;color:var(--grey);white-space:nowrap">'+fN(out.length)+' of '+fN(rows.length)+' deals</span></div>';
   // Stage counts for the CURRENT filtered set, every pipeline stage shown so a
   // zero is visible rather than the stage vanishing. Chips toggle the stage filter.
   // Action Needed — one line per pipeline stage with its count and next step.
   // Stages with nothing waiting are dimmed so the live work stands out.
+  // With a stage selected, show only that stage's action — the other rows are
+  // noise once you've narrowed to one stage.
+  const selStage=t.f.stage&&CLN_ACTIONS[t.f.stage]?t.f.stage:null;
+  const anStages=selStage?[selStage]:Object.keys(CLN_ACTIONS);
   let an='<div style="margin-top:14px;padding-top:13px;border-top:1px solid var(--border)">'
-    +'<div style="font-family:var(--font-h);font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Action Needed</div>'
-    +'<div style="background:var(--lighter);border:1px solid var(--border);border-radius:9px;padding:4px 12px">';
-  for(const st of Object.keys(CLN_ACTIONS)){
-    const n3=out.filter(r=>r.stageLabel===st).length;
-    const col=stageColors[st]||'#9AA7B4';
-    an+='<div style="display:flex;align-items:baseline;gap:10px;padding:7px 0;border-bottom:1px solid rgba(2,15,24,.06);opacity:'+(n3===0?'.45':'1')+'">'
-      +'<span style="flex:0 0 150px;font-size:11px;font-weight:700;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'
-      +'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+col+';margin-right:7px;vertical-align:middle"></span>'+esc(st)+'</span>'
-      +'<span style="flex:0 0 44px;font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+fN(n3)+'</span>'
-      +'<span style="flex:1;font-size:11.5px;color:var(--navy);line-height:1.45">'+CLN_ACTIONS[st]+'</span></div>';
+    +'<div style="font-family:var(--font-h);font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Action Needed</div>';
+  if(selStage){
+    // Single stage: give the action full width and real weight.
+    const col=stageColors[selStage]||'#9AA7B4';
+    const n3=out.filter(r=>r.stageLabel===selStage).length;
+    an+='<div style="background:var(--white);border:1px solid var(--border);border-left:4px solid '+col+';border-radius:9px;padding:14px 18px;box-shadow:0 1px 3px rgba(2,15,24,.05)">'
+      +'<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:6px">'
+      +'<span style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy)">'+esc(selStage)+'</span>'
+      +'<span style="font-family:var(--font-h);font-size:20px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+fN(n3)+'</span>'
+      +'<span style="font-size:10.5px;color:var(--grey)">deal'+(n3===1?'':'s')+' waiting</span></div>'
+      +'<div style="font-size:14px;color:var(--navy);line-height:1.5">'+CLN_ACTIONS[selStage]+'</div></div>';
+  }else{
+    an+='<div style="background:var(--lighter);border:1px solid var(--border);border-radius:9px;padding:4px 14px">';
+    for(const st of anStages){
+      const n3=out.filter(r=>r.stageLabel===st).length;
+      const col=stageColors[st]||'#9AA7B4';
+      an+='<div style="display:flex;align-items:baseline;gap:12px;padding:9px 0;border-bottom:1px solid rgba(2,15,24,.06);opacity:'+(n3===0?'.4':'1')+'">'
+        +'<span style="flex:0 0 158px;font-size:12px;font-weight:700;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'
+        +'<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:'+col+';margin-right:7px;vertical-align:middle"></span>'+esc(st)+'</span>'
+        +'<span style="flex:0 0 46px;font-family:var(--font-h);font-size:17px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+fN(n3)+'</span>'
+        +'<span style="flex:1;font-size:13px;color:var(--navy);line-height:1.45">'+CLN_ACTIONS[st]+'</span></div>';
+    }
+    an+='</div>';
   }
-  an+='</div></div>';
+  an+='</div>';
   fh+=an;
   let sc2='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:13px;border-top:1px solid var(--border)">';
   for(const st of Object.keys(stageColors)){
