@@ -785,7 +785,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t59';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t60';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3128,6 +3128,17 @@ const CLN_COLS={
   samplesArrival:'Samples Arrival',samplesTracking:'Tracking #',samplesCount:'# Shipped',whichSamples:'Which Samples',
   utmSource:'UTM Source',utmMedium:'UTM Medium',utmCampaign:'UTM Campaign',
 };
+// What has to happen next for a deal sitting in each stage. Shown in the Action
+// Needed card so the counts come with an owner and a next step.
+const CLN_ACTIONS={
+  'Meeting Scheduled':'<b>Rep:</b> hold the scheduled meeting with the clinician',
+  'Meeting Happened':'<b>Rep:</b> move the deal to Signed Up if the clinician agreed to join',
+  'Signed Up':'<b>Rep:</b> enrol the clinician in the follow-up sequence to get the credentials form submitted',
+  'Form Submitted':'<b>Dr. Jones:</b> review the submitted credentials \u00b7 <b>Rep:</b> complete photo verification',
+  'Clinician Approved':'<b>Rep:</b> submit the Admin form',
+  'Fully Onboarded':'<b>Ops:</b> ready to prepare the sample shipment',
+  '1st Sample Shipped':'<b>Rep:</b> submit the Accept Samples flow',
+};
 const CLN_STATUS_C={'Approved':'#2E9E6B','Pending':'#E0A93A','Not Approved':'#CC5B54'};
 function _clnT(){ S.clinician.tbl=S.clinician.tbl||{f:{},sort:{c:'createdate',d:'desc'},q:'',open:{},sampleMonth:false}; return S.clinician.tbl; }
 window.clnTblSort=function(c){const t=_clnT();if(t.sort.c===c)t.sort.d=t.sort.d==='desc'?'asc':'desc';else{t.sort.c=c;t.sort.d='desc';}renderClinician();};
@@ -3146,11 +3157,12 @@ function _clnTable(rows,stageColors){
   const dfmt=v=>{if(!v)return '';const ms=/^\d+$/.test(String(v))?parseInt(v):new Date(v).getTime();if(isNaN(ms))return '';const d=new Date(ms);return (d.getUTCMonth()+1)+'/'+d.getUTCDate()+'/'+String(d.getUTCFullYear()).slice(2);};
   // filters
   const opts=(key,get)=>{const set={};for(const r of rows){const v=(get(r)||'').trim();if(v)set[v]=(set[v]||0)+1;}return Object.keys(set).sort();};
+  // Stage options follow the real pipeline flow, not alphabetical — the order the
+  // work actually moves through.
+  const stageVals=Object.keys(stageColors).filter(x=>rows.some(r=>r.stageLabel===x));
   const FILTERS=[
-    ['stage','Deal Stage',opts('stage',r=>r.stageLabel),r=>r.stageLabel],
+    ['stage','Deal Stage',stageVals,r=>r.stageLabel],
     ['rep','Deal Owner',opts('rep',r=>r.rep),r=>r.rep],
-    ['attendance','Clinician Attendance Status',opts('attendance',r=>r.attendance),r=>r.attendance],
-    ['qualification','Clinician Qualification Outcome',opts('qualification',r=>r.qualification),r=>r.qualification],
   ];
   let out=rows.slice();
   for(const [k,,,get] of FILTERS){const v=t.f[k];if(v)out=out.filter(r=>(get(r)||'').trim()===v);}
@@ -3187,6 +3199,22 @@ function _clnTable(rows,stageColors){
     +'<span style="font-size:11px;color:var(--grey);white-space:nowrap">'+fN(out.length)+' of '+fN(rows.length)+' deals</span></div>';
   // Stage counts for the CURRENT filtered set, every pipeline stage shown so a
   // zero is visible rather than the stage vanishing. Chips toggle the stage filter.
+  // Action Needed — one line per pipeline stage with its count and next step.
+  // Stages with nothing waiting are dimmed so the live work stands out.
+  let an='<div style="margin-top:14px;padding-top:13px;border-top:1px solid var(--border)">'
+    +'<div style="font-family:var(--font-h);font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Action Needed</div>'
+    +'<div style="background:var(--lighter);border:1px solid var(--border);border-radius:9px;padding:4px 12px">';
+  for(const st of Object.keys(CLN_ACTIONS)){
+    const n3=out.filter(r=>r.stageLabel===st).length;
+    const col=stageColors[st]||'#9AA7B4';
+    an+='<div style="display:flex;align-items:baseline;gap:10px;padding:7px 0;border-bottom:1px solid rgba(2,15,24,.06);opacity:'+(n3===0?'.45':'1')+'">'
+      +'<span style="flex:0 0 150px;font-size:11px;font-weight:700;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'
+      +'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+col+';margin-right:7px;vertical-align:middle"></span>'+esc(st)+'</span>'
+      +'<span style="flex:0 0 44px;font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+fN(n3)+'</span>'
+      +'<span style="flex:1;font-size:11.5px;color:var(--navy);line-height:1.45">'+CLN_ACTIONS[st]+'</span></div>';
+  }
+  an+='</div></div>';
+  fh+=an;
   let sc2='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:13px;border-top:1px solid var(--border)">';
   for(const st of Object.keys(stageColors)){
     const n2=out.filter(r=>r.stageLabel===st).length;
