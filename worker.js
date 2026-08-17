@@ -481,7 +481,7 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v12';
+const API_CACHE_VER = 'v13';
 
 const WINDSOR_PAGE_SIZE = 5000;
 async function windsorFetch(apiKey, from, to, fields, extra = '') {
@@ -3917,7 +3917,22 @@ const AZ_CONNECTORS = {
 };
 
 const AZ_PAGE_SIZE = 5000;
+// OpenAI Ads rejects OUTRIGHT any request whose date_to is today or later —
+// it fails the whole request rather than returning rows up to yesterday, which
+// is what every other connector does. azWindsorFetch swallows the error and
+// returns [], so a live window (MTD, WTD, today) silently emptied the entire
+// ChatGPT channel: spend, campaigns, ad groups, all zero. Cap the end date for
+// the connectors that behave this way; the rest keep asking for today.
+const WINDSOR_NO_TODAY = new Set(['openai_ads']);
+function windsorCapTo(connector, to) {
+  if (!WINDSOR_NO_TODAY.has(connector)) return to;
+  const y = fmt(yesterdayET());
+  return to > y ? y : to;
+}
+
 async function azWindsorFetch(apiKey, connector, from, to, fields) {
+  to = windsorCapTo(connector, to);
+  if (to < from) return [];   // window was entirely today — nothing to ask for
   const url = `https://connectors.windsor.ai/${connector}?api_key=${apiKey}&date_from=${from}&date_to=${to}&fields=${fields}&page_size=${AZ_PAGE_SIZE}`;
   for (let i = 0; i < 3; i++) {
     try {
@@ -3938,6 +3953,10 @@ async function azWindsorFetch(apiKey, connector, from, to, fields) {
 // whenever a range comes back AT the cap (= truncated), bisect it and retry — so
 // coverage self-adjusts to however many rows/day the account actually has.
 async function azWindsorFetchAll(apiKey, connector, from, to, fields, chunkDays = 30) {
+  // Cap here too, not just in azWindsorFetch: otherwise the chunker builds
+  // sub-ranges that sit entirely past the cap and burns calls returning [].
+  to = windsorCapTo(connector, to);
+  if (to < from) return [];
   const addDays = (ds, n) => { const d = new Date(ds + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return fmt(d); };
   const daysBetween = (a, b) => Math.round((new Date(b + 'T00:00:00Z') - new Date(a + 'T00:00:00Z')) / 86400000);
   const out = [];
