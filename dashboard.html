@@ -785,7 +785,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t61';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t62';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3146,7 +3146,8 @@ window.clnTblFilter=function(k,v){const t=_clnT();if(v==='all')delete t.f[k];els
 window.clnTblSearch=function(v){_clnT().q=v;renderClinician();};
 window.clnTblGroup=function(k){const t=_clnT();t.open[k]=!t.open[k];renderClinician();};
 window.clnTblDateBasis=function(v){_clnT().dateBasis=v;renderClinician();};
-window.clnTblClear=function(){const t=_clnT();t.f={};t.q='';t.sampleMonth=false;const el=document.getElementById('cln-tbl-q');if(el)el.value='';renderClinician();};
+window.clnTblDateRange=function(which,v){const t=_clnT();if(which==='from')t.dFrom=v;else t.dTo=v;renderClinician();};
+window.clnTblClear=function(){const t=_clnT();t.f={};t.q='';t.sampleMonth=false;t.dFrom='';t.dTo='';const el=document.getElementById('cln-tbl-q');if(el)el.value='';renderClinician();};
 // "Current Month Samples Shipped": rows whose samples arrival date falls in the
 // current calendar month — the shipping team's working view.
 window.clnTblSampleMonth=function(){const t=_clnT();t.sampleMonth=!t.sampleMonth;renderClinician();};
@@ -3167,6 +3168,15 @@ function _clnTable(rows,stageColors){
   let out=rows.slice();
   for(const [k,,,get] of FILTERS){const v=t.f[k];if(v)out=out.filter(r=>(get(r)||'').trim()===v);}
   if(t.q){const q=t.q.toLowerCase();out=out.filter(r=>[r.dealName,r.contactName,r.rep,r.npi,r.utmCampaign,r.samplesTracking].some(x=>(x||'').toLowerCase().includes(q)));}
+  // Date range on the selected basis. dkey mirrors dfmt's UTC day so the filter
+  // always agrees with the date shown in the cell.
+  const dkey=v=>{if(!v)return '';const ms=/^\d+$/.test(String(v))?parseInt(v):new Date(v).getTime();if(isNaN(ms))return '';const d=new Date(ms);
+    return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0');};
+  if(t.dFrom||t.dTo){
+    out=out.filter(r=>{const k=dkey(r[basis]);if(!k)return false;
+      if(t.dFrom&&k<t.dFrom)return false;
+      if(t.dTo&&k>t.dTo)return false;return true;});
+  }
   if(t.sampleMonth){const n=new Date(),ym=n.getUTCFullYear()+'-'+String(n.getUTCMonth()+1).padStart(2,'0');
     out=out.filter(r=>{const v=r.samplesArrival;if(!v)return false;const ms=/^\d+$/.test(String(v))?parseInt(v):new Date(v).getTime();if(isNaN(ms))return false;const d=new Date(ms);return (d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0'))===ym;});}
   // sort
@@ -3190,7 +3200,12 @@ function _clnTable(rows,stageColors){
     +'<span style="font-family:var(--font-h);font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.07em;flex:0 0 210px;line-height:1.3">Date Filter</span>'
     +'<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden">'
     +['createdate','bookedDate'].map(b=>'<button onclick="clnTblDateBasis(\''+b+'\')" style="font-family:var(--font-h);font-size:10px;font-weight:700;padding:4px 11px;border:none;background:'+(basis===b?'var(--navy)':'transparent')+';color:'+(basis===b?'#fff':'var(--grey)')+';cursor:pointer">'+(b==='createdate'?'Create Date':'Booked Date')+'</button>').join('')
-    +'</div></div>';
+    +'</div>'
+    +'<input type="date" value="'+esc(t.dFrom||'')+'" oninput="clnTblDateRange(\'from\',this.value)" style="padding:4px 9px;border:1.5px solid var(--border);border-radius:50px;font-size:10.5px;font-family:var(--font-b);color:var(--navy)">'
+    +'<span style="font-size:10.5px;color:var(--grey)">\u2192</span>'
+    +'<input type="date" value="'+esc(t.dTo||'')+'" oninput="clnTblDateRange(\'to\',this.value)" style="padding:4px 9px;border:1.5px solid var(--border);border-radius:50px;font-size:10.5px;font-family:var(--font-b);color:var(--navy)">'
+    +((t.dFrom||t.dTo)?'<button onclick="clnTblDateRange(\'from\',\'\');clnTblDateRange(\'to\',\'\')" style="padding:4px 10px;border-radius:50px;border:1.5px solid #C62828;background:rgba(198,40,40,.05);color:#C62828;font-family:var(--font-h);font-size:10px;font-weight:700;cursor:pointer">Clear dates</button>':'')
+    +'</div>';
   fh+='<div style="display:flex;align-items:center;gap:10px;margin-top:11px;flex-wrap:wrap">'
     +'<button onclick="clnTblClear()" style="font-family:var(--font-h);font-size:10.5px;font-weight:700;padding:6px 14px;border-radius:50px;border:1.5px solid #C62828;background:rgba(198,40,40,.05);color:#C62828;cursor:pointer">Clear All Filters</button></div>';
   fh+='<div style="display:flex;align-items:center;gap:10px;margin-top:9px">'
