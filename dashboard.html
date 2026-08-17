@@ -795,7 +795,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t66';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t67';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2969,7 +2969,9 @@ const CLINICIAN_CONTACT_PROPS_REF = [
 const CLINICIAN_STAGE_COLORS={
   'Meeting Scheduled':'#F3EDD8','Meeting Happened':'#E6C55C','Signed Up':'#DCEAE4',
   'Form Submitted':'#E07A54','Clinician Approved':'#5E9CB4','Fully Onboarded':'#7B75D4',
-  '1st Sample Shipped':'#6DB79A','No Show':'#4C5A70','Not a Fit':'#CC5B54'};
+  '1st Sample Shipped':'#6DB79A',
+  '1st Review Submitted':'#4E9E86','2nd Review Submitted':'#3A8571','3rd Review Submitted':'#2A6B5C',
+  'No Show':'#4C5A70','Not a Fit':'#CC5B54'};
 const CLINICIAN_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/clinician':'/api/clinician';
 async function fdClinician(win){
   S.clinician._loading=true;
@@ -3148,6 +3150,9 @@ const CLN_ACTIONS={
   'Clinician Approved':'<b>Rep:</b> submit the Admin form',
   'Fully Onboarded':'<b>Ops:</b> ready to prepare the sample shipment',
   '1st Sample Shipped':'<b>Rep:</b> submit the Accept Samples flow',
+  '1st Review Submitted':'<b>Rep:</b> follow up to collect the 2nd review',
+  '2nd Review Submitted':'<b>Rep:</b> follow up to collect the 3rd review',
+  '3rd Review Submitted':'All three reviews collected \u2014 no further action',
   'No Show':'<b>Rep:</b> call to reschedule and enroll the clinician in the no-show sequence',
   'Not a Fit':'Clinician has been disqualified \u2014 no further action',
 };

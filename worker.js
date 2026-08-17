@@ -1783,6 +1783,12 @@ const CLINICIAN_STAGES = [
   { id: '4133870317', label: 'Clinician Approved' },
   { id: '4135230193', label: 'Fully Onboarded' },
   { id: '4133870318', label: '1st Sample Shipped' },
+  // Added to the HubSpot pipeline after the original build. Appended here, so
+  // indices 0-6 (and the Fully Onboarded=5 references used by velocity and CAC)
+  // are unchanged.
+  { id: '4164547317', label: '1st Review Submitted' },
+  { id: '4164547318', label: '2nd Review Submitted' },
+  { id: '4164547319', label: '3rd Review Submitted' },
 ];
 const CLINICIAN_STAGE_NO_SHOW = '4128854721';
 const CLINICIAN_STAGE_NOT_A_FIT = '4128510710';
