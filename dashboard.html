@@ -825,7 +825,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t96';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t97';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -11652,24 +11652,22 @@ function renderAzChannel(d,chKey,cr,eM,crPct,isMTD){
     var colCount=hasF?17:16;
 
     // Stage filter + Sort dropdown + Expand All
-    var ctrl='<div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;flex-wrap:wrap">';
-    ctrl+='<span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:1px">Stage</span><div style="display:flex;gap:2px;background:var(--white);border:1px solid var(--border);border-radius:50px;padding:2px">';
-    var stages=[{k:'all',l:'All',c:'var(--grey)'},{k:'s1',l:'Stage 1 - TOF',c:'#2980B9'},{k:'s2',l:'Stage 2 - MOF',c:'#E67E22'},{k:'s3',l:'Stage 3 - BOF',c:'#C0392B'},{k:'s4',l:'Stage 4 - Retargeting',c:'#7D3C98'}];
-    stages.forEach(function(s){
-      var isA=_azStageFilter===s.k;
-      ctrl+='<button onclick="_azStageFilter=\''+s.k+'\';renderAzChannel(S.analyzer.data,\''+chKey+'\','+cr+','+eM+','+crPct+','+isMTD+')" style="padding:6px 14px;border-radius:50px;font-size:10px;font-weight:'+(isA?'700':'400')+';border:'+(isA?'none':'1.5px solid transparent')+';background:'+(isA?s.c:'transparent')+';color:'+(isA?'#fff':s.c)+';cursor:pointer;transition:all .2s;font-family:var(--font-h)">'+s.l+'</button>';
-    });
-    ctrl+='</div>';
-    // Status filter
-    ctrl+='<div style="width:1px;height:20px;background:var(--border);margin:0 4px"></div>';
-    ctrl+='<span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:1px">Status</span><div style="display:flex;gap:2px;background:var(--white);border:1px solid var(--border);border-radius:50px;padding:2px">';
+    // One filter set for the whole Ad Tables section, styled like the Clinician
+    // Ad Tables. The state (_azStageFilter / _azStatusFilter) was already global
+    // and re-renders every table, so this only changes where it is drawn and how
+    // it looks — the pills drive all four tables exactly as the old row did.
+    var _fpRow=function(label,opts,cur,setter){
+      var r='<div class="cln-frow"><span class="cln-flabel">'+label+'</span><div class="cln-fpills">';
+      opts.forEach(function(o){
+        r+='<button class="cln-fp'+(cur===o.k?' on':'')+'" onclick="'+setter+'=\''+o.k+'\';'+'renderAzChannel(S.analyzer.data,\''+chKey+'\','+cr+','+eM+','+crPct+','+isMTD+')'+'">'+o.l+'</button>';
+      });
+      return r+'</div></div>';
+    };
     if(!window._azStatusFilter)window._azStatusFilter='all';
-    [{k:'all',l:'All'},{k:'active',l:'Active'},{k:'paused',l:'Paused'}].forEach(function(sf){
-      var isAS=_azStatusFilter===sf.k;
-      ctrl+='<button onclick="_azStatusFilter=\''+sf.k+'\';renderAzChannel(S.analyzer.data,\''+chKey+'\','+cr+','+eM+','+crPct+','+isMTD+')" style="padding:6px 14px;border-radius:50px;font-size:10px;font-weight:'+(isAS?'700':'400')+';border:'+(isAS?'none':'1.5px solid transparent')+';background:'+(isAS?sf.k==='active'?'#2ecc71':sf.k==='paused'?'#999':'var(--grey)':'transparent')+';color:'+(isAS?'#fff':sf.k==='active'?'#2ecc71':sf.k==='paused'?'#999':'var(--grey)')+';cursor:pointer;transition:all .2s;font-family:var(--font-h)">'+sf.l+'</button>';
-    });
-    ctrl+='</div>';
-    ctrl+='<div style="width:1px;height:20px;background:var(--border);margin:0 4px"></div>';
+    var ctrl='<div style="margin-bottom:14px">';
+    ctrl+=_fpRow('Stage',[{k:'all',l:'All'},{k:'s1',l:'TOF'},{k:'s2',l:'MOF'},{k:'s3',l:'BOF'},{k:'retarget',l:'Retargeting'}],_azStageFilter,'_azStageFilter');
+    ctrl+=_fpRow('Status',[{k:'all',l:'All'},{k:'active',l:'Active'},{k:'paused',l:'Paused'}],_azStatusFilter,'_azStatusFilter');
+    ctrl+='</div><div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;flex-wrap:wrap">'
     ctrl+='<span style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:1px">Sort</span>';
     var _campSortOpts=[{v:'demos',l:'Conversions'},{v:'spend',l:'Spend'},{v:'cpd',l:'CPD'},{v:'qualified',l:'Qual'},{v:'ctr',l:'CTR'},{v:'score',l:'Score'},{v:'tag',l:'Tag'},{v:'name',l:'Name'},{v:'stage',l:'Stage'},{v:'impressions',l:'Impr.'}];
     _campSortOpts.forEach(function(o){
@@ -11786,7 +11784,7 @@ function renderAzChannel(d,chKey,cr,eM,crPct,isMTD){
     rows+='<td class="n">'+fN(tQ)+'</td><td class="n">'+fN(tPR)+'</td><td class="n" style="color:#0891B2">'+fN(tPE)+'</td>';
     rows+='<td class="n">'+fN(tRS)+'</td><td class="n">'+fN(tNS)+'</td><td></td><td></td></tr>';
 
-    return '<div class="sec"><div class="st">Campaigns</div>'+ctrl+'<div class="tw" style="max-height:none;overflow:visible"><table class="ctbl" style="table-layout:fixed;width:100%"><colgroup><col style="width:24px"><col style="width:24%"><col style="width:6%"><col style="width:5%"><col style="width:5%"><col style="width:4.5%"><col style="width:3.8%">'+(hasF?'<col style="width:3.5%">':'')+'<col style="width:7%"><col style="width:4.5%"><col style="width:3.5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:3.8%"><col style="width:4.5%"></colgroup><thead><tr><th title="Status">\u25CF</th><th>Name</th><th class="n">Stage</th><th class="n">Spend</th><th class="n">Impr.</th><th class="n">Clicks</th><th class="n">CTR</th>'+(hasF?'<th class="n">Freq.</th>':'')+'<th class="n">Conversions</th><th class="n">CPD</th><th class="n">Qual</th><th class="n">Pruned</th><th class="n" style="color:#0891B2">Pend Eval</th><th class="n">Resch.</th><th class="n">No Show</th><th class="n">Score</th><th class="n">Tag</th></tr></thead><tbody>'+rows+'</tbody></table></div><div style="font-size:10px;color:var(--grey);margin-top:6px;font-style:italic">Note: Creatives with zero activity in the selected time window are not returned by Windsor and cannot be shown here.</div><div style="font-size:10px;color:var(--grey);margin-top:8px;line-height:1.6;padding:10px 12px;background:rgba(114,164,191,.04);border-radius:8px;border:1px solid rgba(114,164,191,.1)"><strong style="color:var(--navy)">Creative Scoring Formula</strong><br><strong>TOF (S01):</strong> 25% CTR + 20% Video Views + 20% Impression Share + 15% Qual Rate + 10% CPA\u207B\u00B9 + 10% Demo Volume<br><strong>MOF (S02):</strong> 25% Clicks + 25% CPA\u207B\u00B9 + 20% Qual Rate + 15% CTR + 15% Demo Volume<br><strong>BOF/Retargeting (S03+):</strong> 30% CPA\u207B\u00B9 + 25% Qual Rate + 20% Demo Volume + 15% CTR + 10% Clicks<br><strong>Tags:</strong> WINNER \u2265 65 \u00b7 TESTING 35\u201364 \u00b7 LOSER &lt; 35<br><strong>New (&lt;7d):</strong> Protected from LOSER tag (still learning)<br><strong>Auto-LOSER:</strong> Active &gt;14 days + score &lt;35 \u00b7 Spend \u2265 avg creative spend + score &lt;35 \u00b7 Both + score &lt;50 \u00b7 Spend \u2265 avg + Qual Rate &lt;20% + 3+ demos<br><strong>Scoring:</strong> Per-campaign relative ranking (not global aggregate) \u00b7 <strong>Naming:</strong> {Format}_{Talent}_{Concept}_{Setting}_{Variant}</div><div id="gv-out-campaigns"></div></div>';
+    return '<div class="sec">'+ctrl+'<div class="st">Campaigns</div><div class="tw" style="max-height:none;overflow:visible"><table class="ctbl" style="table-layout:fixed;width:100%"><colgroup><col style="width:24px"><col style="width:24%"><col style="width:6%"><col style="width:5%"><col style="width:5%"><col style="width:4.5%"><col style="width:3.8%">'+(hasF?'<col style="width:3.5%">':'')+'<col style="width:7%"><col style="width:4.5%"><col style="width:3.5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:3.8%"><col style="width:4.5%"></colgroup><thead><tr><th title="Status">\u25CF</th><th>Name</th><th class="n">Stage</th><th class="n">Spend</th><th class="n">Impr.</th><th class="n">Clicks</th><th class="n">CTR</th>'+(hasF?'<th class="n">Freq.</th>':'')+'<th class="n">Conversions</th><th class="n">CPD</th><th class="n">Qual</th><th class="n">Pruned</th><th class="n" style="color:#0891B2">Pend Eval</th><th class="n">Resch.</th><th class="n">No Show</th><th class="n">Score</th><th class="n">Tag</th></tr></thead><tbody>'+rows+'</tbody></table></div><div style="font-size:10px;color:var(--grey);margin-top:6px;font-style:italic">Note: Creatives with zero activity in the selected time window are not returned by Windsor and cannot be shown here.</div><div style="font-size:10px;color:var(--grey);margin-top:8px;line-height:1.6;padding:10px 12px;background:rgba(114,164,191,.04);border-radius:8px;border:1px solid rgba(114,164,191,.1)"><strong style="color:var(--navy)">Creative Scoring Formula</strong><br><strong>TOF (S01):</strong> 25% CTR + 20% Video Views + 20% Impression Share + 15% Qual Rate + 10% CPA\u207B\u00B9 + 10% Demo Volume<br><strong>MOF (S02):</strong> 25% Clicks + 25% CPA\u207B\u00B9 + 20% Qual Rate + 15% CTR + 15% Demo Volume<br><strong>BOF/Retargeting (S03+):</strong> 30% CPA\u207B\u00B9 + 25% Qual Rate + 20% Demo Volume + 15% CTR + 10% Clicks<br><strong>Tags:</strong> WINNER \u2265 65 \u00b7 TESTING 35\u201364 \u00b7 LOSER &lt; 35<br><strong>New (&lt;7d):</strong> Protected from LOSER tag (still learning)<br><strong>Auto-LOSER:</strong> Active &gt;14 days + score &lt;35 \u00b7 Spend \u2265 avg creative spend + score &lt;35 \u00b7 Both + score &lt;50 \u00b7 Spend \u2265 avg + Qual Rate &lt;20% + 3+ demos<br><strong>Scoring:</strong> Per-campaign relative ranking (not global aggregate) \u00b7 <strong>Naming:</strong> {Format}_{Talent}_{Concept}_{Setting}_{Variant}</div><div id="gv-out-campaigns"></div></div>';
   }
 
   // ── Build creatives flat table ──
