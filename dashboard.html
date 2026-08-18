@@ -658,6 +658,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 
       <!-- Row 7.5: Ad Channel switcher (Detailed Dashboard only) -->
       <div class="dsec-h">Ad Tables</div>
+      <div class="sec sec-card" style="padding-top:14px"><div class="irf-card-sub" style="margin:0 0 12px">One filter set drives all four tables · switch channel to repoint every table · expand a row for its children</div>
       <div class="sec" style="margin-bottom:14px">
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px 14px">
           <span style="font-family:var(--font-h);font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.08em;margin-right:4px">Ad Channel</span>
@@ -674,16 +675,17 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
       </div>
 
       <!-- Row 8: <channel> — Campaigns -->
-      <div class="sec sec-card"><div class="st"><span class="ad-channel-dot" style="display:inline-block;width:8px;height:8px;background:#1877F2;border-radius:50%;margin-right:8px;vertical-align:middle"></span><span class="ad-channel-label">Meta</span> — Campaigns</div><div style="font-size:12px;color:var(--grey);margin-bottom:10px">Sortable · stage-filterable · sourced from the Paid Ads Dashboard payload</div><div id="ov-meta-campaigns"></div></div>
+      <div class="sec"><div class="st"><span class="ad-channel-dot" style="display:inline-block;width:8px;height:8px;background:#1877F2;border-radius:50%;margin-right:8px;vertical-align:middle"></span><span class="ad-channel-label">Meta</span> — Campaigns</div><div style="font-size:12px;color:var(--grey);margin-bottom:10px">Sortable · stage-filterable · sourced from the Paid Ads Dashboard payload</div><div id="ov-meta-campaigns"></div></div>
 
       <!-- Row 8b: <channel> — Ad Sets (same layout/filters/dropdown as Campaigns) -->
-      <div class="sec sec-card"><div class="st"><span class="ad-channel-dot" style="display:inline-block;width:8px;height:8px;background:#1877F2;border-radius:50%;margin-right:8px;vertical-align:middle"></span><span class="ad-channel-label">Meta</span> — <span class="ad-channel-adsetlabel">Ad Sets</span></div><div style="font-size:12px;color:var(--grey);margin-bottom:10px">Sortable · stage- &amp; flag-filterable · expand a row to see its creatives · sourced from the Paid Ads Dashboard payload</div><div id="ov-meta-adsets"></div></div>
+      <div class="sec"><div class="st"><span class="ad-channel-dot" style="display:inline-block;width:8px;height:8px;background:#1877F2;border-radius:50%;margin-right:8px;vertical-align:middle"></span><span class="ad-channel-label">Meta</span> — <span class="ad-channel-adsetlabel">Ad Sets</span></div><div style="font-size:12px;color:var(--grey);margin-bottom:10px">Sortable · stage- &amp; flag-filterable · expand a row to see its creatives · sourced from the Paid Ads Dashboard payload</div><div id="ov-meta-adsets"></div></div>
 
       <!-- Row 9: <channel> — Ad Creatives -->
-      <div class="sec sec-card"><div class="st"><span class="ad-channel-dot" style="display:inline-block;width:8px;height:8px;background:#1877F2;border-radius:50%;margin-right:8px;vertical-align:middle"></span><span class="ad-channel-label">Meta</span> — Ad Creatives</div><div style="font-size:12px;color:var(--grey);margin-bottom:10px">Sortable · filterable by Tag &amp; Flags · all creatives across campaigns · sourced from the Paid Ads Dashboard payload</div><div id="ov-meta-creatives"></div></div>
+      <div class="sec"><div class="st"><span class="ad-channel-dot" style="display:inline-block;width:8px;height:8px;background:#1877F2;border-radius:50%;margin-right:8px;vertical-align:middle"></span><span class="ad-channel-label">Meta</span> — Ad Creatives</div><div style="font-size:12px;color:var(--grey);margin-bottom:10px">Sortable · filterable by Tag &amp; Flags · all creatives across campaigns · sourced from the Paid Ads Dashboard payload</div><div id="ov-meta-creatives"></div></div>
 
       <!-- Row 10: <channel> — Audiences -->
-      <div class="sec sec-card"><div class="st"><span class="ad-channel-dot" style="display:inline-block;width:8px;height:8px;background:#1877F2;border-radius:50%;margin-right:8px;vertical-align:middle"></span><span class="ad-channel-label">Meta</span> — <span class="ad-channel-audlabel">Audiences</span></div><div style="font-size:12px;color:var(--grey);margin-bottom:10px"><span class="ad-channel-audsub">Sortable · ad-set level breakdown of spend, performance, and demos</span></div><div id="ov-meta-audiences"></div></div>
+      <div class="sec"><div class="st"><span class="ad-channel-dot" style="display:inline-block;width:8px;height:8px;background:#1877F2;border-radius:50%;margin-right:8px;vertical-align:middle"></span><span class="ad-channel-label">Meta</span> — <span class="ad-channel-audlabel">Audiences</span></div><div style="font-size:12px;color:var(--grey);margin-bottom:10px"><span class="ad-channel-audsub">Sortable · ad-set level breakdown of spend, performance, and demos</span></div><div id="ov-meta-audiences"></div></div>
+      </div>
 
        <div class="sec" id="sec-field-ref"></div>
     </div>
@@ -811,7 +813,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t92';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t93';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
