@@ -537,7 +537,7 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v16';
+const API_CACHE_VER = 'v17';
 
 const WINDSOR_PAGE_SIZE = 5000;
 async function windsorFetch(apiKey, from, to, fields, extra = '') {
@@ -607,7 +607,10 @@ async function windsorFetchAll(apiKey, from, to, fields, extra = '', chunkDays =
 // already rely on, so each connector only ever sees fields it supports and one
 // failing connector can never blank the others.
 const WINDSOR_AD_SOURCES = [
-  { connector:'facebook',   fields:'date,campaign_name,spend,clicks,impressions,ctr,conversions_submit_application_total' + META_LEAD_FIELDS + META_CAPI_FIELDS },
+  // adset_promoted_object names the campaign's REAL optimization target, which is
+  // what metaDemos() counts. Verified fan-out-free: it adds no rows to a spend
+  // query, unlike custom_conversion_action_name (which multiplied spend ~36x).
+  { connector:'facebook',   fields:'date,campaign_name,spend,clicks,impressions,ctr,conversions_submit_application_total' + META_LEAD_FIELDS + META_CAPI_FIELDS + META_PROMOTED_OBJ_FIELD },
   { connector:'google_ads', fields:'date,campaign_name,spend,clicks,impressions,ctr,conversions' },
   { connector:'linkedin',   fields:'date,campaign,spend,clicks,impressions,ctr,externalwebsiteconversions' },
   { connector:'tiktok',     fields:'date,campaign_name,spend,clicks,impressions,ctr,conversions' },
@@ -1274,12 +1277,17 @@ function processAdSpend(rows, linkedInDemoOverride) {
 
     let demos = 0;
     if (key === 'meta') {
-      // Allowlisted lead-gen campaigns count Leads (Form) toward Demos.
-      // NOT unified with the ad tables' metaDemos(): that needs
-      // adset_promoted_object, which fetchWindsorAds can't safely request off
-      // the mixed-connector endpoint (see the note there). So the channel total
-      // may differ slightly from the sum of the per-campaign Conversions column.
-      demos = (parseInt(row.conversions_submit_application_total)||0) + metaLeadDemos(row.campaign_name, row);
+      // Same counter as the ad tables: the campaign's real optimization target
+      // (adset_promoted_object -> custom conversion), falling back to
+      // submit_application, plus allowlisted lead-gen campaigns' Leads (Form).
+      //
+      // Previously this counted submit_application ONLY, because the old mixed
+      // /all endpoint couldn't safely carry adset_promoted_object. fetchWindsorAds
+      // now queries each connector separately, so it can — and every campaign
+      // optimizing for a different custom conversion is no longer dropped, which
+      // is what made Channel Performance undercount Meta against the campaigns
+      // table.
+      demos = metaDemos(row);
     } else if (key === 'linkedin') {
       demos = parseInt(row.externalwebsiteconversions)||0; // overridden below
     } else if (key === 'tiktok') {
