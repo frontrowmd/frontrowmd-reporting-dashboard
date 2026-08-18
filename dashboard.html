@@ -277,8 +277,11 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;hei
 /* Group headers are labels, not destinations: smaller, uppercase and muted, with
    a rule above so each section is visibly separated from the pages before it.
    Without this they carried the same weight as a page row and read as selectable. */
-.dsec-h{font-family:var(--font-h);font-size:13px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
-  color:var(--grey);margin:26px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+/* Matches the Clinician page's card titles: large, dark, teal rule on the left.
+   These are the section headers — the first card in each section no longer
+   carries its own title, so this reads as that card's heading. */
+.dsec-h{font-family:var(--font-h);font-size:22px;font-weight:700;letter-spacing:-.01em;color:var(--navy);
+  line-height:1.2;border-left:4px solid var(--teal);padding-left:11px;margin:30px 0 12px}
 .dsec-h:first-of-type{margin-top:0}
 .ni.grp{font-size:10px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;color:rgba(255,255,255,.40);
   padding:9px 16px 7px;margin-top:12px;margin-bottom:2px;border-radius:0;border-top:1px solid rgba(255,255,255,.07)}
@@ -813,7 +816,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t93';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t94';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
