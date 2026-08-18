@@ -537,7 +537,7 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v17';
+const API_CACHE_VER = 'v18';
 
 const WINDSOR_PAGE_SIZE = 5000;
 async function windsorFetch(apiKey, from, to, fields, extra = '') {
@@ -640,17 +640,25 @@ async function fetchWindsorAds(apiKey, from, to) {
 // the count is an override, so matching nothing reads as "0 demos", not "unknown".
 // Current actions on the account: CAPI -- Demo, CAPI -- Webinar, HubSpot - WebinarSQL.
 const LINKEDIN_DEMO_CONVERSIONS = [/capi\s*--\s*demo\b/i, /demo\s*request/i];
+// LinkedIn keeps attributing conversions to retired campaign GROUPS long after they
+// stop spending: B2Linked's campaigns are paused with no spend in the window yet
+// still logged 10 CAPI -- Demo in Aug 1-16, against 2 for the live group. Counting
+// them made the channel read 12 where LinkedIn's own UI shows 2 for live campaigns.
+// Matched on campaign_group_name — the LinkedIn UI's "Campaign name" column.
+const LINKEDIN_EXCLUDED_GROUPS = [/^\s*b2linked\s*$/i];
+const isRetiredLinkedInGroup = (g) => LINKEDIN_EXCLUDED_GROUPS.some(re => re.test(g || ''));
 async function fetchLinkedInDemos(apiKey, from, to) {
   // Per-connector endpoint, NOT the mixed /all one: conversion_name and
   // externalwebsiteconversions don't exist on every connected connector, and a
   // single unknown field fails the whole /all query — the same failure that
   // emptied ad spend when Reddit and OpenAI Ads were connected.
-  const rows = await azWindsorFetch(apiKey, 'linkedin', from, to, 'date,conversion_name,externalwebsiteconversions');
+  const rows = await azWindsorFetch(apiKey, 'linkedin', from, to, 'date,campaign_group_name,conversion_name,externalwebsiteconversions');
   // No rows means the fetch failed or the window is empty. Return null so the
   // caller leaves LinkedIn's own total alone instead of overriding it to zero.
   if (!rows.length) return null;
   let n = 0;
   for (const r of rows) {
+    if (isRetiredLinkedInGroup(r.campaign_group_name)) continue;
     if (LINKEDIN_DEMO_CONVERSIONS.some(re => re.test(r.conversion_name || ''))) {
       n += parseInt(r.externalwebsiteconversions) || 0;
     }
@@ -4218,7 +4226,7 @@ async function fetchAzCampaigns(apiKey, from, to) {
     clinician: aggRows(fbRows, 'clinician', AZ_CONNECTORS.clinician, r => isClinicianCampaign(r.campaign_name)),
     google:   aggRows(gaRows, 'google', AZ_CONNECTORS.google, r => !/\byt\b|youtube/i.test(r.campaign_name||'')),
     youtube:  aggRows(gaRows, 'youtube', AZ_CONNECTORS.youtube, r => /\byt\b|youtube/i.test(r.campaign_name||'')),
-    linkedin: aggLinkedIn(liCampRows, liDemoTotal),
+    linkedin: aggLinkedIn(liCampRows.filter(r => !isRetiredLinkedInGroup(r.campaign_group_name)), liDemoTotal),
     tiktok:   aggRows(ttRows, 'tiktok', AZ_CONNECTORS.tiktok),
     reddit:   aggRows(rdRows, 'reddit', AZ_CONNECTORS.reddit),
     chatgpt:  _applyManualConv(aggRows(oaRows, 'chatgpt', AZ_CONNECTORS.chatgpt), 'chatgpt', from, to),
