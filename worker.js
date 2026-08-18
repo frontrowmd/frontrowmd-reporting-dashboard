@@ -27,6 +27,57 @@ function isClinicianCampaign(campaignName) {
 // openai_ads returns "Unexpected field(s)"). Reporting 0 would assert something
 // false, so the client renders these as "—" instead.
 const CHANNELS_NO_CONV = new Set(['reddit', 'chatgpt']);
+
+// Stopgap while Windsor request 70111764 is open: conversions read by hand from
+// the ad platform's own reporting for the channels above. Update `asOf` and the
+// range whenever the figures are re-read — the UI shows both, so a stale entry is
+// visible rather than silent. Delete a channel's entry once its connector reports
+// the metric and the number goes back to coming from the API.
+const MANUAL_CONVERSIONS = {
+  chatgpt: {
+    asOf: '2026-08-17',
+    from: '2026-08-04', to: '2026-08-17',   // the range these figures cover
+    byCampaign: {
+      'Health Brand Marketing Strategy': 3,
+      'Clinician Reviews / ClinicianAI': 3,
+      'Clinician Backing': 3,
+      'Chatgpt - Broader - Conversions': 0,
+    },
+  },
+};
+// Only surfaces the figures when the selected window overlaps the range they were
+// read for. Outside it there is genuinely nothing counted, so the channel falls
+// back to "—" rather than presenting these numbers as data for another period.
+// Stamps the hand-entered per-campaign figures onto an aggRows() result, so the
+// Campaigns and Ad Sets tables show the same numbers as the channel row. Rows the
+// manual list doesn't name keep their (zero) value — a campaign that started after
+// the figures were read should read 0, not inherit someone else's count.
+function _applyManualConv(agg, ch, from, to) {
+  const m = manualConv(ch, from, to);
+  if (!m || !agg) return agg;
+  let total = 0;
+  const stamp = (rows) => {
+    for (const r of (Array.isArray(rows) ? rows : Object.values(rows || {}))) {
+      if (Object.prototype.hasOwnProperty.call(m.byCampaign, r.name)) r.demos = m.byCampaign[r.name];
+    }
+  };
+  stamp(agg.campaigns); stamp(agg.adsets);
+  for (const r of Object.values(agg.campaigns || {})) total += r.demos || 0;
+  if (agg.totals) {
+    agg.totals.demos = total;
+    agg.totals.cpd = total > 0 ? agg.totals.spend / total : null;
+  }
+  agg.manualConv = { asOf: m.asOf, from: m.from, to: m.to };
+  return agg;
+}
+
+function manualConv(ch, from, to) {
+  const m = MANUAL_CONVERSIONS[ch];
+  if (!m) return null;
+  if ((to && to < m.from) || (from && from > m.to)) return null;
+  const total = Object.values(m.byCampaign).reduce((a, b) => a + b, 0);
+  return { total, asOf: m.asOf, from: m.from, to: m.to, byCampaign: m.byCampaign };
+}
 const KPI_EXCLUDED_CHANNELS = new Set(['clinician']);
 // Clinician Targeting campaigns optimize for the "CAPI -- Clinicians" custom
 // conversion, NOT the submit-application pixel event Meta's other campaigns use,
@@ -486,7 +537,7 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v14';
+const API_CACHE_VER = 'v15';
 
 const WINDSOR_PAGE_SIZE = 5000;
 async function windsorFetch(apiKey, from, to, fields, extra = '') {
@@ -2735,10 +2786,13 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
   };
   adSpend.total.windsorDemos = c.adSpend.total.windsorDemos;
   adSpend.total.priorWindsorDemos = p.adSpend?.total?.windsorDemos ?? null;
+  const _manualCh = {};   // channel -> hand-entered conversion figures covering this window
   for (const ch of DASH_CHANNELS) {
+    const _mc = CHANNELS_NO_CONV.has(ch) ? manualConv(ch, c.window && c.window.from, c.window && c.window.to) : null;
+    if (_mc) _manualCh[ch] = _mc;
     adSpend.channels[ch] = {
       label: CHANNEL_LABELS[ch], spend: c.adSpend.channels[ch]?.spend||0,
-      windsorDemos: c.adSpend.channels[ch]?.windsorDemos||0,
+      windsorDemos: _mc ? _mc.total : (c.adSpend.channels[ch]?.windsorDemos||0),
       ctr: c.adSpend.channels[ch]?.ctr||0,
       budget: budgets[ch]||0,
       pendingConnector: PENDING_CHANNELS.has(ch),
@@ -2746,7 +2800,10 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
       // budget total, CPD/CPQD/CAC/ROAS, pacing). Client honours this too.
       kpiExcluded: KPI_EXCLUDED_CHANNELS.has(ch),
       // No conversion field exists upstream — show "—", not 0. See CHANNELS_NO_CONV.
-      convNA: CHANNELS_NO_CONV.has(ch),
+      // Unless a hand-entered figure covers this window, in which case use it and
+      // tell the client so it can date-stamp the number.
+      convNA: CHANNELS_NO_CONV.has(ch) && !_manualCh[ch],
+      convManual: _manualCh[ch] ? { asOf: _manualCh[ch].asOf, from: _manualCh[ch].from, to: _manualCh[ch].to } : null,
       // Prior-period stats (vs P delta)
       priorSpend: p.adSpend?.channels?.[ch]?.spend??null,
       priorWindsorDemos: p.adSpend?.channels?.[ch]?.windsorDemos??null,
@@ -4142,7 +4199,7 @@ async function fetchAzCampaigns(apiKey, from, to) {
     linkedin: aggLinkedIn(liCampRows, liDemoTotal),
     tiktok:   aggRows(ttRows, 'tiktok', AZ_CONNECTORS.tiktok),
     reddit:   aggRows(rdRows, 'reddit', AZ_CONNECTORS.reddit),
-    chatgpt:  aggRows(oaRows, 'chatgpt', AZ_CONNECTORS.chatgpt),
+    chatgpt:  _applyManualConv(aggRows(oaRows, 'chatgpt', AZ_CONNECTORS.chatgpt), 'chatgpt', from, to),
   };
 }
 
