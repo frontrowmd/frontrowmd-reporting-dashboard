@@ -22,6 +22,11 @@ function isClinicianCampaign(campaignName) {
 // CPQD, CAC, ROAS, budget pacing) on both dashboards. They still render as their
 // own row in Channel Performance and get their own ad-table tabs — they just
 // don't move the headline numbers.
+// Windsor's connectors for these channels expose NO conversion metric at all —
+// not a zero, an absent field (verified 2026-08-17: requesting `conversions` on
+// openai_ads returns "Unexpected field(s)"). Reporting 0 would assert something
+// false, so the client renders these as "—" instead.
+const CHANNELS_NO_CONV = new Set(['reddit', 'chatgpt']);
 const KPI_EXCLUDED_CHANNELS = new Set(['clinician']);
 // Clinician Targeting campaigns optimize for the "CAPI -- Clinicians" custom
 // conversion, NOT the submit-application pixel event Meta's other campaigns use,
@@ -481,7 +486,7 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v13';
+const API_CACHE_VER = 'v14';
 
 const WINDSOR_PAGE_SIZE = 5000;
 async function windsorFetch(apiKey, from, to, fields, extra = '') {
@@ -2740,6 +2745,8 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
       // Renders as its own row but must not feed any roll-up KPI (spend total,
       // budget total, CPD/CPQD/CAC/ROAS, pacing). Client honours this too.
       kpiExcluded: KPI_EXCLUDED_CHANNELS.has(ch),
+      // No conversion field exists upstream — show "—", not 0. See CHANNELS_NO_CONV.
+      convNA: CHANNELS_NO_CONV.has(ch),
       // Prior-period stats (vs P delta)
       priorSpend: p.adSpend?.channels?.[ch]?.spend??null,
       priorWindsorDemos: p.adSpend?.channels?.[ch]?.windsorDemos??null,

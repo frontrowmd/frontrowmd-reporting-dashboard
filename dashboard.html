@@ -801,7 +801,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t85';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t86';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -6038,6 +6038,9 @@ function renderCPDTable(d){
         '</tr>';
       continue;
     }
+    // Reddit / ChatGPT: Windsor exposes no conversion field upstream, so rendering
+    // 0 would assert something false. Show an explained em dash instead.
+    var _convNA='<span title="Windsor exposes no conversion field for this channel \u2014 not reported, not zero" style="color:var(--grey);cursor:help">\u2014</span>';
     var spend=info.spend||0,demos=info.windsorDemos||0,qual=info.qualified||0;
     var won=info.closedWon||0,wMRR=info.closedWonMRR||0,wARR=wMRR*eM;
     var channelCPD=demos>0?spend/demos:null,channelCPQD=qual>0?spend/qual:null;
@@ -6095,8 +6098,8 @@ function renderCPDTable(d){
         cellDelta2(spend,pSp,pmSp,'$',true)+
       '</td>'+
       budgetCell+
-      '<td style="padding:7px 4px;text-align:right">'+cell2(fN(demos),demos,pWD,pmWD,'#',false)+'</td>'+
-      '<td style="padding:7px 4px;text-align:right">'+cell2(channelCPD!=null?f$(channelCPD):'\u2014',channelCPD,pCPD,pmCPD,'$',true)+'</td>'+
+      '<td style="padding:7px 4px;text-align:right">'+(info.convNA?_convNA:cell2(fN(demos),demos,pWD,pmWD,'#',false))+'</td>'+
+      '<td style="padding:7px 4px;text-align:right">'+(info.convNA?_convNA:cell2(channelCPD!=null?f$(channelCPD):'\u2014',channelCPD,pCPD,pmCPD,'$',true))+'</td>'+
       '<td style="padding:7px 4px;text-align:right">'+cell2(fN(qual),qual,pQ,pmQ,'#',false)+'</td>'+
       '<td style="padding:7px 4px;text-align:right">'+cell2(channelCPQD!=null?f$(channelCPQD):'\u2014',channelCPQD,pCPQD,pmCPQD,'$',true,cpqdColor)+'</td>'+
       '<td style="padding:7px 4px;text-align:right">'+cell2(fN(won),won,pW,pmW,'#',false)+'</td>'+
