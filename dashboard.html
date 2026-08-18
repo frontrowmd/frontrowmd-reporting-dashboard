@@ -285,10 +285,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;hei
 #page-dashboard #sec-daily>.st,
 #page-dashboard #ov-truecpd-wrap .st,
 #page-dashboard #sec-row2>div:first-of-type .st,
-#page-dashboard #t-overview>*:first-child .st,
-#page-dashboard #t-funnel .st,
-#page-dashboard #ov-outcome-wrap .st,
-#page-dashboard #t-adspend .st{display:none}
+#page-dashboard #t-overview>*:first-child .st{display:none}
 /* Matches the Clinician page's card titles: large, dark, teal rule on the left.
    These are the section headers — the first card in each section no longer
    carries its own title, so this reads as that card's heading. */
@@ -656,17 +653,17 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 
       <!-- Row 4: Conversion Funnel -->
       <div class="dsec-h">Conversion Funnel</div>
-      <div class="sec sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:#7C3AED;border-radius:50%;margin-right:8px;vertical-align:middle"></span>Conversion Funnel</div><div id="t-funnel"></div></div>
+      <div class="sec sec-card"><div id="t-funnel"></div></div>
 
       <!-- Row 5: Demo Outcome Breakdown -->
       <div class="dsec-h">Demo Attendance</div>
-      <div class="sec sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:#16A34A;border-radius:50%;margin-right:8px;vertical-align:middle"></span>Demo Outcome Breakdown</div><div id="ov-outcome-wrap"></div></div>
+      <div class="sec sec-card"><div id="ov-outcome-wrap"></div></div>
 
       <!-- Row 5.5: No-Show Analysis -->
 
       <!-- Row 6: Ad Spend -->
       <div class="dsec-h">Ads</div>
-      <div class="sec sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:#0EA5E9;border-radius:50%;margin-right:8px;vertical-align:middle"></span>Ad Spend</div><div id="t-adspend"></div></div>
+      <div class="sec sec-card"><div id="t-adspend"></div></div>
 
       <!-- Row 7: Channel Performance -->
       <div class="sec sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:var(--yellow);border-radius:50%;margin-right:8px;vertical-align:middle"></span>Channel Performance</div><div id="cpd-tbl"></div></div>
@@ -828,7 +825,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t95';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t96';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
