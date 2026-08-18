@@ -537,7 +537,7 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v15';
+const API_CACHE_VER = 'v16';
 
 const WINDSOR_PAGE_SIZE = 5000;
 async function windsorFetch(apiKey, from, to, fields, extra = '') {
@@ -628,17 +628,31 @@ async function fetchWindsorAds(apiKey, from, to) {
 
 
 // LinkedIn demo override (guide Section 1 — separate conversion_name fetch)
+// LinkedIn counts every conversion action in externalwebsiteconversions, so the
+// raw figure mixes demos with webinar signups. We want demos only, matched by the
+// conversion action's name.
+//
+// The action was renamed to LinkedIn's "CAPI -- *" convention, so the old
+// 'demo request' match stopped hitting anything and silently zeroed the channel —
+// the count is an override, so matching nothing reads as "0 demos", not "unknown".
+// Current actions on the account: CAPI -- Demo, CAPI -- Webinar, HubSpot - WebinarSQL.
+const LINKEDIN_DEMO_CONVERSIONS = [/capi\s*--\s*demo\b/i, /demo\s*request/i];
 async function fetchLinkedInDemos(apiKey, from, to) {
-  const fields = 'date,datasource,conversion_name,externalwebsiteconversions';
-  const rows = await windsorFetch(apiKey, from, to, fields);
-  let filtered = 0;
+  // Per-connector endpoint, NOT the mixed /all one: conversion_name and
+  // externalwebsiteconversions don't exist on every connected connector, and a
+  // single unknown field fails the whole /all query — the same failure that
+  // emptied ad spend when Reddit and OpenAI Ads were connected.
+  const rows = await azWindsorFetch(apiKey, 'linkedin', from, to, 'date,conversion_name,externalwebsiteconversions');
+  // No rows means the fetch failed or the window is empty. Return null so the
+  // caller leaves LinkedIn's own total alone instead of overriding it to zero.
+  if (!rows.length) return null;
+  let n = 0;
   for (const r of rows) {
-    if (!/linkedin/.test((r.datasource||'').toLowerCase())) continue;
-    if ((r.conversion_name||'').toLowerCase().includes('demo request')) {
-      filtered += r.externalwebsiteconversions || 0;
+    if (LINKEDIN_DEMO_CONVERSIONS.some(re => re.test(r.conversion_name || ''))) {
+      n += parseInt(r.externalwebsiteconversions) || 0;
     }
   }
-  return filtered;
+  return n;
 }
 
 // GA4 (guide Section 2)
