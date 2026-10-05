@@ -886,7 +886,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t231';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t232';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -1982,6 +1982,7 @@ async function refreshData(){const btn=document.getElementById('rfb');if(btn){bt
   // reuses the payload cached at page load, so newly paused/launched assets
   // never appear and Status stays frozen until a full page reload.
   S.irfan.analyzerCache={};S.irfan.analyzerCacheT={};S.analyzer.data=null;S.analyzer._t=0;
+  S.irfan._azFresh=true;   // make the NEXT analyzer POST bypass the worker's KV cache too
   var _rw=S[AP].win||'mtd';
   if(_rw==='custom')await fd('custom',S[AP].cFrom,S[AP].cTo,S[AP].cVsFrom,S[AP].cVsTo,true);
   else await fd(_rw,null,null,null,null,true);
@@ -2821,9 +2822,9 @@ function renderDash(){
   // one reassuring number. Emitted inline rather than through _kmTile: this is the
   // one tile with two stats, which needs a two-column body _kmTile does not model.
   const _ACQ_TIP='Share of Regular demos whose booking contact carries a paid-ad UTM. '
-    +'"Organic" means no paid UTM \u2014 it includes organic search, brand referrals, '
+    +'\u201cOrganic\u201d means no paid UTM \u2014 it includes organic search, brand referrals, '
     +'and anyone who saw an ad, did not click, and came back later. It is an UPPER bound '
-    +'on organic, not a measure of it. "Untagged" carries no UTM at all, so its origin is unknown.';
+    +'on organic, not a measure of it. \u201cUntagged\u201d carries no UTM at all, so its origin is unknown.';
   // Same label/value/calc/footer rhythm as _kmTile, so the two halves line up with
   // each other and with the single-stat tiles either side.
   const _acqStat=(lbl,val,calc,foot)=>'<div style="flex:1 1 0;min-width:0">'
@@ -3812,7 +3813,10 @@ function _renderIrfanMetaTablesLoader(winOverride){
   const _azT0=performance.now();
   // Forward the custom from/to/vs dates so a custom window doesn't POST a
   // dateless {window:'custom'} (which the worker rejects).
+  // `fresh` has to reach the worker too, or its KV cache just re-serves what
+  // refreshData only cleared on the client.
   const _azBody={password:PW,window:irfWin};
+  if(S.irfan._azFresh){_azBody.fresh=true;S.irfan._azFresh=false;}
   if(irfWin==='custom'){if(_cr.from)_azBody.from=_cr.from;if(_cr.to)_azBody.to=_cr.to;if(_cr.vsFrom)_azBody.vsFrom=_cr.vsFrom;if(_cr.vsTo)_azBody.vsTo=_cr.vsTo;}
   // A fetch with no timeout that never settles leaves the three tables spinning
   // forever with nothing to act on — which is exactly what a custom window was
@@ -4070,7 +4074,7 @@ const CLINICIAN_DEAL_PROPS_REF = [
 const CLINICIAN_CONTACT_PROPS_REF = [
   ['firstname','First Name','string'],['lastname','Last Name','string'],
   ['email','Email','string'],['phone','Phone Number','string'],
-  ['clinician_specialty','Clinician Specialty','enum \u00b7 6'],
+  ['clinician_specialty','Clinician Specialty','enum \u00b7 12'],
   ['clinician_type','Clinician Type','enum \u00b7 6'],
   ['clinician_referral_source','Clinician Referral Source','enum \u00b7 8'],
   ['npi_number','NPI Number','string'],['message','Message','string'],
@@ -4289,7 +4293,7 @@ function _renderDemoAcqCard(d){
     return '<button onclick="dashSetDemoUtm(\''+k+'\')" style="font-family:var(--font-h);font-size:11px;font-weight:700;letter-spacing:.02em;padding:6px 14px;border:none;background:'+(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+';cursor:pointer;transition:background .15s,color .15s">'+lbl+'</button>';};
   let h='<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">'
     +'<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">'+def[1]+'</span>'
-    +'<span style="font-size:10px;color:var(--grey);white-space:nowrap">'+fN(total)+' demo'+(total===1?'':'s')+' \u00b7 '+fN(rows.length)+' categories</span></div>';
+    +'<span style="font-size:10px;color:var(--grey);white-space:nowrap">'+fN(total)+' demo'+(total===1?'':'s')+' \u00b7 '+fN(_catCount(rows))+' categories</span></div>';
   const mpill=(k,lbl)=>{const on=mode===k;
     return '<button onclick="dashSetDemoAcqMode(\''+k+'\')" style="font-family:var(--font-h);font-size:11px;font-weight:700;letter-spacing:.02em;padding:6px 14px;border:none;background:'+(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+';cursor:pointer;transition:background .15s,color .15s">'+lbl+'</button>';};
   h+='<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap;margin:0 0 8px">'
@@ -4302,6 +4306,9 @@ function _renderDemoAcqCard(d){
     : _clinicianPie(rows,total,'demo');
   el.innerHTML=h;
 }
+// Rows may be capped, with the tail rolled into one "Other (N more)" bucket that
+// CARRIES its children -- so the row count is not the category count.
+function _catCount(rows){return (rows||[]).reduce((n,r)=>n+(Array.isArray(r.children)?r.children.length:1),0);}
 const CLINICIAN_PIE_COLORS=['#172C45','#72A4BF','#E6C55C','#6DB79A','#7B75D4','#E07A54','#CC5B54','#0F766E','#B08D57'];
 // ── Reserved category colours, shared by BOTH pie renderers ──────────────
 // Three distinct roles. No palette entry and no fallback may reuse any of them,
@@ -5314,7 +5321,7 @@ function renderClinician(){
     const panel=(t,rows)=>'<div style="flex:1 1 44%;min-width:330px;background:var(--white);border:1px solid var(--border);border-radius:10px;padding:16px 18px 18px">'
       +'<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--border)">'
       +'<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">'+t+'</span>'
-      +'<span style="font-size:10px;color:var(--grey);white-space:nowrap">'+fN(comp.contacts)+' clinician'+(comp.contacts===1?'':'s')+' \u00b7 '+fN(rows.length)+' categories</span></div>'
+      +'<span style="font-size:10px;color:var(--grey);white-space:nowrap">'+fN(comp.contacts)+' clinician'+(comp.contacts===1?'':'s')+' \u00b7 '+fN(_catCount(rows))+' categories</span></div>'
       +_clinicianPie(rows,comp.contacts)+'</div>';
     h+=card('Clinician Composition','Clinician contacts created in the selected window \u00b7 deduped per person \u00b7 hover any slice for the count',
       '<div style="display:flex;gap:18px;align-items:stretch;flex-wrap:wrap">'
@@ -5340,7 +5347,7 @@ function renderClinician(){
     const acqPanel=(t,rows,extra)=>'<div style="flex:1 1 44%;min-width:330px;background:var(--white);border:1px solid var(--border);border-radius:10px;padding:16px 18px 18px">'
       +'<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:'+(extra?'10':'16')+'px;padding-bottom:10px;border-bottom:1px solid var(--border)">'
       +'<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">'+t+'</span>'
-      +'<span style="font-size:10px;color:var(--grey);white-space:nowrap">'+fN(acqTotal)+' clinician'+(acqTotal===1?'':'s')+' \u00b7 '+fN(rows.length)+' categories</span></div>'
+      +'<span style="font-size:10px;color:var(--grey);white-space:nowrap">'+fN(acqTotal)+' clinician'+(acqTotal===1?'':'s')+' \u00b7 '+fN(_catCount(rows))+' categories</span></div>'
       +(extra||'')
       +_clinicianPie(rows,acqTotal)+'</div>';
     const utmToggle='<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap;margin:0 0 14px">'

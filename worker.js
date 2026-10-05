@@ -718,7 +718,9 @@ function mapUtmToChannel(src, med) {
   if (s === 'linkedin') return 'linkedin';
   if (['tiktok','tik_tok','tt','tiktok_ads'].includes(s)) return 'tiktok';
   if (['reddit','reddit_ads'].includes(s)) return 'reddit';
-  if (['openai','openai_ads','chatgpt','chat_gpt','chatgpt.com','openai.com'].includes(s)) return 'chatgpt';
+  if (['openai','openai_ads','chatgpt','chat_gpt'].includes(s)) return 'chatgpt';
+  // Bare referral domains: paid ONLY with a paid medium, like google above.
+  if (['chatgpt.com','openai.com'].includes(s) && (m === 'cpc' || m === 'paid')) return 'chatgpt';
   if (s === 'youtube') return 'youtube';
   return null;
 }
@@ -929,7 +931,10 @@ async function fetchGA4(apiKey, from, to) {
 //     fail too. Before the breaker, one YTD load logged 296 doomed Windsor
 //     retries with 1-2s sleeps between them — ~15 minutes of dead waiting
 //     against a 180s frontend timeout. Now the first exhaustion stops the rest.
-const SUBREQ = { n: 0, windsor: 0, hubspot: 0, kv: 0, exhausted: false, windsorDropped: 0 };
+// softFail counts give-ups that leave a GAP in the data without tripping the
+// pool breaker: a fetch that burned its retries, or a count that came back null.
+// Without it a degraded payload looks healthy and gets cached.
+const SUBREQ = { n: 0, windsor: 0, hubspot: 0, kv: 0, exhausted: false, windsorDropped: 0, softFail: 0 };
 const WINDSOR_CALL_BUDGET = 700;   // leaves the rest of the pool for HubSpot.
 // Raised from 420 after a measured YTD run hit it and dropped chunks on four
 // connectors (google_ads, reddit, openai_ads, tiktok). HubSpot peaked at ~102
@@ -947,7 +952,7 @@ const AZ_CHUNK_CONCURRENCY = 8;
 const AZ_CREATIVE_CHUNK_DAYS = 30;
 function subreqReset() {
   SUBREQ.n = 0; SUBREQ.windsor = 0; SUBREQ.hubspot = 0; SUBREQ.kv = 0;
-  SUBREQ.exhausted = false; SUBREQ.windsorDropped = 0;
+  SUBREQ.exhausted = false; SUBREQ.windsorDropped = 0; SUBREQ.softFail = 0;
 }
 function isSubreqLimit(e) {
   return !!e && /Too many subrequests/i.test(e.message || String(e));
@@ -962,6 +967,7 @@ function noteSubreqError(e) {
 }
 function subreqSummary() {
   return `subrequests ~${SUBREQ.n} (windsor ${SUBREQ.windsor}, hubspot ${SUBREQ.hubspot}, kv ${SUBREQ.kv})`
+    + (SUBREQ.softFail ? `, soft failures: ${SUBREQ.softFail}` : '')
     + (SUBREQ.windsorDropped ? `, windsor chunks dropped at budget: ${SUBREQ.windsorDropped}` : '')
     + (SUBREQ.exhausted ? ' — POOL EXHAUSTED' : '');
 }
@@ -998,6 +1004,7 @@ async function hsCount(token, objectType, filterGroups) {
       await sleep(250 * (attempt + 1));
     }
   }
+  SUBREQ.softFail++;
   console.error(`hsCount ${objectType}: still rate limited after retries`);
   return null;
 }
@@ -5690,7 +5697,8 @@ async function azWindsorFetch(apiKey, connector, from, to, fields, _chunked) {
       // A retry after the pool is gone can only fail again — and the 1-2s sleep
       // between attempts is what turned this into a multi-minute hang.
       if (noteSubreqError(e)) return [];
-      if (i < 2) await sleep(1000*(i+1)); else { console.error(`Az Windsor ${connector}:`, e.message); return []; }
+      if (i < 2) await sleep(1000*(i+1));
+      else { SUBREQ.softFail++; console.error(`Az Windsor ${connector}:`, e.message); return []; }
     }
   }
   return [];
@@ -8110,7 +8118,7 @@ export default {
           const raw = await env.CONTENT_STORE.get(_azCk);
           if (raw) {
             const pcache = JSON.parse(raw);
-            if (pcache && typeof pcache.t === 'number' && (Date.now() - pcache.t) < 300000 && pcache.data) {
+            if (pcache && typeof pcache.t === 'number' && (Date.now() - pcache.t) < 120000 && pcache.data) {
               console.log(`analyzer cache HIT (${_azWin}, age ${Math.round((Date.now()-pcache.t)/1000)}s)`);
               return jr(pcache.data);
             }
@@ -8124,13 +8132,17 @@ export default {
         // serve those gaps for the whole TTL and make the shortfall look stable
         // rather than transient. Degraded responses are still returned, so the
         // user sees something and the next load retries.
-        const _azOk = !SUBREQ.exhausted && !SUBREQ.windsorDropped;
+        // NOTE: SUBREQ is module-global and subreqReset() runs per request, so a
+        // concurrent request can zero these mid-flight and make a degraded run look
+        // clean. A per-request counter is the real fix; until then the short TTL
+        // bounds how long any missed degradation can persist.
+        const _azOk = !SUBREQ.exhausted && !SUBREQ.windsorDropped && !SUBREQ.softFail;
         if (!_azOk) console.warn(`NOT caching analyzer payload (${_azWin}) — ${subreqSummary()}`);
         if (env.CONTENT_STORE && _azOk) {
           kvOp();
           try {
             const blob = JSON.stringify({ t: Date.now(), data: result });
-            if (blob.length < 20*1024*1024) await env.CONTENT_STORE.put(_azCk, blob, { expirationTtl: 600 });
+            if (blob.length < 20*1024*1024) await env.CONTENT_STORE.put(_azCk, blob, { expirationTtl: 120 });
           } catch(e) { /* best-effort */ }
         }
         return jr(result);
