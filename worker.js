@@ -33,17 +33,66 @@ const CHANNELS_NO_CONV = new Set(['reddit', 'chatgpt']);
 // range whenever the figures are re-read — the UI shows both, so a stale entry is
 // visible rather than silent. Delete a channel's entry once its connector reports
 // the metric and the number goes back to coming from the API.
+// Keyed by channel, then a LIST of periods — a channel gets one entry per range
+// that was read by hand. It used to be a single object, which could only ever
+// describe one range: asserting "September was zero" would have meant either
+// overwriting August's real figures or stretching August's range over a month it
+// never covered. Neither is true, hence the list.
 const MANUAL_CONVERSIONS = {
-  chatgpt: {
-    asOf: '2026-08-17',
-    from: '2026-08-04', to: '2026-08-17',   // the range these figures cover
+  chatgpt: [
+  {
+    asOf: '2026-08-24',
+    from: '2026-08-04', to: '2026-08-24',   // the range these figures cover
+    // Read from OpenAI Ads' own Campaigns tab. Totals 10.
     byCampaign: {
-      'Health Brand Marketing Strategy': 3,
+      'Health Brand Marketing Strategy': 4,
       'Clinician Reviews / ClinicianAI': 3,
       'Clinician Backing': 3,
       'Chatgpt - Broader - Conversions': 0,
     },
+    // Ads tab. Note "Health Brand Marketing Strategy" exists as a campaign, an
+    // ad group AND an ad, with DIFFERENT counts at each level (4 / 4 / 0) —
+    // which is why these are three separate maps rather than one keyed by name.
+    // Two ads share the name "Suggested ad for Clinician Backing"; the creative
+    // aggregation merges same-named rows, and both are 0, so the total holds.
+    // Totals 10.
+    byAd: {
+      'HealthBrandMarketing Strategy Ad 2': 3,
+      'Leverage clinicians to support your Shoppers': 3,
+      'Clinician Reviews': 2,
+      'Suggested ad for Health Brand Marketing Strategy': 1,
+      'Clinician AI Ad': 1,
+      'Conversion Ad 1': 0,
+      'Suggested ad for Clinician Backing': 0,
+      'Suggested ad for Clinician Reviews / ClinicianAI': 0,
+      'Health Brand Marketing Strategy': 0,
+    },
+    // Ad-group tab. Names differ from the campaign names, and one campaign
+    // splits across two groups (Clinician Reviews / ClinicianAI = Clinician
+    // Reviews 2 + Clinician AI 1), so this cannot be derived from byCampaign.
+    // Also totals 10, which is the cross-check that the two reads agree.
+    byAdGroup: {
+      'Health Brand Marketing Strategy': 4,
+      'Clinician Backing for Health Brands': 3,
+      'Clinician Reviews': 2,
+      'Clinician AI': 1,
+      'Broader Health and Wellness Marketers': 0,
+    },
   },
+  {
+    // September 2026: ZERO conversions, confirmed by Alex 2026-09-17.
+    // This is an assertion, not an absence. Without it the channel falls back to
+    // "\u2014" (we have no figure), which reads as a gap in the data rather than
+    // as the real answer. zeroAll forces every campaign / ad set / ad group row
+    // to 0 instead of relying on them happening to be 0 already — so if
+    // openai_ads ever starts returning a conversions field mid-month, this keeps
+    // asserting what was actually read rather than silently mixing the two.
+    asOf: '2026-09-17',
+    from: '2026-09-01', to: '2026-09-30',
+    zeroAll: true,
+    byCampaign: {}, byAd: {}, byAdGroup: {},
+  },
+  ],
 };
 // Only surfaces the figures when the selected window overlaps the range they were
 // read for. Outside it there is genuinely nothing counted, so the channel falls
@@ -58,6 +107,7 @@ function _applyManualConv(agg, ch, from, to) {
   let total = 0;
   const stamp = (rows) => {
     for (const r of (Array.isArray(rows) ? rows : Object.values(rows || {}))) {
+      if (m.zeroAll) { r.demos = 0; continue; }
       if (Object.prototype.hasOwnProperty.call(m.byCampaign, r.name)) r.demos = m.byCampaign[r.name];
     }
   };
@@ -71,18 +121,91 @@ function _applyManualConv(agg, ch, from, to) {
   return agg;
 }
 
+// Audiences rows are keyed by the connector's nameField — `ad_group` for
+// openai_ads — so the hand-read ad-group conversions are stamped here rather
+// than in _applyManualConv, which only sees campaign/ad-set aggregates.
+function _applyManualConvAudiences(rows, ch, from, to) {
+  const m = manualConv(ch, from, to);
+  if (!m || !Array.isArray(rows)) return rows;
+  if (m.zeroAll) { for (const r of rows) { if (r) r.demos = 0; } return rows; }
+  if (!m.byAdGroup) return rows;
+  for (const r of rows) {
+    if (r && Object.prototype.hasOwnProperty.call(m.byAdGroup, r.name)) r.demos = m.byAdGroup[r.name];
+  }
+  return rows;
+}
+
 function manualConv(ch, from, to) {
-  const m = MANUAL_CONVERSIONS[ch];
-  if (!m) return null;
-  if ((to && to < m.from) || (from && from > m.to)) return null;
-  const total = Object.values(m.byCampaign).reduce((a, b) => a + b, 0);
-  return { total, asOf: m.asOf, from: m.from, to: m.to, byCampaign: m.byCampaign };
+  const periods = MANUAL_CONVERSIONS[ch];
+  if (!Array.isArray(periods) || !periods.length) return null;
+  // Without a window there is no way to tell which period applies, and the
+  // overlap test below would exclude nothing — silently merging every hand-read
+  // month into one total. That is exactly how the August figures leaked into
+  // September. A missing window is "unknown", which renders as an em dash.
+  if (!from || !to) return null;
+  // Every period the window touches, not just the first: a YTD or custom range
+  // can span several hand-read months, and returning one of them would report a
+  // single month's figures as the whole window's.
+  const hit = periods.filter(m => !((to && to < m.from) || (from && from > m.to)));
+  if (!hit.length) return null;
+  const merge = (key) => {
+    let any = false; const out = {};
+    for (const m of hit) {
+      if (!m[key]) continue;
+      any = true;
+      for (const [k, v] of Object.entries(m[key])) out[k] = (out[k] || 0) + v;
+    }
+    return any ? out : null;
+  };
+  const byCampaign = merge('byCampaign') || {};
+  const total = Object.values(byCampaign).reduce((a, b) => a + b, 0);
+  return {
+    total,
+    // Latest read wins for the stamp; the range spans everything merged.
+    asOf: hit.map(m => m.asOf).sort().pop(),
+    from: hit.map(m => m.from).sort()[0],
+    to:   hit.map(m => m.to).sort().pop(),
+    byCampaign,
+    byAdGroup: merge('byAdGroup'),
+    byAd: merge('byAd'),
+    // Only when EVERY merged period is a zero assertion. A window spanning a
+    // zero month and a non-zero one must not force the non-zero rows to 0.
+    zeroAll: hit.every(m => !!m.zeroAll),
+  };
 }
 const KPI_EXCLUDED_CHANNELS = new Set(['clinician']);
-// Clinician Targeting campaigns optimize for the "CAPI -- Clinicians" custom
-// conversion, NOT the submit-application pixel event Meta's other campaigns use,
-// so the channel counts that column instead (see META_CUSTOM_CONVERSIONS).
-const CLINICIAN_CONV_FIELD = 'actions_capi_clinicians';
+// The Clinician Targeting campaign has optimized for TWO different custom
+// conversions over its life, so reading only one loses an entire era:
+//   * Jul-Aug 2026: "CAPI -- Clinicians"        (id 1403040218341205)
+//   * Sep 2026 on:  "CAPI -- Virtual Clinician" (id 2367172530757383)
+// The campaign was renamed to "...Official Test - CAPI" and repointed around
+// Sept 1 2026; all four of its ad sets now target the Virtual Clinician id
+// (verified against adset_promoted_object via the Windsor API, and against the
+// custom-conversion definition table). The two columns are MUTUALLY EXCLUSIVE
+// per row -- an August row populates only the old one, a September row only the
+// new one -- so a plain SUM is correct AND history-preserving. A straight swap
+// would zero out every August CPD / CPS / CAC and the Weekly CPD chart.
+// Add the next id here (and to META_CUSTOM_CONVERSIONS) if it is repointed again.
+const CLINICIAN_CONV_FIELDS = ['actions_capi_clinicians', 'actions_capi_virtual_clinician'];
+// The CURRENT conversion, for anything that needs one name rather than the pair.
+const CLINICIAN_CONV_FIELD = 'actions_capi_virtual_clinician';
+function clinicianConvCount(row) {
+  let n = 0;
+  for (const f of CLINICIAN_CONV_FIELDS) n += parseFloat(row[f]) || 0;
+  return Math.round(n);
+}
+// A channel's demoField is either ONE Windsor column or a LIST of columns to sum
+// (Clinician spans two custom conversions). One reader handles both shapes so
+// every aggregation path counts the same way.
+function demoRawOf(row, demoField) {
+  if (!demoField) return 0;
+  if (Array.isArray(demoField)) {
+    let n = 0;
+    for (const f of demoField) n += parseFloat(row[f]) || 0;
+    return n;
+  }
+  return parseFloat(row[demoField]) || 0;
+}
 // Meta and Clinician share the facebook connector, so both need the Meta-only
 // field set on every fetch.
 function isMetaConnectorCh(ch) { return ch === 'meta' || ch === 'clinician'; }
@@ -117,11 +240,35 @@ const BUDGET_BY_MONTH = {
   // August plan — Meta scaled up, LinkedIn/Google keep-alive, and new Reddit +
   // ChatGPT (OpenAI) tests. TikTok/YouTube off. Total = $42,500.
   '2026-08': { meta: 25500, clinician: 20000, linkedin: 5000, google: 2000, reddit: 5000, chatgpt: 5000, tiktok: 0, youtube: 0 },
+  // September plan, set 2026-09-03. These FIVE channels are the entire month and
+  // total exactly $50,000: Meta $20,080, LinkedIn $4,920, Clinician $10,000,
+  // Google $10,000, Reddit $5,000. Every other channel gets $0 — that is an
+  // explicit instruction, not an oversight, so do NOT carry a prior month's
+  // number forward into chatgpt/tiktok/youtube here. ChatGPT ran $5,000 in
+  // August and is switched off for September.
+  '2026-09': { meta: 20080, clinician: 10000, linkedin: 4920, google: 10000, reddit: 5000, chatgpt: 0, tiktok: 0, youtube: 0 },
+  // October plan, set 2026-10-02. THREE funded lines totalling $21,000:
+  // Meta Brand $12,000, Meta Clinician $6,000, Google $3,000. LinkedIn, ChatGPT
+  // and Reddit are explicitly $0 for the month — that is the instruction, not an
+  // omission, so do NOT carry September's numbers forward into them.
+  // Note the roll-up total differs from the $21,000 plan: `clinician` is in
+  // KPI_EXCLUDED_CHANNELS (worker.js:176), so every KPI budget — including the
+  // Ad Spend pacing card — sees $15,000 (Meta + Google).
+  '2026-10': { meta: 12000, clinician: 6000, linkedin: 0, google: 3000, reddit: 0, chatgpt: 0, tiktok: 0, youtube: 0 },
 };
-const BUDGET_FALLBACK = BUDGET_BY_MONTH['2026-08'];
+// Pinned to a literal month, this silently paced every unlisted month against a
+// plan that kept getting older — August's $42,500 would have stood in for
+// November. Taking the newest key means a missing month inherits the most recent
+// plan instead, which is the least wrong default. It is still a fallback: the
+// log says when one is used, so a gap is visible rather than plausible.
+const BUDGET_FALLBACK = BUDGET_BY_MONTH[Object.keys(BUDGET_BY_MONTH).sort().pop()];
 function getBudgetsForMonth(dateStr) {
   if (!dateStr) return BUDGET_FALLBACK;
-  return BUDGET_BY_MONTH[dateStr.slice(0, 7)] || BUDGET_FALLBACK;
+  const key = dateStr.slice(0, 7);
+  const hit = BUDGET_BY_MONTH[key];
+  if (hit) return hit;
+  console.warn(`budget: no plan for ${key} — falling back to ${Object.keys(BUDGET_BY_MONTH).sort().pop()}. Add the month to BUDGET_BY_MONTH.`);
+  return BUDGET_FALLBACK;
 }
 
 // ── Meta "Leads (Form)" → Demos override ────────────────────────────────────
@@ -201,6 +348,7 @@ function capiConvLabel(campaignName, adsetName) {
 // optimizing for a duplicate id resolves by name here but has no count column.
 const META_CUSTOM_CONVERSIONS = [
   { field: 'actions_capi_clinicians',                 id: '1403040218341205',  label: 'CAPI -- Clinicians' },
+  { field: 'actions_capi_virtual_clinician',          id: '2367172530757383',  label: 'CAPI -- Virtual Clinician' },
   { field: 'actions_capi_demo_webinar_ebook_disqual', id: '27583605861331174', label: 'CAPI -- Demo + Webinar + Ebook + Disqual' },
   { field: 'actions_capi_disqual',                    id: '2138656430023236',  label: 'CAPI -- Disqual' },
   { field: 'actions_capi_ebook',                      id: '990268934047832',   label: 'CAPI -- Ebook' },
@@ -210,6 +358,14 @@ const META_CUSTOM_CONVERSIONS = [
   { field: 'actions_combined_demos_webinars',         id: '1028010476340460',  label: 'Combined -- Demos + Webinars' },
   { field: 'actions_fake_test',                       id: '2352065058650788',  label: 'Fake test' },
 ];
+// Standard (non-custom) pixel events → the Windsor column that counts them.
+// Only events we actually fetch belong here; an event with no column must stay
+// absent so metaTargetField falls back rather than naming a field that is always
+// undefined (which would silently read as zero conversions).
+const META_STD_EVENT_FIELD = {
+  SCHEDULE: 'conversions_schedule_total',
+  SUBMIT_APPLICATION: 'conversions_submit_application_total',
+};
 const META_CC_BY_ID = {};        // custom_conversion_id → display name
 const META_CC_FIELD_BY_ID = {};  // custom_conversion_id → Windsor count column
 for (const _cc of META_CUSTOM_CONVERSIONS) { META_CC_BY_ID[_cc.id] = _cc.label; META_CC_FIELD_BY_ID[_cc.id] = _cc.field; }
@@ -252,7 +408,18 @@ function metaTargetField(row) {
   const o = _metaParsePromoted(row.adset_promoted_object);
   if (!o) return '';
   const id = o.custom_conversion_id != null ? String(o.custom_conversion_id) : '';
-  return id ? (META_CC_FIELD_BY_ID[id] || '') : '';
+  if (id) return META_CC_FIELD_BY_ID[id] || '';
+  // STANDARD pixel events used to return '' here, which sent every one of them
+  // to the submit_application fallback regardless of what the ad set actually
+  // optimizes for. Verified against the live account 2026-09-17: the "CAPI
+  // schedule" campaigns optimize for SCHEDULE, and Meta's own Results column
+  // reported 10 / 1 / 1 Website Schedules where this dashboard reported 17 / 1 / 0
+  // Submit Applications — a different event, so CPD on those campaigns was
+  // understated (Skincare read $59 against a true $101). Map the standard event
+  // to its own count column so counting follows the ad set's real target, which
+  // is what already happened for custom conversions.
+  const evt = String(o.custom_event_type || '').trim().toUpperCase();
+  return META_STD_EVENT_FIELD[evt] || '';
 }
 // Demos a Meta row contributes via its configured CAPI custom conversion, or -1
 // when the row's campaign doesn't use CAPI (caller falls back to
@@ -288,7 +455,18 @@ function metaCapiDemoCount(row) {
 // lead-gen campaigns. One source of truth for Meta demo counting.
 function metaDemos(row) {
   const capi = metaCapiDemoCount(row);
-  const base = capi >= 0 ? capi : Math.round(parseFloat(row.conversions_submit_application_total) || 0);
+  let base;
+  if (capi >= 0) {
+    base = capi;
+  } else {
+    // Count the event this ad set is actually optimizing for. Falls back to
+    // submit_application when the row carries no adset_promoted_object (fetches
+    // below ad-set grain) or the target has no column we fetch — i.e. exactly
+    // the old behaviour, so nothing regresses where the target is unknown.
+    const tf = metaTargetField(row);
+    const v = (tf && row[tf] != null) ? parseFloat(row[tf]) : NaN;
+    base = Math.round(isNaN(v) ? (parseFloat(row.conversions_submit_application_total) || 0) : v);
+  }
   return base + metaLeadDemos(row.campaign_name, row);
 }
 
@@ -406,6 +584,20 @@ function yesterdayET() { const t = todayET(); t.setUTCDate(t.getUTCDate()-1); re
 
 function fmt(d) {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
+}
+
+// Pacific day key (YYYY-MM-DD) for a HubSpot date or datetime value. A bare
+// YYYY-MM-DD is already local and passes through untouched; anything carrying a
+// time component is shifted into Pacific first, so an evening close does not
+// land on the following day. Same rule as the local dayKey() inside
+// buildClinicianDaily — hoisted here so the closed-won daily series uses it too.
+function ptDayKeyOf(v) {
+  if (!v) return null;
+  const str = String(v);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  const t = /^\d+$/.test(str) ? parseInt(str, 10) : new Date(str).getTime();
+  if (isNaN(t)) return null;
+  return fmt(new Date(t + ptOff(new Date(t)) * 3600000));
 }
 
 function toMsET(dateStr, endOfDay = false) {
@@ -526,7 +718,7 @@ function mapUtmToChannel(src, med) {
   if (s === 'linkedin') return 'linkedin';
   if (['tiktok','tik_tok','tt','tiktok_ads'].includes(s)) return 'tiktok';
   if (['reddit','reddit_ads'].includes(s)) return 'reddit';
-  if (['openai','openai_ads','chatgpt','chat_gpt'].includes(s)) return 'chatgpt';
+  if (['openai','openai_ads','chatgpt','chat_gpt','chatgpt.com','openai.com'].includes(s)) return 'chatgpt';
   if (s === 'youtube') return 'youtube';
   return null;
 }
@@ -537,18 +729,42 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v18';
+const API_CACHE_VER = 'v31';   // v31: Demo Acquisition UTM mix split by tier (regular / pre-launch).
+                               // v30: last-click acquisition split (paid / organic / untagged) on the regular
+                               //      scheduled cohort, + chatgpt.com added to the paid mapper.
+                               // v29: all Volume + Quality figures exclude pre-launch (deal tier, not isLow).
+                               // v28: Demos supposed to happen excludes pre-launch.
+                               // v27: October ad budgets.
+                               // v26: Special1 held count is attendance-based + webinars.
+                               // v25: totalCpqd divides by the canonical Qualified Demo count.
+                               // v24: funnel webinar fetch fixed (was silently empty).
+                               // v23: Quality is demo-only + webinar no-show; funnel CPQD redefined.
+                               // v22: webinar-date deals folded into Demos to occur / supposed to happen.
+                               // v21: Qualification rate moved onto the Qualified Demo
+                               // definition, so Webinars Happened lift it too.
+                               // v20: Qualified Demo redefined (held demos excl. pre-launch,
+                               // plus webinars that reached Webinar Happened) — bumped so a
+                               // cached response cannot keep serving the old counts.
+                               // v19: dqForm/calRouting removed from the payload.
 
 const WINDSOR_PAGE_SIZE = 5000;
 async function windsorFetch(apiKey, from, to, fields, extra = '') {
   const url = `https://connectors.windsor.ai/all?api_key=${apiKey}&date_from=${from}&date_to=${to}&fields=${fields}&page_size=${WINDSOR_PAGE_SIZE}${extra}`;
   for (let i = 0; i < 3; i++) {
+    // This path (the /all connector, used by the GA4 fetches) was never counted,
+    // so SUBREQ under-reported by ~5 and its 3 retries burned real budget while
+    // the log showed 0. That gap is what made the ceiling look like it was 36.
+    if (SUBREQ.exhausted) return [];
     try {
+      SUBREQ.n++; SUBREQ.windsor++;
       const r = await fetch(url);
       if (!r.ok) throw new Error(`Windsor ${r.status}`);
       const j = await r.json();
       return j.data || [];
-    } catch(e) { if (i < 2) await sleep(1000*(i+1)); else { console.error('Windsor fail:', e); return []; } }
+    } catch(e) {
+      if (noteSubreqError(e)) return [];
+      if (i < 2) await sleep(1000*(i+1)); else { console.error('Windsor fail:', e); return []; }
+    }
   }
   return [];
 }
@@ -610,16 +826,33 @@ const WINDSOR_AD_SOURCES = [
   // adset_promoted_object names the campaign's REAL optimization target, which is
   // what metaDemos() counts. Verified fan-out-free: it adds no rows to a spend
   // query, unlike custom_conversion_action_name (which multiplied spend ~36x).
-  { connector:'facebook',   fields:'date,campaign_name,spend,clicks,impressions,ctr,conversions_submit_application_total' + META_LEAD_FIELDS + META_CAPI_FIELDS + META_PROMOTED_OBJ_FIELD },
+  { connector:'facebook',   fields:'date,campaign_name,spend,clicks,impressions,ctr,conversions_submit_application_total,conversions_schedule_total' + META_LEAD_FIELDS + META_CAPI_FIELDS + META_PROMOTED_OBJ_FIELD },
   { connector:'google_ads', fields:'date,campaign_name,spend,clicks,impressions,ctr,conversions' },
   { connector:'linkedin',   fields:'date,campaign,spend,clicks,impressions,ctr,externalwebsiteconversions' },
   { connector:'tiktok',     fields:'date,campaign_name,spend,clicks,impressions,ctr,conversions' },
   { connector:'reddit',     fields:'date,campaign_name,spend,clicks,impressions,ctr' },
   { connector:'openai_ads', fields:'date,campaign,spend,clicks,impressions,ctr' },
 ];
+// azWindsorFetchAll, NOT azWindsorFetch: Windsor has no pagination and caps a
+// single response at AZ_PAGE_SIZE (5000) rows, returning EARLIEST dates first
+// and silently dropping the overflow. At date x campaign grain a month fits
+// comfortably, but a Year to Date window (~240 days x every campaign across 6
+// connectors) blows past the cap — so YTD showed only early-year ad spend on the
+// Detailed, Irfan AND Clinician dashboards, with no error anywhere. FetchAll
+// splits the window into date sub-ranges and bisects any range that comes back
+// at the cap, so coverage self-adjusts to the account's actual rows/day. Short
+// windows still resolve in one request per connector, so MTD is unchanged.
 async function fetchWindsorAds(apiKey, from, to) {
   const per = await Promise.all(WINDSOR_AD_SOURCES.map(src =>
-    azWindsorFetch(apiKey, src.connector, from, to, src.fields)
+    // chunkDays = the WHOLE range on purpose: seed ONE request per connector and
+    // let azWindsorFetchAll bisect only the ranges that actually come back at the
+    // 5000-row cap. Pre-chunking by a fixed 30/31 days looks equivalent but is
+    // not — this runs up to 3x per /api/data call (current + prior + prior-month)
+    // across 6 connectors, so a fixed chunk multiplies into dozens of subrequests
+    // and exhausts Cloudflare's per-invocation budget, which starves the fetches
+    // that run after it (GA4 came back empty, tripping the "some data sources may
+    // not have fully loaded" banner). Same reasoning as windsorFetchAll's default.
+    azWindsorFetchAll(apiKey, src.connector, from, to, src.fields, 3650)
       .then(rows => (rows || []).map(r => Object.assign({}, r, {
         datasource: src.connector,                          // drives channel routing
         campaign_name: r.campaign_name || r.campaign || '',  // LinkedIn/OpenAI use `campaign`
@@ -652,7 +885,9 @@ async function fetchLinkedInDemos(apiKey, from, to) {
   // externalwebsiteconversions don't exist on every connected connector, and a
   // single unknown field fails the whole /all query — the same failure that
   // emptied ad spend when Reddit and OpenAI Ads were connected.
-  const rows = await azWindsorFetch(apiKey, 'linkedin', from, to, 'date,campaign_group_name,conversion_name,externalwebsiteconversions');
+  // Whole-range seed + bisect-on-cap, same as fetchWindsorAds: one subrequest in
+  // the normal case, extra ones only when a range is genuinely truncated.
+  const rows = await azWindsorFetchAll(apiKey, 'linkedin', from, to, 'date,campaign_group_name,conversion_name,externalwebsiteconversions', 3650);
   // No rows means the fetch failed or the window is empty. Return null so the
   // caller leaves LinkedIn's own total alone instead of overriding it to zero.
   if (!rows.length) return null;
@@ -672,71 +907,101 @@ async function fetchGA4(apiKey, from, to) {
   return windsorFetch(apiKey, from, to, fields, '&connectors=googleanalytics4');
 }
 
-// GA4 page-level views via Windsor.ai. Used to count pageviews on the
-// Disqualification page (/not-supported) for the % Disqualified Routing card.
-// Uses pagepath (Windsor's GA4 field name) and screenpageviews (GA4's
-// standard pageview metric).
-// Returns { views, rowsSeen, matched, source, error }.
-async function fetchGA4PageViews(apiKey, from, to, pathFilter) {
-  const fields = 'date,pagepath,pagetitle,screenpageviews';
-  try {
-    const rows = await windsorFetch(apiKey, from, to, fields, '&connectors=googleanalytics4');
-    let total = 0, matched = 0;
-    const want = (pathFilter || '').toLowerCase();
-    for (const r of rows) {
-      const rawPath = (r.pagepath || r.page_path || r.pagePath || '').toLowerCase();
-      // Strip query string for matching (/not-supported?utm=foo → /not-supported)
-      const path = rawPath.split('?')[0].split('#')[0];
-      if (!want || path === want || path === want + '/' || path.endsWith(want)) {
-        const v = parseInt(r.screenpageviews ?? r.pageviews ?? r.views ?? 0, 10) || 0;
-        total += v;
-        matched++;
-      }
-    }
-    return { views: total, rowsSeen: rows.length, matched, source: 'ga4_via_windsor', error: null };
-  } catch(e) {
-    console.warn('GA4 page views fetch failed:', e.message);
-    return { views: null, rowsSeen: 0, matched: 0, source: 'ga4_via_windsor', error: e.message };
-  }
-}
 
-// GA4 daily series for the % Disqualified Routing card:
-//   • /not-supported pageviews  → numerator   ("Clicked Continue but DQ'd")
-//   • cal_routing_submitted event → denominator ("Clicked Schedule a Demo and Continue")
-// Both keyed by date over [from,to] via two Windsor GA4 calls. Returns
-// { viewsByDate, eventByDate } where each is { 'YYYY-MM-DD': number }. The
-// caller buckets these into the page's current/prior/priorMonth windows so the
-// card can show vs-prior / vs-LM deltas from a single widest-window fetch.
-async function fetchGA4RoutingSeries(apiKey, from, to, pagePath, eventName) {
-  const want = (pagePath || '').toLowerCase();
-  const viewsByDate = {}, eventByDate = {};
-  try {
-    const pv = await windsorFetch(apiKey, from, to, 'date,pagepath,screenpageviews', '&connectors=googleanalytics4');
-    for (const r of pv) {
-      const path = (r.pagepath || r.page_path || '').toLowerCase().split('?')[0].split('#')[0];
-      if (!want || path === want || path === want + '/' || path.endsWith(want)) {
-        const d = r.date; if (!d) continue;
-        viewsByDate[d] = (viewsByDate[d] || 0) + (parseInt(r.screenpageviews ?? r.pageviews ?? 0, 10) || 0);
-      }
-    }
-  } catch (e) { /* leave empty — card degrades to — */ }
-  try {
-    const ev = await windsorFetch(apiKey, from, to, 'date,event_name,event_count', '&connectors=googleanalytics4');
-    for (const r of ev) {
-      if ((r.event_name || '') !== eventName) continue;
-      const d = r.date; if (!d) continue;
-      eventByDate[d] = (eventByDate[d] || 0) + (parseInt(r.event_count) || 0);
-    }
-  } catch (e) { /* leave empty */ }
-  return { viewsByDate, eventByDate };
-}
-function _sumDateRange(byDate, from, to) {
-  let t = 0; for (const d in byDate) { if (d >= from && d <= to) t += byDate[d]; } return t;
-}
 
 // ---------------------------------------------------------------------------
 // HubSpot Fetching
 // ---------------------------------------------------------------------------
+// ─── Subrequest budget ──────────────────────────────────────────────────────
+// Cloudflare caps subrequests PER INVOCATION and every fetch in the request
+// shares that one pool. A Year to Date load blew it: Windsor alone issues
+// ~450 calls (campaigns run for current + prior + priorMonth = 3 windows, and
+// Meta creatives chunk at 7 days => 35 chunks/channel across 243 days), which
+// starved the HubSpot deal fetches queued alongside them in the same
+// Promise.all. The symptom was silent: scheduledContacts came back 1600 while
+// pipelineDeals / closedWon / churnedByClose all came back 0, so Key Metrics
+// and Signed Brands rendered as zeros instead of erroring.
+//
+// Two guarantees here:
+//  1. HubSpot is never starved by Windsor. Windsor gets a hard call ceiling and
+//     degrades the TAIL of very wide ad tables; the deal fetches always run.
+//  2. Once the pool IS exhausted, every retry and every bisect is guaranteed to
+//     fail too. Before the breaker, one YTD load logged 296 doomed Windsor
+//     retries with 1-2s sleeps between them — ~15 minutes of dead waiting
+//     against a 180s frontend timeout. Now the first exhaustion stops the rest.
+const SUBREQ = { n: 0, windsor: 0, hubspot: 0, kv: 0, exhausted: false, windsorDropped: 0 };
+const WINDSOR_CALL_BUDGET = 700;   // leaves the rest of the pool for HubSpot.
+// Raised from 420 after a measured YTD run hit it and dropped chunks on four
+// connectors (google_ads, reddit, openai_ads, tiktok). HubSpot peaked at ~102
+// subrequests on that same run, so 700 + ~102 + kv still clears the 1000 ceiling.
+// Chunks inside one azWindsorFetchAll are independent, so they are fetched in
+// bounded-concurrency waves rather than one at a time. A year-wide creative
+// window is ~40 chunks per channel (chunkDays=7); serially that is 60s+ per
+// channel and the dashboard aborts at 75s. Kept modest because the ~6 channels
+// already run their chunkers in parallel, so the real outbound concurrency is
+// this times the channel count.
+const AZ_CHUNK_CONCURRENCY = 8;
+// Creative grain is the densest fetch, but only on Meta. Start wide and let
+// azWindsorFetchAll's existing cap-bisection narrow only the connectors that
+// actually need it, instead of charging every connector 40 calls for a year.
+const AZ_CREATIVE_CHUNK_DAYS = 30;
+function subreqReset() {
+  SUBREQ.n = 0; SUBREQ.windsor = 0; SUBREQ.hubspot = 0; SUBREQ.kv = 0;
+  SUBREQ.exhausted = false; SUBREQ.windsorDropped = 0;
+}
+function isSubreqLimit(e) {
+  return !!e && /Too many subrequests/i.test(e.message || String(e));
+}
+// Call on every caught error so one exhaustion trips the breaker for everyone.
+function noteSubreqError(e) {
+  if (isSubreqLimit(e) && !SUBREQ.exhausted) {
+    SUBREQ.exhausted = true;
+    console.error(`SUBREQ EXHAUSTED after ~${SUBREQ.n} subrequests (windsor ${SUBREQ.windsor}, hubspot ${SUBREQ.hubspot}) — failing fast from here instead of retrying`);
+  }
+  return SUBREQ.exhausted;
+}
+function subreqSummary() {
+  return `subrequests ~${SUBREQ.n} (windsor ${SUBREQ.windsor}, hubspot ${SUBREQ.hubspot}, kv ${SUBREQ.kv})`
+    + (SUBREQ.windsorDropped ? `, windsor chunks dropped at budget: ${SUBREQ.windsorDropped}` : '')
+    + (SUBREQ.exhausted ? ' — POOL EXHAUSTED' : '');
+}
+
+// Count-only search. HubSpot returns `total` on every search response, so a
+// count costs ONE subrequest with limit:1 — hsSearch drops that field and would
+// page through every matching record to length-count them instead. Returns null
+// (not 0) on failure, so a failed fetch reads as "unknown" and suppresses a
+// delta rather than asserting zero.
+async function hsCount(token, objectType, filterGroups) {
+  const url = `https://api.hubapi.com/crm/v3/objects/${objectType}/search`;
+  // HubSpot's SEARCH endpoint is rate limited far more tightly than the rest of
+  // the API (a few requests a second per token). Without a retry a throttled
+  // count came back null and rendered as an em dash — indistinguishable from
+  // "this campaign genuinely has none", which is exactly how the Inquiries
+  // column ended up populating for some campaigns and not others. hsSearch has
+  // always backed off on 429; this had not.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (SUBREQ.exhausted) { console.warn(`hsCount ${objectType}: skipped, subrequest pool exhausted`); return null; }
+    try {
+      SUBREQ.n++; SUBREQ.hubspot++;
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filterGroups, properties: ['hs_object_id'], limit: 1 }),
+      });
+      if (r.status === 429) { await sleep(250 * (attempt + 1)); continue; }
+      if (!r.ok) { console.error(`hsCount ${objectType} ${r.status}`); return null; }
+      const d = await r.json();
+      return typeof d.total === 'number' ? d.total : null;
+    } catch (e) {
+      if (noteSubreqError(e)) return null;
+      if (attempt === 2) { console.error('hsCount failed:', e && e.message); return null; }
+      await sleep(250 * (attempt + 1));
+    }
+  }
+  console.error(`hsCount ${objectType}: still rate limited after retries`);
+  return null;
+}
+
 async function hsSearch(token, objectType, filterGroups, properties, limit = 200, sorts = [{ propertyName: 'hs_createdate', direction: 'ASCENDING' }], maxPages = 10) {
   const url = `https://api.hubapi.com/crm/v3/objects/${objectType}/search`;
   const all = [];
@@ -748,7 +1013,9 @@ async function hsSearch(token, objectType, filterGroups, properties, limit = 200
     const body = { filterGroups, properties, limit, sorts };
     if (after) body.after = after;
     for (let attempt = 0; attempt < 4; attempt++) {
+      if (SUBREQ.exhausted) { lastErr = new Error('subrequest pool exhausted'); break; }
       try {
+        SUBREQ.n++; SUBREQ.hubspot++;
         resp = await fetch(url, {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -759,34 +1026,47 @@ async function hsSearch(token, objectType, filterGroups, properties, limit = 200
           await sleep(1000 * (attempt + 1));
           continue;
         }
-        if (!resp.ok) { console.error(`HS ${objectType} ${resp.status}:`, await resp.text()); return all; }
+        if (!resp.ok) { console.error(`HS ${objectType} ${resp.status} after ${pages} page(s) — returning PARTIAL ${all.length} results:`, await resp.text()); return all; }
         break; // success
-      } catch(e) { lastErr = e; await sleep(500 * (attempt + 1)); }
+      } catch(e) { lastErr = e; if (noteSubreqError(e)) break; await sleep(500 * (attempt + 1)); }
     }
-    if (!resp || !resp.ok) { console.error('HS search exhausted retries', lastErr); break; }
+    if (!resp || !resp.ok) { console.error(`HS ${objectType} search failed after ${pages} page(s) — returning PARTIAL ${all.length}:`, (lastErr && lastErr.message) || lastErr); break; }
     const d = await resp.json();
     all.push(...(d.results || []));
     pages++;
     if (d.paging?.next?.after) after = d.paging.next.after; else break;
-    if (all.length >= 10000 || pages >= maxPages) break;
+    if (all.length >= 10000 || pages >= maxPages) {
+      // Truncation is silent otherwise, and with an ASCENDING sort it is the
+      // NEWEST records that get dropped — i.e. exactly the recent edits someone
+      // would report as "this field is out of date".
+      const _dir = (sorts && sorts[0] && sorts[0].direction) || 'ASCENDING';
+      console.warn(`hsSearch ${objectType} TRUNCATED at ${all.length} results / ${pages} pages (cap ${maxPages}, hard ceiling 10000) — sorted ${_dir}, so the ${_dir === 'ASCENDING' ? 'NEWEST' : 'OLDEST'} records are missing from this payload`);
+      break;
+    }
   }
   return all;
 }
 
 // Wrap a WINDOW-INDEPENDENT fetch (same result regardless of the page's date
-// selector) with a short-lived KV cache. KV binding reads/writes do NOT count
-// against the per-invocation subrequest limit, so a cache hit replaces N
-// paginated HubSpot subrequests with zero — directly relieving the "Too many
-// subrequests by single Worker invocation" ceiling that the /api/data handler
-// kept hitting as the deal database grew. Falls back to a live fetch whenever
+// selector) with a short-lived KV cache.
+//
+// CORRECTION — this comment used to claim "KV binding reads/writes do NOT count
+// against the per-invocation subrequest limit". That is FALSE, and it was the
+// premise this entire caching layer was designed on. Every KV get and put costs
+// one subrequest from the same pool as a fetch(). A cache hit therefore replaces
+// N paginated subrequests with ONE, not with zero — still a large win for N>1,
+// but it means adding "free" cache keys makes the ceiling WORSE, and a bundle of
+// M values belongs under ONE key rather than M. Falls back to a live fetch whenever
 // KV is unavailable, the entry is missing/expired, or parsing fails, so it can
 // never serve stale-forever or break the response.
+function kvOp() { SUBREQ.n++; SUBREQ.kv = (SUBREQ.kv || 0) + 1; }
 async function kvCachedFetch(env, key, ttlSec, fetchFn, fallback) {
   // staleData remembers the last cached payload even if expired, so a later
   // live-fetch failure degrades to stale data instead of crashing the handler.
   let staleData = (fallback !== undefined ? fallback : null);
   if (env && env.CONTENT_STORE) {
     try {
+      kvOp();
       const raw = await env.CONTENT_STORE.get(key);
       if (raw) {
         const parsed = JSON.parse(raw);
@@ -811,6 +1091,7 @@ async function kvCachedFetch(env, key, ttlSec, fetchFn, fallback) {
       const blob = JSON.stringify({ t: Date.now(), data });
       // KV value hard limit is 25 MB — skip caching anything near it rather
       // than letting the put reject.
+      kvOp();
       if (blob.length < 20 * 1024 * 1024) await env.CONTENT_STORE.put(key, blob);
     } catch (e) { /* non-fatal — caching is best-effort */ }
   }
@@ -827,6 +1108,7 @@ async function kvCachedFetchNE(env, key, ttlSec, fetchFn) {
   let stale = null;
   if (env && env.CONTENT_STORE) {
     try {
+      kvOp();
       const raw = await env.CONTENT_STORE.get(key);
       if (raw) {
         const p = JSON.parse(raw);
@@ -841,6 +1123,7 @@ async function kvCachedFetchNE(env, key, ttlSec, fetchFn) {
   try { data = await fetchFn(); } catch (e) { return stale || []; }
   if (Array.isArray(data) && data.length) {
     if (env && env.CONTENT_STORE) {
+      kvOp();
       try { const blob = JSON.stringify({ t: Date.now(), data }); if (blob.length < 20*1024*1024) await env.CONTENT_STORE.put(key, blob, { expirationTtl: Math.max(ttlSec*6, 3600) }); } catch (e) { /* best-effort */ }
     }
     return data;
@@ -864,113 +1147,21 @@ function filterActiveBrands(deals) {
   });
 }
 
-// Look up the "Disqualification Form" by name (case-insensitive substring match),
-// then return BOTH:
-//   • count — submissions in [from, to]  (count of people who filled out the form)
-//   • views — form page views in [from, to] (count of times the form was loaded
-//     on a page — pulled from HubSpot's v2 analytics endpoint)
-// Used by Irfan KPI #5 (% Disqualified Routing). The numerator on the card is
-// views — that's the right metric for "how many people were routed to the
-// disqualification page", since a view happens whether or not the visitor
-// completes the form.
-async function fetchDisqualificationFormSubmissions(token, from, to) {
-  // Step 1: list forms and find the DQ form by name
-  const formsRes = await fetch('https://api.hubapi.com/marketing/v3/forms?limit=200', {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!formsRes.ok) {
-    const txt = await formsRes.text();
-    throw new Error(`Forms list failed: ${formsRes.status} ${txt.slice(0,120)}`);
-  }
-  const formsData = await formsRes.json();
-  const form = (formsData.results || []).find(f =>
-    (f.name || '').toLowerCase().includes('disqualification')
-  );
-  if (!form) {
-    return { count: 0, views: null, formFound: false };
-  }
-  // Step 2a: walk submissions filtered by submittedAt in [from, to]
-  const fromMs = new Date(from + 'T00:00:00Z').getTime();
-  const toMs = new Date(to + 'T23:59:59.999Z').getTime();
-  let count = 0, totalSeen = 0, after = null, pages = 0;
-  while (pages < 50) {
-    let url = `https://api.hubapi.com/form-integrations/v1/submissions/forms/${form.id}?limit=50`;
-    if (after) url += `&after=${after}`;
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-    if (!res.ok) {
-      console.error(`DQ form submissions ${res.status}: ${(await res.text()).slice(0,120)}`);
-      break;
-    }
-    const data = await res.json();
-    const results = data.results || [];
-    totalSeen += results.length;
-    let pastWindow = false;
-    for (const s of results) {
-      const ms = s.submittedAt || 0;
-      if (ms >= fromMs && ms <= toMs) count++;
-      // Submissions come back newest-first by default; once we cross before fromMs we can stop
-      if (ms < fromMs) pastWindow = true;
-    }
-    if (pastWindow) break;
-    if (!data.paging?.next?.after) break;
-    after = data.paging.next.after;
-    pages++;
-  }
-  // Step 2b: fetch form view counts via HubSpot Analytics v2.
-  // Endpoint: /analytics/v2/reports/forms/total?start=YYYYMMDD&end=YYYYMMDD&f=<formId>
-  // Date params are start/end (NOT d1/d2 — those are drilldown filter slots).
-  // Response shape with the f= filter:
-  //   { offset, total, totals: { formViews, submissions, submissionsPerFormView, ... },
-  //     breakdowns: [{ breakdown: <formId>, formViews, submissions, ... }] }
-  // The metric we want is `formViews` (matches the number in HubSpot's Forms
-  // Performance UI). conversion-rate is `submissionsPerFormView`.
-  // Requires the private app to have the business-intelligence (analytics.read) scope.
-  let views = null, viewError = null, conversionRate = null, interactions = null, visibles = null;
-  try {
-    const d1 = from.replace(/-/g, '');
-    const d2 = to.replace(/-/g, '');
-    const viewsUrl = `https://api.hubapi.com/analytics/v2/reports/forms/total?start=${d1}&end=${d2}&f=${encodeURIComponent(form.id)}`;
-    const viewsRes = await fetch(viewsUrl, { headers: { Authorization: `Bearer ${token}` } });
-    if (viewsRes.ok) {
-      const viewsData = await viewsRes.json();
-      // Prefer totals (single-form filter returns the form's metrics here),
-      // fall back to the breakdowns row matching our form ID.
-      const t = viewsData?.totals;
-      if (t && typeof t.formViews === 'number') {
-        views = t.formViews;
-        if (typeof t.submissionsPerFormView === 'number') conversionRate = t.submissionsPerFormView;
-        if (typeof t.interactions === 'number') interactions = t.interactions;
-        if (typeof t.visibles === 'number') visibles = t.visibles;
-      } else if (Array.isArray(viewsData?.breakdowns)) {
-        const myRow = viewsData.breakdowns.find(b => b?.breakdown === form.id);
-        if (myRow) {
-          if (typeof myRow.formViews === 'number') views = myRow.formViews;
-          if (typeof myRow.submissionsPerFormView === 'number') conversionRate = myRow.submissionsPerFormView;
-          if (typeof myRow.interactions === 'number') interactions = myRow.interactions;
-          if (typeof myRow.visibles === 'number') visibles = myRow.visibles;
-        } else {
-          viewError = `Form ${form.id} not present in HubSpot breakdowns (got ${viewsData.breakdowns.length} rows)`;
-        }
-      }
-      if (views == null && !viewError) {
-        const snippet = JSON.stringify(viewsData).slice(0, 400);
-        viewError = `Unrecognized response shape: ${snippet}`;
-      }
-      console.log(`DQ form: ${views} views, ${count} submissions, ${conversionRate!=null?(conversionRate*100).toFixed(2)+'%':'?'} conv (${form.name}, ${from}..${to})`);
-    } else {
-      const txt = await viewsRes.text();
-      viewError = viewsRes.status === 403
-        ? 'HubSpot 403: token missing analytics scope (Settings → Integrations → Private Apps → Scopes → Analytics)'
-        : `HTTP ${viewsRes.status}: ${txt.slice(0,200)}`;
-      console.warn(`DQ form views ${viewsRes.status}: ${txt.slice(0,200)}`);
-    }
-  } catch(e) {
-    viewError = `Fetch threw: ${e.message}`;
-    console.warn('DQ form views fetch threw:', e.message);
-  }
-  return { count, views, viewError, conversionRate, interactions, visibles, totalSeen, pages, formFound: true, formId: form.id, formName: form.name };
-}
 
+// hsSearch defaults to 10 pages x 200 = 2000 rows. That comfortably covers a
+// month, but a Year to Date (or All Time) window blows straight past it and the
+// overflow is dropped silently — and because the default sort is ASCENDING it is
+// the MOST RECENT records that vanish, so YTD looked like it was missing its
+// latest months. Scale the page budget with the window length: a month-or-less
+// window keeps exactly today's 10 pages (no extra latency on the common path),
+// YTD gets the full 50 (= 10,000, HubSpot's own hard search ceiling).
+function pagesForWindow(from, to, base = 10, max = 25) {
+  if (!from || !to) return base;
+  const a = new Date(String(from) + 'T00:00:00Z'), b = new Date(String(to) + 'T00:00:00Z');
+  if (isNaN(a) || isNaN(b)) return base;
+  const days = Math.max(1, Math.round((b - a) / 86400000) + 1);
+  return Math.min(max, Math.max(base, Math.ceil(days / 31) * base));
+}
 async function fetchScheduledContacts(token, from, to) {
   const fMs = String(toMsET(from));
   const tMs = String(toMsET(to, true));
@@ -998,7 +1189,10 @@ async function fetchScheduledContacts(token, from, to) {
         { propertyName: 'hs_object_source_detail_1', operator: 'EQ', value: 'Livestorm Webinars' },
       ],
     },
-  ], ['createdate', 'date_demo_booked', 'email', 'website', 'company', 'average_monthly_web_traffic', 'hs_object_source_detail_1']);
+  ], ['createdate', 'date_demo_booked', 'email', 'website', 'company', 'average_monthly_web_traffic', 'hs_object_source_detail_1',
+      // Acquisition: powers the Detailed Dashboard's "Demo Acquisition" donut.
+      'utm_source', 'utm_medium', 'utm_campaign'],
+     200, [{ propertyName: 'createdate', direction: 'ASCENDING' }], pagesForWindow(from, to));
 }
 
 // Contacts for Demo Quality — matched to deals by company name
@@ -1051,7 +1245,7 @@ async function fetchPipelineDeals(token, from, to, opts = {}) {
   // most recent months. Cohort callers should pass DESC sort + bumped maxPages.
   const limit = opts.limit ?? 200;
   const sorts = opts.sorts ?? [{ propertyName: 'hs_createdate', direction: 'ASCENDING' }];
-  const maxPages = opts.maxPages ?? 10;
+  const maxPages = opts.maxPages ?? pagesForWindow(from, to);
   const deals = await hsSearch(token, 'deals', [
     { filters: [
       { propertyName: 'date_demo_booked', operator: 'GTE', value: fMsDate },
@@ -1084,20 +1278,20 @@ async function fetchAnyWonDealsByCloseDate(token, from, to) {
       { propertyName: 'closedate', operator: 'GTE', value: String(toMsET(from)) },
       { propertyName: 'closedate', operator: 'LTE', value: String(toMsET(to, true)) },
     ],
-  }], ['amount','closedate','hs_createdate','hs_date_entered_closedwon','utm_source','utm_medium','utm_campaign','utm_content','hubspot_owner_id','brand_status','average_monthly_web_traffic__cloned_','average_monthly_web_traffic','dealstage','dealname']);
+  }], ['amount','closedate','hs_createdate','hs_v2_date_entered_closedwon','utm_source','utm_medium','utm_campaign','utm_content','hubspot_owner_id','brand_status','average_monthly_web_traffic__cloned_','average_monthly_web_traffic','dealstage','dealname']);
 }
 
-// Pipeline-agnostic "won" deals by hs_date_entered_closedwon (the timestamp HubSpot
+// Pipeline-agnostic "won" deals by hs_v2_date_entered_closedwon (the timestamp HubSpot
 // stamps when a deal enters a closed-won stage). Catches deals whose user-editable
 // `closedate` falls outside the window but which entered won inside it.
 async function fetchAnyWonDealsByEnteredWon(token, from, to) {
   return hsSearch(token, 'deals', [{
     filters: [
       { propertyName: 'hs_is_closed_won', operator: 'EQ', value: 'true' },
-      { propertyName: 'hs_date_entered_closedwon', operator: 'GTE', value: String(toMsET(from)) },
-      { propertyName: 'hs_date_entered_closedwon', operator: 'LTE', value: String(toMsET(to, true)) },
+      { propertyName: 'hs_v2_date_entered_closedwon', operator: 'GTE', value: String(toMsET(from)) },
+      { propertyName: 'hs_v2_date_entered_closedwon', operator: 'LTE', value: String(toMsET(to, true)) },
     ],
-  }], ['amount','closedate','hs_createdate','hs_date_entered_closedwon','utm_source','utm_medium','utm_campaign','utm_content','hubspot_owner_id','brand_status','average_monthly_web_traffic__cloned_','average_monthly_web_traffic','dealstage','dealname']);
+  }], ['amount','closedate','hs_createdate','hs_v2_date_entered_closedwon','utm_source','utm_medium','utm_campaign','utm_content','hubspot_owner_id','brand_status','average_monthly_web_traffic__cloned_','average_monthly_web_traffic','dealstage','dealname']);
 }
 
 // Deals by date_demo_booked (single filter, no OR groups). Used by the
@@ -1207,7 +1401,8 @@ async function fetchClosedWonDeals(token, from, to) {
       { propertyName: 'closedate', operator: 'GTE', value: String(toMsET(from)) },
       { propertyName: 'closedate', operator: 'LTE', value: String(toMsET(to, true)) },
     ],
-  }], ['amount','closedate','hs_createdate','utm_source','utm_medium','utm_campaign','utm_content','hubspot_owner_id','brand_status','average_monthly_web_traffic__cloned_','average_monthly_web_traffic']);
+  }], ['amount','closedate','hs_createdate','utm_source','utm_medium','utm_campaign','utm_content','hubspot_owner_id','brand_status','average_monthly_web_traffic__cloned_','average_monthly_web_traffic'],
+     200, [{ propertyName: 'hs_createdate', direction: 'ASCENDING' }], pagesForWindow(from, to));
 }
 
 // Deals that reached a Churned stage (Churned / Churned Onboarding) but still
@@ -1222,7 +1417,8 @@ async function fetchChurnedByCloseDate(token, from, to) {
       { propertyName: 'closedate', operator: 'GTE', value: String(toMsET(from)) },
       { propertyName: 'closedate', operator: 'LTE', value: String(toMsET(to, true)) },
     ],
-  }], ['amount','closedate','brand_status','dealstage']);
+  }], ['amount','closedate','brand_status','dealstage'],
+     200, [{ propertyName: 'hs_createdate', direction: 'ASCENDING' }], pagesForWindow(from, to));
 }
 
 // Deals by hs_createdate — for Demo Quality table (shows deals created/booked in the window)
@@ -1302,7 +1498,7 @@ function processAdSpend(rows, linkedInDemoOverride) {
       demos = parseInt(row.conversions)||0;
     } else if (key === 'clinician') {
       // Its optimized conversion — not submit_application.
-      demos = Math.round(parseFloat(row[CLINICIAN_CONV_FIELD]) || 0);
+      demos = clinicianConvCount(row);
     } else if (key === 'reddit' || key === 'chatgpt') {
       // Neither connector exposes a conversion metric on the /all endpoint:
       // Reddit splits conversions into per-action fields (conversion_*_clicks)
@@ -1313,6 +1509,14 @@ function processAdSpend(rows, linkedInDemoOverride) {
       demos = Math.ceil(parseFloat(row.conversions)||0);
     }
 
+    // The mapper above can emit 'youtube' (a Google Ads campaign whose name
+    // matches /\byt\b|youtube/i), but ch is seeded from DASH_CHANNELS, which has
+    // no youtube entry — so ch['youtube'] was undefined and this line threw
+    // "Cannot read properties of undefined (reading 'spend')", 500-ing the whole
+    // request. It only bites a window that actually contains a YouTube campaign,
+    // which is why Year to Date died while Month to Date was fine. Create the
+    // bucket on demand so no key the mapper produces can take the request down.
+    if (!ch[key]) ch[key] = { spend:0, clicks:0, impressions:0, windsorDemos:0 };
     ch[key].spend += spend; ch[key].clicks += clicks; ch[key].impressions += impr; ch[key].windsorDemos += demos;
     // KPI-excluded channels keep their own per-channel row but contribute
     // nothing to the totals behind CPD / CPQD / CAC / ROAS / spend-by-day.
@@ -1353,12 +1557,47 @@ function processGA4(rows) {
 // ---------------------------------------------------------------------------
 // Processing — Scheduled Contacts (guide Section 3)
 // ---------------------------------------------------------------------------
+// Largest-first list with "Not set" pinned last, capped at `max` entries with the
+// remainder rolled into one labelled bucket so the total still reconciles.
+// Mirrors the local `capped`/`toList` pair in buildClinicianComposition.
+function cappedCounts(o, max) {
+  const l = Object.entries(o)
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => (a.label === 'Not set') - (b.label === 'Not set') || b.count - a.count);
+  if (l.length <= max) return l;
+  const head = l.slice(0, max - 1);
+  const tail = l.slice(max - 1);
+  // The rolled-up bucket CARRIES its rows, so the client can expand it in place
+  // without another request. Same shape buildClinicianComposition's capped()
+  // returns — _clinicianPie renders `children` on whichever bucket has them, so
+  // Demo Acquisition gets the expandable Other the Clinician UTM card has.
+  head.push({ label: `Other (${tail.length} more)`, count: tail.reduce((n, x) => n + x.count, 0), children: tail });
+  return head;
+}
 function processScheduledContacts(contacts) {
   const byDay = {};
   const byDayScale = {};         // per-day count excluding pre-launch
   const byDayScale10KPlus = {};  // per-day count excluding pre-launch AND 0-10K (Irfan-only stricter view)
   const byDayAll = {};           // per-day count INCLUDING webinars (Very Small) — matches "CPD · All"
   const byWebTraffic = {};       // count by raw web-traffic tier value (Livestorm → "Very Small"/Webinar) — webinar count for CPD cards
+  // Regular vs Pre-Launch. Both count demos AND webinars; the split is purely on
+  // the brand's REAL web-traffic tier, which is known for a webinar registrant too
+  // (wtRaw) — so a pre-launch brand that came in through a webinar lands in
+  // Pre-Launch rather than being lumped into the Webinar tier. Complementary by
+  // construction: byDayRegular + byDayPre === byDayAll, day for day.
+  const byDayRegular = {};
+  const byDayPre = {};
+  let regularTotal = 0, preTotal = 0;
+  let weekdayRegular = 0, weekdayPre = 0;   // weekday-only mirrors, for the Weekday Avg tile
+  // Last-click acquisition split of the SAME regular cohort, three-way so the
+  // unknown is visible rather than silently folded into "organic":
+  //   paid    -- the booking contact carries a UTM mapUtmToChannel recognises
+  //   organic -- no paid UTM, but a self-describing one is present ('organic', 'referral')
+  //   untagged-- no utm_source and no utm_medium at all; origin genuinely unknown
+  // Counted in the else branch below, which IS the definition of regularTotal, so
+  // the three can never drift from the Regular Demos Scheduled card.
+  let regularPaid = 0, regularOrganicTagged = 0, regularUntagged = 0;
+  const byDayRegularPaid = {};
   const byWebTrafficTrue = {};   // count by the contact's ACTUAL web-traffic tier (webinar regs counted in their real tier, NOT lumped into "Webinar") — drives the Demos+Webinars pie
   let lowTrafficCount = 0;       // contacts in the pre-launch tier
   let low10KCount = 0;           // contacts in pre-launch OR 0-10K tier (denominator for the Irfan stricter chart)
@@ -1377,6 +1616,19 @@ function processScheduledContacts(contacts) {
   // Livestorm Webinar registrants), so a contact could appear twice if they
   // booked AND registered for a webinar. Key by id and skip dupes.
   const seenIds = new Set();
+  // Acquisition mix. Counted over every deduped contact — the same population
+  // byWebTrafficTrue uses — so "Demo Acquisition" and "Demo Composition" agree
+  // on their denominator. Webinar registrants are NOT skipped here for the same
+  // reason they aren't skipped from byWebTrafficTrue.
+  const byUtmS = {}, byUtmM = {}, byUtmC = {};
+  // Same three dimensions, split by the brand's tier, so the Demo Acquisition
+  // card can scope its mix the way every other card on the page does. Each
+  // segment is capped on its OWN distribution in the return block -- capping
+  // the combined map and then splitting it would put the wrong rows in "Other".
+  const byUtmSReg = {}, byUtmMReg = {}, byUtmCReg = {};
+  const byUtmSPre = {}, byUtmMPre = {}, byUtmCPre = {};
+  let utmTotalRegular = 0, utmTotalPre = 0;
+  let utmTotal = 0;
   // Set of normalized company names + email domains flagged as Pre-launch.
   // Used downstream by processPipelineDeals to compute the scale-tier QDG count.
   const lowTrafficCompanies = new Set();
@@ -1401,9 +1653,38 @@ function processScheduledContacts(contacts) {
     // slice instead of the catch-all "Webinar" (Very Small) slice.
     const trueTier = wtRaw || '(none)';
     byWebTrafficTrue[trueTier] = (byWebTrafficTrue[trueTier]||0) + 1;
+    // Same "Not set" fallback the clinician acquisition mix uses, so a blank and
+    // a missing property read the same way on both dashboards.
+    const _utm = (k) => ((c.properties?.[k] || '').trim()) || 'Not set';
+    const _us = _utm('utm_source'), _um = _utm('utm_medium'), _uc = _utm('utm_campaign');
+    byUtmS[_us] = (byUtmS[_us] || 0) + 1;
+    byUtmM[_um] = (byUtmM[_um] || 0) + 1;
+    byUtmC[_uc] = (byUtmC[_uc] || 0) + 1;
+    // Tier split, on the same pre-launch test as byDayRegular / byDayPre below.
+    { const _pre = wt.includes('pre-launch');
+      const _S = _pre ? byUtmSPre : byUtmSReg, _M = _pre ? byUtmMPre : byUtmMReg, _C = _pre ? byUtmCPre : byUtmCReg;
+      _S[_us] = (_S[_us] || 0) + 1; _M[_um] = (_M[_um] || 0) + 1; _C[_uc] = (_C[_uc] || 0) + 1;
+      if (_pre) utmTotalPre++; else utmTotalRegular++; }
+    // One increment per contact, so each dimension's rows sum to exactly this —
+    // _clinicianPie divides by the caller's total, and a rows array that didn't
+    // sum to it would report percentages that don't reach 100%.
+    utmTotal++;
     // Webinar-inclusive daily series (bucketed by createdate in ET) — feeds the
     // "CPD per Week" chart so it aggregates to the Efficiency "CPD · All" card.
-    { const _ad = new Date(cd); const _aet = new Date(_ad.getTime() + etOff(_ad) * 3600000); byDayAll[fmt(_aet)] = (byDayAll[fmt(_aet)]||0) + 1; const _adow = _aet.getUTCDay(); if (_adow !== 0 && _adow !== 6) weekdayTotalAll++; }
+    { const _ad = new Date(cd); const _aet = new Date(_ad.getTime() + etOff(_ad) * 3600000); const _ak = fmt(_aet);
+      byDayAll[_ak] = (byDayAll[_ak]||0) + 1;
+      const _adow = _aet.getUTCDay(); if (_adow !== 0 && _adow !== 6) weekdayTotalAll++;
+      // Split on the TRUE tier, before the webinar skip below — a webinar
+      // registrant still carries its brand's real traffic tier.
+      const _isWeekdayAll = (_adow !== 0 && _adow !== 6);
+      if (wt.includes('pre-launch')) { byDayPre[_ak] = (byDayPre[_ak]||0) + 1; preTotal++; if (_isWeekdayAll) weekdayPre++; }
+      else { byDayRegular[_ak] = (byDayRegular[_ak]||0) + 1; regularTotal++; if (_isWeekdayAll) weekdayRegular++;
+        // RAW properties, not the _us/_um pair below -- those are 'Not set'-normalised,
+        // which would make every untagged contact look tagged.
+        const _rs = (c.properties?.utm_source || '').trim(), _rm = (c.properties?.utm_medium || '').trim();
+        if (mapUtmToChannel(_rs, _rm)) { regularPaid++; byDayRegularPaid[_ak] = (byDayRegularPaid[_ak]||0) + 1; }
+        else if (_rs || _rm) regularOrganicTagged++;
+        else regularUntagged++; } }
     if (isVerySmall) continue;
     const d = new Date(cd);
     const o = etOff(d);
@@ -1449,7 +1730,17 @@ function processScheduledContacts(contacts) {
     }
   }
   return {
-    total: dailyTotal, byDay, byDayScale, byDayScale10KPlus, byDayAll, byWebTraffic, byWebTrafficTrue,
+    total: dailyTotal, byDay, byDayScale, byDayScale10KPlus, byDayAll, byDayRegular, byDayPre,
+    regularTotal, preTotal, weekdayRegular, weekdayPre, byWebTraffic, byWebTrafficTrue,
+    regularPaid, regularOrganicTagged, regularUntagged, byDayRegularPaid,
+    // Acquisition mix, capped at 8 slices like the clinician equivalent.
+    utmSource: cappedCounts(byUtmS, 8), utmMedium: cappedCounts(byUtmM, 8), utmCampaign: cappedCounts(byUtmC, 8),
+    utmSourceRegular: cappedCounts(byUtmSReg, 8), utmMediumRegular: cappedCounts(byUtmMReg, 8),
+    utmCampaignRegular: cappedCounts(byUtmCReg, 8),
+    utmSourcePre: cappedCounts(byUtmSPre, 8), utmMediumPre: cappedCounts(byUtmMPre, 8),
+    utmCampaignPre: cappedCounts(byUtmCPre, 8),
+    utmTotalRegular, utmTotalPre,
+    utmTotal,
     lowTrafficCount, low10KCount, lowTrafficCompanies,
     // Weekday-only mirrors of total / low-tier counts, exposed so prior &
     // last-month deltas in the Weekday Avg tile are apples-to-apples (only
@@ -1493,13 +1784,21 @@ function processPipelineDeals(deals, winFromUTC, winToUTC, winFromET, winToET, l
   // every "excl. small brands" variant in this function.
   const SMALL_BRAND_TIERS = new Set(['Pre-launch / just launching','0-10K monthly web visitors','Very Small']);
   let totalExtended = 0, totalExtendedStrict = 0;
+  // Ids of the deals each metric counted. Used to dedupe the webinar-date deals
+  // folded in by applyWebinarDateDeals — without this, a deal with both a demo
+  // booked in the window and a webinar-date contact would be counted twice.
+  const extendedDealIds = new Set();
+  const supposedDealIds = new Set();
   for (const d of deals) {
     const ddb = d.properties?.date_demo_booked;
     const rmd = d.properties?.rescheduled_meeting_date;
     const eff = rmd || ddb;
     const effMs = dateMs(eff);
+    // Pre-launch brands are excluded from every Volume and Quality figure.
+    if ((d.properties?.average_monthly_web_traffic__cloned_ || '') === PRE_LAUNCH_TIER) continue;
     if (!isNaN(effMs)) {
       totalExtended++;
+      if (d.id) extendedDealIds.add(String(d.id));
       // "excl. small brands" variant — keyed off the deal-level cloned tier.
       if (!SMALL_BRAND_TIERS.has(d.properties?.average_monthly_web_traffic__cloned_ || '')) totalExtendedStrict++;
     }
@@ -1520,6 +1819,14 @@ function processPipelineDeals(deals, winFromUTC, winToUTC, winFromET, winToET, l
   // Very Small, matching True CPD/CPQD.
   let noShowStrictCount=0, cancelledStrictCount=0;
   let qualifiedRawCount=0, disqualifiedRawCount=0, notYetEvalCount=0;
+  // Held / no-show / cancelled with PRE-LAUNCH ONLY removed. Distinct from the
+  // *Strict counters below, which also drop 0-10K and Very Small.
+  let heldExPre=0, noShowExPre=0, cancelledExPre=0;
+  // Qualification RATE keeps its own outcome-based counts. Redefining a Qualified
+  // Demo as "held" (below) would otherwise fold disqualified-after-demo into the
+  // rate's numerator while leaving it in the denominator, which can only push the
+  // rate toward 100% and would stop measuring anything.
+  let qualOutcomeQualified=0;
   let qualifiedRawScaleCount=0;  // Qualified count excluding Pre-launch brands (denominator for Total True CPQD)
   let staleScheduledCount=0;  // Scheduled — pending with date_demo_booked in the past
   let cancelledBeforeDemoCount=0;  // Prune Rate numerator: demo_attendance_status = 'Cancelled before demo'
@@ -1560,8 +1867,16 @@ function processPipelineDeals(deals, winFromUTC, winToUTC, winFromET, winToET, l
     if (rawSt === 'Not Qualified after the demo' || (att && att.startsWith('Demo Given') && qo === 'Disqualified')) notQualCount++;
 
     // Raw attendance counts (new field model)
+    const _isPreLaunchDeal = (p.average_monthly_web_traffic__cloned_ || '') === PRE_LAUNCH_TIER;
+    if (!_isPreLaunchDeal) {
+      if (att === 'Demo Given (originally scheduled)' || att === 'Demo Given (rescheduled)') heldExPre++;
+      else if (att === 'No Show') noShowExPre++;
+      else if (att === 'Cancelled before demo') cancelledExPre++;
+    }
     if (att === 'Demo Given (originally scheduled)') demoGivenOrigCount++;
     else if (att === 'Demo Given (rescheduled)') demoGivenReschedCount++;
+    if (deal.id && (att === 'Demo Given (originally scheduled)' || att === 'Demo Given (rescheduled)'
+        || cat === 'noShow' || att === 'Cancelled before demo')) supposedDealIds.add(String(deal.id));
 
     // Pre-launch detection — used by both demo-given and qualified scale counts.
     // Match by dealname.toLowerCase() against the low-traffic company set (joined to scheduled
@@ -1636,32 +1951,54 @@ function processPipelineDeals(deals, winFromUTC, winToUTC, winFromET, winToET, l
       if (att === 'Cancelled before demo') cancelledBeforeDemoCountTight++;
     }
 
-    // Raw qualification outcome counts
-    if (qo === 'Qualified') {
+    // A QUALIFIED DEMO is a demo that was HELD, excluding pre-launch brands
+    // (Alex, 2026-10-01). The qualification OUTCOME no longer gates it: a demo
+    // that happened and was then disqualified still happened, as does one not yet
+    // evaluated. What still does not count is anything never held — no-shows and
+    // cancelled-before-demo.
+    //
+    // Pre-launch is excluded by the definition itself, so the headline count and
+    // the old "scale" count are now the same number; both are kept because
+    // several consumers read one or the other.
+    if (demoDidHappen(att, rawSt) && !_isPreLaunchDeal) {
       qualifiedRawCount++;
-      if (!isLow) qualifiedRawScaleCount++;  // Total True CPQD denominator
+      qualifiedRawScaleCount++;
     }
-    else if (qo === 'Disqualified') disqualifiedRawCount++;
-    else if (qo === 'Not yet evaluated') notYetEvalCount++;
+    // Outcome tallies, for the rate only — same population as the count above,
+    // or the Qualification rate compares two different sets of demos.
+    if (!_isPreLaunchDeal) {
+      if (qo === 'Qualified') qualOutcomeQualified++;
+      else if (qo === 'Disqualified') disqualifiedRawCount++;
+      else if (qo === 'Not yet evaluated') notYetEvalCount++;
+    }
 
     // Per-rep
     if (!byRep[ownerId]) { byRep[ownerId] = { total:0 }; for (const c of FUNNEL_ORDER) byRep[ownerId][c] = 0; }
+    // QUALIFIED DEMO, new definition: the demo was HELD, excluding pre-launch.
+    // Tallied separately from `cat` because the categoriser's buckets must keep
+    // PARTITIONING the population — a held-then-disqualified demo is both a
+    // Qualified Demo and 'pruned', so folding the new rule into `cat` would make
+    // the funnel breakdown sum to more than its own total.
+    const isQualDemo = demoDidHappen(att, rawSt) && !_isPreLaunchDeal;
     byRep[ownerId].total++; byRep[ownerId][cat]++;
+    byRep[ownerId].qualDemo = (byRep[ownerId].qualDemo||0) + (isQualDemo?1:0);
 
     // Per-channel via UTM
     const ch = mapUtmToChannel(p.utm_source, p.utm_medium) || 'unattributed';
-    if (byChannel[ch]) { byChannel[ch][cat]++; byChannel[ch].total++; }
+    if (byChannel[ch]) { byChannel[ch][cat]++; byChannel[ch].total++;
+      byChannel[ch].qualDemo = (byChannel[ch].qualDemo||0) + (isQualDemo?1:0); }
 
     // Stage attribution
     const stage = detectFunnelStage(p.utm_source, p.utm_medium, p.utm_campaign);
     byStage[stage][cat]++;
+    byStage[stage].qualDemo = (byStage[stage].qualDemo||0) + (isQualDemo?1:0);
     byStage[stage].total++;
 
     // Daily chart — bucket by EFFECTIVE demo date so rescheduled demos plot
     // on the day they actually happen, not the original booked day.
     const _dailyEff = p.rescheduled_meeting_date || p.date_demo_booked;
     const ds = _dailyEff ? _dailyEff.substring(0,10) : null;
-    if (ds) { if (!byDay[ds]) byDay[ds] = { deals:0, qualified:0 }; byDay[ds].deals++; if (cat==='qualified') byDay[ds].qualified++; }
+    if (ds) { if (!byDay[ds]) byDay[ds] = { deals:0, qualified:0 }; byDay[ds].deals++; if (isQualDemo) byDay[ds].qualified++; }
   }
 
   // Guide formulas — REDEFINED per new dual-field model
@@ -1680,10 +2017,12 @@ function processPipelineDeals(deals, winFromUTC, winToUTC, winFromET, winToET, l
   // (Was briefly switched to Qualified ÷ Demos Held — reverted per user spec
   // so the rate isn't depressed by demos whose qual outcome is still
   // "Not yet evaluated".)
-  const qualRateDenom = qualifiedRawCount + disqualifiedRawCount;
+  // Rate stays on the outcome fields: of the demos actually evaluated, what share
+  // were judged qualified. Independent of the held-based count above.
+  const qualRateDenom = qualOutcomeQualified + disqualifiedRawCount;
   const qualRateDenomLegacy = qualRateDenom; // kept as alias for downstream readers
   const disqualificationRate = qualRateDenom > 0 ? (disqualifiedRawCount / qualRateDenom) * 100 : 0;
-  const qualificationRate = qualRateDenom > 0 ? (qualifiedRawCount / qualRateDenom) * 100 : 0;
+  const qualificationRate = qualRateDenom > 0 ? (qualOutcomeQualified / qualRateDenom) * 100 : 0;
 
   // CANONICAL No Show Rate / Prune Rate — small brands (Pre-launch + 0-10K +
   // Very Small) EXCLUDED, matching True CPD/CPQD. Sourced from
@@ -1719,6 +2058,9 @@ function processPipelineDeals(deals, winFromUTC, winToUTC, winFromET, winToET, l
     // Strict (small-brand-excluded) numerators for the canonical rates.
     noShowStrictCount, cancelledStrictCount,
     qualifiedRawCount, disqualifiedRawCount, notYetEvalCount, qualifiedRawScaleCount,
+    heldExPre, noShowExPre, cancelledExPre,
+    extendedDealIds, supposedDealIds,
+    qualOutcomeQualified,
     staleScheduledCount, cancelledBeforeDemoCount, pruneDenom,
     cancelledBeforeDemoCountTight, pruneDenomTightSettled, pruneRateTight,
     demoShowRate, qualificationRate, disqualificationRate, noShowRate, noShowDenom, noShowRateScale, noShowDenomScale, pruneRate,
@@ -1734,6 +2076,16 @@ function processClosedWonDeals(deals) {
   let mrr=0, count=0;
   const byRep = {}, byChannel = {}, byStage = {};
   const cycleDays = [];
+  // Deals closed per Pacific day — the CAC denominator for the Weekly Cost
+  // chart. These deals are ALREADY window-filtered on closedate upstream
+  // (fetchClosedWonDeals), so bucketing by that same field keeps the chart's
+  // weeks consistent with the window that selected the rows.
+  // closedate is blank on a minority of won deals; those cannot be placed on a
+  // timeline at all, so they are counted separately rather than dropped
+  // silently — a CAC week is wrong in a way nobody can see if its denominator
+  // quietly lost rows.
+  const byDay = {};
+  let noCloseDate = 0;
 
   for (const deal of deals) {
     const p = deal.properties||{};
@@ -1754,10 +2106,13 @@ function processClosedWonDeals(deals) {
 
     const closeMs = isoMs(p.closedate), createMs = isoMs(p.hs_createdate);
     if (!isNaN(closeMs) && !isNaN(createMs) && closeMs > createMs) cycleDays.push((closeMs-createMs)/(1000*60*60*24));
+
+    const _cwDay = ptDayKeyOf(p.closedate);
+    if (_cwDay) byDay[_cwDay] = (byDay[_cwDay]||0) + 1; else noCloseDate++;
   }
 
   const avgCycleDays = cycleDays.length > 0 ? cycleDays.reduce((a,b)=>a+b,0)/cycleDays.length : null;
-  return { mrr, count, byRep, byChannel, byStage, avgCycleDays };
+  return { mrr, count, byRep, byChannel, byStage, avgCycleDays, byDay, noCloseDate };
 }
 
 // ---------------------------------------------------------------------------
@@ -1861,33 +2216,153 @@ function attRates(held, noShow, cancelled) {
 // Pipeline "Clinician" (2486191840). Order verified against HubSpot; note the
 // non-obvious sequence — Form Submitted comes AFTER Meeting Happened/Signed Up.
 const CLINICIAN_PIPELINE_ID = '2486191840';
+// The Clinician Funnel and the All Clinicians table are HISTORY views: they
+// always reach back to this date regardless of the page's date filter, because
+// a funnel scoped to one month can't show a pipeline that takes months to walk.
+// Everything else on the page (Daily Activity, Composition, Ads, Weekly CPD)
+// stays on the page window — spend is window-scoped, so its denominators must be.
+const CLINICIAN_HISTORY_FROM = '2026-07-01';
+// Order here IS the funnel order the dashboard renders. Stage ids verified
+// against the live HubSpot `dealstage` property on 2026-08-24.
+// NOTE: HubSpot's enumeration happens to list Clinician Inquiry AFTER Signed Up;
+// it sits BEFORE it here because that is the actual funnel order.
 const CLINICIAN_STAGES = [
+  // Order here IS the combined ("Both") funnel's display order. The two flows'
+  // ENTRY stages are kept adjacent at the top -- Meeting Scheduled opens the demo
+  // path, Clinician Inquiry opens the virtual path -- so the combined view reads
+  // as "everyone enters here" rather than dropping the virtual entry point in
+  // between two demo-only stages. Safe to reorder: every consumer looks these up
+  // by id (see the note below).
   { id: '4128510704', label: 'Meeting Scheduled' },
+  { id: '4201261817', label: 'Clinician Inquiry' },
   { id: '4128510705', label: 'Meeting Happened' },
   { id: '4128510709', label: 'Signed Up' },
   { id: '4133870316', label: 'Form Submitted' },
   { id: '4133870317', label: 'Clinician Approved' },
   { id: '4135230193', label: 'Fully Onboarded' },
   { id: '4133870318', label: '1st Sample Shipped' },
-  // Added to the HubSpot pipeline after the original build. Appended here, so
-  // indices 0-6 (and the Fully Onboarded=5 references used by velocity and CAC)
-  // are unchanged.
   { id: '4164547317', label: '1st Review Submitted' },
   { id: '4164547318', label: '2nd Review Submitted' },
-  { id: '4164547319', label: '3rd Review Submitted' },
+  { id: '4164547319', label: '3rd+ Review Submitted' },   // matches HubSpot's own stage name
 ];
+// Referenced by id, never by array index. The previous code reached in as
+// CLINICIAN_STAGES[0] / [5], which meant inserting a stage anywhere before
+// Fully Onboarded silently repointed the velocity + CAC metrics at the wrong
+// stage — the old comment above the list existed only to work around that.
+const CLINICIAN_STAGE_MEETING_SCHEDULED = '4128510704';
+const CLINICIAN_STAGE_FULLY_ONBOARDED   = '4135230193';
+// Every stage referenced by NAME anywhere below. Rates used to index cnt[] by
+// position (cnt[7]/cnt[6] for the review rate, cnt[3] for close rate,
+// reached[5] for velocity), which silently repointed at the wrong stages the
+// moment Clinician Inquiry was inserted mid-list. Look them up by id instead.
+const CLS = {
+  MEETING_SCHEDULED: '4128510704', MEETING_HAPPENED: '4128510705',
+  CLINICIAN_INQUIRY: '4201261817', SIGNED_UP:        '4128510709',
+  FORM_SUBMITTED:    '4133870316', CLINICIAN_APPROVED:'4133870317',
+  FULLY_ONBOARDED:   '4135230193', SAMPLE_1:         '4133870318',
+  REVIEW_1:          '4164547317', REVIEW_2:         '4164547318',
+  REVIEW_3:          '4164547319',
+};
+// Two workflows share this one HubSpot pipeline, each walking a different
+// subset. A deal's own flow decides which stages it can legitimately be
+// credited with — see the `reached` logic below.
+const CLINICIAN_FLOWS = {
+  demo: {
+    label: 'Clinician Demo Flow',
+    stages: [CLS.MEETING_SCHEDULED, CLS.MEETING_HAPPENED, CLS.SIGNED_UP, CLS.FORM_SUBMITTED,
+             CLS.CLINICIAN_APPROVED, CLS.FULLY_ONBOARDED, CLS.SAMPLE_1,
+             CLS.REVIEW_1, CLS.REVIEW_2, CLS.REVIEW_3],
+    exits: ['4128854721', '4128510710'],   // No Show, Not a Fit
+  },
+  virtual: {
+    label: 'Virtual Clinician Onboarding',
+    // Confirmed by Alex 2026-09-08: the virtual path runs through Clinician
+    // Approved, NOT Form Submitted. Consequence worth knowing: a virtual deal is
+    // no longer credited with Form Submitted by monotonic inference, so it only
+    // counts toward Form Submitted if it carries a real stage-entry timestamp for
+    // it. That is what the Cost Per Signup denominator reads.
+    stages: [CLS.CLINICIAN_INQUIRY, CLS.CLINICIAN_APPROVED, CLS.FULLY_ONBOARDED, CLS.SAMPLE_1,
+             CLS.REVIEW_1, CLS.REVIEW_2, CLS.REVIEW_3],
+    exits: ['4128510710'],                 // Not a Fit only — no meeting to no-show
+  },
+  // ASSUMED SEQUENCE — still unconfirmed. It NO LONGER mirrors Virtual: Virtual
+  // was corrected to run through Clinician Approved (2026-09-08) and this one was
+  // deliberately left alone, because correcting one unconfirmed path from a
+  // different path's correction is a guess, not a fix. So Field still carries
+  // Form Submitted. Confirm the real Field Rep path and swap the array below.
+  field: {
+    label: 'Field Rep Signup',
+    stages: [CLS.CLINICIAN_INQUIRY, CLS.FORM_SUBMITTED, CLS.FULLY_ONBOARDED, CLS.SAMPLE_1,
+             CLS.REVIEW_1, CLS.REVIEW_2, CLS.REVIEW_3],
+    exits: ['4128510710'],
+  },
+};
+// HubSpot `clinician_workflow` option value → flow key. Option values verified
+// against the live property on 2026-08-24 (value === label for all three).
+const CLINICIAN_WORKFLOW_MAP = {
+  'virtual signup':  'virtual',
+  'onboarding demo': 'demo',
+  'field rep':       'field',
+};
+// Short label for the All Clinicians table pill.
+const CLINICIAN_FLOW_SHORT = { demo: 'Demo', virtual: 'Virtual', field: 'Field' };
+// The `clinician_workflow` deal property is authoritative. Deals created before
+// it existed have it blank, so those fall back to the old inference: ever
+// entered Clinician Inquiry → Virtual, else Demo. An unrecognised value also
+// falls through rather than inventing a fourth flow.
+function clinicianFlowOf(p) {
+  const raw = (p.clinician_workflow || '').trim().toLowerCase();
+  const mapped = CLINICIAN_WORKFLOW_MAP[raw];
+  if (mapped) return mapped;
+  return clnEnteredAt(p, CLS.CLINICIAN_INQUIRY) ? 'virtual' : 'demo';
+}
 const CLINICIAN_STAGE_NO_SHOW = '4128854721';
 const CLINICIAN_STAGE_NOT_A_FIT = '4128510710';
 const CLINICIAN_ALL_STAGE_IDS = CLINICIAN_STAGES.map(x => x.id).concat([CLINICIAN_STAGE_NO_SHOW, CLINICIAN_STAGE_NOT_A_FIT]);
-// hs_date_entered_<stageId> is auto-maintained by HubSpot, so it gives a true
-// "ever reached this stage" signal (and stage timestamps for velocity) rather
-// than a current-stage snapshot, which would undercount anyone further along.
-const CLINICIAN_ENTERED_PROPS = CLINICIAN_ALL_STAGE_IDS.map(id => 'hs_date_entered_' + id);
+// Stage-entry timestamps give a true "ever reached this stage" signal (and the
+// stamps velocity needs) rather than a current-stage snapshot.
+//
+// THE PROPERTY IS `hs_v2_date_entered_<stageId>`, NOT `hs_date_entered_<stageId>`.
+// This file used the un-prefixed name everywhere and it DOES NOT EXIST in this
+// portal — verified against the live HubSpot property API, which returns it in
+// propertiesNotFound. Every read silently evaluated to undefined, so:
+//   • the funnel's "ever reached" fell back entirely on the positional backfill
+//   • velocity (tMS / tFO) was permanently NaN
+//   • anything reading a stage-entry date counted zero of everything
+// Three clinician stages have NO entry property at all: Meeting Scheduled (the
+// pipeline's first stage), No Show and Not a Fit. A deal is created straight
+// into Meeting Scheduled, so createdate is the honest stand-in there; the two
+// exit stages are genuinely undated and must not be faked.
+const CLN_NO_ENTERED_PROP = new Set([CLINICIAN_STAGE_MEETING_SCHEDULED, CLINICIAN_STAGE_NO_SHOW, CLINICIAN_STAGE_NOT_A_FIT]);
+function clnEnteredProp(stageId) {
+  return CLN_NO_ENTERED_PROP.has(stageId) ? null : 'hs_v2_date_entered_' + stageId;
+}
+// REAL STAMPS ONLY. This used to fall back to createdate for Meeting Scheduled.
+// Every deal has a createdate, so that fallback made the "off-path stages count
+// only when HubSpot stamped them" loop credit EVERY Virtual and Field deal with
+// Meeting Scheduled — a stage those flows never touch. It inflated the Meeting
+// Scheduled reached-count by the entire non-demo population, and that count is
+// the denominator of Show Rate, so Show Rate was reading too low.
+function clnEnteredAt(p, stageId) {
+  const prop = clnEnteredProp(stageId);
+  return prop ? (p[prop] || null) : null;
+}
+// A deal is CREATED into the first stage of its OWN flow, so createdate is
+// legitimate evidence for that one stage — but only along the path the deal
+// actually walks. Kept separate from clnEnteredAt so it can never be mistaken
+// for a universal stamp and leak onto another flow's stages.
+function clnPathStartAt(p, seqIds) {
+  return clnEnteredAt(p, seqIds[0]) || p.createdate || null;
+}
+const CLINICIAN_ENTERED_PROPS = CLINICIAN_ALL_STAGE_IDS.map(clnEnteredProp).filter(Boolean);
 const CLINICIAN_DEAL_PROPS = [
   'dealstage', 'pipeline', 'clinician_meeting_date', 'clinician_meeting_booked_date',
   'clinician_attendance_status', 'clinician_qualification_outcome', 'createdate',
   'dealname', 'hubspot_owner_id',
   'utm_source', 'utm_medium', 'utm_campaign',
+  // Which of the three workflows this deal belongs to. Authoritative — replaces
+  // inferring it from whether the deal ever entered Clinician Inquiry.
+  'clinician_workflow',
 ].concat(CLINICIAN_ENTERED_PROPS);
 const CLINICIAN_CONTACT_PROPS = [
   'firstname','lastname','email','phone','clinician_specialty','clinician_type',
@@ -1896,7 +2371,281 @@ const CLINICIAN_CONTACT_PROPS = [
   'which_samples_shipped','clinician_license_credential_files',
   'utm_source','utm_medium','utm_campaign',
   'medical_degree_status','samples_arrival_date','number_of_samples_shipped',
+  // Shipping address for Ready For Samples. The populated fields are `city` plus
+  // the CUSTOM `contact_state` and `zip_code` — HubSpot's standard `state` and
+  // `zip` are empty on every clinician checked, so do not swap these for them.
+  'city','contact_state','zip_code',
+  // "# Reviews Submitted" — a NUMBER on the contact (verified against the live
+  // HubSpot property), so a cohort total is a SUM of this, not a row count.
+  // It carries no date, so it can only ever be a running per-clinician total —
+  // it cannot be attributed to a time period. Anything period-scoped must come
+  // from the dated hs_v2_date_entered_<reviewStage> timestamps instead.
+  'reviews_submitted',
 ];
+
+// A "won" clinician is one who reached FULLY ONBOARDED — there is no closed-won
+// stage in the clinician pipeline and no revenue on the deal, so the brand-side
+// definition (dealstage = closedwon, attributed by UTM) counts nothing at all
+// for this channel. Confirmed by Alex 2026-09-17.
+//
+// Counted by STAGE-ENTRY timestamp, not current stage: a clinician who onboarded
+// in the window and has since moved on to 1st Sample Shipped still onboarded in
+// the window. hs_v2_date_entered_<id> is a datetime, so it filters on epoch ms.
+async function fetchClinicianOnboardedCount(token, from, to) {
+  if (!from || !to) return null;
+  return hsCount(token, 'deals', [{
+    filters: [
+      { propertyName: 'pipeline', operator: 'EQ', value: CLINICIAN_PIPELINE_ID },
+      { propertyName: 'hs_v2_date_entered_' + CLS.FULLY_ONBOARDED, operator: 'GTE', value: String(toMsET(from)) },
+      { propertyName: 'hs_v2_date_entered_' + CLS.FULLY_ONBOARDED, operator: 'LTE', value: String(toMsET(to, true)) },
+    ],
+  }]);
+}
+// Webinars that actually happened, for the Qualified Demo count.
+//
+// These deals carry NO date_demo_booked — they are webinar registrations, not
+// demo bookings — so fetchPipelineDeals never returns them and the demo loop
+// cannot see them. Hence a separate count rather than a flag inside that loop.
+//
+// Counted by STAGE-ENTRY stamp, not current stage: a webinar that happened and
+// then progressed to Closed Won has left the stage but still happened. "Moved to
+// Webinar Happened" is exactly what the entry stamp records.
+const WEBINAR_HAPPENED_STAGE = '3741686471';
+// Deal-side label for the pre-launch tier. Reading the deal's own property is
+// more reliable than the contact company-name matching used elsewhere, which
+// only sees pre-launch contacts created inside the same window.
+const PRE_LAUNCH_TIER = 'Pre-launch / just launching';
+async function fetchWebinarHeldCount(token, from, to) {
+  if (!token || !from || !to) return null;
+  return hsCount(token, 'deals', [{
+    filters: [
+      { propertyName: 'hs_v2_date_entered_' + WEBINAR_HAPPENED_STAGE, operator: 'GTE', value: String(toMsET(from)) },
+      { propertyName: 'hs_v2_date_entered_' + WEBINAR_HAPPENED_STAGE, operator: 'LTE', value: String(toMsET(to, true)) },
+    ],
+  }]);
+}
+// Deals whose ASSOCIATED CONTACT has a Webinar Date inside the window.
+//
+// There is no deal-side webinar date property in this portal (verified: six
+// semantic property searches against `deals` return zero webinar fields, while
+// the same search on `contacts` ranks webinar_date second), and HubSpot CRM
+// search cannot filter one object by an associated object's property. So this
+// has to resolve contacts -> deals through the association API, the same route
+// countAttendeesClosedWon takes.
+//
+// webinar_date is stored at midnight UTC, so the bounds use toMsUTC — NOT the ET
+// offset used for createdate. fetchWebinarRegistrants sets that precedent.
+// Only the "webinar ran in this window" group is used here: its second OR-group
+// (created in window + has ANY webinar_date) would pull in people registered for
+// a webinar outside the window, which is not what "Webinar Date in window" means.
+async function fetchWebinarDateDealIds(token, from, to) {
+  if (!token || !from || !to) return null;
+  const contacts = await hsSearch(token, 'contacts', [
+    { filters: [
+      { propertyName: 'webinar_date', operator: 'GTE', value: String(toMsUTC(from)) },
+      { propertyName: 'webinar_date', operator: 'LTE', value: String(toMsUTC(to, true)) },
+    ]},
+  ], ['webinar_date','webinar_has_attended','average_monthly_web_traffic'], 200, [{ propertyName: 'webinar_date', direction: 'DESCENDING' }], 50);
+  // Attendance for the Webinar No-Show Rate. Free — these are the same contacts
+  // the deal lookup already pages through. Anything other than an explicit
+  // 'true' counts as a no-show, so a blank (never reconciled) reads as no-show
+  // rather than silently shrinking the denominator.
+  const seen = new Map();
+  for (const c of (contacts || [])) {
+    if (!c || !c.id) continue;
+    // Pre-launch is excluded from every Volume and Quality figure. Matched on
+    // the contact's own tier, lowercased, because this field is free-text on
+    // contacts and the exact casing of the option has varied.
+    if (String(c.properties?.average_monthly_web_traffic || '').toLowerCase().includes('pre-launch')) continue;
+    seen.set(String(c.id), c);
+  }
+  let registrants = 0, attended = 0;
+  for (const c of seen.values()) {
+    registrants++;
+    if (String(c.properties?.webinar_has_attended || '').toLowerCase() === 'true') attended++;
+  }
+  const ids = [...seen.keys()];
+  if (!ids.length) return { dealIds: new Set(), contacts: 0, failed: 0, registrants: 0, attended: 0 };
+  // Batch reads cap at 100 inputs. Chunk and accumulate partial results rather
+  // than collapsing to zero on one bad batch — the failure mode that silently
+  // zeroed webinar Closed Won before.
+  const CHUNK = 100;
+  const dealIds = new Set();
+  let failed = 0;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const batch = ids.slice(i, i + CHUNK);
+    if (SUBREQ.exhausted) { failed += batch.length; continue; }
+    try {
+      SUBREQ.n++; SUBREQ.hubspot++;
+      const r = await fetch('https://api.hubapi.com/crm/v4/associations/contacts/deals/batch/read', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inputs: batch.map(id => ({ id })) }),
+      });
+      if (!r.ok) {
+        console.error('fetchWebinarDateDealIds assoc', r.status, (await r.text()).slice(0, 200));
+        failed += batch.length; continue;
+      }
+      const j = await r.json();
+      for (const row of (j.results || [])) {
+        for (const t of (row.to || [])) {
+          const did = String(t.toObjectId || '');
+          if (did) dealIds.add(did);
+        }
+      }
+    } catch (e) {
+      console.error('fetchWebinarDateDealIds assoc threw', e && e.message);
+      failed += batch.length;
+    }
+  }
+  // The deal metrics these feed only ever see filterActiveBrands(...) — Paused,
+  // Churned and Never Implemented deals are excluded from the pipeline before
+  // processPipelineDeals runs. Associations carry no such filter, so read
+  // brand_status and apply the SAME rule, or this adds back deals the metric
+  // deliberately drops and the two halves stop describing one population.
+  const active = new Set();
+  let dealsFailed = 0;
+  const resolved = [...dealIds];
+  for (let i = 0; i < resolved.length; i += CHUNK) {
+    const batch = resolved.slice(i, i + CHUNK);
+    if (SUBREQ.exhausted) { dealsFailed += batch.length; continue; }
+    try {
+      SUBREQ.n++; SUBREQ.hubspot++;
+      const r = await fetch('https://api.hubapi.com/crm/v3/objects/deals/batch/read', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inputs: batch.map(id => ({ id })), properties: ['brand_status','average_monthly_web_traffic__cloned_'] }),
+      });
+      if (!r.ok) {
+        console.error('fetchWebinarDateDealIds deals', r.status, (await r.text()).slice(0, 200));
+        dealsFailed += batch.length; continue;
+      }
+      const j = await r.json();
+      for (const dd of filterActiveBrands(j.results || [])) {
+        // Pre-launch is out of the Qualified Demo definition, so it is out of
+        // the population those demos come from as well.
+        if ((dd.properties?.average_monthly_web_traffic__cloned_ || '') === PRE_LAUNCH_TIER) continue;
+        active.add(String(dd.id));
+      }
+    } catch (e) {
+      console.error('fetchWebinarDateDealIds deals threw', e && e.message);
+      dealsFailed += batch.length;
+    }
+  }
+  if (failed || dealsFailed) {
+    console.warn(`fetchWebinarDateDealIds: PARTIAL — ${failed}/${ids.length} contact lookups and `
+      + `${dealsFailed}/${resolved.length} deal lookups failed; ${active.size} active of ${dealIds.size} resolved`);
+  }
+  return { dealIds: active, contacts: ids.length, resolved: dealIds.size, failed: failed + dealsFailed, registrants, attended };
+}
+
+// Folds webinar-date deals into "Demos to occur" and "Demos supposed to happen".
+// Both additions are DEDUPED against the deals the metric already counts, so a
+// deal that has a demo booked in the window AND an associated webinar-date
+// contact is counted once, not twice.
+function applyWebinarDateDeals(periodData, res) {
+  if (!periodData || !periodData.pipeline || !res || !res.dealIds) return;
+  const pl = periodData.pipeline;
+  const ext = pl.extendedDealIds instanceof Set ? pl.extendedDealIds : new Set();
+  const sup = pl.supposedDealIds instanceof Set ? pl.supposedDealIds : new Set();
+  let extraExt = 0, extraSup = 0;
+  for (const id of res.dealIds) {
+    if (!ext.has(id)) extraExt++;
+    if (!sup.has(id)) extraSup++;
+  }
+  pl.webinarDateDealCount = res.dealIds.size;
+  pl.webinarDateContacts = res.contacts || 0;
+  pl.webinarRegistrants = res.registrants || 0;
+  pl.webinarAttended = res.attended || 0;
+  pl.webinarNoShow = Math.max(0, (res.registrants || 0) - (res.attended || 0));
+  pl.webinarDateExtraExtended = extraExt;
+  pl.webinarDateExtraSupposed = extraSup;
+  pl.totalExtended = (pl.totalExtended || 0) + extraExt;
+}
+
+// Folds the webinar count into a period's Qualified Demo totals. Kept additive
+// and separate so webinarHeldCount stays legible on its own — a Qualified Demo
+// figure that silently mixes two populations is impossible to reconcile against
+// either source otherwise.
+function applyWebinarHeld(periodData, n) {
+  if (!periodData || !periodData.pipeline) return;
+  const pl = periodData.pipeline;
+  if (pl.qualifiedDemoOnlyCount == null) pl.qualifiedDemoOnlyCount = pl.qualifiedRawCount || 0;
+  if (n != null) {
+    pl.webinarHeldCount = n;
+    pl.qualifiedRawCount = (pl.qualifiedRawCount || 0) + n;
+    pl.qualifiedRawScaleCount = (pl.qualifiedRawScaleCount || 0) + n;
+  }
+  // Qualification rate follows the Qualified Demo definition, so a Webinar
+  // Happened lifts the rate the same way a held demo does. It ran on the
+  // outcome fields before (qualOutcomeQualified), which ignored webinars
+  // entirely and so never moved when the webinar count did. Recomputed HERE,
+  // after the fold, because the webinar total isn't known inside
+  // processPipelineDeals. Runs even when n is null so a failed webinar fetch
+  // still leaves the rate on the current definition rather than the old one.
+  const den = (pl.qualifiedRawCount || 0) + (pl.disqualifiedRawCount || 0);
+  pl.qualRateDenom = den;
+  pl.qualificationRate = den > 0 ? ((pl.qualifiedRawCount || 0) / den) * 100 : 0;
+  pl.disqualificationRate = den > 0 ? ((pl.disqualifiedRawCount || 0) / den) * 100 : 0;
+}
+
+// Clinician inquiries attributed to each ad campaign, for the Clinician Ad
+// Tables' Inquiries / CPI columns. Counts CONTACTS whose utm_campaign matches the
+// campaign name and who were created in the window — the same attribution the
+// Acquisition card's UTM Campaign pie uses, so the two agree.
+//
+// One count per campaign rather than paging every clinician contact and bucketing
+// client-side: each is a single subrequest that reads `total`, and the clinician
+// channel carries a handful of campaigns. Capped regardless so a portal with a
+// long campaign list cannot eat the subrequest budget.
+async function fetchClinicianInquiriesByCampaign(token, names, from, to) {
+  const out = {};
+  if (!token || !Array.isArray(names) || !names.length || !from || !to) return out;
+  const fMs = String(toMsET(from)), tMs = String(toMsET(to, true));
+  const wanted = names.filter(n => n && n !== '(no name)').slice(0, 15);
+  // Two at a time, not all at once. Firing one search per campaign in parallel
+  // is the quickest way to trip HubSpot's search rate limit, and a throttled
+  // count is indistinguishable from a real zero once it reaches the table.
+  for (let i = 0; i < wanted.length; i += 2) {
+    const batch = wanted.slice(i, i + 2);
+    const counts = await Promise.all(batch.map(n => hsCount(token, 'contacts', [{
+      filters: [
+        { propertyName: 'utm_campaign', operator: 'EQ', value: n },
+        { propertyName: 'createdate', operator: 'GTE', value: fMs },
+        { propertyName: 'createdate', operator: 'LTE', value: tMs },
+      ],
+    }])));
+    batch.forEach((n, k) => { if (counts[k] != null) out[n] = counts[k]; });
+  }
+  return out;
+}
+
+// Current + prior + prior-month in one go, so the Won column keeps its deltas.
+// Three cheap count calls; each degrades to null independently.
+async function fetchClinicianOnboardedCounts(token, current, prior, priorMonth) {
+  // Sequential for the same reason as the campaign counts: three concurrent
+  // searches is enough to get one of them throttled, and a throttled count
+  // silently suppresses the Won column's delta.
+  const cur = await fetchClinicianOnboardedCount(token, current && current.from, current && current.to);
+  const pri = prior ? await fetchClinicianOnboardedCount(token, prior.from, prior.to) : null;
+  const pm = priorMonth ? await fetchClinicianOnboardedCount(token, priorMonth.from, priorMonth.to) : null;
+  return { cur, prior: pri, pm };
+}
+// Overwrites the clinician channel's won counts on a built response. Shared by
+// both endpoints so Channel Performance and the Ad KPI CAC card cannot drift
+// apart. Leaves MRR/ARR alone: an onboarded clinician carries no revenue, and
+// inventing one would be worse than the blank the column already shows.
+function applyClinicianWon(channels, counts) {
+  const c = channels && channels.clinician;
+  if (!c || !counts) return;
+  if (counts.cur != null) c.closedWon = counts.cur;
+  if (counts.prior != null) c.priorClosedWon = counts.prior;
+  // The two endpoints spell the prior-month key differently (pmClosedWon in the
+  // analyzer, priorMonthClosedWon in the Detailed Dashboard payload). Setting
+  // both is cheaper than making this helper care which caller it has.
+  if (counts.pm != null) { c.pmClosedWon = counts.pm; c.priorMonthClosedWon = counts.pm; }
+  c.wonBasis = 'Reached Fully Onboarded in this window';
+}
 
 // Deals in the Clinician pipeline created within the window. Cohorting on
 // createdate (not clinician_meeting_date) means a deal is counted from the
@@ -1934,8 +2683,16 @@ async function fetchClinicianContacts(token, dealIds) {
       const j = await r.json();
       for (const row of (j.results || [])) {
         const did = row.from && row.from.id; if (!did) continue;
-        const first = (row.to || [])[0];
-        if (first && first.toObjectId) { dealToContact[did] = String(first.toObjectId); contactIds.add(String(first.toObjectId)); }
+        // Keep EVERY associated contact, not just the first. A clinician with a
+        // duplicate contact record (two HubSpot contacts for one person, both
+        // associated to the same deal) was silently resolved to whichever came
+        // back first — and if that was the stale duplicate, every field read off
+        // the contact was blank. Real case: Saswatha Anireddy had
+        // saswatha@hotmail.com (6 reviews) and saswatha.anireddy1@gmail.com
+        // (none) on one deal; the empty one won, so Total Reviews Submitted read
+        // 103 from 21 clinicians instead of 109 from 22.
+        const ids = (row.to || []).map(x => x && x.toObjectId).filter(Boolean).map(String);
+        if (ids.length) { dealToContact[did] = ids; ids.forEach(id => contactIds.add(id)); }
       }
     } catch (e) { console.error('clinician assoc threw', e.message); }
   }
@@ -1952,7 +2709,34 @@ async function fetchClinicianContacts(token, dealIds) {
       for (const c of (j.results || [])) byContact[String(c.id)] = Object.assign({ __cid: String(c.id) }, c.properties || {});
     } catch (e) { console.error('clinician contacts threw', e.message); }
   }
-  for (const did in dealToContact) { const cp = byContact[dealToContact[did]]; if (cp) out[did] = cp; }
+  // Merge a deal's contacts into one record. Duplicates are partial in different
+  // places, so take the first non-empty value per field; reviews_submitted takes
+  // the MAX rather than a sum, because two records for the SAME person are not
+  // two people's reviews. __cid stays the first id so the per-clinician dedupe
+  // downstream still resolves two deals for one person to one clinician.
+  const NUMERIC_MAX = ['reviews_submitted'];
+  for (const did in dealToContact) {
+    const recs = dealToContact[did].map(id => byContact[id]).filter(Boolean);
+    if (!recs.length) continue;
+    if (recs.length === 1) { out[did] = recs[0]; continue; }
+    const merged = Object.assign({}, recs[0]);
+    merged.__cid = recs[0].__cid;
+    merged.__mergedFrom = recs.map(r => r.__cid);
+    for (const r of recs.slice(1)) {
+      for (const k in r) {
+        if (k === '__cid' || k === '__mergedFrom') continue;
+        if (NUMERIC_MAX.indexOf(k) >= 0) {
+          const a = parseFloat(merged[k]), b = parseFloat(r[k]);
+          const best = Math.max(isNaN(a) ? -Infinity : a, isNaN(b) ? -Infinity : b);
+          if (best > -Infinity) merged[k] = String(best);
+          continue;
+        }
+        if (merged[k] == null || merged[k] === '') merged[k] = r[k];
+      }
+    }
+    console.log(`clinician contacts: deal ${did} has ${recs.length} associated contacts (${merged.__mergedFrom.join(', ')}) — merged`);
+    out[did] = merged;
+  }
   return out;
 }
 
@@ -1987,17 +2771,25 @@ function buildClinicianDaily(deals, contactsByDeal, from, to) {
     const d = new Date(cur + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + 1);
     cur = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
   }
-  // Counts CONTACTS, not deals, bucketed on the contact's own createdate.
-  // Deduped by contact id — one clinician with two deals is one person.
+  // Counts DEALS, bucketed on the DEAL's own createdate.
+  // Deliberately NOT deduped by contact, and NOT gated on having an associated
+  // contact. The funnel counts deals (one funnel row = one deal), and CPS / CAC
+  // read their denominators straight off it, so a contact-deduped Daily Activity
+  // made CPD the only cost card on the page measured in a different unit.
+  // Two consequences of bucketing on the DEAL date rather than the contact's:
+  //   * a deal whose contact was created in an earlier month is no longer thrown
+  //     out as `outside` -- it belongs to the window its DEAL was created in;
+  //   * a deal with no associated contact is now counted instead of dropped.
+  // `contacts` still reports the unique-person count so it stays visible.
   let total = 0, noDate = 0, noContact = 0, outside = 0;
   const seen = new Set();
   for (const deal of deals) {
+    const p = deal.properties || {};
     const cp = contactsByDeal[deal.id];
-    if (!cp) { noContact++; continue; }
-    const cid = cp.__cid || ('deal:' + deal.id);
-    if (seen.has(cid)) continue;
-    seen.add(cid);
-    const k = dayKey(cp.createdate);
+    // Tracked for the footnote, no longer a reason to skip the deal.
+    if (!cp) noContact++;
+    else seen.add(cp.__cid || ('deal:' + deal.id));
+    const k = dayKey(p.createdate);
     if (!k) { noDate++; continue; }
     if (k < from || k > to) { outside++; continue; }
     byDay[k] = (byDay[k] || 0) + 1;
@@ -2021,8 +2813,15 @@ function buildClinicianDaily(deals, contactsByDeal, from, to) {
 // rows the rest of the dashboard uses, filtered to Meta rows whose campaign name
 // marks them as Clinician Targeting — the identical predicate that splits the
 // channel elsewhere, so this can't drift from Channel Performance.
+// funnelAll and cliniciansAdded are RETAINED but no longer drive the two cost
+// cards (2026-09-24). Both denominators used to be whole-population counts —
+// every clinician deal created, and everyone who ever reached Fully Onboarded —
+// while the numerator was only the clinician CAMPAIGNS' spend. That divided paid
+// spend by an all-source denominator and understated both costs by however much
+// arrived organically. They are still passed so the card can show what share of
+// the population the paid campaigns actually account for.
 function buildClinicianAds(windsorRows, budgets, funnelAll, cliniciansAdded, rows, from, to) {
-  let spend = 0;
+  let spend = 0, conversions = 0;
   const byDay = {};
   for (const r of (windsorRows || [])) {
     const ds = (r.datasource || '').toLowerCase();
@@ -2030,15 +2829,31 @@ function buildClinicianAds(windsorRows, budgets, funnelAll, cliniciansAdded, row
     if (!isClinicianCampaign(r.campaign_name)) continue;
     const v = parseFloat(r.spend) || 0;
     spend += v;
+    // Conversions the clinician campaigns actually reported, summed across BOTH
+    // CAPI eras (see CLINICIAN_CONV_FIELDS) — the same number the Conversions
+    // column totals in the Clinician Ad Tables.
+    conversions += clinicianConvCount(r);
     const k = String(r.date || '').slice(0, 10);
     if (k) byDay[k] = (byDay[k] || 0) + v;
   }
+  // Inquiries ATTRIBUTED to those campaigns: clinicians in this window whose
+  // utm_campaign is one of them. Same matcher that decides which Windsor spend
+  // counts as clinician spend, so numerator and denominator describe one set.
+  let inquiriesAttr = 0;
+  for (const row of (rows || [])) {
+    if (isClinicianCampaign(row && row.utmCampaign)) inquiriesAttr++;
+  }
   const budget = (budgets && budgets.clinician) || 0;
-  // "True" denominator: qualified AND the meeting actually happened.
-  const qualGiven = (rows || []).filter(r =>
-    /^qualified$/i.test(r.qual || '') && /demo given/i.test(r.att || '')
-  ).length;
-  const fo = (funnelAll && funnelAll[5] && funnelAll[5].reachedCount) || 0;
+  // True CPD and Cost Per Signup were retired 2026-09-08. Their denominators went
+  // with them: qualGiven (qualified AND demo actually given) and signups
+  // (_reachedOf FORM_SUBMITTED). Dropping CPS also retires a metric that had gone
+  // structurally wrong -- Form Submitted left the virtual path, so the clinician
+  // campaign's own signups had stopped landing in its denominator.
+  const _reachedOf = (stageId) => {
+    const row = (funnelAll || []).find(x => x && x.id === stageId);
+    return (row && row.reachedCount) || 0;
+  };
+  const fo = _reachedOf(CLS.FULLY_ONBOARDED);
   const div = (n, d) => (d > 0 ? n / d : null);
   // Cumulative spend as a % of budget, one point per day — the sparkline series.
   let paceSeries = null;
@@ -2055,10 +2870,176 @@ function buildClinicianAds(windsorRows, budgets, funnelAll, cliniciansAdded, row
   return {
     spend, budget, paceSeries,
     pacePct: budget > 0 ? (spend / budget) * 100 : null,
-    cpd: div(spend, cliniciansAdded), cpdDenom: cliniciansAdded,
-    trueCpd: div(spend, qualGiven), trueCpdDenom: qualGiven,
-    cac: div(spend, fo), cacDenom: fo,
+    // Cost Per Inquiry: clinician ad spend ÷ clinician DEALS created. Renamed from
+    // CPD because that is what the denominator has always been -- a created deal is
+    // an inquiry, not a demo -- so the old name described a number it never computed.
+    // Cost Per Inquiry: clinician ad spend ÷ inquiries ATTRIBUTED to the clinician
+    // campaigns. cpiDenomAll carries the whole-window clinician count so the card
+    // can show the attributed share rather than implying every clinician was paid.
+    cpi: div(spend, inquiriesAttr), cpiDenom: inquiriesAttr, cpiDenomAll: cliniciansAdded,
+    // Cost per Full Submission: clinician ad spend ÷ conversions those campaigns
+    // reported. Fully Onboarded is kept alongside as the old basis, since it is a
+    // pipeline milestone rather than an ad-reported conversion and the two will
+    // not agree.
+    cac: div(spend, conversions), cacDenom: conversions, cacDenomOnboarded: fo,
   };
+}
+
+// ── Weekly cost series for the Clinician "Weekly CPD" chart ────────────────
+// Five metrics on one timeline: Ad Spend, CPD, True CPD, CPS and CAC.
+//
+// The Ads KPI cards divide the WINDOW's total spend by an EVER-REACHED cohort
+// count. That is the right shape for a single headline number but wrong for a
+// time series: "ever reached" has no date, so every week would get the same
+// denominator. Here each week's denominator is instead the count of that event
+// DATED INTO that week, using HubSpot's own hs_v2_date_entered_<stage> stamps —
+// which is what makes the lines move. Consequence worth knowing: summing the
+// weekly points will not exactly reproduce the KPI cards above, because the
+// cards count a cohort and these count dated events.
+function buildClinicianWeekly(deals, windsorRows, from, to) {
+  const monOf = (ds) => {
+    if (!ds) return null;
+    const p2 = ds.split('-');
+    const d = new Date(Date.UTC(+p2[0], +p2[1] - 1, +p2[2]));
+    if (isNaN(d)) return null;
+    const dow = d.getUTCDay();
+    d.setUTCDate(d.getUTCDate() - (dow === 0 ? 6 : dow - 1));   // ISO: week starts Monday
+    return fmt(d);
+  };
+  const wk = {};
+  const bump = (dayKey, field, n) => {
+    const m = monOf(dayKey);
+    if (!m) return;
+    if (!wk[m]) wk[m] = { wk: m, spend: 0, added: 0, onboarded: 0 };
+    wk[m][field] += (n == null ? 1 : n);
+  };
+
+  // Spend — same clinician-campaign filter buildClinicianAds uses.
+  for (const r of (windsorRows || [])) {
+    const ds = (r.datasource || '').toLowerCase();
+    if (!/facebook|meta|fb|ig|instagram/.test(ds)) continue;
+    if (!isClinicianCampaign(r.campaign_name)) continue;
+    const k = String(r.date || '').slice(0, 10);
+    if (k) bump(k, 'spend', parseFloat(r.spend) || 0);
+  }
+
+  // Denominators. `added` is DEAL-based on the DEAL's createdate, matching
+  // buildClinicianDaily and the funnel. It was deduped by contact and dated off
+  // the CONTACT, which put this chart's CPD denominator in a different unit from
+  // the CPS / CAC plotted beside it on the same axes.
+  for (const d of (deals || [])) {
+    const p = d.properties || {};
+    bump(_clnDayKey(p.createdate), 'added');
+    // Stage entries carry real timestamps, so this can be attributed to a week.
+    // The qualGiven and signups accumulators went with True CPD and CPS.
+    bump(_clnDayKey(clnEnteredAt(p, CLS.FULLY_ONBOARDED)), 'onboarded');
+  }
+
+  const div = (n, dd) => (dd > 0 ? n / dd : null);
+  // Only weeks inside the selected window — a stage entry can predate the cohort's
+  // createdate range and would otherwise stretch the axis backwards for one point.
+  const fromMon = monOf(from);
+  return Object.keys(wk).sort()
+    .filter(m => (!fromMon || m >= fromMon) && (!to || m <= to))
+    .map(m => {
+      const w = wk[m];
+      return {
+        wk: m, spend: Math.round(w.spend * 100) / 100,
+        added: w.added, onboarded: w.onboarded,
+        cpi: div(w.spend, w.added), cac: div(w.spend, w.onboarded),
+      };
+    });
+}
+
+// Did the clinician submit the credentials form BEFORE their demo?
+//
+// Anchored on `clinician_meeting_date`, NOT the Meeting Happened stage stamp —
+// that stamp is blank on ~19 of every 20 recent deals because reps move straight
+// to Form Submitted and skip the stage, so it is unusable as an anchor.
+//
+// Both sides are reduced to a PACIFIC calendar day before comparing. That
+// matters: the Form Submitted stamp is a UTC timestamp, so a submission at
+// 2026-09-01T00:21Z is really Aug 31 5:21pm Pacific — the naive UTC comparison
+// against a Sep 1 meeting says "Same Day" where Pacific correctly says "Before".
+// Pacific is what every other date boundary in this file uses.
+//
+// Known limitation, accepted deliberately: `clinician_meeting_date` is mutable
+// and holds the CURRENT scheduled date. A rescheduled demo therefore reads
+// "Before" even though the clinician did not submit early. Per Alex there is no
+// separate Rescheduled pill, so those land in Before.
+//
+// `meetingStarts` (optional) is the list of hs_meeting_start_time values on the
+// deal's associated meetings. When one of them falls on the same calendar day as
+// the demo, the comparison switches from day-level to TIMESTAMP-level and Same
+// Day resolves to a real answer. A form submitted DURING the call counts as
+// After — the question is whether it arrived before the demo, and 20:52 into a
+// 20:30 meeting did not. Same Day therefore survives only as the fallback for
+// deals with no meeting record at all.
+function clinicianFormVsDemo(p, meetingStarts) {
+  const fRaw = clnEnteredAt(p, CLS.FORM_SUBMITTED);
+  const f = _clnDayKey(fRaw);
+  const m = _clnDayKey(p.clinician_meeting_date);
+  if (!f || !m) return '';           // never reached Form Submitted, or no demo date
+  if (f < m) return 'Before';
+  if (f > m) return 'After';
+  const toMs = (v) => { if (!v) return NaN; return /^\d+$/.test(String(v)) ? parseInt(v) : new Date(v).getTime(); };
+  const onDay = (meetingStarts || []).filter(x => _clnDayKey(x) === m).map(toMs).filter(x => !isNaN(x));
+  if (onDay.length) {
+    const fMs = toMs(fRaw);
+    // Earliest meeting that day is the demo it was measured against.
+    if (!isNaN(fMs)) return fMs < Math.min.apply(null, onDay) ? 'Before' : 'After';
+  }
+  return 'Same Day';
+}
+
+// hs_meeting_start_time for the deals whose Form-vs-Demo is ambiguous at day
+// level. Deliberately fetched for ONLY those deals: it is 2 subrequests per 100
+// ambiguous deals against a 50-per-invocation ceiling, and the unambiguous ones
+// gain nothing from a timestamp.
+async function fetchClinicianMeetingStarts(token, dealIds) {
+  const out = {};
+  if (!dealIds || !dealIds.length) return out;
+  const chunk = (arr, n) => { const o = []; for (let i = 0; i < arr.length; i += n) o.push(arr.slice(i, i + n)); return o; };
+  const dealToMeetings = {};
+  const meetingIds = new Set();
+  for (const batch of chunk(dealIds, 100)) {
+    try {
+      const r = await fetch('https://api.hubapi.com/crm/v4/associations/deals/meetings/batch/read', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inputs: batch.map(id => ({ id: String(id) })) }),
+      });
+      if (!r.ok) { console.error('clinician meeting assoc', r.status); continue; }
+      const j = await r.json();
+      for (const row of (j.results || [])) {
+        const did = row.from && row.from.id; if (!did) continue;
+        const ids = (row.to || []).map(x => x && x.toObjectId).filter(Boolean).map(String);
+        if (ids.length) { dealToMeetings[did] = ids; ids.forEach(id => meetingIds.add(id)); }
+      }
+    } catch (e) { console.error('clinician meeting assoc threw', e.message); }
+  }
+  const startById = {};
+  for (const batch of chunk(Array.from(meetingIds), 100)) {
+    try {
+      const r = await fetch('https://api.hubapi.com/crm/v3/objects/meetings/batch/read', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ properties: ['hs_meeting_start_time'], inputs: batch.map(id => ({ id })) }),
+      });
+      if (!r.ok) { console.error('clinician meetings', r.status); continue; }
+      const j = await r.json();
+      for (const mtg of (j.results || [])) {
+        const st = (mtg.properties || {}).hs_meeting_start_time;
+        if (st) startById[String(mtg.id)] = st;
+      }
+    } catch (e) { console.error('clinician meetings threw', e.message); }
+  }
+  for (const did in dealToMeetings) {
+    const starts = dealToMeetings[did].map(id => startById[id]).filter(Boolean);
+    if (starts.length) out[did] = starts;
+  }
+  console.log(`clinician meeting starts: resolved ${Object.keys(out).length} of ${dealIds.length} ambiguous deals`);
+  return out;
 }
 
 // Pacific calendar day for a HubSpot timestamp (same rule as Daily Activity).
@@ -2094,7 +3075,7 @@ async function fetchClinicianOwners(token) {
 
 // Flat row per deal for the All Clinicians table. Uses the RAW cohort (no
 // future-meeting exclusion) — a data table should list everything in the window.
-function buildClinicianTable(deals, contactsByDeal, ownerMap) {
+function buildClinicianTable(deals, contactsByDeal, ownerMap, meetingStarts) {
   const stageLabel = {};
   for (const st of CLINICIAN_STAGES) stageLabel[st.id] = st.label;
   stageLabel[CLINICIAN_STAGE_NO_SHOW] = 'No Show';
@@ -2108,7 +3089,19 @@ function buildClinicianTable(deals, contactsByDeal, ownerMap) {
       dealName: p.dealname || '(no name)',
       contactName: [c.firstname, c.lastname].filter(Boolean).join(' ').trim() || c.email || '',
       stage, stageLabel: stageLabel[stage] || stage || '\u2014',
+      // Workflow Type column. `workflow` is the raw HubSpot value (blank on
+      // older deals); workflowShort is the pill label the table renders.
+      workflow: (p.clinician_workflow || '').trim(),
+      workflowShort: CLINICIAN_FLOW_SHORT[clinicianFlowOf(p)] || '',
+      // Call Scheduled. One definition, two tables. 'na' for the Field Rep
+      // workflow: those clinicians are signed up in person, so there is no call
+      // to book and an absent date is not a gap. Semantic token, not a glyph —
+      // the tables decide how to draw it.
+      callScheduled: (CLINICIAN_FLOW_SHORT[clinicianFlowOf(p)] === 'Field')
+        ? 'na'
+        : ((p.clinician_meeting_booked_date || '').trim() ? 'yes' : 'no'),
       rep: ownerMap[String(p.hubspot_owner_id || '')] || '',
+      formVsDemo: clinicianFormVsDemo(p, (meetingStarts || {})[d.id]),
       createdate: p.createdate || '',
       bookedDate: p.clinician_meeting_booked_date || '',
       meetingDate: p.clinician_meeting_date || '',
@@ -2118,10 +3111,16 @@ function buildClinicianTable(deals, contactsByDeal, ownerMap) {
       npi: c.npi_number || '', message: c.message || '',
       referral: c.clinician_referral_source || '',
       photoStatus: c.photo_verification_status || '', credStatus: c.medical_degree_status || '',
-      address: c.address || '', proofLink: c.proof_link || '',
+      address: c.address || '', city: c.city || '',
+      state: c.contact_state || '', zip: c.zip_code || '',
+      proofLink: c.proof_link || '',
       samplePrefs: c.sample_preferences_notes || '',
       samplesArrival: c.samples_arrival_date || '', samplesTracking: c.samples_tracking_number || '',
       samplesCount: c.number_of_samples_shipped || '', whichSamples: c.which_samples_shipped || '',
+      // Blank stays blank: "never recorded" and "recorded as 0" are different
+      // states, and the renderer turns '' into an em-dash like every other
+      // contact-sourced column.
+      reviewsSubmitted: (c.reviews_submitted == null || c.reviews_submitted === '') ? '' : c.reviews_submitted,
       utmSource: c.utm_source || p.utm_source || '', utmMedium: c.utm_medium || p.utm_medium || '',
       utmCampaign: c.utm_campaign || p.utm_campaign || '',
     };
@@ -2132,6 +3131,12 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
   const seen = new Set();
   const byType = {}, bySpec = {};
   const byRef = {}, byUtmS = {}, byUtmM = {}, byUtmC = {};
+  // Same four tallies over the SUBSET that has a kickoff call booked. The
+  // Acquisition card toggles between them: "Inquiry" is everyone who arrived,
+  // "Full Submission" only those who got as far as scheduling a call. Kept as a
+  // parallel tally rather than a second pass so both come out of one loop.
+  const subRef = {}, subUtmS = {}, subUtmM = {}, subUtmC = {};
+  let subContacts = 0;
   const byCred = {}, byPhoto = {};
   let verifContacts = 0;   // contacts CREATED in the window (verification scope)
   let contacts = 0;
@@ -2161,6 +3166,16 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
     byUtmS[us] = (byUtmS[us] || 0) + 1;
     byUtmM[um] = (byUtmM[um] || 0) + 1;
     byUtmC[uc] = (byUtmC[uc] || 0) + 1;
+    // "Full Submission" = a kickoff call is on the books. clinician_meeting_booked_date
+    // is the booking field (NOT clinician_meeting_date, which is the meeting day);
+    // see the note on CLINICIAN_DEAL_PROPS for why those two are easy to confuse.
+    if ((dp.clinician_meeting_booked_date || '').trim()) {
+      subContacts++;
+      subRef[rs] = (subRef[rs] || 0) + 1;
+      subUtmS[us] = (subUtmS[us] || 0) + 1;
+      subUtmM[um] = (subUtmM[um] || 0) + 1;
+      subUtmC[uc] = (subUtmC[uc] || 0) + 1;
+    }
     // Verification: medical_degree_status is labelled "Credentials Status" in HubSpot.
     // Verification only applies once the meeting has actually happened — before
     // that there is nothing to verify, so Meeting Scheduled deals would pad the
@@ -2190,27 +3205,41 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
     const rank = (k) => { const i = STATUS_ORDER.indexOf(k); return i >= 0 ? i : (k === 'Not set' ? 99 : 50); };
     return keys.sort((a, b) => rank(a) - rank(b) || o[b] - o[a]).map(label => ({ label, count: o[label] }));
   };
+  // The rolled-up remainder CARRIES its rows. Previously the tail was summed and
+  // thrown away, so "Other (8 more)" was a dead end — the eight were unknowable
+  // from the payload. Keeping them on the bucket lets the client expand it
+  // without a second request, and costs only the rows that already existed.
   const capped = (o, max) => {
     const l = toList(o);
     if (l.length <= max) return l;
     const head = l.slice(0, max - 1);
     const tail = l.slice(max - 1);
     const rest = tail.reduce((n, x) => n + x.count, 0);
-    head.push({ label: `Other (${tail.length} more)`, count: rest });
+    head.push({ label: `Other (${tail.length} more)`, count: rest, children: tail });
     return head;
   };
   return {
     contacts, verifContacts,
-    type: toList(byType), specialty: toList(bySpec),
-    referral: toList(byRef),
+    // Capped at 9 = CLINICIAN_PIE_COLORS.length, so the client's i%9 can never
+    // wrap. clinician_specialty has 12 options in HubSpot; the overflow rolls
+    // into the expandable Other bucket rather than reusing colour 0.
+    type: capped(byType, 9), specialty: capped(bySpec, 9),
+    referral: capped(byRef, 9),
     // Fixed review order rather than by size, so the two charts stay comparable
     // and a status doesn't jump position as counts change.
     credentials: statusList(byCred), photoVerification: statusList(byPhoto),
     utmSource: capped(byUtmS, 8), utmMedium: capped(byUtmM, 8), utmCampaign: capped(byUtmC, 8),
+    // Acquisition card, "Full Submission" mode: the same breakdowns over
+    // clinicians who have a kickoff call booked.
+    submission: {
+      contacts: subContacts,
+      referral: capped(subRef, 9),
+      utmSource: capped(subUtmS, 8), utmMedium: capped(subUtmM, 8), utmCampaign: capped(subUtmC, 8),
+    },
   };
 }
 
-function buildClinicianFunnel(deals, contactsByDeal) {
+function buildClinicianFunnel(deals, contactsByDeal, meetingStarts) {
   const _ms = (v) => { if (!v) return NaN; return /^\d+$/.test(String(v)) ? parseInt(v) : new Date(v).getTime(); };
   // A deal "reached" a stage if HubSpot stamped its entered-date; fall back to
   // the current stage's position so deals predating stage tracking still count.
@@ -2230,94 +3259,398 @@ function buildClinicianFunnel(deals, contactsByDeal) {
   }).map(d => {
     const p = d.properties || {};
     const cur = (p.dealstage || '').trim();
-    const curIdx = CLINICIAN_STAGES.findIndex(x => x.id === cur);
-    const reached = CLINICIAN_STAGES.map((st, i) => !!p['hs_date_entered_' + st.id] || (curIdx >= 0 && curIdx >= i));
+    // "Ever reached" per stage id.
+    //
+    // These stages are STRICTLY SEQUENTIAL — a clinician cannot submit a 2nd
+    // review without having submitted a 1st, cannot submit a 1st without a
+    // sample shipped, and cannot be shipped a sample without being fully
+    // onboarded. Nobody skips. So "reached" is the monotonic closure of the
+    // furthest point on the deal's own flow path we can demonstrate: take the
+    // highest index evidenced by EITHER the current stage OR any stage HubSpot
+    // stamped, then credit everything at or below it.
+    //
+    // The old version closed over the CURRENT stage only, which left two holes:
+    //   • a deal now sitting in an exit stage (No Show / Not a Fit) has no
+    //     position on the path at all, so it got no backfill and counted only
+    //     for whatever stamps happened to exist
+    //   • a deal stamped at 3rd+ Review but missing its 2nd Review stamp (stage
+    //     jumps from imports and automation do this) counted for 3rd+ and not
+    //     2nd — a funnel that widens as it descends
+    //
+    // The closure runs over the deal's OWN flow sequence, never the full stage
+    // list: a Virtual Onboarding deal at Fully Onboarded must not be credited
+    // with Meeting Scheduled / Meeting Happened / Signed Up / Clinician
+    // Approved, which are not on its path. Off-path stages count only when
+    // HubSpot actually stamped them, and never drag the closure with them.
+    const flow = clinicianFlowOf(p);
+    const seqIds = CLINICIAN_FLOWS[flow].stages;
+    const posInSeq = seqIds.indexOf(cur);
+    // Seed at 0: the deal was created into its own flow's first stage, so it has
+    // entered at least that. (Meeting Scheduled, Clinician Inquiry and the two
+    // exit stages carry no hs_v2_date_entered_* property at all, so there is no
+    // stamp to find for the demo path's opener.)
+    // Seed at 0 only when the current stage is one we can actually place: on the
+    // deal's own path, one of its exits, or blank. An UNRECOGNISED stage id (one
+    // added in HubSpot after this list was verified) is not evidence of anything,
+    // and seeding it would silently assert a stage the deal may never have walked
+    // — which matters most for the Field Rep flow, whose sequence is still ASSUMED.
+    const _curKnown = !cur || posInSeq >= 0
+      || (CLINICIAN_FLOWS[flow].exits || []).indexOf(cur) >= 0
+      || CLINICIAN_ALL_STAGE_IDS.indexOf(cur) >= 0;
+    let maxIdx = _curKnown ? Math.max(posInSeq, 0) : posInSeq;
+    seqIds.forEach((id, i) => { if (i > maxIdx && clnEnteredAt(p, id)) maxIdx = i; });
+    const reachedIds = new Set();
+    seqIds.forEach((id, i) => { if (i <= maxIdx) reachedIds.add(id); });
+    for (const st of CLINICIAN_STAGES) {
+      if (!seqIds.includes(st.id) && clnEnteredAt(p, st.id)) reachedIds.add(st.id);
+    }
+    // A deal is standing in its current stage, so it has by definition reached
+    // it. Without this the renderer's implicit invariant (reachedCount >= count)
+    // breaks for an OFF-PATH current stage: a Virtual or Field deal sitting in
+    // Meeting Scheduled is counted by curOf but never by cntOf — Meeting
+    // Scheduled is off its flow AND has no stamp property to find — so the bar
+    // rendered "0 reached · 3 here now" as an empty 2%-wide sliver. Exits are
+    // excluded: they are counted by current stage in their own list, and are
+    // not funnel stages.
+    if (cur && CLINICIAN_STAGES.some(st => st.id === cur)) reachedIds.add(cur);
     const cp = contactsByDeal[d.id] || {};
     return {
-      cur, reached,
+      cur, flow, reachedIds,
+      // Contact identity + review count travel with the row so seg() can total
+      // reviews for whatever flow/type slice the card is showing. HubSpot returns
+      // number properties as STRINGS ('3', not 3), so this must be parsed — a
+      // bare += would concatenate them.
+      cid: cp.__cid || ('deal:' + d.id),
+      hasContact: !!cp.__cid,
+      reviews: (function(){ const n = parseFloat(cp.reviews_submitted); return isNaN(n) ? 0 : n; })(),
+      fvd: clinicianFormVsDemo(p, (meetingStarts || {})[d.id]),
+      // Whether a call is actually on the books. Same property the All Clinicians
+      // "Call Scheduled" column reads, so the funnel stat and that column can
+      // never disagree about who has booked.
+      hasBookedCall: !!(p.clinician_meeting_booked_date || '').trim(),
       att: (p.clinician_attendance_status || '').trim(),
       qual: (p.clinician_qualification_outcome || '').trim(),
       type: (cp.clinician_type || '').trim(),
-      // Velocity endpoints. hs_date_entered_* is HubSpot's stage-entry stamp;
+      // Velocity endpoints. hs_v2_date_entered_* is HubSpot's stage-entry stamp;
       // fall back to the meeting date / createdate for deals that predate stage
       // tracking, otherwise velocity silently reports nothing.
-      tMS: (function(){ const a=_ms(p['hs_date_entered_' + CLINICIAN_STAGES[0].id]); if(!isNaN(a))return a;
+      tMS: (function(){ const a=_ms(clnPathStartAt(p, seqIds)); if(!isNaN(a))return a;
                         const b=_ms(p.clinician_meeting_date); if(!isNaN(b))return b;
                         return _ms(p.createdate); })(),
-      tFO: _ms(p['hs_date_entered_' + CLINICIAN_STAGES[5].id]),
-      hasEnteredMS: !!p['hs_date_entered_' + CLINICIAN_STAGES[0].id],
-      hasEnteredFO: !!p['hs_date_entered_' + CLINICIAN_STAGES[5].id],
+      tFO: _ms(clnEnteredAt(p, CLINICIAN_STAGE_FULLY_ONBOARDED)),
+      // True when the start time is TRUSTWORTHY: a real stamp, or a first stage
+      // that has no stamp property at all (where createdate IS the canonical
+      // evidence). Using clnPathStartAt here made this always true — createdate
+      // is set on every deal — which silently collapsed velocityStamped into
+      // hasEnteredFO and stopped it flagging deals with a missing start.
+      hasEnteredMS: !!clnEnteredAt(p, seqIds[0]) || !clnEnteredProp(seqIds[0]),
+      hasEnteredFO: !!clnEnteredAt(p, CLINICIAN_STAGE_FULLY_ONBOARDED),
     };
   });
 
-  const seg = (pred) => {
-    const rs = rows.filter(pred);
+  // flowKey: 'both' (every deal, full stage list) | 'demo' | 'virtual'.
+  // For a single flow the row set is narrowed to that flow AND the stage list
+  // becomes that flow's own sequence, so its conversion rates are computed over
+  // a path deals actually walk. Every count is looked up by stage id — never by
+  // array position — so inserting a stage can't silently repoint a rate.
+  const seg = (pred, flowKey) => {
+    flowKey = flowKey || 'both';
+    const stageList = flowKey === 'both'
+      ? CLINICIAN_STAGES.slice()
+      : CLINICIAN_FLOWS[flowKey].stages.map(id => CLINICIAN_STAGES.find(x => x.id === id)).filter(Boolean);
+    const rs = rows.filter(r => pred(r) && (flowKey === 'both' || r.flow === flowKey));
+    // Total Reviews Submitted for this slice. Deduped by contact id — one
+    // clinician holding two deals is one person, and fetchClinicianContacts maps
+    // both deals to the SAME contact record, so an undeduped sum would double
+    // their reviews. Same idiom as buildClinicianDaily / buildClinicianComposition.
+    // NOTE: reviews_submitted is a LIFETIME running total on the contact with no
+    // timestamp, so this is a lifetime figure for the cohort — it is NOT scoped
+    // to the selected window and cannot be, from this property.
+    let reviewsTotal = 0, reviewsContacts = 0, reviewsNoContact = 0;
+    {
+      const seenCid = new Set();
+      for (const r of rs) {
+        if (seenCid.has(r.cid)) continue;
+        seenCid.add(r.cid);
+        if (!r.hasContact) { reviewsNoContact++; continue; }
+        if (r.reviews > 0) { reviewsTotal += r.reviews; reviewsContacts++; }
+      }
+    }
+    const has = (id) => stageList.some(st => st.id === id);
     // Funnel bars show deals CURRENTLY in each stage (per Alex).
-    const cntCur = CLINICIAN_STAGES.map(st => rs.filter(r => r.cur === st.id).length);
+    const curOf = (id) => rs.filter(r => r.cur === id).length;
     // Rates stay on "ever reached" — a current-stage denominator would exclude
     // everyone who already progressed, making show/close rates read far too low.
-    const cnt = CLINICIAN_STAGES.map((st, i) => rs.filter(r => r.reached[i]).length);
+    const cntOf = (id) => rs.filter(r => r.reachedIds.has(id)).length;
     // No Show excludes anyone whose attendance was Rescheduled (they were
     // re-booked, not a no-show).
     const isCancelled = (r) => /cancelled before demo/i.test(r.att);
-    const noShow = rs.filter(r => r.cur === CLINICIAN_STAGE_NO_SHOW && !/rescheduled/i.test(r.att)).length;
-    const notAFit = rs.filter(r => r.cur === CLINICIAN_STAGE_NOT_A_FIT).length;
+    // Every meeting-based rate must draw its numerator and denominator from the
+    // SAME population. In the combined ('both') view `rs` spans all three flows,
+    // but ONLY the demo flow walks meeting stages — so counting a numerator
+    // across every flow over a demo-only denominator produced readings like
+    // "Close Rate 467.6% · 159 / 34". Restrict these to the rows that actually
+    // walk meetings; the funnel bars and the exits list keep the full `rs`.
+    const rsMeet = rs.filter(r => {
+      const f = CLINICIAN_FLOWS[r.flow];
+      return !!f && f.stages.indexOf(CLS.MEETING_HAPPENED) >= 0;
+    });
+    const cntIn = (rows, id) => rows.filter(r => r.reachedIds.has(id)).length;
+    const noShow = rsMeet.filter(r => r.cur === CLINICIAN_STAGE_NO_SHOW && !/rescheduled/i.test(r.att)).length;
+    const notAFit = rsMeet.filter(r => r.cur === CLINICIAN_STAGE_NOT_A_FIT).length;
     // Disqualifications exclude anyone cancelled before the demo — they were
     // pruned, never assessed, so counting them as disqualified overstates it.
-    const notAFitQual = rs.filter(r => r.cur === CLINICIAN_STAGE_NOT_A_FIT && !isCancelled(r)).length;
-    const cancelled = rs.filter(isCancelled).length;
+    const notAFitQual = rsMeet.filter(r => r.cur === CLINICIAN_STAGE_NOT_A_FIT && !isCancelled(r)).length;
+    const cancelled = rsMeet.filter(isCancelled).length;
+    const pct = (n, d) => (d > 0 ? (n / d) * 100 : null);
+    const mh = cntIn(rsMeet, CLS.MEETING_HAPPENED);
+    const msReached = cntIn(rsMeet, CLS.MEETING_SCHEDULED);
+    const fsMeet = cntIn(rsMeet, CLS.FORM_SUBMITTED);
+    // Form-before-demo. Denominator is the rows where the question is ANSWERABLE
+    // (a form stamp and a demo date both exist), not every row — otherwise the
+    // rate is diluted by deals that never submitted or have no demo booked, and
+    // it would read as a share of the whole cohort rather than of the comparable
+    // ones. Same rsMeet population as Show Rate, which it sits under.
+    const fvdAnswerable = rsMeet.filter(r => r.fvd === 'Before' || r.fvd === 'Same Day' || r.fvd === 'After').length;
+    const fvdBefore = rsMeet.filter(r => r.fvd === 'Before').length;
+    // Full mix for the Verification Funnel's pie. Same rsMeet rows as the stat
+    // above — DEAL-based and demo-flow — so the two figures now reconcile instead
+    // of quoting different denominators for the same metric. Fixed pipeline
+    // order, and empty slices dropped.
+    const _fvdTally = {};
+    for (const r of rsMeet) { const k = r.fvd || 'Not set'; _fvdTally[k] = (_fvdTally[k] || 0) + 1; }
+    // 'Not set' is deliberately NOT a slice. Those deals have no form stamp or no
+    // demo date, so they carry no before/after answer — showing them as a wedge
+    // made a third of the chart mean "we can't tell". Dropping it makes the pie
+    // exactly the comparable population, so its total now equals the Form
+    // Submitted Before Demo denominator and its Before slice equals that
+    // numerator. The excluded count is still tallied above if it is ever needed.
+    const fvdDist = ['Before', 'Same Day', 'After']
+      .map(label => ({ label, count: _fvdTally[label] || 0 }))
+      .filter(x => x.count > 0);
     // Two different "supposed to occur" sets, per spec:
     //   no-show  → reached Meeting Happened + No Show
     //   prune    → reached Meeting Happened + No Show + Not a Fit
-    // No Show uses the same excl-Rescheduled basis as the numerator so the rate
-    // isn't diluted by deals that were simply re-booked.
-    const supposedNS = cnt[1] + noShow;
-    const supposedPrune = cnt[1] + noShow + notAFit;
-    const pct = (n, d) => (d > 0 ? (n / d) * 100 : null);
+    const supposedNS = mh + noShow;
+    const supposedPrune = mh + noShow + notAFit;
     const vel = rs.filter(r => !isNaN(r.tMS) && !isNaN(r.tFO) && r.tFO >= r.tMS).map(r => (r.tFO - r.tMS) / 86400000);
+    // Meeting-based rates are meaningless for a flow with no meeting stages, so
+    // they report null rather than a number computed on a zero denominator.
+    const hasMeeting = has(CLS.MEETING_HAPPENED);
+    // "Stuck in Clinician Approved": of everyone who EVER reached Clinician
+    // Approved, how many are STILL sitting there instead of moving on. curOf is a
+    // current-stage snapshot and cntOf is ever-reached, so this is a stall rate,
+    // not a conversion rate -- it goes DOWN as the backlog clears, and a high
+    // number means work is piling up at approval.
+    // Gated on the flow actually containing the stage: it is in both the demo and
+    // virtual paths, so this reports for either, and null for a flow without it.
+    // "No Call Scheduled Yet": deals where a call IS expected but no
+    // clinician_meeting_booked_date exists yet.
+    // Field Rep signups are excluded from BOTH sides. No call is booked for that
+    // workflow, so counting them as "not yet scheduled" would be counting an
+    // absence that is by design -- the same reason the All Clinicians column
+    // renders them "Field Signup" instead of a red X. This matters most in the
+    // combined view, where field rows would otherwise inflate the rate.
+    // Expect this to read near 0% for the demo flow: those deals enter AT Meeting
+    // Scheduled, so a booked date is implicit. It is the VIRTUAL flow where the
+    // call is a separate step and this number is the real signal.
+    // VIRTUAL-FLOW ONLY (per Alex, 2026-09-08). Both of these describe problems
+    // specific to the virtual path -- a call that must be booked as its own step,
+    // and the approval queue ahead of onboarding -- so the POPULATION is scoped
+    // here rather than the render being gated. Consequences of doing it this way:
+    //   * on the Demo pill there are no virtual rows, so both report null and
+    //     render as an em-dash, which reads correctly as "not applicable";
+    //   * in the combined view they still report the virtual number, and the
+    //     client labels them "Virtual flow only" so that is not mistaken for the
+    //     whole population.
+    // Scoping to virtual also subsumes the old Field exclusion: a field row can
+    // never be virtual, so it cannot inflate either denominator.
+    const vRows = rs.filter(r => r.flow === 'virtual');
+    const vCur = (id) => vRows.filter(r => r.cur === id).length;
+    const vCnt = (id) => vRows.filter(r => r.reachedIds.has(id)).length;
+    const noCallYet = vRows.filter(r => !r.hasBookedCall).length;
+    const caReached = vCnt(CLS.CLINICIAN_APPROVED);
+    const caStuck = vCur(CLS.CLINICIAN_APPROVED);
+    const hasNoShowExit = flowKey === 'both' || CLINICIAN_FLOWS[flowKey].exits.indexOf(CLINICIAN_STAGE_NO_SHOW) >= 0;
+    const exitDefs = flowKey === 'both'
+      ? [{ label: 'No Show', id: CLINICIAN_STAGE_NO_SHOW }, { label: 'Not a Fit', id: CLINICIAN_STAGE_NOT_A_FIT }]
+      : CLINICIAN_FLOWS[flowKey].exits.map(id => ({ id, label: id === CLINICIAN_STAGE_NO_SHOW ? 'No Show' : 'Not a Fit' }));
     return {
       total: rs.length,
-      funnel: CLINICIAN_STAGES.map((st, i) => ({
-        id: st.id, label: st.label, count: cntCur[i], reachedCount: cnt[i],
-        // Conversion uses EVER-REACHED counts so it reads as a true funnel
-        // (monotonic, never >100%); the bar itself still shows current stage.
-        convToNext: i < CLINICIAN_STAGES.length - 1 ? pct(cnt[i + 1], cnt[i]) : null,
-        convNum: i < CLINICIAN_STAGES.length - 1 ? cnt[i + 1] : null, convDenom: cnt[i],
-      })),
-      exits: [
-        { label: 'No Show', count: rs.filter(r => r.cur === CLINICIAN_STAGE_NO_SHOW).length },
-        { label: 'Not a Fit', count: notAFit },
-      ],
+      flow: flowKey,
+      flowLabel: flowKey === 'both' ? 'Both Flows' : CLINICIAN_FLOWS[flowKey].label,
+      funnel: stageList.map((st, i) => {
+        const nextId = i < stageList.length - 1 ? stageList[i + 1].id : null;
+        return {
+          id: st.id, label: st.label, count: curOf(st.id), reachedCount: cntOf(st.id),
+          // Conversion uses EVER-REACHED counts so it reads as a true funnel; the
+          // bar itself still shows current stage.
+          //
+          // In the combined ('both') view the rendered list interleaves THREE
+          // different paths, so adjacent entries are often not consecutive for
+          // any actual deal — Clinician Inquiry (virtual-only) sits directly
+          // above Signed Up (demo-only), and dividing one population by the
+          // other produced pills reading 200%. A conversion is only meaningful
+          // among deals whose own flow walks BOTH stages, so that is the
+          // population it is computed over. For a single-flow view every row
+          // qualifies and this is identical to the old behaviour; in the
+          // combined view a pair no flow walks together has no denominator and
+          // honestly reports nothing rather than a fabricated percentage.
+          ...(function(){
+            if (!nextId) return { convToNext: null, convNum: null, convDenom: cntOf(st.id) };
+            const elig = rs.filter(r => {
+              const f = CLINICIAN_FLOWS[r.flow];
+              return !!f && f.stages.indexOf(st.id) >= 0 && f.stages.indexOf(nextId) >= 0;
+            });
+            const den = cntIn(elig, st.id), num = cntIn(elig, nextId);
+            return { convToNext: pct(num, den), convNum: num, convDenom: den };
+          })(),
+        };
+      }),
+      exits: exitDefs.map(e => ({ label: e.label, count: rs.filter(r => r.cur === e.id).length })),
       stats: {
         // Of clinicians who received samples, how many submitted their 1st review.
-        reviewRate: pct(cnt[7], cnt[6]),
-        reviewNum: cnt[7], reviewDenom: cnt[6],
-        showRate: pct(cnt[1], cnt[0]),                 // Meeting Scheduled → Meeting Happened
-        closeRate: pct(cnt[3], cnt[1]),                // Meeting Happened → Form Submitted
-        noShowRate: pct(noShow, supposedNS),           // ÷ meetings supposed to occur
-        disqualRate: pct(notAFitQual, cnt[1]),         // excl. cancelled-before-demo
-        pruneRate: pct(cancelled, supposedPrune),
+        reviewRate: pct(cntOf(CLS.REVIEW_1), cntOf(CLS.SAMPLE_1)),
+        reviewNum: cntOf(CLS.REVIEW_1), reviewDenom: cntOf(CLS.SAMPLE_1),
+        // Sum of the CONTACT property reviews_submitted across this slice.
+        // Deliberately NOT the same thing as reviewNum, which counts DEALS that
+        // ever reached the 1st Review Submitted stage — one clinician can submit
+        // several reviews, so this normally reads higher. The UI names the source
+        // so the two adjacent numbers don't look like a bug.
+        reviewsSubmittedTotal: reviewsTotal,
+        reviewsSubmittedContacts: reviewsContacts,
+        reviewsSubmittedNoContact: reviewsNoContact,
+        // pct() returns null on a zero denominator, so a segment with no virtual
+        // rows (the Demo pill) yields null without needing a separate gate.
+        noCallRate: pct(noCallYet, vRows.length),
+        noCallNum: noCallYet, noCallDenom: vRows.length,
+        stuckApprovedRate: pct(caStuck, caReached),
+        stuckApprovedNum: caStuck, stuckApprovedDenom: caReached,
+        showRate: hasMeeting ? pct(mh, msReached) : null,
+        formBeforeDemoRate: hasMeeting ? pct(fvdBefore, fvdAnswerable) : null,
+        formVsDemoDist: hasMeeting ? fvdDist : null,
+        formBeforeDemoNum: hasMeeting ? fvdBefore : null,
+        formBeforeDemoDenom: hasMeeting ? fvdAnswerable : null,
+        closeRate: hasMeeting ? pct(fsMeet, mh) : null,
+        noShowRate: hasNoShowExit ? pct(noShow, supposedNS) : null,
+        disqualRate: hasMeeting ? pct(notAFitQual, mh) : null,
+        pruneRate: hasMeeting ? pct(cancelled, supposedPrune) : null,
         velocityDays: vel.length ? vel.reduce((a, b) => a + b, 0) / vel.length : null,
         velocityN: vel.length,
         // Why velocity may be blank: how many deals ever reached Fully Onboarded
         // vs how many actually carry the stage timestamps it needs.
-        velocityFOReached: rs.filter(r => r.reached[5]).length,
+        velocityFOReached: rs.filter(r => r.reachedIds.has(CLS.FULLY_ONBOARDED)).length,
         velocityStamped: rs.filter(r => r.hasEnteredMS && r.hasEnteredFO).length,
-        noShowNum: noShow, noShowDenom: supposedNS,
-        disqualNum: notAFitQual, disqualDenom: cnt[1],
-        pruneNum: cancelled, pruneDenom: supposedPrune,
+        noShowNum: hasNoShowExit ? noShow : null, noShowDenom: hasNoShowExit ? supposedNS : null,
+        disqualNum: hasMeeting ? notAFitQual : null, disqualDenom: hasMeeting ? mh : null,
+        pruneNum: hasMeeting ? cancelled : null, pruneDenom: hasMeeting ? supposedPrune : null,
         notAFitAll: notAFit,
-        showNum: cnt[1], showDenom: cnt[0],
-        closeNum: cnt[3], closeDenom: cnt[1],
+        showNum: hasMeeting ? mh : null, showDenom: hasMeeting ? msReached : null,
+        closeNum: hasMeeting ? fsMeet : null, closeDenom: hasMeeting ? mh : null,
       },
     };
   };
-  const isMD = (t) => /^md\/do$/i.test(t);
+  // Accepts the legacy combined value AND the split ones. The onboarding form
+  // offers MD and DO separately, and clinician_type is being widened to match it
+  // (2026-09-11), so a signup writing 'MD' must still land in the MD/DO segment.
+  // Historical records hold 'MD/DO', so all three have to match.
+  const isMD = (t) => /^(md|do|md\/do)$/i.test((t || '').trim());
+  // Top level stays the combined view so existing consumers are unchanged;
+  // byFlow carries the same three type segments computed per workflow, which is
+  // what the funnel card's flow toggle reads.
+  const flowSegs = (fk) => ({
+    all: seg(() => true, fk),
+    mddo: seg(r => isMD(r.type), fk),
+    nonmddo: seg(r => !isMD(r.type), fk),
+  });
+  const flowCounts = {};
+  for (const k of Object.keys(CLINICIAN_FLOWS)) flowCounts[k] = rows.filter(r => r.flow === k).length;
+  // Onboarding conversion by ENTRY PATH — the one comparison the flow pills
+  // cannot make, because each pill scopes every stat to a single flow:
+  //   old (Demo)    enters at Meeting Scheduled
+  //   new (Virtual) enters at Clinician Inquiry
+  // Each rate divides Fully Onboarded by that flow's OWN entry stage, both
+  // ever-reached, so the two are like-for-like even though the flows walk stage
+  // sequences of different lengths (10 stages vs 7).
+  //
+  // Field Rep is reported SEPARATELY rather than folded into "came through
+  // Clinician Inquiry". It does enter at that same stage, but it is a different
+  // acquisition motion — a rep signing someone up in person, not inbound — so
+  // merging it would move the new-flow rate for reasons unrelated to the inbound
+  // funnel. Its own stage sequence is still the ASSUMED one (see CLINICIAN_FLOWS),
+  // which is a second reason not to blend it into a headline number.
+  const _fcPct = (n, d) => (d > 0 ? (n / d) * 100 : null);
+  const flowConv = (k) => {
+    const f = CLINICIAN_FLOWS[k];
+    if (!f) return null;
+    const entryId = f.stages[0];
+    const inFlow = rows.filter(r => r.flow === k);
+    const den = inFlow.filter(r => r.reachedIds.has(entryId)).length;
+    const num = inFlow.filter(r => r.reachedIds.has(CLS.FULLY_ONBOARDED)).length;
+    const entry = CLINICIAN_STAGES.find(x => x.id === entryId);
+    return {
+      key: k, label: f.label, short: CLINICIAN_FLOW_SHORT[k] || k,
+      entryLabel: (entry && entry.label) || '',
+      rate: _fcPct(num, den), num, den,
+      // Exposed so a gap between "deals in this flow" and "deals that reached its
+      // entry stage" is visible rather than quietly shrinking the denominator.
+      deals: inFlow.length,
+    };
+  };
+  const _fcOld = flowConv('demo'), _fcNew = flowConv('virtual');
+  // Field is intentionally NOT in the old-vs-new PAIR (removed 2026-09-08). It has
+  // its own segment under byFlow and its own pill on the funnel card; it just does
+  // not belong in a two-way read. flowConv stays generic so it can be added back
+  // with one key.
+  //
+  // The roll-up is the two INBOUND paths only — Demo + Virtual. Field Rep was
+  // dropped from it on 2026-09-15 (Alex), for the same reason it is not in the
+  // old-vs-new pair: a rep signing someone up in person is a different motion, and
+  // its stage sequence is still the ASSUMED one, so folding it into a headline
+  // rate moved that rate for reasons unrelated to the inbound funnel this strip
+  // compares. Field still has its own pill and its own byFlow segment.
+  //
+  // Summing each flow's own numerator and denominator is what makes the two
+  // comparable — they enter at different stages, so there is no single entry stage
+  // to divide by.
+  //
+  // INVARIANT, now that it is a true roll-up of exactly the two rates beside it:
+  // this rate must land between them (inclusive). If it ever falls outside that
+  // range, the parts and the whole disagree and something upstream is wrong.
+  const FC_ROLLUP_FLOWS = ['demo', 'virtual'];
+  const _fcAll = (function () {
+    let num = 0, den = 0, deals = 0;
+    for (const k of FC_ROLLUP_FLOWS) {
+      const c = flowConv(k);
+      if (!c) continue;
+      num += c.num; den += c.den; deals += c.deals;
+    }
+    return {
+      key: 'all', label: 'Demo + Virtual', short: 'Demo + Virtual',
+      entryLabel: "each flow's own entry stage",
+      rate: _fcPct(num, den), num, den, deals,
+    };
+  })();
+  const flowCompare = {
+    all: _fcAll, old: _fcOld, new: _fcNew,
+    deltaPp: (_fcOld && _fcNew && _fcOld.rate != null && _fcNew.rate != null)
+      ? _fcNew.rate - _fcOld.rate : null,
+  };
+  console.log(`Clinician flows: ${Object.keys(flowCounts).map(k => k + '=' + flowCounts[k]).join(' ')}`);
   return {
-    all: seg(() => true),
-    mddo: seg(r => isMD(r.type)),
-    nonmddo: seg(r => !isMD(r.type)),
-    rows: rows.map(r => ({ qual: r.qual, att: r.att, type: r.type })),
+    all: seg(() => true, 'both'),
+    mddo: seg(r => isMD(r.type), 'both'),
+    nonmddo: seg(r => !isMD(r.type), 'both'),
+    byFlow: Object.fromEntries(Object.keys(CLINICIAN_FLOWS).map(k => [k, flowSegs(k)])),
+    // Flow-invariant: computed from every row, not the selected segment.
+    flowCompare,
+    flowMeta: Object.fromEntries(Object.keys(CLINICIAN_FLOWS).map(k => [k, {
+      label: CLINICIAN_FLOWS[k].label,
+      short: CLINICIAN_FLOW_SHORT[k] || k,
+      count: flowCounts[k],
+      stageOrder: CLINICIAN_FLOWS[k].stages.map(id => (CLINICIAN_STAGES.find(x => x.id === id) || {}).label),
+    }])),
+    rows: rows.map(r => ({ qual: r.qual, att: r.att, type: r.type, flow: r.flow })),
     stageOrder: CLINICIAN_STAGES.map(x => x.label),
     contactsMatched: Object.keys(contactsByDeal).length,
     excludedFuture,
@@ -2602,7 +3935,7 @@ async function fetchAllQualifiedDeals(token) {
     filters: [
       { propertyName: 'demo_attendance_status', operator: 'IN', values: ['Demo Given (originally scheduled)', 'Demo Given (rescheduled)'] },
     ],
-  }], ['demo_given__status','demo_attendance_status','demo_qualification_outcome','dealstage','hubspot_owner_id','date_demo_booked','rescheduled_meeting_date'], 200,
+  }], ['demo_given__status','demo_attendance_status','demo_qualification_outcome','dealstage','hubspot_owner_id','date_demo_booked','rescheduled_meeting_date','average_monthly_web_traffic__cloned_'], 200,
   [{ propertyName: 'date_demo_booked', direction: 'DESCENDING' }], 20);
 }
 
@@ -2728,7 +4061,7 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
   // deal-level web traffic property. Falls back to demoGivenScaleCount if
   // the stricter counter isn't populated yet (pre-deploy compat).
   const demosHeldStrictCount = (c.pipeline.demoGivenStrictCount!=null ? c.pipeline.demoGivenStrictCount : demosHeldScaleCount);
-  const totalQualified = demosHeldCount;       // CPQD denominator → Demos Held
+  const totalQualified = c.pipeline.qualifiedRawCount || 0;   // CPQD denominator → canonical Qualified Demos
   const totalQualifiedScale = demosHeldStrictCount; // True CPQD denominator → Demos Held excl. small brands
   const cpdTotal = totalScheduled > 0 ? totalSpend/totalScheduled : null;
   const cpqdTotal = totalQualified > 0 ? totalSpend/totalQualified : null;
@@ -2738,14 +4071,15 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
   const pTotalWD = p.adSpend?.total?.windsorDemos||0;
   const pTotalSch = prior ? (p.scheduled?.total||0) : 0;
   const pTotalQ = prior ? (p.pipeline?.qualifiedCount||0) : 0;
-  // CPQD/True CPQD prior period denominators use Demos Held counts (orig + resched, no-show excluded)
-  const pTotalQual = prior ? ((p.pipeline?.demoGivenOrigCount||0) + (p.pipeline?.demoGivenReschedCount||0)) : 0;
+  // Prior denominators must match the current one or the deltas compare two
+  // different metrics. True CPQD keeps its own small-brand-excluded basis below.
+  const pTotalQual = prior ? (p.pipeline?.qualifiedRawCount||0) : 0;
   const pTotalQualScale = prior ? (p.pipeline?.demoGivenStrictCount!=null ? p.pipeline.demoGivenStrictCount : (p.pipeline?.demoGivenScaleCount||0)) : 0;
   const pmTotalS = pm.adSpend?.total?.spend||0;
   const pmTotalWD = pm.adSpend?.total?.windsorDemos||0;
   const pmTotalSch = priorMonth ? (pm.scheduled?.total||0) : 0;
   const pmTotalQ = priorMonth ? (pm.pipeline?.qualifiedCount||0) : 0;
-  const pmTotalQual = priorMonth ? ((pm.pipeline?.demoGivenOrigCount||0) + (pm.pipeline?.demoGivenReschedCount||0)) : 0;
+  const pmTotalQual = priorMonth ? (pm.pipeline?.qualifiedRawCount||0) : 0;
   const pmTotalQualScale = priorMonth ? (pm.pipeline?.demoGivenStrictCount!=null ? pm.pipeline.demoGivenStrictCount : (pm.pipeline?.demoGivenScaleCount||0)) : 0;
 
   const executiveSummary = {
@@ -2753,9 +4087,9 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
     totalCpd: buildTile(cpdTotal, prior&&pTotalSch>0?pTotalS/pTotalSch:null, priorMonth&&pmTotalSch>0?pmTotalS/pmTotalSch:null, 'Total Ad Spend ÷ New Demos Scheduled'),
     qualificationRate: buildTile(c.pipeline.qualificationRate, p.pipeline?.qualificationRate??null, pm.pipeline?.qualificationRate??null, 'Qualified ÷ (Qualified + Disqualified)'),
     disqualificationRate: buildTile(c.pipeline.disqualificationRate, p.pipeline?.disqualificationRate??null, pm.pipeline?.disqualificationRate??null, 'Disqualified ÷ (Qualified + Disqualified)'),
-    totalCpqd: buildTile(cpqdTotal, prior&&pTotalQual>0?pTotalS/pTotalQual:null, priorMonth&&pmTotalQual>0?pmTotalS/pmTotalQual:null, 'Total Ad Spend ÷ Demos Held (Demo Given orig + resched)'),
+    totalCpqd: buildTile(cpqdTotal, prior&&pTotalQual>0?pTotalS/pTotalQual:null, priorMonth&&pmTotalQual>0?pmTotalS/pmTotalQual:null, 'Total Ad Spend ÷ Qualified Demos (held excl. pre-launch + Webinar Happened)'),
     totalTrueCpqd: buildTile(trueCpqdTotal, prior&&pTotalQualScale>0?pTotalS/pTotalQualScale:null, priorMonth&&pmTotalQualScale>0?pmTotalS/pmTotalQualScale:null, 'Total Ad Spend ÷ Demos Held excl. small brands (Pre-launch + 0-10K)'),
-    totalQualifiedDemos: buildTile(c.pipeline.qualifiedRawCount||0, p.pipeline?.qualifiedRawCount??null, pm.pipeline?.qualifiedRawCount??null, 'Deals with demo_qualification_outcome = Qualified'),
+    totalQualifiedDemos: buildTile(c.pipeline.qualifiedRawCount||0, p.pipeline?.qualifiedRawCount??null, pm.pipeline?.qualifiedRawCount??null, 'Demos actually held (excl. pre-launch) plus webinars that reached Webinar Happened'),
     pruneRate: buildTile(c.pipeline.pruneRate||0, p.pipeline?.pruneRate??null, pm.pipeline?.pruneRate??null, 'Cancelled before demo ÷ (held + no-show + cancelled), excl. small brands (Pre-launch + 0-10K + Very Small)'),
     _meta: { totalSpend, totalWD, totalScheduled, totalQual, totalQualified, totalQualifiedScale, demosHeldCount, demosHeldScaleCount, demosHeldStrictCount, closedWonCount: c.closedWon.count, closedWonMRR: c.closedWon.mrr, pClosedWonCount: p.closedWon?.count??null, pClosedWonMRR: p.closedWon?.mrr??null, pmClosedWonCount: pm.closedWon?.count??null, pmClosedWonMRR: pm.closedWon?.mrr??null, pTotalSpend: pTotalS, pmTotalSpend: pmTotalS, pDemosHeldCount: prior?((p.pipeline?.demoGivenOrigCount||0)+(p.pipeline?.demoGivenReschedCount||0)):null, pmDemosHeldCount: priorMonth?((pm.pipeline?.demoGivenOrigCount||0)+(pm.pipeline?.demoGivenReschedCount||0)):null, pDemosHeldScaleCount: prior?(p.pipeline?.demoGivenScaleCount||0):null, pmDemosHeldScaleCount: priorMonth?(pm.pipeline?.demoGivenScaleCount||0):null },
   };
@@ -2818,7 +4152,11 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
   adSpend.total.priorWindsorDemos = p.adSpend?.total?.windsorDemos ?? null;
   const _manualCh = {};   // channel -> hand-entered conversion figures covering this window
   for (const ch of DASH_CHANNELS) {
-    const _mc = CHANNELS_NO_CONV.has(ch) ? manualConv(ch, c.window && c.window.from, c.window && c.window.to) : null;
+    // c.period, NOT c.window — buildPeriodData returns `period` and has no
+    // `window` key, so this read was undefined on every request and the window
+    // guard in manualConv never fired. The August figures were therefore applied
+    // to every window, including months they do not cover.
+    const _mc = CHANNELS_NO_CONV.has(ch) ? manualConv(ch, c.period && c.period.from, c.period && c.period.to) : null;
     if (_mc) _manualCh[ch] = _mc;
     adSpend.channels[ch] = {
       label: CHANNEL_LABELS[ch], spend: c.adSpend.channels[ch]?.spend||0,
@@ -2849,7 +4187,8 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
       priorMonthClosedWon: pm.closedWon?.byChannel?.[ch]?.count??null,
       priorMonthClosedWonMRR: pm.closedWon?.byChannel?.[ch]?.mrr??null,
       // Current-period outcomes
-      qualified: c.pipeline.byChannel[ch]?.qualified||0,
+      // The new definition (held, excl. pre-launch), not the categoriser bucket.
+      qualified: c.pipeline.byChannel[ch]?.qualDemo||0,
       closedWon: c.closedWon.byChannel[ch]?.count||0,
       closedWonMRR: c.closedWon.byChannel[ch]?.mrr||0,
     };
@@ -2875,6 +4214,30 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
       demoGivenReschedCount: c.pipeline.demoGivenReschedCount||0,
       qualifiedRawCount: c.pipeline.qualifiedRawCount||0,
       disqualifiedRawCount: c.pipeline.disqualifiedRawCount||0,
+      disqualifiedRawCountPrior: p.pipeline?.disqualifiedRawCount ?? null,
+      // Demos supposed to happen, pre-launch excluded.
+      heldExPre: c.pipeline.heldExPre||0,
+      heldExPrePrior: p.pipeline?.heldExPre ?? null,
+      heldExPreLastMonth: pm.pipeline?.heldExPre ?? null,
+      noShowExPre: c.pipeline.noShowExPre||0,
+      noShowExPrePrior: p.pipeline?.noShowExPre ?? null,
+      noShowExPreLastMonth: pm.pipeline?.noShowExPre ?? null,
+      cancelledExPre: c.pipeline.cancelledExPre||0,
+      cancelledExPrePrior: p.pipeline?.cancelledExPre ?? null,
+      cancelledExPreLastMonth: pm.pipeline?.cancelledExPre ?? null,
+      disqualifiedRawCountLastMonth: pm.pipeline?.disqualifiedRawCount ?? null,
+      // THE canonical Qualified Demo figure — held demos excluding pre-launch,
+      // plus webinars that reached Webinar Happened. Every section that shows
+      // "Qualified Demos" reads these three, so Marketing Funnel, Demo Insights,
+      // Efficiency and the Conversion Funnel cannot disagree. They previously
+      // each read demosHeldCount (held, ALL traffic, webinars excluded), which is
+      // why redefining the count alone moved nothing on screen.
+      qualDemoCount: c.pipeline.qualifiedRawCount||0,
+      qualDemoCountPrior: p.pipeline?.qualifiedRawCount ?? null,
+      qualDemoCountLastMonth: pm.pipeline?.qualifiedRawCount ?? null,
+      // Outcome-only tally, for the Qualification Rate's calc text. Kept apart so
+      // the rate's displayed "X ÷ Y" matches the rate it sits under.
+      qualOutcomeQualified: c.pipeline.qualOutcomeQualified||0,
       notYetEvalCount: c.pipeline.notYetEvalCount||0,
       noShowDenom: c.pipeline.noShowDenom||0,
       noShowDenomPrior: p.pipeline?.noShowDenom ?? null,
@@ -2890,6 +4253,29 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
       // Qualified demos EXCLUDING pre-launch — used by the Detailed Dashboard's
       // redefined "Qualified demos" card and "Qualification rate" card.
       qualifiedRawScaleCount: c.pipeline.qualifiedRawScaleCount||0,
+      // The webinar half of the Qualified Demo count, kept visible on its own so
+      // the figure can be reconciled against each source.
+      webinarHeldCount: c.pipeline.webinarHeldCount||0,
+      // Webinar-date deals folded into Demos to occur / supposed to happen.
+      // "Extra" = the ones not already counted by that metric.
+      webinarDateDealCount: c.pipeline.webinarDateDealCount||0,
+      // Quality panel: demo-only figures, webinars deliberately excluded.
+      qualDemoOnlyCount: c.pipeline.qualifiedDemoOnlyCount||0,
+      qualDemoOnlyCountPrior: p.pipeline?.qualifiedDemoOnlyCount ?? null,
+      qualDemoOnlyCountLastMonth: pm.pipeline?.qualifiedDemoOnlyCount ?? null,
+      // Webinar No-Show Rate, from the contact property webinar_has_attended.
+      webinarRegistrants: c.pipeline.webinarRegistrants||0,
+      webinarAttended: c.pipeline.webinarAttended||0,
+      webinarNoShow: c.pipeline.webinarNoShow||0,
+      webinarNoShowRate: (c.pipeline.webinarRegistrants||0) > 0
+        ? ((c.pipeline.webinarNoShow||0) / c.pipeline.webinarRegistrants) * 100 : null,
+      webinarNoShowRatePrior: (p.pipeline?.webinarRegistrants||0) > 0
+        ? ((p.pipeline.webinarNoShow||0) / p.pipeline.webinarRegistrants) * 100 : null,
+      webinarNoShowRateLastMonth: (pm.pipeline?.webinarRegistrants||0) > 0
+        ? ((pm.pipeline.webinarNoShow||0) / pm.pipeline.webinarRegistrants) * 100 : null,
+      webinarDateExtraSupposed: c.pipeline.webinarDateExtraSupposed||0,
+      webinarDateExtraSupposedPrior: p.pipeline?.webinarDateExtraSupposed ?? null,
+      webinarDateExtraSupposedLastMonth: pm.pipeline?.webinarDateExtraSupposed ?? null,
       qualifiedRawScaleCountPrior: p.pipeline?.qualifiedRawScaleCount ?? null,
       qualifiedRawScaleCountLastMonth: pm.pipeline?.qualifiedRawScaleCount ?? null,
       staleScheduledCount: c.pipeline.staleScheduledCount||0,
@@ -2933,12 +4319,56 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
     // Stricter daily series — excludes pre-launch AND 0-10K. Used by the
     // Irfan Dashboard "Demos Booked per Day" chart.
     scheduledByDayScale10KPlus: c.scheduled.byDayScale10KPlus,
+    // Regular / Pre-Launch daily series + their window totals. Both include
+    // webinars; they differ only on the brand's real web-traffic tier.
+    scheduledByDayRegular: c.scheduled.byDayRegular,
+    scheduledByDayPre: c.scheduled.byDayPre,
+    scheduledRegularTotal: c.scheduled.regularTotal,
+    scheduledPreTotal: c.scheduled.preTotal,
+    scheduledRegularTotalPrior: prior ? (p.scheduled?.regularTotal ?? null) : null,
+    scheduledPreTotalPrior: prior ? (p.scheduled?.preTotal ?? null) : null,
+    scheduledRegularPaid: c.scheduled.regularPaid,
+    scheduledRegularOrganicTagged: c.scheduled.regularOrganicTagged,
+    scheduledRegularUntagged: c.scheduled.regularUntagged,
+    scheduledByDayRegularPaid: c.scheduled.byDayRegularPaid,
+    scheduledRegularPaidPrior: prior ? (p.scheduled?.regularPaid ?? null) : null,
+    scheduledRegularPaidLastMonth: priorMonth ? (pm.scheduled?.regularPaid ?? null) : null,
+    scheduledRegularTotalLastMonth: priorMonth ? (pm.scheduled?.regularTotal ?? null) : null,
+    scheduledPreTotalLastMonth: priorMonth ? (pm.scheduled?.preTotal ?? null) : null,
+    // Weekday-only mirrors, so the Weekday Avg tile divides a weekday numerator
+    // by a weekday denominator on both sides of every comparison.
+    scheduledWeekdayRegular: c.scheduled.weekdayRegular,
+    scheduledWeekdayPre: c.scheduled.weekdayPre,
+    scheduledWeekdayRegularPrior: prior ? (p.scheduled?.weekdayRegular ?? null) : null,
+    scheduledWeekdayPrePrior: prior ? (p.scheduled?.weekdayPre ?? null) : null,
+    scheduledWeekdayRegularLastMonth: priorMonth ? (pm.scheduled?.weekdayRegular ?? null) : null,
+    scheduledWeekdayPreLastMonth: priorMonth ? (pm.scheduled?.weekdayPre ?? null) : null,
     // Daily total ad spend (all channels) — powers the Irfan "True CPD per Week"
     // chart (weekly spend ÷ weekly demos excl. small brands).
     spendByDay: c.adSpend.spendByDay || {},
+    // Deals closed-won per day — the CAC line on that same Weekly Cost chart.
+    // closedWonNoDate is the count that carries no closedate and therefore sits
+    // in no week; it is surfaced so the chart can say so instead of implying a
+    // complete denominator.
+    closedWonByDay: c.closedWon.byDay || {},
+    closedWonNoDate: c.closedWon.noCloseDate || 0,
     scheduledByWebTraffic: c.scheduled.byWebTraffic,
     scheduledByWebTrafficPrior: prior ? p.scheduled?.byWebTraffic || null : null,
     scheduledByWebTrafficLastMonth: priorMonth ? pm.scheduled?.byWebTraffic || null : null,
+    // Acquisition mix over the same population as scheduledByWebTrafficTrue —
+    // drives the Detailed Dashboard's "Demo Acquisition" donut.
+    scheduledUtmSource: c.scheduled.utmSource || [],
+    scheduledUtmMedium: c.scheduled.utmMedium || [],
+    scheduledUtmCampaign: c.scheduled.utmCampaign || [],
+    scheduledUtmTotal: c.scheduled.utmTotal || 0,
+    scheduledUtmSourceRegular: c.scheduled.utmSourceRegular || [],
+    scheduledUtmMediumRegular: c.scheduled.utmMediumRegular || [],
+    scheduledUtmCampaignRegular: c.scheduled.utmCampaignRegular || [],
+    scheduledUtmTotalRegular: c.scheduled.utmTotalRegular || 0,
+    scheduledUtmSourcePre: c.scheduled.utmSourcePre || [],
+    scheduledUtmMediumPre: c.scheduled.utmMediumPre || [],
+    scheduledUtmCampaignPre: c.scheduled.utmCampaignPre || [],
+    scheduledUtmTotalPre: c.scheduled.utmTotalPre || 0,
     // True-tier breakdown (webinar regs counted by their real web-traffic tier) — drives the pie.
     scheduledByWebTrafficTrue: c.scheduled.byWebTrafficTrue,
     scheduledByWebTrafficTruePrior: prior ? p.scheduled?.byWebTrafficTrue || null : null,
@@ -3082,6 +4512,23 @@ function buildPeriodData(period, windsorRows, linkedInDemos, ga4Rows, scheduledC
     total: scheduled.total, byDay: scheduled.byDay,
     byDayScale: scheduled.byDayScale, byDayScale10KPlus: scheduled.byDayScale10KPlus, byDayAll: scheduled.byDayAll,
     byWebTraffic: scheduled.byWebTraffic, byWebTrafficTrue: scheduled.byWebTrafficTrue,
+    byDayRegular: scheduled.byDayRegular, byDayPre: scheduled.byDayPre,
+    regularTotal: scheduled.regularTotal, preTotal: scheduled.preTotal,
+    regularPaid: scheduled.regularPaid, regularOrganicTagged: scheduled.regularOrganicTagged,
+    regularUntagged: scheduled.regularUntagged, byDayRegularPaid: scheduled.byDayRegularPaid,
+    weekdayRegular: scheduled.weekdayRegular, weekdayPre: scheduled.weekdayPre,
+    // Acquisition mix — buildResponse forwards these as scheduledUtm*. This
+    // object is an explicit allow-list (it exists to drop the non-serializable
+    // lowTrafficCompanies Set), so anything new added to
+    // processScheduledContacts' return has to be listed here too or it silently
+    // arrives undefined in buildResponse.
+    utmSource: scheduled.utmSource, utmMedium: scheduled.utmMedium,
+    utmSourceRegular: scheduled.utmSourceRegular, utmMediumRegular: scheduled.utmMediumRegular,
+    utmCampaignRegular: scheduled.utmCampaignRegular,
+    utmSourcePre: scheduled.utmSourcePre, utmMediumPre: scheduled.utmMediumPre,
+    utmCampaignPre: scheduled.utmCampaignPre,
+    utmTotalRegular: scheduled.utmTotalRegular, utmTotalPre: scheduled.utmTotalPre,
+    utmCampaign: scheduled.utmCampaign, utmTotal: scheduled.utmTotal,
     lowTrafficCount: scheduled.lowTrafficCount, low10KCount: scheduled.low10KCount,
     // Weekday-only mirrors — buildResponse forwards these as
     // scheduledWeekdayTotal{,Prior,LastMonth} so the Weekday Avg deltas
@@ -3143,7 +4590,23 @@ async function fetchMonthlyAdSpend(apiKey) {
   return { byMonth, byChannelMonth };
 }
 
-function buildMarketingFunnel(monthlySpendData, allQualified, allClosedWon) {
+// Deals that reached Webinar Happened, for the Marketing Funnel's per-month
+// Qualified Demos. The funnel used to count held demos only (all traffic, no
+// webinars), so its CPQD divided by a different population than the Efficiency
+// card — the two could never agree.
+async function fetchWebinarHappenedAllTime(token) {
+  const STAMP = 'hs_v2_date_entered_' + WEBINAR_HAPPENED_STAGE;
+  const rows = await hsSearch(token, 'deals', [{
+    filters: [{ propertyName: STAMP, operator: 'HAS_PROPERTY' }],
+  }], [STAMP, 'average_monthly_web_traffic__cloned_', 'brand_status', 'createdate'], 200,
+  [{ propertyName: 'createdate', direction: 'DESCENDING' }], 20);
+  // Say the count out loud. An empty result here is indistinguishable on screen
+  // from "no webinars happened", and that is precisely how this read zero.
+  console.log(`funnel webinars: ${(rows || []).length} deals with a ${STAMP} stamp`);
+  return rows;
+}
+
+function buildMarketingFunnel(monthlySpendData, allQualified, allClosedWon, allWebinarHappened) {
   const monthlySpend = monthlySpendData.byMonth || monthlySpendData;
   const channelSpend = monthlySpendData.byChannelMonth || {};
   const startYear = 2026, startMonth = 0; // Jan 2026
@@ -3162,12 +4625,28 @@ function buildMarketingFunnel(monthlySpendData, allQualified, allClosedWon) {
 
   // Bucket qualified deals by month of EFFECTIVE date (rescheduled if set, else date_demo_booked)
   // — same semantic as Demo Quality / Pre-Demo / Post-Demo tables.
+  // Qualified Demos, on the SAME definition the Efficiency card uses: demos held
+  // excluding pre-launch, plus deals that reached Webinar Happened. Previously
+  // this counted held demos at ALL traffic tiers and no webinars at all, so the
+  // funnel's CPQD divided spend by a population no other card reported.
   const qualByMonth = {};
   for (const deal of allQualified) {
     const p = deal.properties || {};
     const eff = p.rescheduled_meeting_date || p.date_demo_booked;
     if (!eff) continue;
+    if ((p.average_monthly_web_traffic__cloned_ || '') === PRE_LAUNCH_TIER) continue;
     const key = eff.substring(0, 7);
+    qualByMonth[key] = (qualByMonth[key] || 0) + 1;
+  }
+  const STAMP_MF = 'hs_v2_date_entered_' + WEBINAR_HAPPENED_STAGE;
+  for (const deal of (allWebinarHappened || [])) {
+    const p = deal.properties || {};
+    const st = p[STAMP_MF];
+    if (!st) continue;
+    if ((p.average_monthly_web_traffic__cloned_ || '') === PRE_LAUNCH_TIER) continue;
+    const key = String(st).length > 7 && String(st).includes('-')
+      ? String(st).substring(0, 7)
+      : new Date(Number(st) || st).toISOString().substring(0, 7);
     qualByMonth[key] = (qualByMonth[key] || 0) + 1;
   }
 
@@ -3225,7 +4704,29 @@ function buildMarketingFunnel(monthlySpendData, allQualified, allClosedWon) {
 // a deal array by date_demo_booked in [fromStr, toStr], excludes pre-launch
 // brands, and returns the Closed Won / Demos Held / Pending / Pruned / No
 // Show breakdown plus Avg Days to Close stats.
-function buildSpecial1Cohort(dealsArr, fromStr, toStr) {
+// Buckets won deals by web-traffic tier for one window. Deduped by deal id
+// because the two fetches (by closedate, by entered-won stamp) overlap heavily.
+function buildSignedTierCohort(rows, fromStr, toStr) {
+  const fromMs = toMsET(fromStr), toMs = toMsET(toStr, true);
+  const byId = new Map();
+  for (const r of (rows || [])) if (r && r.id) byId.set(String(r.id), r);
+  const byWebTraffic = {};
+  let total = 0, mrr = 0;
+  for (const d of byId.values()) {
+    const p = d.properties || {};
+    const cd = p.closedate;
+    if (!cd) continue;
+    const ms = isoMs(cd);
+    if (isNaN(ms) || ms < fromMs || ms > toMs) continue;
+    const key = p.average_monthly_web_traffic__cloned_ || p.average_monthly_web_traffic || '(none)';
+    byWebTraffic[key] = (byWebTraffic[key] || 0) + 1;
+    total++;
+    mrr += (parseFloat(p.amount) || 0);
+  }
+  return { byWebTraffic, total, mrr, fromDate: fromStr, toDate: toStr };
+}
+
+function buildSpecial1Cohort(dealsArr, fromStr, toStr, webinarHeld) {
   const STAGE_APPT = 'appointmentscheduled';
   const STAGE_DEMO_HAPPENED = '1084214349';
   const STAGE_DM = 'decisionmakerboughtin';
@@ -3242,6 +4743,11 @@ function buildSpecial1Cohort(dealsArr, fromStr, toStr) {
   const _parseDt = (v) => { if (!v) return NaN; return /^\d+$/.test(v) ? parseInt(v) : new Date(v).getTime(); };
   let allBooked = 0, cntWon = 0, cntAppt = 0, cntDemoHappened = 0, cntDM = 0, cntCS = 0;
   let cntNoShow = 0, cntNotAFit = 0, signedMrrSum = 0;
+  // Demos actually HELD, on the same attendance test as the rest of the
+  // dashboard. The dealstage sum below cannot stand in for it: a held demo
+  // that later moved to Closed Lost counts as held everywhere else and is
+  // invisible to a current-stage tally.
+  let cntHeld = 0;
   // Attendance-based counts for canonical % Pruned / % No-Show.
   const _att = { attHeld: 0, attNoShow: 0, attCancelled: 0 };
   let daysFromBookedSum = 0, daysFromBookedN = 0;
@@ -3254,6 +4760,7 @@ function buildSpecial1Cohort(dealsArr, fromStr, toStr) {
     if (isNaN(ddbMs) || ddbMs < fromMs || ddbMs > toMs) continue;
     const wt = (p.average_monthly_web_traffic__cloned_ || p.average_monthly_web_traffic || '').toLowerCase();
     if (wt.indexOf('pre-launch') >= 0) { prelaunchExcluded++; continue; }
+    if (demoDidHappen(p.demo_attendance_status, p.demo_given__status)) cntHeld++;
     allBooked++;
     // Canonical prune/no-show exclude small brands (0-10K / Very Small).
     if (!isSmallBrandWT(wt)) attBump(_att, (p.demo_attendance_status || '').trim());
@@ -3287,12 +4794,19 @@ function buildSpecial1Cohort(dealsArr, fromStr, toStr) {
     else if (stage === STAGE_NO_SHOW) cntNoShow++;
     else if (stage === STAGE_NOT_A_FIT) cntNotAFit++;
   }
-  const demosHeld = cntWon + cntAppt + cntDemoHappened + cntDM + cntCS;
+  // Attendance-based, plus the webinar fold — the canonical Qualified Demo
+  // rule (demos held excl. pre-launch + deals that reached Webinar Happened).
+  // Webinar deals carry no date_demo_booked, so they cannot arrive through the
+  // pipeline fetch above; an additive count is the only route, exactly as
+  // applyWebinarHeld does for the page figure.
+  const demosHeld = cntHeld + (webinarHeld || 0);
   const cntPending = cntAppt + cntDemoHappened + cntDM + cntCS;
   // Canonical % Pruned / % No-Show — attendance ÷ settled outcomes.
   const _ar = attRates(_att.attHeld, _att.attNoShow, _att.attCancelled);
   return {
     heldScale: demosHeld, signed: cntWon,
+    heldDemosOnly: cntHeld, webinarHeld: webinarHeld || 0,
+    stageSumLegacy: cntWon + cntAppt + cntDemoHappened + cntDM + cntCS,
     pctSigned: demosHeld > 0 ? (cntWon / demosHeld) * 100 : 0,
     allBooked,
     pctPending: demosHeld > 0 ? (cntPending / demosHeld) * 100 : 0,
@@ -3335,11 +4849,50 @@ async function processSpecial1Request(env) {
   // One fetch covers both: Last Month start → today.
   const deals = await fetchPipelineDeals(hsToken, _pcmFromStr, _mtdToStr);
   console.log(`Special1 dedicated: ${deals.length} deals fetched for ${_pcmFromStr}..${_mtdToStr}`);
-  const priorMonthHeldSigned = buildSpecial1Cohort(deals, _pcmFromStr, _pcmToStr);
-  const mtdHeldSigned        = buildSpecial1Cohort(deals, _mtdFromStr, _mtdToStr);
+  // Webinars that reached Webinar Happened in each window. They carry no
+  // date_demo_booked so they cannot arrive via fetchPipelineDeals; counted
+  // separately and folded in, exactly as applyWebinarHeld does for the page.
+  let _s1WbPcm = 0, _s1WbMtd = 0;
+  try {
+    const [a, b] = await Promise.all([
+      fetchWebinarHeldCount(hsToken, _pcmFromStr, _pcmToStr),
+      fetchWebinarHeldCount(hsToken, _mtdFromStr, _mtdToStr),
+    ]);
+    _s1WbPcm = a || 0; _s1WbMtd = b || 0;
+  } catch (e) { console.error('Special1 webinar counts failed:', e && e.message); }
+
+  // Signed brands by traffic tier for the SAME two windows, so one section
+  // toggle can drive both tiles. Each window fetched two ways (closedate and
+  // the entered-won stamp) and deduped, matching how the page builds its own.
+  let signedLastMonth = null, signedMtd = null, signedTierError = null;
+  try {
+    const [wPcmClose, wPcmEnter, wMtdClose, wMtdEnter] = await Promise.all([
+      fetchAnyWonDealsByCloseDate(hsToken, _pcmFromStr, _pcmToStr),
+      fetchAnyWonDealsByEnteredWon(hsToken, _pcmFromStr, _pcmToStr),
+      fetchAnyWonDealsByCloseDate(hsToken, _mtdFromStr, _mtdToStr),
+      fetchAnyWonDealsByEnteredWon(hsToken, _mtdFromStr, _mtdToStr),
+    ]);
+    signedLastMonth = buildSignedTierCohort(
+      filterActiveBrands([...(wPcmClose||[]), ...(wPcmEnter||[])]), _pcmFromStr, _pcmToStr);
+    signedMtd = buildSignedTierCohort(
+      filterActiveBrands([...(wMtdClose||[]), ...(wMtdEnter||[])]), _mtdFromStr, _mtdToStr);
+    console.log(`Special1 signed tiers: lastMonth=${signedLastMonth.total} mtd=${signedMtd.total}`);
+  } catch (e) {
+    signedTierError = (e && e.message) || 'unknown error';
+    console.error('Special1 signed-tier cohort failed:', signedTierError);
+  }
+
+  const priorMonthHeldSigned = buildSpecial1Cohort(deals, _pcmFromStr, _pcmToStr, _s1WbPcm);
+  const mtdHeldSigned        = buildSpecial1Cohort(deals, _mtdFromStr, _mtdToStr, _s1WbMtd);
   return {
     priorMonthHeldSigned,
     mtdHeldSigned,
+    // Signed-by-tier for the same two windows, so the section toggle drives
+    // both tiles from one fetch family rather than one tile silently showing a
+    // 14-day cohort while the pill says Last Month.
+    signedLastMonth,
+    signedMtd,
+    signedTierError,
     _meta: { generatedAt: new Date().toISOString(), dealsFetched: deals.length, window: { pcm: [_pcmFromStr, _pcmToStr], mtd: [_mtdFromStr, _mtdToStr] } },
   };
 }
@@ -3414,14 +4967,65 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
 
   // ── Phase 1: Fire all Windsor calls in parallel (no rate limit issue) ──
   // Clamp ad platform dates to WINDSOR_EPOCH (ad data doesn't exist before Nov 2025). GA4 uses full range.
-  const windsorPromises = [fetchWindsorAds(apiKey, wFrom(current.from), current.to), fetchLinkedInDemos(apiKey, wFrom(current.from), current.to), fetchGA4(apiKey, current.from, current.to), fetchMonthlyAdSpend(apiKey)];
+  //
+  // Subrequest accounting (the ceiling is 50 for the WHOLE invocation, shared
+  // with every HubSpot page — see the SUBREQ block). Two of these groups are
+  // window-independent or immutable, so they are cached behind a SINGLE KV key
+  // each. One key, not one per fetch: a KV get costs a subrequest too, so N keys
+  // replacing N fetches would save nothing.
+  //
+  //   fetchMonthlyAdSpend  4 Windsor fetches -> 1 KV get   (-3)
+  //   priorMonth trio      8 Windsor fetches -> 1 KV get   (-7)
+  //
+  // That is 10 of the ~35 a Year to Date load had to shed, and it costs nothing:
+  // fetchMonthlyAdSpend's range is hardcoded 2026-01-01..yesterday (identical on
+  // every window, every request, all day), and priorMonth is a closed calendar
+  // month that can never change again.
+  const _pmKey = priorMonth ? `pm_windsor_${priorMonth.from}_${priorMonth.to}_v1` : null;
+  const windsorPromises = [
+    fetchWindsorAds(apiKey, wFrom(current.from), current.to),
+    fetchLinkedInDemos(apiKey, wFrom(current.from), current.to),
+    fetchGA4(apiKey, current.from, current.to),
+    // Date-stamped key: rolls at midnight ET on its own, so it can never go stale.
+    kvCachedFetch(env, `monthly_adspend_${fmt(yesterdayET())}_v1`, 43200,
+      async () => {
+        const r = await fetchMonthlyAdSpend(apiKey);
+        // Never cache an empty result — a failed fetch would blank the Marketing
+        // Funnel for the whole TTL, which is worse than paying the 4 fetches.
+        if (!r || !r.byMonth || !Object.keys(r.byMonth).length) throw new Error('monthlyAdSpend empty — not caching');
+        return r;
+      }, null),
+  ];
   if (prior) windsorPromises.push(fetchWindsorAds(apiKey, wFrom(prior.from), prior.to), fetchLinkedInDemos(apiKey, wFrom(prior.from), prior.to), fetchGA4(apiKey, prior.from, prior.to));
-  if (priorMonth) windsorPromises.push(fetchWindsorAds(apiKey, wFrom(priorMonth.from), priorMonth.to), fetchLinkedInDemos(apiKey, wFrom(priorMonth.from), priorMonth.to), fetchGA4(apiKey, priorMonth.from, priorMonth.to));
+  if (priorMonth) windsorPromises.push(kvCachedFetch(env, _pmKey, 86400,
+    async () => {
+      const [a, l, g] = await Promise.all([
+        fetchWindsorAds(apiKey, wFrom(priorMonth.from), priorMonth.to),
+        fetchLinkedInDemos(apiKey, wFrom(priorMonth.from), priorMonth.to),
+        fetchGA4(apiKey, priorMonth.from, priorMonth.to),
+      ]);
+      if (!Array.isArray(a) || !a.length) throw new Error('priorMonth ads empty — not caching');
+      return { a, l, g };
+    }, null));
   const windsorResults = await Promise.all(windsorPromises);
   let wIdx = 0;
-  const cW = windsorResults[wIdx++], cLI = windsorResults[wIdx++], cG = windsorResults[wIdx++], monthlyAdSpend = windsorResults[wIdx++];
+  const cW = windsorResults[wIdx++], cLI = windsorResults[wIdx++], cG = windsorResults[wIdx++];
+  const _mas = windsorResults[wIdx++];
+  const monthlyAdSpend = _mas || { byMonth: {}, byChannelMonth: {} };
   let pW, pLI, pG; if (prior) { pW = windsorResults[wIdx++]; pLI = windsorResults[wIdx++]; pG = windsorResults[wIdx++]; }
-  let pmW, pmLI, pmG; if (priorMonth) { pmW = windsorResults[wIdx++]; pmLI = windsorResults[wIdx++]; pmG = windsorResults[wIdx++]; }
+  let pmW, pmLI, pmG;
+  if (priorMonth) {
+    const _pm = windsorResults[wIdx++] || {};
+    // Preserve the pre-cache contract EXACTLY. Note the asymmetry:
+    // fetchWindsorAds/fetchGA4 return arrays, but fetchLinkedInDemos returns a
+    // NUMBER or null (worker.js fetchLinkedInDemos) and downstream code tests
+    // `cLI == null`. Defaulting that one to [] would turn a real 0 into a truthy
+    // empty array and read as "LinkedIn fetch succeeded with no demos" when it
+    // had actually failed.
+    pmW = Array.isArray(_pm.a) ? _pm.a : [];
+    pmLI = (typeof _pm.l === 'number') ? _pm.l : null;
+    pmG = Array.isArray(_pm.g) ? _pm.g : [];
+  }
 
   // ── Fetch diagnostics ──────────────────────────────────────────────────────
   // Surfaced on the payload (meta.fetchDiag) and rendered by the dashboard, so a
@@ -3446,6 +5050,8 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     ga4Rows:           Array.isArray(cG) ? cG.length : (cG ? 'object' : 'FAILED/EMPTY'),
     monthlyAdSpendRows: Array.isArray(monthlyAdSpend) ? monthlyAdSpend.length : (monthlyAdSpend ? 'object' : 'FAILED/EMPTY'),
     window: { from: wFrom(current.from), to: current.to },
+    subrequests: { total: SUBREQ.n, windsor: SUBREQ.windsor, hubspot: SUBREQ.hubspot, kv: SUBREQ.kv,
+                   exhausted: SUBREQ.exhausted, windsorChunksDropped: SUBREQ.windsorDropped },
   };
   // Name the fetches that came back with nothing — the actionable bit.
   fetchDiag.failed = [
@@ -3457,57 +5063,20 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   ].filter(Boolean);
   if (fetchDiag.failed.length) console.error('fetchDiag: empty fetches →', fetchDiag.failed.join(', '), JSON.stringify(fetchDiag.windsorAds));
 
-  // Irfan KPI #5 — Disqualification Form submissions + form views.
-  // HubSpot's /analytics/v2/reports/forms/total?start=&end=&f=<id> returns
-  // the same formViews/submissions/conversion shown in HubSpot's Forms
-  // Performance UI — use that as the authoritative source. GA4 pageviews
-  // on /not-supported run in parallel as a fallback if HubSpot fails.
-  const DQ_PAGE_PATH = '/not-supported';
-  let _irfanDqForm = null, _irfanDqFormErr = null;
-  try {
-    const [dqForm, ga4Views] = await Promise.all([
-      fetchDisqualificationFormSubmissions(hsToken, current.from, current.to),
-      fetchGA4PageViews(apiKey, current.from, current.to, DQ_PAGE_PATH),
-    ]);
-    _irfanDqForm = dqForm;
-    if (typeof _irfanDqForm.views === 'number') {
-      _irfanDqForm.viewsSource = 'hubspot_form_analytics';
-    } else if (ga4Views && typeof ga4Views.views === 'number') {
-      // HubSpot failed; fall back to GA4.
-      _irfanDqForm.views = ga4Views.views;
-      _irfanDqForm.viewsSource = 'ga4_via_windsor_fallback';
-      _irfanDqForm.ga4Matched = ga4Views.matched;
-      _irfanDqForm.ga4PagePath = DQ_PAGE_PATH;
-    } else {
-      _irfanDqForm.viewsSource = null;
-      if (ga4Views?.error) _irfanDqForm.ga4Error = ga4Views.error;
-    }
-    console.log(`Irfan DQ form: ${_irfanDqForm.count} submissions, ${_irfanDqForm.views} views (source=${_irfanDqForm.viewsSource||'none'})`);
-  } catch(e) {
-    _irfanDqFormErr = e.message;
-    console.error('Irfan DQ form fetch failed:', e);
-  }
-
-  // % Disqualified Routing card series — numerator = /not-supported pageviews
-  // ("Clicked Continue but DQ'd"), denominator = cal_routing_submitted events
-  // ("Clicked Schedule a Demo and Continue"). Fetched ONCE over the widest of
-  // the three windows, then bucketed per window so the card shows vs-prior /
-  // vs-LM deltas. cal_routing_submitted only began firing 2026-05-26, so
-  // windows entirely before that return 0 (rate → — for those periods).
-  let _calRouting = null;
-  try {
-    const _rFrom = [current.from, prior && prior.from, priorMonth && priorMonth.from].filter(Boolean).sort()[0];
-    const _series = await fetchGA4RoutingSeries(apiKey, _rFrom, current.to, DQ_PAGE_PATH, 'cal_routing_submitted');
-    const _mk = (w) => w ? { views: _sumDateRange(_series.viewsByDate, w.from, w.to), routed: _sumDateRange(_series.eventByDate, w.from, w.to) } : null;
-    _calRouting = { current: _mk(current), prior: _mk(prior), priorMonth: _mk(priorMonth) };
-    console.log(`cal_routing: cur=${JSON.stringify(_calRouting.current)} prior=${JSON.stringify(_calRouting.prior)} pm=${JSON.stringify(_calRouting.priorMonth)}`);
-  } catch(e) { console.error('cal_routing series failed:', e && e.message); }
+  // The Disqualification-Form / % Disqualified Routing block used to live here.
+  // Deleted: `dqForm`, `dqFormError` and `calRouting` had ZERO consumers — the
+  // card was replaced by Ad Budget Pacing (dashboard.html) and the payload
+  // fields were still being computed and shipped for nobody. It cost 11
+  // subrequests on a Year to Date load (1 forms list + ~6 submission pages + 1
+  // analytics-v2 + 1 GA4 pageviews + 2 GA4 routing) out of a 50-subrequest
+  // per-invocation ceiling, all of it spent BEFORE the pipeline-deal fetch —
+  // which is why Key Metrics and Signed Brands came back as zeros.
 
   // Irfan Special #2 — MTD signed-deals fetch. Done EARLY (here, not later
   // inside the irfan response block) so it gets subrequest budget before the
   // heavy company/contact batches in Phase 2.
   //   • byClose: hs_is_closed_won=true + closedate in MTD window — pipeline-agnostic
-  //   • byEntered: hs_is_closed_won=true + hs_date_entered_closedwon in MTD window —
+  //   • byEntered: hs_is_closed_won=true + hs_v2_date_entered_closedwon in MTD window —
   //     fallback for default-pipeline deals whose closedate was manually set
   //     outside the MTD window. SKIPPED when current page window is MTD (cCW
   //     + byClose already give full coverage) to conserve subrequests.
@@ -3550,6 +5119,21 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   // Churned deals that still carry a Close Date in the window — added to the
   // Marketing Funnel "Signed Brands" count (Close Date basis, per request).
   const cChurnedByClose = await fetchChurnedByCloseDate(hsToken, current.from, current.to);
+  // fetchDiag is assembled in Phase 1, BEFORE any of these run, so an empty
+  // HubSpot fetch never appeared in `failed` — the banner said "some data
+  // sources may not have fully loaded" while listing only healthy ad numbers,
+  // with nothing naming the actual culprit. Record the Phase 2 counts too.
+  fetchDiag.hubspot = {
+    scheduledContacts: Array.isArray(cSch) ? cSch.length : 'FAILED',
+    pipelineDeals:     Array.isArray(cPipe) ? cPipe.length : 'FAILED',
+    closedWon:         Array.isArray(cCW) ? cCW.length : 'FAILED',
+    churnedByClose:    Array.isArray(cChurnedByClose) ? cChurnedByClose.length : 'FAILED',
+  };
+  // closedWon / churned can legitimately be 0 in a window; the two that drive
+  // dataQuality (and therefore the banner) cannot.
+  if (!Array.isArray(cSch) || !cSch.length) fetchDiag.failed.push('hubspot.scheduledContacts');
+  if (!Array.isArray(cPipe) || !cPipe.length) fetchDiag.failed.push('hubspot.pipelineDeals');
+  console.log(`fetchDiag.hubspot: ${JSON.stringify(fetchDiag.hubspot)}`);
   console.log(`cChurnedByClose: ${cChurnedByClose.length} churned deals with closedate in window`);
 
   // Fetch priorMonth FIRST so we can derive prior from it in-memory when prior
@@ -3672,7 +5256,19 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   // Build companyInfoMap (industry/timezone/size/web traffic) — keyed by domain + _name_<companyName>
   const companyInfoMap = {};
   const dqDomainArr = [...dqUniqueDomains];
-  for (let ci = 0; ci < dqDomainArr.length; ci += 50) {
+  // This runs ONE hsSearch per 50 domains and the domain count scales with the
+  // cohort, so a Year to Date window turned it into dozens of subrequests. It was
+  // the main contributor to "Too many subrequests by single Worker invocation",
+  // which made every fetch queued after it return nothing — pipelineDeals,
+  // closedWon and churnedByClose all came back 0 while contacts (fetched first)
+  // were fine. This map only DECORATES Demo Quality rows with industry/timezone,
+  // so capping the tail is far better than losing the whole response.
+  const DQ_MAX_DOMAIN_BATCHES = 8;   // 400 domains
+  const _dqLimit = Math.min(dqDomainArr.length, DQ_MAX_DOMAIN_BATCHES * 50);
+  if (dqDomainArr.length > _dqLimit) {
+    console.warn(`companyInfoMap: enriching ${_dqLimit} of ${dqDomainArr.length} domains — capped to protect the subrequest budget`);
+  }
+  for (let ci = 0; ci < _dqLimit; ci += 50) {
     const batch = dqDomainArr.slice(ci, ci + 50);
     const companyResults = await hsSearch(hsToken, 'companies', [{
       filters: [{ propertyName: 'domain', operator: 'IN', values: batch }],
@@ -3739,7 +5335,7 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     // for MTD / Last Month / etc.), so cache 15 min. This is the primary fix
     // for the "Too many subrequests" failures the dashboard started hitting.
     const [allQualKpi, _cw] = await Promise.all([
-      kvCachedFetch(env, 'alltime_qualified_v1', 900, () => fetchAllQualifiedDeals(hsToken), []),
+      kvCachedFetch(env, 'alltime_qualified_v2', 900, () => fetchAllQualifiedDeals(hsToken), []),
       kvCachedFetch(env, 'alltime_closedwon_v1', 900, () => fetchAllClosedWon(hsToken), []),
     ]);
     allTimeClosedWon = _cw;
@@ -3800,7 +5396,16 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
 
   // ── Marketing Funnel (monthly historical table) ──
   // Uses KPI-aligned definition: count of deals with demo_attendance_status IN [Demo Given orig, Demo Given resched].
-  currentData.marketingFunnel = buildMarketingFunnel(monthlyAdSpend, allTimeQualifiedForFunnel, filterActiveBrands(allTimeClosedWon));
+  // Webinar Happened deals for the funnel's Qualified Demos. KV-cached like the
+  // other all-time funnel inputs: identical on every request within the TTL.
+  let _mfWebinars = [];
+  try {
+    _mfWebinars = await kvCachedFetch(env, 'alltime_webinar_happened_v1', 900,
+      () => fetchWebinarHappenedAllTime(hsToken), []);
+  } catch (e) { console.error('funnel webinar fetch failed:', e && e.message); }
+  const _mfWebActive = filterActiveBrands(_mfWebinars || []);
+  console.log(`funnel inputs: ${(allTimeQualifiedForFunnel||[]).length} held, ${_mfWebActive.length} webinars (of ${(_mfWebinars||[]).length} fetched)`);
+  currentData.marketingFunnel = buildMarketingFunnel(monthlyAdSpend, allTimeQualifiedForFunnel, filterActiveBrands(allTimeClosedWon), _mfWebActive);
 
   // ── Demo Quality page: use cPipe directly (already fetched through end of month above) ──
   const _mapDQDeal = (d) => {
@@ -3838,7 +5443,56 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   const webinarDeals = filterActiveBrands(cWebinar || []).map(_mapDQDeal).filter(x => !_dqIds.has(x.id));
   console.log(`webinarDeals: ${webinarDeals.length}`);
 
+  // A Qualified Demo is a held demo (excl. pre-launch) OR a webinar that reached
+  // Webinar Happened. The demo half is counted in processPipelineDeals; the
+  // webinar half has to be fetched, because those deals never enter that loop.
+  let _wbCur = null, _wbPri = null, _wbPm = null;
+  try {
+    [_wbCur, _wbPri, _wbPm] = await Promise.all([
+      fetchWebinarHeldCount(hsToken, current.from, current.to),
+      prior ? fetchWebinarHeldCount(hsToken, prior.from, prior.to) : Promise.resolve(null),
+      priorMonth ? fetchWebinarHeldCount(hsToken, priorMonth.from, priorMonth.to) : Promise.resolve(null),
+    ]);
+    console.log(`webinars held: cur=${_wbCur} prior=${_wbPri} pm=${_wbPm}`);
+  } catch (e) { console.error('webinar held count failed:', e && e.message); }
+  // Folded OUTSIDE the try: applyWebinarHeld also puts the qualification rate on
+  // the current definition, and that has to hold even when the webinar fetch
+  // threw — otherwise a transient 429 silently reverts the rate to the old one.
+  applyWebinarHeld(currentData, _wbCur);
+  applyWebinarHeld(priorData, _wbPri);
+  applyWebinarHeld(priorMonthData, _wbPm);
+
+  // Deals reached through a contact whose Webinar Date falls in the window, for
+  // "Demos to occur" and "Demos supposed to happen". Costs a contacts search
+  // plus one association batch per 100 contacts, per period — affordable on the
+  // paid plan's 1000-subrequest budget.
+  let _wdCur = null, _wdPri = null, _wdPm = null;
+  try {
+    [_wdCur, _wdPri, _wdPm] = await Promise.all([
+      fetchWebinarDateDealIds(hsToken, current.from, current.to),
+      prior ? fetchWebinarDateDealIds(hsToken, prior.from, prior.to) : Promise.resolve(null),
+      priorMonth ? fetchWebinarDateDealIds(hsToken, priorMonth.from, priorMonth.to) : Promise.resolve(null),
+    ]);
+    console.log(`webinar-date deals: cur=${_wdCur?.dealIds?.size ?? 'n/a'} (from ${_wdCur?.contacts ?? 0} contacts)`
+      + ` prior=${_wdPri?.dealIds?.size ?? 'n/a'} pm=${_wdPm?.dealIds?.size ?? 'n/a'}`);
+  } catch (e) { console.error('webinar-date deal lookup failed:', e && e.message); }
+  applyWebinarDateDeals(currentData, _wdCur);
+  applyWebinarDateDeals(priorData, _wdPri);
+  applyWebinarDateDeals(priorMonthData, _wdPm);
+
   const resp = buildResponse(currentData, priorData, priorMonthData, isAllTime, ownerMap, windowType);
+  // Clinician channel "won" is Fully Onboarded, not closed-won — see
+  // fetchClinicianOnboardedCount. Applied after the build so nothing else in the
+  // response shape has to know about it.
+  try {
+    const _clnWon = await fetchClinicianOnboardedCounts(hsToken, current, prior, priorMonth);
+    applyClinicianWon(resp.adSpend && resp.adSpend.channels, _clnWon);
+  } catch (e) { console.error('clinician won count failed:', e && e.message); }
+  // Recount at the end: fetchDiag is built mid-flight, so its snapshot misses
+  // everything issued after it. This is the number to read in the tail log.
+  fetchDiag.subrequests = { total: SUBREQ.n, windsor: SUBREQ.windsor, hubspot: SUBREQ.hubspot, kv: SUBREQ.kv,
+                            exhausted: SUBREQ.exhausted, windsorChunksDropped: SUBREQ.windsorDropped };
+  console.log(`SUBREQ TOTAL for ${wFrom(current.from)}..${current.to}: ${subreqSummary()}`);
   if (resp.meta) resp.meta.fetchDiag = fetchDiag;   // upstream fetch visibility
   resp.demoQualityDeals = demoQualityDeals;
   resp.webinarDeals = webinarDeals;
@@ -3850,17 +5504,6 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   // the page time selector. Where possible, reuse already-fetched data instead of
   // making extra HubSpot subrequests (Cloudflare Workers cap at 50/request).
   resp.irfan = {};
-
-  // Irfan KPI #5 — Disqualification Form submissions for the current window.
-  // Captured earlier in Phase 2; surface the result/error to the dashboard here.
-  if (_irfanDqFormErr) {
-    resp.irfan.dqFormError = _irfanDqFormErr;
-  } else if (_irfanDqForm) {
-    resp.irfan.dqForm = _irfanDqForm;
-  }
-  // Per-window cal_routing_submitted + /not-supported views for the
-  // % Disqualified Routing card (denominator + deltas).
-  if (_calRouting) resp.irfan.calRouting = _calRouting;
 
   // Tile #1 — Signed Deals (toggle: Last Month / MTD).
   // Moved to dedicated /api/special1-cohorts endpoint (processSpecial1Request).
@@ -3937,7 +5580,7 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     const _mtdToMs = Date.UTC(_irfanMtdToday.getUTCFullYear(), _irfanMtdToday.getUTCMonth(), _irfanMtdToday.getUTCDate(), 23, 59, 59, 999);
     // Three-way union:
     //   (1) deals where closedate is in MTD window  → _irfanMtdByClose
-    //   (2) deals where hs_date_entered_closedwon is in MTD window → _irfanMtdByEntered
+    //   (2) deals where hs_v2_date_entered_closedwon is in MTD window → _irfanMtdByEntered
     //   (3) deals from the last-14 union whose closedate is in MTD window  → fallback
     const _mtdMap = new Map();
     for (const x of (_irfanMtdByClose||[]))   _mtdMap.set(x.id, x);
@@ -4005,7 +5648,7 @@ const AZ_CONNECTORS = {
   // OpenAI Ads has no conversion metric at all. Spend/clicks/impressions are
   // real. Matches the 0 these channels show in Channel Performance.
   // Same Meta connector/fields; the campaign-name filter is what separates them.
-  clinician:{ connector:'facebook',   demoField:CLINICIAN_CONV_FIELD, hasFreq:true, thumbField:'thumbnail_url' },
+  clinician:{ connector:'facebook',   demoField:CLINICIAN_CONV_FIELDS, hasFreq:true, thumbField:'thumbnail_url' },
   reddit:   { connector:'reddit',     demoField:null, hasFreq:false, thumbField:null },
   chatgpt:  { connector:'openai_ads', demoField:null, hasFreq:false, thumbField:null },
 };
@@ -4024,16 +5667,31 @@ function windsorCapTo(connector, to) {
   return to > y ? y : to;
 }
 
-async function azWindsorFetch(apiKey, connector, from, to, fields) {
+// _chunked=true is passed by azWindsorFetchAll, which handles a capped response
+// by bisecting the range; only an UNCHUNKED caller hitting the cap is a silent
+// data-loss bug worth warning about.
+async function azWindsorFetch(apiKey, connector, from, to, fields, _chunked) {
   to = windsorCapTo(connector, to);
   if (to < from) return [];   // window was entirely today — nothing to ask for
   const url = `https://connectors.windsor.ai/${connector}?api_key=${apiKey}&date_from=${from}&date_to=${to}&fields=${fields}&page_size=${AZ_PAGE_SIZE}`;
   for (let i = 0; i < 3; i++) {
+    if (SUBREQ.exhausted) return [];
     try {
+      SUBREQ.n++; SUBREQ.windsor++;
       const r = await fetch(url);
       if (!r.ok) throw new Error(`Windsor ${connector} ${r.status}`);
-      const j = await r.json(); return j.data || [];
-    } catch(e) { if (i < 2) await sleep(1000*(i+1)); else { console.error(`Az Windsor ${connector}:`, e.message); return []; } }
+      const j = await r.json();
+      const rows = j.data || [];
+      if (!_chunked && rows.length >= AZ_PAGE_SIZE) {
+        console.warn(`Az Windsor ${connector} HIT THE ${AZ_PAGE_SIZE}-ROW CAP for ${from}..${to} — Windsor returns earliest dates first and drops the rest, so the most recent data in this window is MISSING. This caller should use azWindsorFetchAll.`);
+      }
+      return rows;
+    } catch(e) {
+      // A retry after the pool is gone can only fail again — and the 1-2s sleep
+      // between attempts is what turned this into a multi-minute hang.
+      if (noteSubreqError(e)) return [];
+      if (i < 2) await sleep(1000*(i+1)); else { console.error(`Az Windsor ${connector}:`, e.message); return []; }
+    }
   }
   return [];
 }
@@ -4051,6 +5709,7 @@ async function azWindsorFetchAll(apiKey, connector, from, to, fields, chunkDays 
   // sub-ranges that sit entirely past the cap and burns calls returning [].
   to = windsorCapTo(connector, to);
   if (to < from) return [];
+  const _azAllT0 = Date.now();
   const addDays = (ds, n) => { const d = new Date(ds + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return fmt(d); };
   const daysBetween = (a, b) => Math.round((new Date(b + 'T00:00:00Z') - new Date(a + 'T00:00:00Z')) / 86400000);
   const out = [];
@@ -4058,16 +5717,42 @@ async function azWindsorFetchAll(apiKey, connector, from, to, fields, chunkDays 
   let s = from, seed = 0;
   while (s <= to && seed++ < 800) { let e = addDays(s, chunkDays - 1); if (e > to) e = to; stack.push([s, e]); s = addDays(e, 1); }
   let calls = 0;
-  while (stack.length && calls++ < 800) {
-    const [a, b] = stack.pop();
-    const rows = await azWindsorFetch(apiKey, connector, a, b, fields);
-    if (rows.length >= AZ_PAGE_SIZE && a !== b) {
-      const mid = addDays(a, Math.floor(daysBetween(a, b) / 2));
-      stack.push([a, mid], [addDays(mid, 1), b]);  // truncated → split & retry
-    } else {
-      out.push(...rows);
+  while (stack.length && calls < 800) {
+    // Windsor's share is capped so the HubSpot deal fetches sharing this
+    // invocation's pool always have room. Dropping the tail of an ad table on a
+    // year-wide window is a far better failure than zeroing every deal metric.
+    if (SUBREQ.exhausted || SUBREQ.windsor >= WINDSOR_CALL_BUDGET) {
+      SUBREQ.windsorDropped += stack.length;
+      console.warn(`azWindsorFetchAll ${connector}: stopping with ${stack.length} chunk(s) unfetched — ${subreqSummary()}`);
+      break;
+    }
+    // Take a wave off the stack and fetch it concurrently. The budget is checked
+    // while filling the wave as well as before it, so a wave can never push
+    // SUBREQ.windsor past WINDSOR_CALL_BUDGET even though its calls overlap.
+    const wave = [];
+    while (wave.length < AZ_CHUNK_CONCURRENCY && stack.length && calls < 800
+           && SUBREQ.windsor + wave.length < WINDSOR_CALL_BUDGET) {
+      wave.push(stack.pop()); calls++;
+    }
+    if (!wave.length) break;
+    const got = await Promise.all(wave.map(([a, b]) =>
+      azWindsorFetch(apiKey, connector, a, b, fields, true)
+        .then(rows => ({ a, b, rows }))
+        .catch(() => ({ a, b, rows: [] }))));
+    // Bisection is unchanged: a chunk that came back AT the row cap was
+    // truncated by Windsor, so it is split and retried on a later wave.
+    for (const { a, b, rows } of got) {
+      if (rows.length >= AZ_PAGE_SIZE && a !== b) {
+        const mid = addDays(a, Math.floor(daysBetween(a, b) / 2));
+        stack.push([a, mid], [addDays(mid, 1), b]);  // truncated → split & retry
+      } else {
+        out.push(...rows);
+      }
     }
   }
+  const _el = Date.now() - _azAllT0;
+  // Only the slow ones, or this drowns the useful lines on a short window.
+  if (_el > 3000) console.log(`azChunk ${connector} ${from}..${to} d=${chunkDays}: ${calls} call(s), ${out.length} row(s), ${_el}ms`);
   return out;
 }
 
@@ -4111,7 +5796,7 @@ async function fetchAzCampaigns(apiKey, from, to) {
     // adset_promoted_object drops this to ad-set grain; aggRows re-aggregates by
     // campaign_name so spend/demo totals are unchanged, and azWindsorFetchAll
     // paginates so the extra rows can't be truncated.
-    azWindsorFetchAll(apiKey, 'facebook', from, to, base+',conversions_submit_application_total,frequency,effective_status'+META_LEAD_FIELDS+META_CAPI_FIELDS+META_PROMOTED_OBJ_FIELD),
+    azWindsorFetchAll(apiKey, 'facebook', from, to, base+',conversions_submit_application_total,conversions_schedule_total,frequency,effective_status'+META_LEAD_FIELDS+META_CAPI_FIELDS+META_PROMOTED_OBJ_FIELD),
     azWindsorFetchAll(apiKey, 'google_ads', from, to, base+',conversions,campaign_status'),
     azWindsorFetchAll(apiKey, 'linkedin', from, to, 'date,campaign,campaign_group_name,spend,clicks,impressions,campaign_status'),
     fetchLinkedInDemos(apiKey, from, to),
@@ -4143,7 +5828,7 @@ async function fetchAzCampaigns(apiKey, from, to) {
       // Only count demos if demoFilterFn passes (or no filter)
       if (!demoFilterFn || demoFilterFn(row)) {
         if (ch === 'meta') { camps[name].demos += metaDemos(row); }
-        else { const rawD = parseFloat(row[cfg.demoField])||0; camps[name].demos += (ch==='google'||ch==='youtube') ? Math.ceil(rawD) : Math.round(rawD); }
+        else { const rawD = demoRawOf(row, cfg.demoField); camps[name].demos += (ch==='google'||ch==='youtube') ? Math.ceil(rawD) : Math.round(rawD); }
       }
       if (cfg.hasFreq && row.frequency != null && row.frequency !== '') camps[name].freqVals.push(parseFloat(row.frequency));
     }
@@ -4248,8 +5933,17 @@ async function fetchAzCreatives(apiKey, from, to) {
     const cfg = AZ_CONNECTORS[ch]; if (!cfg) continue;
     if (ch === 'linkedin') {
       promises.push(azWindsorFetch(apiKey, 'linkedin', from, to, 'date,campaign,ad_name,spend,clicks,impressions').catch(e => { console.error(`Creative fetch linkedin:`, e.message); return []; }));
+    } else if (ch === 'chatgpt') {
+      // Field ids confirmed from Windsor's openai_ads schema: ad / ad_group /
+      // campaign / ad_status. Requesting ad_name, campaign_name or conversions
+      // fails the entire request.
+      promises.push(azWindsorFetchAll(apiKey, cfg.connector, from, to, 'date,campaign,ad_group,ad,ad_status,spend,clicks,impressions', AZ_CREATIVE_CHUNK_DAYS).catch(e => { console.error(`Creative fetch chatgpt:`, e.message); return []; }));
     } else {
-      const extra = cfg.demoField === 'conversions_submit_application_total' ? ',conversions_submit_application_total' : ',conversions';
+      // Meta-connector channels need BOTH standard-event columns plus the
+      // promoted object, or metaDemos cannot tell which event to count.
+      const extra = isMetaConnectorCh(ch)
+        ? ',conversions_submit_application_total,conversions_schedule_total' + META_PROMOTED_OBJ_FIELD
+        : (cfg.demoField === 'conversions_submit_application_total' ? ',conversions_submit_application_total' : ',conversions');
       const freq = cfg.hasFreq ? ',frequency' : '';
       const video = isMetaConnectorCh(ch) ? ',video_p25_watched_actions' : '';
       const placement = isMetaConnectorCh(ch) ? ',publisher_platform,platform_position' : '';
@@ -4273,7 +5967,7 @@ async function fetchAzCreatives(apiKey, from, to) {
       // CAPI custom-conversion counts (Demo / Webinar / Demo+Webinar) — the real
       // "Results" for campaigns that optimize for a CAPI conversion.
       const capi = isMetaConnectorCh(ch) ? META_CAPI_FIELDS : '';
-      promises.push(azWindsorFetchAll(apiKey, cfg.connector, from, to, base + extra + freq + video + placement + status + created + adset + lead + capi, 7).catch(e => { console.error(`Creative fetch ${ch}:`, e.message); return []; }));
+      promises.push(azWindsorFetchAll(apiKey, cfg.connector, from, to, base + extra + freq + video + placement + status + created + adset + lead + capi, AZ_CREATIVE_CHUNK_DAYS).catch(e => { console.error(`Creative fetch ${ch}:`, e.message); return []; }));
     }
     channels.push(ch);
   }
@@ -4325,7 +6019,7 @@ async function fetchAzCreatives(apiKey, from, to) {
       // by campaign name — each creative lands in exactly one of the two.
       if (ch === 'clinician' && !isClinicianCampaign(campName)) continue;
       if (ch === 'meta' && isClinicianCampaign(campName)) continue;
-      const name = row.ad_name || '(no creative)';
+      const name = row.ad_name || row.ad || '(no creative)';
       // Placement tracking (Meta only — other connectors don't return these fields)
       if (row.publisher_platform || row.platform_position) {
         const plat = row.publisher_platform || 'unknown';
@@ -4335,7 +6029,7 @@ async function fetchAzCreatives(apiKey, from, to) {
         placementMap[pKey].spend += parseFloat(row.spend)||0;
         placementMap[pKey].clicks += parseInt(row.clicks)||0;
         placementMap[pKey].impressions += parseInt(row.impressions)||0;
-        const pDemo = parseFloat(row[cfg.demoField])||0;
+        const pDemo = demoRawOf(row, cfg.demoField);
         placementMap[pKey].demos += Math.round(pDemo);
         // Per-creative placement breakdown
         if (!map[name]) map[name] = { name, spend:0, clicks:0, impressions:0, demos:0, freqVals:[], thumbnail: tm[name] || null, campaignName: campName, videoP25:0, _dates:[], _placements:{} };
@@ -4371,7 +6065,7 @@ async function fetchAzCreatives(apiKey, from, to) {
       }
       if (ch !== 'linkedin') {
         if (ch === 'meta') { map[name].demos += metaDemos(row); }
-        else { const rawD = parseFloat(row[cfg.demoField])||0; map[name].demos += (ch==='google'||ch==='youtube') ? Math.ceil(rawD) : Math.round(rawD); }
+        else { const rawD = demoRawOf(row, cfg.demoField); map[name].demos += (ch==='google'||ch==='youtube') ? Math.ceil(rawD) : Math.round(rawD); }
       }
       if (cfg.hasFreq && row.frequency != null && row.frequency !== '') map[name].freqVals.push(parseFloat(row.frequency));
       // Per-campaign creative aggregation
@@ -4391,7 +6085,7 @@ async function fetchAzCreatives(apiKey, from, to) {
       }
       if (ch !== 'linkedin') {
         if (ch === 'meta') { campCreMap[campKey][name].demos += metaDemos(row); }
-        else { const rawD2 = parseFloat(row[cfg.demoField])||0; campCreMap[campKey][name].demos += (ch==='google'||ch==='youtube') ? Math.ceil(rawD2) : Math.round(rawD2); }
+        else { const rawD2 = demoRawOf(row, cfg.demoField); campCreMap[campKey][name].demos += (ch==='google'||ch==='youtube') ? Math.ceil(rawD2) : Math.round(rawD2); }
       }
       if (cfg.hasFreq && row.frequency != null && row.frequency !== '') campCreMap[campKey][name].freqVals.push(parseFloat(row.frequency));
       // Per-ad-set creative aggregation — mirrors campCreMap but keyed by
@@ -4415,7 +6109,7 @@ async function fetchAzCreatives(apiKey, from, to) {
         }
         if (ch !== 'linkedin') {
           if (ch === 'meta') { adsetCreMap[adsetKey][name].demos += metaDemos(row); }
-          else { const rawD3 = parseFloat(row[cfg.demoField])||0; adsetCreMap[adsetKey][name].demos += (ch==='google'||ch==='youtube') ? Math.ceil(rawD3) : Math.round(rawD3); }
+          else { const rawD3 = demoRawOf(row, cfg.demoField); adsetCreMap[adsetKey][name].demos += (ch==='google'||ch==='youtube') ? Math.ceil(rawD3) : Math.round(rawD3); }
         }
         if (cfg.hasFreq && row.frequency != null && row.frequency !== '') adsetCreMap[adsetKey][name].freqVals.push(parseFloat(row.frequency));
       }
@@ -4579,12 +6273,12 @@ async function fetchAzAudiences(apiKey, from, to) {
     // adset_promoted_object carries the real optimization target. It's an
     // Ad-table field but this query is already ad-set grain, so it adds no rows
     // (verified: same 13 rows / same spend total as without it).
-    meta:   { connector:'facebook', fields:'date,adset_name,campaign_name,spend,clicks,impressions,conversions_submit_application_total,adset_status,adset_effective_status,adset_promoted_object'+META_LEAD_FIELDS+META_CAPI_FIELDS, nameField:'adset_name', demoField:'conversions_submit_application_total', statusField:'adset_effective_status', statusFallback:'adset_status' },
+    meta:   { connector:'facebook', fields:'date,adset_name,campaign_name,spend,clicks,impressions,conversions_submit_application_total,conversions_schedule_total,adset_status,adset_effective_status,adset_promoted_object'+META_LEAD_FIELDS+META_CAPI_FIELDS, nameField:'adset_name', demoField:'conversions_submit_application_total', statusField:'adset_effective_status', statusFallback:'adset_status' },
     google: { connector:'google_ads', fields:'date,ad_group_name,campaign_name,spend,clicks,impressions,conversions', nameField:'ad_group_name', demoField:'conversions' },
     tiktok: { connector:'tiktok', fields:'date,ad_group_name,campaign_name,spend,clicks,impressions,conversions', nameField:'ad_group_name', demoField:'conversions' },
     // Reddit groups by ad_group_name; OpenAI Ads by ad_group (and `campaign`,
     // not campaign_name). Neither reports a demo-equivalent conversion.
-    clinician: { connector:'facebook', fields:'date,adset_name,campaign_name,spend,clicks,impressions,conversions_submit_application_total,adset_status,adset_effective_status,adset_promoted_object'+META_LEAD_FIELDS+META_CAPI_FIELDS, nameField:'adset_name', demoField:CLINICIAN_CONV_FIELD, statusField:'adset_effective_status', statusFallback:'adset_status', onlyClinician:true },
+    clinician: { connector:'facebook', fields:'date,adset_name,campaign_name,spend,clicks,impressions,conversions_submit_application_total,conversions_schedule_total,adset_status,adset_effective_status,adset_promoted_object'+META_LEAD_FIELDS+META_CAPI_FIELDS, nameField:'adset_name', demoField:CLINICIAN_CONV_FIELDS, statusField:'adset_effective_status', statusFallback:'adset_status', onlyClinician:true },
     reddit: { connector:'reddit', fields:'date,ad_group_name,campaign_name,spend,clicks,impressions', nameField:'ad_group_name', demoField:null },
     chatgpt: { connector:'openai_ads', fields:'date,ad_group,campaign,spend,clicks,impressions', nameField:'ad_group', demoField:null },
   };
@@ -4625,7 +6319,7 @@ async function fetchAzAudiences(apiKey, from, to) {
       map[name].clicks += parseInt(row.clicks) || 0;
       map[name].impressions += parseInt(row.impressions) || 0;
       if (ch === 'meta') { map[name].demos += metaDemos(row); }
-      else { let d = parseFloat(row[cfg.demoField]) || 0; if (ch === 'google') d = Math.ceil(d); else d = Math.round(d); map[name].demos += d; }
+      else { let d = demoRawOf(row, cfg.demoField); if (ch === 'google') d = Math.ceil(d); else d = Math.round(d); map[name].demos += d; }
       if (!map[name].campaign && campName) map[name].campaign = campName;
     }
     const list = Object.values(map).map(a => {
@@ -4653,18 +6347,27 @@ function buildAzAttribution(deals, closedWonDeals) {
     const ch = mapUtmToChannel(p.utm_source, p.utm_medium);
     if (!ch) continue;
     const cat = categorizeDemoStatus(p.demo_attendance_status, p.demo_qualification_outcome, p.demo_given__status);
+    // Qualified Demo = the demo was HELD. Pre-launch is NOT excluded here: this
+    // attribution runs over ad-attributed deals that carry no web-traffic tier,
+    // so the ad tables' Qual column counts held demos only and will read slightly
+    // higher than the dashboard's pre-launch-excluded figure. Flagged rather than
+    // silently approximated.
+    const _qd = demoDidHappen(p.demo_attendance_status, p.demo_given__status);
     byChannel[ch].total++; byChannel[ch][cat]++;
+    byChannel[ch].qualDemo = (byChannel[ch].qualDemo||0) + (_qd?1:0);
     const camp = (p.utm_campaign||'').trim();
     if (camp) {
       const key = `${ch}::${camp.toLowerCase()}`;
       if (!byCampaign[key]) byCampaign[key] = { channel:ch, campaign:camp.toLowerCase(), qualified:0, pruned:0, noShow:0, rescheduled:0, pendingEval:0, pending:0, blank:0, total:0 };
       byCampaign[key].total++; byCampaign[key][cat]++;
+      byCampaign[key].qualDemo = (byCampaign[key].qualDemo||0) + (_qd?1:0);
     }
     const creative = (p.utm_content||'').trim();
     if (creative) {
       const key = `${ch}::${creative.toLowerCase()}`;
       if (!byCreative[key]) byCreative[key] = { channel:ch, creative:creative.toLowerCase(), qualified:0, pruned:0, noShow:0, rescheduled:0, pendingEval:0, pending:0, blank:0, total:0 };
       byCreative[key].total++; byCreative[key][cat]++;
+      byCreative[key].qualDemo = (byCreative[key].qualDemo||0) + (_qd?1:0);
     }
   }
 
@@ -4689,7 +6392,7 @@ function buildAzResponse(period, prior, priorMonth, windsor, creatives, priorW, 
     const w = windsor[ch]?.totals||{spend:0,clicks:0,impressions:0,demos:0,ctr:0,frequency:null};
     const a = attr.byChannel[ch]||{};
     const cw = attr.closedByChannel[ch]||{count:0,mrr:0};
-    const q = a.qualified||0, unattr = Math.max(0, w.demos-(a.total||0));
+    const q = (a.qualDemo!=null?a.qualDemo:(a.qualified||0)), unattr = Math.max(0, w.demos-(a.total||0));
     tS+=w.spend; tD+=w.demos; tQ+=q; tCW+=cw.count; tMRR+=cw.mrr;
 
     const pw = priorW?.[ch]?.totals||null;
@@ -4755,10 +6458,14 @@ function buildAzResponse(period, prior, priorMonth, windsor, creatives, priorW, 
       for (const [key,ca] of Object.entries(attr.byCreative||{})) {
         if (key.startsWith(ch+'::')) creativeAttr[key.slice(ch.length+2)] = ca;
       }
+      // Hand-read per-ad conversions for connectors that report none (chatgpt).
+      const _mAd = manualConv(ch, period && period.from, period && period.to);
       mergedCreatives = rawCreatives.map(c => {
         const ca = creativeAttr[c.name.toLowerCase()]||{};
         const attrTotal = ca.total||0;
-        const demos = ch === 'linkedin' ? attrTotal : c.demos;
+        let demos = ch === 'linkedin' ? attrTotal : c.demos;
+        if (_mAd && _mAd.zeroAll) demos = 0;
+        else if (_mAd && _mAd.byAd && Object.prototype.hasOwnProperty.call(_mAd.byAd, c.name)) demos = _mAd.byAd[c.name];
         const cpd = demos > 0 ? c.spend / demos : null;
         const fKey = ch+'::'+c.name.toLowerCase();
         const ft = fatigue?.[fKey] || null;
@@ -4807,7 +6514,7 @@ function buildAzResponse(period, prior, priorMonth, windsor, creatives, priorW, 
       creativeByCampaign: creativeByCampaign,
       creativeByAdset: creativeByAdset,
       fatigueMap: Object.fromEntries(Object.entries(fatigue||{}).filter(([k])=>k.startsWith(ch+'::'))),
-      audiences: ch === 'linkedin' ? liAdsets : (audiences?.[ch] || null),
+      audiences: ch === 'linkedin' ? liAdsets : _applyManualConvAudiences(audiences?.[ch] || null, ch, period && period.from, period && period.to),
       placements: rawCreativeData?.placements || null,
       demoQuality: dqFunnel, priorDemoQuality: priorDqFunnel, pmDemoQuality: pmDqFunnel,
     };
@@ -4852,7 +6559,32 @@ async function processAzRequest(windowType, customFrom, customTo, env, vsFrom, v
   const fatigueWithTimeout = Promise.race([fatigueP, new Promise(r => setTimeout(() => r({}), 8000))]);
   const pipeP = fetchPipelineDeals(hsToken, current.from, current.to);
   const cwP = fetchClosedWonDeals(hsToken, current.from, current.to);
-  const [windsor, creatives, audiences, fatigue, pipe, cw] = await Promise.all([windsorP, creativesP, audiencesP, fatigueWithTimeout, pipeP, cwP]);
+  // Per-phase timing. YTD was hitting the client's 75s abort and guessing which
+  // fetch owned the time costs a round trip per guess; each promise now stamps
+  // its own elapsed ms so the critical path is visible in `wrangler tail`.
+  const _azT0 = Date.now();
+  const _stamp = (name, pr) => pr.then(v => { console.log(`azPhase ${name}: ${Date.now() - _azT0}ms`); return v; });
+  const [windsor, creatives, audiences, fatigue, pipe, cw] = await Promise.all([
+    _stamp('campaigns', windsorP), _stamp('creatives', creativesP), _stamp('audiences', audiencesP),
+    _stamp('fatigue', fatigueWithTimeout), _stamp('pipelineDeals', pipeP), _stamp('closedWon', cwP)]);
+  console.log(`azPhase CURRENT-TOTAL (${windowType} ${current.from}..${current.to}): ${Date.now() - _azT0}ms — ${subreqSummary()}`);
+
+  // Clinician Inquiries / CPI, fetched HERE rather than after the response is
+  // built. These used to run last, behind the prior and prior-month HubSpot
+  // pagination, so on a busy window the subrequest pool was spent before they
+  // ran — hsCount returns null when that happens and every cell rendered as a
+  // dash with nothing to say why. Campaign names come from the Windsor aggregate
+  // (keyed by name), which is already in hand at this point.
+  const _capped = (p, ms, fallback) => Promise.race([p, new Promise(r => setTimeout(() => r(fallback), ms))]);
+  let _clnInq = {}, _clnInqNames = 0;
+  try {
+    _clnInqNames = Object.keys((windsor && windsor.clinician && windsor.clinician.campaigns) || {}).length;
+    if (_clnInqNames) {
+      _clnInq = await _capped(fetchClinicianInquiriesByCampaign(
+        hsToken, Object.keys(windsor.clinician.campaigns), current.from, current.to), 7000, {});
+    }
+    console.log(`clinician inquiries: ${Object.keys(_clnInq).length}/${_clnInqNames} campaigns resolved — ${subreqSummary()}`);
+  } catch (e) { console.error('clinician inquiries by campaign failed:', e && e.message); }
 
   // Prior period
   let priorW=null, priorA=null;
@@ -4879,7 +6611,34 @@ async function processAzRequest(windowType, customFrom, customTo, env, vsFrom, v
   const attr = buildAzAttribution(filterActiveBrands(pipe), filterActiveBrands(cw));
   const budgets = getBudgetsForMonth(current.from);
 
-  return buildAzResponse(current, prior, priorMonth, windsor, creatives, priorW, pmW, attr, priorA, pmA, budgets, isAllTime, windowType, fatigue, audiences);
+  console.log(`azPhase ALL-FETCHES (${windowType}): ${Date.now() - _azT0}ms — ${subreqSummary()}`);
+  const azResp = buildAzResponse(current, prior, priorMonth, windsor, creatives, priorW, pmW, attr, priorA, pmA, budgets, isAllTime, windowType, fatigue, audiences);
+  // Same clinician "won" override the Detailed Dashboard applies, so the Ad KPI
+  // CAC card and Channel Performance agree.
+  try {
+    const _clnWon = await _capped(
+      fetchClinicianOnboardedCounts(hsToken, current, prior, priorMonth),
+      5000, { cur: null, prior: null, pm: null });
+    applyClinicianWon(azResp.channels, _clnWon);
+  } catch (e) { console.error('analyzer clinician won count failed:', e && e.message); }
+  // Stamp the counts fetched above onto the campaign rows, so the table reads
+  // them the same way it reads spend. A campaign the lookup could not resolve is
+  // left ABSENT rather than zeroed — a dash and a 0 mean different things.
+  // inquiriesUnavailable distinguishes "the lookup could not run at all" (budget
+  // exhausted, HubSpot error) from "this campaign genuinely has no inquiries",
+  // so the column can say which instead of showing the same dash for both.
+  try {
+    const cch = azResp.channels && azResp.channels.clinician;
+    if (cch && Array.isArray(cch.campaigns) && cch.campaigns.length) {
+      cch.inquiriesByCampaign = _clnInq;
+      cch.inquiriesUnavailable = (_clnInqNames > 0 && Object.keys(_clnInq).length === 0);
+      for (const c of cch.campaigns) {
+        const v = _clnInq[c.name];
+        if (v != null) { c.inquiries = v; c.cpi = v > 0 ? (c.spend || 0) / v : null; }
+      }
+    }
+  } catch (e) { console.error('clinician inquiries stamp failed:', e && e.message); }
+  return azResp;
 }
 
 // ---------------------------------------------------------------------------
@@ -5007,42 +6766,61 @@ async function fetchDemoFunnelDeals(token, from, to) {
 // even with hundreds of attendees.
 async function countAttendeesClosedWon(token, contactIds) {
   if (!contactIds || !contactIds.length) return 0;
-  const inputs = contactIds.map(id => ({ id: String(id) }));
-  let assocData;
-  try {
-    const r = await fetch('https://api.hubapi.com/crm/v4/associations/contacts/deals/batch/read', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ inputs }),
-    });
-    if (!r.ok) { console.error('countAttendeesClosedWon assoc', r.status, await r.text()); return 0; }
-    assocData = await r.json();
-  } catch(e) { console.error('countAttendeesClosedWon assoc threw', e.message); return 0; }
+  // HubSpot batch reads cap at 100 inputs per request. This used to send every
+  // attendee (and then every associated deal) in ONE request and `return 0` on
+  // any failure — so past ~100 attendees the call failed and the webinar
+  // funnel's Closed Won silently read 0. Chunk both calls, and on a partial
+  // failure keep what did come back and log the shortfall instead of collapsing
+  // the whole number to zero.
+  const CHUNK = 100;
+  const chunk = (arr) => { const out = []; for (let i = 0; i < arr.length; i += CHUNK) out.push(arr.slice(i, i + CHUNK)); return out; };
   const contactDeals = {};
   const allDealIds = new Set();
-  for (const row of (assocData.results || [])) {
-    const cid = row.from?.id; if (!cid) continue;
-    contactDeals[cid] = (row.to || []).map(t => String(t.toObjectId)).filter(Boolean);
-    for (const did of contactDeals[cid]) allDealIds.add(did);
+  let assocFailed = 0;
+  for (const batch of chunk(contactIds.map(String))) {
+    try {
+      const r = await fetch('https://api.hubapi.com/crm/v4/associations/contacts/deals/batch/read', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inputs: batch.map(id => ({ id })) }),
+      });
+      if (!r.ok) { console.error('countAttendeesClosedWon assoc', r.status, (await r.text()).slice(0, 200)); assocFailed += batch.length; continue; }
+      const assocData = await r.json();
+      for (const row of (assocData.results || [])) {
+        const cid = row.from?.id; if (!cid) continue;
+        contactDeals[cid] = (row.to || []).map(t => String(t.toObjectId)).filter(Boolean);
+        for (const did of contactDeals[cid]) allDealIds.add(did);
+      }
+    } catch(e) { console.error('countAttendeesClosedWon assoc threw', e.message); assocFailed += batch.length; }
   }
-  if (!allDealIds.size) return 0;
-  let dealData;
-  try {
-    const r = await fetch('https://api.hubapi.com/crm/v3/objects/deals/batch/read', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ inputs: Array.from(allDealIds).map(id => ({ id })), properties: ['dealstage'] }),
-    });
-    if (!r.ok) { console.error('countAttendeesClosedWon deals', r.status, await r.text()); return 0; }
-    dealData = await r.json();
-  } catch(e) { console.error('countAttendeesClosedWon deals threw', e.message); return 0; }
+  if (!allDealIds.size) {
+    if (assocFailed) console.warn(`countAttendeesClosedWon: no associations resolved and ${assocFailed}/${contactIds.length} attendees failed to look up — Closed Won is UNDERSTATED`);
+    return 0;
+  }
   const cwDealIds = new Set();
-  for (const d of (dealData.results || [])) {
-    if ((d.properties?.dealstage || '') === 'closedwon') cwDealIds.add(String(d.id));
+  let dealsFailed = 0;
+  for (const batch of chunk(Array.from(allDealIds))) {
+    try {
+      const r = await fetch('https://api.hubapi.com/crm/v3/objects/deals/batch/read', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inputs: batch.map(id => ({ id })), properties: ['dealstage'] }),
+      });
+      if (!r.ok) { console.error('countAttendeesClosedWon deals', r.status, (await r.text()).slice(0, 200)); dealsFailed += batch.length; continue; }
+      const dealData = await r.json();
+      for (const d of (dealData.results || [])) {
+        if ((d.properties?.dealstage || '') === 'closedwon') cwDealIds.add(String(d.id));
+      }
+    } catch(e) { console.error('countAttendeesClosedWon deals threw', e.message); dealsFailed += batch.length; }
   }
   let n = 0;
   for (const cid in contactDeals) {
     if (contactDeals[cid].some(did => cwDealIds.has(did))) n++;
+  }
+  if (assocFailed || dealsFailed) {
+    console.warn(`countAttendeesClosedWon: PARTIAL — ${assocFailed} attendee lookups and ${dealsFailed} deal lookups failed; ${n} closed-won counted from ${contactIds.length} attendees`);
+  } else {
+    console.log(`countAttendeesClosedWon: ${n} closed-won across ${contactIds.length} attendees (${allDealIds.size} associated deals, ${chunk(contactIds).length}+${chunk(Array.from(allDealIds)).length} batches)`);
   }
   return n;
 }
@@ -5091,6 +6869,7 @@ function countBusinessDays(fromStr, toStr) {
 async function readWebinarBaseline(env) {
   if (!env.CONTENT_STORE) return WEBINAR_BASELINE_DEFAULT;
   try {
+    kvOp();
     const raw = await env.CONTENT_STORE.get(WEBINAR_BASELINE_KV_KEY);
     if (!raw) return WEBINAR_BASELINE_DEFAULT;
     const parsed = JSON.parse(raw);
@@ -5102,6 +6881,7 @@ async function saveWebinarBaseline(env, valuePct) {
   if (!env.CONTENT_STORE) return { ok: false, error: 'KV not configured' };
   const n = parseFloat(valuePct);
   if (!isFinite(n) || n < 0 || n > 100) return { ok: false, error: 'Value must be 0-100' };
+  kvOp();
   await env.CONTENT_STORE.put(WEBINAR_BASELINE_KV_KEY, JSON.stringify({ value: n, savedAt: new Date().toISOString() }));
   return { ok: true, value: n };
 }
@@ -5433,7 +7213,7 @@ const BD_DEAL_PROPS = [
   // PERSISTS after a brand churns (closedate is often blank on churned deals).
   // Used by the BD "Snapshot" chart to place churned brands in the months they
   // were actually active.
-  'hs_date_entered_closedwon',
+  'hs_v2_date_entered_closedwon',
 ];
 
 // Company owner fields (Acct Mgr / SE Rep / Ops Rep) live on the associated
@@ -5444,8 +7224,11 @@ const BD_DEAL_PROPS = [
 const BD_COMPANY_TTL_MS = 4 * 60 * 60 * 1000; // 4h
 function _bdCompanyStale(entry, fresh, now){
   if (!entry) return true;              // not cached → fetch
-  if (entry._unresolved) return false;  // known-unresolvable → don't keep retrying
+  // fresh is checked BEFORE _unresolved: an explicit refresh is the user saying
+  // "re-check this", and a placeholder written during a transient failure is
+  // precisely what needs retrying. Bounded by MAX_BATCHES (3000) per wave.
   if (fresh) return true;               // explicit refresh → refetch owners
+  if (entry._unresolved) return false;  // known-unresolvable → don't keep retrying
   return !entry.t || (now - entry.t) >= BD_COMPANY_TTL_MS;
 }
 async function fetchBDData(env, fresh) {
@@ -5481,6 +7264,7 @@ async function fetchBDData(env, fresh) {
   let assocCache = {};
   if (env.CONTENT_STORE) {
     try {
+      kvOp();
       const raw = await env.CONTENT_STORE.get('bd_assoc_cache_v1');
       if (raw) assocCache = JSON.parse(raw);
     } catch(e) { console.warn('BD assoc cache load failed:', e.message); }
@@ -5511,6 +7295,45 @@ async function fetchBDData(env, fresh) {
   // Subsequent loads will catch up on remaining missing deals.
   const MAX_ASSOC_BATCHES = 12;
   const idsToFetch = missingDealIds.slice(0, MAX_ASSOC_BATCHES * 100);
+  // ── Re-verify already-resolved associations on an explicit refresh ────────
+  // A resolved entry is a bare company-id string and _assocStillValid() calls
+  // those valid forever, so a deal re-pointed at a different company in HubSpot
+  // kept its ORIGINAL company on this page indefinitely — the Refresh button
+  // re-pulled deals and company owner fields but never the association itself.
+  // Refresh now spends whatever budget the missing deals didn't use on
+  // re-checking resolved ones, walking a cursor through the set so repeated
+  // clicks sweep everything instead of re-checking the same first 1200.
+  // Nothing is cleared up front: the batch loop only overwrites on a positive
+  // result, and its not-returned branch is already guarded by
+  // _assocStillValid(), so a HubSpot hiccup can't blank a company that is
+  // currently showing.
+  let reverifyFrom = 0, reverifyCount = 0;
+  if (fresh && idsToFetch.length < MAX_ASSOC_BATCHES * 100) {
+    const resolvedIds = dealIds.filter(id => typeof assocCache[id] === 'string');
+    if (resolvedIds.length) {
+      if (env.CONTENT_STORE) {
+        try {
+          kvOp();
+          const rawCur = await env.CONTENT_STORE.get('bd_assoc_reverify_cursor');
+          const n = rawCur == null ? 0 : parseInt(rawCur, 10);
+          if (Number.isFinite(n) && n >= 0) reverifyFrom = n % resolvedIds.length;
+        } catch(e) { /* cursor is an optimisation — start from 0 */ }
+      }
+      const room = (MAX_ASSOC_BATCHES * 100) - idsToFetch.length;
+      // Wrap around the end so the tail of the list isn't starved.
+      const slice = resolvedIds.slice(reverifyFrom, reverifyFrom + room);
+      if (slice.length < room) slice.push(...resolvedIds.slice(0, room - slice.length));
+      idsToFetch.push(...slice);
+      reverifyCount = slice.length;
+      if (env.CONTENT_STORE) {
+        try {
+          kvOp();
+          await env.CONTENT_STORE.put('bd_assoc_reverify_cursor',
+            String((reverifyFrom + reverifyCount) % resolvedIds.length));
+        } catch(e) { /* best-effort */ }
+      }
+    }
+  }
   let assocMatched = 0, assocBatches = 0, assocFailures = 0, assocNoCompany = 0;
   for (let i = 0; i < idsToFetch.length; i += 100) {
     const batch = idsToFetch.slice(i, i + 100);
@@ -5578,10 +7401,12 @@ async function fetchBDData(env, fresh) {
   // Persist updated association cache
   if (env.CONTENT_STORE && idsToFetch.length > 0) {
     try {
+      kvOp();
       await env.CONTENT_STORE.put('bd_assoc_cache_v1', JSON.stringify(assocCache));
     } catch(e) { console.warn('BD assoc cache save failed:', e.message); }
   }
-  const assocDeferred = missingDealIds.length - idsToFetch.length;
+  const assocDeferred = Math.max(0, missingDealIds.length - (idsToFetch.length - reverifyCount));
+  if (reverifyCount) console.log(`BD assoc re-verify: ${reverifyCount} resolved associations re-checked from cursor ${reverifyFrom} (fresh=true)`);
   console.log(`BD associations: ${cachedAssocCount} cache hits · ${assocMatched} newly matched · ${assocNoCompany} no-company · ${assocDeferred} deferred to next load (${assocBatches} batches, ${assocFailures} failures, ${dealIds.length} total deals)`);
 
   // Company names are loaded ONLY from KV cache in this endpoint — no live
@@ -5594,6 +7419,7 @@ async function fetchBDData(env, fresh) {
   let companyMap = {};
   if (env.CONTENT_STORE) {
     try {
+      kvOp();
       const raw = await env.CONTENT_STORE.get('bd_company_cache_v5');
       if (raw) companyMap = JSON.parse(raw);
     } catch(e) { console.warn('BD cache load failed:', e.message); }
@@ -5613,7 +7439,7 @@ async function fetchBDData(env, fresh) {
     return {
       id: d.id, dealname: p.dealname||'', dealstage: p.dealstage||'',
       brand_status: p.brand_status||'', amount: parseFloat(p.amount)||0,
-      closedate: p.closedate||'', createdate: p.createdate||'', entered_closedwon: p.hs_date_entered_closedwon||'',
+      closedate: p.closedate||'', createdate: p.createdate||'', entered_closedwon: p.hs_v2_date_entered_closedwon||'',
       price_per_review: p.price_per_review||'', package_type: p.package_type||'',
       setup_fee: p.setup_fee||'', months_until_upgrade: p.months_until_upgrade||'',
       fee_after_upgrade: p.fee_after_upgrade||'',
@@ -5682,6 +7508,7 @@ async function lookupBDCompanies(env, companyIds, fresh) {
   let companyMap = {};
   if (env.CONTENT_STORE) {
     try {
+      kvOp();
       const raw = await env.CONTENT_STORE.get('bd_company_cache_v5');
       if (raw) companyMap = JSON.parse(raw);
     } catch(e) { console.warn('BD lookup cache load failed:', e.message); }
@@ -5699,7 +7526,6 @@ async function lookupBDCompanies(env, companyIds, fresh) {
   let attempted = new Set();
   for (let i = 0; i < idsToFetch.length; i += 100) {
     const batch = idsToFetch.slice(i, i + 100);
-    batch.forEach(id => attempted.add(id));
     try {
       // archived=true so we also pull metadata for archived/deleted companies
       // — without this HubSpot silently drops them from `results`, leaving
@@ -5715,6 +7541,10 @@ async function lookupBDCompanies(env, companyIds, fresh) {
         continue;
       }
       const coData = await coRes.json();
+      // Mark attempted only now: a batch that 429'd, 5xx'd or threw must NOT
+      // leave its ids looking "tried and unresolvable", or the placeholder loop
+      // below freezes all 100 of them permanently.
+      batch.forEach(id => attempted.add(id));
       for (const co of (coData.results || [])) {
         const name = co.properties?.name || co.properties?.domain || co.properties?.website || '';
         const ops_owner = co.properties?.ops_owner || '';
@@ -5740,6 +7570,7 @@ async function lookupBDCompanies(env, companyIds, fresh) {
   // unresolved-placeholder write also lands)
   if (env.CONTENT_STORE && attempted.size > 0) {
     try {
+      kvOp();
       await env.CONTENT_STORE.put('bd_company_cache_v5', JSON.stringify(companyMap));
     } catch(e) { console.warn('BD lookup cache save failed:', e.message); }
   }
@@ -5993,6 +7824,7 @@ async function fetchSalesData(mode, env) {
 
 export default {
   async fetch(request, env) {
+    subreqReset();   // the pool is per-invocation, so the counters are too
     const url = new URL(request.url);
 
     // CORS preflight
@@ -6033,6 +7865,7 @@ export default {
       const _ck = 'apidata_resp_' + API_CACHE_VER + '_' + _win + '_' + (body.from||'') + '_' + (body.to||'') + '_' + (body.vsFrom||'') + '_' + (body.vsTo||'');
       if (!body.fresh && env.CONTENT_STORE) {
         try {
+          kvOp();
           const raw = await env.CONTENT_STORE.get(_ck);
           if (raw) { const p = JSON.parse(raw); if (p && typeof p.t === 'number' && (Date.now() - p.t) < 60000 && p.data) return jr(p.data); }
         } catch(e) { /* fall through to live compute */ }
@@ -6047,8 +7880,24 @@ export default {
         // its prior comparison present. Degraded responses are still returned
         // (so the user sees something) but NOT cached, so the next load retries.
         const _tc = result && result.executiveSummary && result.executiveSummary.trueCpd;
-        const _healthy = result && !result.error && _tc && _tc.value != null && (!result.priorPeriod || _tc.sameTimePrior != null);
+        // The trueCpd test alone was NOT enough, and it let the exact failure the
+        // user was reporting get cached and re-served for the full TTL:
+        // trueCpd = spend / scheduled, and on a Year to Date load BOTH of those
+        // fetch fine — it is the DEAL fetches that get starved. With prior=null
+        // on ytd the second clause is vacuously true, so a payload with
+        // pipelineDeals 0 / closedWon 0 sailed through as "healthy", got cached,
+        // and every refresh re-served the zeros instead of retrying. Requiring an
+        // unexhausted subrequest pool is the direct test.
+        const _sq = result && result.meta && result.meta.fetchDiag && result.meta.fetchDiag.subrequests;
+        const _hs = result && result.meta && result.meta.fetchDiag && result.meta.fetchDiag.hubspot;
+        const _poolOk = !_sq || _sq.exhausted !== true;
+        const _dealsOk = !_hs || (_hs.pipelineDeals > 0 || _hs.scheduledContacts === 0);
+        const _healthy = result && !result.error && _tc && _tc.value != null
+          && (!result.priorPeriod || _tc.sameTimePrior != null)
+          && _poolOk && _dealsOk;
+        if (!_healthy) console.warn(`NOT caching this payload — poolOk=${_poolOk} dealsOk=${_dealsOk} ${subreqSummary()}`);
         if (env.CONTENT_STORE && _healthy) {
+          kvOp();
           try { const blob = JSON.stringify({ t: Date.now(), data: result }); if (blob.length < 20*1024*1024) await env.CONTENT_STORE.put(_ck, blob, { expirationTtl: 120 }); } catch(e) { /* best-effort */ }
         }
         return jr(result);
@@ -6076,6 +7925,30 @@ export default {
     // POST /api/clinician → Clinician Funnel. Cohorts on clinician_meeting_date
     // (the meeting day) within the selected window, and joins each deal to its
     // associated contact so the funnel can be segmented by Clinician Type.
+    // POST /api/clinician-funnel → the Clinician Funnel card's own date filter.
+    // Its own invocation and its own subrequest pool, so narrowing the funnel
+    // never disturbs (or is starved by) the main page fetch.
+    if (request.method === 'POST' && url.pathname === '/api/clinician-funnel') {
+      let body;
+      try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
+      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      try {
+        const _d = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null);
+        const from = _d(body.from) || CLINICIAN_HISTORY_FROM;
+        const to = _d(body.to) || fmt(todayET());
+        if (to < from) return jr({ error: 'Invalid range', detail: 'to is before from' }, 400);
+        const token = env.HUBSPOT_TOKEN;
+        const deals = await fetchClinicianDeals(token, from, to);
+        const contactsByDeal = await fetchClinicianContacts(token, deals.map(d => d.id));
+        // Same same-day disambiguation as /api/clinician, or this endpoint would
+        // report a different Form-vs-Demo split than the main page for one range.
+        const _amb = deals.filter(d => clinicianFormVsDemo(d.properties || {}) === 'Same Day').map(d => d.id);
+        const funnel = buildClinicianFunnel(deals, contactsByDeal, await fetchClinicianMeetingStarts(token, _amb));
+        return jr({ range: { from, to }, ...funnel,
+          meta: { generatedAt: new Date().toISOString(), dealsFetched: deals.length, cohortField: 'createdate' } });
+      } catch(err) { console.error('Clinician funnel endpoint error:', err); return jr({ error: 'Internal error', detail: err.message }, 500); }
+    }
+
     if (request.method === 'POST' && url.pathname === '/api/clinician') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
@@ -6083,13 +7956,43 @@ export default {
       try {
         const token = env.HUBSPOT_TOKEN;
         const { current: cur } = computeWindows(body.window || 'mtd', body.from || null, body.to || null, body.vsFrom || null, body.vsTo || null);
-        const deals = await fetchClinicianDeals(token, cur.from, cur.to);
+        // ONE fetch spanning both scopes: the page window AND the history range.
+        // Splitting them into two searches would double the HubSpot page cost
+        // against a 50-subrequest ceiling for data we can just slice in memory.
+        const _today = fmt(todayET());
+        const histFrom = CLINICIAN_HISTORY_FROM < cur.from ? CLINICIAN_HISTORY_FROM : cur.from;
+        const histTo = cur.to > _today ? cur.to : _today;
+        const deals = await fetchClinicianDeals(token, histFrom, histTo);
         const contactsByDeal = await fetchClinicianContacts(token, deals.map(d => d.id));
-        const funnel = buildClinicianFunnel(deals, contactsByDeal);
-        const daily = buildClinicianDaily(deals, contactsByDeal, cur.from, cur.to);
-        const composition = buildClinicianComposition(deals, contactsByDeal, cur.from, cur.to);
+        // Slice by the deal's createdate — the same cohort field fetchClinicianDeals
+        // filters on, so these subsets are exactly what a narrower fetch would return.
+        const _inWin = (d, f, t) => { const k = _clnDayKey((d.properties || {}).createdate); return !!k && k >= f && k <= t; };
+        const dealsPage = deals.filter(d => _inWin(d, cur.from, cur.to));
+        const dealsHist = deals.filter(d => _inWin(d, CLINICIAN_HISTORY_FROM, histTo));
+        // Only the deals whose Form-vs-Demo is a same-day tie need a meeting time.
+        const _ambiguous = dealsHist.filter(d => clinicianFormVsDemo(d.properties || {}) === 'Same Day').map(d => d.id);
+        const meetingStarts = await fetchClinicianMeetingStarts(token, _ambiguous);
+        // Funnel + table are history-scoped; everything else follows the page.
+        const funnel = buildClinicianFunnel(dealsHist, contactsByDeal, meetingStarts);
+        const funnelPage = buildClinicianFunnel(dealsPage, contactsByDeal, meetingStarts);
+        const daily = buildClinicianDaily(dealsPage, contactsByDeal, cur.from, cur.to);
+        const composition = buildClinicianComposition(dealsPage, contactsByDeal, cur.from, cur.to);
+        // The Verification Funnel is a HISTORY view like the Funnel and the All
+        // Clinicians table, so it gets its own pass over dealsHist. `composition`
+        // itself stays PAGE-scoped because Clinician Composition and Acquisition
+        // read the same object — repointing it would silently move those two
+        // sections' windows as well.
+        const _compHist = buildClinicianComposition(dealsHist, contactsByDeal, CLINICIAN_HISTORY_FROM, histTo);
+        const verification = {
+          verifContacts: _compHist.verifContacts,
+          credentials: _compHist.credentials,
+          photoVerification: _compHist.photoVerification,
+          // The Form-vs-Demo mix now comes off the funnel's rsMeet rows
+          // (deal-based, demo-flow) so it reconciles with the Before-Demo stat.
+          range: { from: CLINICIAN_HISTORY_FROM, to: histTo },
+        };
         const ownerMap = await fetchClinicianOwners(token);
-        const table = buildClinicianTable(deals, contactsByDeal, ownerMap);
+        const table = buildClinicianTable(dealsHist, contactsByDeal, ownerMap, meetingStarts);
         // Percent of the window elapsed, so pacing can be compared against spend.
         const _wEnd = Math.min(Date.now(), toMsET(cur.to, true));
         const _wStart = toMsET(cur.from);
@@ -6097,20 +8000,33 @@ export default {
         let ads = null;
         try {
           const wRows = await fetchWindsorAds(env.WINDSOR_API_KEY, wFrom(cur.from), cur.to);
-          ads = buildClinicianAds(wRows, getBudgetsForMonth(cur.from), funnel.all && funnel.all.funnel, daily.total || 0, funnel.rows || [], cur.from, cur.to);
+          // PAGE-scoped funnel, deliberately: spend is the page window's spend, so
+          // CPD / CPS / CAC must divide by that window's clinicians. Handing it the
+          // history funnel would divide one month of spend by three months of
+          // signups and silently report costs a third of their real value.
+          ads = buildClinicianAds(wRows, getBudgetsForMonth(cur.from), funnelPage.all && funnelPage.all.funnel, daily.total || 0, funnelPage.rows || [], cur.from, cur.to);
           ads.elapsedPct = elapsedPct;
+          // Same wRows — the weekly series costs no extra subrequest.
+          ads.weekly = buildClinicianWeekly(dealsPage, wRows, cur.from, cur.to);
         } catch (e) { console.error('Clinician ads fetch:', e.message); ads = { error: e.message, elapsedPct }; }
         return jr({
           period: cur,
           ...funnel,
+          // The range the funnel and table actually cover, so the UI can label
+          // them honestly instead of implying they follow the page filter.
+          historyRange: { from: CLINICIAN_HISTORY_FROM, to: histTo },
           daily,
           composition,
+          verification,
           table,
           ads,
           meta: {
             generatedAt: new Date().toISOString(),
             dealsFetched: deals.length,
+            dealsInPageWindow: dealsPage.length,
+            dealsInHistory: dealsHist.length,
             cohortField: 'createdate',
+            historyFrom: CLINICIAN_HISTORY_FROM,
             pipeline: CLINICIAN_PIPELINE_ID,
           },
         });
@@ -6179,8 +8095,44 @@ export default {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
       if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      // This endpoint had NO cache, so every load recomputed a fetch chain that
+      // measured 70s+ on a Year to Date window — past the dashboard's 75s abort.
+      // Ad data barely moves intraday, so a short TTL turns every load after the
+      // first into an instant one. Keyed on the window + custom dates, and on
+      // API_CACHE_VER so a payload-shape change cannot be served from the
+      // previous build's cache.
+      const _azWin = body.window || 'mtd';
+      const _azCk = 'azdata_resp_' + API_CACHE_VER + '_' + _azWin + '_' + (body.from||'') + '_' + (body.to||'')
+                  + '_' + (body.vsFrom||'') + '_' + (body.vsTo||'');
+      if (!body.fresh && env.CONTENT_STORE) {
+        try {
+          kvOp();
+          const raw = await env.CONTENT_STORE.get(_azCk);
+          if (raw) {
+            const pcache = JSON.parse(raw);
+            if (pcache && typeof pcache.t === 'number' && (Date.now() - pcache.t) < 300000 && pcache.data) {
+              console.log(`analyzer cache HIT (${_azWin}, age ${Math.round((Date.now()-pcache.t)/1000)}s)`);
+              return jr(pcache.data);
+            }
+          }
+        } catch(e) { /* fall through to live compute */ }
+      }
       try {
         const result = await processAzRequest(body.window||'mtd', body.from||null, body.to||null, env, body.vsFrom||null, body.vsTo||null);
+        // Never cache a DEGRADED response. A run that exhausted the pool or had
+        // Windsor chunks dropped at the budget is missing rows; caching it would
+        // serve those gaps for the whole TTL and make the shortfall look stable
+        // rather than transient. Degraded responses are still returned, so the
+        // user sees something and the next load retries.
+        const _azOk = !SUBREQ.exhausted && !SUBREQ.windsorDropped;
+        if (!_azOk) console.warn(`NOT caching analyzer payload (${_azWin}) — ${subreqSummary()}`);
+        if (env.CONTENT_STORE && _azOk) {
+          kvOp();
+          try {
+            const blob = JSON.stringify({ t: Date.now(), data: result });
+            if (blob.length < 20*1024*1024) await env.CONTENT_STORE.put(_azCk, blob, { expirationTtl: 600 });
+          } catch(e) { /* best-effort */ }
+        }
         return jr(result);
       } catch(err) { console.error('Analyzer error:', err); return jr({ error: 'Internal error', detail: err.message }, 500); }
     }
@@ -6194,6 +8146,7 @@ export default {
       let saved = null;
       if (env.CONTENT_STORE) {
         try {
+          kvOp();
           const raw = await env.CONTENT_STORE.get('content_state');
           if (raw) saved = JSON.parse(raw);
         } catch(e) { /* KV read failed, use defaults */ }
@@ -6222,6 +8175,7 @@ export default {
       if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
       if (!env.CONTENT_STORE) return jr({ pqMap: {}, _kvAvailable: false });
       try {
+        kvOp();
         const raw = await env.CONTENT_STORE.get('pq_results');
         const pqMap = raw ? JSON.parse(raw) : {};
         return jr({ pqMap, _kvAvailable: true });
@@ -6246,6 +8200,7 @@ export default {
       try {
         let existing = {};
         try {
+          kvOp();
           const raw = await env.CONTENT_STORE.get('csession_actions');
           if (raw) existing = JSON.parse(raw);
         } catch(e) { /* treat as empty */ }
@@ -6258,6 +8213,7 @@ export default {
           if (incoming[k] == null) { delete final[k]; }
           else { final[k] = incoming[k]; }
         }
+        kvOp();
         await env.CONTENT_STORE.put('csession_actions', JSON.stringify(final));
         return jr({ ok: true, count: Object.keys(final).length, savedAt: new Date().toISOString(), actions: final });
       } catch(err) { return jr({ ok: false, error: 'Save error', detail: err.message }, 500); }
@@ -6277,11 +8233,13 @@ export default {
         if (mode === 'merge') {
           let existing = {};
           try {
+            kvOp();
             const raw = await env.CONTENT_STORE.get('pq_results');
             if (raw) existing = JSON.parse(raw);
           } catch(e) { /* read failed, treat as empty */ }
           final = { ...existing, ...incoming };
         }
+        kvOp();
         await env.CONTENT_STORE.put('pq_results', JSON.stringify(final));
         return jr({ ok: true, count: Object.keys(final).length, savedAt: new Date().toISOString() });
       } catch(err) { return jr({ ok: false, error: 'Save error', detail: err.message }, 500); }
@@ -6294,6 +8252,7 @@ export default {
       if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
       try {
         if (env.CONTENT_STORE) {
+          kvOp();
           await env.CONTENT_STORE.put('content_state', JSON.stringify({
             posts: body.posts || [],
             irfan: body.irfan || [],
