@@ -1,4 +1,8 @@
-node_modules/.DS_Store
-.claude/worktrees/
+# Was a single pattern "node_modules/.DS_Store", so neither node_modules nor
+# .DS_Store was actually ignored and 188M of deps showed up as untracked.
+node_modules/
+.DS_Store
+.claude/
+.wrangler/
 sop-screenshots/
 *.docx
