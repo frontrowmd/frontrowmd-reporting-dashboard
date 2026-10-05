@@ -27,6 +27,81 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
 .tval{font-family:var(--font-h);font-size:28px;font-weight:700;color:var(--navy)}
 .tdef{font-size:10px;color:var(--grey);margin-top:2px}
 .pill{display:inline-block;padding:3px 10px;border-radius:50px;font-size:10px;font-weight:600;font-family:var(--font-b);white-space:nowrap}
+/* ── Pills: hover/active without touching fp()'s markup ─────────────────────
+   fp() emits <span class="pill"> with INLINE background/color, so a hover rule
+   on those properties would lose to the inline style. These use properties the
+   inline style never sets, which also means the pill rows keep their exact
+   metrics — turning 45 pills across 17 call sites into <button> would change UA
+   box metrics and can reflow the 13-pill Deal Stage row to a new line count. */
+.pill[onclick]{transition:box-shadow .13s ease,transform .13s ease,filter .13s ease}
+.pill[onclick]:hover{box-shadow:0 2px 7px rgba(2,15,24,.16);transform:translateY(-1px)}
+.pill[onclick].active:hover{filter:brightness(1.12)}
+.pill[onclick]:active{transform:translateY(0)}
+.pill[onclick]:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+
+/* ── Section chrome ─────────────────────────────────────────────────────────
+   scroll-margin-top clears the sticky nav when an anchor is jumped to. */
+.bd-sec{scroll-margin-top:64px;margin:0 0 30px}
+.bd-sec-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;
+  margin:0 0 14px;padding-bottom:9px;border-bottom:2px solid rgba(23,44,69,.13)}
+.bd-sec-n{font-family:var(--font-h);font-size:11px;font-weight:700;color:var(--teal);
+  letter-spacing:.12em}
+.bd-sec-t{font-family:var(--font-h);font-size:19px;font-weight:700;color:var(--navy);
+  letter-spacing:-.01em;line-height:1.15}
+.bd-sec-s{font-size:11px;color:var(--grey);flex:1;min-width:180px}
+
+/* ── Sticky section nav ─────────────────────────────────────────────────────
+   MUST live in the static DOM, NOT inside #bd-content. .main carries
+   overflow-y:auto (line 20) while #app is not a flex column, so .main is a
+   scrollport that never scrolls — anything position:sticky inside it renders
+   and inspects correctly and simply never sticks. Keeping the nav outside also
+   means renderBD() cannot destroy it. Do NOT "fix" .main's overflow instead:
+   overflow-y:auto forces overflow-x to auto too, and it is the only thing
+   stopping the filter and table cards (neither has min-width:0) from handing
+   <body> a horizontal scrollbar. */
+.bd-nav{position:sticky;top:0;z-index:60;display:flex;align-items:center;gap:4px;
+  padding:8px 24px;background:rgba(255,255,255,.90);backdrop-filter:blur(9px);
+  border-bottom:1px solid var(--border);box-shadow:0 1px 8px rgba(2,15,24,.05)}
+.bd-nav-i{font-family:var(--font-b);font-size:11.5px;font-weight:600;color:var(--grey);
+  text-decoration:none;padding:6px 13px;border-radius:50px;white-space:nowrap;
+  transition:background .14s ease,color .14s ease}
+.bd-nav-i:hover{background:rgba(23,44,69,.06);color:var(--navy)}
+.bd-nav-i.on{background:var(--navy);color:#fff}
+.bd-nav-i:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.bd-goal-btn{display:inline-flex;align-items:center;gap:7px;font-family:var(--font-b);
+  font-size:11.5px;font-weight:700;color:var(--navy);background:var(--teal-8);
+  border:1.5px solid rgba(114,164,191,.45);border-radius:50px;padding:6px 14px;
+  cursor:pointer;white-space:nowrap;transition:background .14s ease,border-color .14s ease}
+.bd-goal-btn:hover{background:rgba(114,164,191,.18);border-color:var(--teal)}
+.bd-goal-btn:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.bd-goal-badge{font-family:var(--font-h);font-weight:700;font-size:13px;color:var(--navy)}
+.bd-goal-badge:empty{display:none}
+
+/* ── Goal dialog ─────────────────────────────────────────────────────────── */
+.bd-mask{display:none;position:fixed;inset:0;z-index:200;background:rgba(2,15,24,.45);
+  backdrop-filter:blur(2px);align-items:flex-start;justify-content:center;padding:11vh 16px 16px}
+.bd-mask.open{display:flex}
+.bd-dlg{background:var(--white);border:1px solid var(--border);border-radius:14px;
+  box-shadow:0 18px 50px rgba(2,15,24,.30);width:100%;max-width:400px;padding:20px 22px 18px}
+.bd-dlg-x{background:transparent;border:none;cursor:pointer;color:var(--grey);font-size:19px;
+  line-height:1;padding:2px 6px;border-radius:6px}
+.bd-dlg-x:hover{background:rgba(23,44,69,.07);color:var(--navy)}
+.bd-dlg-x:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.bd-in{width:100%;padding:8px 11px;border:1.5px solid var(--border);border-radius:9px;
+  font-size:14px;font-family:var(--font-b);color:var(--navy);transition:border-color .14s ease}
+.bd-in:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px rgba(114,164,191,.18)}
+
+/* Tiles: a real hover, and a de-emphasised secondary rank so ~11 tiles are not
+   all shouting at 28px. */
+.tile{transition:box-shadow .14s ease,border-color .14s ease}
+.tile:hover{box-shadow:0 3px 12px rgba(2,15,24,.09)}
+.tile.sub .tval{font-size:21px}
+.tile.sub{padding:11px 14px}
+
+@media (prefers-reduced-motion:reduce){
+  .pill[onclick],.bd-nav-i,.tile,.bd-goal-btn,.bd-in{transition:none}
+  .pill[onclick]:hover{transform:none}
+}
 .stbl{width:100%;border-collapse:separate;border-spacing:0;font-size:11px;table-layout:fixed}
 .stbl th{text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--grey);padding:8px 6px;border-bottom:2px solid var(--border);font-weight:700;white-space:nowrap;overflow:hidden;cursor:pointer;background:var(--white)}
 .stbl th:hover{color:var(--navy)}
@@ -55,6 +130,21 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
 .stbl tbody td:first-child{position:sticky;left:0;z-index:3;box-shadow:2px 0 4px -2px rgba(23,44,69,.08)}
 .stbl thead tr:not(.bd-grp-row) th:first-child{position:sticky;left:0;top:28px;z-index:8;box-shadow:2px 0 4px -2px rgba(23,44,69,.08)}
 .float-tip{display:none;position:fixed;background:#172C45;color:#fff;padding:8px 12px;border-radius:8px;font-size:12px;pointer-events:none;z-index:999;box-shadow:0 4px 12px rgba(0,0,0,.15);max-width:320px;white-space:normal;line-height:1.4}
+/* Chart-hover variant. Scoped with .ftc so the attribution and table tooltips,
+   which share .float-tip and write their own innerHTML, are untouched. */
+.float-tip.ftc{padding:9px 13px 8px;border-radius:9px;box-shadow:0 8px 22px rgba(2,15,24,.32);min-width:118px;line-height:1.25}
+.ftc-d{font-size:9.5px;font-weight:700;letter-spacing:.07em;color:rgba(255,255,255,.62);white-space:nowrap;font-variant-numeric:tabular-nums}
+.ftc-v{font-family:var(--font-h);font-size:19px;font-weight:700;color:#fff;margin-top:3px;white-space:nowrap}
+.ftc-n{font-size:9px;color:rgba(255,255,255,.50);margin-top:2px;white-space:nowrap;text-transform:uppercase;letter-spacing:.05em}
+/* Deal Attribution hover — same family as .ftc, key/value rows instead of one number. */
+.float-tip.fta{padding:10px 13px 9px;border-radius:9px;box-shadow:0 8px 22px rgba(2,15,24,.32);min-width:172px;line-height:1.3}
+.fta-h{display:flex;align-items:center;gap:7px;padding-bottom:7px;margin-bottom:6px;border-bottom:1px solid rgba(255,255,255,.16)}
+.fta-key{width:11px;height:11px;border-radius:3px;flex-shrink:0}
+.fta-n{font-size:12.5px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
+.fta-r{display:flex;align-items:baseline;justify-content:space-between;gap:18px;margin-top:3px}
+.fta-l{font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.55)}
+.fta-v{font-family:var(--font-h);font-size:13px;font-weight:700;color:#fff;font-variant-numeric:tabular-nums;white-space:nowrap}
+.fta-v.acc{color:var(--teal)}
 .attr-row:hover{background:rgba(114,164,191,.04);border-radius:6px;margin-left:-8px;margin-right:-8px;padding-left:8px;padding-right:8px}
 .sp{display:inline-block;width:18px;height:18px;border:3px solid rgba(114,164,191,.2);border-top-color:var(--teal);border-radius:50%;animation:spin .6s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -114,7 +204,37 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
     <span id="fts" style="font-size:11px;color:rgba(114,164,191,.6);margin-right:12px"></span>
     <button onclick="bdRefresh()" id="refreshBtn" style="padding:6px 16px;border-radius:50px;border:1.5px solid rgba(114,164,191,.3);background:transparent;color:var(--teal);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-b);display:flex;align-items:center;gap:6px;transition:all .2s">↻ Refresh</button>
   </div>
+  <nav class="bd-nav" id="bd-nav" aria-label="Dashboard sections">
+    <a class="bd-nav-i" href="#bd-sec-summary" data-sec="bd-sec-summary" onclick="bdNavGo(event,'bd-sec-summary')">All Time Summary</a>
+    <a class="bd-nav-i" href="#bd-sec-arr" data-sec="bd-sec-arr" onclick="bdNavGo(event,'bd-sec-arr')">All Brands and ARR</a>
+    <a class="bd-nav-i" href="#bd-sec-deals" data-sec="bd-sec-deals" onclick="bdNavGo(event,'bd-sec-deals')">All Brand Deals</a>
+    <div style="flex:1"></div>
+    <button class="bd-goal-btn" id="bd-goal-btn" onclick="bdGoalOpen()" aria-haspopup="dialog" aria-expanded="false">
+      Deals to Hit Monthly Goal <span class="bd-goal-badge" id="bd-goal-badge"></span>
+    </button>
+  </nav>
   <div class="main" id="bd-content"></div>
+</div>
+<!-- Goal dialog. Static DOM on purpose: renderBD() rewrites all of #bd-content on
+     every filter click, which would wipe an open dialog and its inputs mid-typing.
+     bdCalc() reads the _bdArrGoal / _bdAcvInput globals (not these elements) and
+     writes to #bd-calc-result, so the number survives re-renders either way. -->
+<div class="bd-mask" id="bd-goal-mask" onclick="bdGoalMask(event)">
+  <div class="bd-dlg" role="dialog" aria-modal="true" aria-labelledby="bd-goal-title" id="bd-goal-dlg">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:3px">
+      <div id="bd-goal-title" style="font-family:var(--font-h);font-size:16px;font-weight:700;color:var(--navy)">Deals to Hit Monthly Goal</div>
+      <button class="bd-dlg-x" onclick="bdGoalClose()" aria-label="Close">&#215;</button>
+    </div>
+    <div style="font-size:11px;color:var(--grey);margin-bottom:14px">How many new deals close the gap between Signed ARR and your target.</div>
+    <div style="display:flex;gap:10px">
+      <label style="flex:1"><span style="display:block;font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">ARR Goal</span>
+        <input id="bd-arr-goal" class="bd-in" type="text" inputmode="numeric" placeholder="e.g. 20,000,000" oninput="fmtInput(this);_bdArrGoal=this.value;bdCalc()"></label>
+      <label style="flex:1"><span style="display:block;font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">ACV</span>
+        <input id="bd-acv-input" class="bd-in" type="text" inputmode="numeric" placeholder="e.g. 1,750" oninput="fmtInput(this);_bdAcvInput=this.value;bdCalc()"></label>
+    </div>
+    <div id="bd-calc-result" style="font-family:var(--font-h);font-weight:700;color:var(--navy);margin-top:15px;font-size:15px">&#8212;</div>
+    <div style="font-size:9.5px;color:var(--grey);margin-top:5px">(ARR Goal &#8722; Signed ARR) &#247; (ACV &#215; 12)</div>
+  </div>
 </div>
 <script>
 var BD={data:null},_bdSort='closedate',_bdSortDir='desc',_bdHideBlanks=false,_bdAttrDim='package_type';
@@ -415,6 +535,9 @@ function bdRefresh(){
 }
 document.getElementById('pw').addEventListener('keydown',function(e){if(e.key==='Enter')doLogin();});
 function f$(v){if(v==null||isNaN(v))return'\u2014';return'$'+Math.round(v).toLocaleString();}
+// MM/DD/YYYY for chart hovers. Zero-padded so the dates column-align in a tooltip.
+function _bdMDY(dt){if(!dt)return '';return String(dt.getMonth()+1).padStart(2,'0')+'/'+String(dt.getDate()).padStart(2,'0')+'/'+dt.getFullYear();}
+function _bdMonthEndMDY(y,m){return _bdMDY(new Date(y,m,0));}   // m is 1-based
 function fmtInput(el){var v=el.value.replace(/[^0-9]/g,'');el.value=v?parseInt(v).toLocaleString():'';}
 function parseInput(s){return parseFloat((s||'').replace(/[^0-9.]/g,''))||0;}
 function bdClearDate(){_bdDateFrom='';_bdDateTo='';renderBD();}
@@ -474,7 +597,93 @@ function bdToggleBilling(){_bdBillingExpanded=!_bdBillingExpanded;renderBD();}
 function bdToggleChurn(){_bdChurnExpanded=!_bdChurnExpanded;renderBD();}
 function bdToggleAvgDays(){_bdAvgDaysExpanded=!_bdAvgDaysExpanded;renderBD();}
 function bdToggleDates(){_bdDatesExpanded=!_bdDatesExpanded;renderBD();}
-function bdCalc(){var el=document.getElementById('bd-calc-result');if(!el)return;var goal=parseInput(_bdArrGoal);var acvIn=parseInput(_bdAcvInput);if(!goal||!acvIn){el.textContent='\u2014';return;}var d=BD.data;if(!d)return;var cw=d.deals.filter(function(dd){return dd.dealstage==='closedwon';});var active=cw.filter(function(dd){return !['Paused','Churned','Never Implemented - Churned'].includes(dd.brand_status);});var currentARR=0;active.forEach(function(dd){currentARR+=dd.amount;});currentARR*=12;var gap=goal-currentARR;if(gap<=0){el.innerHTML='<span style="color:#16A34A">\u2713 Goal reached!</span>';return;}var needed=Math.ceil(gap/(acvIn*12));el.innerHTML='<span style="font-size:32px">'+needed+'</span> <span style="font-size:14px;color:var(--grey)">deals needed</span>';}
+function bdCalc(){var el=document.getElementById('bd-calc-result');if(!el)return;var goal=parseInput(_bdArrGoal);var acvIn=parseInput(_bdAcvInput);if(!goal||!acvIn){el.textContent='\u2014';bdGoalBadge('');return;}var d=BD.data;if(!d){bdGoalBadge('');return;}var cw=d.deals.filter(function(dd){return dd.dealstage==='closedwon';});var active=cw.filter(function(dd){return !['Paused','Churned','Never Implemented - Churned'].includes(dd.brand_status);});var currentARR=0;active.forEach(function(dd){currentARR+=dd.amount;});currentARR*=12;var gap=goal-currentARR;if(gap<=0){el.innerHTML='<span style="color:#16A34A">\u2713 Goal reached!</span>';bdGoalBadge('\u2713');return;}var needed=Math.ceil(gap/(acvIn*12));el.innerHTML='<span style="font-size:30px">'+needed+'</span> <span style="font-size:13px;color:var(--grey)">deals needed</span>';bdGoalBadge(String(needed));}
+// The answer is echoed onto the nav button so the dialog does not hide the very
+// number it computes — the calculator used to be an always-visible tile.
+function bdGoalBadge(txt){var b=document.getElementById('bd-goal-badge');if(b)b.textContent=txt||'';}
+// ── Goal dialog ─────────────────────────────────────────────────────────────
+var _bdGoalPrev=null;
+function bdGoalOpen(){
+  var m=document.getElementById('bd-goal-mask');if(!m)return;
+  _bdGoalPrev=document.activeElement;
+  // Seed from the state vars, not from the DOM: the dialog is static markup with no
+  // value attributes, and these globals are what bdCalc() actually reads.
+  var g=document.getElementById('bd-arr-goal'),a=document.getElementById('bd-acv-input');
+  if(g)g.value=_bdArrGoal||'';
+  if(a){a.value=_bdAcvInput||'';if(BD&&BD._acv)a.placeholder='e.g. '+Math.round(BD._acv).toLocaleString();}
+  m.classList.add('open');
+  var btn=document.getElementById('bd-goal-btn');if(btn)btn.setAttribute('aria-expanded','true');
+  bdCalc();
+  if(g)g.focus();
+  document.addEventListener('keydown',_bdGoalKey,true);
+}
+function bdGoalClose(){
+  var m=document.getElementById('bd-goal-mask');if(!m)return;
+  m.classList.remove('open');
+  var btn=document.getElementById('bd-goal-btn');if(btn)btn.setAttribute('aria-expanded','false');
+  document.removeEventListener('keydown',_bdGoalKey,true);
+  if(_bdGoalPrev&&_bdGoalPrev.focus)_bdGoalPrev.focus();
+  _bdGoalPrev=null;
+}
+// Click the backdrop to dismiss, but not a click that started inside the dialog.
+function bdGoalMask(e){if(e&&e.target&&e.target.id==='bd-goal-mask')bdGoalClose();}
+function _bdGoalKey(e){
+  if(e.key==='Escape'){e.preventDefault();bdGoalClose();return;}
+  if(e.key!=='Tab')return;
+  var dlg=document.getElementById('bd-goal-dlg');if(!dlg)return;
+  var f=dlg.querySelectorAll('input,button');if(!f.length)return;
+  var first=f[0],last=f[f.length-1];
+  if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+  else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+}
+// ── Section nav ─────────────────────────────────────────────────────────────
+// Smooth scroll is applied PER CALL, never as html{scroll-behavior:smooth}:
+// bdAnchorSearch() fires window.scrollBy({behavior:'auto'}) on every keystroke of
+// the deal search, and 'auto' defers to the CSS value — a global rule would
+// animate the whole page on each character typed.
+function bdNavGo(e,id){
+  if(e&&e.preventDefault)e.preventDefault();
+  var el=document.getElementById(id);if(!el)return;
+  try{el.scrollIntoView({behavior:'smooth',block:'start'});}catch(_){el.scrollIntoView();}
+  bdNavMark(id);
+}
+function bdNavMark(id){
+  var items=document.querySelectorAll('.bd-nav-i');
+  for(var i=0;i<items.length;i++)items[i].classList.toggle('on',items[i].getAttribute('data-sec')===id);
+}
+// Scroll-spy. A rAF-throttled scroll listener, NOT an IntersectionObserver:
+// the observer callback only receives entries whose intersection state CHANGED,
+// so scrolling from section 2 into section 3 while the tall deals section stays
+// intersecting reports nothing and the nav keeps a stale mark (measured: landing
+// on section 2 still read "deals"). Picking by intersectionRatio is wrong for the
+// same page too — a short section scores a higher ratio than a tall one that
+// actually fills the screen.
+// Reading all three sections fresh on each tick also makes this immune to
+// renderBD() replacing them, so it binds ONCE and needs no re-observing.
+var _bdSpyOn=false;
+function bdBindSpy(){
+  if(_bdSpyOn)return;                 // idempotent: renderBD() calls this every time
+  _bdSpyOn=true;
+  var queued=false;
+  var tick=function(){
+    queued=false;
+    var secs=document.querySelectorAll('.bd-sec');if(!secs.length)return;
+    // The active section is the last one whose top has passed under the nav line.
+    var line=72,best=secs[0].id,bestTop=-Infinity;
+    for(var i=0;i<secs.length;i++){
+      var t=secs[i].getBoundingClientRect().top;
+      if(t<=line&&t>bestTop){bestTop=t;best=secs[i].id;}
+    }
+    // At the very bottom, favour the last section — otherwise a short final
+    // section can never become active.
+    if(window.innerHeight+window.scrollY>=document.body.scrollHeight-4)best=secs[secs.length-1].id;
+    bdNavMark(best);
+  };
+  var onScroll=function(){if(queued)return;queued=true;requestAnimationFrame(tick);};
+  window.addEventListener('scroll',onScroll,{passive:true});
+  window.addEventListener('resize',onScroll,{passive:true});
+  tick();
+}
 // Display-name overrides \u2014 keyed by a substring found in the owner's full
 // HubSpot name. e.g. an owner whose HubSpot name is "Shealtiel <something>"
 // (or includes "Shealtiel" anywhere) displays as "Kean" in the UI.
@@ -503,28 +712,27 @@ function renderBD(){
   var activeDeals=closedWonDeals.filter(function(dd){return !['Paused','Churned','Never Implemented - Churned'].includes(dd.brand_status);});
   var totalMRR=0;activeDeals.forEach(function(dd){totalMRR+=dd.amount;});var totalARR=totalMRR*12;var acv=activeDeals.length>0?totalMRR/activeDeals.length:0;
   var h='';
-  // KPIs
-  h+='<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px;align-items:stretch">';
+  // ═════ SECTION 1 — All Time Summary ═════
+  // The goal calculator used to be the 5th cell of this grid. It now lives in a
+  // static-DOM dialog behind the sticky nav's button, so the grid is 4 columns.
+  // Its markup MUST be deleted here in the same edit as adding that dialog:
+  // bdCalc() writes to #bd-calc-result by id, so two copies means it updates the
+  // hidden one while the visible number silently never moves.
+  h+='<section class="bd-sec" id="bd-sec-summary">';
+  h+='<div class="bd-sec-head"><span class="bd-sec-n">01</span><span class="bd-sec-t">All Time Summary</span><span class="bd-sec-s">Every closed-won brand to date, excluding Paused and Churned. Not affected by the filters below.</span></div>';
+  h+='<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;align-items:stretch">';
   h+='<div class="tile hero" style="border-left:3px solid #16A34A;display:flex;flex-direction:column;justify-content:center"><div class="tlbl">Active Brands</div><div class="tval">'+activeDeals.length+'</div><div class="tdef">Closed Won excl. Paused/Churned</div></div>';
   h+='<div class="tile hero" style="border-left:3px solid #172C45;display:flex;flex-direction:column;justify-content:center"><div class="tlbl">Signed ARR</div><div class="tval">'+f$(totalARR)+'</div><div class="tdef">MRR \u00d7 12</div></div>';
   h+='<div class="tile hero" style="border-left:3px solid var(--teal);display:flex;flex-direction:column;justify-content:center"><div class="tlbl">Signed MRR</div><div class="tval">'+f$(totalMRR)+'</div><div class="tdef">Sum of amount on active deals</div></div>';
   h+='<div class="tile hero" style="border-left:3px solid #7C3AED;display:flex;flex-direction:column;justify-content:center"><div class="tlbl">Avg ACV of Active Brands</div><div class="tval">'+f$(acv)+'</div><div class="tdef">MRR \u00f7 Active Brands</div></div>';
-  // Calculator
-  h+='<div class="tile" style="border:1.5px solid var(--teal);background:rgba(114,164,191,.04)">';
-  h+='<div class="tlbl" style="color:var(--teal)">Deals to Hit Monthly Goal</div>';
-  h+='<div style="display:flex;gap:6px;margin:6px 0">';
-  h+='<div style="flex:1"><div style="font-size:8px;color:var(--grey);margin-bottom:2px">ARR Goal</div><input id="bd-arr-goal" type="text" value="'+_bdArrGoal+'" placeholder="e.g. 500,000" oninput="fmtInput(this);_bdArrGoal=this.value;bdCalc()" style="width:100%;padding:6px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--font-b);color:var(--navy)"></div>';
-  h+='<div style="flex:1"><div style="font-size:8px;color:var(--grey);margin-bottom:2px">ACV</div><input id="bd-acv-input" type="text" value="'+_bdAcvInput+'" placeholder="e.g. '+Math.round(acv).toLocaleString()+'" oninput="fmtInput(this);_bdAcvInput=this.value;bdCalc()" style="width:100%;padding:6px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--font-b);color:var(--navy)"></div></div>';
-  h+='<div id="bd-calc-result" style="font-family:var(--font-h);font-weight:700;color:var(--navy);margin-top:6px">\u2014</div>';
-  h+='<div style="font-size:8px;color:var(--grey);margin-top:2px">(ARR Goal \u2212 Signed ARR) \u00f7 (ACV \u00d7 12)</div>';
-  h+='</div></div>';
+  h+='</div></section>';
   // Charts - build monthly cumulative from active (Paying+Signed) deals only
   var chartDeals=closedWonDeals.filter(function(dd){return dd.brand_status==='Paying'||dd.brand_status==='Signed';});
   var _chartMonthMap={};chartDeals.forEach(function(dd){var cd=dd.closedate;if(!cd)return;var m=cd.substring(0,7);if(!_chartMonthMap[m])_chartMonthMap[m]={added:0,addedMRR:0};_chartMonthMap[m].added++;_chartMonthMap[m].addedMRR+=dd.amount;});
   // Subtract churned/paused by their close month (approximate)
   var _chartMonths=Object.keys(_chartMonthMap).sort();
-  var _cumB=[],_cumA=[],_cumL=[];var rB=0,rA=0;var mN=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  for(var mi=0;mi<_chartMonths.length;mi++){var md=_chartMonthMap[_chartMonths[mi]];rB+=md.added;rA+=md.addedMRR*12;_cumB.push(rB);_cumA.push(rA);var p=_chartMonths[mi].split('-');_cumL.push(mN[parseInt(p[1])-1]+' '+p[0].substring(2));}
+  var _cumB=[],_cumA=[],_cumL=[],_cumTip=[];var rB=0,rA=0;var mN=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  for(var mi=0;mi<_chartMonths.length;mi++){var md=_chartMonthMap[_chartMonths[mi]];rB+=md.added;rA+=md.addedMRR*12;_cumB.push(rB);_cumA.push(rA);var p=_chartMonths[mi].split('-');_cumL.push(mN[parseInt(p[1])-1]+' '+p[0].substring(2));_cumTip.push(_bdMonthEndMDY(parseInt(p[0],10),parseInt(p[1],10)));}
   // Snapshot series — "what WAS active at each month-end". Definition (validated
   // against HubSpot: Jun 2026 = 735 brands / $15,326,664):
   //   snapshot(M) = the current active book signed by month-end M
@@ -559,7 +767,7 @@ function renderBD(){
     if(!_snFirst||_sm<_snFirst)_snFirst=_sm;
     _snInact.push({s:_sm,c:_cm,m:dd.amount});
   });
-  var _cumBSnap=[],_cumASnap=[],_cumLSnap=[];var _snByMonth={};
+  var _cumBSnap=[],_cumASnap=[],_cumLSnap=[],_cumTipSnap=[];var _snByMonth={};
   if(_snFirst){
     var _sfp=_snFirst.split('-');var _scur=new Date(parseInt(_sfp[0],10),parseInt(_sfp[1],10)-1,1);
     var _snow=new Date();var _send=new Date(_snow.getFullYear(),_snow.getMonth(),1);
@@ -571,12 +779,15 @@ function renderBD(){
       for(var _ii=0;_ii<_snInact.length;_ii++){var _r=_snInact[_ii];if(_r.s<=_smk&&_r.c>_smk){_addB++;_addA+=_r.m;}}
       var _tb=_baseB+_addB,_ta=(_baseA+_addA)*12;
       _snByMonth[_smk]={b:_tb,a:_ta};
-      _cumBSnap.push(_tb);_cumASnap.push(_ta);_cumLSnap.push(mN[_scur.getMonth()]+' '+String(_scur.getFullYear()).slice(-2));
+      _cumBSnap.push(_tb);_cumASnap.push(_ta);_cumLSnap.push(mN[_scur.getMonth()]+' '+String(_scur.getFullYear()).slice(-2));_cumTipSnap.push(_bdMonthEndMDY(_scur.getFullYear(),_scur.getMonth()+1));
       _scur.setMonth(_scur.getMonth()+1);
     }
   }
   // Resolve the active view for the two cumulative charts.
   var _brL=_bdChartMode==='snapshot'?_cumLSnap:_cumL;
+  // These two series are MONTHLY, so the hover names the month's LAST day and says
+  // so — an MM/DD/YYYY on a month bucket would otherwise read as a single day's value.
+  var _brTip=_bdChartMode==='snapshot'?_cumTipSnap:_cumTip;
   var _brB=_bdChartMode==='snapshot'?_cumBSnap:_cumB;
   var _brA=_bdChartMode==='snapshot'?_cumASnap:_cumA;
   var _brBtot=_brB.length?_brB[_brB.length-1]:0;
@@ -598,7 +809,7 @@ function renderBD(){
     var _wcur=new Date(parseInt(_wfp[0],10),parseInt(_wfp[1],10)-1,parseInt(_wfp[2],10));
     var _wend=new Date(parseInt(_wlp[0],10),parseInt(_wlp[1],10)-1,parseInt(_wlp[2],10));
     // _wkL = MMM YY ticks (match the charts above); _wkTip = exact Monday date for hover
-    while(_wcur.getTime()<=_wend.getTime()){var _wk=_bdWkKey(_wcur);_wkL.push(mN[_wcur.getMonth()]+' '+String(_wcur.getFullYear()).slice(-2));_wkTip.push(mN[_wcur.getMonth()]+' '+_wcur.getDate()+', '+_wcur.getFullYear());_wkV.push(_wkMap[_wk]||0);_wkTotal+=(_wkMap[_wk]||0);_wcur.setDate(_wcur.getDate()+7);}
+    while(_wcur.getTime()<=_wend.getTime()){var _wk=_bdWkKey(_wcur);_wkL.push(mN[_wcur.getMonth()]+' '+String(_wcur.getFullYear()).slice(-2));_wkTip.push(_bdMDY(_wcur));_wkV.push(_wkMap[_wk]||0);_wkTotal+=(_wkMap[_wk]||0);_wcur.setDate(_wcur.getDate()+7);}
   }
   // Current-month / last-month signed metrics for the chart mini stat cards.
   var _bdNow=new Date();
@@ -625,13 +836,18 @@ function renderBD(){
     var box=col?('background:#fff;border:1.5px solid '+col+';'):'background:rgba(23,44,69,.04);border:1px solid rgba(23,44,69,.12);';
     return '<div style="'+box+'border-radius:8px;padding:4px 11px;text-align:right;line-height:1.18"><div style="font-size:7.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap">'+label+'</div><div style="font-size:15px;font-weight:700;color:'+(col||'var(--navy)')+';font-family:var(--font-h)">'+val+'</div></div>';
   };
-  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;min-width:0">';
+  // ═════ SECTION 2 — All Brands and ARR ═════
+  h+='<section class="bd-sec" id="bd-sec-arr">';
+  h+='<div class="bd-sec-head"><span class="bd-sec-n">02</span>'
+    +'<span class="bd-sec-t">All Brands and ARR</span>'
+    +'<span class="bd-sec-s">Growth over time \u2014 brand count, cumulative ARR, and new ARR signed per week.</span></div>';
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;min-width:0">';
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;position:relative;min-width:0;overflow:hidden;display:flex;flex-direction:column" class="chart-wrap">';
   h+='<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px;flex-wrap:wrap"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">Active Brands <span style="font-size:11px;color:var(--grey);font-family:var(--font-b);font-weight:400">'+_brBtot+' total</span></div><div style="display:flex;gap:8px;align-items:center;flex-shrink:0">'+_cmSeg+_miniStat(_miBrCurL,_miBrCurV,'#172C45')+_miniStat(_miBrLmL,_miBrLmV,null)+'</div></div>';
-  h+=buildSVGChart(_brL,_brB,'#172C45',' brands',false,'',_snapChartOpts)+'<div id="bd-brands-tip" class="float-tip"></div></div>';
+  h+=buildSVGChart(_brL,_brB,'#172C45',' brands',false,'',Object.assign({},_snapChartOpts,{tipLabels:_brTip,tipNote:'month ending'}))+'<div id="bd-brands-tip" class="float-tip"></div></div>';
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;position:relative;min-width:0;overflow:hidden;display:flex;flex-direction:column" class="chart-wrap">';
   h+='<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px;flex-wrap:wrap"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">Signed ARR <span style="font-size:11px;color:var(--grey);font-family:var(--font-b);font-weight:400">'+f$(_brAtot)+'</span></div><div style="display:flex;gap:8px;align-items:center;flex-shrink:0">'+_cmSeg+_miniStat(_miArCurL,_miArCurV,'#16A34A')+_miniStat(_miArLmL,_miArLmV,null)+'</div></div>';
-  h+=buildSVGChart(_brL,_brA,'#16A34A','',true,'',_snapChartOpts)+'<div id="bd-arr-tip" class="float-tip"></div></div>';
+  h+=buildSVGChart(_brL,_brA,'#16A34A','',true,'',Object.assign({},_snapChartOpts,{tipLabels:_brTip,tipNote:'month ending'}))+'<div id="bd-arr-tip" class="float-tip"></div></div>';
   h+='</div>';
   // Full-width ARR-by-week chart (blue) — non-cumulative weekly signings.
   // Wide viewBox (1400×240) + a CSS aspect-ratio on the chart area (not a fixed
@@ -642,8 +858,9 @@ function renderBD(){
   h+='<div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">ARR by Week <span style="font-size:11px;color:var(--grey);font-family:var(--font-b);font-weight:400">new ARR signed per week · '+f$(_wkTotal)+' total</span></div>';
   h+='<div style="display:flex;gap:8px;flex-shrink:0">'+_miniStat('Current Month ARR',f$(_cmARR),'#2563EB')+_miniStat('Last Month ARR',f$(_lmARR),null)+'</div>';
   h+='</div>';
-  h+=buildSVGChart(_wkL,_wkV,'#2563EB','',true,'Week of ',{w:1400,tipLabels:_wkTip,aspect:true});
+  h+=buildSVGChart(_wkL,_wkV,'#2563EB','',true,'',{w:1400,tipLabels:_wkTip,tipNote:'week beginning',aspect:true});
   h+='<div id="bd-arrweek-tip" class="float-tip"></div></div>';
+  h+='</section>';
   // Shared Filtered
   // Precompute lowered search query once per render so the per-row filter
   // doesn't pay toLowerCase()/trim() on each call.
@@ -775,7 +992,13 @@ function renderBD(){
   var attrColors=Object.assign({},BD_STAGE_COLORS,BD_STATUS_COLORS,BD_PKG_COLORS,BD_REP_CMAP,bdStageLabelColors,{'Pre-launch':'#9CA3AF','0-10K':'#72A4BF','10-25K':'#1D4053','25-50K':'#172C45','50-100K':'#0EA5E9','100-200K':'#7C3AED','200-500K':'#16A34A','500K+':'#F59E0B','(none)':'#9CA3AF','Unassigned':'#9CA3AF'});
   // Prominent section divider — separates the charts above from the Filters
   // + Deal Attribution analysis below (moved here, above the Filters section).
-  h+='<div style="border-top:3px solid rgba(23,44,69,.28);border-radius:2px;margin:8px 0 22px"></div>';
+  // ═════ SECTION 3 — All Brand Deals ═════
+  // Replaces a bare 3px divider. Everything from here down is filter-scoped, which
+  // the subtitle states once rather than each card repeating it.
+  h+='<section class="bd-sec" id="bd-sec-deals">';
+  h+='<div class="bd-sec-head"><span class="bd-sec-n">03</span>'
+    +'<span class="bd-sec-t">All Brand Deals</span>'
+    +'<span class="bd-sec-s">Filters below scope the attribution chart, the summary tiles and the table together.</span></div>';
   // ===== Filters (relocated above Deal Attribution) =====
   // Filters drive the Deal Attribution chart, the summary metrics, and the
   // All Deals table below — everything reflects the active filter set.
@@ -817,26 +1040,26 @@ function renderBD(){
   h+=fp(_bdBrandStatusToggleF.indexOf('Never Implemented - Churned')>=0,'Never Implemented',"bdBSToggle('Never Implemented - Churned')")+' ';
   h+='</span></div>';
   // Row 2: Deal Stage (own row)
-  h+='<div style="display:flex;align-items:center;gap:4px 6px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid rgba(23,44,69,.06)">';
+  h+='<div style="display:flex;align-items:center;gap:4px 6px;flex-wrap:wrap;margin-top:15px">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase;flex-shrink:0;margin-right:2px">Deal Stage</span> ';
   h+=fp(_bdStageF==='all','All',"_bdStageF='all';renderBD()")+' ';
   Object.keys(uniqStage).sort(function(a,b){var ia=BD_STAGE_ORDER.indexOf(a),ib=BD_STAGE_ORDER.indexOf(b);if(ia<0)ia=999;if(ib<0)ib=999;return ia-ib||(a<b?-1:a>b?1:0);}).forEach(function(v){h+=fp(_bdStageF===v,BD_STAGE_LABELS[v]||v,"_bdStageF='"+v+"';renderBD()")+' ';});
   h+='</div>';
   // Row 3: Package (own row)
-  h+='<div style="display:flex;align-items:center;gap:4px 6px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid rgba(23,44,69,.06)">';
+  h+='<div style="display:flex;align-items:center;gap:4px 6px;flex-wrap:wrap;margin-top:15px">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase;flex-shrink:0;margin-right:2px">Package</span> ';
   h+=fp(_bdPkgF==='all','All',"_bdPkgF='all';renderBD()")+' ';
   Object.keys(uniqPkg).sort(function(a,b){return (BD_PKG_ORDER[bdPlanName(a)]||99)-(BD_PKG_ORDER[bdPlanName(b)]||99);}).forEach(function(v){h+=fp(_bdPkgF===v,bdPlanName(v),"_bdPkgF='"+v+"';renderBD()")+' ';});
   h+='</div>';
   // Row 4: Web Traffic (own row, multi-select)
-  h+='<div style="display:flex;align-items:center;gap:4px 6px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid rgba(23,44,69,.06)">';
+  h+='<div style="display:flex;align-items:center;gap:4px 6px;flex-wrap:wrap;margin-top:15px">';
   h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase;flex-shrink:0;margin-right:2px">Web Traffic</span>';
   h+='<span style="font-size:8.5px;font-weight:600;color:var(--teal);text-transform:none;letter-spacing:.02em;margin-right:4px;font-style:italic">(multi-select)</span> ';
   h+=fpMulti(_bdWebTrafficF.length===0,'All',"bdWtClear()")+' ';
   Object.keys(uniqWebTrafficBD).sort(function(a,b){return(BD_WT_ORDER[a]||99)-(BD_WT_ORDER[b]||99);}).forEach(function(v){h+=fpMulti(_bdWebTrafficF.indexOf(v)>=0,BD_WT_LABELS[v]||v,"bdWtToggle('"+v.replace(/'/g,"\\'")+"')")+' ';});
   h+='</div>';
   // Row 5: rep dropdowns — Deal Rep, Acct Mgr, SE Rep, Ops Rep
-  h+='<div style="display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid rgba(23,44,69,.06)">';
+  h+='<div style="display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-top:15px">';
   h+=bdSelect('Deal Rep',_bdRepF,'_bdRepF',repSorted,BD_DEAL_REP_HIDE);
   h+=bdSelect('Acct Mgr',_bdAcctMgrF,'_bdAcctMgrF',acctMgrSorted,null);
   h+=bdSelect('SE Rep',_bdSeRepF,'_bdSeRepF',seSorted,BD_SE_REP_HIDE);
@@ -844,7 +1067,7 @@ function renderBD(){
   h+='</div>';
   // Row 6: date range (prominent) + presets
   var anyF=_bdBrandStatusF!=='all'||_bdBrandStatusToggleF.length>0||_bdStageF!=='all'||_bdRepF!=='all'||_bdAcctMgrF!=='all'||_bdSeRepF!=='all'||_bdOpsRepF!=='all'||_bdPkgF!=='all'||_bdWebTrafficF.length>0||_bdDateFrom||_bdDateTo||_bdSearchQ;
-  h+='<div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid rgba(23,44,69,.06)">';
+  h+='<div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-top:15px">';
   h+='<span style="display:inline-flex;flex-direction:column;gap:4px"><span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.03em">Date Range</span>';
   h+='<span style="display:inline-flex;align-items:center;background:rgba(23,44,69,.05);border-radius:50px;padding:3px;gap:2px;flex-shrink:0">';
   h+=fp(_bdDateMode==='close','Close Date',"_bdDateMode='close';renderBD()");
@@ -865,11 +1088,11 @@ function renderBD(){
   h+='</span>';
   h+='</div></div>';
   // ===== end Filters =====
-  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:20px;position:relative">';
+  h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 22px 14px;margin-bottom:18px;position:relative">';
   h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap"><div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">Deal Attribution</div><div style="font-size:10px;color:var(--grey);margin-left:4px">'+attrVisTotal+' deals \u00b7 '+f$(attrVisMRR)+' MRR'+(_bdHideBlanks&&attrVisTotal<sharedFiltered.length?' ('+sharedFiltered.length+' total)':'')+'</div><div style="flex:1"></div>';
   for(var adi2=0;adi2<attrDims.length;adi2++){var adm2=attrDims[adi2];h+=fp(_bdAttrDim===adm2.k,adm2.l,"_bdAttrDim='"+adm2.k+"';renderBD()");}
   h+='<label style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--grey);cursor:pointer;margin-left:8px"><input type="checkbox" '+(_bdHideBlanks?'checked':'')+' onchange="_bdHideBlanks=this.checked;renderBD()" style="margin:0;cursor:pointer">Hide blanks</label>';
-  h+='</div><div id="bd-attr-bars" style="padding:0 20px">';
+  h+='</div><div id="bd-attr-bars" style="padding:14px 20px 2px;margin-top:2px;border-top:1px solid rgba(23,44,69,.07)">';
   // Tiny uppercase metric tag so the MRR vs ACV values are unambiguous.
   var _mLbl=function(t){return '<span style="font-size:8.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;margin-left:1px">'+t+'</span>';};
   for(var ari=0;ari<attrSorted.length;ari++){var ak=attrSorted[ari][0],ac=attrSorted[ari][1];var apct=(ac/(attrVisTotal||1)*100).toFixed(1);var aMrr=attrMRR[ak]||0;var aAcv=ac>0?aMrr/ac:0;var bw2=Math.max(ac/attrMax*100,2);var barC=attrColors[ak]||'#72A4BF';
@@ -877,7 +1100,19 @@ function renderBD(){
   // applied via bdFirstName) — keeps the bar tidy and respects display
   // preferences. Full name stays in data-label + title for hover.
   var akDisp=(_bdAttrDim==='_rep'||_bdAttrDim==='_opsRep'||_bdAttrDim==='_seRep')?bdFirstName(ak):ak;
-  h+='<div class="attr-row" data-label="'+ak+'" data-count="'+ac+'" data-pct="'+apct+'" data-mrr="'+Math.round(aMrr)+'" data-acv="'+Math.round(aAcv)+'" style="display:flex;align-items:center;gap:12px;margin-bottom:10px;cursor:pointer"><div style="width:120px;flex-shrink:0;font-size:12px;font-weight:600;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right" title="'+ak+'">'+akDisp+'</div><div style="flex:1;min-width:0;background:rgba(114,164,191,.06);border-radius:6px;height:28px;position:relative"><div style="height:100%;border-radius:6px;background:'+barC+';width:'+bw2+'%;min-width:4px;transition:width .3s"></div></div><div style="width:250px;flex-shrink:0;font-size:12px;color:var(--navy);white-space:nowrap;text-align:right;font-weight:500"><span style="color:var(--grey);font-weight:400">'+ac+'</span> <span style="color:var(--grey);font-weight:400">('+apct+'%)</span> <span style="color:rgba(23,44,69,.25);margin:0 2px">|</span> <span style="font-weight:600">'+f$(aMrr)+'</span>'+_mLbl('MRR')+' <span style="font-weight:600;color:var(--teal)">'+f$(aAcv)+'</span>'+_mLbl('ACV')+'</div></div>';}
+  // The right-hand numbers are laid out as FIXED-WIDTH, tabular-nums columns.
+  // They were one right-aligned run, so count / % / MRR / ACV shifted horizontally
+  // on every row and could not be compared down the card — the whole point of
+  // stacking them. The '|' separator is gone; column edges do that job now.
+  h+='<div class="attr-row" data-label="'+ak+'" data-count="'+ac+'" data-pct="'+apct+'" data-mrr="'+Math.round(aMrr)+'" data-acv="'+Math.round(aAcv)+'" data-color="'+barC+'" style="display:flex;align-items:center;gap:12px;margin-bottom:7px;cursor:pointer">'
+    +'<div style="width:120px;flex-shrink:0;font-size:12px;font-weight:600;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right" title="'+ak+'">'+akDisp+'</div>'
+    +'<div style="flex:1;min-width:0;background:rgba(23,44,69,.055);border-radius:5px;height:24px;position:relative;overflow:hidden">'
+      +'<div style="height:100%;border-radius:5px;background:'+barC+';width:'+bw2+'%;min-width:4px;transition:width .3s"></div></div>'
+    +'<div style="flex-shrink:0;display:flex;align-items:baseline;justify-content:flex-end;gap:14px;font-size:12px;color:var(--navy);white-space:nowrap;font-variant-numeric:tabular-nums">'
+      +'<span style="width:74px;text-align:right;color:var(--grey);font-weight:400">'+ac+' <span style="opacity:.75">('+apct+'%)</span></span>'
+      +'<span style="width:86px;text-align:right;font-weight:600">'+f$(aMrr)+_mLbl('MRR')+'</span>'
+      +'<span style="width:82px;text-align:right;font-weight:600;color:var(--teal)">'+f$(aAcv)+_mLbl('ACV')+'</span>'
+    +'</div></div>';}
   h+='</div><div id="bd-attr-tip" class="float-tip"></div></div>';
   // Summary Card
   // sfStatusFilled = denominator for % Paused / % Churned (deals with brand_status field filled).
@@ -921,11 +1156,14 @@ function renderBD(){
   var sfAvgDaysFromDemo=_avg1(sfDemoDaysSum,sfDemoDaysCount);
   var sfAvgToDemo=_avg1(sfToDemoSum,sfToDemoCount);
   var sfAvgACV=sfTotal?(sfTotalAmt/sfTotal):0;
-  h+='<div style="display:flex;gap:12px;margin-bottom:16px">';
-  h+='<div class="tile hero" style="flex:1"><div class="tlbl">Deals</div><div class="tval" style="font-size:22px">'+sfTotal+'</div><div class="tdef">Matching filters</div></div>';
-  h+='<div class="tile hero" style="flex:1"><div class="tlbl">Total ARR</div><div class="tval" style="font-size:22px">'+f$(sfTotalAmt*12)+'</div><div class="tdef">MRR \u00d7 12</div></div>';
-  h+='<div class="tile hero" style="flex:1"><div class="tlbl">Total MRR</div><div class="tval" style="font-size:22px">'+f$(sfTotalAmt)+'</div><div class="tdef">Sum of amount</div></div>';
-  h+='<div class="tile hero" style="flex:1"><div class="tlbl">Avg ACV</div><div class="tval" style="font-size:22px">'+f$(sfAvgACV)+'</div><div class="tdef">MRR \u00f7 deals</div></div>';
+  // Secondary rank: these are filter-scoped, unlike section 1's all-time heroes.
+  // .sub lowers the value size so ~11 tiles on the page are not all shouting at
+  // 28px, and flex-wrap stops 8 tiles from crushing on a narrow window.
+  h+='<div style="display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap;align-items:stretch">';
+  h+='<div class="tile hero sub" style="flex:1;min-width:132px"><div class="tlbl">Deals</div><div class="tval">'+sfTotal+'</div><div class="tdef">Matching filters</div></div>';
+  h+='<div class="tile hero sub" style="flex:1;min-width:132px"><div class="tlbl">Total ARR</div><div class="tval">'+f$(sfTotalAmt*12)+'</div><div class="tdef">MRR \u00d7 12</div></div>';
+  h+='<div class="tile hero sub" style="flex:1;min-width:132px"><div class="tlbl">Total MRR</div><div class="tval">'+f$(sfTotalAmt)+'</div><div class="tdef">Sum of amount</div></div>';
+  h+='<div class="tile hero sub" style="flex:1;min-width:132px"><div class="tlbl">Avg ACV</div><div class="tval">'+f$(sfAvgACV)+'</div><div class="tdef">MRR \u00f7 deals</div></div>';
   // Avg Days \u2014 three metrics side-by-side, card split into 3 thirds.
   //   To Demo            = date_demo_booked \u2212 createdate (any deal)
   //   Close From Demo    = closedate \u2212 date_demo_booked (Closed-Won)
@@ -938,7 +1176,7 @@ function renderBD(){
       +'</div>';
   };
   var _vDiv='<div style="width:1px;background:var(--border);margin:0 2px"></div>';
-  h+='<div class="tile hero" style="flex:1.7;display:flex;flex-direction:column;justify-content:center;min-width:0"><div class="tlbl">Avg Days</div>'
+  h+='<div class="tile hero sub" style="flex:1.7;display:flex;flex-direction:column;justify-content:center;min-width:210px"><div class="tlbl">Avg Days</div>'
     +'<div style="display:flex;align-items:stretch;margin-top:6px">'
     +_avgCol('To Demo',sfAvgToDemo)
     +_vDiv
@@ -947,12 +1185,12 @@ function renderBD(){
     +_avgCol('Close From Created',sfAvgDays)
     +'</div>'
     +'<div class="tdef" style="margin-top:6px;text-align:center;font-size:9px">'+sfToDemoCount+' to demo \u00b7 '+sfDemoDaysCount+' from demo \u00b7 '+sfDaysCount+' from created (CW)</div></div>';
-  h+='<div class="tile '+(sfStatusFilled&&sfPaused/sfStatusFilled>.15?'warn':'hero')+'" style="flex:1"><div class="tlbl">% Paused</div><div class="tval" style="font-size:22px">'+(sfStatusFilled?(sfPaused/sfStatusFilled*100).toFixed(1):0)+'%</div><div class="tdef">'+sfPaused+' \u00f7 '+sfStatusFilled+' brands w/ status \u00b7 '+f$(sfPausedMRR)+' MRR</div></div>';
-  h+='<div class="tile '+(sfStatusFilled&&sfChurned/sfStatusFilled>.2?'warn':'hero')+'" style="flex:1"><div class="tlbl">% Churned</div><div class="tval" style="font-size:22px">'+(sfStatusFilled?(sfChurned/sfStatusFilled*100).toFixed(1):0)+'%</div><div class="tdef">Churned dealstage '+sfChurned+' \u00f7 '+sfStatusFilled+' brands w/ status \u00b7 '+f$(sfChurnedMRR)+' MRR</div></div>';
+  h+='<div class="tile '+(sfStatusFilled&&sfPaused/sfStatusFilled>.15?'warn':'hero')+' sub" style="flex:1;min-width:132px"><div class="tlbl">% Paused</div><div class="tval">'+(sfStatusFilled?(sfPaused/sfStatusFilled*100).toFixed(1):0)+'%</div><div class="tdef">'+sfPaused+' \u00f7 '+sfStatusFilled+' brands w/ status \u00b7 '+f$(sfPausedMRR)+' MRR</div></div>';
+  h+='<div class="tile '+(sfStatusFilled&&sfChurned/sfStatusFilled>.2?'warn':'hero')+' sub" style="flex:1;min-width:132px"><div class="tlbl">% Churned</div><div class="tval">'+(sfStatusFilled?(sfChurned/sfStatusFilled*100).toFixed(1):0)+'%</div><div class="tdef">Churned dealstage '+sfChurned+' \u00f7 '+sfStatusFilled+' brands w/ status \u00b7 '+f$(sfChurnedMRR)+' MRR</div></div>';
   h+='</div>';
   // Table
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:20px 24px">';
-  h+='<div style="display:flex;align-items:center;margin-bottom:12px"><div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">All Deals</div><div style="font-size:10px;color:var(--grey);margin-left:8px">'+sharedFiltered.length+' of '+deals.length+'<span id="bd-co-hint" style="display:none;color:var(--teal);font-weight:600"></span></div>'
+  h+='<div style="display:flex;align-items:center;margin-bottom:0;padding-bottom:13px;border-bottom:1px solid rgba(23,44,69,.07)"><div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">All Deals</div><div style="font-size:10px;color:var(--grey);margin-left:8px">'+sharedFiltered.length+' of '+deals.length+'<span id="bd-co-hint" style="display:none;color:var(--teal);font-weight:600"></span></div>'
     // Live search box — relocated here, next to the All Deals header and made
     // more prominent. Updates `_bdSearchQ` per keystroke; bdSetSearch re-runs
     // the render and restores focus + caret immediately so typing stays smooth.
@@ -1110,7 +1348,7 @@ function renderBD(){
   // column header row AND first column actually sticks. Without a
   // max-height the wrapper expands to fit content and there's no internal
   // vertical scroll — sticky cells would have nothing to stick against.
-  h+='<div style="overflow:auto;max-height:calc(100vh - 220px)"><table class="stbl" style="table-layout:fixed;width:auto;min-width:100%">'+colgroupHTML+'<thead>';
+  h+='<div style="overflow:auto;max-height:calc(100vh - 220px);margin-top:14px;border:1px solid rgba(23,44,69,.07);border-radius:9px"><table class="stbl" style="table-layout:fixed;width:auto;min-width:100%">'+colgroupHTML+'<thead>';
   // Group banner row (only shown when there's at least one group column visible).
   // All cell backgrounds use SOLID color values (not rgba) \u2014 the row is sticky
   // at top:0 of the table wrapper, and transparent backgrounds would let
@@ -1254,13 +1492,43 @@ function renderBD(){
     h+=_td('paused_billing__billing_restart_date','<td style="'+_churnBg+'">'+brd+'</td>');
     h+='</tr>';}
   h+='</tbody></table></div></div>';
+  h+='</section>';
   // Post-render: charts + calc + attribution hover
   el.innerHTML=h;document.getElementById('fts').textContent='Updated: '+d.meta.generatedAt.split('T')[0];
+  BD._acv=acv;          // keeps the dialog's ACV placeholder honest
+  bdBindSpy();          // sections were just replaced — re-observe them
+  bdCalc();             // re-echo the badge; the result div lives outside #bd-content
   bdCalc();
   // Attribution hover
   var ab=document.getElementById('bd-attr-bars'),at=document.getElementById('bd-attr-tip');
   if(ab&&at){ab.querySelectorAll('.attr-row').forEach(function(row){
-    row.addEventListener('mouseenter',function(){at.style.display='block';at.innerHTML='<strong>'+row.dataset.label+'</strong>: '+row.dataset.count+' deals ('+row.dataset.pct+'%) \u00b7 '+f$(parseFloat(row.dataset.mrr))+' MRR \u00b7 '+f$(parseFloat(row.dataset.acv))+' ACV';});
+    // Structured DOM, not an innerHTML sentence. Two reasons: the readout was one
+    // flat 12px run with no hierarchy, and row.dataset.label is a plan or rep name
+    // straight from HubSpot — concatenating it into innerHTML made chart labels an
+    // injection surface. Every string below goes in via textContent.
+    row.addEventListener('mouseenter',function(){
+      at.classList.add('fta');
+      while(at.firstChild)at.removeChild(at.firstChild);
+      var head=document.createElement('div');head.className='fta-h';
+      var key=document.createElement('span');key.className='fta-key';
+      key.style.background=row.dataset.color||'#fff';      // ties the readout to the bar
+      head.appendChild(key);
+      var nm=document.createElement('span');nm.className='fta-n';nm.textContent=row.dataset.label||'';
+      head.appendChild(nm);
+      at.appendChild(head);
+      // Values right-aligned and tabular so they line up with each other, the same
+      // way the card's own three columns now do.
+      var add=function(lbl,val,accent){
+        var r=document.createElement('div');r.className='fta-r';
+        var l=document.createElement('span');l.className='fta-l';l.textContent=lbl;r.appendChild(l);
+        var v=document.createElement('span');v.className='fta-v'+(accent?' acc':'');v.textContent=val;r.appendChild(v);
+        at.appendChild(r);
+      };
+      add('Deals',row.dataset.count+' ('+row.dataset.pct+'%)',false);
+      add('MRR',f$(parseFloat(row.dataset.mrr)),false);
+      add('ACV',f$(parseFloat(row.dataset.acv)),true);
+      at.style.display='block';
+    });
     row.addEventListener('mousemove',function(e){var tw=at.offsetWidth||220,vw=window.innerWidth;var x=e.clientX+12;if(x+tw>vw-8){x=e.clientX-tw-12;}at.style.left=x+'px';at.style.top=(e.clientY-30)+'px';});
     row.addEventListener('mouseleave',function(){at.style.display='none';});
   });}
@@ -1352,7 +1620,15 @@ function renderBD(){
   // SVG chart hover
   el.querySelectorAll('.chart-dot').forEach(function(dot){
     var tip=dot.closest('.chart-wrap').querySelector('.float-tip');
-    dot.addEventListener('mouseenter',function(){if(tip){tip.style.display='block';tip.innerHTML=dot.dataset.tip;}});
+    dot.addEventListener('mouseenter',function(){
+      if(!tip)return;
+      tip.classList.add('ftc');
+      while(tip.firstChild)tip.removeChild(tip.firstChild);
+      var dEl=document.createElement('div');dEl.className='ftc-d';dEl.textContent=dot.dataset.d||'';tip.appendChild(dEl);
+      var vEl=document.createElement('div');vEl.className='ftc-v';vEl.textContent=dot.dataset.v||'';tip.appendChild(vEl);
+      if(dot.dataset.n){var nEl=document.createElement('div');nEl.className='ftc-n';nEl.textContent=dot.dataset.n;tip.appendChild(nEl);}
+      tip.style.display='block';
+    });
     dot.addEventListener('mousemove',function(e){if(tip){var tw=tip.offsetWidth||220,vw=window.innerWidth;var x=e.clientX+12;if(x+tw>vw-8){x=e.clientX-tw-12;}tip.style.left=x+'px';tip.style.top=(e.clientY-30)+'px';}});
     dot.addEventListener('mouseleave',function(){if(tip){tip.style.display='none';}});
   });
@@ -1411,15 +1687,23 @@ function buildSVGChart(labels,values,color,suffix,isMoney,tipPrefix,opts){
   var _tipL=opts.tipLabels||labels;
   for(var di=0;di<pts.length;di++){
     svg+='<circle cx="'+pts[di].x+'" cy="'+pts[di].y+'" r="'+dotR+'" fill="'+color+'" stroke="white" stroke-width="'+(dotR<3?1:1.5)+'" pointer-events="none"/>';
-    var tipText=(tipPrefix||'')+(_tipL[di]!=null?_tipL[di]:pts[di].l)+': '+(isMoney?'$'+Math.round(pts[di].v).toLocaleString():pts[di].v.toLocaleString()+(suffix||''));
-    svg+='<circle class="chart-dot" cx="'+pts[di].x+'" cy="'+pts[di].y+'" r="'+hitR+'" fill="transparent" style="cursor:crosshair" data-tip="'+tipText.replace(/"/g,'&quot;')+'"/>';
+    // Discrete fields, not one pre-joined sentence: the handler builds the rows as
+    // DOM with textContent, so the readout can have real hierarchy (date small and
+    // secondary, value large) instead of a single run of 12px text.
+    var _d=(tipPrefix||'')+(_tipL[di]!=null?_tipL[di]:pts[di].l);
+    var _v=isMoney?'$'+Math.round(pts[di].v).toLocaleString():pts[di].v.toLocaleString()+(suffix||'');
+    var _esc=function(x){return String(x).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');};
+    svg+='<circle class="chart-dot" cx="'+pts[di].x+'" cy="'+pts[di].y+'" r="'+hitR+'" fill="transparent" style="cursor:crosshair"'
+      +' data-d="'+_esc(_d)+'" data-v="'+_esc(_v)+'" data-n="'+_esc(opts.tipNote||'')+'"/>';
   }
   // Last value label
   var last=pts[pts.length-1];
   var lastTxt=isMoney?(last.v>=1e6?'$'+(last.v/1e6).toFixed(1)+'M':'$'+Math.round(last.v).toLocaleString()):last.v.toLocaleString();
   // pointer-events:none so this label never sits over (and blocks the hover of)
   // the last data point — SVG text with a fill captures pointer events by default.
-  svg+='<text x="'+(last.x-6)+'" y="'+(last.y-12)+'" text-anchor="end" fill="'+color+'" font-size="13" font-weight="bold" font-family="Inter,sans-serif" pointer-events="none">'+lastTxt+'</text>';
+  // paint-order:stroke draws a white halo UNDER the glyphs, so this label stays
+  // readable where it crosses the series line (it sat directly on the line before).
+  svg+='<text x="'+(last.x-6)+'" y="'+(last.y-12)+'" text-anchor="end" fill="'+color+'" font-size="13" font-weight="bold" font-family="Inter,sans-serif" pointer-events="none" stroke="#fff" stroke-width="3.5" stroke-linejoin="round" paint-order="stroke">'+lastTxt+'</text>';
   svg+='</svg>';
   // opts.aspect → size the chart by aspect-ratio (uniform scaling at any width)
   // instead of flex/min-height (which can distort a full-width chart).
