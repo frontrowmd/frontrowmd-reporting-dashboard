@@ -140,7 +140,30 @@ ck('and those stages are in the worker’s stage filter',
    /'3453925110'/.test(src)&&/'3517067985'/.test(src), true);
 // Section viii must not reuse the Tracker's filtered rows.
 ck('the churned table is built from the churn set, not sharedFiltered',
-   /var _chSorted=_chDeals\.slice\(\)\.sort\(_bdSortCmp\);/.test(bd), true);
+   /var _chTableRows=_chDeals\.filter\(/.test(bd)&&!/sharedFiltered/.test(bd.slice(bd.indexOf('var _chTableRows='),bd.indexOf('var _chSorted='))), true);
+ck('and sorted with the shared comparator',
+   /var _chSorted=_chTableRows\.slice\(\)\.sort\(_bdSortCmp\);/.test(bd), true);
+// ── The C8 churn-date filter ──
+// It scopes the TABLE only. The charts above carry their own period axis and
+// their own stated n; a filter that silently moved them would make every one of
+// those n values a lie.
+ck('the range filter exists', /function bdSetChurnRange\(\)\{/.test(bd), true);
+ck('and both bounds are inclusive',
+   /if\(_bdChurnFrom&&d<_bdChurnFrom\)return false;/.test(bd)&&/if\(_bdChurnTo&&d>_bdChurnTo\)return false;/.test(bd), true);
+// An undated churn cannot be said to fall inside a range, so it drops out once
+// one is set — keeping it would make the count disagree with the dates shown.
+ck('an undated churn drops out when a range is set',
+   /var d=\(dd\.pausechurn_date\|\|''\)\.substring\(0,10\);\s*\n\s*if\(!d\)return false;/.test(bd), true);
+ck('but everything shows when no range is set',
+   /if\(!_bdChurnFrom&&!_bdChurnTo\)return true;/.test(bd), true);
+ck('an inverted range is refused', /End date is before the start date/.test(bd), true);
+ck('the header says how many of how many', /_chTableRows\.length\+' of '\+_chDeals\.length\+' churned deals in range'/.test(bd), true);
+ck('and the control says what it scopes', /filters this table only/.test(bd), true);
+// The charts must NOT read the range.
+{
+  const chartZone=bd.slice(bd.indexOf('var _chTypeChart='), bd.indexOf('var _chTableRows='));
+  ck('no chart reads the table range', /_bdChurnFrom|_bdChurnTo/.test(chartZone), false);
+}
 ck('and both tables share one comparator',
    /function _bdSortCmp\(a,b\)\{/.test(bd)&&/sharedFiltered\.slice\(\)\.sort\(_bdSortCmp\)/.test(bd), true);
 
@@ -166,9 +189,26 @@ ck('leaving four categories', (/var BD_CHURN_TYPE_ORDER=\[([^\]]+)\]/.exec(bd)||
 // churn, so an active brand has no category and there is no denominator. What
 // is shown is each category's share of the opening book, which sums to the
 // overall rate.
-ck('per-category % divides the same opening book as the overall rate',
-   /var pct=open>0\?\(n\/open\)\*100:null;/.test(bd), true);
-ck('and says so on the card', /categories sum to the overall churn rate/.test(bd), true);
+ck('the per-period % divides the same opening book as the overall rate',
+   /subOf:function\(k,total\)\{var o=_chOpenOf\(k\);return o>0\?\(\(total\/o\)\*100\)/.test(bd), true);
+ck('and says so on the card', /the same denominator as the rate above, so the stacked categories sum to it/.test(bd), true);
+// C3 and C4 are charts, not tables — a 20-row month-by-month table was the
+// thing Alex asked to replace.
+ck('churn by type is a stacked chart', /var t=bdStackChart\(periods,cats,counts,\{\s*\n\s*labelOf:_chPeriodLbl,/.test(bd), true);
+ck('churn by reason is too', /var t=bdStackChart\(periods,cats,counts,\{labelOf:_chPeriodLbl,ht:330\}\);/.test(bd), true);
+ck('the stack renderer exists', /function bdStackChart\(periods,cats,counts,opts\)\{/.test(bd), true);
+// Its axis must be whole units — a count axis labelled 2.5 is wrong.
+ck('the count axis steps in whole units',
+   /var step=Math\.max\(1,Math\.ceil\(maxV\/4\)\),top=step\*4;/.test(bd), true);
+// Hover must be re-bound after every render, or it works once and then stops.
+ck('the hover is re-bound on every render', /bdBindStack\(\);/.test(bd), true);
+// The rolled-up tail must not borrow a real category's colour.
+{
+  const reasonPal=(/var BD_CHURN_REASON_COLORS=\[([^\]]+)\]/.exec(bd)||[,''])[1].match(/#[0-9A-Fa-f]{6}/g)||[];
+  const otherC=(/var BD_CHURN_OTHER_C='(#[0-9A-Fa-f]{6})'/.exec(bd)||[,''])[1];
+  ck('six distinct reason colours', [reasonPal.length, new Set(reasonPal.map(h=>h.toLowerCase())).size], [6,6]);
+  ck('and Other is none of them', reasonPal.map(h=>h.toLowerCase()).indexOf(otherC.toLowerCase()), -1);
+}
 
 // ── Opening book: _snByMonth is month-END, so "start of month" is the
 // PREVIOUS key. Off by one here and every rate is wrong by a month.
@@ -221,6 +261,40 @@ ck('and tells them apart by whether a company resolved',
 });
 ck('the detail charts are scoped to where the fields are populated',
    /var BD_CHURN_DETAIL_FROM='2026-01';/.test(bd), true);
+
+// ── C2 rendered ~650px tall, straight through the sections below it ────────
+// buildSVGChart's default wrapper is `flex:1;min-height:180px`, which only
+// resolves inside a flex-column parent with a bounded height. In a plain div
+// the SVG falls back to its intrinsic viewBox ratio and grows without limit.
+// aspect:true makes the wrapper self-sizing and removes the dependency.
+{
+  const wrapSrc=bd.slice(bd.indexOf('var _wrapStyle=opts.aspect'), bd.indexOf('var _wrapStyle=opts.aspect')+230);
+  ck('the non-aspect wrapper still needs a flex parent', /flex:1;min-height:180px/.test(wrapSrc), true);
+  // So every chart on the Churn tab — which uses plain divs — must pass it.
+  const churnZone=bd.slice(bd.indexOf('var _chDeals=deals.filter'), bd.indexOf('bdBindSpy();'));
+  const calls=churnZone.match(/buildSVGChart\([^;]*?\)/gs)||[];
+  ck('the churn tab charts', calls.length>=1, true);
+  ck('and every one of them is aspect-sized', calls.filter(c=>!/aspect:true/.test(c)), []);
+}
+
+// ── A rate needs a denominator big enough that one churn does not swing it ──
+// The first months held a handful of brands, so a single churn printed 50% and
+// flattened every later month onto the axis. That spike was an artifact of the
+// denominator, not a signal.
+ck('thin-book periods are not plotted',
+   /if\(_o<BD_CHURN_RATE_MIN_BOOK\)\{if\(_chByMonth\[m\]\)_chSkipThin\+\+;return;\}/.test(bd), true);
+ck('the floor is declared', /var BD_CHURN_RATE_MIN_BOOK=(\d+);/.test(bd), true);
+ck('and is high enough that one churn moves the rate by under 5pp',
+   100/(+(/var BD_CHURN_RATE_MIN_BOOK=(\d+);/.exec(bd)||[,0])[1]) < 5, true);
+// Hiding months is only acceptable if the chart says how much churn it hides.
+ck('the hidden churn is counted and reported',
+   /That hides '\+_chSkipThin\+' early month/.test(bd), true);
+
+// ── The page switcher ──
+ck('the two tabs are one segmented control', /<span class="bd-tabs" role="tablist">/.test(bd), true);
+ck('and are ruled off from the section anchors', /class="bd-navdiv"/.test(bd), true);
+ck('the active tab is announced, not just coloured',
+   /b\.setAttribute\('aria-selected',on\?'true':'false'\);/.test(bd), true);
 
 console.log(pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);
