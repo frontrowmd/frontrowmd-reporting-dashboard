@@ -126,7 +126,30 @@ ck('and each tab builds only its own deals table',
 // the Churn tab, so they are hidden with it.
 ck('the section anchors are tab-scoped', /id="bd-nav-anchors"/.test(bd), true);
 ck('and hidden when the Churn tab is active',
-   /an\.style\.display=\(t==='tracker'\)\?'':'none';/.test(bd), true);
+   /an\.style\.display=\(t==='tracker'\)\?'contents':'none';/.test(bd), true);
+// The Churn tab has its own section menu. display must be `contents`, not the
+// browser default: these <a>s are direct flex children of the nav, and a block
+// wrapper would pull them out of its layout.
+ck('the Churn tab has its own anchors', /id="bd-nav-churn"/.test(bd), true);
+ck('and they are toggled with it',
+   /cn\.style\.display=\(t==='churn'\)\?'contents':'none';/.test(bd), true);
+// Every churn section must be reachable from that menu, or the menu lies.
+{
+  // Bounded by the span's own close — the flex spacer that used to bound this
+  // appears earlier in the document, so the slice came back empty and the
+  // assertion passed vacuously on an empty menu.
+  // Bounded by the LAST anchor in the group. The first '</span>' after the
+  // opening tag closes the divider nested immediately inside it, which made
+  // this slice ~40 chars and the assertion below pass on an empty menu.
+  const navStart=bd.indexOf('id="bd-nav-churn"');
+  const navZone=bd.slice(navStart, bd.indexOf('Churned Deals</a>', navStart));
+  ck('the churn menu slice is not empty', navZone.length>200, true);
+  const linked=(navZone.match(/data-sec="(bd-sec-churn[a-z]*)"/g)||[]).map(x=>x.slice(10,-1));
+  const built=['bd-sec-churn','bd-sec-churnrate','bd-sec-churntype','bd-sec-churnreason',
+               'bd-sec-churnab','bd-sec-churntraffic','bd-sec-churnseg','bd-sec-churndeals'];
+  ck('every churn section is in the menu', built.filter(x=>linked.indexOf(x)<0), []);
+  ck('and the menu points at nothing that is not built', linked.filter(x=>built.indexOf(x)<0), []);
+}
 
 // ── The churn definition, used once for the whole tab ──
 // brand_status cannot identify churn: it is fully populated on closed-won deals
@@ -189,14 +212,24 @@ ck('leaving four categories', (/var BD_CHURN_TYPE_ORDER=\[([^\]]+)\]/.exec(bd)||
 // churn, so an active brand has no category and there is no denominator. What
 // is shown is each category's share of the opening book, which sums to the
 // overall rate.
-ck('the per-period % divides the same opening book as the overall rate',
-   /subOf:function\(k,total\)\{var o=_chOpenOf\(k\);return o>0\?\(\(total\/o\)\*100\)/.test(bd), true);
-ck('and says so on the card', /the same denominator as the rate above, so the stacked categories sum to it/.test(bd), true);
-// C3 and C4 are charts, not tables — a 20-row month-by-month table was the
-// thing Alex asked to replace.
-ck('churn by type is a stacked chart', /var t=bdStackChart\(periods,cats,counts,\{\s*\n\s*labelOf:_chPeriodLbl,/.test(bd), true);
-ck('churn by reason is too', /var t=bdStackChart\(periods,cats,counts,\{labelOf:_chPeriodLbl,ht:330\}\);/.test(bd), true);
-ck('the stack renderer exists', /function bdStackChart\(periods,cats,counts,opts\)\{/.test(bd), true);
+// The sub-label under each column printed the period's churn as a share of the
+// opening book — the same number C2 already charts. Unlabelled under a column
+// of counts it read as "2.54% of what?" and answered nothing.
+ck('no unexplained sub-label under the columns', /subOf:function\(k,total\)/.test(bd), false);
+// C3 and C4 are CLUSTERED charts, not tables and not stacks: a stack answers
+// "how much churn this month", a cluster answers "which category moved".
+ck('churn by type is a clustered chart', /var t=bdClusterChart\(periods,cats,counts,\{/.test(bd), true);
+ck('churn by reason is too', /var t=bdClusterChart\(periods,cats,counts,\{labelOf:_chPeriodLbl,ht:330\}\);/.test(bd), true);
+ck('the cluster renderer exists', /function bdClusterChart\(periods,cats,counts,opts\)\{/.test(bd), true);
+ck('and nothing still calls the stacked one', /bdStackChart/.test(bd), false);
+// Clustered bars sit side by side, so an axis scaled to the period TOTAL would
+// leave every bar squat. It must reach the tallest single bar.
+ck('the axis reaches the tallest single bar, not the period total',
+   /var maxV=1;periods\.forEach\(function\(k\)\{cats\.forEach\(function\(c\)\{var n=\(counts\[c\.k\]&&counts\[c\.k\]\[k\]\)\|\|0;if\(n>maxV\)maxV=n;\}\);\}\);/.test(bd), true);
+// A zero still gets a hover target, or the reader cannot tell "no churn in this
+// category" from "this category is not on the chart".
+ck('a zero category still renders a target',
+   /var hgt=n\?Math\.max\(2,\(n\/top\)\*ph\):2;/.test(bd), true);
 // Its axis must be whole units — a count axis labelled 2.5 is wrong.
 ck('the count axis steps in whole units',
    /var step=Math\.max\(1,Math\.ceil\(maxV\/4\)\),top=step\*4;/.test(bd), true);
@@ -295,6 +328,50 @@ ck('the two tabs are one segmented control', /<span class="bd-tabs" role="tablis
 ck('and are ruled off from the section anchors', /class="bd-navdiv"/.test(bd), true);
 ck('the active tab is announced, not just coloured',
    /b\.setAttribute\('aria-selected',on\?'true':'false'\);/.test(bd), true);
+
+// ── C2's axis and hover ───────────────────────────────────────────────────
+// A percentage axis labelled 0,1,2 reads as a count, and over a 0-6% range
+// rounds most gridlines onto the same integers.
+ck('the rate axis carries its unit', /ySuffix:'%',yDec:1/.test(bd), true);
+ck('buildSVGChart honours it',
+   /\(\(opts\.yDec\?gv\.toFixed\(opts\.yDec\):Math\.round\(gv\)\)\+\(opts\.ySuffix\|\|''\)\)/.test(bd), true);
+// tipPrefix was concatenated straight onto the label — "Churn rate19 churned
+// ÷ 514 active" with nothing between them.
+ck('a tip prefix gets a separator',
+   /var _d=tipPrefix\?\(tipPrefix\+' \\u00b7 '\+_lbl\):_lbl;/.test(bd), true);
+// tipNote is one string for the whole chart and cannot describe a single point.
+ck('per-point notes are supported',
+   /var _note=\(opts\.tipNotes&&opts\.tipNotes\[di\]!=null\)\?opts\.tipNotes\[di\]:\(opts\.tipNote\|\|''\);/.test(bd), true);
+ck('and the rate chart uses them, with the period as the header',
+   /tipLabels:_chRateTip,tipNotes:_chRateNote/.test(bd), true);
+ck('so it no longer passes a prefix',
+   /buildSVGChart\(_chRateLbl,_chRateVal,BD_CHURN_C,'%',false,'',\{/.test(bd), true);
+
+// ── C5/C6 grid ────────────────────────────────────────────────────────────
+// Left to size itself the browser gave every shaded cell a different width, so
+// the fill read as floating blocks rather than a grid.
+// Scoped to the matrix builder. Unscoped, `table-layout:fixed` matched the
+// pre-existing .stbl CSS rule and passed whether or not this table set it.
+{
+  const mx=bd.slice(bd.indexOf('var _chMatrix=function('), bd.indexOf('var _chMatrix=function(')+2200);
+  // Matched inside the STYLE STRING, not as a bare token: the comment directly
+  // above this code says "table-layout:fixed" too, so the loose pattern passed
+  // on the prose whether or not the table set it.
+  ck('the matrix table sets a fixed layout',
+     /border-collapse:separate;border-spacing:0;table-layout:fixed/.test(mx), true);
+  ck('and sizes its label and total columns',
+     /<colgroup><col style="width:168px">.*<col style="width:68px"><\/colgroup>/.test(mx), true);
+  // Fixed layout without a min-width collapses every column at narrow widths.
+  ck('with a floor before it starts scrolling', /min-width:620px/.test(mx), true);
+}
+
+// ── C8 ────────────────────────────────────────────────────────────────────
+// The table draws its own header rule immediately below, so the filter bar's
+// border made two lines a pixel apart.
+{
+  const filterBar=bd.slice(bd.indexOf("id=\"bd-churn-from\"")-900, bd.indexOf("id=\"bd-churn-from\""));
+  ck('the filter bar draws no rule of its own', /border-bottom/.test(filterBar), false);
+}
 
 console.log(pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);

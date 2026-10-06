@@ -231,6 +231,19 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
     <a class="bd-nav-i" href="#bd-sec-arr" data-sec="bd-sec-arr" onclick="bdNavGo(event,'bd-sec-arr')">All Brands and ARR</a>
     <a class="bd-nav-i" href="#bd-sec-deals" data-sec="bd-sec-deals" onclick="bdNavGo(event,'bd-sec-deals')">All Brand Deals</a>
     </span>
+    <!-- The Churn tab's own anchors. A separate group rather than a rebuilt
+         one: each tab's sections are fixed, and swapping innerHTML on a sticky
+         nav mid-scroll loses the scroll-spy's current mark. -->
+    <span id="bd-nav-churn" style="display:none"><span class="bd-navdiv"></span>
+    <a class="bd-nav-i" href="#bd-sec-churn" data-sec="bd-sec-churn" onclick="bdNavGo(event,'bd-sec-churn')">Key Metrics</a>
+    <a class="bd-nav-i" href="#bd-sec-churnrate" data-sec="bd-sec-churnrate" onclick="bdNavGo(event,'bd-sec-churnrate')">Churn Rate</a>
+    <a class="bd-nav-i" href="#bd-sec-churntype" data-sec="bd-sec-churntype" onclick="bdNavGo(event,'bd-sec-churntype')">By Type</a>
+    <a class="bd-nav-i" href="#bd-sec-churnreason" data-sec="bd-sec-churnreason" onclick="bdNavGo(event,'bd-sec-churnreason')">By Reason</a>
+    <a class="bd-nav-i" href="#bd-sec-churnab" data-sec="bd-sec-churnab" onclick="bdNavGo(event,'bd-sec-churnab')">A/B Test</a>
+    <a class="bd-nav-i" href="#bd-sec-churntraffic" data-sec="bd-sec-churntraffic" onclick="bdNavGo(event,'bd-sec-churntraffic')">Web Traffic</a>
+    <a class="bd-nav-i" href="#bd-sec-churnseg" data-sec="bd-sec-churnseg" onclick="bdNavGo(event,'bd-sec-churnseg')">Segment</a>
+    <a class="bd-nav-i" href="#bd-sec-churndeals" data-sec="bd-sec-churndeals" onclick="bdNavGo(event,'bd-sec-churndeals')">Churned Deals</a>
+    </span>
     <div style="flex:1"></div>
     <button class="bd-goal-btn" id="bd-goal-btn" onclick="bdGoalOpen()" aria-haspopup="dialog" aria-expanded="false">
       Deals to Hit Monthly Goal <span class="bd-goal-badge" id="bd-goal-badge"></span>
@@ -378,7 +391,10 @@ function bdSetTab(t){
   });
   // The section anchors belong to the Tracker tab; on Churn they would point at
   // sections that are not in the DOM.
-  var an=document.getElementById('bd-nav-anchors');if(an)an.style.display=(t==='tracker')?'':'none';
+  // display:contents, not block — these <a>s are direct flex children of the
+  // nav and a block wrapper would pull them out of its layout.
+  var an=document.getElementById('bd-nav-anchors');if(an)an.style.display=(t==='tracker')?'contents':'none';
+  var cn=document.getElementById('bd-nav-churn');if(cn)cn.style.display=(t==='churn')?'contents':'none';
   window.scrollTo(0,0);
   renderBD();
 }
@@ -1697,7 +1713,7 @@ function renderBD(){
   var _chMonths=Object.keys(_snByMonth).sort();
   var _chPrev=function(m){var q=m.split('-'),y=+q[0],mo=+q[1]-1;if(mo<1){y--;mo=12;}return y+'-'+('0'+mo).slice(-2);};
   var _chOpen=function(m){var p=_snByMonth[_chPrev(m)];return p?p.b:0;};
-  var _chRateLbl=[],_chRateVal=[],_chRateTip=[];
+  var _chRateLbl=[],_chRateVal=[],_chRateTip=[],_chRateNote=[];
   // A rate needs a denominator big enough that one churn does not swing it.
   // The first months of the book held a handful of brands, so a single churn
   // printed 50% and flattened every later month onto the axis — that spike was
@@ -1711,7 +1727,10 @@ function renderBD(){
     var _q=m.split('-');
     _chRateLbl.push(mN[+_q[1]-1]+' '+_q[0].slice(-2));
     _chRateVal.push(Math.round((_n/_o)*10000)/100);
-    _chRateTip.push(_n+' churned ÷ '+_o+' active at start of '+mN[+_q[1]-1]+' '+_q[0]);
+    // Header = the period. Note = the arithmetic. They used to be concatenated
+    // into one unreadable line with no separator between them.
+    _chRateTip.push(mN[+_q[1]-1]+' '+_q[0]);
+    _chRateNote.push(_n+' churned \u00f7 '+_o+' active at the start of the month');
   });
   hChurn+='<section class="bd-sec" id="bd-sec-churnrate">';
   hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C2</span><span class="bd-sec-t">Monthly Churn Rate</span>'
@@ -1723,7 +1742,7 @@ function renderBD(){
   // intrinsic viewBox ratio and rendered ~650px tall, straight through the
   // sections below it.
   hChurn+='<div class="chart-wrap" style="position:relative;min-width:0;overflow:hidden">'
-    +buildSVGChart(_chRateLbl,_chRateVal,BD_CHURN_C,'%',false,'Churn rate',{w:1400,ht:300,aspect:true,tipLabels:_chRateTip,tipNote:'churn rate'})
+    +buildSVGChart(_chRateLbl,_chRateVal,BD_CHURN_C,'%',false,'',{w:1400,ht:300,aspect:true,ySuffix:'%',yDec:1,tipLabels:_chRateTip,tipNotes:_chRateNote})
     +'<div id="bd-churnrate-tip" class="float-tip"></div></div>';
   hChurn+='<div style="font-size:10px;color:var(--grey);margin-top:8px;font-style:italic;line-height:1.5">'
     +(_chUndated?(_chUndated+' of '+_chDeals.length+' churned deals have no Pause/Churn Date and cannot be placed in a month \u2014 excluded here, and from the Snapshot denominator too, so the two stay consistent. '):'')
@@ -1792,10 +1811,12 @@ function renderBD(){
     // categories sum to it. A per-category RATE is not computable: churn type
     // is only assigned AT churn, so an active brand has no category and there
     // is no per-category denominator anywhere in HubSpot.
-    var t=bdStackChart(periods,cats,counts,{
+    var t=bdClusterChart(periods,cats,counts,{
       labelOf:_chPeriodLbl,
-      subOf:function(k,total){var o=_chOpenOf(k);return o>0?((total/o)*100).toFixed(2)+'%':'';},
-      ht:330,
+      // No sub-label. It printed the period's churn as a share of the opening
+      // book, which is the same number C2 already charts — unlabelled under a
+      // column of counts it read as "2.54% of what?" and answered nothing.
+      ht:340,
     });
     t+='<div style="font-size:10px;color:var(--grey);margin-top:10px;font-style:italic;line-height:1.5">'
       +'n = '+typed+' of '+_chDeals.length+' churned deals have a Churn Type and a churn date from '+BD_CHURN_DETAIL_FROM+' on. '
@@ -1833,7 +1854,7 @@ function renderBD(){
       var c=top.indexOf(r)>=0?r:'__other';
       if(counts[c])counts[c][k]=(counts[c][k]||0)+1;
     });
-    var t=bdStackChart(periods,cats,counts,{labelOf:_chPeriodLbl,ht:330});
+    var t=bdClusterChart(periods,cats,counts,{labelOf:_chPeriodLbl,ht:330});
     t+='<div style="font-size:10px;color:var(--grey);margin-top:10px;font-style:italic;line-height:1.5">'
       +'n = '+withReason+' of '+_chDeals.length+' churned deals have a reason and a churn date from '+BD_CHURN_DETAIL_FROM+' on. '
       +'Top '+BD_CHURN_REASON_TOP+' reasons by volume are shown separately; the remaining '+rest.length
@@ -1862,11 +1883,15 @@ function renderBD(){
     var mx=0;grid.forEach(function(row){row.forEach(function(n){if(n>mx)mx=n;});});
     var colT=colsDef.map(function(_,ci){var t=0;grid.forEach(function(row){t+=row[ci];});return t;});
     var grand=colT.reduce(function(a,b){return a+b;},0);
-    var t='<div style="overflow-x:auto"><table class="stbl" style="width:100%;font-size:11.5px;border-collapse:separate;border-spacing:0">';
-    t+='<thead><tr><th style="text-align:left;padding:8px 8px;border-bottom:1.5px solid rgba(23,44,69,.14)"></th>';
-    colsDef.forEach(function(c){t+='<th style="text-align:center;padding:8px 8px;border-bottom:1.5px solid rgba(23,44,69,.14);font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap"'
+    // table-layout:fixed with a sized label column. Left to size itself the
+    // browser gave every shaded cell a different width, so the fill read as
+    // floating blocks rather than a grid.
+    var t='<div style="overflow-x:auto"><table class="stbl" style="width:100%;min-width:620px;font-size:11.5px;border-collapse:separate;border-spacing:0;table-layout:fixed">';
+    t+='<colgroup><col style="width:168px">'+colsDef.map(function(){return '<col>';}).join('')+'<col style="width:68px"></colgroup>';
+    t+='<thead><tr><th style="text-align:left;padding:7px 9px;border-bottom:1.5px solid rgba(23,44,69,.16)"></th>';
+    colsDef.forEach(function(c){t+='<th style="text-align:center;padding:7px 5px;border-bottom:1.5px solid rgba(23,44,69,.16);font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.03em;line-height:1.3;word-break:break-word"'
       +(c.full?(' title="'+String(c.full).replace(/"/g,'&quot;')+'"'):'')+'>'+c.l+'</th>';});
-    t+='<th style="text-align:right;padding:8px 8px;border-bottom:1.5px solid rgba(23,44,69,.14);font-size:10px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.04em">Total</th></tr></thead><tbody>';
+    t+='<th style="text-align:right;padding:7px 9px;border-bottom:1.5px solid rgba(23,44,69,.16);font-size:9.5px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.03em">Total</th></tr></thead><tbody>';
     rowsDef.forEach(function(r,ri){
       var rt=grid[ri].reduce(function(a,b){return a+b;},0);
       var cells='';
@@ -1874,17 +1899,17 @@ function renderBD(){
         // Square-rooted: a single dominant cell would otherwise wash every other
         // one out to invisible, and the mid-range counts are the ones worth seeing.
         var w=(mx>0&&n>0)?Math.sqrt(n/mx):0;
-        cells+='<td style="text-align:center;padding:8px 8px;font-variant-numeric:tabular-nums;border-bottom:1px solid rgba(23,44,69,.05);'
+        cells+='<td style="text-align:center;padding:6px 5px;font-variant-numeric:tabular-nums;border-bottom:1px solid rgba(23,44,69,.05);border-left:1px solid rgba(23,44,69,.05);'
           +(n?('background:'+accent+('0'+Math.round(w*42+8).toString(16)).slice(-2)+';color:var(--navy);font-weight:'+(w>0.55?'700':'600')):'color:#C6CDD4')
           +'">'+(n||'·')+'</td>';
       });
-      t+='<tr><td style="padding:8px 8px;white-space:nowrap;border-bottom:1px solid rgba(23,44,69,.05)'
+      t+='<tr><td style="padding:6px 9px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-bottom:1px solid rgba(23,44,69,.05)'
         +((r.k&&String(r.k).indexOf('__')===0)?';color:var(--grey);font-style:italic':';color:var(--navy)')+'">'+r.l+'</td>'+cells
-        +'<td style="text-align:right;padding:8px 8px;font-variant-numeric:tabular-nums;font-weight:700;color:var(--navy);border-bottom:1px solid rgba(23,44,69,.05);background:rgba(23,44,69,.03)">'+(rt||'·')+'</td></tr>';
+        +'<td style="text-align:right;padding:6px 9px;font-variant-numeric:tabular-nums;font-weight:700;color:var(--navy);border-bottom:1px solid rgba(23,44,69,.05);border-left:1.5px solid rgba(23,44,69,.12);background:rgba(23,44,69,.03)">'+(rt||'·')+'</td></tr>';
     });
-    t+='<tr><td style="padding:8px 8px;font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em">Total</td>';
-    colT.forEach(function(n){t+='<td style="text-align:center;padding:8px 8px;font-variant-numeric:tabular-nums;font-weight:700;color:var(--navy);background:rgba(23,44,69,.03)">'+(n||'·')+'</td>';});
-    t+='<td style="text-align:right;padding:8px 8px;font-variant-numeric:tabular-nums;font-weight:700;color:var(--navy);background:rgba(23,44,69,.06)">'+grand+'</td></tr>';
+    t+='<tr><td style="padding:7px 9px;font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.03em;border-top:1.5px solid rgba(23,44,69,.12)">Total</td>';
+    colT.forEach(function(n){t+='<td style="text-align:center;padding:7px 5px;font-variant-numeric:tabular-nums;font-weight:700;color:var(--navy);background:rgba(23,44,69,.03);border-top:1.5px solid rgba(23,44,69,.12);border-left:1px solid rgba(23,44,69,.05)">'+(n||'·')+'</td>';});
+    t+='<td style="text-align:right;padding:7px 9px;font-variant-numeric:tabular-nums;font-weight:700;color:var(--navy);background:rgba(23,44,69,.06);border-top:1.5px solid rgba(23,44,69,.12);border-left:1.5px solid rgba(23,44,69,.12)">'+grand+'</td></tr>';
     t+='</tbody></table></div>';
     t+='<div style="font-size:10px;color:var(--grey);margin-top:10px;font-style:italic;line-height:1.5">'+note+'</div>';
     return t;
@@ -1983,17 +2008,15 @@ function renderBD(){
     var n=_chSegCount[r.k]||0;
     var pct=_chBoard.length>0?(n/_chBoard.length)*100:0;
     var col=BD_SEGMENT_COLORS[r.k]||BD_SEGMENT_COLORS._other;
-    _chSegH+='<div class="attr-row" style="display:flex;align-items:center;gap:14px;padding:9px 0;border-bottom:1px solid rgba(23,44,69,.05)">'
-      +'<div style="width:168px;flex-shrink:0;font-size:12px'+(r.k.indexOf('__')===0?';color:var(--grey);font-style:italic':';color:var(--navy);font-weight:600')+'">'+r.l+'</div>'
-      +'<div style="flex:1;height:22px;background:rgba(23,44,69,.04);border-radius:5px;overflow:hidden;position:relative;min-width:60px">'
-      +'<div style="height:100%;width:'+(_chSegMax>0?(n/_chSegMax)*100:0)+'%;background:'+col+';opacity:.88;border-radius:5px"></div>'
-      // The count sits INSIDE the bar, flipping to white once the bar is long
-      // enough to sit under it — a count in a right-hand gutter made the eye
-      // travel the full width of the row for every value.
-      +(n?('<span style="position:absolute;top:0;left:9px;line-height:22px;font-size:11px;font-weight:700;color:'
-          +(((_chSegMax>0?(n/_chSegMax):0)>0.22)?'#fff':'var(--navy)')+'">'+n+'</span>'):'')
-      +'</div>'
-      +'<div style="width:62px;text-align:right;font-variant-numeric:tabular-nums;font-size:13px;font-weight:700;color:var(--navy)">'+pct.toFixed(0)+'%</div></div>';
+    _chSegH+='<div class="attr-row" style="display:grid;grid-template-columns:150px minmax(80px,1fr) 92px;align-items:center;gap:14px;padding:8px 0;border-bottom:1px solid rgba(23,44,69,.05)">'
+      +'<div style="font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'+(r.k.indexOf('__')===0?';color:var(--grey);font-style:italic':';color:var(--navy);font-weight:600')+'" title="'+r.l+'">'+r.l+'</div>'
+      +'<div style="height:18px;background:rgba(23,44,69,.04);border-radius:4px;overflow:hidden">'
+      +'<div style="height:100%;width:'+(_chSegMax>0?(n/_chSegMax)*100:0)+'%;background:'+col+';opacity:.9;border-radius:4px"></div></div>'
+      // Count and share sit together at the end of the row, so the eye reads one
+      // number group per row instead of travelling the full width twice.
+      +'<div style="text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap">'
+      +'<span style="font-size:14px;font-weight:700;color:var(--navy)">'+n+'</span>'
+      +'<span style="font-size:11px;color:var(--grey);margin-left:5px">'+pct.toFixed(0)+'%</span></div></div>';
   });
   _chSegH+='</div>';
   hChurn+='<section class="bd-sec" id="bd-sec-churnseg">';
@@ -2026,7 +2049,7 @@ function renderBD(){
     +'<span class="bd-sec-s">'+(_chRanged?(_chTableRows.length+' of '+_chDeals.length+' churned deals in range'):(_chDeals.length+' churned deals'))
     +' \u00b7 the same table as the Tracker tab, scoped to churn and unaffected by its filters.</span></div>';
   hChurn+='<div class="tile" style="padding:0;overflow:hidden">';
-  hChurn+='<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:13px 16px;border-bottom:1px solid rgba(23,44,69,.08)">'
+  hChurn+='<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:13px 16px">'
     +'<span style="font-family:var(--font-h);font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em">Churn Date</span>'
     +'<input type="date" id="bd-churn-from" value="'+_bdChurnFrom+'" style="font-family:var(--font-b);font-size:11px;padding:4px 7px;border:1px solid var(--border);border-radius:6px;color:var(--navy);background:#fff">'
     +'<span style="color:var(--grey);font-size:11px">\u2192</span>'
@@ -2181,20 +2204,22 @@ function renderBD(){
     dot.addEventListener('mouseleave',function(){if(tip){tip.style.display='none';}});
   });
 }
-// Stacked column chart. Hand-rolled for the same reason buildSVGChart is: it
+// Clustered column chart. Hand-rolled for the same reason buildSVGChart is: it
 // inherits the page's fonts and tooltip idiom, and the one library-shaped need
 // here — a categorical stack over time — is about forty lines.
 //
 // `cats` is [{k,l,c}] bottom-to-top, `counts` is {catKey:{periodKey:n}}, and
 // `periods` fixes the x order. Every bar segment carries its own data-* readout
 // so hovering gives the whole column, not one segment.
-function bdStackChart(periods,cats,counts,opts){
+function bdClusterChart(periods,cats,counts,opts){
   opts=opts||{};
   if(!periods.length)return '<div style="padding:28px;text-align:center;color:var(--grey);font-size:12px">No data in this range</div>';
   var w=1400,ht=opts.ht||330,pad={t:18,r:18,b:46,l:52};
   var pw=w-pad.l-pad.r,ph=ht-pad.t-pad.b;
   var totals=periods.map(function(k){var t=0;cats.forEach(function(c){t+=(counts[c.k]&&counts[c.k][k])||0;});return t;});
-  var maxV=Math.max.apply(null,totals)||1;
+  // The axis reaches the tallest SINGLE bar, not the period total — clustered
+  // bars sit side by side, so scaling to the sum would leave every bar squat.
+  var maxV=1;periods.forEach(function(k){cats.forEach(function(c){var n=(counts[c.k]&&counts[c.k][k])||0;if(n>maxV)maxV=n;});});
   // A whole number of units on the axis — a count axis labelled 2.5 is wrong.
   var step=Math.max(1,Math.ceil(maxV/4)),top=step*4;
   var svg='<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 '+w+' '+ht+'" preserveAspectRatio="none" style="display:block">';
@@ -2203,22 +2228,28 @@ function bdStackChart(periods,cats,counts,opts){
     svg+='<line x1="'+pad.l+'" y1="'+gy+'" x2="'+(w-pad.r)+'" y2="'+gy+'" stroke="rgba(23,44,69,.09)" stroke-width="1"/>'
       +'<text x="'+(pad.l-9)+'" y="'+(gy+4)+'" text-anchor="end" font-size="11" fill="#8A97A5" font-family="Inter,sans-serif">'+gv+'</text>';
   }
-  var slot=pw/periods.length, bw=Math.min(54,slot*0.62);
+  var slot=pw/periods.length, bw=Math.min(78,slot*0.74);
+  // CLUSTERED, not stacked: one bar per category, side by side within the
+  // period's slot. A stack answers "how much churn this month"; a cluster
+  // answers "which category moved", which is what these two charts are for.
+  var gap=2, cw=Math.max(3,(bw-gap*(cats.length-1))/cats.length);
   periods.forEach(function(k,i){
-    var cx=pad.l+slot*i+slot/2, x=cx-bw/2, yAcc=pad.t+ph;
-    // Readout rows are built once per COLUMN and hung on every segment of it,
-    // so hovering any part of the bar answers for the whole period.
+    var cx=pad.l+slot*i+slot/2, x0=cx-bw/2;
     var rows=cats.map(function(c){return c.l+'|'+((counts[c.k]&&counts[c.k][k])||0)+'|'+c.c;})
       .filter(function(r){return r.split('|')[1]!=='0';});
     var attrs=' data-k="'+String(opts.labelOf?opts.labelOf(k):k).replace(/"/g,'&quot;')+'"'
       +' data-total="'+totals[i]+'"'+(opts.subOf?(' data-sub="'+String(opts.subOf(k,totals[i])).replace(/"/g,'&quot;')+'"'):'');
     rows.forEach(function(r,ri){attrs+=' data-r'+(ri+1)+'="'+r.replace(/"/g,'&quot;')+'"';});
-    cats.forEach(function(c){
-      var n=(counts[c.k]&&counts[c.k][k])||0; if(!n)return;
-      var hgt=(n/top)*ph; yAcc-=hgt;
-      svg+='<rect class="bdstk" x="'+x+'" y="'+yAcc+'" width="'+bw+'" height="'+hgt+'" fill="'+c.c+'" fill-opacity="0.88"'+attrs+' style="cursor:pointer"/>';
+    cats.forEach(function(c,ci){
+      var n=(counts[c.k]&&counts[c.k][k])||0;
+      var bx=x0+ci*(cw+gap);
+      // A zero still gets a hover target, or the reader cannot tell "no churn in
+      // this category" from "this category is not on the chart".
+      var hgt=n?Math.max(2,(n/top)*ph):2;
+      var by=pad.t+ph-hgt;
+      svg+='<rect class="bdstk" x="'+bx+'" y="'+by+'" width="'+cw+'" height="'+hgt+'" fill="'+c.c+'" fill-opacity="'+(n?'0.9':'0.13')+'"'+attrs+' style="cursor:pointer"/>';
+      if(n&&cw>=13)svg+='<text x="'+(bx+cw/2)+'" y="'+(by-5)+'" text-anchor="middle" font-size="10" font-weight="700" fill="'+c.c+'" font-family="Inter,sans-serif" pointer-events="none">'+n+'</text>';
     });
-    if(totals[i])svg+='<text x="'+cx+'" y="'+(yAcc-7)+'" text-anchor="middle" font-size="12" font-weight="700" fill="var(--navy)" font-family="Inter,sans-serif" pointer-events="none">'+totals[i]+'</text>';
     svg+='<text x="'+cx+'" y="'+(ht-pad.b+20)+'" text-anchor="middle" font-size="11" fill="#8A97A5" font-family="Inter,sans-serif">'+(opts.labelOf?opts.labelOf(k):k)+'</text>';
     if(opts.subOf)svg+='<text x="'+cx+'" y="'+(ht-pad.b+35)+'" text-anchor="middle" font-size="10" fill="#A9B4BF" font-family="Inter,sans-serif">'+opts.subOf(k,totals[i])+'</text>';
   });
@@ -2232,7 +2263,7 @@ function bdStackChart(periods,cats,counts,opts){
     +'<div style="width:100%;aspect-ratio:'+w+'/'+ht+';min-width:0">'+svg+'</div>'
     +'<div class="float-tip bdstk-tip"></div></div>';
 }
-// One delegated handler for every stacked chart on the page. Built as DOM, not
+// One delegated handler for every clustered chart on the page. Built as DOM, not
 // innerHTML: the category labels come from HubSpot enums and the period labels
 // from data, so neither belongs in a markup string.
 function bdBindStack(root){
@@ -2294,7 +2325,11 @@ function buildSVGChart(labels,values,color,suffix,isMoney,tipPrefix,opts){
     var gy=pad.t+ph-(gi/4)*ph;
     svg+='<line x1="'+pad.l+'" y1="'+gy+'" x2="'+(pad.l+pw)+'" y2="'+gy+'" stroke="rgba(114,164,191,0.12)" stroke-width="0.5"/>';
     var gv=minV+(gi/4)*range;
-    var yTxt=isMoney?(gv>=1e6?'$'+(gv/1e6).toFixed(1)+'M':gv>=1000?'$'+Math.round(gv/1000)+'K':'$'+Math.round(gv)):Math.round(gv);
+    // opts.ySuffix / opts.yDec put the UNIT on the axis. Without them a percentage
+  // axis is labelled 0,1,2 — which reads as a count, and over a 0-6% range
+  // rounds most gridlines to the same handful of integers.
+  var yTxt=isMoney?(gv>=1e6?'$'+(gv/1e6).toFixed(1)+'M':gv>=1000?'$'+Math.round(gv/1000)+'K':'$'+Math.round(gv))
+    :((opts.yDec?gv.toFixed(opts.yDec):Math.round(gv))+(opts.ySuffix||''));
     svg+='<text x="'+(pad.l-8)+'" y="'+(gy+4)+'" text-anchor="end" fill="#64748B" font-size="11" font-family="Inter,sans-serif">'+yTxt+'</text>';
   }
   // X labels
@@ -2339,11 +2374,17 @@ function buildSVGChart(labels,values,color,suffix,isMoney,tipPrefix,opts){
     // Discrete fields, not one pre-joined sentence: the handler builds the rows as
     // DOM with textContent, so the readout can have real hierarchy (date small and
     // secondary, value large) instead of a single run of 12px text.
-    var _d=(tipPrefix||'')+(_tipL[di]!=null?_tipL[di]:pts[di].l);
+    // tipPrefix was glued straight onto the label, so a caller passing both got
+    // "Churn rate19 churned / 514 active" run together. A prefix now gets a
+    // separator, and opts.tipNotes carries a PER-POINT note — tipNote is one
+    // string for the whole chart and cannot say anything about this point.
+    var _lbl=(_tipL[di]!=null?_tipL[di]:pts[di].l);
+    var _d=tipPrefix?(tipPrefix+' \u00b7 '+_lbl):_lbl;
+    var _note=(opts.tipNotes&&opts.tipNotes[di]!=null)?opts.tipNotes[di]:(opts.tipNote||'');
     var _v=isMoney?'$'+Math.round(pts[di].v).toLocaleString():pts[di].v.toLocaleString()+(suffix||'');
     var _esc=function(x){return String(x).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');};
     svg+='<circle class="chart-dot" cx="'+pts[di].x+'" cy="'+pts[di].y+'" r="'+hitR+'" fill="transparent" style="cursor:crosshair"'
-      +' data-d="'+_esc(_d)+'" data-v="'+_esc(_v)+'" data-n="'+_esc(opts.tipNote||'')+'"/>';
+      +' data-d="'+_esc(_d)+'" data-v="'+_esc(_v)+'" data-n="'+_esc(_note)+'"/>';
   }
   // Last value label
   var last=pts[pts.length-1];
