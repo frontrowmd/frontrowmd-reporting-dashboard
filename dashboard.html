@@ -886,7 +886,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t253';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t254';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3361,7 +3361,7 @@ function clnWkTip(e,el){
     pw.textContent=el.getAttribute('data-pnote')||'⚠ Partial period';
     tip.appendChild(pw);
   }
-  for(var i=1;i<=8;i++){
+  for(var i=1;i<=9;i++){
     var raw=el.getAttribute('data-r'+i); if(!raw)continue;
     var f=raw.split('|');
     var row=document.createElement('div');
@@ -3432,6 +3432,47 @@ const CLN_TR_METRICS=[
   {k:'mdpct', l:'Doctor %',  unit:'%', c:'#B45309', pop:true},
 ];
 const CLN_TR_SPEND={k:'spend',n:'Ad Spend',c:'#64748B',unit:'$'};
+// The stat row, in ONE order, used by the KPI cards and the hover readout
+// alike. Previously each built its own list, which is how the hover ended up
+// repeating whichever stat was also the selected measure. Deriving both from
+// this list makes "same stats, same order, no duplicates" true by construction.
+//
+// Doctors is one entry carrying a count AND a share — they are two readings of
+// the same cut, and splitting them put the same number on screen twice. Ad
+// Spend is here but is not a selectable MEASURE: it is always drawn as the
+// background, so it always has a card.
+const CLN_TR_CARDS=[
+  {k:'count', metric:'count', unit:'#', pop:true},
+  {k:'cost',  metric:'cost',  unit:'$', pop:true},
+  {k:'cvr',   metric:'cvr',   unit:'%', pop:true},
+  {k:'ctr',   metric:'ctr',   unit:'%', pop:false},
+  {k:'doctor',metric:'md',    unit:'#', pop:true, withPct:'mdpct'},
+  {k:'spend', metric:null,    unit:'$', pop:false},
+];
+// Label, value and working for one stat, against summed components.
+function _clnTrStat(card,T,pdef){
+  var mdef=CLN_TR_METRICS.filter(function(m){return m.k===card.metric;})[0]||null;
+  var popW=pdef.short, lbl, val, calc, colour;
+  if(card.k==='spend'){
+    lbl='Ad Spend'; val=_clnTrFmt(T.spend,'$'); colour=CLN_TR_SPEND.c;
+    calc='clinician channel \u00b7 always on the chart';
+  }else if(card.k==='doctor'){
+    var pct=T.pop>0?(T.md/T.pop)*100:null;
+    lbl=CLN_MD_TYPE+(card.pop?(' \u00b7 '+pdef.l):''); val=fN(T.md); colour=mdef?mdef.c:CLN_TR_SPEND.c;
+    calc=(pct!=null?pct.toFixed(1)+'% of ':'')+fN(T.pop)+' '+popW;
+  }else{
+    var v=_clnTrValue(card.metric,T);
+    lbl=(mdef?mdef.l:card.k)+(card.pop?(' \u00b7 '+pdef.l):'');
+    val=_clnTrFmt(v,card.unit); colour=mdef?mdef.c:CLN_TR_SPEND.c;
+    calc={
+      count:fN(T.pop)+' '+popW,
+      cost:f$(Math.round(T.spend))+' \u00f7 '+fN(T.pop)+' '+popW,
+      cvr:fN(T.pop)+' \u00f7 '+fN(T.clicks)+' clicks',
+      ctr:fN(T.clicks)+' \u00f7 '+fN(T.impressions)+' impressions',
+    }[card.k]||'';
+  }
+  return {lbl:lbl,val:val,calc:calc,c:colour};
+}
 const CLN_TR_ROLL_C='#172C45';
 const CLN_TR_ROLL_DAYS=7;
 const CLN_TR_MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -3570,32 +3611,25 @@ function _clnTrendCard(d){
   var pop=pdef.k;
   var T=_clnTrSum(pts.map(function(p){return _clnTrParts(p,pop);}));
   var val=_clnTrValue(mdef.k,T);
-  var calc={
-    count:fN(T.pop)+' '+pdef.short+' across '+pts.length+' '+(g.k==='day'?'days':g.k==='week'?'weeks':'months'),
-    md:fN(T.md)+' of '+fN(T.pop)+' '+pdef.short,
-    cost:f$(Math.round(T.spend))+' ÷ '+fN(T.pop)+' '+pdef.short,
-    cvr:fN(T.pop)+' ÷ '+fN(T.clicks)+' clicks',
-    ctr:fN(T.clicks)+' ÷ '+fN(T.impressions)+' impressions',
-    mdpct:fN(T.md)+' '+CLN_MD_TYPE+' ÷ '+fN(T.pop)+' '+pdef.short,
-  }[mdef.k]||'';
-  var tile=function(lbl,v,c,accent){
-    return '<div style="flex:1 1 160px;min-width:150px;background:var(--lighter);border:1px solid var(--border);border-radius:10px;padding:11px 13px'
-      +(accent?(';border-top:3px solid '+accent):'')+'">'
-      +'<div style="font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em">'+lbl+'</div>'
-      +'<div style="font-family:var(--font-h);font-size:21px;font-weight:700;color:var(--navy);margin-top:3px">'+v+'</div>'
-      +'<div style="font-size:9px;color:var(--grey);margin-top:3px">'+c+'</div></div>';
-  };
+  // The selected measure is accented so the link between the row and the line
+  // on the chart is visible without reading the legend.
   var minis='<div style="display:flex;gap:9px;flex-wrap:wrap;margin:10px 0 4px">'
-    +tile(mdef.l+(mdef.pop?(' · '+pdef.l):''),_clnTrFmt(val,mdef.unit),calc,mdef.c)
-    +tile(pdef.l,fN(T.pop),'in the last '+g.note.replace('last ',''))
-    +tile(CLN_MD_TYPE,fN(T.md),T.pop>0?((T.md/T.pop)*100).toFixed(1)+'% of '+pdef.short:'—')
-    +tile('Ad Spend',f$(Math.round(T.spend)),'clinician channel · always shown')
+    +CLN_TR_CARDS.map(function(card){
+      var st=_clnTrStat(card,T,pdef);
+      var on=(card.metric===mdef.k)||(card.withPct&&card.withPct===mdef.k);
+      return '<div style="flex:1 1 150px;min-width:146px;background:var(--lighter);border:1px solid '
+        +(on?st.c:'var(--border)')+';border-radius:10px;padding:11px 13px;border-top:3px solid '+st.c
+        +(on?';box-shadow:0 1px 6px rgba(2,15,24,.10)':'')+'">'
+        +'<div style="font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em">'+st.lbl+'</div>'
+        +'<div style="font-family:var(--font-h);font-size:21px;font-weight:700;color:var(--navy);margin-top:3px">'+st.val+'</div>'
+        +'<div style="font-size:9px;color:var(--grey);margin-top:3px">'+st.calc+'</div></div>';
+    }).join('')
     +'</div>';
 
   var lg='<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:var(--navy)">'
     +'<span style="display:inline-block;width:14px;height:0;border-top:3px solid '+mdef.c+'"></span>'+mdef.l+(mdef.pop?(' · '+pdef.l):'')+'</span>';
   if(g.k==='day')lg+='<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:var(--navy)">'
-    +'<span style="display:inline-block;width:14px;height:0;border-top:2.5px dashed '+CLN_TR_ROLL_C+'"></span>'+CLN_TR_ROLL_DAYS+'-day rolling avg</span>';
+    +'<span style="display:inline-block;width:14px;height:0;border-top:2.5px dashed '+CLN_TR_ROLL_C+'"></span>'+CLN_TR_ROLL_DAYS+'-day average</span>';
   lg+='<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:var(--navy)">'
     +'<span style="display:inline-block;width:14px;height:9px;border-radius:2px;background:'+CLN_TR_SPEND.c+';opacity:.3"></span>Ad Spend'
     +'<span style="font-size:9px;color:var(--grey)">shape only · no axis</span></span>';
@@ -3622,7 +3656,17 @@ function _renderClnTrend(d){
   if(g.k==='day'){
     roll=parts.map(function(_,i){
       var w=parts.slice(Math.max(0,i-(CLN_TR_ROLL_DAYS-1)),i+1);
-      return _clnTrValue(mdef.k,_clnTrSum(w));
+      var v=_clnTrValue(mdef.k,_clnTrSum(w));
+      // A COUNT summed over seven days is a weekly TOTAL, not a daily average,
+      // and drawing it against a daily series puts the line ~7x above it.
+      // Divide by the days actually in the window — fewer than 7 at the left
+      // edge, where there is not yet a full week behind the point.
+      //
+      // A RATIO is the opposite case: the pooled value over those same seven
+      // days already IS the 7-day average rate, and dividing it by 7 would be
+      // meaningless.
+      if(v!=null&&mdef.unit==='#')v=v/w.length;
+      return v;
     });
   }
 
@@ -3692,14 +3736,18 @@ function _renderClnTrend(d){
       :(g.k==='month'?_clnTrLabel(p.wk,'month')
         :('Week of '+_clnTrLabel(p.wk,'week')+' – '+en.label));
     var note=en.ms>=todayMs?('⚠ Still in progress — not a complete '+(g.k==='day'?'day':g.k==='week'?'week':'month')):'';
-    var rows=[
-      mdef.l+(mdef.pop?(' · '+pdef.l):'')+'|'+_clnTrFmt(vals[i],mdef.unit)+'||'+mdef.c+'|solid',
-    ];
-    if(roll)rows.push(CLN_TR_ROLL_DAYS+'-day rolling|'+_clnTrFmt(roll[i],mdef.unit)+'||'+CLN_TR_ROLL_C+'|dash');
-    rows.push(pdef.l+'|'+fN(xp.pop)+'||'+mdef.c+'|solid');
-    rows.push(CLN_MD_TYPE+'|'+fN(xp.md)+'|'+(xp.pop>0?((xp.md/xp.pop)*100).toFixed(0)+'% of '+pdef.short:'')+'|'+CLN_TR_SPEND.c+'|solid');
-    rows.push('Clicks|'+fN(xp.clicks)+'|'+fN(xp.impressions)+' impressions|'+CLN_TR_SPEND.c+'|solid');
-    rows.push('Ad Spend|'+f$(Math.round(xp.spend))+'|background shading|'+CLN_TR_SPEND.c+'|solid');
+    // Built from CLN_TR_CARDS, so the readout is the same stats in the same
+    // order as the cards above. It used to assemble its own list, which both
+    // repeated whichever stat was the selected measure and carried a Clicks row
+    // the cards never had.
+    var xT=_clnTrSum([xp]);
+    var rows=CLN_TR_CARDS.map(function(card){
+      var st=_clnTrStat(card,xT,pdef);
+      return st.lbl+'|'+st.val+'|'+(card.k==='spend'?'background shading':st.calc)+'|'+st.c+'|solid';
+    });
+    // The rolling line is a chart series, not a card, so it goes last — and only
+    // when it is actually drawn.
+    if(roll)rows.push(CLN_TR_ROLL_DAYS+'-day avg \u00b7 '+mdef.l+'|'+_clnTrFmt(roll[i],mdef.unit)+'|rolling|'+CLN_TR_ROLL_C+'|dash');
     var a=' data-wk="'+esc(head)+'" data-partial="'+(note?'1':'')+'" data-pnote="'+esc(note)+'"';
     rows.forEach(function(r,j){a+=' data-r'+(j+1)+'="'+esc(r)+'"';});
     svg+='<rect class="clnwk-band" x="'+bx+'" y="'+padT+'" width="'+bw+'" height="'+innerH+'"'+a

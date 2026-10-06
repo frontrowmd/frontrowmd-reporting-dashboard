@@ -207,7 +207,16 @@ ck('one setter per toggle row',
 // Computed from rolling SUMS of the components, so a 2-click day does not
 // weigh the same as a 2,000-click one.
 ck('the rolling window sums components, not ratios',
-   /var w=parts\.slice\(Math\.max\(0,i-\(CLN_TR_ROLL_DAYS-1\)\),i\+1\);\s*\n\s*return _clnTrValue\(mdef\.k,_clnTrSum\(w\)\);/.test(cli), true);
+   /var w=parts\.slice\(Math\.max\(0,i-\(CLN_TR_ROLL_DAYS-1\)\),i\+1\);\s*\n\s*var v=_clnTrValue\(mdef\.k,_clnTrSum\(w\)\);/.test(cli), true);
+// ...and it is an AVERAGE. A count summed over seven days is a weekly TOTAL and
+// would sit ~7x above the daily series it is drawn against. A RATIO pooled over
+// the same seven days already IS the 7-day average rate, so dividing it by 7
+// would be meaningless — only counts are divided.
+ck('a count is divided by the days in the window',
+   /if\(v!=null&&mdef\.unit==='#'\)v=v\/w\.length;/.test(cli), true);
+ck('by w.length, not a hard 7, so the left edge is not understated',
+   /v\/w\.length/.test(cli)&&!/v\/CLN_TR_ROLL_DAYS/.test(cli), true);
+ck('and the legend calls it an average', /'-day average<\/span>'/.test(cli), true);
 ck('it is seven days', /const CLN_TR_ROLL_DAYS=7;/.test(cli), true);
 // A 7-day window is shorter than one period on the weekly and monthly views,
 // where the line would just redraw the series.
@@ -248,6 +257,70 @@ const iDaily=cli.indexOf("h+=card('Daily Activity'"), iTrend=cli.indexOf('h+=_cl
 ck('Trend Analysis sits between Daily Activity and Acquisition',
    iDaily>0&&iTrend>iDaily&&iAcq>iTrend, true);
 ck('the old Weekly Cost card is gone', /_clnWeeklyCard|_renderClnWeekly/.test(cli), false);
+
+// ── One ordered stat list behind the cards AND the hover ──────────────────
+// They used to build separate lists, which is how the hover repeated whichever
+// stat was also the selected measure and carried a Clicks row the cards never
+// had. Deriving both from CLN_TR_CARDS makes "same stats, same order, no
+// duplicates" true by construction rather than by matching edits.
+{
+  const cardsSrc=(/const CLN_TR_CARDS=\[([\s\S]*?)\n\];/.exec(cli)||[,''])[1];
+  ck('the stat row is declared once',
+     [...cardsSrc.matchAll(/\{k:'(\w+)'/g)].map(m=>m[1]),
+     ['count','cost','cvr','ctr','doctor','spend']);
+  // Doctors is ONE entry carrying a count and a share: two readings of the same
+  // cut, and splitting them put the same number on screen twice.
+  ck('Doctors carries its count and its share together',
+     /\{k:'doctor',\s*metric:'md',\s*unit:'#',\s*pop:true,\s*withPct:'mdpct'\}/.test(cardsSrc), true);
+  // Ad Spend is a card but not a selectable measure — it is always the
+  // background, so it always has a card.
+  ck('Ad Spend is a card but not a measure',
+     /\{k:'spend',\s*metric:null/.test(cardsSrc)
+     && !/\{k:'spend'/.test((/const CLN_TR_METRICS=\[([\s\S]*?)\n\];/.exec(cli)||[,''])[1]), true);
+  ck('the cards are rendered from it', /CLN_TR_CARDS\.map\(function\(card\)\{\s*\n\s*var st=_clnTrStat\(card,T,pdef\);/.test(cli), true);
+  ck('and so is the hover', /var rows=CLN_TR_CARDS\.map\(function\(card\)\{/.test(cli), true);
+  // Nothing may be pushed onto the readout outside that map, except the rolling
+  // line — which is a chart series, not a card.
+  const hoverZone=cli.slice(cli.indexOf('var rows=CLN_TR_CARDS.map'), cli.indexOf("var a=' data-wk=", cli.indexOf('var rows=CLN_TR_CARDS.map')));
+  ck('the only extra readout row is the rolling line',
+     (hoverZone.match(/rows\.push\(/g)||[]).length, 1);
+  ck('and it is the rolling line', /rows\.push\(CLN_TR_ROLL_DAYS\+'-day avg/.test(hoverZone), true);
+  ck('Clicks is no longer a readout row', /rows\.push\('Clicks\|/.test(cli), false);
+  // The tooltip must cover six cards plus the rolling row, or the last row is
+  // silently dropped.
+  ck('the tooltip loops over every row the readout can emit',
+     (+(/for\(var i=1;i<=(\d+);i\+\+\)/.exec(cli)||[,0])[1]) >= 7, true);
+}
+
+// ── _clnTrStat, RUN ───────────────────────────────────────────────────────
+{
+  const dctx={console,Math,Date,Object,String,Number,Array,parseInt,parseFloat,isNaN,RegExp,JSON};
+  dctx.window=dctx;
+  vm.createContext(dctx);
+  vm.runInContext([
+    'const f$=v=>v==null?"—":"$"+Math.round(v).toLocaleString();',
+    'const fN=v=>v==null?"—":Math.round(v).toLocaleString();',
+    // One slice: CLN_TR_CARDS, _clnTrStat and CLN_MD_TYPE all live inside this
+    // range, so declaring any of them separately was a duplicate.
+    cli.slice(cli.indexOf('const CLN_TR_METRICS=['), cli.indexOf('function _clnTrendGrain()')),
+    fn(cli,'_clnTrValue'),fn(cli,'_clnTrFmt'),fn(cli,'_clnTrSum'),
+    // `const` at the top level of a vm script does NOT become a property of the
+    // context, so the bindings have to be handed out explicitly.
+    'globalThis.__cards=CLN_TR_CARDS; globalThis.__stat=_clnTrStat;',
+  ].join('\n'),dctx);
+  const T={spend:400,clicks:100,impressions:5000,pop:20,md:8};
+  const pdef={k:'inquiry',l:'Inquiry',w:'inquiries',short:'inquiries'};
+  const got=dctx.__cards.map(c=>{const st=dctx.__stat(c,T,pdef);return [st.lbl,st.val];});
+  ck('every card renders a value, in order', got,
+     [['Count · Inquiry','20'],['Cost Per · Inquiry','$20'],['CVR · Inquiry','20.0%'],
+      ['CTR','2.00%'],['MD/DO · Inquiry','8'],['Ad Spend','$400']]);
+  // CTR carries no population in its label, because it has none in its maths.
+  ck('CTR is the one card with no population in its label', got.filter(g=>/·/.test(g[0])).length, 4);
+  // No stat may appear twice — that was the complaint.
+  ck('no label repeats', new Set(got.map(g=>g[0])).size, got.length);
+  const doc=dctx.__stat(dctx.__cards[4],T,pdef);
+  ck('the Doctors card shows count and share together', [doc.val,doc.calc], ['8','40.0% of 20 inquiries']);
+}
 
 console.log(pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);
