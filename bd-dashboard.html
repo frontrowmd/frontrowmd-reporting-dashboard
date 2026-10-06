@@ -41,6 +41,11 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
 
 /* ── Section chrome ─────────────────────────────────────────────────────────
    scroll-margin-top clears the sticky nav when an anchor is jumped to. */
+.bd-tab{font-family:var(--font-h);font-size:12px;font-weight:700;letter-spacing:.01em;
+  padding:6px 15px;border-radius:50px;border:1.5px solid rgba(23,44,69,.16);background:transparent;
+  color:var(--grey);cursor:pointer;margin-right:6px;transition:background .15s,color .15s,border-color .15s}
+.bd-tab:hover{color:var(--navy);border-color:rgba(23,44,69,.3)}
+.bd-tab.on{background:var(--navy);border-color:var(--navy);color:#fff}
 .bd-sec{scroll-margin-top:64px;margin:0 0 30px}
 .bd-sec-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;
   margin:0 0 14px;padding-bottom:9px;border-bottom:2px solid rgba(23,44,69,.13)}
@@ -205,9 +210,16 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
     <button onclick="bdRefresh()" id="refreshBtn" style="padding:6px 16px;border-radius:50px;border:1.5px solid rgba(114,164,191,.3);background:transparent;color:var(--teal);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-b);display:flex;align-items:center;gap:6px;transition:all .2s">↻ Refresh</button>
   </div>
   <nav class="bd-nav" id="bd-nav" aria-label="Dashboard sections">
+    <!-- Tabs first, then the Tracker's own section anchors. The anchors are
+         hidden on the Churn tab: those sections are not in the DOM there, so an
+         anchor would scroll nowhere and the scroll-spy would never mark it. -->
+    <button class="bd-tab on" data-tab="tracker" onclick="bdSetTab('tracker')">Tracker</button>
+    <button class="bd-tab" data-tab="churn" onclick="bdSetTab('churn')">Churn</button>
+    <span id="bd-nav-anchors" style="display:contents">
     <a class="bd-nav-i" href="#bd-sec-summary" data-sec="bd-sec-summary" onclick="bdNavGo(event,'bd-sec-summary')">All Time Summary</a>
     <a class="bd-nav-i" href="#bd-sec-arr" data-sec="bd-sec-arr" onclick="bdNavGo(event,'bd-sec-arr')">All Brands and ARR</a>
     <a class="bd-nav-i" href="#bd-sec-deals" data-sec="bd-sec-deals" onclick="bdNavGo(event,'bd-sec-deals')">All Brand Deals</a>
+    </span>
     <div style="flex:1"></div>
     <button class="bd-goal-btn" id="bd-goal-btn" onclick="bdGoalOpen()" aria-haspopup="dialog" aria-expanded="false">
       Deals to Hit Monthly Goal <span class="bd-goal-badge" id="bd-goal-badge"></span>
@@ -278,6 +290,66 @@ var BD_STAGE_COLORS={appointmentscheduled:'#F59E0B','1084214349':'#0EA5E9',decis
 // Company Segment pills. The fallback grey is deliberately NOT any mapped
 // value's colour — a fallback that collides with a real category is the
 // recurring bug in this codebase.
+// ── Churn tab ──────────────────────────────────────────────────────────────
+// Churn is identified by DEAL STAGE and nothing else. brand_status cannot do it
+// (it is fully populated on closed-won deals too, and never carries a churned
+// value while the deal is still closed-won) and pausechurn_date cannot either
+// (deals that are merely PAUSED have one).
+var BD_CHURN_STAGE='3453925110', BD_CHURN_ONB_STAGE='3517067985';
+var BD_CHURN_C='#DC2626';
+// Churn Type is the `never_implemented_churn` property, despite the name. Its
+// stored VALUES are not its labels — "Yes - Ghosted" displays as
+// "Never Imp - Ghosted" — so aggregate on the value and render the label.
+// Delinquent Payment folds in with Board Defined, per the ask.
+var BD_CHURN_BOARD='Board Defined';
+var BD_CHURN_TYPE_GROUP={
+  'Board Defined Churn':BD_CHURN_BOARD,
+  'Delinquent Payment':BD_CHURN_BOARD,
+  'Yes - Rejected Product(s)':'Never Imp - Rejected Product(s)',
+  'Yes - Ghosted':'Never Imp - Ghosted',
+  'Yes - Other Reason':'Never Imp - Other Reason',
+};
+var BD_CHURN_TYPE_ORDER=[BD_CHURN_BOARD,'Never Imp - Other Reason','Never Imp - Rejected Product(s)','Never Imp - Ghosted'];
+var BD_CHURN_TYPE_COLORS={'Board Defined':'#DC2626','Never Imp - Other Reason':'#B45309','Never Imp - Rejected Product(s)':'#7C3AED','Never Imp - Ghosted':'#0F766E'};
+// Churn Type and Churn Reason are ~100% populated for churns dated from here on
+// and near-empty before, so an all-time view would render years of "no churn"
+// that are really "not recorded".
+var BD_CHURN_DETAIL_FROM='2026-01';
+var BD_CHURN_REASON_TOP=6;
+// The reported field's own bands, VERBATIM — note "200 -500k" has the space
+// before the hyphen. Measured traffic is binned into these so the two are
+// comparable at all. `max` is the exclusive upper bound in visits.
+var BD_TRAFFIC_BANDS=[
+  {k:'0 - 10k',max:10000},{k:'10 - 25k',max:25000},{k:'25 - 50k',max:50000},
+  {k:'50 - 100k',max:100000},{k:'100 - 200k',max:200000},{k:'200 -500k',max:500000},
+  {k:'500k+',max:Infinity},
+];
+var BD_SEGMENT_ORDER=['VIP','Strategic','Enterprise','Mid-Market'];
+// Bin a MEASURED visit count into the reported field's bands. A non-positive
+// value is MISSING, not "0 - 10k": 24 churned deals store a literal 0 and almost
+// all are brands that never launched, so bucketing them as low traffic would
+// drag every traffic cut toward zero.
+function _chBandOf(n){
+  if(!(n>0))return '';
+  for(var i=0;i<BD_TRAFFIC_BANDS.length;i++)if(n<BD_TRAFFIC_BANDS[i].max)return BD_TRAFFIC_BANDS[i].k;
+  return BD_TRAFFIC_BANDS[BD_TRAFFIC_BANDS.length-1].k;
+}
+// Which tab is showing. A real tab, not an anchor: the Churn sections render
+// INSTEAD of the Tracker's, so the Tracker's filter pills cannot reach them.
+var _bdTab='tracker';
+var _bdChurnTypeGrain='month', _bdChurnReasonGrain='month';
+function bdSetTab(t){
+  if(_bdTab===t)return;
+  _bdTab=t;
+  document.querySelectorAll('.bd-tab').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-tab')===t);});
+  // The section anchors belong to the Tracker tab; on Churn they would point at
+  // sections that are not in the DOM.
+  var an=document.getElementById('bd-nav-anchors');if(an)an.style.display=(t==='tracker')?'':'none';
+  window.scrollTo(0,0);
+  renderBD();
+}
+function bdSetChurnTypeGrain(g){_bdChurnTypeGrain=g;renderBD();}
+function bdSetChurnReasonGrain(g){_bdChurnReasonGrain=g;renderBD();}
 var BD_SEGMENT_COLORS={'VIP':'#7C3AED','Strategic':'#0F766E','Enterprise':'#1D4ED8','Mid-Market':'#B45309',_other:'#94A3B8'};
 var BD_STATUS_COLORS={Signed:'#16A34A',Paying:'#172C45',Paused:'#F59E0B',Churned:'#DC2626','Never Implemented - Churned':'#9CA3AF'};
 // HubSpot rich-text fields (churn reasons, notes) arrive as HTML (<p>, <span>…).
@@ -1242,7 +1314,9 @@ function renderBD(){
     if(_BD_LEAD[k]){var n=_bdLeadingNum(d[k]);return isNaN(n)?Infinity:n;}
     return (d[k]||'').toString().toLowerCase();
   }
-  var sorted=sharedFiltered.slice().sort(function(a,b){
+  // Named, so the Churn tab's table sorts by exactly the same rule rather than
+  // growing a second copy that drifts.
+  function _bdSortCmp(a,b){
     var av=_bdSortVal(a,_bdSort),bv=_bdSortVal(b,_bdSort);
     if(typeof av==='number'&&typeof bv==='number'){
       // Push "missing" (Infinity for unparseable enum, or negative for missing dates/etc.) to the bottom of asc sort
@@ -1251,7 +1325,8 @@ function renderBD(){
       return _bdSortDir==='asc'?av-bv:bv-av;
     }
     return _bdSortDir==='asc'?(av>bv?1:av<bv?-1:0):(av<bv?1:av>bv?-1:0);
-  });
+  }
+  var sorted=sharedFiltered.slice().sort(_bdSortCmp);
   // Stash for the CSV export button. We snapshot the SORTED (filter-aware)
   // rows + ownerMap so bdExportCSV() can rebuild the same view server-free.
   BD._sorted=sorted; BD._ownerMap=ownerMap;
@@ -1517,11 +1592,387 @@ function renderBD(){
       t+='</tr>';}
     return t+'</tbody></table></div>';
   }
-  h+=_bdDealsTable(sorted);
+  h+=(_bdTab==='tracker')?_bdDealsTable(sorted):'';
   h+='</div>';
   h+='</section>';
+
+  // ═════ CHURN TAB ═════
+  // A real tab, not a fourth anchored section: it renders INSTEAD of sections
+  // 1-3, so the shared filter pills two sections up cannot silently move any
+  // number here. Everything below is all-time and independent.
+  //
+  // ONE churn definition for the whole tab, by DEAL STAGE. brand_status is not
+  // usable for this — it is 100% populated on both closed-won and churned deals
+  // but never carries a churned value while the deal is still closed-won.
+  // pausechurn_date is not usable either: 11 deals that have it are PAUSED.
+  var _chDeals=deals.filter(function(dd){return dd.dealstage===BD_CHURN_STAGE||dd.dealstage===BD_CHURN_ONB_STAGE;});
+  var hChurn='';
+  hChurn+='<section class="bd-sec" id="bd-sec-churn">';
+  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C1</span><span class="bd-sec-t">Key Metrics</span>'
+    +'<span class="bd-sec-s">Every churned deal to date, by deal stage. Independent of the filters on the Tracker tab.</span></div>';
+
+  // ── i. KPI tiles ──
+  // Tenure start: first entry into Closed Won, which PERSISTS after churn.
+  // closedate is not just often blank on churned deals, it is sometimes WRONG —
+  // stamped at churn-processing time, which yields a negative tenure. The
+  // fallback cascade is the one the Snapshot chart already uses at _bdMonthOf.
+  var _chTenSum=0,_chTenN=0,_chTenSkip=0;
+  _chDeals.forEach(function(dd){
+    var _s=dd.entered_closedwon||dd.createdate||dd.closedate, _e=dd.pausechurn_date;
+    if(!_s||!_e){_chTenSkip++;return;}
+    var _days=(Date.parse(_e)-Date.parse(_s))/86400000;
+    if(!isFinite(_days)||_days<0){_chTenSkip++;return;}
+    _chTenSum+=_days;_chTenN++;
+  });
+  var _chTenAvg=_chTenN>0?(_chTenSum/_chTenN):null;
+  var _chWonN=closedWonDeals.length;
+  // Of every brand that ever signed. The Tracker tab's own % Churned tile is
+  // filter-scoped and uses a different denominator; these live on separate tabs
+  // and the calc line under each says which is which.
+  var _chEverSigned=_chWonN+_chDeals.length;
+  var _chPct=_chEverSigned>0?(_chDeals.length/_chEverSigned)*100:null;
+  var _chTile=function(lbl,val,calc,def){
+    return '<div class="tile hero" style="border-left:3px solid '+BD_CHURN_C+';display:flex;flex-direction:column;justify-content:center">'
+      +'<div class="tlbl">'+lbl+'</div><div class="tval">'+val+'</div>'
+      +(calc?'<div style="font-size:11px;color:var(--grey);margin-top:2px;font-variant-numeric:tabular-nums">'+calc+'</div>':'')
+      +'<div class="tdef">'+def+'</div></div>';
+  };
+  hChurn+='<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:stretch">';
+  hChurn+=_chTile('Churned Deals',String(_chDeals.length),'',
+    'Deal stage Churned or Churned (Onb)');
+  hChurn+=_chTile('% Churned',_chPct!=null?_chPct.toFixed(1)+'%':'—',
+    _chDeals.length+' ÷ '+_chEverSigned,
+    'Of every brand that ever signed (closed-won + churned)');
+  hChurn+=_chTile('Avg Time to Churn',_chTenAvg!=null?(Math.round(_chTenAvg).toLocaleString()+' days'):'—',
+    _chTenAvg!=null?('≈ '+(_chTenAvg/30.44).toFixed(1)+' months · n='+_chTenN):'',
+    'Signed → Pause/Churn Date'+(_chTenSkip?('. '+_chTenSkip+' excluded: no churn date'):''));
+  hChurn+='</div>';
+  hChurn+='</section>';
+
+  // ── ii. Month-by-month churn rate ──
+  // Numerator: churns DATED into the month. Denominator: the Snapshot's active
+  // brand count at the START of the month, i.e. the previous month's close.
+  // _snByMonth is month-END by construction (the loop adds that month's
+  // signings before writing the key), so the previous key is the opening book.
+  var _chByMonth={},_chUndated=0;
+  _chDeals.forEach(function(dd){
+    var _m=_bdMonthOf(dd.pausechurn_date);
+    if(!_m){_chUndated++;return;}
+    _chByMonth[_m]=(_chByMonth[_m]||0)+1;
+  });
+  var _chMonths=Object.keys(_snByMonth).sort();
+  var _chPrev=function(m){var q=m.split('-'),y=+q[0],mo=+q[1]-1;if(mo<1){y--;mo=12;}return y+'-'+('0'+mo).slice(-2);};
+  var _chOpen=function(m){var p=_snByMonth[_chPrev(m)];return p?p.b:0;};
+  var _chRateLbl=[],_chRateVal=[],_chRateTip=[];
+  _chMonths.forEach(function(m){
+    var _o=_chOpen(m);
+    if(_o<=0)return;                       // no opening book — a rate would be meaningless
+    var _n=_chByMonth[m]||0;
+    var _q=m.split('-');
+    _chRateLbl.push(mN[+_q[1]-1]+' '+_q[0].slice(-2));
+    _chRateVal.push(Math.round((_n/_o)*10000)/100);
+    _chRateTip.push(_n+' churned ÷ '+_o+' active at start of '+mN[+_q[1]-1]+' '+_q[0]);
+  });
+  hChurn+='<section class="bd-sec" id="bd-sec-churnrate">';
+  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C2</span><span class="bd-sec-t">Monthly Churn Rate</span>'
+    +'<span class="bd-sec-s">Churns dated into the month ÷ active brands at the start of it. The denominator is the Snapshot book, so it counts brands that were live then even if they have since churned.</span></div>';
+  hChurn+='<div class="tile" style="padding:16px 18px 10px">';
+  hChurn+='<div style="height:260px">'+buildSVGChart(_chRateLbl,_chRateVal,BD_CHURN_C,'%',false,'Churn rate',{tipLabels:_chRateTip})+'</div>';
+  if(_chUndated)hChurn+='<div style="font-size:10px;color:var(--grey);margin-top:6px;font-style:italic">'
+    +_chUndated+' of '+_chDeals.length+' churned deals have no Pause/Churn Date and cannot be placed in a month — they are excluded from this chart, and from the Snapshot denominator too, so the two stay consistent.</div>';
+  hChurn+='</div></section>';
+
+  // ── Period bucketing, shared by the two toggled charts ──
+  var _chPeriodOf=function(v,grain){
+    var m=_bdMonthOf(v); if(!m)return '';
+    if(grain!=='quarter')return m;
+    var q=m.split('-'); return q[0]+'-Q'+Math.ceil(parseInt(q[1],10)/3);
+  };
+  var _chPeriodLbl=function(k){
+    if(k.indexOf('-Q')>=0){var a=k.split('-Q');return 'Q'+a[1]+" '"+a[0].slice(-2);}
+    var q=k.split('-'); return mN[+q[1]-1]+' '+q[0].slice(-2);
+  };
+  // Active brands at the START of a period: the Snapshot's close of the month
+  // before it. For a quarter that is the month before its first month.
+  var _chOpenOf=function(k){
+    if(k.indexOf('-Q')>=0){var a=k.split('-Q');return _chOpen(a[0]+'-'+('0'+((+a[1]-1)*3+1)).slice(-2));}
+    return _chOpen(k);
+  };
+  // Periods to plot. Both churn-detail fields are ~100% populated for churns
+  // dated 2026-01-01 or later and near-empty before, so showing all time would
+  // render years of "no churn" that are really "not recorded".
+  var _chPeriods=function(grain){
+    var out={},seen={};
+    _chDeals.forEach(function(dd){
+      var k=_chPeriodOf(dd.pausechurn_date,grain);
+      if(k&&k>=BD_CHURN_DETAIL_FROM)seen[k]=1;
+    });
+    return Object.keys(seen).sort();
+  };
+  var _chGrainPill=function(cur,g,label,fnName){
+    var on=cur===g;
+    return '<span onclick="'+fnName+"('"+g+"')"+'" style="cursor:pointer;padding:4px 13px;border-radius:50px;font-size:11px;font-weight:700;font-family:var(--font-h);'
+      +(on?'background:var(--navy);color:#fff;':'background:transparent;color:var(--grey);')+'">'+label+'</span>';
+  };
+  var _chGrainSeg=function(cur,fnName){
+    return '<span style="display:inline-flex;align-items:center;background:rgba(23,44,69,.07);border:1.5px solid rgba(23,44,69,.16);border-radius:50px;padding:3px;gap:3px;flex-shrink:0">'
+      +_chGrainPill(cur,'month','Monthly',fnName)+_chGrainPill(cur,'quarter','Quarterly',fnName)+'</span>';
+  };
+
+  // ── iii. Churn count by Churn Type ──
+  // The stored VALUES are not the labels — "Yes - Ghosted" displays as
+  // "Never Imp - Ghosted" — so everything aggregates on value and renders the
+  // label. Delinquent Payment folds in with Board Defined, per the ask.
+  var _chTypeOf=function(dd){
+    var v=(dd.never_implemented_churn||'').trim();
+    if(!v)return '';
+    return BD_CHURN_TYPE_GROUP[v]||v;
+  };
+  var _chTypeChart=function(grain){
+    var periods=_chPeriods(grain);
+    var cats=BD_CHURN_TYPE_ORDER.slice();
+    var counts={};cats.forEach(function(c){counts[c]={};});
+    var typed=0;
+    _chDeals.forEach(function(dd){
+      var k=_chPeriodOf(dd.pausechurn_date,grain); if(!k||k<BD_CHURN_DETAIL_FROM)return;
+      var c=_chTypeOf(dd); if(!c||cats.indexOf(c)<0)return;
+      counts[c][k]=(counts[c][k]||0)+1; typed++;
+    });
+    var t='<div style="overflow-x:auto"><table class="stbl" style="width:100%;font-size:11.5px;border-collapse:collapse">';
+    t+='<thead><tr style="border-bottom:1.5px solid rgba(23,44,69,.12)"><th style="text-align:left;padding:7px 6px">Churn Type</th>';
+    periods.forEach(function(k){t+='<th style="text-align:right;padding:7px 6px;white-space:nowrap">'+_chPeriodLbl(k)+'</th>';});
+    t+='<th style="text-align:right;padding:7px 6px">Total</th></tr></thead><tbody>';
+    cats.forEach(function(c){
+      var tot=0;periods.forEach(function(k){tot+=counts[c][k]||0;});
+      t+='<tr style="border-bottom:1px solid rgba(23,44,69,.06)"><td style="padding:7px 6px"><span class="pill" style="background:'+BD_CHURN_TYPE_COLORS[c]+'18;color:'+BD_CHURN_TYPE_COLORS[c]+'">'+c+'</span></td>';
+      periods.forEach(function(k){
+        var n=counts[c][k]||0, open=_chOpenOf(k);
+        // The rate a category contributes to overall churn: its count over the
+        // SAME opening book the overall rate uses, so the categories sum to it.
+        // A per-category churn RATE is not computable — churn type is only
+        // assigned at churn, so an active brand has no category and there is no
+        // per-category denominator anywhere in HubSpot.
+        var pct=open>0?(n/open)*100:null;
+        t+='<td style="text-align:right;padding:7px 6px;font-variant-numeric:tabular-nums">'
+          +(n?('<strong>'+n+'</strong>'+(pct!=null?'<div style="font-size:9px;color:var(--grey)">'+pct.toFixed(2)+'%</div>':'')):'<span style="color:var(--grey)">—</span>')+'</td>';
+      });
+      t+='<td style="text-align:right;padding:7px 6px;font-variant-numeric:tabular-nums;font-weight:700">'+(tot||'—')+'</td></tr>';
+    });
+    t+='</tbody></table></div>';
+    t+='<div style="font-size:10px;color:var(--grey);margin-top:8px;font-style:italic">'
+      +'n = '+typed+' of '+_chDeals.length+' churned deals have a Churn Type and a churn date from '+BD_CHURN_DETAIL_FROM+' on. '
+      +'The % under each count is that category’s share of the brands active at the start of the period — the categories sum to the overall churn rate above. '
+      +'Delinquent Payment is grouped with Board Defined Churn.</div>';
+    return t;
+  };
+  hChurn+='<section class="bd-sec" id="bd-sec-churntype">';
+  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C3</span><span class="bd-sec-t">Churn by Type</span>'
+    +'<span class="bd-sec-s">Counts and contribution to the churn rate, by Churn Type.</span>'
+    +_chGrainSeg(_bdChurnTypeGrain,'bdSetChurnTypeGrain')+'</div>';
+  hChurn+='<div class="tile" style="padding:16px 18px">'+_chTypeChart(_bdChurnTypeGrain)+'</div></section>';
+
+  // ── iv. Churn High Level Reason ──
+  // 20 stored options, visibly two generations of vocabulary. All 20 in a
+  // period table is unreadable, so the top N by total volume are shown and the
+  // tail is rolled into one labelled Other — which is counted, not dropped, and
+  // names its members on hover.
+  var _chReasonChart=function(grain){
+    var periods=_chPeriods(grain);
+    var tot={},withReason=0;
+    _chDeals.forEach(function(dd){
+      var k=_chPeriodOf(dd.pausechurn_date,grain); if(!k||k<BD_CHURN_DETAIL_FROM)return;
+      var r=(dd.churn_reason||'').trim(); if(!r)return;
+      tot[r]=(tot[r]||0)+1; withReason++;
+    });
+    var ranked=Object.keys(tot).sort(function(a,b){return tot[b]-tot[a];});
+    var top=ranked.slice(0,BD_CHURN_REASON_TOP), rest=ranked.slice(BD_CHURN_REASON_TOP);
+    var cats=top.concat(rest.length?['Other']:[]);
+    var counts={};cats.forEach(function(c){counts[c]={};});
+    _chDeals.forEach(function(dd){
+      var k=_chPeriodOf(dd.pausechurn_date,grain); if(!k||k<BD_CHURN_DETAIL_FROM)return;
+      var r=(dd.churn_reason||'').trim(); if(!r)return;
+      var c=top.indexOf(r)>=0?r:'Other';
+      counts[c][k]=(counts[c][k]||0)+1;
+    });
+    var otherTip=rest.map(function(r){return r+' ('+tot[r]+')';}).join(' · ');
+    var t='<div style="overflow-x:auto"><table class="stbl" style="width:100%;font-size:11.5px;border-collapse:collapse">';
+    t+='<thead><tr style="border-bottom:1.5px solid rgba(23,44,69,.12)"><th style="text-align:left;padding:7px 6px">Churn High Level Reason</th>';
+    periods.forEach(function(k){t+='<th style="text-align:right;padding:7px 6px;white-space:nowrap">'+_chPeriodLbl(k)+'</th>';});
+    t+='<th style="text-align:right;padding:7px 6px">Total</th></tr></thead><tbody>';
+    cats.forEach(function(c){
+      var rt=0;periods.forEach(function(k){rt+=counts[c][k]||0;});
+      var isOther=(c==='Other');
+      t+='<tr style="border-bottom:1px solid rgba(23,44,69,.06)"'+(isOther&&otherTip?' title="'+otherTip.replace(/"/g,'&quot;')+'"':'')+'>'
+        +'<td style="padding:7px 6px'+(isOther?';color:var(--grey);font-style:italic':'')+'">'+c+(isOther?' ('+rest.length+' reasons)':'')+'</td>';
+      periods.forEach(function(k){
+        var n=counts[c][k]||0;
+        t+='<td style="text-align:right;padding:7px 6px;font-variant-numeric:tabular-nums">'+(n||'<span style="color:var(--grey)">—</span>')+'</td>';
+      });
+      t+='<td style="text-align:right;padding:7px 6px;font-variant-numeric:tabular-nums;font-weight:700">'+(rt||'—')+'</td></tr>';
+    });
+    t+='</tbody></table></div>';
+    t+='<div style="font-size:10px;color:var(--grey);margin-top:8px;font-style:italic">'
+      +'n = '+withReason+' of '+_chDeals.length+' churned deals have a reason and a churn date from '+BD_CHURN_DETAIL_FROM+' on. '
+      +'Top '+BD_CHURN_REASON_TOP+' by volume shown; the remaining '+rest.length+' are counted in Other — hover it for the breakdown.'
+      +'</div>';
+    return t;
+  };
+  hChurn+='<section class="bd-sec" id="bd-sec-churnreason">';
+  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C4</span><span class="bd-sec-t">Churn by High Level Reason</span>'
+    +'<span class="bd-sec-s">The reason recorded on the deal at churn.</span>'
+    +_chGrainSeg(_bdChurnReasonGrain,'bdSetChurnReasonGrain')+'</div>';
+  hChurn+='<div class="tile" style="padding:16px 18px">'+_chReasonChart(_bdChurnReasonGrain)+'</div></section>';
+
+  // ── Traffic banding, shared by v and vi ──
+  // web_traffic__measured is a NUMBER while the reported field is a band, so one
+  // side has to be converted. A stored 0 is treated as MISSING: 24 churned deals
+  // store a literal 0 and almost all are "Never Implemented" — brands that never
+  // launched and were never measured. Counting them as low traffic would drag
+  // every traffic cut toward zero.
+  var _chMatrix=function(rowsDef,colsDef,cellOf,note){
+    var t='<div style="overflow-x:auto"><table class="stbl" style="width:100%;font-size:11.5px;border-collapse:collapse">';
+    t+='<thead><tr style="border-bottom:1.5px solid rgba(23,44,69,.12)"><th style="text-align:left;padding:7px 6px"></th>';
+    colsDef.forEach(function(c){t+='<th style="text-align:right;padding:7px 6px;white-space:nowrap">'+c.l+'</th>';});
+    t+='<th style="text-align:right;padding:7px 6px">Total</th></tr></thead><tbody>';
+    rowsDef.forEach(function(r){
+      var rt=0;
+      var cells='';
+      colsDef.forEach(function(c){
+        var n=cellOf(r,c); rt+=n;
+        cells+='<td style="text-align:right;padding:7px 6px;font-variant-numeric:tabular-nums'+(n?'':';color:var(--grey)')+'">'+(n||'—')+'</td>';
+      });
+      t+='<tr style="border-bottom:1px solid rgba(23,44,69,.06)"><td style="padding:7px 6px;white-space:nowrap">'+r.l+'</td>'+cells
+        +'<td style="text-align:right;padding:7px 6px;font-variant-numeric:tabular-nums;font-weight:700">'+(rt||'—')+'</td></tr>';
+    });
+    t+='</tbody></table></div>';
+    t+='<div style="font-size:10px;color:var(--grey);margin-top:8px;font-style:italic">'+note+'</div>';
+    return t;
+  };
+
+  // ── v. A/B test among board-defined + delinquent churn ──
+  // Deliberately a COUNT TABLE and not a scatter. The usable sample is ~27
+  // deals spread over ~16 cells, so most cells are 0-3 — that sparseness IS the
+  // finding, and a trendline or an r value over 27 points would imply a
+  // precision the data does not have.
+  var _chBoard=_chDeals.filter(function(dd){
+    return BD_CHURN_TYPE_GROUP[(dd.never_implemented_churn||'').trim()]===BD_CHURN_BOARD;
+  });
+  var _chAbRows=[{k:'Yes',l:'A/B tested'},{k:'No',l:'No A/B test'},{k:'Unknown',l:'Unknown'},{k:'',l:'Not recorded'}];
+  var _chAbCols=BD_TRAFFIC_BANDS.map(function(b){return {k:b.k,l:b.k};}).concat([{k:'',l:'No measurement'}]);
+  var _chAbAny=0;_chBoard.forEach(function(dd){if((dd.ab_test||'').trim())_chAbAny++;});
+  hChurn+='<section class="bd-sec" id="bd-sec-churnab">';
+  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C5</span><span class="bd-sec-t">A/B Test · Board Defined Churn</span>'
+    +'<span class="bd-sec-s">Of board-defined and delinquent-payment churns, how many ran an A/B test — against measured web traffic.</span></div>';
+  hChurn+='<div class="tile" style="padding:16px 18px">'+_chMatrix(_chAbRows,_chAbCols,function(r,c){
+    var n=0;
+    _chBoard.forEach(function(dd){
+      if((dd.ab_test||'').trim()!==r.k)return;
+      if(_chBandOf(dd.web_traffic__measured)!==c.k)return;
+      n++;
+    });
+    return n;
+  },'n = '+_chBoard.length+' board-defined or delinquent-payment churns; '+_chAbAny+' of them have an A/B Test value. '
+   +'"Unknown" is a stored answer and is kept apart from "Not recorded", which is a blank field — collapsing them into a yes/no split would overstate what is known. '
+   +'A measured traffic of 0 is read as no measurement, not as low traffic: the brands storing 0 are almost all ones that never launched. '
+   +'No correlation statistic is shown — the sample does not support one.')+'</div></section>';
+
+  // ── vi. Reported vs measured web traffic, against churn reason ──
+  // Reported is a band, measured is a number, so measured is binned into the
+  // same bands. Both are shown so the disagreement between what a brand told us
+  // and what we measured is visible rather than averaged away.
+  var _chReasonTot={};
+  _chDeals.forEach(function(dd){var r=(dd.churn_reason||'').trim();if(r)_chReasonTot[r]=(_chReasonTot[r]||0)+1;});
+  var _chTopReasons=Object.keys(_chReasonTot).sort(function(a,b){return _chReasonTot[b]-_chReasonTot[a];}).slice(0,BD_CHURN_REASON_TOP);
+  var _chTrCols=_chTopReasons.map(function(r){return {k:r,l:r.length>22?r.slice(0,21)+'…':r};}).concat([{k:'__other',l:'Other'}]);
+  var _chReasonBucket=function(dd){
+    var r=(dd.churn_reason||'').trim(); if(!r)return '';
+    return _chTopReasons.indexOf(r)>=0?r:'__other';
+  };
+  var _chTrRows=BD_TRAFFIC_BANDS.map(function(b){return {k:b.k,l:b.k};});
+  var _chRepN=0,_chBothN=0;
+  _chDeals.forEach(function(dd){
+    if((dd.monthly_web_traffic__reported_at_time_of_churn||'').trim())_chRepN++;
+    if((dd.monthly_web_traffic__reported_at_time_of_churn||'').trim()&&dd.web_traffic__measured>0&&(dd.churn_reason||'').trim())_chBothN++;
+  });
+  hChurn+='<section class="bd-sec" id="bd-sec-churntraffic">';
+  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C6</span><span class="bd-sec-t">Web Traffic at Churn</span>'
+    +'<span class="bd-sec-s">Measured traffic, binned into the reported field’s own bands, against the churn reason.</span></div>';
+  hChurn+='<div class="tile" style="padding:16px 18px">'+_chMatrix(_chTrRows,_chTrCols,function(r,c){
+    var n=0;
+    _chDeals.forEach(function(dd){
+      if(_chBandOf(dd.web_traffic__measured)!==r.k)return;
+      if(_chReasonBucket(dd)!==c.k)return;
+      n++;
+    });
+    return n;
+  },'Rows are MEASURED traffic binned into the reported field’s bands. '
+   +_chRepN+' of '+_chDeals.length+' churned deals carry a reported band at all, and only '+_chBothN+' have a reported band, a measured figure above zero and a reason — which is why this is a count table and not a correlation.')+'</div>';
+  // Reported vs measured, side by side, where both exist — the disagreement is
+  // the point, and it is lost if only one of them is charted.
+  var _chAgree=0,_chDisagree=0,_chRepUnknown=0;
+  _chDeals.forEach(function(dd){
+    var rep=(dd.monthly_web_traffic__reported_at_time_of_churn||'').trim();
+    if(!rep)return;
+    if(rep==='Unknown'){_chRepUnknown++;return;}
+    var meas=_chBandOf(dd.web_traffic__measured); if(!meas)return;
+    if(meas===rep)_chAgree++;else _chDisagree++;
+  });
+  hChurn+='<div class="tile" style="padding:14px 18px;margin-top:12px">'
+    +'<div style="font-family:var(--font-h);font-size:12px;font-weight:700;color:var(--navy);margin-bottom:6px">Reported vs measured</div>'
+    +'<div style="font-size:12px;color:var(--navy)">Where a brand reported a band and we also measured one: <strong>'+_chAgree+'</strong> agree, <strong>'+_chDisagree+'</strong> land in a different band'
+    +(_chRepUnknown?(', and '+_chRepUnknown+' reported "Unknown"'):'')+'.</div>'
+    +'<div style="font-size:10px;color:var(--grey);margin-top:5px;font-style:italic">Bands are the reported field’s own, including the odd spelling of "200 -500k". Measured zeroes are excluded as unmeasured.</div>'
+    +'</div></section>';
+
+  // ── vii. Board-level churn by Company Segment ──
+  // A COUNT split, not a rate. Segment lives on the COMPANY and the Snapshot
+  // engine has no segment dimension, so active-brands-per-segment does not
+  // exist to divide by.
+  var _chSegRows=BD_SEGMENT_ORDER.map(function(sg){return {k:sg,l:sg};})
+    .concat([{k:'__nosegment',l:'No segment set'},{k:'__nocompany',l:'No company resolved'}]);
+  var _chSegCount={};
+  _chBoard.forEach(function(dd){
+    var k=dd.companySegment?dd.companySegment:(dd.companyId?'__nosegment':'__nocompany');
+    if(BD_SEGMENT_ORDER.indexOf(k)<0&&k!=='__nosegment'&&k!=='__nocompany')k='__nosegment';
+    _chSegCount[k]=(_chSegCount[k]||0)+1;
+  });
+  var _chSegMax=0;_chSegRows.forEach(function(r){if((_chSegCount[r.k]||0)>_chSegMax)_chSegMax=_chSegCount[r.k]||0;});
+  var _chSegH='<div id="bd-churn-seg">';
+  _chSegRows.forEach(function(r){
+    var n=_chSegCount[r.k]||0;
+    var pct=_chBoard.length>0?(n/_chBoard.length)*100:0;
+    var col=BD_SEGMENT_COLORS[r.k]||BD_SEGMENT_COLORS._other;
+    _chSegH+='<div class="attr-row" style="display:flex;align-items:center;gap:10px;padding:6px 0">'
+      +'<div style="width:140px;flex-shrink:0;font-size:11.5px;color:var(--navy)'+(r.k.indexOf('__')===0?';color:var(--grey);font-style:italic':'')+'">'+r.l+'</div>'
+      +'<div style="flex:1;height:14px;background:rgba(23,44,69,.05);border-radius:3px;overflow:hidden">'
+      +'<div style="height:100%;width:'+(_chSegMax>0?(n/_chSegMax)*100:0)+'%;background:'+col+';opacity:.85"></div></div>'
+      +'<div style="width:86px;text-align:right;font-variant-numeric:tabular-nums;font-size:11.5px;color:var(--navy)"><strong>'+n+'</strong>'
+      +'<span style="color:var(--grey);font-size:10px"> '+pct.toFixed(0)+'%</span></div></div>';
+  });
+  _chSegH+='</div>';
+  hChurn+='<section class="bd-sec" id="bd-sec-churnseg">';
+  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C7</span><span class="bd-sec-t">Board Defined Churn by Company Segment</span>'
+    +'<span class="bd-sec-s">Board-defined and delinquent-payment churns, split by the company’s segment.</span></div>';
+  hChurn+='<div class="tile" style="padding:16px 18px">'+_chSegH
+    +'<div style="font-size:10px;color:var(--grey);margin-top:8px;font-style:italic">'
+    +'A count, not a rate: segment is a COMPANY property and the Snapshot book has no segment dimension, so there is no active-brands-per-segment to divide by. '
+    +'The two grey rows are different things — a company with no segment set, versus a deal whose company has not been resolved yet (that lookup is capped per load and fills in on refresh). '
+    +'Both are shown so the rows sum to '+_chBoard.length+'.</div></div></section>';
+
+  // ── viii. All Deals, churned only ──
+  // deals.filter(isChurned), NOT sharedFiltered — reusing the Tracker tab's
+  // filter pills would let a control on another tab silently move this table.
+  var _chSorted=_chDeals.slice().sort(_bdSortCmp);
+  hChurn+='<section class="bd-sec" id="bd-sec-churndeals">';
+  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C8</span><span class="bd-sec-t">All Churned Deals</span>'
+    +'<span class="bd-sec-s">'+_chDeals.length+' churned deals · the same table as the Tracker tab, scoped to churn and unaffected by its filters.</span></div>';
+  hChurn+='<div class="tile" style="padding:0;overflow:hidden">'+((_bdTab==='churn')?_bdDealsTable(_chSorted):'')+'</div></section>';
+
+  // The Tracker's sections and the Churn tab's are built into separate buffers
+  // and only one is written. The deals TABLE is the expensive part of either, so
+  // each calls _bdDealsTable() only on the tab that is showing.
   // Post-render: charts + calc + attribution hover
-  el.innerHTML=h;document.getElementById('fts').textContent='Updated: '+d.meta.generatedAt.split('T')[0];
+  el.innerHTML=(_bdTab==='churn')?hChurn:h;document.getElementById('fts').textContent='Updated: '+d.meta.generatedAt.split('T')[0];
   BD._acv=acv;          // keeps the dialog's ACV placeholder honest
   bdBindSpy();          // sections were just replaced — re-observe them
   bdCalc();             // re-echo the badge; the result div lives outside #bd-content
