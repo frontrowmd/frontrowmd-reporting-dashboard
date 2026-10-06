@@ -3097,12 +3097,38 @@ function buildClinicianTrend(deals, contactsByDeal, windsorRows, from, to) {
   }
 
   const div = (n, dd) => (dd > 0 ? n / dd : null);
+  // A COST per outcome is undefined when nothing was spent — not zero. `div`
+  // guards only the denominator, so a period with organic inquiries and no
+  // clinician ad spend used to yield a real 0, which the chart cannot tell from
+  // a measured value: it plots on the floor of the cost axis and reads as the
+  // most efficient period in the window. Null is the honest answer, and it is
+  // what makes the renderer break the line there.
+  const cost = (sp, dd) => (sp > 0 && dd > 0 ? sp / dd : null);
+  // Every day in the window, so a period with no spend AND no contacts still
+  // produces a point. The chart positions points by ARRAY INDEX, so a dropped
+  // period is not drawn as a gap — its neighbours become adjacent and the line
+  // splices straight across it, which is exactly what the null-break logic
+  // exists to prevent. Capped so an unbounded window cannot build a runaway
+  // array; past the cap the series degrades to present-periods-only.
+  const allDays = [];
+  if (from && to) {
+    const d1 = new Date(from + 'T00:00:00Z'), d2 = new Date(to + 'T00:00:00Z');
+    if (!isNaN(d1) && !isNaN(d2)) {
+      for (const t = new Date(d1); t <= d2 && allDays.length < 2000; t.setUTCDate(t.getUTCDate() + 1)) {
+        allDays.push(fmt(t));
+      }
+    }
+  }
   const roll = (keyOf) => {
     const g = {};
+    const touch = (k) => {
+      if (k && !g[k]) g[k] = { spend: 0, impressions: 0, clicks: 0, inquiries: 0, fullApp: 0 };
+    };
+    for (const day of allDays) touch(keyOf(day));
     for (const day of Object.keys(B)) {
       const k = keyOf(day);
       if (!k) continue;
-      if (!g[k]) g[k] = { spend: 0, impressions: 0, clicks: 0, inquiries: 0, fullApp: 0 };
+      touch(k);
       const b = B[day], o = g[k];
       o.spend += b.spend; o.impressions += b.impressions; o.clicks += b.clicks;
       o.inquiries += b.inquiries; o.fullApp += b.fullApp;
@@ -3114,8 +3140,8 @@ function buildClinicianTrend(deals, contactsByDeal, windsorRows, from, to) {
         spend: Math.round(w.spend * 100) / 100,
         impressions: w.impressions, clicks: w.clicks,
         inquiries: w.inquiries, fullApp: w.fullApp,
-        cpi: div(w.spend, w.inquiries),
-        cpfa: div(w.spend, w.fullApp),
+        cpi: cost(w.spend, w.inquiries),
+        cpfa: cost(w.spend, w.fullApp),
         // Rates as PERCENTAGES, computed on the period's own totals rather than
         // averaged from the daily rates — a 10-impression day must not weigh the
         // same as a 10,000-impression one.

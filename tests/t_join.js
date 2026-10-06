@@ -94,13 +94,29 @@ ck('topFunnel is read and emitted', reads.has('topFunnel')&&emitted.has('topFunn
 // The worker evidence is the ASSIGNMENT that puts the leaf on that parent — not
 // merely the leaf name appearing somewhere, which is what made the original bug
 // survive review.
+// The return literal of a named worker function, so an "is it emitted" check
+// cannot be satisfied by a comment or by an unrelated object elsewhere.
+function returnLiteralOf(name){
+  const i=src.indexOf('function '+name+'(');
+  if(i<0)return '';
+  const body=blockAt(src,i);
+  const r=body.lastIndexOf('\n  return {');
+  return r<0?'':blockAt(body,r);
+}
+const COMP_RETURN=returnLiteralOf('buildClinicianComposition');
+const compReturn=(re)=>({test:()=>COMP_RETURN!==''&&re.test(COMP_RETURN)});
+
 const JOINS=[
   // The bug itself. Canonical Qualified Demo metadata hangs off demoTracking.
   ['qualified-demo meta', /d\.demoTracking(?:&&d\.demoTracking)?\.?_qualMeta|dt\._qualMeta/, /_qualMeta:\s*\{/],
   ['exec summary meta',   /es\._meta|d\.executiveSummary\.[\w.]*_meta/,                      /_meta:\s*\{/],
   // Clinician Key Metrics read the Acquisition populations, not the funnel's.
-  ['acq inquiries',       /_acq\.contacts/,                        /contacts,/],
-  ['acq full submission', /_acqSub\.contacts/,                     /submission:\s*\{/],
+  // Scoped to buildClinicianComposition's OWN return literal. `/contacts,/`
+  // matched four places in worker.js, three of them comments, so deleting the
+  // real key left the suite green — the exact "leaf name appears somewhere"
+  // failure this file's header warns about.
+  ['acq inquiries',       /_acq\.contacts/,                        compReturn(/(^|[\s{,])contacts\s*,/m)],
+  ['acq full submission', /_acqSub\.contacts/,                     compReturn(/submission:\s*\{/)],
   ['top-funnel clicks',   /_tf\.clicks/,                           /out\.impressions = im; out\.linkClicks = lc; out\.clicks = ck;/],
   ['trend series',        /d\.ads\.trend/,                         /ads\.trend = buildClinicianTrend\(/],
   ['virtual no-show',     /d\.virtualNoShow/,                      /virtualNoShow,/],
@@ -121,6 +137,14 @@ JOINS.forEach(([lbl,c,w])=>{
 // figure off qmeta and the comment says so.
 ck('qualified demos reads the canonical figure',
    /Canonical Qualified Demo figure\. Read off qmeta/.test(cli), true);
+
+// Guard the guard: if returnLiteralOf silently returned '' the two rows above
+// would be vacuous, and a scoped check that matches everything is worse than an
+// unscoped one because it reads as precise.
+ck('the composition return literal was actually located', COMP_RETURN.length>80, true);
+ck('and it is narrower than the whole file', COMP_RETURN.length<src.length/50, true);
+ck('the old loose pattern really did match comments',
+   (src.match(/contacts,/g)||[]).length > (COMP_RETURN.match(/contacts,/g)||[]).length, true);
 
 console.log(pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);

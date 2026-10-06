@@ -886,7 +886,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t242';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t243';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3338,7 +3338,7 @@ function clnWkTip(e,el){
   if(el.getAttribute('data-partial')==='1'){
     var pw=document.createElement('div');
     pw.style.cssText='font-size:9.5px;color:#F0C36A;margin-top:3px;white-space:nowrap';
-    pw.textContent='⚠ Partial week — still in progress';
+    pw.textContent=el.getAttribute('data-pnote')||'⚠ Partial period';
     tip.appendChild(pw);
   }
   for(var i=1;i<=6;i++){
@@ -3388,17 +3388,22 @@ function clnWkTipHide(){var tip=document.getElementById('cln-wk-tip');if(tip)tip
 // Axis is also encoded as line style — solid for the left, dashed for the
 // right — so "which axis am I reading" survives greyscale and colour-vision
 // deficiency rather than resting on the legend alone.
+// Order is the reading order the section is specified in — cost, then
+// conversion, then CTR, with Ad Spend last. It drives the tiles, the legend and
+// the hover readout, so all three agree; the axis each series belongs to is
+// carried by `ax`, not by its position in this list.
 const CLN_TR_SERIES=[
+  {k:'cpi',    n:'Cost per Inquiry',     c:'#4A87A8', ax:'R', unit:'$'},
+  {k:'cpfa',   n:'Cost per Full App',    c:'#9333EA', ax:'R', unit:'$'},
   {k:'cvrInq', n:'CVR · Inquiry',   c:'#0E7C66', ax:'L', unit:'%'},
   {k:'cvrFull',n:'CVR · Full App',  c:'#BE123C', ax:'L', unit:'%'},
   {k:'ctr',    n:'CTR',                  c:'#1D4ED8', ax:'L', unit:'%'},
-  {k:'cpi',    n:'Cost per Inquiry',     c:'#4A87A8', ax:'R', unit:'$'},
-  {k:'cpfa',   n:'Cost per Full App',    c:'#9333EA', ax:'R', unit:'$'},
 ];
-// Ad Spend is tracked but NOT plotted: on the cost axis it runs in thousands
-// against cost-per figures in the tens, so it would flatten both of them onto
-// the floor. It keeps its tile and its hover row, where the number is what
-// matters and the scale does not.
+// Ad Spend gets no axis of its own: on the cost scale it runs in thousands
+// against cost-per figures in the tens and would flatten both onto the floor.
+// It is drawn instead as faint background columns scaled to their OWN maximum —
+// shape, not magnitude. The reader can see where spend rose and fell relative to
+// itself without a third scale, and the exact dollar figure is one hover away.
 const CLN_TR_SPEND={k:'spend',n:'Ad Spend',c:'#64748B',unit:'$'};
 // Readout order: every plotted series, then Ad Spend last.
 const CLN_TR_READOUT=CLN_TR_SERIES.concat([CLN_TR_SPEND]);
@@ -3451,7 +3456,8 @@ function _clnTrendCard(d){
   var sub='Conversion rates on the left axis (%), cost per outcome on the right ($) · '
     +(grain==='day'?'one point per day':'weeks run Mon–Sun')+' within the selected window'
     +'<br>Inquiries and Full Apps are counted on the contact’s create date, so each series sums to its Key Metrics card above'
-    +' · both CVRs divide by that period’s ad clicks · Ad Spend is tracked below and in the hover readout, not plotted';
+    +' · both CVRs divide by that period’s ad clicks'
+    +'<br>Ad Spend is the shaded background — scaled to its own peak to show shape, with no axis of its own; hover any period for the dollar figure';
   // Stable id, not one buildSectionNav assigns: the grain toggle rebuilds this
   // whole card, and an auto-assigned secnav id would not survive it — leaving
   // the Jump To button pointing at an element that no longer exists.
@@ -3494,7 +3500,13 @@ function _clnTrendCard(d){
     return '<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:var(--navy)">'
       +'<span style="display:inline-block;width:14px;height:0;border-top:'+(sr.ax==='R'?'3px dashed ':'3px solid ')+sr.c+'"></span>'+sr.n
       +'<span style="font-size:9px;color:var(--grey)">'+(sr.ax==='R'?'$ right':'% left')+'</span></span>';
-  }).join('');
+  }).join('')
+   // A filled swatch rather than a line key, because the mark is an area and the
+   // legend has to say it carries no scale — otherwise a reader will try to
+   // measure the columns against the right axis.
+   +'<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:var(--navy)">'
+   +'<span style="display:inline-block;width:14px;height:9px;border-radius:2px;background:'+CLN_TR_SPEND.c+';opacity:.3"></span>Ad Spend'
+   +'<span style="font-size:9px;color:var(--grey)">shape only · no axis</span></span>';
   return open+title+toggle
     +'<div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0 4px">'+minis+'</div>'
     +'<div style="display:flex;gap:16px;flex-wrap:wrap;margin:10px 0 2px">'+lg+'</div>'
@@ -3531,6 +3543,22 @@ function _renderClnTrend(d){
       +'<text x="'+(W-padR+8)+'" y="'+(y+3)+'" text-anchor="start" font-size="9" fill="var(--grey)">'
       +f$(Math.round((v/yMaxL)*yMaxR))+'</text>';
   }
+  // Ad Spend as background columns, scaled to its OWN maximum and capped at 55%
+  // of the plot height. Deliberately NOT on the right axis: putting thousands of
+  // dollars of spend on the same ladder as a $40 cost-per-inquiry flattens both
+  // cost lines onto the floor. These columns carry SHAPE — where spend rose and
+  // fell relative to itself — and no magnitude, which is why they get no ticks
+  // and sit behind the gridlines. The dollar figure is in the hover readout.
+  var mxS=0; pts.forEach(function(p){if((p.spend||0)>mxS)mxS=p.spend||0;});
+  if(mxS>0){
+    var colW=Math.max(2,Math.min(26,(n>1?innerW/(n-1):innerW)*0.62));
+    pts.forEach(function(p,i){
+      var v=p.spend||0; if(v<=0)return;
+      var hgt=(v/mxS)*innerH*0.55;
+      svg+='<rect x="'+(xAt(i)-colW/2)+'" y="'+(padT+innerH-hgt)+'" width="'+colW+'" height="'+hgt+'"'
+        +' fill="'+CLN_TR_SPEND.c+'" fill-opacity="0.16" pointer-events="none"/>';
+    });
+  }
   // Axis captions, so neither side has to be inferred from the legend.
   svg+='<text x="'+padL+'" y="10" text-anchor="start" font-size="8.5" font-weight="700" fill="var(--grey)" letter-spacing=".06em">% — CONVERSION</text>'
     +'<text x="'+(W-padR)+'" y="10" text-anchor="end" font-size="8.5" font-weight="700" fill="var(--grey)" letter-spacing=".06em">$ — COST PER</text>';
@@ -3566,17 +3594,36 @@ function _renderClnTrend(d){
     if(k==='cvrInq')return fN(p.inquiries||0)+' ÷ '+fN(p.clicks||0)+' clicks';
     if(k==='cvrFull')return fN(p.fullApp||0)+' ÷ '+fN(p.clicks||0)+' clicks';
     if(k==='ctr')return fN(p.clicks||0)+' ÷ '+fN(p.impressions||0)+' impr';
-    return 'not plotted';
+    return 'background shading';
   };
   var bandW=n>1?(innerW/(n-1)):innerW;
+  // A point describes the days it actually covers, which is not always the whole
+  // bucket. ISO weeks are snapped to Monday, so the first and last week of any
+  // window are CLIPPED by it — a Sep 1–30 window's last bucket holds Sep 28–30
+  // and used to be labelled "Week of Sep 28 – Oct 4", four days of which are not
+  // in the data. Clamping the header to the window says what was measured.
+  var winFrom=(d&&d.period&&d.period.from)||null, winTo=(d&&d.period&&d.period.to)||null;
+  var msOf=function(k){var q=String(k).split('-');return Date.UTC(+q[0],+q[1]-1,+q[2]);};
+  var dayLbl=function(ms){var dd=new Date(ms);return CLN_TR_MON[dd.getUTCMonth()]+' '+dd.getUTCDate();};
+  var DAY=86400000;
   pts.forEach(function(p,i){
-    var x=xAt(i),en=_clnTrEnd(p.wk,grain);
+    var x=xAt(i);
     var bx=Math.max(padL,x-bandW/2),bw=Math.min(W-padR,x+bandW/2)-bx;
-    var head=grain==='day'?_clnTrLabel(p.wk,grain):('Week of '+_clnTrLabel(p.wk,grain)+' – '+en.label);
-    // A period whose last day is still in the future is INCOMPLETE — its spend
-    // has not finished accruing, so its cost-per and rate figures are not
-    // comparable to a full one.
-    var a=' data-wk="'+esc(head)+'" data-partial="'+(en.ms>todayMs?'1':'')+'"';
+    var startMs=msOf(p.wk), endMs=_clnTrEnd(p.wk,grain).ms;
+    var covFrom=winFrom?Math.max(startMs,msOf(winFrom)):startMs;
+    var covTo=winTo?Math.min(endMs,msOf(winTo)):endMs;
+    var span=Math.round((covTo-covFrom)/DAY)+1;
+    var clipped=grain!=='day'&&span<7;
+    // In progress if the covered range reaches today — >= , not >. The strict
+    // comparison never fired on the daily grain at all (a day's own end IS that
+    // day) and missed the current week whenever today was a Sunday, so the point
+    // whose numbers are still moving was the one point never marked.
+    var inProgress=covTo>=todayMs;
+    var head=grain==='day'?dayLbl(startMs)
+            :('Week of '+dayLbl(covFrom)+(span>1?' – '+dayLbl(covTo):''));
+    var note=inProgress?('⚠ Still in progress — not a complete '+(grain==='day'?'day':'week'))
+            :(clipped?('⚠ Only '+span+' of 7 days fall inside the selected window'):'');
+    var a=' data-wk="'+esc(head)+'" data-partial="'+(note?'1':'')+'" data-pnote="'+esc(note)+'"';
     CLN_TR_READOUT.forEach(function(sr,j){
       a+=' data-r'+(j+1)+'="'+esc(sr.n+'|'+_clnTrFmt(p[sr.k],sr.unit)+'|'+subOf(p,sr.k)+'|'+sr.c+'|'+(sr.ax==='R'?'dash':'solid'))+'"';
     });
