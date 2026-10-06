@@ -218,10 +218,18 @@ ck('no budget set is stated rather than drawn',/No monthly budget set/.test(html
 // Ascending is only safe because a null CPD sinks either way — a row with no
 // demos has no cost per demo, and letting it lead an ascending sort would fill
 // the top of every table with blanks.
-ck('a null sorts to the bottom whichever way the sort runs',
-   /if\(av==null\)return 1;if\(bv==null\)return -1;/.test(html), true);
-ck('and CPD is null when there are no demos',
-   /else if\(col==='cpd'\)\{av=a\.demos>0\?a\.spend\/a\.demos:null;bv=b\.demos>0\?b\.spend\/b\.demos:null;\}/.test(html), true);
+// Scoped to _irfanSortRows: that null-sink line appears in four sorters in this
+// file, so an unscoped match passed even after the ad tables' own one was
+// inverted.
+{
+  const i=html.indexOf('function _irfanSortRows(rows,col,dir){');
+  const sorter=html.slice(i, html.indexOf('return rows.slice().sort(cmp);', i));
+  ck('the ad-table sorter was located', sorter.length>300, true);
+  ck('a null sorts to the bottom whichever way the sort runs',
+     /if\(av==null\)return 1;if\(bv==null\)return -1;/.test(sorter), true);
+  ck('and CPD is null when there are no demos',
+     /else if\(col==='cpd'\)\{av=a\.demos>0\?a\.spend\/a\.demos:null;bv=b\.demos>0\?b\.spend\/b\.demos:null;\}/.test(sorter), true);
+}
 
 // ── Sections removed from the Clinician page ─────────────────────────────
 ck('Daily Activity is gone', /card\('Daily Activity'/.test(html), false);
