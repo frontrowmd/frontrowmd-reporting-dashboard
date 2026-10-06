@@ -886,7 +886,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t250';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t251';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -1042,6 +1042,22 @@ async function doLogin(){
   try{
     const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw,window:S[AP]?.win||'7d'})});
     if(r.status===401){document.getElementById('gerr').style.display='block';btn.disabled=false;btn.textContent='Log In →';return;}
+    // Warm the Clinician payload NOW — the password is known good, and both the
+    // parse below and the first render are slow enough that starting after them
+    // added their cost to the wait. It is a different endpoint doing its own
+    // work, so the two overlap instead of queueing.
+    //
+    // Retries once: fdClinician swallows its own errors and only paints them if
+    // the Clinician page happens to be the active one, so a failed preload is
+    // silent and leaves the page cold with no way back except a navigation that
+    // refetches from scratch.
+    const _warmClinician=function(tries){
+      if(S.clinician.data||S.clinician._loading)return;
+      fdClinician(S.clinician.win||'mtd').then(function(){
+        if(!S.clinician.data&&tries>0)setTimeout(function(){_warmClinician(tries-1);},2000);
+      });
+    };
+    try{_warmClinician(1);}catch(e){console.error('clinician preload',e);}
     const d=await r.json();for(const k of Object.keys(S)){if(k!=='analyzer'&&k!=='content'&&k!=='clinician')S[k].data=d;}
     document.getElementById('gate').style.display='none';document.getElementById('app').classList.add('active');
     document.getElementById('loading').style.display='none';
@@ -1049,10 +1065,6 @@ async function doLogin(){
     // Pull synced PQ results from KV before first render (non-blocking — render proceeds either way)
     pqLoadFromKV().then(function(){ try{ if(typeof renderDemoQuality==='function')renderDemoQuality(); }catch(e){} });
     bldF();renderPage();
-    // Preload the Clinician payload in the background so the page is warm on
-    // first visit. Non-blocking and failure-tolerant: it renders only if that
-    // page is the active one when it lands.
-    setTimeout(function(){ try{ if(!S.clinician.data&&!S.clinician._loading)fdClinician(S.clinician.win||'mtd'); }catch(e){console.error('clinician preload',e);} },0);
   }catch(e){
     document.getElementById('gerr').textContent='Connection error. Try again.';document.getElementById('gerr').style.display='block';
     btn.disabled=false;btn.textContent='Log In →';
@@ -3416,6 +3428,21 @@ const CLN_TR_SPEND={k:'spend',n:'Ad Spend',c:'#64748B',unit:'$'};
 // Readout order: every plotted series, then Ad Spend last.
 const CLN_TR_READOUT=CLN_TR_SERIES.concat([CLN_TR_SPEND]);
 const CLN_TR_MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+// "per Inquiries" reads wrong and a bare /s$/ strip gives "per inquirie".
+// -ies -> -y, otherwise a single trailing s drops; a double-s ending is left
+// alone. Labels that are already singular (CTA Click, Fully Onboarded, Sample
+// Shipped) pass through untouched.
+//
+// Deliberately NOT a general singulariser — it cannot be one. A noun that ends
+// in s while already being singular ("Status" -> "statu") would need a word
+// list, and none of CLN_FUNNEL9's stage labels is such a word. Check here if a
+// stage is ever renamed.
+function _clnSingular(label){
+  var w=String(label||'').toLowerCase();
+  if(/ies$/.test(w))return w.replace(/ies$/,'y');
+  if(/[^s]s$/.test(w))return w.slice(0,-1);
+  return w;
+}
 function _clnTrendGrain(){return window._clnTrendGrainV||'week';}
 window.toggleClnTrendGrain=function(g){
   window._clnTrendGrainV=g;
@@ -5372,7 +5399,7 @@ function renderClinician(){
           +'background:rgba(23,44,69,.06);border:1px solid rgba(23,44,69,.16)">'
           +'<strong style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'
           +_c$(st.cost)+'</strong>'
-          +'<span style="font-size:9.5px;color:var(--navy);opacity:.72">per '+st.label.toLowerCase().replace(/s$/,'')+'</span></span>')
+          +'<span style="font-size:9.5px;color:var(--navy);opacity:.72">per '+_clnSingular(st.label)+'</span></span>')
         : '')
       +'</div></div>';
   }

@@ -255,5 +255,29 @@ ck('and cardOpen no longer takes a scope',
    /const cardOpen=\(title,pop,first\)=>/.test(cli),true);
 ck('so no caller still passes one',/cardOpen\('[^']+','(path|live)'/.test(cli),false);
 
+// --- the cost-per-stage unit must read as a singular noun ----------------
+// The label was lowercased and stripped with /s$/, which turns "Inquiries" into
+// "per inquirie". Asserted by RUNNING the helper over the real stage labels, so
+// renaming a stage is checked rather than assumed.
+{
+  const fnSrc=/function _clnSingular\(label\)\{[\s\S]*?\n\}/.exec(cli)[0];
+  const sing=new Function(fnSrc+'; return _clnSingular;')();
+  ck('-ies becomes -y',sing('Inquiries'),'inquiry');
+  ck('a plain plural drops its s',[sing('Impressions'),sing('Link Clicks'),sing('Page Views')],
+     ['impression','link click','page view']);
+  ck('an already-singular label is untouched',
+     [sing('CTA Click'),sing('Fully Onboarded'),sing('Sample Shipped'),sing('Review Submitted')],
+     ['cta click','fully onboarded','sample shipped','review submitted']);
+  ck('and a double-s ending is left alone',sing('Progress'),'progress');
+  // EVERY real stage label, straight off the worker's definition.
+  const stages=(src.slice(src.indexOf('const CLN_FUNNEL9'),src.indexOf('\n];',src.indexOf('const CLN_FUNNEL9')))
+    .match(/label: '([^']+)'/g)||[]).map(x=>x.slice(8,-1));
+  ck('the stage list was found',stages.length>=6,true);
+  ck('no stage produces a mangled unit',stages.filter(l=>/(ie|u)$/.test(sing(l))),[]);
+}
+ck('the cost chip uses the helper, not a bare strip',
+   /per '\+_clnSingular\(st\.label\)/.test(cli),true);
+ck('and the bare strip is gone',/toLowerCase\(\)\.replace\(\/s\$\/,''\)/.test(cli),false);
+
 console.log(pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);

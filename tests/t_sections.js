@@ -176,5 +176,33 @@ ck('with an elapsed marker',/left:'\+Math\.min\(_kmElapsed,100\)\+'%;top:-2px;bo
 ck('and it is light-on-dark for the hero tile',/var\(--lighter\)/.test(html.slice(html.indexOf('let _kmPace='),html.indexOf('const _kmTile='))),false);
 ck('no budget set is stated rather than drawn',/No monthly budget set/.test(html),true);
 
+// --- the Clinician payload is warmed at sign-in ---------------------------
+// The Detailed Dashboard is instant because its payload rides the login
+// response. The Clinician page has its own endpoint, so it is started as soon
+// as the password is known good — BEFORE that response is parsed and before the
+// first render, both of which are slow enough that starting after them added
+// their cost to the wait.
+{
+  const LOGIN=html.slice(html.indexOf('async function doLogin(){'),html.indexOf("document.getElementById('pw').addEventListener"));
+  ck('the warm-up exists',/const _warmClinician=function\(tries\)\{/.test(LOGIN),true);
+  ck('it is fired inside doLogin',/try\{_warmClinician\(1\);\}catch/.test(LOGIN),true);
+  // Ordering is the whole point: before the parse and before the render.
+  ck('it starts before the payload is parsed',
+     LOGIN.indexOf('_warmClinician(1)')<LOGIN.indexOf('const d=await r.json();'),true);
+  ck('and before the first render',
+     LOGIN.indexOf('_warmClinician(1)')<LOGIN.indexOf('bldF();renderPage();'),true);
+  // ...but only once the password is known good, so a bad password does not
+  // fire a second request.
+  ck('and only after the 401 check',
+     LOGIN.indexOf('r.status===401')<LOGIN.indexOf('_warmClinician(1)'),true);
+  // fdClinician swallows its own errors and only paints them when the Clinician
+  // page is active, so a failed preload is silent. One retry, or the page stays
+  // cold until a navigation refetches it from scratch.
+  ck('a failed warm-up retries once',
+     /if\(!S\.clinician\.data&&tries>0\)setTimeout\(function\(\)\{_warmClinician\(tries-1\);\},\d+\);/.test(LOGIN),true);
+  ck('and it never double-fetches',/if\(S\.clinician\.data\|\|S\.clinician\._loading\)return;/.test(LOGIN),true);
+  ck('the old post-render preload is gone',/Preload the Clinician payload in the background/.test(html),false);
+}
+
 console.log('\n'+pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);
