@@ -26,19 +26,39 @@ ck('and is still referenced there',/entryStrip\+segBar/.test(RC),true);
 ck('Samples & Reviews is gone',/cardOpen\('Samples & Reviews'/.test(cli),false);
 
 // --- 5 + 6. path cards gated on the workflow ----------------------------
-ck('Virtual Path renders only on the virtual workflow',
-   /if\(flow==='virtual'\)\{\s*\n\s*sh\+=cardOpen\('Virtual Path'/.test(RC),true);
+// Renamed: the card is about the kick off call, not about a code path, and
+// "Virtual Path" meant nothing to a reader now that the workflow toggle is gone.
+ck('the card is gated on the virtual workflow',
+   /if\(flow==='virtual'\)\{[\s\S]{0,400}?sh\+=cardOpen\('Kick Off Calls'/.test(RC),true);
+ck('and the old path name is gone',/cardOpen\('Virtual Path'/.test(cli),false);
 ck('Demo Path renders only on the demo workflow',
    /if\(flow==='demo'\)\{\s*\n\s*sh\+=cardOpen\('Demo Path'/.test(RC),true);
 ck('each gate closes its own card',
-   /if\(flow==='virtual'\)\{[\s\S]{0,1400}?sh\+=cardClose;\s*\n\s*\}/.test(RC)
+   /if\(flow==='virtual'\)\{[\s\S]{0,2400}?sh\+=cardClose;\s*\n\s*\}/.test(RC)
    &&/if\(flow==='demo'\)\{[\s\S]{0,2600}?sh\+=cardClose;\s*\n\s*\}/.test(RC),true);
 // The old copy said "blank on the Demo pill" — now it simply is not rendered.
 ck('the stale blank-on-pill wording is gone',/blank on the (Demo|Virtual) pill/.test(cli),false);
 
 // --- 7. Virtual No Show Rate --------------------------------------------
 ck('No Call Scheduled Yet is gone',/stat\('No Call Scheduled Yet'/.test(cli),false);
-ck('Virtual No Show Rate replaces it',/stat\('Virtual No Show Rate'/.test(RC),true);
+ck('Kick Off Call No-Show Rate replaces it',/stat\('Kick Off Call No-Show Rate'/.test(RC),true);
+ck('and the old label is gone',/Virtual No Show Rate/.test(cli),false);
+// Replaced the backlog stat. Stuck-in-Clinician-Approved was a current-stage
+// snapshot of a queue; this is the entry rate the section actually turns on.
+ck('Stuck in Clinician Approved is gone',/stat\('Stuck in Clinician Approved'/.test(cli),false);
+ck('Call Scheduled replaces it',/stat\('Call Scheduled'/.test(RC),true);
+// CONTACT-based, straight off the Acquisition populations — the same pair Key
+// Metrics divides for Full App Rate, so the three agree by construction. A
+// funnel-stage count here would be deal-based and would disagree.
+ck('it divides the Acquisition populations, not a funnel stage',
+   /const _inq=_comp\.contacts\|\|0;/.test(RC)
+   &&/const _booked=\(_comp\.submission&&_comp\.submission\.contacts\)\|\|0;/.test(RC),true);
+ck('and guards a zero denominator',/_inq>0\?\(_booked\/_inq\)\*100:null/.test(RC),true);
+// The two stats pull in opposite directions, so the shared polarity heading
+// went and each states its own direction in words.
+ck('the Backlog heading is gone',/Backlog/.test(cli),false);
+ck('each stat states its own polarity',
+   [/higher is worse/.test(RC),/higher is better/.test(RC)],[true,true]);
 ck('it reads the worker-computed value',/const _vns=d\.virtualNoShow\|\|\{\};/.test(RC),true);
 // The virtual flow has NO No Show stage, so this must come from attendance.
 ck('the worker computes it from attendance, not a stage',
@@ -227,9 +247,13 @@ ck('and the funnel payload is simply what the endpoint returned',
 // --- removals -------------------------------------------------------------
 ck('the Exited Pipeline card is gone',/cardOpen\('Exited Pipeline'/.test(cli),false);
 ck('and its segData.exits read with it',/segData\.exits/.test(cli),false);
-ck('the scope chip no longer names a toggle that was removed',
-   /follows Clinician Type/.test(cli),false);
-ck('it describes the Virtual pinning instead',/'Virtual workflow only'/.test(cli),true);
+// The scope chip is gone altogether. The whole section is pinned to the virtual
+// workflow, so a per-card badge saying so repeated what the section already said
+// and never distinguished one card from another.
+ck('the scope chip is gone',[/follows Clinician Type/.test(cli),/const CHIP=/.test(cli)],[false,false]);
+ck('and cardOpen no longer takes a scope',
+   /const cardOpen=\(title,pop,first\)=>/.test(cli),true);
+ck('so no caller still passes one',/cardOpen\('[^']+','(path|live)'/.test(cli),false);
 
 console.log(pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);

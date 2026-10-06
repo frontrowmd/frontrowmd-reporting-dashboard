@@ -886,7 +886,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t249';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t250';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -5415,18 +5415,13 @@ function renderClinician(){
   //     virtual. They do NOT ignore both toggles.
   let sh='';
   const R=' (ever-reached counts)';
-  // Scope chip. Status/scope must never be colour-alone, so each chip is a glyph
-  // PLUS words. Two levels only: pinned to the Virtual path, or follows the pills.
-  const CHIP={
-    path:['◐','Virtual workflow only'],
-    live:['◉','follows both pills'],
-  };
-  const chip=(k)=>'<span title="'+CHIP[k][1]+'" style="font-size:8.5px;font-weight:700;color:var(--grey);white-space:nowrap;letter-spacing:.03em">'
-    +CHIP[k][0]+' '+CHIP[k][1]+'</span>';
+  // The scope chip is gone: the whole section is pinned to the virtual workflow,
+  // so a per-card "Virtual workflow only" badge repeated what the section
+  // already says and nothing distinguished one card from another.
   // A card, not a rule-separated run of rows: a boundary a reader cannot skip.
-  const cardOpen=(title,scope,pop,first)=>'<div style="background:var(--white);border:1px solid var(--border);border-radius:9px;padding:10px 12px 4px'+(first?'':';margin-top:10px')+'">'
+  const cardOpen=(title,pop,first)=>'<div style="background:var(--white);border:1px solid var(--border);border-radius:9px;padding:10px 12px 4px'+(first?'':';margin-top:10px')+'">'
     +'<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap">'
-    +'<span style="font-family:var(--font-h);font-size:11.5px;font-weight:700;color:var(--navy)">'+title+'</span>'+chip(scope)+'</div>'
+    +'<span style="font-family:var(--font-h);font-size:11.5px;font-weight:700;color:var(--navy)">'+title+'</span></div>'
     +(pop?'<div style="font-size:9px;color:var(--grey);margin-top:2px;line-height:1.4">'+pop+'</div>':'')
     +'<div style="margin-top:5px">';
   const cardClose='</div></div>';
@@ -5443,31 +5438,41 @@ function renderClinician(){
     +'<span style="font-size:10.5px;color:var(--grey)">'+unit+'</span></div>'
     +(sub?'<div style="font-size:9px;color:var(--grey);margin-top:2px;line-height:1.4">'+sub+'</div>':'')+'</div>';
 
-  // ── Card 1: VIRTUAL PATH ──
-  // Leads the panel: the virtual path is the active acquisition motion, so its
-  // backlog is what someone opens this card to check. It therefore carries the
-  // `first` flag (no rule above it).
+  // ── Card 1: KICK OFF CALLS ──
+  // Leads the panel: booking and holding the kick off call is the whole virtual
+  // motion, so it carries the `first` flag (no rule above it).
+  //
+  // The two stats pull in opposite directions by design — one says how many
+  // inquiries get a call on the books, the other how many of those calls are
+  // actually held — so there is no shared polarity heading. Each states its own
+  // direction in words instead, which is also what lets them sit together.
   if(flow==='virtual'){
-  sh+=cardOpen('Virtual Path','path',fN(st.noCallDenom||0)+' virtual-flow deals',true);
-  sh+=subH('Backlog · higher is worse');
-  // Replaces No Call Scheduled Yet. The virtual flow has no No Show STAGE, so
-  // this is computed worker-side from clinician_attendance_status, on the same
-  // basis the Detailed Dashboard uses: no-shows over meetings supposed to happen.
+  const _comp=d.composition||{};
+  const _inq=_comp.contacts||0;
+  const _booked=(_comp.submission&&_comp.submission.contacts)||0;
+  sh+=cardOpen('Kick Off Calls',fN(_inq)+' inquiries in the window',true);
+  // The virtual flow has no No Show STAGE, so this is computed worker-side from
+  // clinician_attendance_status, on the same basis the Detailed Dashboard uses:
+  // no-shows over meetings supposed to happen.
   const _vns=d.virtualNoShow||{};
-  sh+=stat('Virtual No Show Rate',pctS(_vns.rate),
+  sh+=stat('Kick Off Call No-Show Rate',pctS(_vns.rate),
     fN(_vns.noShow||0)+' · of '+fN((_vns.noShow||0)+(_vns.held||0)),
-    'No Shows \u00f7 meetings supposed to happen',
-    'Virtual Signup deals whose call was marked No Show, over those that were supposed to happen (No Show + Demo Given). Still-upcoming and cancelled-before-demo calls are excluded from the denominator rather than counted as attended.');
-  sh+=stat('Stuck in Clinician Approved',pctS(st.stuckApprovedRate),
-    fN(st.stuckApprovedNum||0)+' ÷ '+fN(st.stuckApprovedDenom||0),
-    'Sitting in Clinician Approved ÷ ever reached it',
-    'Of the virtual-path deals that ever reached Clinician Approved, the share still sitting there rather than moving on to Fully Onboarded. A backlog measure, not a conversion — it falls as approvals are worked through. The numerator is a current-stage snapshot, so it changes the moment a deal advances.',true,true);
+    'No Shows \u00f7 calls supposed to happen \u00b7 higher is worse',
+    'Virtual Signup deals whose kick off call was marked No Show, over those that were supposed to happen (No Show + Demo Given). Still-upcoming and cancelled-before-demo calls are excluded from the denominator rather than counted as attended.');
+  // CONTACT-based, straight off the Acquisition section's two populations — the
+  // same pair Key Metrics divides for Full App Rate, so the three agree by
+  // construction rather than by coincidence. Deliberately NOT a funnel stage
+  // count, which is deal-based and would disagree.
+  sh+=stat('Call Scheduled',pctS(_inq>0?(_booked/_inq)*100:null),
+    fN(_booked)+' \u00f7 '+fN(_inq),
+    'Inquiries with a kick off call booked \u00b7 higher is better',
+    'Share of clinician contacts created in this window that have a kick off call on the books. Same contact-based population the Acquisition section uses and the same figure as the Key Metrics Full App Rate.',true);
   sh+=cardClose;
   }
 
   // ── Card 2: DEMO PATH ──
   if(flow==='demo'){
-  sh+=cardOpen('Demo Path','path',fN(st.showDenom||0)+' reached Meeting Scheduled');
+  sh+=cardOpen('Demo Path',fN(st.showDenom||0)+' reached Meeting Scheduled');
   sh+=stat('Show Rate',pctS(st.showRate),fN(st.showNum||0)+' ÷ '+fN(st.showDenom||0),
     'Meeting Happened ÷ Meeting Scheduled'+R,'Of clinicians who booked, how many showed up. Demo-path population only — the virtual path has no meeting stage, so this is blank there.');
   sh+=stat('Close Rate',pctS(st.closeRate),fN(st.closeNum||0)+' ÷ '+fN(st.closeDenom||0),
