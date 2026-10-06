@@ -27,9 +27,10 @@ ck('and All Clinicians still lands after them',
 // Building Key Metrics in place at the top would read consts declared below it.
 // Guarded with indexOf()>=0 as well as the ordering: a const that no longer
 // exists returns -1, which is "before" everything and passes vacuously.
+// `dly` went with the Daily Activity section; `comp` is the one left.
 ck('Key Metrics is built after the consts it reads',
-   ['const comp=','const dly='].map(c=>RC.indexOf(c)>=0&&RC.indexOf(c)<RC.indexOf("card('Key Metrics'")),
-   [true,true]);
+   ['const comp='].map(c=>RC.indexOf(c)>=0&&RC.indexOf(c)<RC.indexOf("card('Key Metrics'")),
+   [true]);
 
 // --- removals ------------------------------------------------------------
 ck('Specialty Breakdown is gone',/panel\('Specialty Breakdown'/.test(cli),false);
@@ -133,16 +134,17 @@ ck('on clinician campaigns only',/if \(!isClinicianCampaign\(r\.campaign_name\)\
 ck('zero impressions yields a dash, not a divide-by-zero',
    /_ctrOk=\(_tf\.impressions!=null&&_tf\.impressions>0&&_tf\.clicks!=null\)/.test(RC),true);
 
-// --- Daily Avg -------------------------------------------------------------
-// Renaming alone would have mislabelled it: the old value skipped weekends.
-ck('the tile is relabelled',/mini\('Daily Avg'/.test(cli)&&!/mini\('Weekday Avg'/.test(cli),true);
-ck('and the CALCULATION covers every day, not just weekdays',
+// --- Daily Activity removed ------------------------------------------------
+// The section is gone from the Clinician page. Trend Analysis covers the same
+// timeline at every grain and carries the ad spend alongside it, so a
+// bars-per-day card was the same data one level less useful.
+ck('the Daily Activity card is gone',/card\('Daily Activity'/.test(cli),false);
+ck('and its daily-average tile with it',/mini\('Daily Avg'/.test(cli),false);
+// The WORKER still computes dailyAvg — nothing else reads it today, so it is
+// dead weight on the payload rather than a bug, and removing a builder is a
+// separate call from removing a card.
+ck('the worker still computes it, unused',
    /dailyAvg: _spanDays > 0 \? total \/ _spanDays : null, days: _spanDays/.test(src),true);
-ck('the span is the window, not the days that happen to have data',
-   /Math\.max\(1, Math\.round\(\(Date\.parse\(to \+ 'T00:00:00Z'\) - Date\.parse\(from \+ 'T00:00:00Z'\)\) \/ _dayMs\) \+ 1\)/.test(src),true);
-ck('the clinician caption no longer claims weekends are excluded',/excludes Sat\/Sun/.test(RC),false);
-ck('it falls back to the old value on a pre-update payload',
-   /const avg=\(dly\.dailyAvg!=null\)\?dly\.dailyAvg:dly\.weekdayAvg;/.test(cli),true);
 
 console.log(pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);

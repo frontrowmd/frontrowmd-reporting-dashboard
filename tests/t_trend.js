@@ -253,9 +253,23 @@ ck('and a single axis — only one measure is plotted',
 ck('every toggle rebuilds the card and redraws',
    /card\.outerHTML=_clnTrendCard\(d\);\s*\n\s*_renderClnTrend\(d\);/.test(cli), true);
 ck('nav heading has a stable id', /id="cln-trend-h"/.test(cli), true);
-const iDaily=cli.indexOf("h+=card('Daily Activity'"), iTrend=cli.indexOf('h+=_clnTrendCard(d);'), iAcq=cli.indexOf("h+=card('Acquisition'");
-ck('Trend Analysis sits between Daily Activity and Acquisition',
-   iDaily>0&&iTrend>iDaily&&iAcq>iTrend, true);
+// Trend Analysis now LEADS the page body: it answers "what is the shape right
+// now" over its own fixed lookback, which is the question asked before the
+// funnel's stage-by-stage breakdown. Key Metrics is still prepended after
+// everything, so the rendered order is Key Metrics, Trend, Funnel.
+{
+  const iTrend=cli.indexOf('let h=_clnTrendCard(d);');
+  const iFunnel=cli.indexOf("h+=card('Clinician Funnel'");
+  const iAcq=cli.indexOf("h+=card('Acquisition'");
+  ck('Trend Analysis opens the page body', iTrend>0, true);
+  ck('above the Clinician Funnel', iTrend<iFunnel, true);
+  ck('and above Acquisition', iFunnel<iAcq, true);
+  // Key Metrics is PREPENDED, so it still comes first on screen.
+  ck('with Key Metrics still prepended ahead of it',
+     /h=card\('Key Metrics',[\s\S]{0,200}?\)\+h;/.test(cli), true);
+}
+ck('the Daily Activity section it used to follow is gone',
+   /card\('Daily Activity'/.test(cli), false);
 ck('the old Weekly Cost card is gone', /_clnWeeklyCard|_renderClnWeekly/.test(cli), false);
 
 // ── One ordered stat list behind the cards AND the hover ──────────────────

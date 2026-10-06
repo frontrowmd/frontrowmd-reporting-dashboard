@@ -204,5 +204,36 @@ ck('no budget set is stated rather than drawn',/No monthly budget set/.test(html
   ck('the old post-render preload is gone',/Preload the Clinician payload in the background/.test(html),false);
 }
 
+// ── Ad tables default to the CHEAPEST CPD first ───────────────────────────
+// Was highest-first ("worst performers at the top"). All four tables share the
+// default, and all four must agree or the Campaigns and Ad Sets views disagree
+// about what the same sort means.
+{
+  const defs=(html.match(/S\.irfan\.meta(?:Camp|Cre|Aud|Adset)Sort=\{col:'cpd',dir:'(\w+)'\}/g)||[])
+    .map(x=>/dir:'(\w+)'/.exec(x)[1]);
+  ck('every ad table declares a CPD default', defs.length>=4, true);
+  ck('and all of them ascending', defs.filter(d=>d!=='asc'), []);
+  ck('none left descending', /col:'cpd',dir:'desc'/.test(html), false);
+}
+// Ascending is only safe because a null CPD sinks either way — a row with no
+// demos has no cost per demo, and letting it lead an ascending sort would fill
+// the top of every table with blanks.
+ck('a null sorts to the bottom whichever way the sort runs',
+   /if\(av==null\)return 1;if\(bv==null\)return -1;/.test(html), true);
+ck('and CPD is null when there are no demos',
+   /else if\(col==='cpd'\)\{av=a\.demos>0\?a\.spend\/a\.demos:null;bv=b\.demos>0\?b\.spend\/b\.demos:null;\}/.test(html), true);
+
+// ── Sections removed from the Clinician page ─────────────────────────────
+ck('Daily Activity is gone', /card\('Daily Activity'/.test(html), false);
+// On-Target Mix went with its whole machinery, not just its call site — a
+// builder left behind with no caller is the thing that rots.
+ck('On-Target Mix is gone',
+   [/_clnTypeCard/.test(html),/_renderClnOnTarget/.test(html),/_clnTypeBands/.test(html),
+    /CLN_ON_TARGET/.test(html),/CLN_OT_RATE_C/.test(html)], [false,false,false,false,false]);
+// The worker still ships byType/bySubType — Trend Analysis's Doctors and
+// Doctor % measures read them, so that is live, not residue.
+ck('but the type cut it used is still live in Trend Analysis',
+   /var types=\(sub\?p\.bySubType:p\.byType\)\|\|\{\};/.test(html), true);
+
 console.log('\n'+pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);

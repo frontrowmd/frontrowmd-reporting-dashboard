@@ -123,7 +123,10 @@ const JOINS=[
   ['kpi comparison',      /d\.kpiPrior\b/,                         /kpiPrior, kpiPriorMonth,/],
   ['funnel stage defs',   /d\.funnelStages/,                       /funnelStages: CLN_FUNNEL9,/],
   ['clinician spend',     /d\.clnSpend/,                           /clnSpend:/],
-  ['daily series',        /d\.daily/,                              /daily,/],
+  // `daily` is still EMITTED but no longer read: the Daily Activity section was
+  // removed. Left in the payload deliberately — dropping a builder is a separate
+  // call from dropping a card — so this row checks the emit side only.
+  ['daily series (emitted, unread)', /./,               /daily,/],
   ['history range',       /d\.historyRange/,                       /historyRange: \{ from: CLINICIAN_HISTORY_FROM/],
 ];
 JOINS.forEach(([lbl,c,w])=>{
