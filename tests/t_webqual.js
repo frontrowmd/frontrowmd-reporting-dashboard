@@ -230,7 +230,12 @@ ck('a missing token returns null, not 0',await ctx.fetchWebinarHeldCount('','202
 // folded in as real.
 const hc=fn(src,'hsCount');
 ck('no hsCount error path returns 0',/return 0/.test(hc),false);
-ck('a non-ok response returns null',/if \(!r\.ok\) \{ console\.error\(`hsCount \$\{objectType\} \$\{r\.status\}`\); return null; \}/.test(hc),true);
+ck('a non-ok response returns null',
+   /if \(!r\.ok\) \{[^}]*console\.error\(`hsCount \$\{objectType\} \$\{r\.status\}`\); return null; \}/.test(hc),true);
+// ...and releases the connection on the way out. An unread body holds a slot in
+// Cloudflare's concurrent-fetch pool until the runtime cancels something else to
+// break the deadlock.
+ck('and drains the body first',/if \(!r\.ok\) \{ azDrain\(r\);/.test(hc),true);
 ck('a body with no numeric total returns null',/typeof d\.total === 'number' \? d\.total : null/.test(hc),true);
 ck('and exhausted retries are logged, not returned as a count',
    /console\.error\(`hsCount \$\{objectType\}: still rate limited after retries`\);\s*\n\s*return null;/.test(hc),true);

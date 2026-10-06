@@ -760,7 +760,7 @@ async function windsorFetch(apiKey, from, to, fields, extra = '') {
     try {
       SUBREQ.n++; SUBREQ.windsor++;
       const r = await fetch(url);
-      if (!r.ok) throw new Error(`Windsor ${r.status}`);
+      if (!r.ok) { azDrain(r); throw new Error(`Windsor ${r.status}`); }
       const j = await r.json();
       return j.data || [];
     } catch(e) {
@@ -1005,7 +1005,7 @@ async function fetchGA4(apiKey, from, to) {
 // softFail counts give-ups that leave a GAP in the data without tripping the
 // pool breaker: a fetch that burned its retries, or a count that came back null.
 // Without it a degraded payload looks healthy and gets cached.
-const SUBREQ = { n: 0, windsor: 0, hubspot: 0, kv: 0, exhausted: false, windsorDropped: 0, softFail: 0,
+const SUBREQ = { n: 0, windsor: 0, hubspot: 0, kv: 0, exhausted: false, windsorDropped: 0, softFail: 0, creCapped: 0,
   // Attempts RESERVED, incremented synchronously the moment a chunk is admitted.
   // SUBREQ.windsor only counts attempts already STARTED, and ~20 chunkers admit
   // their waves synchronously before any of those increments land, so budgeting
@@ -1069,6 +1069,20 @@ const AZ_CRON_SOFTFAIL_TOLERANCE = 5;
 // Bump this ONLY when the ad-data shape changes. A dashboard payload change
 // should not cost a cold precompute.
 const AZ_DATA_VER = 'a1';
+// Cloudflare caps CONCURRENT in-flight fetches, and a Response whose body is
+// never read never completes — so it holds its slot indefinitely. Past the cap
+// the runtime cancels the OLDEST in-flight response to break the deadlock,
+// which is the "A stalled HTTP response was canceled to prevent deadlock"
+// warning the live log is full of. Every error path that threw straight off a
+// Response leaked a body — three times over with retries — and Windsor answers
+// 400 for LinkedIn on every single run, so the leak was continuous and the
+// victims were other connectors' healthy requests queued behind it.
+//
+// Call this before throwing or returning off a Response you will not read.
+function azDrain(r) {
+  try { if (r && r.body && !r.bodyUsed) r.body.cancel(); } catch (_) { /* already gone */ }
+  return r;
+}
 function azCacheKey(win, from, to, vsFrom, vsTo) {
   return 'azdata_resp_' + AZ_DATA_VER + '_' + win + '_' + (from||'') + '_' + (to||'')
        + '_' + (vsFrom||'') + '_' + (vsTo||'');
@@ -1094,6 +1108,7 @@ const AZ_CREATIVE_CHUNK_DAYS = 30;
 function subreqReset() {
   SUBREQ.n = 0; SUBREQ.windsor = 0; SUBREQ.hubspot = 0; SUBREQ.kv = 0;
   SUBREQ.exhausted = false; SUBREQ.windsorDropped = 0; SUBREQ.softFail = 0; SUBREQ.windsorPlanned = 0;
+  SUBREQ.creCapped = 0;
 }
 function isSubreqLimit(e) {
   return !!e && /Too many subrequests/i.test(e.message || String(e));
@@ -1109,6 +1124,7 @@ function noteSubreqError(e) {
 function subreqSummary() {
   return `subrequests ~${SUBREQ.n} (windsor ${SUBREQ.windsor}/${SUBREQ.windsorPlanned} planned, hubspot ${SUBREQ.hubspot}, kv ${SUBREQ.kv})`
     + (SUBREQ.softFail ? `, soft failures: ${SUBREQ.softFail}` : '')
+    + (SUBREQ.creCapped ? `, creative fetches capped: ${SUBREQ.creCapped}` : '')
     + (SUBREQ.windsorDropped ? `, windsor chunks dropped at budget: ${SUBREQ.windsorDropped}` : '')
     + (SUBREQ.exhausted ? ' — POOL EXHAUSTED' : '');
 }
@@ -1136,7 +1152,7 @@ async function hsCount(token, objectType, filterGroups) {
         body: JSON.stringify({ filterGroups, properties: ['hs_object_id'], limit: 1 }),
       });
       if (r.status === 429) { await sleep(250 * (attempt + 1)); continue; }
-      if (!r.ok) { console.error(`hsCount ${objectType} ${r.status}`); return null; }
+      if (!r.ok) { azDrain(r); console.error(`hsCount ${objectType} ${r.status}`); return null; }
       const d = await r.json();
       return typeof d.total === 'number' ? d.total : null;
     } catch (e) {
@@ -1587,7 +1603,7 @@ async function fetchOwners(token) {
   let after = '';
   for (let p = 0; p < 10; p++) {
     const r = await fetch(`https://api.hubapi.com/crm/v3/owners?limit=100${after?'&after='+after:''}`, { headers: { 'Authorization': `Bearer ${token}` } });
-    if (!r.ok) break;
+    if (!r.ok) { azDrain(r); break; }
     const d = await r.json();
     for (const o of (d.results||[])) map[o.id] = [o.firstName, o.lastName].filter(Boolean).join(' ') || o.email || o.id;
     if (d.paging?.next?.after) after = d.paging.next.after; else break;
@@ -2851,7 +2867,7 @@ async function fetchClinicianContacts(token, dealIds) {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ inputs: batch.map(id => ({ id: String(id) })) }),
       });
-      if (!r.ok) { console.error('clinician assoc', r.status); continue; }
+      if (!r.ok) { azDrain(r); console.error('clinician assoc', r.status); continue; }
       const j = await r.json();
       for (const row of (j.results || [])) {
         const did = row.from && row.from.id; if (!did) continue;
@@ -2876,7 +2892,7 @@ async function fetchClinicianContacts(token, dealIds) {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ properties: CLINICIAN_CONTACT_PROPS, inputs: batch.map(id => ({ id })) }),
       });
-      if (!r.ok) { console.error('clinician contacts', r.status); continue; }
+      if (!r.ok) { azDrain(r); console.error('clinician contacts', r.status); continue; }
       const j = await r.json();
       for (const c of (j.results || [])) byContact[String(c.id)] = Object.assign({ __cid: String(c.id) }, c.properties || {});
     } catch (e) { console.error('clinician contacts threw', e.message); }
@@ -3267,7 +3283,7 @@ async function fetchClinicianMeetingStarts(token, dealIds) {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ inputs: batch.map(id => ({ id: String(id) })) }),
       });
-      if (!r.ok) { console.error('clinician meeting assoc', r.status); continue; }
+      if (!r.ok) { azDrain(r); console.error('clinician meeting assoc', r.status); continue; }
       const j = await r.json();
       for (const row of (j.results || [])) {
         const did = row.from && row.from.id; if (!did) continue;
@@ -3284,7 +3300,7 @@ async function fetchClinicianMeetingStarts(token, dealIds) {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ properties: ['hs_meeting_start_time'], inputs: batch.map(id => ({ id })) }),
       });
-      if (!r.ok) { console.error('clinician meetings', r.status); continue; }
+      if (!r.ok) { azDrain(r); console.error('clinician meetings', r.status); continue; }
       const j = await r.json();
       for (const mtg of (j.results || [])) {
         const st = (mtg.properties || {}).hs_meeting_start_time;
@@ -3318,7 +3334,7 @@ async function fetchClinicianOwners(token) {
     for (let i = 0; i < 5; i++) {
       const url = 'https://api.hubapi.com/crm/v3/owners?limit=100' + (after ? '&after=' + after : '');
       const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-      if (!r.ok) break;
+      if (!r.ok) { azDrain(r); break; }
       const j = await r.json();
       for (const o of (j.results || [])) {
         const nm = [o.firstName, o.lastName].filter(Boolean).join(' ').trim() || o.email || String(o.id);
@@ -5949,7 +5965,7 @@ async function azWindsorFetch(apiKey, connector, from, to, fields, _chunked) {
     try {
       SUBREQ.n++; SUBREQ.windsor++;
       const r = await fetch(url);
-      if (!r.ok) throw new Error(`Windsor ${connector} ${r.status}`);
+      if (!r.ok) { azDrain(r); throw new Error(`Windsor ${connector} ${r.status}`); }
       const j = await r.json();
       const rows = j.data || [];
       if (!_chunked && rows.length >= AZ_PAGE_SIZE) {
@@ -6363,7 +6379,14 @@ async function fetchAzCreatives(apiKey, from, to) {
   const _creCapped = (ch, pr) => Promise.race([
     pr,
     new Promise(r => setTimeout(() => {
-      SUBREQ.softFail++;
+      // Counted SEPARATELY from softFail, and this is not a nicety. softFail is
+      // the cache gate: six channels capping at once pushed it to 7 against a
+      // tolerance of 5, so the cron computed the whole payload and then refused
+      // to cache it — "cron warm ytd: NOT caching — soft failures: 7". The cap,
+      // added to bound a slow fetch, was what stopped anything ever being
+      // warmed. A cap is a bounded, reported shortfall on ONE channel; a soft
+      // failure is a fetch that gave up. Conflating them inverted the fix.
+      SUBREQ.creCapped++;
       console.warn(`Creative fetch ${ch}: CAPPED at ${AZ_CRE_DEADLINE_MS}ms — keeping the rows that arrived`);
       r([]);
     }, AZ_CRE_DEADLINE_MS)),
@@ -8880,7 +8903,7 @@ export default {
                 headers: { 'Authorization': `Bearer ${hsToken}` }
               });
               if (r.status === 429) { await sleep(500 * (attempt + 1)); continue; }
-              if (!r.ok) break;
+              if (!r.ok) { azDrain(r); break; }
               const data = await r.json();
               const cid = data.results?.[0]?.id || data.results?.[0]?.toObjectId;
               if (cid) companyAssoc[String(did)] = String(cid);
@@ -8933,7 +8956,7 @@ export default {
                 headers: { Authorization: `Bearer ${hsToken}` },
               });
               if (r.status === 429) { await sleep(500 * (attempt + 1)); continue; }
-              if (!r.ok) break;
+              if (!r.ok) { azDrain(r); break; }
               const d = await r.json();
               const cid = d.results?.[0]?.id || d.results?.[0]?.toObjectId;
               if (cid) dealContactMap[String(did)] = String(cid);

@@ -219,6 +219,49 @@ const days=(a,b)=>Math.round((new Date(b+'T00:00:00Z')-new Date(a+'T00:00:00Z'))
   ck('and they still reach buildAzResponse',
      /buildAzResponse\(current, prior, priorMonth, windsor, creatives, priorW, pmW, attr, priorA, pmA/.test(src),true);
 
+  // --- unread response bodies deadlock the worker --------------------------
+  // Live log, many times: "A stalled HTTP response was canceled to prevent
+  // deadlock ... because the Worker did not read the responses, they would
+  // never complete." Cloudflare caps concurrent in-flight fetches and an unread
+  // body never frees its slot, so the runtime starts cancelling OTHER
+  // connectors' healthy requests. Windsor answers 400 for LinkedIn on every
+  // run, so the leak was continuous.
+  ck('there is a drain helper',/function azDrain\(r\) \{/.test(src),true);
+  ck('it cancels only an unread body',/if \(r && r\.body && !r\.bodyUsed\) r\.body\.cancel\(\)/.test(src),true);
+  ck('and never throws on a body already gone',/catch \(_\) \{ \/\* already gone \*\/ \}/.test(src),true);
+  // EVERY early exit off a Response drains first. Counted as a ratio so a new
+  // error path that forgets fails this rather than slipping in under a floor.
+  // The rule is DRAIN OR READ: a site that does `await r.text()` has already
+  // consumed the body and freed the slot, so it needs no drain. What must never
+  // exist is a site that does neither.
+  {
+    // The window reaches BACKWARDS too: a site can legitimately read the body on
+    // the line above (`const data = await r.json();` then `if (!r.ok) return ...`),
+    // which consumes it just as well.
+    const RE=/[\s\S]{0,140}if \(!r\.ok\)[\s\S]{0,220}?(?:continue;|break;|return[^\n]*;|throw[^\n]*;)/g;
+    const sites=src.match(RE)||[];
+    const leaky=sites.filter(x=>!/azDrain\(r\)/.test(x)&&!/await r\.text\(\)/.test(x)&&!/await r\.json\(\)/.test(x));
+    ck('the scan found the error paths',sites.length>=8,true);
+    ck('none of them leaves a body unread',leaky.length,0);
+  }
+  ck('both Windsor fetchers drain before throwing',
+     (src.match(/azDrain\(r\); throw new Error\(`Windsor/g)||[]).length,2);
+
+  // --- a capped fetch must not read as a failed one -------------------------
+  // softFail is the CACHE GATE. Six channels capping at once pushed it to 7
+  // against a tolerance of 5, so the cron built the whole payload and then threw
+  // it away: "cron warm ytd: NOT caching — soft failures: 7". The cap added to
+  // bound a slow fetch was what stopped anything ever being warmed.
+  ck('a cap has its own counter',/SUBREQ\.creCapped\+\+;/.test(src),true);
+  ck('and does NOT touch softFail',
+     /SUBREQ\.softFail\+\+;\s*\n\s*console\.warn\(`Creative fetch/.test(src),false);
+  ck('the counter is declared and reset',
+     [/creCapped: 0/.test(src),/SUBREQ\.creCapped = 0;/.test(src)],[true,true]);
+  ck('and reported in the summary',/creative fetches capped: \$\{SUBREQ\.creCapped\}/.test(src),true);
+  // The gate must read softFail, not the cap — otherwise this regresses.
+  ck('the cache gate does not count caps',
+     /_azOk = [^;]*creCapped/.test(src),false);
+
   console.log(pass+' passed, '+fail+' failed');
   process.exit(fail?1:0);
 })();
