@@ -169,10 +169,17 @@ ck('a windsor give-up counts as one',/SUBREQ\.softFail\+\+; console\.error\(`Az 
 ck('so does a rate-limited count',/SUBREQ\.softFail\+\+;\s*\n\s*console\.error\(`hsCount/.test(src),true);
 ck('and the cache gate reads them',/_azOk = !SUBREQ\.exhausted && !SUBREQ\.windsorDropped && !SUBREQ\.softFail/.test(src),true);
 ck('softFail is reset per request',/SUBREQ\.softFail = 0;/.test(src),true);
-// TTLs are window-aware now (ytd/allTime are cron-warmed and long-lived); the
-// read/write/cron relationship is asserted in t_warm.js.
-ck('both read and write go through the shared TTL function',
-   (src.match(/azCacheTtlMs\((?:win|_azWin)\)/g)||[]).length>=3,true);
+// TTLs are window-aware (ytd/allTime are cron-warmed and long-lived). Reads and
+// writes deliberately no longer share one number: FRESHNESS decides whether to
+// rebuild, RETENTION decides whether there is a fallback when the rebuild
+// fails. This used to assert they were the same, which is what left nothing to
+// fall back on. The full relationship is asserted in t_warm.js.
+ck('freshness is decided by the shared window-aware function',
+   /if \(age < azCacheTtlMs\(_azWin\)\)/.test(src),true);
+ck('and it is still window-aware',
+   /AZ_PRECOMPUTED_WINDOWS\.includes\(win\) \? \d+ : \d+/.test(src),true);
+ck('while retention is its own, longer constant',
+   /expirationTtl: AZ_CACHE_RETAIN_SEC/.test(src),true);
 
 // Refresh must bust the SERVER cache too, not just the client one.
 ck('refreshData arms the fresh flag',/S\.irfan\._azFresh=true;/.test(cli),true);

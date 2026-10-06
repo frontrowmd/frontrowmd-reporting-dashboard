@@ -1064,6 +1064,14 @@ function azCacheKey(win, from, to, vsFrom, vsTo) {
 // These aggregate months of history, so a half-hour-old view is accurate enough;
 // the short TTL exists for windows that move intraday.
 function azCacheTtlMs(win) { return AZ_PRECOMPUTED_WINDOWS.includes(win) ? 1800000 : 120000; }
+// How long a cache entry is KEPT, which is deliberately much longer than how
+// long it is considered FRESH. Freshness decides whether to rebuild; retention
+// decides whether there is anything to fall back on when the rebuild fails.
+// Entries used to be dropped 5 minutes after going stale, so two consecutive
+// cron failures — or any deploy that changed the key — left the request path
+// with nothing but a rebuild it cannot finish inside the browser's abort.
+// Day-old ad data is a far better answer than an error.
+const AZ_CACHE_RETAIN_SEC = 86400;
 // Last-resort backstop across EVERY connector, checked per attempt. The
 // per-connector budget is a plan; this is the thing that cannot be overshot.
 const SUBREQ_HARD_MAX = 900;
@@ -8206,7 +8214,7 @@ export default {
             if (blob.length < 20*1024*1024) {
               kvOp();
               await env.CONTENT_STORE.put(azCacheKey(win, null, null, null, null), blob,
-                { expirationTtl: Math.round(azCacheTtlMs(win)/1000) + 300 });
+                { expirationTtl: AZ_CACHE_RETAIN_SEC });
               console.log(`cron warm ${win}: cached in ${Date.now()-t0}ms — ${subreqSummary()}`);
             }
           }
@@ -8549,19 +8557,36 @@ export default {
       // previous build's cache.
       const _azWin = body.window || 'mtd';
       const _azCk = azCacheKey(_azWin, body.from, body.to, body.vsFrom, body.vsTo);
+      // An expired-but-present entry is held as a FALLBACK rather than
+      // discarded. A Year to Date rebuild cannot finish inside the browser's
+      // abort, so when one fails the choice is between day-old ad data and no
+      // ad data at all — and ad data barely moves intraday.
+      let _azStale = null;
       if (!body.fresh && env.CONTENT_STORE) {
         try {
           kvOp();
           const raw = await env.CONTENT_STORE.get(_azCk);
           if (raw) {
             const pcache = JSON.parse(raw);
-            if (pcache && typeof pcache.t === 'number' && (Date.now() - pcache.t) < azCacheTtlMs(_azWin) && pcache.data) {
-              console.log(`analyzer cache HIT (${_azWin}, age ${Math.round((Date.now()-pcache.t)/1000)}s)`);
-              return jr(pcache.data);
+            if (pcache && typeof pcache.t === 'number' && pcache.data) {
+              const age = Date.now() - pcache.t;
+              if (age < azCacheTtlMs(_azWin)) {
+                console.log(`analyzer cache HIT (${_azWin}, age ${Math.round(age/1000)}s)`);
+                return jr(pcache.data);
+              }
+              _azStale = pcache;
             }
           }
         } catch(e) { /* fall through to live compute */ }
       }
+      // Serving stale is a REPORTED outcome, never a silent one: the payload
+      // says so and the dashboard labels it, so nobody reads day-old spend as
+      // current without being told.
+      const _azServeStale = (why) => {
+        const ageSec = Math.round((Date.now() - _azStale.t) / 1000);
+        console.warn(`analyzer serving STALE (${_azWin}, age ${ageSec}s) — ${why}`);
+        return jr(Object.assign({}, _azStale.data, { _stale: true, _staleAgeSec: ageSec }));
+      };
       try {
         const result = await processAzRequest(body.window||'mtd', body.from||null, body.to||null, env, body.vsFrom||null, body.vsTo||null);
         // Never cache a DEGRADED response. A run that exhausted the pool or had
@@ -8575,15 +8600,31 @@ export default {
         // bounds how long any missed degradation can persist.
         const _azOk = !SUBREQ.exhausted && !SUBREQ.windsorDropped && !SUBREQ.softFail;
         if (!_azOk) console.warn(`NOT caching analyzer payload (${_azWin}) — ${subreqSummary()}`);
+        // A degraded run can come back MISSING WHOLE CHANNELS, and the dashboard
+        // renders that as "No <channel> data available for this window" — which
+        // reads as "there was no spend", not as "the fetch fell short". When the
+        // last good payload covers a channel this one lost, it is the more
+        // truthful answer even though it is older.
+        if (_azStale) {
+          const _chOf = (x) => Object.keys((x && x.channels) || {});
+          const _lost = _chOf(_azStale.data).filter(c => _chOf(result).indexOf(c) < 0);
+          if (_lost.length) return _azServeStale(`live run lost channel(s): ${_lost.join(', ')}`);
+        }
         if (env.CONTENT_STORE && _azOk) {
           kvOp();
           try {
             const blob = JSON.stringify({ t: Date.now(), data: result });
-            if (blob.length < 20*1024*1024) await env.CONTENT_STORE.put(_azCk, blob, { expirationTtl: Math.round(azCacheTtlMs(_azWin)/1000) + 300 });
+            if (blob.length < 20*1024*1024) await env.CONTENT_STORE.put(_azCk, blob, { expirationTtl: AZ_CACHE_RETAIN_SEC });
           } catch(e) { /* best-effort */ }
         }
         return jr(result);
-      } catch(err) { console.error('Analyzer error:', err); return jr({ error: 'Internal error', detail: err.message }, 500); }
+      } catch(err) {
+        console.error('Analyzer error:', err);
+        // Last good payload beats an error banner. Only when there is none does
+        // this report the failure.
+        if (_azStale) return _azServeStale(err && err.message);
+        return jr({ error: 'Internal error', detail: err.message }, 500);
+      }
     }
 
     // POST /api/content → Content Studio static data

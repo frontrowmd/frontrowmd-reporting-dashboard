@@ -22,8 +22,11 @@ const cronMin=+(/crons = \["\*\/(\d+)/.exec(toml)||[])[1];
 const slowTtlMs=+(/AZ_PRECOMPUTED_WINDOWS\.includes\(win\) \? (\d+) :/.exec(src)||[])[1];
 ck('the cron interval parses',Number.isInteger(cronMin)&&cronMin>0,true);
 ck('the warm TTL outlives the cron interval',slowTtlMs>cronMin*60*1000,true);
+// Expiry must outlive freshness, or an entry is gone the moment it goes stale
+// and there is nothing to fall back on. Compared as NUMBERS rather than by
+// pinning the expression, so the retention policy can change shape.
 ck('and the KV expiry outlives the read TTL',
-   /expirationTtl: Math\.round\(azCacheTtlMs\((?:win|_azWin)\)\/1000\) \+ 300/.test(src),true);
+   (+(/const AZ_CACHE_RETAIN_SEC = (\d+);/.exec(src)||[])[1])*1000 > slowTtlMs, true);
 
 // Degraded payloads must never be warmed, or every reader inherits the gap.
 // The gates diverge ON PURPOSE: a request retries on the next page load, a cron
@@ -102,6 +105,34 @@ ck('but the api response cache still does ride it',
 ck('the cron writes through azCacheKey',/CONTENT_STORE\.put\(azCacheKey\(win, null, null, null, null\)/.test(src),true);
 ck('and nothing builds an azdata key by hand',
    (src.match(/'azdata_resp_/g)||[]).length,1);
+
+// --- stale-while-revalidate: last good data beats an error -----------------
+// A Year to Date rebuild cannot finish inside the browser's abort, so when one
+// fails the real choice is between day-old ad data and none. Entries used to be
+// dropped 5 minutes after going stale, which left nothing to fall back on after
+// two bad crons or any key change — and the dashboard renders a missing channel
+// as "No Meta data available for this window", which reads as "there was no
+// spend" rather than "the fetch fell short".
+ck('retention is separate from freshness',/const AZ_CACHE_RETAIN_SEC = (\d+);/.test(src),true);
+ck('and is much longer than the freshness window',
+   (+(/const AZ_CACHE_RETAIN_SEC = (\d+);/.exec(src)||[])[1]) >= 3600, true);
+ck('both writers use it',(src.match(/expirationTtl: AZ_CACHE_RETAIN_SEC/g)||[]).length,2);
+ck('no writer still uses the old ttl+300 retention',/expirationTtl: Math\.round\(azCacheTtlMs/.test(src),false);
+// An expired entry is kept as a fallback rather than discarded on read.
+ck('an expired entry is held, not dropped',/_azStale = pcache;/.test(src),true);
+ck('a fresh entry still short-circuits',/if \(age < azCacheTtlMs\(_azWin\)\)/.test(src),true);
+// Two paths fall back: a throw, and a run that came back missing a channel.
+ck('a failed rebuild serves stale',/if \(_azStale\) return _azServeStale\(err && err\.message\);/.test(src),true);
+ck('so does a run that lost a channel',/live run lost channel\(s\)/.test(src),true);
+// Staleness is reported, never silent — on the wire and in the console.
+ck('the payload says it is stale',/_stale: true, _staleAgeSec: ageSec/.test(src),true);
+ck('and the console says so too',/analyzer serving STALE/.test(src),true);
+ck('the dashboard labels it',/Showing the last complete ad data/.test(cli),true);
+ck('with a readable age',/function _staleAge\(sec\)\{/.test(cli),true);
+// The banner must ride the same element the filter bar is written into, or it
+// renders on one page and not the other two.
+ck('the banner reaches every page that shows the tables',
+   /filterTargets\.forEach\(el=>el\.innerHTML=_staleNote\+_metaFilterBar/.test(cli),true);
 
 console.log(pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);
