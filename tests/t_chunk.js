@@ -160,6 +160,33 @@ const days=(a,b)=>Math.round((new Date(b+'T00:00:00Z')-new Date(a+'T00:00:00Z'))
      /azWindsorFetch\(apiKey, connector, a, b, fields, true\)\s*\n\s*\.then\(rows => \{[\s\S]{0,600}?onChunk\(rows\);/.test(src),true);
   ck('no wave-wide result array is collected first',/const got = await Promise\.all/.test(src),false);
 
+  // --- one slow connector must not take the whole phase down ----------------
+  // Observed: the creatives phase never completed on MTD and the client aborted
+  // at 75s. LinkedIn at creative grain is the known offender (the source comment
+  // records ~240s of a 379s YTD phase), and a request that never returns is also
+  // one that never caches, so the next load is in the same position.
+  ck('creative fetches carry a deadline',/const AZ_CRE_DEADLINE_MS = (\d+);/.test(src),true);
+  ck('shorter than the client budget for a slow window',
+     (+(/const AZ_CRE_DEADLINE_MS = (\d+);/.exec(src)||[])[1]) < 180000, true);
+  // EVERY creative fetch is wrapped, not just the one known to be slow — the next
+  // pathological connector should degrade the same way without a code change.
+  // Scoped to fetchAzCreatives: other fetch phases have their own `promises`
+  // array and their own cost profile, and counting file-wide made this compare
+  // creative fetches against unrelated ones.
+  {
+    const CRE=fn(src,'fetchAzCreatives');
+    ck('every creative fetch is wrapped',
+       (CRE.match(/promises\.push\(_creCapped\(/g)||[]).length,
+       (CRE.match(/promises\.push\(/g)||[]).length);
+  }
+  ck('and there are the three we know about',
+     (src.match(/promises\.push\(_creCapped\(/g)||[]).length>=3,true);
+  // Capping is only safe because rows fold on arrival: a capped channel keeps
+  // what arrived instead of losing the lot.
+  ck('the capped fetches fold on arrival',
+     (src.match(/AZ_CREATIVE_CHUNK_DAYS, rows => \{ for \(const _c of _seenConn/g)||[]).length>=3,true);
+  ck('a cap is a REPORTED shortfall',/CAPPED at \$\{AZ_CRE_DEADLINE_MS\}ms/.test(src),true);
+
   console.log(pass+' passed, '+fail+' failed');
   process.exit(fail?1:0);
 })();

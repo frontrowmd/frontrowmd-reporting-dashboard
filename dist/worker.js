@@ -6344,6 +6344,26 @@ async function fetchAzCreatives(apiKey, from, to) {
   const _creWideWindow = _creSpanDays > 120;
   if (_creWideWindow) console.log(`fetchAzCreatives: ${_creSpanDays}-day window — placement breakdown omitted to keep the fetch affordable`);
   const results = {};
+  // ONE pathological connector must not take the whole phase past the browser's
+  // abort. LinkedIn at creative grain is the known offender — the comment below
+  // records it eating ~240s of a 379s YTD creatives phase — and a request that
+  // never returns is also a request that never caches, so the next load is in
+  // exactly the same position.
+  //
+  // Capping is safe because these fetches FOLD ON ARRIVAL through onChunk: rows
+  // already returned are kept, so a capped channel degrades to PARTIAL creative
+  // data rather than none. It counts as a soft failure, which the cache gate
+  // tolerates but reports, so a channel that is persistently timing out shows up
+  // in the logs instead of silently going thin.
+  const AZ_CRE_DEADLINE_MS = 45000;
+  const _creCapped = (ch, pr) => Promise.race([
+    pr,
+    new Promise(r => setTimeout(() => {
+      SUBREQ.softFail++;
+      console.warn(`Creative fetch ${ch}: CAPPED at ${AZ_CRE_DEADLINE_MS}ms — keeping the rows that arrived`);
+      r([]);
+    }, AZ_CRE_DEADLINE_MS)),
+  ]);
 
   // Build fetch promises for all channels in parallel (NO thumbnail fields - causes size overflow)
   // For Meta we also pull ad_status so the dashboard can distinguish ACTIVE
@@ -6379,12 +6399,12 @@ async function fetchAzCreatives(apiKey, from, to) {
       // budget guard and — because it is not azWindsorFetchAll — no azChunk log
       // line, so it was invisible. On a YTD run it accounted for ~240s of the
       // 379s creatives phase while the slowest visible chunker was 135s.
-      promises.push(azWindsorFetchAll(apiKey, 'linkedin', from, to, 'date,campaign,ad_name,spend,clicks,impressions', AZ_CREATIVE_CHUNK_DAYS, rows => { for (const _c of _seenConn[cfg.connector]) _foldCre(_c, AZ_CONNECTORS[_c], rows); }).catch(e => { console.error(`Creative fetch linkedin:`, e.message); return []; }));
+      promises.push(_creCapped('linkedin', azWindsorFetchAll(apiKey, 'linkedin', from, to, 'date,campaign,ad_name,spend,clicks,impressions', AZ_CREATIVE_CHUNK_DAYS, rows => { for (const _c of _seenConn[cfg.connector]) _foldCre(_c, AZ_CONNECTORS[_c], rows); }).catch(e => { console.error(`Creative fetch linkedin:`, e.message); return []; })));
     } else if (ch === 'chatgpt') {
       // Field ids confirmed from Windsor's openai_ads schema: ad / ad_group /
       // campaign / ad_status. Requesting ad_name, campaign_name or conversions
       // fails the entire request.
-      promises.push(azWindsorFetchAll(apiKey, cfg.connector, from, to, 'date,campaign,ad_group,ad,ad_status,spend,clicks,impressions', AZ_CREATIVE_CHUNK_DAYS, rows => { for (const _c of _seenConn[cfg.connector]) _foldCre(_c, AZ_CONNECTORS[_c], rows); }).catch(e => { console.error(`Creative fetch chatgpt:`, e.message); return []; }));
+      promises.push(_creCapped('chatgpt', azWindsorFetchAll(apiKey, cfg.connector, from, to, 'date,campaign,ad_group,ad,ad_status,spend,clicks,impressions', AZ_CREATIVE_CHUNK_DAYS, rows => { for (const _c of _seenConn[cfg.connector]) _foldCre(_c, AZ_CONNECTORS[_c], rows); }).catch(e => { console.error(`Creative fetch chatgpt:`, e.message); return []; })));
     } else {
       // Meta-connector channels need BOTH standard-event columns plus the
       // promoted object, or metaDemos cannot tell which event to count.
@@ -6419,7 +6439,7 @@ async function fetchAzCreatives(apiKey, from, to) {
       // CAPI custom-conversion counts (Demo / Webinar / Demo+Webinar) — the real
       // "Results" for campaigns that optimize for a CAPI conversion.
       const capi = isMetaConnectorCh(ch) ? META_CAPI_FIELDS : '';
-      promises.push(azWindsorFetchAll(apiKey, cfg.connector, from, to, base + extra + freq + video + placement + status + created + adset + lead + capi, AZ_CREATIVE_CHUNK_DAYS, rows => { for (const _c of _seenConn[cfg.connector]) _foldCre(_c, AZ_CONNECTORS[_c], rows); }).catch(e => { console.error(`Creative fetch ${ch}:`, e.message); return []; }));
+      promises.push(_creCapped(ch, azWindsorFetchAll(apiKey, cfg.connector, from, to, base + extra + freq + video + placement + status + created + adset + lead + capi, AZ_CREATIVE_CHUNK_DAYS, rows => { for (const _c of _seenConn[cfg.connector]) _foldCre(_c, AZ_CONNECTORS[_c], rows); }).catch(e => { console.error(`Creative fetch ${ch}:`, e.message); return []; })));
     }
     channels.push(ch);
   }
@@ -8633,17 +8653,28 @@ export default {
       }
       try {
         const result = await processAzRequest(body.window||'mtd', body.from||null, body.to||null, env, body.vsFrom||null, body.vsTo||null);
-        // Never cache a DEGRADED response. A run that exhausted the pool or had
-        // Windsor chunks dropped at the budget is missing rows; caching it would
-        // serve those gaps for the whole TTL and make the shortfall look stable
-        // rather than transient. Degraded responses are still returned, so the
-        // user sees something and the next load retries.
+        // Never cache a payload that is MISSING DATE RANGES: an exhausted pool
+        // or dropped Windsor chunks mean whole stretches of the window are
+        // absent, and caching that serves the gap for the full TTL.
+        //
+        // A SOFT failure is different, and this used to treat them the same.
+        // One connector returning an error is a small, known hole — and when it
+        // is PERSISTENT (Windsor has been answering 400 for LinkedIn on every
+        // run) strictness means the request path can never cache anything at
+        // all. Every load then recomputes a chain that measured past the
+        // browser's abort, so nothing is cached, so the next load recomputes:
+        // the exact loop behind "no response after 75s". The cron already
+        // tolerates a few soft failures for this reason; the request path now
+        // uses the same tolerance rather than a stricter one that cannot be met.
+        //
         // NOTE: SUBREQ is module-global and subreqReset() runs per request, so a
         // concurrent request can zero these mid-flight and make a degraded run look
         // clean. A per-request counter is the real fix; until then the short TTL
         // bounds how long any missed degradation can persist.
-        const _azOk = !SUBREQ.exhausted && !SUBREQ.windsorDropped && !SUBREQ.softFail;
+        const _azOk = !SUBREQ.exhausted && !SUBREQ.windsorDropped
+                      && SUBREQ.softFail <= AZ_CRON_SOFTFAIL_TOLERANCE;
         if (!_azOk) console.warn(`NOT caching analyzer payload (${_azWin}) — ${subreqSummary()}`);
+        else if (SUBREQ.softFail) console.warn(`caching analyzer payload (${_azWin}) WITH ${SUBREQ.softFail} soft failure(s) — ${subreqSummary()}`);
         // A degraded run can come back MISSING WHOLE CHANNELS, and the dashboard
         // renders that as "No <channel> data available for this window" — which
         // reads as "there was no spend", not as "the fetch fell short". When the

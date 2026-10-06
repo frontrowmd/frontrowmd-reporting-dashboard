@@ -167,7 +167,10 @@ ck('this mirrors the google rule rather than inventing a second one',
 ck('soft failures are counted',/softFail: 0/.test(src),true);
 ck('a windsor give-up counts as one',/SUBREQ\.softFail\+\+; console\.error\(`Az Windsor/.test(src),true);
 ck('so does a rate-limited count',/SUBREQ\.softFail\+\+;\s*\n\s*console\.error\(`hsCount/.test(src),true);
-ck('and the cache gate reads them',/_azOk = !SUBREQ\.exhausted && !SUBREQ\.windsorDropped && !SUBREQ\.softFail/.test(src),true);
+// The gate reads softFail, but as a TOLERANCE rather than a veto: a persistent
+// connector error would otherwise mean nothing is ever cached. See t_warm.js.
+ck('and the cache gate reads them',
+   /_azOk = !SUBREQ\.exhausted && !SUBREQ\.windsorDropped[\s\S]{0,80}SUBREQ\.softFail <= AZ_CRON_SOFTFAIL_TOLERANCE/.test(src),true);
 ck('softFail is reset per request',/SUBREQ\.softFail = 0;/.test(src),true);
 // TTLs are window-aware (ytd/allTime are cron-warmed and long-lived). Reads and
 // writes deliberately no longer share one number: FRESHNESS decides whether to

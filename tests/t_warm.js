@@ -91,8 +91,28 @@ ck('it still refuses a dropped chunk or an exhausted pool',
    /!SUBREQ\.exhausted && !SUBREQ\.windsorDropped\s*\n\s*&& SUBREQ\.softFail <= AZ_CRON_SOFTFAIL_TOLERANCE/.test(src),true);
 ck('and says so when it caches a degraded payload',/caching WITH \$\{SUBREQ\.softFail\} soft failure/.test(src),true);
 // The REQUEST path stays strict: a retry there costs one page load, not 20 minutes.
-ck('the request path keeps the strict gate',
-   /const _azOk = !SUBREQ\.exhausted && !SUBREQ\.windsorDropped && !SUBREQ\.softFail;/.test(src),true);
+// The request path used to be STRICTER than the cron: any soft failure blocked
+// the write. With a connector failing persistently — Windsor has been answering
+// 400 for LinkedIn on every run — that is a gate that can never be met, so the
+// request path cached nothing, every load recomputed a chain that measured past
+// the browser's abort, and the abort killed it before it could cache. Both
+// paths now use the same tolerance.
+// Pinned to the REQUEST PATH's own gate, not to a count: the cron and the
+// background rebuild have their own copies of this expression, so a count is
+// satisfied by them even after the request path reverts.
+const AZOK=(/const _azOk = ([^;]+);/.exec(src)||[])[1]||'';
+ck('the request gate was located',AZOK.length>20,true);
+ck('the request path tolerates soft failures like the cron does',
+   /SUBREQ\.softFail <= AZ_CRON_SOFTFAIL_TOLERANCE/.test(AZOK),true);
+ck('and never by a bare veto on softFail',/&& !SUBREQ\.softFail/.test(AZOK),false);
+// Missing DATE RANGES are still never cacheable — that is a hole, not a gap.
+ck('but it still refuses an exhausted pool or dropped chunks',
+   [/!SUBREQ\.exhausted/.test(AZOK),/!SUBREQ\.windsorDropped/.test(AZOK)],[true,true]);
+// The cron keeps its own, equally tolerant gate.
+ck('the cron uses the same tolerance',
+   (src.match(/SUBREQ\.softFail <= AZ_CRON_SOFTFAIL_TOLERANCE/g)||[]).length>=3,true);
+ck('and caching with a gap is reported',
+   /caching analyzer payload \(\$\{_azWin\}\) WITH \$\{SUBREQ\.softFail\}/.test(src),true);
 ck('the tolerance is small, not a blank cheque',
    +(/AZ_CRON_SOFTFAIL_TOLERANCE = (\d+)/.exec(src)||[])[1]<=10,true);
 
