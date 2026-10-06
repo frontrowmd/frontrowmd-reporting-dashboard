@@ -1042,8 +1042,23 @@ const AZ_PRECOMPUTED_WINDOWS = ['ytd', 'allTime'];
 // nothing at all, which is strictly worse than a payload with a small gap. The
 // request path stays strict.
 const AZ_CRON_SOFTFAIL_TOLERANCE = 5;
+// The AD DATA's own version, deliberately NOT API_CACHE_VER. The two cache
+// different things: API_CACHE_VER tracks the /api/data and /api/clinician
+// payload shapes, which change whenever a dashboard card is added, while this
+// tracks the ad-data shape, which almost never changes.
+//
+// They used to share one constant, which meant any unrelated dashboard change
+// invalidated the CRON-WARMED Year to Date and All Time entries — the ones that
+// take minutes to rebuild and cannot be computed on the request path. The
+// symptom was the Ads section failing to load for up to 20 minutes after every
+// deploy that touched an unrelated payload, which reads exactly like the
+// timeout bug those precomputes were built to fix.
+//
+// Bump this ONLY when the ad-data shape changes. A dashboard payload change
+// should not cost a cold precompute.
+const AZ_DATA_VER = 'a1';
 function azCacheKey(win, from, to, vsFrom, vsTo) {
-  return 'azdata_resp_' + API_CACHE_VER + '_' + win + '_' + (from||'') + '_' + (to||'')
+  return 'azdata_resp_' + AZ_DATA_VER + '_' + win + '_' + (from||'') + '_' + (to||'')
        + '_' + (vsFrom||'') + '_' + (vsTo||'');
 }
 // These aggregate months of history, so a half-hour-old view is accurate enough;

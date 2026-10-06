@@ -22,7 +22,7 @@ ck('Onboarding Rate by Entry Path is gone',/Onboarding Rate by Entry Path<\/span
 // entryStrip is concatenated in the assembly below — deleting the variable is a
 // ReferenceError that blanks the whole Clinician page.
 ck('but entryStrip still exists for the assembly',/const entryStrip='';/.test(RC),true);
-ck('and is still referenced there',/_clnFunnelBar\(d\)\+entryStrip\+segBar/.test(RC),true);
+ck('and is still referenced there',/entryStrip\+segBar/.test(RC),true);
 ck('Samples & Reviews is gone',/cardOpen\('Samples & Reviews'/.test(cli),false);
 
 // --- 5 + 6. path cards gated on the workflow ----------------------------
@@ -202,10 +202,27 @@ ck('and their setter with them',/clinicianSetFlow/.test(cli),false);
 ck('flow is pinned to virtual',/const flow='virtual';/.test(RC),true);
 ck('the funnel says so in its own header',/Virtual Workflow/.test(RC),true);
 
-// --- the pinned date range must not outlive a page-filter change ----------
-ck('a pin records the window it belongs to',/S\.clinician\._pinnedFor=_p\?\(_p\.from\+'_'\+_p\.to\):null;/.test(cli),true);
-ck('and is dropped when the page window moves',
-   /if\(S\.clinician\._pinnedFor&&S\.clinician\._pinnedFor!==\(d&&d\.period&&d\.period\.from\+'_'\+d\.period\.to\)\)\{/.test(cli),true);
+// --- the funnel has NO date filter of its own ----------------------------
+// It used to carry one, independent of the page selector, with a pinned range
+// that had to be invalidated whenever the page window moved. That whole
+// mechanism is gone: the funnel now follows the page window like every other
+// section, so there is no second span for the two to disagree about.
+ck('the Funnel Dates bar is gone',/Funnel Dates/.test(cli),false);
+ck('and its builder with it',/_clnFunnelBar/.test(cli),false);
+ck('and its Apply / Reset handlers',
+   [/clinicianApplyFunnelRange/.test(cli),/clinicianResetFunnelRange/.test(cli)],[false,false]);
+ck('and the fetch only they could reach',/fdClinicianFunnel/.test(cli),false);
+// The state they wrote is gone too — a reset that clears state nothing can set
+// reads as though the feature still exists.
+ck('no funnel-override state survives',
+   [/funnelRange/.test(cli),/funnelData/.test(cli),/_pinnedFor/.test(cli)],[false,false,false]);
+// What replaces it: the range comes straight off the payload's period.
+ck('the funnel range is the page window',
+   /function _clnFunnelRange\(d\)\{\s*const pp=\(d&&d\.period\)\|\|null;/.test(cli),true);
+ck('with the history range as the only fallback',
+   /return \{from:CLINICIAN_HISTORY_FROM,to:\(hr&&hr\.to\)\|\|CLINICIAN_HISTORY_FROM\};/.test(cli),true);
+ck('and the funnel payload is simply what the endpoint returned',
+   /function _clnFunnelData\(d\)\{ return d; \}/.test(cli),true);
 
 // --- removals -------------------------------------------------------------
 ck('the Exited Pipeline card is gone',/cardOpen\('Exited Pipeline'/.test(cli),false);

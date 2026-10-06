@@ -886,7 +886,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t245';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t246';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3472,8 +3472,7 @@ function _clnTrendCard(d){
     return '<button onclick="toggleClnTrendGrain(\''+g+'\')" style="font-family:var(--font-h);font-size:11px;font-weight:700;letter-spacing:.02em;padding:6px 14px;border:none;background:'+(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+';cursor:pointer;transition:background .15s,color .15s">'+label+'</button>';
   };
   var toggle='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0 2px 15px">'
-    +'<span style="font-family:var(--font-h);font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.08em">Chart</span>'
-    +'<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden">'
+        +'<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden">'
     +gPill('week','Weekly')+gPill('day','Daily')+'</div></div>';
   // Window totals, one mini per metric. Rates and costs are recomputed from the
   // SUMMED components rather than averaged across periods — the mean of six
@@ -4491,63 +4490,20 @@ const CLINICIAN_FUNNEL_API=location.protocol==='file:'?'https://frontrowmd-dashb
 // back to this date whatever the page's date filter says, because a pipeline
 // that takes months to walk can't be read one month at a time.
 const CLINICIAN_HISTORY_FROM='2026-07-01';
-// The funnel's own date filter. Independent of the page selector by design:
-// changing the page window must not move it, and moving it must not reload the page.
+// The span the funnel describes. It had its own date filter, independent of the
+// page selector; that was removed, so the funnel simply follows the page window
+// like every other section. The history fallback remains for a payload with no
+// period on it.
 function _clnFunnelRange(d){
-  const st=S.clinician.funnelRange;
-  if(st&&st.from&&st.to)return st;
-  // Defaults to the PAGE window so the funnel and every other section describe
-  // the same span on load; the Reset button returns here.
   const pp=(d&&d.period)||null;
   if(pp&&pp.from&&pp.to)return {from:pp.from,to:pp.to};
   const hr=(d&&d.historyRange)||null;
   return {from:CLINICIAN_HISTORY_FROM,to:(hr&&hr.to)||CLINICIAN_HISTORY_FROM};
 }
-// The funnel payload on screen: the override from its own filter if one has been
-// applied, otherwise whatever /api/clinician returned (already history-scoped).
-function _clnFunnelData(d){
-  const o=S.clinician.funnelData;
-  return (o&&!o.error)?o:d;
-}
-function _clnFunnelBar(d){
-  const r=_clnFunnelRange(d);
-  const busy=!!S.clinician._funnelLoading;
-  const err=(S.clinician.funnelData&&S.clinician.funnelData.error)||null;
-  const inp=(id,v)=>'<input type="date" id="'+id+'" value="'+v+'" style="font-family:var(--font-b);font-size:11px;padding:4px 7px;border:1px solid var(--border);border-radius:6px;color:var(--navy);background:#fff">';
-  return '<div class="cln-frow"><span class="cln-flabel">Funnel Dates</span><div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">'
-    +inp('cln-fn-from',r.from)+'<span style="color:var(--grey);font-size:11px">\u2192</span>'+inp('cln-fn-to',r.to)
-    +'<button onclick="clinicianApplyFunnelRange()" style="font-family:var(--font-h);font-size:11px;font-weight:700;padding:5px 13px;border:none;border-radius:99px;background:var(--navy);color:#fff;cursor:pointer">'+(busy?'Loading\u2026':'Apply')+'</button>'
-    +(S.clinician.funnelRange?'<button onclick="clinicianResetFunnelRange()" style="font-family:var(--font-h);font-size:11px;font-weight:600;padding:5px 11px;border:1px solid var(--border);border-radius:99px;background:#fff;color:var(--grey);cursor:pointer">Reset</button>':'')
-    +'<span style="font-size:10px;color:var(--grey)">independent of the page filter</span>'
-    +(err?'<span style="font-size:10px;color:#B4483C">'+String(err).slice(0,80)+'</span>':'')
-    +'</div></div>';
-}
-window.clinicianApplyFunnelRange=function(){
-  const f=document.getElementById('cln-fn-from'), t=document.getElementById('cln-fn-to');
-  if(!f||!t||!f.value||!t.value)return;
-  if(t.value<f.value){alert('End date is before the start date.');return;}
-  S.clinician.funnelRange={from:f.value,to:t.value};
-  { const _p=S.clinician.data&&S.clinician.data.period; S.clinician._pinnedFor=_p?(_p.from+'_'+_p.to):null; }
-  fdClinicianFunnel(f.value,t.value);
-};
-window.clinicianResetFunnelRange=function(){
-  S.clinician.funnelRange=null; S.clinician.funnelData=null; renderClinician();
-};
-async function fdClinicianFunnel(from,to){
-  if(S.clinician._funnelLoading)return;
-  S.clinician._funnelLoading=true;
-  renderClinician();
-  try{
-    const r=await fetch(CLINICIAN_FUNNEL_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:PW,from:from,to:to})});
-    const j=await r.json();
-    S.clinician.funnelData=(r.ok&&!j.error)?j:{error:(j&&(j.detail||j.error))||('HTTP '+r.status)};
-  }catch(e){
-    S.clinician.funnelData={error:(e&&e.message)||'connection error'};
-  }finally{
-    S.clinician._funnelLoading=false;
-    renderClinician();
-  }
-}
+// The funnel payload on screen. With the override filter gone this is always
+// what /api/clinician returned; kept as one named call site so the funnel
+// section does not reach into the payload three different ways.
+function _clnFunnelData(d){ return d; }
 async function fdClinician(win){
   S.clinician._loading=true;
   // renderPage() applies .active to #page-clinician (switchDashSub returns early
@@ -4563,12 +4519,6 @@ async function fdClinician(win){
     const r=await fetch(CLINICIAN_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
     const d=await r.json();
     if(!r.ok||d.error){throw new Error(d.error||('HTTP '+r.status));}
-    // The funnel's own range defaults to the page window, so a pin from an
-    // earlier window must not survive a page-filter change — it would leave the
-    // funnel describing a different span from every other section.
-    if(S.clinician._pinnedFor&&S.clinician._pinnedFor!==(d&&d.period&&d.period.from+'_'+d.period.to)){
-      S.clinician.funnelRange=null; S.clinician.funnelData=null; S.clinician._pinnedFor=null;
-    }
     S.clinician.data=d; S.clinician._loading=false; if(AP==='clinician')renderPage();
   }catch(e){
     S.clinician._loading=false;
@@ -5584,7 +5534,7 @@ function renderClinician(){
     'Deals created '+_fr.from+' \u2192 '+_fr.to+' \u00b7 '+fN(_fcount)+' deal'+(_fcount===1?'':'s')
       +((fd.excludedFuture||0)?' \u00b7 '+fN(fd.excludedFuture)+' future-dated meeting'+(fd.excludedFuture===1?'':'s')+' excluded':'')
       +' \u00b7 bar length = how many ever reached the stage, solid = how many are there now',
-    _clnFunnelBar(d)+entryStrip+segBar+'<div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">'
+    entryStrip+segBar+'<div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">'
       +'<div style="flex:1 1 73%;min-width:340px">'+fh+'</div>'
       +'<div style="flex:0 1 25%;min-width:230px;background:var(--lighter);border:1px solid var(--border);border-radius:10px;padding:12px 14px">'+sh+'</div>'
     +'</div>');
@@ -5681,8 +5631,7 @@ function renderClinician(){
     // Card-level population switch, above both panels so its scope is obvious.
     const acqRate=(comp.contacts>0&&sub)?((sub.contacts||0)/comp.contacts*100):null;
     const acqToggle='<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:0 0 14px">'
-      +'<span style="font-family:var(--font-h);font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.08em">Population</span>'
-      +'<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap">'
+            +'<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap">'
       +acqPill('inquiry','Inquiry','Every clinician who came in during the window')
       +acqPill('submission','Full Submission','Only clinicians who have a kickoff call booked')
       +'</div>'
@@ -5829,12 +5778,18 @@ function renderClinician(){
   h+=refCard('contact','Contact Fields','Verified against HubSpot \u00b7 all present',tbl(CLINICIAN_CONTACT_PROPS_REF),CLINICIAN_CONTACT_PROPS_REF.length);
   el.innerHTML=h;
   // SVG charts draw into containers that only exist once h is in the DOM.
-  _renderClnTrend(d);
+  // Each step is isolated: these run in sequence AFTER the page HTML is already
+  // on screen, so an exception in one aborts every step after it — a throw in a
+  // chart silently left the Ad Tables empty, which reads as "the Ads section is
+  // not loading" rather than as a chart bug. Failing loudly in the console and
+  // carrying on is strictly better than failing silently downstream.
+  const _step=(name,fn)=>{try{fn();}catch(e){console.error('Clinician render ['+name+']:',e);}};
+  _step('trend',()=>_renderClnTrend(d));
   // Same population the Acquisition card was built with — recomputed here rather
   // than threaded out of that block, which is scoped.
-  _renderClnOnTarget(d,(S.clinician.acqMode==='submission')?'submission':'inquiry');
-  if(typeof _renderIrfanMetaTablesLoader==='function')_renderIrfanMetaTablesLoader();
-  buildSectionNav('clinician');
+  _step('on-target',()=>_renderClnOnTarget(d,(S.clinician.acqMode==='submission')?'submission':'inquiry'));
+  _step('ad-tables',()=>{if(typeof _renderIrfanMetaTablesLoader==='function')_renderIrfanMetaTablesLoader();});
+  _step('nav',()=>buildSectionNav('clinician'));
 }
 
 // ── Sticky section nav ──────────────────────────────────────────────────────

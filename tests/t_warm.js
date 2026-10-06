@@ -80,5 +80,28 @@ ck('the request path keeps the strict gate',
 ck('the tolerance is small, not a blank cheque',
    +(/AZ_CRON_SOFTFAIL_TOLERANCE = (\d+)/.exec(src)||[])[1]<=10,true);
 
+// --- the warm cache must survive an unrelated payload change ---------------
+// The whole point of the cron is that Year to Date and All Time are too
+// expensive to build on the request path. That guarantee is only as good as the
+// cache key: azCacheKey used to embed API_CACHE_VER, which tracks the DASHBOARD
+// PAYLOAD shape and is bumped whenever a card is added anywhere. So adding a
+// clinician chart silently threw away the warmed ad data, and the Ads section
+// failed to load until the next cron — reading exactly like the timeout bug the
+// precompute exists to prevent.
+const AZKEY=fn(src,'azCacheKey');
+ck('the ad-data cache key does not ride the payload version',
+   /API_CACHE_VER/.test(AZKEY),false);
+ck('it has a version of its own',/azdata_resp_' \+ AZ_DATA_VER/.test(AZKEY),true);
+ck('which is declared',/const AZ_DATA_VER = '[^']+';/.test(src),true);
+// The response cache for /api/data is the opposite case: it caches the payload
+// itself, so it MUST invalidate when the payload shape changes.
+ck('but the api response cache still does ride it',
+   /'apidata_resp_' \+ API_CACHE_VER/.test(src),true);
+// Both the cron writer and the request reader must go through the one function,
+// or they can disagree about where the warmed entry lives.
+ck('the cron writes through azCacheKey',/CONTENT_STORE\.put\(azCacheKey\(win, null, null, null, null\)/.test(src),true);
+ck('and nothing builds an azdata key by hand',
+   (src.match(/'azdata_resp_/g)||[]).length,1);
+
 console.log(pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);

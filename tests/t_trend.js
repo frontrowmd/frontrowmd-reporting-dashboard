@@ -159,6 +159,14 @@ const TOG=cli.slice(cli.indexOf('window.toggleClnTrendGrain=function'),cli.index
 ck('the toggle rebuilds the card', /card\.outerHTML=_clnTrendCard\(d\)/.test(TOG), true);
 ck('and re-renders the chart after it',
    TOG.indexOf('_renderClnTrend(d)')>TOG.indexOf('card.outerHTML=_clnTrendCard(d)'), true);
+// Both grains are offered, and the pills say what they do — a "Chart" caption
+// above them said nothing the pills did not.
+{
+  const CARD=fn(cli,'_clnTrendCard');
+  ck('both grains are offered',
+     /gPill\('week','Weekly'\)\+gPill\('day','Daily'\)/.test(CARD), true);
+  ck('and the toggle carries no caption', /Chart<\/span>/.test(CARD), false);
+}
 ck('nav heading has a stable id', /id="cln-trend-h"/.test(cli), true);
 const iDaily=cli.indexOf("h+=card('Daily Activity'"), iTrend=cli.indexOf('h+=_clnTrendCard(d);'), iAcq=cli.indexOf("h+=card('Acquisition'");
 ck('Trend Analysis sits between Daily Activity and Acquisition',

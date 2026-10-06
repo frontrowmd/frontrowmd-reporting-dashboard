@@ -174,6 +174,13 @@ ck('and the renderer is handed the same state',
 ck('which is how the Acquisition card picks its own population',
    /const acqMode=\(S\.clinician\.acqMode==='submission'\)\?'submission':'inquiry';/.test(cli), true);
 ck('and the toggle re-renders the page', /window\.clinicianSetAcq=function\(mode\)\{S\.clinician\.acqMode=mode;renderClinician\(\);\}/.test(cli), true);
+// The two pills name the populations; a "Population" caption above them did not.
+{
+  const ACQT=cli.slice(cli.indexOf("const acqToggle='<div"), cli.indexOf("const noSub="));
+  ck('the population toggle carries no caption', /Population<\/span>/.test(ACQT), false);
+  ck('but still offers both populations',
+     [/acqPill\('inquiry','Inquiry'/.test(ACQT), /acqPill\('submission','Full Submission'/.test(ACQT)], [true,true]);
+}
 
 // ── Unmapped types and empty states ────────────────────────────────────────
 // A new HubSpot option must show up somewhere rather than shrink the total.
@@ -206,6 +213,26 @@ const widest=2+dctx._clnTypeBands(WK,'byType').bands.length;
 const loopMax=+(/for\(var i=1;i<=(\d+);i\+\+\)/.exec(cli)||[])[1];
 ck('the tooltip covers every row this card emits', loopMax>=widest, true);
 ck('and the card never emits more rows than that', /rows\.slice\(0,8\)/.test(cli)&&loopMax>=8, true);
+
+// --- one chart must not be able to take the Ads section down --------------
+// These steps run in sequence AFTER the page HTML is already on screen, so an
+// exception in an earlier one used to abort every later one. A throw in a chart
+// left the Ad Tables empty with no visible cause, which reads as "the Ads
+// section is not loading" rather than as a chart bug.
+{
+  const TAIL=cli.slice(cli.indexOf('  el.innerHTML=h;',cli.indexOf('function renderClinician')),
+                       cli.indexOf('// \u2500\u2500 Sticky section nav'));
+  ck('each post-render step is isolated',
+     /const _step=\(name,fn\)=>\{try\{fn\(\);\}catch\(e\)\{console\.error\(/.test(TAIL), true);
+  ck('and every step goes through it',
+     (TAIL.match(/_step\('/g)||[]).length, 4);
+  ck('the ad tables are one of them',/_step\('ad-tables',/.test(TAIL), true);
+  // The failure is silent by nature, so it has to reach the console.
+  ck('a failing step names itself',/console\.error\('Clinician render \['\+name\+'\]:'/.test(TAIL), true);
+  // Order still matters: the charts draw first, the tables fetch after.
+  ck('the ad tables still run after the charts',
+     TAIL.indexOf("_step('ad-tables'")>TAIL.indexOf("_step('trend'"), true);
+}
 
 console.log(pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);
