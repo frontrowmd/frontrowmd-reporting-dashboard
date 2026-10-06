@@ -7657,6 +7657,11 @@ const BD_DEAL_PROPS = [
   'pausechurn_date','never_implemented_churn','churn_reason',
   'detailed_reason_for_churn','paused_billing_length_months',
   'temporary_pause_reason','paused_billing__billing_restart_date',
+  // Churn analysis (Churn tab). ab_test is Yes/No/Unknown — "Unknown" is a
+  // STORED value, distinct from blank, so the two must not be collapsed.
+  // web_traffic__measured is a NUMBER; the reported one is a band enum, so the
+  // two are not directly comparable without binning one of them.
+  'ab_test','web_traffic__measured','monthly_web_traffic__reported_at_time_of_churn',
   // Timestamp the deal first entered closed-won — the true signing date, which
   // PERSISTS after a brand churns (closedate is often blank on churned deals).
   // Used by the BD "Snapshot" chart to place churned brands in the months they
@@ -7929,6 +7934,15 @@ async function fetchBDData(env, fresh) {
       paused_billing_length_months: p.paused_billing_length_months||'',
       temporary_pause_reason: p.temporary_pause_reason||'',
       paused_billing__billing_restart_date: p.paused_billing__billing_restart_date||'',
+      ab_test: p.ab_test||'',
+      monthly_web_traffic__reported_at_time_of_churn: p.monthly_web_traffic__reported_at_time_of_churn||'',
+      // Numeric, so parsed like amount rather than passed through as a string.
+      // NOTE a stored 0 and "not measured" are indistinguishable after this, and
+      // 24 churned deals do store a literal 0 — almost all of them
+      // churn_reason='Never Implemented', i.e. brands that never launched and
+      // were never measured. The client must treat 0 as MISSING, or every
+      // traffic cut is dragged toward zero by brands that were never live.
+      web_traffic__measured: parseFloat(p.web_traffic__measured)||0,
       // Always include the associated companyId (from associations); the
       // companyName comes from the cache if available, else empty (client
       // will fill it in via /api/bd/lookup-companies).
