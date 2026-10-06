@@ -886,7 +886,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t254';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t255';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3594,16 +3594,42 @@ function _clnTrendCard(d){
     return '<button onclick="'+fn+'" '+(note?('title="'+note+'" '):'')+'style="font-family:var(--font-h);font-size:11px;font-weight:700;letter-spacing:.02em;padding:6px 14px;border:none;background:'
       +(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+';cursor:pointer;transition:background .15s,color .15s">'+label+'</button>';
   };
-  var seg=function(caption,inner){
-    return '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 8px 15px">'
-      +'<span style="font-family:var(--font-h);font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.08em;width:68px;flex-shrink:0">'+caption+'</span>'
-      +'<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap">'+inner+'</div></div>';
+  // No captions. The pills name themselves — Weekly / Inquiry / Cost Per —
+  // and three stacked label columns were more chrome than the choices needed.
+  // The groups sit on one wrapping row, spaced apart so they still read as
+  // three separate choices rather than one long strip of twelve.
+  var seg=function(inner){
+    return '<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap">'+inner+'</div>';
   };
-  var toggles='<div style="margin:12px 0 4px">'
-    +seg('Period',CLN_TR_GRAINS.map(function(x){return pill(g.k===x.k,x.l,"toggleClnTrendGrain('"+x.k+"')",x.note);}).join(''))
-    +seg('Population',CLN_TR_POPS.map(function(x){return pill(pdef.k===x.k,x.l,"toggleClnTrendPop('"+x.k+"')",'');}).join(''))
-    +seg('Measure',CLN_TR_METRICS.map(function(x){return pill(mdef.k===x.k,x.l,"toggleClnTrendMetric('"+x.k+"')",'');}).join(''))
+  var toggles='<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin:12px 0 4px 15px">'
+    +seg(CLN_TR_GRAINS.map(function(x){return pill(g.k===x.k,x.l,"toggleClnTrendGrain('"+x.k+"')",x.note);}).join(''))
+    +seg(CLN_TR_POPS.map(function(x){return pill(pdef.k===x.k,x.l,"toggleClnTrendPop('"+x.k+"')",'');}).join(''))
+    +seg(CLN_TR_METRICS.map(function(x){return pill(mdef.k===x.k,x.l,"toggleClnTrendMetric('"+x.k+"')",'');}).join(''))
     +'</div>';
+
+  // ── What the KPI figures actually cover ──────────────────────────────────
+  // The cards sum the periods ON SCREEN, which is this grain's lookback and
+  // NOT the page date filter and NOT the worker's full 100-day series. That is
+  // three different spans in play at once, so it is stated outright above the
+  // numbers rather than left to be inferred from the chart's axis.
+  var _trRangeBand=(function(){
+    var msOf=function(k){var q=String(k).split('-');return Date.UTC(+q[0],+q[1]-1,+q[2]);};
+    var todayMs=(function(){var t=new Date();return Date.UTC(t.getFullYear(),t.getMonth(),t.getDate());})();
+    var startMs=msOf(pts[0].wk);
+    var endMs=Math.min(_clnTrEnd(pts[pts.length-1].wk,g.k).ms,todayMs);
+    var fmtD=function(ms,withYear){
+      var dd=new Date(ms);
+      return CLN_TR_MON[dd.getUTCMonth()]+' '+dd.getUTCDate()+(withYear?(', '+dd.getUTCFullYear()):'');
+    };
+    var unit=g.k==='day'?'day':g.k==='week'?'week':'month';
+    return '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:14px 0 0 15px;padding:9px 14px;'
+      +'background:rgba(114,164,191,.08);border:1px solid rgba(114,164,191,.28);border-radius:9px">'
+      +'<span style="font-family:var(--font-h);font-size:9px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.08em">Figures below cover</span>'
+      +'<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">'+fmtD(startMs,false)+' \u2013 '+fmtD(endMs,true)+'</span>'
+      +'<span style="font-size:11px;color:var(--grey)">'+pts.length+' '+unit+(pts.length===1?'':'s')+' \u00b7 '+g.note+'</span>'
+      +'<span style="font-size:10px;color:var(--grey);font-style:italic;margin-left:auto">not the page date filter</span>'
+      +'</div>';
+  })();
 
   // KPI cards follow the toggles. Every figure is recomputed from the SUMMED
   // components of the periods on screen, never averaged across periods — the
@@ -3613,7 +3639,7 @@ function _clnTrendCard(d){
   var val=_clnTrValue(mdef.k,T);
   // The selected measure is accented so the link between the row and the line
   // on the chart is visible without reading the legend.
-  var minis='<div style="display:flex;gap:9px;flex-wrap:wrap;margin:10px 0 4px">'
+  var minis=_trRangeBand+'<div style="display:flex;gap:9px;flex-wrap:wrap;margin:10px 0 4px">'
     +CLN_TR_CARDS.map(function(card){
       var st=_clnTrStat(card,T,pdef);
       var on=(card.metric===mdef.k)||(card.withPct&&card.withPct===mdef.k);

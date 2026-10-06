@@ -322,5 +322,34 @@ ck('the old Weekly Cost card is gone', /_clnWeeklyCard|_renderClnWeekly/.test(cl
   ck('the Doctors card shows count and share together', [doc.val,doc.calc], ['8','40.0% of 20 inquiries']);
 }
 
+// ── What the KPI figures cover, stated above them ─────────────────────────
+// Three different spans are in play on this page at once — the page date
+// filter, the worker's 100-day series, and this grain's own lookback — and the
+// cards sum the LAST of those. Left unstated it is the page filter a reader
+// would assume.
+ck('a range band sits above the cards', /Figures below cover/.test(cli), true);
+ck('and is emitted before them', /var minis=_trRangeBand\+'<div style="display:flex;gap:9px/.test(cli), true);
+// It must describe the periods ON SCREEN, not the worker's full series.
+ck('it is derived from the plotted points',
+   /var startMs=msOf\(pts\[0\]\.wk\);/.test(cli)
+   && /var endMs=Math\.min\(_clnTrEnd\(pts\[pts\.length-1\]\.wk,g\.k\)\.ms,todayMs\);/.test(cli), true);
+// A week or month in progress must not advertise an end date in the future.
+ck('the end is clamped to today', /Math\.min\(_clnTrEnd\([^)]*\)\.ms,todayMs\)/.test(cli), true);
+ck('it states the period count and the lookback',
+   /pts\.length\+' '\+unit\+\(pts\.length===1\?'':'s'\)\+' \\u00b7 '\+g\.note/.test(cli), true);
+ck('and says plainly it is not the page filter', /not the page date filter/.test(cli), true);
+
+// ── Toggle captions removed ──────────────────────────────────────────────
+// The pills name themselves; three stacked label columns were chrome.
+{
+  const cardFn=fn(cli,'_clnTrendCard');
+  ck('seg() no longer takes a caption', /var seg=function\(inner\)\{/.test(cardFn), true);
+  ck('and renders none', /Period<\/span>|Population<\/span>|Measure<\/span>/.test(cardFn), false);
+  // The three groups must still be visually separate, or twelve pills read as
+  // one strip and the three choices are no longer distinguishable.
+  ck('the three groups stay separate', (cardFn.match(/\+seg\(/g)||[]).length, 3);
+  ck('spaced apart on one row', /gap:18px;flex-wrap:wrap;margin:12px 0 4px 15px/.test(cardFn), true);
+}
+
 console.log(pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);
