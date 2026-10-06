@@ -332,8 +332,20 @@ ck('the old Weekly Cost card is gone', /_clnWeeklyCard|_renderClnWeekly/.test(cl
   ck('CTR is the one card with no population in its label', got.filter(g=>/·/.test(g[0])).length, 4);
   // No stat may appear twice — that was the complaint.
   ck('no label repeats', new Set(got.map(g=>g[0])).size, got.length);
+  // Doctors is a SPLIT stat: the count and the share are two readings of one
+  // cut, so both are VALUES. The share used to sit in the caption, where it
+  // read as working-out rather than as a figure.
   const doc=dctx.__stat(dctx.__cards[4],T,pdef);
-  ck('the Doctors card shows count and share together', [doc.val,doc.calc], ['8','40.0% of 20 inquiries']);
+  ck('the Doctors card splits count and share', [doc.val,doc.split,doc.calc],
+     ['8','40.0%','of 20 inquiries']);
+  // Only Doctors splits — every other stat has one value, and a stray split
+  // would read as two measures on one row.
+  ck('and nothing else does',
+     dctx.__cards.map(c=>!!dctx.__stat(c,T,pdef).split),
+     [false,false,false,false,true,false]);
+  // A split must survive a zero denominator rather than printing NaN%.
+  const doc0=dctx.__stat(dctx.__cards[4],{spend:0,clicks:0,impressions:0,pop:0,md:0},pdef);
+  ck('with no population the share is a dash, not NaN', doc0.split, '\u2014');
 }
 
 // ── What the KPI figures cover, stated above them ─────────────────────────
@@ -363,6 +375,29 @@ ck('and says plainly it is not the page filter', /not the page date filter/.test
   // one strip and the three choices are no longer distinguishable.
   ck('the three groups stay separate', (cardFn.match(/\+seg\(/g)||[]).length, 3);
   ck('spaced apart on one row', /gap:18px;flex-wrap:wrap;margin:12px 0 4px 15px/.test(cardFn), true);
+}
+
+// ── The plotted measure leads the hover ───────────────────────────────────
+// Order still follows the cards — only the emphasis moves. The row the chart is
+// drawing is the reason the reader is hovering.
+ck('the hover flags the selected row',
+   /var isSel=\(card\.metric===mdef\.k\)\|\|\(card\.withPct&&card\.withPct===mdef\.k\);/.test(cli), true);
+ck('and passes it through as a field', /\+\(isSel\?'1':''\)\+'\|'\+\(st\.split\|\|''\)/.test(cli), true);
+// Selecting Doctor % must light the Doctors row, since that card carries both.
+ck('Doctor % lights the Doctors row via withPct',
+   /\{k:'doctor',\s*metric:'md',\s*unit:'#',\s*pop:true,\s*withPct:'mdpct'\}/.test(cli), true);
+{
+  const tip=cli.slice(cli.indexOf('function clnWkTip(e,el){'), cli.indexOf('function clnWkTipMove'));
+  ck('the tooltip reads the flag', /var isPrimary=\(f\[5\]==='1'\);/.test(tip), true);
+  // Prominence has to be more than colour: a bigger value, a stronger label and
+  // a panel behind it.
+  ck('and gives that row real weight',
+     [/font-size:'\+\(isPrimary\?'18':'14'\)\+'px/.test(tip),
+      /isPrimary\?';font-weight:700':''/.test(tip),
+      /background:rgba\(255,255,255,\.10\)/.test(tip)], [true,true,true]);
+  ck('the split value renders beside the first, not under it', /if\(f\[6\]\)\{/.test(tip), true);
+  ck('and is dimmer, so the pair reads as one measure',
+     /color:rgba\(255,255,255,\.74\)/.test(tip), true);
 }
 
 console.log(pass+' passed, '+fail+' failed');

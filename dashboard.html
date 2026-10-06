@@ -886,7 +886,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t256';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t257';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3364,8 +3364,15 @@ function clnWkTip(e,el){
   for(var i=1;i<=9;i++){
     var raw=el.getAttribute('data-r'+i); if(!raw)continue;
     var f=raw.split('|');
+    // f[5]='1' marks the row the chart is currently plotting — it is the reason
+    // the reader is hovering, so it gets the weight. f[6] is a second value
+    // shown beside the first.
+    var isPrimary=(f[5]==='1');
     var row=document.createElement('div');
-    row.style.cssText='display:flex;align-items:baseline;gap:7px;margin-top:'+(i===1?'7px':'5px')+';white-space:nowrap';
+    row.style.cssText='display:flex;align-items:baseline;gap:7px;white-space:nowrap;'
+      +(isPrimary
+        ? 'margin-top:7px;padding:4px 7px 5px;border-radius:6px;background:rgba(255,255,255,.10)'
+        : ('margin-top:'+(i===1?'7px':'5px')));
     // "Line keys, not boxes": a short stroke of the series colour, dashed for the
     // right-axis series so the key matches the mark it stands for.
     var key=document.createElement('span');
@@ -3375,13 +3382,26 @@ function clnWkTip(e,el){
     // strong element -- the legend's hierarchy inverted, because on hover the
     // reader already knows the series and wants the number.
     var lbl=document.createElement('span');
-    lbl.style.cssText='flex:1 1 auto;font-size:10.5px;color:rgba(255,255,255,.72)';
+    lbl.style.cssText='flex:1 1 auto;font-size:'+(isPrimary?'11':'10.5')+'px;color:rgba(255,255,255,'+(isPrimary?'.92':'.72')+')'
+      +(isPrimary?';font-weight:700':'');
     lbl.textContent=f[0]||'';
     row.appendChild(lbl);
     var val=document.createElement('span');
-    val.style.cssText='font-family:var(--font-h);font-size:14px;font-weight:700;color:#fff';
-    val.textContent=f[1]||'—';
+    val.style.cssText='font-family:var(--font-h);font-size:'+(isPrimary?'18':'14')+'px;font-weight:700;color:#fff';
+    val.textContent=f[1]||'\u2014';
     row.appendChild(val);
+    // Split stat: the second value gets its own slot, dimmer than the first, so
+    // the pair reads as one measure in two units rather than as two measures.
+    if(f[6]){
+      var sep=document.createElement('span');
+      sep.style.cssText='font-size:10px;color:rgba(255,255,255,.34)';
+      sep.textContent='\u00b7';
+      row.appendChild(sep);
+      var val2=document.createElement('span');
+      val2.style.cssText='font-family:var(--font-h);font-size:'+(isPrimary?'15':'12.5')+'px;font-weight:700;color:rgba(255,255,255,.74)';
+      val2.textContent=f[6];
+      row.appendChild(val2);
+    }
     tip.appendChild(row);
     if(f[2]){
       var sub=document.createElement('div');
@@ -3452,14 +3472,18 @@ const CLN_TR_CARDS=[
 // Label, value and working for one stat, against summed components.
 function _clnTrStat(card,T,pdef){
   var mdef=CLN_TR_METRICS.filter(function(m){return m.k===card.metric;})[0]||null;
-  var popW=pdef.short, lbl, val, calc, colour;
+  var popW=pdef.short, lbl, val, calc, colour, split=null;
   if(card.k==='spend'){
     lbl='Ad Spend'; val=_clnTrFmt(T.spend,'$'); colour=CLN_TR_SPEND.c;
     calc='clinician channel \u00b7 always on the chart';
   }else if(card.k==='doctor'){
+    // A SPLIT stat: the count and the share are two readings of one cut, so
+    // both are values. The share used to be buried in the caption line, which
+    // made it read as working-out rather than as a figure in its own right.
     var pct=T.pop>0?(T.md/T.pop)*100:null;
     lbl=CLN_MD_TYPE+(card.pop?(' \u00b7 '+pdef.l):''); val=fN(T.md); colour=mdef?mdef.c:CLN_TR_SPEND.c;
-    calc=(pct!=null?pct.toFixed(1)+'% of ':'')+fN(T.pop)+' '+popW;
+    split=_clnTrFmt(pct,'%');
+    calc='of '+fN(T.pop)+' '+popW;
   }else{
     var v=_clnTrValue(card.metric,T);
     lbl=(mdef?mdef.l:card.k)+(card.pop?(' \u00b7 '+pdef.l):'');
@@ -3471,7 +3495,7 @@ function _clnTrStat(card,T,pdef){
       ctr:fN(T.clicks)+' \u00f7 '+fN(T.impressions)+' impressions',
     }[card.k]||'';
   }
-  return {lbl:lbl,val:val,calc:calc,c:colour};
+  return {lbl:lbl,val:val,calc:calc,c:colour,split:split};
 }
 const CLN_TR_ROLL_C='#172C45';
 const CLN_TR_ROLL_DAYS=7;
@@ -3647,7 +3671,11 @@ function _clnTrendCard(d){
         +(on?st.c:'var(--border)')+';border-radius:10px;padding:11px 13px;border-top:3px solid '+st.c
         +(on?';box-shadow:0 1px 6px rgba(2,15,24,.10)':'')+'">'
         +'<div style="font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em">'+st.lbl+'</div>'
-        +'<div style="font-family:var(--font-h);font-size:21px;font-weight:700;color:var(--navy);margin-top:3px">'+st.val+'</div>'
+        +'<div style="display:flex;align-items:baseline;gap:6px;margin-top:3px;flex-wrap:wrap">'
+        +'<span style="font-family:var(--font-h);font-size:21px;font-weight:700;color:var(--navy)">'+st.val+'</span>'
+        +(st.split?('<span style="font-size:11px;color:var(--grey)">\u00b7</span>'
+                   +'<span style="font-family:var(--font-h);font-size:16px;font-weight:700;color:'+st.c+'">'+st.split+'</span>'):'')
+        +'</div>'
         +'<div style="font-size:9px;color:var(--grey);margin-top:3px">'+st.calc+'</div></div>';
     }).join('')
     +'</div>';
@@ -3769,7 +3797,12 @@ function _renderClnTrend(d){
     var xT=_clnTrSum([xp]);
     var rows=CLN_TR_CARDS.map(function(card){
       var st=_clnTrStat(card,xT,pdef);
-      return st.lbl+'|'+st.val+'|'+(card.k==='spend'?'background shading':st.calc)+'|'+st.c+'|solid';
+      // The row the chart is plotting is the reason the reader is hovering, so
+      // it carries the weight. Order still follows the cards — only the
+      // emphasis moves, not the position.
+      var isSel=(card.metric===mdef.k)||(card.withPct&&card.withPct===mdef.k);
+      return st.lbl+'|'+st.val+'|'+(card.k==='spend'?'background shading':st.calc)+'|'+st.c+'|solid|'
+        +(isSel?'1':'')+'|'+(st.split||'');
     });
     // The rolling line is a chart series, not a card, so it goes last — and only
     // when it is actually drawn.
