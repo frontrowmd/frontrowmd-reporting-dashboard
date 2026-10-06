@@ -731,7 +731,7 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v31';   // v31: Demo Acquisition UTM mix split by tier (regular / pre-launch).
+const API_CACHE_VER = 'v32';   // v32: clinician ads.weekly -> ads.trend {week,day} with CTR/CVR series.
                                // v30: last-click acquisition split (paid / organic / untagged) on the regular
                                //      scheduled cohort, + chatgpt.com added to the paid mapper.
                                // v29: all Volume + Quality figures exclude pre-launch (deal tier, not isLow).
@@ -3029,18 +3029,22 @@ function buildClinicianAds(windsorRows, budgets, funnelAll, cliniciansAdded, row
   };
 }
 
-// ── Weekly cost series for the Clinician "Weekly CPD" chart ────────────────
-// Five metrics on one timeline: Ad Spend, CPD, True CPD, CPS and CAC.
+// Trend Analysis series. One pass over the window's Meta rows and its contacts,
+// emitted at BOTH grains so the card's Weekly/Daily toggle is a client-side
+// switch rather than a refetch.
 //
-// The Ads KPI cards divide the WINDOW's total spend by an EVER-REACHED cohort
-// count. That is the right shape for a single headline number but wrong for a
-// time series: "ever reached" has no date, so every week would get the same
-// denominator. Here each week's denominator is instead the count of that event
-// DATED INTO that week, using HubSpot's own hs_v2_date_entered_<stage> stamps —
-// which is what makes the lines move. Consequence worth knowing: summing the
-// weekly points will not exactly reproduce the KPI cards above, because the
-// cards count a cohort and these count dated events.
-function buildClinicianWeekly(deals, windsorRows, from, to) {
+// Every denominator here is the one the Key Metrics row uses, deliberately:
+//   inquiries = unique clinician CONTACTS created that day (deduped per person)
+//   fullApp   = those of them with a kickoff call booked
+// Both are attributed to the CONTACT's create date, not to the booking date, so
+// summing either daily series across the window reproduces the Key Metrics total
+// exactly. Bucketing fullApp on clinician_meeting_booked_date reads more
+// naturally and does NOT tie out — a contact created inside the window can book
+// outside it, and vice versa.
+//
+// CTR and both CVRs ride the same Meta rows that already fund `spend`, so the
+// whole section still costs no extra subrequest.
+function buildClinicianTrend(deals, contactsByDeal, windsorRows, from, to) {
   const monOf = (ds) => {
     if (!ds) return null;
     const p2 = ds.split('-');
@@ -3050,49 +3054,78 @@ function buildClinicianWeekly(deals, windsorRows, from, to) {
     d.setUTCDate(d.getUTCDate() - (dow === 0 ? 6 : dow - 1));   // ISO: week starts Monday
     return fmt(d);
   };
-  const wk = {};
+  // Bucket by DAY first, then roll up. fetchWindsorAds is handed a widened
+  // `from` (wFrom) for the trailing-window metrics, so days outside the selected
+  // window arrive here and are dropped at the source rather than stretching the
+  // axis backwards by one point.
+  const B = {};
   const bump = (dayKey, field, n) => {
-    const m = monOf(dayKey);
-    if (!m) return;
-    if (!wk[m]) wk[m] = { wk: m, spend: 0, added: 0, onboarded: 0 };
-    wk[m][field] += (n == null ? 1 : n);
+    if (!dayKey) return;
+    if (from && dayKey < from) return;
+    if (to && dayKey > to) return;
+    if (!B[dayKey]) B[dayKey] = { spend: 0, impressions: 0, clicks: 0, inquiries: 0, fullApp: 0 };
+    B[dayKey][field] += (n == null ? 1 : n);
   };
 
-  // Spend — same clinician-campaign filter buildClinicianAds uses.
+  // Spend / impressions / clicks — the same clinician-campaign filter
+  // buildClinicianAds and fetchClinicianTopFunnel use, so CTR here and CTR in
+  // Key Metrics are the same measurement at two grains.
   for (const r of (windsorRows || [])) {
     const ds = (r.datasource || '').toLowerCase();
     if (!/facebook|meta|fb|ig|instagram/.test(ds)) continue;
     if (!isClinicianCampaign(r.campaign_name)) continue;
     const k = String(r.date || '').slice(0, 10);
-    if (k) bump(k, 'spend', parseFloat(r.spend) || 0);
+    if (!k) continue;
+    bump(k, 'spend', parseFloat(r.spend) || 0);
+    bump(k, 'impressions', parseInt(r.impressions) || 0);
+    bump(k, 'clicks', parseInt(r.clicks) || 0);
   }
 
-  // Denominators. `added` is DEAL-based on the DEAL's createdate, matching
-  // buildClinicianDaily and the funnel. It was deduped by contact and dated off
-  // the CONTACT, which put this chart's CPD denominator in a different unit from
-  // the CPS / CAC plotted beside it on the same axes.
+  // Contacts, deduped per person exactly as buildClinicianComposition does it —
+  // same key, same date field, same fallback — so the two cannot drift.
+  const seen = new Set();
   for (const d of (deals || [])) {
-    const p = d.properties || {};
-    bump(_clnDayKey(p.createdate), 'added');
-    // Stage entries carry real timestamps, so this can be attributed to a week.
-    // The qualGiven and signups accumulators went with True CPD and CPS.
-    bump(_clnDayKey(clnEnteredAt(p, CLS.FULLY_ONBOARDED)), 'onboarded');
+    const cp = contactsByDeal[d.id];
+    if (!cp) continue;
+    const cid = cp.__cid || ('deal:' + d.id);
+    if (seen.has(cid)) continue;
+    seen.add(cid);
+    const k = _clnDayKey(cp.createdate);
+    if (!k) continue;
+    bump(k, 'inquiries');
+    if (((d.properties || {}).clinician_meeting_booked_date || '').trim()) bump(k, 'fullApp');
   }
 
   const div = (n, dd) => (dd > 0 ? n / dd : null);
-  // Only weeks inside the selected window — a stage entry can predate the cohort's
-  // createdate range and would otherwise stretch the axis backwards for one point.
-  const fromMon = monOf(from);
-  return Object.keys(wk).sort()
-    .filter(m => (!fromMon || m >= fromMon) && (!to || m <= to))
-    .map(m => {
-      const w = wk[m];
+  const roll = (keyOf) => {
+    const g = {};
+    for (const day of Object.keys(B)) {
+      const k = keyOf(day);
+      if (!k) continue;
+      if (!g[k]) g[k] = { spend: 0, impressions: 0, clicks: 0, inquiries: 0, fullApp: 0 };
+      const b = B[day], o = g[k];
+      o.spend += b.spend; o.impressions += b.impressions; o.clicks += b.clicks;
+      o.inquiries += b.inquiries; o.fullApp += b.fullApp;
+    }
+    return Object.keys(g).sort().map(k => {
+      const w = g[k];
       return {
-        wk: m, spend: Math.round(w.spend * 100) / 100,
-        added: w.added, onboarded: w.onboarded,
-        cpi: div(w.spend, w.added), cac: div(w.spend, w.onboarded),
+        wk: k,
+        spend: Math.round(w.spend * 100) / 100,
+        impressions: w.impressions, clicks: w.clicks,
+        inquiries: w.inquiries, fullApp: w.fullApp,
+        cpi: div(w.spend, w.inquiries),
+        cpfa: div(w.spend, w.fullApp),
+        // Rates as PERCENTAGES, computed on the period's own totals rather than
+        // averaged from the daily rates — a 10-impression day must not weigh the
+        // same as a 10,000-impression one.
+        cvrInq: div(w.inquiries * 100, w.clicks),
+        cvrFull: div(w.fullApp * 100, w.clicks),
+        ctr: div(w.clicks * 100, w.impressions),
       };
     });
+  };
+  return { week: roll(monOf), day: roll(x => x) };
 }
 
 // Did the clinician submit the credentials form BEFORE their demo?
@@ -8341,8 +8374,10 @@ export default {
           // signups and silently report costs a third of their real value.
           ads = buildClinicianAds(wRows, getBudgetsForMonth(cur.from), funnelPage.all && funnelPage.all.funnel, daily.total || 0, funnelPage.rows || [], cur.from, cur.to);
           ads.elapsedPct = elapsedPct;
-          // Same wRows — the weekly series costs no extra subrequest.
-          ads.weekly = buildClinicianWeekly(dealsPage, wRows, cur.from, cur.to);
+          // Same wRows — the Trend Analysis series costs no extra subrequest.
+          // Contacts come from the PAGE deals over the page window, the same pair
+          // buildClinicianComposition gets, so the series sums to Key Metrics.
+          ads.trend = buildClinicianTrend(dealsPage, contactsByDeal, wRows, cur.from, cur.to);
         } catch (e) { console.error('Clinician ads fetch:', e.message); ads = { error: e.message, elapsedPct }; }
         return jr({
           period: cur,
