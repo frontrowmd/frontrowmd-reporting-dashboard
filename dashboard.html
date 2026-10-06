@@ -886,7 +886,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t232';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t240';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2162,23 +2162,25 @@ function _fieldRefCards(kind){
   return card('deal','Deal Fields',dSub,_fieldRefTbl(DASH_DEAL_PROPS_REF),DASH_DEAL_PROPS_REF.length)
     +card('contact','Contact Fields',cSub,_fieldRefTbl(DASH_CONTACT_PROPS_REF),DASH_CONTACT_PROPS_REF.length);
 }
+// Two-line delta footer for Key Metrics hero tiles. Module scope, not nested in
+// renderDash: the Clinician Key Metrics row uses it as well, and a nested copy
+// is a ReferenceError from any other render function.
+function _irTileFooterDash(cur,pv,lmv,fmt,inv){
+  const one=(prev,lbl)=>{
+    if(cur==null||prev==null)return '<div style="display:flex;gap:5px"><span style="color:rgba(255,255,255,.45);min-width:34px">'+lbl+'</span><span style="color:rgba(255,255,255,.45)">\u2014</span></div>';
+    const dv=cur-prev, up=dv>=0, good=inv?!up:up;
+    const col=dv===0?'rgba(255,255,255,.55)':(good?'#7EE0B8':'#FF9B8F');
+    const pct=prev!==0?Math.abs(dv/prev)*100:null;
+    const vs=fmt==='$'?('$'+Math.abs(Math.round(dv)).toLocaleString())
+           :fmt==='%'?(Math.abs(dv).toFixed(2)+'%')
+           :Math.abs(Math.round(dv)).toLocaleString();
+    return '<div style="display:flex;gap:5px"><span style="color:rgba(255,255,255,.45);min-width:34px">'+lbl+'</span>'
+      +'<span style="color:'+col+'">'+(up?'\u2191 +':'\u2193 \u2212')+vs
+      +(pct!=null?' ('+(up?'+':'\u2212')+pct.toFixed(1)+'%)':'')+'</span></div>';
+  };
+  return '<div style="font-size:10px;line-height:1.55;margin-top:7px">'+one(pv,'vs prior')+(lmv!=null?one(lmv,'vs LM'):'')+'</div>';
+}
 function renderDash(){
-  // Two-line delta footer for the Key Metrics hero tiles.
-  function _irTileFooterDash(cur,pv,lmv,fmt,inv){
-    const one=(prev,lbl)=>{
-      if(cur==null||prev==null)return '<div style="display:flex;gap:5px"><span style="color:rgba(255,255,255,.45);min-width:34px">'+lbl+'</span><span style="color:rgba(255,255,255,.45)">\u2014</span></div>';
-      const dv=cur-prev, up=dv>=0, good=inv?!up:up;
-      const col=dv===0?'rgba(255,255,255,.55)':(good?'#7EE0B8':'#FF9B8F');
-      const pct=prev!==0?Math.abs(dv/prev)*100:null;
-      const vs=fmt==='$'?('$'+Math.abs(Math.round(dv)).toLocaleString())
-             :fmt==='%'?(Math.abs(dv).toFixed(2)+'%')
-             :Math.abs(Math.round(dv)).toLocaleString();
-      return '<div style="display:flex;gap:5px"><span style="color:rgba(255,255,255,.45);min-width:34px">'+lbl+'</span>'
-        +'<span style="color:'+col+'">'+(up?'\u2191 +':'\u2193 \u2212')+vs
-        +(pct!=null?' ('+(up?'+':'\u2212')+pct.toFixed(1)+'%)':'')+'</span></div>';
-    };
-    return '<div style="font-size:10px;line-height:1.55;margin-top:7px">'+one(pv,'vs prior')+(lmv!=null?one(lmv,'vs LM'):'')+'</div>';
-  }
   const d=S.dashboard.data;
   if(!d||d.error)return; // skeleton stays up; fd() banner shows the error state
   // Wipe the skeleton (if up) and put back the section scaffolding so the rest
@@ -3820,11 +3822,18 @@ function _renderIrfanMetaTablesLoader(winOverride){
   if(irfWin==='custom'){if(_cr.from)_azBody.from=_cr.from;if(_cr.to)_azBody.to=_cr.to;if(_cr.vsFrom)_azBody.vsFrom=_cr.vsFrom;if(_cr.vsTo)_azBody.vsTo=_cr.vsTo;}
   // A fetch with no timeout that never settles leaves the three tables spinning
   // forever with nothing to act on — which is exactly what a custom window was
-  // doing. Abort after 75s and SAY so, naming the window and the elapsed time, so
-  // the failure is reportable instead of invisible.
+  // doing. Abort and SAY so, naming the window and the elapsed time, so the
+  // failure is reportable instead of invisible.
+  // Year to Date / All Time are structurally expensive (a YTD Meta creative fetch
+  // alone measured ~107k rows over ~54 Windsor calls, ~38s) and a cron warms them
+  // into the worker's KV cache. A COLD one still has to be computed live, and 75s
+  // aborted it every time, which also meant the cache could never populate from a
+  // user request. Give those windows room; everything else keeps the tight bound.
+  const _AZ_SLOW_WINS=['ytd','allTime'];
+  const _azBudget=_AZ_SLOW_WINS.includes(irfWin)?180000:75000;
   const _mySeq=(S.irfan._metaSeq=(S.irfan._metaSeq||0)+1);
   const _azAbort=(typeof AbortController!=='undefined')?new AbortController():null;
-  const _azTimer=setTimeout(function(){ if(_azAbort)_azAbort.abort(); },75000);
+  const _azTimer=setTimeout(function(){ if(_azAbort)_azAbort.abort(); },_azBudget);
   fetch(AZ_API,Object.assign({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(_azBody)},_azAbort?{signal:_azAbort.signal}:{}))
     .then(async r=>{
       clearTimeout(_azTimer);
@@ -4104,6 +4113,13 @@ const CLINICIAN_CONTACT_PROPS_REF = [
 // SAME teal. Identical fills would make three adjacent funnel bars
 // indistinguishable, so they are stepped light->dark within that teal — same
 // hue, readable as a progression.
+// The nine funnel stages, each its own hue — the pre-CRM four warm, the CRM five
+// cool, so the hand-off from paid traffic to pipeline reads at a glance. Checked
+// against each other, not just against the old stage palette.
+const CLN_FUNNEL9_COLORS={
+  'Impressions':'#C9A227','Link Clicks':'#E07A54','Page Views':'#CC5B54','CTA Click':'#B5527F',
+  'Inquiries':'#7B75D4','Approved':'#4F7FBF','Fully Onboarded':'#1D8F6E',
+  'Sample Shipped':'#0F766E','Review Submitted':'#17514A'};
 const CLINICIAN_STAGE_COLORS={
   'Meeting Scheduled':'#EFE0A4','Meeting Happened':'#E0C244',
   'Signed Up':'#CFE8E2','Clinician Inquiry':'#C7D9EC',
@@ -4163,8 +4179,12 @@ const CLINICIAN_HISTORY_FROM='2026-07-01';
 function _clnFunnelRange(d){
   const st=S.clinician.funnelRange;
   if(st&&st.from&&st.to)return st;
+  // Defaults to the PAGE window so the funnel and every other section describe
+  // the same span on load; the Reset button returns here.
+  const pp=(d&&d.period)||null;
+  if(pp&&pp.from&&pp.to)return {from:pp.from,to:pp.to};
   const hr=(d&&d.historyRange)||null;
-  return {from:CLINICIAN_HISTORY_FROM,to:(hr&&hr.to)||(d&&d.period&&d.period.to)||CLINICIAN_HISTORY_FROM};
+  return {from:CLINICIAN_HISTORY_FROM,to:(hr&&hr.to)||CLINICIAN_HISTORY_FROM};
 }
 // The funnel payload on screen: the override from its own filter if one has been
 // applied, otherwise whatever /api/clinician returned (already history-scoped).
@@ -4190,6 +4210,7 @@ window.clinicianApplyFunnelRange=function(){
   if(!f||!t||!f.value||!t.value)return;
   if(t.value<f.value){alert('End date is before the start date.');return;}
   S.clinician.funnelRange={from:f.value,to:t.value};
+  { const _p=S.clinician.data&&S.clinician.data.period; S.clinician._pinnedFor=_p?(_p.from+'_'+_p.to):null; }
   fdClinicianFunnel(f.value,t.value);
 };
 window.clinicianResetFunnelRange=function(){
@@ -4225,6 +4246,12 @@ async function fdClinician(win){
     const r=await fetch(CLINICIAN_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
     const d=await r.json();
     if(!r.ok||d.error){throw new Error(d.error||('HTTP '+r.status));}
+    // The funnel's own range defaults to the page window, so a pin from an
+    // earlier window must not survive a page-filter change — it would leave the
+    // funnel describing a different span from every other section.
+    if(S.clinician._pinnedFor&&S.clinician._pinnedFor!==(d&&d.period&&d.period.from+'_'+d.period.to)){
+      S.clinician.funnelRange=null; S.clinician.funnelData=null; S.clinician._pinnedFor=null;
+    }
     S.clinician.data=d; S.clinician._loading=false; if(AP==='clinician')renderPage();
   }catch(e){
     S.clinician._loading=false;
@@ -4232,10 +4259,8 @@ async function fdClinician(win){
   }
 }
 // MD/DO vs non-MD/DO segment for the stat card only (the funnel always shows all).
-window.clinicianSetSeg=function(seg){S.clinician.seg=seg;renderClinician();};
 // Two workflows share the Clinician pipeline, each walking a different subset of
 // stages, so the funnel is scoped to one of them (or both combined).
-window.clinicianSetFlow=function(f){S.clinician.flow=f;renderClinician();};
 // Which UTM dimension the right-hand Acquisition pie shows.
 window.clinicianSetUtm=function(dim){S.clinician.utmDim=dim;renderClinician();};
 // Acquisition card population: every clinician who came in ("Inquiry") vs only
@@ -4404,6 +4429,25 @@ var _clnPieSeq=0;
 // Clinician Ads KPI tile. Hoisted out of renderClinician so the cost cards can
 // be repainted on their own once the analyzer payload arrives, without
 // re-rendering the whole page.
+// Budget pacing bar for the Clinician cards. Module scope so both the Ads row
+// and the Key Metrics row draw the identical bar from the same numbers.
+function _clnPaceBar(pct,elapsed,spend,budget){
+  const f$0=(v)=>v==null?'\u2014':'$'+Math.round(v).toLocaleString();
+
+    if(pct==null)return '';
+    const w=Math.max(0,Math.min(100,pct));
+    const over=pct>100;
+    const fill=over?'#FF9B8F':(elapsed!=null&&pct>elapsed+10?'#F0C36A':'#8FD3B6');
+    let h='<div style="margin-top:9px"><div style="position:relative;height:8px;background:rgba(255,255,255,.16);border-radius:50px;overflow:visible">'
+      +'<div style="height:100%;width:'+w.toFixed(1)+'%;background:'+fill+';border-radius:50px;transition:width .3s"></div>';
+    if(elapsed!=null){
+      const e=Math.max(0,Math.min(100,elapsed));
+      h+='<div title="On-pace marker" style="position:absolute;top:-3px;bottom:-3px;left:'+e.toFixed(1)+'%;width:2px;background:rgba(255,255,255,.75);border-radius:2px"></div>';
+    }
+    h+='</div><div style="display:flex;justify-content:space-between;margin-top:4px;font-size:9px;color:rgba(255,255,255,.55)">'
+      +'<span>'+f$0(spend)+' spent</span><span>'+f$0(budget)+' budget</span></div></div>';
+    return h;
+  }
 function _clnKpiTile(lbl,val,calc,sub,tone,extra){return '<div style="flex:1 1 190px;min-width:180px;background:linear-gradient(160deg,var(--navy),var(--midnight));border:1px solid rgba(255,255,255,.10);border-radius:10px;padding:14px 16px;box-shadow:0 2px 8px rgba(2,15,24,.16)">'
       +'<div style="font-size:9.5px;font-weight:700;color:rgba(255,255,255,.62);text-transform:uppercase;letter-spacing:.05em">'+lbl+'</div>'
       +'<div style="font-family:var(--font-h);font-size:24px;font-weight:700;color:'+(tone||'#fff')+';margin-top:3px">'+val+'</div>'
@@ -4457,21 +4501,8 @@ function _clnAdsCostCards(ads){
   const conv=agg?agg.conversions:(ads.cacDenom||null);
   const src=agg?'from the campaign table below':'page window — campaign table still loading';
   let h='';
-  const paceBar=(pct,elapsed)=>{
-    if(pct==null)return '';
-    const w=Math.max(0,Math.min(100,pct));
-    const over=pct>100;
-    const fill=over?'#FF9B8F':(elapsed!=null&&pct>elapsed+10?'#F0C36A':'#8FD3B6');
-    let h='<div style="margin-top:9px"><div style="position:relative;height:8px;background:rgba(255,255,255,.16);border-radius:50px;overflow:visible">'
-      +'<div style="height:100%;width:'+w.toFixed(1)+'%;background:'+fill+';border-radius:50px;transition:width .3s"></div>';
-    if(elapsed!=null){
-      const e=Math.max(0,Math.min(100,elapsed));
-      h+='<div title="On-pace marker" style="position:absolute;top:-3px;bottom:-3px;left:'+e.toFixed(1)+'%;width:2px;background:rgba(255,255,255,.75);border-radius:2px"></div>';
-    }
-    h+='</div><div style="display:flex;justify-content:space-between;margin-top:4px;font-size:9px;color:rgba(255,255,255,.55)">'
-      +'<span>'+f$0(spend)+' spent</span><span>'+f$0(ads.budget)+' budget</span></div></div>';
-    return h;
-  };
+  const paceBar=(pct,elapsed)=>_clnPaceBar(pct,elapsed,spend,ads.budget);
+
   // Pacing divides the SAME spend as the cost cards. It used to read the page
   // window's own Windsor pull, so the row showed $9,438 here and $9,449 beside
   // it — one number from two sources.
@@ -4883,7 +4914,6 @@ function _clnTable(rows,stageColors){
       if(!wroteDivider&&CLN_EXIT_STAGES.indexOf(st)>=0){
         wroteDivider=true;
         an+='<div style="display:flex;align-items:center;gap:9px;margin:5px 0 1px">'
-          +'<span style="font-family:var(--font-h);font-size:8.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.09em;white-space:nowrap">Exited Pipeline</span>'
           +'<span style="flex:1;height:1px;background:var(--border)"></span></div>';
       }
       an+='<div style="display:flex;align-items:center;gap:14px;background:'+(zero?'transparent':'var(--white)')+';border:1px solid '+(zero?'transparent':'var(--border)')+';border-left:4px solid '+(zero?'rgba(2,15,24,.10)':col)+';border-radius:8px;padding:10px 14px;opacity:'+(zero?'.5':'1')+'">'
@@ -5003,11 +5033,11 @@ function renderClinician(){
   }
 
   // ── Section 1: Clinician Funnel ──
-  const seg=S.clinician.seg||'all';
+  const seg='all';   // Clinician Type toggle removed; segData still keys off it
   // 'both' reads the combined top-level segments; a single flow reads byFlow,
   // whose funnel array carries only that flow's stages. Falls back to combined
   // if an older worker hasn't shipped byFlow yet.
-  const flow=S.clinician.flow||'both';
+  const flow='virtual';   // Demo / Field pills removed \u2014 this funnel is Virtual only
   // fd is the FUNNEL's payload — the override from its own date filter when one
   // is applied, otherwise the history-scoped funnel /api/clinician returned.
   // Everything else on the page keeps reading `d` (the page window).
@@ -5019,46 +5049,91 @@ function renderClinician(){
   // Scale the TRACK by ever-reached so the funnel actually tapers. Scaling by
   // current-stage left 6 of 7 bars at 1-4% width and non-monotonic (Signed Up
   // rendered narrower than Form Submitted), which read as broken.
-  const maxN=fn.reduce((m,x)=>Math.max(m,x.reachedCount||0),0)||1;
-
-  // Funnel bars (always ALL clinicians — the toggle scopes the stat card only)
+  // Nine stages, composed HERE rather than on the worker: segData already follows
+  // the workflow pill AND the funnel's own date filter, so building from it is
+  // what makes both of those actually affect the funnel.
+  const _defs=Array.isArray(d.funnelStages)?d.funnelStages:[];
+  const _topF=(fd&&fd.topFunnel)||d.topFunnel||{};
+  const _spend=(fd&&fd.clnSpend!=null)?fd.clnSpend:(d.clnSpend!=null?d.clnSpend:null);
+  const _byId={};for(const r of fn)_byId[r.id]=r;
+  let _prev=null;
+  const rows9=_defs.length?_defs.map(dfn=>{
+    let reached=null,here=null;
+    if(dfn.ids&&dfn.ids.length){
+      // Ever-reached is nested, so the max; "here now" is the sum.
+      const rs=dfn.ids.map(id=>_byId[id]).filter(Boolean);
+      if(rs.length){reached=Math.max.apply(null,rs.map(r=>r.reachedCount||0));
+                    here=rs.reduce((a,r)=>a+(r.count||0),0);}
+    }else if(dfn.id){
+      const r=_byId[dfn.id];
+      if(r){reached=r.reachedCount||0;here=r.count||0;}
+    }else if(dfn.acq){
+      // Key Metrics is the authority for these; both read d.composition.
+      const _cm=d.composition||{};
+      reached=dfn.acq==='submission'
+        ? ((_cm.submission&&_cm.submission.contacts)||0)
+        : (_cm.contacts||0);
+    }else{
+      reached=_topF[dfn.key]!=null?_topF[dfn.key]:null;
+    }
+    const conv=(_prev!=null&&_prev>0&&reached!=null)?(reached/_prev)*100:null;
+    const cost=(_spend!=null&&reached!=null&&reached>0)?_spend/reached:null;
+    _prev=reached;
+    return {label:dfn.label,sub:dfn.sub||'',reached,here,convFromPrior:conv,cost};
+  }):fn.map(x=>({label:x.label,sub:'',reached:x.reachedCount||0,here:x.count||0,convFromPrior:null,cost:null}));
+  const maxN=rows9.reduce((m,x)=>Math.max(m,x.reached||0),0)||1;
+  // Impressions dwarf every CRM stage — 31,360 against 13 — so a linear bar
+  // leaves eight of nine stages as slivers. Log scale keeps the taper legible
+  // across four orders of magnitude; 0 still renders as empty.
+  const _lg=(v)=>(v==null||v<=0)?0:Math.log10(1+v);
+  const _lgMax=_lg(maxN)||1;
+  const _barW=(v)=>(v==null||v<=0)?0:Math.max(3,(_lg(v)/_lgMax)*100);
+  const _n=(v)=>v==null?'\u2014':fN(v);
+  const _c$=(v)=>v==null?'\u2014':(v>=100?'$'+Math.round(v).toLocaleString():'$'+v.toFixed(2));
   let fh='';
-  for(let i=0;i<fn.length;i++){
-    const st=fn[i], w=Math.max(1.5,((st.count||0)/maxN)*100);
-    const conv=st.convToNext;
-    const col=CLINICIAN_STAGE_COLORS[st.label]||'var(--teal)';
-    const ink=_clnInk(col);   // readable as a large fill; the dot keeps the pastel
-    const rc=st.reachedCount||0, cc=st.count||0;
-    const trackW=Math.max(2,(rc/maxN)*100);
-    const fillW=rc>0?Math.min(100,(cc/rc)*100):0;   // share of reached still sitting here
-    fh+='<div style="margin-bottom:11px">'
+  for(let i=0;i<rows9.length;i++){
+    const st=rows9[i];
+    const rc=st.reached, cc=st.here;
+    const col=CLN_FUNNEL9_COLORS[st.label]||CLINICIAN_STAGE_COLORS[st.label]||'var(--teal)';
+    const ink=_clnInk(col);
+    // A stage whose data did not come back is a dash, never a zero-width bar
+    // pretending nothing happened.
+    const trackW=_barW(rc);
+    const fillW=(rc!=null&&rc>0&&cc!=null)?Math.min(100,(cc/rc)*100):0;
+    fh+='<div style="margin-bottom:12px">'
       +'<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:5px;gap:12px">'
-      +'<span style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:'+col+';border:1px solid rgba(2,15,24,.18);margin-right:7px;vertical-align:middle"></span>'+st.label+'</span>'
-      +'<span style="white-space:nowrap"><span style="font-family:var(--font-h);font-size:18px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+fN(rc)+'</span>'
-      +'<span style="font-size:11px;color:var(--grey);margin-left:5px">reached \u00b7 '+fN(cc)+' here now</span></span></div>'
+      +'<span style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">'
+        +'<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:'+col+';border:1px solid rgba(2,15,24,.18);margin-right:7px;vertical-align:middle"></span>'+st.label
+        +(st.sub?'<span style="font-family:var(--font-b);font-size:9.5px;font-weight:600;color:var(--grey);margin-left:7px">'+st.sub+'</span>':'')+'</span>'
+      +'<span style="white-space:nowrap"><span style="font-family:var(--font-h);font-size:18px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+_n(rc)+'</span>'
+      +'<span style="font-size:11px;color:var(--grey);margin-left:5px">reached'
+        +(cc!=null?' · '+fN(cc)+' here now':'')+'</span></span></div>'
       +'<div style="background:rgba(114,164,191,.07);border-radius:6px;height:26px;overflow:hidden">'
-      +'<div title="'+fN(rc)+' ever reached \u00b7 '+fN(cc)+' still in this stage" style="height:100%;width:'+trackW+'%;background:'+col+'66;border:1px solid rgba(2,15,24,.22);border-radius:6px;overflow:hidden;transition:width .3s">'
+      +'<div title="'+_n(rc)+' reached'+(cc!=null?(' · '+fN(cc)+' still in this stage'):'')+'" style="height:100%;width:'+trackW+'%;background:'+col+'66;border:1px solid rgba(2,15,24,.22);border-radius:6px;overflow:hidden;transition:width .3s">'
       +'<div style="height:100%;width:'+fillW+'%;background:'+ink+'"></div></div></div>'
-      // Conversion to the next stage: solid pill so the number reads at a glance,
-      // with the target stage and its inputs as quieter context beside it.
-      // padding-left:50% puts the pill's left edge at the row midpoint, then the
-      // negative margin (half the fixed pill width) pulls it back so the pill is
-      // centred. Fixed min-width means every pill is identical, so they all land
-      // on the same x no matter how long the trailing text is — centring the
-      // whole group made them drift with the text length.
-      +(conv!=null?'<div style="display:flex;align-items:center;gap:9px;margin-top:6px;padding-left:50%">'
-        +'<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;flex:0 0 auto;min-width:78px;margin-left:-39px;background:var(--teal);color:#fff;font-family:var(--font-h);font-size:13.5px;font-weight:700;padding:3px 12px;border-radius:50px;box-shadow:0 1px 3px rgba(114,164,191,.35);white-space:nowrap">\u2193 '+pctS(conv)+'</span>'
-        +'<span style="font-size:11px;color:var(--grey)">to <b style="color:var(--navy);font-weight:600">'+fn[i+1].label+'</b> \u00b7 '+fN(st.convNum||0)+' \u00f7 '+fN(st.convDenom||0)+' reached</span>'
-        +'</div>':'')
-      +'</div>';
+      // Conversion from the previous stage and the cost of reaching this one —
+      // the two numbers the funnel exists to show, so they get chips rather than
+      // the grey footnote they were.
+      +'<div style="display:flex;gap:7px;margin-top:6px;flex-wrap:wrap">'
+      +(st.convFromPrior!=null
+        ? ('<span style="display:inline-flex;align-items:baseline;gap:5px;padding:3px 9px;border-radius:50px;'
+          +'background:'+col+'1F;border:1px solid '+col+'59">'
+          +'<strong style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'
+          +st.convFromPrior.toFixed(1)+'%</strong>'
+          +'<span style="font-size:9.5px;color:var(--navy);opacity:.72">from prior</span></span>')
+        : '')
+      +(st.cost!=null
+        ? ('<span style="display:inline-flex;align-items:baseline;gap:5px;padding:3px 9px;border-radius:50px;'
+          +'background:rgba(23,44,69,.06);border:1px solid rgba(23,44,69,.16)">'
+          +'<strong style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'
+          +_c$(st.cost)+'</strong>'
+          +'<span style="font-size:9.5px;color:var(--navy);opacity:.72">per '+st.label.toLowerCase().replace(/s$/,'')+'</span></span>')
+        : '')
+      +'</div></div>';
   }
-  const exits=segData.exits||[];
-  // Exit counts are rendered inside the stats panel's own "Exited Pipeline" card
-  // (below), built straight from `exits`. The old exitH string builder is gone.
 
   // Stat card (segment-aware)
   const st=segData.stats||{};
-  const segPill=(k,lbl)=>{const on=seg===k;return '<button onclick="clinicianSetSeg(\''+k+'\')" style="font-family:var(--font-h);font-size:11px;font-weight:700;letter-spacing:.02em;padding:6px 14px;border:none;background:'+(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+';cursor:pointer;transition:background .15s,color .15s">'+lbl+'</button>';};
   // last=true drops the divider so the card doesn't end on a rule.
   // inv=true → higher is worse, so the value reads red rather than teal.
   const stat=(lbl,val,calc,src,tip,last,inv)=>{
@@ -5070,26 +5145,16 @@ function renderClinician(){
     +(calc?'<span style="font-size:10.5px;color:var(--grey);font-variant-numeric:tabular-nums">'+calc+'</span>':'')+'</div>'
     +(src?'<div style="font-size:9px;color:var(--grey);margin-top:2px;line-height:1.4">'+src+'</div>':'')+'</div>';};
   // Section-level scope control: sits above the funnel/stat split and drives the
-  // bars, exits and stats together, so both halves always describe one segment.
-  const flowPill=(k,lbl,n)=>{const on=flow===k;return '<button onclick="clinicianSetFlow(\''+k+'\')" style="font-family:var(--font-h);font-size:11px;font-weight:700;letter-spacing:.02em;padding:6px 14px;border:none;background:'+(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+';cursor:pointer;transition:background .15s,color .15s">'+lbl+(n!=null?' <span style="opacity:.65;font-weight:600">'+fN(n)+'</span>':'')+'</button>';};
   const _fm=fd.flowMeta||{};
-  const flowBar='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:2px 0 10px">'
-    +'<span style="font-family:var(--font-h);font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.08em">Workflow</span>'
-    +'<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap">'
-    // Short labels off flowMeta.short (the worker already supplies CLINICIAN_FLOW_SHORT),
-    // Virtual first to match the stats cards below, and 'All' rather than 'Both'
-    // now that three workflows share the pipeline -- "both" named two.
-    +flowPill('virtual',(_fm.virtual&&_fm.virtual.short)||'Virtual',_fm.virtual&&_fm.virtual.count)
-    +flowPill('demo',(_fm.demo&&_fm.demo.short)||'Demo',_fm.demo&&_fm.demo.count)
-    +flowPill('field',(_fm.field&&_fm.field.short)||'Field',_fm.field&&_fm.field.count)
-    +flowPill('both','All')+'</div>'
-    +(flow!=='both'?'<span style="font-size:10.5px;color:var(--grey)">funnel shows only this workflow\u2019s stages</span>':'')
-    +'</div>';
-  const segBar=flowBar+'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:2px 0 14px">'
-    +'<span style="font-family:var(--font-h);font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.08em">Clinician Type</span>'
-    +'<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap">'
-    +segPill('all','All')+segPill('mddo','MD/DO')+segPill('nonmddo','Non-MD/DO')+'</div>'
-    +'<span style="font-size:10.5px;color:var(--grey)">'+fN(segData.total||0)+' deal'+((segData.total||0)===1?'':'s')+' in segment</span></div>';
+  // Virtual only. The Demo and Field pills are gone rather than hidden, so the
+  // funnel cannot silently be showing a workflow the caption does not name.
+  const flowBar='<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:2px 0 14px">'
+    +'<span style="display:inline-flex;align-items:center;gap:7px;padding:5px 13px;border-radius:50px;'
+    +'background:var(--navy);color:#fff;font-family:var(--font-h);font-size:11px;font-weight:700;letter-spacing:.02em">'
+    +'<span style="width:7px;height:7px;border-radius:50%;background:#7EE0B8"></span>Virtual Workflow'
+    +'<span style="opacity:.7;font-weight:600">'+fN((flowSrc&&flowSrc.all&&flowSrc.all.total)||0)+'</span></span>'
+    +'<span style="font-size:10.5px;color:var(--grey)">every stage below is Virtual-workflow only</span></div>';
+  const segBar=flowBar;   // Clinician Type pill row removed
   // ── Stats panel: PATH-SCOPED CARDS ──────────────────────────────────────────
   // Rebuilt from a flat 13-row list. The organising axis is SCOPE, because scope
   // was the actual bug: six demo-only rates and two virtual-only rates were all
@@ -5103,15 +5168,12 @@ function renderClinician(){
   //     type-filtered (worker.js:2750, `pred(r)`), so the two virtual rates follow
   //     the Clinician Type pill and go blank when the Workflow pill excludes
   //     virtual. They do NOT ignore both toggles.
-  //   * exits (worker.js:2899) count over rs across ALL flows and do NOT exclude
-  //     Rescheduled, unlike No-Show Rate. Different population -> its own card
-  //     plus a footnote, never presented as No-Show's raw numerator.
   let sh='';
   const R=' (ever-reached counts)';
   // Scope chip. Status/scope must never be colour-alone, so each chip is a glyph
-  // PLUS words. Two levels only: path-pinned, or follows both pills.
+  // PLUS words. Two levels only: pinned to the Virtual path, or follows the pills.
   const CHIP={
-    path:['◐','path-pinned · follows Clinician Type'],
+    path:['◐','Virtual workflow only'],
     live:['◉','follows both pills'],
   };
   const chip=(k)=>'<span title="'+CHIP[k][1]+'" style="font-size:8.5px;font-weight:700;color:var(--grey);white-space:nowrap;letter-spacing:.03em">'
@@ -5140,20 +5202,27 @@ function renderClinician(){
   // Leads the panel: the virtual path is the active acquisition motion, so its
   // backlog is what someone opens this card to check. It therefore carries the
   // `first` flag (no rule above it).
-  sh+=cardOpen('Virtual Path','path',fN(st.noCallDenom||0)+' virtual-flow deals · blank on the Demo pill',true);
+  if(flow==='virtual'){
+  sh+=cardOpen('Virtual Path','path',fN(st.noCallDenom||0)+' virtual-flow deals',true);
   sh+=subH('Backlog · higher is worse');
-  sh+=stat('No Call Scheduled Yet',pctS(st.noCallRate),
-    fN(st.noCallNum||0)+' ÷ '+fN(st.noCallDenom||0),
-    'No Clinician Meeting Booked Date ÷ virtual-flow deals',
-    'Share of virtual-path deals with no call on the books yet. Booking is a separate step on the virtual path, which is what makes this a backlog signal there. Always the virtual population — even on the Both pill — but it does follow the Clinician Type pill, and goes blank when the Workflow pill excludes virtual. Reads the same Clinician Meeting Booked Date property as the All Clinicians Call Scheduled column, so the two can never disagree.',false,true);
+  // Replaces No Call Scheduled Yet. The virtual flow has no No Show STAGE, so
+  // this is computed worker-side from clinician_attendance_status, on the same
+  // basis the Detailed Dashboard uses: no-shows over meetings supposed to happen.
+  const _vns=d.virtualNoShow||{};
+  sh+=stat('Virtual No Show Rate',pctS(_vns.rate),
+    fN(_vns.noShow||0)+' · of '+fN((_vns.noShow||0)+(_vns.held||0)),
+    'No Shows \u00f7 meetings supposed to happen',
+    'Virtual Signup deals whose call was marked No Show, over those that were supposed to happen (No Show + Demo Given). Still-upcoming and cancelled-before-demo calls are excluded from the denominator rather than counted as attended.');
   sh+=stat('Stuck in Clinician Approved',pctS(st.stuckApprovedRate),
     fN(st.stuckApprovedNum||0)+' ÷ '+fN(st.stuckApprovedDenom||0),
     'Sitting in Clinician Approved ÷ ever reached it',
     'Of the virtual-path deals that ever reached Clinician Approved, the share still sitting there rather than moving on to Fully Onboarded. A backlog measure, not a conversion — it falls as approvals are worked through. The numerator is a current-stage snapshot, so it changes the moment a deal advances.',true,true);
   sh+=cardClose;
+  }
 
   // ── Card 2: DEMO PATH ──
-  sh+=cardOpen('Demo Path','path',fN(st.showDenom||0)+' reached Meeting Scheduled · blank on the Virtual pill');
+  if(flow==='demo'){
+  sh+=cardOpen('Demo Path','path',fN(st.showDenom||0)+' reached Meeting Scheduled');
   sh+=stat('Show Rate',pctS(st.showRate),fN(st.showNum||0)+' ÷ '+fN(st.showDenom||0),
     'Meeting Happened ÷ Meeting Scheduled'+R,'Of clinicians who booked, how many showed up. Demo-path population only — the virtual path has no meeting stage, so this is blank there.');
   sh+=stat('Close Rate',pctS(st.closeRate),fN(st.closeNum||0)+' ÷ '+fN(st.closeDenom||0),
@@ -5175,33 +5244,15 @@ function renderClinician(){
     'Not a Fit after attending · latest exit',
     'Not a Fit ÷ Meeting Happened, excluding anyone cancelled before the demo — they were pruned, never assessed, so counting them here would overstate it.',true,true);
   sh+=cardClose;
+  }
 
   // ── Card 3: SAMPLES & REVIEWS (the re-converged tail, both paths) ──
-  sh+=cardOpen('Samples & Reviews','live','Both paths converge here');
-  sh+=stat('1st Review Submitted',pctS(st.reviewRate),fN(st.reviewNum||0)+' ÷ '+fN(st.reviewDenom||0),
-    '1st Review Submitted ÷ 1st Sample Shipped'+R,'Of clinicians who received samples, how many submitted their first review');
-  sh+=cnt('Total Reviews Submitted',st.reviewsSubmittedTotal,
-    'reviews · from '+fN(st.reviewsSubmittedContacts||0)+' clinician'+((st.reviewsSubmittedContacts||0)===1?'':'s'),
-    'Sum of the contact property # Reviews Submitted · lifetime, not window-scoped',
-    'Counts REVIEWS, not deals that reached the review stage like the row above — one clinician can submit several, so this normally reads higher. The property is a lifetime running total with no timestamp, so it is not limited to the selected date range.',true);
-  sh+=cardClose;
+  // Samples & Reviews section removed.
 
   // ── Card 4: EXITED PIPELINE ──
   // Own card, not folded into the Leaks block: these count over every flow and do
   // NOT exclude Rescheduled, so 169 is not No-Show Rate's numerator.
-  if(exits.length){
-    sh+=cardOpen('Exited Pipeline','live','Where deals sit right now · all paths');
-    for(let i=0;i<exits.length;i++){
-      const x=exits[i], xc=CLINICIAN_STAGE_COLORS[x.label]||'var(--grey)';
-      sh+='<div style="display:flex;align-items:center;gap:8px;padding:7px 0'+(i===exits.length-1?'':';border-bottom:1px solid var(--border)')+'">'
-        +'<span style="width:9px;height:9px;border-radius:50%;background:'+xc+';flex-shrink:0"></span>'
-        +'<span style="font-size:11.5px;color:var(--navy);flex:1">'+x.label+'</span>'
-        +'<span style="font-family:var(--font-h);font-size:16px;font-weight:700;color:var(--navy)">'+fN(x.count||0)+'</span>'
-        +'<span style="font-size:9.5px;color:var(--grey)">deals</span></div>';
-    }
-    sh+='<div style="font-size:9px;color:var(--grey);padding:7px 0 3px;line-height:1.45">Current stage across every workflow, and Rescheduled is NOT excluded — so these are not the numerators of the rates above.</div>';
-    sh+=cardClose;
-  }
+  // Exited Pipeline card removed.
   const _fr=_clnFunnelRange(d);
   const _fcount=(fd.meta&&fd.meta.dealsFetched)||0;
   // ── Entry-path comparison, HOISTED OUT of the stats panel ────────────────────
@@ -5211,44 +5262,7 @@ function renderClinician(){
   // — structurally impossible beats a caption asking the reader to trust it.
   // Dashed border, no fill, so "frozen" reads from the container, not from colour.
   const _fc=fd.flowCompare||{};
-  let entryStrip='';
-  if(_fc.all||_fc.old||_fc.new){
-    const leg=(o,tag)=>o?'<div style="min-width:152px">'
-      +'<div style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em">'+tag+'</div>'
-      +'<div style="display:flex;align-items:baseline;gap:6px;margin-top:1px">'
-      +'<span style="font-family:var(--font-h);font-size:20px;font-weight:700;color:var(--navy)">'+pctS(o.rate)+'</span>'
-      +'<span style="font-size:10px;color:var(--grey)">'+fN(o.num||0)+' ÷ '+fN(o.den||0)+'</span></div>'
-      +'<div style="font-size:8.5px;color:var(--grey);margin-top:1px">Fully Onboarded ÷ '+(o.entryLabel||'entry stage')+'</div></div>':'';
-    // The roll-up leads and reads slightly larger: it is the aggregate the other
-    // two decompose. Since 2026-09-15 it is EXACTLY those two — Field Rep is no
-    // longer folded in (worker.js FC_ROLLUP_FLOWS) — so it genuinely is their
-    // blend and must land between them. The third line names what it excludes,
-    // because a roll-up labelled "All" that quietly drops a workflow is the same
-    // scope bug this section already had once. A rule separates it from the pair
-    // rather than letting it sit in the same run of numbers.
-    const allLeg=_fc.all?'<div style="min-width:168px">'
-      +'<div style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.05em">Demo + Virtual</div>'
-      +'<div style="display:flex;align-items:baseline;gap:6px;margin-top:1px">'
-      +'<span style="font-family:var(--font-h);font-size:23px;font-weight:700;color:var(--navy)">'+pctS(_fc.all.rate)+'</span>'
-      +'<span style="font-size:10px;color:var(--grey)">'+fN(_fc.all.num||0)+' ÷ '+fN(_fc.all.den||0)+'</span></div>'
-      +'<div style="font-size:8.5px;color:var(--grey);margin-top:1px">Fully Onboarded ÷ each flow\u2019s own entry stage \u00b7 <b>excl. Field Rep</b></div></div>'
-      +'<div style="align-self:stretch;width:1px;background:var(--border);margin:2px 0"></div>':'';
-    const dp=_fc.deltaPp;
-    // Direction is a glyph PLUS words, never the colour alone.
-    const gc=(dp!=null&&dp<0)?'#C0392B':'#1E7A55';
-    const gap=(dp==null)?'':'<div style="min-width:132px">'
-      +'<div style="font-size:9px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em">New vs Old</div>'
-      +'<div style="display:flex;align-items:baseline;gap:5px;margin-top:1px">'
-      +'<span style="font-size:11px;line-height:1;color:'+gc+'">'+(dp<0?'▼':'▲')+'</span>'
-      +'<span style="font-family:var(--font-h);font-size:20px;font-weight:700;color:'+gc+'">'+(dp>=0?'+':'−')+Math.abs(dp).toFixed(1)+'pp</span></div>'
-      +'<div style="font-size:8.5px;color:var(--grey);margin-top:1px">virtual '+(dp<0?'below':'above')+' demo</div></div>';
-    entryStrip='<div style="border:1px dashed var(--border);border-radius:9px;padding:10px 14px;margin:2px 0 12px">'
-      +'<div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-bottom:8px">'
-      +'<span style="font-family:var(--font-h);font-size:11.5px;font-weight:700;color:var(--navy)">Onboarding Rate by Entry Path</span>'
-      +'<span title="Computed across every deal in the range, ignoring the Workflow and Clinician Type pills below — comparing the paths to each other is the whole point." style="font-size:8.5px;font-weight:700;color:var(--grey);letter-spacing:.03em">○ all deals in range · ignores both pills below</span></div>'
-      +'<div style="display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start">'
-      +allLeg+leg(_fc.old,'Demo Flow (old)')+leg(_fc.new,'Virtual Flow (new)')+gap+'</div></div>';
-  }
+  const entryStrip='';   // Onboarding Rate by Entry Path section removed
   let h=card('Clinician Funnel',
     'Deals created '+_fr.from+' \u2192 '+_fr.to+' \u00b7 '+fN(_fcount)+' deal'+(_fcount===1?'':'s')
       +((fd.excludedFuture||0)?' \u00b7 '+fN(fd.excludedFuture)+' future-dated meeting'+(fd.excludedFuture===1?'':'s')+' excluded':'')
@@ -5266,7 +5280,7 @@ function renderClinician(){
   if(dDays.length){
     const vals=dDays.map(k=>dly.byDay[k]||0);
     const dMax=Math.max(1,...vals);
-    const avg=dly.weekdayAvg;
+    const avg=(dly.dailyAvg!=null)?dly.dailyAvg:dly.weekdayAvg;
     const DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
     const mini=(lbl,val,sub)=>'<div style="flex:1;min-width:150px;background:var(--lighter);border:1px solid var(--border);border-radius:10px;padding:12px 16px">'
       +'<div style="font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em">'+lbl+'</div>'
@@ -5276,7 +5290,7 @@ function renderClinician(){
     const SCALE=0.86;    // tallest bar tops out here, leaving room for its label
     let dh2='<div style="display:flex;gap:12px;margin:12px 0 18px;flex-wrap:wrap">'
       +mini('Clinicians Added',fN(dly.total||0),'clinician deals created in the selected window')
-      +mini('Weekday Avg',avg!=null?(Math.round(avg*10)/10):'\u2014',(dly.weekdayDays||0)+' weekdays \u00b7 excludes Sat/Sun')
+      +mini('Daily Avg',avg!=null?(Math.round(avg*10)/10):'\u2014',(dly.days!=null?fN(dly.days)+' days in the window':'per day'))
       +'</div>';
     dh2+='<div style="position:relative">';
     dh2+='<div style="display:flex;align-items:flex-end;gap:3px;overflow-x:auto;padding-bottom:2px">';
@@ -5313,22 +5327,11 @@ function renderClinician(){
     if(dly.contacts!=null&&dly.contacts!==dly.total)facts.push(fN(dly.contacts)+' unique clinician'+(dly.contacts===1?'':'s')+' behind '+fN(dly.total||0)+' deal'+((dly.total||0)===1?'':'s'));
     if(dly.noContact)facts.push(fN(dly.noContact)+' deal'+(dly.noContact===1?'':'s')+' had no associated contact (still counted)');
     if(facts.length)dh2+='<div style="font-size:10px;color:var(--grey);margin-top:4px;font-style:italic">'+facts.join(' \u00b7 ')+'.</div>';
-    h+=card('Daily Activity','Clinician deals created per day \u00b7 bucketed on Deal Create Date, one bar unit per deal \u00b7 dashed line = weekday average (excludes Sat/Sun)',dh2);
+    h+=card('Daily Activity','Clinician deals created per day \u00b7 bucketed on Deal Create Date, one bar unit per deal \u00b7 dashed line = daily average across the window',dh2);
   }
-  // ── Section 3: Clinician Composition ──
   const comp=d.composition||{};
-  if((comp.contacts||0)>0){
-    const panel=(t,rows)=>'<div style="flex:1 1 44%;min-width:330px;background:var(--white);border:1px solid var(--border);border-radius:10px;padding:16px 18px 18px">'
-      +'<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--border)">'
-      +'<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">'+t+'</span>'
-      +'<span style="font-size:10px;color:var(--grey);white-space:nowrap">'+fN(comp.contacts)+' clinician'+(comp.contacts===1?'':'s')+' \u00b7 '+fN(_catCount(rows))+' categories</span></div>'
-      +_clinicianPie(rows,comp.contacts)+'</div>';
-    h+=card('Clinician Composition','Clinician contacts created in the selected window \u00b7 deduped per person \u00b7 hover any slice for the count',
-      '<div style="display:flex;gap:18px;align-items:stretch;flex-wrap:wrap">'
-       +panel('Type of Clinician',comp.type||[])
-       +panel('Specialty Breakdown',comp.specialty||[])
-      +'</div>');
-  }
+  // Clinician Composition is gone: Specialty Breakdown was dropped and Type of
+  // Clinician moved into Acquisition, which left the card with nothing in it.
   // ── Section 4: Acquisition ──
   if((comp.contacts||0)>0){
     const UD=[['utmSource','UTM Source'],['utmMedium','UTM Medium'],['utmCampaign','UTM Campaign']];
@@ -5367,12 +5370,12 @@ function renderClinician(){
       ?'<div style="padding:20px;text-align:center;color:var(--grey);font-size:12px">No clinicians in this window have a kickoff call booked yet.</div>':'';
     h+=card('Acquisition','Where clinicians came from \u00b7 contacts created in the selected window, deduped per person \u00b7 UTMs read from the contact, falling back to the deal',
       acqToggle+(noSub||('<div style="display:flex;gap:18px;align-items:stretch;flex-wrap:wrap">'
-       +acqPanel('Clinician Referral Source',acqSrc.referral||[])
+       +acqPanel('Type of Clinician',acqSrc.type||[])
        +acqPanel(udLabel,acqSrc[ud]||[],utmToggle)
       +'</div>')));
   }
   // ── Section 6: Ads (card 1 — KPI row) ──
-  // Buffered, not appended: Verification Funnel renders above Ads, but is built after it.
+  // adsH is buffered so the Weekly CPD card can be emitted ahead of it.
   let adsH='';
   const ads=d.ads||null;
   if(ads){
@@ -5417,54 +5420,7 @@ function renderClinician(){
       +sub('Ad Creatives','cln-meta-creatives','All creatives across Clinician campaigns')
       +sub('Audiences','cln-meta-audiences','Ad-set level breakdown',true));
   }
-  // ── Section 5: Verification Funnel ──
-  // The Verification Funnel is a HISTORY view (Jul 1 -> today) like the Funnel and
-  // the All Clinicians table, so it reads d.verification, NOT d.composition —
-  // composition stays page-scoped for Clinician Composition and Acquisition.
-  const vf=(d.verification&&d.verification.verifContacts!=null)?d.verification:comp;
-  if((vf.verifContacts||0)>0){
-    // Status drives colour, so Approved/Pending/Not Approved read the same in
-    // both charts regardless of their order or size.
-    const VC={'Approved':'#2E9E6B','Pending':'#E0A93A','Not Approved':'#CC5B54','Not set':'#9AA7B4'};
-    const vbars=(rows)=>{
-      if(!rows||!rows.length)return '<div style="padding:20px;text-align:center;color:var(--grey);font-size:12px">No data in this window</div>';
-      const tot=rows.reduce((a,b)=>a+(b.count||0),0)||1;
-      const mx=Math.max(1,...rows.map(r=>r.count||0));
-      let o='';
-      for(const r of rows){
-        const c=r.count||0,pct=(c/tot)*100,col=VC[r.label]||'var(--teal)';
-        const tip=fN(c)+' ('+pct.toFixed(1)+'%) \u2014 '+r.label;
-        o+='<div data-tip="'+tip.replace(/"/g,'&quot;')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" style="margin-bottom:13px;cursor:pointer">'
-          +'<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:5px">'
-          +'<span style="font-size:12.5px;font-weight:600;color:var(--navy)"><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:'+col+';margin-right:7px;vertical-align:middle"></span>'+r.label+'</span>'
-          +'<span style="white-space:nowrap"><span style="font-family:var(--font-h);font-size:17px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+fN(c)+'</span>'
-          +'<span style="font-size:10.5px;color:var(--grey);margin-left:6px">'+pct.toFixed(1)+'%</span></span></div>'
-          +'<div style="background:rgba(114,164,191,.10);border-radius:5px;height:20px;overflow:hidden">'
-          +'<div style="height:100%;width:'+Math.max(1.5,(c/mx)*100).toFixed(1)+'%;background:'+col+';border-radius:5px;transition:width .3s"></div></div></div>';
-      }
-      return o;
-    };
-    // 30% not 44%: three panels now share the row.
-    const vshell=(t,note,body)=>'<div style="flex:1 1 30%;min-width:280px;background:var(--white);border:1px solid var(--border);border-radius:10px;padding:16px 18px">'
-      +'<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border)">'
-      +'<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">'+t+'</span>'
-      +'<span style="font-size:10px;color:var(--grey);white-space:nowrap">'+note+'</span></div>'+body+'</div>';
-    const vpanel=(t,rows,note)=>vshell(t,note,vbars(rows));
-    const _vr=(d.verification&&d.verification.range)||null;
-    // Deal-based and demo-flow, off the history funnel's own rsMeet rows — the
-    // SAME population as the Form Submitted Before Demo stat, so the two
-    // reconcile. Deliberately d.all (always history-scoped) rather than
-    // _clnFunnelData(d): the Funnel card's private date filter must not move a
-    // different section's chart.
-    const _fvdRows=(d.all&&d.all.stats&&d.all.stats.formVsDemoDist)||[];
-    const _fvdTot=_fvdRows.reduce((a,b)=>a+(b.count||0),0);
-    h+=card('Verification Funnel',fN(vf.verifContacts)+' clinician contact'+((vf.verifContacts||0)===1?'':'s')+' at Meeting Happened or beyond and still in the pipeline \u2014 No Show and Not a Fit excluded \u00b7 created '+(_vr?(_vr.from+' \u2192 '+_vr.to):'in the full history')+', independent of the page date filter \u00b7 deduped per person',
-      '<div style="display:flex;gap:18px;align-items:stretch;flex-wrap:wrap">'
-       +vpanel('Credentials Status',vf.credentials||[],'medical_degree_status')
-       +vpanel('Photo Verification Status',vf.photoVerification||[],'photo_verification_status')
-       +vshell('Form Submitted',_fvdTot?(fN(_fvdTot)+' comparable \u00b7 vs demo start'):'vs demo start',_clinicianPie(_fvdRows,_fvdTot))
-      +'</div>');
-  }
+  // Section 5 (Verification Funnel) removed.
   h+=_clnWeeklyCard(d);   // Weekly CPD sits ABOVE the Ads section
   h+=adsH;
   // ── Section 7: All Clinicians ──
@@ -5475,7 +5431,67 @@ function renderClinician(){
       +' \u00b7 always the full history, independent of the page date filter \u00b7 click a Deal Name or Contact to open it in HubSpot \u00b7 collapse or expand a column group with its header',
       _clnTable(d.table,CLINICIAN_STAGE_COLORS));
   }
-  h=allClinH+h;   // promote to the top of the page
+  h+=allClinH;   // sits after the Clinician Ad Tables (the tail of adsH)
+  // ── Section 0: Key Metrics ──
+  // Buffered and PREPENDED: it reads `ads`, `comp` and `dly`, all declared below,
+  // so building it in place at the top would be a TDZ throw that blanks the page.
+  {
+    const _f$=(v)=>v==null?'\u2014':'$'+Math.round(v).toLocaleString();
+    const _div=(a,b)=>(a!=null&&b)?a/b:null;
+    const _a=(d.ads&&!d.ads.error)?d.ads:null;
+    const _sp=_a?_a.spend:null;
+    // "Full App" = reached Fully Onboarded, a pipeline milestone — NOT Meta's
+    // reported conversions (ads.cacDenom), which is a different number the
+    // worker's own comment says will not agree. The same basis drives the rate
+    // below, so both cards mean one thing by "Full App".
+    // Both denominators come from the ACQUISITION section's populations, so the
+    // two sections can never report different numbers for the same thing:
+    //   inquiries   = unique clinician CONTACTS created in the window (deduped)
+    //   full submission = those of them with a kickoff call booked
+    // These are CONTACT-based and deliberately NOT the funnel's deal-based
+    // stages, so Cost per Full App will not equal the funnel's Fully Onboarded —
+    // a kickoff call booked is an earlier milestone than Fully Onboarded.
+    const _acq=d.composition||{};
+    const _acqSub=_acq.submission||null;
+    const _fo=_acqSub?(_acqSub.contacts||0):0;
+    const _add=_acq.contacts||0;   // = the Acquisition section's clinician count
+    const _rate=_add>0?(_fo/_add)*100:null;
+    const _kp=d.kpiPrior||null, _km=d.kpiPriorMonth||null;
+    const _pRate=(w)=>(w&&w.inquiries>0)?(w.fullSub/w.inquiries)*100:null;
+    const _foot=(cur,pv,lmv,fmt,inv)=>_irTileFooterDash(cur,pv,lmv,fmt,inv);
+    const _pace=(_a&&_a.budget>0)?(_sp/_a.budget)*100:null;
+    // Cumulative, not the mean of per-day CTRs: that would weight a 10-impression
+    // day the same as a 10,000-impression one.
+    const _tf=d.topFunnel||{};
+    const _ctrOk=(_tf.impressions!=null&&_tf.impressions>0&&_tf.clicks!=null);
+    const _ctr=_ctrOk?(_tf.clicks/_tf.impressions)*100:null;
+    const kmBody='<div style="display:flex;gap:12px;flex-wrap:wrap">'
+      +_clnKpiTile('Ad Spend',_f$(_sp),
+         (_a&&_a.budget>0)?(_f$(_sp)+' \u00f7 '+_f$(_a.budget)+' budget'):'no budget set',
+         'Clinician channel only \u2014 excluded from every other dashboard KPI',null,
+         _clnPaceBar(_pace,_a?_a.elapsedPct:null,_sp,_a?_a.budget:0)
+         +_foot(_sp,_kp?_kp.spend:null,_km?_km.spend:null,'$',false))
+      +_clnKpiTile('Cost per Full App',_f$(_div(_sp,_fo)),
+         _f$(_sp)+' \u00f7 '+fN(_fo)+' full submissions',
+         'Clinician ad spend \u00f7 clinicians with a kickoff call booked \u2014 the Acquisition section\u2019s Full Submission count',null,
+         _foot(_div(_sp,_fo),_div(_kp?_kp.spend:null,_kp?_kp.fullSub:0),_div(_km?_km.spend:null,_km?_km.fullSub:0),'$',true))
+      +_clnKpiTile('Cost per Inquiry',_f$(_div(_sp,_add)),
+         _f$(_sp)+' \u00f7 '+fN(_add)+' inquiries',
+         'Clinician ad spend \u00f7 clinician contacts created in the window \u2014 the Acquisition section\u2019s count',null,
+         _foot(_div(_sp,_add),_div(_kp?_kp.spend:null,_kp?_kp.inquiries:0),_div(_km?_km.spend:null,_km?_km.inquiries:0),'$',true))
+      +_clnKpiTile('CTR',_ctr!=null?_ctr.toFixed(2)+'%':'\u2014',
+         (_ctrOk?fN(_tf.clicks)+' \u00f7 '+fN(_tf.impressions)+' impressions':'no ad data'),
+         'Cumulative click-through rate across the Clinician campaigns \u2014 total clicks over total impressions, not an average of daily rates',null,
+         _foot(_ctr,null,null,'%',false))
+      +_clnKpiTile('Full App Rate',_rate!=null?_rate.toFixed(1)+'%':'\u2014',
+         fN(_fo)+' \u00f7 '+fN(_add)+' inquiries',
+         'Share of inquiries with a kickoff call booked \u2014 matches the Acquisition section\u2019s rate',null,
+         _foot(_rate,_pRate(_kp),_pRate(_km),'%',false))
+      +'</div>';
+    h=card('Key Metrics',
+      'Clinician channel \u00b7 follows the page date filter'
+      +(_a?'':' \u00b7 ad data unavailable for this window'),kmBody)+h;
+  }
   const refCard=(k,title,sub,body,n)=>'<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:16px">'
     +'<div onclick="clnRefToggle(\''+k+'\')" style="cursor:pointer;user-select:none">'
       +'<div class="irf-card-title" data-nav="'+title+'" style="font-size:22px;font-weight:700;letter-spacing:-.01em;border-left:4px solid var(--teal);padding-left:11px;line-height:1.2">'
@@ -12896,8 +12912,7 @@ function renderResDataKey(el){
     ['No Show Rate','Calculated','No Show \u00f7 (Meeting Happened + No Show)','Denominator is meetings supposed to occur'],
     ['Disqualification Rate','Calculated','Not a Fit \u00f7 cohort','Excludes deals with attendance = Cancelled Before Demo'],
     ['Daily Activity','HubSpot','contacts by createdate, bucketed in PT','Contacts, not deals. Weekday average shown as a dashed line'],
-    ['Composition','HubSpot','clinician_type, clinician_specialty','Deduped per person, contacts created in the window'],
-    ['Verification Funnel','HubSpot','photo_verification_status, medical_degree_status','Contacts at Meeting Happened or beyond, by create date. Both exit stages (No Show, Not a Fit) are excluded, so this is live pipeline only'],
+    ['Acquisition','HubSpot','clinician_type + UTMs on the contact','Deduped per person, contacts created in the window \u00b7 follows the Inquiry / Full Submission toggle'],
   ]);
 
   h+=mkSec('Budget & Pacing',[

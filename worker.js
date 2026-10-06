@@ -903,6 +903,77 @@ async function fetchLinkedInDemos(apiKey, from, to) {
   return n;
 }
 
+// Top-of-funnel stages for the Clinician Funnel. All four are window-scoped, like
+// the rest of that funnel now is — mixing a windowed ad metric with a history CRM
+// count would make the conversion rate between them meaningless.
+//
+// Field choices are measured, not inferred (Windsor, 30 days to 2026-10-05):
+//   link_clicks IS a distinct metric from clicks  — 8,601 vs 13,060.
+//   conversions_click_join_for_free DOES NOT EXIST: the conversions_<event>
+//     pattern only covers GA4 KEY events and this is not one. event_name +
+//     event_count do work, and the real names are click_join_for_free_button
+//     (3,721) and click_join_for_free_button_alt_no_sample (64) — so the match
+//     has to be a CONTAINS, not an equality.
+//   page_path matches EXACTLY /clinicians and /for-clinicians; a contains-match
+//     on "clinician" also sweeps /clinicians-choice, /clinician-reviews and nine
+//     blog posts, roughly doubling the stage.
+const CLN_CTA_EVENT_MATCH = 'click_join_for_free';
+const CLN_FUNNEL_PAGES = ['/clinicians', '/for-clinicians'];
+async function fetchClinicianTopFunnel(apiKey, from, to) {
+  const out = { impressions: null, linkClicks: null, clicks: null, pageViews: null, ctaClicks: null };
+  try {
+    const rows = await azWindsorFetchAll(apiKey, 'facebook', from, to,
+      'date,campaign_name,impressions,clicks,link_clicks', 30);
+    let im = 0, lc = 0, ck = 0;
+    for (const r of rows) {
+      if (!isClinicianCampaign(r.campaign_name)) continue;
+      im += parseInt(r.impressions) || 0;
+      lc += parseInt(r.link_clicks) || 0;   // null on zero-spend campaigns
+      ck += parseInt(r.clicks) || 0;
+    }
+    out.impressions = im; out.linkClicks = lc; out.clicks = ck;
+  } catch (e) { console.error('Clinician top-funnel (meta):', e && e.message); }
+  // Two separate GA4 calls on purpose: page_path lives in the Page/Screen table
+  // and event_name in the Event table, so asking for both at once cross-joins them.
+  try {
+    const rows = await windsorFetch(apiKey, from, to, 'page_path,screen_page_views', '&connectors=googleanalytics4');
+    let n = 0;
+    for (const r of rows) {
+      if (CLN_FUNNEL_PAGES.indexOf((r.page_path || '').trim()) >= 0) n += parseInt(r.screen_page_views) || 0;
+    }
+    out.pageViews = n;
+  } catch (e) { console.error('Clinician top-funnel (ga4 pages):', e && e.message); }
+  try {
+    const rows = await windsorFetch(apiKey, from, to, 'event_name,event_count', '&connectors=googleanalytics4');
+    let n = 0;
+    for (const r of rows) {
+      if ((r.event_name || '').indexOf(CLN_CTA_EVENT_MATCH) >= 0) n += parseInt(r.event_count) || 0;
+    }
+    out.ctaClicks = n;
+  } catch (e) { console.error('Clinician top-funnel (ga4 events):', e && e.message); }
+  return out;
+}
+
+
+// Virtual No Show Rate. The virtual flow has no No Show STAGE, so this reads the
+// attendance property instead, on the same basis the Detailed Dashboard uses for
+// demo no-shows: no-shows over meetings that were supposed to happen. "Scheduled"
+// and "Rescheduled" are still upcoming and "Cancelled Before Demo" was never due,
+// so all three are excluded from the denominator rather than counted as attended.
+const CLN_ATT_HELD = ['Demo Given \u2014 Originally Scheduled', 'Demo Given \u2014 Rescheduled'];
+function buildClinicianVirtualNoShow(deals) {
+  let held = 0, noShow = 0;
+  for (const d of (deals || [])) {
+    const p = d.properties || {};
+    if ((p.clinician_workflow || '').trim() !== 'Virtual Signup') continue;
+    const att = (p.clinician_attendance_status || '').trim();
+    if (att === 'No Show') noShow++;
+    else if (CLN_ATT_HELD.indexOf(att) >= 0) held++;
+  }
+  const den = held + noShow;
+  return { noShow, held, rate: den > 0 ? (noShow / den) * 100 : null };
+}
+
 // GA4 (guide Section 2)
 async function fetchGA4(apiKey, from, to) {
   const fields = 'datasource,users,sessions,conversions_click_schedule_demo_button,conversions_hubspot_meeting_booked';
@@ -934,7 +1005,13 @@ async function fetchGA4(apiKey, from, to) {
 // softFail counts give-ups that leave a GAP in the data without tripping the
 // pool breaker: a fetch that burned its retries, or a count that came back null.
 // Without it a degraded payload looks healthy and gets cached.
-const SUBREQ = { n: 0, windsor: 0, hubspot: 0, kv: 0, exhausted: false, windsorDropped: 0, softFail: 0 };
+const SUBREQ = { n: 0, windsor: 0, hubspot: 0, kv: 0, exhausted: false, windsorDropped: 0, softFail: 0,
+  // Attempts RESERVED, incremented synchronously the moment a chunk is admitted.
+  // SUBREQ.windsor only counts attempts already STARTED, and ~20 chunkers admit
+  // their waves synchronously before any of those increments land, so budgeting
+  // against it let every chunker admit as though it were the only one. Reserving
+  // up-front is what makes the ceiling hold across concurrent chunkers.
+  windsorPlanned: 0 };
 const WINDSOR_CALL_BUDGET = 700;   // leaves the rest of the pool for HubSpot.
 // Raised from 420 after a measured YTD run hit it and dropped chunks on four
 // connectors (google_ads, reddit, openai_ads, tiktok). HubSpot peaked at ~102
@@ -945,14 +1022,43 @@ const WINDSOR_CALL_BUDGET = 700;   // leaves the rest of the pool for HubSpot.
 // channel and the dashboard aborts at 75s. Kept modest because the ~6 channels
 // already run their chunkers in parallel, so the real outbound concurrency is
 // this times the channel count.
-const AZ_CHUNK_CONCURRENCY = 8;
+const AZ_CHUNK_CONCURRENCY = 3;
+// azWindsorFetch retries up to 3 times and counts EVERY attempt, so one admitted
+// chunk can cost 3 subrequests. The budget must reserve the worst case or a
+// retry storm walks straight past Cloudflare's 1000-per-invocation ceiling and
+// the whole request 503s.
+const AZ_MAX_ATTEMPTS = 3;
+// Reserved per admitted chunk. Reserving the worst case (3) stopped the
+// chunker at a third of the budget and dropped real data; SUBREQ_HARD_MAX is
+// what actually prevents the platform-limit 503, so reserve the typical cost.
+const AZ_RESERVE_PER_CHUNK = 1;
+// Windows whose fetch cost is structural rather than incidental. A Year to Date
+// Meta creative fetch alone is ~107k rows over ~54 Windsor calls (~38s measured),
+// so these are warmed by the cron below and served from cache; recomputing one
+// inside a browser request will always be marginal against its abort.
+const AZ_PRECOMPUTED_WINDOWS = ['ytd', 'allTime'];
+// Soft failures the CRON will still cache through. A scheduled warm that throws
+// away a 6-minute rebuild over one timed-out sub-fetch leaves the dashboard with
+// nothing at all, which is strictly worse than a payload with a small gap. The
+// request path stays strict.
+const AZ_CRON_SOFTFAIL_TOLERANCE = 5;
+function azCacheKey(win, from, to, vsFrom, vsTo) {
+  return 'azdata_resp_' + API_CACHE_VER + '_' + win + '_' + (from||'') + '_' + (to||'')
+       + '_' + (vsFrom||'') + '_' + (vsTo||'');
+}
+// These aggregate months of history, so a half-hour-old view is accurate enough;
+// the short TTL exists for windows that move intraday.
+function azCacheTtlMs(win) { return AZ_PRECOMPUTED_WINDOWS.includes(win) ? 1800000 : 120000; }
+// Last-resort backstop across EVERY connector, checked per attempt. The
+// per-connector budget is a plan; this is the thing that cannot be overshot.
+const SUBREQ_HARD_MAX = 900;
 // Creative grain is the densest fetch, but only on Meta. Start wide and let
 // azWindsorFetchAll's existing cap-bisection narrow only the connectors that
 // actually need it, instead of charging every connector 40 calls for a year.
 const AZ_CREATIVE_CHUNK_DAYS = 30;
 function subreqReset() {
   SUBREQ.n = 0; SUBREQ.windsor = 0; SUBREQ.hubspot = 0; SUBREQ.kv = 0;
-  SUBREQ.exhausted = false; SUBREQ.windsorDropped = 0; SUBREQ.softFail = 0;
+  SUBREQ.exhausted = false; SUBREQ.windsorDropped = 0; SUBREQ.softFail = 0; SUBREQ.windsorPlanned = 0;
 }
 function isSubreqLimit(e) {
   return !!e && /Too many subrequests/i.test(e.message || String(e));
@@ -966,7 +1072,7 @@ function noteSubreqError(e) {
   return SUBREQ.exhausted;
 }
 function subreqSummary() {
-  return `subrequests ~${SUBREQ.n} (windsor ${SUBREQ.windsor}, hubspot ${SUBREQ.hubspot}, kv ${SUBREQ.kv})`
+  return `subrequests ~${SUBREQ.n} (windsor ${SUBREQ.windsor}/${SUBREQ.windsorPlanned} planned, hubspot ${SUBREQ.hubspot}, kv ${SUBREQ.kv})`
     + (SUBREQ.softFail ? `, soft failures: ${SUBREQ.softFail}` : '')
     + (SUBREQ.windsorDropped ? `, windsor chunks dropped at budget: ${SUBREQ.windsorDropped}` : '')
     + (SUBREQ.exhausted ? ' — POOL EXHAUSTED' : '');
@@ -2270,6 +2376,30 @@ const CLS = {
   REVIEW_1:          '4164547317', REVIEW_2:         '4164547318',
   REVIEW_3:          '4164547319',
 };
+
+// The Clinician Funnel's nine stages, in the order the dashboard shows them.
+// Four are pre-CRM (ad + analytics) and five are HubSpot stages, so this is a
+// deliberate sequence rather than a subset of CLINICIAN_FLOWS — neither existing
+// flow matches it. The ad/analytics stages have no "here now": nobody sits in an
+// impression. Window-scoped throughout, which is what lets the conversion rate
+// from CTA Click to Inquiries mean anything.
+const CLN_FUNNEL9 = [
+  { key: 'impressions', label: 'Impressions',      sub: 'Meta \u00b7 Clinician campaigns' },
+  { key: 'linkClicks',  label: 'Link Clicks',      sub: 'Meta \u00b7 Clinician campaigns' },
+  { key: 'pageViews',   label: 'Page Views',       sub: '/clinicians + /for-clinicians' },
+  { key: 'ctaClicks',   label: 'CTA Click',        sub: 'click_join_for_free events' },
+  // acq: read from the Acquisition populations, not a dealstage. Key Metrics is
+  // the authority for these two, and it counts deduped CONTACTS; a deal-based
+  // stage count is a different number and the two were visibly disagreeing.
+  { key: 'inquiry',     label: 'Inquiries',        sub: 'clinician contacts created', acq: 'contacts' },
+  { key: 'onboarded',   label: 'Fully Onboarded',  sub: 'kickoff call booked',    acq: 'submission' },
+  { key: 'sample',      label: 'Sample Shipped',   sub: '1st Sample Shipped', id: CLS.SAMPLE_1 },
+  // 1st + 2nd + 3rd+ combined. Ever-reached is nested (you cannot reach 2nd
+  // without 1st) so reached is the max, but "here now" is the SUM — a clinician
+  // sitting at 3rd+ is not also sitting at 1st.
+  { key: 'review',      label: 'Review Submitted', sub: '1st + 2nd + 3rd+',
+    ids: [CLS.REVIEW_1, CLS.REVIEW_2, CLS.REVIEW_3] },
+];
 // Two workflows share this one HubSpot pipeline, each walking a different
 // subset. A deal's own flow decides which stages it can legitimately be
 // credited with — see the `reached` logic below.
@@ -2809,7 +2939,14 @@ function buildClinicianDaily(deals, contactsByDeal, from, to) {
     if (dow === 0 || dow === 6) continue;
     wdSum += byDay[k]; wdN++;
   }
-  return { byDay, total, noDate, noContact, outside, contacts: seen.size, weekdayAvg: wdN ? wdSum / wdN : null, weekdayDays: wdN };
+  // Every day in the window — the tile is "Daily Avg", so weekends count.
+  const _dayMs = 86400000;
+  const _spanDays = (from && to)
+    ? Math.max(1, Math.round((Date.parse(to + 'T00:00:00Z') - Date.parse(from + 'T00:00:00Z')) / _dayMs) + 1)
+    : Object.keys(byDay).length;
+  return { byDay, total, noDate, noContact, outside, contacts: seen.size,
+    weekdayAvg: wdN ? wdSum / wdN : null, weekdayDays: wdN,
+    dailyAvg: _spanDays > 0 ? total / _spanDays : null, days: _spanDays };
 }
 
 // Clinician composition: unique CONTACTS broken down by type and specialty.
@@ -3142,7 +3279,7 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
   // Acquisition card toggles between them: "Inquiry" is everyone who arrived,
   // "Full Submission" only those who got as far as scheduling a call. Kept as a
   // parallel tally rather than a second pass so both come out of one loop.
-  const subRef = {}, subUtmS = {}, subUtmM = {}, subUtmC = {};
+  const subRef = {}, subUtmS = {}, subUtmM = {}, subUtmC = {}, subType = {};
   let subContacts = 0;
   const byCred = {}, byPhoto = {};
   let verifContacts = 0;   // contacts CREATED in the window (verification scope)
@@ -3179,6 +3316,7 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
     if ((dp.clinician_meeting_booked_date || '').trim()) {
       subContacts++;
       subRef[rs] = (subRef[rs] || 0) + 1;
+      subType[t] = (subType[t] || 0) + 1;
       subUtmS[us] = (subUtmS[us] || 0) + 1;
       subUtmM[um] = (subUtmM[um] || 0) + 1;
       subUtmC[uc] = (subUtmC[uc] || 0) + 1;
@@ -3190,8 +3328,11 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
     // Not a Fit) are excluded too, so this counts only clinicians still live in
     // the pipeline at Meeting Happened or beyond.
     const vStage = (dp.dealstage || '').trim();
+    // By ID, not by array index: `vIdx >= 1` silently repointed at a different
+    // stage whenever one was inserted earlier in CLINICIAN_STAGES.
+    const _vFrom = CLINICIAN_STAGES.findIndex(x => x.id === CLS.MEETING_HAPPENED);
     const vIdx = CLINICIAN_STAGES.findIndex(x => x.id === vStage);
-    if (vIdx >= 1) {
+    if (vIdx >= 0 && _vFrom >= 0 && vIdx >= _vFrom) {
       verifContacts++;
       const cr = (cp.medical_degree_status || '').trim() || 'Not set';
       const ph = (cp.photo_verification_status || '').trim() || 'Not set';
@@ -3241,6 +3382,7 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
     submission: {
       contacts: subContacts,
       referral: capped(subRef, 9),
+      type: capped(subType, 9),
       utmSource: capped(subUtmS, 8), utmMedium: capped(subUtmM, 8), utmCampaign: capped(subUtmC, 8),
     },
   };
@@ -5681,8 +5823,15 @@ async function azWindsorFetch(apiKey, connector, from, to, fields, _chunked) {
   to = windsorCapTo(connector, to);
   if (to < from) return [];   // window was entirely today — nothing to ask for
   const url = `https://connectors.windsor.ai/${connector}?api_key=${apiKey}&date_from=${from}&date_to=${to}&fields=${fields}&page_size=${AZ_PAGE_SIZE}`;
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < AZ_MAX_ATTEMPTS; i++) {
     if (SUBREQ.exhausted) return [];
+    // Backstop: stop BEFORE the platform limit rather than letting it throw, which
+    // surfaces as a bare 503 with no JSON body and no diagnosis.
+    if (SUBREQ.n >= SUBREQ_HARD_MAX) {
+      SUBREQ.softFail++;
+      if (!SUBREQ.exhausted) { SUBREQ.exhausted = true; console.error(`SUBREQ HARD CAP ${SUBREQ_HARD_MAX} reached — ${subreqSummary()}`); }
+      return [];
+    }
     try {
       SUBREQ.n++; SUBREQ.windsor++;
       const r = await fetch(url);
@@ -5712,12 +5861,13 @@ async function azWindsorFetch(apiKey, connector, from, to, fields, _chunked) {
 // entirely (the reported "missing creative" bug). Fetch in date sub-ranges and,
 // whenever a range comes back AT the cap (= truncated), bisect it and retry — so
 // coverage self-adjusts to however many rows/day the account actually has.
-async function azWindsorFetchAll(apiKey, connector, from, to, fields, chunkDays = 30) {
+async function azWindsorFetchAll(apiKey, connector, from, to, fields, chunkDays = 30, onChunk = null) {
   // Cap here too, not just in azWindsorFetch: otherwise the chunker builds
   // sub-ranges that sit entirely past the cap and burns calls returning [].
   to = windsorCapTo(connector, to);
   if (to < from) return [];
   const _azAllT0 = Date.now();
+  let _kept = 0;
   const addDays = (ds, n) => { const d = new Date(ds + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return fmt(d); };
   const daysBetween = (a, b) => Math.round((new Date(b + 'T00:00:00Z') - new Date(a + 'T00:00:00Z')) / 86400000);
   const out = [];
@@ -5729,7 +5879,7 @@ async function azWindsorFetchAll(apiKey, connector, from, to, fields, chunkDays 
     // Windsor's share is capped so the HubSpot deal fetches sharing this
     // invocation's pool always have room. Dropping the tail of an ad table on a
     // year-wide window is a far better failure than zeroing every deal metric.
-    if (SUBREQ.exhausted || SUBREQ.windsor >= WINDSOR_CALL_BUDGET) {
+    if (SUBREQ.exhausted || SUBREQ.windsorPlanned + AZ_RESERVE_PER_CHUNK > WINDSOR_CALL_BUDGET) {
       SUBREQ.windsorDropped += stack.length;
       console.warn(`azWindsorFetchAll ${connector}: stopping with ${stack.length} chunk(s) unfetched — ${subreqSummary()}`);
       break;
@@ -5739,28 +5889,36 @@ async function azWindsorFetchAll(apiKey, connector, from, to, fields, chunkDays 
     // SUBREQ.windsor past WINDSOR_CALL_BUDGET even though its calls overlap.
     const wave = [];
     while (wave.length < AZ_CHUNK_CONCURRENCY && stack.length && calls < 800
-           && SUBREQ.windsor + wave.length < WINDSOR_CALL_BUDGET) {
+           && SUBREQ.windsorPlanned + AZ_RESERVE_PER_CHUNK <= WINDSOR_CALL_BUDGET) {
       wave.push(stack.pop()); calls++;
+      SUBREQ.windsorPlanned += AZ_RESERVE_PER_CHUNK;   // reserve BEFORE awaiting
     }
     if (!wave.length) break;
-    const got = await Promise.all(wave.map(([a, b]) =>
+    // Handle each chunk AS IT ARRIVES, not after the whole wave. Collecting the
+    // wave first held concurrency x connectors x up-to-AZ_PAGE_SIZE rows at once
+    // — with 7 connectors fetching concurrently that peak is larger than the
+    // whole-window row set this folding exists to avoid, and it is what pushed
+    // the Worker past its 128MB limit once chunks stopped being serial.
+    await Promise.all(wave.map(([a, b]) =>
       azWindsorFetch(apiKey, connector, a, b, fields, true)
-        .then(rows => ({ a, b, rows }))
-        .catch(() => ({ a, b, rows: [] }))));
-    // Bisection is unchanged: a chunk that came back AT the row cap was
-    // truncated by Windsor, so it is split and retried on a later wave.
-    for (const { a, b, rows } of got) {
-      if (rows.length >= AZ_PAGE_SIZE && a !== b) {
-        const mid = addDays(a, Math.floor(daysBetween(a, b) / 2));
-        stack.push([a, mid], [addDays(mid, 1), b]);  // truncated → split & retry
-      } else {
-        out.push(...rows);
-      }
-    }
+        .then(rows => {
+          // Bisection is unchanged: a chunk that came back AT the row cap was
+          // truncated by Windsor, so it is split and retried on a later wave.
+          if (rows.length >= AZ_PAGE_SIZE && a !== b) {
+            const mid = addDays(a, Math.floor(daysBetween(a, b) / 2));
+            stack.push([a, mid], [addDays(mid, 1), b]);  // truncated → split & retry
+          } else if (onChunk) {
+            // Fold and drop, before the rest of the wave has even landed.
+            _kept += rows.length; onChunk(rows);
+          } else {
+            out.push(...rows);
+          }
+        })
+        .catch(() => {})));
   }
   const _el = Date.now() - _azAllT0;
   // Only the slow ones, or this drowns the useful lines on a short window.
-  if (_el > 3000) console.log(`azChunk ${connector} ${from}..${to} d=${chunkDays}: ${calls} call(s), ${out.length} row(s), ${_el}ms`);
+  if (_el > 3000) console.log(`azChunk ${connector} ${from}..${to} d=${chunkDays}: ${calls} call(s), ${onChunk ? _kept + ' row(s) folded' : out.length + ' row(s)'}, ${_el}ms`);
   return out;
 }
 
@@ -5800,21 +5958,37 @@ async function fetchAzCampaigns(apiKey, from, to) {
   // Reddit uses campaign_name; OpenAI Ads only has `campaign` (no _name).
   // Both are .catch-guarded so a failure on these newer connectors can't reject
   // Promise.all and take the established channels down with them.
+  // Campaign rows fold per chunk and are dropped, like creatives. A YTD facebook
+  // campaign fetch is ~19k rows; holding every connector's at once contributed to
+  // exceeding the Worker's 128MB limit. aggRows is a function declaration, so it
+  // is hoisted and usable from these closures.
+  const cm = { meta:{}, clinician:{}, google:{}, youtube:{}, tiktok:{}, reddit:{}, chatgpt:{} };
+  const foldFb = rows => {
+    aggRowsFold(rows, 'meta', AZ_CONNECTORS.meta, r => !isClinicianCampaign(r.campaign_name), undefined, cm.meta);
+    aggRowsFold(rows, 'clinician', AZ_CONNECTORS.clinician, r => isClinicianCampaign(r.campaign_name), undefined, cm.clinician);
+  };
+  const foldGa = rows => {
+    aggRowsFold(rows, 'google', AZ_CONNECTORS.google, r => !/\byt\b|youtube/i.test(r.campaign_name||''), undefined, cm.google);
+    aggRowsFold(rows, 'youtube', AZ_CONNECTORS.youtube, r => /\byt\b|youtube/i.test(r.campaign_name||''), undefined, cm.youtube);
+  };
   const [fbRows, gaRows, liCampRows, liDemoTotal, ttRows, rdRows, oaRows] = await Promise.all([
     // adset_promoted_object drops this to ad-set grain; aggRows re-aggregates by
     // campaign_name so spend/demo totals are unchanged, and azWindsorFetchAll
     // paginates so the extra rows can't be truncated.
-    azWindsorFetchAll(apiKey, 'facebook', from, to, base+',conversions_submit_application_total,conversions_schedule_total,frequency,effective_status'+META_LEAD_FIELDS+META_CAPI_FIELDS+META_PROMOTED_OBJ_FIELD),
-    azWindsorFetchAll(apiKey, 'google_ads', from, to, base+',conversions,campaign_status'),
+    azWindsorFetchAll(apiKey, 'facebook', from, to, base+',conversions_submit_application_total,conversions_schedule_total,frequency,effective_status'+META_LEAD_FIELDS+META_CAPI_FIELDS+META_PROMOTED_OBJ_FIELD, 30, foldFb),
+    azWindsorFetchAll(apiKey, 'google_ads', from, to, base+',conversions,campaign_status', 30, foldGa),
     azWindsorFetchAll(apiKey, 'linkedin', from, to, 'date,campaign,campaign_group_name,spend,clicks,impressions,campaign_status'),
     fetchLinkedInDemos(apiKey, from, to),
-    azWindsorFetchAll(apiKey, 'tiktok', from, to, base+',conversions,frequency,campaign_status'),
-    azWindsorFetchAll(apiKey, 'reddit', from, to, base+',campaign_status').catch(e => { console.error('Reddit campaign fetch:', e.message); return []; }),
-    azWindsorFetchAll(apiKey, 'openai_ads', from, to, 'date,campaign,spend,clicks,impressions,campaign_status').catch(e => { console.error('OpenAI campaign fetch:', e.message); return []; }),
+    azWindsorFetchAll(apiKey, 'tiktok', from, to, base+',conversions,frequency,campaign_status', 30, rows => aggRowsFold(rows, 'tiktok', AZ_CONNECTORS.tiktok, undefined, undefined, cm.tiktok)),
+    azWindsorFetchAll(apiKey, 'reddit', from, to, base+',campaign_status', 30, rows => aggRowsFold(rows, 'reddit', AZ_CONNECTORS.reddit, undefined, undefined, cm.reddit)).catch(e => { console.error('Reddit campaign fetch:', e.message); return []; }),
+    azWindsorFetchAll(apiKey, 'openai_ads', from, to, 'date,campaign,spend,clicks,impressions,campaign_status', 30, rows => aggRowsFold(rows, 'chatgpt', AZ_CONNECTORS.chatgpt, undefined, undefined, cm.chatgpt)).catch(e => { console.error('OpenAI campaign fetch:', e.message); return []; }),
   ]);
 
-  function aggRows(rows, ch, cfg, filterFn, demoFilterFn) {
-    const camps = {};
+  // Split so the row loop can run per CHUNK while the post-processing — which
+  // DELETES c.freqVals and c.dates — runs exactly once at the end. Folding the
+  // whole thing deleted those arrays after the first chunk, and the next chunk
+  // then pushed to undefined.
+  function aggRowsFold(rows, ch, cfg, filterFn, demoFilterFn, camps) {
     for (const row of rows) {
       if (filterFn && !filterFn(row)) continue;
       // OpenAI Ads returns `campaign`, every other connector `campaign_name`.
@@ -5840,6 +6014,8 @@ async function fetchAzCampaigns(apiKey, from, to) {
       }
       if (cfg.hasFreq && row.frequency != null && row.frequency !== '') camps[name].freqVals.push(parseFloat(row.frequency));
     }
+  }
+  function aggRowsFinish(camps) {
     let tS=0,tC=0,tI=0,tD=0,fAll=[];
     for (const c of Object.values(camps)) {
       tS+=c.spend; tC+=c.clicks; tI+=c.impressions; tD+=c.demos;
@@ -5862,6 +6038,12 @@ async function fetchAzCampaigns(apiKey, from, to) {
     }
     return { campaigns:camps, totals:{ spend:tS, clicks:tC, impressions:tI, demos:tD, ctr:tI>0?(tC/tI)*100:0, cpd:tD>0?tS/tD:null, frequency:fAll.length?fAll.reduce((a,b)=>a+b,0)/fAll.length:null }};
   }
+  function aggRows(rows, ch, cfg, filterFn, demoFilterFn) {
+    const camps = {};
+    aggRowsFold(rows, ch, cfg, filterFn, demoFilterFn, camps);
+    return aggRowsFinish(camps);
+  }
+
 
   const liDemoFilter = r => (r.conversion_name||'').toLowerCase().includes('demo request');
 
@@ -5915,110 +6097,26 @@ async function fetchAzCampaigns(apiKey, from, to) {
   return {
     // One facebook fetch, split two ways — Meta excludes Clinician Targeting and
     // Clinician takes only those, so no campaign is counted in both.
-    meta:     aggRows(fbRows, 'meta', AZ_CONNECTORS.meta, r => !isClinicianCampaign(r.campaign_name)),
-    clinician: aggRows(fbRows, 'clinician', AZ_CONNECTORS.clinician, r => isClinicianCampaign(r.campaign_name)),
-    google:   aggRows(gaRows, 'google', AZ_CONNECTORS.google, r => !/\byt\b|youtube/i.test(r.campaign_name||'')),
-    youtube:  aggRows(gaRows, 'youtube', AZ_CONNECTORS.youtube, r => /\byt\b|youtube/i.test(r.campaign_name||'')),
+    // Already folded per chunk above; fbRows/gaRows/ttRows/rdRows/oaRows are empty.
+    meta:     aggRowsFinish(cm.meta),
+    clinician: aggRowsFinish(cm.clinician),
+    google:   aggRowsFinish(cm.google),
+    youtube:  aggRowsFinish(cm.youtube),
+    // LinkedIn stays accumulated: aggLinkedIn is a different shape and the
+    // connector returns ~12k rows for a year, well inside budget.
     linkedin: aggLinkedIn(liCampRows.filter(r => !isRetiredLinkedInGroup(r.campaign_group_name)), liDemoTotal),
-    tiktok:   aggRows(ttRows, 'tiktok', AZ_CONNECTORS.tiktok),
-    reddit:   aggRows(rdRows, 'reddit', AZ_CONNECTORS.reddit),
-    chatgpt:  _applyManualConv(aggRows(oaRows, 'chatgpt', AZ_CONNECTORS.chatgpt), 'chatgpt', from, to),
+    tiktok:   aggRowsFinish(cm.tiktok),
+    reddit:   aggRowsFinish(cm.reddit),
+    chatgpt:  _applyManualConv(aggRowsFinish(cm.chatgpt), 'chatgpt', from, to),
   };
 }
 
 // Attempt creative-level fetch (may timeout — graceful fallback)
-async function fetchAzCreatives(apiKey, from, to) {
-  const base = 'date,campaign_name,ad_name,spend,clicks,impressions';
-  const results = {};
-
-  // Build fetch promises for all channels in parallel (NO thumbnail fields - causes size overflow)
-  // For Meta we also pull ad_status so the dashboard can distinguish ACTIVE
-  // creatives from PAUSED/COMPLETED ones (rather than guessing from spend>0,
-  // which mis-labels active creatives that had no impressions in the window).
-  const promises = [];
-  const channels = [];
-  for (const ch of DASH_CHANNELS) {
-    const cfg = AZ_CONNECTORS[ch]; if (!cfg) continue;
-    if (ch === 'linkedin') {
-      promises.push(azWindsorFetch(apiKey, 'linkedin', from, to, 'date,campaign,ad_name,spend,clicks,impressions').catch(e => { console.error(`Creative fetch linkedin:`, e.message); return []; }));
-    } else if (ch === 'chatgpt') {
-      // Field ids confirmed from Windsor's openai_ads schema: ad / ad_group /
-      // campaign / ad_status. Requesting ad_name, campaign_name or conversions
-      // fails the entire request.
-      promises.push(azWindsorFetchAll(apiKey, cfg.connector, from, to, 'date,campaign,ad_group,ad,ad_status,spend,clicks,impressions', AZ_CREATIVE_CHUNK_DAYS).catch(e => { console.error(`Creative fetch chatgpt:`, e.message); return []; }));
-    } else {
-      // Meta-connector channels need BOTH standard-event columns plus the
-      // promoted object, or metaDemos cannot tell which event to count.
-      const extra = isMetaConnectorCh(ch)
-        ? ',conversions_submit_application_total,conversions_schedule_total' + META_PROMOTED_OBJ_FIELD
-        : (cfg.demoField === 'conversions_submit_application_total' ? ',conversions_submit_application_total' : ',conversions');
-      const freq = cfg.hasFreq ? ',frequency' : '';
-      const video = isMetaConnectorCh(ch) ? ',video_p25_watched_actions' : '';
-      const placement = isMetaConnectorCh(ch) ? ',publisher_platform,platform_position' : '';
-      // effective_status (not ad_status) so an ad whose parent ad set / campaign
-      // is OFF reports ADSET_PAUSED / CAMPAIGN_PAUSED (→ PAUSED) instead of its
-      // own ACTIVE toggle. ad_status alone made paused ad sets look Active
-      // because the ads inside were still toggled on. Keep ad_status as fallback.
-      const status = isMetaConnectorCh(ch) ? ',ad_status,effective_status' : '';
-      // ad_created_time (Meta) → the creative's launch date, window-independent.
-      // Powers the "Status Date" column (Active → launch; Paused → last run).
-      const created = isMetaConnectorCh(ch) ? ',ad_created_time' : '';
-      // adset_name (Meta) / ad_group_name (Google, TikTok) lets us group
-      // creatives under their parent ad set for the Ad Sets table dropdown.
-      // adset_promoted_object rides along on Meta (already ad grain, so no extra
-      // rows) to let metaDemos count each creative's real optimized conversion.
-      const adset = isMetaConnectorCh(ch) ? (',adset_name' + META_PROMOTED_OBJ_FIELD) : ((ch === 'google' || ch === 'tiktok') ? ',ad_group_name' : '');
-      // Lead-form fields (Meta) so allowlisted lead-gen campaigns count
-      // Leads (Form) toward Demos at the CREATIVE level too — Windsor returns
-      // these per ad_name, so each creative gets its own lead count.
-      const lead = isMetaConnectorCh(ch) ? META_LEAD_FIELDS : '';
-      // CAPI custom-conversion counts (Demo / Webinar / Demo+Webinar) — the real
-      // "Results" for campaigns that optimize for a CAPI conversion.
-      const capi = isMetaConnectorCh(ch) ? META_CAPI_FIELDS : '';
-      promises.push(azWindsorFetchAll(apiKey, cfg.connector, from, to, base + extra + freq + video + placement + status + created + adset + lead + capi, AZ_CREATIVE_CHUNK_DAYS).catch(e => { console.error(`Creative fetch ${ch}:`, e.message); return []; }));
-    }
-    channels.push(ch);
-  }
-
-  // Separate lightweight thumbnail fetches (ad_name + thumb only, much smaller payload)
-  const thumbPromises = [];
-  const thumbChannels = [];
-  for (const ch of DASH_CHANNELS) {
-    const cfg = AZ_CONNECTORS[ch]; if (!cfg || !cfg.thumbField) continue;
-    if (ch === 'linkedin') {
-      thumbPromises.push(azWindsorFetch(apiKey, 'linkedin', from, to, 'ad_name,'+cfg.thumbField).catch(() => []));
-    } else {
-      thumbPromises.push(azWindsorFetch(apiKey, cfg.connector, from, to, 'ad_name,'+cfg.thumbField).catch(() => []));
-    }
-    thumbChannels.push(ch);
-  }
-
-  const [allResults, allThumbs] = await Promise.all([Promise.all(promises), Promise.all(thumbPromises)]);
-
-  // Build thumbnail lookup maps
-  const thumbMaps = {};
-  for (let t = 0; t < thumbChannels.length; t++) {
-    const ch = thumbChannels[t];
-    const cfg = AZ_CONNECTORS[ch];
-    const tm = {};
-    for (const row of (allThumbs[t]||[])) {
-      const name = row.ad_name;
-      if (name && !tm[name] && row[cfg.thumbField]) tm[name] = row[cfg.thumbField];
-    }
-    thumbMaps[ch] = tm;
-  }
-
-  for (let i = 0; i < channels.length; i++) {
-    const ch = channels[i];
-    const cfg = AZ_CONNECTORS[ch];
-    const rows = allResults[i];
-    if (!rows || !rows.length) { results[ch] = null; continue; }
-    const map = {};
-    const campCreMap = {}; // Per-campaign creative breakdown
-    const adsetCreMap = {}; // Per-ad-set creative breakdown (Ad Sets dropdown)
-    const placementMap = {}; // Placement aggregation (Meta only)
-    const tm = thumbMaps[ch] || {};
-    for (const row of rows) {
+// The per-row creative fold, lifted out of fetchAzCreatives unchanged so it can
+// run per CHUNK as rows arrive. Mutates the four aggregate maps and keeps no
+// reference to `rows`, so each chunk is collectable as soon as it is folded.
+function _foldCreRows(ch, cfg, rows, map, campCreMap, adsetCreMap, placementMap, tm) {
+  for (const row of rows) {
       const campName = row.campaign_name || row.campaign || '';
       const isYT = /\byt\b|youtube/i.test(campName);
       const rCh = /google/.test(cfg.connector) ? (isYT ? 'youtube' : 'google') : ch;
@@ -6120,6 +6218,153 @@ async function fetchAzCreatives(apiKey, from, to) {
           else { const rawD3 = demoRawOf(row, cfg.demoField); adsetCreMap[adsetKey][name].demos += (ch==='google'||ch==='youtube') ? Math.ceil(rawD3) : Math.round(rawD3); }
         }
         if (cfg.hasFreq && row.frequency != null && row.frequency !== '') adsetCreMap[adsetKey][name].freqVals.push(parseFloat(row.frequency));
+      }
+    }
+}
+
+async function fetchAzCreatives(apiKey, from, to) {
+  const base = 'date,campaign_name,ad_name,spend,clicks,impressions';
+  // Past this span the placement dimension costs more than it is worth — see the
+  // `placement` field below.
+  const _creSpanDays = Math.round((new Date(to + 'T00:00:00Z') - new Date(from + 'T00:00:00Z')) / 86400000) + 1;
+  const _creWideWindow = _creSpanDays > 120;
+  if (_creWideWindow) console.log(`fetchAzCreatives: ${_creSpanDays}-day window — placement breakdown omitted to keep the fetch affordable`);
+  const results = {};
+
+  // Build fetch promises for all channels in parallel (NO thumbnail fields - causes size overflow)
+  // For Meta we also pull ad_status so the dashboard can distinguish ACTIVE
+  // creatives from PAUSED/COMPLETED ones (rather than guessing from spend>0,
+  // which mis-labels active creatives that had no impressions in the window).
+  const promises = [];
+  const channels = [];
+  // Rows are folded per chunk and dropped — see _foldCre. A YTD Meta creative
+  // window is 73k+ rows (creative x day x placement) and holding every channel's
+  // rows at once exceeded the Worker's 128MB limit.
+  const foldState = {};
+  const _foldCre = (ch, cfg, rows) => {
+    const st = foldState[ch] || (foldState[ch] = { map:{}, campCreMap:{}, adsetCreMap:{}, placementMap:{}, n:0 });
+    const map = st.map, campCreMap = st.campCreMap, adsetCreMap = st.adsetCreMap, placementMap = st.placementMap;
+    const tm = {};   // thumbnails are attached in the post-pass, once fetched
+    st.n += rows.length;
+    _foldCreRows(ch, cfg, rows, map, campCreMap, adsetCreMap, placementMap, tm);
+  };
+  // One fetch per CONNECTOR, folded into every channel that uses it. meta and
+  // clinician both sit on facebook (and google/youtube on google_ads), and the
+  // fold already splits rows by campaign name, so a second identical query bought
+  // nothing and cost 36 subrequests plus ~34s of wall clock.
+  const _seenConn = {};
+  for (const ch of DASH_CHANNELS) {
+    const cfg = AZ_CONNECTORS[ch]; if (!cfg) continue;
+    if (cfg.connector && _seenConn[cfg.connector]) {
+      // Already fetching this connector — attach this channel to that fold.
+      _seenConn[cfg.connector].push(ch); channels.push(ch); continue;
+    }
+    if (cfg.connector) _seenConn[cfg.connector] = [ch];
+    if (ch === 'linkedin') {
+      // Was an UNCHUNKED azWindsorFetch over the whole window with 3 retries, no
+      // budget guard and — because it is not azWindsorFetchAll — no azChunk log
+      // line, so it was invisible. On a YTD run it accounted for ~240s of the
+      // 379s creatives phase while the slowest visible chunker was 135s.
+      promises.push(azWindsorFetchAll(apiKey, 'linkedin', from, to, 'date,campaign,ad_name,spend,clicks,impressions', AZ_CREATIVE_CHUNK_DAYS, rows => { for (const _c of _seenConn[cfg.connector]) _foldCre(_c, AZ_CONNECTORS[_c], rows); }).catch(e => { console.error(`Creative fetch linkedin:`, e.message); return []; }));
+    } else if (ch === 'chatgpt') {
+      // Field ids confirmed from Windsor's openai_ads schema: ad / ad_group /
+      // campaign / ad_status. Requesting ad_name, campaign_name or conversions
+      // fails the entire request.
+      promises.push(azWindsorFetchAll(apiKey, cfg.connector, from, to, 'date,campaign,ad_group,ad,ad_status,spend,clicks,impressions', AZ_CREATIVE_CHUNK_DAYS, rows => { for (const _c of _seenConn[cfg.connector]) _foldCre(_c, AZ_CONNECTORS[_c], rows); }).catch(e => { console.error(`Creative fetch chatgpt:`, e.message); return []; }));
+    } else {
+      // Meta-connector channels need BOTH standard-event columns plus the
+      // promoted object, or metaDemos cannot tell which event to count.
+      const extra = isMetaConnectorCh(ch)
+        ? ',conversions_submit_application_total,conversions_schedule_total' + META_PROMOTED_OBJ_FIELD
+        : (cfg.demoField === 'conversions_submit_application_total' ? ',conversions_submit_application_total' : ',conversions');
+      const freq = cfg.hasFreq ? ',frequency' : '';
+      const video = isMetaConnectorCh(ch) ? ',video_p25_watched_actions' : '';
+      // Placement multiplies rows by creative x day x PLACEMENT. On a long window
+      // that is the difference between ~16k rows and ~115k, and it is the only
+      // reason a Year to Date creative fetch took 6 minutes. The placement
+      // breakdown is dropped for those windows; every client consumer guards an
+      // empty array (dashboard.html:15005, :15062, :15104).
+      const placement = (isMetaConnectorCh(ch) && !_creWideWindow) ? ',publisher_platform,platform_position' : '';
+      // effective_status (not ad_status) so an ad whose parent ad set / campaign
+      // is OFF reports ADSET_PAUSED / CAMPAIGN_PAUSED (→ PAUSED) instead of its
+      // own ACTIVE toggle. ad_status alone made paused ad sets look Active
+      // because the ads inside were still toggled on. Keep ad_status as fallback.
+      const status = isMetaConnectorCh(ch) ? ',ad_status,effective_status' : '';
+      // ad_created_time (Meta) → the creative's launch date, window-independent.
+      // Powers the "Status Date" column (Active → launch; Paused → last run).
+      const created = isMetaConnectorCh(ch) ? ',ad_created_time' : '';
+      // adset_name (Meta) / ad_group_name (Google, TikTok) lets us group
+      // creatives under their parent ad set for the Ad Sets table dropdown.
+      // adset_promoted_object rides along on Meta (already ad grain, so no extra
+      // rows) to let metaDemos count each creative's real optimized conversion.
+      const adset = isMetaConnectorCh(ch) ? (',adset_name' + META_PROMOTED_OBJ_FIELD) : ((ch === 'google' || ch === 'tiktok') ? ',ad_group_name' : '');
+      // Lead-form fields (Meta) so allowlisted lead-gen campaigns count
+      // Leads (Form) toward Demos at the CREATIVE level too — Windsor returns
+      // these per ad_name, so each creative gets its own lead count.
+      const lead = isMetaConnectorCh(ch) ? META_LEAD_FIELDS : '';
+      // CAPI custom-conversion counts (Demo / Webinar / Demo+Webinar) — the real
+      // "Results" for campaigns that optimize for a CAPI conversion.
+      const capi = isMetaConnectorCh(ch) ? META_CAPI_FIELDS : '';
+      promises.push(azWindsorFetchAll(apiKey, cfg.connector, from, to, base + extra + freq + video + placement + status + created + adset + lead + capi, AZ_CREATIVE_CHUNK_DAYS, rows => { for (const _c of _seenConn[cfg.connector]) _foldCre(_c, AZ_CONNECTORS[_c], rows); }).catch(e => { console.error(`Creative fetch ${ch}:`, e.message); return []; }));
+    }
+    channels.push(ch);
+  }
+
+  // Thumbnails are decoration, and they were the silent 40s on a YTD load: no
+  // chunking, no timeout, the full window, and azWindsorFetch retries 3x with
+  // 1-2s sleeps between attempts. Bound BOTH the window and the wait — a missing
+  // thumbnail costs nothing, a stalled response costs the whole section.
+  const _thumbFrom = (() => {
+    const d = new Date(to + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() - 89);
+    const cut = fmt(d); return cut > from ? cut : from;
+  })();
+  const _thumbCapped = (pr) => Promise.race([
+    pr.catch(() => []),
+    new Promise(r => setTimeout(() => r([]), 8000)),
+  ]);
+  // Separate lightweight thumbnail fetches (ad_name + thumb only, much smaller payload)
+  const thumbPromises = [];
+  const thumbChannels = [];
+  for (const ch of DASH_CHANNELS) {
+    const cfg = AZ_CONNECTORS[ch]; if (!cfg || !cfg.thumbField) continue;
+    if (ch === 'linkedin') {
+      thumbPromises.push(_thumbCapped(azWindsorFetch(apiKey, 'linkedin', _thumbFrom, to, 'ad_name,'+cfg.thumbField)));
+    } else {
+      thumbPromises.push(_thumbCapped(azWindsorFetch(apiKey, cfg.connector, _thumbFrom, to, 'ad_name,'+cfg.thumbField)));
+    }
+    thumbChannels.push(ch);
+  }
+
+  const [allResults, allThumbs] = await Promise.all([Promise.all(promises), Promise.all(thumbPromises)]);
+
+  // Build thumbnail lookup maps
+  const thumbMaps = {};
+  for (let t = 0; t < thumbChannels.length; t++) {
+    const ch = thumbChannels[t];
+    const cfg = AZ_CONNECTORS[ch];
+    const tm = {};
+    for (const row of (allThumbs[t]||[])) {
+      const name = row.ad_name;
+      if (name && !tm[name] && row[cfg.thumbField]) tm[name] = row[cfg.thumbField];
+    }
+    thumbMaps[ch] = tm;
+  }
+
+  for (let i = 0; i < channels.length; i++) {
+    const ch = channels[i];
+    const cfg = AZ_CONNECTORS[ch];
+    const st = foldState[ch];
+    if (!st || !st.n) { results[ch] = null; continue; }
+    const map = st.map;
+    const campCreMap = st.campCreMap;   // Per-campaign creative breakdown
+    const adsetCreMap = st.adsetCreMap; // Per-ad-set creative breakdown (Ad Sets dropdown)
+    const placementMap = st.placementMap; // Placement aggregation (Meta only)
+    // Folding ran before the thumbnail fetch resolved, so attach by name now.
+    const tm = thumbMaps[ch] || {};
+    for (const _m of [map, campCreMap, adsetCreMap]) {
+      for (const v of Object.values(_m)) {
+        if (v && v.name !== undefined) { if (!v.thumbnail) v.thumbnail = tm[v.name] || null; }
+        else if (v) for (const c2 of Object.values(v)) { if (c2 && !c2.thumbnail) c2.thumbnail = tm[c2.name] || null; }
       }
     }
     for (const c of Object.values(map)) {
@@ -6275,33 +6520,10 @@ async function fetchCreativeFatigue(apiKey) {
 }
 
 // ── Audience / Ad Group level fetch ──
-async function fetchAzAudiences(apiKey, from, to) {
-  const results = {};
-  const configs = {
-    // adset_promoted_object carries the real optimization target. It's an
-    // Ad-table field but this query is already ad-set grain, so it adds no rows
-    // (verified: same 13 rows / same spend total as without it).
-    meta:   { connector:'facebook', fields:'date,adset_name,campaign_name,spend,clicks,impressions,conversions_submit_application_total,conversions_schedule_total,adset_status,adset_effective_status,adset_promoted_object'+META_LEAD_FIELDS+META_CAPI_FIELDS, nameField:'adset_name', demoField:'conversions_submit_application_total', statusField:'adset_effective_status', statusFallback:'adset_status' },
-    google: { connector:'google_ads', fields:'date,ad_group_name,campaign_name,spend,clicks,impressions,conversions', nameField:'ad_group_name', demoField:'conversions' },
-    tiktok: { connector:'tiktok', fields:'date,ad_group_name,campaign_name,spend,clicks,impressions,conversions', nameField:'ad_group_name', demoField:'conversions' },
-    // Reddit groups by ad_group_name; OpenAI Ads by ad_group (and `campaign`,
-    // not campaign_name). Neither reports a demo-equivalent conversion.
-    clinician: { connector:'facebook', fields:'date,adset_name,campaign_name,spend,clicks,impressions,conversions_submit_application_total,conversions_schedule_total,adset_status,adset_effective_status,adset_promoted_object'+META_LEAD_FIELDS+META_CAPI_FIELDS, nameField:'adset_name', demoField:CLINICIAN_CONV_FIELDS, statusField:'adset_effective_status', statusFallback:'adset_status', onlyClinician:true },
-    reddit: { connector:'reddit', fields:'date,ad_group_name,campaign_name,spend,clicks,impressions', nameField:'ad_group_name', demoField:null },
-    chatgpt: { connector:'openai_ads', fields:'date,ad_group,campaign,spend,clicks,impressions', nameField:'ad_group', demoField:null },
-  };
-
-  const promises = [], chKeys = [];
-  for (const [ch, cfg] of Object.entries(configs)) {
-    promises.push(azWindsorFetchAll(apiKey, cfg.connector, from, to, cfg.fields).catch(e => { console.error(`Audience fetch ${ch}:`, e.message); return []; }));
-    chKeys.push(ch);
-  }
-
-  const rawResults = await Promise.all(promises);
-  for (let i = 0; i < chKeys.length; i++) {
-    const ch = chKeys[i], rows = rawResults[i], cfg = configs[ch];
-    const map = {};
-    for (const row of rows) {
+// The per-row audience fold, lifted out of fetchAzAudiences unchanged so it can
+// run per CHUNK. Mutates `map` and keeps no reference to `rows`.
+function _foldAudRows(ch, cfg, rows, map) {
+  for (const row of rows) {
       const name = (row[cfg.nameField] || '').trim();
       if (!name) continue;
       const campName = row.campaign_name || row.campaign || '';  // OpenAI Ads uses `campaign`
@@ -6330,6 +6552,40 @@ async function fetchAzAudiences(apiKey, from, to) {
       else { let d = demoRawOf(row, cfg.demoField); if (ch === 'google') d = Math.ceil(d); else d = Math.round(d); map[name].demos += d; }
       if (!map[name].campaign && campName) map[name].campaign = campName;
     }
+}
+
+async function fetchAzAudiences(apiKey, from, to) {
+  const results = {};
+  const configs = {
+    // adset_promoted_object carries the real optimization target. It's an
+    // Ad-table field but this query is already ad-set grain, so it adds no rows
+    // (verified: same 13 rows / same spend total as without it).
+    meta:   { connector:'facebook', fields:'date,adset_name,campaign_name,spend,clicks,impressions,conversions_submit_application_total,conversions_schedule_total,adset_status,adset_effective_status,adset_promoted_object'+META_LEAD_FIELDS+META_CAPI_FIELDS, nameField:'adset_name', demoField:'conversions_submit_application_total', statusField:'adset_effective_status', statusFallback:'adset_status' },
+    google: { connector:'google_ads', fields:'date,ad_group_name,campaign_name,spend,clicks,impressions,conversions', nameField:'ad_group_name', demoField:'conversions' },
+    tiktok: { connector:'tiktok', fields:'date,ad_group_name,campaign_name,spend,clicks,impressions,conversions', nameField:'ad_group_name', demoField:'conversions' },
+    // Reddit groups by ad_group_name; OpenAI Ads by ad_group (and `campaign`,
+    // not campaign_name). Neither reports a demo-equivalent conversion.
+    clinician: { connector:'facebook', fields:'date,adset_name,campaign_name,spend,clicks,impressions,conversions_submit_application_total,conversions_schedule_total,adset_status,adset_effective_status,adset_promoted_object'+META_LEAD_FIELDS+META_CAPI_FIELDS, nameField:'adset_name', demoField:CLINICIAN_CONV_FIELDS, statusField:'adset_effective_status', statusFallback:'adset_status', onlyClinician:true },
+    reddit: { connector:'reddit', fields:'date,ad_group_name,campaign_name,spend,clicks,impressions', nameField:'ad_group_name', demoField:null },
+    chatgpt: { connector:'openai_ads', fields:'date,ad_group,campaign,spend,clicks,impressions', nameField:'ad_group', demoField:null },
+  };
+
+  // Audience rows fold per chunk too — a YTD window is ~30k rows across the
+  // connectors and holding them all contributed to the 128MB overrun.
+  const audMaps = {}, audN = {};
+  const promises = [], chKeys = [];
+  for (const [ch, cfg] of Object.entries(configs)) {
+    audMaps[ch] = {}; audN[ch] = 0;
+    promises.push(azWindsorFetchAll(apiKey, cfg.connector, from, to, cfg.fields, 30,
+      rows => { audN[ch] += rows.length; _foldAudRows(ch, cfg, rows, audMaps[ch]); })
+      .catch(e => { console.error(`Audience fetch ${ch}:`, e.message); return []; }));
+    chKeys.push(ch);
+  }
+
+  await Promise.all(promises);
+  for (let i = 0; i < chKeys.length; i++) {
+    const ch = chKeys[i], cfg = configs[ch];
+    const map = audMaps[ch];
     const list = Object.values(map).map(a => {
       a.ctr = a.impressions > 0 ? (a.clicks / a.impressions) * 100 : 0;
       a.cpd = a.demos > 0 ? a.spend / a.demos : null;
@@ -7831,6 +8087,40 @@ async function fetchSalesData(mode, env) {
 }
 
 export default {
+  // Cron. The browser aborts at a fixed timeout and cannot wait for a Year to
+  // Date rebuild, so compute those windows here and leave them in KV for the
+  // dashboard to pick up. Nothing user-facing depends on this succeeding — a
+  // miss just falls through to the live path.
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil((async () => {
+      for (const win of AZ_PRECOMPUTED_WINDOWS) {
+        subreqReset();   // each window gets its own budget
+        const t0 = Date.now();
+        try {
+          const result = await processAzRequest(win, null, null, env, null, null);
+          // Same health gate as the request path: never warm the cache with a
+          // degraded payload, or every reader inherits the gap for the full TTL.
+          // Dropped chunks and an exhausted pool mean whole date ranges are
+          // missing, which is never cacheable. A couple of soft failures are a
+          // small gap, and worth keeping over serving nothing.
+          const ok = !SUBREQ.exhausted && !SUBREQ.windsorDropped
+                     && SUBREQ.softFail <= AZ_CRON_SOFTFAIL_TOLERANCE;
+          if (!ok) { console.warn(`cron warm ${win}: NOT caching — ${subreqSummary()}`); continue; }
+          if (SUBREQ.softFail) console.warn(`cron warm ${win}: caching WITH ${SUBREQ.softFail} soft failure(s) — ${subreqSummary()}`);
+          if (env.CONTENT_STORE) {
+            const blob = JSON.stringify({ t: Date.now(), data: result });
+            if (blob.length < 20*1024*1024) {
+              kvOp();
+              await env.CONTENT_STORE.put(azCacheKey(win, null, null, null, null), blob,
+                { expirationTtl: Math.round(azCacheTtlMs(win)/1000) + 300 });
+              console.log(`cron warm ${win}: cached in ${Date.now()-t0}ms — ${subreqSummary()}`);
+            }
+          }
+        } catch (e) { console.error(`cron warm ${win} failed after ${Date.now()-t0}ms:`, e && e.message); }
+      }
+    })());
+  },
+
   async fetch(request, env) {
     subreqReset();   // the pool is per-invocation, so the counters are too
     const url = new URL(request.url);
@@ -7952,7 +8242,15 @@ export default {
         // report a different Form-vs-Demo split than the main page for one range.
         const _amb = deals.filter(d => clinicianFormVsDemo(d.properties || {}) === 'Same Day').map(d => d.id);
         const funnel = buildClinicianFunnel(deals, contactsByDeal, await fetchClinicianMeetingStarts(token, _amb));
-        return jr({ range: { from, to }, ...funnel,
+        // Top-of-funnel + spend for THIS range, so all nine stages describe one span.
+        const topFunnel = await fetchClinicianTopFunnel(env.WINDSOR_API_KEY, from, to);
+        let clnSpend = null;
+        try {
+          const wr = await fetchWindsorAds(env.WINDSOR_API_KEY, wFrom(from), to);
+          const a = buildClinicianAds(wr, getBudgetsForMonth(from), funnel.all && funnel.all.funnel, 0, funnel.rows || [], from, to);
+          clnSpend = (a && typeof a.spend === 'number') ? a.spend : null;
+        } catch (e) { console.error('Clinician funnel spend:', e && e.message); }
+        return jr({ range: { from, to }, topFunnel, clnSpend, ...funnel,
           meta: { generatedAt: new Date().toISOString(), dealsFetched: deals.length, cohortField: 'createdate' } });
       } catch(err) { console.error('Clinician funnel endpoint error:', err); return jr({ error: 'Internal error', detail: err.message }, 500); }
     }
@@ -7963,12 +8261,16 @@ export default {
       if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
       try {
         const token = env.HUBSPOT_TOKEN;
-        const { current: cur } = computeWindows(body.window || 'mtd', body.from || null, body.to || null, body.vsFrom || null, body.vsTo || null);
+        const { current: cur, prior, priorMonth } = computeWindows(body.window || 'mtd', body.from || null, body.to || null, body.vsFrom || null, body.vsTo || null);
         // ONE fetch spanning both scopes: the page window AND the history range.
         // Splitting them into two searches would double the HubSpot page cost
         // against a 50-subrequest ceiling for data we can just slice in memory.
         const _today = fmt(todayET());
-        const histFrom = CLINICIAN_HISTORY_FROM < cur.from ? CLINICIAN_HISTORY_FROM : cur.from;
+        // Widen to cover the comparison windows too. The deals fetch is ONE search
+        // over a superset that is then sliced in memory, so prior/last-month deal
+        // counts cost no extra HubSpot page — only their ad spend needs new calls.
+        let histFrom = CLINICIAN_HISTORY_FROM < cur.from ? CLINICIAN_HISTORY_FROM : cur.from;
+        for (const _w of [prior, priorMonth]) if (_w && _w.from < histFrom) histFrom = _w.from;
         const histTo = cur.to > _today ? cur.to : _today;
         const deals = await fetchClinicianDeals(token, histFrom, histTo);
         const contactsByDeal = await fetchClinicianContacts(token, deals.map(d => d.id));
@@ -7999,6 +8301,31 @@ export default {
           // (deal-based, demo-flow) so it reconciles with the Before-Demo stat.
           range: { from: CLINICIAN_HISTORY_FROM, to: histTo },
         };
+        // KPI comparison windows. Only the three numbers the Key Metrics row needs:
+        // ad spend, deals that reached Fully Onboarded, and clinicians added. The
+        // deal-side pair is sliced from `deals`, already in hand; only the Windsor
+        // spend is a new fetch, and the comparison windows are months, not years.
+        const _clnKpiFor = async (w) => {
+          if (!w) return null;
+          const dw = deals.filter(d => _inWin(d, w.from, w.to));
+          const fp = buildClinicianFunnel(dw, contactsByDeal, meetingStarts);
+          const dl = buildClinicianDaily(dw, contactsByDeal, w.from, w.to);
+          // Acquisition's two populations: unique contacts created in the window,
+          // and those of them with a kickoff call booked. CONTACT-based and
+          // deduped per person — deliberately NOT the funnel's deal-based stages.
+          const cp = buildClinicianComposition(dw, contactsByDeal, w.from, w.to);
+          const fullSub = (cp.submission && cp.submission.contacts) || 0;
+          let spend = null;
+          try {
+            const wr = await fetchWindsorAds(env.WINDSOR_API_KEY, wFrom(w.from), w.to);
+            const a = buildClinicianAds(wr, getBudgetsForMonth(w.from), fp.all && fp.all.funnel, dl.total || 0, fp.rows || [], w.from, w.to);
+            spend = a && typeof a.spend === 'number' ? a.spend : null;
+          } catch (e) { console.error('Clinician KPI spend ' + w.from + '..' + w.to + ':', e && e.message); }
+          return { spend, fullSub, inquiries: cp.contacts || 0 };
+        };
+        const [kpiPrior, kpiPriorMonth] = await Promise.all([_clnKpiFor(prior), _clnKpiFor(priorMonth)]);
+        const topFunnel = await fetchClinicianTopFunnel(env.WINDSOR_API_KEY, cur.from, cur.to);
+        const virtualNoShow = buildClinicianVirtualNoShow(dealsPage);
         const ownerMap = await fetchClinicianOwners(token);
         const table = buildClinicianTable(dealsHist, contactsByDeal, ownerMap, meetingStarts);
         // Percent of the window elapsed, so pacing can be compared against spend.
@@ -8019,7 +8346,22 @@ export default {
         } catch (e) { console.error('Clinician ads fetch:', e.message); ads = { error: e.message, elapsedPct }; }
         return jr({
           period: cur,
-          ...funnel,
+          // Comparison windows for the Key Metrics row. null when the selected
+          // window has no counterpart (computeWindows gives ytd/allTime no prior).
+          kpiPrior, kpiPriorMonth,
+          // Nine-stage funnel + the Virtual No Show Rate that replaced the
+          // No Call Scheduled Yet stat. funnel9 is attached after `ads` resolves
+          // so cost per stage divides by the same window's spend.
+          virtualNoShow,
+          topFunnel,
+          funnelStages: CLN_FUNNEL9,
+          clnSpend: (ads && !ads.error && typeof ads.spend === 'number') ? ads.spend : null,
+          priorPeriod: prior || null, priorMonthPeriod: priorMonth || null,
+          // PAGE-scoped: the funnel section's own date filter defaults to the page
+          // window, so shipping the history funnel here made the section ignore it
+          // until Apply was pressed. The All Clinicians table keeps its own
+          // history-scoped `table` and `historyRange`.
+          ...funnelPage,
           // The range the funnel and table actually cover, so the UI can label
           // them honestly instead of implying they follow the page filter.
           historyRange: { from: CLINICIAN_HISTORY_FROM, to: histTo },
@@ -8110,15 +8452,14 @@ export default {
       // API_CACHE_VER so a payload-shape change cannot be served from the
       // previous build's cache.
       const _azWin = body.window || 'mtd';
-      const _azCk = 'azdata_resp_' + API_CACHE_VER + '_' + _azWin + '_' + (body.from||'') + '_' + (body.to||'')
-                  + '_' + (body.vsFrom||'') + '_' + (body.vsTo||'');
+      const _azCk = azCacheKey(_azWin, body.from, body.to, body.vsFrom, body.vsTo);
       if (!body.fresh && env.CONTENT_STORE) {
         try {
           kvOp();
           const raw = await env.CONTENT_STORE.get(_azCk);
           if (raw) {
             const pcache = JSON.parse(raw);
-            if (pcache && typeof pcache.t === 'number' && (Date.now() - pcache.t) < 120000 && pcache.data) {
+            if (pcache && typeof pcache.t === 'number' && (Date.now() - pcache.t) < azCacheTtlMs(_azWin) && pcache.data) {
               console.log(`analyzer cache HIT (${_azWin}, age ${Math.round((Date.now()-pcache.t)/1000)}s)`);
               return jr(pcache.data);
             }
@@ -8142,7 +8483,7 @@ export default {
           kvOp();
           try {
             const blob = JSON.stringify({ t: Date.now(), data: result });
-            if (blob.length < 20*1024*1024) await env.CONTENT_STORE.put(_azCk, blob, { expirationTtl: 120 });
+            if (blob.length < 20*1024*1024) await env.CONTENT_STORE.put(_azCk, blob, { expirationTtl: Math.round(azCacheTtlMs(_azWin)/1000) + 300 });
           } catch(e) { /* best-effort */ }
         }
         return jr(result);

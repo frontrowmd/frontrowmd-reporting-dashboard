@@ -3,6 +3,12 @@ main = "dist/worker.js"
 compatibility_date = "2024-01-01"
 no_bundle = true
 
+# Warm the expensive analyzer windows. A Year to Date rebuild is ~60s+ of Windsor
+# fetches, which no browser request can wait out, so it is computed here and read
+# from KV by the dashboard.
+[triggers]
+crons = ["*/20 * * * *"]
+
 # Secrets (set via: wrangler secret put SECRET_NAME)
 # TEAM_PASSWORD
 # WINDSOR_API_KEY
