@@ -67,7 +67,7 @@ vm.createContext(dctx);
 vm.runInContext([
   'const f$=v=>v==null?"—":"$"+Math.round(v).toLocaleString();',
   'const fN=v=>v==null?"—":Math.round(v).toLocaleString();',
-  cli.slice(cli.indexOf('const CLN_TR_SERIES=['),cli.indexOf('function _clnTrendGrain()')),
+  cli.slice(cli.indexOf('const CLN_TR_GRAINS=['),cli.indexOf('function _clnTrendGrain()')),
   cli.slice(cli.indexOf('const CLN_ON_TARGET='),cli.indexOf('function _clnTypeBands')),
   fn(cli,'_clnTrNice'),fn(cli,'_clnTrLabel'),fn(cli,'_clnTrEnd'),
   fn(cli,'_clnTypeBands'),fn(cli,'_clnTypeCount'),fn(cli,'_clnTypeCard'),fn(cli,'_renderClnOnTarget'),

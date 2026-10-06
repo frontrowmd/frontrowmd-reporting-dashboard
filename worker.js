@@ -731,7 +731,7 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v34';   // v34: virtualNoShow is booked-date scoped and carries its full attendance split.
+const API_CACHE_VER = 'v35';   // v35: trend series is page-filter independent, adds a month grain.
                                // v30: last-click acquisition split (paid / organic / untagged) on the regular
                                //      scheduled cohort, + chatgpt.com added to the paid mapper.
                                // v29: all Volume + Quality figures exclude pre-launch (deal tier, not isLow).
@@ -3048,14 +3048,21 @@ function buildClinicianAds(windsorRows, budgets, funnelAll, cliniciansAdded, row
     const ds = (r.datasource || '').toLowerCase();
     if (!/facebook|meta|fb|ig|instagram/.test(ds)) continue;
     if (!isClinicianCampaign(r.campaign_name)) continue;
+    // This takes from/to and, until now, used them only for budget pacing — the
+    // spend total summed every row it was handed. That was safe only because
+    // the caller fetched exactly the page window. The Trend Analysis section
+    // needs a much wider fetch, so the window has to be enforced HERE or the
+    // page's Ad Spend silently becomes three months of spend.
+    const rk = String(r.date || '').slice(0, 10);
+    if (from && rk && rk < from) continue;
+    if (to && rk && rk > to) continue;
     const v = parseFloat(r.spend) || 0;
     spend += v;
     // Conversions the clinician campaigns actually reported, summed across BOTH
     // CAPI eras (see CLINICIAN_CONV_FIELDS) — the same number the Conversions
     // column totals in the Clinician Ad Tables.
     conversions += clinicianConvCount(r);
-    const k = String(r.date || '').slice(0, 10);
-    if (k) byDay[k] = (byDay[k] || 0) + v;
+    if (rk) byDay[rk] = (byDay[rk] || 0) + v;
   }
   // Inquiries ATTRIBUTED to those campaigns: clinicians in this window whose
   // utm_campaign is one of them. Same matcher that decides which Windsor spend
@@ -3121,6 +3128,16 @@ function buildClinicianAds(windsorRows, budgets, funnelAll, cliniciansAdded, row
 //
 // CTR and both CVRs ride the same Meta rows that already fund `spend`, so the
 // whole section still costs no extra subrequest.
+// How far back the Trend Analysis section reaches, INDEPENDENT of the page's
+// date filter. The widest view it offers is 3 months, so the series is built
+// once over that span and the client slices the last 8 weeks / 30 days / 3
+// months out of it without another request.
+const CLN_TREND_DAYS = 100;
+function clnTrendWindow(today) {
+  const d = new Date(today + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() - (CLN_TREND_DAYS - 1));
+  return { from: fmt(d), to: today };
+}
 function buildClinicianTrend(deals, contactsByDeal, windsorRows, from, to) {
   const monOf = (ds) => {
     if (!ds) return null;
@@ -3248,7 +3265,8 @@ function buildClinicianTrend(deals, contactsByDeal, windsorRows, from, to) {
       };
     });
   };
-  return { week: roll(monOf), day: roll(x => x) };
+  const monthOf = (ds) => (ds ? ds.slice(0, 7) + '-01' : null);
+  return { week: roll(monOf), day: roll(x => x), month: roll(monthOf) };
 }
 
 // Did the clinician submit the credentials form BEFORE their demo?
@@ -8501,8 +8519,12 @@ export default {
         // Widen to cover the comparison windows too. The deals fetch is ONE search
         // over a superset that is then sliced in memory, so prior/last-month deal
         // counts cost no extra HubSpot page — only their ad spend needs new calls.
+        // Trend Analysis reaches back a fixed 100 days whatever the page filter
+        // says, so the deal fetch has to cover it too — otherwise the section is
+        // empty on any window shorter than its own.
+        const trendWin = clnTrendWindow(_today);
         let histFrom = CLINICIAN_HISTORY_FROM < cur.from ? CLINICIAN_HISTORY_FROM : cur.from;
-        for (const _w of [prior, priorMonth]) if (_w && _w.from < histFrom) histFrom = _w.from;
+        for (const _w of [prior, priorMonth, trendWin]) if (_w && _w.from < histFrom) histFrom = _w.from;
         const histTo = cur.to > _today ? cur.to : _today;
         const deals = await fetchClinicianDeals(token, histFrom, histTo);
         const contactsByDeal = await fetchClinicianContacts(token, deals.map(d => d.id));
@@ -8568,7 +8590,12 @@ export default {
         const elapsedPct = _wEnd > _wStart ? Math.min(100, ((_wEnd - _wStart) / (toMsET(cur.to, true) - _wStart)) * 100) : 100;
         let ads = null;
         try {
-          const wRows = await fetchWindsorAds(env.WINDSOR_API_KEY, wFrom(cur.from), cur.to);
+          // ONE fetch covering both the page window and the (fixed, wider) trend
+          // window. buildClinicianAds now filters to the window it is handed, so
+          // the page's own figures are unaffected by the wider pull.
+          const _adsFrom = trendWin.from < cur.from ? trendWin.from : cur.from;
+          const _adsTo = trendWin.to > cur.to ? trendWin.to : cur.to;
+          const wRows = await fetchWindsorAds(env.WINDSOR_API_KEY, wFrom(_adsFrom), _adsTo);
           // PAGE-scoped funnel, deliberately: spend is the page window's spend, so
           // CPD / CPS / CAC must divide by that window's clinicians. Handing it the
           // history funnel would divide one month of spend by three months of
@@ -8578,7 +8605,10 @@ export default {
           // Same wRows — the Trend Analysis series costs no extra subrequest.
           // Contacts come from the PAGE deals over the page window, the same pair
           // buildClinicianComposition gets, so the series sums to Key Metrics.
-          ads.trend = buildClinicianTrend(dealsPage, contactsByDeal, wRows, cur.from, cur.to);
+          // `deals` and the TREND window, not dealsPage and the page window: this
+          // section is independent of the page's date filter by design.
+          ads.trend = buildClinicianTrend(deals, contactsByDeal, wRows, trendWin.from, trendWin.to);
+          ads.trendRange = trendWin;
         } catch (e) { console.error('Clinician ads fetch:', e.message); ads = { error: e.message, elapsedPct }; }
         return jr({
           period: cur,

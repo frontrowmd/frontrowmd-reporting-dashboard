@@ -101,8 +101,10 @@ ck('the comparison windows use the Acquisition basis too',
 ck('the now-unused virtualReached field is gone',/virtualReached/.test(src),false);
 ck('they ride the payload',/kpiPrior, kpiPriorMonth,/.test(src),true);
 // The deal fetch is one search over a superset; widening it costs no extra page.
-ck('the deals window widens to cover the comparison windows',
-   /for \(const _w of \[prior, priorMonth\]\) if \(_w && _w\.from < histFrom\) histFrom = _w\.from;/.test(src),true);
+// Trend Analysis reaches back a fixed 100 days whatever the page filter says,
+// so the deal fetch must cover it too or the section empties on a short window.
+ck('the deals window widens to cover the comparison AND trend windows',
+   /for \(const _w of \[prior, priorMonth, trendWin\]\) if \(_w && _w\.from < histFrom\) histFrom = _w\.from;/.test(src),true);
 ck('onboarded is read from the PAGE-scoped funnel, not the history one',
    /const fp = buildClinicianFunnel\(dw, contactsByDeal, meetingStarts\);/.test(src),true);
 ck('a comparison window with no counterpart returns null',/if \(!w\) return null;/.test(src),true);

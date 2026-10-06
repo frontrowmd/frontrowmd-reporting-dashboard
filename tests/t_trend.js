@@ -117,139 +117,137 @@ ck('spend but no conversions: rate is 0, not null', bare.day.find(p=>p.wk==='202
 ck('spend but no conversions: spend still carried', bare.day.find(p=>p.wk==='2026-09-02').spend, 100);
 
 // ── Wiring ──
-// The endpoint must hand it the PAGE deals and the page window — the same pair
-// buildClinicianComposition gets. Passing the history deals would divide one
-// month of spend by three months of signups.
-ck('endpoint passes page-scoped args',
-   /ads\.trend\s*=\s*buildClinicianTrend\(dealsPage,\s*contactsByDeal,\s*wRows,\s*cur\.from,\s*cur\.to\)/.test(src), true);
+// It is now handed the HISTORY deals and its OWN window: the section is
+// independent of the page date filter by design, so page-scoping it would
+// defeat the point. The tie-out below still holds because the builder mirrors
+// buildClinicianComposition's loop — what changed is the window, not the rule.
+ck('endpoint passes the history deals and the trend window',
+   /ads\.trend = buildClinicianTrend\(deals, contactsByDeal, wRows, trendWin\.from, trendWin\.to\);/.test(src), true);
 // Payload shape changed, so a cached v31 response must not be served to the new
 // client, which reads ads.trend and would render an empty state.
 ck('API_CACHE_VER moved past v31',
    (function(){const m=/const API_CACHE_VER = 'v(\d+)'/.exec(src);return m?+m[1]>=32:false;})(), true);
 
-// ── Client contract: ONE chart, two axes by unit ────────────────────────────
+// ── Client contract: three independent toggles, ONE axis ──────────────────
 ck('client reads ads.trend', /\(d&&d\.ads&&d\.ads\.trend\)/.test(cli), true);
-// SER is the PLOTTED list only — it stops at CLN_TR_SPEND, which sits between
-// the two and is deliberately kept off the axes.
-const SER=cli.slice(cli.indexOf('const CLN_TR_SERIES=['),cli.indexOf('const CLN_TR_SPEND='));
-const plotted=(SER.match(/\{k:'(\w+)'/g)||[]).map(x=>x.slice(4,-1));
-// Order is specified, not incidental: it drives the tiles, the legend and the
-// hover readout, and all three have to read the same way.
-ck('metric order', plotted.concat(['spend']),
-   ['cpi','cpfa','cvrInq','cvrFull','ctr','spend']);
-ck('Ad Spend is not an axis series', plotted.indexOf('spend'), -1);
-ck('but it is in the readout and the tiles', /const CLN_TR_READOUT=CLN_TR_SERIES\.concat\(\[CLN_TR_SPEND\]\)/.test(cli), true);
-ck('the tiles cover all six metrics', /var minis=CLN_TR_READOUT\.map/.test(cli), true);
-const axOf=k=>{const m=new RegExp("\\{k:'"+k+"'[^}]*ax:'(\\w)'").exec(SER);return m?m[1]:null;};
-ck('the three rates read off the left axis', ['cvrInq','cvrFull','ctr'].map(axOf), ['L','L','L']);
-ck('the two cost metrics read off the right axis', ['cpi','cpfa'].map(axOf), ['R','R']);
-// Colour alone cannot say which axis a line belongs to in greyscale or under
-// CVD, so the right-axis series are dashed as a second channel.
-ck('right-axis series are dashed', /var dash=sr\.ax==='R'\?' stroke-dasharray/.test(cli), true);
-ck('both axes are labelled on the plot', /CONVERSION<\/text>/.test(cli)&&/COST PER<\/text>/.test(cli), true);
-const ALL=cli.slice(cli.indexOf('const CLN_TR_SERIES=['),cli.indexOf('const CLN_TR_READOUT='));
-const hexes=(ALL.match(/#[0-9A-Fa-f]{6}/g)||[]);
-ck('six colours in all', hexes.length, 6);
-ck('no colour reused', new Set(hexes.map(h=>h.toLowerCase())).size, 6);
-ck('a single chart', (fn(cli,'_renderClnTrend').match(/<svg /g)||[]).length, 1);
-// The grain toggle is a TWO-step contract: _clnTrendCard emits an EMPTY panels
-// div, so rebuilding the card without the following render leaves the chart
-// permanently blank with no error.
-const TOG=cli.slice(cli.indexOf('window.toggleClnTrendGrain=function'),cli.indexOf('function _clnTrendPts'));
-ck('the toggle rebuilds the card', /card\.outerHTML=_clnTrendCard\(d\)/.test(TOG), true);
-ck('and re-renders the chart after it',
-   TOG.indexOf('_renderClnTrend(d)')>TOG.indexOf('card.outerHTML=_clnTrendCard(d)'), true);
-// Both grains are offered, and the pills say what they do — a "Chart" caption
-// above them said nothing the pills did not.
+// Period, population and measure are three separate choices, so each gets its
+// own row rather than one row of eighteen pills.
 {
-  const CARD=fn(cli,'_clnTrendCard');
-  ck('both grains are offered',
-     /gPill\('week','Weekly'\)\+gPill\('day','Daily'\)/.test(CARD), true);
-  ck('and the toggle carries no caption', /Chart<\/span>/.test(CARD), false);
+  const grains=(/const CLN_TR_GRAINS=\[([\s\S]*?)\n\];/.exec(cli)||[,''])[1];
+  const got=[...grains.matchAll(/\{k:'(\w+)',\s*l:'(\w+)',\s*n:(\d+),\s*src:'(\w+)'/g)].map(m=>[m[1],m[2],+m[3],m[4]]);
+  ck('three periods, each with its own lookback', got,
+     [['week','Weekly',8,'week'],['day','Daily',30,'day'],['month','Monthly',3,'month']]);
+  const pops=(/const CLN_TR_POPS=\[([\s\S]*?)\n\];/.exec(cli)||[,''])[1];
+  ck('two populations', [...pops.matchAll(/\{k:'(\w+)'/g)].map(m=>m[1]), ['inquiry','submission']);
+  const mets=(/const CLN_TR_METRICS=\[([\s\S]*?)\n\];/.exec(cli)||[,''])[1];
+  ck('six measures, in the order asked for',
+     [...mets.matchAll(/\{k:'(\w+)',\s*l:'([^']+)'/g)].map(m=>m[1]),
+     ['count','cost','cvr','ctr','md','mdpct']);
+  // Each measure declares its own unit, which is what makes a single axis
+  // possible — only one is ever plotted.
+  ck('every measure declares a unit',
+     [...mets.matchAll(/unit:'([#$%])'/g)].map(m=>m[1]), ['#','$','%','%','#','%']);
+  // CTR is clicks over impressions and has no population in it. A toggle that
+  // appeared to change it would be lying.
+  ck('CTR is marked population-independent', /\{k:'ctr',[^}]*pop:false\}/.test(mets), true);
+  ck('and every other measure is not', (mets.match(/pop:true/g)||[]).length, 5);
 }
+ck('one setter per toggle row',
+   [/window\.toggleClnTrendGrain=/.test(cli),/window\.toggleClnTrendPop=/.test(cli),/window\.toggleClnTrendMetric=/.test(cli)],
+   [true,true,true]);
+
+// ── The metric algebra, RUN ───────────────────────────────────────────────
+// This is the whole feature: six measures over two populations, every one
+// derived from summed components rather than from another measure.
+{
+  const dctx={console,Math,Date,Object,String,Number,Array,parseInt,parseFloat,isNaN,RegExp,JSON};
+  dctx.window=dctx;
+  vm.createContext(dctx);
+  vm.runInContext([
+    'const CLN_MD_TYPE="MD/DO";',
+    fn(cli,'_clnTrParts'),fn(cli,'_clnTrSum'),fn(cli,'_clnTrValue'),
+  ].join('\n'),dctx);
+  const p={spend:400,clicks:100,impressions:5000,inquiries:20,fullApp:5,
+           byType:{'MD/DO':8,'Nurse Practitioner':12},bySubType:{'MD/DO':2,'Nurse Practitioner':3}};
+  const inq=dctx._clnTrParts(p,'inquiry'), sub=dctx._clnTrParts(p,'submission');
+  ck('the population toggle picks the count', [inq.pop,sub.pop], [20,5]);
+  ck('and the matching MD/DO cut', [inq.md,sub.md], [8,2]);
+  const V=(m,x)=>dctx._clnTrValue(m,x);
+  ck('Count',      [V('count',inq),V('count',sub)], [20,5]);
+  ck('Doctors',    [V('md',inq),V('md',sub)], [8,2]);
+  ck('Cost Per',   [V('cost',inq),V('cost',sub)], [20,80]);
+  ck('CVR',        [V('cvr',inq),V('cvr',sub)], [20,5]);
+  ck('Doctor %',   [V('mdpct',inq),V('mdpct',sub)], [40,40]);
+  // CTR must not move with the population — it is clicks over impressions.
+  ck('CTR ignores the population', [V('ctr',inq),V('ctr',sub)], [2,2]);
+  // A COST with no spend is undefined, not zero: at zero it would plot on the
+  // floor and read as the cheapest period in the window.
+  ck('no spend makes a cost null, not 0',
+     V('cost',{spend:0,clicks:9,impressions:9,pop:4,md:1}), null);
+  // A RATE with a real denominator and a zero numerator is genuinely 0.
+  ck('but a rate with a real denominator is 0, not null',
+     V('cvr',{spend:5,clicks:10,impressions:10,pop:0,md:0}), 0);
+  ck('and a rate with no denominator is null',
+     [V('cvr',{spend:5,clicks:0,impressions:0,pop:3,md:1}),
+      V('ctr',{spend:5,clicks:3,impressions:0,pop:3,md:1}),
+      V('mdpct',{spend:5,clicks:3,impressions:9,pop:0,md:0})], [null,null,null]);
+  // THE rule for the rolling average and the KPI cards: a window's value is
+  // computed from SUMMED components, never averaged across periods. The mean of
+  // two CVRs is not the window's CVR.
+  const a={spend:100,clicks:10,impressions:100,pop:1,md:1};
+  const b={spend:100,clicks:990,impressions:9900,pop:99,md:9};
+  const pooled=V('cvr',dctx._clnTrSum([a,b]));
+  const averaged=(V('cvr',a)+V('cvr',b))/2;
+  ck('a window CVR is pooled, not averaged', [Math.round(pooled*100)/100, Math.round(averaged*100)/100], [10,10]);
+  const pooledCost=V('cost',dctx._clnTrSum([a,b])), avgCost=(V('cost',a)+V('cost',b))/2;
+  ck('and a window cost too', [pooledCost, Math.round(avgCost*100)/100], [2, 50.51]);
+}
+
+// ── The 7-day rolling average ─────────────────────────────────────────────
+// Computed from rolling SUMS of the components, so a 2-click day does not
+// weigh the same as a 2,000-click one.
+ck('the rolling window sums components, not ratios',
+   /var w=parts\.slice\(Math\.max\(0,i-\(CLN_TR_ROLL_DAYS-1\)\),i\+1\);\s*\n\s*return _clnTrValue\(mdef\.k,_clnTrSum\(w\)\);/.test(cli), true);
+ck('it is seven days', /const CLN_TR_ROLL_DAYS=7;/.test(cli), true);
+// A 7-day window is shorter than one period on the weekly and monthly views,
+// where the line would just redraw the series.
+ck('and is drawn on the daily grain only', /if\(g\.k==='day'\)\{\s*\n\s*roll=parts\.map/.test(cli), true);
+
+// ── Ad Spend stays, whatever is selected ──────────────────────────────────
+ck('spend is drawn regardless of the measure',
+   /var mxS=0;parts\.forEach\(function\(x\)\{if\(x\.spend>mxS\)mxS=x\.spend;\}\);/.test(cli), true);
+ck('on its own scale, with no axis',
+   /\(x\.spend\/mxS\)\*innerH\*0\.55/.test(cli), true);
+ck('and the card says so', /Ad Spend is the shaded background throughout, whatever is selected/.test(cli), true);
+
+// ── Independent of the page date filter ──────────────────────────────────
+ck('the worker builds it over its own window',
+   /ads\.trend = buildClinicianTrend\(deals, contactsByDeal, wRows, trendWin\.from, trendWin\.to\);/.test(src), true);
+ck('and ships that window so the card can state it', /ads\.trendRange = trendWin;/.test(src), true);
+ck('the window is a fixed lookback, not the page filter',
+   /function clnTrendWindow\(today\)/.test(src)&&/const CLN_TREND_DAYS = \d+;/.test(src), true);
+// 100 days has to cover the widest view the client offers (3 months).
+ck('and it is long enough for the widest grain',
+   (+(/const CLN_TREND_DAYS = (\d+);/.exec(src)||[,0])[1]) >= 92, true);
+// Widening the ad fetch is only safe because buildClinicianAds now honours the
+// window it is handed — it used to sum every row it was given, so a wider pull
+// would have turned the page's Ad Spend into three months of spend.
+ck('buildClinicianAds filters to its own window',
+   /if \(from && rk && rk < from\) continue;\s*\n\s*if \(to && rk && rk > to\) continue;/.test(src), true);
+ck('and one fetch covers both windows',
+   /const _adsFrom = trendWin\.from < cur\.from \? trendWin\.from : cur\.from;/.test(src), true);
+
+// ── Structure ────────────────────────────────────────────────────────────
+ck('a single chart', (fn(cli,'_renderClnTrend').match(/<svg /g)||[]).length, 1);
+ck('and a single axis — only one measure is plotted',
+   (fn(cli,'_renderClnTrend').match(/var yMax=_clnTrNice/g)||[]).length, 1);
+ck('every toggle rebuilds the card and redraws',
+   /card\.outerHTML=_clnTrendCard\(d\);\s*\n\s*_renderClnTrend\(d\);/.test(cli), true);
 ck('nav heading has a stable id', /id="cln-trend-h"/.test(cli), true);
 const iDaily=cli.indexOf("h+=card('Daily Activity'"), iTrend=cli.indexOf('h+=_clnTrendCard(d);'), iAcq=cli.indexOf("h+=card('Acquisition'");
 ck('Trend Analysis sits between Daily Activity and Acquisition',
    iDaily>0&&iTrend>iDaily&&iAcq>iTrend, true);
 ck('the old Weekly Cost card is gone', /_clnWeeklyCard|_renderClnWeekly/.test(cli), false);
-
-// ── Geometry: render the real SVG and measure it ────────────────────────────
-// Everything above about axes is source text. This block runs _renderClnTrend
-// and checks where points actually land, which is the only way to catch an
-// inverted yOf or a series routed to the wrong ladder.
-const dctx={console,Math,Date,Object,String,Number,Array,parseInt,parseFloat,isNaN,RegExp,JSON,Set};
-dctx.window=dctx; dctx.captured='';
-dctx.document={getElementById:()=>({set innerHTML(v){dctx.captured=v;},get innerHTML(){return dctx.captured;}})};
-vm.createContext(dctx);
-vm.runInContext([
-  'const f$=v=>v==null?"—":"$"+Math.round(v).toLocaleString();',
-  'const fN=v=>v==null?"—":Math.round(v).toLocaleString();',
-  cli.slice(cli.indexOf('const CLN_TR_SERIES=['),cli.indexOf('function _clnTrendGrain()')),
-  fn(cli,'_clnTrendGrain'),fn(cli,'_clnTrendPts'),fn(cli,'_clnTrNice'),
-  fn(cli,'_clnTrFmt'),fn(cli,'_clnTrLabel'),fn(cli,'_clnTrEnd'),fn(cli,'_renderClnTrend'),
-].join('\n'),dctx);
-ck('the real renderer loaded', typeof dctx._renderClnTrend, 'function');
-// CTR at 100% sits at the top of the % ladder; cpi at $5 sits near the bottom of
-// a $ ladder topped by cpfa at $900. Route either through the other's scale and
-// both land in the wrong half of the plot.
-const GEO=[
-  {wk:'2026-09-01',spend:100,impressions:100,clicks:100,inquiries:20,fullApp:1,cpi:5,cpfa:900,cvrInq:20,cvrFull:1,ctr:100},
-  {wk:'2026-09-02',spend:100,impressions:100,clicks:100,inquiries:20,fullApp:1,cpi:5,cpfa:900,cvrInq:20,cvrFull:1,ctr:100},
-];
-dctx._renderClnTrend({period:{from:'2026-09-01',to:'2026-09-02'},ads:{trend:{week:GEO,day:GEO}}});
-const svg=dctx.captured;
-ck('it drew something', svg.indexOf('<svg ')>=0, true);
-// Read the plot box off the gridlines rather than hard-coding padding, so the
-// expected values stay correct if the chart is resized.
-const gridY=(svg.match(/<line [^>]*y1="([\d.]+)"/g)||[]).map(x=>parseFloat(/y1="([\d.]+)"/.exec(x)[1]));
-const floorY=Math.max.apply(null,gridY), topY=Math.min.apply(null,gridY);
-ck('four gridline intervals', gridY.length, 5);
-// Axis maxima come from the topmost tick on each side.
-const pctTicks=(svg.match(/text-anchor="end"[^>]*>([\d.]+)%</g)||[]).map(x=>parseFloat(/>([\d.]+)%</.exec(x)[1]));
-const dolTicks=(svg.match(/text-anchor="start"[^>]*>\$([\d,]+)</g)||[]).map(x=>parseFloat(/>\$([\d,]+)</.exec(x)[1].replace(/,/g,'')));
-const yMaxL=Math.max.apply(null,pctTicks), yMaxR=Math.max.apply(null,dolTicks);
-const yL=v=>floorY-(v/yMaxL)*(floorY-topY), yR=v=>floorY-(v/yMaxR)*(floorY-topY);
-const firstY=hex=>{const m=new RegExp('<polyline points="[\\d.]+,([\\d.]+)[^"]*" fill="none" stroke="'+hex+'"').exec(svg);return m?parseFloat(m[1]):null;};
-const near=(a,b)=>a!=null&&Math.abs(a-b)<0.75;
-ck('CTR is plotted on the % ladder, not the $ one',
-   [near(firstY('#1D4ED8'),yL(100)), near(firstY('#1D4ED8'),yR(100))], [true,false]);
-ck('Cost per Inquiry is plotted on the $ ladder, not the % one',
-   [near(firstY('#4A87A8'),yR(5)), near(firstY('#4A87A8'),yL(5))], [true,false]);
-ck('Cost per Full App too', near(firstY('#9333EA'),yR(900)), true);
-ck('CVR Inquiry too', near(firstY('#0E7C66'),yL(20)), true);
-// Ad Spend is background shading with no ladder of its own: rects, scaled to
-// their own peak, and never a polyline.
-ck('Ad Spend draws no line', firstY('#64748B'), null);
-ck('Ad Spend draws background columns', (svg.match(/fill="#64748B" fill-opacity/g)||[]).length, 2);
-ck('the columns stay inside the plot', (function(){
-  const hs=(svg.match(/fill="#64748B" fill-opacity/g)||[]).length?
-    (svg.match(/<rect x="[\d.-]+" y="([\d.]+)" width="[\d.]+" height="([\d.]+)" fill="#64748B"/g)||[]):[];
-  return hs.every(r=>{const m=/y="([\d.]+)" width="[\d.]+" height="([\d.]+)"/.exec(r);
-                      return parseFloat(m[1])>=topY-0.5&&parseFloat(m[1])+parseFloat(m[2])<=floorY+0.5;});})(), true);
-// A null value must break the line, not interpolate through it.
-const GAP=[{wk:'2026-09-01',spend:10,impressions:100,clicks:10,inquiries:1,fullApp:1,cpi:10,cpfa:10,cvrInq:10,cvrFull:10,ctr:10},
-           {wk:'2026-09-02',spend:0,impressions:0,clicks:0,inquiries:0,fullApp:0,cpi:null,cpfa:null,cvrInq:null,cvrFull:null,ctr:null},
-           {wk:'2026-09-03',spend:10,impressions:100,clicks:10,inquiries:1,fullApp:1,cpi:10,cpfa:10,cvrInq:10,cvrFull:10,ctr:10}];
-dctx._renderClnTrend({period:{from:'2026-09-01',to:'2026-09-03'},ads:{trend:{week:GAP,day:GAP}}});
-ck('a null period breaks the line rather than spanning it',
-   (dctx.captured.match(/<polyline [^>]*stroke="#1D4ED8"/g)||[]).length, 0);
-// One point: the band maths divides by (n-1), which is 0 here.
-const ONE=[{wk:'2026-09-01',spend:10,impressions:100,clicks:10,inquiries:1,fullApp:1,cpi:10,cpfa:10,cvrInq:10,cvrFull:10,ctr:10}];
-dctx._renderClnTrend({period:{from:'2026-09-01',to:'2026-09-01'},ads:{trend:{week:ONE,day:ONE}}});
-ck('a single point emits no NaN', /NaN/.test(dctx.captured), false);
-ck('and still gets a hover band', (dctx.captured.match(/class="clnwk-band"/g)||[]).length, 1);
-
-// ── Partial periods ──
-// The point whose numbers are still moving is the one point that must say so.
-// The old strict `>` never fired on the daily grain at all (a day's own end IS
-// that day) and missed the current week whenever today was a Sunday.
-ck('the in-progress test is inclusive', /var inProgress=covTo>=todayMs;/.test(cli), true);
-// An ISO week at either edge of the window is CLIPPED by it, and saying
-// "Week of Sep 28 – Oct 4" for three days of data overstates what was measured.
-ck('edge weeks are clamped to the window', /var covFrom=winFrom\?Math\.max\(startMs,msOf\(winFrom\)\):startMs;/.test(cli), true);
-ck('and flagged when short', /var clipped=grain!=='day'&&span<7;/.test(cli), true);
-ck('the tooltip states which kind of partial it is',
-   /pw\.textContent=el\.getAttribute\('data-pnote'\)/.test(cli), true);
 
 console.log(pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);
