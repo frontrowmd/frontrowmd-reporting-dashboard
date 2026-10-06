@@ -1036,7 +1036,19 @@ const AZ_RESERVE_PER_CHUNK = 1;
 // Meta creative fetch alone is ~107k rows over ~54 Windsor calls (~38s measured),
 // so these are warmed by the cron below and served from cache; recomputing one
 // inside a browser request will always be marginal against its abort.
-const AZ_PRECOMPUTED_WINDOWS = ['ytd', 'allTime'];
+// MTD is on this list even though it is a SHORT window: short does not mean
+// cheap here. The cost is driven by campaign x ad-set x creative cardinality and
+// the attribution match, not by the number of days, and MTD measured past the
+// dashboard's 75s abort — so every load failed, and because the abort killed the
+// request before it could finish, the cache could never populate from a user
+// either. Being on this list gets it a cron warm AND the long freshness TTL
+// below, which is what breaks that loop. MTD is first so it is warmed before the
+// two expensive windows can eat the budget.
+const AZ_PRECOMPUTED_WINDOWS = ['mtd', 'ytd', 'allTime'];
+// Keys with a background refresh in flight, so concurrent readers do not all
+// kick off the same rebuild. Module scope, so it is per-isolate rather than
+// global — a best-effort stampede guard, not a lock.
+const AZ_REFRESHING = new Set();
 // Soft failures the CRON will still cache through. A scheduled warm that throws
 // away a 6-minute rebuild over one timed-out sub-fetch leaves the dashboard with
 // nothing at all, which is strictly worse than a payload with a small gap. The
@@ -8223,7 +8235,7 @@ export default {
     })());
   },
 
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     subreqReset();   // the pool is per-invocation, so the counters are too
     const url = new URL(request.url);
 
@@ -8587,6 +8599,38 @@ export default {
         console.warn(`analyzer serving STALE (${_azWin}, age ${ageSec}s) — ${why}`);
         return jr(Object.assign({}, _azStale.data, { _stale: true, _staleAgeSec: ageSec }));
       };
+      // EXPENSIVE WINDOWS NEVER REBUILD ON THE REQUEST PATH when a previous
+      // payload exists. These measured past the browser's abort, so computing
+      // synchronously does not produce a slow answer — it produces no answer,
+      // and the abort kills the run before it can cache, so the next request is
+      // in exactly the same position. Returning last-good immediately and
+      // refreshing behind the response breaks that loop: the reader gets data
+      // now, and the cache is fresh for the next reader.
+      if (_azStale && AZ_PRECOMPUTED_WINDOWS.includes(_azWin)) {
+        if (ctx && ctx.waitUntil && !AZ_REFRESHING.has(_azCk)) {
+          AZ_REFRESHING.add(_azCk);
+          ctx.waitUntil((async () => {
+            try {
+              subreqReset();
+              const fresh = await processAzRequest(_azWin, body.from||null, body.to||null, env, body.vsFrom||null, body.vsTo||null);
+              // Same health gate as the cron: never warm the cache with a
+              // payload that is missing rows, or every reader inherits the gap.
+              const ok = !SUBREQ.exhausted && !SUBREQ.windsorDropped && SUBREQ.softFail <= AZ_CRON_SOFTFAIL_TOLERANCE;
+              if (!ok) { console.warn(`bg refresh ${_azWin}: NOT caching — ${subreqSummary()}`); return; }
+              if (env.CONTENT_STORE) {
+                const blob = JSON.stringify({ t: Date.now(), data: fresh });
+                if (blob.length < 20*1024*1024) {
+                  kvOp();
+                  await env.CONTENT_STORE.put(_azCk, blob, { expirationTtl: AZ_CACHE_RETAIN_SEC });
+                  console.log(`bg refresh ${_azWin}: cached — ${subreqSummary()}`);
+                }
+              }
+            } catch (e) { console.error(`bg refresh ${_azWin} failed:`, e && e.message); }
+            finally { AZ_REFRESHING.delete(_azCk); }
+          })());
+        }
+        return _azServeStale('rebuilding behind the response');
+      }
       try {
         const result = await processAzRequest(body.window||'mtd', body.from||null, body.to||null, env, body.vsFrom||null, body.vsTo||null);
         // Never cache a DEGRADED response. A run that exhausted the pool or had

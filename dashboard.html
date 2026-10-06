@@ -886,7 +886,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t247';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t248';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -4153,7 +4153,13 @@ function _renderIrfanMetaTablesLoader(winOverride){
   // into the worker's KV cache. A COLD one still has to be computed live, and 75s
   // aborted it every time, which also meant the cache could never populate from a
   // user request. Give those windows room; everything else keeps the tight bound.
-  const _AZ_SLOW_WINS=['ytd','allTime'];
+  // MTD is here too: cost tracks campaign x ad-set x creative cardinality and
+  // the attribution match, not the number of days, and it measured past 75s —
+  // which aborted the request before it could cache, so every later load was in
+  // the same position. The worker now serves last-good immediately and rebuilds
+  // behind the response, but a genuinely cold window still has to land once, and
+  // 75s was not enough room for it to.
+  const _AZ_SLOW_WINS=['mtd','ytd','allTime'];
   const _azBudget=_AZ_SLOW_WINS.includes(irfWin)?180000:75000;
   const _mySeq=(S.irfan._metaSeq=(S.irfan._metaSeq||0)+1);
   const _azAbort=(typeof AbortController!=='undefined')?new AbortController():null;

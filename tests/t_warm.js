@@ -39,8 +39,21 @@ ck('a cron failure cannot break the request path',/catch \(e\) \{ console\.error
 
 // A cold window still has to compute live; 75s aborted it every time.
 ck('the client gives the slow windows room',
-   /const _AZ_SLOW_WINS=\['ytd','allTime'\];/.test(cli)
-   &&/_azBudget=_AZ_SLOW_WINS\.includes\(irfWin\)\?180000:75000/.test(cli),true);
+   /_azBudget=_AZ_SLOW_WINS\.includes\(irfWin\)\?180000:75000/.test(cli),true);
+// THE cross-file invariant: a window the worker treats as expensive must also
+// get the longer client budget. When the two lists disagree the client aborts a
+// window the worker knows is slow — and the abort kills the run before it can
+// cache, so the next load is in the same position. That is the loop the MTD
+// failure was stuck in.
+{
+  const wWins=((/const AZ_PRECOMPUTED_WINDOWS = \[([^\]]+)\]/.exec(src)||[])[1]||'')
+    .split(',').map(x=>x.trim().replace(/^'|'$/g,'')).filter(Boolean);
+  const cWins=((/const _AZ_SLOW_WINS=\[([^\]]+)\]/.exec(cli)||[])[1]||'')
+    .split(',').map(x=>x.trim().replace(/^'|'$/g,'')).filter(Boolean);
+  ck('both lists parse',[wWins.length>0,cWins.length>0],[true,true]);
+  ck('every window the worker precomputes also gets the long client budget',
+     wWins.filter(w=>cWins.indexOf(w)<0),[]);
+}
 ck('and the abort uses that budget, not a literal',/\},_azBudget\);/.test(cli),true);
 ck('other windows keep the tight bound',/:75000;/.test(cli),true);
 // The two lists must agree, or a window is warmed but still aborted early.
@@ -116,7 +129,14 @@ ck('and nothing builds an azdata key by hand',
 ck('retention is separate from freshness',/const AZ_CACHE_RETAIN_SEC = (\d+);/.test(src),true);
 ck('and is much longer than the freshness window',
    (+(/const AZ_CACHE_RETAIN_SEC = (\d+);/.exec(src)||[])[1]) >= 3600, true);
-ck('both writers use it',(src.match(/expirationTtl: AZ_CACHE_RETAIN_SEC/g)||[]).length,2);
+// Three writers now: the cron, the request path, and the background rebuild.
+// Asserted as "every ad-data write uses it" rather than a fixed count, so
+// adding a fourth writer that forgets the retention still fails.
+ck('every ad-data writer uses it',
+   (src.match(/expirationTtl: AZ_CACHE_RETAIN_SEC/g)||[]).length,
+   (src.match(/CONTENT_STORE\.put\((?:_azCk|azCacheKey\()/g)||[]).length);
+ck('and there are at least the three we know about',
+   (src.match(/expirationTtl: AZ_CACHE_RETAIN_SEC/g)||[]).length>=3,true);
 ck('no writer still uses the old ttl+300 retention',/expirationTtl: Math\.round\(azCacheTtlMs/.test(src),false);
 // An expired entry is kept as a fallback rather than discarded on read.
 ck('an expired entry is held, not dropped',/_azStale = pcache;/.test(src),true);
@@ -133,6 +153,38 @@ ck('with a readable age',/function _staleAge\(sec\)\{/.test(cli),true);
 // renders on one page and not the other two.
 ck('the banner reaches every page that shows the tables',
    /filterTargets\.forEach\(el=>el\.innerHTML=_staleNote\+_metaFilterBar/.test(cli),true);
+
+// --- expensive windows must never rebuild on the request path -------------
+// Observed: the Clinician Ad Tables on MTD reported "no response after 75s —
+// the request was aborted". Cost here tracks campaign x ad-set x creative
+// cardinality and the attribution match, not the number of days, so a SHORT
+// window is not a cheap one. The abort also killed the run before it could
+// cache, so every later load was in exactly the same position — a loop that a
+// longer client timeout alone does not break.
+ck('MTD is treated as an expensive window',
+   /const AZ_PRECOMPUTED_WINDOWS = \['mtd', 'ytd', 'allTime'\];/.test(src),true);
+// Being on that list is what buys it BOTH the cron warm and the long freshness
+// TTL; one without the other does not help.
+ck('so the cron warms it',/for \(const win of AZ_PRECOMPUTED_WINDOWS\)/.test(src),true);
+ck('and it gets the long freshness TTL',
+   /AZ_PRECOMPUTED_WINDOWS\.includes\(win\) \? 1800000 : 120000/.test(src),true);
+ck('and the client gives it room to land once',
+   /const _AZ_SLOW_WINS=\['mtd','ytd','allTime'\];/.test(cli),true);
+// Last-good is returned immediately and the rebuild happens behind the response.
+ck('a stale expensive window short-circuits the live compute',
+   /if \(_azStale && AZ_PRECOMPUTED_WINDOWS\.includes\(_azWin\)\) \{/.test(src),true);
+ck('the rebuild runs behind the response',/ctx\.waitUntil\(\(async \(\) => \{/.test(src),true);
+ck('which means the handler takes ctx',/async fetch\(request, env, ctx\) \{/.test(src),true);
+// Without a guard every concurrent reader kicks off the same rebuild.
+ck('concurrent readers do not stampede the rebuild',
+   /!AZ_REFRESHING\.has\(_azCk\)/.test(src)&&/AZ_REFRESHING\.add\(_azCk\)/.test(src),true);
+ck('and the guard is always released',/finally \{ AZ_REFRESHING\.delete\(_azCk\); \}/.test(src),true);
+// A background rebuild must apply the same health gate as the cron, or it warms
+// the cache with gaps that then look stable.
+ck('the background rebuild will not cache a degraded payload',
+   /bg refresh \$\{_azWin\}: NOT caching/.test(src),true);
+ck('and it uses the long retention like every other writer',
+   (src.match(/expirationTtl: AZ_CACHE_RETAIN_SEC/g)||[]).length,3);
 
 console.log(pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);
