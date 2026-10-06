@@ -886,7 +886,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t241';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t242';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3383,31 +3383,25 @@ function clnWkTipMove(e){
 }
 function clnWkTipHide(){var tip=document.getElementById('cln-wk-tip');if(tip)tip.style.opacity='0';}
 
-// ── Clinician Trend Analysis — six metrics over one timeline ────────────────
-// Built in the same hand-rolled SVG idiom as _renderTrueCpdWeek rather than
-// pulling in a chart library, so it inherits the page's fonts, tooltip helpers
-// and gridline styling for free.
-//
-// SMALL MULTIPLES, not a dual axis. The six metrics are three different units
-// ($ per outcome, %, and $ of spend), and the dataviz guidance is explicit that
-// measures of different scale become separate charts rather than a second Y
-// axis. The predecessor ("Weekly Cost") carried that deviation as a documented
-// known issue; splitting the panels retires it. The three panels share one
-// x-scale and one hover band set, so hovering anywhere reads out all six — they
-// read as one timeline, which is what the dual axis was really for.
-const CLN_TR_PANELS=[
-  {id:'cost',title:'Cost per outcome',unit:'$',h:150,series:[
-    {k:'cpi', n:'Cost per Inquiry',  c:'#4A87A8'},
-    {k:'cpfa',n:'Cost per Full App', c:'#9333EA'}]},
-  {id:'conv',title:'Conversion rate',unit:'%',h:150,series:[
-    {k:'cvrInq', n:'CVR · Inquiry',  c:'#0E7C66'},
-    {k:'cvrFull',n:'CVR · Full App', c:'#BE123C'},
-    {k:'ctr',    n:'CTR',                 c:'#1D4ED8'}]},
-  {id:'spend',title:'Ad Spend',unit:'$',h:110,series:[
-    {k:'spend',n:'Ad Spend',c:'#64748B'}]},
+// Five plotted series on ONE chart, two axes by UNIT: the three conversion
+// rates read off the LEFT (%) and the two cost-per metrics off the RIGHT ($).
+// Axis is also encoded as line style — solid for the left, dashed for the
+// right — so "which axis am I reading" survives greyscale and colour-vision
+// deficiency rather than resting on the legend alone.
+const CLN_TR_SERIES=[
+  {k:'cvrInq', n:'CVR · Inquiry',   c:'#0E7C66', ax:'L', unit:'%'},
+  {k:'cvrFull',n:'CVR · Full App',  c:'#BE123C', ax:'L', unit:'%'},
+  {k:'ctr',    n:'CTR',                  c:'#1D4ED8', ax:'L', unit:'%'},
+  {k:'cpi',    n:'Cost per Inquiry',     c:'#4A87A8', ax:'R', unit:'$'},
+  {k:'cpfa',   n:'Cost per Full App',    c:'#9333EA', ax:'R', unit:'$'},
 ];
-// Flat list in readout order, so the hover rows and the legend agree.
-const CLN_TR_SERIES=CLN_TR_PANELS.reduce(function(a,p){return a.concat(p.series.map(function(s){return{k:s.k,n:s.n,c:s.c,unit:p.unit};}));},[]);
+// Ad Spend is tracked but NOT plotted: on the cost axis it runs in thousands
+// against cost-per figures in the tens, so it would flatten both of them onto
+// the floor. It keeps its tile and its hover row, where the number is what
+// matters and the scale does not.
+const CLN_TR_SPEND={k:'spend',n:'Ad Spend',c:'#64748B',unit:'$'};
+// Readout order: every plotted series, then Ad Spend last.
+const CLN_TR_READOUT=CLN_TR_SERIES.concat([CLN_TR_SPEND]);
 const CLN_TR_MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function _clnTrendGrain(){return window._clnTrendGrainV||'week';}
 window.toggleClnTrendGrain=function(g){
@@ -3454,10 +3448,10 @@ function _clnTrendCard(d){
   window._clnTrendData=d;
   var pts=_clnTrendPts(d);
   var grain=_clnTrendGrain();
-  var sub='Six metrics on one timeline, one panel per unit · '
+  var sub='Conversion rates on the left axis (%), cost per outcome on the right ($) · '
     +(grain==='day'?'one point per day':'weeks run Mon–Sun')+' within the selected window'
     +'<br>Inquiries and Full Apps are counted on the contact’s create date, so each series sums to its Key Metrics card above'
-    +' · both CVRs divide by that period’s ad clicks';
+    +' · both CVRs divide by that period’s ad clicks · Ad Spend is tracked below and in the hover readout, not plotted';
   // Stable id, not one buildSectionNav assigns: the grain toggle rebuilds this
   // whole card, and an auto-assigned secnav id would not survive it — leaving
   // the Jump To button pointing at an element that no longer exists.
@@ -3490,14 +3484,20 @@ function _clnTrendCard(d){
             cvrFull:fN(T.fullApp)+' ÷ '+fN(T.clicks)+' clicks',
             ctr:fN(T.clicks)+' ÷ '+fN(T.impressions)+' impressions',
             spend:fN(pts.length)+(grain==='day'?' days':' weeks')+' plotted'};
-  var minis=CLN_TR_SERIES.map(function(sr){
+  var minis=CLN_TR_READOUT.map(function(sr){
     return '<div style="flex:1 1 150px;min-width:142px;background:var(--lighter);border:1px solid var(--border);border-radius:10px;padding:11px 13px;border-top:3px solid '+sr.c+'">'
       +'<div style="font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em">'+sr.n+'</div>'
       +'<div style="font-family:var(--font-h);font-size:21px;font-weight:700;color:var(--navy);margin-top:3px">'+_clnTrFmt(tot[sr.k],sr.unit)+'</div>'
       +'<div style="font-size:9px;color:var(--grey);margin-top:3px">'+calc[sr.k]+'</div></div>';
   }).join('');
+  var lg=CLN_TR_SERIES.map(function(sr){
+    return '<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:var(--navy)">'
+      +'<span style="display:inline-block;width:14px;height:0;border-top:'+(sr.ax==='R'?'3px dashed ':'3px solid ')+sr.c+'"></span>'+sr.n
+      +'<span style="font-size:9px;color:var(--grey)">'+(sr.ax==='R'?'$ right':'% left')+'</span></span>';
+  }).join('');
   return open+title+toggle
     +'<div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0 4px">'+minis+'</div>'
+    +'<div style="display:flex;gap:16px;flex-wrap:wrap;margin:10px 0 2px">'+lg+'</div>'
     +'<div id="cln-trend-panels"></div></div>';
 }
 function _renderClnTrend(d){
@@ -3505,89 +3505,86 @@ function _renderClnTrend(d){
   var pts=_clnTrendPts(d); if(!pts.length)return;
   window._clnTrendData=d;
   var grain=_clnTrendGrain();
-  var W=1000,padL=56,padR=16,padT=14,innerW=W-padL-padR;
+  var W=1000,H=320,padL=52,padR=62,padT=16,padB=34;
+  var innerW=W-padL-padR,innerH=H-padT-padB;
   var n=pts.length;
   var xAt=function(i){return padL+(n<=1?innerW/2:(i/(n-1))*innerW);};
+  // One scale per axis, each spanning only the series that read off it.
+  var mxL=0,mxR=0;
+  pts.forEach(function(p){CLN_TR_SERIES.forEach(function(sr){
+    var v=p[sr.k]; if(v==null)return;
+    if(sr.ax==='L'){if(v>mxL)mxL=v;}else if(v>mxR)mxR=v;
+  });});
+  var yMaxL=_clnTrNice(mxL,'%'),yMaxR=_clnTrNice(mxR,'$'),step=yMaxL/4;
+  var yL=function(v){return padT+innerH-(v/yMaxL)*innerH;};
+  var yR=function(v){return padT+innerH-(v/yMaxR)*innerH;};
+  var yOf=function(sr,v){return sr.ax==='L'?yL(v):yR(v);};
   var todayMs=(function(){var t=new Date();return Date.UTC(t.getFullYear(),t.getMonth(),t.getDate());})();
-  // Readout rows are shared across panels: hovering ANY panel answers all six.
-  var esc=function(v){return String(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');};
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;min-width:620px;height:auto;font-family:var(--font-b)">';
+  // Gridlines are the LEFT axis's; the right axis is labelled at those same
+  // heights through its own scale, so the two never imply a shared zero-to-top.
+  for(var v=0;v<=yMaxL+1e-9;v+=step){
+    var y=yL(v);
+    svg+='<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="rgba(23,44,69,.08)" stroke-width="1"/>'
+      +'<text x="'+(padL-8)+'" y="'+(y+3)+'" text-anchor="end" font-size="9" fill="var(--grey)">'
+      +(v<10?v.toFixed(v<1?2:1):Math.round(v))+'%</text>'
+      +'<text x="'+(W-padR+8)+'" y="'+(y+3)+'" text-anchor="start" font-size="9" fill="var(--grey)">'
+      +f$(Math.round((v/yMaxL)*yMaxR))+'</text>';
+  }
+  // Axis captions, so neither side has to be inferred from the legend.
+  svg+='<text x="'+padL+'" y="10" text-anchor="start" font-size="8.5" font-weight="700" fill="var(--grey)" letter-spacing=".06em">% — CONVERSION</text>'
+    +'<text x="'+(W-padR)+'" y="10" text-anchor="end" font-size="8.5" font-weight="700" fill="var(--grey)" letter-spacing=".06em">$ — COST PER</text>';
+  CLN_TR_SERIES.forEach(function(sr){
+    // Break the line across periods with no denominator instead of
+    // interpolating through them — a gap is honest, a straight line is not.
+    var dash=sr.ax==='R'?' stroke-dasharray="6 4"':'';
+    var run=[];
+    var flush=function(){
+      if(run.length>1)svg+='<polyline points="'+run.join(' ')+'" fill="none" stroke="'+sr.c+'" stroke-width="2.5" stroke-linejoin="round"'+dash+'/>';
+      run=[];
+    };
+    pts.forEach(function(p,i){var v=p[sr.k];if(v==null){flush();return;}run.push(xAt(i)+','+yOf(sr,v));});
+    flush();
+    pts.forEach(function(p,i){
+      var v=p[sr.k]; if(v==null)return;
+      svg+='<circle cx="'+xAt(i)+'" cy="'+yOf(sr,v)+'" r="3.2" fill="'+sr.c+'" stroke="#fff" stroke-width="1.3" pointer-events="none"/>';
+    });
+  });
+  // Thin the labels so a 90-day daily view does not overprint its own axis.
+  var every=Math.max(1,Math.ceil(n/14));
+  pts.forEach(function(p,i){
+    if(i%every)return;
+    svg+='<text x="'+xAt(i)+'" y="'+(H-padB+16)+'" text-anchor="middle" font-size="8.5" fill="var(--grey)">'+_clnTrLabel(p.wk,grain)+'</text>';
+  });
+  // Hover bands: one full-height column per period. The reader aims at a DATE,
+  // not at a 2.5px line, so the whole column is the hit target and the readout
+  // lists every metric — Ad Spend included, though it is not plotted.
+  var esc=function(x){return String(x).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');};
   var subOf=function(p,k){
     if(k==='cpi')return fN(p.inquiries||0)+' inquiries';
     if(k==='cpfa')return fN(p.fullApp||0)+' full apps';
     if(k==='cvrInq')return fN(p.inquiries||0)+' ÷ '+fN(p.clicks||0)+' clicks';
     if(k==='cvrFull')return fN(p.fullApp||0)+' ÷ '+fN(p.clicks||0)+' clicks';
     if(k==='ctr')return fN(p.clicks||0)+' ÷ '+fN(p.impressions||0)+' impr';
-    return '';
+    return 'not plotted';
   };
-  var bandAttrs=function(p){
-    var en=_clnTrEnd(p.wk,grain);
+  var bandW=n>1?(innerW/(n-1)):innerW;
+  pts.forEach(function(p,i){
+    var x=xAt(i),en=_clnTrEnd(p.wk,grain);
+    var bx=Math.max(padL,x-bandW/2),bw=Math.min(W-padR,x+bandW/2)-bx;
     var head=grain==='day'?_clnTrLabel(p.wk,grain):('Week of '+_clnTrLabel(p.wk,grain)+' – '+en.label);
     // A period whose last day is still in the future is INCOMPLETE — its spend
     // has not finished accruing, so its cost-per and rate figures are not
     // comparable to a full one.
     var a=' data-wk="'+esc(head)+'" data-partial="'+(en.ms>todayMs?'1':'')+'"';
-    CLN_TR_SERIES.forEach(function(sr,i){
-      a+=' data-r'+(i+1)+'="'+esc(sr.n+'|'+_clnTrFmt(p[sr.k],sr.unit)+'|'+subOf(p,sr.k)+'|'+sr.c+'|solid')+'"';
+    CLN_TR_READOUT.forEach(function(sr,j){
+      a+=' data-r'+(j+1)+'="'+esc(sr.n+'|'+_clnTrFmt(p[sr.k],sr.unit)+'|'+subOf(p,sr.k)+'|'+sr.c+'|'+(sr.ax==='R'?'dash':'solid'))+'"';
     });
-    return a;
-  };
-  var bandW=n>1?(innerW/(n-1)):innerW;
-  var html='';
-  CLN_TR_PANELS.forEach(function(pan,pi){
-    var last=pi===CLN_TR_PANELS.length-1;
-    var padB=last?34:14, H=pan.h+padB, innerH=H-padT-padB;
-    var mx=0;
-    pts.forEach(function(p){pan.series.forEach(function(sr){var v=p[sr.k];if(v!=null&&v>mx)mx=v;});});
-    var yMax=_clnTrNice(mx,pan.unit), step=yMax/4;
-    var yAt=function(v){return padT+innerH-(v/yMax)*innerH;};
-    var lg=pan.series.map(function(sr){
-      return '<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:var(--navy)">'
-        +'<span style="display:inline-block;width:13px;height:3px;border-radius:2px;background:'+sr.c+'"></span>'+sr.n+'</span>';
-    }).join('');
-    var svg='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;min-width:560px;height:auto;font-family:var(--font-b)">';
-    for(var v=0;v<=yMax+1e-9;v+=step){
-      var y=yAt(v);
-      svg+='<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="rgba(23,44,69,.08)" stroke-width="1"/>'
-        +'<text x="'+(padL-8)+'" y="'+(y+3)+'" text-anchor="end" font-size="9" fill="var(--grey)">'
-        +(pan.unit==='%'?(v<10?v.toFixed(v<1?2:1):Math.round(v))+'%':f$(Math.round(v)))+'</text>';
-    }
-    pan.series.forEach(function(sr){
-      // Break the line across periods with no denominator instead of
-      // interpolating through them — a gap is honest, a straight line is not.
-      var run=[];
-      var flush=function(){
-        if(run.length>1)svg+='<polyline points="'+run.join(' ')+'" fill="none" stroke="'+sr.c+'" stroke-width="2.5" stroke-linejoin="round"/>';
-        run=[];
-      };
-      pts.forEach(function(p,i){var v=p[sr.k];if(v==null){flush();return;}run.push(xAt(i)+','+yAt(v));});
-      flush();
-      pts.forEach(function(p,i){
-        var v=p[sr.k]; if(v==null)return;
-        svg+='<circle cx="'+xAt(i)+'" cy="'+yAt(v)+'" r="3.2" fill="'+sr.c+'" stroke="#fff" stroke-width="1.3" pointer-events="none"/>';
-      });
-    });
-    if(last){
-      // Thin the labels so a 90-day daily view does not overprint its own axis.
-      var every=Math.max(1,Math.ceil(n/14));
-      pts.forEach(function(p,i){
-        if(i%every)return;
-        svg+='<text x="'+xAt(i)+'" y="'+(H-padB+16)+'" text-anchor="middle" font-size="8.5" fill="var(--grey)">'+_clnTrLabel(p.wk,grain)+'</text>';
-      });
-    }
-    // Hover bands: one full-height column per period. The reader aims at a DATE,
-    // not at a 2.5px line, so the whole column is the hit target.
-    pts.forEach(function(p,i){
-      var x=xAt(i),bx=Math.max(padL,x-bandW/2),bw=Math.min(W-padR,x+bandW/2)-bx;
-      svg+='<rect class="clnwk-band" x="'+bx+'" y="'+padT+'" width="'+bw+'" height="'+innerH+'"'+bandAttrs(p)
-        +' style="cursor:pointer" onmouseover="clnWkTip(event,this)" onmousemove="clnWkTipMove(event)" onmouseout="clnWkTipHide()"/>';
-    });
-    svg+='</svg>';
-    html+='<div style="margin-top:'+(pi?14:8)+'px">'
-      +'<div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:2px">'
-      +'<span style="font-family:var(--font-h);font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.06em">'+pan.title+'</span>'
-      +lg+'</div>'+svg+'</div>';
+    svg+='<rect class="clnwk-band" x="'+bx+'" y="'+padT+'" width="'+bw+'" height="'+innerH+'"'+a
+      +' style="cursor:pointer" onmouseover="clnWkTip(event,this)" onmousemove="clnWkTipMove(event)" onmouseout="clnWkTipHide()"/>';
   });
-  host.innerHTML='<div style="overflow-x:auto">'+html+'</div>';
+  svg+='</svg>';
+  host.innerHTML='<div style="overflow-x:auto">'+svg+'</div>';
 }
 
 // True CPD per Week (Irfan). Buckets daily total ad spend + daily demos (excl.

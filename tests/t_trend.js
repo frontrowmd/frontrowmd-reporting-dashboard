@@ -99,14 +99,33 @@ ck('API_CACHE_VER moved past v31',
 // Six series, all distinct colours, each named in both the panel legend and the
 // hover readout.
 ck('client reads ads.trend', /\(d&&d\.ads&&d\.ads\.trend\)/.test(cli), true);
-const hexes=(cli.slice(cli.indexOf('const CLN_TR_PANELS='),cli.indexOf('const CLN_TR_SERIES=')).match(/#[0-9A-Fa-f]{6}/g)||[]);
-ck('six series', hexes.length, 6);
-ck('no colour reused across the six', new Set(hexes.map(h=>h.toLowerCase())).size, 6);
-const keys=(cli.slice(cli.indexOf('const CLN_TR_PANELS='),cli.indexOf('const CLN_TR_SERIES=')).match(/\{k:'(\w+)'/g)||[]).map(s=>s.slice(4,-1));
-ck('the six keys the worker emits', keys.sort(), ['cpfa','cpi','ctr','cvrFull','cvrInq','spend']);
-// The tooltip reads data-r1..data-rN; it looped to 3 for the old three-series
-// card and would silently drop half the readout at six.
-ck('tooltip loops over all six rows', /for\(var i=1;i<=6;i\+\+\)/.test(cli), true);
+// ── Client contract: ONE chart, two axes by unit ────────────────────────────
+// SER is the PLOTTED list only — it stops at CLN_TR_SPEND, which sits between
+// the two and is deliberately excluded from the chart.
+const SER=cli.slice(cli.indexOf('const CLN_TR_SERIES=['),cli.indexOf('const CLN_TR_SPEND='));
+const plotted=(SER.match(/\{k:'(\w+)'/g)||[]).map(x=>x.slice(4,-1));
+ck('five series are plotted', plotted.sort(), ['cpfa','cpi','ctr','cvrFull','cvrInq']);
+// Ad Spend runs in thousands against cost-per figures in the tens; on the same
+// axis it flattens both onto the floor. It is tracked, not plotted.
+ck('Ad Spend is not a plotted series', plotted.indexOf('spend'), -1);
+ck('but it is in the readout and the tiles', /const CLN_TR_READOUT=CLN_TR_SERIES\.concat\(\[CLN_TR_SPEND\]\)/.test(cli), true);
+ck('the tiles cover all six metrics', /var minis=CLN_TR_READOUT\.map/.test(cli), true);
+// Axis assignment is the whole point of the merge: rates left, costs right.
+const axOf=k=>{const m=new RegExp("\\{k:'"+k+"'[^}]*ax:'(\\w)'").exec(SER);return m?m[1]:null;};
+ck('the three rates read off the left axis', ['cvrInq','cvrFull','ctr'].map(axOf), ['L','L','L']);
+ck('the two cost metrics read off the right axis', ['cpi','cpfa'].map(axOf), ['R','R']);
+// Colour alone cannot say which axis a line belongs to in greyscale or under
+// CVD, so the right-axis series are dashed as a second channel.
+ck('right-axis series are dashed', /var dash=sr\.ax==='R'\?' stroke-dasharray/.test(cli), true);
+ck('both axes are labelled on the plot', /CONVERSION<\/text>/.test(cli)&&/COST PER<\/text>/.test(cli), true);
+// Six distinct hexes across every metric, plotted or not.
+const hexes=(cli.slice(cli.indexOf('const CLN_TR_SERIES=['),cli.indexOf('const CLN_TR_READOUT=')).match(/#[0-9A-Fa-f]{6}/g)||[]);
+ck('six colours in all', hexes.length, 6);
+ck('no colour reused', new Set(hexes.map(h=>h.toLowerCase())).size, 6);
+// One <svg>, not one per unit — the small-multiples layout is gone.
+ck('a single chart', (fn(cli,'_renderClnTrend').match(/<svg /g)||[]).length, 1);
+ck('and a single scale per axis', /var yMaxL=_clnTrNice\(mxL,'%'\),yMaxR=_clnTrNice\(mxR,'\$'\)/.test(cli), true);
+ck('tooltip loops over all six readout rows', /for\(var i=1;i<=6;i\+\+\)/.test(cli), true);
 // Grain toggle, mirroring the Detailed Dashboard's.
 ck('Weekly/Daily toggle exists', /gPill\('week','Weekly'\)\+gPill\('day','Daily'\)/.test(cli)&&/window\.toggleClnTrendGrain=/.test(cli), true);
 ck('toggle rebuilds the card', /card\.outerHTML=_clnTrendCard\(d\)/.test(cli), true);
