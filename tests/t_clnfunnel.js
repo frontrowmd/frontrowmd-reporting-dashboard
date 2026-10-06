@@ -60,21 +60,64 @@ ck('the Backlog heading is gone',/Backlog/.test(cli),false);
 ck('each stat states its own polarity',
    [/higher is worse/.test(RC),/higher is better/.test(RC)],[true,true]);
 ck('it reads the worker-computed value',/const _vns=d\.virtualNoShow\|\|\{\};/.test(RC),true);
-// The virtual flow has NO No Show stage, so this must come from attendance.
-ck('the worker computes it from attendance, not a stage',
-   /\(p\.clinician_workflow \|\| ''\)\.trim\(\) !== 'Virtual Signup'/.test(src)
-   &&/if \(att === 'No Show'\) noShow\+\+;/.test(src),true);
-ck('and only counts meetings that were supposed to happen',
-   /const den = held \+ noShow;/.test(src),true);
-ck('still-upcoming and cancelled calls are excluded, not counted as attended',
+// The rate is now 1 - (given / booked in the window). RUN it: the whole change
+// is which attendance states land in the denominator, and that is behaviour.
+{
+  const vm=require('vm');
+  const wctx={console,Date,Math,JSON,Set,Map,Object,String,Number,Array,parseInt,parseFloat,isNaN,RegExp,
+              fetch:()=>{},TextEncoder,TextDecoder,URL,Promise,Response,Request,Headers};
+  vm.createContext(wctx);
+  vm.runInContext(src.slice(0,src.indexOf('\nexport default')),wctx,{filename:'worker.js'});
+  const mk=(att,booked,flow)=>({properties:{clinician_attendance_status:att,clinician_meeting_booked_date:booked,clinician_workflow:flow||'Virtual Signup'}});
+  const W=['2026-09-01','2026-09-30'];
+  const r=wctx.buildClinicianVirtualNoShow([
+    mk('Demo Given \u2014 Originally Scheduled','2026-09-05'),
+    mk('Demo Given \u2014 Rescheduled','2026-09-06'),
+    mk('No Show','2026-09-07'),
+    mk('Scheduled','2026-09-08'),
+    mk('Rescheduled','2026-09-09'),
+    mk('Cancelled Before Demo','2026-09-10'),
+    mk('','2026-09-11'),
+    mk('Demo Given \u2014 Originally Scheduled','2026-08-31'),   // booked before the window
+    mk('No Show','2026-10-01'),                                 // booked after it
+    mk('Demo Given \u2014 Originally Scheduled',''),             // never booked
+  ],W[0],W[1]);
+  ck('the denominator is every call BOOKED in the window',r.booked,7);
+  ck('both Demo Given variants count as given',r.given,2);
+  // THE change: everything that is not a Demo Given counts against the rate.
+  ck('the rate is 1 minus given over booked',Math.round(r.rate*10)/10,71.4);
+  ck('and the other five states are all in the denominator',
+     [r.noShow,r.pending,r.cancelled,r.blank],[1,2,1,1]);
+  ck('the split accounts for every booked call',r.given+r.noShow+r.pending+r.cancelled+r.blank,r.booked);
+  // Scoped on the BOOKED date, so the window excludes calls booked outside it
+  // and anything never booked at all.
+  ck('calls booked outside the window are excluded',r.booked,7);
+  ck('no booked calls gives null, not a divide-by-zero',
+     wctx.buildClinicianVirtualNoShow([],W[0],W[1]).rate,null);
+  // A call still on the books has not happened, so it pushes the rate up until
+  // it resolves — the card has to say how many are in that state.
+  ck('pending is reported so the number can be read honestly',
+     /_vns\.pending\|\|0/.test(cli),true);
+  ck('and the card shows it',/still upcoming/.test(cli),true);
+}
+// Scoped on the booked date, so it must be handed the full history rather than
+// the page cohort — a deal created in June and booked in September is September's.
+ck('the endpoint passes the wider deal set and the window',
+   /buildClinicianVirtualNoShow\(deals, cur\.from, cur\.to\)/.test(src),true);
+ck('both Demo Given values are the held set',
    /CLN_ATT_HELD = \['Demo Given \\u2014 Originally Scheduled', 'Demo Given \\u2014 Rescheduled'\]/.test(src),true);
 
 // --- 8. the nine stages -------------------------------------------------
 const defs=(/const CLN_FUNNEL9 = \[([\s\S]*?)\n\];/.exec(src)||[])[1]||'';
-ck('eight stages are defined (Approved removed)',(defs.match(/\{ key:/g)||[]).length,8);
+ck('seven stages are defined (Approved and Page Views removed)',(defs.match(/\{ key:/g)||[]).length,7);
 ck('in the order asked for',
    [...defs.matchAll(/label: '([^']+)'/g)].map(m=>m[1]),
-   ['Impressions','Link Clicks','Page Views','CTA Click','Inquiries','Fully Onboarded','Sample Shipped','Review Submitted']);
+   ['Impressions','Link Clicks','CTA Click','Inquiries','Fully Onboarded','Sample Shipped','Review Submitted']);
+ck('Page Views is gone from the funnel',/key: 'pageViews'/.test(src),false);
+// The GA4 page fetch that fed it still runs. Left in deliberately — nothing
+// else reads topFunnel.pageViews, so if it stays unused that call can go.
+ck('but the fetch that fed it is still there, and flagged',
+   /out\.pageViews = n;/.test(src)&&/this GA4 call can go and save a subrequest/.test(src),true);
 ck('Approved is gone',/Clinician Approved', id: CLS\.CLINICIAN_APPROVED/.test(src),false);
 // Only Sample Shipped keys off a single dealstage now: the four pre-CRM stages
 // have no id, Inquiries/Fully Onboarded are acq-sourced, Review uses ids[].

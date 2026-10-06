@@ -731,7 +731,7 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v33';   // v33: clinician trend periods carry byType / bySubType for the On-Target card.
+const API_CACHE_VER = 'v34';   // v34: virtualNoShow is booked-date scoped and carries its full attendance split.
                                // v30: last-click acquisition split (paid / organic / untagged) on the regular
                                //      scheduled cohort, + chatgpt.com added to the paid mapper.
                                // v29: all Volume + Quality figures exclude pre-launch (deal tier, not isLow).
@@ -941,6 +941,9 @@ async function fetchClinicianTopFunnel(apiKey, from, to) {
     for (const r of rows) {
       if (CLN_FUNNEL_PAGES.indexOf((r.page_path || '').trim()) >= 0) n += parseInt(r.screen_page_views) || 0;
     }
+    // Still fetched and shipped, but the funnel no longer has a Page Views
+    // stage. Nothing else reads topFunnel.pageViews today — if it stays unused,
+    // this GA4 call can go and save a subrequest.
     out.pageViews = n;
   } catch (e) { console.error('Clinician top-funnel (ga4 pages):', e && e.message); }
   try {
@@ -955,23 +958,47 @@ async function fetchClinicianTopFunnel(apiKey, from, to) {
 }
 
 
-// Virtual No Show Rate. The virtual flow has no No Show STAGE, so this reads the
-// attendance property instead, on the same basis the Detailed Dashboard uses for
-// demo no-shows: no-shows over meetings that were supposed to happen. "Scheduled"
-// and "Rescheduled" are still upcoming and "Cancelled Before Demo" was never due,
-// so all three are excluded from the denominator rather than counted as attended.
+// Kick Off Call No-Show Rate = 1 - (calls given / calls BOOKED in the window).
+//
+// Per Alex: the denominator is every deal whose clinician_meeting_booked_date
+// falls in the window, and the numerator is those recorded as Demo Given. So
+// anything that is not a Demo Given counts against the rate — No Show,
+// Cancelled Before Demo, still Scheduled, Rescheduled, and a blank attendance
+// status alike. That is deliberately BROADER than the previous definition,
+// which divided no-shows by no-shows-plus-held and excluded the other four
+// states from the denominator entirely.
+//
+// Two consequences worth knowing, both inherent to the definition:
+//   * A call booked inside the window but scheduled to happen AFTER it has not
+//     happened yet, so it is counted as not-given and pushes the rate up. The
+//     card reports how many of the denominator are still upcoming.
+//   * The window is on the BOOKED date, not the deal's create date, so the
+//     deals considered are drawn from the full history rather than the page
+//     cohort — a deal created in June and booked in September belongs to
+//     September.
 const CLN_ATT_HELD = ['Demo Given \u2014 Originally Scheduled', 'Demo Given \u2014 Rescheduled'];
-function buildClinicianVirtualNoShow(deals) {
-  let held = 0, noShow = 0;
+const CLN_ATT_PENDING = ['Scheduled', 'Rescheduled'];
+function buildClinicianVirtualNoShow(deals, from, to) {
+  let booked = 0, given = 0, noShow = 0, pending = 0, cancelled = 0, blank = 0;
   for (const d of (deals || [])) {
     const p = d.properties || {};
-    if ((p.clinician_workflow || '').trim() !== 'Virtual Signup') continue;
+    const bk = _clnDayKey(p.clinician_meeting_booked_date);
+    if (!bk) continue;
+    if (from && bk < from) continue;
+    if (to && bk > to) continue;
+    booked++;
     const att = (p.clinician_attendance_status || '').trim();
-    if (att === 'No Show') noShow++;
-    else if (CLN_ATT_HELD.indexOf(att) >= 0) held++;
+    if (CLN_ATT_HELD.indexOf(att) >= 0) given++;
+    else if (att === 'No Show') noShow++;
+    else if (CLN_ATT_PENDING.indexOf(att) >= 0) pending++;
+    else if (att === 'Cancelled Before Demo') cancelled++;
+    else blank++;
   }
-  const den = held + noShow;
-  return { noShow, held, rate: den > 0 ? (noShow / den) * 100 : null };
+  return {
+    booked, given, noShow, pending, cancelled, blank,
+    held: given,                       // kept: the client labels this "given"
+    rate: booked > 0 ? (1 - given / booked) * 100 : null,
+  };
 }
 
 // GA4 (guide Section 2)
@@ -2437,7 +2464,6 @@ const CLS = {
 const CLN_FUNNEL9 = [
   { key: 'impressions', label: 'Impressions',      sub: 'Meta \u00b7 Clinician campaigns' },
   { key: 'linkClicks',  label: 'Link Clicks',      sub: 'Meta \u00b7 Clinician campaigns' },
-  { key: 'pageViews',   label: 'Page Views',       sub: '/clinicians + /for-clinicians' },
   { key: 'ctaClicks',   label: 'CTA Click',        sub: 'click_join_for_free events' },
   // acq: read from the Acquisition populations, not a dealstage. Key Metrics is
   // the authority for these two, and it counts deduped CONTACTS; a deal-based
@@ -8531,7 +8557,9 @@ export default {
         };
         const [kpiPrior, kpiPriorMonth] = await Promise.all([_clnKpiFor(prior), _clnKpiFor(priorMonth)]);
         const topFunnel = await fetchClinicianTopFunnel(env.WINDSOR_API_KEY, cur.from, cur.to);
-        const virtualNoShow = buildClinicianVirtualNoShow(dealsPage);
+        // `deals`, not `dealsPage`: the window is on the BOOKED date, so a deal
+        // created before the window but booked inside it belongs to it.
+        const virtualNoShow = buildClinicianVirtualNoShow(deals, cur.from, cur.to);
         const ownerMap = await fetchClinicianOwners(token);
         const table = buildClinicianTable(dealsHist, contactsByDeal, ownerMap, meetingStarts);
         // Percent of the window elapsed, so pacing can be compared against spend.
