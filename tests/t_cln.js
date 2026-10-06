@@ -1,0 +1,133 @@
+// Clinician Dashboard restructure: new Key Metrics section, card removals/moves,
+// section reorder. The KPI arithmetic matters most — a wrong denominator here is
+// a wrong number on a card, which is worse than a missing card.
+const {load,fn}=require('./slice.js');const vm=require('vm');
+const cli=load('dashboard.html'), src=load('worker.js');
+let pass=0,fail=0;
+const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify(w);console.log((ok?'PASS ':'FAIL ')+n+'  got='+JSON.stringify(g)+(ok?'':' want='+JSON.stringify(w)));ok?pass++:fail++;};
+const RC=fn(cli,'renderClinician');
+
+// --- section order -------------------------------------------------------
+// h STARTS as the funnel, adsH (Ads + Ad Tables) is appended, then All Clinicians,
+// then the ref cards; Key Metrics is PREPENDED last.
+ck('Key Metrics is prepended, not appended',/h=card\('Key Metrics',[\s\S]{0,200}?\)\+h;/.test(RC),true);
+ck('All Clinicians is appended after the ad tables, not promoted to the top',
+   /h\+=allClinH;/.test(RC)&&!/h=allClinH\+h;/.test(RC),true);
+ck('adsH carries BOTH the Ads card and the Clinician Ad Tables',
+   /adsH\+=card\('Ads'/.test(RC)&&/adsH\+=card\('Clinician Ad Tables'/.test(RC),true);
+ck('and All Clinicians lands after adsH',
+   RC.indexOf('h+=adsH;')<RC.indexOf('h+=allClinH;'),true);
+// Building Key Metrics in place at the top would read consts declared below it.
+ck('Key Metrics is built after the consts it reads',
+   RC.indexOf('const ads=')<RC.indexOf("card('Key Metrics'")
+   &&RC.indexOf('const comp=')<RC.indexOf("card('Key Metrics'"),true);
+
+// --- removals ------------------------------------------------------------
+ck('Specialty Breakdown is gone',/panel\('Specialty Breakdown'/.test(cli),false);
+ck('the Clinician Composition card is gone',/card\('Clinician Composition'/.test(cli),false);
+ck('the Referral Source panel is gone from Acquisition',/acqPanel\('Clinician Referral Source'/.test(cli),false);
+ck('the Verification Funnel section is gone',/card\('Verification Funnel'/.test(cli),false);
+ck('and its helpers went with it',
+   [/vpanel\(/,/vshell\(/,/_fvdRows/,/_fvdTot/].some(r=>r.test(cli)),false);
+ck('its data-source reference row is gone too',/\['Verification Funnel','HubSpot'/.test(cli),false);
+
+// --- Type of Clinician moved into Acquisition ----------------------------
+ck('Type of Clinician is now an Acquisition panel',/acqPanel\('Type of Clinician',acqSrc\.type\|\|\[\]\)/.test(cli),true);
+// acqSrc follows the Inquiry / Full Submission toggle, so the submission
+// population needs its own type mix or the panel blanks in that mode.
+ck('acqSrc still follows the population toggle',/const acqSrc=\(acqMode==='submission'&&sub\)\?sub:comp;/.test(cli),true);
+ck('the worker gives the submission population a type mix',/type: capped\(subType, 9\),/.test(src),true);
+ck('and counts it alongside the referral mix',/subType\[t\] = \(subType\[t\] \|\| 0\) \+ 1;/.test(src),true);
+
+// --- helpers had to leave their enclosing function ----------------------
+ck('the delta footer is module scope, not nested in renderDash',
+   /\n function _irTileFooterDash|\nfunction _irTileFooterDash/.test(cli),true);
+ck('renderDash no longer declares its own copy',
+   /function renderDash\(\)\{[\s\S]{0,400}?function _irTileFooterDash/.test(cli),false);
+ck('the pacing bar is module scope and takes spend+budget',
+   /function _clnPaceBar\(pct,elapsed,spend,budget\)\{/.test(cli),true);
+ck('the Ads row delegates to it rather than keeping a private copy',
+   /const paceBar=\(pct,elapsed\)=>_clnPaceBar\(pct,elapsed,spend,ads\.budget\);/.test(cli),true);
+
+// --- the four cards' arithmetic -----------------------------------------
+// Both denominators come from the ACQUISITION section, so the two sections can
+// never disagree about the same quantity. Contact-based and deduped — NOT the
+// funnel's deal-based stages, so this will not equal Fully Onboarded.
+ck('Cost per Full App divides by the Acquisition Full Submission count',
+   /_f\$\(_div\(_sp,_fo\)\)/.test(RC)&&/const _fo=_acqSub\?\(_acqSub\.contacts\|\|0\):0;/.test(RC),true);
+ck('which is composition.submission',/const _acqSub=_acq\.submission\|\|null;/.test(RC),true);
+ck('and never the Meta-conversion field',/_a\.cacDenom\b/.test(RC),false);
+// \b after cacDenom so cacDenomOnboarded does not match; the prose comment
+// above mentions cacDenom deliberately, and must not fail this.
+ck('and never reads the bare cacDenom property',/_a\.cacDenom\b/.test(RC),false);
+ck('Cost per Inquiry divides by the Acquisition clinician count',
+   /_f\$\(_div\(_sp,_add\)\)/.test(RC)&&/const _add=_acq\.contacts\|\|0;/.test(RC),true);
+// Full App Rate must be the SAME ratio the Acquisition caption prints.
+ck('Full App Rate is that pair, so it matches the Acquisition rate',
+   /_rate=_add>0\?\(_fo\/_add\)\*100:null/.test(RC),true);
+ck('and the Acquisition caption computes it the same way',
+   /const acqRate=\(comp\.contacts>0&&sub\)\?\(\(sub\.contacts\|\|0\)\/comp\.contacts\*100\):null;/.test(cli),true);
+// Both "Full App" cards must share one definition, or the row means two things.
+ck('Full App Rate uses the SAME onboarded basis as Cost per Full App',
+   /_rate=_add>0\?\(_fo\/_add\)\*100:null/.test(RC),true);
+ck('lower-is-better is set on the two cost cards only',
+   (RC.match(/,'\$',true\)/g)||[]).length,2);
+ck('and the rate is not inverted',/_foot\(_rate,_pRate\(_kp\),_pRate\(_km\),'%',false\)/.test(RC),true);
+// A Windsor outage must blank one card's numbers, not the whole new section.
+ck('a failed ad fetch degrades instead of throwing',/_a=\(d\.ads&&!d\.ads\.error\)\?d\.ads:null/.test(RC),true);
+ck('and the section says so',/ad data unavailable for this window/.test(RC),true);
+
+// --- the deltas the user asked the worker to provide --------------------
+ck('the worker computes prior and last-month windows',
+   /const \{ current: cur, prior, priorMonth \} = computeWindows/.test(src),true);
+ck('and exposes the three KPI inputs for each',
+   /return \{ spend, fullSub, inquiries: cp\.contacts \|\| 0 \};/.test(src),true);
+ck('the comparison windows use the Acquisition basis too',
+   /const cp = buildClinicianComposition\(dw, contactsByDeal, w\.from, w\.to\);/.test(src),true);
+// Dead payload is how the orphaned multiTouchAttribution field happened.
+ck('the now-unused virtualReached field is gone',/virtualReached/.test(src),false);
+ck('they ride the payload',/kpiPrior, kpiPriorMonth,/.test(src),true);
+// The deal fetch is one search over a superset; widening it costs no extra page.
+ck('the deals window widens to cover the comparison windows',
+   /for \(const _w of \[prior, priorMonth\]\) if \(_w && _w\.from < histFrom\) histFrom = _w\.from;/.test(src),true);
+ck('onboarded is read from the PAGE-scoped funnel, not the history one',
+   /const fp = buildClinicianFunnel\(dw, contactsByDeal, meetingStarts\);/.test(src),true);
+ck('a comparison window with no counterpart returns null',/if \(!w\) return null;/.test(src),true);
+
+// --- the funnel must follow the page window WITHOUT pressing Apply --------
+// The handler shipped the HISTORY funnel while the section's header and date
+// inputs showed the page window, so the two only agreed after an Apply.
+ck('the page-scoped funnel is what ships',/\.\.\.funnelPage,/.test(src),true);
+ck('and the history funnel is no longer spread',/\n          \.\.\.funnel,/.test(src),false);
+// All Clinicians is a separate, deliberately history-scoped view.
+ck('the history table still ships for All Clinicians',/historyRange: \{ from: CLINICIAN_HISTORY_FROM, to: histTo \},/.test(src),true);
+
+// --- CTR -------------------------------------------------------------------
+ck('a fifth Key Metrics tile exists',(RC.match(/_clnKpiTile\(/g)||[]).length,5);
+ck('CTR sits between Cost per Inquiry and Full App Rate',
+   RC.indexOf("_clnKpiTile('Cost per Inquiry'")<RC.indexOf("_clnKpiTile('CTR'")
+   &&RC.indexOf("_clnKpiTile('CTR'")<RC.indexOf("_clnKpiTile('Full App Rate'"),true);
+// Cumulative, not the mean of daily rates — that would weight a 10-impression
+// day the same as a 10,000-impression one.
+ck('CTR is total clicks over total impressions',
+   /const _ctr=_ctrOk\?\(_tf\.clicks\/_tf\.impressions\)\*100:null;/.test(RC),true);
+ck('and never averages a per-row ctr field',/_tf\.ctr\b/.test(RC),false);
+ck('clicks are summed alongside impressions in the worker',
+   /ck \+= parseInt\(r\.clicks\) \|\| 0;/.test(src)&&/'date,campaign_name,impressions,clicks,link_clicks'/.test(src),true);
+ck('on clinician campaigns only',/if \(!isClinicianCampaign\(r\.campaign_name\)\) continue;/.test(src),true);
+ck('zero impressions yields a dash, not a divide-by-zero',
+   /_ctrOk=\(_tf\.impressions!=null&&_tf\.impressions>0&&_tf\.clicks!=null\)/.test(RC),true);
+
+// --- Daily Avg -------------------------------------------------------------
+// Renaming alone would have mislabelled it: the old value skipped weekends.
+ck('the tile is relabelled',/mini\('Daily Avg'/.test(cli)&&!/mini\('Weekday Avg'/.test(cli),true);
+ck('and the CALCULATION covers every day, not just weekdays',
+   /dailyAvg: _spanDays > 0 \? total \/ _spanDays : null, days: _spanDays/.test(src),true);
+ck('the span is the window, not the days that happen to have data',
+   /Math\.max\(1, Math\.round\(\(Date\.parse\(to \+ 'T00:00:00Z'\) - Date\.parse\(from \+ 'T00:00:00Z'\)\) \/ _dayMs\) \+ 1\)/.test(src),true);
+ck('the clinician caption no longer claims weekends are excluded',/excludes Sat\/Sun/.test(RC),false);
+ck('it falls back to the old value on a pre-update payload',
+   /const avg=\(dly\.dailyAvg!=null\)\?dly\.dailyAvg:dly\.weekdayAvg;/.test(cli),true);
+
+console.log(pass+' passed, '+fail+' failed');
+process.exit(fail?1:0);
