@@ -20,12 +20,29 @@ const cols=(colsSrc.match(/\{k:'([^']+)'/g)||[]).map(x=>x.slice(4,-1));
 ck('the column list parses', cols.length>20, true);
 
 // ── The row builder, bounded by its own loop ───────────────────────────────
+// The table now lives in _bdDealsTable(rows), extracted so the Churn tab can
+// render the same table over a different row set. Slice the FUNCTION, so this
+// keeps working wherever it moves to.
+const tableFn=(function(){
+  const i=bd.indexOf('  function _bdDealsTable(rows){');
+  if(i<0)return '';
+  let d=0,j=bd.indexOf('{', i);
+  for(;;j++){ if(bd[j]==='{')d++; else if(bd[j]==='}'){d--; if(!d)break;} }
+  return bd.slice(i,j+1);
+})();
+ck('the table was extracted into a function', tableFn.length>2000, true);
+// It must return through the scroll wrapper only — the card's own closing
+// </div> belongs to whichever section opened the card, and returning it here
+// would close the card twice on one page and not at all on the other.
+ck('and returns through the scroll wrapper, not the card',
+   /return t\+'<\/tbody><\/table><\/div>';/.test(tableFn), true);
+ck('its only row input is the parameter',
+   /(?<![\w.])sorted(?![\w])/.test(tableFn), false);
 const rowSrc=(function(){
-  const k=bd.indexOf('+coCell+');
-  // lastIndexOf takes (needle, fromIndex) — a third argument is ignored, which
-  // silently returned -1 and made this slice empty.
-  const head=bd.lastIndexOf('for(var ri=0;ri<sorted.length;ri++)', k);
+  const k=tableFn.indexOf('+coCell+');
+  const head=tableFn.lastIndexOf('for(var ri=0;ri<rows.length;ri++)', k);
   if(head<0)return '';
+  const bd=tableFn;
   const b=bd.indexOf('{', head);
   let d=0,j=b;
   for(;;j++){ if(bd[j]==='{')d++; else if(bd[j]==='}'){d--; if(!d)break;} }
@@ -33,7 +50,8 @@ const rowSrc=(function(){
 })();
 ck('the row builder was located', rowSrc.length>2000, true);
 // Every cell: the _td() helper for hideable columns, plus bare h+='<td ...
-const cells=(rowSrc.match(/_td\('[^']+',|h\+='<td/g)||[]).length;
+// The extraction renamed h+= to t+=, so match either accumulator.
+const cells=(rowSrc.match(/_td\('[^']+',|[ht]\+='<td/g)||[]).length;
 // THE assertion. A mismatch shifts every column right of the insertion point
 // and the table still renders, so nothing else catches it.
 ck('one cell emitted per declared column', cells, cols.length);

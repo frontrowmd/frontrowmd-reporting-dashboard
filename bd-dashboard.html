@@ -1259,254 +1259,266 @@ function renderBD(){
   // Details group (highlighted background + group header). `groupCollapse:true`
   // means the column is hidden by default and only shown when the group is
   // expanded via its toggle button.
-  var cols=[
-    {k:'dealname',l:'Deal Name',w:140},
-    {k:'id',l:'Deal ID',w:100,idCol:true},
-    {k:'companyName',l:'Company',w:140},
-    // Sits BEFORE the hideable Company ID column so it stays adjacent to
-    // Company whether or not the ID columns are shown.
-    {k:'companySegment',l:'Company Segment',w:110},
-    {k:'companyId',l:'Company ID',w:100,idCol:true},
-    {k:'brand_status',l:'Brand Status',w:100},
-    {k:'dealstage',l:'Deal Stage',w:115},
-    {k:'hubspot_owner_id',l:'Deal Rep',w:80},
-    {k:'account_manager',l:'Acct Mgr',w:80},
-    {k:'se_rep_id',l:'SE Rep',w:80},
-    {k:'ops_owner_id',l:'Ops Rep',w:80},
-    // ── Dates group ──
-    // Only Close Date visible by default; Demo Date + Create Date are tucked
-    // behind the group-collapse chevron. Soft-purple tint distinguishes this
-    // from the other groups (violet-500 family).
-    {k:'closedate',l:'Close Date',w:90, group:'dates'},
-    {k:'date_demo_booked',l:'Demo Date',w:100, group:'dates', groupCollapse:true},
-    {k:'createdate',l:'Create Date',w:90, group:'dates', groupCollapse:true},
-    // ── Avg Days group ──
-    // Only "From Created" visible by default; To Demo and From Demo are
-    // tucked behind the group-collapse chevron. Light-grey tint
-    // distinguishes this from the blue Plan / amber Billing / pink Churn
-    // groups (slate-500 family).
-    {k:'days_to_close',l:'From Created',w:80, group:'avgDays'},
-    {k:'to_demo',l:'To Demo',w:75, group:'avgDays', groupCollapse:true},
-    {k:'from_demo',l:'From Demo',w:75, group:'avgDays', groupCollapse:true},
-    // ── Plan Details group ──
-    {k:'amount',l:'Amount',w:90, group:'plan'},
-    {k:'month_minimum',l:'Month Minimum',w:100, group:'plan'},
-    {k:'package_type',l:'Plan Name',w:115, group:'plan'},
-    {k:'average_monthly_web_traffic__cloned_',l:'Web Traffic Tier',w:100, group:'plan'},
-    {k:'original_amount',l:'Original Amount',w:100, group:'plan', groupCollapse:true},
-    {k:'of_products',l:'# of Products',w:80, group:'plan', groupCollapse:true},
-    {k:'of_free_reviews',l:'# of Free Reviews',w:90, group:'plan', groupCollapse:true},
-    {k:'of_total_reviews',l:'# of Total Reviews',w:95, group:'plan', groupCollapse:true},
-    {k:'price_per_review',l:'Price Per Review',w:95, group:'plan', groupCollapse:true},
-    {k:'of_clinicianai',l:'# of ClinicianAI',w:100, group:'plan', groupCollapse:true},
-    {k:'of_clinician_analysis',l:'# of Clinician Analysis',w:115, group:'plan', groupCollapse:true},
-    {k:'clinician_ai_price_per_product',l:'Price Per ClinicianAI',w:115, group:'plan', groupCollapse:true},
-    {k:'setup_fee',l:'Setup Fee',w:130, group:'plan', groupCollapse:true},
-    {k:'months_until_upgrade',l:'Months Until Upgrade',w:120, group:'plan', groupCollapse:true},
-    {k:'fee_after_upgrade',l:'Fee After Upgrade',w:110, group:'plan', groupCollapse:true},
-    {k:'notes',l:'Notes',w:200, group:'plan', groupCollapse:true},
-    // ── Billing Details group ──
-    {k:'invoice_date',l:'Invoice Date',w:100, group:'billing'},
-    {k:'approval_date',l:'Approval Date',w:100, group:'billing', groupCollapse:true},
-    {k:'internal_recurly_link',l:'Internal Recurly Link',w:140, group:'billing', groupCollapse:true},
-    {k:'recurly_account_management_url',l:'Recurly Account Management',w:160, group:'billing', groupCollapse:true},
-    {k:'recurly_billing_intake_url',l:'Recurly Billing Intake',w:140, group:'billing', groupCollapse:true},
-    // ── Churn / Pause Details group ──
-    // Only Pause/Churn Date visible by default; the rest live behind the
-    // group-collapse chevron. Light-pink tint distinguishes this from the
-    // blue Plan and amber Billing groups.
-    {k:'pausechurn_date',l:'Pause/Churn Date',w:110, group:'churn'},
-    {k:'never_implemented_churn',l:'Never Implemented — Churned',w:140, group:'churn', groupCollapse:true},
-    {k:'churn_reason',l:'Churn Reason',w:140, group:'churn', groupCollapse:true},
-    {k:'detailed_reason_for_churn',l:'Detailed Reason For Churn',w:200, group:'churn', groupCollapse:true},
-    {k:'paused_billing_length_months',l:'Paused Billing Length (Months)',w:140, group:'churn', groupCollapse:true},
-    {k:'temporary_pause_reason',l:'Temporary Pause Reason',w:160, group:'churn', groupCollapse:true},
-    {k:'paused_billing__billing_restart_date',l:'Billing Restart Date',w:120, group:'churn', groupCollapse:true},
-  ];
-  // Apply the column-visibility toggles → produces the filtered visible cols.
-  // - ID columns (Deal ID, Company ID) hide when _bdIdsVisible is false.
-  // - Dates/Plan/Billing/Churn/AvgDays collapse-only columns hide when
-  //   their group is collapsed.
-  cols=cols.filter(function(c){
-    if(c.idCol&&!_bdIdsVisible)return false;
-    if(!c.group||!c.groupCollapse)return true;
-    if(c.group==='plan')return _bdPlanExpanded;
-    if(c.group==='billing')return _bdBillingExpanded;
-    if(c.group==='churn')return _bdChurnExpanded;
-    if(c.group==='avgDays')return _bdAvgDaysExpanded;
-    if(c.group==='dates')return _bdDatesExpanded;
-    return true;
-  });
-  // Set of currently-visible column keys, used to conditionally render TDs
-  var visibleKeys={};for(var vk=0;vk<cols.length;vk++){visibleKeys[cols[vk].k]=true;}
-  var _td=function(key,html){return visibleKeys[key]?html:'';};
-  // Build colgroup from visible cols
-  var colgroupHTML='<colgroup>';for(var cgi=0;cgi<cols.length;cgi++){colgroupHTML+='<col style="width:'+cols[cgi].w+'px">';}colgroupHTML+='</colgroup>';
-  // Group banner row \u2014 colspans match visible-column counts for each group
-  var datesCols=cols.filter(function(c){return c.group==='dates';}).length;
-  var avgDaysCols=cols.filter(function(c){return c.group==='avgDays';}).length;
-  var planCols=cols.filter(function(c){return c.group==='plan';}).length;
-  var billingCols=cols.filter(function(c){return c.group==='billing';}).length;
-  var churnCols=cols.filter(function(c){return c.group==='churn';}).length;
-  var preGroupCols=0;for(var pgi=0;pgi<cols.length;pgi++){if(cols[pgi].group)break;preGroupCols++;}
-  var datesChev=_bdDatesExpanded?'\u25BC':'\u25B6';
-  var avgDaysChev=_bdAvgDaysExpanded?'\u25BC':'\u25B6';
-  var planChev=_bdPlanExpanded?'\u25BC':'\u25B6';
-  var billingChev=_bdBillingExpanded?'\u25BC':'\u25B6';
-  var churnChev=_bdChurnExpanded?'\u25BC':'\u25B6';
-  // Wrapper is a constrained scroll container so position:sticky on the
-  // column header row AND first column actually sticks. Without a
-  // max-height the wrapper expands to fit content and there's no internal
-  // vertical scroll — sticky cells would have nothing to stick against.
-  h+='<div style="overflow:auto;max-height:calc(100vh - 220px);margin-top:14px;border:1px solid rgba(23,44,69,.07);border-radius:9px"><table class="stbl" style="table-layout:fixed;width:auto;min-width:100%">'+colgroupHTML+'<thead>';
-  // Group banner row (only shown when there's at least one group column visible).
-  // All cell backgrounds use SOLID color values (not rgba) \u2014 the row is sticky
-  // at top:0 of the table wrapper, and transparent backgrounds would let
-  // scrolling content show through.
-  if(datesCols>0||avgDaysCols>0||planCols>0||billingCols>0||churnCols>0){
-    h+='<tr class="bd-grp-row">';
-    if(preGroupCols>0)h+='<th colspan="'+preGroupCols+'" style="background:var(--white);border-bottom:none;padding-bottom:2px"></th>';
-    if(datesCols>0)h+='<th colspan="'+datesCols+'" style="background:#F1E4FE;border-bottom:1px solid rgba(139,92,246,.40);text-align:center;cursor:pointer;color:var(--navy);font-weight:700;letter-spacing:.06em;font-size:10px;padding:6px 8px" onclick="bdToggleDates()" title="Toggle Dates columns"><span style="color:#7C3AED;margin-right:6px">'+datesChev+'</span>Dates</th>';
-    if(avgDaysCols>0)h+='<th colspan="'+avgDaysCols+'" style="background:#E6E9EC;border-bottom:1px solid rgba(100,116,139,.40);text-align:center;cursor:pointer;color:var(--navy);font-weight:700;letter-spacing:.06em;font-size:10px;padding:6px 8px" onclick="bdToggleAvgDays()" title="Toggle Avg Days columns"><span style="color:#64748B;margin-right:6px">'+avgDaysChev+'</span>Avg Days</th>';
-    if(planCols>0)h+='<th colspan="'+planCols+'" style="background:#E8F0F5;border-bottom:1px solid rgba(114,164,191,.35);text-align:center;cursor:pointer;color:var(--navy);font-weight:700;letter-spacing:.06em;font-size:10px;padding:6px 8px" onclick="bdTogglePlan()" title="Toggle Plan Details columns"><span style="color:var(--teal);margin-right:6px">'+planChev+'</span>Plan Details</th>';
-    if(billingCols>0)h+='<th colspan="'+billingCols+'" style="background:#FEF1DD;border-bottom:1px solid rgba(245,158,11,.40);text-align:center;cursor:pointer;color:var(--navy);font-weight:700;letter-spacing:.06em;font-size:10px;padding:6px 8px" onclick="bdToggleBilling()" title="Toggle Billing Details columns"><span style="color:#B45309;margin-right:6px">'+billingChev+'</span>Billing Details</th>';
-    if(churnCols>0)h+='<th colspan="'+churnCols+'" style="background:#FCE2EF;border-bottom:1px solid rgba(236,72,153,.40);text-align:center;cursor:pointer;color:var(--navy);font-weight:700;letter-spacing:.06em;font-size:10px;padding:6px 8px" onclick="bdToggleChurn()" title="Toggle Churn Details columns"><span style="color:#BE185D;margin-right:6px">'+churnChev+'</span>Churn Details</th>';
-    h+='</tr>';
-  }
-  // Column header row \u2014 tint cells inside a group with a SOLID background
-  // (same reason as the banner row: this row is sticky too, transparent
-  // backgrounds would let scrolling rows show through).
-  h+='<tr>';
-  for(var ci2=0;ci2<cols.length;ci2++){var c=cols[ci2];var isS=_bdSort===c.k;
-    var thBg=c.group==='plan'?'background:#F7FAFB;':(c.group==='billing'?'background:#FEF9F0;':(c.group==='churn'?'background:#FEF4F9;':(c.group==='avgDays'?'background:#F6F7F8;':(c.group==='dates'?'background:#FAF5FE;':''))));
-    h+='<th style="'+thBg+'" onclick="'+(c.k?"_bdSort='"+c.k+"';_bdSortDir=_bdSortDir==='asc'?'desc':'asc';renderBD()":"")+'">'+c.l+(isS?(_bdSortDir==='asc'?' \u25B2':' \u25BC'):'')+'</th>';
-  }
-  h+='</tr></thead><tbody>';
-  // Helper to style group cells consistently \u2014 subtle tint matching the header
-  var _planBg='background:rgba(114,164,191,.04)';
-  var _billingBg='background:rgba(245,158,11,.04)';
-  var _churnBg='background:rgba(236,72,153,.04)';
-  var _avgDaysBg='background:rgba(100,116,139,.04)';
-  var _datesBg='background:rgba(139,92,246,.04)';
-  // Cell helpers
-  var dash='<span style="color:#ccc">\u2014</span>';
-  function tNum(v){if(v===''||v==null||v===0)return v===0?'0':dash;return v;}
-  function tMoney(v){return v?f$(parseFloat(v)||0):dash;}
-  function tEnum(v){return v||dash;}
-  function tNotes(v){if(!v)return dash;var t=String(v);if(t.length>60)return '<span title="'+t.replace(/"/g,'&quot;')+'">'+t.substring(0,60)+'\u2026</span>';return t;}
-  for(var ri=0;ri<sorted.length;ri++){var row=sorted[ri];
-    var bsColor=BD_STATUS_COLORS[row.brand_status]||'#9CA3AF';
-    var stageLabel=BD_STAGE_LABELS[row.dealstage]||row.dealstage||'\u2014';
-    var stageColor=BD_STAGE_COLORS[row.dealstage]||'#9CA3AF';
-    var cd=(row.closedate||'').substring(0,10)||'\u2014';
-    var crd=(row.createdate||'').substring(0,10)||'\u2014';
-    var repName=ownerMap[row.hubspot_owner_id]||'';
-    var wtRaw=row.average_monthly_web_traffic__cloned_||'';
-    var wtLbl=wtRaw?(BD_WT_LABELS[wtRaw]||wtRaw):'\u2014';
-    // SE Rep \u2014 from the company record's hubspot_owner_id
-    var seName=ownerMap[row.se_rep_id]||'';
-    var toDemoVal=bdToDemo(row);
-    // Resolve URLs that may or may not have a protocol prefix
-    var _safeUrl=function(u){if(!u)return '';var s=String(u).trim();if(!s)return '';if(/^https?:\/\//i.test(s))return s;return 'https://'+s;};
-    var _linkCell=function(u,lbl){var url=_safeUrl(u);if(!url)return dash;return '<a href="'+url+'" target="_blank" style="color:var(--teal);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;max-width:100%" title="'+u.replace(/"/g,'&quot;')+'">'+(lbl||u)+' \u2197</a>';};
-    h+='<tr>';
-    h+='<td><div style="display:flex;align-items:center;gap:4px;overflow:hidden"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+row.dealname+'">'+row.dealname+'</span><a href="https://app.hubspot.com/contacts/46815331/record/0-3/'+row.id+'" target="_blank" style="flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:4px;background:rgba(114,164,191,.1);color:var(--teal);font-size:9px;text-decoration:none">\u2197</a></div></td>';
-    // Deal ID cell \u2014 raw HubSpot record ID. Mono font + grey so it reads as
-    // a system identifier, not a label. Click-to-copy via title hint.
-    h+=_td('id','<td style="font-family:ui-monospace,Menlo,monospace;color:var(--grey)" title="HubSpot Deal record ID">'+(row.id||dash)+'</td>');
-    // Company cell \u2014 the name itself is now the clickable link to the
-    // HubSpot company record (was a tiny arrow icon next to plain text).
-    // If we have no companyId, render the name as-is or "\u2014".
-    var coName=row.companyName||'';
-    var coUrl=row.companyId?'https://app.hubspot.com/contacts/46815331/record/0-2/'+row.companyId:'';
-    var coCell;
-    if(coName&&coUrl){
-      coCell='<a href="'+coUrl+'" target="_blank" title="'+coName.replace(/"/g,'&quot;')+'" style="color:var(--teal);text-decoration:none;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;max-width:100%">'+coName+' \u2197</a>';
-    } else if(coName){
-      coCell='<span title="'+coName.replace(/"/g,'&quot;')+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;max-width:100%">'+coName+'</span>';
-    } else {
-      coCell=dash;
+  // ── The deals table, extracted so the Churn tab can render the same table ──
+  // over a different row set. It was ~250 lines emitted inline here; the ONLY
+  // row-dependent input in the whole block was `sorted`, so the extraction is a
+  // rename of that to `rows` and of `h+=` to `t+=`.
+  //
+  // Returns through </table></div> — the scroll wrapper — and NOT the card's
+  // own closing </div>, which belongs to whichever section opened the card.
+  function _bdDealsTable(rows){
+    var t='';
+    var cols=[
+      {k:'dealname',l:'Deal Name',w:140},
+      {k:'id',l:'Deal ID',w:100,idCol:true},
+      {k:'companyName',l:'Company',w:140},
+      // Sits BEFORE the hideable Company ID column so it stays adjacent to
+      // Company whether or not the ID columns are shown.
+      {k:'companySegment',l:'Company Segment',w:110},
+      {k:'companyId',l:'Company ID',w:100,idCol:true},
+      {k:'brand_status',l:'Brand Status',w:100},
+      {k:'dealstage',l:'Deal Stage',w:115},
+      {k:'hubspot_owner_id',l:'Deal Rep',w:80},
+      {k:'account_manager',l:'Acct Mgr',w:80},
+      {k:'se_rep_id',l:'SE Rep',w:80},
+      {k:'ops_owner_id',l:'Ops Rep',w:80},
+      // ── Dates group ──
+      // Only Close Date visible by default; Demo Date + Create Date are tucked
+      // behind the group-collapse chevron. Soft-purple tint distinguishes this
+      // from the other groups (violet-500 family).
+      {k:'closedate',l:'Close Date',w:90, group:'dates'},
+      {k:'date_demo_booked',l:'Demo Date',w:100, group:'dates', groupCollapse:true},
+      {k:'createdate',l:'Create Date',w:90, group:'dates', groupCollapse:true},
+      // ── Avg Days group ──
+      // Only "From Created" visible by default; To Demo and From Demo are
+      // tucked behind the group-collapse chevron. Light-grey tint
+      // distinguishes this from the blue Plan / amber Billing / pink Churn
+      // groups (slate-500 family).
+      {k:'days_to_close',l:'From Created',w:80, group:'avgDays'},
+      {k:'to_demo',l:'To Demo',w:75, group:'avgDays', groupCollapse:true},
+      {k:'from_demo',l:'From Demo',w:75, group:'avgDays', groupCollapse:true},
+      // ── Plan Details group ──
+      {k:'amount',l:'Amount',w:90, group:'plan'},
+      {k:'month_minimum',l:'Month Minimum',w:100, group:'plan'},
+      {k:'package_type',l:'Plan Name',w:115, group:'plan'},
+      {k:'average_monthly_web_traffic__cloned_',l:'Web Traffic Tier',w:100, group:'plan'},
+      {k:'original_amount',l:'Original Amount',w:100, group:'plan', groupCollapse:true},
+      {k:'of_products',l:'# of Products',w:80, group:'plan', groupCollapse:true},
+      {k:'of_free_reviews',l:'# of Free Reviews',w:90, group:'plan', groupCollapse:true},
+      {k:'of_total_reviews',l:'# of Total Reviews',w:95, group:'plan', groupCollapse:true},
+      {k:'price_per_review',l:'Price Per Review',w:95, group:'plan', groupCollapse:true},
+      {k:'of_clinicianai',l:'# of ClinicianAI',w:100, group:'plan', groupCollapse:true},
+      {k:'of_clinician_analysis',l:'# of Clinician Analysis',w:115, group:'plan', groupCollapse:true},
+      {k:'clinician_ai_price_per_product',l:'Price Per ClinicianAI',w:115, group:'plan', groupCollapse:true},
+      {k:'setup_fee',l:'Setup Fee',w:130, group:'plan', groupCollapse:true},
+      {k:'months_until_upgrade',l:'Months Until Upgrade',w:120, group:'plan', groupCollapse:true},
+      {k:'fee_after_upgrade',l:'Fee After Upgrade',w:110, group:'plan', groupCollapse:true},
+      {k:'notes',l:'Notes',w:200, group:'plan', groupCollapse:true},
+      // ── Billing Details group ──
+      {k:'invoice_date',l:'Invoice Date',w:100, group:'billing'},
+      {k:'approval_date',l:'Approval Date',w:100, group:'billing', groupCollapse:true},
+      {k:'internal_recurly_link',l:'Internal Recurly Link',w:140, group:'billing', groupCollapse:true},
+      {k:'recurly_account_management_url',l:'Recurly Account Management',w:160, group:'billing', groupCollapse:true},
+      {k:'recurly_billing_intake_url',l:'Recurly Billing Intake',w:140, group:'billing', groupCollapse:true},
+      // ── Churn / Pause Details group ──
+      // Only Pause/Churn Date visible by default; the rest live behind the
+      // group-collapse chevron. Light-pink tint distinguishes this from the
+      // blue Plan and amber Billing groups.
+      {k:'pausechurn_date',l:'Pause/Churn Date',w:110, group:'churn'},
+      {k:'never_implemented_churn',l:'Never Implemented — Churned',w:140, group:'churn', groupCollapse:true},
+      {k:'churn_reason',l:'Churn Reason',w:140, group:'churn', groupCollapse:true},
+      {k:'detailed_reason_for_churn',l:'Detailed Reason For Churn',w:200, group:'churn', groupCollapse:true},
+      {k:'paused_billing_length_months',l:'Paused Billing Length (Months)',w:140, group:'churn', groupCollapse:true},
+      {k:'temporary_pause_reason',l:'Temporary Pause Reason',w:160, group:'churn', groupCollapse:true},
+      {k:'paused_billing__billing_restart_date',l:'Billing Restart Date',w:120, group:'churn', groupCollapse:true},
+    ];
+    // Apply the column-visibility toggles → produces the filtered visible cols.
+    // - ID columns (Deal ID, Company ID) hide when _bdIdsVisible is false.
+    // - Dates/Plan/Billing/Churn/AvgDays collapse-only columns hide when
+    //   their group is collapsed.
+    cols=cols.filter(function(c){
+      if(c.idCol&&!_bdIdsVisible)return false;
+      if(!c.group||!c.groupCollapse)return true;
+      if(c.group==='plan')return _bdPlanExpanded;
+      if(c.group==='billing')return _bdBillingExpanded;
+      if(c.group==='churn')return _bdChurnExpanded;
+      if(c.group==='avgDays')return _bdAvgDaysExpanded;
+      if(c.group==='dates')return _bdDatesExpanded;
+      return true;
+    });
+    // Set of currently-visible column keys, used to conditionally render TDs
+    var visibleKeys={};for(var vk=0;vk<cols.length;vk++){visibleKeys[cols[vk].k]=true;}
+    var _td=function(key,html){return visibleKeys[key]?html:'';};
+    // Build colgroup from visible cols
+    var colgroupHTML='<colgroup>';for(var cgi=0;cgi<cols.length;cgi++){colgroupHTML+='<col style="width:'+cols[cgi].w+'px">';}colgroupHTML+='</colgroup>';
+    // Group banner row \u2014 colspans match visible-column counts for each group
+    var datesCols=cols.filter(function(c){return c.group==='dates';}).length;
+    var avgDaysCols=cols.filter(function(c){return c.group==='avgDays';}).length;
+    var planCols=cols.filter(function(c){return c.group==='plan';}).length;
+    var billingCols=cols.filter(function(c){return c.group==='billing';}).length;
+    var churnCols=cols.filter(function(c){return c.group==='churn';}).length;
+    var preGroupCols=0;for(var pgi=0;pgi<cols.length;pgi++){if(cols[pgi].group)break;preGroupCols++;}
+    var datesChev=_bdDatesExpanded?'\u25BC':'\u25B6';
+    var avgDaysChev=_bdAvgDaysExpanded?'\u25BC':'\u25B6';
+    var planChev=_bdPlanExpanded?'\u25BC':'\u25B6';
+    var billingChev=_bdBillingExpanded?'\u25BC':'\u25B6';
+    var churnChev=_bdChurnExpanded?'\u25BC':'\u25B6';
+    // Wrapper is a constrained scroll container so position:sticky on the
+    // column header row AND first column actually sticks. Without a
+    // max-height the wrapper expands to fit content and there's no internal
+    // vertical scroll — sticky cells would have nothing to stick against.
+    t+='<div style="overflow:auto;max-height:calc(100vh - 220px);margin-top:14px;border:1px solid rgba(23,44,69,.07);border-radius:9px"><table class="stbl" style="table-layout:fixed;width:auto;min-width:100%">'+colgroupHTML+'<thead>';
+    // Group banner row (only shown when there's at least one group column visible).
+    // All cell backgrounds use SOLID color values (not rgba) \u2014 the row is sticky
+    // at top:0 of the table wrapper, and transparent backgrounds would let
+    // scrolling content show through.
+    if(datesCols>0||avgDaysCols>0||planCols>0||billingCols>0||churnCols>0){
+      t+='<tr class="bd-grp-row">';
+      if(preGroupCols>0)t+='<th colspan="'+preGroupCols+'" style="background:var(--white);border-bottom:none;padding-bottom:2px"></th>';
+      if(datesCols>0)t+='<th colspan="'+datesCols+'" style="background:#F1E4FE;border-bottom:1px solid rgba(139,92,246,.40);text-align:center;cursor:pointer;color:var(--navy);font-weight:700;letter-spacing:.06em;font-size:10px;padding:6px 8px" onclick="bdToggleDates()" title="Toggle Dates columns"><span style="color:#7C3AED;margin-right:6px">'+datesChev+'</span>Dates</th>';
+      if(avgDaysCols>0)t+='<th colspan="'+avgDaysCols+'" style="background:#E6E9EC;border-bottom:1px solid rgba(100,116,139,.40);text-align:center;cursor:pointer;color:var(--navy);font-weight:700;letter-spacing:.06em;font-size:10px;padding:6px 8px" onclick="bdToggleAvgDays()" title="Toggle Avg Days columns"><span style="color:#64748B;margin-right:6px">'+avgDaysChev+'</span>Avg Days</th>';
+      if(planCols>0)t+='<th colspan="'+planCols+'" style="background:#E8F0F5;border-bottom:1px solid rgba(114,164,191,.35);text-align:center;cursor:pointer;color:var(--navy);font-weight:700;letter-spacing:.06em;font-size:10px;padding:6px 8px" onclick="bdTogglePlan()" title="Toggle Plan Details columns"><span style="color:var(--teal);margin-right:6px">'+planChev+'</span>Plan Details</th>';
+      if(billingCols>0)t+='<th colspan="'+billingCols+'" style="background:#FEF1DD;border-bottom:1px solid rgba(245,158,11,.40);text-align:center;cursor:pointer;color:var(--navy);font-weight:700;letter-spacing:.06em;font-size:10px;padding:6px 8px" onclick="bdToggleBilling()" title="Toggle Billing Details columns"><span style="color:#B45309;margin-right:6px">'+billingChev+'</span>Billing Details</th>';
+      if(churnCols>0)t+='<th colspan="'+churnCols+'" style="background:#FCE2EF;border-bottom:1px solid rgba(236,72,153,.40);text-align:center;cursor:pointer;color:var(--navy);font-weight:700;letter-spacing:.06em;font-size:10px;padding:6px 8px" onclick="bdToggleChurn()" title="Toggle Churn Details columns"><span style="color:#BE185D;margin-right:6px">'+churnChev+'</span>Churn Details</th>';
+      t+='</tr>';
     }
-    h+='<td data-no-tip="1">'+coCell+'</td>';
-    // Company Segment \u2014 a COMPANY property, arriving via the company lookup
-    // rather than on the deal, so it is blank until that call returns.
-    var _seg=row.companySegment||'';
-    var _segC=BD_SEGMENT_COLORS[_seg]||BD_SEGMENT_COLORS._other;
-    h+='<td data-no-tip="1">'+(_seg?'<span class="pill" style="background:'+_segC+'18;color:'+_segC+'">'+_seg+'</span>':dash)+'</td>';
-    // Company ID cell \u2014 raw HubSpot record ID for the associated company.
-    h+=_td('companyId','<td style="font-family:ui-monospace,Menlo,monospace;color:var(--grey)" title="HubSpot Company record ID">'+(row.companyId||dash)+'</td>');
-    h+='<td data-no-tip="1">'+(row.brand_status?'<span class="pill" style="background:'+bsColor+'18;color:'+bsColor+'">'+row.brand_status+'</span>':dash)+'</td>';
-    h+='<td data-no-tip="1"><span class="pill" style="background:'+stageColor+'18;color:'+stageColor+'">'+stageLabel+'</span></td>';
-    var repHidden=bdRepHidden(repName,BD_DEAL_REP_HIDE);
-    h+='<td title="'+(repHidden?'':repName)+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(repHidden?dash:(bdFirstName(repName)||dash))+'</td>';
-    // Account Manager — from the company record's account_manager field;
-    // resolve via ownerMap (owner-id property), falling back to the raw value.
-    var amName=ownerMap[row.account_manager]||row.account_manager||'';
-    h+=_td('account_manager','<td title="'+amName.replace(/"/g,'&quot;')+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(bdFirstName(amName)||dash)+'</td>');
-    // SE Rep — from the company record's hubspot_owner_id, resolved via ownerMap
-    var seHidden=bdRepHidden(seName,BD_SE_REP_HIDE);
-    h+=_td('se_rep_id','<td title="'+(seHidden?'':seName)+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(seHidden?dash:(bdFirstName(seName)||dash))+'</td>');
-    // Ops Rep — from the company record's ops_owner field, resolved via ownerMap
-    var opsName=ownerMap[row.ops_owner_id]||'';
-    h+=_td('ops_owner_id','<td title="'+opsName+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(bdFirstName(opsName)||dash)+'</td>');
-    h+=_td('closedate','<td style="'+_datesBg+'">'+cd+'</td>');
-    // Show EFFECTIVE demo date (rescheduled overrides original). Highlight
-    // rescheduled rows so the override is visible at a glance — purple/bold
-    // matches the rescheduled-pending color used elsewhere.
-    var _bdEffDemo=row.rescheduled_meeting_date||row.date_demo_booked;
-    var ddb=(_bdEffDemo||'').substring(0,10)||dash;
-    var _ddbStyle=row.rescheduled_meeting_date?'color:#7C3AED;font-weight:600;':'';
-    h+=_td('date_demo_booked','<td style="'+_ddbStyle+_datesBg+'">'+ddb+'</td>');
-    h+=_td('createdate','<td style="'+_datesBg+'">'+crd+'</td>');
-    h+=_td('to_demo','<td style="text-align:center;'+_avgDaysBg+'">'+(toDemoVal==null?dash:toDemoVal)+'</td>');
-    var fromDemoVal=bdFromDemo(row);
-    h+=_td('from_demo','<td style="text-align:center;'+_avgDaysBg+'">'+(fromDemoVal==null?dash:fromDemoVal)+'</td>');
-    h+=_td('days_to_close','<td style="text-align:center;'+_avgDaysBg+'">'+tNum(row.days_to_close)+'</td>');
-    // ── Plan Details group cells (tinted teal) ──
-    // Cell-render order must match the cols[] definition order so headers
-    // line up with values. Default-visible columns first
-    // (Amount → Month Minimum → Plan Name → Web Traffic Tier), then the
-    // collapse-only columns.
-    h+=_td('amount','<td style="font-weight:600;'+_planBg+'">'+f$(row.amount)+'</td>');
-    h+=_td('month_minimum','<td style="'+_planBg+'">'+(row.month_minimum?Math.round(row.month_minimum).toLocaleString():dash)+'</td>');
-    var pnClean=bdPlanName(row.package_type||'');
-    var pnColor=BD_PKG_COLORS[pnClean]||'#9CA3AF';
-    h+=_td('package_type','<td data-no-tip="1" style="'+_planBg+'">'+(row.package_type?'<span class="pill" style="background:'+pnColor+'18;color:'+pnColor+'">'+pnClean+'</span>':dash)+'</td>');
-    h+=_td('average_monthly_web_traffic__cloned_','<td data-no-tip="1" style="'+_planBg+'">'+(wtRaw?'<span class="pill" style="background:'+(BD_WT_COLORS[wtRaw]||'#9CA3AF')+'18;color:'+(BD_WT_COLORS[wtRaw]||'#9CA3AF')+'">'+wtLbl+'</span>':dash)+'</td>');
-    h+=_td('original_amount','<td style="'+_planBg+'">'+(row.original_amount?f$(row.original_amount):dash)+'</td>');
-    h+=_td('of_products','<td style="text-align:center;'+_planBg+'">'+tNum(row.of_products)+'</td>');
-    h+=_td('of_free_reviews','<td style="text-align:center;'+_planBg+'">'+tNum(row.of_free_reviews)+'</td>');
-    h+=_td('of_total_reviews','<td style="text-align:center;'+_planBg+'">'+tNum(row.of_total_reviews)+'</td>');
-    h+=_td('price_per_review','<td style="'+_planBg+'">'+tMoney(row.price_per_review)+'</td>');
-    h+=_td('of_clinicianai','<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+_planBg+'" title="'+row.of_clinicianai+'">'+tEnum(row.of_clinicianai)+'</td>');
-    h+=_td('of_clinician_analysis','<td style="text-align:center;'+_planBg+'">'+tNum(row.of_clinician_analysis)+'</td>');
-    h+=_td('clinician_ai_price_per_product','<td style="'+_planBg+'">'+tMoney(row.clinician_ai_price_per_product)+'</td>');
-    h+=_td('setup_fee','<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+_planBg+'" title="'+row.setup_fee+'">'+tEnum(row.setup_fee)+'</td>');
-    h+=_td('months_until_upgrade','<td style="'+_planBg+'">'+tEnum(row.months_until_upgrade)+'</td>');
-    h+=_td('fee_after_upgrade','<td style="'+_planBg+'">'+tMoney(row.fee_after_upgrade)+'</td>');
-    var _notesTxt=_bdStripHtml(row.notes);
-    h+=_td('notes','<td data-full="'+_notesTxt.replace(/"/g,'&quot;')+'" style="'+_planBg+'">'+tNotes(_notesTxt)+'</td>');
-    // ── Billing Details group cells (tinted gold) ──
-    var invd=(row.invoice_date||'').substring(0,10)||dash;
-    var appd=(row.approval_date||'').substring(0,10)||dash;
-    h+=_td('invoice_date','<td style="'+_billingBg+'">'+invd+'</td>');
-    h+=_td('approval_date','<td style="'+_billingBg+'">'+appd+'</td>');
-    h+=_td('internal_recurly_link','<td style="'+_billingBg+'">'+_linkCell(row.internal_recurly_link,'Recurly')+'</td>');
-    h+=_td('recurly_account_management_url','<td style="'+_billingBg+'">'+_linkCell(row.recurly_account_management_url,'Account')+'</td>');
-    h+=_td('recurly_billing_intake_url','<td style="'+_billingBg+'">'+_linkCell(row.recurly_billing_intake_url,'Intake')+'</td>');
-    // ── Churn / Pause Details group cells (tinted light pink) ──
-    var pcd=(row.pausechurn_date||'').substring(0,10)||dash;
-    var brd=(row.paused_billing__billing_restart_date||'').substring(0,10)||dash;
-    h+=_td('pausechurn_date','<td style="'+_churnBg+'">'+pcd+'</td>');
-    h+=_td('never_implemented_churn','<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+_churnBg+'" title="'+(row.never_implemented_churn||'').replace(/"/g,'&quot;')+'">'+tEnum(row.never_implemented_churn)+'</td>');
-    h+=_td('churn_reason','<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+_churnBg+'" title="'+(row.churn_reason||'').replace(/"/g,'&quot;')+'">'+tEnum(row.churn_reason)+'</td>');
-    var _drfc=_bdStripHtml(row.detailed_reason_for_churn);
-    h+=_td('detailed_reason_for_churn','<td data-full="'+_drfc.replace(/"/g,'&quot;')+'" style="'+_churnBg+'">'+tNotes(_drfc)+'</td>');
-    h+=_td('paused_billing_length_months','<td style="text-align:center;'+_churnBg+'">'+tNum(row.paused_billing_length_months)+'</td>');
-    h+=_td('temporary_pause_reason','<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+_churnBg+'" title="'+(row.temporary_pause_reason||'').replace(/"/g,'&quot;')+'">'+tEnum(row.temporary_pause_reason)+'</td>');
-    h+=_td('paused_billing__billing_restart_date','<td style="'+_churnBg+'">'+brd+'</td>');
-    h+='</tr>';}
-  h+='</tbody></table></div></div>';
+    // Column header row \u2014 tint cells inside a group with a SOLID background
+    // (same reason as the banner row: this row is sticky too, transparent
+    // backgrounds would let scrolling rows show through).
+    t+='<tr>';
+    for(var ci2=0;ci2<cols.length;ci2++){var c=cols[ci2];var isS=_bdSort===c.k;
+      var thBg=c.group==='plan'?'background:#F7FAFB;':(c.group==='billing'?'background:#FEF9F0;':(c.group==='churn'?'background:#FEF4F9;':(c.group==='avgDays'?'background:#F6F7F8;':(c.group==='dates'?'background:#FAF5FE;':''))));
+      t+='<th style="'+thBg+'" onclick="'+(c.k?"_bdSort='"+c.k+"';_bdSortDir=_bdSortDir==='asc'?'desc':'asc';renderBD()":"")+'">'+c.l+(isS?(_bdSortDir==='asc'?' \u25B2':' \u25BC'):'')+'</th>';
+    }
+    t+='</tr></thead><tbody>';
+    // Helper to style group cells consistently \u2014 subtle tint matching the header
+    var _planBg='background:rgba(114,164,191,.04)';
+    var _billingBg='background:rgba(245,158,11,.04)';
+    var _churnBg='background:rgba(236,72,153,.04)';
+    var _avgDaysBg='background:rgba(100,116,139,.04)';
+    var _datesBg='background:rgba(139,92,246,.04)';
+    // Cell helpers
+    var dash='<span style="color:#ccc">\u2014</span>';
+    function tNum(v){if(v===''||v==null||v===0)return v===0?'0':dash;return v;}
+    function tMoney(v){return v?f$(parseFloat(v)||0):dash;}
+    function tEnum(v){return v||dash;}
+    function tNotes(v){if(!v)return dash;var t=String(v);if(t.length>60)return '<span title="'+t.replace(/"/g,'&quot;')+'">'+t.substring(0,60)+'\u2026</span>';return t;}
+    for(var ri=0;ri<rows.length;ri++){var row=rows[ri];
+      var bsColor=BD_STATUS_COLORS[row.brand_status]||'#9CA3AF';
+      var stageLabel=BD_STAGE_LABELS[row.dealstage]||row.dealstage||'\u2014';
+      var stageColor=BD_STAGE_COLORS[row.dealstage]||'#9CA3AF';
+      var cd=(row.closedate||'').substring(0,10)||'\u2014';
+      var crd=(row.createdate||'').substring(0,10)||'\u2014';
+      var repName=ownerMap[row.hubspot_owner_id]||'';
+      var wtRaw=row.average_monthly_web_traffic__cloned_||'';
+      var wtLbl=wtRaw?(BD_WT_LABELS[wtRaw]||wtRaw):'\u2014';
+      // SE Rep \u2014 from the company record's hubspot_owner_id
+      var seName=ownerMap[row.se_rep_id]||'';
+      var toDemoVal=bdToDemo(row);
+      // Resolve URLs that may or may not have a protocol prefix
+      var _safeUrl=function(u){if(!u)return '';var s=String(u).trim();if(!s)return '';if(/^https?:\/\//i.test(s))return s;return 'https://'+s;};
+      var _linkCell=function(u,lbl){var url=_safeUrl(u);if(!url)return dash;return '<a href="'+url+'" target="_blank" style="color:var(--teal);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;max-width:100%" title="'+u.replace(/"/g,'&quot;')+'">'+(lbl||u)+' \u2197</a>';};
+      t+='<tr>';
+      t+='<td><div style="display:flex;align-items:center;gap:4px;overflow:hidden"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+row.dealname+'">'+row.dealname+'</span><a href="https://app.hubspot.com/contacts/46815331/record/0-3/'+row.id+'" target="_blank" style="flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:4px;background:rgba(114,164,191,.1);color:var(--teal);font-size:9px;text-decoration:none">\u2197</a></div></td>';
+      // Deal ID cell \u2014 raw HubSpot record ID. Mono font + grey so it reads as
+      // a system identifier, not a label. Click-to-copy via title hint.
+      t+=_td('id','<td style="font-family:ui-monospace,Menlo,monospace;color:var(--grey)" title="HubSpot Deal record ID">'+(row.id||dash)+'</td>');
+      // Company cell \u2014 the name itself is now the clickable link to the
+      // HubSpot company record (was a tiny arrow icon next to plain text).
+      // If we have no companyId, render the name as-is or "\u2014".
+      var coName=row.companyName||'';
+      var coUrl=row.companyId?'https://app.hubspot.com/contacts/46815331/record/0-2/'+row.companyId:'';
+      var coCell;
+      if(coName&&coUrl){
+        coCell='<a href="'+coUrl+'" target="_blank" title="'+coName.replace(/"/g,'&quot;')+'" style="color:var(--teal);text-decoration:none;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;max-width:100%">'+coName+' \u2197</a>';
+      } else if(coName){
+        coCell='<span title="'+coName.replace(/"/g,'&quot;')+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;max-width:100%">'+coName+'</span>';
+      } else {
+        coCell=dash;
+      }
+      t+='<td data-no-tip="1">'+coCell+'</td>';
+      // Company Segment \u2014 a COMPANY property, arriving via the company lookup
+      // rather than on the deal, so it is blank until that call returns.
+      var _seg=row.companySegment||'';
+      var _segC=BD_SEGMENT_COLORS[_seg]||BD_SEGMENT_COLORS._other;
+      t+='<td data-no-tip="1">'+(_seg?'<span class="pill" style="background:'+_segC+'18;color:'+_segC+'">'+_seg+'</span>':dash)+'</td>';
+      // Company ID cell \u2014 raw HubSpot record ID for the associated company.
+      t+=_td('companyId','<td style="font-family:ui-monospace,Menlo,monospace;color:var(--grey)" title="HubSpot Company record ID">'+(row.companyId||dash)+'</td>');
+      t+='<td data-no-tip="1">'+(row.brand_status?'<span class="pill" style="background:'+bsColor+'18;color:'+bsColor+'">'+row.brand_status+'</span>':dash)+'</td>';
+      t+='<td data-no-tip="1"><span class="pill" style="background:'+stageColor+'18;color:'+stageColor+'">'+stageLabel+'</span></td>';
+      var repHidden=bdRepHidden(repName,BD_DEAL_REP_HIDE);
+      t+='<td title="'+(repHidden?'':repName)+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(repHidden?dash:(bdFirstName(repName)||dash))+'</td>';
+      // Account Manager — from the company record's account_manager field;
+      // resolve via ownerMap (owner-id property), falling back to the raw value.
+      var amName=ownerMap[row.account_manager]||row.account_manager||'';
+      t+=_td('account_manager','<td title="'+amName.replace(/"/g,'&quot;')+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(bdFirstName(amName)||dash)+'</td>');
+      // SE Rep — from the company record's hubspot_owner_id, resolved via ownerMap
+      var seHidden=bdRepHidden(seName,BD_SE_REP_HIDE);
+      t+=_td('se_rep_id','<td title="'+(seHidden?'':seName)+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(seHidden?dash:(bdFirstName(seName)||dash))+'</td>');
+      // Ops Rep — from the company record's ops_owner field, resolved via ownerMap
+      var opsName=ownerMap[row.ops_owner_id]||'';
+      t+=_td('ops_owner_id','<td title="'+opsName+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(bdFirstName(opsName)||dash)+'</td>');
+      t+=_td('closedate','<td style="'+_datesBg+'">'+cd+'</td>');
+      // Show EFFECTIVE demo date (rescheduled overrides original). Highlight
+      // rescheduled rows so the override is visible at a glance — purple/bold
+      // matches the rescheduled-pending color used elsewhere.
+      var _bdEffDemo=row.rescheduled_meeting_date||row.date_demo_booked;
+      var ddb=(_bdEffDemo||'').substring(0,10)||dash;
+      var _ddbStyle=row.rescheduled_meeting_date?'color:#7C3AED;font-weight:600;':'';
+      t+=_td('date_demo_booked','<td style="'+_ddbStyle+_datesBg+'">'+ddb+'</td>');
+      t+=_td('createdate','<td style="'+_datesBg+'">'+crd+'</td>');
+      t+=_td('to_demo','<td style="text-align:center;'+_avgDaysBg+'">'+(toDemoVal==null?dash:toDemoVal)+'</td>');
+      var fromDemoVal=bdFromDemo(row);
+      t+=_td('from_demo','<td style="text-align:center;'+_avgDaysBg+'">'+(fromDemoVal==null?dash:fromDemoVal)+'</td>');
+      t+=_td('days_to_close','<td style="text-align:center;'+_avgDaysBg+'">'+tNum(row.days_to_close)+'</td>');
+      // ── Plan Details group cells (tinted teal) ──
+      // Cell-render order must match the cols[] definition order so headers
+      // line up with values. Default-visible columns first
+      // (Amount → Month Minimum → Plan Name → Web Traffic Tier), then the
+      // collapse-only columns.
+      t+=_td('amount','<td style="font-weight:600;'+_planBg+'">'+f$(row.amount)+'</td>');
+      t+=_td('month_minimum','<td style="'+_planBg+'">'+(row.month_minimum?Math.round(row.month_minimum).toLocaleString():dash)+'</td>');
+      var pnClean=bdPlanName(row.package_type||'');
+      var pnColor=BD_PKG_COLORS[pnClean]||'#9CA3AF';
+      t+=_td('package_type','<td data-no-tip="1" style="'+_planBg+'">'+(row.package_type?'<span class="pill" style="background:'+pnColor+'18;color:'+pnColor+'">'+pnClean+'</span>':dash)+'</td>');
+      t+=_td('average_monthly_web_traffic__cloned_','<td data-no-tip="1" style="'+_planBg+'">'+(wtRaw?'<span class="pill" style="background:'+(BD_WT_COLORS[wtRaw]||'#9CA3AF')+'18;color:'+(BD_WT_COLORS[wtRaw]||'#9CA3AF')+'">'+wtLbl+'</span>':dash)+'</td>');
+      t+=_td('original_amount','<td style="'+_planBg+'">'+(row.original_amount?f$(row.original_amount):dash)+'</td>');
+      t+=_td('of_products','<td style="text-align:center;'+_planBg+'">'+tNum(row.of_products)+'</td>');
+      t+=_td('of_free_reviews','<td style="text-align:center;'+_planBg+'">'+tNum(row.of_free_reviews)+'</td>');
+      t+=_td('of_total_reviews','<td style="text-align:center;'+_planBg+'">'+tNum(row.of_total_reviews)+'</td>');
+      t+=_td('price_per_review','<td style="'+_planBg+'">'+tMoney(row.price_per_review)+'</td>');
+      t+=_td('of_clinicianai','<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+_planBg+'" title="'+row.of_clinicianai+'">'+tEnum(row.of_clinicianai)+'</td>');
+      t+=_td('of_clinician_analysis','<td style="text-align:center;'+_planBg+'">'+tNum(row.of_clinician_analysis)+'</td>');
+      t+=_td('clinician_ai_price_per_product','<td style="'+_planBg+'">'+tMoney(row.clinician_ai_price_per_product)+'</td>');
+      t+=_td('setup_fee','<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+_planBg+'" title="'+row.setup_fee+'">'+tEnum(row.setup_fee)+'</td>');
+      t+=_td('months_until_upgrade','<td style="'+_planBg+'">'+tEnum(row.months_until_upgrade)+'</td>');
+      t+=_td('fee_after_upgrade','<td style="'+_planBg+'">'+tMoney(row.fee_after_upgrade)+'</td>');
+      var _notesTxt=_bdStripHtml(row.notes);
+      t+=_td('notes','<td data-full="'+_notesTxt.replace(/"/g,'&quot;')+'" style="'+_planBg+'">'+tNotes(_notesTxt)+'</td>');
+      // ── Billing Details group cells (tinted gold) ──
+      var invd=(row.invoice_date||'').substring(0,10)||dash;
+      var appd=(row.approval_date||'').substring(0,10)||dash;
+      t+=_td('invoice_date','<td style="'+_billingBg+'">'+invd+'</td>');
+      t+=_td('approval_date','<td style="'+_billingBg+'">'+appd+'</td>');
+      t+=_td('internal_recurly_link','<td style="'+_billingBg+'">'+_linkCell(row.internal_recurly_link,'Recurly')+'</td>');
+      t+=_td('recurly_account_management_url','<td style="'+_billingBg+'">'+_linkCell(row.recurly_account_management_url,'Account')+'</td>');
+      t+=_td('recurly_billing_intake_url','<td style="'+_billingBg+'">'+_linkCell(row.recurly_billing_intake_url,'Intake')+'</td>');
+      // ── Churn / Pause Details group cells (tinted light pink) ──
+      var pcd=(row.pausechurn_date||'').substring(0,10)||dash;
+      var brd=(row.paused_billing__billing_restart_date||'').substring(0,10)||dash;
+      t+=_td('pausechurn_date','<td style="'+_churnBg+'">'+pcd+'</td>');
+      t+=_td('never_implemented_churn','<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+_churnBg+'" title="'+(row.never_implemented_churn||'').replace(/"/g,'&quot;')+'">'+tEnum(row.never_implemented_churn)+'</td>');
+      t+=_td('churn_reason','<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+_churnBg+'" title="'+(row.churn_reason||'').replace(/"/g,'&quot;')+'">'+tEnum(row.churn_reason)+'</td>');
+      var _drfc=_bdStripHtml(row.detailed_reason_for_churn);
+      t+=_td('detailed_reason_for_churn','<td data-full="'+_drfc.replace(/"/g,'&quot;')+'" style="'+_churnBg+'">'+tNotes(_drfc)+'</td>');
+      t+=_td('paused_billing_length_months','<td style="text-align:center;'+_churnBg+'">'+tNum(row.paused_billing_length_months)+'</td>');
+      t+=_td('temporary_pause_reason','<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+_churnBg+'" title="'+(row.temporary_pause_reason||'').replace(/"/g,'&quot;')+'">'+tEnum(row.temporary_pause_reason)+'</td>');
+      t+=_td('paused_billing__billing_restart_date','<td style="'+_churnBg+'">'+brd+'</td>');
+      t+='</tr>';}
+    return t+'</tbody></table></div>';
+  }
+  h+=_bdDealsTable(sorted);
+  h+='</div>';
   h+='</section>';
   // Post-render: charts + calc + attribution hover
   el.innerHTML=h;document.getElementById('fts').textContent='Updated: '+d.meta.generatedAt.split('T')[0];
