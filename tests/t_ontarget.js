@@ -151,7 +151,24 @@ ck('the card states which population it is showing',
    [/full submissions/.test(subCard), /inquiries/.test(card)], [true,true]);
 // Both call sites read the SAME state, or the chart silently shows one
 // population while its own header names the other.
-ck('the card is built with the Acquisition toggle', /\+_clnTypeCard\(d,acqMode\)/.test(cli), true);
+ck('the card is built with the Acquisition toggle', /_clnTypeCard\(d,acqMode\)/.test(cli), true);
+// Order inside the Acquisition card: the chart leads, the two pies follow.
+{
+  const ACQ=cli.slice(cli.indexOf("h+=card('Acquisition'"),cli.indexOf("// \u2500\u2500 Section 6: Ads"));
+  ck('the chart renders above the Type of Clinician and UTM pies',
+     [ACQ.indexOf('_clnTypeCard(d,acqMode)')>=0,
+      ACQ.indexOf('_clnTypeCard(d,acqMode)')<ACQ.indexOf("acqPanel('Type of Clinician'"),
+      ACQ.indexOf("acqPanel('Type of Clinician'")<ACQ.indexOf('acqPanel(udLabel')], [true,true,true]);
+  // It still sits under the population toggle, which scopes all three.
+  ck('and below the population toggle',
+     ACQ.indexOf('acqToggle+')<ACQ.indexOf('_clnTypeCard(d,acqMode)'), true);
+}
+// Two tiles, not three: Off-Target was 100% minus the rate beside it.
+ck('the tile row is On-Target Rate and the cost metric only',
+   (card.match(/text-transform:uppercase;letter-spacing:\.05em">([^<]+)</g)||[])
+     .map(x=>/>([^<]+)<$/.exec(x)[1]), ['On-Target Rate','Cost per MD/DO Inquiry']);
+ck('the title is just the card name', /&gt;On-Target Mix&lt;|>On-Target Mix<\/span>/.test(card), true);
+ck('no week-over-week suffix', /week over week/.test(card), false);
 ck('and the renderer is handed the same state',
    /_renderClnOnTarget\(d,\(S\.clinician\.acqMode==='submission'\)\?'submission':'inquiry'\)/.test(cli), true);
 ck('which is how the Acquisition card picks its own population',

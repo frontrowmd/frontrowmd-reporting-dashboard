@@ -886,7 +886,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t244';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t245';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3681,9 +3681,9 @@ function _clnTypeCard(d,acqMode){
   const key=isSub?'bySubType':'byType';
   const popLbl=isSub?'full submissions':'inquiries';
   const costLbl='Cost per '+CLN_ON_TARGET+(isSub?' Full App':' Inquiry');
-  const open='<div style="background:var(--white);border:1px solid var(--border);border-radius:10px;padding:16px 18px 18px;margin-top:18px">'
+  const open='<div style="background:var(--white);border:1px solid var(--border);border-radius:10px;padding:16px 18px 18px;margin:0 0 18px">'
     +'<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:2px;padding-bottom:10px;border-bottom:1px solid var(--border)">'
-    +'<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">On-Target Mix · week over week</span>'
+    +'<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">On-Target Mix</span>'
     +'<span style="font-size:10px;color:var(--grey);white-space:nowrap">follows the population toggle — '+popLbl+'</span></div>';
   if(!wks.length){
     return open+'<div style="padding:22px;text-align:center;color:var(--grey);font-size:12px">No weekly clinician data for this window</div></div>';
@@ -3711,8 +3711,6 @@ function _clnTypeCard(d,acqMode){
           fN(tOn)+' '+CLN_ON_TARGET+' ÷ '+fN(tAll)+' '+popLbl,CLN_OT_RATE_C)
     +mini(costLbl,cpo!=null?f$(Math.round(cpo)):'—',
           f$(Math.round(tSpend))+' ÷ '+fN(tOn)+' '+CLN_ON_TARGET,CLN_OT_COST_C)
-    +mini('Off-Target',fN(tAll-tOn),
-          (tAll>0?(((tAll-tOn)/tAll)*100).toFixed(1)+'% of the window':'—'))
     +'</div>';
   const lg=B.bands.map(function(bd){
     return '<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:var(--navy)">'
@@ -5694,14 +5692,14 @@ function renderClinician(){
     const noSub=(acqMode==='submission'&&(!sub||!(sub.contacts>0)))
       ?'<div style="padding:20px;text-align:center;color:var(--grey);font-size:12px">No clinicians in this window have a kickoff call booked yet.</div>':'';
     h+=card('Acquisition','Where clinicians came from \u00b7 contacts created in the selected window, deduped per person \u00b7 UTMs read from the contact, falling back to the deal',
-      acqToggle+(noSub||('<div style="display:flex;gap:18px;align-items:stretch;flex-wrap:wrap">'
+      // The chart leads the section: it answers "is the mix moving, and what is
+      // it costing", and the two pies below break the current window down. Same
+      // population for all three — the toggle above scopes the whole card.
+      acqToggle+(noSub||(_clnTypeCard(d,acqMode)
+       +'<div style="display:flex;gap:18px;align-items:stretch;flex-wrap:wrap">'
        +acqPanel('Type of Clinician',acqSrc.type||[])
        +acqPanel(udLabel,acqSrc[ud]||[],utmToggle)
-      +'</div>'
-      // Full width under the two pies: same population, one level up in time.
-      // The pies answer "what is the mix", this answers "is it moving, and what
-      // is it costing".
-      +_clnTypeCard(d,acqMode))));
+      +'</div>')));
   }
   // ── Section 6: Ads (card 1 — KPI row) ──
   // adsH is buffered so the Weekly CPD card can be emitted ahead of it.
