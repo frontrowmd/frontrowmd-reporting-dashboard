@@ -886,7 +886,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t243';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t244';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3341,7 +3341,7 @@ function clnWkTip(e,el){
     pw.textContent=el.getAttribute('data-pnote')||'⚠ Partial period';
     tip.appendChild(pw);
   }
-  for(var i=1;i<=6;i++){
+  for(var i=1;i<=8;i++){
     var raw=el.getAttribute('data-r'+i); if(!raw)continue;
     var f=raw.split('|');
     var row=document.createElement('div');
@@ -3627,6 +3627,220 @@ function _renderClnTrend(d){
     CLN_TR_READOUT.forEach(function(sr,j){
       a+=' data-r'+(j+1)+'="'+esc(sr.n+'|'+_clnTrFmt(p[sr.k],sr.unit)+'|'+subOf(p,sr.k)+'|'+sr.c+'|'+(sr.ax==='R'?'dash':'solid'))+'"';
     });
+    svg+='<rect class="clnwk-band" x="'+bx+'" y="'+padT+'" width="'+bw+'" height="'+innerH+'"'+a
+      +' style="cursor:pointer" onmouseover="clnWkTip(event,this)" onmousemove="clnWkTipMove(event)" onmouseout="clnWkTipHide()"/>';
+  });
+  svg+='</svg>';
+  host.innerHTML='<div style="overflow-x:auto">'+svg+'</div>';
+}
+// ── On-Target Mix: clinician type, MD/DO rate and cost per MD/DO, one chart ──
+// The question this answers is "did quality hold while cost rose?", so the two
+// metrics that answer it get real axes — the on-target RATE on the left (%) and
+// the cost per on-target outcome on the right ($) — and the type counts sit
+// behind them as stacked columns.
+//
+// The columns carry their own scale and no ticks, the same device Trend
+// Analysis uses for Ad Spend: a count axis would be a third ladder on one plot,
+// and the counts are read from the column labels and the hover, where they are
+// exact. What the columns are FOR is the mix and its volume, which is a shape.
+const CLN_ON_TARGET='MD/DO';
+// Ordered so the on-target band is always at the bottom of the stack, against
+// the baseline, where its height is readable without summing the bands above it.
+// Colours are the Acquisition palette's, and none is reused from the Trend
+// Analysis series above.
+const CLN_TYPE_ORDER=[
+  {k:'MD/DO',                     n:'MD/DO',   c:'#0F766E'},
+  {k:'Nurse Practitioner',        n:'NP',      c:'#7C3AED'},
+  {k:'Physician Assistant',       n:'PA',      c:'#C2410C'},
+  {k:'Pharmacist',                n:'PharmD',  c:'#A16207'},
+  {k:'RDN with Master’s Degree', n:'RDN',  c:'#0369A1'},
+];
+const CLN_TYPE_OTHER_C='#94A3B8';   // Other + anything unmapped, incl. 'Not set'
+const CLN_OT_RATE_C='#0F766E';      // the rate line IS the MD/DO measure, same hue
+const CLN_OT_COST_C='#BE123C';
+// Every type present in the data, in stack order, with unmapped values rolled
+// into one labelled bucket rather than dropped — a new HubSpot option must show
+// up somewhere rather than silently shrink the total.
+function _clnTypeBands(pts,key){
+  const seen={};
+  pts.forEach(function(p){Object.keys(p[key]||{}).forEach(function(t){seen[t]=1;});});
+  const known=CLN_TYPE_ORDER.filter(function(x){return seen[x.k];});
+  const extra=Object.keys(seen).filter(function(t){
+    return !CLN_TYPE_ORDER.some(function(x){return x.k===t;});
+  }).sort();
+  return {bands:known.concat(extra.length?[{k:'__other',n:'Other',c:CLN_TYPE_OTHER_C,roll:extra}]:[]),extra:extra};
+}
+function _clnTypeCount(p,key,band){
+  const m=p[key]||{};
+  if(!band.roll)return m[band.k]||0;
+  return band.roll.reduce(function(s,t){return s+(m[t]||0);},0);
+}
+function _clnTypeCard(d,acqMode){
+  const wks=(d&&d.ads&&d.ads.trend&&d.ads.trend.week)||[];
+  const isSub=acqMode==='submission';
+  const key=isSub?'bySubType':'byType';
+  const popLbl=isSub?'full submissions':'inquiries';
+  const costLbl='Cost per '+CLN_ON_TARGET+(isSub?' Full App':' Inquiry');
+  const open='<div style="background:var(--white);border:1px solid var(--border);border-radius:10px;padding:16px 18px 18px;margin-top:18px">'
+    +'<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:2px;padding-bottom:10px;border-bottom:1px solid var(--border)">'
+    +'<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">On-Target Mix · week over week</span>'
+    +'<span style="font-size:10px;color:var(--grey);white-space:nowrap">follows the population toggle — '+popLbl+'</span></div>';
+  if(!wks.length){
+    return open+'<div style="padding:22px;text-align:center;color:var(--grey);font-size:12px">No weekly clinician data for this window</div></div>';
+  }
+  const B=_clnTypeBands(wks,key);
+  // Window totals, recomputed from the summed components: the mean of weekly
+  // rates is not the window's rate, and the mean of weekly costs is not its cost.
+  let tOn=0,tAll=0,tSpend=0;
+  wks.forEach(function(p){
+    tOn+=(p[key]||{})[CLN_ON_TARGET]||0;
+    B.bands.forEach(function(bd){tAll+=_clnTypeCount(p,key,bd);});
+    tSpend+=p.spend||0;
+  });
+  const rate=tAll>0?(tOn/tAll)*100:null;
+  const cpo=(tSpend>0&&tOn>0)?tSpend/tOn:null;
+  const mini=function(lbl,val,calc,accent){
+    return '<div style="flex:1 1 150px;min-width:148px;background:var(--lighter);border:1px solid var(--border);border-radius:9px;padding:10px 12px'
+      +(accent?';border-top:3px solid '+accent:'')+'">'
+      +'<div style="font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em">'+lbl+'</div>'
+      +'<div style="font-family:var(--font-h);font-size:20px;font-weight:700;color:var(--navy);margin-top:2px">'+val+'</div>'
+      +'<div style="font-size:9px;color:var(--grey);margin-top:3px">'+calc+'</div></div>';
+  };
+  const minis='<div style="display:flex;gap:9px;flex-wrap:wrap;margin:12px 0 4px">'
+    +mini('On-Target Rate',rate!=null?rate.toFixed(1)+'%':'—',
+          fN(tOn)+' '+CLN_ON_TARGET+' ÷ '+fN(tAll)+' '+popLbl,CLN_OT_RATE_C)
+    +mini(costLbl,cpo!=null?f$(Math.round(cpo)):'—',
+          f$(Math.round(tSpend))+' ÷ '+fN(tOn)+' '+CLN_ON_TARGET,CLN_OT_COST_C)
+    +mini('Off-Target',fN(tAll-tOn),
+          (tAll>0?(((tAll-tOn)/tAll)*100).toFixed(1)+'% of the window':'—'))
+    +'</div>';
+  const lg=B.bands.map(function(bd){
+    return '<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:var(--navy)">'
+      +'<span style="display:inline-block;width:12px;height:9px;border-radius:2px;background:'+bd.c+';opacity:.72"></span>'+bd.n+'</span>';
+  }).join('')
+   +'<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:var(--navy)">'
+   +'<span style="display:inline-block;width:14px;height:0;border-top:3px solid '+CLN_OT_RATE_C+'"></span>On-Target Rate'
+   +'<span style="font-size:9px;color:var(--grey)">% left</span></span>'
+   +'<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:var(--navy)">'
+   +'<span style="display:inline-block;width:14px;height:0;border-top:3px dashed '+CLN_OT_COST_C+'"></span>'+costLbl
+   +'<span style="font-size:9px;color:var(--grey)">$ right</span></span>';
+  const note='Columns are '+popLbl+' by clinician type, stacked, scaled to the tallest week — the total is printed above each'
+    +' · '+CLN_ON_TARGET+' is the on-target band and sits on the baseline'
+    +'<br>Weeks run Mon–Sun inside the selected window · cost divides that week’s clinician ad spend by its '+CLN_ON_TARGET+' '+popLbl
+    +(B.extra.length?' · '+B.extra.length+' unmapped type'+(B.extra.length===1?'':'s')+' rolled into Other':'');
+  return open
+    +'<div style="font-size:10px;color:var(--grey);margin:8px 0 0;line-height:1.45">'+note+'</div>'
+    +minis
+    +'<div style="display:flex;gap:14px;flex-wrap:wrap;margin:8px 0 2px">'+lg+'</div>'
+    +'<div id="cln-ontarget-chart"></div></div>';
+}
+function _renderClnOnTarget(d,acqMode){
+  var host=document.getElementById('cln-ontarget-chart'); if(!host)return;
+  var pts=(d&&d.ads&&d.ads.trend&&d.ads.trend.week)||[]; if(!pts.length)return;
+  var key=acqMode==='submission'?'bySubType':'byType';
+  var B=_clnTypeBands(pts,key);
+  var W=1000,H=300,padL=50,padR=58,padT=22,padB=40;
+  var innerW=W-padL-padR,innerH=H-padT-padB;
+  var n=pts.length;
+  var xAt=function(i){return padL+(n<=1?innerW/2:(i/(n-1))*innerW);};
+  var totalOf=function(p){return B.bands.reduce(function(s,bd){return s+_clnTypeCount(p,key,bd);},0);};
+  var onOf=function(p){return (p[key]||{})[CLN_ON_TARGET]||0;};
+  var rateOf=function(p){var t=totalOf(p);return t>0?(onOf(p)/t)*100:null;};
+  // A cost is undefined when nothing was spent OR nothing on-target arrived —
+  // not zero. Same rule as Trend Analysis: a 0 would plot on the floor of the
+  // cost axis and read as the cheapest week in the window.
+  var costOf=function(p){var o=onOf(p);return (p.spend>0&&o>0)?p.spend/o:null;};
+  var mxCount=0,mxRate=0,mxCost=0;
+  pts.forEach(function(p){
+    var t=totalOf(p); if(t>mxCount)mxCount=t;
+    var r=rateOf(p); if(r!=null&&r>mxRate)mxRate=r;
+    var c=costOf(p); if(c!=null&&c>mxCost)mxCost=c;
+  });
+  var yMaxL=_clnTrNice(mxRate,'%'),yMaxR=_clnTrNice(mxCost,'$');
+  var step=yMaxL/4;
+  var yL=function(v){return padT+innerH-(v/yMaxL)*innerH;};
+  var yR=function(v){return padT+innerH-(v/yMaxR)*innerH;};
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;min-width:620px;height:auto;font-family:var(--font-b)">';
+  for(var v=0;v<=yMaxL+1e-9;v+=step){
+    var y=yL(v);
+    svg+='<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="rgba(23,44,69,.08)" stroke-width="1"/>'
+      +'<text x="'+(padL-8)+'" y="'+(y+3)+'" text-anchor="end" font-size="9" fill="var(--grey)">'
+      +(v<10?v.toFixed(v<1?2:1):Math.round(v))+'%</text>'
+      +'<text x="'+(W-padR+8)+'" y="'+(y+3)+'" text-anchor="start" font-size="9" fill="var(--grey)">'
+      +f$(Math.round((v/yMaxL)*yMaxR))+'</text>';
+  }
+  svg+='<text x="'+padL+'" y="10" text-anchor="start" font-size="8.5" font-weight="700" fill="var(--grey)" letter-spacing=".06em">% — ON-TARGET RATE</text>'
+    +'<text x="'+(W-padR)+'" y="10" text-anchor="end" font-size="8.5" font-weight="700" fill="var(--grey)" letter-spacing=".06em">$ — COST PER '+CLN_ON_TARGET+'</text>';
+  // Stacked columns, own scale, capped at 62% of the plot so the two lines stay
+  // legible over them. MD/DO is first in CLN_TYPE_ORDER so it stacks from the
+  // baseline up.
+  var colW=Math.max(3,Math.min(34,(n>1?innerW/(n-1):innerW)*0.58));
+  if(mxCount>0){
+    pts.forEach(function(p,i){
+      var base=padT+innerH, x=xAt(i)-colW/2;
+      B.bands.forEach(function(bd){
+        var c=_clnTypeCount(p,key,bd); if(c<=0)return;
+        var hgt=(c/mxCount)*innerH*0.62;
+        base-=hgt;
+        svg+='<rect x="'+x+'" y="'+base+'" width="'+colW+'" height="'+hgt+'" fill="'+bd.c+'" fill-opacity="0.72" pointer-events="none"/>';
+      });
+      // The column total, printed because the columns carry no tick axis.
+      var t=totalOf(p);
+      if(t>0)svg+='<text x="'+xAt(i)+'" y="'+(base-4)+'" text-anchor="middle" font-size="9" font-weight="700" fill="var(--grey)" pointer-events="none">'+fN(t)+'</text>';
+    });
+  }
+  // Lines last, over the columns.
+  [{f:rateOf,c:CLN_OT_RATE_C,y:yL,dash:''},
+   {f:costOf,c:CLN_OT_COST_C,y:yR,dash:' stroke-dasharray="6 4"'}].forEach(function(sr){
+    var run=[];
+    var flush=function(){
+      if(run.length>1)svg+='<polyline points="'+run.join(' ')+'" fill="none" stroke="'+sr.c+'" stroke-width="2.5" stroke-linejoin="round"'+sr.dash+'/>';
+      run=[];
+    };
+    pts.forEach(function(p,i){var v=sr.f(p);if(v==null){flush();return;}run.push(xAt(i)+','+sr.y(v));});
+    flush();
+    pts.forEach(function(p,i){
+      var v=sr.f(p); if(v==null)return;
+      svg+='<circle cx="'+xAt(i)+'" cy="'+sr.y(v)+'" r="3.4" fill="'+sr.c+'" stroke="#fff" stroke-width="1.4" pointer-events="none"/>';
+    });
+  });
+  var every=Math.max(1,Math.ceil(n/14));
+  pts.forEach(function(p,i){
+    if(i%every)return;
+    svg+='<text x="'+xAt(i)+'" y="'+(H-padB+16)+'" text-anchor="middle" font-size="8.5" fill="var(--grey)">'+_clnTrLabel(p.wk,'week')+'</text>';
+  });
+  // Hover bands reuse the Trend Analysis tooltip: same readout, same partial
+  // rules. Rows are rate, cost, then one per type band.
+  var esc=function(x){return String(x).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');};
+  var todayMs=(function(){var t=new Date();return Date.UTC(t.getFullYear(),t.getMonth(),t.getDate());})();
+  var winFrom=(d&&d.period&&d.period.from)||null, winTo=(d&&d.period&&d.period.to)||null;
+  var msOf=function(k){var q=String(k).split('-');return Date.UTC(+q[0],+q[1]-1,+q[2]);};
+  var dayLbl=function(ms){var dd=new Date(ms);return CLN_TR_MON[dd.getUTCMonth()]+' '+dd.getUTCDate();};
+  var DAY=86400000;
+  var bandW=n>1?(innerW/(n-1)):innerW;
+  var popLbl=acqMode==='submission'?'full subs':'inquiries';
+  pts.forEach(function(p,i){
+    var x=xAt(i);
+    var bx=Math.max(padL,x-bandW/2),bw=Math.min(W-padR,x+bandW/2)-bx;
+    var startMs=msOf(p.wk),endMs=_clnTrEnd(p.wk,'week').ms;
+    var covFrom=winFrom?Math.max(startMs,msOf(winFrom)):startMs;
+    var covTo=winTo?Math.min(endMs,msOf(winTo)):endMs;
+    var span=Math.round((covTo-covFrom)/DAY)+1;
+    var inProgress=covTo>=todayMs;
+    var note=inProgress?'⚠ Still in progress — not a complete week'
+            :(span<7?'⚠ Only '+span+' of 7 days fall inside the selected window':'');
+    var head='Week of '+dayLbl(covFrom)+(span>1?' – '+dayLbl(covTo):'');
+    var t=totalOf(p),on=onOf(p),r=rateOf(p),c=costOf(p);
+    var rows=[
+      'On-Target Rate|'+(r!=null?r.toFixed(1)+'%':'—')+'|'+fN(on)+' ÷ '+fN(t)+' '+popLbl+'|'+CLN_OT_RATE_C+'|solid',
+      'Cost per '+CLN_ON_TARGET+'|'+(c!=null?f$(Math.round(c)):'—')+'|'+f$(Math.round(p.spend||0))+' ÷ '+fN(on)+'|'+CLN_OT_COST_C+'|dash'
+    ];
+    B.bands.forEach(function(bd){
+      var cnt=_clnTypeCount(p,key,bd);
+      rows.push(bd.n+'|'+fN(cnt)+'|'+(t>0?((cnt/t)*100).toFixed(0)+'% of the week':'')+'|'+bd.c+'|solid');
+    });
+    var a=' data-wk="'+esc(head)+'" data-partial="'+(note?'1':'')+'" data-pnote="'+esc(note)+'"';
+    rows.slice(0,8).forEach(function(rw,j){a+=' data-r'+(j+1)+'="'+esc(rw)+'"';});
     svg+='<rect class="clnwk-band" x="'+bx+'" y="'+padT+'" width="'+bw+'" height="'+innerH+'"'+a
       +' style="cursor:pointer" onmouseover="clnWkTip(event,this)" onmousemove="clnWkTipMove(event)" onmouseout="clnWkTipHide()"/>';
   });
@@ -5483,7 +5697,11 @@ function renderClinician(){
       acqToggle+(noSub||('<div style="display:flex;gap:18px;align-items:stretch;flex-wrap:wrap">'
        +acqPanel('Type of Clinician',acqSrc.type||[])
        +acqPanel(udLabel,acqSrc[ud]||[],utmToggle)
-      +'</div>')));
+      +'</div>'
+      // Full width under the two pies: same population, one level up in time.
+      // The pies answer "what is the mix", this answers "is it moving, and what
+      // is it costing".
+      +_clnTypeCard(d,acqMode))));
   }
   // ── Section 6: Ads (card 1 — KPI row) ──
   // adsH is buffered so the Weekly CPD card can be emitted ahead of it.
@@ -5614,6 +5832,9 @@ function renderClinician(){
   el.innerHTML=h;
   // SVG charts draw into containers that only exist once h is in the DOM.
   _renderClnTrend(d);
+  // Same population the Acquisition card was built with — recomputed here rather
+  // than threaded out of that block, which is scoped.
+  _renderClnOnTarget(d,(S.clinician.acqMode==='submission')?'submission':'inquiry');
   if(typeof _renderIrfanMetaTablesLoader==='function')_renderIrfanMetaTablesLoader();
   buildSectionNav('clinician');
 }

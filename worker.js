@@ -731,7 +731,7 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v32';   // v32: clinician ads.weekly -> ads.trend {week,day} with CTR/CVR series.
+const API_CACHE_VER = 'v33';   // v33: clinician trend periods carry byType / bySubType for the On-Target card.
                                // v30: last-click acquisition split (paid / organic / untagged) on the regular
                                //      scheduled cohort, + chatgpt.com added to the paid mapper.
                                // v29: all Volume + Quality figures exclude pre-launch (deal tier, not isLow).
@@ -3059,12 +3059,15 @@ function buildClinicianTrend(deals, contactsByDeal, windsorRows, from, to) {
   // window arrive here and are dropped at the source rather than stretching the
   // axis backwards by one point.
   const B = {};
+  // Returns the bucket so the caller can tally the per-type maps onto the same
+  // day without repeating the window test.
   const bump = (dayKey, field, n) => {
-    if (!dayKey) return;
-    if (from && dayKey < from) return;
-    if (to && dayKey > to) return;
-    if (!B[dayKey]) B[dayKey] = { spend: 0, impressions: 0, clicks: 0, inquiries: 0, fullApp: 0 };
+    if (!dayKey) return null;
+    if (from && dayKey < from) return null;
+    if (to && dayKey > to) return null;
+    if (!B[dayKey]) B[dayKey] = { spend: 0, impressions: 0, clicks: 0, inquiries: 0, fullApp: 0, byType: {}, bySubType: {} };
     B[dayKey][field] += (n == null ? 1 : n);
+    return B[dayKey];
   };
 
   // Spend / impressions / clicks — the same clinician-campaign filter
@@ -3092,8 +3095,17 @@ function buildClinicianTrend(deals, contactsByDeal, windsorRows, from, to) {
     seen.add(cid);
     const k = _clnDayKey(cp.createdate);
     if (!k) continue;
-    bump(k, 'inquiries');
-    if (((d.properties || {}).clinician_meeting_booked_date || '').trim()) bump(k, 'fullApp');
+    const bk = bump(k, 'inquiries');
+    if (!bk) continue;
+    // Clinician type, on the same 'Not set' fallback buildClinicianComposition
+    // uses — the On-Target card's mix has to reconcile with the Acquisition pie
+    // beside it, and a different blank label would split one category in two.
+    const ty = (cp.clinician_type || '').trim() || 'Not set';
+    bk.byType[ty] = (bk.byType[ty] || 0) + 1;
+    if (((d.properties || {}).clinician_meeting_booked_date || '').trim()) {
+      bump(k, 'fullApp');
+      bk.bySubType[ty] = (bk.bySubType[ty] || 0) + 1;
+    }
   }
 
   const div = (n, dd) => (dd > 0 ? n / dd : null);
@@ -3122,7 +3134,10 @@ function buildClinicianTrend(deals, contactsByDeal, windsorRows, from, to) {
   const roll = (keyOf) => {
     const g = {};
     const touch = (k) => {
-      if (k && !g[k]) g[k] = { spend: 0, impressions: 0, clicks: 0, inquiries: 0, fullApp: 0 };
+      if (k && !g[k]) g[k] = { spend: 0, impressions: 0, clicks: 0, inquiries: 0, fullApp: 0, byType: {}, bySubType: {} };
+    };
+    const addMap = (dst, srcMap) => {
+      for (const t of Object.keys(srcMap || {})) dst[t] = (dst[t] || 0) + srcMap[t];
     };
     for (const day of allDays) touch(keyOf(day));
     for (const day of Object.keys(B)) {
@@ -3132,6 +3147,7 @@ function buildClinicianTrend(deals, contactsByDeal, windsorRows, from, to) {
       const b = B[day], o = g[k];
       o.spend += b.spend; o.impressions += b.impressions; o.clicks += b.clicks;
       o.inquiries += b.inquiries; o.fullApp += b.fullApp;
+      addMap(o.byType, b.byType); addMap(o.bySubType, b.bySubType);
     }
     return Object.keys(g).sort().map(k => {
       const w = g[k];
@@ -3140,6 +3156,10 @@ function buildClinicianTrend(deals, contactsByDeal, windsorRows, from, to) {
         spend: Math.round(w.spend * 100) / 100,
         impressions: w.impressions, clicks: w.clicks,
         inquiries: w.inquiries, fullApp: w.fullApp,
+        // Clinician-type mix for BOTH populations, so the On-Target card can
+        // follow the Acquisition section's Inquiry / Full Submission toggle
+        // without a second request.
+        byType: w.byType, bySubType: w.bySubType,
         cpi: cost(w.spend, w.inquiries),
         cpfa: cost(w.spend, w.fullApp),
         // Rates as PERCENTAGES, computed on the period's own totals rather than
