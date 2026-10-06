@@ -6355,7 +6355,11 @@ async function fetchAzCreatives(apiKey, from, to) {
   // data rather than none. It counts as a soft failure, which the cache gate
   // tolerates but reports, so a channel that is persistently timing out shows up
   // in the logs instead of silently going thin.
-  const AZ_CRE_DEADLINE_MS = 45000;
+  // 30s, not 45: this has to leave room inside the response deadline for the
+  // two comparison periods, or a slow creatives phase silently costs every
+  // delta on the page. A healthy run finishes here in well under 30s anyway —
+  // the cap only bites on the pathological connector.
+  const AZ_CRE_DEADLINE_MS = 30000;
   const _creCapped = (ch, pr) => Promise.race([
     pr,
     new Promise(r => setTimeout(() => {
@@ -6984,9 +6988,28 @@ async function processAzRequest(windowType, customFrom, customTo, env, vsFrom, v
     console.log(`clinician inquiries: ${Object.keys(_clnInq).length}/${_clnInqNames} campaigns resolved — ${subreqSummary()}`);
   } catch (e) { console.error('clinician inquiries by campaign failed:', e && e.message); }
 
+  // ── Response deadline ──────────────────────────────────────────────────────
+  // The endpoint must ALWAYS answer. A request that runs past the browser's
+  // abort returns nothing AND caches nothing, so the next load repeats it — the
+  // loop behind "no response after 75s". Past this point the comparison periods
+  // are the only work left, and they exist purely to put deltas on the cards:
+  // the ad tables, the channel rows and every current-period figure are already
+  // built. So when the clock runs out they are SKIPPED rather than waited for.
+  //
+  // Dropping them is a known-good shape, not a new one: All Time already runs
+  // with priorW/pmW null, so every consumer downstream handles it.
+  const AZ_RESP_DEADLINE_MS = 55000;
+  const _azLeft = () => AZ_RESP_DEADLINE_MS - (Date.now() - _azT0);
+  // A comparison period is three fetches; below this there is no point starting.
+  const AZ_CMP_MIN_MS = 9000;
+  let _azSkipped = [];
+
   // Prior period
   let priorW=null, priorA=null;
-  if (prior && !isAllTime) {
+  if (prior && !isAllTime && _azLeft() < AZ_CMP_MIN_MS) {
+    _azSkipped.push('prior');
+    console.warn(`azPhase prior: SKIPPED at ${Date.now()-_azT0}ms — ${Math.round(_azLeft())}ms left of the ${AZ_RESP_DEADLINE_MS}ms budget`);
+  } else if (prior && !isAllTime) {
     const [pw, pp, pc] = await Promise.all([
       fetchAzCampaigns(apiKey, wFrom(prior.from), prior.to),
       fetchPipelineDeals(hsToken, prior.from, prior.to),
@@ -6997,7 +7020,10 @@ async function processAzRequest(windowType, customFrom, customTo, env, vsFrom, v
 
   // Prior month
   let pmW=null, pmA=null;
-  if (priorMonth && !isAllTime) {
+  if (priorMonth && !isAllTime && _azLeft() < AZ_CMP_MIN_MS) {
+    _azSkipped.push('priorMonth');
+    console.warn(`azPhase priorMonth: SKIPPED at ${Date.now()-_azT0}ms — ${Math.round(_azLeft())}ms left of the ${AZ_RESP_DEADLINE_MS}ms budget`);
+  } else if (priorMonth && !isAllTime) {
     const [pw, pp, pc] = await Promise.all([
       fetchAzCampaigns(apiKey, wFrom(priorMonth.from), priorMonth.to),
       fetchPipelineDeals(hsToken, priorMonth.from, priorMonth.to),
@@ -7009,6 +7035,7 @@ async function processAzRequest(windowType, customFrom, customTo, env, vsFrom, v
   const attr = buildAzAttribution(filterActiveBrands(pipe), filterActiveBrands(cw));
   const budgets = getBudgetsForMonth(current.from);
 
+  if (_azSkipped.length) console.warn(`azPhase ALL-FETCHES (${windowType}): comparison period(s) skipped for the deadline: ${_azSkipped.join(', ')} — deltas will be blank`);
   console.log(`azPhase ALL-FETCHES (${windowType}): ${Date.now() - _azT0}ms — ${subreqSummary()}`);
   const azResp = buildAzResponse(current, prior, priorMonth, windsor, creatives, priorW, pmW, attr, priorA, pmA, budgets, isAllTime, windowType, fatigue, audiences);
   // Same clinician "won" override the Detailed Dashboard applies, so the Ad KPI

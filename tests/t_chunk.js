@@ -166,8 +166,21 @@ const days=(a,b)=>Math.round((new Date(b+'T00:00:00Z')-new Date(a+'T00:00:00Z'))
   // records ~240s of a 379s YTD phase), and a request that never returns is also
   // one that never caches, so the next load is in the same position.
   ck('creative fetches carry a deadline',/const AZ_CRE_DEADLINE_MS = (\d+);/.test(src),true);
-  ck('shorter than the client budget for a slow window',
-     (+(/const AZ_CRE_DEADLINE_MS = (\d+);/.exec(src)||[])[1]) < 180000, true);
+  // The real invariant is not "shorter than the client budget" but "leaves room
+  // inside the RESPONSE deadline for the comparison periods". A creative cap
+  // that eats the whole budget silently costs every delta on the page.
+  {
+    const cre=+(/const AZ_CRE_DEADLINE_MS = (\d+);/.exec(src)||[])[1];
+    const resp=+(/const AZ_RESP_DEADLINE_MS = (\d+);/.exec(src)||[])[1];
+    const cmp=+(/const AZ_CMP_MIN_MS = (\d+);/.exec(src)||[])[1];
+    ck('all three deadlines parse',[cre>0,resp>0,cmp>0],[true,true,true]);
+    ck('a fully capped creatives phase still leaves room for a comparison period',
+       resp - cre >= cmp*2, true);
+    // And the whole thing must answer inside even the TIGHT client budget, so a
+    // browser running a cached older build still gets a response.
+    ck('the response deadline fits inside the tight client budget',
+       resp < 75000, true);
+  }
   // EVERY creative fetch is wrapped, not just the one known to be slow — the next
   // pathological connector should degrade the same way without a code change.
   // Scoped to fetchAzCreatives: other fetch phases have their own `promises`
@@ -186,6 +199,25 @@ const days=(a,b)=>Math.round((new Date(b+'T00:00:00Z')-new Date(a+'T00:00:00Z'))
   ck('the capped fetches fold on arrival',
      (src.match(/AZ_CREATIVE_CHUNK_DAYS, rows => \{ for \(const _c of _seenConn/g)||[]).length>=3,true);
   ck('a cap is a REPORTED shortfall',/CAPPED at \$\{AZ_CRE_DEADLINE_MS\}ms/.test(src),true);
+
+  // --- the endpoint must ALWAYS answer -------------------------------------
+  // A request that runs past the browser's abort returns nothing AND caches
+  // nothing, so the next load repeats it. Past the fetch phase the only work
+  // left is the comparison periods, which exist purely to put deltas on cards
+  // that are already built — so they are skipped rather than waited for.
+  ck('there is a response deadline',/const AZ_RESP_DEADLINE_MS = \d+;/.test(src),true);
+  ck('both comparison periods check it',
+     (src.match(/_azLeft\(\) < AZ_CMP_MIN_MS/g)||[]).length,2);
+  ck('and a skip is reported, not silent',
+     (src.match(/SKIPPED at \$\{Date\.now\(\)-_azT0\}ms/g)||[]).length,2);
+  ck('the summary names what was dropped',
+     /comparison period\(s\) skipped for the deadline/.test(src),true);
+  // Dropping them is a KNOWN-GOOD shape: All Time already runs with both null,
+  // so every consumer downstream handles it.
+  ck('null comparison periods are an existing supported shape',
+     /if \(prior && !isAllTime/.test(src)&&/if \(priorMonth && !isAllTime/.test(src),true);
+  ck('and they still reach buildAzResponse',
+     /buildAzResponse\(current, prior, priorMonth, windsor, creatives, priorW, pmW, attr, priorA, pmA/.test(src),true);
 
   console.log(pass+' passed, '+fail+' failed');
   process.exit(fail?1:0);
