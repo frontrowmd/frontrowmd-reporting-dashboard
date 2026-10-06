@@ -361,8 +361,18 @@ ck('it is derived from the plotted points',
    && /var endMs=Math\.min\(_clnTrEnd\(pts\[pts\.length-1\]\.wk,g\.k\)\.ms,todayMs\);/.test(cli), true);
 // A week or month in progress must not advertise an end date in the future.
 ck('the end is clamped to today', /Math\.min\(_clnTrEnd\([^)]*\)\.ms,todayMs\)/.test(cli), true);
-ck('it states the period count and the lookback',
-   /pts\.length\+' '\+unit\+\(pts\.length===1\?'':'s'\)\+' \\u00b7 '\+g\.note/.test(cli), true);
+// The lookback leads, and it is built from the periods ACTUALLY on screen.
+// Saying both "8 weeks" and "last 8 weeks" was the same number twice; using the
+// count rather than the grain's nominal label also keeps it honest when the
+// series is shorter than the lookback.
+ck('the lookback is the headline',
+   /var lookback='Last '\+pts\.length\+' '\+unit\+\(pts\.length===1\?'':'s'\);/.test(cli), true);
+ck('and it is the biggest text in the band',
+   /font-size:16px;font-weight:700;color:var\(--navy\)">'\+lookback/.test(cli), true);
+ck('with the date range as supporting text',
+   /font-size:11\.5px;color:var\(--grey\)">'\+fmtD\(startMs,false\)/.test(cli), true);
+ck('and the nominal grain label is no longer repeated beside it',
+   /\+g\.note\+'<\/span>'/.test(cli), false);
 ck('and says plainly it is not the page filter', /not the page date filter/.test(cli), true);
 
 // ── Toggle captions removed ──────────────────────────────────────────────
