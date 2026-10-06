@@ -116,8 +116,11 @@ ck('only the re-sync clears the pin',(html.match(/metaWinPinned=false/g)||[]).le
 
 // ── Ad KPIs card leads with spend, so it is titled for spend ──
 ck('the card is titled Ad Spend',/h\+=kpi\('Ad Spend',\n\s*f\$0\(src\.spend\),/.test(html),true);
-ck('the genuine pacing card elsewhere keeps its name',
-   /kpi\('Ad Budget Pacing',\(pace!=null\?pace\.toFixed\(0\)\+'%'/.test(html),true);
+// The Clinician copy of this card was removed with the Ads KPI row; the
+// Detailed Dashboard's hero tile is the one that keeps the name.
+ck('the genuine pacing tile elsewhere keeps its name',
+   /<div class="tlbl">Ad Budget Pacing<\/div>/.test(html),true);
+ck('and the Clinician duplicate is gone',/kpi\('Ad Budget Pacing'/.test(html),false);
 
 // ── Key Metrics is now the first section ───────────────────────────
 ck('Key Metrics container precedes every other section',

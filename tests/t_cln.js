@@ -13,14 +13,23 @@ const RC=fn(cli,'renderClinician');
 ck('Key Metrics is prepended, not appended',/h=card\('Key Metrics',[\s\S]{0,200}?\)\+h;/.test(RC),true);
 ck('All Clinicians is appended after the ad tables, not promoted to the top',
    /h\+=allClinH;/.test(RC)&&!/h=allClinH\+h;/.test(RC),true);
-ck('adsH carries BOTH the Ads card and the Clinician Ad Tables',
-   /adsH\+=card\('Ads'/.test(RC)&&/adsH\+=card\('Clinician Ad Tables'/.test(RC),true);
-ck('and All Clinicians lands after adsH',
-   RC.indexOf('h+=adsH;')<RC.indexOf('h+=allClinH;'),true);
+// The Ads KPI row is gone: its three cards (pacing, cost per inquiry, cost per
+// full submission) all restated figures the Key Metrics row at the top already
+// carries. The section is now the ad tables alone, appended straight to `h` —
+// the adsH buffer existed only so a card could be emitted ahead of it.
+ck('the Ads KPI card is gone',/card\('Ads',/.test(RC),false);
+ck('and its builder with it',/_clnAdsCostCards/.test(cli),false);
+ck('and the late repaint only it needed',/cln-ads-cost/.test(cli),false);
+ck('the buffer is gone too',/adsH/.test(RC),false);
+ck('the ad tables are appended directly',/h\+=card\('Clinician Ad Tables'/.test(RC),true);
+ck('and All Clinicians still lands after them',
+   RC.indexOf("card('Clinician Ad Tables'")<RC.indexOf('h+=allClinH;'),true);
 // Building Key Metrics in place at the top would read consts declared below it.
+// Guarded with indexOf()>=0 as well as the ordering: a const that no longer
+// exists returns -1, which is "before" everything and passes vacuously.
 ck('Key Metrics is built after the consts it reads',
-   RC.indexOf('const ads=')<RC.indexOf("card('Key Metrics'")
-   &&RC.indexOf('const comp=')<RC.indexOf("card('Key Metrics'"),true);
+   ['const comp=','const dly='].map(c=>RC.indexOf(c)>=0&&RC.indexOf(c)<RC.indexOf("card('Key Metrics'")),
+   [true,true]);
 
 // --- removals ------------------------------------------------------------
 ck('Specialty Breakdown is gone',/panel\('Specialty Breakdown'/.test(cli),false);
@@ -46,8 +55,12 @@ ck('renderDash no longer declares its own copy',
    /function renderDash\(\)\{[\s\S]{0,400}?function _irTileFooterDash/.test(cli),false);
 ck('the pacing bar is module scope and takes spend+budget',
    /function _clnPaceBar\(pct,elapsed,spend,budget\)\{/.test(cli),true);
-ck('the Ads row delegates to it rather than keeping a private copy',
-   /const paceBar=\(pct,elapsed\)=>_clnPaceBar\(pct,elapsed,spend,ads\.budget\);/.test(cli),true);
+// Key Metrics is now its only caller — the Ads row that used to share it is
+// gone, so the helper must not have gone with it.
+ck('Key Metrics is the one caller left',
+   (cli.match(/_clnPaceBar\(/g)||[]).length,2);
+ck('and it passes the window spend and budget',
+   /_clnPaceBar\(_pace,_a\?_a\.elapsedPct:null,_sp,_a\?_a\.budget:0\)/.test(cli),true);
 
 // --- the four cards' arithmetic -----------------------------------------
 // Both denominators come from the ACQUISITION section, so the two sections can

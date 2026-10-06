@@ -886,7 +886,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t248';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t249';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -4769,42 +4769,6 @@ function _clnCampAgg(){
   }
   return {spend:spend,conversions:conv,inquiries:inqKnown?inq:null,campaigns:rows.length};
 }
-function _clnAdsCostCards(ads){
-  const kpi=_clnKpiTile;
-  const f$0=v=>v==null?'—':f$(Math.round(v));
-  const agg=_clnCampAgg();
-  const div=(n,d)=>(d>0&&n!=null)?n/d:null;
-  // Inquiries: attributed clinician contacts. Conversions: what Meta reported
-  // firing. Different objects that will never reconcile exactly, so each card
-  // names the population it counts instead of implying they are two views of one.
-  const spend=agg?agg.spend:ads.spend;
-  const inq=agg?agg.inquiries:(ads.cpiDenom||null);
-  const conv=agg?agg.conversions:(ads.cacDenom||null);
-  const src=agg?'from the campaign table below':'page window — campaign table still loading';
-  let h='';
-  const paceBar=(pct,elapsed)=>_clnPaceBar(pct,elapsed,spend,ads.budget);
-
-  // Pacing divides the SAME spend as the cost cards. It used to read the page
-  // window's own Windsor pull, so the row showed $9,438 here and $9,449 beside
-  // it — one number from two sources.
-  const budget=ads.budget||0;
-  const pace=budget>0?(spend/budget)*100:null;
-  const el=ads.elapsedPct;
-  const dpp=(pace!=null&&el!=null)?(pace-el):null;
-  const paceTone=(dpp!=null&&dpp>10)?'#FF9B8F':'#fff';
-  h+=kpi('Ad Budget Pacing',(pace!=null?pace.toFixed(0)+'%':'\u2014'),
-    f$0(spend)+' \u00f7 '+f$0(budget),
-    (dpp!=null?((dpp>=0?'+':'')+dpp.toFixed(0)+'pp vs '+el.toFixed(0)+'% of window elapsed'):'Clinician channel budget'),
-    paceTone,paceBar(pace,el));
-  h+=kpi('Cost Per Inquiry',f$0(div(spend,inq)),
-    f$0(spend)+' ÷ '+(inq!=null?fN(inq):'—'),
-    'Clinician ad spend ÷ inquiries attributed to the clinician campaigns · '+src);
-  h+=kpi('Cost per Full Submission',f$0(div(spend,conv)),
-    f$0(spend)+' ÷ '+(conv!=null?fN(conv):'—'),
-    '÷ conversions reported by those campaigns · '+src
-    +((ads.cacDenomOnboarded!=null)?' · '+fN(ads.cacDenomOnboarded)+' reached Fully Onboarded':''));
-  return h;
-}
 function _clinicianPie(rows,total,noun){
   noun=noun||'clinician';
   if(!rows||!rows.length||!total)return '<div style="padding:28px;text-align:center;color:var(--grey);font-size:12px">No data in this window</div>';
@@ -5664,32 +5628,10 @@ function renderClinician(){
        +acqPanel(udLabel,acqSrc[ud]||[],utmToggle)
       +'</div>')));
   }
-  // ── Section 6: Ads (card 1 — KPI row) ──
-  // adsH is buffered so the Weekly CPD card can be emitted ahead of it.
-  let adsH='';
-  const ads=d.ads||null;
-  if(ads){
-    const f$0=v=>v==null?'\u2014':f$(Math.round(v));
-    // Inverted cards: dark ground, light type.
-    const kpi=_clnKpiTile;
-    // Pacing progress bar: spend against budget, with a marker showing where an
-    // on-pace spend would sit (percent of the window elapsed). Overspend beyond
-    // 100% is clamped for the fill but still shown in the value above.
-    let kh='';
-    if(ads.error){
-      kh='<div style="padding:18px;background:var(--lighter);border-radius:10px;font-size:12px;color:#C0392B">Ad spend unavailable: '+ads.error+'</div>';
-    }else{
-      // All three cards summarise the SAME aggregate and divide the SAME spend,
-      // so pacing cannot quote a different figure than the two cost cards beside
-      // it. The row renders before the analyzer payload lands, so it all sits in
-      // one repaint target.
-      window._clnAdsLast=ads;
-      kh+='<div id="cln-ads-cost" style="display:contents">'+_clnAdsCostCards(ads)+'</div>';
-    }
-    adsH+=card('Ads','Clinician ad channel only \u2014 Meta campaigns matching \u201cClinician Targeting\u201d \u00b7 excluded from all other dashboard KPIs',
-      '<div style="display:flex;gap:14px;flex-wrap:wrap">'+kh+'</div>');
-  }
-  // ── Section 6 card 2: Clinician ad tables, one shared filter set ──
+  // ── Section 6: Clinician ad tables, one shared filter set ──
+  // The Ads KPI row that used to lead this section is gone; the three cards it
+  // held (pacing, cost per inquiry, cost per full submission) all restate
+  // figures the Key Metrics row at the top already carries.
   {
     // The filter set is the SHARED _metaFilterBar(), written into
     // #cln-meta-filters by _renderIrfanMetaTables — the same bar and the same
@@ -5703,7 +5645,7 @@ function renderClinician(){
       +'<div style="font-family:var(--font-h);font-size:13.5px;font-weight:700;color:var(--navy);margin-bottom:2px">'+t+'</div>'
       +'<div style="font-size:10px;color:var(--grey);margin-bottom:8px">'+note+'</div>'
       +'<div id="'+id+'"></div></div>';
-    adsH+=card('Clinician Ad Tables','Clinician channel only \u00b7 one filter set drives all four tables \u00b7 expand a row for its child rows',
+    h+=card('Clinician Ad Tables','Clinician channel only \u00b7 one filter set drives all four tables \u00b7 expand a row for its child rows',
       '<div id="cln-meta-filters"></div>'
       +sub('Campaigns','cln-meta-campaigns','Expand a campaign to see its ad sets, then each ad set for its creatives')
       +sub('Ad Sets','cln-meta-adsets','Expand an ad set to see its creatives')
@@ -5711,7 +5653,6 @@ function renderClinician(){
       +sub('Audiences','cln-meta-audiences','Ad-set level breakdown',true));
   }
   // Section 5 (Verification Funnel) removed.
-  h+=adsH;
   // ── Section 7: All Clinicians ──
   let allClinH='';
   if(Array.isArray(d.table)&&d.table.length){
@@ -5720,10 +5661,10 @@ function renderClinician(){
       +' \u00b7 always the full history, independent of the page date filter \u00b7 click a Deal Name or Contact to open it in HubSpot \u00b7 collapse or expand a column group with its header',
       _clnTable(d.table,CLINICIAN_STAGE_COLORS));
   }
-  h+=allClinH;   // sits after the Clinician Ad Tables (the tail of adsH)
+  h+=allClinH;   // sits after the Clinician Ad Tables
   // ── Section 0: Key Metrics ──
-  // Buffered and PREPENDED: it reads `ads`, `comp` and `dly`, all declared below,
-  // so building it in place at the top would be a TDZ throw that blanks the page.
+  // Buffered and PREPENDED: it reads `comp` and `dly`, both declared below, so
+  // building it in place at the top would be a TDZ throw that blanks the page.
   {
     const _f$=(v)=>v==null?'\u2014':'$'+Math.round(v).toLocaleString();
     const _div=(a,b)=>(a!=null&&b)?a/b:null;
@@ -6456,12 +6397,6 @@ function _renderIrfanMetaTables(d, channel){
   // previously selected channel. No-ops on pages without #ad-kpis.
   // Payload only — the KPI section picks its own channel (default All Channels).
   try{_renderAdKpis(d);}catch(e){console.error('Ad KPI cards failed:',e);}
-  // The Clinician page's two cost cards summarise this same payload, and they
-  // render before it arrives — repaint them now that it has.
-  try{
-    const _cc=document.getElementById('cln-ads-cost');
-    if(_cc&&window._clnAdsLast)_cc.innerHTML=_clnAdsCostCards(window._clnAdsLast);
-  }catch(e){console.error('Clinician cost cards repaint failed:',e);}
   const chLabel={meta:'Meta',clinician:'Clinician',tiktok:'TikTok',linkedin:'LinkedIn',google:'Google',reddit:'Reddit',chatgpt:'ChatGPT',youtube:'YouTube'}[channel]||channel;
   // For non-Meta channels, the ad-set/ad-group terminology differs
   const audSectionLabel=channel==='meta'?'Audiences':(channel==='linkedin'?'Audiences':'Ad Groups');
