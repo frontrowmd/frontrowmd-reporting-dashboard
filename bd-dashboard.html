@@ -275,6 +275,10 @@ var BD_REP_COLORS=['#1565C0','#2E7D32','#72A4BF','#E65100','#5C6BC0','#00897B','
 var _bdArrGoal='',_bdAcvInput='';
 var BD_STAGE_LABELS={appointmentscheduled:'Scheduled','1084214349':'Demo Happened',decisionmakerboughtin:'Decision Maker',contractsent:'Contract Sent',closedwon:'Closed Won',closedlost:'Closed Lost','3453957850':'No Show','3453925110':'Churned','1062974581':'Not a Fit','3517067985':'Churned (Onb)','3722491612':'Interested, Circle Back','3741686471':'Webinar Attended','3741686470':'Webinar Registered'};
 var BD_STAGE_COLORS={appointmentscheduled:'#F59E0B','1084214349':'#0EA5E9',decisionmakerboughtin:'#7C3AED',contractsent:'#1565C0',closedwon:'#16A34A',closedlost:'#9CA3AF','3453957850':'#EF4444','3453925110':'#EF4444','1062974581':'#64748B','3517067985':'#DC2626','3722491612':'#EC4899','3741686471':'#38BDF8','3741686470':'#9CA3AF'};
+// Company Segment pills. The fallback grey is deliberately NOT any mapped
+// value's colour — a fallback that collides with a real category is the
+// recurring bug in this codebase.
+var BD_SEGMENT_COLORS={'VIP':'#7C3AED','Strategic':'#0F766E','Enterprise':'#1D4ED8','Mid-Market':'#B45309',_other:'#94A3B8'};
 var BD_STATUS_COLORS={Signed:'#16A34A',Paying:'#172C45',Paused:'#F59E0B',Churned:'#DC2626','Never Implemented - Churned':'#9CA3AF'};
 // HubSpot rich-text fields (churn reasons, notes) arrive as HTML (<p>, <span>…).
 // Strip tags + decode common entities so table cells, hover tooltips, and CSV
@@ -396,6 +400,7 @@ function bdLookupMissingCompanies(attempt){
         // Owner fields (Acct Mgr / SE Rep / Ops Rep) change in HubSpot, so
         // OVERWRITE them from the fresh lookup rather than fill-if-empty —
         // otherwise a stale cached value would never update on refresh.
+        if('company_segment' in co)deal.companySegment=co.company_segment||'';
         if('se_owner' in co)deal.se_rep_id=co.se_owner||'';
         if('ops_owner' in co)deal.ops_owner_id=co.ops_owner||'';
         if('account_manager' in co)deal.account_manager=co.account_manager||'';
@@ -438,6 +443,7 @@ function bdExportCSV(){
     {hsProp:'hs_object_id',                          get:function(r){return r.id;}},
     {hsProp:'associated_company.name',               get:function(r){return r.companyName;}},
     {hsProp:'associated_company.hs_object_id',       get:function(r){return r.companyId;}},
+    {hsProp:'associated_company.company_segment',    get:function(r){return r.companySegment;}},
     {hsProp:'brand_status',                          get:function(r){return r.brand_status;}},
     {hsProp:'dealstage',                             get:function(r){return r.dealstage;}},
     {hsProp:'dealstage_label',                       get:function(r){return BD_STAGE_LABELS[r.dealstage]||r.dealstage||'';}},
@@ -878,6 +884,7 @@ function renderBD(){
       var _bdHay=(
         (dd.dealname||'').toLowerCase()+' '+
         (dd.companyName||'').toLowerCase()+' '+
+        (dd.companySegment||'').toLowerCase()+' '+
         (dd.brand_status||'').toLowerCase()+' '+
         _bdStageLbl+' '+
         (dd.package_type||'').toLowerCase()+' '+
@@ -1217,7 +1224,7 @@ function renderBD(){
     // Raw HubSpot record IDs sort numerically (they're large integers
     // returned as strings; lexicographic sort breaks on mixed lengths).
     if(k==='id'||k==='companyId'){var idv=parseFloat(d[k]);return isNaN(idv)?Infinity:idv;}
-    if(k==='dealname'||k==='companyName'||k==='brand_status'||k==='notes')return (d[k]||'').toString().toLowerCase();
+    if(k==='dealname'||k==='companyName'||k==='companySegment'||k==='brand_status'||k==='notes')return (d[k]||'').toString().toLowerCase();
     if(k==='closedate'||k==='createdate'||k==='invoice_date'||k==='approval_date'||k==='pausechurn_date'||k==='paused_billing__billing_restart_date')return (d[k]||'').substring(0,10);
     // date_demo_booked sorts by EFFECTIVE demo date so the column matches
     // what the cell renders (rescheduled overrides original when set).
@@ -1256,6 +1263,9 @@ function renderBD(){
     {k:'dealname',l:'Deal Name',w:140},
     {k:'id',l:'Deal ID',w:100,idCol:true},
     {k:'companyName',l:'Company',w:140},
+    // Sits BEFORE the hideable Company ID column so it stays adjacent to
+    // Company whether or not the ID columns are shown.
+    {k:'companySegment',l:'Company Segment',w:110},
     {k:'companyId',l:'Company ID',w:100,idCol:true},
     {k:'brand_status',l:'Brand Status',w:100},
     {k:'dealstage',l:'Deal Stage',w:115},
@@ -1418,6 +1428,11 @@ function renderBD(){
       coCell=dash;
     }
     h+='<td data-no-tip="1">'+coCell+'</td>';
+    // Company Segment \u2014 a COMPANY property, arriving via the company lookup
+    // rather than on the deal, so it is blank until that call returns.
+    var _seg=row.companySegment||'';
+    var _segC=BD_SEGMENT_COLORS[_seg]||BD_SEGMENT_COLORS._other;
+    h+='<td data-no-tip="1">'+(_seg?'<span class="pill" style="background:'+_segC+'18;color:'+_segC+'">'+_seg+'</span>':dash)+'</td>';
     // Company ID cell \u2014 raw HubSpot record ID for the associated company.
     h+=_td('companyId','<td style="font-family:ui-monospace,Menlo,monospace;color:var(--grey)" title="HubSpot Company record ID">'+(row.companyId||dash)+'</td>');
     h+='<td data-no-tip="1">'+(row.brand_status?'<span class="pill" style="background:'+bsColor+'18;color:'+bsColor+'">'+row.brand_status+'</span>':dash)+'</td>';

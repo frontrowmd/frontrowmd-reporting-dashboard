@@ -7677,6 +7677,10 @@ function _bdCompanyStale(entry, fresh, now){
   // precisely what needs retrying. Bounded by MAX_BATCHES (3000) per wave.
   if (fresh) return true;               // explicit refresh → refetch owners
   if (entry._unresolved) return false;  // known-unresolvable → don't keep retrying
+  // Cached before company_segment was requested. Refetched once, in place,
+  // rather than by bumping the cache key — a bump discards every resolved NAME
+  // too, blanking the Company column on every row until the cache refills.
+  if (entry.company_segment === undefined) return true;
   return !entry.t || (now - entry.t) >= BD_COMPANY_TTL_MS;
 }
 async function fetchBDData(env, fresh) {
@@ -7928,7 +7932,7 @@ async function fetchBDData(env, fresh) {
       // Always include the associated companyId (from associations); the
       // companyName comes from the cache if available, else empty (client
       // will fill it in via /api/bd/lookup-companies).
-      companyName: company?.name||'',
+      companyName: company?.name||'', companySegment: company?.company_segment||'',
       companyId: companyId ? String(companyId) : '',
       // ops_owner from the COMPANY record (resolved client-side via
       // ownerMap). Surfaces as the "Ops Rep" column on the deal table.
@@ -7981,7 +7985,7 @@ async function lookupBDCompanies(env, companyIds, fresh) {
       const coRes = await fetch('https://api.hubapi.com/crm/v3/objects/companies/batch/read?archived=true', {
         method: 'POST',
         headers: { Authorization: `Bearer ${hsToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inputs: batch.map(id => ({ id })), properties: ['name','domain','website','ops_owner','hubspot_owner_id','account_manager'] }),
+        body: JSON.stringify({ inputs: batch.map(id => ({ id })), properties: ['name','domain','website','ops_owner','hubspot_owner_id','account_manager','company_segment'] }),
       });
       if (!coRes.ok) {
         const txt = await coRes.text();
@@ -7999,7 +8003,11 @@ async function lookupBDCompanies(env, companyIds, fresh) {
         // SE Rep = the company record's hubspot_owner_id
         const se_owner = co.properties?.hubspot_owner_id || '';
         const account_manager = co.properties?.account_manager || '';
-        companyMap[co.id] = { name, id: co.id, archived: !!co.archived, ops_owner, se_owner, account_manager, t: Date.now() };
+        // Company Segment (VIP / Strategic / Enterprise / Mid-Market) lives on the
+        // COMPANY, not the deal, so the BD table reads it through this cache
+        // rather than paying an association walk per deal.
+        const company_segment = co.properties?.company_segment || '';
+        companyMap[co.id] = { name, id: co.id, archived: !!co.archived, ops_owner, se_owner, account_manager, company_segment, t: Date.now() };
         if (name) fetched++;
       }
     } catch(e) { console.error('BD lookup batch error:', e); }
