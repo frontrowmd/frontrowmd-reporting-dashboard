@@ -189,7 +189,19 @@ const KPI_EXCLUDED_CHANNELS = new Set(['clinician']);
 const CLINICIAN_CONV_FIELDS = ['actions_capi_clinicians', 'actions_capi_virtual_clinician'];
 // The CURRENT conversion, for anything that needs one name rather than the pair.
 const CLINICIAN_CONV_FIELD = 'actions_capi_virtual_clinician';
+// Conversions a CLINICIAN row reported. Clinician ad sets do NOT all optimize
+// for the same thing -- as of Oct 2026 they split across the custom conversion
+// "CAPI -- Virtual Clinician" and the RAW pixel event "Clinician", and Meta
+// reports Results per ad set accordingly. Counting one fixed pair of columns
+// therefore both over- and under-counted: it added conversions an ad set wasn't
+// optimizing for, and missed the "Clinician" event entirely (no custom
+// conversion wraps it, so Windsor exposes no column -- verified 2026-10-07).
+// So: follow THIS row's own target, and let a campaign total be the sum of its
+// ad sets' targets. The two-era pair survives only as the fallback for rows
+// fetched below ad-set grain, which carry no adset_promoted_object.
 function clinicianConvCount(row) {
+  const t = metaTargetCount(row);
+  if (t >= 0) return t;
   let n = 0;
   for (const f of CLINICIAN_CONV_FIELDS) n += parseFloat(row[f]) || 0;
   return Math.round(n);
@@ -209,6 +221,17 @@ function demoRawOf(row, demoField) {
 // Meta and Clinician share the facebook connector, so both need the Meta-only
 // field set on every fetch.
 function isMetaConnectorCh(ch) { return ch === 'meta' || ch === 'clinician'; }
+// Demos one row contributes to a channel. Meta AND Clinician both follow the ad
+// set's own optimization target (a campaign can span several conversion types,
+// and Meta reports Results per ad set); every other channel reads its single
+// configured column. One reader so the Campaigns, Ad Sets and Creatives tables
+// can never drift apart on what a conversion is.
+function chDemoCount(ch, cfg, row) {
+  if (ch === 'meta') return metaDemos(row);
+  if (ch === 'clinician') return clinicianConvCount(row);
+  const d = demoRawOf(row, (cfg && cfg.demoField) || null);
+  return (ch === 'google' || ch === 'youtube') ? Math.ceil(d) : Math.round(d);
+}
 
 const CHANNEL_LABELS = { meta: 'Meta', clinician: 'Clinician', google: 'Google', linkedin: 'LinkedIn', tiktok: 'TikTok', chatgpt: 'ChatGPT', reddit: 'Reddit', youtube: 'YouTube' };
 
@@ -366,6 +389,17 @@ const META_STD_EVENT_FIELD = {
   SCHEDULE: 'conversions_schedule_total',
   SUBMIT_APPLICATION: 'conversions_submit_application_total',
 };
+// RAW custom pixel event → the Windsor column that happens to count the same
+// thing. Only needed as a FALLBACK for rows fetched without the `conversions`
+// array; where a custom conversion wraps the event, its column and the event
+// agree (verified Oct 1-7 2026: virtualclinicians 16/3 == actions_capi_virtual_clinician
+// 16/3, clinicians 3/1 == actions_capi_clinicians 3/1). Keys are lowercased.
+// The "Clinician" event is deliberately absent — no custom conversion wraps it,
+// so no column exists and only the conversions array can count it.
+const META_EVENT_FIELD = {
+  virtualclinicians: 'actions_capi_virtual_clinician',
+  clinicians: 'actions_capi_clinicians',
+};
 const META_CC_BY_ID = {};        // custom_conversion_id → display name
 const META_CC_FIELD_BY_ID = {};  // custom_conversion_id → Windsor count column
 for (const _cc of META_CUSTOM_CONVERSIONS) { META_CC_BY_ID[_cc.id] = _cc.label; META_CC_FIELD_BY_ID[_cc.id] = _cc.field; }
@@ -376,10 +410,18 @@ for (const _cc of META_CUSTOM_CONVERSIONS) { META_CC_BY_ID[_cc.id] = _cc.label; 
 const META_CAPI_FIELDS = ',' + META_CUSTOM_CONVERSIONS.map(c => c.field).join(',');
 // Ad-set field carrying the configured optimization target. Ad-set grain, so
 // only append it to fetches that are already at ad-set/ad grain, or to
-// single-connector PAGINATED fetches (azWindsorFetchAll). Never to
-// fetchWindsorAds — that one is a single 5000-row page with no pagination, so
-// increasing its grain risks silently truncating spend on long windows.
+// PAGINATED fetches (azWindsorFetchAll), which bisect any range that comes back
+// at the row cap and so can absorb the extra grain. That now includes
+// fetchWindsorAds, which moved off the unpaginated /all endpoint to a
+// per-connector azWindsorFetchAll — an older note here still said never.
 const META_PROMOTED_OBJ_FIELD = ',adset_promoted_object';
+// Windsor's per-action-type breakdown, returned as a NESTED ARRAY inside each
+// row (not extra rows — verified: same row count and spend with and without).
+// It is the ONLY source for ad sets that optimize for a raw custom pixel event,
+// since Windsor exposes a column only where a custom conversion wraps the event.
+// Rides along with META_PROMOTED_OBJ_FIELD — the two are useless apart, because
+// the promoted object names the target and this counts it.
+const META_CONV_ARRAY_FIELD = ',conversions';
 
 // Optimization target for a Meta ad set, parsed from adset_promoted_object
 // ("the object this ad set is optimizing for" — a JSON-encoded STRING).
@@ -392,7 +434,12 @@ function metaOptTarget(promotedObjectRaw) {
   const ccId = o.custom_conversion_id != null ? String(o.custom_conversion_id) : '';
   if (ccId) return META_CC_BY_ID[ccId] || ('Custom conversion ' + ccId);
   const evt = String(o.custom_event_type || '').trim();
-  if (!evt || evt === 'OTHER') return '';
+  if (!evt) return '';
+  // 'OTHER' with no custom_conversion_id = the ad set optimizes for a RAW custom
+  // pixel event, named only by custom_event_str (e.g. 'virtualclinicians',
+  // 'Clinician'). Returning '' here left every such ad set with a blank
+  // Optimization Target, which is what hid the clinician split.
+  if (evt === 'OTHER') return String(o.custom_event_str || '').trim();
   return evt.split('_').map(w => w ? w.charAt(0) + w.slice(1).toLowerCase() : '').join(' ');
 }
 function _metaParsePromoted(raw) {
@@ -421,6 +468,51 @@ function metaTargetField(row) {
   const evt = String(o.custom_event_type || '').trim().toUpperCase();
   return META_STD_EVENT_FIELD[evt] || '';
 }
+// The RAW custom pixel event an ad set optimizes for ('' unless the target is a
+// custom EVENT rather than a custom CONVERSION or a standard event).
+function metaTargetEvent(row) {
+  const o = _metaParsePromoted(row.adset_promoted_object);
+  if (!o) return '';
+  if (o.custom_conversion_id != null && String(o.custom_conversion_id)) return '';
+  if (String(o.custom_event_type || '').trim().toUpperCase() !== 'OTHER') return '';
+  return String(o.custom_event_str || '').trim();
+}
+// Count of one named pixel event, read from Windsor's `conversions` nested array
+// (action_type 'offsite_conversion.fb_pixel_custom.<event>'). -1 when the array
+// wasn't fetched, so callers can tell "not available" from a real zero.
+const META_PIXEL_EVENT_PREFIX = 'offsite_conversion.fb_pixel_custom.';
+function metaEventCount(row, eventName) {
+  const arr = row && row.conversions;
+  if (!eventName || !Array.isArray(arr)) return -1;
+  const want = META_PIXEL_EVENT_PREFIX + eventName;
+  const wantLc = want.toLowerCase();
+  let exact = -1, loose = -1;
+  for (const a of arr) {
+    const t = String((a && a.action_type) || '');
+    if (t === want) exact = (exact < 0 ? 0 : exact) + (parseFloat(a.value) || 0);
+    else if (t.toLowerCase() === wantLc) loose = (loose < 0 ? 0 : loose) + (parseFloat(a.value) || 0);
+  }
+  const n = exact >= 0 ? exact : loose;
+  return n < 0 ? -1 : Math.round(n);
+}
+// Conversions THIS row reported for the target its ad set actually optimizes
+// for, or -1 when the target can't be determined (no adset_promoted_object) or
+// can't be counted. One resolver for every Meta-connector aggregation path, so
+// a campaign total is always the sum of its ad sets' own Results — which is
+// exactly how Meta reports a campaign spanning several conversion types.
+function metaTargetCount(row) {
+  const ev = metaTargetEvent(row);
+  if (ev) {
+    const n = metaEventCount(row, ev);
+    if (n >= 0) return n;
+    const f = META_EVENT_FIELD[ev.toLowerCase()];
+    if (f) return Math.round(parseFloat(row[f]) || 0);
+    return -1;
+  }
+  const tf = metaTargetField(row);
+  if (tf) return Math.round(parseFloat(row[tf]) || 0);
+  return -1;
+}
 // Demos a Meta row contributes via its configured CAPI custom conversion, or -1
 // when the row's campaign doesn't use CAPI (caller falls back to
 // submit_application). Mirrors capiConvLabel: the TEST "Combined Ad Sets"
@@ -431,9 +523,10 @@ function metaTargetField(row) {
 function metaCapiDemoCount(row) {
   // PREFERRED: count the conversion this row actually optimizes for, read from
   // adset_promoted_object. Works for every campaign, not just the two the old
-  // name heuristic below knew about.
-  const tf = metaTargetField(row);
-  if (tf) return Math.round(parseFloat(row[tf]) || 0);
+  // name heuristic below knew about — and, via metaTargetCount, also for ad sets
+  // optimizing for a raw custom pixel event, which have no count column at all.
+  const t = metaTargetCount(row);
+  if (t >= 0) return t;
   // FALLBACK: legacy campaign-name heuristic, for rows from fetches that don't
   // carry adset_promoted_object (e.g. fetchWindsorAds). Unchanged behavior.
   const c = (row.campaign_name || '').toLowerCase();
@@ -459,13 +552,11 @@ function metaDemos(row) {
   if (capi >= 0) {
     base = capi;
   } else {
-    // Count the event this ad set is actually optimizing for. Falls back to
-    // submit_application when the row carries no adset_promoted_object (fetches
-    // below ad-set grain) or the target has no column we fetch — i.e. exactly
-    // the old behaviour, so nothing regresses where the target is unknown.
-    const tf = metaTargetField(row);
-    const v = (tf && row[tf] != null) ? parseFloat(row[tf]) : NaN;
-    base = Math.round(isNaN(v) ? (parseFloat(row.conversions_submit_application_total) || 0) : v);
+    // Reached only when metaTargetCount could NOT resolve a target — i.e. the row
+    // carries no adset_promoted_object (fetches below ad-set grain) or its target
+    // has no column and no conversions array. Falls back to submit_application,
+    // exactly the old behaviour, so nothing regresses where the target is unknown.
+    base = Math.round(parseFloat(row.conversions_submit_application_total) || 0);
   }
   return base + metaLeadDemos(row.campaign_name, row);
 }
@@ -731,7 +822,11 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v35';   // v35: trend series is page-filter independent, adds a month grain.
+const API_CACHE_VER = 'v36';   // v36: clinician conversions follow each AD SET's own optimization
+                               //      target instead of one fixed column pair — campaign totals are
+                               //      now the sum of their ad sets, and the "Clinician" raw pixel
+                               //      event (previously uncountable) is included.
+                               // v35: trend series is page-filter independent, adds a month grain.
                                // v30: last-click acquisition split (paid / organic / untagged) on the regular
                                //      scheduled cohort, + chatgpt.com added to the paid mapper.
                                // v29: all Volume + Quality figures exclude pre-launch (deal tier, not isLow).
@@ -828,7 +923,7 @@ const WINDSOR_AD_SOURCES = [
   // adset_promoted_object names the campaign's REAL optimization target, which is
   // what metaDemos() counts. Verified fan-out-free: it adds no rows to a spend
   // query, unlike custom_conversion_action_name (which multiplied spend ~36x).
-  { connector:'facebook',   fields:'date,campaign_name,spend,clicks,impressions,ctr,conversions_submit_application_total,conversions_schedule_total' + META_LEAD_FIELDS + META_CAPI_FIELDS + META_PROMOTED_OBJ_FIELD },
+  { connector:'facebook',   fields:'date,campaign_name,spend,clicks,impressions,ctr,conversions_submit_application_total,conversions_schedule_total' + META_LEAD_FIELDS + META_CAPI_FIELDS + META_PROMOTED_OBJ_FIELD + META_CONV_ARRAY_FIELD },
   { connector:'google_ads', fields:'date,campaign_name,spend,clicks,impressions,ctr,conversions' },
   { connector:'linkedin',   fields:'date,campaign,spend,clicks,impressions,ctr,externalwebsiteconversions' },
   { connector:'tiktok',     fields:'date,campaign_name,spend,clicks,impressions,ctr,conversions' },
@@ -1095,7 +1190,10 @@ const AZ_CRON_SOFTFAIL_TOLERANCE = 5;
 //
 // Bump this ONLY when the ad-data shape changes. A dashboard payload change
 // should not cost a cold precompute.
-const AZ_DATA_VER = 'a1';
+// a2: ad rows now carry the `conversions` array, and Meta/Clinician demos are
+// counted from each ad set's own target — a cached a1 payload holds the old
+// per-campaign conversion and CPD figures, so it must not be served.
+const AZ_DATA_VER = 'a2';
 // Cloudflare caps CONCURRENT in-flight fetches, and a Response whose body is
 // never read never completes — so it holds its slot indefinitely. Past the cap
 // the runtime cancels the OLDEST in-flight response to break the deadlock,
@@ -6149,7 +6247,7 @@ async function fetchAzCampaigns(apiKey, from, to) {
     // adset_promoted_object drops this to ad-set grain; aggRows re-aggregates by
     // campaign_name so spend/demo totals are unchanged, and azWindsorFetchAll
     // paginates so the extra rows can't be truncated.
-    azWindsorFetchAll(apiKey, 'facebook', from, to, base+',conversions_submit_application_total,conversions_schedule_total,frequency,effective_status'+META_LEAD_FIELDS+META_CAPI_FIELDS+META_PROMOTED_OBJ_FIELD, 30, foldFb),
+    azWindsorFetchAll(apiKey, 'facebook', from, to, base+',conversions_submit_application_total,conversions_schedule_total,frequency,effective_status'+META_LEAD_FIELDS+META_CAPI_FIELDS+META_PROMOTED_OBJ_FIELD+META_CONV_ARRAY_FIELD, 30, foldFb),
     azWindsorFetchAll(apiKey, 'google_ads', from, to, base+',conversions,campaign_status', 30, foldGa),
     azWindsorFetchAll(apiKey, 'linkedin', from, to, 'date,campaign,campaign_group_name,spend,clicks,impressions,campaign_status'),
     fetchLinkedInDemos(apiKey, from, to),
@@ -6183,8 +6281,7 @@ async function fetchAzCampaigns(apiKey, from, to) {
       rollupStatus(camps[name], (row.effective_status || row.campaign_status || '').toUpperCase(), row.date);
       // Only count demos if demoFilterFn passes (or no filter)
       if (!demoFilterFn || demoFilterFn(row)) {
-        if (ch === 'meta') { camps[name].demos += metaDemos(row); }
-        else { const rawD = demoRawOf(row, cfg.demoField); camps[name].demos += (ch==='google'||ch==='youtube') ? Math.ceil(rawD) : Math.round(rawD); }
+        camps[name].demos += chDemoCount(ch, cfg, row);
       }
       if (cfg.hasFreq && row.frequency != null && row.frequency !== '') camps[name].freqVals.push(parseFloat(row.frequency));
     }
@@ -6309,7 +6406,7 @@ function _foldCreRows(ch, cfg, rows, map, campCreMap, adsetCreMap, placementMap,
         placementMap[pKey].spend += parseFloat(row.spend)||0;
         placementMap[pKey].clicks += parseInt(row.clicks)||0;
         placementMap[pKey].impressions += parseInt(row.impressions)||0;
-        const pDemo = demoRawOf(row, cfg.demoField);
+        const pDemo = chDemoCount(ch, cfg, row);
         placementMap[pKey].demos += Math.round(pDemo);
         // Per-creative placement breakdown
         if (!map[name]) map[name] = { name, spend:0, clicks:0, impressions:0, demos:0, freqVals:[], thumbnail: tm[name] || null, campaignName: campName, videoP25:0, _dates:[], _placements:{} };
@@ -6344,8 +6441,7 @@ function _foldCreRows(ch, cfg, rows, map, campCreMap, adsetCreMap, placementMap,
         for (const v of vArr) { if (v && v.value) map[name].videoP25 += parseInt(v.value)||0; }
       }
       if (ch !== 'linkedin') {
-        if (ch === 'meta') { map[name].demos += metaDemos(row); }
-        else { const rawD = demoRawOf(row, cfg.demoField); map[name].demos += (ch==='google'||ch==='youtube') ? Math.ceil(rawD) : Math.round(rawD); }
+        map[name].demos += chDemoCount(ch, cfg, row);
       }
       if (cfg.hasFreq && row.frequency != null && row.frequency !== '') map[name].freqVals.push(parseFloat(row.frequency));
       // Per-campaign creative aggregation
@@ -6364,8 +6460,7 @@ function _foldCreRows(ch, cfg, rows, map, campCreMap, adsetCreMap, placementMap,
         for (const v of vArr2) { if (v && v.value) campCreMap[campKey][name].videoP25 += parseInt(v.value)||0; }
       }
       if (ch !== 'linkedin') {
-        if (ch === 'meta') { campCreMap[campKey][name].demos += metaDemos(row); }
-        else { const rawD2 = demoRawOf(row, cfg.demoField); campCreMap[campKey][name].demos += (ch==='google'||ch==='youtube') ? Math.ceil(rawD2) : Math.round(rawD2); }
+        campCreMap[campKey][name].demos += chDemoCount(ch, cfg, row);
       }
       if (cfg.hasFreq && row.frequency != null && row.frequency !== '') campCreMap[campKey][name].freqVals.push(parseFloat(row.frequency));
       // Per-ad-set creative aggregation — mirrors campCreMap but keyed by
@@ -6388,8 +6483,7 @@ function _foldCreRows(ch, cfg, rows, map, campCreMap, adsetCreMap, placementMap,
           for (const v of vArr3) { if (v && v.value) adsetCreMap[adsetKey][name].videoP25 += parseInt(v.value)||0; }
         }
         if (ch !== 'linkedin') {
-          if (ch === 'meta') { adsetCreMap[adsetKey][name].demos += metaDemos(row); }
-          else { const rawD3 = demoRawOf(row, cfg.demoField); adsetCreMap[adsetKey][name].demos += (ch==='google'||ch==='youtube') ? Math.ceil(rawD3) : Math.round(rawD3); }
+          adsetCreMap[adsetKey][name].demos += chDemoCount(ch, cfg, row);
         }
         if (cfg.hasFreq && row.frequency != null && row.frequency !== '') adsetCreMap[adsetKey][name].freqVals.push(parseFloat(row.frequency));
       }
@@ -6480,7 +6574,7 @@ async function fetchAzCreatives(apiKey, from, to) {
       // Meta-connector channels need BOTH standard-event columns plus the
       // promoted object, or metaDemos cannot tell which event to count.
       const extra = isMetaConnectorCh(ch)
-        ? ',conversions_submit_application_total,conversions_schedule_total' + META_PROMOTED_OBJ_FIELD
+        ? ',conversions_submit_application_total,conversions_schedule_total' + META_PROMOTED_OBJ_FIELD + META_CONV_ARRAY_FIELD
         : (cfg.demoField === 'conversions_submit_application_total' ? ',conversions_submit_application_total' : ',conversions');
       const freq = cfg.hasFreq ? ',frequency' : '';
       const video = isMetaConnectorCh(ch) ? ',video_p25_watched_actions' : '';
@@ -6739,9 +6833,12 @@ function _foldAudRows(ch, cfg, rows, map) {
       // Google: filter out YouTube campaigns
       if (ch === 'google' && /\byt\b|youtube/i.test(campName)) continue;
       if (!map[name]) map[name] = { name, campaign: '', spend: 0, clicks: 0, impressions: 0, demos: 0, status: null, _statusDate: '', optTarget: '' };
-      // Real optimization target from the platform (Meta only). Same for every
-      // row of an ad set, so first non-empty wins.
-      if (ch === 'meta' && !map[name].optTarget) {
+      // Real optimization target from the platform (both facebook-connector
+      // channels). Same for every row of an ad set, so first non-empty wins.
+      // Gating this to 'meta' left the Clinician Ad Sets table with a blank
+      // Optimization Target column — which is precisely what hid the fact that
+      // clinician ad sets optimize for several different conversions.
+      if (isMetaConnectorCh(ch) && !map[name].optTarget) {
         const _ot = metaOptTarget(row.adset_promoted_object);
         if (_ot) map[name].optTarget = _ot;
       }
@@ -6753,8 +6850,7 @@ function _foldAudRows(ch, cfg, rows, map) {
       map[name].spend += parseFloat(row.spend) || 0;
       map[name].clicks += parseInt(row.clicks) || 0;
       map[name].impressions += parseInt(row.impressions) || 0;
-      if (ch === 'meta') { map[name].demos += metaDemos(row); }
-      else { let d = demoRawOf(row, cfg.demoField); if (ch === 'google') d = Math.ceil(d); else d = Math.round(d); map[name].demos += d; }
+      map[name].demos += chDemoCount(ch, cfg, row);
       if (!map[name].campaign && campName) map[name].campaign = campName;
     }
 }
@@ -6765,12 +6861,12 @@ async function fetchAzAudiences(apiKey, from, to) {
     // adset_promoted_object carries the real optimization target. It's an
     // Ad-table field but this query is already ad-set grain, so it adds no rows
     // (verified: same 13 rows / same spend total as without it).
-    meta:   { connector:'facebook', fields:'date,adset_name,campaign_name,spend,clicks,impressions,conversions_submit_application_total,conversions_schedule_total,adset_status,adset_effective_status,adset_promoted_object'+META_LEAD_FIELDS+META_CAPI_FIELDS, nameField:'adset_name', demoField:'conversions_submit_application_total', statusField:'adset_effective_status', statusFallback:'adset_status' },
+    meta:   { connector:'facebook', fields:'date,adset_name,campaign_name,spend,clicks,impressions,conversions_submit_application_total,conversions_schedule_total,adset_status,adset_effective_status,adset_promoted_object'+META_LEAD_FIELDS+META_CAPI_FIELDS+META_CONV_ARRAY_FIELD, nameField:'adset_name', demoField:'conversions_submit_application_total', statusField:'adset_effective_status', statusFallback:'adset_status' },
     google: { connector:'google_ads', fields:'date,ad_group_name,campaign_name,spend,clicks,impressions,conversions', nameField:'ad_group_name', demoField:'conversions' },
     tiktok: { connector:'tiktok', fields:'date,ad_group_name,campaign_name,spend,clicks,impressions,conversions', nameField:'ad_group_name', demoField:'conversions' },
     // Reddit groups by ad_group_name; OpenAI Ads by ad_group (and `campaign`,
     // not campaign_name). Neither reports a demo-equivalent conversion.
-    clinician: { connector:'facebook', fields:'date,adset_name,campaign_name,spend,clicks,impressions,conversions_submit_application_total,conversions_schedule_total,adset_status,adset_effective_status,adset_promoted_object'+META_LEAD_FIELDS+META_CAPI_FIELDS, nameField:'adset_name', demoField:CLINICIAN_CONV_FIELDS, statusField:'adset_effective_status', statusFallback:'adset_status', onlyClinician:true },
+    clinician: { connector:'facebook', fields:'date,adset_name,campaign_name,spend,clicks,impressions,conversions_submit_application_total,conversions_schedule_total,adset_status,adset_effective_status,adset_promoted_object'+META_LEAD_FIELDS+META_CAPI_FIELDS+META_CONV_ARRAY_FIELD, nameField:'adset_name', demoField:CLINICIAN_CONV_FIELDS, statusField:'adset_effective_status', statusFallback:'adset_status', onlyClinician:true },
     reddit: { connector:'reddit', fields:'date,ad_group_name,campaign_name,spend,clicks,impressions', nameField:'ad_group_name', demoField:null },
     chatgpt: { connector:'openai_ads', fields:'date,ad_group,campaign,spend,clicks,impressions', nameField:'ad_group', demoField:null },
   };
