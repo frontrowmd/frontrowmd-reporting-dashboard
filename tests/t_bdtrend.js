@@ -3,7 +3,7 @@
 // where the two DIFFER (Regular/Paid demos, Signed) and the ones about the
 // invariants both must keep (tie-out to the tiles above, null-vs-zero, calendar
 // fill, rates pooled rather than averaged).
-const {load}=require('./slice.js');const vm=require('vm');
+const {load,fn}=require('./slice.js');const vm=require('vm');
 const src=load(process.env.WORKER_SRC||'worker.js');
 let pass=0,fail=0;
 const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify(w);console.log((ok?'PASS ':'FAIL ')+n+'  got='+JSON.stringify(g)+(ok?'':' want='+JSON.stringify(w)));ok?pass++:fail++;};
@@ -136,8 +136,27 @@ ck('the Brand path reuses clnTrendWindow rather than its own constant',
 ck('  so there is exactly one lookback constant',(src.match(/_TREND_DAYS = \d+/g)||[]).length,1);
 
 // ── 9. Wiring: the payload, the cache, and the fetches ────────────────────
-ck('the series is attached to the payload',/currentData\.trend = await kvCachedFetch/.test(src),true);
+ck('the series is built onto currentData',/currentData\.trend = await kvCachedFetch/.test(src),true);
 ck('  with its range, so the card can state it',/currentData\.trendRange = _btWin/.test(src),true);
+// Building it is NOT shipping it. buildResponse forwards fields one by one
+// instead of spreading `current`, so a field attached to currentData and not
+// named there is dropped in total silence: the worker logs a healthy series and
+// the client renders "No trend data available yet". That is exactly what
+// happened on first deploy.
+const _BR=fn(src,'buildResponse');   // brace-matched: a fixed slice stops short of the return block
+ck('buildResponse actually FORWARDS the series',/\n    trend: c\.trend \|\| null,/.test(_BR),true);
+ck('  and the range beside it',/\n    trendRange: c\.trendRange \|\| null,/.test(_BR),true);
+// The general form: every currentData.<field> = ... in processRequest must be
+// named in buildResponse, or it never reaches the page.
+ck('no currentData field is built and then dropped',
+   (()=>{const set=[...new Set([...src.matchAll(/\bcurrentData\.([A-Za-z_$][\w$]*)\s*=/g)].map(m=>m[1]))];
+         // Leading underscore = internal, not part of the payload contract.
+         // NOTE: _webinarDebug's own comment says it is surfaced "for the
+         // Network-tab inspection", which it is not — it is dropped here like
+         // any other unforwarded field. Pre-existing and debug-only.
+         const missing=set.filter(k=>k[0]!=='_').filter(k=>!new RegExp('\\n\\s+'+k+':').test(_BR));
+         if(missing.length)console.log('      dropped: '+missing.join(', '));
+         return missing;})(),[]);
 ck('the build is KV-cached, not recomputed per page window',
    /brand_trend_\$\{_btWin\.from\}_\$\{_btWin\.to\}_v1/.test(src),true);
 ck('an empty Windsor result is never cached',
@@ -146,8 +165,10 @@ ck('closed-won is sliced from the all-time set, costing no fetch',
    /filterActiveBrands\(allTimeClosedWon\)[\s\S]{0,200}?ptDayKeyOf\(\(\(d\.properties\) \|\| \{\}\)\.closedate\)/.test(src),true);
 ck('HubSpot trend fetches stay sequential (429 avoidance)',
    /const _sch = await fetchScheduledContacts\(hsToken, _btWin\.from, _btWin\.to\);\n\s+const _chn = await fetchChurnedByCloseDate/.test(src),true);
-ck('the payload shape change bumped the cache version past v36',
-   (+((src.match(/API_CACHE_VER = 'v(\d+)'/)||[])[1]||0))>=37,true);
+// v37 added the fields to currentData; v38 is when they were actually
+// forwarded, so a cached v37 response has them MISSING rather than stale.
+ck('the forwarding fix bumped the cache version past v37',
+   (+((src.match(/API_CACHE_VER = 'v(\d+)'/)||[])[1]||0))>=38,true);
 // The page fetches must NOT be widened — their processors count every row.
 ck('the page Windsor fetch still uses the page window',
    /fetchWindsorAds\(apiKey, wFrom\(current\.from\), current\.to\)/.test(src),true);

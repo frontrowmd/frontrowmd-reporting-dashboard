@@ -151,6 +151,13 @@ ck('  and a summed COUNT is divided back to a daily average',
 ck('the card says Signed is counted by close date',
    /Signed counts brands by close date/.test(BR),true);
 ck('  and that its % is not a cohort conversion',/not a cohort conversion/.test(BR),true);
+// "No trend data" covered two different failures with one sentence, and the
+// one that actually happened (the payload never carried the field) is the one
+// a reader can act on.
+ck('a missing payload field reads differently from an empty window',
+   /Trend data did not reach the page/.test(BR)&&/No activity in the /.test(BR),true);
+ck('  and the missing-field branch is chosen by d.trend, not by the slice',
+   /var why=\(d&&d\.trend\)/.test(BR),true);
 ck('the card states it ignores the page date filter',
    /Independent of the page date filter/.test(BR),true);
 ck('  and names the span the figures actually cover',/Figures below cover/.test(BR),true);

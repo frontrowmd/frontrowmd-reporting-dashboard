@@ -822,7 +822,10 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v37';   // v37: Brand Dashboard Trend Analysis — adds a fixed-lookback
+const API_CACHE_VER = 'v38';   // v38: trend/trendRange are actually FORWARDED by buildResponse.
+                               //      v37 built them onto currentData but never shipped them, so a
+                               //      cached v37 payload has the fields missing, not stale.
+                               // v37: Brand Dashboard Trend Analysis — adds a fixed-lookback
                                //      `trend` + `trendRange` to the /api/data payload.
                                // v36: clinician conversions follow each AD SET's own optimization
                                //      target instead of one fixed column pair — campaign totals are
@@ -5034,6 +5037,13 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
     quarterlyHistory: c.quarterlyHistory || null,
     marketingFunnel: c.marketingFunnel || null,
     signedChurnedByCloseCount: c.signedChurnedByCloseCount || 0,
+    // Brand Trend Analysis. buildResponse forwards fields ONE BY ONE rather
+    // than spreading `current`, so anything attached to currentData later in
+    // processRequest has to be named here too — omitting it is silent: the
+    // handler builds the series, logs it, and the client renders "No trend
+    // data available yet" with no error anywhere.
+    trend: c.trend || null,
+    trendRange: c.trendRange || null,
     multiTouchAttribution: (() => {
       const stages = c.pipeline.stageOrder || [];
       const byStage = c.pipeline.byStage || {};
