@@ -143,12 +143,16 @@ ck('both stats ride the same tile',(_kmBlock.match(/_acqStat\(/g)||[]).length,2)
 ck('CPD Paid leads, with a divider, then Non-Paid \u2014 inside that one tile',
    /_acqStat\('CPD[\s\S]{0,400}?width:1px;align-self:stretch[\s\S]{0,400}?_acqStat\('Non-Paid/.test(_kmBlock),true);
 ck('each stat keeps its own calc and deltas',
-   /_kmFoot\(_npPct,_npPctPV,_npPctLM,'%',false\)/.test(_kmBlock)
+   /_kmFoot\(_npPct,_npPctPV,_npPctLM,'%',true\)/.test(_kmBlock)
    &&/_kmFoot\(_cPaidC,_cPaidP,_cPaidL,'\$',true\)/.test(_kmBlock),true);
-// Up is green on Non-Paid. That is the OPPOSITE colour the paid share showed for
-// the identical movement -- deliberate, because the two cannot both be "up is good".
-ck('a rising Non-Paid share reads as good (not inverted)',
-   /_kmFoot\(_npPct,_npPctPV,_npPctLM,'%',false\)/.test(_kmBlock),true);
+// Up is RED on Non-Paid: a growing unpaid share is a shrinking paid one. That
+// also keeps the colour continuous with the paid share this stat replaced --
+// the same movement lights the same way it did before the swap.
+ck('a rising Non-Paid share reads as bad (inverted)',
+   /_kmFoot\(_npPct,_npPctPV,_npPctLM,'%',true\)/.test(_kmBlock),true);
+ck('  so Non-Paid and Pre-Launch % agree: down is the good direction',
+   /_kmFoot\(_npPct,_npPctPV,_npPctLM,'%',true\)/.test(_kmBlock)
+   &&/_kmFoot\(_preShare,_preShareP,_preShareL,'%',true\)/.test(_kmBlock),true);
 
 // Every const the moved block reads must be declared above it -- a TDZ throw here
 // blanks the whole section while still passing a syntax check.
