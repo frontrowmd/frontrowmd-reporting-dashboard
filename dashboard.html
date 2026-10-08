@@ -293,11 +293,10 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;hei
    a rule above so each section is visibly separated from the pages before it.
    Without this they carried the same weight as a page row and read as selectable. */
 /* The section header carries the name now, so the FIRST card in each section
-   hides its own title instead of repeating it ("Snapshot" over "Daily
-   Activity"). Scoped per section rather than blanket-hiding .st, so later cards
-   in a section keep their titles — Revenue Outcome, Channel Performance and the
-   Demo Insights cards after the first are all still labelled. */
-#page-dashboard #sec-daily>.st,
+   hides its own title instead of repeating it. Scoped per section rather than
+   blanket-hiding .st, so later cards in a section keep their titles — Channel
+   Performance and the Demo Insights cards after the first are all still
+   labelled. (#sec-daily was here too until the Snapshot section was removed.) */
 #page-dashboard #sec-row2>div:first-of-type .st{display:none}
 /* Matches the Clinician page's card titles: large, dark, teal rule on the left.
    These are the section headers — the first card in each section no longer
@@ -317,7 +316,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;hei
    reads as a break while cards WITHIN a section (Ads + Channel Performance)
    stay visibly grouped at 24px. */
 #page-dashboard .dsec,#irfan-c>.dsec{margin-top:36px}
-#page-dashboard #sec-row1,#irfan-c>.dsec:first-child{margin-top:0}
+#page-dashboard>.dsec:first-of-type,#irfan-c>.dsec:first-child{margin-top:0}
 .ni.grp{font-size:10px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;color:rgba(255,255,255,.40);
   padding:9px 16px 7px;margin-top:12px;margin-bottom:2px;border-radius:0;border-top:1px solid rgba(255,255,255,.07)}
 .ni.grp:hover{background:transparent;color:rgba(255,255,255,.72)}
@@ -484,7 +483,6 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;hei
 /* Brand Dashboard skeleton — 9-section layout that mirrors the real
    #page-dashboard structure. Reuses .su-skel-bar + .su-skel-banner. */
 .dash-skel-row{margin-bottom:16px}
-.dash-skel-row-7-3{display:grid;grid-template-columns:7fr 3fr;gap:16px}
 .dash-skel-row-2-1{display:grid;grid-template-columns:2fr 1fr;gap:16px}
 .dash-skel-row-3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
 .dash-skel-card{background:#fff;border:1px solid var(--border);border-radius:12px;padding:18px 20px;box-shadow:0 1px 3px rgba(2,15,24,.03)}
@@ -509,7 +507,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;hei
 .dash-skel-date-bar{height:22px;width:42%;margin-bottom:8px}
 .dash-skel-date-sub{height:11px;width:28%}
 @media(max-width:900px){
-  .dash-skel-row-7-3,.dash-skel-row-2-1,.dash-skel-row-3{grid-template-columns:1fr}
+  .dash-skel-row-2-1,.dash-skel-row-3{grid-template-columns:1fr}
   .dash-skel-stat-grid-5{grid-template-columns:repeat(2,1fr)}
   .dash-skel-stat-grid-4{grid-template-columns:repeat(2,1fr)}
 }
@@ -668,17 +666,11 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
     <div class="pg" id="page-dashboard">
       <div id="date-header" style="margin-bottom:24px"></div>
 
-      <!-- Row 1: Daily Activity (70%) + Revenue Outcome (30%) -->
       <!-- Row 0: Key Metrics — headline tiles + Revenue Outcome, one card. -->
       <div class="sec dsec" id="sec-keymetrics"><div id="t-keymetrics"></div></div>
 
-      <div class="sec dsec" id="sec-row1"><div id="sec-daily" class="sec-card"><div class="dsec-h dsec-in" id="dsec-snapshot">Snapshot</div><div class="st"><span style="display:inline-block;width:8px;height:8px;background:#3B82F6;border-radius:50%;margin-right:8px;vertical-align:middle"></span>Daily Activity</div><div style="font-size:11px;color:var(--grey);margin:-2px 0 12px;line-height:1.45">Contacts created with date_demo_booked set · average line shows daily mean</div><div id="daily-wrap"></div></div></div>
-
-      <!-- Row 1b: True CPD per Week (full width, below Daily Activity + Revenue Outcome) -->
-      <div class="sec dsec" id="ov-truecpd-wrap"></div>
-
       <!-- Row 1c: Demo Insights — Volume / Quality / Efficiency, directly under
-           Trend Analysis. Header lives here rather than inside the Volume panel
+           Key Metrics. Header lives here rather than inside the Volume panel
            so all three columns start on the same line. -->
       <div class="sec sec-card dsec"><div class="dsec-h dsec-in" id="dsec-demoinsights">Demo Insights</div><div id="t-overview"></div></div>
 
@@ -886,7 +878,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t262';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t263';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -973,14 +965,12 @@ function _buildRevenueOutcomeCard(d){
       +'</div>'
     +'</div>';
   }
-  // Brand Dashboard, All Time tab only: Daily Activity is hidden there and
-  // this card expands to the full row, so it carries the "Snapshot" section
-  // header (white, for the dark card). Emitted by the builder rather than moved
-  // in the DOM so it survives fdRevenueOutcome()'s re-render of #t-revenue.
-  var _snapH=(typeof AP!=='undefined'&&AP==='dashboard'&&d.isAllTime)
-    ? '<div class="dsec-h dsec-in on-dark" id="dsec-snapshot-alltime">Snapshot</div>' : '';
+  // This card used to carry a white "Snapshot" section header on the All Time
+  // tab, where Daily Activity was hidden and the card expanded to fill the row.
+  // The Snapshot section no longer exists on either tab, so the borrowed header
+  // went with it; Revenue Outcome lives inside Key Metrics now and that section
+  // supplies its own heading.
   return '<div style="background:linear-gradient(135deg,#020F18 0%,#172C45 58%,#1D4053 100%);border:1px solid var(--mid-navy);border-radius:14px;padding:20px 24px;box-shadow:inset 3px 0 0 var(--teal),0 6px 20px rgba(2,15,24,.18);color:#fff;height:100%">'
-    +_snapH
     +'<div style="font-family:var(--font-h);font-size:10.5px;color:rgba(255,255,255,.5);margin-bottom:14px;text-transform:uppercase;letter-spacing:.1em">Revenue Outcome</div>'
     +'<div style="display:flex;flex-wrap:wrap;gap:18px 36px;align-items:flex-start">'
       +'<div style="flex:1 1 190px;min-width:180px">'
@@ -1133,19 +1123,17 @@ function _renderDashSkeleton(pct, step){
       <div class="su-skel-banner-pct">${Math.round(pct||0)}%</div>
     </div>
 
-    <!-- Row 1: Daily Activity (7) + Revenue Outcome (3) -->
-    <div class="dash-skel-row dash-skel-row-7-3">
-      <div class="dash-skel-card">
-        ${cardHead(140)}
-        <div class="dash-skel-stat-grid-5">${'<div class="su-skel-bar dash-skel-tile"></div>'.repeat(5)}</div>
-        <div style="height:14px"></div>
-        <div class="su-skel-bar dash-skel-chart-area"></div>
-      </div>
-      <div class="dash-skel-card">
-        ${cardHead(140)}
-        <div class="dash-skel-revenue-stack">
-          ${'<div class="su-skel-bar dash-skel-tile"></div>'.repeat(4)}
-        </div>
+    <!-- Row 0: Key Metrics — the headline tiles over Revenue Outcome, ONE card.
+         This was a 7-3 split standing in for Daily Activity beside Revenue
+         Outcome; Daily Activity (the Snapshot section) was removed and Revenue
+         Outcome moved inside Key Metrics, so a skeleton promising two cards
+         flashed a chart that never arrived. -->
+    <div class="dash-skel-card" style="margin-bottom:16px">
+      ${cardHead(140)}
+      <div class="dash-skel-stat-grid-5">${'<div class="su-skel-bar dash-skel-tile"></div>'.repeat(5)}</div>
+      <div style="height:14px"></div>
+      <div class="dash-skel-revenue-stack">
+        ${'<div class="su-skel-bar dash-skel-tile"></div>'.repeat(4)}
       </div>
     </div>
 
@@ -2960,13 +2948,10 @@ function renderDash(){
 
   // ─── Daily Activity (Row 1) + Channel Performance ──────────────────────────────
   renderCPDTable(d);
-  // Show/hide daily section based on all-time. When hidden, expand Revenue to full width.
-  const row1El=document.getElementById('sec-row1'),dailyEl=document.getElementById('sec-daily');
-  if(d.isAllTime){if(dailyEl)dailyEl.style.display='none';if(row1El)row1El.style.gridTemplateColumns='1fr';}
-  else{if(dailyEl)dailyEl.style.display='block';if(row1El)row1El.style.gridTemplateColumns='7fr 3fr';renderDemosPerDay(d);}
-  // True CPD per Week — below Daily Activity + Revenue Outcome (mirrors Irfan).
-  var _ovTcw=document.getElementById('ov-truecpd-wrap');
-  if(_ovTcw){_ovTcw.innerHTML=_trueCpdWeekCard(d,'ov-truecpd-week');_renderTrueCpdWeek(d,'ov-truecpd-week');}
+  // Snapshot (Daily Activity) and Trend Analysis were removed from this page.
+  // Both builders stay — the Irfan Dashboard still renders them into its own
+  // targets (renderDemosPerDay -> irfan-daily-wrap, _renderTrueCpdWeek ->
+  // irfan-truecpd-week), so neither function is dead code.
 
   // ─── Meta tables (Rows 8 + 9, mirror of Irfan Dashboard) ───────────────────
   // Re-uses the existing Irfan loader; the loader now writes to both irfan-*
@@ -3056,7 +3041,8 @@ function renderIrfan(){
   // Trend of total ad spend ÷ demos (excl. small brands) by calendar week within
   // the selected window. Points + instant hover. The builder emits the section
   // header in place of the card's own title; the wrapper carries the section gap
-  // (mirrors #ov-truecpd-wrap on the Brand Dashboard).
+  // (the Brand Dashboard carried the same card until Trend Analysis was removed
+  // from that page; this is now its only home).
   h+='<div class="dsec">'+_trueCpdWeekCard(d,'irfan-truecpd-week')+'</div>';
 
   // ═══════ Section 3 — Key Metrics ═══════
@@ -5764,11 +5750,12 @@ function buildSectionNav(page){
   const sel=_SECNAV_SEL[page]; if(!sel)return;   // only Irfan / Detailed / Clinician
   const root=document.getElementById('page-'+page); if(!root)return;
   const bar=document.querySelector('.main .topbar'); if(!bar)return;
-  // Skip headings that aren't actually on screen: the All Time tab hides Daily
-  // Activity (and with it the static "Snapshot" header), whose slot is taken by
-  // a second header inside the Revenue Outcome card — without this the nav
-  // would list Snapshot twice and one button would scroll to a zero-height
-  // target. Walks up only as far as `root`, so a hidden app shell or an
+  // Skip headings that aren't actually on screen. This guarded a duplicate
+  // "Snapshot" on the All Time tab (static header hidden, a second one borrowed
+  // by the Revenue Outcome card); that section is gone, but the rule still
+  // earns its place — any hidden heading would otherwise give the nav a button
+  // scrolling to a zero-height target. Walks up only as far as `root`, so a
+  // hidden app shell or an
   // inactive page (buildSectionNav also runs mid-render, before .active is set)
   // can't wipe the whole nav.
   const onScreen=el=>{for(let n=el;n&&n!==root;n=n.parentElement)if(getComputedStyle(n).display==='none')return false;return true;};

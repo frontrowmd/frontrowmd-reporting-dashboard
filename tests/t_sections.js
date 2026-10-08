@@ -148,8 +148,43 @@ ck('the sibling dashboards are untouched',
 
 // ── Key Metrics is now the first section ───────────────────────────
 ck('Key Metrics container precedes every other section',
-   ['id="sec-keymetrics"','id="sec-row1"','id="ov-truecpd-wrap"','id="dsec-demoinsights"']
+   ['id="sec-keymetrics"','id="dsec-demoinsights"','id="dsec-cvrfunnel"','id="sec-row2"']
      .map(at).every((v,i,a)=>v>0&&(i===0||v>a[i-1])),true);
+
+// ── Snapshot and Trend Analysis are gone from this page ────────────
+ck('the Snapshot section container is gone',at('id="sec-row1"'),-1);
+ck('  and the Daily Activity card inside it',at('id="sec-daily"'),-1);
+ck('  and its chart target',at('id="daily-wrap"'),-1);
+ck('the Trend Analysis container is gone',at('id="ov-truecpd-wrap"'),-1);
+ck('  and nothing still renders into it',/ov-truecpd-week/.test(html),false);
+// The All Time tab hid Daily Activity and lent its "Snapshot" header to the
+// Revenue Outcome card. With no Snapshot section that header is orphaned.
+ck('the borrowed All Time Snapshot header is gone',at('dsec-snapshot-alltime'),-1);
+ck('no Snapshot heading remains on this page',
+   /id="dsec-snapshot"/.test(html),false);
+
+// Both builders are SHARED with the Irfan Dashboard, which still shows both
+// sections — removing them here must not delete the functions.
+ck('renderDemosPerDay survives for Irfan',
+   /function renderDemosPerDay\(/.test(html)&&/renderDemosPerDay\(d,'irfan-daily-wrap'\)/.test(html),true);
+ck('  and the Brand page no longer calls it',/renderDemosPerDay\(d\);/.test(html),false);
+ck('the True CPD week builders survive for Irfan',
+   /_trueCpdWeekCard\(d,'irfan-truecpd-week'\)/.test(html)
+   &&/_renderTrueCpdWeek\(d,'irfan-truecpd-week'\)/.test(html),true);
+ck('Irfan keeps its own Snapshot section',/id="dsec-irf-snapshot"/.test(html),true);
+// The Clinician page's Trend Analysis is a different card entirely.
+ck('the Clinician Trend Analysis is untouched',/id="cln-trend-h"/.test(html),true);
+
+// The loading skeleton must not promise a card the page will never render.
+ck('the skeleton no longer previews a Daily Activity chart',
+   /dash-skel-row-7-3/.test(html),false);
+ck('  and leads with a single Key Metrics card instead',
+   html.indexOf('Row 0: Key Metrics')>0,true);
+
+// margin-top:0 belongs to whichever section is FIRST. It sat on #sec-row1,
+// which stopped being first when Key Metrics moved up and no longer exists.
+ck('the first-section margin rule targets the first section',
+   /#page-dashboard>\.dsec:first-of-type,#irfan-c>\.dsec:first-child\{margin-top:0\}/.test(html),true);
 ck('six headline tiles (five via _kmTile, the split one inline)',
    (html.match(/kmh\+=_kmTile\(/g)||[]).length+(html.match(/kmh\+='<div class="tile hero"/g)||[]).length,6);
 ck('in the order asked for',
