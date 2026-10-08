@@ -2,7 +2,7 @@
 // are ACTUALLY in HubSpot (measured over all 134 contacts with date_demo_booked,
 // createdate 2026-09-01..2026-10-02), plus the worker/client wiring.
 const {load,fn}=require('./slice.js');const vm=require('vm');
-const src=load('worker.js'), cli=load('dashboard.html');
+const src=load('worker.js'), cli=load(process.env.DASH_SRC||'dashboard.html');
 const ctx={console};vm.createContext(ctx);
 vm.runInContext(fn(src,'mapUtmToChannel'),ctx);
 const map=ctx.mapUtmToChannel;
@@ -60,8 +60,18 @@ ck('payload shape change bumped the cache version past v29',
    (+((src.match(/API_CACHE_VER = 'v(\d+)'/)||[])[1]||0))>=30,true);
 
 // --- client wiring --------------------------------------------------------
-ck('the tile divides by the SAME _regC the funnel card shows',
-   /fN\(_acqP\)\+' .u00f7 '\+fN\(_regC\)\+' regular demos'/.test(cli),true);
+ck('the Non-Paid stat divides by the SAME _regC the funnel card shows',
+   /fN\(_acqO\+_acqU\)\+' .u00f7 '\+fN\(_regC\)\+' regular demos'/.test(cli),true);
+// Non-Paid is DERIVED from the paid share, not re-summed, so the headline and
+// the mix bar underneath cannot drift apart by a rounding step.
+ck('Non-Paid is the paid share subtracted from 100',
+   /_npPct=\(_acqPct!=null\)\?\(100-_acqPct\):null/.test(cli),true);
+ck('  and its prior/LM twins are derived the same way',
+   /_npPctPV=\(_acqPctPV!=null\)\?\(100-_acqPctPV\):null/.test(cli)
+   &&/_npPctLM=\(_acqPctLM!=null\)\?\(100-_acqPctLM\):null/.test(cli),true);
+ck('  so Organic + Untagged IS the complement, by construction',
+   (()=>{const P=31,O=52,U=17,R=P+O+U;   // the three buckets partition _regC
+         return Math.abs((100-(P/R*100))-((O+U)/R*100))<1e-9;})(),true);
 // Six tiles over seven grid units: the acquisition tile takes two so its stats sit
 // side by side. Tiles and units drift apart silently and orphan a row, so pin both.
 const _kmBlock=cli.slice(cli.indexOf("repeat(7,minmax(0,1fr))"),cli.indexOf('<div id="t-revenue">'));
@@ -82,7 +92,7 @@ ck('both the single-stat tiles and the split tile use that same rhythm',
 ck('the caveat names the upper-bound problem',/UPPER bound/.test(cli)&&/did not click, and came back later/.test(cli),true);
 ck('a pre-v30 payload degrades to an em-dash, not NaN%',
    /_acqOK=\(_acqP!=null&&_acqO!=null&&_acqU!=null&&_regC>0\)/.test(cli)
-   &&/_acqPct!=null\?_acqPct\.toFixed\(1\)\+'%':'\\u2014'/.test(cli),true);
+   &&/_npPct!=null\?_npPct\.toFixed\(1\)\+'%':'\\u2014'/.test(cli),true);
 ck('the three-way bar is suppressed when the data is absent',/if\(!_acqOK\)return '';/.test(cli),true);
 ck('build version bumped past s5t225',
    (+((cli.match(/_BUILD_VER='s5t(\d+)'/)||[])[1]||0))>=226,true);
@@ -130,11 +140,15 @@ ck('its calc names the paid denominator',
    /f\$\(_spC\)\+' .u00f7 '\+fN\(_acqP\)\+' paid demos'/.test(cli),true);
 // Both stats must live in ONE tile div, or "split the card" silently became two cards.
 ck('both stats ride the same tile',(_kmBlock.match(/_acqStat\(/g)||[]).length,2);
-ck('with a divider between them, inside that tile',
-   /_acqStat\('Paid[\s\S]{0,400}?width:1px;align-self:stretch[\s\S]{0,200}?_acqStat\('CPD/.test(_kmBlock),true);
+ck('CPD Paid leads, with a divider, then Non-Paid \u2014 inside that one tile',
+   /_acqStat\('CPD[\s\S]{0,400}?width:1px;align-self:stretch[\s\S]{0,400}?_acqStat\('Non-Paid/.test(_kmBlock),true);
 ck('each stat keeps its own calc and deltas',
-   /_kmFoot\(_acqPct,_acqPctPV,_acqPctLM,'%',false\)/.test(_kmBlock)
+   /_kmFoot\(_npPct,_npPctPV,_npPctLM,'%',false\)/.test(_kmBlock)
    &&/_kmFoot\(_cPaidC,_cPaidP,_cPaidL,'\$',true\)/.test(_kmBlock),true);
+// Up is green on Non-Paid. That is the OPPOSITE colour the paid share showed for
+// the identical movement -- deliberate, because the two cannot both be "up is good".
+ck('a rising Non-Paid share reads as good (not inverted)',
+   /_kmFoot\(_npPct,_npPctPV,_npPctLM,'%',false\)/.test(_kmBlock),true);
 
 // Every const the moved block reads must be declared above it -- a TDZ throw here
 // blanks the whole section while still passing a syntax check.
@@ -143,10 +157,34 @@ ck('no TDZ: everything the acquisition tile reads is declared above it',
    ['const _kmFoot=','const _cPaidC=','const _acqP=','const _acqOK=','const _KM_LBL=',
     'const _acqStat=','const _acqMix=','const _ACQ_TIP=']
      .map(k=>cli.indexOf(k)).every(v=>v>0&&v<_iEmit),true);
+// Ad Spend, then the paid pair directly right of it, then the regular-cohort
+// costs, then Pre-Launch % where CAC used to sit, then CVR.
 ck('the tiles run in the order asked for',
-   ["'Ad Spend'","'CPD \\u00b7 Regular Demos'","'CPQD \\u00b7 Regular Demos'",
-    "'Paid \\u00b7 Last Click'","'CAC'","'CVR \\u00b7 Regular'"]
+   ["'Ad Spend'","'CPD \\u00b7 Paid'","'Non-Paid \\u00b7 Last Click'",
+    "'CPD \\u00b7 Regular Demos'","'CPQD \\u00b7 Regular Demos'",
+    "'Pre-Launch %'","'CVR \\u00b7 Regular'"]
      .map(t=>_kmBlock.indexOf(t)).every((v,i,a)=>v>0&&(i===0||v>a[i-1])),true);
+ck('CAC no longer occupies a Key Metrics tile',/kmh\+=_kmTile\('CAC'/.test(cli),false);
+// ...but it is not lost from the page: the Efficiency card and the Marketing
+// Funnel both still carry it, so removing the tile did not delete the metric.
+ck('  and CAC survives elsewhere on the page',
+   /statRow\('Paid ads CAC'/.test(cli)&&/trendItem\('Paid ads CAC'/.test(cli),true);
+// Pre-Launch % is the Demo Composition pie's first slice as a number: same
+// numerator and the same regular+pre denominator.
+ck('Pre-Launch % divides pre-launch by ALL demos booked',
+   /fN\(_preC\)\+' .u00f7 '\+fN\(_bothC\)\+' demos booked'/.test(cli),true);
+ck('  built from the shared _bothC the composition card uses',
+   /_preShare=_bothC>0\?\(_preC\/_bothC\*100\):null/.test(cli),true);
+ck('  with prior/LM twins that guard a zero denominator',
+   /_preShareP=\(_bothP!=null&&_bothP>0&&_preP!=null\)/.test(cli)
+   &&/_preShareL=\(_bothL!=null&&_bothL>0&&_preL!=null\)/.test(cli),true);
+// Pre-launch brands are the low-value tier -- the page already flags this share
+// orange past 30% -- so DOWN is the good direction.
+ck('a falling Pre-Launch % reads as good (inverted)',
+   /_kmFoot\(_preShare,_preShareP,_preShareL,'%',true\)/.test(_kmBlock),true);
+// The deal's own traffic tier, never the isLow name match (see pre-launch-test).
+ck('pre-launch rides scheduledPreTotal, not a name match',
+   /_preC=_wtDW\.scheduledPreTotal/.test(cli)&&!/_preC=[^;]*isLow/.test(cli),true);
 ck('no unused declarations left behind',/_acqPP|_acqPL/.test(cli),false);
 
 // --- review fixes -------------------------------------------------------
@@ -202,5 +240,12 @@ ck('the tooltip carries no attribute-breaking quote',
    (()=>{const i=cli.indexOf('const _ACQ_TIP=');return cli.slice(i,i+560).includes('"');})(),false);
 ck('and still says what Organic and Untagged mean',
    /u201cOrganic.u201d means no paid UTM/.test(cli)&&/u201cUntagged.u201d carries no UTM/.test(cli),true);
+// Each caveat phrase must sit inside ONE string literal -- split across the
+// concatenation it still renders, but silently stops matching these assertions.
+ck('no caveat phrase is split across the concatenation',
+   ['UPPER bound','did not click, and came back later',
+    'means no paid UTM','carries no UTM at all'].every(x=>cli.includes(x)),true);
+ck('the tile now headlines the non-paid share',/Non-Paid .u00b7 Last Click/.test(cli),true);
+ck('  and the old paid-share label is gone',/'Paid .u00b7 Last Click'/.test(cli),false);
 
 console.log(pass+' passed, '+fail+' failed');

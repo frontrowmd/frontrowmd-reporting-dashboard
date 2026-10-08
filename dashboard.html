@@ -401,7 +401,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;hei
   .meta-notes-3col{grid-template-columns:1fr !important}
 }
 
-/* Detailed Dashboard ad-channel tabs — switches the 3 Meta tables below */
+/* Brand Dashboard ad-channel tabs — switches the 3 Meta tables below */
 .dash-kpi-tab{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:50px;border:1px solid var(--border);background:transparent;color:var(--navy);font-family:var(--font-h);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
 .dash-kpi-tab:hover{background:var(--teal-8);border-color:var(--teal-30)}
 .dash-kpi-tab.active{background:var(--navy);color:#fff;border-color:var(--navy);box-shadow:0 2px 6px rgba(2,15,24,.18)}
@@ -481,7 +481,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;hei
   .irf-skel-row-specials{grid-template-columns:1fr}
 }
 
-/* Detailed Dashboard skeleton — 9-section layout that mirrors the real
+/* Brand Dashboard skeleton — 9-section layout that mirrors the real
    #page-dashboard structure. Reuses .su-skel-bar + .su-skel-banner. */
 .dash-skel-row{margin-bottom:16px}
 .dash-skel-row-7-3{display:grid;grid-template-columns:7fr 3fr;gap:16px}
@@ -618,7 +618,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
     <div class="sh"><img class="logo-full" src="https://raw.githubusercontent.com/frontrowmd/frontrowmd-reporting-dashboard/main/FrontrowMD_White_Logo.png" alt="frontrowMD" style="height:36px"><img class="logo-icon" src="https://raw.githubusercontent.com/frontrowmd/frontrowmd-reporting-dashboard/main/White_Graphic_Logo.png" alt="frontrowMD" style="height:28px;display:none"></div>
     <div class="snav">
       <div class="ni" onclick="switchDashSub('irfan')" data-page="irfan" data-sub="irfan"><span class="ic" style="font-size:12px">⭐</span><span>Irfan Dashboard</span></div>
-      <div class="ni" onclick="switchDashSub('overview')" data-page="dashboard" data-sub="overview"><span class="ic" style="font-size:12px">📊</span><span>Detailed Dashboard</span></div>
+      <div class="ni" onclick="switchDashSub('overview')" data-page="dashboard" data-sub="overview"><span class="ic" style="font-size:12px">📊</span><span>Brand Dashboard</span></div>
       <div class="ni" onclick="clinicianNav()" data-page="clinician" data-sub="clinician"><span class="ic" style="font-size:12px">🩺</span><span>Clinician Dashboard</span></div>
       <div class="ni grp" onclick="autoExpand();toggleDashMenu()" data-page="dashboard" id="dash-menu-parent" title="Additional Insights"><span class="ic">📊</span><span>Additional Insights</span><span id="dash-arrow" style="margin-left:auto;font-size:10px;transition:transform .2s">▼</span></div>
       <div id="dash-submenu" style="display:block;padding-left:24px">
@@ -647,7 +647,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
     <div class="sb-toggle" onclick="toggleCollapse()"><span class="sb-arrow">◀</span><span class="sb-label">Collapse</span></div>
   </nav>
   <div class="main">
-    <div class="topbar"><div style="display:flex;align-items:center;gap:12px"><button class="hamburger" id="hamburger" onclick="toggleSidebar()"><span></span><span></span><span></span></button><div class="ttl" id="ptitle" style="margin-bottom:0">Executive Dashboard</div></div><div class="flt" id="filters"></div></div>
+    <div class="topbar"><div style="display:flex;align-items:center;gap:12px"><button class="hamburger" id="hamburger" onclick="toggleSidebar()"><span></span><span></span><span></span></button><div class="ttl" id="ptitle" style="margin-bottom:0">Brand Dashboard</div></div><div class="flt" id="filters"></div></div>
     <div class="dqb" id="dqb">⚠️ Some data sources may not have fully loaded. <button class="rfb" onclick="refreshData()" style="margin-left:8px;padding:6px 14px">Refresh</button><span id="dqb-diag" style="display:block;margin-top:8px;font-size:11px;font-family:var(--font-b);color:#92400E;line-height:1.6"></span></div>
     <!-- AI Analysis Panel -->
     <div id="ai-panel-overlay" onclick="toggleAIPanel()" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(2,15,24,.3);z-index:998;transition:opacity .25s;opacity:0"></div>
@@ -721,7 +721,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
       <div class="sec sec-card dsec"><div class="dsec-h dsec-in" id="dsec-adchannelperf">Ad Channel Performance</div><div id="cpd-tbl"></div></div>
 
 
-      <!-- Row 7.5: Ad Channel switcher (Detailed Dashboard only) -->
+      <!-- Row 7.5: Ad Channel switcher (Brand Dashboard only) -->
       <div class="sec sec-card dsec" style="padding-top:14px"><div class="dsec-h dsec-in" id="dsec-adtables">Ad Tables</div><div class="irf-card-sub" style="margin:0 0 12px">One filter set drives all four tables · switch channel to repoint every table · expand a row for its children</div>
       <!-- Row 1 of the section's filter set — same .cln-frow grid as the
            Stage/Status/Tag/Flags rows written into #ov-meta-filters, so every
@@ -828,7 +828,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
             <div style="font-size:20px;font-weight:700;font-family:var(--font-h)">Monthly Review</div>
             <div style="font-size:12px;color:rgba(255,255,255,.55);margin-top:4px">AI-generated performance review, competitive intelligence, and next-month planning</div>
             <div style="margin-top:10px;padding:8px 12px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);border-radius:8px;font-size:11px;color:rgba(255,255,255,.8);line-height:1.5">
-              <strong style="color:#fff">Before generating:</strong> Go to <strong>Executive Dashboard → Overview</strong> and load the time window you want to review (e.g., Last Month). The report pulls data from whatever is currently loaded on the Overview page.
+              <strong style="color:#fff">Before generating:</strong> Go to <strong>Brand Dashboard → Overview</strong> and load the time window you want to review (e.g., Last Month). The report pulls data from whatever is currently loaded on the Overview page.
             </div>
           </div>
           <button id="strat-export-btn" onclick="exportStrategyDoc()" style="display:none;padding:10px 20px;background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:50px;font-weight:700;font-size:12px;cursor:pointer;font-family:var(--font-h);transition:all .2s;backdrop-filter:blur(4px)" onmouseover="this.style.background='rgba(255,255,255,.25)'" onmouseout="this.style.background='rgba(255,255,255,.15)'">⬇ Export .doc</button>
@@ -886,7 +886,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t260';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t261';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -910,7 +910,7 @@ function _staleAge(sec){
 // % No-Show exclude these (matching True CPD/CPQD + the worker). Lowercase
 // substring so it works on cloned tier strings or live values.
 const isSmallBrandWT=wt=>{const s=(wt||'').toLowerCase();return s.indexOf('pre-launch')>=0||s.indexOf('0-10k')>=0||s.indexOf('very small')>=0;};
-const T={dashboard:'Executive Dashboard',irfan:'Irfan Dashboard',resources:'Resources',calculator:'ARR Calculator',signup:'Sign-Up Rate',csession:'Creative Session',demoQuality:'Demo Quality',webinarPerf:'Webinar Performance',content:'Social Media Content',outbound:'Outbound Sequences'};
+const T={dashboard:'Brand Dashboard',irfan:'Irfan Dashboard',resources:'Resources',calculator:'ARR Calculator',signup:'Sign-Up Rate',csession:'Creative Session',demoQuality:'Demo Quality',webinarPerf:'Webinar Performance',content:'Social Media Content',outbound:'Outbound Sequences'};
 const W=[{k:'7d',l:'Last 7 Days'},{k:'mtd',l:'Month to Date'},{k:'lastMonth',l:'Last Month'},{k:'ytd',l:'Year to Date'},{k:'allTime',l:'All Time'},{k:'custom',l:'Custom'}];
 const AZ_TABS=[{k:'overview',l:'Overview'},{k:'meta',l:'Meta'},{k:'google',l:'Google'},{k:'linkedin',l:'LinkedIn'},{k:'tiktok',l:'TikTok'},{k:'youtube',l:'YouTube'}];
 function effM(cr){return cr>0?(1-Math.pow(1-cr,12))/cr:12;}
@@ -925,7 +925,7 @@ var _revOutcome=null,_roSeq=0;
 // Shared Revenue Outcome card (dark navy). Headline metric = Signed ARR
 // (MRR × 12). ROAS keeps the product-standard churn-adjusted definition
 // (churn-adjusted ARR ÷ spend) so it matches the ROAS used elsewhere. Used by
-// both the Detailed Dashboard (renderDash) and the Irfan Dashboard.
+// both the Brand Dashboard (renderDash) and the Irfan Dashboard.
 function _buildRevenueOutcomeCard(d){
   // Prefer the dedicated /api/revenue-outcome live result (accurate prior/LM)
   // when it's loaded for this page's current window; otherwise fall back to the
@@ -973,7 +973,7 @@ function _buildRevenueOutcomeCard(d){
       +'</div>'
     +'</div>';
   }
-  // Detailed Dashboard, All Time tab only: Daily Activity is hidden there and
+  // Brand Dashboard, All Time tab only: Daily Activity is hidden there and
   // this card expands to the full row, so it carries the "Snapshot" section
   // header (white, for the dark card). Emitted by the builder rather than moved
   // in the DOM so it survives fdRevenueOutcome()'s re-render of #t-revenue.
@@ -1092,12 +1092,12 @@ async function goC(){const f=document.getElementById('cf').value,t=document.getE
   S[AP].cFrom=f;S[AP].cTo=t;S[AP].cVsFrom=vsFrom;S[AP].cVsTo=vsTo;S[AP].quarterKey=null;
   if(AP==='webinarPerf'){await fdWebinarPerf('custom',f,t,vsFrom,vsTo);return;}
   // The Clinician page has its own endpoint and its own fetcher; selW() routes to
-  // it but this path did not, so Go ran the Detailed Dashboard's fetch against
+  // it but this path did not, so Go ran the Brand Dashboard's fetch against
   // /api/data and left the clinician view showing the previous window's numbers.
   // fdClinician reads the range off S.clinician.cFrom/cTo, set just above.
   if(AP==='clinician'){S.clinician.win='custom';await fdClinician('custom');return;}
   await fd('custom',f,t,vsFrom,vsTo);}
-// Detailed Dashboard skeleton — replaces the full #page-dashboard innerHTML
+// Brand Dashboard skeleton — replaces the full #page-dashboard innerHTML
 // with a 9-section layout matching the real page (Daily / Revenue / WT Pie /
 // Funnel / Executive Summary / Conversion Funnel / Demo Outcome / Ad Spend /
 // Channel Perf / Meta Campaigns / Meta Creatives). Snapshots the original
@@ -1126,7 +1126,7 @@ function _renderDashSkeleton(pct, step){
     <div class="su-skel-banner" role="status" aria-live="polite">
       <div class="su-skel-banner-spin" aria-hidden="true"></div>
       <div class="su-skel-banner-text">
-        <div class="su-skel-banner-title">Loading Detailed Dashboard</div>
+        <div class="su-skel-banner-title">Loading Brand Dashboard</div>
         <div class="su-skel-banner-step">${step||'Connecting to Windsor.ai & HubSpot…'}</div>
       </div>
       <div class="su-skel-banner-bar"><div class="su-skel-banner-fill" style="width:${Math.max(0,Math.min(100,pct||0))}%"></div></div>
@@ -1286,7 +1286,7 @@ async function fd(w,from,to,vsFrom,vsTo,fresh){
   const isDash=AP==='dashboard';
   const useSkeleton=isIrfan||isDash;
   const url=isAz?AZ_API:API;
-  // Pages with custom inline skeletons (Irfan + Detailed Dashboard) skip the
+  // Pages with custom inline skeletons (Irfan + Brand Dashboard) skip the
   // blocking full-page overlay in favor of section-shaped shimmer placeholders.
   if(useSkeleton){
     if(ldEl)ldEl.style.display='none';
@@ -1526,7 +1526,7 @@ async function fdAnalyzer(win){
   // Resolve custom dates + collision-safe cache key (mirrors the loader).
   const _cr=_resolveCustomRange(win);
   const _ck=_azCacheKey(win,_cr);
-  // Reuse the cache that Detailed Dashboard / Irfan Dashboard populates
+  // Reuse the cache that Brand Dashboard / Irfan Dashboard populates
   const _azHit=_azCacheGet(_ck,win);
   if(_azHit){
     S.analyzer.data=_azHit;
@@ -2618,6 +2618,20 @@ function renderDash(){
   const _bothC=_regC+_preC;
   const _bothP=(_regP!=null&&_preP!=null)?_regP+_preP:null;
   const _bothL=(_regL!=null&&_preL!=null)?_regL+_preL:null;
+  // NON-paid last click = the exact complement of the paid share, so it is
+  // derived from it rather than re-summed: Organic + Untagged over the same
+  // regular cohort. Keeping one source means the headline and the mix bar
+  // beneath it can never disagree by a rounding step.
+  const _npPct=(_acqPct!=null)?(100-_acqPct):null;
+  const _npPctPV=(_acqPctPV!=null)?(100-_acqPctPV):null;
+  const _npPctLM=(_acqPctLM!=null)?(100-_acqPctLM):null;
+  // Pre-launch share of ALL demos booked (regular + pre-launch), the same
+  // denominator the Demo Composition pie splits — so the tile is that pie's
+  // first slice as a number. Pre-launch is the demo's own web-traffic tier,
+  // not a name match, which is the gate the rest of the page uses.
+  const _preShare=_bothC>0?(_preC/_bothC*100):null;
+  const _preShareP=(_bothP!=null&&_bothP>0&&_preP!=null)?(_preP/_bothP*100):null;
+  const _preShareL=(_bothL!=null&&_bothL>0&&_preL!=null)?(_preL/_bothL*100):null;
   const _spC=em.totalSpend||0,_spP=em.pTotalSpend,_spL=em.pmTotalSpend;
   const _cpdSeg=(sp,n)=>(n!=null&&n>0&&sp!=null)?sp/n:null;
   const _cRegC=_cpdSeg(_spC,_regC),_cRegP=_cpdSeg(_spP,_regP),_cRegL=_cpdSeg(_spL,_regL);
@@ -2830,23 +2844,21 @@ function renderDash(){
   kmh+=_kmTile('Ad Spend',f$(_kmSpend),
     (_kmBudget>0?f$(_kmSpend)+' \u00f7 '+f$(_kmBudget)+' budget':'no budget set'),
     _kmFoot(_kmSpend,em.pTotalSpend,em.pmTotalSpend,'$',false),_kmPace);
-  // Regular = demos + webinars excluding pre-launch, the same _regC the
-  // Efficiency card's "CPD Regular" and the funnel's CVR Regular divide by.
-  kmh+=_kmTile('CPD \u00b7 Regular Demos',_cRegC!=null?f$(_cRegC):'\u2014',
-    f$(_spC)+' \u00f7 '+fN(_regC)+' regular demos',
-    _kmFoot(_cRegC,_cRegP,_cRegL,'$',true));
-  kmh+=_kmTile('CPQD \u00b7 Regular Demos',cpqd!=null?f$(cpqd):'\u2014',
-    f$(em.totalSpend||0)+' \u00f7 '+fN(qd)+' qualified demos',
-    _kmFoot(cpqd,cpqdPV,cpqdLMV,'$',true));
-  // Last-click acquisition, over two grid columns. The headline is the paid share
-  // because that is the only slice positively identified; "organic" is a residual
-  // and "untagged" is its error bar, so both are shown rather than collapsed into
-  // one reassuring number. Emitted inline rather than through _kmTile: this is the
-  // one tile with two stats, which needs a two-column body _kmTile does not model.
-  const _ACQ_TIP='Share of Regular demos whose booking contact carries a paid-ad UTM. '
-    +'\u201cOrganic\u201d means no paid UTM \u2014 it includes organic search, brand referrals, '
-    +'and anyone who saw an ad, did not click, and came back later. It is an UPPER bound '
-    +'on organic, not a measure of it. \u201cUntagged\u201d carries no UTM at all, so its origin is unknown.';
+  // Paid acquisition, over two grid columns, sitting directly right of Ad Spend:
+  // cost of a paid demo and the share of demand that did NOT come from a paid
+  // click read as one thought about what the spend above is buying.
+  // Emitted inline rather than through _kmTile: this is the one tile with two
+  // stats, which needs a two-column body _kmTile does not model.
+  // Each phrase stays inside ONE string literal. Splitting one across the
+  // concatenation hides it from the assertions that pin this caveat, and the
+  // caveat is the whole reason the tile does not just say "organic".
+  const _ACQ_TIP='Share of Regular demos whose booking contact carries NO paid-ad UTM '
+    +'\u2014 the exact complement of the paid share, i.e. Organic + Untagged. '
+    +'\u201cOrganic\u201d means no paid UTM: it covers organic search, brand referrals, '
+    +'and anyone who saw an ad, did not click, and came back later, so this is an '
+    +'UPPER bound on organic demand, not a measure of it. '
+    +'\u201cUntagged\u201d carries no UTM at all, so its origin is unknown. '
+    +'The mix bar below splits the two.';
   // Same label/value/calc/footer rhythm as _kmTile, so the two halves line up with
   // each other and with the single-stat tiles either side.
   const _acqStat=(lbl,val,calc,foot)=>'<div style="flex:1 1 0;min-width:0">'
@@ -2881,17 +2893,35 @@ function renderDash(){
   kmh+='<div class="tile hero" style="border-left:3px solid var(--teal);grid-column:span 2" '
     +'title="'+_ACQ_TIP+'">'
     +'<div style="display:flex;gap:20px;align-items:flex-start">'
-    +_acqStat('Paid \u00b7 Last Click',_acqPct!=null?_acqPct.toFixed(1)+'%':'\u2014',
-       (_acqOK?fN(_acqP)+' \u00f7 '+fN(_regC)+' regular demos':'last-click UTM'),
-       _kmFoot(_acqPct,_acqPctPV,_acqPctLM,'%',false))
-    +'<div style="width:1px;align-self:stretch;background:rgba(255,255,255,.14)"></div>'
     +_acqStat('CPD \u00b7 Paid',_cPaidC!=null?f$(_cPaidC):'\u2014',
        (_acqOK?f$(_spC)+' \u00f7 '+fN(_acqP)+' paid demos':''),
        _kmFoot(_cPaidC,_cPaidP,_cPaidL,'$',true))
+    +'<div style="width:1px;align-self:stretch;background:rgba(255,255,255,.14)"></div>'
+    // Up is GREEN here: a bigger non-paid share reads as healthier unpaid demand.
+    // Note this is the opposite colour to the paid share it replaced, for the
+    // identical underlying movement -- the two cannot both be "up is good".
+    +_acqStat('Non-Paid \u00b7 Last Click',_npPct!=null?_npPct.toFixed(1)+'%':'\u2014',
+       (_acqOK?fN(_acqO+_acqU)+' \u00f7 '+fN(_regC)+' regular demos':'last-click UTM'),
+       _kmFoot(_npPct,_npPctPV,_npPctLM,'%',false))
     +'</div>'+_acqMix+'</div>';
-  kmh+=_kmTile('CAC',cacSB!=null?f$(cacSB):'\u2014',
-    f$(em.totalSpend||0)+' \u00f7 '+fN(_sbCount)+' signed brands',
-    _kmFoot(cacSB,pCac,pmCac,'$',true));
+  // Regular = demos + webinars excluding pre-launch, the same _regC the
+  // Efficiency card's "CPD Regular" and the funnel's CVR Regular divide by.
+  kmh+=_kmTile('CPD \u00b7 Regular Demos',_cRegC!=null?f$(_cRegC):'\u2014',
+    f$(_spC)+' \u00f7 '+fN(_regC)+' regular demos',
+    _kmFoot(_cRegC,_cRegP,_cRegL,'$',true));
+  kmh+=_kmTile('CPQD \u00b7 Regular Demos',cpqd!=null?f$(cpqd):'\u2014',
+    f$(em.totalSpend||0)+' \u00f7 '+fN(qd)+' qualified demos',
+    _kmFoot(cpqd,cpqdPV,cpqdLMV,'$',true));
+  // Pre-Launch % replaced CAC here. CAC itself is NOT lost: it still leads the
+  // Efficiency card ("Paid ads CAC") and the Marketing Funnel, both on this page.
+  // Down is green -- pre-launch brands are the low-value tier, which is why the
+  // page already flags this share in orange once it clears 30%.
+  kmh+=_kmTile('Pre-Launch %',_preShare!=null?_preShare.toFixed(1)+'%':'\u2014',
+    fN(_preC)+' \u00f7 '+fN(_bothC)+' demos booked',
+    _kmFoot(_preShare,_preShareP,_preShareL,'%',true),null,
+    'Share of ALL demos booked in this window that came from a pre-launch brand '
+    +'\u2014 the demo\u2019s own web-traffic tier, not a name match. Same denominator as '
+    +'the Demo Composition pie, so this is that pie\u2019s first slice as a number.');
   kmh+=_kmTile('CVR \u00b7 Regular',_cvrReg!=null?_cvrReg.toFixed(2)+'%':'\u2014',
     fN(_regC)+' \u00f7 '+fN(visitors)+' visitors',
     _kmFoot(_cvrReg,_cvrRegPV,_cvrRegLM,'%',false));
@@ -2942,7 +2972,7 @@ function renderDash(){
   // and ov-* DOM targets so a single fetch hydrates both pages.
   if(typeof _renderIrfanMetaTablesLoader==='function')_renderIrfanMetaTablesLoader(S.dashboard?.win||'mtd');
   // Sync ad-channel tab UI (in case the user previously switched to a non-Meta
-  // channel and is now coming back to the Detailed Dashboard).
+  // channel and is now coming back to the Brand Dashboard).
   if(typeof dashSetAdChannel==='function'&&S.dashboard?.activeAdChannel&&S.dashboard.activeAdChannel!=='meta'){
     dashSetAdChannel(S.dashboard.activeAdChannel);
   }
@@ -3013,7 +3043,7 @@ function renderIrfan(){
 
   // ═══════ Section 1 — Snapshot ═══════
   // The section header replaces the first card's own title (was "Demos Booked
-  // per Day"), the same treatment the Detailed Dashboard uses.
+  // per Day"), the same treatment the Brand Dashboard uses.
   h+='<div class="dsec" style="display:grid;grid-template-columns:1.6fr 1fr;gap:16px;margin-bottom:28px">';
   // 1a — Demos booked per day (matches Overview). Reuses renderDemosPerDay for mini KPI cards + hover.
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px"><div class="dsec-h dsec-in" id="dsec-irf-snapshot">Snapshot</div><div class="irf-card-sub">Contacts created with date_demo_booked set · average line shows daily mean</div><div id="irfan-daily-wrap"></div></div>';
@@ -3025,7 +3055,7 @@ function renderIrfan(){
   // Trend of total ad spend ÷ demos (excl. small brands) by calendar week within
   // the selected window. Points + instant hover. The builder emits the section
   // header in place of the card's own title; the wrapper carries the section gap
-  // (mirrors #ov-truecpd-wrap on the Detailed Dashboard).
+  // (mirrors #ov-truecpd-wrap on the Brand Dashboard).
   h+='<div class="dsec">'+_trueCpdWeekCard(d,'irfan-truecpd-week')+'</div>';
 
   // ═══════ Section 3 — Key Metrics ═══════
@@ -3086,7 +3116,7 @@ function renderIrfan(){
   }
   h+=`<div class="tile hero" style="border-left:3px solid var(--teal)" title="Total ad spend this period. Mini bar shows current-month pacing: spend vs monthly budget (fill) against % of month elapsed (line). Budget excludes pending (no-connector) channels."><div class="tlbl">Ad Budget Pacing</div><div class="tval">${f$(_periodSpend)}</div><div class="tdef" style="margin-top:4px">Total ad spend this period</div>${_paceGraph}${_irTileFooter(_periodSpend,_spendPV,_spendLM,'$',false)}</div>`;
   h+='</div>';
-  // Revenue Outcome (Signed ARR) — same card as the Detailed Dashboard. Last
+  // Revenue Outcome (Signed ARR) — same card as the Brand Dashboard. Last
   // child of the Key Metrics container, so it carries no bottom margin.
   h+='<div id="irfan-revoutcome">'+_buildRevenueOutcomeCard(d)+'</div>';
   h+='</div>';   // ── end Section 3 container
@@ -3118,12 +3148,12 @@ function renderIrfan(){
 
   // Ad-channel tab selector + per-channel deep-dive tables (Campaigns / Ad Sets /
   // Creatives / Audiences). Tabs switch S.dashboard.activeAdChannel (state shared
-  // with the Detailed Dashboard) and re-render the tables below via dashSetAdChannel.
+  // with the Brand Dashboard) and re-render the tables below via dashSetAdChannel.
   // Section titles use ad-channel-label/dot so they follow the active channel.
   const _irfDot='<span class="ad-channel-dot" style="display:inline-block;width:8px;height:8px;background:#1877F2;border-radius:50%;margin-right:6px;vertical-align:middle"></span>';
   // ═══════ Section 5 — Ads ═══════
   // One card container holds the channel toggles and all four tables, matching
-  // the Detailed Dashboard's Ad Tables section. The last table drops its bottom
+  // the Brand Dashboard's Ad Tables section. The last table drops its bottom
   // margin since it is the container's last child.
   h+='<div class="dsec" style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px">';
   h+='<div class="dsec-h dsec-in" id="dsec-irf-ads">Ads</div>';
@@ -3148,7 +3178,7 @@ function renderIrfan(){
   _renderIrfanMetaTablesLoader();
   buildSectionNav('irfan');   // headings only exist after this render
   // Sync ad-channel tab UI + section labels if a non-Meta channel is active
-  // (state is shared with the Detailed Dashboard).
+  // (state is shared with the Brand Dashboard).
   if(typeof dashSetAdChannel==='function'&&S.dashboard?.activeAdChannel&&S.dashboard.activeAdChannel!=='meta'){
     dashSetAdChannel(S.dashboard.activeAdChannel);
   }
@@ -4086,7 +4116,7 @@ function _azCacheKey(win,cr){
 // pinned it and every later page-window change was ignored — picking Last Month
 // above left the tables on MTD.
 //
-// winOverride is the caller's page window; the Detailed Dashboard render passes
+// winOverride is the caller's page window; the Brand Dashboard render passes
 // it. It used to be declared on the loader and never read.
 function _metaSeedWin(winOverride){
   if(S.irfan.metaWinPinned){
@@ -4129,7 +4159,7 @@ function _renderIrfanMetaTablesLoader(winOverride){
   const irfWin=S.irfan.metaWin;
   // Full analyzer payload cache (Meta data + matchRate + audiences + fatigue).
   // Previously only stored the meta channel; expanded so we can also surface
-  // the attribution match-rate footer on the Detailed Dashboard's Channel
+  // the attribution match-rate footer on the Brand Dashboard's Channel
   // Performance table and the Audiences table below Meta Creatives.
   if(!S.irfan.analyzerCache)S.irfan.analyzerCache={};
   // Resolve custom dates + a collision-safe cache key. For custom windows the
@@ -4575,7 +4605,7 @@ window.clinicianSetAcq=function(mode){S.clinician.acqMode=mode;renderClinician()
 // Pie chart for the Clinician Composition cards. Percentages sit on the slices,
 // a legend runs underneath, and each slice carries an instant hover (dbcTip)
 // reading "count (pct) - name".
-// ── Demo Acquisition (Detailed Dashboard) ──────────────────────────────────
+// ── Demo Acquisition (Brand Dashboard) ──────────────────────────────────
 // The Clinician Dashboard's Acquisition card, but counting demos: same UTM
 // Source / Medium / Campaign toggle, same donut + legend (_clinicianPie), same
 // worker-side 8-slice cap. Counts come from processScheduledContacts over the
@@ -5852,7 +5882,7 @@ function _capiSub(o,channel,withDefault){
 }
 // Callbacks invoked by header clicks / stage filter pills. On Detailed
 // Dashboard we render the user-selected channel; on Irfan it's always meta.
-// ── Ad KPIs (Detailed Dashboard) ────────────────────────────────────────────
+// ── Ad KPIs (Brand Dashboard) ────────────────────────────────────────────
 // Three cards above the Ad Tables: Budget Pacing, CPD, CAC. They read the SAME
 // analyzer payload the tables read, so the cards and the tables can never
 // disagree about which channel or which date window they describe.
@@ -6051,7 +6081,7 @@ function _curAdCh(){
   if(ch==='clinician'){ch='meta';S.dashboard.activeAdChannel='meta';}
   return ch;
 }
-// Shared ad-channel tab bar markup (used by the Detailed Dashboard static HTML
+// Shared ad-channel tab bar markup (used by the Brand Dashboard static HTML
 // and injected into the Irfan Dashboard). activeCh drives the .active pill.
 function _adChannelTabsHTML(activeCh){
   const chs=[['meta','Meta','#1877F2'],['linkedin','LinkedIn','#0A66C2'],['google','Google','#4285F4'],['reddit','Reddit','#FF4500'],['chatgpt','ChatGPT','#10A37F'],['tiktok','TikTok','#FF0050']];
@@ -6067,7 +6097,7 @@ function _adChannelTabsHTML(activeCh){
 window.irfanSortCamp=function(col){const s=S.irfan.metaCampSort||(S.irfan.metaCampSort={col:'cpd',dir:'asc'});if(s.col===col)s.dir=s.dir==='desc'?'asc':'desc';else{s.col=col;s.dir=(col==='name'||col==='status'||col==='stage')?'asc':'desc';}if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
 window.irfanSortCre=function(col){const s=S.irfan.metaCreSort||(S.irfan.metaCreSort={col:'cpd',dir:'asc'});if(s.col===col)s.dir=s.dir==='desc'?'asc':'desc';else{s.col=col;s.dir=(col==='name'||col==='status')?'asc':'desc';}if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
 window.irfanSortAud=function(col){const s=S.irfan.metaAudSort||(S.irfan.metaAudSort={col:'cpd',dir:'asc'});if(s.col===col)s.dir=s.dir==='desc'?'asc':'desc';else{s.col=col;s.dir=(col==='name')?'asc':'desc';}if(_irfanMetaD)_renderIrfanMetaTables(_irfanMetaD,_curAdCh());};
-// Switch the active ad channel on the Detailed Dashboard. Updates section
+// Switch the active ad channel on the Brand Dashboard. Updates section
 // titles + colored dots + the active tab pill, then re-renders the 3 tables.
 window.dashSetAdChannel=function(ch){
   if(!ch)return;
@@ -6366,7 +6396,7 @@ var _clnAdCols=false;
 function _renderIrfanMetaTables(d, channel){
   _irfanMetaD=d;
   _clnAdCols=((channel||'meta')==='clinician');
-  // Default to 'meta' for back-compat; Detailed Dashboard passes the active
+  // Default to 'meta' for back-compat; Brand Dashboard passes the active
   // ad-channel tab. Irfan Dashboard always passes 'meta' (no tabs there).
   channel = channel || 'meta';
   // Ad KPI cards share this render path deliberately: they read the same
@@ -7232,7 +7262,7 @@ function _renderIrfanSignedPie(d){
 // Mirrors the design of Special #2: title + sub on the left, toggle pills on
 // the right, then the grouped stat card + breakdown KPIs.
 
-// ── Signed Brands (Detailed Dashboard) ───────────────────────────────
+// ── Signed Brands (Brand Dashboard) ───────────────────────────────
 // One toggle for the section: MTD (default) or Last Month. Both tiles come from
 // /api/special1-cohorts, which derives exactly these two windows and takes no
 // page-window parameter — so the section genuinely is independent of the page
@@ -7635,7 +7665,7 @@ function renderOverviewOutcomeBreakdown(d){
   }catch(err){console.error('[OV-OUTCOME] Error:',err);console.error('[OV-OUTCOME] Stack:',err.stack);}
 }
 
-// No-Show Analysis (Detailed Dashboard). Three sub-analyses on the past-dated
+// No-Show Analysis (Brand Dashboard). Three sub-analyses on the past-dated
 // demos that fall in the current window:
 //   1. Distribution of no-shows by web-traffic tier (% of all no-shows in each tier)
 //   2. No-show rate per web-traffic tier (No Show ÷ Demo Given orig + resched + No Show)
@@ -8884,7 +8914,7 @@ function renderDemoQuality(){try{
   var total=pastFiltered.length;
   var demosHappened=0;
   pastFiltered.forEach(function(dd){if(demoHappened(dd.demo_attendance_status,dd.demo_given__status))demosHappened++;});
-  // NEW formulas (match Executive Dashboard)
+  // NEW formulas (match Brand Dashboard)
   var qualRateDenom=qualifiedRawCount+disqualifiedRawCount;
   var qualRate=qualRateDenom>0?(qualifiedRawCount/qualRateDenom*100).toFixed(1):'0';
   var noShowDenom=demoGivenOrigCount+demoGivenReschedCount+catNoShow;
@@ -8933,7 +8963,7 @@ function renderDemoQuality(){try{
   function statRowC(label,def,valueHTML,calcText,cur,priorV,lmV,fmt,opts){opts=opts||{};var valColor=opts.color||'var(--navy)';var calcSpan=calcText?'<div style="font-size:11px;color:var(--grey)">'+calcText+'</div>':'';var extraSpan=opts.extra?'<div style="font-size:11px;color:var(--grey);margin:4px 0 6px">'+opts.extra+'</div>':'';var mb=opts.noMargin?'0':'10px';var bgCol='var(--white)',borderCol='var(--border)',extraStyle='';if(opts.highlighted){bgCol='linear-gradient(135deg,rgba(114,164,191,.05) 0%,rgba(114,164,191,.10) 100%)';borderCol='#A6CDDB';extraStyle='box-shadow:inset 3px 0 0 var(--teal);';}if(opts.dangerIf!=null&&typeof cur==='number'&&cur>opts.dangerIf){borderCol='#FCA5A5';extraStyle+='box-shadow:inset 3px 0 0 var(--red);';}if(opts.warnIf!=null&&typeof cur==='number'&&cur>opts.warnIf){bgCol='linear-gradient(135deg,rgba(245,158,11,.05) 0%,rgba(245,158,11,.10) 100%)';borderCol='#FCD34D';extraStyle+='box-shadow:inset 3px 0 0 #F59E0B;';}return '<div class="stat-card" style="background:'+bgCol+';border:1px solid '+borderCol+';border-radius:8px;padding:12px;margin-bottom:'+mb+';transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease;'+extraStyle+'"><div style="font-family:var(--font-h);font-size:11px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">'+label+'</div><div style="font-size:11px;color:var(--grey);line-height:1.4;margin-bottom:6px">'+def+'</div><div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px"><div style="font-family:var(--font-h);font-size:22px;font-weight:700;line-height:1;color:'+valColor+'">'+valueHTML+'</div>'+calcSpan+'</div>'+extraSpan+deltaBlockC(cur,priorV,lmV,fmt,opts.inv,opts.dec)+'</div>';}
 
   // Top section — Volume / Quality / Demos Booked by Web-Traffic Range
-  // Matches the Detailed Dashboard's overview (same statRow shapes), with the
+  // Matches the Brand Dashboard's overview (same statRow shapes), with the
   // donut as the 3rd panel. The donut renders into #dq-webtraffic after
   // innerHTML is set, via _renderIrfanWtPieInto in the rAF block below.
   h+='<div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:12px;margin-bottom:20px">';
@@ -10267,8 +10297,8 @@ function switchDashSub(sub){
   var apMap={overview:'dashboard',clinician:'clinician',irfan:'irfan',signup:'signup',calculator:'calculator',strategy:'strategy',demoQuality:'demoQuality',outbound:'outbound',webinarPerf:'webinarPerf'};
   AP=apMap[sub]||'dashboard';
   // Update titles
-  var titleMap={overview:'Detailed Dashboard',clinician:'Clinician Dashboard',irfan:'Irfan Dashboard',signup:'Sign-Up Rate',calculator:'ARR Calculator',strategy:'Monthly Review',demoQuality:'Demo Quality',outbound:'Outbound Sequences',webinarPerf:'Webinar Performance'};
-  document.getElementById('ptitle').textContent=titleMap[sub]||'Executive Dashboard';
+  var titleMap={overview:'Brand Dashboard',clinician:'Clinician Dashboard',irfan:'Irfan Dashboard',signup:'Sign-Up Rate',calculator:'ARR Calculator',strategy:'Monthly Review',demoQuality:'Demo Quality',outbound:'Outbound Sequences',webinarPerf:'Webinar Performance'};
+  document.getElementById('ptitle').textContent=titleMap[sub]||'Brand Dashboard';
   // Highlight nav items
   // highlighting handled centrally by _syncNav() on render
   // Ensure dash submenu open, others closed
@@ -11357,7 +11387,7 @@ function getStrategyData(){
       out+='\n';
     }
   }catch(e){out+='[Error collecting data: '+e.message+']\n';}
-  return out||'No dashboard data available. Load the Executive Dashboard first.';
+  return out||'No dashboard data available. Load the Brand Dashboard first.';
 }
 
 
@@ -14238,7 +14268,7 @@ function renderAzChannel(d,chKey,cr,eM,crPct,isMTD){
 function r2(n){return Math.round(n*100)/100;}
 
 // Top-level creative-scoring UI helpers — hoisted out of renderAzChannel so
-// they're callable from any page (Irfan/Detailed Dashboard Meta tables also
+// they're callable from any page (Irfan/Brand Dashboard Meta tables also
 // use them now). The nested copies inside renderAzChannel still exist for
 // back-compat; behavior is identical.
 function scoreBadge(score){
@@ -15441,7 +15471,7 @@ async function runStrategyMemo(){
   lbl.textContent='Collecting dashboard data...';
   var dashData='';
   try{dashData=getStrategyData();}catch(e){dashData='[Error collecting dashboard data: '+e.message+']';}
-  if(!dashData||dashData.length<20)dashData='No dashboard data available. Please load the Executive Dashboard (Overview tab) first, then return here to generate the memo.';
+  if(!dashData||dashData.length<20)dashData='No dashboard data available. Please load the Brand Dashboard (Overview tab) first, then return here to generate the memo.';
   var crInsights='';
   try{crInsights=getCreativeInsights();}catch(e){}
 

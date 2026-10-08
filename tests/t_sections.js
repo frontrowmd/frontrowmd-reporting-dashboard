@@ -4,7 +4,7 @@ const fs=require('fs');
 let pass=0,fail=0;
 function ck(n,g,w){const ok=JSON.stringify(g)===JSON.stringify(w);ok?pass++:fail++;
   console.log((ok?'PASS ':'FAIL ')+n+'  got='+JSON.stringify(g)+(ok?'':' want='+JSON.stringify(w)));}
-const html=fs.readFileSync('dashboard.html','utf8');
+const html=fs.readFileSync(process.env.DASH_SRC||'dashboard.html','utf8');
 const at=id=>html.indexOf(id);
 
 // ── Order on the Detailed Dashboard ──
@@ -122,6 +122,30 @@ ck('the genuine pacing tile elsewhere keeps its name',
    /<div class="tlbl">Ad Budget Pacing<\/div>/.test(html),true);
 ck('and the Clinician duplicate is gone',/kpi\('Ad Budget Pacing'/.test(html),false);
 
+// ── The page is called Brand Dashboard, in one voice ───────────────
+// It used to answer to TWO names: the nav and titleMap said "Detailed
+// Dashboard" while T.dashboard and the static topbar said "Executive
+// Dashboard", so the title bar changed depending on how you arrived.
+ck('no stale page name survives anywhere',
+   /Detailed Dashboard|Executive Dashboard/.test(html),false);
+ck('the nav entry says Brand Dashboard',
+   /data-sub="overview"[^>]*>(?:[^<]|<(?!\/div))*?<span>Brand Dashboard<\/span>/.test(html),true);
+ck('the static topbar title agrees',
+   /id="ptitle"[^>]*>Brand Dashboard</.test(html),true);
+ck('and so does the title the sub-nav writes',
+   /titleMap=\{overview:'Brand Dashboard'/.test(html),true);
+ck('  including its fallback, which was the second name',
+   /textContent=titleMap\[sub\]\|\|'Brand Dashboard'/.test(html),true);
+ck('the AI panel label resolves to the same name',
+   /const T=\{dashboard:'Brand Dashboard'/.test(html),true);
+ck('the loading skeleton too',/Loading Brand Dashboard/.test(html),true);
+// Copy on OTHER pages that tells the reader to go load this one.
+ck('cross-page instructions point at the new name',
+   (html.match(/load the Brand Dashboard/gi)||[]).length>=2,true);
+// Sibling pages keep their own names.
+ck('the sibling dashboards are untouched',
+   /Clinician Dashboard/.test(html)&&/Irfan Dashboard/.test(html),true);
+
 // ── Key Metrics is now the first section ───────────────────────────
 ck('Key Metrics container precedes every other section',
    ['id="sec-keymetrics"','id="sec-row1"','id="ov-truecpd-wrap"','id="dsec-demoinsights"']
@@ -129,9 +153,15 @@ ck('Key Metrics container precedes every other section',
 ck('six headline tiles (five via _kmTile, the split one inline)',
    (html.match(/kmh\+=_kmTile\(/g)||[]).length+(html.match(/kmh\+='<div class="tile hero"/g)||[]).length,6);
 ck('in the order asked for',
-   ['Ad Spend','CPD \\u00b7 Regular Demos','CPQD \\u00b7 Regular Demos',
-    'Paid \\u00b7 Last Click','CAC','CVR \\u00b7 Regular']
+   ['Ad Spend','CPD \\u00b7 Paid','Non-Paid \\u00b7 Last Click','CPD \\u00b7 Regular Demos',
+    'CPQD \\u00b7 Regular Demos','Pre-Launch %','CVR \\u00b7 Regular']
      .map(t=>html.indexOf("('"+t+"'")).every((v,i,a)=>v>0&&(i===0||v>a[i-1])),true);
+// The paid pair sits directly right of Ad Spend, so nothing separates the spend
+// from what it bought.
+ck('the split tile is the second thing in the row, right after Ad Spend',
+   html.indexOf('kmh+=\'<div class="tile hero"')<html.indexOf("_kmTile('CPD \\u00b7 Regular Demos'"),true);
+ck('CAC gave up its tile to Pre-Launch %',
+   /_kmTile\('CAC'/.test(html),false);
 // Tile count and column count drift apart silently and orphan a 1/5-width row.
 // Six tiles, seven units: the split tile spans two columns.
 ck('the grid has one column per grid unit',
