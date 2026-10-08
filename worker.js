@@ -822,7 +822,9 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v36';   // v36: clinician conversions follow each AD SET's own optimization
+const API_CACHE_VER = 'v37';   // v37: Brand Dashboard Trend Analysis — adds a fixed-lookback
+                               //      `trend` + `trendRange` to the /api/data payload.
+                               // v36: clinician conversions follow each AD SET's own optimization
                                //      target instead of one fixed column pair — campaign totals are
                                //      now the sum of their ad sets, and the "Clinician" raw pixel
                                //      event (previously uncountable) is included.
@@ -1740,6 +1742,27 @@ async function fetchOwners(token) {
 // ---------------------------------------------------------------------------
 // Processing — Ad Spend (guide Section 1)
 // ---------------------------------------------------------------------------
+// Which channel a Windsor ad row belongs to, or '' when the row is not an ad row
+// at all (GA4 rows ride the same array). ONE mapper, so every aggregation over
+// these rows — processAdSpend's channel table and totals, and the Brand trend
+// series — agrees on what a channel is and therefore on what KPI_EXCLUDED_CHANNELS
+// takes out. A second copy of this if-chain is how the trend's Ad Spend would
+// quietly stop matching the Ad Spend tile above it.
+function windsorRowChannel(row) {
+  const ds = ((row && row.datasource) || '').toLowerCase();
+  if (!ds || /googleanalytics/.test(ds)) return '';
+  const camp = (row.campaign_name || '');
+  // Clinician Targeting campaigns are their own channel, not Meta.
+  if (/facebook|meta|fb|ig|instagram/.test(ds)) return isClinicianCampaign(camp) ? 'clinician' : 'meta';
+  if (/linkedin/.test(ds)) return 'linkedin';
+  if (/tiktok/.test(ds)) return 'tiktok';
+  if (/reddit/.test(ds)) return 'reddit';
+  // Windsor's datasource for OpenAI Ads is literally "openai_ads" — match on
+  // the substring, not an exact "openai"/"chatgpt".
+  if (/openai|chatgpt/.test(ds)) return 'chatgpt';
+  if (/google/.test(ds)) return /\byt\b|youtube/i.test(camp) ? 'youtube' : 'google';
+  return '';
+}
 function processAdSpend(rows, linkedInDemoOverride) {
   const ch = {};
   for (const c of DASH_CHANNELS) ch[c] = { spend:0, clicks:0, impressions:0, windsorDemos:0 };
@@ -1747,22 +1770,8 @@ function processAdSpend(rows, linkedInDemoOverride) {
   const spendByDay = {};  // date (YYYY-MM-DD) → total spend across all channels — powers True CPD per week
 
   for (const row of rows) {
-    const ds = (row.datasource||'').toLowerCase();
-    const camp = (row.campaign_name||'').toLowerCase();
-    if (/googleanalytics/.test(ds)) continue;
-
-    const isYT = /\byt\b|youtube/i.test(camp);
-    let key;
-    // Clinician Targeting campaigns are their own channel, not Meta.
-    if (/facebook|meta|fb|ig|instagram/.test(ds)) key = isClinicianCampaign(row.campaign_name) ? 'clinician' : 'meta';
-    else if (/linkedin/.test(ds)) key = 'linkedin';
-    else if (/tiktok/.test(ds)) key = 'tiktok';
-    else if (/reddit/.test(ds)) key = 'reddit';
-    // Windsor's datasource for OpenAI Ads is literally "openai_ads" — match on
-    // the substring, not an exact "openai"/"chatgpt".
-    else if (/openai|chatgpt/.test(ds)) key = 'chatgpt';
-    else if (/google/.test(ds)) key = isYT ? 'youtube' : 'google';
-    else continue;
+    const key = windsorRowChannel(row);
+    if (!key) continue;
 
     const spend = parseFloat(row.spend)||0;
     const clicks = parseInt(row.clicks)||0;
@@ -3236,6 +3245,135 @@ function clnTrendWindow(today) {
   d.setUTCDate(d.getUTCDate() - (CLN_TREND_DAYS - 1));
   return { from: fmt(d), to: today };
 }
+// ── Trend Analysis (Brand Dashboard) ───────────────────────────────────────
+// The Clinician section's shape over the Brand page's own populations:
+// Regular Demos (every demo + webinar from a brand that is NOT pre-launch) and
+// Paid Demos (the subset whose booking contact carries a paid last-click UTM).
+//
+// It shares clnTrendWindow, so BOTH sections have one lookback constant and
+// cannot drift to different spans.
+//
+// Why its own inputs rather than the page's: processScheduledContacts and
+// processAdSpend count every row handed to them, so widening the page fetches
+// to cover 100 days would silently inflate every headline figure on the page.
+// The caller therefore fetches a trend-window set separately and KV-caches the
+// built series — the window ends at the same day on every request, so one build
+// per TTL serves every user and every page window.
+//
+// Day keys: the two CRM sides normalise to a PACIFIC calendar day; the ad side
+// uses the platform's own `row.date` verbatim, because that is the only date
+// Windsor reports and re-zoning it would invent precision. The two conventions
+// can disagree within a few hours of a day boundary. Same asymmetry
+// buildClinicianTrend carries — named here rather than left to be rediscovered.
+function buildBrandTrend(schContacts, cwDeals, churnedDeals, windsorRows, from, to) {
+  const B = {};
+  const bump = (dayKey, field, n) => {
+    if (!dayKey) return null;
+    if (from && dayKey < from) return null;
+    if (to && dayKey > to) return null;
+    if (!B[dayKey]) B[dayKey] = { spend: 0, impressions: 0, clicks: 0, regular: 0, paid: 0, signed: 0 };
+    B[dayKey][field] += (n == null ? 1 : n);
+    return B[dayKey];
+  };
+
+  // Spend / clicks / impressions across every channel the page's KPIs count.
+  // windsorRowChannel + KPI_EXCLUDED_CHANNELS is exactly what processAdSpend
+  // applies to produce the Ad Spend tile, so this series sums to that tile over
+  // the same span instead of merely resembling it.
+  for (const r of (windsorRows || [])) {
+    const chKey = windsorRowChannel(r);
+    if (!chKey || KPI_EXCLUDED_CHANNELS.has(chKey)) continue;
+    const k = String(r.date || '').slice(0, 10);
+    if (!k) continue;
+    bump(k, 'spend', parseFloat(r.spend) || 0);
+    bump(k, 'impressions', parseInt(r.impressions) || 0);
+    bump(k, 'clicks', parseInt(r.clicks) || 0);
+  }
+
+  // Regular / Paid demos. Mirrors processScheduledContacts field for field —
+  // same dedupe on contact id, same createdate anchor (NOT date_demo_booked),
+  // same pre-launch substring gate, and the paid test on RAW utm properties
+  // rather than the 'Not set'-normalised pair, which would make every untagged
+  // contact look tagged. Any drift here shows up as the trend disagreeing with
+  // the Key Metrics tiles it sits under.
+  const seenC = new Set();
+  for (const c of (schContacts || [])) {
+    const cp = (c && c.properties) || {};
+    if (!cp.createdate) continue;
+    if (c.id) { if (seenC.has(c.id)) continue; seenC.add(c.id); }
+    const wt = (cp.average_monthly_web_traffic || '').toLowerCase();
+    if (wt.includes('pre-launch')) continue;           // pre-launch is not "regular"
+    const k = ptDayKeyOf(cp.createdate);
+    if (!bump(k, 'regular')) continue;
+    const rs = (cp.utm_source || '').trim(), rm = (cp.utm_medium || '').trim();
+    if (mapUtmToChannel(rs, rm)) bump(k, 'paid');
+  }
+
+  // Signed brands, on the Close Date basis the Marketing Funnel uses: closed-won
+  // PLUS deals that reached a Churned stage but still carry a closedate in the
+  // window. Counting only the first would understate every historical period,
+  // because a brand that signed in May and churned in August is no longer
+  // closed-won but did sign in May.
+  for (const d of [...(cwDeals || []), ...(churnedDeals || [])]) {
+    bump(ptDayKeyOf(((d && d.properties) || {}).closedate), 'signed');
+  }
+
+  const div = (n, dd) => (dd > 0 ? n / dd : null);
+  // A COST with no spend is undefined, not zero — a real 0 plots on the floor of
+  // the cost axis and reads as the most efficient period in the window.
+  const cost = (sp, dd) => (sp > 0 && dd > 0 ? sp / dd : null);
+  // Every calendar day, so a dead period still emits a point: the chart places
+  // points by ARRAY INDEX, so a dropped period is spliced over rather than drawn
+  // as a gap.
+  const allDays = [];
+  if (from && to) {
+    const d1 = new Date(from + 'T00:00:00Z'), d2 = new Date(to + 'T00:00:00Z');
+    if (!isNaN(d1) && !isNaN(d2)) {
+      for (const t = new Date(d1); t <= d2 && allDays.length < 2000; t.setUTCDate(t.getUTCDate() + 1)) allDays.push(fmt(t));
+    }
+  }
+  const monOf = (ds) => {
+    if (!ds) return null;
+    const q = ds.split('-');
+    const d = new Date(Date.UTC(+q[0], +q[1] - 1, +q[2]));
+    if (isNaN(d)) return null;
+    const dow = d.getUTCDay();
+    d.setUTCDate(d.getUTCDate() - (dow === 0 ? 6 : dow - 1));   // ISO: week starts Monday
+    return fmt(d);
+  };
+  const roll = (keyOf) => {
+    const g = {};
+    const touch = (k) => { if (k && !g[k]) g[k] = { spend: 0, impressions: 0, clicks: 0, regular: 0, paid: 0, signed: 0 }; };
+    for (const day of allDays) touch(keyOf(day));
+    for (const day of Object.keys(B)) {
+      const k = keyOf(day); if (!k) continue;
+      touch(k);
+      const b = B[day], o = g[k];
+      o.spend += b.spend; o.impressions += b.impressions; o.clicks += b.clicks;
+      o.regular += b.regular; o.paid += b.paid; o.signed += b.signed;
+    }
+    return Object.keys(g).sort().map(k => {
+      const w = g[k];
+      return {
+        wk: k,
+        spend: Math.round(w.spend * 100) / 100,
+        impressions: w.impressions, clicks: w.clicks,
+        regular: w.regular, paid: w.paid, signed: w.signed,
+        // Both populations precomputed so the client can show either without a
+        // second request. Rates are percentages computed on the period's OWN
+        // totals, never averaged from daily rates — a 10-impression day must not
+        // weigh the same as a 10,000-impression one.
+        cpdReg: cost(w.spend, w.regular), cpdPaid: cost(w.spend, w.paid),
+        cvrReg: div(w.regular * 100, w.clicks), cvrPaid: div(w.paid * 100, w.clicks),
+        ctr: div(w.clicks * 100, w.impressions),
+        signedPctReg: div(w.signed * 100, w.regular), signedPctPaid: div(w.signed * 100, w.paid),
+      };
+    });
+  };
+  const monthOf = (ds) => (ds ? ds.slice(0, 7) + '-01' : null);
+  return { week: roll(monOf), day: roll(x => x), month: roll(monthOf) };
+}
+
 function buildClinicianTrend(deals, contactsByDeal, windsorRows, from, to) {
   const monOf = (ds) => {
     if (!ds) return null;
@@ -5827,6 +5965,44 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   const _mfWebActive = filterActiveBrands(_mfWebinars || []);
   console.log(`funnel inputs: ${(allTimeQualifiedForFunnel||[]).length} held, ${_mfWebActive.length} webinars (of ${(_mfWebinars||[]).length} fetched)`);
   currentData.marketingFunnel = buildMarketingFunnel(monthlyAdSpend, allTimeQualifiedForFunnel, filterActiveBrands(allTimeClosedWon), _mfWebActive);
+
+  // ── Trend Analysis (Brand Dashboard) ──────────────────────────────────────
+  // A fixed trailing window, deliberately NOT the page's date filter — the same
+  // contract the Clinician section ships under, and the reason both share
+  // clnTrendWindow rather than each carrying a lookback constant.
+  //
+  // KV-cached as a whole. The window ends at the same day on every request and
+  // the series is a daily rollup, so one build serves every user AND every page
+  // window: switching the page filter does not recompute it. That is what makes
+  // the two extra HubSpot searches affordable on a path whose HubSpot calls are
+  // deliberately sequential to dodge 429s.
+  //
+  // Closed-won needs NO fetch: allTimeClosedWon is already in hand (KV-cached
+  // itself) and is simply sliced to the window by closedate.
+  {
+    const _btWin = clnTrendWindow(fmt(yd));
+    currentData.trendRange = _btWin;
+    const _btCW = (filterActiveBrands(allTimeClosedWon) || []).filter(d => {
+      const k = ptDayKeyOf(((d.properties) || {}).closedate);
+      return !!k && k >= _btWin.from && k <= _btWin.to;
+    });
+    try {
+      currentData.trend = await kvCachedFetch(env, `brand_trend_${_btWin.from}_${_btWin.to}_v1`, 1800,
+        async () => {
+          // HubSpot sequentially (429s), Windsor alongside it.
+          const _wP = fetchWindsorAds(apiKey, wFrom(_btWin.from), _btWin.to);
+          const _sch = await fetchScheduledContacts(hsToken, _btWin.from, _btWin.to);
+          const _chn = await fetchChurnedByCloseDate(hsToken, _btWin.from, _btWin.to);
+          const _w = await _wP;
+          // Never cache a series with no ad rows at all — that is a failed
+          // Windsor fetch, and caching it would flatten the chart for the TTL.
+          if (!Array.isArray(_w) || !_w.length) throw new Error('brand trend: no Windsor rows — not caching');
+          const t = buildBrandTrend(_sch, _btCW, _chn, _w, _btWin.from, _btWin.to);
+          console.log(`brand trend: ${_sch.length} contacts, ${_btCW.length} closed-won, ${_chn.length} churned-by-close, ${_w.length} ad rows -> ${t.day.length}d/${t.week.length}w/${t.month.length}m`);
+          return t;
+        }, null);
+    } catch (e) { console.error('brand trend failed:', e && e.message); currentData.trend = null; }
+  }
 
   // ── Demo Quality page: use cPipe directly (already fetched through end of month above) ──
   const _mapDQDeal = (d) => {

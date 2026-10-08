@@ -1,0 +1,170 @@
+// The Brand Trend Analysis card. The port's whole risk is that it LOOKS like
+// the Clinician section while quietly computing something else, so these pin
+// the places the two legitimately differ and the places they must not.
+const {load,fn,decl}=require('./slice.js');const vm=require('vm');
+const src=load(process.env.DASH_SRC||'dashboard.html');
+let pass=0,fail=0;
+const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify(w);console.log((ok?'PASS ':'FAIL ')+n+'  got='+JSON.stringify(g)+(ok?'':' want='+JSON.stringify(w)));ok?pass++:fail++;};
+
+const ctx={console,window:{},f$:v=>'$'+Math.round(v).toLocaleString(),fN:v=>Number(v||0).toLocaleString()};
+vm.createContext(ctx);
+vm.runInContext([
+  'var window=this;var f$=this.f$,fN=this.fN;',
+  decl(src,"const CLN_TR_GRAINS=[","];"),
+  decl(src,"const CLN_TR_SPEND=","};"),
+  "const CLN_TR_ROLL_C='#172C45';const CLN_TR_ROLL_DAYS=7;",
+  decl(src,"const CLN_TR_MON=[","];"),
+  fn(src,'_clnTrFmt'),
+  decl(src,"const DSH_TR_GRAINS=","];"),            // through DSH_TR_POPS
+  decl(src,"const DSH_TR_METRICS=[","];"),
+  decl(src,"const DSH_TR_CARDS=[","];"),
+  fn(src,'_dshTrendGrain'), fn(src,'_dshTrendPop'), fn(src,'_dshTrendMetric'),
+  fn(src,'_dshTrGrainDef'), fn(src,'_dshTrMetricDef'), fn(src,'_dshTrPopDef'),
+  fn(src,'_dshTrendPts'), fn(src,'_dshTrParts'), fn(src,'_dshTrSum'),
+  fn(src,'_dshTrValue'), fn(src,'_dshTrStat'),
+  'Object.assign(globalThis,{DSH_TR_POPS,DSH_TR_METRICS,DSH_TR_CARDS,DSH_TR_GRAINS,'
+   +'_dshTrParts,_dshTrSum,_dshTrValue,_dshTrStat,_dshTrendPts,_dshTrPopDef});',
+].join('\n'),ctx);
+ck('the real helpers loaded',typeof ctx._dshTrValue,'function');
+
+// EVERY structural assertion below is scoped to the Brand block. The Clinician
+// section is a near-twin living in the same file, so an unscoped regex happily
+// matches ITS copy and passes no matter what this card does.
+const _i0=src.indexOf('// \u2500\u2500 Trend Analysis (Brand Dashboard)');
+const _i1=src.indexOf('// Every type present in the data',_i0);
+ck('the Brand block is locatable and non-trivial',_i0>0&&_i1>_i0&&(_i1-_i0)>6000,true);
+const BR=src.slice(_i0,_i1);
+ck('  and does not swallow the Clinician one',/CLN_TR_CARDS=|_clnTrendCard/.test(BR),false);
+
+// ── 1. The population toggle the user asked for ───────────────────────────
+ck('two populations: Regular and Paid demos',ctx.DSH_TR_POPS.map(p=>p.l),['Regular Demos','Paid Demos']);
+ck('  keyed regular/paid',ctx.DSH_TR_POPS.map(p=>p.k),['regular','paid']);
+ck('the Clinician labels are NOT carried over',/Full Submission/.test(JSON.stringify(ctx.DSH_TR_POPS)),false);
+const P={spend:1000,clicks:500,impressions:20000,regular:40,paid:10,signed:4};
+ck('regular resolves the regular count',ctx._dshTrParts(P,'regular').pop,40);
+ck('paid resolves the paid count',ctx._dshTrParts(P,'paid').pop,10);
+ck('signed does NOT move with the population',
+   [ctx._dshTrParts(P,'regular').signed,ctx._dshTrParts(P,'paid').signed],[4,4]);
+
+// ── 2. The six metrics, in the order asked for ────────────────────────────
+ck('metric pills',ctx.DSH_TR_METRICS.map(m=>m.l),['Count','Cost Per','CVR','CTR','Signed','Signed %']);
+ck('KPI cards',ctx.DSH_TR_CARDS.map(c=>c.k),['count','cost','cvr','ctr','signed','spend']);
+ck('Signed is ONE card carrying a split',ctx.DSH_TR_CARDS.filter(c=>c.withPct).map(c=>[c.k,c.withPct]),[['signed','signedpct']]);
+ck('Ad Spend has a card but is not a selectable measure',
+   [ctx.DSH_TR_CARDS.filter(c=>c.k==='spend')[0].metric,ctx.DSH_TR_METRICS.filter(m=>m.k==='spend').length],[null,0]);
+// CTR and the Signed COUNT do not vary with the population; everything else does.
+ck('pop-invariant measures are exactly CTR and Signed',
+   ctx.DSH_TR_METRICS.filter(m=>!m.pop).map(m=>m.k),['ctr','signed']);
+ck('but Signed % IS pop-dependent — its denominator is the population',
+   ctx.DSH_TR_METRICS.filter(m=>m.k==='signedpct')[0].pop,true);
+
+// ── 3. The maths ──────────────────────────────────────────────────────────
+const Treg=ctx._dshTrSum([ctx._dshTrParts(P,'regular')]);
+const Tpaid=ctx._dshTrSum([ctx._dshTrParts(P,'paid')]);
+ck('count',ctx._dshTrValue('count',Treg),40);
+ck('cost per',ctx._dshTrValue('cost',Treg),25);
+ck('  rises on the smaller paid denominator',ctx._dshTrValue('cost',Tpaid),100);
+ck('cvr = population ÷ clicks',ctx._dshTrValue('cvr',Treg),8);
+ck('ctr = clicks ÷ impressions, same on both populations',
+   [ctx._dshTrValue('ctr',Treg),ctx._dshTrValue('ctr',Tpaid)],[2.5,2.5]);
+ck('signed count is the same on both',
+   [ctx._dshTrValue('signed',Treg),ctx._dshTrValue('signed',Tpaid)],[4,4]);
+ck('signed % moves with the population',
+   [ctx._dshTrValue('signedpct',Treg),ctx._dshTrValue('signedpct',Tpaid)],[10,40]);
+
+// Null-vs-zero has to survive the port or the chart lies on the floor.
+const Z=ctx._dshTrSum([ctx._dshTrParts({spend:0,clicks:0,impressions:0,regular:0,paid:0,signed:0},'regular')]);
+ck('cost with no spend is null',ctx._dshTrValue('cost',Z),null);
+ck('rates with no denominator are null',[ctx._dshTrValue('cvr',Z),ctx._dshTrValue('ctr',Z),ctx._dshTrValue('signedpct',Z)],[null,null,null]);
+// The case the cost guard exists for: real demos, NO ad spend. Guarding only
+// the denominator lets a 0 through, which plots on the floor of the cost axis
+// and reads as the most efficient period on screen.
+const O=ctx._dshTrSum([ctx._dshTrParts({spend:0,clicks:120,impressions:9000,regular:6,paid:0,signed:1},'regular')]);
+ck('organic demos with no spend have a NULL cost, not 0',ctx._dshTrValue('cost',O),null);
+ck('  while their count and CVR are real',[ctx._dshTrValue('count',O),ctx._dshTrValue('cvr',O)],[6,5]);
+ck('  and signed % still resolves',ctx._dshTrValue('signedpct',O),(1/6)*100);
+
+const R=ctx._dshTrSum([ctx._dshTrParts({spend:50,clicks:100,impressions:1000,regular:0,paid:0,signed:0},'regular')]);
+ck('a real zero over a real denominator stays 0',ctx._dshTrValue('cvr',R),0);
+ck('  while its cost is still null',ctx._dshTrValue('cost',R),null);
+
+// ── 4. The Signed stat reads as a count AND a share ───────────────────────
+const pdef=ctx.DSH_TR_POPS[0];
+const sgn=ctx._dshTrStat(ctx.DSH_TR_CARDS[4],Treg,pdef);
+ck('Signed card value is the count',sgn.val,'4');
+// _clnTrFmt gives 2dp below 10% and 1dp at or above, shared with the Clinician
+// card so a percentage reads the same on both sections.
+ck('  with the share as a split, not buried in the caption',sgn.split,'10.0%');
+ck('  and sub-10% shares keep two decimals',
+   ctx._dshTrStat(ctx.DSH_TR_CARDS[4],ctx._dshTrSum([ctx._dshTrParts({spend:0,clicks:0,impressions:0,regular:200,paid:0,signed:3},'regular')]),pdef).split,'1.50%');
+ck('  and the caption names the denominator',sgn.calc,'of 40 regular demos');
+ck('its label carries no population suffix (the count does not vary)',sgn.lbl,'Signed');
+const cnt=ctx._dshTrStat(ctx.DSH_TR_CARDS[0],Treg,pdef);
+ck('a pop-dependent card DOES carry the suffix',cnt.lbl,'Count · Regular Demos');
+const spend=ctx._dshTrStat(ctx.DSH_TR_CARDS[5],Treg,pdef);
+ck('Ad Spend names the channels it covers',spend.calc,'all KPI channels · always on the chart');
+
+// ── 5. Grains: the three toggles, shared with the Clinician section ───────
+ck('Weekly / Daily / Monthly',ctx.DSH_TR_GRAINS.map(g=>[g.l,g.n]),[['Weekly',8],['Daily',30],['Monthly',3]]);
+ck('the grain list is SHARED, not a second copy',/const DSH_TR_GRAINS=CLN_TR_GRAINS;/.test(src),true);
+ck('the card slices its own lookback out of one series',
+   /all\.slice\(Math\.max\(0,all\.length-g\.n\)\)/.test(BR),true);
+ck('reading d.trend, the Brand payload path',/var t=\(d&&d\.trend\)\|\|null/.test(BR),true);
+ck('  NOT the clinician ads.trend path',/d\.ads&&d\.ads\.trend/.test(BR),false);
+
+// ── 6. Wiring into the page ───────────────────────────────────────────────
+ck('the container sits directly under Key Metrics',
+   src.indexOf('id="sec-keymetrics"')<src.indexOf('id="t-dshtrend"')
+   &&src.indexOf('id="t-dshtrend"')<src.indexOf('id="dsec-demoinsights"'),true);
+ck('renderDash builds and renders it',
+   /_dshTrEl\.innerHTML=_dashTrendCard\(d\);_renderDashTrend\(d\)/.test(src),true);
+ck('it joins the Jump To nav',/data-nav="Trend Analysis"/.test(BR),true);
+ck('  under a dsec-h, which is what the nav selects on this page',
+   /class="dsec-h dsec-in" id="dsec-dshtrend"/.test(BR),true);
+ck('the three toggles each have a handler',
+   ['toggleDshTrendGrain','toggleDshTrendPop','toggleDshTrendMetric'].every(h=>src.includes('window.'+h+'=')),true);
+ck('toggling redraws from cached data, not a refetch',
+   /function _dshTrendRedraw\(\)\{[\s\S]{0,300}?window\._dshTrendData/.test(BR),true);
+// An SVG <rect> with no fill paints BLACK and covers the whole plot. Assert the
+// GENERAL rule — every band class the markup uses must be declared transparent —
+// so a fourth chart with a fourth class fails here instead of shipping a black box.
+ck('every hover-band class in the markup has a transparent fill',
+   (()=>{const used=[...new Set([...src.matchAll(/class="([a-z]+-band)"/g)].map(m=>m[1]))];
+         const rule=(src.match(/^([^\n]*-band[^\n]*)\{fill:transparent\}/m)||[])[1]||'';
+         return used.length>=3&&used.every(c=>rule.includes('.'+c));})(),true);
+ck('  and this chart uses one of them',/class="dshwk-band"/.test(BR),true);
+ck('the hover panel is the shared one',
+   /class="dshwk-band"[\s\S]{0,400}?onmouseover="clnWkTip\(event,this\)"/.test(BR),true);
+ck('the hover rows are built from the SAME card list, so none duplicates',
+   /var rows=DSH_TR_CARDS\.map/.test(BR),true);
+// A 7-day window is shorter than one period on the weekly and monthly grains,
+// where the rolling line would just redraw the series.
+ck('the 7-day average is daily-grain only',
+   /if\(g\.k==='day'\)\{\s*\n\s*roll=parts\.map/.test(BR),true);
+ck('  and a summed COUNT is divided back to a daily average',
+   /if\(v!=null&&mdef\.unit==='#'\)v=v\/w\.length;/.test(BR),true);
+
+// ── 7. The caveat the numbers cannot state themselves ─────────────────────
+// Signed is counted on close date, so a brand signed this period was very
+// likely demoed in an earlier one. The share is a velocity ratio, not a cohort
+// conversion — and the two are indistinguishable on a chart.
+ck('the card says Signed is counted by close date',
+   /Signed counts brands by close date/.test(BR),true);
+ck('  and that its % is not a cohort conversion',/not a cohort conversion/.test(BR),true);
+ck('the card states it ignores the page date filter',
+   /Independent of the page date filter/.test(BR),true);
+ck('  and names the span the figures actually cover',/Figures below cover/.test(BR),true);
+
+// ── 8. The Clinician section is untouched ─────────────────────────────────
+ck('Clinician still has its own populations',/Full Submission/.test(src),true);
+ck('  its own MD/DO stat',/CLN_MD_TYPE/.test(src),true);
+ck('  and its own card list',/const CLN_TR_CARDS=/.test(src),true);
+ck('the Brand card never reads a clinician field',
+   /fullApp|inquiries|bySubType|CLN_MD_TYPE/.test(BR),false);
+ck('  and the Clinician card never reads a Brand one',
+   (()=>{const c0=src.indexOf('// \u2500\u2500 Clinician Trend Analysis');
+         const CL=src.slice(c0,src.indexOf('// \u2500\u2500 Trend Analysis (Brand Dashboard)',c0));
+         return /DSH_TR_|\.signed|\.paid\b/.test(CL);})(),false);
+
+console.log('\n'+pass+' passed, '+fail+' failed');
+process.exit(fail?1:0);

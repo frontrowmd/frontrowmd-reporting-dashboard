@@ -29,12 +29,13 @@ html,body{height:100%}body{font-family:var(--font-b);font-size:15px;color:var(--
 
 #app{display:none;height:100vh}#app.active{display:flex}
 .sidebar{width:var(--sidebar-w);min-width:var(--sidebar-w);height:100vh;background:linear-gradient(180deg,var(--midnight),var(--navy));color:var(--white);display:flex;flex-direction:column;z-index:10;transition:width .25s ease,min-width .25s ease;overflow:hidden}
-.clnwk-band{fill:transparent}
-.clnwk-band:hover{fill:rgba(74,135,168,.10)}
-/* Weekly CPD hover columns. An SVG <rect> with no fill paints BLACK, so this
-   rule is load-bearing, not cosmetic — without it the chart is a solid block. */
-.cpdw-band{fill:transparent}
-.cpdw-band:hover{fill:rgba(74,135,168,.10)}
+/* Full-height hover columns on the trend charts. An SVG <rect> with no fill
+   paints BLACK, so these rules are load-bearing, not cosmetic — without one the
+   chart renders as a solid block. ONE rule for every band class: the third
+   chart was added with its own class and no rule, and that is exactly how this
+   bug arrives. t_bdtrendui asserts every band class in the markup is listed. */
+.clnwk-band,.cpdw-band,.dshwk-band{fill:transparent}
+.clnwk-band:hover,.cpdw-band:hover,.dshwk-band:hover{fill:rgba(74,135,168,.10)}
 .sidebar.collapsed{width:64px;min-width:64px}
 .sidebar.collapsed .slogo{display:none}
 .sidebar.collapsed .sh{justify-content:center;padding:20px 8px}
@@ -669,6 +670,12 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
       <!-- Row 0: Key Metrics — headline tiles + Revenue Outcome, one card. -->
       <div class="sec dsec" id="sec-keymetrics"><div id="t-keymetrics"></div></div>
 
+      <!-- Row 0b: Trend Analysis — the Clinician section's shape over this
+           page's populations. Its own card element is written by
+           _dashTrendCard, which REPLACES this wrapper's contents wholesale on
+           every toggle, so nothing static may live inside it. -->
+      <div id="t-dshtrend"></div>
+
       <!-- Row 1c: Demo Insights — Volume / Quality / Efficiency, directly under
            Key Metrics. Header lives here rather than inside the Volume panel
            so all three columns start on the same line. -->
@@ -878,7 +885,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t263';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t264';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -2948,10 +2955,16 @@ function renderDash(){
 
   // ─── Daily Activity (Row 1) + Channel Performance ──────────────────────────────
   renderCPDTable(d);
-  // Snapshot (Daily Activity) and Trend Analysis were removed from this page.
-  // Both builders stay — the Irfan Dashboard still renders them into its own
-  // targets (renderDemosPerDay -> irfan-daily-wrap, _renderTrueCpdWeek ->
-  // irfan-truecpd-week), so neither function is dead code.
+  // The OLD Snapshot (Daily Activity) and Trend Analysis (True CPD per Week)
+  // sections were removed from this page. Both builders stay — the Irfan
+  // Dashboard still renders them into its own targets (renderDemosPerDay ->
+  // irfan-daily-wrap, _renderTrueCpdWeek -> irfan-truecpd-week).
+  //
+  // The Trend Analysis section below is a DIFFERENT card: the Clinician one's
+  // shape over this page's populations, reading d.trend rather than the
+  // per-day maps the old chart used.
+  var _dshTrEl=document.getElementById('t-dshtrend');
+  if(_dshTrEl){_dshTrEl.innerHTML=_dashTrendCard(d);_renderDashTrend(d);}
 
   // ─── Meta tables (Rows 8 + 9, mirror of Irfan Dashboard) ───────────────────
   // Re-uses the existing Irfan loader; the loader now writes to both irfan-*
@@ -3889,6 +3902,314 @@ function _renderClnTrend(d){
   svg+='</svg>';
   host.innerHTML='<div style="overflow-x:auto">'+svg+'</div>';
 }
+// ── Trend Analysis (Brand Dashboard) ───────────────────────────────────────
+// The Clinician section's shape over this page's populations. Everything that
+// is genuinely the same is SHARED rather than copied — the grain list, the
+// formatters, the axis stepper, the hover panel — so the two sections cannot
+// drift apart on how a week is defined or how a null reads.
+//
+// What differs is only the two things that are actually different: the
+// population (Regular vs Paid demos, not Inquiry vs Full Submission) and the
+// Signed stat in place of MD/DO.
+const DSH_TR_GRAINS=CLN_TR_GRAINS;
+const DSH_TR_POPS=[
+  {k:'regular',l:'Regular Demos',w:'regular demos',short:'regular demos'},
+  {k:'paid',   l:'Paid Demos',   w:'paid demos',   short:'paid demos'},
+];
+// `pop:false` marks a measure that does NOT move with the population toggle.
+// Signed is one: a brand that signed did not sign "as a paid demo" — the count
+// is the same whichever population is selected. Its PERCENTAGE does move,
+// because the denominator is the population.
+const DSH_TR_METRICS=[
+  {k:'count',    l:'Count',    unit:'#', c:'#4A87A8', pop:true},
+  {k:'cost',     l:'Cost Per', unit:'$', c:'#9333EA', pop:true},
+  {k:'cvr',      l:'CVR',      unit:'%', c:'#0E7C66', pop:true},
+  {k:'ctr',      l:'CTR',      unit:'%', c:'#1D4ED8', pop:false},
+  {k:'signed',   l:'Signed',   unit:'#', c:'#16A34A', pop:false},
+  {k:'signedpct',l:'Signed %', unit:'%', c:'#B45309', pop:true},
+];
+// Signed is ONE card carrying a count and a share, the way MD/DO is on the
+// Clinician page — they are two readings of the same cut, and splitting them
+// puts the same number on screen twice.
+const DSH_TR_CARDS=[
+  {k:'count', metric:'count', unit:'#', pop:true},
+  {k:'cost',  metric:'cost',  unit:'$', pop:true},
+  {k:'cvr',   metric:'cvr',   unit:'%', pop:true},
+  {k:'ctr',   metric:'ctr',   unit:'%', pop:false},
+  {k:'signed',metric:'signed',unit:'#', pop:false, withPct:'signedpct'},
+  {k:'spend', metric:null,    unit:'$', pop:false},
+];
+function _dshTrendGrain(){return window._dshTrendGrainV||'week';}
+function _dshTrendPop(){return window._dshTrendPopV||'regular';}
+function _dshTrendMetric(){return window._dshTrendMetricV||'count';}
+function _dshTrGrainDef(){return DSH_TR_GRAINS.filter(function(g){return g.k===_dshTrendGrain();})[0]||DSH_TR_GRAINS[0];}
+function _dshTrMetricDef(){return DSH_TR_METRICS.filter(function(m){return m.k===_dshTrendMetric();})[0]||DSH_TR_METRICS[0];}
+function _dshTrPopDef(){return DSH_TR_POPS.filter(function(p){return p.k===_dshTrendPop();})[0]||DSH_TR_POPS[0];}
+function _dshTrendRedraw(){
+  var d=window._dshTrendData; if(!d)return;
+  var host=document.getElementById('dsh-trend-panels'); if(!host)return;
+  var card=host.parentElement; if(!card)return;
+  card.outerHTML=_dashTrendCard(d);
+  _renderDashTrend(d);
+}
+window.toggleDshTrendGrain=function(g){window._dshTrendGrainV=g;_dshTrendRedraw();};
+window.toggleDshTrendPop=function(p){window._dshTrendPopV=p;_dshTrendRedraw();};
+window.toggleDshTrendMetric=function(m){window._dshTrendMetricV=m;_dshTrendRedraw();};
+// The worker ships one fixed 100-day series; each grain slices its own lookback
+// out of it, so switching grain costs no request.
+function _dshTrendPts(d){
+  var t=(d&&d.trend)||null; if(!t)return [];
+  var g=_dshTrGrainDef();
+  var all=t[g.src]||[];
+  return all.slice(Math.max(0,all.length-g.n));
+}
+// Raw components for one period, resolved against the population toggle. Every
+// metric derives from these and never from another metric, so a rolling window
+// is a sum of components rather than an average of ratios.
+function _dshTrParts(p,pop){
+  return {
+    spend:p.spend||0, clicks:p.clicks||0, impressions:p.impressions||0,
+    pop:((pop==='paid')?p.paid:p.regular)||0,
+    signed:p.signed||0,
+  };
+}
+function _dshTrSum(parts){
+  var t={spend:0,clicks:0,impressions:0,pop:0,signed:0};
+  parts.forEach(function(x){for(var k in t)t[k]+=x[k];});
+  return t;
+}
+function _dshTrValue(metric,t){
+  if(metric==='count')return t.pop;
+  if(metric==='signed')return t.signed;
+  if(metric==='cost')return (t.spend>0&&t.pop>0)?t.spend/t.pop:null;
+  if(metric==='cvr')return t.clicks>0?(t.pop/t.clicks)*100:null;
+  if(metric==='ctr')return t.impressions>0?(t.clicks/t.impressions)*100:null;
+  if(metric==='signedpct')return t.pop>0?(t.signed/t.pop)*100:null;
+  return null;
+}
+function _dshTrStat(card,T,pdef){
+  var mdef=DSH_TR_METRICS.filter(function(m){return m.k===card.metric;})[0]||null;
+  var popW=pdef.short, lbl, val, calc, colour, split=null;
+  if(card.k==='spend'){
+    lbl='Ad Spend'; val=_clnTrFmt(T.spend,'$'); colour=CLN_TR_SPEND.c;
+    calc='all KPI channels · always on the chart';
+  }else if(card.k==='signed'){
+    // Count and share together. The share's denominator is the POPULATION, so
+    // the label names it — and the count itself does not move with the toggle.
+    var pct=T.pop>0?(T.signed/T.pop)*100:null;
+    lbl='Signed'; val=fN(T.signed); colour=mdef?mdef.c:CLN_TR_SPEND.c;
+    split=_clnTrFmt(pct,'%');
+    calc='of '+fN(T.pop)+' '+popW;
+  }else{
+    var v=_dshTrValue(card.metric,T);
+    lbl=(mdef?mdef.l:card.k)+(card.pop?(' · '+pdef.l):'');
+    val=_clnTrFmt(v,card.unit); colour=mdef?mdef.c:CLN_TR_SPEND.c;
+    calc={
+      count:fN(T.pop)+' '+popW,
+      cost:f$(Math.round(T.spend))+' ÷ '+fN(T.pop)+' '+popW,
+      cvr:fN(T.pop)+' ÷ '+fN(T.clicks)+' clicks',
+      ctr:fN(T.clicks)+' ÷ '+fN(T.impressions)+' impressions',
+    }[card.k]||'';
+  }
+  return {lbl:lbl,val:val,calc:calc,c:colour,split:split};
+}
+
+function _dashTrendCard(d){
+  window._dshTrendData=d;
+  var pts=_dshTrendPts(d);
+  var g=_dshTrGrainDef(), mdef=_dshTrMetricDef(), pdef=_dshTrPopDef();
+  var rng=(d&&d.trendRange)||null;
+  var sub='Independent of the page date filter · '+g.note
+    +(rng?(' · series built over '+rng.from+' → '+rng.to):'')
+    +'<br>'+(mdef.pop?('Measuring <strong>'+mdef.l+'</strong> over <strong>'+pdef.w+'</strong>')
+                     :('Measuring <strong>'+mdef.l+'</strong> — does not vary with the population toggle'))
+    +' · Ad Spend is the shaded background throughout, whatever is selected';
+  var title='<div class="dsec-h dsec-in" id="dsec-dshtrend" data-nav="Trend Analysis">Trend Analysis</div>'
+    +'<div class="irf-card-sub" style="margin-left:15px">'+sub+'</div>';
+  var open='<div class="sec sec-card dsec" id="sec-dshtrend">';
+  if(!pts.length)return open+title+'<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px">No trend data available yet</div></div>';
+
+  var pill=function(on,label,fn,note){
+    return '<button onclick="'+fn+'" '+(note?('title="'+note+'" '):'')+'style="font-family:var(--font-h);font-size:11px;font-weight:700;letter-spacing:.02em;padding:6px 14px;border:none;background:'
+      +(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+';cursor:pointer;transition:background .15s,color .15s">'+label+'</button>';
+  };
+  var seg=function(inner){
+    return '<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap">'+inner+'</div>';
+  };
+  var toggles='<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin:12px 0 4px 15px">'
+    +seg(DSH_TR_GRAINS.map(function(x){return pill(g.k===x.k,x.l,"toggleDshTrendGrain('"+x.k+"')",x.note);}).join(''))
+    +seg(DSH_TR_POPS.map(function(x){return pill(pdef.k===x.k,x.l,"toggleDshTrendPop('"+x.k+"')",'');}).join(''))
+    +seg(DSH_TR_METRICS.map(function(x){return pill(mdef.k===x.k,x.l,"toggleDshTrendMetric('"+x.k+"')",'');}).join(''))
+    +'</div>';
+
+  // The cards sum the periods ON SCREEN — this grain's lookback, which is
+  // neither the page date filter nor the worker's full 100-day series. Three
+  // spans in play, so it is stated rather than inferred from the axis.
+  var _trRangeBand=(function(){
+    var msOf=function(k){var q=String(k).split('-');return Date.UTC(+q[0],+q[1]-1,+q[2]);};
+    var todayMs=(function(){var t=new Date();return Date.UTC(t.getFullYear(),t.getMonth(),t.getDate());})();
+    var startMs=msOf(pts[0].wk);
+    var endMs=Math.min(_clnTrEnd(pts[pts.length-1].wk,g.k).ms,todayMs);
+    var fmtD=function(ms,withYear){
+      var dd=new Date(ms);
+      return CLN_TR_MON[dd.getUTCMonth()]+' '+dd.getUTCDate()+(withYear?(', '+dd.getUTCFullYear()):'');
+    };
+    var unit=g.k==='day'?'day':g.k==='week'?'week':'month';
+    var lookback='Last '+pts.length+' '+unit+(pts.length===1?'':'s');
+    return '<div style="display:flex;align-items:baseline;gap:11px;flex-wrap:wrap;margin:14px 0 0 15px;padding:9px 14px;'
+      +'background:rgba(114,164,191,.08);border:1px solid rgba(114,164,191,.28);border-radius:9px">'
+      +'<span style="font-family:var(--font-h);font-size:9px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.08em">Figures below cover</span>'
+      +'<span style="font-family:var(--font-h);font-size:16px;font-weight:700;color:var(--navy)">'+lookback+'</span>'
+      +'<span style="font-size:11.5px;color:var(--grey)">'+fmtD(startMs,false)+' – '+fmtD(endMs,true)+'</span>'
+      +'<span style="font-size:10px;color:var(--grey);font-style:italic;margin-left:auto">not the page date filter</span>'
+      +'</div>';
+  })();
+
+  var pop=pdef.k;
+  var T=_dshTrSum(pts.map(function(p){return _dshTrParts(p,pop);}));
+  var minis=_trRangeBand+'<div style="display:flex;gap:9px;flex-wrap:wrap;margin:10px 0 4px">'
+    +DSH_TR_CARDS.map(function(card){
+      var st=_dshTrStat(card,T,pdef);
+      var on=(card.metric===mdef.k)||(card.withPct&&card.withPct===mdef.k);
+      return '<div style="flex:1 1 150px;min-width:146px;background:var(--lighter);border:1px solid '
+        +(on?st.c:'var(--border)')+';border-radius:10px;padding:11px 13px;border-top:3px solid '+st.c
+        +(on?';box-shadow:0 1px 6px rgba(2,15,24,.10)':'')+'">'
+        +'<div style="font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em">'+st.lbl+'</div>'
+        +'<div style="display:flex;align-items:baseline;gap:6px;margin-top:3px;flex-wrap:wrap">'
+        +'<span style="font-family:var(--font-h);font-size:21px;font-weight:700;color:var(--navy)">'+st.val+'</span>'
+        +(st.split?('<span style="font-size:11px;color:var(--grey)">·</span>'
+                   +'<span style="font-family:var(--font-h);font-size:16px;font-weight:700;color:'+st.c+'">'+st.split+'</span>'):'')
+        +'</div>'
+        +'<div style="font-size:9px;color:var(--grey);margin-top:3px">'+st.calc+'</div></div>';
+    }).join('')
+    +'</div>';
+
+  var lg='<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:var(--navy)">'
+    +'<span style="display:inline-block;width:14px;height:0;border-top:3px solid '+mdef.c+'"></span>'+mdef.l+(mdef.pop?(' · '+pdef.l):'')+'</span>';
+  if(g.k==='day')lg+='<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:var(--navy)">'
+    +'<span style="display:inline-block;width:14px;height:0;border-top:2.5px dashed '+CLN_TR_ROLL_C+'"></span>'+CLN_TR_ROLL_DAYS+'-day average</span>';
+  lg+='<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:var(--navy)">'
+    +'<span style="display:inline-block;width:14px;height:9px;border-radius:2px;background:'+CLN_TR_SPEND.c+';opacity:.3"></span>Ad Spend'
+    +'<span style="font-size:9px;color:var(--grey)">shape only · no axis</span></span>';
+  // Signed is counted on its CLOSE date, so a brand signed in this period was
+  // very likely demoed in an earlier one. The share is a period-over-period
+  // velocity ratio, NOT a cohort conversion rate — stated here because the two
+  // look identical on a chart.
+  lg+='<span style="font-size:9.5px;color:var(--grey);font-style:italic">Signed counts brands by close date — its % is signed ÷ demos in the same period, not a cohort conversion</span>';
+
+  return open+title+toggles+minis
+    +'<div style="display:flex;gap:16px;flex-wrap:wrap;margin:8px 0 2px">'+lg+'</div>'
+    +'<div id="dsh-trend-panels"></div></div>';
+}
+
+function _renderDashTrend(d){
+  var host=document.getElementById('dsh-trend-panels'); if(!host)return;
+  var pts=_dshTrendPts(d); if(!pts.length)return;
+  window._dshTrendData=d;
+  var g=_dshTrGrainDef(), mdef=_dshTrMetricDef(), pdef=_dshTrPopDef(), pop=pdef.k;
+  var parts=pts.map(function(p){return _dshTrParts(p,pop);});
+  var vals=parts.map(function(x){return _dshTrValue(mdef.k,x);});
+
+  // A 7-DAY rolling average from rolling SUMS of the components, not a mean of
+  // daily ratios — which would weight a 2-click day like a 2,000-click one.
+  // Only meaningful on the daily grain; on weekly/monthly a 7-day window is
+  // shorter than one period and would just redraw the line.
+  var roll=null;
+  if(g.k==='day'){
+    roll=parts.map(function(_,i){
+      var w=parts.slice(Math.max(0,i-(CLN_TR_ROLL_DAYS-1)),i+1);
+      var v=_dshTrValue(mdef.k,_dshTrSum(w));
+      // A COUNT summed over seven days is a weekly TOTAL, not a daily average.
+      // A RATIO is the opposite case: the pooled value over those days already
+      // IS the 7-day average rate.
+      if(v!=null&&mdef.unit==='#')v=v/w.length;
+      return v;
+    });
+  }
+
+  var W=1000,H=320,padL=58,padR=20,padT=18,padB=36;
+  var innerW=W-padL-padR,innerH=H-padT-padB;
+  var n=pts.length;
+  var xAt=function(i){return padL+(n<=1?innerW/2:(i/(n-1))*innerW);};
+  var mx=0;
+  vals.forEach(function(v){if(v!=null&&v>mx)mx=v;});
+  if(roll)roll.forEach(function(v){if(v!=null&&v>mx)mx=v;});
+  var yMax=_clnTrNice(mx,mdef.unit),step=yMax/4;
+  var yAt=function(v){return padT+innerH-(v/yMax)*innerH;};
+  var todayMs=(function(){var t=new Date();return Date.UTC(t.getFullYear(),t.getMonth(),t.getDate());})();
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;min-width:620px;height:auto;font-family:var(--font-b)">';
+
+  // Ad Spend first: background columns scaled to their OWN peak and capped, so
+  // they carry shape without competing for the axis.
+  var mxS=0;parts.forEach(function(x){if(x.spend>mxS)mxS=x.spend;});
+  if(mxS>0){
+    var colW=Math.max(2,Math.min(30,(n>1?innerW/(n-1):innerW)*0.62));
+    parts.forEach(function(x,i){
+      if(!(x.spend>0))return;
+      var hgt=(x.spend/mxS)*innerH*0.55;
+      svg+='<rect x="'+(xAt(i)-colW/2)+'" y="'+(padT+innerH-hgt)+'" width="'+colW+'" height="'+hgt+'" fill="'+CLN_TR_SPEND.c+'" fill-opacity="0.16" pointer-events="none"/>';
+    });
+  }
+  for(var v=0;v<=yMax+1e-9;v+=step){
+    var y=yAt(v);
+    svg+='<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="rgba(23,44,69,.08)" stroke-width="1"/>'
+      +'<text x="'+(padL-8)+'" y="'+(y+3)+'" text-anchor="end" font-size="9" fill="var(--grey)">'+_clnTrFmt(v,mdef.unit)+'</text>';
+  }
+  var line=function(series,color,dash,width){
+    var run=[],flush=function(){
+      if(run.length>1)svg+='<polyline points="'+run.join(' ')+'" fill="none" stroke="'+color+'" stroke-width="'+width+'" stroke-linejoin="round"'+dash+'/>';
+      run=[];
+    };
+    series.forEach(function(val,i){
+      // Break the line where the metric is undefined rather than interpolating
+      // through it — a gap is honest, a straight line is not.
+      if(val==null){flush();return;}
+      run.push(xAt(i)+','+yAt(val));
+    });
+    flush();
+  };
+  if(roll)line(roll,CLN_TR_ROLL_C,' stroke-dasharray="6 4"',2);
+  line(vals,mdef.c,'',2.5);
+  vals.forEach(function(val,i){
+    if(val==null)return;
+    svg+='<circle cx="'+xAt(i)+'" cy="'+yAt(val)+'" r="3.2" fill="'+mdef.c+'" stroke="#fff" stroke-width="1.3" pointer-events="none"/>';
+  });
+  var every=Math.max(1,Math.ceil(n/14));
+  pts.forEach(function(p,i){
+    if(i%every)return;
+    svg+='<text x="'+xAt(i)+'" y="'+(H-padB+16)+'" text-anchor="middle" font-size="8.5" fill="var(--grey)">'+_clnTrLabel(p.wk,g.k)+'</text>';
+  });
+
+  // Hover bands: the reader aims at a DATE, so the whole column is the target.
+  // Shares clnWkTip with the Clinician section — same panel, same date headline,
+  // same data-rN encoding.
+  var esc=function(x){return String(x).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');};
+  var bandW=n>1?(innerW/(n-1)):innerW;
+  pts.forEach(function(p,i){
+    var x=xAt(i),bx=Math.max(padL,x-bandW/2),bw=Math.min(W-padR,x+bandW/2)-bx;
+    var en=_clnTrEnd(p.wk,g.k), xp=parts[i];
+    var head=_clnTrHead(p.wk,g.k);
+    var note=en.ms>=todayMs?('⚠ Still in progress — not a complete '+(g.k==='day'?'day':g.k==='week'?'week':'month')):'';
+    var xT=_dshTrSum([xp]);
+    // Built from DSH_TR_CARDS, so the readout is the same stats in the same
+    // order as the cards above — no duplicate of the selected measure.
+    var rows=DSH_TR_CARDS.map(function(card){
+      var st=_dshTrStat(card,xT,pdef);
+      var isSel=(card.metric===mdef.k)||(card.withPct&&card.withPct===mdef.k);
+      return st.lbl+'|'+st.val+'|'+(card.k==='spend'?'background shading':st.calc)+'|'+st.c+'|solid|'
+        +(isSel?'1':'')+'|'+(st.split||'');
+    });
+    if(roll)rows.push(CLN_TR_ROLL_DAYS+'-day avg · '+mdef.l+'|'+_clnTrFmt(roll[i],mdef.unit)+'|rolling|'+CLN_TR_ROLL_C+'|dash');
+    var a=' data-wk="'+esc(head)+'" data-grain="'+esc(g.k==='day'?'Day':g.k==='week'?'Week':'Month')+'"'
+      +' data-partial="'+(note?'1':'')+'" data-pnote="'+esc(note)+'"';
+    rows.forEach(function(r,j){a+=' data-r'+(j+1)+'="'+esc(r)+'"';});
+    svg+='<rect class="dshwk-band" x="'+bx+'" y="'+padT+'" width="'+bw+'" height="'+innerH+'"'+a
+      +' style="cursor:pointer" onmouseover="clnWkTip(event,this)" onmousemove="clnWkTipMove(event)" onmouseout="clnWkTipHide()"/>';
+  });
+  svg+='</svg>';
+  host.innerHTML='<div style="overflow-x:auto">'+svg+'</div>';
+}
+
 // Every type present in the data, in stack order, with unmapped values rolled
 // into one labelled bucket rather than dropped — a new HubSpot option must show
 // up somewhere rather than silently shrink the total.
