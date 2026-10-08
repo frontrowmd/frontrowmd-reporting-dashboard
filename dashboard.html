@@ -886,7 +886,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t259';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t260';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3350,17 +3350,40 @@ function clnWkTip(e,el){
     document.body.appendChild(tip);
   }
   while(tip.firstChild)tip.removeChild(tip.firstChild);
+  // The date is WHICH point you are reading — every number under it is only
+  // meaningful once you know that. It used to render at 9.5px in 62% white and
+  // uppercase, which is caption styling, so it read as a label on the panel
+  // rather than as its subject. It is now the headline: display face, full
+  // white, and separated from the stats by a rule so the panel has an obvious
+  // top. The partial-period warning sits ABOVE that rule, because it qualifies
+  // the period, not the numbers.
+  var cap=document.createElement('div');
+  cap.style.cssText='border-bottom:1px solid rgba(255,255,255,.15);padding-bottom:6px;margin-bottom:1px';
+  var headRow=document.createElement('div');
+  headRow.style.cssText='display:flex;align-items:baseline;gap:10px;white-space:nowrap';
   var head=document.createElement('div');
-  head.style.cssText='font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;'
-    +'color:rgba(255,255,255,.62);white-space:nowrap';
+  head.style.cssText='flex:1 1 auto;font-family:var(--font-h);font-size:15px;font-weight:700;'
+    +'color:#fff;letter-spacing:.01em;white-space:nowrap';
   head.textContent=el.getAttribute('data-wk')||'';
-  tip.appendChild(head);
+  headRow.appendChild(head);
+  // Which KIND of bucket — a single day, a week, a month. Absent on charts that
+  // have only one grain, so nothing is asserted that the caller did not set.
+  var grain=el.getAttribute('data-grain')||'';
+  if(grain){
+    var gt=document.createElement('div');
+    gt.style.cssText='flex:0 0 auto;font-size:8.5px;font-weight:700;letter-spacing:.09em;'
+      +'text-transform:uppercase;color:rgba(255,255,255,.45)';
+    gt.textContent=grain;
+    headRow.appendChild(gt);
+  }
+  cap.appendChild(headRow);
   if(el.getAttribute('data-partial')==='1'){
     var pw=document.createElement('div');
-    pw.style.cssText='font-size:9.5px;color:#F0C36A;margin-top:3px;white-space:nowrap';
+    pw.style.cssText='font-size:9.5px;color:#F0C36A;margin-top:4px;white-space:nowrap';
     pw.textContent=el.getAttribute('data-pnote')||'⚠ Partial period';
-    tip.appendChild(pw);
+    cap.appendChild(pw);
   }
+  tip.appendChild(cap);
   for(var i=1;i<=9;i++){
     var raw=el.getAttribute('data-r'+i); if(!raw)continue;
     var f=raw.split('|');
@@ -3500,6 +3523,10 @@ function _clnTrStat(card,T,pdef){
 const CLN_TR_ROLL_C='#172C45';
 const CLN_TR_ROLL_DAYS=7;
 const CLN_TR_MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+// Spelled out for the hover headline only — axis ticks stay abbreviated, where
+// space is the constraint and the reader is scanning rather than reading one date.
+const CLN_TR_MONF=['January','February','March','April','May','June','July','August','September','October','November','December'];
+const CLN_TR_DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const CLN_MD_TYPE='MD/DO';
 
 // "per Inquiries" reads wrong and a bare /s$/ strip gives "per inquirie".
@@ -3590,6 +3617,28 @@ function _clnTrEnd(k,grain){
   else if(grain==='month')dd=new Date(Date.UTC(+q[0],+q[1],0));
   return {label:CLN_TR_MON[dd.getUTCMonth()]+' '+dd.getUTCDate(),ms:dd.getTime()};
 }
+// The date a hover band stands for, written out for the tooltip headline. The
+// axis label alone ("Sep 28") was doing double duty here and read as a caption:
+// it never said which weekday, never said whether the bucket was one day or a
+// whole week, and on a 100-day lookback it can cross a year boundary silently.
+// The year is shown only when it is NOT the current one — carrying "2026" on
+// every point would be noise, but a point from last year must say so.
+function _clnTrHead(k,grain){
+  var q=String(k).split('-'),yr=+q[0];
+  var thisYr=(new Date()).getFullYear();
+  var yrSuffix=(yr===thisYr)?'':(', '+yr);
+  if(grain==='month')return CLN_TR_MONF[+q[1]-1]+' '+yr;
+  if(grain==='week'){
+    var en=_clnTrEnd(k,'week'),enYr=new Date(en.ms).getUTCFullYear();
+    // A week that straddles New Year must date BOTH ends: one trailing year
+    // would be read as applying to the end date, which is the wrong year.
+    if(enYr!==yr)return _clnTrLabel(k,'week')+', '+yr+' \u2013 '+en.label+', '+enYr;
+    return _clnTrLabel(k,'week')+' \u2013 '+en.label+yrSuffix;
+  }
+  var d=new Date(Date.UTC(yr,+q[1]-1,+q[2]));
+  return CLN_TR_DOW[d.getUTCDay()]+', '+_clnTrLabel(k,'day')+yrSuffix;
+}
+
 // The periods on screen: the tail of the worker's series, cut to this grain's
 // own lookback. The worker ships 100 days once; the grains slice it.
 function _clnTrendPts(d){
@@ -3792,9 +3841,7 @@ function _renderClnTrend(d){
   pts.forEach(function(p,i){
     var x=xAt(i),bx=Math.max(padL,x-bandW/2),bw=Math.min(W-padR,x+bandW/2)-bx;
     var en=_clnTrEnd(p.wk,g.k), xp=parts[i];
-    var head=g.k==='day'?_clnTrLabel(p.wk,'day')
-      :(g.k==='month'?_clnTrLabel(p.wk,'month')
-        :('Week of '+_clnTrLabel(p.wk,'week')+' – '+en.label));
+    var head=_clnTrHead(p.wk,g.k);
     var note=en.ms>=todayMs?('⚠ Still in progress — not a complete '+(g.k==='day'?'day':g.k==='week'?'week':'month')):'';
     // Built from CLN_TR_CARDS, so the readout is the same stats in the same
     // order as the cards above. It used to assemble its own list, which both
@@ -3813,7 +3860,11 @@ function _renderClnTrend(d){
     // The rolling line is a chart series, not a card, so it goes last — and only
     // when it is actually drawn.
     if(roll)rows.push(CLN_TR_ROLL_DAYS+'-day avg \u00b7 '+mdef.l+'|'+_clnTrFmt(roll[i],mdef.unit)+'|rolling|'+CLN_TR_ROLL_C+'|dash');
-    var a=' data-wk="'+esc(head)+'" data-partial="'+(note?'1':'')+'" data-pnote="'+esc(note)+'"';
+    // data-grain labels what KIND of bucket this is. With three grains a
+    // reader to whom "Sep 28" is shown cannot otherwise tell a single day from
+    // the week that starts on it.
+    var a=' data-wk="'+esc(head)+'" data-grain="'+esc(g.k==='day'?'Day':g.k==='week'?'Week':'Month')+'"'
+      +' data-partial="'+(note?'1':'')+'" data-pnote="'+esc(note)+'"';
     rows.forEach(function(r,j){a+=' data-r'+(j+1)+'="'+esc(r)+'"';});
     svg+='<rect class="clnwk-band" x="'+bx+'" y="'+padT+'" width="'+bw+'" height="'+innerH+'"'+a
       +' style="cursor:pointer" onmouseover="clnWkTip(event,this)" onmousemove="clnWkTipMove(event)" onmouseout="clnWkTipHide()"/>';
@@ -3946,7 +3997,7 @@ function _renderTrueCpdWeek(d, elId){
     // accruing, so its cost-per figures are not comparable to a full one. On the
     // daily grain that is just today.
     var partial=en.ms>=_todayMs?(_isDaily?(en.ms===_todayMs?'1':''):'1'):'';
-    var _hdr=_isDaily?fmtWk(p.wk):('Week of '+fmtWk(p.wk)+' \u2013 '+en.label);
+    var _hdr=_isDaily?fmtWk(p.wk):(fmtWk(p.wk)+' \u2013 '+en.label);
     var rows=[
       'CPD|'+money(p.cpd)+'|'+fN(p.demos||0)+' demos|'+(CPDW_SERIES[0]&&CPDW_SERIES[0].c)+'|solid',
       'CAC|'+money(p.cac)+'|'+fN(p.won||0)+' closed-won|'+(CPDW_SERIES[1]&&CPDW_SERIES[1].c)+'|solid',
@@ -3954,7 +4005,7 @@ function _renderTrueCpdWeek(d, elId){
     ];
     var a=function(v){return String(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');};
     svg+='<rect class="cpdw-band" x="'+bx+'" y="'+padT+'" width="'+bw+'" height="'+innerH+'"'
-      +' data-wk="'+a(_hdr)+'" data-partial="'+partial+'"'
+      +' data-wk="'+a(_hdr)+'" data-grain="'+(_isDaily?'Day':'Week')+'" data-partial="'+partial+'"'
       +' data-r1="'+a(rows[0])+'" data-r2="'+a(rows[1])+'" data-r3="'+a(rows[2])+'"'
       +' style="cursor:pointer" onmouseover="clnWkTip(event,this)" onmousemove="clnWkTipMove(event)" onmouseout="clnWkTipHide()"/>';
   });
