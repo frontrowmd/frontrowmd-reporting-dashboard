@@ -1,7 +1,7 @@
 // Clinician Funnel rework: toggle removal, workflow gating, stat swap, and a
 // nine-stage window-scoped funnel whose first four stages come from Meta + GA4.
 const {load,fn}=require('./slice.js');const vm=require('vm');
-const cli=load('dashboard.html'), src=load('worker.js');
+const cli=load(process.env.DASH_SRC||'dashboard.html'), src=load(process.env.WORKER_SRC||'worker.js');
 let pass=0,fail=0;
 const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify(w);console.log((ok?'PASS ':'FAIL ')+n+'  got='+JSON.stringify(g)+(ok?'':' want='+JSON.stringify(w)));ok?pass++:fail++;};
 const RC=fn(cli,'renderClinician');

@@ -1,7 +1,7 @@
 // The new Qualified Demo definition: a demo that was HELD, excluding pre-launch.
 // The qualification OUTCOME no longer gates it; the qualification RATE still uses it.
 const {load,fn}=require('./slice.js');const vm=require('vm');
-const src=load('worker.js');
+const src=load(process.env.WORKER_SRC||'worker.js');
 const ctx={console,Object,String,Number,Array,Date,Set,Math,parseInt,parseFloat,isNaN,RegExp,JSON};
 vm.createContext(ctx);
 const names=['categorizeDemoStatus','demoDidHappen','processPipelineDeals','isPDT','ptOff','etOff','fmt','toMsET','toMsUTC','isoMs','r2','detectFunnelStage','mapUtmToChannel'];

@@ -194,9 +194,15 @@ ck('  and leads with a single Key Metrics card instead',
 // margin-top:0 belongs to whichever section is FIRST. It sat on #sec-row1,
 // which stopped being first when Key Metrics moved up and no longer exists.
 ck('the first-section margin rule targets the first section',
-   /#page-dashboard>\.dsec:first-of-type,#page-exec \.dsec:first-child,#irfan-c>\.dsec:first-child\{margin-top:0\}/.test(html),true);
-ck('  and the new page gets the same section spacing',
-   /#page-dashboard \.dsec,#page-exec \.dsec,#irfan-c>\.dsec\{margin-top:36px\}/.test(html),true);
+   /#page-dashboard>\.dsec:first-of-type,#irfan-c>\.dsec:first-child\{margin-top:0\}/.test(html),true);
+ck('  and the pages using it get the section spacing',
+   /#page-dashboard \.dsec,#irfan-c>\.dsec\{margin-top:36px\}/.test(html),true);
+// The Executive page is NOT in that pair any more. Each of its sections sits in
+// its own wrapper div, so every .dsec there matched :first-child and the 36px
+// was cancelled on all of them - the rule looked like it was spacing the page
+// and never did. Its containers own the rhythm instead.
+ck('  with the Executive page spaced by its containers',
+   /#page-exec>div\{margin-bottom:24px\}/.test(html)&&!/#page-exec \.dsec(?![-\w])/.test(html),true);
 ck('six headline tiles (five via _kmTile, the split one inline)',
    (html.match(/kmh\+=_kmTile\(/g)||[]).length+(html.match(/kmh\+='<div class="tile hero"/g)||[]).length,6);
 ck('in the order asked for',

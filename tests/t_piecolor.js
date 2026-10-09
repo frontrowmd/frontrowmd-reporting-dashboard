@@ -2,7 +2,7 @@
 // chart. Every assertion COMPUTES the collision set from source -- none pins
 // today's palette -- so a future colour edit that reintroduces a clash fails here.
 const {load,fn,decl}=require('./slice.js');const vm=require('vm');
-const cli=load('dashboard.html'), src=load('worker.js');
+const cli=load(process.env.DASH_SRC||'dashboard.html'), src=load(process.env.WORKER_SRC||'worker.js');
 let pass=0,fail=0;
 const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify(w);console.log((ok?'PASS ':'FAIL ')+n+'  got='+JSON.stringify(g)+(ok?'':' want='+JSON.stringify(w)));ok?pass++:fail++;};
 

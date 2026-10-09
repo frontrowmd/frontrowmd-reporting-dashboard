@@ -6,7 +6,7 @@
 // one and not the other does not fail loudly — every column to the right of the
 // insertion silently shifts by one, and the table still renders.
 const {load,fn}=require('./slice.js');
-const src=load('worker.js'), bd=load(process.env.BD_SRC||'bd-dashboard.html');
+const src=load(process.env.WORKER_SRC||'worker.js'), bd=load(process.env.BD_SRC||'bd-dashboard.html');
 
 let pass=0,fail=0;
 const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify(w);console.log((ok?'PASS ':'FAIL ')+n+'  got='+JSON.stringify(g)+(ok?'':' want='+JSON.stringify(w)));ok?pass++:fail++;};

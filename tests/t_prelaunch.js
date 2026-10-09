@@ -1,6 +1,6 @@
 // Slices the REAL processScheduledContacts to check the Regular / Pre-Launch split.
 const {load,fn}=require('./slice.js');const vm=require('vm');
-const src=load('worker.js');
+const src=load(process.env.WORKER_SRC||'worker.js');
 const ctx={console,Object,String,Number,Array,Date,Set,Math,parseInt,parseFloat,isNaN,RegExp};
 vm.createContext(ctx);
 vm.runInContext([fn(src,'isPDT'),fn(src,'ptOff'),fn(src,'etOff'),fn(src,'fmt'),

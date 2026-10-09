@@ -3,7 +3,7 @@
 // browser request that aborted at 75s — so the cache could never populate either.
 // A cron computes it where nothing can abort it; the request path reads KV.
 const {load,fn}=require('./slice.js');
-const src=load('worker.js'), cli=load('dashboard.html'), toml=load('wrangler.toml');
+const src=load(process.env.WORKER_SRC||'worker.js'), cli=load(process.env.DASH_SRC||'dashboard.html'), toml=load('wrangler.toml');
 let pass=0,fail=0;
 const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify(w);console.log((ok?'PASS ':'FAIL ')+n+'  got='+JSON.stringify(g)+(ok?'':' want='+JSON.stringify(w)));ok?pass++:fail++;};
 

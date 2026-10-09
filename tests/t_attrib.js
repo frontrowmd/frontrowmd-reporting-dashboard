@@ -2,7 +2,7 @@
 // are ACTUALLY in HubSpot (measured over all 134 contacts with date_demo_booked,
 // createdate 2026-09-01..2026-10-02), plus the worker/client wiring.
 const {load,fn}=require('./slice.js');const vm=require('vm');
-const src=load('worker.js'), cli=load(process.env.DASH_SRC||'dashboard.html');
+const src=load(process.env.WORKER_SRC||'worker.js'), cli=load(process.env.DASH_SRC||'dashboard.html');
 const ctx={console};vm.createContext(ctx);
 vm.runInContext(fn(src,'mapUtmToChannel'),ctx);
 const map=ctx.mapUtmToChannel;

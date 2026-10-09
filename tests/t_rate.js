@@ -9,7 +9,7 @@
 // still computes an outcome-based rate; applyWebinarHeld OVERWRITES it. This
 // suite runs both, in that order, so it fails if either half drifts.
 const {load,fn,decl}=require('./slice.js');const vm=require('vm');
-const src=load('worker.js'), cli=load('dashboard.html');
+const src=load(process.env.WORKER_SRC||'worker.js'), cli=load(process.env.DASH_SRC||'dashboard.html');
 
 // Everything above `export default` is plain top-level declarations, so running
 // that whole prefix resolves applyWebinarHeld's and processPipelineDeals' many

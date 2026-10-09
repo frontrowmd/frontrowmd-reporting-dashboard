@@ -6,7 +6,7 @@
 // clamps, year rollovers, leap days) instead of whatever this week happens to
 // produce. Nothing below pins a date that depends on when the suite is run.
 const {load,fn}=require('./slice.js');const vm=require('vm');
-const src=load('worker.js'), cli=load('dashboard.html');
+const src=load(process.env.WORKER_SRC||'worker.js'), cli=load(process.env.DASH_SRC||'dashboard.html');
 
 const ctx={console,Date,Math,Number,String,Object,Array,JSON,Error,RegExp,parseInt,parseFloat,isNaN};
 vm.createContext(ctx);

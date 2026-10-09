@@ -1,7 +1,7 @@
 // Client side of the Regular / Pre-Launch toggle: series selection, defaults and
 // the prior/last-month denominators that feed the deltas.
 const {load,fn}=require('./slice.js');const vm=require('vm');
-const src=load('dashboard.html');
+const src=load(process.env.DASH_SRC||'dashboard.html');
 const ctx={console,Object,String,Number,Array,Math,JSON};
 ctx.window={};
 vm.createContext(ctx);

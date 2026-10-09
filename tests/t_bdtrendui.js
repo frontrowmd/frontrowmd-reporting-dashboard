@@ -109,7 +109,12 @@ ck('no stat produces a split value',
    ctx.DSH_TR_CARDS.every(c=>ctx._dshTrStat(c,Treg,pdef).split==null),true);
 
 // ── 5. Grains: the three toggles, shared with the Clinician section ───────
-ck('Weekly / Daily / Monthly',ctx.DSH_TR_GRAINS.map(g=>[g.l,g.n]),[['Weekly',8],['Daily',30],['Monthly',3]]);
+// Pill order on screen is Daily, Weekly, Monthly. Weekly is still the DEFAULT —
+// that comes from _dshTrendGrain(), not from this array's first entry.
+ck('Daily / Weekly / Monthly',ctx.DSH_TR_GRAINS.map(g=>[g.l,g.n]),[['Daily',30],['Weekly',8],['Monthly',3]]);
+ck('  and Weekly is still what loads',/_dshTrendGrain\(\)\{return window\._dshTrendGrainV\|\|'week';\}/.test(src),true);
+ck('  with the fallback naming week rather than taking the first entry',
+   /_trGrainDefault\(DSH_TR_GRAINS\)/.test(src)&&!/\|\|DSH_TR_GRAINS\[0\]/.test(src),true);
 ck('the grain list is SHARED, not a second copy',/const DSH_TR_GRAINS=CLN_TR_GRAINS;/.test(src),true);
 ck('the card slices its own lookback out of one series',
    /all\.slice\(Math\.max\(0,all\.length-g\.n\)\)/.test(BR),true);
@@ -181,6 +186,21 @@ ck('  and the Clinician card never reads a Brand one',
    (()=>{const c0=src.indexOf('// \u2500\u2500 Clinician Trend Analysis');
          const CL=src.slice(c0,src.indexOf('// \u2500\u2500 Trend Analysis (Brand Dashboard)',c0));
          return /DSH_TR_|\.signed|\.paid\b/.test(CL);})(),false);
+
+
+// ── Weekly stays the default after the pill reorder ───────────────────────
+// The array order is now Daily, Weekly, Monthly. Nothing about the default may
+// ride on that order — it is named explicitly in two places.
+ck('the Brand section still opens on Weekly',
+   /_dshTrendGrain\(\)\{return window\._dshTrendGrainV\|\|'week';\}/.test(src),true);
+ck('the Clinician section too',
+   /_clnTrendGrain\(\)\{return window\._clnTrendGrainV\|\|'week';\}/.test(src),true);
+// And the shared fallback picks week BY NAME, so an unknown stored grain lands
+// on Weekly rather than on whichever pill happens to be first.
+ck('the shared fallback names week rather than taking position 0',
+   /return list\.filter\(function\(g\)\{return g\.k==='week';\}\)\[0\]\|\|list\[0\];/.test(src),true);
+ck('  and no lookup falls back to the first entry directly',
+   /\|\|CLN_TR_GRAINS\[0\]|\|\|DSH_TR_GRAINS\[0\]/.test(src),false);
 
 console.log('\n'+pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);

@@ -2,7 +2,7 @@
 // run in bounded-concurrency waves. Correctness must be identical to the old
 // serial loop -- same rows, same bisection, same budget ceiling.
 const {load,fn}=require('./slice.js');const vm=require('vm');
-const src=load('worker.js');
+const src=load(process.env.WORKER_SRC||'worker.js');
 let pass=0,fail=0;
 const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify(w);console.log((ok?'PASS ':'FAIL ')+n+'  got='+JSON.stringify(g)+(ok?'':' want='+JSON.stringify(w)));ok?pass++:fail++;};
 

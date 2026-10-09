@@ -6,7 +6,7 @@
 // pass-through rates, the Biggest-drop pick and the delta suppression are
 // asserted as behaviour rather than matched as text.
 const {load,fn,decl}=require('./slice.js');const vm=require('vm');
-const src=load('worker.js'), cli=load('dashboard.html');
+const src=load(process.env.WORKER_SRC||'worker.js'), cli=load(process.env.DASH_SRC||'dashboard.html');
 let pass=0,fail=0;
 const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify(w);console.log((ok?'PASS ':'FAIL ')+n+'  got='+JSON.stringify(g)+(ok?'':' want='+JSON.stringify(w)));ok?pass++:fail++;};
 

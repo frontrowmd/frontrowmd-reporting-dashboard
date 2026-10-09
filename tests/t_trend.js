@@ -13,7 +13,7 @@
 //    answer — inverting yOf's ternary passes every textual check. The geometry
 //    block below renders the real SVG and measures it.
 const {load,fn}=require('./slice.js');const vm=require('vm');
-const src=load('worker.js'), cli=load('dashboard.html');
+const src=load(process.env.WORKER_SRC||'worker.js'), cli=load(process.env.DASH_SRC||'dashboard.html');
 const ctx={console,Date,Math,JSON,Set,Map,Object,String,Number,Array,parseInt,parseFloat,isNaN,RegExp,
            fetch:()=>{},TextEncoder,TextDecoder,URL,Promise,Response,Request,Headers};
 vm.createContext(ctx);
@@ -136,7 +136,14 @@ ck('client reads ads.trend', /\(d&&d\.ads&&d\.ads\.trend\)/.test(cli), true);
   const grains=(/const CLN_TR_GRAINS=\[([\s\S]*?)\n\];/.exec(cli)||[,''])[1];
   const got=[...grains.matchAll(/\{k:'(\w+)',\s*l:'(\w+)',\s*n:(\d+),\s*src:'(\w+)'/g)].map(m=>[m[1],m[2],+m[3],m[4]]);
   ck('three periods, each with its own lookback', got,
-     [['week','Weekly',8,'week'],['day','Daily',30,'day'],['month','Monthly',3,'month']]);
+     [['day','Daily',30,'day'],['week','Weekly',8,'week'],['month','Monthly',3,'month']]);
+  // Reordering the pills must not move the default off Weekly.
+  ck('  and Weekly remains the default grain',
+     /_clnTrendGrain\(\)\{return window\._clnTrendGrainV\|\|'week';\}/.test(cli),true);
+  ck('  picked by name, not by array position',
+     /_trGrainDefault=function\(list\)\{\s*\n?\s*return list\.filter\(function\(g\)\{return g\.k==='week';\}\)\[0\]/.test(cli),true);
+  ck('  so no lookup falls back to the first entry',
+     /\|\|CLN_TR_GRAINS\[0\]|\|\|DSH_TR_GRAINS\[0\]/.test(cli),false);
   const pops=(/const CLN_TR_POPS=\[([\s\S]*?)\n\];/.exec(cli)||[,''])[1];
   ck('two populations', [...pops.matchAll(/\{k:'(\w+)'/g)].map(m=>m[1]), ['inquiry','submission']);
   const mets=(/const CLN_TR_METRICS=\[([\s\S]*?)\n\];/.exec(cli)||[,''])[1];

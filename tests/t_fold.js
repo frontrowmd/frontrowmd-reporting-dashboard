@@ -4,7 +4,7 @@
 // as a bare 503 with no JSON body. The fold must be associative: how the window
 // is chunked must not change the result.
 const {load}=require('./slice.js');const vm=require('vm');
-const src=load('worker.js');
+const src=load(process.env.WORKER_SRC||'worker.js');
 let pass=0,fail=0;
 const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify(w);console.log((ok?'PASS ':'FAIL ')+n+'  got='+JSON.stringify(g).slice(0,150)+(ok?'':' want='+JSON.stringify(w).slice(0,150)));ok?pass++:fail++;};
 

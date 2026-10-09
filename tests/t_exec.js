@@ -21,7 +21,7 @@ const SITES=[
   ['renderPage dispatch',             /if\(AP==='exec'\)renderExec\(\)/],
   ['nav highlight token',             /const map=\{exec:"switchDashSub\('exec'\)"/],
   ['section nav selector',            /_SECNAV_SEL=\{exec:'#page-exec \.dsec-h'/],
-  ['section spacing CSS',             /#page-dashboard \.dsec,#page-exec \.dsec/],
+  ['section spacing CSS',             /#page-exec>div\{margin-bottom:24px\}/],
 ];
 for(const [what,re_] of SITES)ck('registered: '+what,re_.test(cli),true);
 ck('it is the landing page',/\};let AP='exec';/.test(cli),true);
@@ -144,6 +144,33 @@ ck('every tile the two share reads the same value',
 // have silently shown the Brand page's window.
 ck('the window is a parameter, not the Brand page’s global',
    /const _kmWin=win\|\|'mtd';/.test(cli)&&!/const _kmWin=\(S\.dashboard&&S\.dashboard\.win\)/.test(cli),true);
+
+
+// ── Section rhythm ────────────────────────────────────────────────────────
+// The three sections come from builders written for three different
+// dashboards and disagree about their own bottom margin: the Brand metrics row
+// emits none at all, the Clinician ones 16px, anything carrying .sec 24px. So
+// the gap between Key Metrics and Trend Analysis changed when the Brand /
+// Clinician pill was switched. The CONTAINER owns the gap now.
+ck('the container sets the gap',/#page-exec>div\{margin-bottom:24px\}/.test(cli),true);
+ck('  and the last section does not add one',/#page-exec>div:last-child\{margin-bottom:0\}/.test(cli),true);
+ck('  while whatever each builder emitted is overridden',
+   /#page-exec>div>:last-child\{margin-bottom:0 !important\}/.test(cli),true);
+// Every exec section sits in its own wrapper, so every .dsec there was a
+// :first-child and the 36px top margin was cancelled on all of them — the rule
+// looked like it was spacing the page and never did.
+// ".dsec-h" is the section-nav selector and must survive; only the margin rule
+// goes, so this matches .dsec NOT followed by a word character or dash.
+ck('the dead top-margin rule is gone',/#page-exec \.dsec(?![-\w])/.test(cli),false);
+ck('  while the section-nav selector survives',
+   /_SECNAV_SEL=\{exec:'#page-exec \.dsec-h'/.test(cli),true);
+ck('  but the pages that still use it keep it',
+   /#page-dashboard \.dsec,#irfan-c>\.dsec\{margin-top:36px\}/.test(cli),true);
+// Nothing ever wrote to #exec-date-header, so it was an empty block holding
+// 24px open above the mode bar.
+ck('the never-populated date header is gone',/exec-date-header/.test(cli),false);
+ck('  leaving the mode bar first in the page',
+   /<div class="pg" id="page-exec">\s*<div id="exec-mode-bar">/.test(cli),true);
 
 console.log('\n'+pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);

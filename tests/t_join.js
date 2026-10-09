@@ -15,7 +15,7 @@
 //   2. A frozen table of nested joins across both dashboards, for the deep paths
 //      where layer 1 cannot see (d.a.b).
 const {load,fn}=require('./slice.js');
-const src=load('worker.js'), cli=load('dashboard.html');
+const src=load(process.env.WORKER_SRC||'worker.js'), cli=load(process.env.DASH_SRC||'dashboard.html');
 
 let pass=0,fail=0;
 const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify(w);console.log((ok?'PASS ':'FAIL ')+n+'  got='+JSON.stringify(g)+(ok?'':' want='+JSON.stringify(w)));ok?pass++:fail++;};

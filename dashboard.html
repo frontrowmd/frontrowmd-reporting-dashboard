@@ -90,7 +90,11 @@ html,body{height:100%}body{font-family:var(--font-b);font-size:15px;color:var(--
 @keyframes spin{to{transform:rotate(360deg)}}
 .lt{margin-left:16px;font-family:var(--font-h);color:var(--navy);font-size:15px}
 .pg{display:none;padding:32px;flex:1}.pg.active{display:block}
-.sec{margin-bottom:24px}.sec-card{background:var(--white);border:1px solid var(--border);border-radius:12px;padding:20px}.funnel-stage{transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}.funnel-stage:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(2,15,24,.08)}.stat-card:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(2,15,24,.06);border-color:var(--teal-30)}
+.sec{margin-bottom:24px}
+#page-exec>div{margin-bottom:24px}
+#page-exec>div:last-child{margin-bottom:0}
+#page-exec>div>:last-child{margin-bottom:0 !important}
+.sec-card{background:var(--white);border:1px solid var(--border);border-radius:12px;padding:20px}.funnel-stage{transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}.funnel-stage:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(2,15,24,.08)}.stat-card:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(2,15,24,.06);border-color:var(--teal-30)}
 .st{font-family:var(--font-h);font-size:18px;font-weight:700;color:var(--navy);margin-bottom:16px;padding-bottom:8px;border-bottom:2px solid var(--teal-30)}
 .tg{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
 .tile{background:var(--white);border:1px solid var(--border);border-radius:12px;padding:20px 24px;transition:all .2s}
@@ -316,8 +320,8 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;hei
    moves onto the section root. 36px = 1.5x the 24px .sec gap, so a new section
    reads as a break while cards WITHIN a section (Ads + Channel Performance)
    stay visibly grouped at 24px. */
-#page-dashboard .dsec,#page-exec .dsec,#irfan-c>.dsec{margin-top:36px}
-#page-dashboard>.dsec:first-of-type,#page-exec .dsec:first-child,#irfan-c>.dsec:first-child{margin-top:0}
+#page-dashboard .dsec,#irfan-c>.dsec{margin-top:36px}
+#page-dashboard>.dsec:first-of-type,#irfan-c>.dsec:first-child{margin-top:0}
 .ni.grp{font-size:10px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;color:rgba(255,255,255,.40);
   padding:9px 16px 7px;margin-top:12px;margin-bottom:2px;border-radius:0;border-top:1px solid rgba(255,255,255,.07)}
 .ni.grp:hover{background:transparent;color:rgba(255,255,255,.72)}
@@ -862,7 +866,6 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
          here is exec-prefixed because all pages share one DOM — a second
          #t-keymetrics would be found by the Brand page's own render. -->
     <div class="pg" id="page-exec">
-      <div id="exec-date-header" style="margin-bottom:24px"></div>
       <div id="exec-mode-bar"></div>
       <div id="exec-km"></div>
       <div id="exec-trend"></div>
@@ -3370,11 +3373,18 @@ function clnWkTipHide(){var tip=document.getElementById('cln-wk-tip');if(tip)tip
 // a fixed 100-day series and each grain slices its own lookback out of it, so
 // switching grain costs nothing and the section never empties because the page
 // window happens to be short.
+// Order is the ON-SCREEN order of the pills: Daily, Weekly, Monthly. Weekly is
+// still the default - that comes from _clnTrendGrain/_dshTrendGrain, not from
+// this array's first entry, and the lookups below name 'week' explicitly rather
+// than falling back to [0] so the two cannot drift apart.
 const CLN_TR_GRAINS=[
-  {k:'week', l:'Weekly',  n:8,  src:'week',  note:'last 8 weeks'},
   {k:'day',  l:'Daily',   n:30, src:'day',   note:'last 30 days'},
+  {k:'week', l:'Weekly',  n:8,  src:'week',  note:'last 8 weeks'},
   {k:'month',l:'Monthly', n:3,  src:'month', note:'last 3 months'},
 ];
+const _trGrainDefault=function(list){
+  return list.filter(function(g){return g.k==='week';})[0]||list[0];
+};
 const CLN_TR_POPS=[
   {k:'inquiry',   l:'Inquiry',         w:'inquiries',      short:'inquiries'},
   {k:'submission',l:'Full Submission', w:'full submissions',short:'full subs'},
@@ -3462,7 +3472,7 @@ function _clnSingular(label){
 function _clnTrendGrain(){return window._clnTrendGrainV||'week';}
 function _clnTrendPop(){return window._clnTrendPopV||'inquiry';}
 function _clnTrendMetric(){return window._clnTrendMetricV||'count';}
-function _clnTrGrainDef(){return CLN_TR_GRAINS.filter(function(g){return g.k===_clnTrendGrain();})[0]||CLN_TR_GRAINS[0];}
+function _clnTrGrainDef(){return CLN_TR_GRAINS.filter(function(g){return g.k===_clnTrendGrain();})[0]||_trGrainDefault(CLN_TR_GRAINS);}
 function _clnTrMetricDef(){return CLN_TR_METRICS.filter(function(m){return m.k===_clnTrendMetric();})[0]||CLN_TR_METRICS[0];}
 function _clnTrPopDef(){return CLN_TR_POPS.filter(function(p){return p.k===_clnTrendPop();})[0]||CLN_TR_POPS[0];}
 // `sfx` lets the Executive Dashboard host this card too. Pages share one DOM,
@@ -3835,7 +3845,7 @@ const DSH_TR_CARDS=[
 function _dshTrendGrain(){return window._dshTrendGrainV||'week';}
 function _dshTrendPop(){return window._dshTrendPopV||'regular';}
 function _dshTrendMetric(){return window._dshTrendMetricV||'count';}
-function _dshTrGrainDef(){return DSH_TR_GRAINS.filter(function(g){return g.k===_dshTrendGrain();})[0]||DSH_TR_GRAINS[0];}
+function _dshTrGrainDef(){return DSH_TR_GRAINS.filter(function(g){return g.k===_dshTrendGrain();})[0]||_trGrainDefault(DSH_TR_GRAINS);}
 function _dshTrMetricDef(){return DSH_TR_METRICS.filter(function(m){return m.k===_dshTrendMetric();})[0]||DSH_TR_METRICS[0];}
 function _dshTrPopDef(){return DSH_TR_POPS.filter(function(p){return p.k===_dshTrendPop();})[0]||DSH_TR_POPS[0];}
 // `sfx` lets a second page host this card. Pages share one DOM, so the panel
@@ -5011,6 +5021,7 @@ function _clnTotResolved(rows){
   for(const c of (rows||[])){ if(c.inquiries!=null){any=true;inq+=c.inquiries;spend+=(c.spend||0);} }
   return {any:any,inq:inq,spend:spend};
 }
+var _cpdLbl=function(){return _clnAdCols?'Cost Per Conversion':'CPD';};
 function _clnTotInqCell(rows){
   const r=_clnTotResolved(rows);
   return '<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+(r.any?fN(r.inq):'\u2014')+'</td>';
@@ -6429,7 +6440,7 @@ function _buildAdSetTableHTML(meta,channel,_flagsByName,fatigueMap){
   h+='<th style="text-align:center;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Status Date</th><th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)" title="Days since the status date">Status Days</th>';
   h+=_irfanSortableTh('Spend','spend',sortSt,'irfanSortAdset','right');
   h+=_irfanSortableTh('Conversions','demos',sortSt,'irfanSortAdset','right');
-  h+=_irfanSortableTh('CPD','cpd',sortSt,'irfanSortAdset','right');
+  h+=_irfanSortableTh(_cpdLbl(),'cpd',sortSt,'irfanSortAdset','right');
   h+=_irfanSortableTh('Impr','impressions',sortSt,'irfanSortAdset','right');
   h+=_irfanSortableTh('Clicks','clicks',sortSt,'irfanSortAdset','right');
   h+=_irfanSortableTh('CTR','ctr',sortSt,'irfanSortAdset','right');
@@ -6864,8 +6875,6 @@ function _renderIrfanMetaTables(d, channel){
   // Heatmap value arrays (across visible rows)
   // Heat scales for the clinician-only columns. Inquiries: more is better.
   // CPI: less is better, same polarity as CPD.
-  const cInq=campRows.map(c=>c.inquiries!=null?c.inquiries:0);
-  const cCpi=campRows.map(c=>(c.inquiries>0?(c.spend||0)/c.inquiries:0));
   const cSp=campRows.map(c=>c.spend),cIm=campRows.map(c=>c.impressions||0),cCl=campRows.map(c=>c.clicks||0),cCt=campRows.map(c=>c.ctr||0),cDe=campRows.map(c=>c.demos||0),cCp=campRows.map(c=>c.demos>0?c.spend/c.demos:0),cQu=campRows.map(c=>c.qualified||0);
   let campH='';
   campH+=_metaTblReadout(campRows.length+' rows · sort by '+campSort.col+' '+campSort.dir);
@@ -6876,9 +6885,7 @@ function _renderIrfanMetaTables(d, channel){
   campH+='<th style="text-align:center;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Status Date</th><th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)" title="Days since the status date">Status Days</th>';
   campH+=_irfanSortableTh('Spend','spend',campSort,'irfanSortCamp','right');
   campH+=_irfanSortableTh('Conversions','demos',campSort,'irfanSortCamp','right');
-  campH+=_irfanSortableTh('CPD','cpd',campSort,'irfanSortCamp','right');
-  if(_clnAdCols)campH+=_irfanSortableTh('Inquiries','inquiries',campSort,'irfanSortCamp','right');
-  if(_clnAdCols)campH+=_irfanSortableTh('CPI','cpi',campSort,'irfanSortCamp','right');
+  campH+=_irfanSortableTh(_cpdLbl(),'cpd',campSort,'irfanSortCamp','right');
   campH+=_irfanSortableTh('Impr','impressions',campSort,'irfanSortCamp','right');
   campH+=_irfanSortableTh('Clicks','clicks',campSort,'irfanSortCamp','right');
   campH+=_irfanSortableTh('CTR','ctr',campSort,'irfanSortCamp','right');
@@ -6891,6 +6898,9 @@ function _renderIrfanMetaTables(d, channel){
   campH+=_irfanSortableTh('Score','_score',campSort,'irfanSortCamp','right');
   campH+=_irfanSortableTh('Tag','_tag',campSort,'irfanSortCamp','right');
   campH+='</tr></thead><tbody>';
+  // Counted from the header rather than hand-kept: the column set differs by
+  // channel, and a literal here goes stale the moment a column moves.
+  const _campColN=(campH.match(/<th\b/g)||[]).length;
   // Heatmap value arrays for new cols (Watch, Frequency, Score)
   const cWa=campRows.map(c=>c.watch||0),cFr=campRows.map(c=>c.frequency||0),cSc=campRows.map(c=>c._score||0);
   // Totals accumulators
@@ -6945,16 +6955,6 @@ function _renderIrfanMetaTables(d, channel){
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cSp,c.spend,true)+'">'+f$(c.spend)+'</td>';
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cDe,c.demos||0,false)+'">'+fN(c.demos||0)+_capiSub(c,channel,true)+'</td>';
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cCp,cpd||0,true)+'">'+(cpd!=null?f$(cpd):'—')+'</td>';
-    // A campaign the attribution could not resolve shows a dash, not 0 —
-    // "nobody enquired" and "we could not match this campaign" are different
-    // facts and only one of them is a performance signal. Two different dashes:
-    // the worker flags a lookup that could not run at all, which reads "n/a".
-    const _inq=_clnAdCols&&(c.inquiries!=null)?c.inquiries:null;
-    const _cpi=(_inq!=null&&_inq>0)?((c.spend||0)/_inq):null;
-    const _unavail=!!(meta&&meta.inquiriesUnavailable);
-    const _dashTip=_unavail?'Inquiry lookup unavailable for this window \u2014 not zero. Check the worker log.':'No clinician contacts in this window carry this campaign in utm_campaign';
-    if(_clnAdCols)campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums'+(_unavail?';color:var(--grey)':(_inq!=null?';'+_irfanHeat(cInq,_inq,false):''))+'" title="'+(_inq!=null?'Clinician contacts created in this window whose utm_campaign matches this campaign':_dashTip)+'">'+(_inq!=null?fN(_inq):(_unavail?'n/a':'\u2014'))+'</td>';
-    if(_clnAdCols)campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums'+(_cpi!=null?';'+_irfanHeat(cCpi,_cpi,true):'')+'" title="Campaign spend \u00f7 attributed inquiries">'+(_cpi!=null?f$(_cpi):(_unavail?'n/a':'\u2014'))+'</td>';
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cIm,c.impressions||0,false)+'">'+fN(c.impressions||0)+'</td>';
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cCl,c.clicks||0,false)+'">'+fN(c.clicks||0)+'</td>';
     campH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(cCt,c.ctr||0,false)+'">'+(c.ctr!=null?c.ctr.toFixed(2)+'%':'—')+'</td>';
@@ -6984,7 +6984,7 @@ function _renderIrfanMetaTables(d, channel){
       for(const ncr of _nestedSorted)campH+=_renderCreRow(ncr, _rowId+'-cre', 30, _showNested);
     }
   }
-  if(!campRows.length)campH+='<tr><td colspan="'+(_clnAdCols?17:16)+'" style="padding:16px;text-align:center;color:var(--grey)">No campaigns match</td></tr>';
+  if(!campRows.length)campH+='<tr><td colspan="'+_campColN+'" style="padding:16px;text-align:center;color:var(--grey)">No campaigns match</td></tr>';
   // Totals row — sum spend/demos/impressions/clicks/qual; weighted CPD/CTR/Watch
   if(campRows.length){
     const _tCpd=_tDe>0?_tSp/_tDe:null;
@@ -6999,8 +6999,6 @@ function _renderIrfanMetaTables(d, channel){
       +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+f$(_tSp)+'</td>'
       +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+fN(_tDe)+'</td>'
       +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+(_tCpd!=null?f$(_tCpd):'—')+'</td>'
-      +(_clnAdCols?_clnTotInqCell(campRows):'')
-      +(_clnAdCols?_clnTotCpiCell(campRows):'')
       +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+fN(_tIm)+'</td>'
       +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+fN(_tCl)+'</td>'
       +'<td style="text-align:right;padding:10px 6px;font-variant-numeric:tabular-nums">'+(_tCtr!=null?_tCtr.toFixed(2)+'%':'—')+'</td>'
@@ -7092,7 +7090,7 @@ function _renderIrfanMetaTables(d, channel){
   creH+='<th style="text-align:center;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)">Status Date</th><th style="text-align:right;padding:8px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--grey)" title="Days since the status date">Status Days</th>';
   creH+=_irfanSortableTh('Spend','spend',creSort,'irfanSortCre','right');
   creH+=_irfanSortableTh('Conversions','demos',creSort,'irfanSortCre','right');
-  creH+=_irfanSortableTh('CPD','cpd',creSort,'irfanSortCre','right');
+  creH+=_irfanSortableTh(_cpdLbl(),'cpd',creSort,'irfanSortCre','right');
   creH+=_irfanSortableTh('Impr','impressions',creSort,'irfanSortCre','right');
   creH+=_irfanSortableTh('Clicks','clicks',creSort,'irfanSortCre','right');
   creH+=_irfanSortableTh('CTR','ctr',creSort,'irfanSortCre','right');
@@ -7232,7 +7230,7 @@ function _renderIrfanMetaTables(d, channel){
     audH+=_irfanSortableTh('CTR','ctr',audSort,'irfanSortAud','right');
     audH+=_irfanSortableTh('CPC','cpc',audSort,'irfanSortAud','right');
     audH+=_irfanSortableTh('Conversions','demos',audSort,'irfanSortAud','right');
-    audH+=_irfanSortableTh('CPD','cpd',audSort,'irfanSortAud','right');
+    audH+=_irfanSortableTh(_cpdLbl(),'cpd',audSort,'irfanSortAud','right');
     audH+='</tr></thead><tbody>';
     for(const a of sorted){
       const nm=(a.name||'');  // full name — Name column wraps
