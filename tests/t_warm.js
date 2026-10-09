@@ -181,15 +181,24 @@ ck('the banner reaches every page that shows the tables',
 // window is not a cheap one. The abort also killed the run before it could
 // cache, so every later load was in exactly the same position — a loop that a
 // longer client timeout alone does not break.
-ck('MTD is treated as an expensive window',
-   /const AZ_PRECOMPUTED_WINDOWS = \['mtd', 'ytd', 'allTime'\];/.test(src),true);
+// Assert MEMBERSHIP, not the literal array: allTime left the list when its pill
+// was removed, and pinning the exact text made that unrelated change look like
+// a regression in MTD's warming.
+const _WARMED=((src.match(/const AZ_PRECOMPUTED_WINDOWS = \[([^\]]*)\]/)||[])[1]||'')
+  .split(',').map(x=>x.trim().replace(/'/g,'')).filter(Boolean);
+ck('MTD is treated as an expensive window',_WARMED.includes('mtd'),true);
+ck('  as is YTD',_WARMED.includes('ytd'),true);
+// Warming a window nobody can select is pure cron cost.
+ck('  and nothing is warmed that the picker cannot select',
+   _WARMED.filter(w=>!new RegExp("k:'"+w+"'").test(cli)),[]);
 // Being on that list is what buys it BOTH the cron warm and the long freshness
 // TTL; one without the other does not help.
 ck('so the cron warms it',/for \(const win of AZ_PRECOMPUTED_WINDOWS\)/.test(src),true);
 ck('and it gets the long freshness TTL',
    /AZ_PRECOMPUTED_WINDOWS\.includes\(win\) \? 1800000 : 120000/.test(src),true);
 ck('and the client gives it room to land once',
-   /const _AZ_SLOW_WINS=\['mtd','ytd','allTime'\];/.test(cli),true);
+   (()=>{const m=(cli.match(/const _AZ_SLOW_WINS=\[([^\]]*)\]/)||[])[1]||'';
+         return m.split(',').map(x=>x.trim().replace(/'/g,'')).filter(Boolean);})(),_WARMED);
 // Last-good is returned immediately and the rebuild happens behind the response.
 ck('a stale expensive window short-circuits the live compute',
    /if \(_azStale && AZ_PRECOMPUTED_WINDOWS\.includes\(_azWin\)\) \{/.test(src),true);

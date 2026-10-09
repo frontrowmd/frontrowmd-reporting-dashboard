@@ -16,7 +16,6 @@ ck('the real builder loaded',typeof ctx.buildBrandTrend,'function');
 // ── Fixtures ───────────────────────────────────────────────────────────────
 const C=(day,wt,src_,med)=>({id:day+'|'+wt+'|'+(src_||'')+'|'+Math.random(),
   properties:{createdate:day+'T18:00:00Z',average_monthly_web_traffic:wt,utm_source:src_||'',utm_medium:med||''}});
-const D=(day)=>({properties:{closedate:day+'T18:00:00Z'}});
 const AD=(day,ds,camp,sp,cl,im)=>({date:day,datasource:ds,campaign_name:camp,spend:String(sp),clicks:String(cl),impressions:String(im)});
 
 const FROM='2026-10-01', TO='2026-10-07';
@@ -27,8 +26,6 @@ const contacts=[
   C('2026-10-02','0-10K monthly web visitors','linkedin','cpc'),            // regular + paid
   C('2026-10-02','Very Small','newsletter','email'),                        // regular, organic-tagged
 ];
-const cw=[D('2026-10-01'),D('2026-10-02')];
-const churn=[D('2026-10-02')];
 const ads=[
   AD('2026-10-01','facebook','S01 - TOF - Cold - Supplements',100,50,5000),
   AD('2026-10-01','google_ads','Brand Search',40,20,1000),
@@ -38,7 +35,7 @@ const ads=[
   // GA4 rows ride the same array and are not ad rows at all.
   AD('2026-10-02','googleanalytics4','(none)',777,777,777),
 ];
-const t=ctx.buildBrandTrend(contacts,cw,churn,ads,FROM,TO);
+const t=ctx.buildBrandTrend(contacts,ads,FROM,TO);
 const byDay={};t.day.forEach(p=>byDay[p.wk]=p);
 const d1=byDay['2026-10-01'],d2=byDay['2026-10-02'];
 
@@ -74,33 +71,28 @@ ck('rowToDashCh is a separate, narrower mapper and stays that way',
 ck('  it does NOT split clinician out',
    /function rowToDashCh[\s\S]{0,400}?isClinicianCampaign/.test(src),false);
 
-// ── 3. Signed = closed-won PLUS churned-that-kept-a-close-date ────────────
-// The STAT was removed from the card 2026-10-08; the series still carries it,
-// deliberately, so restoring it is a client-only change. These assertions keep
-// it correct in the meantime rather than letting it rot into a wrong number
-// that looks ready to use.
-ck('the series still carries Signed, and says it is unread',
-   /NOT CURRENTLY DISPLAYED/.test(src),true);
-ck('signed counts both halves',[d1.signed,d2.signed],[1,2]);
-ck('  so the window total is 3, not 2',t.day.reduce((a,p)=>a+p.signed,0),3);
+// ── 3. Signed is gone from the series entirely ────────────────────────────
+ck('no bucket carries a signed count',t.day.every(p=>!('signed' in p)),true);
+ck('the builder takes contacts + ad rows only',
+   /function buildBrandTrend\(schContacts, windsorRows, from, to\)/.test(src),true);
 
 // ── 4. Null vs zero ───────────────────────────────────────────────────────
 const d3=byDay['2026-10-03'];
 ck('a dead day still produces a point (calendar fill)',!!d3,true);
-ck('  with zero counts',[d3.regular,d3.paid,d3.signed,d3.spend],[0,0,0,0]);
+ck('  with zero counts',[d3.regular,d3.paid,d3.spend],[0,0,0]);
 ck('a COST with no spend is null, not a fake-efficient 0',d3.cpdReg,null);
 ck('a RATE with no denominator is null',[d3.cvrReg,d3.ctr],[null,null]);
 // A real zero over a real denominator must survive as 0 — it is a measurement.
 // THE case the cost guard exists for: real demos, zero ad spend. A 0 here would
 // plot on the floor of the cost axis and read as the most efficient period in
 // the window. Guarding only the denominator would let that through.
-const organic=ctx.buildBrandTrend([C('2026-10-04','500K+ monthly web visitors','','')],[],[],[],FROM,TO);
+const organic=ctx.buildBrandTrend([C('2026-10-04','500K+ monthly web visitors','','')],[],FROM,TO);
 const o4=organic.day.filter(p=>p.wk==='2026-10-04')[0];
 ck('an organic demo with no spend is a real demo',o4.regular,1);
 ck('  but its cost per demo is null, NOT zero',o4.cpdReg,null);
 ck('  and the same for the paid population',o4.cpdPaid,null);
 
-const z=ctx.buildBrandTrend([],[],[],[AD('2026-10-01','facebook','Cold',50,10,1000)],FROM,TO);
+const z=ctx.buildBrandTrend([],[AD('2026-10-01','facebook','Cold',50,10,1000)],FROM,TO);
 ck('zero demos against real clicks is 0%, not null',z.day[0].cvrReg,0);
 ck('  but cost per zero demos is still null',z.day[0].cpdReg,null);
 ck('  and CTR is a real number',z.day[0].ctr,1);
@@ -114,24 +106,26 @@ ck('  the first starting Monday Sep 28',wk.wk,'2026-09-28');
 ck('  the second starting Monday Oct 5',t.week[1].wk,'2026-10-05');
 ck('  and the empty one is still a point',
    [t.week[1].regular,t.week[1].spend],[0,0]);
+ck('a bucket carries exactly the fields the card reads',
+   Object.keys(wk).sort(),['clicks','cpdPaid','cpdReg','ctr','cvrPaid','cvrReg','impressions','paid','regular','spend','wk']);
 ck('week CTR pools the period totals',wk.ctr,(wk.clicks/wk.impressions)*100);
 ck('  which is NOT the mean of the daily CTRs',
    Math.abs(wk.ctr-((d1.ctr+d2.ctr)/2))>1e-9,true);
-ck('week sums its days',[wk.regular,wk.paid,wk.signed,wk.spend],[4,2,3,200]);
+ck('week sums its days',[wk.regular,wk.paid,wk.spend],[4,2,200]);
 
 // ── 6. Both populations are precomputed, so the toggle costs no request ───
 ck('per-period cost exists for each population',
    [typeof wk.cpdReg,typeof wk.cpdPaid],['number','number']);
 ck('paid costs more per demo than regular (same spend, smaller denominator)',wk.cpdPaid>wk.cpdReg,true);
-ck('signed % is offered against each population',
-   [wk.signedPctReg,wk.signedPctPaid],[(3/4)*100,(3/2)*100]);
+ck('no signed figure is emitted any more',
+   ['signed','signedPctReg','signedPctPaid'].filter(k=>k in wk),[]);
 
 // ── 7. Grains ─────────────────────────────────────────────────────────────
 ck('three grains ship',Object.keys(t).sort(),['day','month','week']);
 ck('day grain fills the whole window',t.day.length,7);
 ck('month grain keys on the first of the month',t.month[0].wk,'2026-10-01');
 ck('every grain sums to the same totals',
-   ['regular','paid','signed'].every(k=>
+   ['regular','paid'].every(k=>
      t.day.reduce((a,p)=>a+p[k],0)===t.month.reduce((a,p)=>a+p[k],0)),true);
 
 // ── 8. The lookback is shared with the Clinician section ──────────────────
@@ -164,13 +158,17 @@ ck('no currentData field is built and then dropped',
          if(missing.length)console.log('      dropped: '+missing.join(', '));
          return missing;})(),[]);
 ck('the build is KV-cached, not recomputed per page window',
-   /brand_trend_\$\{_btWin\.from\}_\$\{_btWin\.to\}_v1/.test(src),true);
+   /kvCachedFetch\(env, `brand_trend_\$\{_btWin\.from\}_\$\{_btWin\.to\}_v\d+`, 1800,/.test(src),true);
 ck('an empty Windsor result is never cached',
    /brand trend: no Windsor rows — not caching/.test(src),true);
-ck('closed-won is sliced from the all-time set, costing no fetch',
-   /filterActiveBrands\(allTimeClosedWon\)[\s\S]{0,200}?ptDayKeyOf\(\(\(d\.properties\) \|\| \{\}\)\.closedate\)/.test(src),true);
-ck('HubSpot trend fetches stay sequential (429 avoidance)',
-   /const _sch = await fetchScheduledContacts\(hsToken, _btWin\.from, _btWin\.to\);\n\s+const _chn = await fetchChurnedByCloseDate/.test(src),true);
+// Signed went, and with it the only reason the trend touched deals at all.
+const _TRB=src.slice(src.indexOf('currentData.trendRange = _btWin'),src.indexOf('currentData.trendRange = _btWin')+1800);
+ck('the trend no longer fetches churned-by-close',/fetchChurnedByCloseDate/.test(_TRB),false);
+ck('  nor slices closed-won',/allTimeClosedWon/.test(_TRB),false);
+ck('  so it is one HubSpot search, not three',
+   (_TRB.match(/await fetch[A-Z]\w+\(hsToken/g)||[]).length,1);
+ck('the cache key was revved so v1 series (with signed) are not served',
+   /brand_trend_\$\{_btWin\.from\}_\$\{_btWin\.to\}_v2/.test(src),true);
 // v37 added the fields to currentData; v38 is when they were actually
 // forwarded, so a cached v37 response has them MISSING rather than stale.
 ck('the forwarding fix bumped the cache version past v37',

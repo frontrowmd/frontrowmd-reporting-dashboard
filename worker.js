@@ -822,7 +822,8 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v38';   // v38: trend/trendRange are actually FORWARDED by buildResponse.
+const API_CACHE_VER = 'v39';   // v39: `signed` / `signedPct*` dropped from the trend series.
+                               // v38: trend/trendRange are actually FORWARDED by buildResponse.
                                //      v37 built them onto currentData but never shipped them, so a
                                //      cached v37 payload has the fields missing, not stale.
                                // v37: Brand Dashboard Trend Analysis — adds a fixed-lookback
@@ -1171,7 +1172,12 @@ const AZ_RESERVE_PER_CHUNK = 1;
 // either. Being on this list gets it a cron warm AND the long freshness TTL
 // below, which is what breaks that loop. MTD is first so it is warmed before the
 // two expensive windows can eat the budget.
-const AZ_PRECOMPUTED_WINDOWS = ['mtd', 'ytd', 'allTime'];
+// Windows the cron warms, and which therefore get the long cache TTL. allTime
+// was dropped 2026-10-08 with the pill that selected it: the cron was paying
+// for the slowest precompute of the three on every tick for a window nothing
+// could ask for. The API still ACCEPTS allTime (see the handler's OK list) —
+// it just is not warmed, so a direct call pays for it live.
+const AZ_PRECOMPUTED_WINDOWS = ['mtd', 'ytd'];
 // Keys with a background refresh in flight, so concurrent readers do not all
 // kick off the same rebuild. Module scope, so it is per-isolate rather than
 // global — a best-effort stampede guard, not a lock.
@@ -3268,13 +3274,13 @@ function clnTrendWindow(today) {
 // Windsor reports and re-zoning it would invent precision. The two conventions
 // can disagree within a few hours of a day boundary. Same asymmetry
 // buildClinicianTrend carries — named here rather than left to be rediscovered.
-function buildBrandTrend(schContacts, cwDeals, churnedDeals, windsorRows, from, to) {
+function buildBrandTrend(schContacts, windsorRows, from, to) {
   const B = {};
   const bump = (dayKey, field, n) => {
     if (!dayKey) return null;
     if (from && dayKey < from) return null;
     if (to && dayKey > to) return null;
-    if (!B[dayKey]) B[dayKey] = { spend: 0, impressions: 0, clicks: 0, regular: 0, paid: 0, signed: 0 };
+    if (!B[dayKey]) B[dayKey] = { spend: 0, impressions: 0, clicks: 0, regular: 0, paid: 0 };
     B[dayKey][field] += (n == null ? 1 : n);
     return B[dayKey];
   };
@@ -3312,21 +3318,6 @@ function buildBrandTrend(schContacts, cwDeals, churnedDeals, windsorRows, from, 
     if (mapUtmToChannel(rs, rm)) bump(k, 'paid');
   }
 
-  // Signed brands, on the Close Date basis the Marketing Funnel uses: closed-won
-  // PLUS deals that reached a Churned stage but still carry a closedate in the
-  // window. Counting only the first would understate every historical period,
-  // because a brand that signed in May and churned in August is no longer
-  // closed-won but did sign in May.
-  //
-  // NOT CURRENTLY DISPLAYED. Signed was removed from the Trend Analysis card
-  // 2026-10-08, so `signed` / `signedPctReg` / `signedPctPaid` ship unread and
-  // the churned-by-close fetch in the caller costs one HubSpot search per cache
-  // build for nobody. Kept because it is correct and makes restoring the stat a
-  // client-only change; delete both if it stays unused.
-  for (const d of [...(cwDeals || []), ...(churnedDeals || [])]) {
-    bump(ptDayKeyOf(((d && d.properties) || {}).closedate), 'signed');
-  }
-
   const div = (n, dd) => (dd > 0 ? n / dd : null);
   // A COST with no spend is undefined, not zero — a real 0 plots on the floor of
   // the cost axis and reads as the most efficient period in the window.
@@ -3352,14 +3343,14 @@ function buildBrandTrend(schContacts, cwDeals, churnedDeals, windsorRows, from, 
   };
   const roll = (keyOf) => {
     const g = {};
-    const touch = (k) => { if (k && !g[k]) g[k] = { spend: 0, impressions: 0, clicks: 0, regular: 0, paid: 0, signed: 0 }; };
+    const touch = (k) => { if (k && !g[k]) g[k] = { spend: 0, impressions: 0, clicks: 0, regular: 0, paid: 0 }; };
     for (const day of allDays) touch(keyOf(day));
     for (const day of Object.keys(B)) {
       const k = keyOf(day); if (!k) continue;
       touch(k);
       const b = B[day], o = g[k];
       o.spend += b.spend; o.impressions += b.impressions; o.clicks += b.clicks;
-      o.regular += b.regular; o.paid += b.paid; o.signed += b.signed;
+      o.regular += b.regular; o.paid += b.paid;
     }
     return Object.keys(g).sort().map(k => {
       const w = g[k];
@@ -3367,7 +3358,7 @@ function buildBrandTrend(schContacts, cwDeals, churnedDeals, windsorRows, from, 
         wk: k,
         spend: Math.round(w.spend * 100) / 100,
         impressions: w.impressions, clicks: w.clicks,
-        regular: w.regular, paid: w.paid, signed: w.signed,
+        regular: w.regular, paid: w.paid,
         // Both populations precomputed so the client can show either without a
         // second request. Rates are percentages computed on the period's OWN
         // totals, never averaged from daily rates — a 10-impression day must not
@@ -3375,7 +3366,6 @@ function buildBrandTrend(schContacts, cwDeals, churnedDeals, windsorRows, from, 
         cpdReg: cost(w.spend, w.regular), cpdPaid: cost(w.spend, w.paid),
         cvrReg: div(w.regular * 100, w.clicks), cvrPaid: div(w.paid * 100, w.clicks),
         ctr: div(w.clicks * 100, w.impressions),
-        signedPctReg: div(w.signed * 100, w.regular), signedPctPaid: div(w.signed * 100, w.paid),
       };
     });
   };
@@ -5993,28 +5983,23 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   // the two extra HubSpot searches affordable on a path whose HubSpot calls are
   // deliberately sequential to dodge 429s.
   //
-  // Closed-won needs NO fetch: allTimeClosedWon is already in hand (KV-cached
-  // itself) and is simply sliced to the window by closedate.
+  // The Signed stat was removed from the card, and with it the closed-won slice
+  // and the churned-by-close fetch that fed it — one HubSpot search per cache
+  // build that nothing read. The series is now contacts + Windsor only.
   {
     const _btWin = clnTrendWindow(fmt(yd));
     currentData.trendRange = _btWin;
-    const _btCW = (filterActiveBrands(allTimeClosedWon) || []).filter(d => {
-      const k = ptDayKeyOf(((d.properties) || {}).closedate);
-      return !!k && k >= _btWin.from && k <= _btWin.to;
-    });
     try {
-      currentData.trend = await kvCachedFetch(env, `brand_trend_${_btWin.from}_${_btWin.to}_v1`, 1800,
+      currentData.trend = await kvCachedFetch(env, `brand_trend_${_btWin.from}_${_btWin.to}_v2`, 1800,
         async () => {
-          // HubSpot sequentially (429s), Windsor alongside it.
           const _wP = fetchWindsorAds(apiKey, wFrom(_btWin.from), _btWin.to);
           const _sch = await fetchScheduledContacts(hsToken, _btWin.from, _btWin.to);
-          const _chn = await fetchChurnedByCloseDate(hsToken, _btWin.from, _btWin.to);
           const _w = await _wP;
           // Never cache a series with no ad rows at all — that is a failed
           // Windsor fetch, and caching it would flatten the chart for the TTL.
           if (!Array.isArray(_w) || !_w.length) throw new Error('brand trend: no Windsor rows — not caching');
-          const t = buildBrandTrend(_sch, _btCW, _chn, _w, _btWin.from, _btWin.to);
-          console.log(`brand trend: ${_sch.length} contacts, ${_btCW.length} closed-won, ${_chn.length} churned-by-close, ${_w.length} ad rows -> ${t.day.length}d/${t.week.length}w/${t.month.length}m`);
+          const t = buildBrandTrend(_sch, _w, _btWin.from, _btWin.to);
+          console.log(`brand trend: ${_sch.length} contacts, ${_w.length} ad rows -> ${t.day.length}d/${t.week.length}w/${t.month.length}m`);
           return t;
         }, null);
     } catch (e) { console.error('brand trend failed:', e && e.message); currentData.trend = null; }
