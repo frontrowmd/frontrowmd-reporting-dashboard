@@ -321,20 +321,31 @@ ck('  and the order lists four products, not five',
    (()=>{const m=/BD_PROD_ORDER=\[([^\]]*)\]/.exec(bd);
          return m[1].split(',').map(x=>x.trim().replace(/'/g,''));})(),
    ['Badge/Banner','Reviews','CAI','CAS']);
-// HubSpot returns a multi-select semicolon-delimited.
 ck('the multi-select is split on its delimiter',/raw\.split\(';'\)/.test(C8),true);
 ck('  and de-duplicated, so Badge+Banner counts once',
    /out\[BD_PROD_GROUP\[t\]\|\|t\]=1/.test(C8),true);
 
-// ── the regression this section was rebuilt for ──
-// The first cut divided churned-with-product by all-brands-with-product. Since
-// only churned brands have the property, every row read 100.0%.
-ck('no rate is built on implemented_products any more',
+// ── regression 1: no rate may be built on implemented_products ──
+ck('no rate is built on implemented_products',
    /_chProdStat|_chRevYes|_chRevNo|_chProdNone/.test(bd),false);
 ck('  and the section says outright that no active brand carries the field',
    /no active brand carries it at all/.test(C8),true);
 ck('  and names what would be needed to get a real per-product rate',
    /Setting Implemented Products on active brands too/.test(C8),true);
+
+// ── regression 2: ONE axis for every rate row ──
+// The previous cut scaled each block to its own maximum, so 11.6% drew a LONGER
+// bar than 12.6% one block away. Every rate row now goes through one _c8X.
+ck('the per-block max-scaled bar renderer is gone',/_chBandBars/.test(bd),false);
+ck('one axis function serves every rate row',
+   (C8.match(/_c8X\s*=\s*function/g)||[]).length,1);
+ck('  and the axis top is computed once',
+   (C8.match(/var _c8Ax=/g)||[]).length,1);
+// The axis must reach the context rows. Cropped to the bands it would hide the
+// larger fact (36-52% unrecorded) to magnify the smaller one (11-19%).
+ck('the axis domain includes the context rows',
+   /g\.rows\.concat\(\[g\.ctx\]\)\.forEach/.test(C8),true);
+ck('  and the book rate too',/_c8Book!=null&&_c8Book>_c8Max/.test(C8),true);
 
 // ── the rate questions run on fields BOTH populations carry ──
 ck('reviews are banded on the recorded review count',
@@ -345,103 +356,193 @@ ck('the band denominator is every brand that ever signed',
    /var _chBook=closedWonDeals\.concat\(_chDeals\);/.test(bd),true);
 ck('  and churn is decided by deal stage, not by the set it came from',
    /_chIsChurned=function\(dd\)\{return dd\.dealstage===BD_CHURN_STAGE\|\|dd\.dealstage===BD_CHURN_ONB_STAGE;\}/.test(C8),true);
-// Deliberately NOT floored at 2026 — these are current deal properties.
 ck('it is not floored at 2026',/_chIn2026/.test(C8),false);
-// Bands read top-to-bottom as thinnest→deepest; re-sorting would destroy the
-// one thing the reader is looking at.
-ck('bands are never re-sorted by value',/sort\(/.test(C8.slice(C8.indexOf('_chBandBars='),C8.indexOf('_chVerdict='))),false);
+// The excluded brands are the biggest effect in the data, so they are plotted
+// rather than left in a footnote — but kept out of the ordinal run.
+ck('the unrecorded brands carry their own churn count',/unsetCh/.test(C8),true);
+ck('  and are plotted as a context row, not folded into a band',
+   /ctx:\{l:'No '\+field\+' recorded'/.test(C8),true);
+ck('  under a rule that says they are not part of the run',
+   /For context — not part of the run/.test(C8),true);
 
-// ── functional: banding, blanks and churn attribution ──
+// ── functional: helpers ──
 const ctx8={console};vm.createContext(ctx8);
 vm.runInContext([
   "var BD_CHURN_STAGE='3453925110', BD_CHURN_ONB_STAGE='3517067985';",
   'var _chBook=[];',
   decl(bd,'var BD_PROD_GROUP={','};'),
+  decl(bd,'var C8_THIN=',';'),
   fn(bd,'_chProdsOf'), fn(bd,'_chIsChurned'), fn(bd,'_chNum'),
-  fn(bd,'_chPctOf'), fn(bd,'_chFmtPct'), fn(bd,'_chBandStat'), fn(bd,'_chVerdict'),
-  'Object.assign(globalThis,{_chProdsOf,_chIsChurned,_chNum,_chPctOf,_chFmtPct,_chBandStat,_chVerdict});',
+  fn(bd,'_chPctOf'), fn(bd,'_chFmtPct'), fn(bd,'_c8N'), fn(bd,'_chBandStat'),
+  fn(bd,'_c8Wilson'), fn(bd,'_c8Z'), fn(bd,'_c8Nice'), fn(bd,'_c8Verdict'),
+  'Object.assign(globalThis,{_chProdsOf,_chIsChurned,_chNum,_chPctOf,_chFmtPct,_c8N,'
+    +'_chBandStat,_c8Wilson,_c8Z,_c8Nice,_c8Verdict,C8_THIN});',
 ].join('\n'),ctx8);
 ck('the C8 helpers loaded',typeof ctx8._chBandStat,'function');
 
-// The bands are read OUT OF THE SOURCE, not restated here — a test that
-// carries its own copy of the boundaries passes happily while the shipped ones
-// move underneath it.
 const shipBands=k=>{const m=new RegExp("_chBandStat\\('"+k+"',(\\[[\\s\\S]*?\\])\\)").exec(C8);
   if(!m)throw new Error('no bands for '+k);return eval(m[1]);};
 const BANDS=shipBands('of_total_reviews'), PBANDS=shipBands('of_products');
 ck('the shipped review bands are the ones under test',
    BANDS.map(b=>[b.lo,b.hi]),[[1,2],[3,9],[10,null]]);
-ck('  and the product bands likewise',
-   PBANDS.map(b=>[b.lo,b.hi]),[[1,1],[2,2],[3,null]]);
-// Contiguous and exclusive, or a brand is double-counted or silently lost.
+ck('  and the product bands likewise',PBANDS.map(b=>[b.lo,b.hi]),[[1,1],[2,2],[3,null]]);
 const contiguous=bs=>bs.every((b,i)=>i===0?b.lo===1:b.lo===bs[i-1].hi+1)&&bs[bs.length-1].hi===null;
 ck('review bands tile the range with no gap and no overlap',contiguous(BANDS),true);
 ck('  and so do the product bands',contiguous(PBANDS),true);
+
 const A={dealstage:'closedwon'}, CH={dealstage:'3453925110'}, CO={dealstage:'3517067985'};
 const mk=(st,v)=>Object.assign({},st,{of_total_reviews:v});
 ctx8._chBook=[
-  mk(A,'1'), mk(A,'2'), mk(CH,'2'),          // band 0 → 1/3
-  mk(A,'3'), mk(A,'9'), mk(CH,'5'), mk(CO,'4'), // band 1 → 2/4
-  mk(A,'10'), mk(A,'400'),                    // band 2 → 0/2
-  mk(A,''), mk(CH,''), mk(A,'0'), mk(A,'abc'),// not recorded
+  mk(A,'1'), mk(A,'2'), mk(CH,'2'),
+  mk(A,'3'), mk(A,'9'), mk(CH,'5'), mk(CO,'4'),
+  mk(A,'10'), mk(A,'400'),
+  mk(A,''), mk(CH,''), mk(A,'0'), mk(A,'abc'),
 ];
 const B=ctx8._chBandStat('of_total_reviews',BANDS);
-ck('each band holds the brands whose count falls in it',
-   B.rows.map(r=>r.n),[3,4,2]);
+ck('each band holds the brands whose count falls in it',B.rows.map(r=>r.n),[3,4,2]);
 ck('  and counts the churned ones inside it',B.rows.map(r=>r.ch),[1,2,0]);
 ck('  with both churn stages counting as churned',B.rows[1].ch,2);
-// A blank is NOT zero: coverage collapses before 2026, so reading blanks as
-// "none" would fill the bottom band with brands that pre-date the field.
 ck('blanks, zero and junk are excluded rather than banded',B.unset,4);
-ck('  and none of them leaked into the bottom band',B.rows[0].n,3);
-// Band edges have to be contiguous and exclusive or a brand is double-counted
-// or lost.
+ck('  and their churns are kept, not discarded',B.unsetCh,1);
 const one=v=>{ctx8._chBook=[Object.assign({},A,{of_total_reviews:String(v)})];
   const s=ctx8._chBandStat('of_total_reviews',BANDS);
   const hit=s.rows.map((r,i)=>r.n===1?i:-1).filter(i=>i>=0);
   return hit.length===1?hit[0]:'landed in '+hit.length;};
 ck('every value lands in exactly one band',[1,2,3,9,10,11,9999].map(one),[0,0,1,1,2,2,2]);
 ctx8._chBook=[];
-// JSON.stringify(NaN) is "null", so comparing the raw value against null would
-// pass for an unguarded 0/0 as happily as for the guard that is actually there.
 const pctKind=r=>{const p=ctx8._chPctOf(r);
   return p===null?'null':(typeof p==='number'&&!isFinite(p)?'NaN':'num:'+p);};
 ck('an empty book yields no divide-by-zero',
    ctx8._chBandStat('of_total_reviews',BANDS).rows.map(pctKind),['null','null','null']);
 ck('  and a null rate prints as a dash',ctx8._chFmtPct(null),'—');
 
-// ── functional: the verdict ──
-const vb=rows=>({rows});
-ck('the verdict compares thinnest against deepest',
-   ctx8._chVerdict(vb([{n:100,ch:20},{n:100,ch:15},{n:100,ch:10}]),'the most reviews live'),
-   'Brands with the most reviews live churn <strong>10.0pp less</strong> than brands with the fewest (10.0% vs 20.0%).');
-ck('  and says "more" when the deepest band is worse',
-   /10\.0pp more/.test(ctx8._chVerdict(vb([{n:100,ch:10},{n:100,ch:15},{n:100,ch:20}]),'x')),true);
-ck('  treats a sub-point gap as no difference',
-   /about the same/.test(ctx8._chVerdict(vb([{n:1000,ch:100},{n:1000,ch:105}]),'x')),true);
-ck('  skips empty bands when picking the ends',
-   /20\.0% vs 40\.0%/.test(ctx8._chVerdict(vb([{n:0,ch:0},{n:10,ch:4},{n:10,ch:2},{n:0,ch:0}]),'x')),true);
-ck('  and refuses to compare one band against itself',
-   ctx8._chVerdict(vb([{n:0,ch:0},{n:10,ch:4},{n:0,ch:0}]),'x'),'Not enough recorded to compare.');
-ck('  or nothing at all',ctx8._chVerdict(vb([{n:0,ch:0}]),'x'),'Not enough recorded to compare.');
-// Two self-selected groups — this cannot show cause, and says so.
-ck('the section refuses to claim cause',/Association, not cause/.test(C8),true);
+// ── functional: Wilson interval ──
+// Checked against the published values for these counts; the textbook normal
+// interval would run below zero on the thinnest band.
+const w=(c,n)=>ctx8._c8Wilson({c:c,n:n,ch:c}).map(v=>+v.toFixed(1));
+ck('the interval matches the published Wilson values',w(62,326),[15.1,23.6]);
+ck('  and widens sharply on a thin band',w(5,32),[6.9,31.8]);
+ck('  staying inside 0-100 at the extremes',
+   [w(0,10)[0]>=0, w(10,10)[1]<=100],[true,true]);
+ck('  and it brackets the point estimate',
+   (()=>{const i=w(16,127);return i[0]<=12.6&&i[1]>=12.6;})(),true);
+ck('an empty band has no interval',ctx8._c8Wilson({n:0,ch:0}),null);
+
+// ── functional: the z gate ──
+const Z=(c1,n1,c2,n2)=>+ctx8._c8Z({ch:c1,n:n1},{ch:c2,n:n2}).toFixed(2);
+ck('the reviews endpoints do not clear the gate',Z(62,326,16,127),1.63);
+ck('the products endpoints do not come close',Z(22,189,17,128),-0.44);
+ck('a real difference does clear it',Math.abs(Z(100,300,20,300))>2,true);
+ck('an empty side yields no z',ctx8._c8Z({ch:0,n:0},{ch:5,n:10}),null);
+
+// ── functional: the verdict REFUSES to overclaim ──
+// This is the bug the redesign exists to kill: the previous gate tested effect
+// SIZE (a flat 1pp) with no reference to how many brands were behind it, and so
+// printed "6.4pp less" in bold for a gap its own counts cannot resolve.
+const G=rows=>({rows});
+const vRev=ctx8._c8Verdict(G([{l:'1–2 reviews',n:326,ch:62},{l:'3–9 reviews',n:258,ch:39},{l:'10+ reviews',n:127,ch:16}]));
+ck('the reviews verdict declines to state a difference',vRev.tone,'nodiff');
+ck('  and never prints a pp figure',/pp/.test(vRev.head+vRev.calc),false);
+ck('  showing the bands instead of a claim',vRev.head,'19.0%  ·  15.1%  ·  12.6%');
+ck('  and explains why in plain words',
+   /smaller than the error on it/.test(vRev.calc),true);
+const vPro=ctx8._c8Verdict(G([{l:'1 product',n:189,ch:22},{l:'2 products',n:32,ch:5},{l:'3+ products',n:128,ch:17}]));
+// Non-monotone: the peak is the MIDDLE band, so an endpoint summary would
+// report a trend that is not in the data.
+ck('the products verdict reports no pattern, not a trend',vPro.tone,'nopattern');
+ck('  naming the middle band as the worst',/2 products in the middle/.test(vPro.calc),true);
+ck('  and flagging that it is too thin to carry it',
+   /only 32 brands, so one brand moves it by 3\.1 points/.test(vPro.calc),true);
+ck('  while still printing the whole run',vPro.head,'11.6%  ·  15.6%  ·  13.3%');
+// A difference that DOES clear the gate is still allowed to be stated.
+const vReal=ctx8._c8Verdict(G([{l:'low',n:300,ch:100},{l:'high',n:300,ch:20}]));
+ck('a difference that clears the gate is stated',vReal.tone,'less');
+ck('  with the gap in points',/pp lower at high/.test(vReal.head),true);
+ck('  and still refuses to claim cause',/Association, not cause/.test(vReal.calc),true);
+ck('one populated band is not a comparison',
+   ctx8._c8Verdict(G([{l:'a',n:0,ch:0},{l:'b',n:10,ch:4}])).tone,'none');
+
+// ── functional: axis steps ──
+ck('the axis snaps to a familiar step and stays under eight ticks',
+   [52.5,19,8,97].map(v=>{const a=ctx8._c8Nice(v);return [a.top,a.step,a.top/a.step<=7];}),
+   [[60,10,true],[20,5,true],[8,2,true],[100,20,true]]);
+ck('  and always covers the value it was given',
+   [52.5,19,8,97,0.4].every(v=>ctx8._c8Nice(v).top>=v),true);
+
+// ── functional: render the real section and check the OUTPUT ──
+const C8BLOCK=(()=>{const i=bd.indexOf('var BD_PROD_GROUP=');
+  const m="hChurn+='</div></section>';";return bd.slice(i,bd.indexOf(m,i)+m.length);})();
+const fill=(total,spec)=>{const o=[];spec.forEach(([k,v])=>{for(let i=0;i<k;i++)o.push(v);});
+  while(o.length<total)o.push('');return o;};
+const render=()=>{
+  const cRev=fill(315,[[62,'1'],[39,'5'],[16,'12']]), cPro=fill(315,[[22,'1'],[5,'2'],[17,'3']]);
+  const aRev=fill(773,[[264,'1'],[219,'5'],[111,'12']]), aPro=fill(773,[[167,'1'],[27,'2'],[111,'3']]);
+  const impl=[];for(let k=0;k<41;k++){const p=[];
+  // Badge/Banner on 1..40 and Reviews on 0..30, so all 41 carry something, the
+  // marginals match live (40 / 31 / 15 / 0) and exactly 30 hold both.
+    if(k>=1)p.push(k%2?'Badge':'Banner'); if(k<31)p.push('Reviews'); if(k<15)p.push('CAI');
+    impl.push(p.join(';'));}
+  const churned=[],active=[];
+  for(let k=0;k<315;k++)churned.push({dealstage:'3453925110',of_total_reviews:cRev[k],of_products:cPro[k],implemented_products:impl[k]||''});
+  for(let k=0;k<773;k++)active.push({dealstage:'closedwon',of_total_reviews:aRev[k],of_products:aPro[k],implemented_products:''});
+  const c={console,closedWonDeals:active,_chDeals:churned,BD_CHURN_STAGE:'3453925110',
+    BD_CHURN_ONB_STAGE:'3517067985',BD_CHURN_C:'#DC2626',hChurn:''};
+  vm.createContext(c);vm.runInContext(C8BLOCK,c);return c.hChurn;
+};
+const HTML=render();
+ck('the section renders',HTML.length>8000,true);
+const outRows=HTML.split('class="bd-seg-row bd-rate-band"').slice(1).map(seg=>{
+  const l=/data-p="([^"]*)"/.exec(seg), p=/data-r1="Churn rate\|([\d.]+)%/.exec(seg);
+  const x=/left:([\d.]+)%;width:10px;height:10px/.exec(seg);
+  return {l:l&&l[1], pct:p&&+p[1], x:x&&+x[1]};
+});
+ck('every rate row is plotted — three bands and a context row per measure',outRows.length,8);
+ck('  and the live figures come out as expected',
+   outRows.map(r=>r.pct),[19,15.1,12.6,52.5,11.6,15.6,13.3,36.7]);
+// THE regression. Across ALL eight rows, not within a block: a higher rate must
+// never draw further LEFT than a lower one.
+const bySize=[...outRows].sort((a,b)=>a.pct-b.pct);
+ck('no row with a higher rate sits left of a lower one',
+   bySize.filter((r,i)=>i>0&&r.x<bySize[i-1].x-0.01).map(r=>r.l),[]);
+ck('  because every row divides by the same axis top',
+   [...new Set(outRows.map(r=>Math.round(r.pct/r.x*100)))],[60]);
+ck('  and that top clears the largest context row',outRows[3].pct<=60,true);
+// Copy must not leak notation at the reader.
+ck('no statistical notation reaches the rendered copy',
+   /z\s*=|z-score|standard error|p-value|p\s*&lt;|confidence interval|statistically/i.test(HTML),false);
+ck('the thin band is called out by its count, not by jargon',
+   /32 BRANDS<\/span>/.test(HTML),true);
+ck('  and only the thin band is',(HTML.match(/ BRANDS<\/span>/g)||[]).length,1);
+ck('the book rate is drawn as a rule',/border-left:1\.5px dashed/.test(HTML),true);
+ck('  and labelled with its own arithmetic',/29\.0% · 315 of 1,088/.test(HTML),true);
+ck('counts over a thousand are grouped',/1,088/.test(HTML),true);
+// The hover contract: bdBindRateBands matches on class and reads getAttribute.
+ck('rate rows carry the class the existing binder matches',
+   (HTML.match(/class="bd-seg-row bd-rate-band"/g)||[]).length,8);
+ck('  inside a chart-wrap',/class="chart-wrap"/.test(HTML),true);
+ck('  with the float-tip the binder needs',/class="float-tip"/.test(HTML),true);
+ck('  and every row carries a readout',
+   (HTML.match(/data-r1="Churn rate/g)||[]).length,8);
+ck('no new hover binder was added',/bdBindC8|bd-c8-band/.test(bd),false);
 
 // ── functional: the churned-brand mix ──
 ck('Badge and Banner collapse, and a brand counts once',
    ctx8._chProdsOf({implemented_products:'Badge;Banner;Reviews'}).sort(),['Badge/Banner','Reviews']);
 ck('  an unrecorded field yields nothing',ctx8._chProdsOf({implemented_products:''}),[]);
 ck('  and so does a field of empty segments',ctx8._chProdsOf({implemented_products:';;'}),[]);
-// The mix is churned-only by construction — it is a composition, not a rate.
 ck('the mix iterates the churned deals alone',
    /_chDeals\.forEach\(function\(dd\)\{\s*\n\s*var ps=_chProdsOf\(dd\);/.test(C8),true);
-ck('  and is labelled as a share of churned brands, not a rate',
-   /A share of churned brands, <strong>not<\/strong> a churn rate/.test(C8),true);
-// A brand with three products is counted in all three.
-ck('the rows overlap, and the section says so',
-   /so the rows overlap and do not sum/.test(C8),true);
-ck('a product no churned brand had is not shown',
-   /BD_PROD_ORDER\.filter\(function\(pk\)\{return _chMix\[pk\]>0;\}\)/.test(C8),true);
+ck('  and is badged a count, never a rate',
+   /A COUNT, NEVER A CHURN RATE/.test(HTML),true);
+ck('  and says the rows overlap',/so the rows overlap and do not sum/.test(C8),true);
+// C7's rule: a real category with zero is a FINDING and keeps its row. Dropping
+// it would read as "not measured".
+ck('a product none of them had keeps its row at zero',
+   /CAS<\/div>/.test(HTML)&&/_chMixRows=BD_PROD_ORDER\.map/.test(C8),true);
+ck('  and the mix counts come out right',
+   (HTML.match(/font-weight:700;color:var\(--navy\)">(\d+)<\/span><span style="font-size:10\.5px;color:var\(--grey\);margin-left:5px">of 41/g)||[]).length,3);
+ck('the co-occurrence is stated as a number, not left to be counted',
+   /30 of the 31 that had reviews live also had a badge or banner/.test(HTML),true);
 ck('an empty mix says so rather than drawing nothing',
    /No churned brand has Implemented Products recorded/.test(C8),true);
 
