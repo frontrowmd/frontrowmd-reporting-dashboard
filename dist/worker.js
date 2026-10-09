@@ -1463,7 +1463,11 @@ async function kvCachedFetch(env, key, ttlSec, fetchFn, fallback) {
       // KV value hard limit is 25 MB — skip caching anything near it rather
       // than letting the put reject.
       kvOp();
-      if (blob.length < 20 * 1024 * 1024) await env.CONTENT_STORE.put(key, blob);
+      // expirationTtl, matching kvCachedFetchNE. Without it an entry lives in
+      // KV forever, and since an EXPIRED entry is served verbatim whenever a
+      // rebuild throws - without refreshing its timestamp - a bad payload had
+      // no way to age out at all.
+      if (blob.length < 20 * 1024 * 1024) await env.CONTENT_STORE.put(key, blob, { expirationTtl: Math.max(ttlSec * 6, 3600) });
     } catch (e) { /* non-fatal — caching is best-effort */ }
   }
   return data;
@@ -6066,21 +6070,29 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     try {
       currentData.trend = await kvCachedFetch(env, `brand_trend_${_btWin.from}_${_btWin.to}_v3`, 1800,
         async () => {
-          const _wP = fetchWindsorAds(apiKey, wFrom(_btWin.from), _btWin.to);
+          // HubSpot FIRST, and only then the ad fetch. Kicked off the other way
+          // round, the trend's own Windsor chunker can spend the subrequest
+          // pool before the single HubSpot search runs — and hsSearch returns
+          // [] without making one HTTP call once SUBREQ.exhausted is set. That
+          // is the same zero-demo series with HubSpot perfectly healthy,
+          // reproducible on every rebuild, so ordering is load-bearing here.
+          const _hsErr0 = HS_ERR.n;
           const _sch = await fetchScheduledContacts(hsToken, _btWin.from, _btWin.to);
-          const _w = await _wP;
+          const _hsRefused = (HS_ERR.n > _hsErr0) || SUBREQ.exhausted;
+          const _w = await fetchWindsorAds(apiKey, wFrom(_btWin.from), _btWin.to);
           // Never cache a series with no ad rows at all — that is a failed
           // Windsor fetch, and caching it would flatten the chart for the TTL.
           if (!Array.isArray(_w) || !_w.length) throw new Error('brand trend: no Windsor rows — not caching');
-          // The SAME reasoning for the HubSpot half, which this guard used to
-          // omit. The series spans ~14 weeks of a book that books demos every
-          // week, so an empty contact list is a failed fetch, not a quiet
-          // quarter. Without this, the 2026-10-09 HubSpot outage cached a
-          // series carrying real spend and ZERO demos, and every reader got a
-          // flat demo line under a normal spend area for the full 30-minute
-          // TTL — Count 0, CVR 0.00%, Cost Per —, while Ad Spend and CTR
-          // looked perfectly healthy.
-          if (!Array.isArray(_sch) || !_sch.length) throw new Error('brand trend: no HubSpot contacts — not caching');
+          // The HubSpot half had no such guard, which is what drew Count 0 /
+          // CVR 0.00% / Cost Per — under a healthy Ad Spend area for a full TTL
+          // on 2026-10-09. Tested as a REFUSAL rather than merely "empty":
+          // HS_ERR counts calls refused at the HTTP level or skipped because
+          // the pool was spent, so a genuinely quiet window still caches as the
+          // real zero it is, while a failure never does.
+          if (!Array.isArray(_sch) || (!_sch.length && _hsRefused)) {
+            throw new Error('brand trend: HubSpot refused — not caching');
+          }
+          if (!_sch.length) console.warn('brand trend: 0 contacts with no HubSpot error — caching a real zero');
           const t = buildBrandTrend(_sch, _w, _btWin.from, _btWin.to);
           console.log(`brand trend: ${_sch.length} contacts, ${_w.length} ad rows -> ${t.day.length}d/${t.week.length}w/${t.month.length}m`);
           return t;

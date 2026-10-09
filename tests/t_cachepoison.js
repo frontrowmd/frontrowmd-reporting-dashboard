@@ -14,19 +14,50 @@ const BT=(()=>{const i=src.indexOf('const _btWin = clnTrendWindow');
   return src.slice(i,src.indexOf('brand trend failed:',i));})();
 ck('an empty Windsor fetch is not cached',
    /if \(!Array\.isArray\(_w\) \|\| !_w\.length\) throw new Error\('brand trend: no Windsor rows/.test(BT),true);
-ck('an empty HubSpot fetch is not cached either',
-   /if \(!Array\.isArray\(_sch\) \|\| !_sch\.length\) throw new Error\('brand trend: no HubSpot contacts/.test(BT),true);
+ck('a refused HubSpot fetch is not cached either',
+   /throw new Error\('brand trend: HubSpot refused \u2014 not caching'\)/.test(BT),true);
 // Both guards must run BEFORE the series is built, or the bad series is built
 // and returned even if it is never written.
 ck('  and both guard before buildBrandTrend runs',
    BT.indexOf("no Windsor rows")<BT.indexOf('buildBrandTrend(')
-   && BT.indexOf("no HubSpot contacts")<BT.indexOf('buildBrandTrend('),true);
+   && BT.indexOf("HubSpot refused")<BT.indexOf('buildBrandTrend('),true);
 // Refusing to WRITE does not remove an entry already written — kvCachedFetch
 // serves an expired entry as stale whenever the rebuild throws. The key version
 // is what abandons the poisoned ones.
 ck('the cache key was versioned past the poisoned entries',
    /brand_trend_\$\{_btWin\.from\}_\$\{_btWin\.to\}_v3/.test(src),true);
 ck('  and no v2 key is still read',/brand_trend_[^`]*_v2/.test(src),false);
+
+// ── 5. Ordering: the ad fetch must not starve the HubSpot one ─────────────
+// hsSearch returns [] with ZERO http calls once SUBREQ.exhausted is set. Start
+// the Windsor chunker first and it can spend the pool before the single
+// HubSpot search runs — the same zero-demo series, with HubSpot perfectly
+// healthy, reproducible on every rebuild.
+ck('HubSpot is awaited before the ad fetch starts',
+   BT.indexOf('await fetchScheduledContacts')<BT.indexOf('fetchWindsorAds'),true);
+ck('  and the ad fetch is no longer kicked off up front',/const _wP = fetchWindsorAds/.test(BT),false);
+ck('hsSearch still bails without a call when the pool is spent',
+   /if \(SUBREQ\.exhausted\) \{ lastErr = new Error\('subrequest pool exhausted'\); break; \}/.test(src),true);
+
+// ── 6. Refusal, not merely emptiness ──────────────────────────────────────
+// A genuinely quiet window is a real zero and should cache. A refused fetch
+// must not. HS_ERR (added the same day, for the banner) already knows which.
+ck('the HubSpot error count is sampled before the fetch',/const _hsErr0 = HS_ERR\.n;/.test(BT),true);
+ck('  and a refusal is what trips the guard',
+   /const _hsRefused = \(HS_ERR\.n > _hsErr0\) \|\| SUBREQ\.exhausted;/.test(BT),true);
+ck('  so an empty-but-refused result is never cached',
+   /if \(!Array\.isArray\(_sch\) \|\| \(!_sch\.length && _hsRefused\)\) \{/.test(BT),true);
+ck('  while a real zero is cached, and says so',
+   /0 contacts with no HubSpot error — caching a real zero/.test(BT),true);
+
+// ── 7. A stale entry cannot live in KV forever ────────────────────────────
+// kvCachedFetch serves an EXPIRED entry verbatim when a rebuild throws and
+// never refreshes its timestamp, so with no expirationTtl a bad payload had no
+// way to age out at all.
+ck('kvCachedFetch bounds how long an entry can persist',
+   /await env\.CONTENT_STORE\.put\(key, blob, \{ expirationTtl: Math\.max\(ttlSec \* 6, 3600\) \}\)/.test(src),true);
+ck('  matching the helper that already did',
+   (src.match(/expirationTtl: Math\.max\(ttlSec ?\* ?6, 3600\)/g)||[]).length,2);
 
 // ── 2. kvCachedFetch really does serve a stale entry on a throw ───────────
 // This is why the guard alone is not enough, and it is worth pinning.
