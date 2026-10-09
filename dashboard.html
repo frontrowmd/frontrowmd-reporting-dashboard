@@ -623,8 +623,8 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
       <div class="ni" onclick="switchDashSub('exec')" data-page="exec" data-sub="exec"><span class="ic" style="font-size:12px">⭐</span><span>Executive Dashboard</span></div>
       <div class="ni" onclick="switchDashSub('overview')" data-page="dashboard" data-sub="overview"><span class="ic" style="font-size:12px">📊</span><span>Brand Dashboard</span></div>
       <div class="ni" onclick="clinicianNav()" data-page="clinician" data-sub="clinician"><span class="ic" style="font-size:12px">🩺</span><span>Clinician Dashboard</span></div>
-      <div class="ni grp" onclick="autoExpand();toggleDashMenu()" data-page="dashboard" id="dash-menu-parent" title="Additional Insights"><span class="ic">📊</span><span>Additional Insights</span><span id="dash-arrow" style="margin-left:auto;font-size:10px;transition:transform .2s">▼</span></div>
-      <div id="dash-submenu" style="display:block;padding-left:24px">
+      <div class="ni grp" onclick="autoExpand();toggleDashMenu()" data-page="dashboard" id="dash-menu-parent" title="Additional Insights"><span class="ic">📊</span><span>Additional Insights</span><span id="dash-arrow" style="margin-left:auto;font-size:10px;transition:transform .2s">▶</span></div>
+      <div id="dash-submenu" style="display:none;padding-left:24px">
         <div class="ni sub" onclick="switchDashSub('signup')" data-page="dashboard" data-sub="signup"><span class="ic" style="font-size:12px">📋</span><span>Sign-Up Rate</span></div>
         <div class="ni sub" onclick="switchDashSub('webinarPerf')" data-page="webinarPerf" data-sub="webinarPerf"><span class="ic" style="font-size:12px">🎥</span><span>Webinar Performance</span></div>
         <div class="ni sub" onclick="switchDashSub('demoQuality')" data-page="demoQuality" data-sub="demoQuality"><span class="ic" style="font-size:12px">🎯</span><span>Demo Quality</span></div>
@@ -10861,6 +10861,8 @@ function renderExec(){
   }
 }
 
+// The subs that actually live under Additional Insights, in nav order.
+const DASH_MENU_SUBS=['signup','webinarPerf','demoQuality','outbound','strategy'];
 function switchDashSub(sub){
   S.dashboard.sub=sub;
   // Map sub to AP
@@ -10871,9 +10873,14 @@ function switchDashSub(sub){
   document.getElementById('ptitle').textContent=titleMap[sub]||'Brand Dashboard';
   // Highlight nav items
   // highlighting handled centrally by _syncNav() on render
-  // Ensure dash submenu open, others closed
-  document.getElementById('dash-submenu').style.display='block';
-  document.getElementById('dash-arrow').textContent='\u25BC';
+  // Open the group only when we are navigating INTO it. Opening it for every
+  // destination is what made "collapsed by default" impossible: landing on the
+  // Executive or Brand dashboard re-expanded it immediately. Never force it
+  // CLOSED either - a reader who opened it keeps it open.
+  if(DASH_MENU_SUBS.indexOf(sub)>=0){
+    document.getElementById('dash-submenu').style.display='block';
+    document.getElementById('dash-arrow').textContent='\u25BC';
+  }
   document.getElementById('dqb').classList.remove('vis');
   document.querySelector('.sidebar').classList.remove('open');document.getElementById('sidebarOverlay').classList.remove('open');
   bldF();
