@@ -4631,7 +4631,7 @@ function _metaFilterBar(sfx){
         +'padding:4px 10px;max-width:320px;cursor:pointer">';
       for(var oi=0;oi<_opts.length;oi++){
         var o=_opts[oi];
-        sel+='<option value="'+_esc(o[0])+'"'+(cur===o[0]?' selected':'')+'>'+_esc(o[1])+'</option>';
+        sel+='<option value="'+_adsEsc(o[0])+'"'+(cur===o[0]?' selected':'')+'>'+_adsEsc(o[1])+'</option>';
       }
       h+=row(F[1],sel+'</select>');
       continue;
@@ -5162,6 +5162,15 @@ function _clinicianPie(rows,total,noun){
 // Filter definitions for the ad tables, shared by all three pages that show them
 // (Irfan / Detailed / Clinician). The 4th element lists the per-table state keys
 // each control writes, so one pill keeps every table in agreement.
+// Module-scope escaper for the ad-table filter controls. There are two other
+// _esc helpers in this file and BOTH are declared inside a function, so neither
+// is in scope here; reaching for one threw "_esc is not defined" at render time
+// and took every ad table down with it. Named distinctly so it cannot be
+// confused with either.
+function _adsEsc(v){
+  return String(v==null?'':v)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 // ── Conversion filter ───────────────────────────────────────────────────────
 // Only AD SETS carry the real optimization target (optTarget); a CAMPAIGN's is
 // its ad sets' targets joined with ' · ', and a CREATIVE has none at all - only

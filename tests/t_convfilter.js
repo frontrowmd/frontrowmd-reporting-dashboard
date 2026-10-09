@@ -103,7 +103,7 @@ ck('  and it counts toward the Clear All button appearing',
 ck('it renders as a dropdown, not pills',/if\(F\[4\]==='select'\)\{/.test(cli),true);
 ck('  built from the function when options are dynamic',
    /var _opts=\(typeof F\[2\]==='function'\)\?F\[2\]\(\):F\[2\];/.test(cli),true);
-ck('  and option text is escaped',/_esc\(o\[1\]\)/.test(cli),true);
+ck('  and option text is escaped',/_adsEsc\(o\[1\]\)/.test(cli),true);
 ck('  with the control hidden when there is nothing to choose',
    /if\(_opts\.length<=1\)\{ h\+=row\(F\[1\],'<span[^']*none recorded for this channel/.test(cli),true);
 // All three tables must honour it or the filter lies about what it filtered.
@@ -118,6 +118,47 @@ ck('every table defaults to All',
    ['metaCampConvF','metaCreConvF','metaAdsetConvF']
      .map(k=>new RegExp("if\\(!S\\.irfan\\."+k+"\\)S\\.irfan\\."+k+"='all';").test(cli)),
    [true,true,true]);
+
+// ── 6. Every helper the filter bar calls must be REACHABLE ────────────────
+// This file has two _esc helpers and BOTH are declared inside other functions.
+// Calling one from the filter bar threw "_esc is not defined" at render time
+// and took every ad table down with it — and the regex assertion above still
+// passed, because the name existed somewhere in the file. Existence is not
+// scope, so check scope.
+function _stripLiterals(src){
+  let o='',i=0;const n=src.length;
+  while(i<n){
+    const c=src[i];
+    if(c==='/'&&src[i+1]==='/'){while(i<n&&src[i]!=='\n')i++;continue;}
+    if(c==="'"||c==='"'||c==='`'){const q=c;i++;while(i<n&&src[i]!==q){if(src[i]==='\\')i++;i++;}i++;o+=' ';continue;}
+    o+=c;i++;
+  }
+  return o;
+}
+// Declared at column 0 = module scope. Anything indented lives inside something.
+const MODULE_SCOPE=new Set([...cli.matchAll(/^(?:function\s+([A-Za-z_$][\w$]*)|(?:const|let|var)\s+([A-Za-z_$][\w$]*))/gm)]
+  .map(m=>m[1]||m[2]));
+ck('the ad-table escaper is at module scope',MODULE_SCOPE.has('_adsEsc'),true);
+// The two that are not, and must not be mistaken for it.
+ck('  and the nested _esc helpers are NOT',MODULE_SCOPE.has('_esc'),false);
+ck('the filter bar uses the reachable one',/_adsEsc\(o\[0\]\)/.test(cli)&&/_adsEsc\(o\[1\]\)/.test(cli),true);
+ck('  and no longer the out-of-scope one',/[^s]_esc\(o\[/.test(cli),false);
+
+const KW=new Set(['if','for','while','switch','catch','return','typeof','function','new','else','do','of','in','await']);
+const GLOBALS=new Set(['String','Number','Math','Date','JSON','Object','Array','parseInt','parseFloat','isNaN','document','window','encodeURIComponent','Boolean']);
+function unresolvedCallsIn(name){
+  const body=_stripLiterals(fn(cli,name));
+  const local=new Set([...body.matchAll(/(?:function|const|let|var)\s+([A-Za-z_$][\w$]*)/g)].map(m=>m[1]));
+  return [...new Set([...body.matchAll(/(?<![.\w$])([A-Za-z_$][\w$]*)\s*\(/g)].map(m=>m[1]))]
+    .filter(n=>!KW.has(n)&&!GLOBALS.has(n)&&!local.has(n)&&!MODULE_SCOPE.has(n));
+}
+ck('every helper the filter bar calls resolves',unresolvedCallsIn('_metaFilterBar'),[]);
+// The conversion helpers are called from three table builders, so they have to
+// be module scope too.
+ck('the conversion helpers are module scope',
+   ['_adsConvIndex','_adsConvList','_adsConvMatch','_adsConvOptions'].filter(n=>!MODULE_SCOPE.has(n)),[]);
+ck('  and their own calls resolve',
+   ['_adsConvList','_adsConvMatch','_adsConvOptions'].flatMap(n=>unresolvedCallsIn(n)),[]);
 
 console.log('\n'+pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);
