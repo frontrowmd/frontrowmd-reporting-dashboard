@@ -7979,6 +7979,13 @@ const BD_DEAL_PROPS = [
   // web_traffic__measured is a NUMBER; the reported one is a band enum, so the
   // two are not directly comparable without binning one of them.
   'ab_test','web_traffic__measured','monthly_web_traffic__reported_at_time_of_churn',
+  // Which products a brand actually turned on. A MULTI-SELECT enum (Badge,
+  // Banner, Reviews, CAI, CAS), so HubSpot returns it semicolon-delimited and
+  // a brand can hold several. Powers the Churn tab's implemented-products
+  // breakdown, which needs it on ACTIVE deals too — the denominator of a
+  // per-product churn rate is every brand that implemented it, not just the
+  // ones that left.
+  'implemented_products',
   // Timestamp the deal first entered closed-won — the true signing date, which
   // PERSISTS after a brand churns (closedate is often blank on churned deals).
   // Used by the BD "Snapshot" chart to place churned brands in the months they
@@ -8252,6 +8259,9 @@ async function fetchBDData(env, fresh) {
       temporary_pause_reason: p.temporary_pause_reason||'',
       paused_billing__billing_restart_date: p.paused_billing__billing_restart_date||'',
       ab_test: p.ab_test||'',
+      // Kept as the raw delimited string; the client splits it, so the
+      // delimiter handling lives in one place next to the grouping rules.
+      implemented_products: p.implemented_products||'',
       monthly_web_traffic__reported_at_time_of_churn: p.monthly_web_traffic__reported_at_time_of_churn||'',
       // Numeric, so parsed like amount rather than passed through as a string.
       // NOTE a stored 0 and "not measured" are indistinguishable after this, and

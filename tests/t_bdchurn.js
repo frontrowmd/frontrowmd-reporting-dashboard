@@ -3,6 +3,7 @@
 // in Delinquent Payment.
 const {load,fn,decl}=require('./slice.js');const vm=require('vm');
 const bd=load(process.env.BD_SRC||'bd-dashboard.html');
+const src=load(process.env.WORKER_SRC||'worker.js');
 let pass=0,fail=0;
 const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify(w);console.log((ok?'PASS ':'FAIL ')+n+'  got='+JSON.stringify(g)+(ok?'':' want='+JSON.stringify(w)));ok?pass++:fail++;};
 
@@ -61,8 +62,9 @@ ck('  and both board types map to one label',
 // ── 4. The toggle ─────────────────────────────────────────────────────────
 ck('it has two pills',
    [...bd.matchAll(/_kmPill\('(board|all)','([^']+)'/g)].map(m=>m[2]),['Board Defined','All']);
-ck('All is the default, so the tiles keep the meaning they shipped with',
-   /var _bdChurnKmScope='all';/.test(bd),true);
+ck('Board Defined is the default \u2014 the cut the board reviews',
+   /var _bdChurnKmScope='board';/.test(bd),true);
+ck('  and All is still reachable',/_kmPill\('all','All'/.test(bd),true);
 ck('switching re-renders',/function bdSetChurnKmScope\(v\)\{if\(_bdChurnKmScope===v\)return;_bdChurnKmScope=v;renderBD\(\);\}/.test(bd),true);
 ck('the scope line says which cut is on screen',
    /_kmDeals\.length\+' of '\+_kmAll\.length\+' 2026 churns'/.test(bd)
@@ -123,7 +125,8 @@ const navIds=[...bd.matchAll(/bdNavGo\(event,'(bd-sec-churn[a-z]*)'\)/g)].map(m=
 const secIds=[...bd.matchAll(/<section class="bd-sec" id="(bd-sec-churn[a-z]*)">/g)].map(m=>m[1]);
 ck('every churn section has a nav link',secIds.filter(id=>navIds.indexOf(id)<0),[]);
 ck('and every churn nav link has a section',navIds.filter(id=>secIds.indexOf(id)<0),[]);
-ck('there are eight of them',[navIds.length,secIds.length],[8,8]);
+ck('there are nine of them',[navIds.length,secIds.length],[9,9]);
+ck('  including the new products section',navIds.indexOf('bd-sec-churnprod')>=0,true);
 ck('the churn group is revealed on the Churn tab',
    /var cn=document\.getElementById\('bd-nav-churn'\);if\(cn\)cn\.style\.display=\(t==='churn'\)\?'contents':'none';/.test(bd),true);
 ck('  and the Tracker anchors hidden',
@@ -188,57 +191,25 @@ ck('  and a period with no opening book IS null',
 ck('the hover bands are declared transparent',
    /\.bd-rate-band\{fill:transparent;cursor:pointer\}/.test(bd),true);
 
-// ── 11. C5 and C6 scope to a period rather than growing an axis ──────────
-// Their axes are categorical (A/B answer x traffic band; traffic band x
-// reason), so a grain cannot become an axis without destroying the section.
-// The toggle filters WHICH churns are counted instead.
-ck('both have a Monthly⁄Quarterly toggle',
-   /_chGrainSeg\(_bdChurnAbGrain,'bdSetChurnAbGrain'\)/.test(bd)
-   &&/_chGrainSeg\(_bdChurnTrGrain,'bdSetChurnTrGrain'\)/.test(bd),true);
-ck('  with their own state, like C3 and C4',
-   /var _bdChurnAbGrain='month', _bdChurnTrGrain='month';/.test(bd),true);
-ck('  defaulting to monthly',
-   (bd.match(/_bdChurn(Ab|Tr|Rate)Grain='month'/g)||[]).length,3);
-ck('  and each re-renders on change',
-   /function bdSetChurnAbGrain\(g\)\{if\(_bdChurnAbGrain===g\)return;_bdChurnAbGrain=g;renderBD\(\);\}/.test(bd)
-   &&/function bdSetChurnTrGrain\(g\)\{if\(_bdChurnTrGrain===g\)return;_bdChurnTrGrain=g;renderBD\(\);\}/.test(bd),true);
-// The LATEST period with data, not the current calendar one: a month with no
-// churn yet would blank the matrix and read as "no churn of any kind", which
-// is a different claim from "none yet this month".
-// The period containing TODAY is a part-period. On 2026-10-09 that was 3 of
-// 2026's 148 churns, which rendered as an almost-empty matrix reading as "no
-// churn" rather than "the month has barely started".
-ck('the period is the latest COMPLETE one',/if\(k<cur&&k>best\)best=k;/.test(bd),true);
-ck('  with the current period excluded by comparison against today',
-   /var cur=_chTodayKey\(grain\)/.test(bd),true);
-ck('  and a fallback when the only data IS the current period',/return best\|\|any;/.test(bd),true);
-ck('today\u2019s key respects the grain',
-   /if\(grain==='quarter'\)return y\+'-Q'\+\(Math\.floor\(n\.getMonth\(\)\/3\)\+1\);/.test(bd),true);
-ck('  and the label says the period is complete',
-   (bd.match(/the most recent complete '\+\(_bdChurn(Ab|Tr)Grain/g)||[]).length,2);
-ck('  floored at 2026 like the rest of the tab',
-   /_chLatest=function\(list,grain\)[\s\S]{0,420}?k<BD_CHURN_DETAIL_FROM\)return;/.test(bd),true);
-ck('C5 filters its board-defined set to that period',
-   /_chAbSet=_chBoard\.filter\(function\(dd\)\{return _chInPeriod\(dd,_chAbPeriod,_bdChurnAbGrain\);\}\)/.test(bd),true);
-ck('C6 filters the churned set to its own period',
-   /_chTrSet=_chDeals\.filter\(function\(dd\)\{return _chInPeriod\(dd,_chTrPeriod,_bdChurnTrGrain\);\}\)/.test(bd),true);
-// Each section's period must be resolved with its OWN grain, or flipping one
-// toggle silently moves the other section's window.
-ck('  and resolves that period with its OWN grain',
-   /_chTrPeriod=_chLatest\(_chDeals,_bdChurnTrGrain\)/.test(bd),true);
-ck('  as does C5',/_chAbPeriod=_chLatest\(_chBoard,_bdChurnAbGrain\)/.test(bd),true);
-ck('  and each matrix counts the SCOPED set, not the full one',
-   /_chAbSet\.forEach\(function\(dd\)\{/.test(bd)&&/_chTrSet\.forEach\(function\(dd\)\{/.test(bd),true);
-ck('  with no stale full-set loop left behind',
-   /_chBoard\.forEach\(function\(dd\)\{\s*\n\s*if\(\(dd\.ab_test/.test(bd),false);
-// A scoped count is meaningless unless the scope is on screen.
-ck('both name the period they are showing',
-   (bd.match(/the most recent complete '\+\(_bdChurn(Ab|Tr)Grain==='quarter'\?'quarter':'month'\)\+' with churn\./g)||[]).length,2);
-ck('  and say how much of the whole set that is',
-   /\+' \(of '\+_chBoard\.length\+' all time\)/.test(bd)
-   &&/\+_chTrSet\.length\+' of '\+_chDeals\.length\+' churned deals\. '/.test(bd),true);
-ck('an empty period says so rather than showing a blank grid',
-   (bd.match(/No churn dated 2026 onward yet\./g)||[]).length,2);
+// ── 11. C5 and C6 cover 2026, with no grain toggle ──────────────────────
+// Their axes are categorical, so a grain could only scope WHICH churns are
+// counted — and scoping a cross-tab to one period left 3 of 2026's 148 churns
+// in the grid, which is not a cross-tab.
+ck('neither carries a grain toggle',
+   /bdSetChurnAbGrain|bdSetChurnTrGrain|_bdChurnAbGrain|_bdChurnTrGrain/.test(bd),false);
+// Comments still name them, which is the point of the comment — test live code.
+ck('  and the period-scoping helpers went with them',
+   /_chLatest|_chTodayKey|_chInPeriod/.test(bd.replace(/^\s*\/\/.*$/gm,'')),false);
+ck('both cover 2026 onward',
+   (bd.match(/_ch(Ab|Tr)Set=_ch(Board|Deals)\.filter\(function\(dd\)\{return _chIn2026\(dd\);\}\)/g)||[]).length,2);
+ck('  through one shared floor test',
+   /var _chIn2026=function\(dd\)\{var m=_bdMonthOf\(dd\.pausechurn_date\);return !!m&&m>=BD_CHURN_DETAIL_FROM;\}/.test(bd),true);
+ck('  and each says so on the section',
+   (bd.match(/Churns dated 2026 onward\.<\/span><\/div>'/g)||[]).length,2);
+ck('C3 and C4 KEEP their toggles \u2014 they plot periods',
+   /_chGrainSeg\(_bdChurnTypeGrain,'bdSetChurnTypeGrain'\)/.test(bd)
+   &&/_chGrainSeg\(_bdChurnReasonGrain,'bdSetChurnReasonGrain'\)/.test(bd),true);
+ck('  as does C2',/_chGrainSeg\(_bdChurnRateGrain,'bdSetChurnRateGrain'\)/.test(bd),true);
 
 // ── 12. C2's bands were emitted with data and no handler ────────────────
 ck('the rate bands are bound',/function bdBindRateBands\(root\)\{/.test(bd),true);
@@ -333,6 +304,68 @@ ck('Plan Details collapses to Amount and Plan Name only',
 // expanding that group shifted every value one column left.
 ck('Avg Days cells match their header order',
    /_td\('days_to_close'[\s\S]{0,200}?_td\('to_demo'[\s\S]{0,200}?_td\('from_demo'/.test(bd),true);
+
+// ── 17. C8 — implemented products vs churn ──────────────────────────────
+const C8=(()=>{const i=bd.indexOf('var BD_PROD_GROUP=');return bd.slice(i,bd.indexOf('</section>',i));})();
+ck('the section is locatable',C8.length>1500,true);
+// Badge and Banner are the same placement sold two ways.
+ck('Badge and Banner collapse to one product',
+   /BD_PROD_GROUP=\{Badge:'Badge\/Banner',Banner:'Badge\/Banner'\}/.test(bd),true);
+ck('  and the order lists four products, not five',
+   (()=>{const m=/BD_PROD_ORDER=\[([^\]]*)\]/.exec(bd);
+         return m[1].split(',').map(x=>x.trim().replace(/'/g,''));})(),
+   ['Badge/Banner','Reviews','CAI','CAS']);
+// HubSpot returns a multi-select semicolon-delimited.
+ck('the multi-select is split on its delimiter',/raw\.split\(';'\)/.test(C8),true);
+ck('  and de-duplicated, so Badge+Banner counts once',
+   /out\[BD_PROD_GROUP\[t\]\|\|t\]=1/.test(C8),true);
+
+// A RATE needs the whole book, not just the churned.
+ck('the denominator is every brand that ever signed',
+   /var _chBook=closedWonDeals\.concat\(_chDeals\);/.test(bd),true);
+ck('  and churn is decided by deal stage, not by the set it came from',
+   /var churned=\(dd\.dealstage===BD_CHURN_STAGE\|\|dd\.dealstage===BD_CHURN_ONB_STAGE\);/.test(C8),true);
+// Deliberately NOT floored at 2026: that floor exists because Churn Type is
+// near-empty before then; implemented_products carries no such gap.
+ck('it is not floored at 2026',/_chIn2026/.test(C8),false);
+
+// "Not recorded" and "nothing implemented" are different claims.
+ck('unrecorded brands are excluded, not counted as nothing',
+   /if\(!\(dd\.implemented_products\|\|''\)\.trim\(\)\)\{_chProdUnset\+\+;return;\}/.test(C8),true);
+ck('  and the count of them is reported',
+   /_chProdUnset\+' of '\+_chBook\.length\+' signed brands have no Implemented Products value/.test(C8),true);
+ck('  with a separate bucket for a recorded empty set',
+   /if\(!ps\.length\)\{_chProdNone\.n\+\+;/.test(C8),true);
+
+// Question 1: does reviews-live go with less churn?
+ck('reviews-live is split against everything else',
+   /var rev=\(ps\.indexOf\('Reviews'\)>=0\)\?_chRevYes:_chRevNo;/.test(C8),true);
+ck('  and the verdict names the gap in points',
+   /pp <\/strong>|pp '\s*\+/.test(C8)||/Math\.abs\(_revGap\)\.toFixed\(1\)\+'pp /.test(C8),true);
+// Two self-selected groups — this cannot show cause, and says so.
+ck('  while refusing to claim cause',
+   /Association, not cause/.test(C8),true);
+ck('  and treats a sub-point gap as no difference',
+   /Math\.abs\(_revGap\)<1/.test(C8),true);
+
+// Question 2: which product's brands churn most.
+ck('products are ranked worst-first',
+   /_chProdRows\.sort\(function\(a,b\)\{return \(b\.pct==null\?-1:b\.pct\)-\(a\.pct==null\?-1:a\.pct\);\}\)/.test(C8),true);
+ck('  a product nobody implemented is not shown',
+   /BD_PROD_ORDER\.filter\(function\(pk\)\{return _chProdStat\[pk\]\.n>0;\}\)/.test(C8),true);
+ck('  a zero denominator yields a dash, not a divide-by-zero',
+   /_chPctOf=function\(o\)\{return o\.n>0\?\(\(o\.ch\/o\.n\)\*100\):null;\}/.test(C8),true);
+// A brand with three products is counted in all three.
+ck('the rows overlap, and the section says so',
+   /so the rows overlap and do not sum/.test(C8),true);
+
+// The worker has to actually fetch the field, on ACTIVE deals too.
+ck('the property is requested',/'implemented_products',/.test(src),true);
+ck('  and mapped onto the deal row',/implemented_products: p\.implemented_products\|\|'',/.test(src),true);
+
+// The deals table moved down a number when this section was inserted.
+ck('the deals table is C9 now',/<span class="bd-sec-n">C9<\/span><span class="bd-sec-t">All Churned Deals/.test(bd),true);
+ck('  and the new section is C8',/<span class="bd-sec-n">C8<\/span><span class="bd-sec-t">Implemented Products/.test(bd),true);
 
 console.log('\n'+pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);

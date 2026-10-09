@@ -145,8 +145,10 @@ ck('and they are toggled with it',
   const navZone=bd.slice(navStart, bd.indexOf('Churned Deals</a>', navStart));
   ck('the churn menu slice is not empty', navZone.length>200, true);
   const linked=(navZone.match(/data-sec="(bd-sec-churn[a-z]*)"/g)||[]).map(x=>x.slice(10,-1));
-  const built=['bd-sec-churn','bd-sec-churnrate','bd-sec-churntype','bd-sec-churnreason',
-               'bd-sec-churnab','bd-sec-churntraffic','bd-sec-churnseg','bd-sec-churndeals'];
+  // Derived, not hardcoded: a new churn section should make this assertion
+  // check the new section, not fail for existing.
+  const built=[...new Set([...bd.matchAll(/<section class="bd-sec" id="(bd-sec-churn[a-z]*)">/g)].map(m=>m[1]))];
+  ck('the built list is non-trivial', built.length>=8, true);
   ck('every churn section is in the menu', built.filter(x=>linked.indexOf(x)<0), []);
   ck('and the menu points at nothing that is not built', linked.filter(x=>built.indexOf(x)<0), []);
 }
