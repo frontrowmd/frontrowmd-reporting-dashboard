@@ -74,13 +74,21 @@ ck('  so Organic + Untagged IS the complement, by construction',
          return Math.abs((100-(P/R*100))-((O+U)/R*100))<1e-9;})(),true);
 // Six tiles over seven grid units: the acquisition tile takes two so its stats sit
 // side by side. Tiles and units drift apart silently and orphan a row, so pin both.
-const _kmBlock=cli.slice(cli.indexOf("repeat(7,minmax(0,1fr))"),cli.indexOf('<div id="t-revenue">'));
+// The row moved out of renderDash into _brandKeyMetricsHTML so the Executive
+// Dashboard can render it too. Slice the BUILDER, not the page function.
+const _kmBlock=(()=>{const i=cli.indexOf('function _brandKeyMetricsHTML(');return cli.slice(i,cli.indexOf('\nfunction ',i+10));})();
+ck('the Key Metrics builder is extracted and locatable',_kmBlock.length>3000,true);
 const _nTile=(_kmBlock.match(/kmh\+=_kmTile\(/g)||[]).length;
 const _nInline=(_kmBlock.match(/kmh\+='<div class="tile hero"/g)||[]).length;
 const _nSpan=(_kmBlock.match(/grid-column:span 2/g)||[]).length;
-ck('seven grid columns',/grid-template-columns:repeat\(7,minmax\(0,1fr\)\)/.test(cli),true);
+// The column count is computed now, because dropping CPQD drops a grid unit.
+ck('seven grid columns, or six without CPQD',
+   /grid-template-columns:repeat\('\+\(hideCpqd\?6:7\)\+',minmax\(0,1fr\)\)/.test(_kmBlock),true);
 ck('six tiles in the row',[_nTile,_nInline,_nTile+_nInline],[5,1,6]);
 ck('and their grid units add up to the column count',_nTile+_nInline+_nSpan,7);
+// CPQD is the one tile the Executive Dashboard omits.
+ck('exactly one tile is optional',(_kmBlock.match(/if\(!hideCpqd\)kmh\+=_kmTile\(/g)||[]).length,1);
+ck('  and it is CPQD',/if\(!hideCpqd\)kmh\+=_kmTile\('CPQD/.test(_kmBlock),true);
 ck('_kmTile accepts the tooltip and a column span',
    /const _kmTile=\(label,value,calc,footer,extra,tip,span\)/.test(cli),true);
 // Reserved label/calc height is what keeps every value on one baseline when one
@@ -98,8 +106,11 @@ ck('build version bumped past s5t225',
    (+((cli.match(/_BUILD_VER='s5t(\d+)'/)||[])[1]||0))>=226,true);
 // "Unattributed" already means Windsor-minus-matched on the Ad KPIs page; reusing
 // the word here would collide with a different number.
-ck('the card never says "Unattributed"',
-   /Unattributed/.test(cli.slice(cli.indexOf("Paid \\u00b7 Last Click"),cli.indexOf("<div id=\"t-revenue\">"))),false);
+// Scoped to the builder. The old anchors ("Paid · Last Click", an unsuffixed
+// #t-revenue) no longer exist, and a missing end anchor made this slice run to
+// the end of the file — which found "Unattributed" somewhere else and passed
+// nothing meaningful.
+ck('the card never says \"Unattributed\"',/Unattributed/.test(_kmBlock),false);
 
 // --- the card's own definition of each bucket ------------------------------
 // The subtext names which channels count as Paid. That list is a hand-written

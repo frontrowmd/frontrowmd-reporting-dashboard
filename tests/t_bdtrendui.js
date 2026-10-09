@@ -124,11 +124,19 @@ ck('renderDash builds and renders it',
    /_dshTrEl\.innerHTML=_dashTrendCard\(d\);_renderDashTrend\(d\)/.test(src),true);
 ck('it joins the Jump To nav',/data-nav="Trend Analysis"/.test(BR),true);
 ck('  under a dsec-h, which is what the nav selects on this page',
-   /class="dsec-h dsec-in" id="dsec-dshtrend"/.test(BR),true);
+   /class="dsec-h dsec-in" id="dsec-dshtrend'\+sfx\+'"/.test(BR),true);
 ck('the three toggles each have a handler',
    ['toggleDshTrendGrain','toggleDshTrendPop','toggleDshTrendMetric'].every(h=>src.includes('window.'+h+'=')),true);
 ck('toggling redraws from cached data, not a refetch',
-   /function _dshTrendRedraw\(\)\{[\s\S]{0,300}?window\._dshTrendData/.test(BR),true);
+   /function _dshTrendRedraw\(sfx\)\{[\s\S]{0,300}?window\._dshTrendData/.test(BR),true);
+// The Executive Dashboard hosts a second copy, so every id this card emits and
+// every id it looks up must carry the host suffix.
+ck('the panel id is host-scoped',
+   /id="dsh-trend-panels'\+sfx\+'"/.test(BR)&&/getElementById\('dsh-trend-panels'\+\(sfx\|\|''\)\)/.test(BR),true);
+ck('  as is the section and its heading',
+   /id="sec-dshtrend'\+sfx\+'"/.test(BR)&&/id="dsec-dshtrend'\+sfx\+'"/.test(BR),true);
+ck('the toggles pass the suffix back',
+   /toggleDshTrendGrain\('"\+x\.k\+"','"\+sfx\+"'\)/.test(BR),true);
 // An SVG <rect> with no fill paints BLACK and covers the whole plot. Assert the
 // GENERAL rule — every band class the markup uses must be declared transparent —
 // so a fourth chart with a fourth class fails here instead of shipping a black box.

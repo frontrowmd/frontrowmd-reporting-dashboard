@@ -250,9 +250,15 @@ ck('and one fetch covers both windows',
 ck('a single chart', (fn(cli,'_renderClnTrend').match(/<svg /g)||[]).length, 1);
 ck('and a single axis — only one measure is plotted',
    (fn(cli,'_renderClnTrend').match(/var yMax=_clnTrNice/g)||[]).length, 1);
+// The card now takes an id SUFFIX so the Executive Dashboard can host a second
+// copy; pages share one DOM, so a fixed id would collide.
 ck('every toggle rebuilds the card and redraws',
-   /card\.outerHTML=_clnTrendCard\(d\);\s*\n\s*_renderClnTrend\(d\);/.test(cli), true);
-ck('nav heading has a stable id', /id="cln-trend-h"/.test(cli), true);
+   /card\.outerHTML=_clnTrendCard\(d,sfx\);\s*\n\s*_renderClnTrend\(d,sfx\);/.test(cli), true);
+ck('nav heading has a stable, host-scoped id', /id="cln-trend-h'\+sfx\+'"/.test(cli), true);
+ck('  and the panel it draws into is scoped the same way',
+   /id="cln-trend-panels'\+sfx\+'"/.test(cli)&&/getElementById\('cln-trend-panels'\+\(sfx\|\|''\)\)/.test(cli), true);
+ck('the toggles carry the suffix back, so the right copy redraws',
+   /toggleClnTrendGrain\('"\+x\.k\+"','"\+sfx\+"'\)/.test(cli), true);
 // Trend Analysis now LEADS the page body: it answers "what is the shape right
 // now" over its own fixed lookback, which is the question asked before the
 // funnel's stage-by-stage breakdown. Key Metrics is still prepended after
@@ -266,7 +272,7 @@ ck('nav heading has a stable id', /id="cln-trend-h"/.test(cli), true);
   ck('and above Acquisition', iFunnel<iAcq, true);
   // Key Metrics is PREPENDED, so it still comes first on screen.
   ck('with Key Metrics still prepended ahead of it',
-     /h=card\('Key Metrics',[\s\S]{0,200}?\)\+h;/.test(cli), true);
+     /h=_clnKeyMetricsHTML\(d,''\)\+h;/.test(cli), true);
 }
 ck('the Daily Activity section it used to follow is gone',
    /card\('Daily Activity'/.test(cli), false);

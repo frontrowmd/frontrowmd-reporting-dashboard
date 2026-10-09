@@ -6,11 +6,15 @@ const cli=load('dashboard.html'), src=load('worker.js');
 let pass=0,fail=0;
 const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify(w);console.log((ok?'PASS ':'FAIL ')+n+'  got='+JSON.stringify(g)+(ok?'':' want='+JSON.stringify(w)));ok?pass++:fail++;};
 const RC=fn(cli,'renderClinician');
+// The Key Metrics row moved out of renderClinician into its own builder so the
+// Executive Dashboard can render the identical row. Assertions about the row
+// read KM; assertions about the PAGE still read RC.
+const KM=fn(cli,'_clnKeyMetricsHTML');
 
 // --- section order -------------------------------------------------------
 // h STARTS as the funnel, adsH (Ads + Ad Tables) is appended, then All Clinicians,
 // then the ref cards; Key Metrics is PREPENDED last.
-ck('Key Metrics is prepended, not appended',/h=card\('Key Metrics',[\s\S]{0,200}?\)\+h;/.test(RC),true);
+ck('Key Metrics is prepended, not appended',/h=_clnKeyMetricsHTML\(d,''\)\+h;/.test(RC),true);
 ck('All Clinicians is appended after the ad tables, not promoted to the top',
    /h\+=allClinH;/.test(RC)&&!/h=allClinH\+h;/.test(RC),true);
 // The Ads KPI row is gone: its three cards (pacing, cost per inquiry, cost per
@@ -28,9 +32,14 @@ ck('and All Clinicians still lands after them',
 // Guarded with indexOf()>=0 as well as the ordering: a const that no longer
 // exists returns -1, which is "before" everything and passes vacuously.
 // `dly` went with the Daily Activity section; `comp` is the one left.
-ck('Key Metrics is built after the consts it reads',
-   ['const comp='].map(c=>RC.indexOf(c)>=0&&RC.indexOf(c)<RC.indexOf("card('Key Metrics'")),
-   [true]);
+// This used to guard a TDZ: the row was a bare block inside renderClinician
+// that had to be built after `comp`. It is a standalone builder now, taking
+// only `d`, so the hazard is gone — what matters instead is that it depends on
+// nothing from renderClinician's scope.
+ck('the row is a standalone builder taking only the payload',
+   /function _clnKeyMetricsHTML\(d,sfx\)/.test(cli),true);
+ck('  and reads the payload directly, not a renderClinician local',
+   /d\.composition/.test(KM)&&!/\bcomp\b/.test(KM),true);
 
 // --- removals ------------------------------------------------------------
 ck('Specialty Breakdown is gone',/panel\('Specialty Breakdown'/.test(cli),false);
@@ -68,28 +77,28 @@ ck('and it passes the window spend and budget',
 // never disagree about the same quantity. Contact-based and deduped — NOT the
 // funnel's deal-based stages, so this will not equal Fully Onboarded.
 ck('Cost per Full App divides by the Acquisition Full Submission count',
-   /_f\$\(_div\(_sp,_fo\)\)/.test(RC)&&/const _fo=_acqSub\?\(_acqSub\.contacts\|\|0\):0;/.test(RC),true);
-ck('which is composition.submission',/const _acqSub=_acq\.submission\|\|null;/.test(RC),true);
-ck('and never the Meta-conversion field',/_a\.cacDenom\b/.test(RC),false);
+   /_f\$\(_div\(_sp,_fo\)\)/.test(KM)&&/const _fo=_acqSub\?\(_acqSub\.contacts\|\|0\):0;/.test(KM),true);
+ck('which is composition.submission',/const _acqSub=_acq\.submission\|\|null;/.test(KM),true);
+ck('and never the Meta-conversion field',/_a\.cacDenom\b/.test(KM),false);
 // \b after cacDenom so cacDenomOnboarded does not match; the prose comment
 // above mentions cacDenom deliberately, and must not fail this.
 ck('and never reads the bare cacDenom property',/_a\.cacDenom\b/.test(RC),false);
 ck('Cost per Inquiry divides by the Acquisition clinician count',
-   /_f\$\(_div\(_sp,_add\)\)/.test(RC)&&/const _add=_acq\.contacts\|\|0;/.test(RC),true);
+   /_f\$\(_div\(_sp,_add\)\)/.test(KM)&&/const _add=_acq\.contacts\|\|0;/.test(KM),true);
 // Full App Rate must be the SAME ratio the Acquisition caption prints.
 ck('Full App Rate is that pair, so it matches the Acquisition rate',
-   /_rate=_add>0\?\(_fo\/_add\)\*100:null/.test(RC),true);
+   /_rate=_add>0\?\(_fo\/_add\)\*100:null/.test(KM),true);
 ck('and the Acquisition caption computes it the same way',
    /const acqRate=\(comp\.contacts>0&&sub\)\?\(\(sub\.contacts\|\|0\)\/comp\.contacts\*100\):null;/.test(cli),true);
 // Both "Full App" cards must share one definition, or the row means two things.
 ck('Full App Rate uses the SAME onboarded basis as Cost per Full App',
-   /_rate=_add>0\?\(_fo\/_add\)\*100:null/.test(RC),true);
+   /_rate=_add>0\?\(_fo\/_add\)\*100:null/.test(KM),true);
 ck('lower-is-better is set on the two cost cards only',
-   (RC.match(/,'\$',true\)/g)||[]).length,2);
-ck('and the rate is not inverted',/_foot\(_rate,_pRate\(_kp\),_pRate\(_km\),'%',false\)/.test(RC),true);
+   (KM.match(/,'\$',true\)/g)||[]).length,2);
+ck('and the rate is not inverted',/_foot\(_rate,_pRate\(_kp\),_pRate\(_km\),'%',false\)/.test(KM),true);
 // A Windsor outage must blank one card's numbers, not the whole new section.
-ck('a failed ad fetch degrades instead of throwing',/_a=\(d\.ads&&!d\.ads\.error\)\?d\.ads:null/.test(RC),true);
-ck('and the section says so',/ad data unavailable for this window/.test(RC),true);
+ck('a failed ad fetch degrades instead of throwing',/_a=\(d\.ads&&!d\.ads\.error\)\?d\.ads:null/.test(KM),true);
+ck('and the section says so',/ad data unavailable for this window/.test(KM),true);
 
 // --- the deltas the user asked the worker to provide --------------------
 ck('the worker computes prior and last-month windows',
@@ -119,20 +128,20 @@ ck('and the history funnel is no longer spread',/\n          \.\.\.funnel,/.test
 ck('the history table still ships for All Clinicians',/historyRange: \{ from: CLINICIAN_HISTORY_FROM, to: histTo \},/.test(src),true);
 
 // --- CTR -------------------------------------------------------------------
-ck('a fifth Key Metrics tile exists',(RC.match(/_clnKpiTile\(/g)||[]).length,5);
+ck('a fifth Key Metrics tile exists',(KM.match(/_clnKpiTile\(/g)||[]).length,5);
 ck('CTR sits between Cost per Inquiry and Full App Rate',
-   RC.indexOf("_clnKpiTile('Cost per Inquiry'")<RC.indexOf("_clnKpiTile('CTR'")
-   &&RC.indexOf("_clnKpiTile('CTR'")<RC.indexOf("_clnKpiTile('Full App Rate'"),true);
+   KM.indexOf("_clnKpiTile('Cost per Inquiry'")<KM.indexOf("_clnKpiTile('CTR'")
+   &&KM.indexOf("_clnKpiTile('CTR'")<KM.indexOf("_clnKpiTile('Full App Rate'"),true);
 // Cumulative, not the mean of daily rates — that would weight a 10-impression
 // day the same as a 10,000-impression one.
 ck('CTR is total clicks over total impressions',
-   /const _ctr=_ctrOk\?\(_tf\.clicks\/_tf\.impressions\)\*100:null;/.test(RC),true);
-ck('and never averages a per-row ctr field',/_tf\.ctr\b/.test(RC),false);
+   /const _ctr=_ctrOk\?\(_tf\.clicks\/_tf\.impressions\)\*100:null;/.test(KM),true);
+ck('and never averages a per-row ctr field',/_tf\.ctr\b/.test(KM),false);
 ck('clicks are summed alongside impressions in the worker',
    /ck \+= parseInt\(r\.clicks\) \|\| 0;/.test(src)&&/'date,campaign_name,impressions,clicks,link_clicks'/.test(src),true);
 ck('on clinician campaigns only',/if \(!isClinicianCampaign\(r\.campaign_name\)\) continue;/.test(src),true);
 ck('zero impressions yields a dash, not a divide-by-zero',
-   /_ctrOk=\(_tf\.impressions!=null&&_tf\.impressions>0&&_tf\.clicks!=null\)/.test(RC),true);
+   /_ctrOk=\(_tf\.impressions!=null&&_tf\.impressions>0&&_tf\.clicks!=null\)/.test(KM),true);
 
 // --- Daily Activity removed ------------------------------------------------
 // The section is gone from the Clinician page. Trend Analysis covers the same

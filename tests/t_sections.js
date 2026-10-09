@@ -126,18 +126,28 @@ ck('and the Clinician duplicate is gone',/kpi\('Ad Budget Pacing'/.test(html),fa
 // It used to answer to TWO names: the nav and titleMap said "Detailed
 // Dashboard" while T.dashboard and the static topbar said "Executive
 // Dashboard", so the title bar changed depending on how you arrived.
-ck('no stale page name survives anywhere',
-   /Detailed Dashboard|Executive Dashboard/.test(html),false);
+// "Executive Dashboard" is now a real, separate page, so it is no longer a
+// stale alias — only "Detailed Dashboard" is. The Brand page must still not
+// answer to the Executive page's name.
+ck('no stale page name survives anywhere',/Detailed Dashboard/.test(html),false);
+ck('the Brand page does not answer to the Executive name',
+   /titleMap=\{[^}]*overview:'Executive Dashboard'/.test(html)
+   ||/const T=\{[^}]*dashboard:'Executive Dashboard'/.test(html),false);
 ck('the nav entry says Brand Dashboard',
    /data-sub="overview"[^>]*>(?:[^<]|<(?!\/div))*?<span>Brand Dashboard<\/span>/.test(html),true);
-ck('the static topbar title agrees',
-   /id="ptitle"[^>]*>Brand Dashboard</.test(html),true);
+// The static title names the LANDING page, which is the Executive Dashboard
+// now. The Brand page's title comes from titleMap/T when you navigate to it,
+// and renderPage sets it on every route including boot.
+ck('the static topbar title names the landing page',
+   /id="ptitle"[^>]*>Executive Dashboard</.test(html),true);
+ck('  and renderPage keeps the title in step on every route',
+   /const _pt=document\.getElementById\('ptitle'\);if\(_pt&&T\[AP\]\)_pt\.textContent=T\[AP\];/.test(html),true);
 ck('and so does the title the sub-nav writes',
-   /titleMap=\{overview:'Brand Dashboard'/.test(html),true);
+   /titleMap=\{[^}]*overview:'Brand Dashboard'/.test(html),true);
 ck('  including its fallback, which was the second name',
    /textContent=titleMap\[sub\]\|\|'Brand Dashboard'/.test(html),true);
 ck('the AI panel label resolves to the same name',
-   /const T=\{dashboard:'Brand Dashboard'/.test(html),true);
+   /const T=\{[^}]*dashboard:'Brand Dashboard'/.test(html),true);
 ck('the loading skeleton too',/Loading Brand Dashboard/.test(html),true);
 // Copy on OTHER pages that tells the reader to go load this one.
 ck('cross-page instructions point at the new name',
@@ -173,7 +183,7 @@ ck('the True CPD week builders survive for Irfan',
    &&/_renderTrueCpdWeek\(d,'irfan-truecpd-week'\)/.test(html),true);
 ck('Irfan keeps its own Snapshot section',/id="dsec-irf-snapshot"/.test(html),true);
 // The Clinician page's Trend Analysis is a different card entirely.
-ck('the Clinician Trend Analysis is untouched',/id="cln-trend-h"/.test(html),true);
+ck('the Clinician Trend Analysis is untouched',/id="cln-trend-h'\+sfx\+'"/.test(html),true);
 
 // The loading skeleton must not promise a card the page will never render.
 ck('the skeleton no longer previews a Daily Activity chart',
@@ -184,7 +194,9 @@ ck('  and leads with a single Key Metrics card instead',
 // margin-top:0 belongs to whichever section is FIRST. It sat on #sec-row1,
 // which stopped being first when Key Metrics moved up and no longer exists.
 ck('the first-section margin rule targets the first section',
-   /#page-dashboard>\.dsec:first-of-type,#irfan-c>\.dsec:first-child\{margin-top:0\}/.test(html),true);
+   /#page-dashboard>\.dsec:first-of-type,#page-exec \.dsec:first-child,#irfan-c>\.dsec:first-child\{margin-top:0\}/.test(html),true);
+ck('  and the new page gets the same section spacing',
+   /#page-dashboard \.dsec,#page-exec \.dsec,#irfan-c>\.dsec\{margin-top:36px\}/.test(html),true);
 ck('six headline tiles (five via _kmTile, the split one inline)',
    (html.match(/kmh\+=_kmTile\(/g)||[]).length+(html.match(/kmh\+='<div class="tile hero"/g)||[]).length,6);
 ck('in the order asked for',
@@ -199,8 +211,9 @@ ck('CAC gave up its tile to Pre-Launch %',
    /_kmTile\('CAC'/.test(html),false);
 // Tile count and column count drift apart silently and orphan a 1/5-width row.
 // Six tiles, seven units: the split tile spans two columns.
+// Computed now: the Executive Dashboard omits CPQD, which drops a grid unit.
 ck('the grid has one column per grid unit',
-   (html.match(/grid-template-columns:repeat\((\d),minmax\(0,1fr\)\);gap:12px;margin-bottom:16px/)||[])[1],'7');
+   /grid-template-columns:repeat\('\+\(hideCpqd\?6:7\)\+',minmax\(0,1fr\)\);gap:12px;margin-bottom:16px/.test(html),true);
 ck('laid out five across like the Irfan page',
    /grid-template-columns:repeat\(5,minmax\(0,1fr\)\);gap:12px;margin-bottom:16px/.test(html),true);
 // Ad Spend leads with spend and carries budget + pacing, like the Ad KPIs card.
@@ -211,11 +224,17 @@ ck('pacing only on month windows',/_kmIsMonth=\(_kmWin==='mtd'\|\|_kmWin==='last
 
 // Revenue Outcome moved out of the Snapshot row into Key Metrics.
 ck('Revenue Outcome lives in Key Metrics',
-   html.indexOf('id="sec-keymetrics"')<html.indexOf("kmh+='<div id=\"t-revenue\"></div>'"),true);
+   /kmh\+='<div id="t-revenue'\+sfx\+'"><\/div>';/.test(html),true);
 ck('the Snapshot row no longer holds it',
    /id="sec-row1"[^\n]*t-revenue/.test(html),false);
 ck('and the Snapshot row is full width',/id="sec-row1" style="display:grid/.test(html),false);
-ck('only one #t-revenue is ever emitted',(html.match(/id="t-revenue"/g)||[]).length,1);
+// One EMISSION, suffixed per host. #t-revenue is repainted asynchronously by
+// fdRevenueOutcome and getElementById takes the first match, so two unsuffixed
+// copies would have the Executive page's card stealing the Brand page's repaint.
+ck('only one #t-revenue is ever emitted',(html.match(/id="t-revenue'\+sfx\+'"/g)||[]).length,1);
+ck('  and no unsuffixed literal survives',(html.match(/id="t-revenue"/g)||[]).length,0);
+ck('  with fdRevenueOutcome repainting the Executive copy by its own id',
+   /getElementById\('t-revenue-exec'\)/.test(html),true);
 
 // CVR Regular comes from the funnel block, so the build must happen after it or
 // the const is in its temporal dead zone and the whole render throws.

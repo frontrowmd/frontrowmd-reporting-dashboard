@@ -316,8 +316,8 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;hei
    moves onto the section root. 36px = 1.5x the 24px .sec gap, so a new section
    reads as a break while cards WITHIN a section (Ads + Channel Performance)
    stay visibly grouped at 24px. */
-#page-dashboard .dsec,#irfan-c>.dsec{margin-top:36px}
-#page-dashboard>.dsec:first-of-type,#irfan-c>.dsec:first-child{margin-top:0}
+#page-dashboard .dsec,#page-exec .dsec,#irfan-c>.dsec{margin-top:36px}
+#page-dashboard>.dsec:first-of-type,#page-exec .dsec:first-child,#irfan-c>.dsec:first-child{margin-top:0}
 .ni.grp{font-size:10px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;color:rgba(255,255,255,.40);
   padding:9px 16px 7px;margin-top:12px;margin-bottom:2px;border-radius:0;border-top:1px solid rgba(255,255,255,.07)}
 .ni.grp:hover{background:transparent;color:rgba(255,255,255,.72)}
@@ -616,7 +616,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
   <nav class="sidebar">
     <div class="sh"><img class="logo-full" src="https://raw.githubusercontent.com/frontrowmd/frontrowmd-reporting-dashboard/main/FrontrowMD_White_Logo.png" alt="frontrowMD" style="height:36px"><img class="logo-icon" src="https://raw.githubusercontent.com/frontrowmd/frontrowmd-reporting-dashboard/main/White_Graphic_Logo.png" alt="frontrowMD" style="height:28px;display:none"></div>
     <div class="snav">
-      <div class="ni" onclick="switchDashSub('irfan')" data-page="irfan" data-sub="irfan"><span class="ic" style="font-size:12px">⭐</span><span>Irfan Dashboard</span></div>
+      <div class="ni" onclick="switchDashSub('exec')" data-page="exec" data-sub="exec"><span class="ic" style="font-size:12px">⭐</span><span>Executive Dashboard</span></div>
       <div class="ni" onclick="switchDashSub('overview')" data-page="dashboard" data-sub="overview"><span class="ic" style="font-size:12px">📊</span><span>Brand Dashboard</span></div>
       <div class="ni" onclick="clinicianNav()" data-page="clinician" data-sub="clinician"><span class="ic" style="font-size:12px">🩺</span><span>Clinician Dashboard</span></div>
       <div class="ni grp" onclick="autoExpand();toggleDashMenu()" data-page="dashboard" id="dash-menu-parent" title="Additional Insights"><span class="ic">📊</span><span>Additional Insights</span><span id="dash-arrow" style="margin-left:auto;font-size:10px;transition:transform .2s">▼</span></div>
@@ -646,7 +646,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
     <div class="sb-toggle" onclick="toggleCollapse()"><span class="sb-arrow">◀</span><span class="sb-label">Collapse</span></div>
   </nav>
   <div class="main">
-    <div class="topbar"><div style="display:flex;align-items:center;gap:12px"><button class="hamburger" id="hamburger" onclick="toggleSidebar()"><span></span><span></span><span></span></button><div class="ttl" id="ptitle" style="margin-bottom:0">Brand Dashboard</div></div><div class="flt" id="filters"></div></div>
+    <div class="topbar"><div style="display:flex;align-items:center;gap:12px"><button class="hamburger" id="hamburger" onclick="toggleSidebar()"><span></span><span></span><span></span></button><div class="ttl" id="ptitle" style="margin-bottom:0">Executive Dashboard</div></div><div class="flt" id="filters"></div></div>
     <div class="dqb" id="dqb">⚠️ Some data sources may not have fully loaded. <button class="rfb" onclick="refreshData()" style="margin-left:8px;padding:6px 14px">Refresh</button><span id="dqb-diag" style="display:block;margin-top:8px;font-size:11px;font-family:var(--font-b);color:#92400E;line-height:1.6"></span></div>
     <!-- AI Analysis Panel -->
     <div id="ai-panel-overlay" onclick="toggleAIPanel()" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(2,15,24,.3);z-index:998;transition:opacity .25s;opacity:0"></div>
@@ -857,6 +857,17 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
       <div id="strat-output"></div>
     </div>
 
+    <!-- Executive Dashboard. Brand/Clinician is a MODE, not two pages: one set
+         of containers, filled from whichever payload the pill selects. Every id
+         here is exec-prefixed because all pages share one DOM — a second
+         #t-keymetrics would be found by the Brand page's own render. -->
+    <div class="pg" id="page-exec">
+      <div id="exec-date-header" style="margin-bottom:24px"></div>
+      <div id="exec-mode-bar"></div>
+      <div id="exec-km"></div>
+      <div id="exec-trend"></div>
+      <div id="exec-ads"></div>
+    </div>
     <div class="pg" id="page-irfan"><div id="irfan-date-header" style="margin-bottom:24px"></div><div id="irfan-c"></div></div>
     <div class="pg" id="page-clinician"><div id="clinician-date-header" style="margin-bottom:24px"></div><div id="clinician-c"></div></div>
     <div class="pg" id="page-demoQuality"><div id="dq-c"></div></div>
@@ -885,7 +896,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t267';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t268';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -893,7 +904,7 @@ const WP_BASELINE_SAVE_API=location.protocol==='file:'?'https://frontrowmd-dashb
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
 let PW='';
-const S={dashboard:{win:'mtd',data:null,sub:'irfan'},irfan:{win:'mtd',data:null},strategy:{data:null,win:'lastMonth'},calculator:{win:'mtd',data:null},signup:{win:null,data:null},clinician:{win:'mtd',data:null},analyzer:{win:'mtd',data:null,tab:'overview',sub:'overview'},demoQuality:{win:'mtd',data:null},webinarPerf:{win:'mtd',data:null},csession:{step:1},content:{data:null,sub:'cs-intel'},outbound:{data:null}};let AP='irfan';
+const S={exec:{win:'mtd',data:null,mode:'brand',adChannel:'meta'},dashboard:{win:'mtd',data:null,sub:'exec'},irfan:{win:'mtd',data:null},strategy:{data:null,win:'lastMonth'},calculator:{win:'mtd',data:null},signup:{win:null,data:null},clinician:{win:'mtd',data:null},analyzer:{win:'mtd',data:null,tab:'overview',sub:'overview'},demoQuality:{win:'mtd',data:null},webinarPerf:{win:'mtd',data:null},csession:{step:1},content:{data:null,sub:'cs-intel'},outbound:{data:null}};let AP='exec';
 const f$=v=>v==null?'—':'$'+Math.round(v).toLocaleString();
 const fN=v=>v==null?'—':Math.round(v).toLocaleString();
 const fP=(v,d=1)=>v==null?'—':v.toFixed(d)+'%';
@@ -909,7 +920,7 @@ function _staleAge(sec){
 // % No-Show exclude these (matching True CPD/CPQD + the worker). Lowercase
 // substring so it works on cloned tier strings or live values.
 const isSmallBrandWT=wt=>{const s=(wt||'').toLowerCase();return s.indexOf('pre-launch')>=0||s.indexOf('0-10k')>=0||s.indexOf('very small')>=0;};
-const T={dashboard:'Brand Dashboard',irfan:'Irfan Dashboard',resources:'Resources',calculator:'ARR Calculator',signup:'Sign-Up Rate',csession:'Creative Session',demoQuality:'Demo Quality',webinarPerf:'Webinar Performance',content:'Social Media Content',outbound:'Outbound Sequences'};
+const T={exec:'Executive Dashboard',dashboard:'Brand Dashboard',irfan:'Irfan Dashboard',resources:'Resources',calculator:'ARR Calculator',signup:'Sign-Up Rate',csession:'Creative Session',demoQuality:'Demo Quality',webinarPerf:'Webinar Performance',content:'Social Media Content',outbound:'Outbound Sequences'};
 // Window presets, in render order. All Time was removed 2026-10-08: it was the
 // slowest window on every page by a wide margin and nobody was reading it.
 // Custom stays LAST in this list and is also rendered last — see bldF, which
@@ -1012,6 +1023,10 @@ async function fdRevenueOutcome(win,from,to,vsFrom,vsTo){
     _revOutcome={win:win,current:d.current,prior:d.prior,priorMonth:d.priorMonth};
     if(AP==='dashboard'&&S.dashboard&&S.dashboard.data){var de=document.getElementById('t-revenue');if(de)de.innerHTML=_buildRevenueOutcomeCard(S.dashboard.data);}
     if(AP==='irfan'&&S.irfan&&S.irfan.data){var ie=document.getElementById('irfan-revoutcome');if(ie)ie.innerHTML=_buildRevenueOutcomeCard(S.irfan.data);}
+    // The Executive Dashboard's Brand mode carries its own suffixed copy. Without
+    // this it would keep the cached numbers while the Brand page refreshed to live
+    // ones — the same card showing two different figures depending on the page.
+    if(AP==='exec'&&_execMode()==='brand'&&S.exec&&S.exec.data){var xe=document.getElementById('t-revenue-exec');if(xe)xe.innerHTML=_buildRevenueOutcomeCard(S.exec.data);}
   }catch(e){console.error('fdRevenueOutcome',e);}
 }
 function churnBg(v){return `linear-gradient(90deg,var(--teal) ${v*10}%,var(--teal-30) ${v*10}%)`;}
@@ -1075,7 +1090,10 @@ document.getElementById('pw').addEventListener('keydown',e=>{if(e.key==='Enter')
 
 // Filters
 function bldF(){const s=S[AP];var aiBtn=AI_PANEL_PAGES.indexOf(AP)>=0?'<button id="ai-panel-btn" onclick="toggleAIPanel()" class="fb" style="border:1.5px solid #B8860B;background:'+(_aiPanelOpen?'#B8860B':'#FFF8E1')+';color:'+(_aiPanelOpen?'#fff':'#8B6914')+';font-weight:700" onmouseover="this.style.background=\'#B8860B\';this.style.color=\'#fff\'" onmouseout="if(!_aiPanelOpen){this.style.background=\'#FFF8E1\';this.style.color=\'#8B6914\';}">✦ AI Analysis</button>':'';if(AP==='signup'){document.getElementById('filters').innerHTML='<span style="font-size:13px;color:var(--grey)">Fixed cohorts — independent of time filters</span>'+aiBtn+'<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>';return;}if(AP==='strategy'||AP==='csession'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='content'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='outbound'){document.getElementById('filters').innerHTML=aiBtn;document.getElementById('filters').style.display=aiBtn?'':'none';return;}else{document.getElementById('filters').style.display='';}let h='';const _wPill=w=>{const _aw=(w.k==='custom')?(s.win==='custom'&&!s.quarterKey):(s.win===w.k);return `<button class="fb${_aw?' active':''}" data-w="${w.k}" onclick="selW('${w.k}')">${w.l}</button>`;};/* Fixed presets, then the completed quarters, then Custom. The quarters are presets too, so Custom sitting before them split the presets in two and put the escape hatch in the middle of the row. */for(const w of W){if(w.k!=='custom')h+=_wPill(w);}for(const q of _completedQuarters())h+=`<button class="fb${(s.win==='custom'&&s.quarterKey===q.from+'_'+q.to)?' active':''}" data-q="${q.from}_${q.to}" onclick="selQ('${q.from}','${q.to}')">${q.l}</button>`;{const _cw=W.filter(w=>w.k==='custom')[0];if(_cw)h+=_wPill(_cw);}h+=`<div class="cr${(s.win==='custom'&&!s.quarterKey)?' vis':''}" id="cr"><input type="date" id="cf"><span style="color:var(--grey)">→</span><input type="date" id="ct"><label class="cr-cmp-lbl"><input type="checkbox" id="cc" onchange="document.getElementById('crVs').classList.toggle('vis',this.checked)">Compare</label><span class="cr-vs" id="crVs"><span class="cr-vs-prefix">vs</span><input type="date" id="cvf"><span style="color:var(--grey)">→</span><input type="date" id="cvt"></span><button onclick="goC()">Go</button></div>`;h+=aiBtn;h+=`<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>`;document.getElementById('filters').innerHTML=h;}
-async function selW(w){S[AP].win=w;S[AP].quarterKey=null;document.querySelectorAll('#filters .fb').forEach(b=>b.classList.toggle('active',b.dataset.w===w));const cr=document.getElementById('cr');if(cr)cr.classList.toggle('vis',w==='custom');if(w==='custom')return;if(AP==='webinarPerf'){await fdWebinarPerf(w);return;}if(AP==='clinician'){await fdClinician(w);return;}await fd(w);}
+async function selW(w){S[AP].win=w;S[AP].quarterKey=null;document.querySelectorAll('#filters .fb').forEach(b=>b.classList.toggle('active',b.dataset.w===w));const cr=document.getElementById('cr');if(cr)cr.classList.toggle('vis',w==='custom');if(w==='custom')return;if(AP==='webinarPerf'){await fdWebinarPerf(w);return;}if(AP==='clinician'){await fdClinician(w);return;}
+  // The Executive page has two payloads; refetch the one the pill is showing.
+  if(AP==='exec'){S.exec.win=w;if(_execMode()==='clinician'){S.clinician.win=w;S.clinician.data=null;await fdClinician(w);}else{S.exec.data=null;await fd(w);}return;}
+  await fd(w);}
 // Completed calendar quarters from 2026-Q1 up to the last quarter that has
 // fully ended (end date before today). A new quarter's pill appears
 // automatically once it completes — Q3 after Sep 30, Q4 after Dec 31, etc.
@@ -2035,7 +2053,7 @@ function switchPage(pg){AP=pg;document.querySelectorAll('.ni').forEach(n=>n.clas
 // data-page==='dashboard', so after the restructure Irfan and Clinician never
 // lit up and the Additional Insights parent stayed lit permanently.
 function _navToken(){
-  const map={irfan:"switchDashSub('irfan')",dashboard:"switchDashSub('overview')",clinician:"clinicianNav()",
+  const map={exec:"switchDashSub('exec')",irfan:"switchDashSub('irfan')",dashboard:"switchDashSub('overview')",clinician:"clinicianNav()",
     signup:"switchDashSub('signup')",webinarPerf:"switchDashSub('webinarPerf')",demoQuality:"switchDashSub('demoQuality')",
     outbound:"switchDashSub('outbound')",strategy:"switchDashSub('strategy')",calculator:"switchToCalculator()",
     csession:"switchPage('csession')"};
@@ -2059,7 +2077,11 @@ function _syncNav(){
     if(arrow)arrow.textContent='\u25BC';
   }
 }
-function renderPage(){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));if(AP==='dashboard')renderDash();else if(AP==='irfan')renderIrfan();else if(AP==='clinician')renderClinician();else if(AP==='calculator')updCalc();else if(AP==='signup')renderSignUp();else if(AP==='strategy')renderStrategy();else if(AP==='demoQuality')renderDemoQuality();else if(AP==='webinarPerf')renderWebinarPerf();else if(AP==='csession')renderCreativeSession();else if(AP==='content')renderContent();else if(AP==='outbound')renderOutbound();document.getElementById('page-'+AP).classList.add('active');if(typeof buildSectionNav==='function')buildSectionNav(AP);if(typeof _syncNav==='function')_syncNav();const d=S[AP].data;if(d){const ts=d.meta?.generatedAt;if(ts)document.getElementById('fts').textContent='Updated '+new Date(ts).toLocaleString();if(d.meta?.dataQuality&&!d.meta.dataQuality.complete)document.getElementById('dqb').classList.add('vis');_renderFetchDiag(d.meta&&d.meta.fetchDiag);}}
+function renderPage(){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));if(AP==='exec')renderExec();else if(AP==='dashboard')renderDash();else if(AP==='irfan')renderIrfan();else if(AP==='clinician')renderClinician();else if(AP==='calculator')updCalc();else if(AP==='signup')renderSignUp();else if(AP==='strategy')renderStrategy();else if(AP==='demoQuality')renderDemoQuality();else if(AP==='webinarPerf')renderWebinarPerf();else if(AP==='csession')renderCreativeSession();else if(AP==='content')renderContent();else if(AP==='outbound')renderOutbound();document.getElementById('page-'+AP).classList.add('active');
+// Every route ends here, including boot, so the title is set here rather than
+// only in switchDashSub — which boot does not call.
+{const _pt=document.getElementById('ptitle');if(_pt&&T[AP])_pt.textContent=T[AP];}
+if(typeof buildSectionNav==='function')buildSectionNav(AP);if(typeof _syncNav==='function')_syncNav();const d=S[AP].data;if(d){const ts=d.meta?.generatedAt;if(ts)document.getElementById('fts').textContent='Updated '+new Date(ts).toLocaleString();if(d.meta?.dataQuality&&!d.meta.dataQuality.complete)document.getElementById('dqb').classList.add('vis');_renderFetchDiag(d.meta&&d.meta.fetchDiag);}}
 // Renders upstream fetch diagnostics into the data-quality banner so an empty
 // Windsor/GA4 fetch is visible as a named failure instead of a silent $0.
 function _renderFetchDiag(fd){
@@ -2201,6 +2223,10 @@ function _irTileFooterDash(cur,pv,lmv,fmt,inv){
 }
 function renderDash(){
   const d=S.dashboard.data;
+  // The Key Metrics figures, derived once. renderDash reads them from here
+  // rather than recomputing, so the Executive Dashboard's copy of the row can
+  // never disagree with this page's.
+  const _KM=d?_dashKmModel(d):null;
   if(!d||d.error)return; // skeleton stays up; fd() banner shows the error state
   // Wipe the skeleton (if up) and put back the section scaffolding so the rest
   // of renderDash can write into the real target divs.
@@ -2425,7 +2451,7 @@ function renderDash(){
   // demosHeldCount, so the card showed held-all-traffic while the rate beside it
   // showed the real count, and the "X demos held + Y webinars" split subtracted
   // webinars from a number that never contained them.
-  const qd=(qmeta.qualDemoCount!=null?qmeta.qualDemoCount:(esM.demosHeldCount||0));
+  const qd=_KM.qd;
   const qdPV=(qmeta.qualDemoCountPrior!=null?qmeta.qualDemoCountPrior:(esM.pDemosHeldCount??null));
   const qdLMV=(qmeta.qualDemoCountLastMonth!=null?qmeta.qualDemoCountLastMonth:(esM.pmDemosHeldCount??null));
   const demosHeldFull=esM.demosHeldCount||0;
@@ -2473,7 +2499,7 @@ function renderDash(){
   const prune=d.executiveSummary.pruneRate?.value;
   const prunePV=d.executiveSummary.pruneRate?.sameTimePrior?.value,pruneLMV=d.executiveSummary.pruneRate?.lastMonth?.value;
   const cpd=d.executiveSummary.totalCpd?.value,cpdPV=d.executiveSummary.totalCpd?.sameTimePrior?.value,cpdLMV=d.executiveSummary.totalCpd?.lastMonth?.value,trueCpd=d.executiveSummary.trueCpd?.value;
-  const cpqd=d.executiveSummary.totalCpqd?.value,cpqdPV=d.executiveSummary.totalCpqd?.sameTimePrior?.value,cpqdLMV=d.executiveSummary.totalCpqd?.lastMonth?.value,trueCpqd=d.executiveSummary.totalTrueCpqd?.value;
+  const cpqd=_KM.cpqd,cpqdPV=_KM.cpqdPV,cpqdLMV=_KM.cpqdLMV,trueCpqd=d.executiveSummary.totalTrueCpqd?.value;
   const cwN=em.closedWonCount||0,cac=cwN>0?em.totalSpend/cwN:null;
   // Signed Brands = closed-won + churned deals w/ a Close Date in the window;
   // drives CAC/ACV in the Efficiency, Marketing Funnel + Revenue Outcome cards.
@@ -2781,162 +2807,17 @@ function renderDash(){
   document.getElementById('t-funnel').innerHTML=fh;
 
   // ═══════ Key Metrics — the page's first section ═══════
-  // Five headline tiles over the Revenue Outcome card, in one container, the
-  // same shape the Irfan page uses. Built HERE rather than earlier because CVR
-  // Regular comes from the Conversion Funnel block above; DOM order is fixed by
-  // the static container, so build order does not matter.
-  // Ad Spend leads with the spend itself and carries budget + pacing beneath,
-  // matching the Ad KPIs card.
-  let _kmBudget=0;
-  if(d.adSpend&&d.adSpend.channels){
-    for(const _bk in d.adSpend.channels){
-      const _bc=d.adSpend.channels[_bk];
-      if(_bc.pendingConnector||_bc.kpiExcluded)continue;   // same roll-up rule as every other KPI
-      _kmBudget+=(_bc.budget||0);
-    }
-  }
-  const _kmSpend=em.totalSpend||0;
-  const _kmPctBudget=_kmBudget>0?(_kmSpend/_kmBudget)*100:null;
-  // Pacing only means something on a MONTH window: window spend against a
-  // full-month budget would mislead on 7d / YTD / All Time / custom.
-  const _kmWin=(S.dashboard&&S.dashboard.win)||'mtd';
-  const _kmIsMonth=(_kmWin==='mtd'||_kmWin==='lastMonth');
-  const _kmNow=new Date();
-  const _kmElapsed=_kmWin==='lastMonth'?100
-    :(_kmNow.getDate()/new Date(_kmNow.getFullYear(),_kmNow.getMonth()+1,0).getDate())*100;
-  const _kmPP=(_kmIsMonth&&_kmPctBudget!=null)?(_kmPctBudget-_kmElapsed):null;
-  let _kmPace='';
-  if(!_kmIsMonth){
-    _kmPace='';   // window spend against a full-month budget would mislead
-  } else if(_kmBudget===0){
-    _kmPace='<div style="margin-top:8px;font-size:10px;color:rgba(255,255,255,.5)">No monthly budget set</div>';
-  } else if(_kmPP!=null){
-    const _kmUp=_kmPP>=0;
-    const _kmFill=Math.abs(_kmPP)>10?(_kmUp?'#FF9B8F':'#7EE0B8'):'var(--teal)';
-    _kmPace='<div style="margin-top:9px" title="'+_kmPctBudget.toFixed(0)+'% of '+f$(_kmBudget)
-      +' monthly budget spent \u00b7 '+_kmElapsed.toFixed(0)+'% of month elapsed">'
-      +'<div style="position:relative;height:8px;background:rgba(255,255,255,.18);border-radius:4px;overflow:visible">'
-      +'<div style="position:absolute;left:0;top:0;height:8px;width:'+Math.min(_kmPctBudget,100)+'%;background:'+_kmFill+';border-radius:4px"></div>'
-      +'<div style="position:absolute;left:'+Math.min(_kmElapsed,100)+'%;top:-2px;bottom:-2px;width:1.5px;background:#fff"></div>'
-      +'</div>'
-      +'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:5px;font-size:10px">'
-      +'<span style="color:rgba(255,255,255,.55)"><span style="font-weight:700;color:#fff;font-variant-numeric:tabular-nums">'
-      +_kmPctBudget.toFixed(0)+'%</span> spent</span>'
-      +'<span style="color:'+(Math.abs(_kmPP)>10?_kmFill:'rgba(255,255,255,.55)')+';font-weight:700">'
-      +(_kmUp?'\u2191 +':'\u2193 \u2212')+Math.abs(_kmPP).toFixed(0)+'pp '+(_kmUp?'ahead':'behind')+'</span>'
-      +'</div></div>';
-  }
-  // Label and calc get reserved height: a one-line label next to a two-line one
-  // otherwise pushes its value half a line down, and no two tiles in the row line up.
-  const _KM_LBL='min-height:36px', _KM_CALC='min-height:46px';
-  const _kmTile=(label,value,calc,footer,extra,tip,span)=>
-    '<div class="tile hero" style="border-left:3px solid var(--teal)'
-    +(span?';grid-column:span '+span:'')+'"'+(tip?' title="'+tip+'"':'')+'>'
-    +'<div class="tlbl" style="'+_KM_LBL+'">'+label+'</div><div class="tval">'+value+'</div>'
-    +'<div style="'+_KM_CALC+'">'+(calc?'<div class="irf-calc">'+calc+'</div>':'')+'</div>'
-    +(footer||'')+(extra||'')+'</div>';
-  const _kmFoot=(cur,pv,lmv,fmt,inv)=>_irTileFooterDash(cur,pv,lmv,fmt,inv);
-
-  let kmh='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px">';
-  kmh+='<div class="dsec-h dsec-in" id="dsec-keymetrics">Key Metrics</div>';
-  kmh+='<div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:12px;margin-bottom:16px">';
-  kmh+=_kmTile('Ad Spend',f$(_kmSpend),
-    (_kmBudget>0?f$(_kmSpend)+' \u00f7 '+f$(_kmBudget)+' budget':'no budget set'),
-    _kmFoot(_kmSpend,em.pTotalSpend,em.pmTotalSpend,'$',false),_kmPace);
-  // Paid acquisition, over two grid columns, sitting directly right of Ad Spend:
-  // cost of a paid demo and the share of demand that did NOT come from a paid
-  // click read as one thought about what the spend above is buying.
-  // Emitted inline rather than through _kmTile: this is the one tile with two
-  // stats, which needs a two-column body _kmTile does not model.
-  // Each phrase stays inside ONE string literal. Splitting one across the
-  // concatenation hides it from the assertions that pin this caveat, and the
-  // caveat is the whole reason the tile does not just say "organic".
-  const _ACQ_TIP='Share of Regular demos whose booking contact carries NO paid-ad UTM '
-    +'\u2014 the exact complement of the paid share, i.e. Organic + Untagged. '
-    +'\u201cOrganic\u201d means no paid UTM: it covers organic search, brand referrals, '
-    +'and anyone who saw an ad, did not click, and came back later, so this is an '
-    +'UPPER bound on organic demand, not a measure of it. '
-    +'\u201cUntagged\u201d carries no UTM at all, so its origin is unknown. '
-    +'The mix bar below splits the two.';
-  // Same label/value/calc/footer rhythm as _kmTile, so the two halves line up with
-  // each other and with the single-stat tiles either side.
-  const _acqStat=(lbl,val,calc,foot)=>'<div style="flex:1 1 0;min-width:0">'
-    +'<div class="tlbl" style="'+_KM_LBL+'">'+lbl+'</div><div class="tval">'+val+'</div>'
-    +'<div style="'+_KM_CALC+'">'+(calc?'<div class="irf-calc">'+calc+'</div>':'')+'</div>'
-    +(foot||'')+'</div>';
-  const _acqMix=(()=>{if(!_acqOK)return '';
-    const _t=_regC,_pp=_acqP/_t*100,_op=_acqO/_t*100,_up=_acqU/_t*100;
-    const _key=(c,n,v)=>'<span style="display:inline-flex;align-items:center;gap:5px">'
-      +'<i style="width:7px;height:7px;border-radius:2px;background:'+c+'"></i>'+n+' '+v.toFixed(0)+'%</span>';
-    return '<div style="margin-top:12px;padding-top:11px;border-top:1px solid rgba(255,255,255,.14)">'
-      +'<div style="display:flex;height:6px;border-radius:3px;overflow:hidden;background:rgba(255,255,255,.12)">'
-      +'<div style="width:'+_pp.toFixed(2)+'%;background:var(--green)"></div>'
-      +'<div style="width:'+_op.toFixed(2)+'%;background:var(--teal)"></div>'
-      +'<div style="width:'+_up.toFixed(2)+'%;background:rgba(255,255,255,.28)"></div></div>'
-      +'<div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:10px;'
-      +'color:rgba(255,255,255,.75);font-variant-numeric:tabular-nums">'
-      +_key('var(--green)','Paid',_pp)+_key('var(--teal)','Organic',_op)
-      +_key('rgba(255,255,255,.35)','Untagged',_up)+'</div>'
-      // What lands in each bucket. The paid list is exactly what mapUtmToChannel can
-      // return (worker.js) -- t_attrib pins the two together, so adding a channel
-      // there without naming it here fails the suite.
-      +'<div style="margin-top:9px;font-size:9px;line-height:1.6;color:rgba(255,255,255,.5)">'
-      +'<span style="color:rgba(255,255,255,.75);font-weight:700">Paid</span> \u2014 Meta, '
-      +'Google (cpc), LinkedIn, TikTok, Reddit, ChatGPT, YouTube'
-      +'<span style="opacity:.45"> &nbsp;|&nbsp; </span>'
-      +'<span style="color:rgba(255,255,255,.75);font-weight:700">Organic</span> \u2014 any other '
-      +'UTM: organic search, brand referrals'
-      +'<span style="opacity:.45"> &nbsp;|&nbsp; </span>'
-      +'<span style="color:rgba(255,255,255,.75);font-weight:700">Untagged</span> \u2014 no UTM '
-      +'at all; origin unknown</div></div>';})();
-  kmh+='<div class="tile hero" style="border-left:3px solid var(--teal);grid-column:span 2" '
-    +'title="'+_ACQ_TIP+'">'
-    +'<div style="display:flex;gap:20px;align-items:flex-start">'
-    +_acqStat('CPD \u00b7 Paid',_cPaidC!=null?f$(_cPaidC):'\u2014',
-       (_acqOK?f$(_spC)+' \u00f7 '+fN(_acqP)+' paid demos':''),
-       _kmFoot(_cPaidC,_cPaidP,_cPaidL,'$',true))
-    +'<div style="width:1px;align-self:stretch;background:rgba(255,255,255,.14)"></div>'
-    // Up is RED here: a growing non-paid share means a shrinking paid one, and
-    // paid is the half this page exists to manage. Inverting also keeps the
-    // colour continuous with the paid share this stat replaced -- the same
-    // underlying movement now lights the same way it did before the swap.
-    +_acqStat('Non-Paid \u00b7 Last Click',_npPct!=null?_npPct.toFixed(1)+'%':'\u2014',
-       (_acqOK?fN(_acqO+_acqU)+' \u00f7 '+fN(_regC)+' regular demos':'last-click UTM'),
-       _kmFoot(_npPct,_npPctPV,_npPctLM,'%',true))
-    +'</div>'+_acqMix+'</div>';
-  // Regular = demos + webinars excluding pre-launch, the same _regC the
-  // Efficiency card's "CPD Regular" and the funnel's CVR Regular divide by.
-  kmh+=_kmTile('CPD \u00b7 Regular Demos',_cRegC!=null?f$(_cRegC):'\u2014',
-    f$(_spC)+' \u00f7 '+fN(_regC)+' regular demos',
-    _kmFoot(_cRegC,_cRegP,_cRegL,'$',true));
-  kmh+=_kmTile('CPQD \u00b7 Regular Demos',cpqd!=null?f$(cpqd):'\u2014',
-    f$(em.totalSpend||0)+' \u00f7 '+fN(qd)+' qualified demos',
-    _kmFoot(cpqd,cpqdPV,cpqdLMV,'$',true));
-  // Pre-Launch % replaced CAC here. CAC itself is NOT lost: it still leads the
-  // Efficiency card ("Paid ads CAC") and the Marketing Funnel, both on this page.
-  // Down is green -- pre-launch brands are the low-value tier, which is why the
-  // page already flags this share in orange once it clears 30%.
-  kmh+=_kmTile('Pre-Launch %',_preShare!=null?_preShare.toFixed(1)+'%':'\u2014',
-    fN(_preC)+' \u00f7 '+fN(_bothC)+' demos booked',
-    _kmFoot(_preShare,_preShareP,_preShareL,'%',true),null,
-    'Share of ALL demos booked in this window that came from a pre-launch brand '
-    +'\u2014 the demo\u2019s own web-traffic tier, not a name match. Same denominator as '
-    +'the Demo Composition pie, so this is that pie\u2019s first slice as a number.');
-  kmh+=_kmTile('CVR \u00b7 Regular',_cvrReg!=null?_cvrReg.toFixed(2)+'%':'\u2014',
-    fN(_regC)+' \u00f7 '+fN(visitors)+' visitors',
-    _kmFoot(_cvrReg,_cvrRegPV,_cvrRegLM,'%',false));
-  kmh+='</div>';
-  // Revenue Outcome moves here from the Snapshot row, which is now full width.
-  kmh+='<div id="t-revenue"></div>';
-  kmh+='</div>';
+  // Built by the shared builder so the Executive Dashboard renders the same
+  // row from the same numbers. sfx is empty here: this page owns the
+  // unsuffixed #dsec-keymetrics and #t-revenue ids.
+  const kmh=_brandKeyMetricsHTML(d,{sfx:'',hideCpqd:false,win:(S.dashboard&&S.dashboard.win)||'mtd'});
   const sbEl=document.getElementById('t-signedbrands');
   if(sbEl){sbEl.innerHTML=_dashSignedBrandsHTML(d);_renderDashSignedPie();}
   const kmEl=document.getElementById('t-keymetrics');
   if(kmEl)kmEl.innerHTML=kmh;
   // Rendered after the container is in the DOM, and re-rendered on its own by
   // fdRevenueOutcome(), which writes straight into #t-revenue.
-  const revEl=document.getElementById('t-revenue');
-  if(revEl)revEl.innerHTML=_buildRevenueOutcomeCard(d);
+  _brandKeyMetricsAfter(d,'');
 
   // ─── Trends sparklines (reordered to match Marketing Funnel: Spend, Qualified, CPQD, Signed Brands, CAC, ACV, ARR) ──────────────────────────────
   const months=(d.marketingFunnel?.months||[]).slice(-6);
@@ -3584,16 +3465,20 @@ function _clnTrendMetric(){return window._clnTrendMetricV||'count';}
 function _clnTrGrainDef(){return CLN_TR_GRAINS.filter(function(g){return g.k===_clnTrendGrain();})[0]||CLN_TR_GRAINS[0];}
 function _clnTrMetricDef(){return CLN_TR_METRICS.filter(function(m){return m.k===_clnTrendMetric();})[0]||CLN_TR_METRICS[0];}
 function _clnTrPopDef(){return CLN_TR_POPS.filter(function(p){return p.k===_clnTrendPop();})[0]||CLN_TR_POPS[0];}
-function _clnTrendRedraw(){
+// `sfx` lets the Executive Dashboard host this card too. Pages share one DOM,
+// so the panel id must differ per host; the toggle STATE stays global, so the
+// measure picked on one page is the one shown on the other.
+function _clnTrendRedraw(sfx){
+  sfx=sfx||'';
   var d=window._clnTrendData; if(!d)return;
-  var host=document.getElementById('cln-trend-panels'); if(!host)return;
+  var host=document.getElementById('cln-trend-panels'+sfx); if(!host)return;
   var card=host.parentElement; if(!card)return;
-  card.outerHTML=_clnTrendCard(d);
-  _renderClnTrend(d);
+  card.outerHTML=_clnTrendCard(d,sfx);
+  _renderClnTrend(d,sfx);
 }
-window.toggleClnTrendGrain=function(g){window._clnTrendGrainV=g;_clnTrendRedraw();};
-window.toggleClnTrendPop=function(p){window._clnTrendPopV=p;_clnTrendRedraw();};
-window.toggleClnTrendMetric=function(m){window._clnTrendMetricV=m;_clnTrendRedraw();};
+window.toggleClnTrendGrain=function(g,sfx){window._clnTrendGrainV=g;_clnTrendRedraw(sfx);};
+window.toggleClnTrendPop=function(p,sfx){window._clnTrendPopV=p;_clnTrendRedraw(sfx);};
+window.toggleClnTrendMetric=function(m,sfx){window._clnTrendMetricV=m;_clnTrendRedraw(sfx);};
 
 // The raw components for one period, resolved against the population toggle.
 // Every metric is derived from these, never from another metric, so a rolling
@@ -3682,7 +3567,8 @@ function _clnTrendPts(d){
   return all.slice(Math.max(0,all.length-g.n));
 }
 
-function _clnTrendCard(d){
+function _clnTrendCard(d,sfx){
+  sfx=sfx||'';
   window._clnTrendData=d;
   var pts=_clnTrendPts(d);
   var g=_clnTrGrainDef(), mdef=_clnTrMetricDef(), pdef=_clnTrPopDef();
@@ -3692,7 +3578,7 @@ function _clnTrendCard(d){
     +'<br>'+(mdef.pop?('Measuring <strong>'+mdef.l+'</strong> over <strong>'+pdef.w+'</strong>')
                      :('Measuring <strong>'+mdef.l+'</strong> — clicks ÷ impressions, which does not vary with the population toggle'))
     +' · Ad Spend is the shaded background throughout, whatever is selected';
-  var title='<div class="irf-card-title" id="cln-trend-h" data-nav="Trend Analysis" style="font-size:22px;font-weight:700;letter-spacing:-.01em;border-left:4px solid var(--teal);padding-left:11px;line-height:1.2">Trend Analysis</div>'
+  var title='<div class="irf-card-title" id="cln-trend-h'+sfx+'" data-nav="Trend Analysis" style="font-size:22px;font-weight:700;letter-spacing:-.01em;border-left:4px solid var(--teal);padding-left:11px;line-height:1.2">Trend Analysis</div>'
     +'<div class="irf-card-sub" style="margin-left:15px">'+sub+'</div>';
   var open='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:16px">';
   if(!pts.length)return open+title+'<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px">No clinician data in the last '+g.note.replace('last ','')+'</div></div>';
@@ -3709,9 +3595,9 @@ function _clnTrendCard(d){
     return '<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap">'+inner+'</div>';
   };
   var toggles='<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin:12px 0 4px 15px">'
-    +seg(CLN_TR_GRAINS.map(function(x){return pill(g.k===x.k,x.l,"toggleClnTrendGrain('"+x.k+"')",x.note);}).join(''))
-    +seg(CLN_TR_POPS.map(function(x){return pill(pdef.k===x.k,x.l,"toggleClnTrendPop('"+x.k+"')",'');}).join(''))
-    +seg(CLN_TR_METRICS.map(function(x){return pill(mdef.k===x.k,x.l,"toggleClnTrendMetric('"+x.k+"')",'');}).join(''))
+    +seg(CLN_TR_GRAINS.map(function(x){return pill(g.k===x.k,x.l,"toggleClnTrendGrain('"+x.k+"','"+sfx+"')",x.note);}).join(''))
+    +seg(CLN_TR_POPS.map(function(x){return pill(pdef.k===x.k,x.l,"toggleClnTrendPop('"+x.k+"','"+sfx+"')",'');}).join(''))
+    +seg(CLN_TR_METRICS.map(function(x){return pill(mdef.k===x.k,x.l,"toggleClnTrendMetric('"+x.k+"','"+sfx+"')",'');}).join(''))
     +'</div>';
 
   // ── What the KPI figures actually cover ──────────────────────────────────
@@ -3779,11 +3665,11 @@ function _clnTrendCard(d){
 
   return open+title+toggles+minis
     +'<div style="display:flex;gap:16px;flex-wrap:wrap;margin:8px 0 2px">'+lg+'</div>'
-    +'<div id="cln-trend-panels"></div></div>';
+    +'<div id="cln-trend-panels'+sfx+'"></div></div>';
 }
 
-function _renderClnTrend(d){
-  var host=document.getElementById('cln-trend-panels'); if(!host)return;
+function _renderClnTrend(d,sfx){
+  var host=document.getElementById('cln-trend-panels'+(sfx||'')); if(!host)return;
   var pts=_clnTrendPts(d); if(!pts.length)return;
   window._clnTrendData=d;
   var g=_clnTrGrainDef(), mdef=_clnTrMetricDef(), pdef=_clnTrPopDef(), pop=pdef.k;
@@ -3952,16 +3838,20 @@ function _dshTrendMetric(){return window._dshTrendMetricV||'count';}
 function _dshTrGrainDef(){return DSH_TR_GRAINS.filter(function(g){return g.k===_dshTrendGrain();})[0]||DSH_TR_GRAINS[0];}
 function _dshTrMetricDef(){return DSH_TR_METRICS.filter(function(m){return m.k===_dshTrendMetric();})[0]||DSH_TR_METRICS[0];}
 function _dshTrPopDef(){return DSH_TR_POPS.filter(function(p){return p.k===_dshTrendPop();})[0]||DSH_TR_POPS[0];}
-function _dshTrendRedraw(){
+// `sfx` lets a second page host this card. Pages share one DOM, so the panel
+// id must differ per host; the toggle STATE stays global on purpose, so the
+// measure you picked here is the one you see on the Brand page too.
+function _dshTrendRedraw(sfx){
+  sfx=sfx||'';
   var d=window._dshTrendData; if(!d)return;
-  var host=document.getElementById('dsh-trend-panels'); if(!host)return;
+  var host=document.getElementById('dsh-trend-panels'+sfx); if(!host)return;
   var card=host.parentElement; if(!card)return;
-  card.outerHTML=_dashTrendCard(d);
-  _renderDashTrend(d);
+  card.outerHTML=_dashTrendCard(d,sfx);
+  _renderDashTrend(d,sfx);
 }
-window.toggleDshTrendGrain=function(g){window._dshTrendGrainV=g;_dshTrendRedraw();};
-window.toggleDshTrendPop=function(p){window._dshTrendPopV=p;_dshTrendRedraw();};
-window.toggleDshTrendMetric=function(m){window._dshTrendMetricV=m;_dshTrendRedraw();};
+window.toggleDshTrendGrain=function(g,sfx){window._dshTrendGrainV=g;_dshTrendRedraw(sfx);};
+window.toggleDshTrendPop=function(p,sfx){window._dshTrendPopV=p;_dshTrendRedraw(sfx);};
+window.toggleDshTrendMetric=function(m,sfx){window._dshTrendMetricV=m;_dshTrendRedraw(sfx);};
 // The worker ships one fixed 100-day series; each grain slices its own lookback
 // out of it, so switching grain costs no request.
 function _dshTrendPts(d){
@@ -4011,7 +3901,8 @@ function _dshTrStat(card,T,pdef){
   return {lbl:lbl,val:val,calc:calc,c:colour,split:split};
 }
 
-function _dashTrendCard(d){
+function _dashTrendCard(d,sfx){
+  sfx=sfx||'';
   window._dshTrendData=d;
   var pts=_dshTrendPts(d);
   var g=_dshTrGrainDef(), mdef=_dshTrMetricDef(), pdef=_dshTrPopDef();
@@ -4021,9 +3912,9 @@ function _dashTrendCard(d){
     +'<br>'+(mdef.pop?('Measuring <strong>'+mdef.l+'</strong> over <strong>'+pdef.w+'</strong>')
                      :('Measuring <strong>'+mdef.l+'</strong> — does not vary with the population toggle'))
     +' · Ad Spend is the shaded background throughout, whatever is selected';
-  var title='<div class="dsec-h dsec-in" id="dsec-dshtrend" data-nav="Trend Analysis">Trend Analysis</div>'
+  var title='<div class="dsec-h dsec-in" id="dsec-dshtrend'+sfx+'" data-nav="Trend Analysis">Trend Analysis</div>'
     +'<div class="irf-card-sub" style="margin-left:15px">'+sub+'</div>';
-  var open='<div class="sec sec-card dsec" id="sec-dshtrend">';
+  var open='<div class="sec sec-card dsec" id="sec-dshtrend'+sfx+'">';
   // Two different failures used to render the same sentence. They need
   // different answers, so they get different messages:
   //   no `trend` at all  -> the series never reached the page (the payload is
@@ -4045,9 +3936,9 @@ function _dashTrendCard(d){
     return '<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap">'+inner+'</div>';
   };
   var toggles='<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin:12px 0 4px 15px">'
-    +seg(DSH_TR_GRAINS.map(function(x){return pill(g.k===x.k,x.l,"toggleDshTrendGrain('"+x.k+"')",x.note);}).join(''))
-    +seg(DSH_TR_POPS.map(function(x){return pill(pdef.k===x.k,x.l,"toggleDshTrendPop('"+x.k+"')",'');}).join(''))
-    +seg(DSH_TR_METRICS.map(function(x){return pill(mdef.k===x.k,x.l,"toggleDshTrendMetric('"+x.k+"')",'');}).join(''))
+    +seg(DSH_TR_GRAINS.map(function(x){return pill(g.k===x.k,x.l,"toggleDshTrendGrain('"+x.k+"','"+sfx+"')",x.note);}).join(''))
+    +seg(DSH_TR_POPS.map(function(x){return pill(pdef.k===x.k,x.l,"toggleDshTrendPop('"+x.k+"','"+sfx+"')",'');}).join(''))
+    +seg(DSH_TR_METRICS.map(function(x){return pill(mdef.k===x.k,x.l,"toggleDshTrendMetric('"+x.k+"','"+sfx+"')",'');}).join(''))
     +'</div>';
 
   // The cards sum the periods ON SCREEN — this grain's lookback, which is
@@ -4102,11 +3993,11 @@ function _dashTrendCard(d){
 
   return open+title+toggles+minis
     +'<div style="display:flex;gap:16px;flex-wrap:wrap;margin:8px 0 2px">'+lg+'</div>'
-    +'<div id="dsh-trend-panels"></div></div>';
+    +'<div id="dsh-trend-panels'+sfx+'"></div></div>';
 }
 
-function _renderDashTrend(d){
-  var host=document.getElementById('dsh-trend-panels'); if(!host)return;
+function _renderDashTrend(d,sfx){
+  var host=document.getElementById('dsh-trend-panels'+(sfx||'')); if(!host)return;
   var pts=_dshTrendPts(d); if(!pts.length)return;
   window._dshTrendData=d;
   var g=_dshTrGrainDef(), mdef=_dshTrMetricDef(), pdef=_dshTrPopDef(), pop=pdef.k;
@@ -4452,10 +4343,10 @@ function _renderIrfanMetaTablesLoader(winOverride){
   // Look up BOTH possible target pairs (Irfan + Overview). The render function
   // writes to whichever are present in the DOM at render time, so a single
   // fetch hydrates both pages.
-  const campTargets=[document.getElementById('irfan-meta-campaigns'),document.getElementById('ov-meta-campaigns'),document.getElementById('cln-meta-campaigns')].filter(Boolean);
-  const creTargets=[document.getElementById('irfan-meta-creatives'),document.getElementById('ov-meta-creatives'),document.getElementById('cln-meta-creatives')].filter(Boolean);
-  const audTargets=[document.getElementById('irfan-meta-audiences'),document.getElementById('ov-meta-audiences'),document.getElementById('cln-meta-audiences')].filter(Boolean);
-  const adsetTargets=[document.getElementById('irfan-meta-adsets'),document.getElementById('ov-meta-adsets'),document.getElementById('cln-meta-adsets')].filter(Boolean);
+  const campTargets=[document.getElementById('irfan-meta-campaigns'),document.getElementById('ov-meta-campaigns'),document.getElementById('cln-meta-campaigns'),document.getElementById('exec-meta-campaigns')].filter(Boolean);
+  const creTargets=[document.getElementById('irfan-meta-creatives'),document.getElementById('ov-meta-creatives'),document.getElementById('cln-meta-creatives'),document.getElementById('exec-meta-creatives')].filter(Boolean);
+  const audTargets=[document.getElementById('irfan-meta-audiences'),document.getElementById('ov-meta-audiences'),document.getElementById('cln-meta-audiences'),document.getElementById('exec-meta-audiences')].filter(Boolean);
+  const adsetTargets=[document.getElementById('irfan-meta-adsets'),document.getElementById('ov-meta-adsets'),document.getElementById('cln-meta-adsets'),document.getElementById('exec-meta-adsets')].filter(Boolean);
   if(!campTargets.length&&!creTargets.length&&!audTargets.length&&!adsetTargets.length)return;
   // #ad-kpis reads the same payload, so it gets the same loading and error
   // states. Deliberately NOT part of the early-return guard below: that must
@@ -4884,12 +4775,20 @@ function _clnFunnelRange(d){
 // what /api/clinician returned; kept as one named call site so the funnel
 // section does not reach into the payload three different ways.
 function _clnFunnelData(d){ return d; }
+// Pages that render from the clinician payload. The Executive Dashboard shows
+// it under its Clinician pill, so a fetch that only re-rendered #page-clinician
+// would leave the Executive page on its skeleton forever.
+function _clnPage(){return AP==='clinician'||(AP==='exec'&&_execMode()==='clinician');}
 async function fdClinician(win){
   S.clinician._loading=true;
   // renderPage() applies .active to #page-clinician (switchDashSub returns early
   // for this page). Guarded by AP so a background preload can't re-render or
   // disturb whichever page the user is actually on.
-  if(AP==='clinician')renderPage();
+  // Two pages read this payload now: the Clinician page and the Executive
+  // Dashboard in Clinician mode. Re-render whichever the user is actually on;
+  // the skeleton is still the Clinician page's own, since the Executive page
+  // paints its own loading state.
+  if(_clnPage())renderPage();
   const el=document.getElementById('clinician-c');
   if(el&&AP==='clinician')el.innerHTML=_clinicianSkeleton();
   try{
@@ -4899,7 +4798,7 @@ async function fdClinician(win){
     const r=await fetch(CLINICIAN_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
     const d=await r.json();
     if(!r.ok||d.error){throw new Error(d.error||('HTTP '+r.status));}
-    S.clinician.data=d; S.clinician._loading=false; if(AP==='clinician')renderPage();
+    S.clinician.data=d; S.clinician._loading=false; if(_clnPage())renderPage();
   }catch(e){
     S.clinician._loading=false;
     if(el&&AP==='clinician')el.innerHTML='<div style="padding:32px;text-align:center"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:#C62828;margin-bottom:6px">Clinician funnel failed to load</div><div style="font-size:12px;color:var(--grey)">'+(e.message||e)+'</div></div>';
@@ -5982,65 +5881,9 @@ function renderClinician(){
   }
   h+=allClinH;   // sits after the Clinician Ad Tables
   // ── Section 0: Key Metrics ──
-  // Buffered and PREPENDED: it reads `comp`, declared below, so
-  // building it in place at the top would be a TDZ throw that blanks the page.
-  {
-    const _f$=(v)=>v==null?'\u2014':'$'+Math.round(v).toLocaleString();
-    const _div=(a,b)=>(a!=null&&b)?a/b:null;
-    const _a=(d.ads&&!d.ads.error)?d.ads:null;
-    const _sp=_a?_a.spend:null;
-    // "Full App" = reached Fully Onboarded, a pipeline milestone — NOT Meta's
-    // reported conversions (ads.cacDenom), which is a different number the
-    // worker's own comment says will not agree. The same basis drives the rate
-    // below, so both cards mean one thing by "Full App".
-    // Both denominators come from the ACQUISITION section's populations, so the
-    // two sections can never report different numbers for the same thing:
-    //   inquiries   = unique clinician CONTACTS created in the window (deduped)
-    //   full submission = those of them with a kickoff call booked
-    // These are CONTACT-based and deliberately NOT the funnel's deal-based
-    // stages, so Cost per Full App will not equal the funnel's Fully Onboarded —
-    // a kickoff call booked is an earlier milestone than Fully Onboarded.
-    const _acq=d.composition||{};
-    const _acqSub=_acq.submission||null;
-    const _fo=_acqSub?(_acqSub.contacts||0):0;
-    const _add=_acq.contacts||0;   // = the Acquisition section's clinician count
-    const _rate=_add>0?(_fo/_add)*100:null;
-    const _kp=d.kpiPrior||null, _km=d.kpiPriorMonth||null;
-    const _pRate=(w)=>(w&&w.inquiries>0)?(w.fullSub/w.inquiries)*100:null;
-    const _foot=(cur,pv,lmv,fmt,inv)=>_irTileFooterDash(cur,pv,lmv,fmt,inv);
-    const _pace=(_a&&_a.budget>0)?(_sp/_a.budget)*100:null;
-    // Cumulative, not the mean of per-day CTRs: that would weight a 10-impression
-    // day the same as a 10,000-impression one.
-    const _tf=d.topFunnel||{};
-    const _ctrOk=(_tf.impressions!=null&&_tf.impressions>0&&_tf.clicks!=null);
-    const _ctr=_ctrOk?(_tf.clicks/_tf.impressions)*100:null;
-    const kmBody='<div style="display:flex;gap:12px;flex-wrap:wrap">'
-      +_clnKpiTile('Ad Spend',_f$(_sp),
-         (_a&&_a.budget>0)?(_f$(_sp)+' \u00f7 '+_f$(_a.budget)+' budget'):'no budget set',
-         'Clinician channel only \u2014 excluded from every other dashboard KPI',null,
-         _clnPaceBar(_pace,_a?_a.elapsedPct:null,_sp,_a?_a.budget:0)
-         +_foot(_sp,_kp?_kp.spend:null,_km?_km.spend:null,'$',false))
-      +_clnKpiTile('Cost per Full App',_f$(_div(_sp,_fo)),
-         _f$(_sp)+' \u00f7 '+fN(_fo)+' full submissions',
-         'Clinician ad spend \u00f7 clinicians with a kickoff call booked \u2014 the Acquisition section\u2019s Full Submission count',null,
-         _foot(_div(_sp,_fo),_div(_kp?_kp.spend:null,_kp?_kp.fullSub:0),_div(_km?_km.spend:null,_km?_km.fullSub:0),'$',true))
-      +_clnKpiTile('Cost per Inquiry',_f$(_div(_sp,_add)),
-         _f$(_sp)+' \u00f7 '+fN(_add)+' inquiries',
-         'Clinician ad spend \u00f7 clinician contacts created in the window \u2014 the Acquisition section\u2019s count',null,
-         _foot(_div(_sp,_add),_div(_kp?_kp.spend:null,_kp?_kp.inquiries:0),_div(_km?_km.spend:null,_km?_km.inquiries:0),'$',true))
-      +_clnKpiTile('CTR',_ctr!=null?_ctr.toFixed(2)+'%':'\u2014',
-         (_ctrOk?fN(_tf.clicks)+' \u00f7 '+fN(_tf.impressions)+' impressions':'no ad data'),
-         'Cumulative click-through rate across the Clinician campaigns \u2014 total clicks over total impressions, not an average of daily rates',null,
-         _foot(_ctr,null,null,'%',false))
-      +_clnKpiTile('Full App Rate',_rate!=null?_rate.toFixed(1)+'%':'\u2014',
-         fN(_fo)+' \u00f7 '+fN(_add)+' inquiries',
-         'Share of inquiries with a kickoff call booked \u2014 matches the Acquisition section\u2019s rate',null,
-         _foot(_rate,_pRate(_kp),_pRate(_km),'%',false))
-      +'</div>';
-    h=card('Key Metrics',
-      'Clinician channel \u00b7 follows the page date filter'
-      +(_a?'':' \u00b7 ad data unavailable for this window'),kmBody)+h;
-  }
+  // PREPENDED, so it leads the page. Built by the shared builder — the
+  // Executive Dashboard renders the identical row from the identical numbers.
+  h=_clnKeyMetricsHTML(d,'')+h;
   const refCard=(k,title,sub,body,n)=>'<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:16px">'
     +'<div onclick="clnRefToggle(\''+k+'\')" style="cursor:pointer;user-select:none">'
       +'<div class="irf-card-title" data-nav="'+title+'" style="font-size:22px;font-weight:700;letter-spacing:-.01em;border-left:4px solid var(--teal);padding-left:11px;line-height:1.2">'
@@ -6067,7 +5910,7 @@ function renderClinician(){
 // Auto-derived from the headings already on the page (no per-section markup),
 // so it stays correct as sections are added or renamed. Scroll container is
 // .main, not the window.
-const _SECNAV_SEL={dashboard:'#page-dashboard .dsec-h', irfan:'#irfan-c .dsec-h', clinician:'#clinician-c .irf-card-title'};
+const _SECNAV_SEL={exec:'#page-exec .dsec-h', dashboard:'#page-dashboard .dsec-h', irfan:'#irfan-c .dsec-h', clinician:'#clinician-c .irf-card-title'};
 function buildSectionNav(page){
   // Clear any existing bar FIRST. The nav lives in .main .topbar, which persists
   // across pages, so returning early for a page without a selector used to leave
@@ -6389,6 +6232,10 @@ function _renderAdKpis(az, ch){
 }
 function _curAdCh(){
   if(AP==='clinician')return 'clinician';
+  // The Executive page's pill picks the channel: Clinician mode is the
+  // clinician channel, Brand mode shares the Brand page's channel tab so the
+  // two cannot disagree about which channel is selected.
+  if(AP==='exec')return _execMode()==='clinician'?'clinician':(S.dashboard.activeAdChannel||'meta');
   // Clinician was removed from the Detailed/Irfan switchers; a session that had
   // it selected would otherwise be stuck on a channel with no tab to leave by.
   var ch=S.dashboard.activeAdChannel||'meta';
@@ -6728,13 +6575,13 @@ function _renderIrfanMetaTables(d, channel){
   // Collect ALL possible render targets (Irfan + Overview). The function
   // writes to whichever are present in the DOM at this moment, so a single
   // call hydrates both pages.
-  const campTargets=[document.getElementById('irfan-meta-campaigns'),document.getElementById('ov-meta-campaigns'),document.getElementById('cln-meta-campaigns')].filter(Boolean);
-  const creTargets=[document.getElementById('irfan-meta-creatives'),document.getElementById('ov-meta-creatives'),document.getElementById('cln-meta-creatives')].filter(Boolean);
-  const audTargets=[document.getElementById('irfan-meta-audiences'),document.getElementById('ov-meta-audiences'),document.getElementById('cln-meta-audiences')].filter(Boolean);
-  const adsetTargets=[document.getElementById('irfan-meta-adsets'),document.getElementById('ov-meta-adsets'),document.getElementById('cln-meta-adsets')].filter(Boolean);
+  const campTargets=[document.getElementById('irfan-meta-campaigns'),document.getElementById('ov-meta-campaigns'),document.getElementById('cln-meta-campaigns'),document.getElementById('exec-meta-campaigns')].filter(Boolean);
+  const creTargets=[document.getElementById('irfan-meta-creatives'),document.getElementById('ov-meta-creatives'),document.getElementById('cln-meta-creatives'),document.getElementById('exec-meta-creatives')].filter(Boolean);
+  const audTargets=[document.getElementById('irfan-meta-audiences'),document.getElementById('ov-meta-audiences'),document.getElementById('cln-meta-audiences'),document.getElementById('exec-meta-audiences')].filter(Boolean);
+  const adsetTargets=[document.getElementById('irfan-meta-adsets'),document.getElementById('ov-meta-adsets'),document.getElementById('cln-meta-adsets'),document.getElementById('exec-meta-adsets')].filter(Boolean);
   // Section-level host for the one filter set, on all three pages that show
   // these tables.
-  const filterTargets=[document.getElementById('irfan-meta-filters'),document.getElementById('ov-meta-filters'),document.getElementById('cln-meta-filters')].filter(Boolean);
+  const filterTargets=[document.getElementById('irfan-meta-filters'),document.getElementById('ov-meta-filters'),document.getElementById('cln-meta-filters'),document.getElementById('exec-meta-filters')].filter(Boolean);
   if(!campTargets.length&&!creTargets.length&&!audTargets.length&&!adsetTargets.length)return;
   // First target used for back-compat in any later code that still reads campTarget/creTarget.
   const campTarget=campTargets[0]||null;
@@ -10605,13 +10452,424 @@ async function loadOutbound(){
     renderOutbound();
   }catch(e){console.error('[OUTBOUND] Error:',e);el.innerHTML='<div style="padding:40px;text-align:center"><div style="font-size:48px;margin-bottom:16px">❌</div><div style="font-family:var(--font-h);font-size:16px;color:#C62828">Connection failed: '+e.message+'</div></div>';}
 }
+
+// ── Key Metrics (Brand) ─────────────────────────────────────────────────────
+// Every figure the row shows, derived from the payload ALONE. Pulled out so the
+// Brand Dashboard and the Executive Dashboard render one row from one source
+// instead of two that drift. t_execkm asserts these match renderDash's own
+// locals for the same payload — that is the guard against the copy rotting.
+function _dashKmModel(d){
+  const em=(d.executiveSummary&&d.executiveSummary._meta)||{};
+  const qmeta=(d.demoTracking&&d.demoTracking._qualMeta)||{};
+  const esM=(d.executiveSummary&&d.executiveSummary._meta)||{};
+  const qd=(qmeta.qualDemoCount!=null?qmeta.qualDemoCount:(esM.demosHeldCount||0));
+  const cpqd=d.executiveSummary.totalCpqd&&d.executiveSummary.totalCpqd.value;
+  const cpqdPV=d.executiveSummary.totalCpqd&&d.executiveSummary.totalCpqd.sameTimePrior&&d.executiveSummary.totalCpqd.sameTimePrior.value;
+  const cpqdLMV=d.executiveSummary.totalCpqd&&d.executiveSummary.totalCpqd.lastMonth&&d.executiveSummary.totalCpqd.lastMonth.value;
+  const _wtDW=d.demoTracking||{};
+  const _regC=_wtDW.scheduledRegularTotal||0;
+  const _regP=_wtDW.scheduledRegularTotalPrior,_regL=_wtDW.scheduledRegularTotalLastMonth;
+  const _preC=_wtDW.scheduledPreTotal||0;
+  const _preP=_wtDW.scheduledPreTotalPrior,_preL=_wtDW.scheduledPreTotalLastMonth;
+  const _acqP=_wtDW.scheduledRegularPaid,_acqO=_wtDW.scheduledRegularOrganicTagged,_acqU=_wtDW.scheduledRegularUntagged;
+  const _acqOK=(_acqP!=null&&_acqO!=null&&_acqU!=null&&_regC>0);
+  const _acqPct=_acqOK?(_acqP/_regC*100):null;
+  const _acqPctPV=(_wtDW.scheduledRegularPaidPrior!=null&&_regP)?(_wtDW.scheduledRegularPaidPrior/_regP*100):null;
+  const _acqPctLM=(_wtDW.scheduledRegularPaidLastMonth!=null&&_regL)?(_wtDW.scheduledRegularPaidLastMonth/_regL*100):null;
+  const _npPct=(_acqPct!=null)?(100-_acqPct):null;
+  const _npPctPV=(_acqPctPV!=null)?(100-_acqPctPV):null;
+  const _npPctLM=(_acqPctLM!=null)?(100-_acqPctLM):null;
+  const _bothC=_regC+_preC;
+  const _bothP=(_regP!=null&&_preP!=null)?_regP+_preP:null;
+  const _bothL=(_regL!=null&&_preL!=null)?_regL+_preL:null;
+  const _preShare=_bothC>0?(_preC/_bothC*100):null;
+  const _preShareP=(_bothP!=null&&_bothP>0&&_preP!=null)?(_preP/_bothP*100):null;
+  const _preShareL=(_bothL!=null&&_bothL>0&&_preL!=null)?(_preL/_bothL*100):null;
+  const _spC=em.totalSpend||0,_spP=em.pTotalSpend,_spL=em.pmTotalSpend;
+  const _cpdSeg=(sp,n)=>(n!=null&&n>0&&sp!=null)?sp/n:null;
+  const _cRegC=_cpdSeg(_spC,_regC),_cRegP=_cpdSeg(_spP,_regP),_cRegL=_cpdSeg(_spL,_regL);
+  const _cPaidC=_cpdSeg(_spC,_wtDW.scheduledRegularPaid),
+        _cPaidP=_cpdSeg(_spP,_wtDW.scheduledRegularPaidPrior),
+        _cPaidL=_cpdSeg(_spL,_wtDW.scheduledRegularPaidLastMonth);
+  const visitors=(d.webPerformance.visitors&&d.webPerformance.visitors.value)||0;
+  const visitorsPV=d.webPerformance.visitors&&d.webPerformance.visitors.sameTimePrior&&d.webPerformance.visitors.sameTimePrior.value;
+  const visitorsLMV=d.webPerformance.visitors&&d.webPerformance.visitors.lastMonth&&d.webPerformance.visitors.lastMonth.value;
+  const _cvrOf=(n,v)=>(v>0&&n!=null)?(n/v*100):null;
+  const _cvrReg=_cvrOf(_regC,visitors),_cvrRegPV=_cvrOf(_regP,visitorsPV),_cvrRegLM=_cvrOf(_regL,visitorsLMV);
+  return {em,qd,cpqd,cpqdPV,cpqdLMV,_regC,_preC,_bothC,_acqP,_acqO,_acqU,_acqOK,
+    _npPct,_npPctPV,_npPctLM,_preShare,_preShareP,_preShareL,_spC,
+    _cRegC,_cRegP,_cRegL,_cPaidC,_cPaidP,_cPaidL,_cvrReg,_cvrRegPV,_cvrRegLM,visitors};
+}
+// The row itself. `sfx` suffixes the two ids it emits — #dsec-keymetrics (the
+// Jump To scroll target) and #t-revenue (repainted asynchronously by
+// fdRevenueOutcome) — because getElementById returns the FIRST match in the
+// document, so an unsuffixed second copy would silently steal both.
+function _brandKeyMetricsHTML(d,opt){
+  opt=opt||{};
+  const sfx=opt.sfx||'', hideCpqd=!!opt.hideCpqd, win=opt.win;
+  const M=_dashKmModel(d);
+  const em=M.em,qd=M.qd,cpqd=M.cpqd,cpqdPV=M.cpqdPV,cpqdLMV=M.cpqdLMV;
+  const _regC=M._regC,_preC=M._preC,_bothC=M._bothC;
+  const _acqP=M._acqP,_acqO=M._acqO,_acqU=M._acqU,_acqOK=M._acqOK;
+  const _npPct=M._npPct,_npPctPV=M._npPctPV,_npPctLM=M._npPctLM;
+  const _preShare=M._preShare,_preShareP=M._preShareP,_preShareL=M._preShareL;
+  const _spC=M._spC,_cRegC=M._cRegC,_cRegP=M._cRegP,_cRegL=M._cRegL;
+  const _cPaidC=M._cPaidC,_cPaidP=M._cPaidP,_cPaidL=M._cPaidL;
+  const _cvrReg=M._cvrReg,_cvrRegPV=M._cvrRegPV,_cvrRegLM=M._cvrRegLM,visitors=M.visitors;
+  // Five headline tiles over the Revenue Outcome card, in one container, the
+  // same shape the Irfan page uses. Built HERE rather than earlier because CVR
+  // Regular comes from the Conversion Funnel block above; DOM order is fixed by
+  // the static container, so build order does not matter.
+  // Ad Spend leads with the spend itself and carries budget + pacing beneath,
+  // matching the Ad KPIs card.
+  let _kmBudget=0;
+  if(d.adSpend&&d.adSpend.channels){
+    for(const _bk in d.adSpend.channels){
+      const _bc=d.adSpend.channels[_bk];
+      if(_bc.pendingConnector||_bc.kpiExcluded)continue;   // same roll-up rule as every other KPI
+      _kmBudget+=(_bc.budget||0);
+    }
+  }
+  const _kmSpend=em.totalSpend||0;
+  const _kmPctBudget=_kmBudget>0?(_kmSpend/_kmBudget)*100:null;
+  // Pacing only means something on a MONTH window: window spend against a
+  // full-month budget would mislead on 7d / YTD / All Time / custom.
+  const _kmWin=win||'mtd';
+  const _kmIsMonth=(_kmWin==='mtd'||_kmWin==='lastMonth');
+  const _kmNow=new Date();
+  const _kmElapsed=_kmWin==='lastMonth'?100
+    :(_kmNow.getDate()/new Date(_kmNow.getFullYear(),_kmNow.getMonth()+1,0).getDate())*100;
+  const _kmPP=(_kmIsMonth&&_kmPctBudget!=null)?(_kmPctBudget-_kmElapsed):null;
+  let _kmPace='';
+  if(!_kmIsMonth){
+    _kmPace='';   // window spend against a full-month budget would mislead
+  } else if(_kmBudget===0){
+    _kmPace='<div style="margin-top:8px;font-size:10px;color:rgba(255,255,255,.5)">No monthly budget set</div>';
+  } else if(_kmPP!=null){
+    const _kmUp=_kmPP>=0;
+    const _kmFill=Math.abs(_kmPP)>10?(_kmUp?'#FF9B8F':'#7EE0B8'):'var(--teal)';
+    _kmPace='<div style="margin-top:9px" title="'+_kmPctBudget.toFixed(0)+'% of '+f$(_kmBudget)
+      +' monthly budget spent \u00b7 '+_kmElapsed.toFixed(0)+'% of month elapsed">'
+      +'<div style="position:relative;height:8px;background:rgba(255,255,255,.18);border-radius:4px;overflow:visible">'
+      +'<div style="position:absolute;left:0;top:0;height:8px;width:'+Math.min(_kmPctBudget,100)+'%;background:'+_kmFill+';border-radius:4px"></div>'
+      +'<div style="position:absolute;left:'+Math.min(_kmElapsed,100)+'%;top:-2px;bottom:-2px;width:1.5px;background:#fff"></div>'
+      +'</div>'
+      +'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:5px;font-size:10px">'
+      +'<span style="color:rgba(255,255,255,.55)"><span style="font-weight:700;color:#fff;font-variant-numeric:tabular-nums">'
+      +_kmPctBudget.toFixed(0)+'%</span> spent</span>'
+      +'<span style="color:'+(Math.abs(_kmPP)>10?_kmFill:'rgba(255,255,255,.55)')+';font-weight:700">'
+      +(_kmUp?'\u2191 +':'\u2193 \u2212')+Math.abs(_kmPP).toFixed(0)+'pp '+(_kmUp?'ahead':'behind')+'</span>'
+      +'</div></div>';
+  }
+  // Label and calc get reserved height: a one-line label next to a two-line one
+  // otherwise pushes its value half a line down, and no two tiles in the row line up.
+  const _KM_LBL='min-height:36px', _KM_CALC='min-height:46px';
+  const _kmTile=(label,value,calc,footer,extra,tip,span)=>
+    '<div class="tile hero" style="border-left:3px solid var(--teal)'
+    +(span?';grid-column:span '+span:'')+'"'+(tip?' title="'+tip+'"':'')+'>'
+    +'<div class="tlbl" style="'+_KM_LBL+'">'+label+'</div><div class="tval">'+value+'</div>'
+    +'<div style="'+_KM_CALC+'">'+(calc?'<div class="irf-calc">'+calc+'</div>':'')+'</div>'
+    +(footer||'')+(extra||'')+'</div>';
+  const _kmFoot=(cur,pv,lmv,fmt,inv)=>_irTileFooterDash(cur,pv,lmv,fmt,inv);
+
+  let kmh='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px">';
+  kmh+='<div class="dsec-h dsec-in" id="dsec-keymetrics'+sfx+'">Key Metrics</div>';
+  kmh+='<div style="display:grid;grid-template-columns:repeat('+(hideCpqd?6:7)+',minmax(0,1fr));gap:12px;margin-bottom:16px">';
+  kmh+=_kmTile('Ad Spend',f$(_kmSpend),
+    (_kmBudget>0?f$(_kmSpend)+' \u00f7 '+f$(_kmBudget)+' budget':'no budget set'),
+    _kmFoot(_kmSpend,em.pTotalSpend,em.pmTotalSpend,'$',false),_kmPace);
+  // Paid acquisition, over two grid columns, sitting directly right of Ad Spend:
+  // cost of a paid demo and the share of demand that did NOT come from a paid
+  // click read as one thought about what the spend above is buying.
+  // Emitted inline rather than through _kmTile: this is the one tile with two
+  // stats, which needs a two-column body _kmTile does not model.
+  // Each phrase stays inside ONE string literal. Splitting one across the
+  // concatenation hides it from the assertions that pin this caveat, and the
+  // caveat is the whole reason the tile does not just say "organic".
+  const _ACQ_TIP='Share of Regular demos whose booking contact carries NO paid-ad UTM '
+    +'\u2014 the exact complement of the paid share, i.e. Organic + Untagged. '
+    +'\u201cOrganic\u201d means no paid UTM: it covers organic search, brand referrals, '
+    +'and anyone who saw an ad, did not click, and came back later, so this is an '
+    +'UPPER bound on organic demand, not a measure of it. '
+    +'\u201cUntagged\u201d carries no UTM at all, so its origin is unknown. '
+    +'The mix bar below splits the two.';
+  // Same label/value/calc/footer rhythm as _kmTile, so the two halves line up with
+  // each other and with the single-stat tiles either side.
+  const _acqStat=(lbl,val,calc,foot)=>'<div style="flex:1 1 0;min-width:0">'
+    +'<div class="tlbl" style="'+_KM_LBL+'">'+lbl+'</div><div class="tval">'+val+'</div>'
+    +'<div style="'+_KM_CALC+'">'+(calc?'<div class="irf-calc">'+calc+'</div>':'')+'</div>'
+    +(foot||'')+'</div>';
+  const _acqMix=(()=>{if(!_acqOK)return '';
+    const _t=_regC,_pp=_acqP/_t*100,_op=_acqO/_t*100,_up=_acqU/_t*100;
+    const _key=(c,n,v)=>'<span style="display:inline-flex;align-items:center;gap:5px">'
+      +'<i style="width:7px;height:7px;border-radius:2px;background:'+c+'"></i>'+n+' '+v.toFixed(0)+'%</span>';
+    return '<div style="margin-top:12px;padding-top:11px;border-top:1px solid rgba(255,255,255,.14)">'
+      +'<div style="display:flex;height:6px;border-radius:3px;overflow:hidden;background:rgba(255,255,255,.12)">'
+      +'<div style="width:'+_pp.toFixed(2)+'%;background:var(--green)"></div>'
+      +'<div style="width:'+_op.toFixed(2)+'%;background:var(--teal)"></div>'
+      +'<div style="width:'+_up.toFixed(2)+'%;background:rgba(255,255,255,.28)"></div></div>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:10px;'
+      +'color:rgba(255,255,255,.75);font-variant-numeric:tabular-nums">'
+      +_key('var(--green)','Paid',_pp)+_key('var(--teal)','Organic',_op)
+      +_key('rgba(255,255,255,.35)','Untagged',_up)+'</div>'
+      // What lands in each bucket. The paid list is exactly what mapUtmToChannel can
+      // return (worker.js) -- t_attrib pins the two together, so adding a channel
+      // there without naming it here fails the suite.
+      +'<div style="margin-top:9px;font-size:9px;line-height:1.6;color:rgba(255,255,255,.5)">'
+      +'<span style="color:rgba(255,255,255,.75);font-weight:700">Paid</span> \u2014 Meta, '
+      +'Google (cpc), LinkedIn, TikTok, Reddit, ChatGPT, YouTube'
+      +'<span style="opacity:.45"> &nbsp;|&nbsp; </span>'
+      +'<span style="color:rgba(255,255,255,.75);font-weight:700">Organic</span> \u2014 any other '
+      +'UTM: organic search, brand referrals'
+      +'<span style="opacity:.45"> &nbsp;|&nbsp; </span>'
+      +'<span style="color:rgba(255,255,255,.75);font-weight:700">Untagged</span> \u2014 no UTM '
+      +'at all; origin unknown</div></div>';})();
+  kmh+='<div class="tile hero" style="border-left:3px solid var(--teal);grid-column:span 2" '
+    +'title="'+_ACQ_TIP+'">'
+    +'<div style="display:flex;gap:20px;align-items:flex-start">'
+    +_acqStat('CPD \u00b7 Paid',_cPaidC!=null?f$(_cPaidC):'\u2014',
+       (_acqOK?f$(_spC)+' \u00f7 '+fN(_acqP)+' paid demos':''),
+       _kmFoot(_cPaidC,_cPaidP,_cPaidL,'$',true))
+    +'<div style="width:1px;align-self:stretch;background:rgba(255,255,255,.14)"></div>'
+    // Up is RED here: a growing non-paid share means a shrinking paid one, and
+    // paid is the half this page exists to manage. Inverting also keeps the
+    // colour continuous with the paid share this stat replaced -- the same
+    // underlying movement now lights the same way it did before the swap.
+    +_acqStat('Non-Paid \u00b7 Last Click',_npPct!=null?_npPct.toFixed(1)+'%':'\u2014',
+       (_acqOK?fN(_acqO+_acqU)+' \u00f7 '+fN(_regC)+' regular demos':'last-click UTM'),
+       _kmFoot(_npPct,_npPctPV,_npPctLM,'%',true))
+    +'</div>'+_acqMix+'</div>';
+  // Regular = demos + webinars excluding pre-launch, the same _regC the
+  // Efficiency card's "CPD Regular" and the funnel's CVR Regular divide by.
+  kmh+=_kmTile('CPD \u00b7 Regular Demos',_cRegC!=null?f$(_cRegC):'\u2014',
+    f$(_spC)+' \u00f7 '+fN(_regC)+' regular demos',
+    _kmFoot(_cRegC,_cRegP,_cRegL,'$',true));
+  // Optional: the Executive Dashboard omits it. Dropping a tile also drops a
+  // grid unit, which is why the column count above is computed, not literal.
+  if(!hideCpqd)kmh+=_kmTile('CPQD \u00b7 Regular Demos',cpqd!=null?f$(cpqd):'\u2014',
+    f$(em.totalSpend||0)+' \u00f7 '+fN(qd)+' qualified demos',
+    _kmFoot(cpqd,cpqdPV,cpqdLMV,'$',true));
+  // Pre-Launch % replaced CAC here. CAC itself is NOT lost: it still leads the
+  // Efficiency card ("Paid ads CAC") and the Marketing Funnel, both on this page.
+  // Down is green -- pre-launch brands are the low-value tier, which is why the
+  // page already flags this share in orange once it clears 30%.
+  kmh+=_kmTile('Pre-Launch %',_preShare!=null?_preShare.toFixed(1)+'%':'\u2014',
+    fN(_preC)+' \u00f7 '+fN(_bothC)+' demos booked',
+    _kmFoot(_preShare,_preShareP,_preShareL,'%',true),null,
+    'Share of ALL demos booked in this window that came from a pre-launch brand '
+    +'\u2014 the demo\u2019s own web-traffic tier, not a name match. Same denominator as '
+    +'the Demo Composition pie, so this is that pie\u2019s first slice as a number.');
+  kmh+=_kmTile('CVR \u00b7 Regular',_cvrReg!=null?_cvrReg.toFixed(2)+'%':'\u2014',
+    fN(_regC)+' \u00f7 '+fN(visitors)+' visitors',
+    _kmFoot(_cvrReg,_cvrRegPV,_cvrRegLM,'%',false));
+  kmh+='</div>';
+  // Revenue Outcome moves here from the Snapshot row, which is now full width.
+  kmh+='<div id="t-revenue'+sfx+'"></div>';
+  kmh+='</div>';
+  return kmh;
+}
+// Revenue Outcome is emitted EMPTY and filled after the row is in the DOM —
+// keep the order or the card renders blank.
+function _brandKeyMetricsAfter(d,sfx){
+  const e=document.getElementById('t-revenue'+(sfx||''));
+  if(e)e.innerHTML=_buildRevenueOutcomeCard(d);
+}
+
+// ── Key Metrics (Clinician) ─────────────────────────────────────────────────
+// Lifted verbatim out of renderClinician so the Executive Dashboard can show
+// the same row. It emits NO ids and needs no post-insert step, so unlike the
+// Brand row it carries no collision hazard — `sfx` exists only to label the
+// heading for the Jump To nav.
+function _clnKeyMetricsHTML(d,sfx){
+  sfx=sfx||'';
+  const _card=(title,sub,body)=>'<div class="sec sec-card dsec" style="margin-bottom:16px">'
+    +'<div class="irf-card-title dsec-h dsec-in" id="dsec-clnkm'+sfx+'" data-nav="Key Metrics" style="font-size:22px;font-weight:700;letter-spacing:-.01em;border-left:4px solid var(--teal);padding-left:11px;line-height:1.2">'+title+'</div>'
+    +'<div class="irf-card-sub" style="margin-left:15px">'+sub+'</div>'+body+'</div>';
+    const _f$=(v)=>v==null?'\u2014':'$'+Math.round(v).toLocaleString();
+    const _div=(a,b)=>(a!=null&&b)?a/b:null;
+    const _a=(d.ads&&!d.ads.error)?d.ads:null;
+    const _sp=_a?_a.spend:null;
+    // "Full App" = reached Fully Onboarded, a pipeline milestone — NOT Meta's
+    // reported conversions (ads.cacDenom), which is a different number the
+    // worker's own comment says will not agree. The same basis drives the rate
+    // below, so both cards mean one thing by "Full App".
+    // Both denominators come from the ACQUISITION section's populations, so the
+    // two sections can never report different numbers for the same thing:
+    //   inquiries   = unique clinician CONTACTS created in the window (deduped)
+    //   full submission = those of them with a kickoff call booked
+    // These are CONTACT-based and deliberately NOT the funnel's deal-based
+    // stages, so Cost per Full App will not equal the funnel's Fully Onboarded —
+    // a kickoff call booked is an earlier milestone than Fully Onboarded.
+    const _acq=d.composition||{};
+    const _acqSub=_acq.submission||null;
+    const _fo=_acqSub?(_acqSub.contacts||0):0;
+    const _add=_acq.contacts||0;   // = the Acquisition section's clinician count
+    const _rate=_add>0?(_fo/_add)*100:null;
+    const _kp=d.kpiPrior||null, _km=d.kpiPriorMonth||null;
+    const _pRate=(w)=>(w&&w.inquiries>0)?(w.fullSub/w.inquiries)*100:null;
+    const _foot=(cur,pv,lmv,fmt,inv)=>_irTileFooterDash(cur,pv,lmv,fmt,inv);
+    const _pace=(_a&&_a.budget>0)?(_sp/_a.budget)*100:null;
+    // Cumulative, not the mean of per-day CTRs: that would weight a 10-impression
+    // day the same as a 10,000-impression one.
+    const _tf=d.topFunnel||{};
+    const _ctrOk=(_tf.impressions!=null&&_tf.impressions>0&&_tf.clicks!=null);
+    const _ctr=_ctrOk?(_tf.clicks/_tf.impressions)*100:null;
+    const kmBody='<div style="display:flex;gap:12px;flex-wrap:wrap">'
+      +_clnKpiTile('Ad Spend',_f$(_sp),
+         (_a&&_a.budget>0)?(_f$(_sp)+' \u00f7 '+_f$(_a.budget)+' budget'):'no budget set',
+         'Clinician channel only \u2014 excluded from every other dashboard KPI',null,
+         _clnPaceBar(_pace,_a?_a.elapsedPct:null,_sp,_a?_a.budget:0)
+         +_foot(_sp,_kp?_kp.spend:null,_km?_km.spend:null,'$',false))
+      +_clnKpiTile('Cost per Full App',_f$(_div(_sp,_fo)),
+         _f$(_sp)+' \u00f7 '+fN(_fo)+' full submissions',
+         'Clinician ad spend \u00f7 clinicians with a kickoff call booked \u2014 the Acquisition section\u2019s Full Submission count',null,
+         _foot(_div(_sp,_fo),_div(_kp?_kp.spend:null,_kp?_kp.fullSub:0),_div(_km?_km.spend:null,_km?_km.fullSub:0),'$',true))
+      +_clnKpiTile('Cost per Inquiry',_f$(_div(_sp,_add)),
+         _f$(_sp)+' \u00f7 '+fN(_add)+' inquiries',
+         'Clinician ad spend \u00f7 clinician contacts created in the window \u2014 the Acquisition section\u2019s count',null,
+         _foot(_div(_sp,_add),_div(_kp?_kp.spend:null,_kp?_kp.inquiries:0),_div(_km?_km.spend:null,_km?_km.inquiries:0),'$',true))
+      +_clnKpiTile('CTR',_ctr!=null?_ctr.toFixed(2)+'%':'\u2014',
+         (_ctrOk?fN(_tf.clicks)+' \u00f7 '+fN(_tf.impressions)+' impressions':'no ad data'),
+         'Cumulative click-through rate across the Clinician campaigns \u2014 total clicks over total impressions, not an average of daily rates',null,
+         _foot(_ctr,null,null,'%',false))
+      +_clnKpiTile('Full App Rate',_rate!=null?_rate.toFixed(1)+'%':'\u2014',
+         fN(_fo)+' \u00f7 '+fN(_add)+' inquiries',
+         'Share of inquiries with a kickoff call booked \u2014 matches the Acquisition section\u2019s rate',null,
+         _foot(_rate,_pRate(_kp),_pRate(_km),'%',false))
+      +'</div>';
+  return _card('Key Metrics',
+      'Clinician channel \u00b7 follows the page date filter'
+      +(_a?'':' \u00b7 ad data unavailable for this window'),kmBody);
+}
+
+// ── Executive Dashboard ─────────────────────────────────────────────────────
+// Three sections lifted from two existing pages, under one Brand / Clinician
+// pill. Nothing is copied: each section calls the SAME builder the owning page
+// calls, with an id suffix, so a change there lands here and the two cannot
+// report different numbers for the same thing.
+//
+// Brand mode reads the /api/data payload (S.exec.data, fetched by fd() like any
+// other page); Clinician mode reads /api/clinician (S.clinician.data, the same
+// cache the Clinician page uses). Flipping the pill fetches the other side
+// lazily — the first flip costs a request, after that both are in hand.
+function _execMode(){return (S.exec&&S.exec.mode==='clinician')?'clinician':'brand';}
+function _execData(){return _execMode()==='clinician'?(S.clinician&&S.clinician.data):(S.exec&&S.exec.data);}
+function _execLoading(){return _execMode()==='clinician'?!!(S.clinician&&S.clinician._loading):!!(S.exec&&S.exec._loading);}
+
+// The pill is the page's primary control, so it is sized like one: bigger than
+// the per-section toggles below it, and set in the display face.
+function _execModeBarHTML(){
+  var m=_execMode();
+  var pill=function(k,label,sub){
+    var on=(m===k);
+    return '<button onclick="execSetMode(\''+k+'\')" style="display:flex;flex-direction:column;align-items:flex-start;gap:1px;'
+      +'font-family:var(--font-h);padding:11px 26px;border:none;cursor:pointer;transition:background .15s,color .15s;'
+      +'background:'+(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+'">'
+      +'<span style="font-size:15px;font-weight:700;letter-spacing:-.01em">'+label+'</span>'
+      +'<span style="font-family:var(--font-b);font-size:9.5px;font-weight:600;letter-spacing:.03em;opacity:'+(on?'.72':'.85')+'">'+sub+'</span>'
+      +'</button>';
+  };
+  return '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:4px">'
+    +'<div style="display:inline-flex;border:1.5px solid var(--border);border-radius:50px;overflow:hidden;box-shadow:0 1px 4px rgba(2,15,24,.06)">'
+    +pill('brand','Brand','Demos, spend & signings')
+    +pill('clinician','Clinician','Inquiries & full apps')
+    +'</div>'
+    +'<span style="font-size:11px;color:var(--grey)">Switches every section below</span>'
+    +'</div>';
+}
+window.execSetMode=function(m){
+  if(!S.exec||_execMode()===m)return;
+  S.exec.mode=(m==='clinician')?'clinician':'brand';
+  // The other payload may not be fetched yet; _execEnsureData decides.
+  _execEnsureData();
+};
+
+// Ad tables. The containers are exec-prefixed and registered in
+// _renderIrfanMetaTables' target lists, which is how this file already hosts
+// the same tables on three pages — the render writes to whichever targets are
+// in the DOM. Brand mode keeps the channel switcher (it is part of that
+// section); Clinician mode has no switcher because it is one channel.
+function _execAdsSectionHTML(){
+  var brand=(_execMode()==='brand');
+  var card=function(id,title,sub,last){
+    return '<div class="sec" style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:'+(last?'0':'16px')+'">'
+      +'<div class="st"><span class="ad-channel-dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px;vertical-align:middle;background:var(--teal)"></span>'
+      +title+'</div>'
+      +'<div style="font-size:12px;color:var(--grey);margin-bottom:6px">'+sub+'</div>'
+      +'<div id="'+id+'"></div></div>';
+  };
+  // The label spans are normally repainted by dashSetAdChannel, which only runs
+  // on a channel click — so seed them with the channel that is actually active,
+  // or Clinician mode opens reading "Meta".
+  var CHL={meta:'Meta',clinician:'Clinician',tiktok:'TikTok',linkedin:'LinkedIn',google:'Google',reddit:'Reddit',chatgpt:'ChatGPT',youtube:'YouTube'};
+  var chNow=_curAdCh(), chLbl=CHL[chNow]||chNow;
+  var h='<div class="sec sec-card dsec" id="sec-exec-ads">'
+    +'<div class="dsec-h dsec-in" id="dsec-exec-ads" data-nav="Ad Tables">Ad Tables</div>'
+    +'<div class="irf-card-sub" style="margin-left:15px">'
+    +(brand?'Every paid channel · pick one below':'Clinician Targeting campaigns only')
+    +' · these tables carry their own date window</div>';
+  if(brand)h+='<div class="meta-fbar" style="margin-top:12px">'+_adChannelTabsHTML(_curAdCh())+'</div>';
+  h+='<div id="exec-meta-filters"></div>'
+    +card('exec-meta-campaigns','<span class="ad-channel-label">'+chLbl+'</span> — Campaigns','Sortable · spend, performance and demos per campaign')
+    +card('exec-meta-adsets','<span class="ad-channel-label">'+chLbl+'</span> — Ad Sets','Sortable · ad-set level breakdown')
+    +card('exec-meta-creatives','<span class="ad-channel-label">'+chLbl+'</span> — Ad Creatives','Sortable · per-creative spend and performance')
+    +card('exec-meta-audiences','<span class="ad-channel-audlabel">'+((chNow==='meta'||chNow==='clinician'||chNow==='linkedin')?'Audiences':'Ad Groups')+'</span>','<span class="ad-channel-audsub">Sortable · ad-set level breakdown of spend, performance, and demos</span>',true)
+    +'</div>';
+  return h;
+}
+
+// Which payload each mode needs, fetched only when it is actually asked for.
+function _execEnsureData(){
+  if(!S.exec)return;
+  if(_execMode()==='clinician'){
+    if(S.clinician.data){renderPage();return;}
+    if(S.clinician._loading){renderPage();return;}
+    fdClinician(S.clinician.win||S.exec.win||'mtd');
+    return;
+  }
+  if(S.exec.data){renderPage();return;}
+  fd(S.exec.win||'mtd');
+}
+
+function renderExec(){
+  var root=document.getElementById('page-exec'); if(!root)return;
+  var bar=document.getElementById('exec-mode-bar');
+  if(bar)bar.innerHTML=_execModeBarHTML();
+  var km=document.getElementById('exec-km'),tr=document.getElementById('exec-trend'),ads=document.getElementById('exec-ads');
+  var d=_execData();
+  if(!d){
+    var msg=_execLoading()
+      ? 'Loading '+(_execMode()==='clinician'?'clinician':'brand')+' data…'
+      : 'No data yet for this view.';
+    if(km)km.innerHTML='<div class="sec sec-card dsec" style="padding:28px;text-align:center;color:var(--grey);font-size:12px">'+msg+'</div>';
+    if(tr)tr.innerHTML=''; if(ads)ads.innerHTML='';
+    return;
+  }
+  // ── 1. Key Metrics ──
+  if(km)km.innerHTML=(_execMode()==='clinician')?_clnKeyMetricsHTML(d,'-exec'):_brandKeyMetricsHTML(d,{sfx:'-exec',hideCpqd:true});
+  // Only the Brand row has a post-insert step (its Revenue Outcome card is
+  // emitted empty); the Clinician row is complete as built.
+  if(_execMode()==='brand')_brandKeyMetricsAfter(d,'-exec');
+  // ── 2. Trend Analysis ──
+  if(tr){
+    tr.innerHTML=(_execMode()==='clinician')?_clnTrendCard(d,'-exec'):_dashTrendCard(d,'-exec');
+    if(_execMode()==='clinician')_renderClnTrend(d,'-exec'); else _renderDashTrend(d,'-exec');
+  }
+  // ── 3. Ad Tables ──
+  if(ads){
+    ads.innerHTML=_execAdsSectionHTML();
+    // Same loader the other pages use; it writes into whichever targets exist.
+    if(typeof _renderIrfanMetaTablesLoader==='function')_renderIrfanMetaTablesLoader(S.exec.win||'mtd');
+  }
+}
+
 function switchDashSub(sub){
   S.dashboard.sub=sub;
   // Map sub to AP
-  var apMap={overview:'dashboard',clinician:'clinician',irfan:'irfan',signup:'signup',calculator:'calculator',strategy:'strategy',demoQuality:'demoQuality',outbound:'outbound',webinarPerf:'webinarPerf'};
+  var apMap={exec:'exec',overview:'dashboard',clinician:'clinician',irfan:'irfan',signup:'signup',calculator:'calculator',strategy:'strategy',demoQuality:'demoQuality',outbound:'outbound',webinarPerf:'webinarPerf'};
   AP=apMap[sub]||'dashboard';
   // Update titles
-  var titleMap={overview:'Brand Dashboard',clinician:'Clinician Dashboard',irfan:'Irfan Dashboard',signup:'Sign-Up Rate',calculator:'ARR Calculator',strategy:'Monthly Review',demoQuality:'Demo Quality',outbound:'Outbound Sequences',webinarPerf:'Webinar Performance'};
+  var titleMap={exec:'Executive Dashboard',overview:'Brand Dashboard',clinician:'Clinician Dashboard',irfan:'Irfan Dashboard',signup:'Sign-Up Rate',calculator:'ARR Calculator',strategy:'Monthly Review',demoQuality:'Demo Quality',outbound:'Outbound Sequences',webinarPerf:'Webinar Performance'};
   document.getElementById('ptitle').textContent=titleMap[sub]||'Brand Dashboard';
   // Highlight nav items
   // highlighting handled centrally by _syncNav() on render
@@ -10630,6 +10888,8 @@ function switchDashSub(sub){
   // Load once. Nav clicks re-render from cached data; a refetch only happens on a
   // time-frame change (selW) or the Refresh button (refreshData clears .data).
   if(AP==='clinician'){ if(S.clinician.data){renderPage();} else {fdClinician(S.clinician.win||'mtd');} return; }
+  // Executive Dashboard picks its payload from the Brand/Clinician pill.
+  if(AP==='exec'){ _execEnsureData(); return; }
   if(!S[AP].data){
     if(AP==='strategy'){renderPage();return;}
     if(AP==='signup')fdSignup();
