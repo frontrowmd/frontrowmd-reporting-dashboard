@@ -3836,6 +3836,13 @@ const DSH_TR_POPS=[
 const DSH_TR_METRICS=[
   {k:'count',    l:'Count',    unit:'#', c:'#4A87A8', pop:true},
   {k:'cost',     l:'Cost Per', unit:'$', c:'#9333EA', pop:true},
+  // The organic half of the regular cohort, matching the Key Metrics tile
+  // "Non-Paid · Last Click" field for field: (regular - paid) / regular, where
+  // paid is the same mapUtmToChannel test on the raw utm pair that the worker
+  // applies for scheduledRegularPaid. pop:false because it never swaps to the
+  // paid cohort; regularOnly because over PAID demos it is zero by definition
+  // and the measure would be meaningless rather than merely uninteresting.
+  {k:'nonpaid',  l:'Non-Paid · Last Click', unit:'%', c:'#B45309', pop:false, regularOnly:true},
   {k:'cvr',      l:'CVR',      unit:'%', c:'#0E7C66', pop:true},
   {k:'ctr',      l:'CTR',      unit:'%', c:'#1D4ED8', pop:false},
 ];
@@ -3852,6 +3859,7 @@ const DSH_TR_METRICS=[
 const DSH_TR_CARDS=[
   {k:'count', metric:'count', unit:'#', pop:true},
   {k:'cost',  metric:'cost',  unit:'$', pop:true},
+  {k:'nonpaid', metric:'nonpaid', unit:'%', pop:false, regularOnly:true},
   {k:'cvr',   metric:'cvr',   unit:'%', pop:true},
   {k:'ctr',   metric:'ctr',   unit:'%', pop:false},
   {k:'spend', metric:null,    unit:'$', pop:false},
@@ -3860,7 +3868,19 @@ function _dshTrendGrain(){return window._dshTrendGrainV||'week';}
 function _dshTrendPop(){return window._dshTrendPopV||'regular';}
 function _dshTrendMetric(){return window._dshTrendMetricV||'count';}
 function _dshTrGrainDef(){return DSH_TR_GRAINS.filter(function(g){return g.k===_dshTrendGrain();})[0]||_trGrainDefault(DSH_TR_GRAINS);}
-function _dshTrMetricDef(){return DSH_TR_METRICS.filter(function(m){return m.k===_dshTrendMetric();})[0]||DSH_TR_METRICS[0];}
+function _dshTrMetricDef(){
+  var m=DSH_TR_METRICS.filter(function(x){return x.k===_dshTrendMetric();})[0]||DSH_TR_METRICS[0];
+  // Over PAID demos, "non-paid share" is zero by construction. Fall back
+  // rather than draw a flat zero line; _dshTrendMetricV is left alone, so
+  // returning to Regular Demos restores the measure the reader picked.
+  if(m.regularOnly&&_dshTrendPop()!=='regular')return DSH_TR_METRICS[0];
+  return m;
+}
+// The measures and cards on offer for the selected population.
+function _dshTrShown(list){
+  var reg=(_dshTrendPop()==='regular');
+  return list.filter(function(x){return !x.regularOnly||reg;});
+}
 function _dshTrPopDef(){return DSH_TR_POPS.filter(function(p){return p.k===_dshTrendPop();})[0]||DSH_TR_POPS[0];}
 // `sfx` lets a second page host this card. Pages share one DOM, so the panel
 // id must differ per host; the toggle STATE stays global on purpose, so the
@@ -3891,16 +3911,22 @@ function _dshTrParts(p,pop){
   return {
     spend:p.spend||0, clicks:p.clicks||0, impressions:p.impressions||0,
     pop:((pop==='paid')?p.paid:p.regular)||0,
+    // Non-Paid needs BOTH halves of the regular cohort, not just whichever one
+    // the population toggle selected, so they ride along as raw components. A
+    // rolling window is then a sum of components rather than an average of
+    // ratios, the same way every other measure here works.
+    regular:p.regular||0, paid:p.paid||0,
   };
 }
 function _dshTrSum(parts){
-  var t={spend:0,clicks:0,impressions:0,pop:0};
+  var t={spend:0,clicks:0,impressions:0,pop:0,regular:0,paid:0};
   parts.forEach(function(x){for(var k in t)t[k]+=x[k];});
   return t;
 }
 function _dshTrValue(metric,t){
   if(metric==='count')return t.pop;
   if(metric==='cost')return (t.spend>0&&t.pop>0)?t.spend/t.pop:null;
+  if(metric==='nonpaid')return t.regular>0?((t.regular-t.paid)/t.regular)*100:null;
   if(metric==='cvr')return t.clicks>0?(t.pop/t.clicks)*100:null;
   if(metric==='ctr')return t.impressions>0?(t.clicks/t.impressions)*100:null;
   return null;
@@ -3918,6 +3944,7 @@ function _dshTrStat(card,T,pdef){
     calc={
       count:fN(T.pop)+' '+popW,
       cost:f$(Math.round(T.spend))+' ÷ '+fN(T.pop)+' '+popW,
+      nonpaid:fN(Math.max(0,T.regular-T.paid))+' ÷ '+fN(T.regular)+' regular demos',
       cvr:fN(T.pop)+' ÷ '+fN(T.clicks)+' clicks',
       ctr:fN(T.clicks)+' ÷ '+fN(T.impressions)+' impressions',
     }[card.k]||'';
@@ -3934,7 +3961,12 @@ function _dashTrendCard(d,sfx){
   var sub='Independent of the page date filter · '+g.note
     +(rng?(' · series built over '+rng.from+' → '+rng.to):'')
     +'<br>'+(mdef.pop?('Measuring <strong>'+mdef.l+'</strong> over <strong>'+pdef.w+'</strong>')
-                     :('Measuring <strong>'+mdef.l+'</strong> — does not vary with the population toggle'))
+            // regularOnly is not the same as "ignores the toggle": it is tied
+            // to the regular cohort and is only offered there, so say that
+            // rather than implying it would hold for paid demos too.
+            :(mdef.regularOnly
+                ? ('Measuring <strong>'+mdef.l+'</strong> — the organic share of <strong>regular demos</strong>, offered on that population only')
+                : ('Measuring <strong>'+mdef.l+'</strong> — does not vary with the population toggle')))
     +' · Ad Spend is the shaded background throughout, whatever is selected';
   var title='<div class="dsec-h dsec-in" id="dsec-dshtrend'+sfx+'" data-nav="Trend Analysis">Trend Analysis</div>'
     +'<div class="irf-card-sub" style="margin-left:15px">'+sub+'</div>';
@@ -3962,7 +3994,7 @@ function _dashTrendCard(d,sfx){
   var toggles='<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin:12px 0 4px 15px">'
     +seg(DSH_TR_GRAINS.map(function(x){return pill(g.k===x.k,x.l,"toggleDshTrendGrain('"+x.k+"','"+sfx+"')",x.note);}).join(''))
     +seg(DSH_TR_POPS.map(function(x){return pill(pdef.k===x.k,x.l,"toggleDshTrendPop('"+x.k+"','"+sfx+"')",'');}).join(''))
-    +seg(DSH_TR_METRICS.map(function(x){return pill(mdef.k===x.k,x.l,"toggleDshTrendMetric('"+x.k+"','"+sfx+"')",'');}).join(''))
+    +seg(_dshTrShown(DSH_TR_METRICS).map(function(x){return pill(mdef.k===x.k,x.l,"toggleDshTrendMetric('"+x.k+"','"+sfx+"')",'');}).join(''))
     +'</div>';
 
   // The cards sum the periods ON SCREEN — this grain's lookback, which is
@@ -3991,7 +4023,7 @@ function _dashTrendCard(d,sfx){
   var pop=pdef.k;
   var T=_dshTrSum(pts.map(function(p){return _dshTrParts(p,pop);}));
   var minis=_trRangeBand+'<div style="display:flex;gap:9px;flex-wrap:wrap;margin:10px 0 4px">'
-    +DSH_TR_CARDS.map(function(card){
+    +_dshTrShown(DSH_TR_CARDS).map(function(card){
       var st=_dshTrStat(card,T,pdef);
       var on=(card.metric===mdef.k)||(card.withPct&&card.withPct===mdef.k);
       return '<div style="flex:1 1 150px;min-width:146px;background:var(--lighter);border:1px solid '

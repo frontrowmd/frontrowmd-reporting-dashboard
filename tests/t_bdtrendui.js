@@ -44,18 +44,28 @@ const P={spend:1000,clicks:500,impressions:20000,regular:40,paid:10,signed:4};
 ck('regular resolves the regular count',ctx._dshTrParts(P,'regular').pop,40);
 ck('paid resolves the paid count',ctx._dshTrParts(P,'paid').pop,10);
 // Signed was removed as a measure, so the components no longer carry it.
-ck('the components are spend/clicks/impressions/pop only',
-   Object.keys(ctx._dshTrParts(P,'regular')).sort(),['clicks','impressions','pop','spend']);
+// regular/paid ride along for Non-Paid · Last Click, which needs BOTH halves of
+// the regular cohort rather than whichever one the toggle selected.
+ck('the components carry both halves of the regular cohort',
+   Object.keys(ctx._dshTrParts(P,'regular')).sort(),
+   ['clicks','impressions','paid','pop','regular','spend']);
+ck('  and they do not follow the population toggle',
+   (()=>{const a=ctx._dshTrParts(P,'paid');return [a.regular,a.paid];})(),[40,10]);
 
 // ── 2. The six metrics, in the order asked for ────────────────────────────
-ck('metric pills',ctx.DSH_TR_METRICS.map(m=>m.l),['Count','Cost Per','CVR','CTR']);
-ck('KPI cards',ctx.DSH_TR_CARDS.map(c=>c.k),['count','cost','cvr','ctr','spend']);
+ck('metric pills',ctx.DSH_TR_METRICS.map(m=>m.l),
+   ['Count','Cost Per','Non-Paid · Last Click','CVR','CTR']);
+ck('KPI cards',ctx.DSH_TR_CARDS.map(c=>c.k),['count','cost','nonpaid','cvr','ctr','spend']);
 ck('Ad Spend has a card but is not a selectable measure',
    [ctx.DSH_TR_CARDS.filter(c=>c.k==='spend')[0].metric,ctx.DSH_TR_METRICS.filter(m=>m.k==='spend').length],[null,0]);
-// CTR is clicks over impressions — a property of the ads, not of which demos
-// are counted — so it is the only measure the population toggle leaves alone.
-ck('CTR is the only pop-invariant measure',
-   ctx.DSH_TR_METRICS.filter(m=>!m.pop).map(m=>m.k),['ctr']);
+// Two measures do not swap with the toggle, for different reasons. CTR is
+// clicks over impressions — a property of the ads, not of which demos are
+// counted. Non-Paid is pinned to the regular cohort and is offered only there,
+// which is a stronger condition and carries its own flag.
+ck('the pop-invariant measures',
+   ctx.DSH_TR_METRICS.filter(m=>!m.pop).map(m=>m.k),['nonpaid','ctr']);
+ck('  and only one of them is regular-only',
+   ctx.DSH_TR_METRICS.filter(m=>m.regularOnly).map(m=>m.k),['nonpaid']);
 // Signed is gone from EVERY list, not just the pills. A card for a measure
 // that cannot be selected is the half-removal this guards against.
 ck('Signed is absent from the metric pills',
@@ -99,10 +109,14 @@ const pdef=ctx.DSH_TR_POPS[0];
 const cnt=ctx._dshTrStat(ctx.DSH_TR_CARDS[0],Treg,pdef);
 ck('a pop-dependent card carries the population suffix',cnt.lbl,'Count \u00b7 Regular Demos');
 ck('  and names what it counted',cnt.calc,'40 regular demos');
-const ctrSt=ctx._dshTrStat(ctx.DSH_TR_CARDS[3],Treg,pdef);
+// By KEY, not by index: a card inserted ahead of these silently repointed
+// the old positional lookups at the wrong cards.
+const _cardByK=k=>ctx.DSH_TR_CARDS.filter(c=>c.k===k)[0];
+const ctrSt=ctx._dshTrStat(_cardByK('ctr'),Treg,pdef);
 ck('a pop-invariant card carries no suffix',ctrSt.lbl,'CTR');
-const spend=ctx._dshTrStat(ctx.DSH_TR_CARDS[4],Treg,pdef);
+const spend=ctx._dshTrStat(_cardByK('spend'),Treg,pdef);
 ck('Ad Spend is the last card',spend.lbl,'Ad Spend');
+ck('  and really is last',ctx.DSH_TR_CARDS[ctx.DSH_TR_CARDS.length-1].k,'spend');
 ck('  and names the channels it covers',spend.calc,'all KPI channels \u00b7 always on the chart');
 // Nothing sets a split now, so no card should render one.
 ck('no stat produces a split value',
