@@ -306,6 +306,12 @@ ck('Avg Days cells match their header order',
    /_td\('days_to_close'[\s\S]{0,200}?_td\('to_demo'[\s\S]{0,200}?_td\('from_demo'/.test(bd),true);
 
 // ── 17. C8 — implemented products vs churn ──────────────────────────────
+// implemented_products is written during the CHURN REVIEW. Every deal that
+// carries it is churned and no active deal has it, so a churn RATE built on it
+// divides churned brands by a denominator that can only hold churned brands and
+// reads 100% for every product. The rate questions therefore run on
+// of_total_reviews / of_products, which both populations carry, and the field
+// itself is used only for the mix of brands that left.
 const C8=(()=>{const i=bd.indexOf('var BD_PROD_GROUP=');return bd.slice(i,bd.indexOf('</section>',i));})();
 ck('the section is locatable',C8.length>1500,true);
 // Badge and Banner are the same placement sold two ways.
@@ -320,48 +326,132 @@ ck('the multi-select is split on its delimiter',/raw\.split\(';'\)/.test(C8),tru
 ck('  and de-duplicated, so Badge+Banner counts once',
    /out\[BD_PROD_GROUP\[t\]\|\|t\]=1/.test(C8),true);
 
-// A RATE needs the whole book, not just the churned.
-ck('the denominator is every brand that ever signed',
+// ── the regression this section was rebuilt for ──
+// The first cut divided churned-with-product by all-brands-with-product. Since
+// only churned brands have the property, every row read 100.0%.
+ck('no rate is built on implemented_products any more',
+   /_chProdStat|_chRevYes|_chRevNo|_chProdNone/.test(bd),false);
+ck('  and the section says outright that no active brand carries the field',
+   /no active brand carries it at all/.test(C8),true);
+ck('  and names what would be needed to get a real per-product rate',
+   /Setting Implemented Products on active brands too/.test(C8),true);
+
+// ── the rate questions run on fields BOTH populations carry ──
+ck('reviews are banded on the recorded review count',
+   /_chBandStat\('of_total_reviews',/.test(C8),true);
+ck('product depth is banded on the recorded product count',
+   /_chBandStat\('of_products',/.test(C8),true);
+ck('the band denominator is every brand that ever signed',
    /var _chBook=closedWonDeals\.concat\(_chDeals\);/.test(bd),true);
 ck('  and churn is decided by deal stage, not by the set it came from',
-   /var churned=\(dd\.dealstage===BD_CHURN_STAGE\|\|dd\.dealstage===BD_CHURN_ONB_STAGE\);/.test(C8),true);
-// Deliberately NOT floored at 2026: that floor exists because Churn Type is
-// near-empty before then; implemented_products carries no such gap.
+   /_chIsChurned=function\(dd\)\{return dd\.dealstage===BD_CHURN_STAGE\|\|dd\.dealstage===BD_CHURN_ONB_STAGE;\}/.test(C8),true);
+// Deliberately NOT floored at 2026 — these are current deal properties.
 ck('it is not floored at 2026',/_chIn2026/.test(C8),false);
+// Bands read top-to-bottom as thinnest→deepest; re-sorting would destroy the
+// one thing the reader is looking at.
+ck('bands are never re-sorted by value',/sort\(/.test(C8.slice(C8.indexOf('_chBandBars='),C8.indexOf('_chVerdict='))),false);
 
-// "Not recorded" and "nothing implemented" are different claims.
-ck('unrecorded brands are excluded, not counted as nothing',
-   /if\(!\(dd\.implemented_products\|\|''\)\.trim\(\)\)\{_chProdUnset\+\+;return;\}/.test(C8),true);
-ck('  and the count of them is reported',
-   /_chProdUnset\+' of '\+_chBook\.length\+' signed brands have no Implemented Products value/.test(C8),true);
-ck('  with a separate bucket for a recorded empty set',
-   /if\(!ps\.length\)\{_chProdNone\.n\+\+;/.test(C8),true);
+// ── functional: banding, blanks and churn attribution ──
+const ctx8={console};vm.createContext(ctx8);
+vm.runInContext([
+  "var BD_CHURN_STAGE='3453925110', BD_CHURN_ONB_STAGE='3517067985';",
+  'var _chBook=[];',
+  decl(bd,'var BD_PROD_GROUP={','};'),
+  fn(bd,'_chProdsOf'), fn(bd,'_chIsChurned'), fn(bd,'_chNum'),
+  fn(bd,'_chPctOf'), fn(bd,'_chFmtPct'), fn(bd,'_chBandStat'), fn(bd,'_chVerdict'),
+  'Object.assign(globalThis,{_chProdsOf,_chIsChurned,_chNum,_chPctOf,_chFmtPct,_chBandStat,_chVerdict});',
+].join('\n'),ctx8);
+ck('the C8 helpers loaded',typeof ctx8._chBandStat,'function');
 
-// Question 1: does reviews-live go with less churn?
-ck('reviews-live is split against everything else',
-   /var rev=\(ps\.indexOf\('Reviews'\)>=0\)\?_chRevYes:_chRevNo;/.test(C8),true);
-ck('  and the verdict names the gap in points',
-   /pp <\/strong>|pp '\s*\+/.test(C8)||/Math\.abs\(_revGap\)\.toFixed\(1\)\+'pp /.test(C8),true);
+// The bands are read OUT OF THE SOURCE, not restated here — a test that
+// carries its own copy of the boundaries passes happily while the shipped ones
+// move underneath it.
+const shipBands=k=>{const m=new RegExp("_chBandStat\\('"+k+"',(\\[[\\s\\S]*?\\])\\)").exec(C8);
+  if(!m)throw new Error('no bands for '+k);return eval(m[1]);};
+const BANDS=shipBands('of_total_reviews'), PBANDS=shipBands('of_products');
+ck('the shipped review bands are the ones under test',
+   BANDS.map(b=>[b.lo,b.hi]),[[1,2],[3,9],[10,null]]);
+ck('  and the product bands likewise',
+   PBANDS.map(b=>[b.lo,b.hi]),[[1,1],[2,2],[3,null]]);
+// Contiguous and exclusive, or a brand is double-counted or silently lost.
+const contiguous=bs=>bs.every((b,i)=>i===0?b.lo===1:b.lo===bs[i-1].hi+1)&&bs[bs.length-1].hi===null;
+ck('review bands tile the range with no gap and no overlap',contiguous(BANDS),true);
+ck('  and so do the product bands',contiguous(PBANDS),true);
+const A={dealstage:'closedwon'}, CH={dealstage:'3453925110'}, CO={dealstage:'3517067985'};
+const mk=(st,v)=>Object.assign({},st,{of_total_reviews:v});
+ctx8._chBook=[
+  mk(A,'1'), mk(A,'2'), mk(CH,'2'),          // band 0 → 1/3
+  mk(A,'3'), mk(A,'9'), mk(CH,'5'), mk(CO,'4'), // band 1 → 2/4
+  mk(A,'10'), mk(A,'400'),                    // band 2 → 0/2
+  mk(A,''), mk(CH,''), mk(A,'0'), mk(A,'abc'),// not recorded
+];
+const B=ctx8._chBandStat('of_total_reviews',BANDS);
+ck('each band holds the brands whose count falls in it',
+   B.rows.map(r=>r.n),[3,4,2]);
+ck('  and counts the churned ones inside it',B.rows.map(r=>r.ch),[1,2,0]);
+ck('  with both churn stages counting as churned',B.rows[1].ch,2);
+// A blank is NOT zero: coverage collapses before 2026, so reading blanks as
+// "none" would fill the bottom band with brands that pre-date the field.
+ck('blanks, zero and junk are excluded rather than banded',B.unset,4);
+ck('  and none of them leaked into the bottom band',B.rows[0].n,3);
+// Band edges have to be contiguous and exclusive or a brand is double-counted
+// or lost.
+const one=v=>{ctx8._chBook=[Object.assign({},A,{of_total_reviews:String(v)})];
+  const s=ctx8._chBandStat('of_total_reviews',BANDS);
+  const hit=s.rows.map((r,i)=>r.n===1?i:-1).filter(i=>i>=0);
+  return hit.length===1?hit[0]:'landed in '+hit.length;};
+ck('every value lands in exactly one band',[1,2,3,9,10,11,9999].map(one),[0,0,1,1,2,2,2]);
+ctx8._chBook=[];
+// JSON.stringify(NaN) is "null", so comparing the raw value against null would
+// pass for an unguarded 0/0 as happily as for the guard that is actually there.
+const pctKind=r=>{const p=ctx8._chPctOf(r);
+  return p===null?'null':(typeof p==='number'&&!isFinite(p)?'NaN':'num:'+p);};
+ck('an empty book yields no divide-by-zero',
+   ctx8._chBandStat('of_total_reviews',BANDS).rows.map(pctKind),['null','null','null']);
+ck('  and a null rate prints as a dash',ctx8._chFmtPct(null),'—');
+
+// ── functional: the verdict ──
+const vb=rows=>({rows});
+ck('the verdict compares thinnest against deepest',
+   ctx8._chVerdict(vb([{n:100,ch:20},{n:100,ch:15},{n:100,ch:10}]),'the most reviews live'),
+   'Brands with the most reviews live churn <strong>10.0pp less</strong> than brands with the fewest (10.0% vs 20.0%).');
+ck('  and says "more" when the deepest band is worse',
+   /10\.0pp more/.test(ctx8._chVerdict(vb([{n:100,ch:10},{n:100,ch:15},{n:100,ch:20}]),'x')),true);
+ck('  treats a sub-point gap as no difference',
+   /about the same/.test(ctx8._chVerdict(vb([{n:1000,ch:100},{n:1000,ch:105}]),'x')),true);
+ck('  skips empty bands when picking the ends',
+   /20\.0% vs 40\.0%/.test(ctx8._chVerdict(vb([{n:0,ch:0},{n:10,ch:4},{n:10,ch:2},{n:0,ch:0}]),'x')),true);
+ck('  and refuses to compare one band against itself',
+   ctx8._chVerdict(vb([{n:0,ch:0},{n:10,ch:4},{n:0,ch:0}]),'x'),'Not enough recorded to compare.');
+ck('  or nothing at all',ctx8._chVerdict(vb([{n:0,ch:0}]),'x'),'Not enough recorded to compare.');
 // Two self-selected groups — this cannot show cause, and says so.
-ck('  while refusing to claim cause',
-   /Association, not cause/.test(C8),true);
-ck('  and treats a sub-point gap as no difference',
-   /Math\.abs\(_revGap\)<1/.test(C8),true);
+ck('the section refuses to claim cause',/Association, not cause/.test(C8),true);
 
-// Question 2: which product's brands churn most.
-ck('products are ranked worst-first',
-   /_chProdRows\.sort\(function\(a,b\)\{return \(b\.pct==null\?-1:b\.pct\)-\(a\.pct==null\?-1:a\.pct\);\}\)/.test(C8),true);
-ck('  a product nobody implemented is not shown',
-   /BD_PROD_ORDER\.filter\(function\(pk\)\{return _chProdStat\[pk\]\.n>0;\}\)/.test(C8),true);
-ck('  a zero denominator yields a dash, not a divide-by-zero',
-   /_chPctOf=function\(o\)\{return o\.n>0\?\(\(o\.ch\/o\.n\)\*100\):null;\}/.test(C8),true);
+// ── functional: the churned-brand mix ──
+ck('Badge and Banner collapse, and a brand counts once',
+   ctx8._chProdsOf({implemented_products:'Badge;Banner;Reviews'}).sort(),['Badge/Banner','Reviews']);
+ck('  an unrecorded field yields nothing',ctx8._chProdsOf({implemented_products:''}),[]);
+ck('  and so does a field of empty segments',ctx8._chProdsOf({implemented_products:';;'}),[]);
+// The mix is churned-only by construction — it is a composition, not a rate.
+ck('the mix iterates the churned deals alone',
+   /_chDeals\.forEach\(function\(dd\)\{\s*\n\s*var ps=_chProdsOf\(dd\);/.test(C8),true);
+ck('  and is labelled as a share of churned brands, not a rate',
+   /A share of churned brands, <strong>not<\/strong> a churn rate/.test(C8),true);
 // A brand with three products is counted in all three.
 ck('the rows overlap, and the section says so',
    /so the rows overlap and do not sum/.test(C8),true);
+ck('a product no churned brand had is not shown',
+   /BD_PROD_ORDER\.filter\(function\(pk\)\{return _chMix\[pk\]>0;\}\)/.test(C8),true);
+ck('an empty mix says so rather than drawing nothing',
+   /No churned brand has Implemented Products recorded/.test(C8),true);
 
-// The worker has to actually fetch the field, on ACTIVE deals too.
-ck('the property is requested',/'implemented_products',/.test(src),true);
+// The worker has to actually fetch every field this section reads.
+ck('implemented_products is requested',/'implemented_products',/.test(src),true);
 ck('  and mapped onto the deal row',/implemented_products: p\.implemented_products\|\|'',/.test(src),true);
+ck('of_total_reviews is requested',/'of_total_reviews',/.test(src),true);
+ck('  and mapped onto the deal row',/of_total_reviews: p\.of_total_reviews\|\|'',/.test(src),true);
+ck('of_products is requested',/'of_products',/.test(src),true);
+ck('  and mapped onto the deal row',/of_products: p\.of_products\|\|'',/.test(src),true);
 
 // The deals table moved down a number when this section was inserted.
 ck('the deals table is C9 now',/<span class="bd-sec-n">C9<\/span><span class="bd-sec-t">All Churned Deals/.test(bd),true);

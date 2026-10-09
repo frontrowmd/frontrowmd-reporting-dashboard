@@ -2282,16 +2282,16 @@ function renderBD(){
     +'Rows sum to '+_chBoard.length+'.</div></div></section>';
 
   // ── viii. Implemented products vs churn ──
-  // Two questions: does having Reviews live go with lower churn, and which
-  // product's brands churn most. Both are RATES, so both need the whole book
-  // that ever implemented the product as the denominator — active brands
-  // included, not just the ones that left.
   //
-  // Deliberately NOT floored at 2026 like the churn-detail sections. The floor
-  // exists because Churn Type and Churn Reason are near-empty before then;
-  // implemented_products is a current property of the deal and carries no such
-  // gap, so restricting it would throw away most of the denominator and tell
-  // you less, not more.
+  // WHY THIS IS NOT "churn rate by product".
+  // implemented_products is filled in during the CHURN REVIEW, not when a brand
+  // launches. Every deal that carries it is churned and not one active deal has
+  // it, so a rate built on it divides churned brands by a denominator that can
+  // only ever hold churned brands — it reads 100% for every product, which is
+  // exactly what the first cut of this section showed. The field is used here
+  // for the one thing it can honestly answer, the product MIX of brands that
+  // left, and the "are they less likely to churn" question is answered with
+  // # of Total Reviews and # of Products, which both populations carry.
   //
   // Badge and Banner count as ONE product, per the ask — they are the same
   // placement sold two ways.
@@ -2311,75 +2311,124 @@ function renderBD(){
     return any?Object.keys(out):[];
   };
   var _chBook=closedWonDeals.concat(_chDeals);           // every brand that ever signed
-  var _chProdStat={};BD_PROD_ORDER.forEach(function(pk){_chProdStat[pk]={n:0,ch:0};});
-  var _chProdNone={n:0,ch:0}, _chProdUnset=0;
-  var _chRevYes={n:0,ch:0}, _chRevNo={n:0,ch:0};
-  _chBook.forEach(function(dd){
-    var churned=(dd.dealstage===BD_CHURN_STAGE||dd.dealstage===BD_CHURN_ONB_STAGE);
-    var ps=_chProdsOf(dd);
-    if(!(dd.implemented_products||'').trim()){_chProdUnset++;return;}   // not recorded — counted apart, never as "none"
-    if(!ps.length){_chProdNone.n++;if(churned)_chProdNone.ch++;}
-    ps.forEach(function(pk){ if(_chProdStat[pk]){_chProdStat[pk].n++; if(churned)_chProdStat[pk].ch++;} });
-    var rev=(ps.indexOf('Reviews')>=0)?_chRevYes:_chRevNo;
-    rev.n++; if(churned)rev.ch++;
-  });
+  var _chIsChurned=function(dd){return dd.dealstage===BD_CHURN_STAGE||dd.dealstage===BD_CHURN_ONB_STAGE;};
+  var _chNum=function(v){var n=parseFloat(v);return isFinite(n)?n:null;};
   var _chPctOf=function(o){return o.n>0?((o.ch/o.n)*100):null;};
   var _chFmtPct=function(v){return v==null?'—':v.toFixed(1)+'%';};
 
+  // A band holds every signed brand whose recorded value falls inside it,
+  // active and churned alike, so ch/n is a share of the book and not a share of
+  // churn. A blank is NOT read as zero: coverage of both fields collapses
+  // before 2026 — half the pre-2026 active brands have no review count at all —
+  // so folding blanks into the bottom band would fill it with brands that
+  // merely pre-date the field and manufacture the result.
+  var _chBandStat=function(field,bands){
+    var rows=bands.map(function(b){return {l:b.l,lo:b.lo,hi:b.hi,n:0,ch:0};}), unset=0;
+    _chBook.forEach(function(dd){
+      var v=_chNum(dd[field]);
+      if(v==null||v<=0){unset++;return;}
+      for(var i=0;i<rows.length;i++){
+        if(v>=rows[i].lo&&(rows[i].hi==null||v<=rows[i].hi)){
+          rows[i].n++; if(_chIsChurned(dd))rows[i].ch++; break;
+        }
+      }
+    });
+    return {rows:rows,unset:unset};
+  };
+  var _chRevB=_chBandStat('of_total_reviews',[{l:'1–2 reviews',lo:1,hi:2},{l:'3–9 reviews',lo:3,hi:9},{l:'10+ reviews',lo:10,hi:null}]);
+  var _chCntB=_chBandStat('of_products',[{l:'1 product',lo:1,hi:1},{l:'2 products',lo:2,hi:2},{l:'3+ products',lo:3,hi:null}]);
+
+  // Bands are drawn in their natural order, thinnest first — the shape of the
+  // run down the column IS the answer, so they are never re-sorted by value.
+  var _chBandBars=function(rows,colour){
+    var mx=0;rows.forEach(function(r){var p=_chPctOf(r);if(p!=null&&p>mx)mx=p;});
+    var h='';
+    rows.forEach(function(r){
+      var pct=_chPctOf(r);
+      h+='<div class="bd-seg-row" style="display:grid;grid-template-columns:168px minmax(80px,1fr) 118px;align-items:center;gap:14px;padding:9px 0;border-bottom:1px solid rgba(23,44,69,.05)">'
+        +'<div style="font-size:11.5px;color:var(--navy);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+r.l+'</div>'
+        +'<div style="height:20px;background:rgba(23,44,69,.04);border-radius:5px;overflow:hidden">'
+        +'<div style="height:100%;width:'+(mx>0&&pct!=null?(pct/mx)*100:0)+'%;background:'+colour+';opacity:.92;border-radius:5px"></div></div>'
+        +'<div style="text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap">'
+        +'<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">'+_chFmtPct(pct)+'</span>'
+        +'<span style="font-size:10.5px;color:var(--grey);margin-left:6px">'+r.ch+'/'+r.n+'</span></div></div>';
+    });
+    return h;
+  };
+  // Compares the thinnest populated band with the deepest one. Both have to
+  // hold something, and they have to be different bands, or there is nothing
+  // to say.
+  var _chVerdict=function(b,more){
+    var a=null,z=null;
+    b.rows.forEach(function(r){if(r.n>0){if(a===null)a=r;z=r;}});
+    if(a===null||a===z)return 'Not enough recorded to compare.';
+    var pa=_chPctOf(a), pz=_chPctOf(z), gap=pa-pz;
+    if(Math.abs(gap)<1)return 'Churn is <strong>about the same</strong> across the range ('+Math.abs(gap).toFixed(1)+'pp apart).';
+    return 'Brands with '+more+' churn <strong>'+Math.abs(gap).toFixed(1)+'pp '
+      +(gap>0?'less':'more')+'</strong> than brands with the fewest ('
+      +_chFmtPct(pz)+' vs '+_chFmtPct(pa)+').';
+  };
+  var _chCoverNote=function(b,what){
+    return '<div style="font-size:10px;color:var(--grey);margin-top:6px;font-style:italic;line-height:1.5">'
+      +b.unset+' of '+_chBook.length+' signed brands have no '+what+' recorded and are excluded. '
+      +'A blank is not read as zero: coverage of this field collapses before 2026, so counting blanks as "none" would fill the bottom band with brands that merely pre-date the field.</div>';
+  };
+
   hChurn+='<section class="bd-sec" id="bd-sec-churnprod">';
   hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C8</span><span class="bd-sec-t">Implemented Products vs Churn</span>'
-    +'<span class="bd-sec-s">Of every brand that ever signed and has its products recorded, what share has churned — overall and per product. Badge and Banner count as one product.</span></div>';
+    +'<span class="bd-sec-s">Whether depth of implementation goes with churn, and what the brands that left had in place. Badge and Banner count as one product.</span></div>';
   hChurn+='<div class="tile" style="padding:16px 18px">';
 
-  // ── i. Reviews live or not ──────────────────────────────────────────────
-  var _revY=_chPctOf(_chRevYes), _revN=_chPctOf(_chRevNo);
-  var _revGap=(_revY!=null&&_revN!=null)?(_revN-_revY):null;
-  var _revTile=function(lbl,o,pct,accent){
-    return '<div style="flex:1 1 220px;min-width:200px;background:var(--white);border:1px solid var(--border);border-left:3px solid '+accent+';border-radius:10px;padding:13px 15px">'
-      +'<div style="font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em">'+lbl+'</div>'
-      +'<div style="font-family:var(--font-h);font-size:26px;font-weight:700;color:var(--navy);line-height:1.1;margin-top:3px">'+_chFmtPct(pct)+'</div>'
-      +'<div style="font-size:11px;color:var(--grey);margin-top:2px;font-variant-numeric:tabular-nums">'+o.ch+' churned ÷ '+o.n+' brands</div></div>';
-  };
-  hChurn+='<div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy);margin-bottom:9px">Does having Reviews live go with less churn?</div>';
-  hChurn+='<div style="display:flex;gap:12px;flex-wrap:wrap">'
-    +_revTile('Reviews live',_chRevYes,_revY,BD_PROD_C.Reviews)
-    +_revTile('No reviews live',_chRevNo,_revN,'#94A3B8')
-    +'</div>';
-  // The verdict names the gap and then names what it is NOT. These are two
-  // self-selected groups — a brand that got reviews live is already a brand
-  // that implemented — so this is an association, not a demonstrated cause.
+  // ── i. Reviews live ──────────────────────────────────────────────────────
+  hChurn+='<div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy);margin-bottom:3px">Do more reviews live go with less churn?</div>';
+  hChurn+='<div style="font-size:10.5px;color:var(--grey);margin-bottom:8px">Every signed brand with a recorded review count — active and churned alike, so this is a share of the book, not a share of churn.</div>';
+  hChurn+=_chBandBars(_chRevB.rows,BD_PROD_C.Reviews);
   hChurn+='<div style="font-size:11px;color:var(--navy);margin-top:10px;line-height:1.55">'
-    +((_revGap==null)?'Not enough recorded on either side to compare.'
-      :((Math.abs(_revGap)<1)
-        ? 'Churn is <strong>about the same</strong> either way ('+Math.abs(_revGap).toFixed(1)+'pp apart).'
-        : ('Brands with reviews live churn <strong>'+Math.abs(_revGap).toFixed(1)+'pp '
-           +(_revGap>0?'less':'more')+'</strong> than brands without.')))
+    +_chVerdict(_chRevB,'the most reviews live')
     +' <span style="color:var(--grey)">Association, not cause: a brand that got reviews live is already a brand that got as far as implementing.</span></div>';
+  hChurn+=_chCoverNote(_chRevB,'review count');
 
-  // ── ii. Per product ─────────────────────────────────────────────────────
-  var _chProdRows=BD_PROD_ORDER.filter(function(pk){return _chProdStat[pk].n>0;})
-    .map(function(pk){return {k:pk,l:pk,o:_chProdStat[pk],pct:_chPctOf(_chProdStat[pk])};});
-  if(_chProdNone.n>0)_chProdRows.push({k:'__none',l:'Nothing implemented',o:_chProdNone,pct:_chPctOf(_chProdNone)});
-  // Worst first — the question is which product's brands churn most.
-  _chProdRows.sort(function(a,b){return (b.pct==null?-1:b.pct)-(a.pct==null?-1:a.pct);});
-  var _chProdMax=0;_chProdRows.forEach(function(r){if(r.pct!=null&&r.pct>_chProdMax)_chProdMax=r.pct;});
-  hChurn+='<div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy);margin:18px 0 4px">Churn rate by product</div>';
-  hChurn+='<div style="font-size:10.5px;color:var(--grey);margin-bottom:8px">A brand counts once per product it implemented, so the rows overlap and do not sum.</div>';
-  _chProdRows.forEach(function(r){
-    var syn=(r.k==='__none');
-    var col=syn?'#94A3B8':(BD_PROD_C[r.k]||'#94A3B8');
-    hChurn+='<div class="bd-seg-row" style="display:grid;grid-template-columns:168px minmax(80px,1fr) 118px;align-items:center;gap:14px;padding:9px 0;border-bottom:1px solid rgba(23,44,69,.05)">'
-      +'<div title="'+(BD_PROD_FULL[r.k]||r.l)+'" style="font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'+(syn?';color:var(--grey);font-style:italic':';color:var(--navy);font-weight:600')+'">'+r.l+'</div>'
-      +'<div style="height:20px;background:rgba(23,44,69,.04);border-radius:5px;overflow:hidden">'
-      +'<div style="height:100%;width:'+(_chProdMax>0&&r.pct!=null?(r.pct/_chProdMax)*100:0)+'%;background:'+col+';opacity:'+(syn?'.7':'.92')+';border-radius:5px"></div></div>'
-      +'<div style="text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap">'
-      +'<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">'+_chFmtPct(r.pct)+'</span>'
-      +'<span style="font-size:10.5px;color:var(--grey);margin-left:6px">'+r.o.ch+'/'+r.o.n+'</span></div></div>';
+  // ── ii. How many products ────────────────────────────────────────────────
+  hChurn+='<div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy);margin:20px 0 3px">Do more products go with less churn?</div>';
+  hChurn+='<div style="font-size:10.5px;color:var(--grey);margin-bottom:8px">Same book, banded on # of Products.</div>';
+  hChurn+=_chBandBars(_chCntB.rows,BD_PROD_C['Badge/Banner']);
+  hChurn+='<div style="font-size:11px;color:var(--navy);margin-top:10px;line-height:1.55">'
+    +_chVerdict(_chCntB,'the most products')+'</div>';
+  hChurn+=_chCoverNote(_chCntB,'product count');
+
+  // ── iii. What the brands that left had implemented ───────────────────────
+  // A COMPOSITION of churned brands, never a rate — see the header comment.
+  var _chMix={};BD_PROD_ORDER.forEach(function(pk){_chMix[pk]=0;});
+  var _chMixN=0;
+  _chDeals.forEach(function(dd){
+    var ps=_chProdsOf(dd);
+    if(!ps.length)return;                                  // not recorded — never read as "nothing implemented"
+    _chMixN++;
+    ps.forEach(function(pk){if(_chMix[pk]!=null)_chMix[pk]++;});
   });
+  var _chMixRows=BD_PROD_ORDER.filter(function(pk){return _chMix[pk]>0;})
+    .map(function(pk){return {k:pk,c:_chMix[pk],pct:_chMixN>0?(_chMix[pk]/_chMixN)*100:null};});
+  _chMixRows.sort(function(a,b){return b.c-a.c;});
+  hChurn+='<div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy);margin:20px 0 3px">What the brands that left had implemented</div>';
+  hChurn+='<div style="font-size:10.5px;color:var(--grey);margin-bottom:8px">A share of churned brands, <strong>not</strong> a churn rate. A brand counts once per product it had, so the rows overlap and do not sum.</div>';
+  if(!_chMixRows.length){
+    hChurn+='<div style="font-size:11.5px;color:var(--grey);padding:10px 0">No churned brand has Implemented Products recorded.</div>';
+  }else{
+    var _chMixMax=0;_chMixRows.forEach(function(r){if(r.pct!=null&&r.pct>_chMixMax)_chMixMax=r.pct;});
+    _chMixRows.forEach(function(r){
+      hChurn+='<div class="bd-seg-row" style="display:grid;grid-template-columns:168px minmax(80px,1fr) 118px;align-items:center;gap:14px;padding:9px 0;border-bottom:1px solid rgba(23,44,69,.05)">'
+        +'<div title="'+(BD_PROD_FULL[r.k]||r.k)+'" style="font-size:11.5px;color:var(--navy);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+r.k+'</div>'
+        +'<div style="height:20px;background:rgba(23,44,69,.04);border-radius:5px;overflow:hidden">'
+        +'<div style="height:100%;width:'+(_chMixMax>0&&r.pct!=null?(r.pct/_chMixMax)*100:0)+'%;background:'+(BD_PROD_C[r.k]||'#94A3B8')+';opacity:.92;border-radius:5px"></div></div>'
+        +'<div style="text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap">'
+        +'<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">'+_chFmtPct(r.pct)+'</span>'
+        +'<span style="font-size:10.5px;color:var(--grey);margin-left:6px">'+r.c+'/'+_chMixN+'</span></div></div>';
+    });
+  }
   hChurn+='<div style="font-size:10px;color:var(--grey);margin-top:9px;font-style:italic;line-height:1.5">'
-    +'Denominator is every brand that ever signed with that product recorded as implemented — active and churned alike, so this is a share of the book, not a share of churn. '
-    +(_chProdUnset?(_chProdUnset+' of '+_chBook.length+' signed brands have no Implemented Products value and are excluded entirely — they are not counted as "nothing implemented", which is a different claim. '):'')
-    +'Badge and Banner are one product here.</div>';
+    +'Implemented Products is filled in during the churn review, so only '+_chMixN+' of '+_chDeals.length+' churned brands carry it and <strong>no active brand carries it at all</strong>. '
+    +'That is why this is a composition of the brands that left rather than a churn rate: a rate would divide churned brands by a denominator that can only contain churned brands, and read 100% for every product. '
+    +'Setting Implemented Products on active brands too is what would turn this into a real per-product churn rate.</div>';
   hChurn+='</div></section>';
 
   // ── ix. All Deals, churned only ──
