@@ -414,6 +414,12 @@ function bdSetTab(t){
 // sections C5 and C7 already use.
 var _bdChurnKmScope='all';
 var _bdChurnRateGrain='month';
+// C5 and C6 are matrices, not time charts: their toggle scopes WHICH churns
+// feed them — the latest month, or the latest quarter — rather than changing an
+// axis. The period is named on the section so the scope is never implicit.
+var _bdChurnAbGrain='month', _bdChurnTrGrain='month';
+function bdSetChurnAbGrain(g){if(_bdChurnAbGrain===g)return;_bdChurnAbGrain=g;renderBD();}
+function bdSetChurnTrGrain(g){if(_bdChurnTrGrain===g)return;_bdChurnTrGrain=g;renderBD();}
 function bdSetChurnRateGrain(g){if(_bdChurnRateGrain===g)return;_bdChurnRateGrain=g;renderBD();}
 function bdSetChurnKmScope(v){if(_bdChurnKmScope===v)return;_bdChurnKmScope=v;renderBD();}
 // Churn Type is grouped before testing, so Delinquent Payment counts as Board
@@ -1851,6 +1857,18 @@ function renderBD(){
     });
     return Object.keys(seen).sort();
   };
+  // The LATEST period that actually has data, not the current calendar one — a
+  // month with no churn yet would otherwise blank the matrix and read as "no
+  // churn of any kind", which is a different claim from "none yet this month".
+  var _chLatest=function(list,grain){
+    var best='';
+    list.forEach(function(dd){
+      var k=_chPeriodOf(dd.pausechurn_date,grain);
+      if(k&&k>=BD_CHURN_DETAIL_FROM&&k>best)best=k;
+    });
+    return best;
+  };
+  var _chInPeriod=function(dd,k,grain){return !!k&&_chPeriodOf(dd.pausechurn_date,grain)===k;};
   var _chGrainPill=function(cur,g,label,fnName){
     var on=cur===g;
     return '<span onclick="'+fnName+"('"+g+"')"+'" style="cursor:pointer;padding:4px 13px;border-radius:50px;font-size:11px;font-weight:700;font-family:var(--font-h);'
@@ -2067,18 +2085,27 @@ function renderBD(){
   var _chAbRows=[{k:'Yes',l:'A/B tested'},{k:'No',l:'No A/B test'},{k:'Unknown',l:'Unknown'},{k:'',l:'Not recorded'}];
   var _chAbCols=BD_TRAFFIC_BANDS.map(function(b){return {k:b.k,l:b.k};}).concat([{k:'',l:'No measurement'}]);
   var _chAbAny=0;_chBoard.forEach(function(dd){if((dd.ab_test||'').trim())_chAbAny++;});
+  // Scoped to one period, picked by the toggle. The axes are categorical, so
+  // the grain filters WHICH churns are counted rather than becoming an axis.
+  var _chAbPeriod=_chLatest(_chBoard,_bdChurnAbGrain);
+  var _chAbSet=_chBoard.filter(function(dd){return _chInPeriod(dd,_chAbPeriod,_bdChurnAbGrain);});
+  var _chAbAnyP=0;_chAbSet.forEach(function(dd){if((dd.ab_test||'').trim())_chAbAnyP++;});
   hChurn+='<section class="bd-sec" id="bd-sec-churnab">';
   hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C5</span><span class="bd-sec-t">A/B Test · Board Defined Churn</span>'
-    +'<span class="bd-sec-s">Of board-defined and delinquent-payment churns, how many ran an A/B test — against measured web traffic.</span></div>';
+    +'<span class="bd-sec-s">Of board-defined and delinquent-payment churns, how many ran an A/B test — against measured web traffic. '
+    +(_chAbPeriod?('Showing <strong>'+_chPeriodLbl(_chAbPeriod)+'</strong>, the most recent '+(_bdChurnAbGrain==='quarter'?'quarter':'month')+' with churn.'):'No churn dated 2026 onward yet.')
+    +'</span>'
+    +'<span style="margin-left:auto">'+_chGrainSeg(_bdChurnAbGrain,'bdSetChurnAbGrain')+'</span></div>';
   hChurn+='<div class="tile" style="padding:16px 18px">'+_chMatrix(_chAbRows,_chAbCols,function(r,c){
     var n=0;
-    _chBoard.forEach(function(dd){
+    _chAbSet.forEach(function(dd){
       if((dd.ab_test||'').trim()!==r.k)return;
       if(_chBandOf(dd.web_traffic__measured)!==c.k)return;
       n++;
     });
     return n;
-  },'n = '+_chBoard.length+' board-defined or delinquent-payment churns; '+_chAbAny+' of them have an A/B Test value. '
+  },'n = '+_chAbSet.length+' board-defined or delinquent-payment churns in '+(_chAbPeriod?_chPeriodLbl(_chAbPeriod):'this period')
+   +' (of '+_chBoard.length+' all time); '+_chAbAnyP+' of them have an A/B Test value. '
    +'"Unknown" is a stored answer and is kept apart from "Not recorded", which is a blank field — collapsing them into a yes/no split would overstate what is known. '
    +'A measured traffic of 0 is read as no measurement, not as low traffic: the brands storing 0 are almost all ones that never launched. '
    +'No correlation statistic is shown — the sample does not support one.')+'</div></section>';
@@ -2101,18 +2128,24 @@ function renderBD(){
     if((dd.monthly_web_traffic__reported_at_time_of_churn||'').trim())_chRepN++;
     if((dd.monthly_web_traffic__reported_at_time_of_churn||'').trim()&&dd.web_traffic__measured>0&&(dd.churn_reason||'').trim())_chBothN++;
   });
+  var _chTrPeriod=_chLatest(_chDeals,_bdChurnTrGrain);
+  var _chTrSet=_chDeals.filter(function(dd){return _chInPeriod(dd,_chTrPeriod,_bdChurnTrGrain);});
   hChurn+='<section class="bd-sec" id="bd-sec-churntraffic">';
   hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C6</span><span class="bd-sec-t">Web Traffic at Churn</span>'
-    +'<span class="bd-sec-s">Measured traffic, binned into the reported field’s own bands, against the churn reason.</span></div>';
+    +'<span class="bd-sec-s">Measured traffic, binned into the reported field’s own bands, against the churn reason. '
+    +(_chTrPeriod?('Showing <strong>'+_chPeriodLbl(_chTrPeriod)+'</strong>, the most recent '+(_bdChurnTrGrain==='quarter'?'quarter':'month')+' with churn.'):'No churn dated 2026 onward yet.')
+    +'</span>'
+    +'<span style="margin-left:auto">'+_chGrainSeg(_bdChurnTrGrain,'bdSetChurnTrGrain')+'</span></div>';
   hChurn+='<div class="tile" style="padding:16px 18px">'+_chMatrix(_chTrRows,_chTrCols,function(r,c){
     var n=0;
-    _chDeals.forEach(function(dd){
+    _chTrSet.forEach(function(dd){
       if(_chBandOf(dd.web_traffic__measured)!==r.k)return;
       if(_chReasonBucket(dd)!==c.k)return;
       n++;
     });
     return n;
-  },'Rows are MEASURED traffic binned into the reported field’s bands. '
+  },'Rows are MEASURED traffic binned into the reported field’s bands. Scoped to '
+   +(_chTrPeriod?_chPeriodLbl(_chTrPeriod):'this period')+' — '+_chTrSet.length+' of '+_chDeals.length+' churned deals. '
    +_chRepN+' of '+_chDeals.length+' churned deals carry a reported band at all, and only '+_chBothN+' have a reported band, a measured figure above zero and a reason — which is why this is a count table and not a correlation.')+'</div>';
   // Reported vs measured, side by side, where both exist — the disagreement is
   // the point, and it is lost if only one of them is charted.

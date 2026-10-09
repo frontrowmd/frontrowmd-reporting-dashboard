@@ -176,5 +176,48 @@ ck('  and a period with no opening book IS null',
 ck('the hover bands are declared transparent',
    /\.bd-rate-band\{fill:transparent;cursor:pointer\}/.test(bd),true);
 
+// ── 11. C5 and C6 scope to a period rather than growing an axis ──────────
+// Their axes are categorical (A/B answer x traffic band; traffic band x
+// reason), so a grain cannot become an axis without destroying the section.
+// The toggle filters WHICH churns are counted instead.
+ck('both have a Monthly⁄Quarterly toggle',
+   /_chGrainSeg\(_bdChurnAbGrain,'bdSetChurnAbGrain'\)/.test(bd)
+   &&/_chGrainSeg\(_bdChurnTrGrain,'bdSetChurnTrGrain'\)/.test(bd),true);
+ck('  with their own state, like C3 and C4',
+   /var _bdChurnAbGrain='month', _bdChurnTrGrain='month';/.test(bd),true);
+ck('  defaulting to monthly',
+   (bd.match(/_bdChurn(Ab|Tr|Rate)Grain='month'/g)||[]).length,3);
+ck('  and each re-renders on change',
+   /function bdSetChurnAbGrain\(g\)\{if\(_bdChurnAbGrain===g\)return;_bdChurnAbGrain=g;renderBD\(\);\}/.test(bd)
+   &&/function bdSetChurnTrGrain\(g\)\{if\(_bdChurnTrGrain===g\)return;_bdChurnTrGrain=g;renderBD\(\);\}/.test(bd),true);
+// The LATEST period with data, not the current calendar one: a month with no
+// churn yet would blank the matrix and read as "no churn of any kind", which
+// is a different claim from "none yet this month".
+ck('the period is the latest WITH data',
+   /if\(k&&k>=BD_CHURN_DETAIL_FROM&&k>best\)best=k;/.test(bd),true);
+ck('  floored at 2026 like the rest of the tab',
+   /_chLatest=function\(list,grain\)[\s\S]{0,260}?k>=BD_CHURN_DETAIL_FROM/.test(bd),true);
+ck('C5 filters its board-defined set to that period',
+   /_chAbSet=_chBoard\.filter\(function\(dd\)\{return _chInPeriod\(dd,_chAbPeriod,_bdChurnAbGrain\);\}\)/.test(bd),true);
+ck('C6 filters the churned set to its own period',
+   /_chTrSet=_chDeals\.filter\(function\(dd\)\{return _chInPeriod\(dd,_chTrPeriod,_bdChurnTrGrain\);\}\)/.test(bd),true);
+// Each section's period must be resolved with its OWN grain, or flipping one
+// toggle silently moves the other section's window.
+ck('  and resolves that period with its OWN grain',
+   /_chTrPeriod=_chLatest\(_chDeals,_bdChurnTrGrain\)/.test(bd),true);
+ck('  as does C5',/_chAbPeriod=_chLatest\(_chBoard,_bdChurnAbGrain\)/.test(bd),true);
+ck('  and each matrix counts the SCOPED set, not the full one',
+   /_chAbSet\.forEach\(function\(dd\)\{/.test(bd)&&/_chTrSet\.forEach\(function\(dd\)\{/.test(bd),true);
+ck('  with no stale full-set loop left behind',
+   /_chBoard\.forEach\(function\(dd\)\{\s*\n\s*if\(\(dd\.ab_test/.test(bd),false);
+// A scoped count is meaningless unless the scope is on screen.
+ck('both name the period they are showing',
+   (bd.match(/the most recent '\+\(_bdChurn(Ab|Tr)Grain==='quarter'\?'quarter':'month'\)\+' with churn\./g)||[]).length,2);
+ck('  and say how much of the whole set that is',
+   /\+' \(of '\+_chBoard\.length\+' all time\)/.test(bd)
+   &&/\+_chTrSet\.length\+' of '\+_chDeals\.length\+' churned deals\. '/.test(bd),true);
+ck('an empty period says so rather than showing a blank grid',
+   (bd.match(/No churn dated 2026 onward yet\./g)||[]).length,2);
+
 console.log('\n'+pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);
