@@ -4619,10 +4619,27 @@ function _metaFilterBar(sfx){
   for(var fi=0;fi<ADS_TBL_FILTERS.length;fi++){
     var F=ADS_TBL_FILTERS[fi];
     var cur=S.irfan[F[3][0]]||'all';
+    // Options can be a function when they depend on the loaded payload.
+    var _opts=(typeof F[2]==='function')?F[2]():F[2];
+    if(F[4]==='select'){
+      // A dropdown keeps a long, data-driven list out of the pill rows. Only
+      // worth showing once there is something to choose between.
+      if(_opts.length<=1){ h+=row(F[1],'<span style="font-size:11px;color:var(--grey)">none recorded for this channel</span>'); continue; }
+      var sel='<select onchange="irfanAdsFilter(\''+F[0]+'\',this.value)" '
+        +'style="font-family:var(--font-b);font-size:11px;color:var(--navy);background:var(--white);'
+        +'border:1px solid '+(cur==='all'?'var(--border)':'var(--teal)')+';border-radius:50px;'
+        +'padding:4px 10px;max-width:320px;cursor:pointer">';
+      for(var oi=0;oi<_opts.length;oi++){
+        var o=_opts[oi];
+        sel+='<option value="'+_esc(o[0])+'"'+(cur===o[0]?' selected':'')+'>'+_esc(o[1])+'</option>';
+      }
+      h+=row(F[1],sel+'</select>');
+      continue;
+    }
     var pills='';
-    for(var oi=0;oi<F[2].length;oi++){
-      var o=F[2][oi];
-      pills+='<button class="cln-fp'+(cur===o[0]?' on':'')+'" onclick="irfanAdsFilter(\''+F[0]+'\',\''+o[0]+'\')">'+o[1]+'</button>';
+    for(var oi2=0;oi2<_opts.length;oi2++){
+      var o2=_opts[oi2];
+      pills+='<button class="cln-fp'+(cur===o2[0]?' on':'')+'" onclick="irfanAdsFilter(\''+F[0]+'\',\''+o2[0]+'\')">'+o2[1]+'</button>';
     }
     h+=row(F[1],pills);
   }
@@ -5145,11 +5162,67 @@ function _clinicianPie(rows,total,noun){
 // Filter definitions for the ad tables, shared by all three pages that show them
 // (Irfan / Detailed / Clinician). The 4th element lists the per-table state keys
 // each control writes, so one pill keeps every table in agreement.
+// ── Conversion filter ───────────────────────────────────────────────────────
+// Only AD SETS carry the real optimization target (optTarget); a CAMPAIGN's is
+// its ad sets' targets joined with ' · ', and a CREATIVE has none at all - only
+// the legacy capiConv heuristic label, which uses a DIFFERENT spelling
+// ("CAPI · Demo + Webinar" vs optTarget's "CAPI -- Demo + Webinar"). Listing
+// both would put two names for one conversion in the dropdown, and filtering
+// creatives on an optTarget value would empty the table. So a creative inherits
+// its ad set's target, and capiConv is only the last resort.
+let _adsConvByAdset={};
+function _adsConvIndex(meta){
+  _adsConvByAdset={};
+  for(const a of ((meta&&meta.audiences)||[])){
+    if(a&&a.name&&a.optTarget)_adsConvByAdset[String(a.name).toLowerCase()]=a.optTarget;
+  }
+}
+function _adsConvList(o){
+  // Split ONLY optTarget: that is the field the campaign roll-up joins. The
+  // legacy capiConv label contains a ' · ' of its own and must stay atomic, or
+  // "CAPI · Demo + Webinar" turns into "CAPI" and "Demo + Webinar".
+  if(o&&o.optTarget)return String(o.optTarget).split(' · ').map(s=>s.trim()).filter(Boolean);
+  const viaAdset=(o&&o.adsetName)?_adsConvByAdset[String(o.adsetName).toLowerCase()]:'';
+  if(viaAdset)return [viaAdset];
+  const c=(o&&o.capiConv)?String(o.capiConv).trim():'';
+  return c?[c]:[];
+}
+function _adsConvMatch(o,want){
+  if(!want||want==='all')return true;
+  if(want==='__none')return _adsConvList(o).length===0;
+  return _adsConvList(o).indexOf(want)>=0;
+}
+// Options come from the data, not a hardcoded list: the account's custom
+// conversions change without this file changing, and an option nothing matches
+// is worse than no option. Campaigns and ad sets are enough - a creative only
+// ever resolves to its ad set's target or a capiConv already seen there.
+function _adsConvOptions(){
+  const ch=(typeof _curAdCh==='function')?_curAdCh():'meta';
+  const m=(typeof _irfanMetaD!=='undefined'&&_irfanMetaD&&_irfanMetaD.channels)?_irfanMetaD.channels[ch]:null;
+  const seen={}; let none=false;
+  for(const list of [m&&m.campaigns,m&&m.audiences]){
+    for(const o of (list||[])){
+      const parts=_adsConvList(o);
+      if(!parts.length){ if((o&&o.spend)>0)none=true; continue; }
+      for(const p of parts)seen[p]=1;
+    }
+  }
+  const opts=[['all','All']];
+  for(const k of Object.keys(seen).sort((a,b)=>a.localeCompare(b)))opts.push([k,k]);
+  // Rows with nothing recorded stay reachable rather than stranded - on some
+  // channels that is every row, which is itself worth being able to see.
+  if(none)opts.push(['__none','(none recorded)']);
+  return opts;
+}
 const ADS_TBL_FILTERS=[
   ['stage','Stage',[['all','All'],['s1','TOF'],['s2','MOF'],['s3','BOF'],['s4','Retargeting']],['metaCampStageF','metaAdsetStageF']],
   ['status','Status',[['all','All'],['active','Active'],['paused','Paused']],['metaCampStatusF','metaCreStatusF','metaAdsetStatusF']],
   ['tag','Tag',[['all','All'],['WINNER','Winner'],['TESTING','Testing'],['LOSER','Loser']],['metaCampTagF','metaCreTagF','metaAdsetTagF']],
   ['flag','Flags',[['all','All'],['any','Any flag'],['pause','PAUSE'],['fatigue','Fatigue'],['naming','Naming']],['metaCampFlagF','metaCreFlagF','metaAdsetFlagF']],
+  // Options are a FUNCTION because they come from the loaded payload, and a
+  // dropdown rather than pills because an account can carry a dozen custom
+  // conversions with names far too long to sit in a pill row.
+  ['conv','Conversion',_adsConvOptions,['metaCampConvF','metaCreConvF','metaAdsetConvF'],'select'],
 ];
 // One control writes every table's state key, so all four tables always agree.
 // The campaign key is the canonical one for pill highlighting. Shared by the
@@ -6395,6 +6468,7 @@ function _buildAdSetTableHTML(meta,channel,_flagsByName,fatigueMap){
   const _flatByName=new Map();
   for(const c of (meta.creatives||[]))_flatByName.set((c.name||'').toLowerCase(),c);
   const sortSt=S.irfan.metaAdsetSort,stageF=S.irfan.metaAdsetStageF,tagF=S.irfan.metaAdsetTagF,flagF=S.irfan.metaAdsetFlagF,statusF=S.irfan.metaAdsetStatusF||'all';
+  const convF=S.irfan.metaAdsetConvF||'all';
   // Build rows with nested creatives + derived aggregates.
   let rows=adSets.map(a=>{
     const r=Object.assign({},a);
@@ -6439,6 +6513,7 @@ function _buildAdSetTableHTML(meta,channel,_flagsByName,fatigueMap){
   if(typeof scoreCreatives==='function'&&rows.length>0){try{scoreCreatives(rows);}catch(e){}}
   // Tag + Flag filters
   if(tagF!=='all')rows=rows.filter(c=>c._tag===tagF);
+  if(convF!=='all')rows=rows.filter(c=>_adsConvMatch(c,convF));
   if(statusF!=='all')rows=rows.filter(c=>{const act=_isActiveRow(c);return statusF==='active'?act:!act;});
   if(flagF!=='all')rows=rows.filter(c=>{const fc=c._flagCounts||{pause:0,fatigue:0,naming:0};if(flagF==='pause')return fc.pause>0;if(flagF==='fatigue')return fc.fatigue>0;if(flagF==='naming')return fc.naming>0;if(flagF==='any')return c._hasAnyFlag;return true;});
   rows=_irfanSortRows(rows,sortSt.col,sortSt.dir);
@@ -6612,6 +6687,8 @@ function _renderIrfanMetaTables(d, channel){
   const campTarget=campTargets[0]||null;
   const creTarget=creTargets[0]||null;
   const meta=d&&d.channels&&d.channels[channel];
+  // Creatives inherit their ad set's target; index it before any table renders.
+  _adsConvIndex(meta);
   if(!meta){const empty='<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px">No '+chLabel+' data available for this window</div>';[...campTargets,...creTargets,...audTargets,...adsetTargets].forEach(el=>el.innerHTML=empty);return;}
   // Defaults: sort by CPD ASCENDING — cheapest first. _irfanSortRows pushes a
   // null CPD to the bottom whichever way the sort runs, so rows with no demos
@@ -6623,6 +6700,9 @@ function _renderIrfanMetaTables(d, channel){
   if(!S.irfan.metaCreTagF)S.irfan.metaCreTagF='all';
   if(!S.irfan.metaCreFlagF)S.irfan.metaCreFlagF='all';
   if(!S.irfan.metaCampTagF)S.irfan.metaCampTagF='all';
+  if(!S.irfan.metaCampConvF)S.irfan.metaCampConvF='all';
+  if(!S.irfan.metaCreConvF)S.irfan.metaCreConvF='all';
+  if(!S.irfan.metaAdsetConvF)S.irfan.metaAdsetConvF='all';
   if(!S.irfan.metaCampFlagF)S.irfan.metaCampFlagF='all';
   if(!S.irfan.metaCampStatusF)S.irfan.metaCampStatusF='all';
   if(S.irfan.metaAllExpanded==null)S.irfan.metaAllExpanded=false;
@@ -6634,6 +6714,7 @@ function _renderIrfanMetaTables(d, channel){
   if(S.irfan.metaAdsetAllExpanded==null)S.irfan.metaAdsetAllExpanded=false;
   const campSort=S.irfan.metaCampSort,creSort=S.irfan.metaCreSort,audSort=S.irfan.metaAudSort,stageF=S.irfan.metaCampStageF;
   const tagF=S.irfan.metaCreTagF,flagF=S.irfan.metaCreFlagF,creStatusF=S.irfan.metaCreStatusF||'all';
+  const creConvF=S.irfan.metaCreConvF||'all',campConvF=S.irfan.metaCampConvF||'all';
   const campTagF=S.irfan.metaCampTagF,campFlagF=S.irfan.metaCampFlagF,campStatusF=S.irfan.metaCampStatusF;
   const fatigueMap=meta.fatigueMap||{};
 
@@ -6877,6 +6958,7 @@ function _renderIrfanMetaTables(d, channel){
   // (ACTIVE if any nested ad set is delivering); 'paused' = anything not active.
   if(campStatusF!=='all')campRows=campRows.filter(c=>{const act=c.status==='ACTIVE'||(!c.status&&(c.spend||0)>0);return campStatusF==='active'?act:!act;});
   if(campTagF!=='all')campRows=campRows.filter(c=>c._tag===campTagF);
+  if(campConvF!=='all')campRows=campRows.filter(c=>_adsConvMatch(c,campConvF));
   if(campFlagF!=='all')campRows=campRows.filter(c=>{
     const fc=c._flagCounts||{pause:0,fatigue:0,naming:0};
     if(campFlagF==='pause')return fc.pause>0;
@@ -7067,6 +7149,7 @@ function _renderIrfanMetaTables(d, channel){
   // Apply Tag + Flag filters (default: 'all', so no-op)
   let creRows=creAll.slice();
   if(tagF!=='all')creRows=creRows.filter(c=>c._tag===tagF);
+  if(creConvF!=='all')creRows=creRows.filter(c=>_adsConvMatch(c,creConvF));
   if(creStatusF!=='all')creRows=creRows.filter(c=>{const act=_isActiveRow(c);return creStatusF==='active'?act:!act;});
   if(flagF!=='all')creRows=creRows.filter(c=>{
     if(flagF==='pause')return c._pause;
