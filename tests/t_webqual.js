@@ -102,8 +102,15 @@ ck('the all-time webinars run through filterActiveBrands',
    /const _mfWebActive = filterActiveBrands\(_mfWebinars \|\| \[\]\);/.test(src),true);
 ck('and the filtered list is what the funnel is built from',
    /buildMarketingFunnel\(monthlyAdSpend, allTimeQualifiedForFunnel, filterActiveBrands\(allTimeClosedWon\), _mfWebActive\)/.test(src),true);
-ck('the KV cache falls back to an empty array, not null',
-   /kvCachedFetch\(env, 'alltime_webinar_happened_v1', 900,\s*\n\s*\(\) => fetchWebinarHappenedAllTime\(hsToken\), \[\]\)/.test(src),true);
+// Now on kvCachedFetchNE, which never caches an empty array and serves the last
+// good value instead — so it cannot return null, and no [] fallback argument is
+// needed to guarantee that. During the 2026-10-09 HubSpot outage the old form
+// cached [] here for the full 15-minute TTL.
+ck('the webinar cache cannot store a failed fetch',
+   /kvCachedFetchNE\(env, 'alltime_webinar_happened_v1', 900,\s*\n\s*\(\) => fetchWebinarHappenedAllTime\(hsToken\)\)/.test(src),true);
+ck('  and still cannot hand back null',
+   /return \(stale && stale\.length\) \? stale : \(data \|\| \[\]\);/.test(src)
+   && /catch \(e\) \{ return stale \|\| \[\]; \}/.test(src),true);
 ck('a throw in that fetch is logged rather than swallowed',
    /catch \(e\) \{ console\.error\('funnel webinar fetch failed:'/.test(src),true);
 // Logs the pre-filter count as well as the post-filter one: without "of N

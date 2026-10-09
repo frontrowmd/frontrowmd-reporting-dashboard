@@ -167,8 +167,14 @@ ck('the trend no longer fetches churned-by-close',/fetchChurnedByCloseDate/.test
 ck('  nor slices closed-won',/allTimeClosedWon/.test(_TRB),false);
 ck('  so it is one HubSpot search, not three',
    (_TRB.match(/await fetch[A-Z]\w+\(hsToken/g)||[]).length,1);
-ck('the cache key was revved so v1 series (with signed) are not served',
-   /brand_trend_\$\{_btWin\.from\}_\$\{_btWin\.to\}_v2/.test(src),true);
+// Revved again to _v3 on 2026-10-09: the HubSpot outage let a zero-demo series
+// be cached under _v2, and refusing to WRITE one does not remove one already
+// written — kvCachedFetch serves an expired entry as stale when a rebuild
+// throws. Assert by intent: never an older version.
+ck('the cache key was revved past every poisoned version',
+   /brand_trend_\$\{_btWin\.from\}_\$\{_btWin\.to\}_v3/.test(src),true);
+ck('  and no older key is still read',
+   /brand_trend_\$\{_btWin\.from\}_\$\{_btWin\.to\}_v[12]\b/.test(src),false);
 // v37 added the fields to currentData; v38 is when they were actually
 // forwarded, so a cached v37 response has them MISSING rather than stale.
 ck('the forwarding fix bumped the cache version past v37',

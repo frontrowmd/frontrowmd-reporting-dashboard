@@ -5974,8 +5974,8 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     // for MTD / Last Month / etc.), so cache 15 min. This is the primary fix
     // for the "Too many subrequests" failures the dashboard started hitting.
     const [allQualKpi, _cw] = await Promise.all([
-      kvCachedFetch(env, 'alltime_qualified_v2', 900, () => fetchAllQualifiedDeals(hsToken), []),
-      kvCachedFetch(env, 'alltime_closedwon_v1', 900, () => fetchAllClosedWon(hsToken), []),
+      kvCachedFetchNE(env, 'alltime_qualified_v2', 900, () => fetchAllQualifiedDeals(hsToken)),
+      kvCachedFetchNE(env, 'alltime_closedwon_v1', 900, () => fetchAllClosedWon(hsToken)),
     ]);
     allTimeClosedWon = _cw;
     allTimeQualifiedForFunnel = allQualKpi;
@@ -6039,8 +6039,8 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   // other all-time funnel inputs: identical on every request within the TTL.
   let _mfWebinars = [];
   try {
-    _mfWebinars = await kvCachedFetch(env, 'alltime_webinar_happened_v1', 900,
-      () => fetchWebinarHappenedAllTime(hsToken), []);
+    _mfWebinars = await kvCachedFetchNE(env, 'alltime_webinar_happened_v1', 900,
+      () => fetchWebinarHappenedAllTime(hsToken));
   } catch (e) { console.error('funnel webinar fetch failed:', e && e.message); }
   const _mfWebActive = filterActiveBrands(_mfWebinars || []);
   console.log(`funnel inputs: ${(allTimeQualifiedForFunnel||[]).length} held, ${_mfWebActive.length} webinars (of ${(_mfWebinars||[]).length} fetched)`);
@@ -6064,7 +6064,7 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     const _btWin = clnTrendWindow(fmt(yd));
     currentData.trendRange = _btWin;
     try {
-      currentData.trend = await kvCachedFetch(env, `brand_trend_${_btWin.from}_${_btWin.to}_v2`, 1800,
+      currentData.trend = await kvCachedFetch(env, `brand_trend_${_btWin.from}_${_btWin.to}_v3`, 1800,
         async () => {
           const _wP = fetchWindsorAds(apiKey, wFrom(_btWin.from), _btWin.to);
           const _sch = await fetchScheduledContacts(hsToken, _btWin.from, _btWin.to);
@@ -6072,6 +6072,15 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
           // Never cache a series with no ad rows at all — that is a failed
           // Windsor fetch, and caching it would flatten the chart for the TTL.
           if (!Array.isArray(_w) || !_w.length) throw new Error('brand trend: no Windsor rows — not caching');
+          // The SAME reasoning for the HubSpot half, which this guard used to
+          // omit. The series spans ~14 weeks of a book that books demos every
+          // week, so an empty contact list is a failed fetch, not a quiet
+          // quarter. Without this, the 2026-10-09 HubSpot outage cached a
+          // series carrying real spend and ZERO demos, and every reader got a
+          // flat demo line under a normal spend area for the full 30-minute
+          // TTL — Count 0, CVR 0.00%, Cost Per —, while Ad Spend and CTR
+          // looked perfectly healthy.
+          if (!Array.isArray(_sch) || !_sch.length) throw new Error('brand trend: no HubSpot contacts — not caching');
           const t = buildBrandTrend(_sch, _w, _btWin.from, _btWin.to);
           console.log(`brand trend: ${_sch.length} contacts, ${_w.length} ad rows -> ${t.day.length}d/${t.week.length}w/${t.month.length}m`);
           return t;
