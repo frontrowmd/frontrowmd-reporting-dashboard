@@ -84,6 +84,7 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
 .bd-nav-i:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
 /* C2's hover columns. An SVG <rect> with no fill paints BLACK, so this rule is
    load-bearing: without it the chart is a solid block. */
+.bd-seg-row:hover{background:rgba(114,164,191,.05)}
 .bd-rate-band{fill:transparent;cursor:pointer}
 .bd-rate-band:hover{fill:rgba(23,44,69,.05)}
 .bd-goal-btn{display:inline-flex;align-items:center;gap:7px;font-family:var(--font-b);
@@ -1472,9 +1473,9 @@ function renderBD(){
       {k:'from_demo',l:'From Demo',w:75, group:'avgDays', groupCollapse:true},
       // ── Plan Details group ──
       {k:'amount',l:'Amount',w:90, group:'plan'},
-      {k:'month_minimum',l:'Month Minimum',w:100, group:'plan'},
+      {k:'month_minimum',l:'Month Minimum',w:100, group:'plan', groupCollapse:true},
       {k:'package_type',l:'Plan Name',w:115, group:'plan'},
-      {k:'average_monthly_web_traffic__cloned_',l:'Web Traffic Tier',w:100, group:'plan'},
+      {k:'average_monthly_web_traffic__cloned_',l:'Web Traffic Tier',w:100, group:'plan', groupCollapse:true},
       {k:'original_amount',l:'Original Amount',w:100, group:'plan', groupCollapse:true},
       {k:'of_products',l:'# of Products',w:80, group:'plan', groupCollapse:true},
       {k:'of_free_reviews',l:'# of Free Reviews',w:90, group:'plan', groupCollapse:true},
@@ -1509,6 +1510,20 @@ function renderBD(){
     // - ID columns (Deal ID, Company ID) hide when _bdIdsVisible is false.
     // - Dates/Plan/Billing/Churn/AvgDays collapse-only columns hide when
     //   their group is collapsed.
+    // On the Churn tab the churn columns ARE the table, so they lead. This is
+    // ONE shared function — the Tracker's All Deals table renders from the same
+    // cols[] — so the reorder is scoped to the tab rather than applied blanket.
+    // Column order lives in THREE places: this array, the group banner row, and
+    // the hand-written cell block. All three switch on the same flag.
+    var _churnFirst=(_bdTab==='churn');
+    if(_churnFirst){
+      var _cg=cols.filter(function(c){return c.group==='churn';});
+      var _rest=cols.filter(function(c){return c.group!=='churn';});
+      var _di=-1;
+      for(var _i=0;_i<_rest.length;_i++){if(_rest[_i].group==='dates'){_di=_i;break;}}
+      if(_di<0)_di=_rest.length;
+      cols=_rest.slice(0,_di).concat(_cg,_rest.slice(_di));
+    }
     cols=cols.filter(function(c){
       if(c.idCol&&!_bdIdsVisible)return false;
       if(!c.group||!c.groupCollapse)return true;
@@ -1548,11 +1563,15 @@ function renderBD(){
     if(datesCols>0||avgDaysCols>0||planCols>0||billingCols>0||churnCols>0){
       t+='<tr class="bd-grp-row">';
       if(preGroupCols>0)t+='<th colspan="'+preGroupCols+'" style="background:var(--white);border-bottom:none;padding-bottom:2px"></th>';
+      // Built once and placed by the same flag that reordered cols[], so the
+      // banner can never drift from the columns beneath it.
+      var _churnBanner=(churnCols>0)?('<th colspan="'+churnCols+'" style="background:#FCE2EF;border-bottom:1px solid rgba(236,72,153,.40);text-align:center;cursor:pointer;color:var(--navy);font-weight:700;letter-spacing:.06em;font-size:10px;padding:6px 8px" onclick="bdToggleChurn()" title="Toggle Churn Details columns"><span style="color:#BE185D;margin-right:6px">'+churnChev+'</span>Churn Details</th>'):'';
+      if(_churnFirst)t+=_churnBanner;
       if(datesCols>0)t+='<th colspan="'+datesCols+'" style="background:#F1E4FE;border-bottom:1px solid rgba(139,92,246,.40);text-align:center;cursor:pointer;color:var(--navy);font-weight:700;letter-spacing:.06em;font-size:10px;padding:6px 8px" onclick="bdToggleDates()" title="Toggle Dates columns"><span style="color:#7C3AED;margin-right:6px">'+datesChev+'</span>Dates</th>';
       if(avgDaysCols>0)t+='<th colspan="'+avgDaysCols+'" style="background:#E6E9EC;border-bottom:1px solid rgba(100,116,139,.40);text-align:center;cursor:pointer;color:var(--navy);font-weight:700;letter-spacing:.06em;font-size:10px;padding:6px 8px" onclick="bdToggleAvgDays()" title="Toggle Avg Days columns"><span style="color:#64748B;margin-right:6px">'+avgDaysChev+'</span>Avg Days</th>';
       if(planCols>0)t+='<th colspan="'+planCols+'" style="background:#E8F0F5;border-bottom:1px solid rgba(114,164,191,.35);text-align:center;cursor:pointer;color:var(--navy);font-weight:700;letter-spacing:.06em;font-size:10px;padding:6px 8px" onclick="bdTogglePlan()" title="Toggle Plan Details columns"><span style="color:var(--teal);margin-right:6px">'+planChev+'</span>Plan Details</th>';
       if(billingCols>0)t+='<th colspan="'+billingCols+'" style="background:#FEF1DD;border-bottom:1px solid rgba(245,158,11,.40);text-align:center;cursor:pointer;color:var(--navy);font-weight:700;letter-spacing:.06em;font-size:10px;padding:6px 8px" onclick="bdToggleBilling()" title="Toggle Billing Details columns"><span style="color:#B45309;margin-right:6px">'+billingChev+'</span>Billing Details</th>';
-      if(churnCols>0)t+='<th colspan="'+churnCols+'" style="background:#FCE2EF;border-bottom:1px solid rgba(236,72,153,.40);text-align:center;cursor:pointer;color:var(--navy);font-weight:700;letter-spacing:.06em;font-size:10px;padding:6px 8px" onclick="bdToggleChurn()" title="Toggle Churn Details columns"><span style="color:#BE185D;margin-right:6px">'+churnChev+'</span>Churn Details</th>';
+      if(!_churnFirst)t+=_churnBanner;
       t+='</tr>';
     }
     // Column header row \u2014 tint cells inside a group with a SOLID background
@@ -1631,6 +1650,21 @@ function renderBD(){
       // Ops Rep — from the company record's ops_owner field, resolved via ownerMap
       var opsName=ownerMap[row.ops_owner_id]||'';
       t+=_td('ops_owner_id','<td title="'+opsName+'" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(bdFirstName(opsName)||dash)+'</td>');
+      // Churn cells are BUILT here rather than appended where they are declared:
+      // on the Churn tab they lead the row, so the string has to exist before the
+      // Dates cells are written. Same flag as cols[] and the banner.
+      var pcd=(row.pausechurn_date||'').substring(0,10)||dash;
+      var brd=(row.paused_billing__billing_restart_date||'').substring(0,10)||dash;
+      var _drfc=_bdStripHtml(row.detailed_reason_for_churn);
+      var _churnTd=''
+        +_td('pausechurn_date','<td style="'+_churnBg+'">'+pcd+'</td>')
+        +_td('never_implemented_churn','<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+_churnBg+'" title="'+(row.never_implemented_churn||'').replace(/"/g,'&quot;')+'">'+tEnum(row.never_implemented_churn)+'</td>')
+        +_td('churn_reason','<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+_churnBg+'" title="'+(row.churn_reason||'').replace(/"/g,'&quot;')+'">'+tEnum(row.churn_reason)+'</td>')
+        +_td('detailed_reason_for_churn','<td data-full="'+_drfc.replace(/"/g,'&quot;')+'" style="'+_churnBg+'">'+tNotes(_drfc)+'</td>')
+        +_td('paused_billing_length_months','<td style="text-align:center;'+_churnBg+'">'+tNum(row.paused_billing_length_months)+'</td>')
+        +_td('temporary_pause_reason','<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+_churnBg+'" title="'+(row.temporary_pause_reason||'').replace(/"/g,'&quot;')+'">'+tEnum(row.temporary_pause_reason)+'</td>')
+        +_td('paused_billing__billing_restart_date','<td style="'+_churnBg+'">'+brd+'</td>');
+      if(_churnFirst)t+=_churnTd;
       t+=_td('closedate','<td style="'+_datesBg+'">'+cd+'</td>');
       // Show EFFECTIVE demo date (rescheduled overrides original). Highlight
       // rescheduled rows so the override is visible at a glance — purple/bold
@@ -1640,10 +1674,15 @@ function renderBD(){
       var _ddbStyle=row.rescheduled_meeting_date?'color:#7C3AED;font-weight:600;':'';
       t+=_td('date_demo_booked','<td style="'+_ddbStyle+_datesBg+'">'+ddb+'</td>');
       t+=_td('createdate','<td style="'+_datesBg+'">'+crd+'</td>');
-      t+=_td('to_demo','<td style="text-align:center;'+_avgDaysBg+'">'+(toDemoVal==null?dash:toDemoVal)+'</td>');
+      // Order matches cols[] — From Created, To Demo, From Demo. It did not:
+      // the cells ran To Demo, From Demo, From Created while the headers and the
+      // colgroup widths ran the other way, so expanding Avg Days shifted every
+      // value one column to the left. Invisible while collapsed (only
+      // days_to_close shows), wrong the moment it was opened.
       var fromDemoVal=bdFromDemo(row);
-      t+=_td('from_demo','<td style="text-align:center;'+_avgDaysBg+'">'+(fromDemoVal==null?dash:fromDemoVal)+'</td>');
       t+=_td('days_to_close','<td style="text-align:center;'+_avgDaysBg+'">'+tNum(row.days_to_close)+'</td>');
+      t+=_td('to_demo','<td style="text-align:center;'+_avgDaysBg+'">'+(toDemoVal==null?dash:toDemoVal)+'</td>');
+      t+=_td('from_demo','<td style="text-align:center;'+_avgDaysBg+'">'+(fromDemoVal==null?dash:fromDemoVal)+'</td>');
       // ── Plan Details group cells (tinted teal) ──
       // Cell-render order must match the cols[] definition order so headers
       // line up with values. Default-visible columns first
@@ -1676,17 +1715,7 @@ function renderBD(){
       t+=_td('internal_recurly_link','<td style="'+_billingBg+'">'+_linkCell(row.internal_recurly_link,'Recurly')+'</td>');
       t+=_td('recurly_account_management_url','<td style="'+_billingBg+'">'+_linkCell(row.recurly_account_management_url,'Account')+'</td>');
       t+=_td('recurly_billing_intake_url','<td style="'+_billingBg+'">'+_linkCell(row.recurly_billing_intake_url,'Intake')+'</td>');
-      // ── Churn / Pause Details group cells (tinted light pink) ──
-      var pcd=(row.pausechurn_date||'').substring(0,10)||dash;
-      var brd=(row.paused_billing__billing_restart_date||'').substring(0,10)||dash;
-      t+=_td('pausechurn_date','<td style="'+_churnBg+'">'+pcd+'</td>');
-      t+=_td('never_implemented_churn','<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+_churnBg+'" title="'+(row.never_implemented_churn||'').replace(/"/g,'&quot;')+'">'+tEnum(row.never_implemented_churn)+'</td>');
-      t+=_td('churn_reason','<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+_churnBg+'" title="'+(row.churn_reason||'').replace(/"/g,'&quot;')+'">'+tEnum(row.churn_reason)+'</td>');
-      var _drfc=_bdStripHtml(row.detailed_reason_for_churn);
-      t+=_td('detailed_reason_for_churn','<td data-full="'+_drfc.replace(/"/g,'&quot;')+'" style="'+_churnBg+'">'+tNotes(_drfc)+'</td>');
-      t+=_td('paused_billing_length_months','<td style="text-align:center;'+_churnBg+'">'+tNum(row.paused_billing_length_months)+'</td>');
-      t+=_td('temporary_pause_reason','<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+_churnBg+'" title="'+(row.temporary_pause_reason||'').replace(/"/g,'&quot;')+'">'+tEnum(row.temporary_pause_reason)+'</td>');
-      t+=_td('paused_billing__billing_restart_date','<td style="'+_churnBg+'">'+brd+'</td>');
+      if(!_churnFirst)t+=_churnTd;
       t+='</tr>';}
     return t+'</tbody></table></div>';
   }
@@ -1734,7 +1763,26 @@ function renderBD(){
   // smaller simply for being shorter.
   var _kmPrevMonth=function(m){var q=m.split('-'),y=+q[0],mo=+q[1]-1;if(mo<1){y--;mo=12;}return y+'-'+('0'+mo).slice(-2);};
   var _kmOpenAt=function(m){var pv=_snByMonth[_kmPrevMonth(m)];return pv?pv.b:0;};
-  var _kmQStart={Q1:BD_CHURN_KM_YEAR+'-01',Q2:BD_CHURN_KM_YEAR+'-04',Q3:BD_CHURN_KM_YEAR+'-07',Q4:BD_CHURN_KM_YEAR+'-10'};
+  // The denominator is the AVERAGE active book over the period, not the book on
+  // day one. Dividing a whole year of churn by the 1 January count asks "what
+  // share of the brands we had in January did we lose" — but most of the year's
+  // churn comes from brands that signed AFTER January and were never in that
+  // number, so the rate reads high and gets worse the faster the book grows.
+  // Averaging each month's opening book is the standard fix, and it is the same
+  // basis C2 plots, pooled across the period instead of shown per point.
+  var _kmMonthsOf=function(q){
+    var n=new Date();
+    var last=(n.getFullYear()>BD_CHURN_KM_YEAR)?12:(n.getMonth()+1);
+    var from=q?((+q.slice(1)-1)*3+1):1, to=q?Math.min(from+2,last):last;
+    var out=[];
+    for(var m=from;m<=to;m++)out.push(BD_CHURN_KM_YEAR+'-'+('0'+m).slice(-2));
+    return out;
+  };
+  var _kmAvgOpen=function(months){
+    var tot=0,n=0;
+    months.forEach(function(m){var o=_kmOpenAt(m); if(o>0){tot+=o;n++;}});
+    return n>0?(tot/n):0;
+  };
   var _kmRate=function(n,open){return open>0?((n/open)*100):null;};
 
   var _kmTenure=function(list){
@@ -1786,7 +1834,7 @@ function renderBD(){
       +'<div class="tdef">'+def+'</div>'+(strip||'')+'</div>';
   };
 
-  var _kmOpenYear=_kmOpenAt(BD_CHURN_KM_YEAR+'-01');
+  var _kmOpenYear=_kmAvgOpen(_kmMonthsOf(null));
   var _kmPct=_kmRate(_kmDeals.length,_kmOpenYear);
   var _kmTenAll=_kmTenure(_kmDeals);
 
@@ -1794,7 +1842,7 @@ function renderBD(){
   _kmQShown.forEach(function(q){
     var list=_kmByQ[q]||[];
     _cCount[q]=String(list.length);
-    var _o=_kmOpenAt(_kmQStart[q]);
+    var _o=_kmAvgOpen(_kmMonthsOf(q));
     var _r=_kmRate(list.length,_o);
     _cPct[q]=_r!=null?(_r.toFixed(1)+'%'):'—';
     var _t=_kmTenure(list);
@@ -1807,8 +1855,8 @@ function renderBD(){
     (_kmBoard?'Board Defined + Delinquent':'Any churn type')+', dated 2026 onward',
     _kmQStrip(_cCount));
   hChurn+=_chTile('Churn Rate',_kmPct!=null?_kmPct.toFixed(1)+'%':'—',
-    _kmOpenYear>0?(_kmDeals.length+' ÷ '+_kmOpenYear+' active at 1 Jan'):'no opening book',
-    'Against the book at the START of each period — quarters are rates, so they do not sum',
+    _kmOpenYear>0?(_kmDeals.length+' ÷ '+Math.round(_kmOpenYear)+' avg active brands'):'no active book',
+    'Churns ÷ the AVERAGE active book over the period — not the count on day one, which ignores every brand that signed later',
     _kmQStrip(_cPct));
   hChurn+=_chTile('Avg Time to Churn',_kmTenAll.avg!=null?(Math.round(_kmTenAll.avg).toLocaleString()+' days'):'—',
     _kmTenAll.avg!=null?('≈ '+(_kmTenAll.avg/30.44).toFixed(1)+' months · n='+_kmTenAll.n):'',
@@ -1857,16 +1905,26 @@ function renderBD(){
     });
     return Object.keys(seen).sort();
   };
-  // The LATEST period that actually has data, not the current calendar one — a
-  // month with no churn yet would otherwise blank the matrix and read as "no
-  // churn of any kind", which is a different claim from "none yet this month".
+  // The latest COMPLETE period. The period containing today is a part-period —
+  // on the 9th of a month it holds a few days of churn, which rendered as an
+  // almost-empty matrix that read as "no churn" rather than "the month has
+  // barely started". Measured 2026-10-09: 148 churns in 2026, 3 of them in
+  // October. Falling back to the newest period with any data at all, so a book
+  // whose only churn is in the current period still shows something.
+  var _chTodayKey=function(grain){
+    var n=new Date(), y=n.getFullYear();
+    if(grain==='quarter')return y+'-Q'+(Math.floor(n.getMonth()/3)+1);
+    return y+'-'+('0'+(n.getMonth()+1)).slice(-2);
+  };
   var _chLatest=function(list,grain){
-    var best='';
+    var cur=_chTodayKey(grain), best='', any='';
     list.forEach(function(dd){
       var k=_chPeriodOf(dd.pausechurn_date,grain);
-      if(k&&k>=BD_CHURN_DETAIL_FROM&&k>best)best=k;
+      if(!k||k<BD_CHURN_DETAIL_FROM)return;
+      if(k>any)any=k;
+      if(k<cur&&k>best)best=k;          // complete periods only
     });
-    return best;
+    return best||any;
   };
   var _chInPeriod=function(dd,k,grain){return !!k&&_chPeriodOf(dd.pausechurn_date,grain)===k;};
   var _chGrainPill=function(cur,g,label,fnName){
@@ -2004,8 +2062,14 @@ function renderBD(){
     });
     var ranked=Object.keys(tot).sort(function(a,b){return tot[b]-tot[a];});
     var top=ranked.slice(0,BD_CHURN_REASON_TOP), rest=ranked.slice(BD_CHURN_REASON_TOP);
-    var cats=top.map(function(r,i){return {k:r,l:r.length>26?r.slice(0,25)+'\u2026':r,c:BD_CHURN_REASON_COLORS[i%BD_CHURN_REASON_COLORS.length]};});
-    if(rest.length)cats.push({k:'__other',l:'Other ('+rest.length+')',c:BD_CHURN_OTHER_C});
+    // Labels in full. They were sliced at 26 chars, which cut real reasons in
+    // half ("Cash Flow / Budgetary Iss…") for no gain — the legend wraps.
+    var cats=top.map(function(r,i){return {k:r,l:r,c:BD_CHURN_REASON_COLORS[i%BD_CHURN_REASON_COLORS.length]};});
+    // NOT "Other": HubSpot stores a literal reason called "Other", so whenever
+    // it ranked in the top 6 the chart showed two legend entries both reading
+    // Other — one a real reason, one the rollup. The rollup is named for what it
+    // is, and cannot collide with any stored value.
+    if(rest.length)cats.push({k:'__other',l:'All remaining reasons ('+rest.length+')',c:BD_CHURN_OTHER_C});
     var counts={};cats.forEach(function(c){counts[c.k]={};});
     _chDeals.forEach(function(dd){
       var k=_chPeriodOf(dd.pausechurn_date,grain); if(!k||k<BD_CHURN_DETAIL_FROM)return;
@@ -2048,7 +2112,11 @@ function renderBD(){
     var t='<div style="overflow-x:auto"><table class="stbl" style="width:100%;min-width:620px;font-size:11.5px;border-collapse:separate;border-spacing:0;table-layout:fixed">';
     t+='<colgroup><col style="width:168px">'+colsDef.map(function(){return '<col>';}).join('')+'<col style="width:68px"></colgroup>';
     t+='<thead><tr><th style="text-align:left;padding:7px 9px;border-bottom:1.5px solid rgba(23,44,69,.16)"></th>';
-    colsDef.forEach(function(c){t+='<th style="text-align:center;padding:7px 5px;border-bottom:1.5px solid rgba(23,44,69,.16);font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.03em;line-height:1.3;word-break:break-word"'
+    // white-space:normal and overflow:visible are the point: the .stbl th rule sets
+    // nowrap + overflow:hidden, which clipped these headers with no ellipsis and
+    // made the inline word-break inert. cursor:default undoes the sortable-looking
+    // pointer that rule also applies — these headers do not sort.
+    colsDef.forEach(function(c){t+='<th style="text-align:center;padding:7px 5px;border-bottom:1.5px solid rgba(23,44,69,.16);font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.03em;line-height:1.25;white-space:normal;overflow:visible;word-break:normal;overflow-wrap:anywhere;hyphens:auto;cursor:default;vertical-align:bottom"'
       +(c.full?(' title="'+String(c.full).replace(/"/g,'&quot;')+'"'):'')+'>'+c.l+'</th>';});
     t+='<th style="text-align:right;padding:7px 9px;border-bottom:1.5px solid rgba(23,44,69,.16);font-size:9.5px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.03em">Total</th></tr></thead><tbody>';
     rowsDef.forEach(function(r,ri){
@@ -2062,7 +2130,7 @@ function renderBD(){
           +(n?('background:'+accent+('0'+Math.round(w*42+8).toString(16)).slice(-2)+';color:var(--navy);font-weight:'+(w>0.55?'700':'600')):'color:#C6CDD4')
           +'">'+(n||'·')+'</td>';
       });
-      t+='<tr><td style="padding:6px 9px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-bottom:1px solid rgba(23,44,69,.05)'
+      t+='<tr><td title="'+String(r.full||r.l).replace(/"/g,'&quot;')+'" style="padding:6px 9px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-bottom:1px solid rgba(23,44,69,.05)'
         +((r.k&&String(r.k).indexOf('__')===0)?';color:var(--grey);font-style:italic':';color:var(--navy)')+'">'+r.l+'</td>'+cells
         +'<td style="text-align:right;padding:6px 9px;font-variant-numeric:tabular-nums;font-weight:700;color:var(--navy);border-bottom:1px solid rgba(23,44,69,.05);border-left:1.5px solid rgba(23,44,69,.12);background:rgba(23,44,69,.03)">'+(rt||'·')+'</td></tr>';
     });
@@ -2083,7 +2151,10 @@ function renderBD(){
     return BD_CHURN_TYPE_GROUP[(dd.never_implemented_churn||'').trim()]===BD_CHURN_BOARD;
   });
   var _chAbRows=[{k:'Yes',l:'A/B tested'},{k:'No',l:'No A/B test'},{k:'Unknown',l:'Unknown'},{k:'',l:'Not recorded'}];
-  var _chAbCols=BD_TRAFFIC_BANDS.map(function(b){return {k:b.k,l:b.k};}).concat([{k:'',l:'No measurement'}]);
+  // `full` drives the header title tooltip in _chMatrix; without it a clipped
+  // header has nothing to hover.
+  var _chAbCols=BD_TRAFFIC_BANDS.map(function(b){return {k:b.k,l:b.k,full:b.k+' measured monthly visits'};})
+    .concat([{k:'',l:'No measurement',full:'Measured traffic is zero or not recorded'}]);
   var _chAbAny=0;_chBoard.forEach(function(dd){if((dd.ab_test||'').trim())_chAbAny++;});
   // Scoped to one period, picked by the toggle. The axes are categorical, so
   // the grain filters WHICH churns are counted rather than becoming an axis.
@@ -2093,7 +2164,7 @@ function renderBD(){
   hChurn+='<section class="bd-sec" id="bd-sec-churnab">';
   hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C5</span><span class="bd-sec-t">A/B Test · Board Defined Churn</span>'
     +'<span class="bd-sec-s">Of board-defined and delinquent-payment churns, how many ran an A/B test — against measured web traffic. '
-    +(_chAbPeriod?('Showing <strong>'+_chPeriodLbl(_chAbPeriod)+'</strong>, the most recent '+(_bdChurnAbGrain==='quarter'?'quarter':'month')+' with churn.'):'No churn dated 2026 onward yet.')
+    +(_chAbPeriod?('Showing <strong>'+_chPeriodLbl(_chAbPeriod)+'</strong>, the most recent complete '+(_bdChurnAbGrain==='quarter'?'quarter':'month')+' with churn.'):'No churn dated 2026 onward yet.')
     +'</span>'
     +'<span style="margin-left:auto">'+_chGrainSeg(_bdChurnAbGrain,'bdSetChurnAbGrain')+'</span></div>';
   hChurn+='<div class="tile" style="padding:16px 18px">'+_chMatrix(_chAbRows,_chAbCols,function(r,c){
@@ -2117,12 +2188,24 @@ function renderBD(){
   var _chReasonTot={};
   _chDeals.forEach(function(dd){var r=(dd.churn_reason||'').trim();if(r)_chReasonTot[r]=(_chReasonTot[r]||0)+1;});
   var _chTopReasons=Object.keys(_chReasonTot).sort(function(a,b){return _chReasonTot[b]-_chReasonTot[a];}).slice(0,BD_CHURN_REASON_TOP);
-  var _chTrCols=_chTopReasons.map(function(r){return {k:r,l:r.length>18?r.slice(0,17)+'…':r,full:r};}).concat([{k:'__other',l:'Other',full:'Every reason outside the top '+BD_CHURN_REASON_TOP}]);
+  // Full labels — the headers wrap now, and slicing at 17 chars produced
+  // columns like "Alternative Solut…" that could not be told apart. "Other" is
+  // a real stored reason, so the rollup is named distinctly here too.
+  var _chTrCols=_chTopReasons.map(function(r){return {k:r,l:r,full:r};})
+    .concat([{k:'__other',l:'All remaining',full:'Every reason outside the top '+BD_CHURN_REASON_TOP},
+             {k:'',l:'No reason recorded',full:'Churn Reason is blank on the deal'}]);
   var _chReasonBucket=function(dd){
     var r=(dd.churn_reason||'').trim(); if(!r)return '';
     return _chTopReasons.indexOf(r)>=0?r:'__other';
   };
-  var _chTrRows=BD_TRAFFIC_BANDS.map(function(b){return {k:b.k,l:b.k};});
+  // _chBandOf returns '' for any measured value that is not > 0, and
+  // _chReasonBucket returns '' for a blank reason. Neither had a row or a
+  // column, so every such deal matched nothing and vanished from the grid
+  // entirely — which is why this section looked unpopulated. Measured against
+  // live data 2026-10-09: most churned deals store 0 or no measurement at all.
+  // Both blanks now have their own bucket, so the grid totals to the set size.
+  var _chTrRows=BD_TRAFFIC_BANDS.map(function(b){return {k:b.k,l:b.k};})
+    .concat([{k:'',l:'No measurement'}]);
   var _chRepN=0,_chBothN=0;
   _chDeals.forEach(function(dd){
     if((dd.monthly_web_traffic__reported_at_time_of_churn||'').trim())_chRepN++;
@@ -2133,7 +2216,7 @@ function renderBD(){
   hChurn+='<section class="bd-sec" id="bd-sec-churntraffic">';
   hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C6</span><span class="bd-sec-t">Web Traffic at Churn</span>'
     +'<span class="bd-sec-s">Measured traffic, binned into the reported field’s own bands, against the churn reason. '
-    +(_chTrPeriod?('Showing <strong>'+_chPeriodLbl(_chTrPeriod)+'</strong>, the most recent '+(_bdChurnTrGrain==='quarter'?'quarter':'month')+' with churn.'):'No churn dated 2026 onward yet.')
+    +(_chTrPeriod?('Showing <strong>'+_chPeriodLbl(_chTrPeriod)+'</strong>, the most recent complete '+(_bdChurnTrGrain==='quarter'?'quarter':'month')+' with churn.'):'No churn dated 2026 onward yet.')
     +'</span>'
     +'<span style="margin-left:auto">'+_chGrainSeg(_bdChurnTrGrain,'bdSetChurnTrGrain')+'</span></div>';
   hChurn+='<div class="tile" style="padding:16px 18px">'+_chMatrix(_chTrRows,_chTrCols,function(r,c){
@@ -2176,21 +2259,37 @@ function renderBD(){
     if(BD_SEGMENT_ORDER.indexOf(k)<0&&k!=='__nosegment'&&k!=='__nocompany')k='__nosegment';
     _chSegCount[k]=(_chSegCount[k]||0)+1;
   });
-  var _chSegMax=0;_chSegRows.forEach(function(r){if((_chSegCount[r.k]||0)>_chSegMax)_chSegMax=_chSegCount[r.k]||0;});
+  // A sentinel row with nothing in it is noise: "No company resolved · 0 · 0%"
+  // states an absence that needed no stating. The real segments stay even at
+  // zero — a segment with no churn is a finding — but the two synthetic
+  // buckets only appear when they actually hold something.
+  var _chSegShown=_chSegRows.filter(function(r){
+    return r.k.indexOf('__')!==0 || (_chSegCount[r.k]||0)>0;
+  });
+  var _chSegMax=0;_chSegShown.forEach(function(r){if((_chSegCount[r.k]||0)>_chSegMax)_chSegMax=_chSegCount[r.k]||0;});
+  // The two synthetic buckets mean different things, so they are not the same
+  // grey. Neither tone is any mapped segment's colour — a fallback that
+  // collides with a real category is the recurring bug in this file.
+  var _chSegCol={__nosegment:'#94A3B8',__nocompany:'#CBD5E1'};
   var _chSegH='<div id="bd-churn-seg">';
-  _chSegRows.forEach(function(r){
+  _chSegShown.forEach(function(r){
     var n=_chSegCount[r.k]||0;
     var pct=_chBoard.length>0?(n/_chBoard.length)*100:0;
-    var col=BD_SEGMENT_COLORS[r.k]||BD_SEGMENT_COLORS._other;
-    _chSegH+='<div class="attr-row" style="display:grid;grid-template-columns:150px minmax(80px,1fr) 92px;align-items:center;gap:14px;padding:8px 0;border-bottom:1px solid rgba(23,44,69,.05)">'
-      +'<div style="font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'+(r.k.indexOf('__')===0?';color:var(--grey);font-style:italic':';color:var(--navy);font-weight:600')+'" title="'+r.l+'">'+r.l+'</div>'
-      +'<div style="height:18px;background:rgba(23,44,69,.04);border-radius:4px;overflow:hidden">'
-      +'<div style="height:100%;width:'+(_chSegMax>0?(n/_chSegMax)*100:0)+'%;background:'+col+';opacity:.9;border-radius:4px"></div></div>'
+    var col=BD_SEGMENT_COLORS[r.k]||_chSegCol[r.k]||BD_SEGMENT_COLORS._other;
+    var syn=(r.k.indexOf('__')===0);
+    // NOT class="attr-row": that rule is written for the Tracker's flex rows and
+    // applies negative side margins on hover, which slides these grid rows
+    // sideways. Its tooltip JS is scoped to #bd-attr-bars and never reaches here
+    // either, so the class brought a side effect and no behaviour.
+    _chSegH+='<div class="bd-seg-row" style="display:grid;grid-template-columns:150px minmax(80px,1fr) 92px;align-items:center;gap:14px;padding:9px 0;border-bottom:1px solid rgba(23,44,69,.05)">'
+      +'<div style="font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'+(syn?';color:var(--grey);font-style:italic':';color:var(--navy);font-weight:600')+'" title="'+r.l+'">'+r.l+'</div>'
+      +'<div style="height:20px;background:rgba(23,44,69,.04);border-radius:5px;overflow:hidden">'
+      +'<div style="height:100%;width:'+(_chSegMax>0?(n/_chSegMax)*100:0)+'%;background:'+col+';opacity:'+(syn?'.7':'.92')+';border-radius:5px;transition:width .2s"></div></div>'
       // Count and share sit together at the end of the row, so the eye reads one
       // number group per row instead of travelling the full width twice.
       +'<div style="text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap">'
-      +'<span style="font-size:14px;font-weight:700;color:var(--navy)">'+n+'</span>'
-      +'<span style="font-size:11px;color:var(--grey);margin-left:5px">'+pct.toFixed(0)+'%</span></div></div>';
+      +'<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">'+n+'</span>'
+      +'<span style="font-size:11px;color:var(--grey);margin-left:6px">'+pct.toFixed(0)+'%</span></div></div>';
   });
   _chSegH+='</div>';
   hChurn+='<section class="bd-sec" id="bd-sec-churnseg">';
@@ -2199,8 +2298,8 @@ function renderBD(){
   hChurn+='<div class="tile" style="padding:16px 18px">'+_chSegH
     +'<div style="font-size:10px;color:var(--grey);margin-top:8px;font-style:italic">'
     +'A count, not a rate: segment is a COMPANY property and the Snapshot book has no segment dimension, so there is no active-brands-per-segment to divide by. '
-    +'The two grey rows are different things — a company with no segment set, versus a deal whose company has not been resolved yet (that lookup is capped per load and fills in on refresh). '
-    +'Both are shown so the rows sum to '+_chBoard.length+'.</div></div></section>';
+    +'The grey rows are different things — a company whose segment is unset or unrecognised, versus a deal with no company associated at all — and each appears only when it holds something. '
+    +'Rows sum to '+_chBoard.length+'.</div></div></section>';
 
   // ── viii. All Deals, churned only ──
   // deals.filter(isChurned), NOT sharedFiltered — reusing the Tracker tab's
@@ -2242,6 +2341,7 @@ function renderBD(){
   BD._acv=acv;          // keeps the dialog's ACV placeholder honest
   bdBindSpy();          // sections were just replaced — re-observe them
   bdBindStack();        // stacked-column hover, on whichever tab just rendered
+  bdBindRateBands();    // C2's line-chart bands — emitted with data, inert without this
   bdCalc();             // re-echo the badge; the result div lives outside #bd-content
   bdCalc();
   // Attribution hover
@@ -2394,10 +2494,16 @@ function bdClusterChart(periods,cats,counts,opts){
   // The axis reaches the tallest SINGLE bar, not the period total — clustered
   // bars sit side by side, so scaling to the sum would leave every bar squat.
   var maxV=1;periods.forEach(function(k){cats.forEach(function(c){var n=(counts[c.k]&&counts[c.k][k])||0;if(n>maxV)maxV=n;});});
-  // A whole number of units on the axis — a count axis labelled 2.5 is wrong.
-  var step=Math.max(1,Math.ceil(maxV/4)),top=step*4;
+  // A whole number of units AND a readable one. ceil(maxV/4) is whole but lands
+  // on steps like 3 or 7 — an axis reading 0/7/14/21/28 is correct and nobody
+  // can use it. Snap to a familiar step instead and take as many ticks as that
+  // needs.
+  var _cSteps=[1,2,5,10,20,25,50,100,200,250,500,1000];
+  var step=_cSteps[_cSteps.length-1];
+  for(var _si=0;_si<_cSteps.length;_si++){if(maxV/_cSteps[_si]<=4){step=_cSteps[_si];break;}}
+  var top=Math.max(step,Math.ceil(maxV/step)*step), ticks=Math.round(top/step);
   var svg='<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 '+w+' '+ht+'" preserveAspectRatio="none" style="display:block">';
-  for(var g=0;g<=4;g++){
+  for(var g=0;g<=ticks;g++){
     var gv=step*g, gy=pad.t+ph-(gv/top)*ph;
     svg+='<line x1="'+pad.l+'" y1="'+gy+'" x2="'+(w-pad.r)+'" y2="'+gy+'" stroke="rgba(23,44,69,.09)" stroke-width="1"/>'
       +'<text x="'+(pad.l-9)+'" y="'+(gy+4)+'" text-anchor="end" font-size="11" fill="#8A97A5" font-family="Inter,sans-serif">'+gv+'</text>';
@@ -2429,8 +2535,9 @@ function bdClusterChart(periods,cats,counts,opts){
   });
   svg+='</svg>';
   var lg=cats.map(function(c){
-    return '<span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--navy)">'
-      +'<span style="width:11px;height:11px;border-radius:3px;background:'+c.c+';opacity:.88"></span>'+c.l+'</span>';
+    return '<span title="'+String(c.l).replace(/"/g,'&quot;')+'" style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--navy);max-width:100%">'
+      +'<span style="flex:0 0 11px;width:11px;height:11px;border-radius:3px;background:'+c.c+';opacity:.88"></span>'
+      +'<span style="white-space:normal;overflow-wrap:anywhere">'+c.l+'</span></span>';
   }).join('');
   return '<div style="display:flex;gap:16px;flex-wrap:wrap;margin:0 0 10px">'+lg+'</div>'
     +'<div class="chart-wrap" style="position:relative;min-width:0;overflow:hidden">'
@@ -2485,6 +2592,57 @@ function bdBindStack(root){
       tip.style.top=Math.max(6,e.clientY-30)+'px';
     });
     seg.addEventListener('mouseleave',function(){tip.classList.remove('ftc');tip.style.display='none';});
+  });
+}
+// Hover readout for C2's full-height bands. Modelled on bdBindStack, but that
+// one carries a single data-sub for the whole tooltip and C2 needs the
+// arithmetic PER SERIES — "3 ÷ 352 active at the start" is the line that makes
+// a 0.85% believable, and it differs for each line at the same x.
+function bdBindRateBands(root){
+  (root||document).querySelectorAll('.bd-rate-band').forEach(function(band){
+    var wrap=band.closest('.chart-wrap'); if(!wrap)return;
+    var tip=wrap.querySelector('.float-tip'); if(!tip)return;
+    band.addEventListener('mouseenter',function(){
+      while(tip.firstChild)tip.removeChild(tip.firstChild);
+      var hd=document.createElement('div');
+      hd.style.cssText='font-family:var(--font-h);font-size:14px;font-weight:700;color:#fff;white-space:nowrap;'
+        +'border-bottom:1px solid rgba(255,255,255,.16);padding-bottom:6px;margin-bottom:2px';
+      hd.textContent=band.getAttribute('data-p')||'';
+      tip.appendChild(hd);
+      for(var i=1;i<=6;i++){
+        var raw=band.getAttribute('data-r'+i); if(!raw)continue;
+        var f=raw.split('|');
+        var row=document.createElement('div');
+        row.style.cssText='display:flex;align-items:baseline;gap:8px;margin-top:6px;white-space:nowrap';
+        var sw=document.createElement('span');
+        sw.style.cssText='flex:0 0 12px;height:0;border-top:2.5px solid '+(f[3]||'#fff')+';margin-bottom:3px';
+        row.appendChild(sw);
+        var lb=document.createElement('span');
+        lb.style.cssText='flex:1 1 auto;font-size:10.5px;color:rgba(255,255,255,.75)';
+        lb.textContent=f[0]||'';
+        row.appendChild(lb);
+        var vl=document.createElement('span');
+        vl.style.cssText='font-family:var(--font-h);font-size:14px;font-weight:700;color:#fff';
+        vl.textContent=f[1]||'—';
+        row.appendChild(vl);
+        tip.appendChild(row);
+        if(f[2]){
+          var nt=document.createElement('div');
+          nt.style.cssText='font-size:9.5px;color:rgba(255,255,255,.52);margin:1px 0 0 20px;white-space:nowrap';
+          nt.textContent=f[2];
+          tip.appendChild(nt);
+        }
+      }
+      tip.classList.add('ftc');
+      tip.style.display='block';      // .float-tip is display:none by default
+    });
+    band.addEventListener('mousemove',function(e){
+      var tw=tip.offsetWidth||220, x=e.clientX+14;
+      if(x+tw>window.innerWidth-8)x=e.clientX-tw-14;
+      tip.style.left=Math.max(6,x)+'px';
+      tip.style.top=Math.max(6,e.clientY-30)+'px';
+    });
+    band.addEventListener('mouseleave',function(){tip.classList.remove('ftc');tip.style.display='none';});
   });
 }
 // Two-line rate chart for C2. buildSVGChart is single-series and draws its Y

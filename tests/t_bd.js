@@ -6,7 +6,7 @@
 // one and not the other does not fail loudly — every column to the right of the
 // insertion silently shifts by one, and the table still renders.
 const {load,fn}=require('./slice.js');
-const src=load('worker.js'), bd=load('bd-dashboard.html');
+const src=load('worker.js'), bd=load(process.env.BD_SRC||'bd-dashboard.html');
 
 let pass=0,fail=0;
 const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify(w);console.log((ok?'PASS ':'FAIL ')+n+'  got='+JSON.stringify(g)+(ok?'':' want='+JSON.stringify(w)));ok?pass++:fail++;};
@@ -234,9 +234,16 @@ ck('the axis reaches the tallest single bar, not the period total',
 // category" from "this category is not on the chart".
 ck('a zero category still renders a target',
    /var hgt=n\?Math\.max\(2,\(n\/top\)\*ph\):2;/.test(bd), true);
-// Its axis must be whole units — a count axis labelled 2.5 is wrong.
-ck('the count axis steps in whole units',
-   /var step=Math\.max\(1,Math\.ceil\(maxV\/4\)\),top=step\*4;/.test(bd), true);
+// Whole units AND readable ones. ceil(maxV/4) is whole but lands on steps like
+// 3 or 7 — an axis reading 0/7/14/21/28 is correct and unusable.
+ck('the count axis snaps to a familiar step',
+   /var _cSteps=\[1,2,5,10,20,25,50,100,200,250,500,1000\];/.test(bd), true);
+ck('  every step in that list is a whole number',
+   (()=>{const m=/var _cSteps=\[([^\]]*)\]/.exec(bd);
+         return m[1].split(',').every(x=>Number.isInteger(+x));})(), true);
+ck('  and the tick count follows the step rather than being fixed at four',
+   /var top=Math\.max\(step,Math\.ceil\(maxV\/step\)\*step\), ticks=Math\.round\(top\/step\);/.test(bd)
+   &&/for\(var g=0;g<=ticks;g\+\+\)\{/.test(bd), true);
 // Hover must be re-bound after every render, or it works once and then stops.
 ck('the hover is re-bound on every render', /bdBindStack\(\);/.test(bd), true);
 // The rolled-up tail must not borrow a real category's colour.

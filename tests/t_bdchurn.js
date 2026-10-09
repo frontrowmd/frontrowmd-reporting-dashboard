@@ -85,16 +85,28 @@ ck('C1 takes the book at the period start',
    /_kmOpenAt=function\(m\)\{var pv=_snByMonth\[_kmPrevMonth\(m\)\];return pv\?pv\.b:0;\}/.test(bd),true);
 ck('  which is what C2 does',
    /_chOpen=function\(m\)\{var p=_snByMonth\[_chPrev\(m\)\];return p\?p\.b:0;\}/.test(bd),true);
-ck('quarters are rates, and the tile says they do not sum',
-   /quarters are rates, so they do not\s*\\?n?\s*sum|quarters are rates, so they do not sum/.test(bd.replace(/\s+/g,' ')),true);
-ck('the quarter opening months are declared',
-   /_kmQStart=\{Q1:BD_CHURN_KM_YEAR\+'-01',Q2:BD_CHURN_KM_YEAR\+'-04',Q3:BD_CHURN_KM_YEAR\+'-07',Q4:BD_CHURN_KM_YEAR\+'-10'\}/.test(bd),true);
-// Declaring them is not using them: dividing every quarter by January's book
-// would make Q2-Q4 read high and still pass a declaration check.
-ck('  and each quarter actually divides by ITS own',
-   /var _o=_kmOpenAt\(_kmQStart\[q\]\);/.test(bd),true);
-ck('  while the headline divides by the start of the year',
-   /var _kmOpenYear=_kmOpenAt\(BD_CHURN_KM_YEAR\+'-01'\);/.test(bd),true);
+// The denominator is the AVERAGE active book, not the count on day one:
+// dividing a year of churn by the 1 January book ignores every brand that
+// signed later, so the rate read high and got worse the faster the book grew.
+ck('the rate divides by the average active book',
+   /var _kmOpenYear=_kmAvgOpen\(_kmMonthsOf\(null\)\);/.test(bd),true);
+ck('  and each quarter averages its OWN months',
+   /var _o=_kmAvgOpen\(_kmMonthsOf\(q\)\);/.test(bd),true);
+ck('  averaging each month\u2019s opening book, skipping months with none',
+   /months\.forEach\(function\(m\)\{var o=_kmOpenAt\(m\); if\(o>0\)\{tot\+=o;n\+\+;\}\}\);/.test(bd),true);
+ck('  never counting past the current month',
+   /var last=\(n\.getFullYear\(\)>BD_CHURN_KM_YEAR\)\?12:\(n\.getMonth\(\)\+1\);/.test(bd),true);
+ck('  and the tile names the denominator it used',
+   /' avg active brands'/.test(bd),true);
+ck('the tile says the day-one count is NOT what it divides by',
+   /not the count on day one, which ignores every brand that signed later/.test(bd),true);
+// The fixed quarter-start map went with the day-one denominator — each quarter
+// now averages its own months, so there is nothing left to pin a start month to.
+ck('no fixed quarter-start map survives',/_kmQStart/.test(bd),false);
+ck('a quarter spans its own three months, capped at the current one',
+   /var from=q\?\(\(\+q\.slice\(1\)-1\)\*3\+1\):1, to=q\?Math\.min\(from\+2,last\):last;/.test(bd),true);
+ck('  and the headline spans January through the current month',
+   /var from=q\?[^;]*:1, to=q\?[^;]*:last;/.test(bd),true);
 ck('a zero book yields a dash, not a divide-by-zero',
    /_kmRate=function\(n,open\)\{return open>0\?\(\(n\/open\)\*100\):null;\}/.test(bd),true);
 
@@ -193,10 +205,19 @@ ck('  and each re-renders on change',
 // The LATEST period with data, not the current calendar one: a month with no
 // churn yet would blank the matrix and read as "no churn of any kind", which
 // is a different claim from "none yet this month".
-ck('the period is the latest WITH data',
-   /if\(k&&k>=BD_CHURN_DETAIL_FROM&&k>best\)best=k;/.test(bd),true);
+// The period containing TODAY is a part-period. On 2026-10-09 that was 3 of
+// 2026's 148 churns, which rendered as an almost-empty matrix reading as "no
+// churn" rather than "the month has barely started".
+ck('the period is the latest COMPLETE one',/if\(k<cur&&k>best\)best=k;/.test(bd),true);
+ck('  with the current period excluded by comparison against today',
+   /var cur=_chTodayKey\(grain\)/.test(bd),true);
+ck('  and a fallback when the only data IS the current period',/return best\|\|any;/.test(bd),true);
+ck('today\u2019s key respects the grain',
+   /if\(grain==='quarter'\)return y\+'-Q'\+\(Math\.floor\(n\.getMonth\(\)\/3\)\+1\);/.test(bd),true);
+ck('  and the label says the period is complete',
+   (bd.match(/the most recent complete '\+\(_bdChurn(Ab|Tr)Grain/g)||[]).length,2);
 ck('  floored at 2026 like the rest of the tab',
-   /_chLatest=function\(list,grain\)[\s\S]{0,260}?k>=BD_CHURN_DETAIL_FROM/.test(bd),true);
+   /_chLatest=function\(list,grain\)[\s\S]{0,420}?k<BD_CHURN_DETAIL_FROM\)return;/.test(bd),true);
 ck('C5 filters its board-defined set to that period',
    /_chAbSet=_chBoard\.filter\(function\(dd\)\{return _chInPeriod\(dd,_chAbPeriod,_bdChurnAbGrain\);\}\)/.test(bd),true);
 ck('C6 filters the churned set to its own period',
@@ -212,12 +233,106 @@ ck('  with no stale full-set loop left behind',
    /_chBoard\.forEach\(function\(dd\)\{\s*\n\s*if\(\(dd\.ab_test/.test(bd),false);
 // A scoped count is meaningless unless the scope is on screen.
 ck('both name the period they are showing',
-   (bd.match(/the most recent '\+\(_bdChurn(Ab|Tr)Grain==='quarter'\?'quarter':'month'\)\+' with churn\./g)||[]).length,2);
+   (bd.match(/the most recent complete '\+\(_bdChurn(Ab|Tr)Grain==='quarter'\?'quarter':'month'\)\+' with churn\./g)||[]).length,2);
 ck('  and say how much of the whole set that is',
    /\+' \(of '\+_chBoard\.length\+' all time\)/.test(bd)
    &&/\+_chTrSet\.length\+' of '\+_chDeals\.length\+' churned deals\. '/.test(bd),true);
 ck('an empty period says so rather than showing a blank grid',
    (bd.match(/No churn dated 2026 onward yet\./g)||[]).length,2);
+
+// ── 12. C2's bands were emitted with data and no handler ────────────────
+ck('the rate bands are bound',/function bdBindRateBands\(root\)\{/.test(bd),true);
+ck('  on every render, beside the stacked-chart binder',
+   /bdBindStack\(\);[\s\S]{0,140}?bdBindRateBands\(\);/.test(bd),true);
+ck('  reading the per-series rows the chart emits',
+   /band\.getAttribute\('data-r'\+i\)/.test(bd)&&/band\.getAttribute\('data-p'\)/.test(bd),true);
+// bdBindStack carries ONE data-sub for the whole tooltip; C2 needs the
+// arithmetic per line, since the two series differ at the same x.
+ck('  with a note per series, which bdBindStack cannot carry',
+   /nt\.textContent=f\[2\];/.test(bd),true);
+
+// ── 13. C3/C4 axis, and C4's duplicate "Other" ──────────────────────────
+ck('the cluster axis snaps to a familiar step',
+   /var _cSteps=\[1,2,5,10,20,25,50,100,200,250,500,1000\];/.test(bd),true);
+ck('  and no longer slices the range into four',
+   /var step=Math\.max\(1,Math\.ceil\(maxV\/4\)\),top=step\*4;/.test(bd),false);
+// "Other" is a REAL stored churn_reason, so a rollup called "Other" put two
+// identical labels in one legend.
+ck('the C4 rollup cannot collide with a stored reason',
+   /l:'All remaining reasons \('\+rest\.length\+'\)'/.test(bd),true);
+ck('  and C6’s rollup likewise',/\{k:'__other',l:'All remaining'/.test(bd),true);
+ck('  with no bare "Other" rollup left',/l:'Other \('\+rest\.length/.test(bd),false);
+// Assert the LABEL IS THE RAW VALUE, not merely that one old slice expression
+// is absent — any new truncation would have slipped past that.
+ck('C4 category labels are the raw reason, untouched',
+   /var cats=top\.map\(function\(r,i\)\{return \{k:r,l:r,c:/.test(bd),true);
+ck('C6 column labels likewise',
+   /_chTrCols=_chTopReasons\.map\(function\(r\)\{return \{k:r,l:r,full:r\};\}\)/.test(bd),true);
+ck('  and no slice survives on either',
+   /\.slice\(0,(25|17)\)/.test(bd),false);
+ck('  and the legend carries the full text as hover',
+   /return '<span title="'\+String\(c\.l\)\.replace/.test(bd),true);
+
+// ── 14. C6 was dropping rows that matched no bucket ─────────────────────
+// _chBandOf returns '' for measured <= 0 and _chReasonBucket '' for a blank
+// reason; neither had a row or column, so those deals vanished from the grid.
+ck('a no-measurement row exists',/\{k:'',l:'No measurement'\}/.test(bd),true);
+ck('a no-reason column exists',/\{k:'',l:'No reason recorded'/.test(bd),true);
+ck('  so the grid can total to the set it was given',
+   /_chTrRows=BD_TRAFFIC_BANDS\.map[\s\S]{0,120}?\.concat\(\[\{k:'',l:'No measurement'\}\]\)/.test(bd),true);
+// .stbl th sets nowrap + overflow:hidden, which clipped these with no ellipsis
+// and made the inline word-break inert.
+ck('matrix headers may wrap',/white-space:normal;overflow:visible/.test(bd),true);
+ck('  and row labels carry hover text',/t\+='<tr><td title="'\+String\(r\.full\|\|r\.l\)/.test(bd),true);
+ck('C5 headers get a tooltip too',/full:b\.k\+' measured monthly visits'/.test(bd),true);
+
+// ── 15. C7 ───────────────────────────────────────────────────────────────
+ck('empty synthetic rows are suppressed',
+   /return r\.k\.indexOf\('__'\)!==0 \|\| \(_chSegCount\[r\.k\]\|\|0\)>0;/.test(bd),true);
+ck('  but a real segment with zero churn still shows',
+   /r\.k\.indexOf\('__'\)!==0 \|\|/.test(bd),true);
+ck('the two synthetic buckets are different greys',
+   /_chSegCol=\{__nosegment:'#94A3B8',__nocompany:'#CBD5E1'\}/.test(bd),true);
+// Against the REAL segments only — _other is the designated fallback grey, so
+// a synthetic bucket sharing it is correct, not a collision.
+ck('  and neither collides with a real segment colour',
+   (()=>{const m=/_chSegCol=\{__nosegment:'(#\w+)',__nocompany:'(#\w+)'\}/.exec(bd);
+         const seg=/var BD_SEGMENT_COLORS=\{([^}]*)\}/.exec(bd)[1]
+           .split(',').filter(p=>!/^\s*_other:/.test(p)).join(',');
+         return [m[1],m[2]].filter(c=>seg.indexOf(c)>=0);})(),[]);
+ck('  and the two greys differ from each other',
+   (()=>{const m=/_chSegCol=\{__nosegment:'(#\w+)',__nocompany:'(#\w+)'\}/.exec(bd);
+         return m[1]!==m[2];})(),true);
+// .attr-row is a Tracker rule: it applies negative side margins on hover, which
+// slid these grid rows sideways, and its tooltip JS never reaches them.
+ck('C7 no longer borrows the Tracker row class',
+   /_chSegH\+='<div class="attr-row"/.test(bd),false);
+ck('  and has a hover rule of its own that does not move the row',
+   /\.bd-seg-row:hover\{background:rgba\(114,164,191,\.05\)\}/.test(bd),true);
+
+// ── 16. C8 ───────────────────────────────────────────────────────────────
+// _bdDealsTable is SHARED with the Tracker's All Deals table, so the reorder is
+// scoped to the tab rather than applied to the array for everyone.
+ck('the churn-first order is scoped to the Churn tab',
+   /var _churnFirst=\(_bdTab==='churn'\);/.test(bd),true);
+ck('  moving the churn group ahead of dates',
+   /cols=_rest\.slice\(0,_di\)\.concat\(_cg,_rest\.slice\(_di\)\);/.test(bd),true);
+// Column order lives in THREE places; all three must switch on the same flag.
+ck('the banner row follows the same flag',
+   /if\(_churnFirst\)t\+=_churnBanner;/.test(bd)&&/if\(!_churnFirst\)t\+=_churnBanner;/.test(bd),true);
+ck('  as do the cells',
+   /if\(_churnFirst\)t\+=_churnTd;/.test(bd)&&/if\(!_churnFirst\)t\+=_churnTd;/.test(bd),true);
+ck('  and the banner is built once, not duplicated per branch',
+   (bd.match(/var _churnBanner=/g)||[]).length,1);
+ck('Plan Details collapses to Amount and Plan Name only',
+   (()=>{const m=/var cols=\[([\s\S]*?)\n    \];/.exec(bd);
+         const plan=[...m[1].matchAll(/\{k:'([^']+)',l:'([^']+)'[^}]*group:'plan'([^}]*)\}/g)];
+         return plan.filter(c=>!/groupCollapse/.test(c[3])).map(c=>c[2]);})(),
+   ['Amount','Plan Name']);
+// Pre-existing: the Avg Days headers and cells ran in different orders, so
+// expanding that group shifted every value one column left.
+ck('Avg Days cells match their header order',
+   /_td\('days_to_close'[\s\S]{0,200}?_td\('to_demo'[\s\S]{0,200}?_td\('from_demo'/.test(bd),true);
 
 console.log('\n'+pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);
