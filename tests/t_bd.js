@@ -194,10 +194,14 @@ ck('and both tables share one comparator',
 // wrong — stamped at churn-processing time, which yields a NEGATIVE tenure.
 ck('tenure starts from first entry into closed-won',
    /var _s=dd\.entered_closedwon\|\|dd\.createdate\|\|dd\.closedate, _e=dd\.pausechurn_date;/.test(bd), true);
+// The tenure calc moved into _kmTenure(list) when C1 gained its quarter split,
+// so the skip counter is per-list now rather than one module-level tally.
 ck('and a negative span is excluded, not counted',
-   /if\(!isFinite\(_days\)\|\|_days<0\)\{_chTenSkip\+\+;return;\}/.test(bd), true);
+   /if\(!isFinite\(_days\)\|\|_days<0\)\{skip\+\+;return;\}/.test(bd), true);
+ck('  computed once, for the headline and every quarter',
+   (bd.match(/var _kmTenure=function\(list\)/g)||[]).length,1);
 ck('the excluded count is reported, not hidden',
-   /_chTenSkip\?\('\. '\+_chTenSkip\+' excluded/.test(bd), true);
+   /_kmTenAll\.skip\?\('\. '\+_kmTenAll\.skip\+' excluded/.test(bd), true);
 
 // ── Churn Type: stored values are NOT the labels ──
 const grp=(/var BD_CHURN_TYPE_GROUP=\{[\s\S]*?\n\};/.exec(bd)||[''])[0];

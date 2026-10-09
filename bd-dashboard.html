@@ -398,6 +398,33 @@ function bdSetTab(t){
   window.scrollTo(0,0);
   renderBD();
 }
+// C1's Board Defined / All switch. 'all' is the default so the tiles keep the
+// meaning they shipped with; Board Defined is one click away and is the cut
+// sections C5 and C7 already use.
+var _bdChurnKmScope='all';
+function bdSetChurnKmScope(v){if(_bdChurnKmScope===v)return;_bdChurnKmScope=v;renderBD();}
+// Churn Type is grouped before testing, so Delinquent Payment counts as Board
+// Defined here exactly as it does in the By Type chart.
+function _bdIsBoardChurn(dd){return BD_CHURN_TYPE_GROUP[(dd.never_implemented_churn||'').trim()]===BD_CHURN_BOARD;}
+// Key Metrics counts 2026 onward only. The book before that is a different
+// business: a handful of brands, where one churn moves a rate by tens of points.
+var BD_CHURN_KM_FROM='2026-01-01';
+var BD_CHURN_KM_YEAR=2026;
+function _bdQuarterOf(v){
+  var m=_bdMonthOfG(v); if(!m)return '';
+  var q=m.split('-'); if(+q[0]!==BD_CHURN_KM_YEAR)return '';
+  return 'Q'+(Math.floor((+q[1]-1)/3)+1);
+}
+// _bdMonthOf is declared inside renderBD; C1 needs the same parsing from module
+// scope, so the logic lives here and renderBD's copy delegates to it.
+function _bdMonthOfG(v){
+  if(!v)return '';
+  var s=String(v);
+  if(/^\d{4}-\d{2}/.test(s))return s.substring(0,7);
+  var n=parseInt(s,10);
+  if(!isNaN(n)&&n>1e11){var dt=new Date(n);return dt.getFullYear()+'-'+('0'+(dt.getMonth()+1)).slice(-2);}
+  return '';
+}
 function bdSetChurnTypeGrain(g){_bdChurnTypeGrain=g;renderBD();}
 function bdSetChurnReasonGrain(g){_bdChurnReasonGrain=g;renderBD();}
 var BD_SEGMENT_COLORS={'VIP':'#7C3AED','Strategic':'#0F766E','Enterprise':'#1D4ED8','Mid-Market':'#B45309',_other:'#94A3B8'};
@@ -874,7 +901,9 @@ function renderBD(){
   // in Jul, $341,856 ARR, get added to Jun → 735). Undated churns can't be
   // placed in time, so they're excluded. Resumed pauses need no special case:
   // once billing restarts the deal is Paying again and re-enters via the base.
-  function _bdMonthOf(v){if(!v)return '';var s=String(v);if(/^\d{4}-\d{2}/.test(s))return s.substring(0,7);var n=parseInt(s,10);if(!isNaN(n)&&n>1e11){var dt=new Date(n);return dt.getFullYear()+'-'+('0'+(dt.getMonth()+1)).slice(-2);}return '';}
+  // One date parser for the page: C1 needs it from module scope, so it lives
+  // there as _bdMonthOfG and this stays as the in-render alias it always was.
+  function _bdMonthOf(v){return _bdMonthOfG(v);}
   var _INACT_STATES=['Paused','Churned','Never Implemented - Churned'];
   // Base = the CURRENT Active Brands line itself (_chartMonthMap: Paying/Signed
   // closed-won bucketed by closedate, blank closedate skipped). Reusing it
@@ -1659,43 +1688,113 @@ function renderBD(){
   var hChurn='';
   hChurn+='<section class="bd-sec" id="bd-sec-churn">';
   hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C1</span><span class="bd-sec-t">Key Metrics</span>'
-    +'<span class="bd-sec-s">Every churned deal to date, by deal stage. Independent of the filters on the Tracker tab.</span></div>';
+    +'<span class="bd-sec-s">Churns dated 2026 onward, by deal stage · each figure also split by quarter. '
+    +'Independent of the filters on the Tracker tab.</span></div>';
 
-  // ── i. KPI tiles ──
-  // Tenure start: first entry into Closed Won, which PERSISTS after churn.
-  // closedate is not just often blank on churned deals, it is sometimes WRONG —
-  // stamped at churn-processing time, which yields a negative tenure. The
-  // fallback cascade is the one the Snapshot chart already uses at _bdMonthOf.
-  var _chTenSum=0,_chTenN=0,_chTenSkip=0;
-  _chDeals.forEach(function(dd){
-    var _s=dd.entered_closedwon||dd.createdate||dd.closedate, _e=dd.pausechurn_date;
-    if(!_s||!_e){_chTenSkip++;return;}
-    var _days=(Date.parse(_e)-Date.parse(_s))/86400000;
-    if(!isFinite(_days)||_days<0){_chTenSkip++;return;}
-    _chTenSum+=_days;_chTenN++;
+  // ── Scope ────────────────────────────────────────────────────────────────
+  // 2026 onward only. Before that the book was a handful of brands, where one
+  // churn swings a rate by tens of points — the same reason C2 refuses to plot
+  // a month whose opening book is under BD_CHURN_RATE_MIN_BOOK.
+  var _kmBoard=(_bdChurnKmScope==='board');
+  var _kmAll=_chDeals.filter(function(dd){
+    var _m=_bdMonthOf(dd.pausechurn_date);
+    return !!_m && _m>=BD_CHURN_KM_FROM.substring(0,7);
   });
-  var _chTenAvg=_chTenN>0?(_chTenSum/_chTenN):null;
-  var _chWonN=closedWonDeals.length;
-  // Of every brand that ever signed. The Tracker tab's own % Churned tile is
-  // filter-scoped and uses a different denominator; these live on separate tabs
-  // and the calc line under each says which is which.
-  var _chEverSigned=_chWonN+_chDeals.length;
-  var _chPct=_chEverSigned>0?(_chDeals.length/_chEverSigned)*100:null;
-  var _chTile=function(lbl,val,calc,def){
-    return '<div class="tile hero" style="border-left:3px solid '+BD_CHURN_C+';display:flex;flex-direction:column;justify-content:center">'
+  var _kmUndated=_chDeals.length-_chDeals.filter(function(dd){return !!_bdMonthOf(dd.pausechurn_date);}).length;
+  var _kmDeals=_kmBoard?_kmAll.filter(_bdIsBoardChurn):_kmAll;
+  var _kmQs=['Q1','Q2','Q3','Q4'];
+  var _kmByQ={};_kmQs.forEach(function(q){_kmByQ[q]=[];});
+  _kmDeals.forEach(function(dd){var q=_bdQuarterOf(dd.pausechurn_date);if(q&&_kmByQ[q])_kmByQ[q].push(dd);});
+  // Only quarters that have actually begun — an empty Q4 in March reads as a
+  // real zero, which is worse than not showing it.
+  var _kmNow=new Date(), _kmQMax=(_kmNow.getFullYear()>BD_CHURN_KM_YEAR)?4:(Math.floor(_kmNow.getMonth()/3)+1);
+  var _kmQShown=_kmQs.slice(0,Math.max(1,_kmQMax));
+
+  // Opening book per period, the same basis C2 divides by: active brands at the
+  // START of the period. A share of the whole book would make each quarter look
+  // smaller simply for being shorter.
+  var _kmPrevMonth=function(m){var q=m.split('-'),y=+q[0],mo=+q[1]-1;if(mo<1){y--;mo=12;}return y+'-'+('0'+mo).slice(-2);};
+  var _kmOpenAt=function(m){var pv=_snByMonth[_kmPrevMonth(m)];return pv?pv.b:0;};
+  var _kmQStart={Q1:BD_CHURN_KM_YEAR+'-01',Q2:BD_CHURN_KM_YEAR+'-04',Q3:BD_CHURN_KM_YEAR+'-07',Q4:BD_CHURN_KM_YEAR+'-10'};
+  var _kmRate=function(n,open){return open>0?((n/open)*100):null;};
+
+  var _kmTenure=function(list){
+    var sum=0,n=0,skip=0;
+    list.forEach(function(dd){
+      var _s=dd.entered_closedwon||dd.createdate||dd.closedate, _e=dd.pausechurn_date;
+      if(!_s||!_e){skip++;return;}
+      var _days=(Date.parse(_e)-Date.parse(_s))/86400000;
+      if(!isFinite(_days)||_days<0){skip++;return;}
+      sum+=_days;n++;
+    });
+    return {avg:n>0?(sum/n):null,n:n,skip:skip};
+  };
+
+  // ── Toggle ───────────────────────────────────────────────────────────────
+  var _kmPill=function(k,lbl,note){
+    var on=(_bdChurnKmScope===k);
+    return '<button onclick="bdSetChurnKmScope(\''+k+'\')" title="'+note+'" style="font-family:var(--font-h);font-size:11px;font-weight:700;letter-spacing:.02em;padding:6px 14px;border:none;cursor:pointer;transition:background .15s,color .15s;background:'
+      +(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+'">'+lbl+'</button>';
+  };
+  hChurn+='<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">'
+    +'<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden">'
+    +_kmPill('board','Board Defined','Board Defined Churn + Delinquent Payment')
+    +_kmPill('all','All','Every churned deal, whatever the churn type')
+    +'</div>'
+    +'<span style="font-size:11px;color:var(--grey)">'
+    +(_kmBoard?('Board Defined Churn + Delinquent Payment · '+_kmDeals.length+' of '+_kmAll.length+' 2026 churns')
+              :('All churn types · '+_kmAll.length+' churns dated 2026 onward'))
+    +'</span></div>';
+
+  // ── Tiles ────────────────────────────────────────────────────────────────
+  // Each tile carries its headline plus the same measure per quarter. Counts
+  // sum to the total; rates and averages do NOT, because each quarter is
+  // measured against its own book — that is said on the tile rather than left
+  // to be discovered.
+  var _kmQStrip=function(cells){
+    var c=_kmQShown.map(function(q,i){
+      return '<div style="flex:1 1 0;min-width:0;text-align:center'+(i?';border-left:1px solid rgba(23,44,69,.10)':'')+'">'
+        +'<div style="font-size:8.5px;font-weight:700;color:var(--grey);letter-spacing:.06em">'+q+'</div>'
+        +'<div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+cells[q]+'</div>'
+        +'</div>';
+    }).join('');
+    return '<div style="display:flex;align-items:stretch;gap:0;margin-top:9px;padding-top:8px;border-top:1px solid rgba(23,44,69,.12)">'+c+'</div>';
+  };
+  var _chTile=function(lbl,val,calc,def,strip){
+    return '<div class="tile hero" style="border-left:3px solid '+BD_CHURN_C+';display:flex;flex-direction:column;justify-content:flex-start">'
       +'<div class="tlbl">'+lbl+'</div><div class="tval">'+val+'</div>'
       +(calc?'<div style="font-size:11px;color:var(--grey);margin-top:2px;font-variant-numeric:tabular-nums">'+calc+'</div>':'')
-      +'<div class="tdef">'+def+'</div></div>';
+      +'<div class="tdef">'+def+'</div>'+(strip||'')+'</div>';
   };
+
+  var _kmOpenYear=_kmOpenAt(BD_CHURN_KM_YEAR+'-01');
+  var _kmPct=_kmRate(_kmDeals.length,_kmOpenYear);
+  var _kmTenAll=_kmTenure(_kmDeals);
+
+  var _cCount={},_cPct={},_cTen={};
+  _kmQShown.forEach(function(q){
+    var list=_kmByQ[q]||[];
+    _cCount[q]=String(list.length);
+    var _o=_kmOpenAt(_kmQStart[q]);
+    var _r=_kmRate(list.length,_o);
+    _cPct[q]=_r!=null?(_r.toFixed(1)+'%'):'—';
+    var _t=_kmTenure(list);
+    _cTen[q]=_t.avg!=null?Math.round(_t.avg).toLocaleString():'—';
+  });
+
   hChurn+='<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:stretch">';
-  hChurn+=_chTile('Churned Deals',String(_chDeals.length),'',
-    'Deal stage Churned or Churned (Onb)');
-  hChurn+=_chTile('% Churned',_chPct!=null?_chPct.toFixed(1)+'%':'—',
-    _chDeals.length+' ÷ '+_chEverSigned,
-    'Of every brand that ever signed (closed-won + churned)');
-  hChurn+=_chTile('Avg Time to Churn',_chTenAvg!=null?(Math.round(_chTenAvg).toLocaleString()+' days'):'—',
-    _chTenAvg!=null?('≈ '+(_chTenAvg/30.44).toFixed(1)+' months · n='+_chTenN):'',
-    'Signed → Pause/Churn Date'+(_chTenSkip?('. '+_chTenSkip+' excluded: no churn date'):''));
+  hChurn+=_chTile('Churned Deals',String(_kmDeals.length),
+    _kmUndated?(_kmUndated+' undated, excluded'):'',
+    (_kmBoard?'Board Defined + Delinquent':'Any churn type')+', dated 2026 onward',
+    _kmQStrip(_cCount));
+  hChurn+=_chTile('Churn Rate',_kmPct!=null?_kmPct.toFixed(1)+'%':'—',
+    _kmOpenYear>0?(_kmDeals.length+' ÷ '+_kmOpenYear+' active at 1 Jan'):'no opening book',
+    'Against the book at the START of each period — quarters are rates, so they do not sum',
+    _kmQStrip(_cPct));
+  hChurn+=_chTile('Avg Time to Churn',_kmTenAll.avg!=null?(Math.round(_kmTenAll.avg).toLocaleString()+' days'):'—',
+    _kmTenAll.avg!=null?('≈ '+(_kmTenAll.avg/30.44).toFixed(1)+' months · n='+_kmTenAll.n):'',
+    'Signed → Pause/Churn Date, in days'+(_kmTenAll.skip?('. '+_kmTenAll.skip+' excluded: no usable dates'):''),
+    _kmQStrip(_cTen));
   hChurn+='</div>';
   hChurn+='</section>';
 
