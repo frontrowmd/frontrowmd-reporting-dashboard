@@ -2098,6 +2098,20 @@ function _renderFetchDiag(fd){
   }
   if(fd.window)bits.push('<b>Window:</b> '+fd.window.from+' → '+fd.window.to);
   if(fd.hubspot)bits.push('<b>HubSpot:</b> '+Object.entries(fd.hubspot).map(([k,v])=>k+' '+v).join(' · '));
+  // An HTTP refusal is NOT an empty window, and the counts above cannot tell
+  // them apart — both print 0. Say which it was, above the counts, because a
+  // reader who sees "scheduledContacts 0" otherwise concludes the week was
+  // quiet. A Cloudflare body ("error code: NNNN") means HubSpot's edge blocked
+  // the call rather than HubSpot answering it, which is an upstream condition
+  // that usually clears on its own.
+  var he=fd.hubspotErrors;
+  if(he&&he.n){
+    var _st=Object.entries(he.statuses||{}).map(function(e){return 'HTTP '+e[0]+' ×'+e[1];}).join(' · ');
+    bits.push('<b style="color:#B91C1C">HubSpot refused '+he.n+' request'+(he.n===1?'':'s')+':</b> '+_st
+      +(/error code:/i.test(he.sample||'')
+        ? ' — blocked at HubSpot’s edge, not by HubSpot itself ('+he.sample+'). The zeros below are not real counts; this normally clears by itself, so Refresh in a few minutes.'
+        : (he.sample?' — '+he.sample:'')));
+  }
   // Cloudflare caps subrequests per invocation and every fetch shares the pool.
   // When it runs out the failure is SILENT — deal fetches just return nothing —
   // so name it here rather than letting zeros pass as real numbers.

@@ -246,10 +246,17 @@ ck('and exhausted retries are logged, not returned as a count',
 // decl, not fn: hsSearch's default parameters contain a `{` of their own, and
 // slice.js's brace matcher starts counting at the first brace it sees.
 const hs=decl(src,'async function hsSearch(','\n  return all;\n}');
+// Both branches still hand back whatever pages they already have — the gap is
+// wider now (the failure log carries the response headers), so these match
+// across it rather than assuming the old one-liner.
 ck('hsSearch returns PARTIAL results on a non-ok response',
-   /returning PARTIAL \$\{all\.length\} results[\s\S]{0,80}return all;/.test(hs),true);
+   /returning PARTIAL \$\{all\.length\} results[\s\S]{0,700}?return all;/.test(hs),true);
 ck('and on an exhausted retry loop',
-   /returning PARTIAL \$\{all\.length\}:[\s\S]{0,80}break;/.test(hs),true);
+   /returning PARTIAL \$\{all\.length\}:[\s\S]{0,400}?break;/.test(hs),true);
+// Neither may go quiet about it: a refusal that returns [] reads exactly like
+// an empty window unless it is recorded.
+ck('  and both record the refusal',
+   (hs.match(/noteHsError\(/g)||[]).length,2);
 ck('silent truncation at the page cap is at least warned about',
    /TRUNCATED at \$\{all\.length\}/.test(hs),true);
 ck('and the warning names which end of the sort was dropped',

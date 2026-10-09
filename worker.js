@@ -1281,10 +1281,26 @@ const SUBREQ_HARD_MAX = 900;
 // azWindsorFetchAll's existing cap-bisection narrow only the connectors that
 // actually need it, instead of charging every connector 40 calls for a year.
 const AZ_CREATIVE_CHUNK_DAYS = 30;
+// HubSpot requests REFUSED at the HTTP level, kept apart from "the window was
+// empty". hsSearch returns its partial results on a non-OK response, so an
+// upstream refusal used to reach the banner as a plain 0 — indistinguishable
+// from a quiet week. On 2026-10-09 every live HubSpot call came back 403 with
+// a Cloudflare body ("error code: 1106", i.e. HubSpot's edge blocking us, not
+// HubSpot answering) and the dashboard reported "scheduledContacts 0" with no
+// hint that anything had gone wrong.
+const HS_ERR = { n: 0, statuses: {}, sample: '' };
+function noteHsError(status, bodyText) {
+  HS_ERR.n++;
+  const k = String(status || 'network');
+  HS_ERR.statuses[k] = (HS_ERR.statuses[k] || 0) + 1;
+  if (!HS_ERR.sample && bodyText) HS_ERR.sample = String(bodyText).slice(0, 120).replace(/\s+/g, ' ').trim();
+}
+function hsErrReset() { HS_ERR.n = 0; HS_ERR.statuses = {}; HS_ERR.sample = ''; }
 function subreqReset() {
   SUBREQ.n = 0; SUBREQ.windsor = 0; SUBREQ.hubspot = 0; SUBREQ.kv = 0;
   SUBREQ.exhausted = false; SUBREQ.windsorDropped = 0; SUBREQ.softFail = 0; SUBREQ.windsorPlanned = 0;
   SUBREQ.creCapped = 0;
+  hsErrReset();
 }
 function isSubreqLimit(e) {
   return !!e && /Too many subrequests/i.test(e.message || String(e));
@@ -1366,11 +1382,26 @@ async function hsSearch(token, objectType, filterGroups, properties, limit = 200
           await sleep(1000 * (attempt + 1));
           continue;
         }
-        if (!resp.ok) { console.error(`HS ${objectType} ${resp.status} after ${pages} page(s) — returning PARTIAL ${all.length} results:`, await resp.text()); return all; }
+        if (!resp.ok) {
+          const _b = await resp.text();
+          // A plain-text "error code: NNNN" body is CLOUDFLARE's edge refusing
+          // our OUTBOUND request — HubSpot itself always answers in JSON. The
+          // response headers are the only way to tell those two apart, so log
+          // them: server/cf-ray identify who answered, cf-mitigated names the
+          // rule that fired.
+          console.error(`HS ${objectType} ${resp.status} after ${pages} page(s) — returning PARTIAL ${all.length} results:`,
+            _b.slice(0, 300).replace(/\s+/g, ' '),
+            `| server=${resp.headers.get('server')} cf-ray=${resp.headers.get('cf-ray')}`
+            + ` cf-mitigated=${resp.headers.get('cf-mitigated')} ct=${resp.headers.get('content-type')}`
+            );
+          noteHsError(resp.status, _b);
+          return all;
+        }
         break; // success
       } catch(e) { lastErr = e; if (noteSubreqError(e)) break; await sleep(500 * (attempt + 1)); }
     }
-    if (!resp || !resp.ok) { console.error(`HS ${objectType} search failed after ${pages} page(s) — returning PARTIAL ${all.length}:`, (lastErr && lastErr.message) || lastErr); break; }
+    if (!resp || !resp.ok) { console.error(`HS ${objectType} search failed after ${pages} page(s) — returning PARTIAL ${all.length}:`, (lastErr && lastErr.message) || lastErr);
+      noteHsError(resp ? resp.status : 'network', (lastErr && lastErr.message) || ''); break; }
     const d = await resp.json();
     all.push(...(d.results || []));
     pages++;
@@ -5736,6 +5767,9 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   };
   // closedWon / churned can legitimately be 0 in a window; the two that drive
   // dataQuality (and therefore the banner) cannot.
+  // A refusal is not a quiet window. Reported separately so the banner can say
+  // which it was instead of printing zeros either way.
+  if (HS_ERR.n) fetchDiag.hubspotErrors = { n: HS_ERR.n, statuses: Object.assign({}, HS_ERR.statuses), sample: HS_ERR.sample };
   if (!Array.isArray(cSch) || !cSch.length) fetchDiag.failed.push('hubspot.scheduledContacts');
   if (!Array.isArray(cPipe) || !cPipe.length) fetchDiag.failed.push('hubspot.pipelineDeals');
   console.log(`fetchDiag.hubspot: ${JSON.stringify(fetchDiag.hubspot)}`);
