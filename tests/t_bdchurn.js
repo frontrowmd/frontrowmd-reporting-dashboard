@@ -11,11 +11,16 @@ const ctx={console};vm.createContext(ctx);
 vm.runInContext([
   "var BD_CHURN_BOARD='Board Defined';",
   decl(bd,'var BD_CHURN_TYPE_GROUP={','};'),
-  fn(bd,'_bdMonthOfG'), fn(bd,'_bdQuarterOf'), fn(bd,'_bdIsBoardChurn'),
+  fn(bd,'_bdMonthOfG'), fn(bd,'_bdQuarterOf'), fn(bd,'_bdIsBoardChurn'), fn(bd,'_kmQStartMonth'),
   decl(bd,"var BD_CHURN_KM_FROM=","';"), "var BD_CHURN_KM_YEAR=2026;",
-  'Object.assign(globalThis,{_bdMonthOfG,_bdQuarterOf,_bdIsBoardChurn,BD_CHURN_TYPE_GROUP,BD_CHURN_KM_FROM});',
+  'Object.assign(globalThis,{_bdMonthOfG,_bdQuarterOf,_bdIsBoardChurn,_kmQStartMonth,BD_CHURN_TYPE_GROUP,BD_CHURN_KM_FROM});',
 ].join('\n'),ctx);
 ck('the helpers loaded',typeof ctx._bdQuarterOf,'function');
+// The quarter's denominator is read from _snByMonth at this month, so an
+// off-by-one here silently divides by the wrong quarter's book.
+ck('each quarter starts at the right month',
+   ['Q1','Q2','Q3','Q4'].map(q=>ctx._kmQStartMonth(q)),
+   ['2026-01','2026-04','2026-07','2026-10']);
 
 // ── 1. The 2026 floor ─────────────────────────────────────────────────────
 // Before 2026 the book was a handful of brands, where one churn swings a rate
@@ -87,28 +92,32 @@ ck('C1 takes the book at the period start',
    /_kmOpenAt=function\(m\)\{var pv=_snByMonth\[_kmPrevMonth\(m\)\];return pv\?pv\.b:0;\}/.test(bd),true);
 ck('  which is what C2 does',
    /_chOpen=function\(m\)\{var p=_snByMonth\[_chPrev\(m\)\];return p\?p\.b:0;\}/.test(bd),true);
-// The denominator is the AVERAGE active book, not the count on day one:
-// dividing a year of churn by the 1 January book ignores every brand that
-// signed later, so the rate read high and got worse the faster the book grew.
-ck('the rate divides by the average active book',
-   /var _kmOpenYear=_kmAvgOpen\(_kmMonthsOf\(null\)\);/.test(bd),true);
-ck('  and each quarter averages its OWN months',
-   /var _o=_kmAvgOpen\(_kmMonthsOf\(q\)\);/.test(bd),true);
-ck('  averaging each month\u2019s opening book, skipping months with none',
-   /months\.forEach\(function\(m\)\{var o=_kmOpenAt\(m\); if\(o>0\)\{tot\+=o;n\+\+;\}\}\);/.test(bd),true);
-ck('  never counting past the current month',
-   /var last=\(n\.getFullYear\(\)>BD_CHURN_KM_YEAR\)\?12:\(n\.getMonth\(\)\+1\);/.test(bd),true);
+// Each QUARTER divides by the active book at that quarter's start — one point,
+// not an average across its months.
+ck('each quarter divides by its own opening book',
+   /var _o=_kmOpenQ\(q\);/.test(bd),true);
+ck('  which is the book at the quarter start',
+   /_kmOpenQ=function\(q\)\{return _kmOpenAt\(_kmQStartMonth\(q\)\);\}/.test(bd),true);
+ck('the per-month averaging is gone',/_kmAvgOpen|_kmMonthsOf/.test(bd),false);
+// The TOTAL cannot use any single opening count: most of the year's churn comes
+// from brands that signed after January and were never in that number.
+ck('the total divides by everything on the book since 2026',
+   /var _kmTotalBase=closedWonDeals\.length\+_kmAll\.length;/.test(bd),true);
+ck('  and the headline rate uses it',
+   /var _kmPct=_kmRate\(_kmDeals\.length,_kmTotalBase\);/.test(bd),true);
+// _kmAll is every DATED 2026 churn; _kmDeals is the Board-Defined subset. Built
+// from the subset, the denominator would shrink exactly when the toggle is on
+// and inflate the board rate.
+ck('  built from all 2026 churns, not the Board Defined subset',
+   /_kmTotalBase=closedWonDeals\.length\+_kmDeals\.length/.test(bd),false);
 ck('  and the tile names the denominator it used',
-   /' avg active brands'/.test(bd),true);
-ck('the tile says the day-one count is NOT what it divides by',
-   /not the count on day one, which ignores every brand that signed later/.test(bd),true);
-// The fixed quarter-start map went with the day-one denominator — each quarter
-// now averages its own months, so there is nothing left to pin a start month to.
-ck('no fixed quarter-start map survives',/_kmQStart/.test(bd),false);
-ck('a quarter spans its own three months, capped at the current one',
-   /var from=q\?\(\(\+q\.slice\(1\)-1\)\*3\+1\):1, to=q\?Math\.min\(from\+2,last\):last;/.test(bd),true);
-ck('  and the headline spans January through the current month',
-   /var from=q\?[^;]*:1, to=q\?[^;]*:last;/.test(bd),true);
+   /' on the book since 2026'/.test(bd),true);
+ck('the tile spells out both bases',
+   /active now plus churned since\. Each quarter divides by the active book at the start of that quarter/.test(bd),true);
+// The quarter-start map is back: a quarter's denominator is now a single point
+// (its opening book), so there IS a start month to pin again.
+ck('the quarter-start map exists',
+   /_kmQStartMonth=function\(q\)\{return BD_CHURN_KM_YEAR\+'-'\+\('0'\+\(\(\+q\.slice\(1\)-1\)\*3\+1\)\)\.slice\(-2\);\}/.test(bd),true);
 ck('a zero book yields a dash, not a divide-by-zero',
    /_kmRate=function\(n,open\)\{return open>0\?\(\(n\/open\)\*100\):null;\}/.test(bd),true);
 
@@ -442,8 +451,7 @@ ck('an empty side yields no z',ctx8._c8Z({ch:0,n:0},{ch:5,n:10}),null);
 const G=rows=>({rows});
 const vRev=ctx8._c8Verdict(G([{l:'1–2 reviews',n:326,ch:62},{l:'3–9 reviews',n:258,ch:39},{l:'10+ reviews',n:127,ch:16}]));
 ck('the reviews verdict declines to state a difference',vRev.tone,'nodiff');
-ck('  and never prints a pp figure',/pp/.test(vRev.head+vRev.calc),false);
-ck('  showing the bands instead of a claim',vRev.head,'19.0%  ·  15.1%  ·  12.6%');
+ck('  and never prints a pp figure',/pp/.test(vRev.badge+vRev.calc),false);
 ck('  and explains why in plain words',
    /smaller than the error on it/.test(vRev.calc),true);
 const vPro=ctx8._c8Verdict(G([{l:'1 product',n:189,ch:22},{l:'2 products',n:32,ch:5},{l:'3+ products',n:128,ch:17}]));
@@ -453,14 +461,25 @@ ck('the products verdict reports no pattern, not a trend',vPro.tone,'nopattern')
 ck('  naming the middle band as the worst',/2 products in the middle/.test(vPro.calc),true);
 ck('  and flagging that it is too thin to carry it',
    /only 32 brands, so one brand moves it by 3\.1 points/.test(vPro.calc),true);
-ck('  while still printing the whole run',vPro.head,'11.6%  ·  15.6%  ·  13.3%');
+ck('  and never prints a pp figure either',/pp/.test(vPro.badge+vPro.calc),false);
 // A difference that DOES clear the gate is still allowed to be stated.
 const vReal=ctx8._c8Verdict(G([{l:'low',n:300,ch:100},{l:'high',n:300,ch:20}]));
 ck('a difference that clears the gate is stated',vReal.tone,'less');
-ck('  with the gap in points',/pp lower at high/.test(vReal.head),true);
+ck('  with the gap in points',/pp lower at high/.test(vReal.calc),true);
 ck('  and still refuses to claim cause',/Association, not cause/.test(vReal.calc),true);
 ck('one populated band is not a comparison',
    ctx8._c8Verdict(G([{l:'a',n:0,ch:0},{l:'b',n:10,ch:4}])).tone,'none');
+// The verdict no longer restates the band percentages: they are already in the
+// value column of every row, which is what made the card band below the chart
+// pure duplication.
+ck('the verdict carries no headline of its own',
+   [vRev,vPro,vReal].map(v=>Object.keys(v).sort().join(',')),
+   ['badge,calc,tone','badge,calc,tone','badge,calc,tone']);
+ck('  and the card band is gone',/flex:1 1 380px/.test(bd),false);
+ck('  with the badge rendered in the group header instead',
+   /\+v\.badge\+'<\/span>'/.test(bd),true);
+ck('  and its one reason directly beneath',
+   /margin:0 0 6px;line-height:1\.5">'\+v\.calc\+'<\/div>'/.test(bd),true);
 
 // ── functional: axis steps ──
 ck('the axis snaps to a familiar step and stays under eight ticks',
