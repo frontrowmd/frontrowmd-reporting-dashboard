@@ -367,8 +367,10 @@ function capiConvLabel(campaignName, adsetName) {
 // dimension that fans rows out ~36x and inflates spend), so the id→name map is
 // mirrored here. Verified verbatim against get_fields on the facebook connector.
 // NOTE: several names exist under multiple ids in Meta (e.g. "CAPI -- Demo +
-// Webinar" has 4); only the id below carries an actions_* column, so an ad set
-// optimizing for a duplicate id resolves by name here but has no count column.
+// Webinar" has 4) and only the id below carries an actions_* column. A
+// duplicate id therefore has no column of its own; META_CC_ALIAS maps it onto
+// the one that does, so keep this list ONE ENTRY PER COLUMN and put duplicates
+// there instead.
 const META_CUSTOM_CONVERSIONS = [
   { field: 'actions_capi_clinicians',                 id: '1403040218341205',  label: 'CAPI -- Clinicians' },
   { field: 'actions_capi_virtual_clinician',          id: '2367172530757383',  label: 'CAPI -- Virtual Clinician' },
@@ -403,6 +405,28 @@ const META_EVENT_FIELD = {
 const META_CC_BY_ID = {};        // custom_conversion_id → display name
 const META_CC_FIELD_BY_ID = {};  // custom_conversion_id → Windsor count column
 for (const _cc of META_CUSTOM_CONVERSIONS) { META_CC_BY_ID[_cc.id] = _cc.label; META_CC_FIELD_BY_ID[_cc.id] = _cc.field; }
+// Meta lets the SAME custom conversion name exist under several ids, and only
+// one of them carries an actions_* column in Windsor. An ad set optimizing for
+// a duplicate id therefore resolved to no name and no column, which sent it to
+// the submit_application fallback — a different event entirely.
+//
+// Verified against Meta's own Results for Oct 5-9 2026. The five
+// "CAPI Demo + Webinar" ad sets (all on id 1612252243966047) reported
+// 3 / 2 / 2 / 0 / 0, and actions_capi_demo_webinar returns exactly
+// 3 / 2 / 2 / 0 / 0 for them, while submit_application_total returned
+// 1 / 0 / 2 / 0 / 0 — which is what the dashboard had been showing.
+//
+// Aliases are kept OUT of META_CUSTOM_CONVERSIONS so META_CAPI_FIELDS does not
+// request the same column twice.
+const META_CC_ALIAS = {
+  '1612252243966047': '1489552102408235',   // CAPI -- Demo + Webinar (duplicate id)
+};
+// Canonical custom-conversion id for a promoted object, or '' when it has none.
+function _metaCcId(o) {
+  const raw = (o && o.custom_conversion_id != null) ? String(o.custom_conversion_id) : '';
+  if (!raw) return '';
+  return META_CC_ALIAS[raw] || raw;
+}
 
 // All nine custom-conversion count columns. These are flat NUMERIC metrics —
 // verified to add NO rows to a spend query (unlike the custom_conversion_action_name
@@ -431,16 +455,25 @@ const META_CONV_ARRAY_FIELD = ',conversions';
 function metaOptTarget(promotedObjectRaw) {
   const o = _metaParsePromoted(promotedObjectRaw);
   if (!o) return '';
-  const ccId = o.custom_conversion_id != null ? String(o.custom_conversion_id) : '';
-  if (ccId) return META_CC_BY_ID[ccId] || ('Custom conversion ' + ccId);
+  const ccId = _metaCcId(o);
+  if (ccId && META_CC_BY_ID[ccId]) return META_CC_BY_ID[ccId];
   const evt = String(o.custom_event_type || '').trim();
-  if (!evt) return '';
-  // 'OTHER' with no custom_conversion_id = the ad set optimizes for a RAW custom
-  // pixel event, named only by custom_event_str (e.g. 'virtualclinicians',
-  // 'Clinician'). Returning '' here left every such ad set with a blank
-  // Optimization Target, which is what hid the clinician split.
-  if (evt === 'OTHER') return String(o.custom_event_str || '').trim();
-  return evt.split('_').map(w => w ? w.charAt(0) + w.slice(1).toLowerCase() : '').join(' ');
+  // An id we cannot name used to stop here and print the raw number. Fall
+  // through to the event type first: a custom conversion wrapping a STANDARD
+  // event (e.g. id 1454873686662315, custom_event_type SCHEDULE) is perfectly
+  // nameable, and "Schedule" beats "Custom conversion 1454873686662315".
+  if (evt && evt.toUpperCase() !== 'OTHER') {
+    return evt.split('_').map(w => w ? w.charAt(0) + w.slice(1).toLowerCase() : '').join(' ');
+  }
+  // 'OTHER' with no custom conversion = a RAW custom pixel event, named only by
+  // custom_event_str (e.g. 'virtualclinicians', 'Clinician'). Returning ''
+  // here left every such ad set with a blank Optimization Target, which is what
+  // hid the clinician split.
+  if (evt.toUpperCase() === 'OTHER') {
+    const s = String(o.custom_event_str || '').trim();
+    if (s) return s;
+  }
+  return ccId ? ('Custom conversion ' + ccId) : '';
 }
 function _metaParsePromoted(raw) {
   if (!raw) return null;
@@ -454,17 +487,20 @@ function _metaParsePromoted(raw) {
 function metaTargetField(row) {
   const o = _metaParsePromoted(row.adset_promoted_object);
   if (!o) return '';
-  const id = o.custom_conversion_id != null ? String(o.custom_conversion_id) : '';
-  if (id) return META_CC_FIELD_BY_ID[id] || '';
-  // STANDARD pixel events used to return '' here, which sent every one of them
-  // to the submit_application fallback regardless of what the ad set actually
-  // optimizes for. Verified against the live account 2026-09-17: the "CAPI
-  // schedule" campaigns optimize for SCHEDULE, and Meta's own Results column
-  // reported 10 / 1 / 1 Website Schedules where this dashboard reported 17 / 1 / 0
-  // Submit Applications — a different event, so CPD on those campaigns was
-  // understated (Skincare read $59 against a true $101). Map the standard event
-  // to its own count column so counting follows the ad set's real target, which
-  // is what already happened for custom conversions.
+  const id = _metaCcId(o);
+  if (id && META_CC_FIELD_BY_ID[id]) return META_CC_FIELD_BY_ID[id];
+  // An UNMAPPED id used to return '' right here, SKIPPING the standard-event
+  // lookup below, so the row fell through to submit_application even when its
+  // own event type named a column we fetch. That is how id 1454873686662315
+  // (custom_event_type SCHEDULE) would be counted as Submit Applications.
+  //
+  // STANDARD pixel events used to return '' here too, which sent every one of
+  // them to the submit_application fallback regardless of what the ad set
+  // actually optimizes for. Verified against the live account 2026-09-17: the
+  // "CAPI schedule" campaigns optimize for SCHEDULE, and Meta's own Results
+  // column reported 10 / 1 / 1 Website Schedules where this dashboard reported
+  // 17 / 1 / 0 Submit Applications — a different event, so CPD on those
+  // campaigns was understated (Skincare read $59 against a true $101).
   const evt = String(o.custom_event_type || '').trim().toUpperCase();
   return META_STD_EVENT_FIELD[evt] || '';
 }
@@ -473,7 +509,11 @@ function metaTargetField(row) {
 function metaTargetEvent(row) {
   const o = _metaParsePromoted(row.adset_promoted_object);
   if (!o) return '';
-  if (o.custom_conversion_id != null && String(o.custom_conversion_id)) return '';
+  // A custom conversion we can COUNT is counted by its column, not from the
+  // array. An unmapped one falls through, so an ad set on an unknown id that
+  // still names a raw event in custom_event_str can be counted from the array.
+  const id = _metaCcId(o);
+  if (id && META_CC_FIELD_BY_ID[id]) return '';
   if (String(o.custom_event_type || '').trim().toUpperCase() !== 'OTHER') return '';
   return String(o.custom_event_str || '').trim();
 }

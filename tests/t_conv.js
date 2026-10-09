@@ -12,7 +12,7 @@ const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify(w);console.log((o
 
 const prefix=src.slice(0,src.indexOf('\nexport default'));
 const ctx={console};vm.createContext(ctx);
-vm.runInContext(prefix+'\nObject.assign(globalThis,{metaTargetCount,metaTargetEvent,metaEventCount,metaOptTarget,metaTargetField,clinicianConvCount,chDemoCount,_foldAudRows,metaDemos,CLINICIAN_CONV_FIELDS});',ctx);
+vm.runInContext(prefix+'\nObject.assign(globalThis,{metaTargetCount,metaTargetEvent,metaEventCount,metaOptTarget,metaTargetField,clinicianConvCount,chDemoCount,_foldAudRows,metaDemos,CLINICIAN_CONV_FIELDS,META_CC_ALIAS});',ctx);
 ck('the real resolver loaded',typeof ctx.metaTargetCount,'function');
 
 const PIX='"pixel_id": "3681546762144757", ';
@@ -140,6 +140,77 @@ ck('campaign fetch requests it',/META_PROMOTED_OBJ_FIELD\+META_CONV_ARRAY_FIELD,
 ck('both ad-set configs request it',cnt(/adset_promoted_object'\+META_LEAD_FIELDS\+META_CAPI_FIELDS\+META_CONV_ARRAY_FIELD/g),2);
 ck('the creative fetch requests it',/META_PROMOTED_OBJ_FIELD \+ META_CONV_ARRAY_FIELD/.test(src),true);
 ck('no aggregation site still reads cfg.demoField for clinician',/ch === 'meta'.*metaDemos\(row\).*\n.*demoRawOf\(row, cfg\.demoField\)/.test(src),false);
+
+
+// ── 7. Duplicate custom-conversion ids ────────────────────────────────────
+// Meta lets the same custom conversion NAME exist under several ids, and only
+// one of them carries an actions_* column in Windsor. An ad set on a duplicate
+// id resolved to no name and no column, so it fell through to
+// submit_application — a different event — and the table printed the raw id.
+// Every number below is live Windsor output for Oct 5-9 2026, checked against
+// Meta's own Results column in the Ad Sets view.
+const DW='{'+PIX+'"custom_event_type": "OTHER", "custom_conversion_id": "1612252243966047"}';
+ck('the duplicate id is aliased to the one that has a column',
+   ctx.META_CC_ALIAS['1612252243966047'],'1489552102408235');
+ck('  so it resolves to the real name, not a raw number',
+   ctx.metaOptTarget(DW),'CAPI -- Demo + Webinar');
+ck('  and to the column that counts it',
+   ctx.metaTargetField({adset_promoted_object:DW}),'actions_capi_demo_webinar');
+// The five live ad sets. Meta reported 3 / 2 / 2 / 0 / 0; submit_application
+// held 1 / 0 / 2 / 0 / 0, which is what the dashboard had been showing.
+const DWLIVE=[[3,1],[2,0],[2,2],[0,0],[0,0]];
+ck('every live ad set now matches Meta',
+   DWLIVE.map(([dw,sa])=>ctx.metaTargetCount({adset_promoted_object:DW,
+     actions_capi_demo_webinar:String(dw), conversions_submit_application_total:String(sa)})),
+   [3,2,2,0,0]);
+ck('  which is NOT what submit_application would have given',
+   DWLIVE.map(([,sa])=>sa),[1,0,2,0,0]);
+// Aliases must stay out of META_CUSTOM_CONVERSIONS or the fetch asks for the
+// same column twice.
+ck('the alias does not duplicate a fetched column',
+   (src.match(/actions_capi_demo_webinar'/g)||[]).length,1);
+
+// ── 8. An unmapped id must not swallow its standard event ─────────────────
+// id 1454873686662315 is a custom conversion wrapping the STANDARD Schedule
+// event. The id lookup used to return '' and stop, skipping the standard-event
+// branch entirely, so the row was counted as Submit Applications.
+const SCHEDCC='{'+PIX+'"custom_event_type": "SCHEDULE", "custom_conversion_id": "1454873686662315"}';
+ck('an unmapped id falls through to its event type',
+   ctx.metaTargetField({adset_promoted_object:SCHEDCC}),'conversions_schedule_total');
+ck('  and is named for that event, not by its id',ctx.metaOptTarget(SCHEDCC),'Schedule');
+ck('  counting schedules rather than submissions',
+   ctx.metaTargetCount({adset_promoted_object:SCHEDCC,
+     conversions_schedule_total:'4', conversions_submit_application_total:'9'}),4);
+// A mapped id still wins over the event type.
+ck('a mapped id still beats the event type',
+   ctx.metaTargetField({adset_promoted_object:'{'+PIX+'"custom_event_type": "SCHEDULE", "custom_conversion_id": "1403040218341205"}'}),
+   'actions_capi_clinicians');
+
+// ── 9. Nothing in the live account prints a raw id ────────────────────────
+// Every distinct adset_promoted_object seen on the facebook connector
+// 2026-08-01..2026-10-09.
+const LIVE_POS=[
+  ['{'+PIX+'"custom_event_type": "SUBMIT_APPLICATION"}','Submit Application'],
+  ['{'+PIX+'"custom_event_type": "SCHEDULE"}','Schedule'],
+  [SCHEDCC,'Schedule'],
+  [DW,'CAPI -- Demo + Webinar'],
+  ['{'+PIX+'"custom_event_type": "OTHER", "custom_conversion_id": "1403040218341205"}','CAPI -- Clinicians'],
+  ['{'+PIX+'"custom_event_type": "OTHER", "custom_conversion_id": "2367172530757383"}','CAPI -- Virtual Clinician'],
+  ['{'+PIX+'"custom_event_type": "OTHER", "custom_conversion_id": "27583605861331174"}','CAPI -- Demo + Webinar + Ebook + Disqual'],
+  ['{'+PIX+'"custom_event_type": "OTHER", "custom_event_str": "virtualclinicians"}','virtualclinicians'],
+  ['{'+PIX+'"custom_event_type": "OTHER", "custom_event_str": "Clinician"}','Clinician'],
+];
+ck('every promoted object in the account resolves to a name',
+   LIVE_POS.map(([po])=>ctx.metaOptTarget(po)),LIVE_POS.map(([,n])=>n));
+ck('  so no table can print "Custom conversion <id>" for live data',
+   LIVE_POS.filter(([po])=>/^Custom conversion /.test(ctx.metaOptTarget(po))).length,0);
+// But a genuinely unknown target must still say so rather than be guessed at.
+ck('an unknown id with nothing else to go on still shows the id',
+   ctx.metaOptTarget('{'+PIX+'"custom_event_type": "OTHER", "custom_conversion_id": "999999999999"}'),
+   'Custom conversion 999999999999');
+ck('  and is not counted by some arbitrary column',
+   ctx.metaTargetCount({adset_promoted_object:'{'+PIX+'"custom_event_type": "OTHER", "custom_conversion_id": "999999999999"}',
+     conversions_submit_application_total:'7'}),-1);
 
 console.log('\n'+pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);
