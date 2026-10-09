@@ -82,6 +82,10 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
 .bd-nav-i:hover{background:rgba(23,44,69,.06);color:var(--navy)}
 .bd-nav-i.on{background:var(--navy);color:#fff}
 .bd-nav-i:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+/* C2's hover columns. An SVG <rect> with no fill paints BLACK, so this rule is
+   load-bearing: without it the chart is a solid block. */
+.bd-rate-band{fill:transparent;cursor:pointer}
+.bd-rate-band:hover{fill:rgba(23,44,69,.05)}
 .bd-goal-btn{display:inline-flex;align-items:center;gap:7px;font-family:var(--font-b);
   font-size:11.5px;font-weight:700;color:var(--navy);background:var(--teal-8);
   border:1.5px solid rgba(114,164,191,.45);border-radius:50px;padding:6px 14px;
@@ -346,8 +350,10 @@ var BD_CHURN_TYPE_COLORS={'Board Defined':'#DC2626','Never Imp - Other Reason':'
 var BD_CHURN_DETAIL_FROM='2026-01';
 // Below this many active brands at the start of a period, one churn moves the
 // rate by more than 4pp and the line reads as noise. Those periods are not
-// plotted, and the chart says how much churn that hides.
-var BD_CHURN_RATE_MIN_BOOK=25;
+// C2 used to refuse months whose opening book was under 25 brands: one churn
+// moved the rate by over 4pp and flattened every later month onto the axis.
+// That floor is gone with the 2026 start — the book is in the hundreds by then,
+// and the guard was what made months disappear from the X axis.
 var BD_CHURN_REASON_TOP=6;
 // The reported field's own bands, VERBATIM — note "200 -500k" has the space
 // before the hyphen. Measured traffic is binned into these so the two are
@@ -395,6 +401,11 @@ function bdSetTab(t){
   // nav and a block wrapper would pull them out of its layout.
   var an=document.getElementById('bd-nav-anchors');if(an)an.style.display=(t==='tracker')?'contents':'none';
   var cn=document.getElementById('bd-nav-churn');if(cn)cn.style.display=(t==='churn')?'contents':'none';
+  // The goal calculator is a Tracker thing: it counts deals needed to hit a
+  // monthly signing goal, which says nothing about churn. Hidden rather than
+  // removed, because the Tracker tab still needs it and the dialog it opens
+  // lives in the static DOM.
+  var gb=document.getElementById('bd-goal-btn');if(gb)gb.style.display=(t==='churn')?'none':'';
   window.scrollTo(0,0);
   renderBD();
 }
@@ -402,6 +413,8 @@ function bdSetTab(t){
 // meaning they shipped with; Board Defined is one click away and is the cut
 // sections C5 and C7 already use.
 var _bdChurnKmScope='all';
+var _bdChurnRateGrain='month';
+function bdSetChurnRateGrain(g){if(_bdChurnRateGrain===g)return;_bdChurnRateGrain=g;renderBD();}
 function bdSetChurnKmScope(v){if(_bdChurnKmScope===v)return;_bdChurnKmScope=v;renderBD();}
 // Churn Type is grouped before testing, so Delinquent Payment counts as Board
 // Defined here exactly as it does in the By Type chart.
@@ -1694,7 +1707,7 @@ function renderBD(){
   // ── Scope ────────────────────────────────────────────────────────────────
   // 2026 onward only. Before that the book was a handful of brands, where one
   // churn swings a rate by tens of points — the same reason C2 refuses to plot
-  // a month whose opening book is under BD_CHURN_RATE_MIN_BOOK.
+  // a thin early month.
   var _kmBoard=(_bdChurnKmScope==='board');
   var _kmAll=_chDeals.filter(function(dd){
     var _m=_bdMonthOf(dd.pausechurn_date);
@@ -1798,57 +1811,19 @@ function renderBD(){
   hChurn+='</div>';
   hChurn+='</section>';
 
-  // ── ii. Month-by-month churn rate ──
-  // Numerator: churns DATED into the month. Denominator: the Snapshot's active
-  // brand count at the START of the month, i.e. the previous month's close.
-  // _snByMonth is month-END by construction (the loop adds that month's
-  // signings before writing the key), so the previous key is the opening book.
-  var _chByMonth={},_chUndated=0;
-  _chDeals.forEach(function(dd){
-    var _m=_bdMonthOf(dd.pausechurn_date);
-    if(!_m){_chUndated++;return;}
-    _chByMonth[_m]=(_chByMonth[_m]||0)+1;
-  });
-  var _chMonths=Object.keys(_snByMonth).sort();
+  // ── ii. Churn rate over time, split by churn type ──
+  // Numerator: churns DATED into the period, of that type. Denominator: the
+  // Snapshot's active brand count at the START of the period. _snByMonth is
+  // month-END by construction, so the previous key is the opening book.
+  //
+  // Built AFTER the period helpers below in source order would be cleaner, but
+  // they are declared with `var` in the same function scope and only called
+  // from here downward, so this reads them fine. The chart itself is emitted
+  // later, once those helpers exist.
+  var _chUndated=0;
+  _chDeals.forEach(function(dd){ if(!_bdMonthOf(dd.pausechurn_date))_chUndated++; });
   var _chPrev=function(m){var q=m.split('-'),y=+q[0],mo=+q[1]-1;if(mo<1){y--;mo=12;}return y+'-'+('0'+mo).slice(-2);};
   var _chOpen=function(m){var p=_snByMonth[_chPrev(m)];return p?p.b:0;};
-  var _chRateLbl=[],_chRateVal=[],_chRateTip=[],_chRateNote=[];
-  // A rate needs a denominator big enough that one churn does not swing it.
-  // The first months of the book held a handful of brands, so a single churn
-  // printed 50% and flattened every later month onto the axis — that spike was
-  // an artifact of the denominator, not a signal, and it made the chart useless.
-  var _chSkipThin=0;
-  _chMonths.forEach(function(m){
-    var _o=_chOpen(m);
-    if(_o<=0)return;                       // no opening book — a rate would be meaningless
-    if(_o<BD_CHURN_RATE_MIN_BOOK){if(_chByMonth[m])_chSkipThin++;return;}
-    var _n=_chByMonth[m]||0;
-    var _q=m.split('-');
-    _chRateLbl.push(mN[+_q[1]-1]+' '+_q[0].slice(-2));
-    _chRateVal.push(Math.round((_n/_o)*10000)/100);
-    // Header = the period. Note = the arithmetic. They used to be concatenated
-    // into one unreadable line with no separator between them.
-    _chRateTip.push(mN[+_q[1]-1]+' '+_q[0]);
-    _chRateNote.push(_n+' churned \u00f7 '+_o+' active at the start of the month');
-  });
-  hChurn+='<section class="bd-sec" id="bd-sec-churnrate">';
-  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C2</span><span class="bd-sec-t">Monthly Churn Rate</span>'
-    +'<span class="bd-sec-s">Churns dated into the month ÷ active brands at the start of it. The denominator is the Snapshot book, so it counts brands that were live then even if they have since churned.</span></div>';
-  hChurn+='<div class="tile" style="padding:16px 18px 10px">';
-  // aspect:true, NOT a fixed-height wrapper. Without it buildSVGChart returns
-  // `flex:1;min-height:180px`, which needs a flex-column parent with a bounded
-  // height to resolve against — in a plain div the SVG fell back to its
-  // intrinsic viewBox ratio and rendered ~650px tall, straight through the
-  // sections below it.
-  hChurn+='<div class="chart-wrap" style="position:relative;min-width:0;overflow:hidden">'
-    +buildSVGChart(_chRateLbl,_chRateVal,BD_CHURN_C,'%',false,'',{w:1400,ht:300,aspect:true,ySuffix:'%',yDec:1,tipLabels:_chRateTip,tipNotes:_chRateNote})
-    +'<div id="bd-churnrate-tip" class="float-tip"></div></div>';
-  hChurn+='<div style="font-size:10px;color:var(--grey);margin-top:8px;font-style:italic;line-height:1.5">'
-    +(_chUndated?(_chUndated+' of '+_chDeals.length+' churned deals have no Pause/Churn Date and cannot be placed in a month \u2014 excluded here, and from the Snapshot denominator too, so the two stay consistent. '):'')
-    +(_chSkipThin?('Months opening with fewer than '+BD_CHURN_RATE_MIN_BOOK+' active brands are not plotted \u2014 one churn would move the rate by over 4pp. That hides '+_chSkipThin+' early month'+(_chSkipThin===1?'':'s')+' that did have churn.'):'')
-    +'</div>';
-  hChurn+='</div></section>';
-
   // ── Period bucketing, shared by the two toggled charts ──
   var _chPeriodOf=function(v,grain){
     var m=_bdMonthOf(v); if(!m)return '';
@@ -1885,6 +1860,73 @@ function renderBD(){
     return '<span style="display:inline-flex;align-items:center;background:rgba(23,44,69,.07);border:1.5px solid rgba(23,44,69,.16);border-radius:50px;padding:3px;gap:3px;flex-shrink:0">'
       +_chGrainPill(cur,'month','Monthly',fnName)+_chGrainPill(cur,'quarter','Quarterly',fnName)+'</span>';
   };
+
+  // ── ii. Churn rate over time, by churn type ──
+  // Two lines, not one: a single all-types rate hides which KIND of churn is
+  // moving. Board Defined (with Delinquent Payment folded in, as everywhere
+  // else on this tab) leads; Never Implemented — all three NI reasons combined
+  // — rides behind it, thinner, because it is the secondary read.
+  //
+  // Periods come from _chPeriods, which already floors at BD_CHURN_DETAIL_FROM
+  // (2026-01): the churn-type field is near-empty before that, so an all-time
+  // chart would draw years of "no board-defined churn" that are really
+  // "not recorded".
+  var _chNITypes=BD_CHURN_TYPE_ORDER.filter(function(c){return c!==BD_CHURN_BOARD;});
+  // Groups inline rather than via _chTypeOf: that one is a `var` function
+  // expression declared in section iii BELOW this, so calling it from here
+  // would read `undefined` at render time. Same map, same result.
+  var _chIsNI=function(dd){
+    var v=(dd.never_implemented_churn||'').trim();
+    if(!v)return false;
+    return _chNITypes.indexOf(BD_CHURN_TYPE_GROUP[v]||v)>=0;
+  };
+  var _chRateChart=function(grain){
+    var periods=_chPeriods(grain);
+    if(!periods.length)return '<div style="padding:28px;text-align:center;color:var(--grey);font-size:12px">No churn dated 2026 onward yet</div>';
+    var nB={},nN={};
+    _chDeals.forEach(function(dd){
+      var k=_chPeriodOf(dd.pausechurn_date,grain); if(!k||k<BD_CHURN_DETAIL_FROM)return;
+      if(_bdIsBoardChurn(dd))nB[k]=(nB[k]||0)+1;
+      else if(_chIsNI(dd))nN[k]=(nN[k]||0)+1;
+    });
+    var lbl=[],vB=[],vN=[],noteB=[],noteN=[],tip=[];
+    periods.forEach(function(k){
+      var open=_chOpenOf(k);
+      lbl.push(_chPeriodLbl(k));
+      tip.push(_chPeriodLbl(k));
+      var b=nB[k]||0,n=nN[k]||0;
+      // No opening book means no rate — null breaks the line rather than
+      // drawing a zero that reads as "nobody churned".
+      vB.push(open>0?Math.round((b/open)*10000)/100:null);
+      vN.push(open>0?Math.round((n/open)*10000)/100:null);
+      noteB.push(open>0?(b+' ÷ '+open+' active at the start'):'no opening book');
+      noteN.push(open>0?(n+' ÷ '+open+' active at the start'):'no opening book');
+    });
+    return bdRateLineChart(lbl,[
+      {n:'Board Defined',c:BD_CHURN_TYPE_COLORS[BD_CHURN_BOARD],w:2.8,vals:vB,note:noteB},
+      {n:'Never Implemented',c:'#64748B',w:1.6,vals:vN,note:noteN,dash:true},
+    ],{w:1400,ht:320,tipLabels:tip});
+  };
+  hChurn+='<section class="bd-sec" id="bd-sec-churnrate">';
+  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C2</span><span class="bd-sec-t">Churn Rate Over Time</span>'
+    +'<span class="bd-sec-s">Churns dated into the period ÷ active brands at the start of it. The denominator is the Snapshot book, so it counts brands that were live then even if they have since churned.</span>'
+    +'<span style="margin-left:auto">'+_chGrainSeg(_bdChurnRateGrain,'bdSetChurnRateGrain')+'</span></div>';
+  hChurn+='<div class="tile" style="padding:16px 18px 10px">';
+  hChurn+='<div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:8px">'
+    +'<span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--navy)">'
+    +'<span style="display:inline-block;width:16px;height:0;border-top:2.8px solid '+BD_CHURN_TYPE_COLORS[BD_CHURN_BOARD]+'"></span>Board Defined'
+    +'<span style="font-size:9.5px;color:var(--grey)">incl. Delinquent Payment</span></span>'
+    +'<span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--navy)">'
+    +'<span style="display:inline-block;width:16px;height:0;border-top:1.6px dashed #64748B"></span>Never Implemented'
+    +'<span style="font-size:9.5px;color:var(--grey)">Ghosted + Rejected + Other</span></span></div>';
+  hChurn+='<div class="chart-wrap" style="position:relative;min-width:0;overflow:hidden">'
+    +_chRateChart(_bdChurnRateGrain)
+    +'<div id="bd-churnrate-tip" class="float-tip"></div></div>';
+  hChurn+='<div style="font-size:10px;color:var(--grey);margin-top:8px;font-style:italic;line-height:1.5">'
+    +'From 2026 onward — Churn Type is near-empty before that, so earlier periods would read as no board-defined churn rather than as unrecorded. '
+    +(_chUndated?(_chUndated+' of '+_chDeals.length+' churned deals have no Pause/Churn Date and cannot be placed in a period — excluded here, and from the Snapshot denominator too, so the two stay consistent.'):'')
+    +'</div>';
+  hChurn+='</div></section>';
 
   // ── iii. Churn count by Churn Type ──
   // The stored VALUES are not the labels — "Yes - Ghosted" displays as
@@ -2411,6 +2453,67 @@ function bdBindStack(root){
     });
     seg.addEventListener('mouseleave',function(){tip.classList.remove('ftc');tip.style.display='none';});
   });
+}
+// Two-line rate chart for C2. buildSVGChart is single-series and draws its Y
+// axis as five equal slices of the data range, which gives labels like 3.7% /
+// 7.4% — correct, unreadable, and impossible to compare against. This one picks
+// a NICE step and labels every period on the X axis.
+function bdRateLineChart(labels,series,opts){
+  opts=opts||{};
+  if(!labels||!labels.length)return '<div style="height:220px;display:flex;align-items:center;justify-content:center;color:var(--grey);font-size:12px">No data</div>';
+  var w=opts.w||1400,ht=opts.ht||320,pad={t:20,r:24,b:46,l:60};
+  var pw=w-pad.l-pad.r,ph=ht-pad.t-pad.b;
+  var mx=0;
+  series.forEach(function(s){s.vals.forEach(function(v){if(v!=null&&v>mx)mx=v;});});
+  // A nice step: the axis reads 0 / 2% / 4% / 6%, not 0 / 1.85% / 3.7%.
+  var steps=[0.25,0.5,1,2,2.5,5,10,20,25,50];
+  var st=steps[steps.length-1];
+  for(var i=0;i<steps.length;i++){if(mx/steps[i]<=5){st=steps[i];break;}}
+  var top=Math.max(st,Math.ceil(mx/st)*st);
+  var yAt=function(v){return pad.t+ph-(v/top)*ph;};
+  var xAt=function(i){return pad.l+(labels.length<=1?pw/2:(i/(labels.length-1))*pw);};
+  var svg='<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 '+w+' '+ht+'" preserveAspectRatio="none" style="display:block">';
+  for(var g=0;g<=Math.round(top/st);g++){
+    var gv=g*st,gy=yAt(gv);
+    svg+='<line x1="'+pad.l+'" y1="'+gy+'" x2="'+(pad.l+pw)+'" y2="'+gy+'" stroke="rgba(114,164,191,0.14)" stroke-width="0.5"/>'
+      +'<text x="'+(pad.l-8)+'" y="'+(gy+4)+'" text-anchor="end" fill="#64748B" font-size="11" font-family="Inter,sans-serif">'
+      +((st<1)?gv.toFixed(2):(st<2?gv.toFixed(1):String(gv)))+'%</text>';
+  }
+  // EVERY period gets a label. The old chart thinned them by
+  // floor(n/14), which is why months went missing from the axis; on a view
+  // that starts in 2026 there are few enough to print them all, and the
+  // quarterly grain has fewer still.
+  labels.forEach(function(l,i){
+    svg+='<text x="'+xAt(i)+'" y="'+(ht-pad.b+18)+'" text-anchor="middle" fill="#64748B" font-size="10" font-family="Inter,sans-serif">'+l+'</text>';
+  });
+  series.forEach(function(sr){
+    var run=[],flush=function(){
+      if(run.length>1)svg+='<polyline points="'+run.join(' ')+'" fill="none" stroke="'+sr.c+'" stroke-width="'+(sr.w||2.5)+'" stroke-linejoin="round" stroke-linecap="round"'+(sr.dash?' stroke-dasharray="6 4"':'')+'/>';
+      run=[];
+    };
+    // Break on null rather than interpolating: a period with no opening book
+    // has no rate, and a straight line across it would invent one.
+    sr.vals.forEach(function(v,i){ if(v==null){flush();return;} run.push(xAt(i)+','+yAt(v)); });
+    flush();
+    sr.vals.forEach(function(v,i){
+      if(v==null)return;
+      svg+='<circle cx="'+xAt(i)+'" cy="'+yAt(v)+'" r="'+(sr.w&&sr.w<2?2.3:3.2)+'" fill="'+sr.c+'" stroke="#fff" stroke-width="1.2"/>';
+    });
+  });
+  // Full-height hover columns. class, not inline fill — an SVG rect with no
+  // fill paints black.
+  var bw=labels.length>1?(pw/(labels.length-1)):pw;
+  labels.forEach(function(l,i){
+    var bx=Math.max(pad.l,xAt(i)-bw/2);
+    var rows=series.map(function(sr){
+      return sr.n+'|'+(sr.vals[i]!=null?(sr.vals[i].toFixed(2)+'%'):'—')+'|'+(sr.note&&sr.note[i]?sr.note[i]:'')+'|'+sr.c;
+    });
+    var a=' data-p="'+String(opts.tipLabels&&opts.tipLabels[i]||l).replace(/"/g,'&quot;')+'"';
+    rows.forEach(function(r,j){a+=' data-r'+(j+1)+'="'+r.replace(/&/g,'&amp;').replace(/"/g,'&quot;')+'"';});
+    svg+='<rect class="bd-rate-band" x="'+bx+'" y="'+pad.t+'" width="'+Math.min(bw,pad.l+pw-bx)+'" height="'+ph+'"'+a+'/>';
+  });
+  svg+='</svg>';
+  return svg;
 }
 function buildSVGChart(labels,values,color,suffix,isMoney,tipPrefix,opts){
   opts=opts||{};

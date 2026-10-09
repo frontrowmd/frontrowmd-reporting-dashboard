@@ -254,7 +254,7 @@ ck('the monthly denominator is the previous month’s close',
 ck('and a quarter opens on the month before its first',
    /return _chOpen\(a\[0\]\+'-'\+\('0'\+\(\(\+a\[1\]-1\)\*3\+1\)\)\.slice\(-2\)\);/.test(bd), true);
 ck('undated churns are excluded and counted',
-   /if\(!_m\)\{_chUndated\+\+;return;\}/.test(bd), true);
+   /_chDeals\.forEach\(function\(dd\)\{ if\(!_bdMonthOf\(dd\.pausechurn_date\)\)_chUndated\+\+; \}\);/.test(bd), true);
 
 // ── Traffic bands. RUN the real function: the 0-is-missing rule and the
 // boundaries are logic, not text.
@@ -310,22 +310,30 @@ ck('the detail charts are scoped to where the fields are populated',
   // So every chart on the Churn tab — which uses plain divs — must pass it.
   const churnZone=bd.slice(bd.indexOf('var _chDeals=deals.filter'), bd.indexOf('bdBindSpy();'));
   const calls=churnZone.match(/buildSVGChart\([^;]*?\)/gs)||[];
-  ck('the churn tab charts', calls.length>=1, true);
-  ck('and every one of them is aspect-sized', calls.filter(c=>!/aspect:true/.test(c)), []);
+  ck('every buildSVGChart on the churn tab is aspect-sized', calls.filter(c=>!/aspect:true/.test(c)), []);
+  // C2 moved off buildSVGChart to a two-line chart of its own. It carries its
+  // own ratio instead: width/height 100% against a viewBox, so the wrapper
+  // sizes from the SVG rather than needing a bounded flex parent.
+  ck('the rate chart supplies its own aspect ratio',
+     /width="100%" height="100%" viewBox="0 0 '\+w\+' '\+ht\+'" preserveAspectRatio="none"/.test(bd), true);
 }
 
 // ── A rate needs a denominator big enough that one churn does not swing it ──
 // The first months held a handful of brands, so a single churn printed 50% and
 // flattened every later month onto the axis. That spike was an artifact of the
 // denominator, not a signal.
-ck('thin-book periods are not plotted',
-   /if\(_o<BD_CHURN_RATE_MIN_BOOK\)\{if\(_chByMonth\[m\]\)_chSkipThin\+\+;return;\}/.test(bd), true);
-ck('the floor is declared', /var BD_CHURN_RATE_MIN_BOOK=(\d+);/.test(bd), true);
-ck('and is high enough that one churn moves the rate by under 5pp',
-   100/(+(/var BD_CHURN_RATE_MIN_BOOK=(\d+);/.exec(bd)||[,0])[1]) < 5, true);
+// The thin-book floor is GONE. It existed because the early book was a handful
+// of brands; C2 now starts in 2026 where the book is in the hundreds, and the
+// floor was what made months vanish from the X axis.
+ck('no thin-book floor survives', /BD_CHURN_RATE_MIN_BOOK/.test(bd), false);
+ck('  and a period with no book at all is still null, not zero',
+   /open>0\?Math\.round\(\(b\/open\)\*10000\)\/100:null/.test(bd), true);
+// The floor it guarded is gone; the 2026 start does that job structurally.
+ck('the 2026 start is what bounds the denominator now',
+   /var BD_CHURN_DETAIL_FROM='2026-01';/.test(bd), true);
 // Hiding months is only acceptable if the chart says how much churn it hides.
-ck('the hidden churn is counted and reported',
-   /That hides '\+_chSkipThin\+' early month/.test(bd), true);
+ck('and the note that reported the hidden months went with it',
+   /_chSkipThin/.test(bd), false);
 
 // ── The page switcher ──
 ck('the two tabs are one segmented control', /<span class="bd-tabs" role="tablist">/.test(bd), true);
@@ -336,8 +344,12 @@ ck('the active tab is announced, not just coloured',
 // ── C2's axis and hover ───────────────────────────────────────────────────
 // A percentage axis labelled 0,1,2 reads as a count, and over a 0-6% range
 // rounds most gridlines onto the same integers.
-ck('the rate axis carries its unit', /ySuffix:'%',yDec:1/.test(bd), true);
-ck('buildSVGChart honours it',
+// C2 no longer borrows buildSVGChart's axis: that one slices the data RANGE
+// into five, which gives labels like 3.7% / 7.4%. The rate chart picks a nice
+// step and every gridline is a multiple of it.
+ck('the rate axis steps on a nice value', /var steps=\[0\.25,0\.5,1,2,2\.5,5,10,20,25,50\];/.test(bd), true);
+ck('  and is labelled as a percentage', /\+'%<\/text>'/.test(bd), true);
+ck('buildSVGChart keeps its own unit options for other charts',
    /\(\(opts\.yDec\?gv\.toFixed\(opts\.yDec\):Math\.round\(gv\)\)\+\(opts\.ySuffix\|\|''\)\)/.test(bd), true);
 // tipPrefix was concatenated straight onto the label — "Churn rate19 churned
 // ÷ 514 active" with nothing between them.
@@ -346,10 +358,10 @@ ck('a tip prefix gets a separator',
 // tipNote is one string for the whole chart and cannot describe a single point.
 ck('per-point notes are supported',
    /var _note=\(opts\.tipNotes&&opts\.tipNotes\[di\]!=null\)\?opts\.tipNotes\[di\]:\(opts\.tipNote\|\|''\);/.test(bd), true);
-ck('and the rate chart uses them, with the period as the header',
-   /tipLabels:_chRateTip,tipNotes:_chRateNote/.test(bd), true);
-ck('so it no longer passes a prefix',
-   /buildSVGChart\(_chRateLbl,_chRateVal,BD_CHURN_C,'%',false,'',\{/.test(bd), true);
+ck('and the rate chart carries a per-series note on every band',
+   /sr\.n\+'\|'\+\(sr\.vals\[i\]!=null\?\(sr\.vals\[i\]\.toFixed\(2\)\+'%'\)/.test(bd), true);
+ck('  naming the arithmetic behind each point',
+   /\(b\+' ÷ '\+open\+' active at the start'\)/.test(bd), true);
 
 // ── C5/C6 grid ────────────────────────────────────────────────────────────
 // Left to size itself the browser gave every shaded cell a different width, so

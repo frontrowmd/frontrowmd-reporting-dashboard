@@ -119,5 +119,62 @@ ck('  and the Tracker anchors hidden',
 // The scroll-spy reads .bd-sec generically, so it marks churn sections too.
 ck('the scroll-spy is generic over sections',/var secs=document\.querySelectorAll\('\.bd-sec'\)/.test(bd),true);
 
+// ── 9. The goal calculator is a Tracker thing ────────────────────────────
+// It counts deals needed to hit a monthly SIGNING goal, which says nothing
+// about churn. Hidden, not removed — the Tracker still needs it and the dialog
+// it opens lives in the static DOM.
+ck('the goal button is hidden on the Churn tab',
+   /var gb=document\.getElementById\('bd-goal-btn'\);if\(gb\)gb\.style\.display=\(t==='churn'\)\?'none':'';/.test(bd),true);
+ck('  and its dialog is left in place for the Tracker',
+   /id="bd-goal-btn"/.test(bd)&&/function bdGoalOpen\(/.test(bd),true);
+
+// ── 10. C2 — two lines, a real % axis, every period labelled ─────────────
+// Start at _chNITypes, not at _chRateChart: the NI predicate is declared just
+// above the builder and is part of this section's logic.
+const C2=(()=>{const i=bd.indexOf('var _chNITypes=');return bd.slice(i,bd.indexOf('</section>',i));})();
+ck('C2 is locatable',C2.length>800,true);
+ck('it draws two series, Board Defined first',
+   [...C2.matchAll(/\{n:'([^']+)'/g)].map(m=>m[1]),['Board Defined','Never Implemented']);
+// Only the SERIES widths — the chart's own opts carry a w: too.
+ck('the primary line is thicker than the secondary',
+   (()=>{const w=[...C2.matchAll(/\{n:'[^']+',c:[^,]+,w:([\d.]+)/g)].map(m=>+m[1]);
+         return w.length===2&&w[0]>w[1];})(),true);
+ck('  and the secondary is dashed, so they read as primary and supporting',
+   /\{n:'Never Implemented'[^}]*dash:true/.test(C2),true);
+ck('Never Implemented combines all three NI reasons',
+   /_chNITypes=BD_CHURN_TYPE_ORDER\.filter\(function\(c\)\{return c!==BD_CHURN_BOARD;\}\)/.test(bd),true);
+ck('  and Board Defined still folds in Delinquent',/_bdIsBoardChurn\(dd\)/.test(C2),true);
+ck('  with the two cuts disjoint',/if\(_bdIsBoardChurn\(dd\)\)[\s\S]{0,60}?else if\(_chIsNI\(dd\)\)/.test(C2),true);
+// _chTypeOf is a `var` function expression declared BELOW C2, so calling it
+// from here would read undefined at render time.
+// The comment above _chIsNI names it, so strip comments before testing.
+ck('the NI test does not call the later-declared _chTypeOf',
+   /_chTypeOf/.test(C2.replace(/^\s*\/\/.*$/gm,'')),false);
+
+ck('C2 starts at 2026',/if\(!k\|\|k<BD_CHURN_DETAIL_FROM\)return;/.test(C2),true);
+ck('  which is January 2026',/var BD_CHURN_DETAIL_FROM='2026-01';/.test(bd),true);
+ck('C2 has its own Monthly⁄Quarterly toggle',
+   /_chGrainSeg\(_bdChurnRateGrain,'bdSetChurnRateGrain'\)/.test(bd),true);
+ck('  defaulting to monthly',/var _bdChurnRateGrain='month';/.test(bd),true);
+ck('  and re-rendering on change',
+   /function bdSetChurnRateGrain\(g\)\{if\(_bdChurnRateGrain===g\)return;_bdChurnRateGrain=g;renderBD\(\);\}/.test(bd),true);
+
+// The old chart thinned X labels by floor(n/14), which is why months vanished.
+const RC=(()=>{const i=bd.indexOf('function bdRateLineChart(');return bd.slice(i,bd.indexOf('\nfunction ',i+10));})();
+ck('the rate chart labels EVERY period',/labels\.forEach\(function\(l,i\)\{\s*\n\s*svg\+='<text x="'\+xAt\(i\)/.test(RC),true);
+ck('  with no thinning step left',/Math\.floor\(labels\.length\/14\)/.test(RC),false);
+ck('the Y axis steps on a nice value',
+   /var steps=\[0\.25,0\.5,1,2,2\.5,5,10,20,25,50\];/.test(RC),true);
+ck('  and every gridline is a multiple of it',/var gv=g\*st,gy=yAt\(gv\);/.test(RC),true);
+ck('  labelled as a percentage',/\+'%<\/text>'/.test(RC),true);
+ck('a null rate breaks the line instead of drawing a zero',
+   /if\(v==null\)\{flush\(\);return;\}/.test(RC),true);
+ck('  and a period with no opening book IS null',
+   /open>0\?Math\.round\(\(b\/open\)\*10000\)\/100:null/.test(C2),true);
+// An SVG rect with no fill paints black — the bug that made the Brand trend a
+// solid block. Every band class on this page needs the rule.
+ck('the hover bands are declared transparent',
+   /\.bd-rate-band\{fill:transparent;cursor:pointer\}/.test(bd),true);
+
 console.log('\n'+pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);
