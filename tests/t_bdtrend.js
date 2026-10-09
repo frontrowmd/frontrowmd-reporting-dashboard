@@ -75,6 +75,12 @@ ck('  it does NOT split clinician out',
    /function rowToDashCh[\s\S]{0,400}?isClinicianCampaign/.test(src),false);
 
 // ── 3. Signed = closed-won PLUS churned-that-kept-a-close-date ────────────
+// The STAT was removed from the card 2026-10-08; the series still carries it,
+// deliberately, so restoring it is a client-only change. These assertions keep
+// it correct in the meantime rather than letting it rot into a wrong number
+// that looks ready to use.
+ck('the series still carries Signed, and says it is unread',
+   /NOT CURRENTLY DISPLAYED/.test(src),true);
 ck('signed counts both halves',[d1.signed,d2.signed],[1,2]);
 ck('  so the window total is 3, not 2',t.day.reduce((a,p)=>a+p.signed,0),3);
 

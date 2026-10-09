@@ -3317,6 +3317,12 @@ function buildBrandTrend(schContacts, cwDeals, churnedDeals, windsorRows, from, 
   // window. Counting only the first would understate every historical period,
   // because a brand that signed in May and churned in August is no longer
   // closed-won but did sign in May.
+  //
+  // NOT CURRENTLY DISPLAYED. Signed was removed from the Trend Analysis card
+  // 2026-10-08, so `signed` / `signedPctReg` / `signedPctPaid` ship unread and
+  // the churned-by-close fetch in the caller costs one HubSpot search per cache
+  // build for nobody. Kept because it is correct and makes restoring the stat a
+  // client-only change; delete both if it stays unused.
   for (const d of [...(cwDeals || []), ...(churnedDeals || [])]) {
     bump(ptDayKeyOf(((d && d.properties) || {}).closedate), 'signed');
   }

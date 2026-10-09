@@ -885,7 +885,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
-const _BUILD_VER='s5t265';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
+const _BUILD_VER='s5t266';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
@@ -3908,35 +3908,38 @@ function _renderClnTrend(d){
 // formatters, the axis stepper, the hover panel — so the two sections cannot
 // drift apart on how a week is defined or how a null reads.
 //
-// What differs is only the two things that are actually different: the
-// population (Regular vs Paid demos, not Inquiry vs Full Submission) and the
-// Signed stat in place of MD/DO.
+// What differs is the population: Regular vs Paid demos, not the Clinician
+// section's Inquiry vs Full Submission. The measures are otherwise the same
+// four — Count, Cost Per, CVR, CTR — with Ad Spend always shaded behind them.
 const DSH_TR_GRAINS=CLN_TR_GRAINS;
 const DSH_TR_POPS=[
   {k:'regular',l:'Regular Demos',w:'regular demos',short:'regular demos'},
   {k:'paid',   l:'Paid Demos',   w:'paid demos',   short:'paid demos'},
 ];
-// `pop:false` marks a measure that does NOT move with the population toggle.
-// Signed is one: a brand that signed did not sign "as a paid demo" — the count
-// is the same whichever population is selected. Its PERCENTAGE does move,
-// because the denominator is the population.
+// `pop:false` marks a measure that does NOT move with the population toggle —
+// CTR is clicks over impressions, which is a property of the ads, not of which
+// demos you are counting.
 const DSH_TR_METRICS=[
   {k:'count',    l:'Count',    unit:'#', c:'#4A87A8', pop:true},
   {k:'cost',     l:'Cost Per', unit:'$', c:'#9333EA', pop:true},
   {k:'cvr',      l:'CVR',      unit:'%', c:'#0E7C66', pop:true},
   {k:'ctr',      l:'CTR',      unit:'%', c:'#1D4ED8', pop:false},
-  {k:'signed',   l:'Signed',   unit:'#', c:'#16A34A', pop:false},
-  {k:'signedpct',l:'Signed %', unit:'%', c:'#B45309', pop:true},
 ];
-// Signed is ONE card carrying a count and a share, the way MD/DO is on the
-// Clinician page — they are two readings of the same cut, and splitting them
-// puts the same number on screen twice.
+// The stat row, in ONE order, used by the KPI cards and the hover readout
+// alike — deriving both from this list is what makes "same stats, same order,
+// no duplicates" true by construction rather than by maintenance.
+//
+// Ad Spend has a card but is NOT a selectable measure: it is always drawn as
+// the shaded background, so it always has a figure to show.
+//
+// `withPct` (a card carrying a count and a share together, the way MD/DO does
+// on the Clinician page) is still honoured by the renderer; nothing uses it
+// here since Signed was removed.
 const DSH_TR_CARDS=[
   {k:'count', metric:'count', unit:'#', pop:true},
   {k:'cost',  metric:'cost',  unit:'$', pop:true},
   {k:'cvr',   metric:'cvr',   unit:'%', pop:true},
   {k:'ctr',   metric:'ctr',   unit:'%', pop:false},
-  {k:'signed',metric:'signed',unit:'#', pop:false, withPct:'signedpct'},
   {k:'spend', metric:null,    unit:'$', pop:false},
 ];
 function _dshTrendGrain(){return window._dshTrendGrainV||'week';}
@@ -3970,21 +3973,18 @@ function _dshTrParts(p,pop){
   return {
     spend:p.spend||0, clicks:p.clicks||0, impressions:p.impressions||0,
     pop:((pop==='paid')?p.paid:p.regular)||0,
-    signed:p.signed||0,
   };
 }
 function _dshTrSum(parts){
-  var t={spend:0,clicks:0,impressions:0,pop:0,signed:0};
+  var t={spend:0,clicks:0,impressions:0,pop:0};
   parts.forEach(function(x){for(var k in t)t[k]+=x[k];});
   return t;
 }
 function _dshTrValue(metric,t){
   if(metric==='count')return t.pop;
-  if(metric==='signed')return t.signed;
   if(metric==='cost')return (t.spend>0&&t.pop>0)?t.spend/t.pop:null;
   if(metric==='cvr')return t.clicks>0?(t.pop/t.clicks)*100:null;
   if(metric==='ctr')return t.impressions>0?(t.clicks/t.impressions)*100:null;
-  if(metric==='signedpct')return t.pop>0?(t.signed/t.pop)*100:null;
   return null;
 }
 function _dshTrStat(card,T,pdef){
@@ -3993,13 +3993,6 @@ function _dshTrStat(card,T,pdef){
   if(card.k==='spend'){
     lbl='Ad Spend'; val=_clnTrFmt(T.spend,'$'); colour=CLN_TR_SPEND.c;
     calc='all KPI channels · always on the chart';
-  }else if(card.k==='signed'){
-    // Count and share together. The share's denominator is the POPULATION, so
-    // the label names it — and the count itself does not move with the toggle.
-    var pct=T.pop>0?(T.signed/T.pop)*100:null;
-    lbl='Signed'; val=fN(T.signed); colour=mdef?mdef.c:CLN_TR_SPEND.c;
-    split=_clnTrFmt(pct,'%');
-    calc='of '+fN(T.pop)+' '+popW;
   }else{
     var v=_dshTrValue(card.metric,T);
     lbl=(mdef?mdef.l:card.k)+(card.pop?(' · '+pdef.l):'');
@@ -4102,11 +4095,6 @@ function _dashTrendCard(d){
   lg+='<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:var(--navy)">'
     +'<span style="display:inline-block;width:14px;height:9px;border-radius:2px;background:'+CLN_TR_SPEND.c+';opacity:.3"></span>Ad Spend'
     +'<span style="font-size:9px;color:var(--grey)">shape only · no axis</span></span>';
-  // Signed is counted on its CLOSE date, so a brand signed in this period was
-  // very likely demoed in an earlier one. The share is a period-over-period
-  // velocity ratio, NOT a cohort conversion rate — stated here because the two
-  // look identical on a chart.
-  lg+='<span style="font-size:9.5px;color:var(--grey);font-style:italic">Signed counts brands by close date — its % is signed ÷ demos in the same period, not a cohort conversion</span>';
 
   return open+title+toggles+minis
     +'<div style="display:flex;gap:16px;flex-wrap:wrap;margin:8px 0 2px">'+lg+'</div>'

@@ -43,20 +43,28 @@ ck('the Clinician labels are NOT carried over',/Full Submission/.test(JSON.strin
 const P={spend:1000,clicks:500,impressions:20000,regular:40,paid:10,signed:4};
 ck('regular resolves the regular count',ctx._dshTrParts(P,'regular').pop,40);
 ck('paid resolves the paid count',ctx._dshTrParts(P,'paid').pop,10);
-ck('signed does NOT move with the population',
-   [ctx._dshTrParts(P,'regular').signed,ctx._dshTrParts(P,'paid').signed],[4,4]);
+// Signed was removed as a measure, so the components no longer carry it.
+ck('the components are spend/clicks/impressions/pop only',
+   Object.keys(ctx._dshTrParts(P,'regular')).sort(),['clicks','impressions','pop','spend']);
 
 // ── 2. The six metrics, in the order asked for ────────────────────────────
-ck('metric pills',ctx.DSH_TR_METRICS.map(m=>m.l),['Count','Cost Per','CVR','CTR','Signed','Signed %']);
-ck('KPI cards',ctx.DSH_TR_CARDS.map(c=>c.k),['count','cost','cvr','ctr','signed','spend']);
-ck('Signed is ONE card carrying a split',ctx.DSH_TR_CARDS.filter(c=>c.withPct).map(c=>[c.k,c.withPct]),[['signed','signedpct']]);
+ck('metric pills',ctx.DSH_TR_METRICS.map(m=>m.l),['Count','Cost Per','CVR','CTR']);
+ck('KPI cards',ctx.DSH_TR_CARDS.map(c=>c.k),['count','cost','cvr','ctr','spend']);
 ck('Ad Spend has a card but is not a selectable measure',
    [ctx.DSH_TR_CARDS.filter(c=>c.k==='spend')[0].metric,ctx.DSH_TR_METRICS.filter(m=>m.k==='spend').length],[null,0]);
-// CTR and the Signed COUNT do not vary with the population; everything else does.
-ck('pop-invariant measures are exactly CTR and Signed',
-   ctx.DSH_TR_METRICS.filter(m=>!m.pop).map(m=>m.k),['ctr','signed']);
-ck('but Signed % IS pop-dependent — its denominator is the population',
-   ctx.DSH_TR_METRICS.filter(m=>m.k==='signedpct')[0].pop,true);
+// CTR is clicks over impressions — a property of the ads, not of which demos
+// are counted — so it is the only measure the population toggle leaves alone.
+ck('CTR is the only pop-invariant measure',
+   ctx.DSH_TR_METRICS.filter(m=>!m.pop).map(m=>m.k),['ctr']);
+// Signed is gone from EVERY list, not just the pills. A card for a measure
+// that cannot be selected is the half-removal this guards against.
+ck('Signed is absent from the metric pills',
+   ctx.DSH_TR_METRICS.some(m=>/signed/i.test(m.k)||/Signed/.test(m.l)),false);
+ck('  and from the KPI cards',
+   ctx.DSH_TR_CARDS.some(c=>/signed/i.test(c.k)||/signed/i.test(c.metric||'')),false);
+ck('  and no card carries a split any more',ctx.DSH_TR_CARDS.filter(c=>c.withPct).length,0);
+ck('  and no live code in the block still mentions it',
+   /[Ss]igned/.test(BR.replace(/^\s*\/\/.*$/gm,'')),false);
 
 // ── 3. The maths ──────────────────────────────────────────────────────────
 const Treg=ctx._dshTrSum([ctx._dshTrParts(P,'regular')]);
@@ -67,42 +75,38 @@ ck('  rises on the smaller paid denominator',ctx._dshTrValue('cost',Tpaid),100);
 ck('cvr = population ÷ clicks',ctx._dshTrValue('cvr',Treg),8);
 ck('ctr = clicks ÷ impressions, same on both populations',
    [ctx._dshTrValue('ctr',Treg),ctx._dshTrValue('ctr',Tpaid)],[2.5,2.5]);
-ck('signed count is the same on both',
-   [ctx._dshTrValue('signed',Treg),ctx._dshTrValue('signed',Tpaid)],[4,4]);
-ck('signed % moves with the population',
-   [ctx._dshTrValue('signedpct',Treg),ctx._dshTrValue('signedpct',Tpaid)],[10,40]);
+ck('the removed measures resolve to null rather than throwing',
+   [ctx._dshTrValue('signed',Treg),ctx._dshTrValue('signedpct',Treg)],[null,null]);
 
 // Null-vs-zero has to survive the port or the chart lies on the floor.
 const Z=ctx._dshTrSum([ctx._dshTrParts({spend:0,clicks:0,impressions:0,regular:0,paid:0,signed:0},'regular')]);
 ck('cost with no spend is null',ctx._dshTrValue('cost',Z),null);
-ck('rates with no denominator are null',[ctx._dshTrValue('cvr',Z),ctx._dshTrValue('ctr',Z),ctx._dshTrValue('signedpct',Z)],[null,null,null]);
+ck('rates with no denominator are null',[ctx._dshTrValue('cvr',Z),ctx._dshTrValue('ctr',Z)],[null,null]);
 // The case the cost guard exists for: real demos, NO ad spend. Guarding only
 // the denominator lets a 0 through, which plots on the floor of the cost axis
 // and reads as the most efficient period on screen.
 const O=ctx._dshTrSum([ctx._dshTrParts({spend:0,clicks:120,impressions:9000,regular:6,paid:0,signed:1},'regular')]);
 ck('organic demos with no spend have a NULL cost, not 0',ctx._dshTrValue('cost',O),null);
 ck('  while their count and CVR are real',[ctx._dshTrValue('count',O),ctx._dshTrValue('cvr',O)],[6,5]);
-ck('  and signed % still resolves',ctx._dshTrValue('signedpct',O),(1/6)*100);
+
 
 const R=ctx._dshTrSum([ctx._dshTrParts({spend:50,clicks:100,impressions:1000,regular:0,paid:0,signed:0},'regular')]);
 ck('a real zero over a real denominator stays 0',ctx._dshTrValue('cvr',R),0);
 ck('  while its cost is still null',ctx._dshTrValue('cost',R),null);
 
-// ── 4. The Signed stat reads as a count AND a share ───────────────────────
+// ── 4. The remaining stats still read correctly ───────────────────────────
 const pdef=ctx.DSH_TR_POPS[0];
-const sgn=ctx._dshTrStat(ctx.DSH_TR_CARDS[4],Treg,pdef);
-ck('Signed card value is the count',sgn.val,'4');
-// _clnTrFmt gives 2dp below 10% and 1dp at or above, shared with the Clinician
-// card so a percentage reads the same on both sections.
-ck('  with the share as a split, not buried in the caption',sgn.split,'10.0%');
-ck('  and sub-10% shares keep two decimals',
-   ctx._dshTrStat(ctx.DSH_TR_CARDS[4],ctx._dshTrSum([ctx._dshTrParts({spend:0,clicks:0,impressions:0,regular:200,paid:0,signed:3},'regular')]),pdef).split,'1.50%');
-ck('  and the caption names the denominator',sgn.calc,'of 40 regular demos');
-ck('its label carries no population suffix (the count does not vary)',sgn.lbl,'Signed');
 const cnt=ctx._dshTrStat(ctx.DSH_TR_CARDS[0],Treg,pdef);
-ck('a pop-dependent card DOES carry the suffix',cnt.lbl,'Count · Regular Demos');
-const spend=ctx._dshTrStat(ctx.DSH_TR_CARDS[5],Treg,pdef);
-ck('Ad Spend names the channels it covers',spend.calc,'all KPI channels · always on the chart');
+ck('a pop-dependent card carries the population suffix',cnt.lbl,'Count \u00b7 Regular Demos');
+ck('  and names what it counted',cnt.calc,'40 regular demos');
+const ctrSt=ctx._dshTrStat(ctx.DSH_TR_CARDS[3],Treg,pdef);
+ck('a pop-invariant card carries no suffix',ctrSt.lbl,'CTR');
+const spend=ctx._dshTrStat(ctx.DSH_TR_CARDS[4],Treg,pdef);
+ck('Ad Spend is the last card',spend.lbl,'Ad Spend');
+ck('  and names the channels it covers',spend.calc,'all KPI channels \u00b7 always on the chart');
+// Nothing sets a split now, so no card should render one.
+ck('no stat produces a split value',
+   ctx.DSH_TR_CARDS.every(c=>ctx._dshTrStat(c,Treg,pdef).split==null),true);
 
 // ── 5. Grains: the three toggles, shared with the Clinician section ───────
 ck('Weekly / Daily / Monthly',ctx.DSH_TR_GRAINS.map(g=>[g.l,g.n]),[['Weekly',8],['Daily',30],['Monthly',3]]);
@@ -145,12 +149,9 @@ ck('  and a summed COUNT is divided back to a daily average',
    /if\(v!=null&&mdef\.unit==='#'\)v=v\/w\.length;/.test(BR),true);
 
 // ── 7. The caveat the numbers cannot state themselves ─────────────────────
-// Signed is counted on close date, so a brand signed this period was very
-// likely demoed in an earlier one. The share is a velocity ratio, not a cohort
-// conversion — and the two are indistinguishable on a chart.
-ck('the card says Signed is counted by close date',
-   /Signed counts brands by close date/.test(BR),true);
-ck('  and that its % is not a cohort conversion',/not a cohort conversion/.test(BR),true);
+// The legend caveat existed only to qualify Signed; keeping it would describe
+// a stat that is no longer on screen.
+ck('the Signed close-date caveat went with the stat',/close date/.test(BR),false);
 // "No trend data" covered two different failures with one sentence, and the
 // one that actually happened (the payload never carried the field) is the one
 // a reader can act on.
