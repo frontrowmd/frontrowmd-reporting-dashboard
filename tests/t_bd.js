@@ -163,9 +163,10 @@ ck('both churn stages are the ones the worker fetches',
    [/var BD_CHURN_STAGE='3453925110'/.test(bd), /BD_CHURN_ONB_STAGE='3517067985'/.test(bd)], [true,true]);
 ck('and those stages are in the worker’s stage filter',
    /'3453925110'/.test(src)&&/'3517067985'/.test(src), true);
-// Section viii must not reuse the Tracker's filtered rows.
+// The churned table must not reuse the Tracker's filtered rows, and reads the
+// page's 2026 set like every other section on the tab.
 ck('the churned table is built from the churn set, not sharedFiltered',
-   /var _chTableRows=_chDeals\.filter\(/.test(bd)&&!/sharedFiltered/.test(bd.slice(bd.indexOf('var _chTableRows='),bd.indexOf('var _chSorted='))), true);
+   /var _chTableRows=_chDeals26\.filter\(/.test(bd)&&!/sharedFiltered/.test(bd.slice(bd.indexOf('var _chTableRows='),bd.indexOf('var _chSorted='))), true);
 ck('and sorted with the shared comparator',
    /var _chSorted=_chTableRows\.slice\(\)\.sort\(_bdSortCmp\);/.test(bd), true);
 // ── The C8 churn-date filter ──
@@ -182,7 +183,7 @@ ck('an undated churn drops out when a range is set',
 ck('but everything shows when no range is set',
    /if\(!_bdChurnFrom&&!_bdChurnTo\)return true;/.test(bd), true);
 ck('an inverted range is refused', /End date is before the start date/.test(bd), true);
-ck('the header says how many of how many', /_chTableRows\.length\+' of '\+_chDeals\.length\+' churned deals in range'/.test(bd), true);
+ck('the header says how many of how many', /_chTableRows\.length\+' of '\+_chDeals26\.length\+' churned deals in range'/.test(bd), true);
 ck('and the control says what it scopes', /filters this table only/.test(bd), true);
 // The charts must NOT read the range.
 {
@@ -262,8 +263,10 @@ ck('the monthly denominator is the previous month’s close',
    /var _chOpen=function\(m\)\{var p=_snByMonth\[_chPrev\(m\)\];return p\?p\.b:0;\};/.test(bd), true);
 ck('and a quarter opens on the month before its first',
    /return _chOpen\(a\[0\]\+'-'\+\('0'\+\(\(\+a\[1\]-1\)\*3\+1\)\)\.slice\(-2\)\);/.test(bd), true);
+// Counted once, at the top of the page, and reused — not recounted per section.
 ck('undated churns are excluded and counted',
-   /_chDeals\.forEach\(function\(dd\)\{ if\(!_bdMonthOf\(dd\.pausechurn_date\)\)_chUndated\+\+; \}\);/.test(bd), true);
+   /var _chNoDate=_chDeals\.filter\(function\(dd\)\{return !_bdMonthOf\(dd\.pausechurn_date\);\}\)\.length;/.test(bd), true);
+ck('  and C2 reuses that one count',/_chUndated=_chNoDate;/.test(bd), true);
 
 // ── Traffic bands. RUN the real function: the 0-is-missing rule and the
 // boundaries are logic, not text.

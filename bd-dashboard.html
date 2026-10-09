@@ -244,10 +244,10 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
     <a class="bd-nav-i" href="#bd-sec-churnrate" data-sec="bd-sec-churnrate" onclick="bdNavGo(event,'bd-sec-churnrate')">Churn Rate</a>
     <a class="bd-nav-i" href="#bd-sec-churntype" data-sec="bd-sec-churntype" onclick="bdNavGo(event,'bd-sec-churntype')">By Type</a>
     <a class="bd-nav-i" href="#bd-sec-churnreason" data-sec="bd-sec-churnreason" onclick="bdNavGo(event,'bd-sec-churnreason')">By Reason</a>
+    <a class="bd-nav-i" href="#bd-sec-churnprod" data-sec="bd-sec-churnprod" onclick="bdNavGo(event,'bd-sec-churnprod')">Products</a>
     <a class="bd-nav-i" href="#bd-sec-churnab" data-sec="bd-sec-churnab" onclick="bdNavGo(event,'bd-sec-churnab')">A/B Test</a>
     <a class="bd-nav-i" href="#bd-sec-churntraffic" data-sec="bd-sec-churntraffic" onclick="bdNavGo(event,'bd-sec-churntraffic')">Web Traffic</a>
     <a class="bd-nav-i" href="#bd-sec-churnseg" data-sec="bd-sec-churnseg" onclick="bdNavGo(event,'bd-sec-churnseg')">Segment</a>
-    <a class="bd-nav-i" href="#bd-sec-churnprod" data-sec="bd-sec-churnprod" onclick="bdNavGo(event,'bd-sec-churnprod')">Products</a>
     <a class="bd-nav-i" href="#bd-sec-churndeals" data-sec="bd-sec-churndeals" onclick="bdNavGo(event,'bd-sec-churndeals')">Churned Deals</a>
     </span>
     <div style="flex:1"></div>
@@ -424,6 +424,11 @@ var _bdChurnRateGrain='month';
 // left the cells too thin to read anything from (3 of 2026's 148 churns fell in
 // the latest month). They cover 2026 to date, like every other section here.
 function bdSetChurnRateGrain(g){if(_bdChurnRateGrain===g)return;_bdChurnRateGrain=g;renderBD();}
+// C5's month rail. '' is All. The value is a two-char month number ('07'), not
+// a full '2026-07' key: the tab is already floored to 2026 in one place, and
+// carrying a year here would be a second source of truth for the same scope.
+var _bdChurnProdMonth='';
+function bdSetChurnProdMonth(m){if(_bdChurnProdMonth===m)return;_bdChurnProdMonth=m;renderBD();}
 function bdSetChurnKmScope(v){if(_bdChurnKmScope===v)return;_bdChurnKmScope=v;renderBD();}
 // Churn Type is grouped before testing, so Delinquent Payment counts as Board
 // Defined here exactly as it does in the By Type chart.
@@ -1735,7 +1740,51 @@ function renderBD(){
   // but never carries a churned value while the deal is still closed-won.
   // pausechurn_date is not usable either: 11 deals that have it are PAUSED.
   var _chDeals=deals.filter(function(dd){return dd.dealstage===BD_CHURN_STAGE||dd.dealstage===BD_CHURN_ONB_STAGE;});
+  // ── The whole tab reads 2026 onward ──────────────────────────────────────
+  // Before 2026 the book was a handful of brands, where one churn swings a rate
+  // by tens of points, and Churn Type / Churn Reason are near-empty — earlier
+  // periods would read as "no board-defined churn" rather than "not recorded".
+  //
+  // _chDeals keeps EVERY churned deal, because the ones we exclude still have to
+  // be counted and said out loud. _chDeals26 is what the sections actually plot.
+  var _chIn2026=function(dd){var m=_bdMonthOf(dd.pausechurn_date);return !!m&&m>=BD_CHURN_DETAIL_FROM;};
+  var _chDeals26=_chDeals.filter(_chIn2026);
+  // Lifted ABOVE every section that uses them. These are `var` expressions, so
+  // a section placed earlier in the build order would see them hoisted but
+  // undefined and the whole tab would render blank.
+  //
+  // Badge and Banner count as ONE product - they are the same placement sold
+  // two ways.
+  var BD_PROD_GROUP={Badge:'Badge/Banner',Banner:'Badge/Banner'};
+  var BD_PROD_ORDER=['Badge/Banner','Reviews','CAI','CAS'];
+  var BD_PROD_FULL={'Badge/Banner':'Badge or Banner placement','Reviews':'Clinician reviews live on site','CAI':'Clinician AI','CAS':'Clinician Analysis'};
+  var BD_PROD_C={'Badge/Banner':'#7C3AED','Reviews':'#0F766E','CAI':'#1D4ED8','CAS':'#B45309'};
+  // HubSpot returns a multi-select as a ';'-delimited string.
+  var _chProdsOf=function(dd){
+    var raw=(dd.implemented_products||'').trim();
+    if(!raw)return [];
+    var out={},any=false;
+    raw.split(';').forEach(function(v){
+      var t=v.trim(); if(!t)return;
+      out[BD_PROD_GROUP[t]||t]=1; any=true;
+    });
+    return any?Object.keys(out):[];
+  };
+  var _chNoDate=_chDeals.filter(function(dd){return !_bdMonthOf(dd.pausechurn_date);}).length;
+  var _chPre26=_chDeals.length-_chDeals26.length-_chNoDate;
   var hChurn='';
+  // Said once, at the top, in a band the reader cannot scroll past. Every
+  // section below is scoped the same way, so the statement is page-level rather
+  // than repeated per chart.
+  hChurn+='<div style="display:flex;align-items:center;gap:13px;flex-wrap:wrap;background:var(--navy);border-radius:10px;padding:12px 17px;margin-bottom:18px">'
+    +'<span style="font-family:var(--font-h);font-size:14px;font-weight:700;color:#fff;letter-spacing:.01em;white-space:nowrap">2026 only</span>'
+    +'<span style="flex:1 1 320px;min-width:0;font-size:11.5px;color:rgba(255,255,255,.80);line-height:1.55">'
+    +'Every figure on this page counts churns dated 1 January 2026 onward — '
+    +'<strong style="color:#fff">'+_chDeals26.length+'</strong> of '+_chDeals.length+' churned deals. '
+    +(_chPre26?(_chPre26+' churned before 2026'+(_chNoDate?' and ':'')):'')
+    +(_chNoDate?(_chNoDate+' ha'+(_chNoDate===1?'s':'ve')+' no Pause/Churn Date'):'')
+    +((_chPre26||_chNoDate)?', excluded throughout.':'')
+    +'</span></div>';
   hChurn+='<section class="bd-sec" id="bd-sec-churn">';
   hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C1</span><span class="bd-sec-t">Key Metrics</span>'
     +'<span class="bd-sec-s">Churns dated 2026 onward, by deal stage · each figure also split by quarter. '
@@ -1765,24 +1814,35 @@ function renderBD(){
   // smaller simply for being shorter.
   var _kmPrevMonth=function(m){var q=m.split('-'),y=+q[0],mo=+q[1]-1;if(mo<1){y--;mo=12;}return y+'-'+('0'+mo).slice(-2);};
   var _kmOpenAt=function(m){var pv=_snByMonth[_kmPrevMonth(m)];return pv?pv.b:0;};
-  // Per QUARTER the denominator is the active book at the START of that quarter
-  // — a single point, not an average across the quarter's months. "What share
-  // of the brands we held on day one did we lose this quarter" is the question
-  // the quarter strip is read as.
-  var _kmQStartMonth=function(q){return BD_CHURN_KM_YEAR+'-'+('0'+((+q.slice(1)-1)*3+1)).slice(-2);};
-  var _kmOpenQ=function(q){return _kmOpenAt(_kmQStartMonth(q));};
-  // For the TOTAL the denominator is every brand that has been on the book at
-  // any point since the start of 2026: the active book now, PLUS everyone who
-  // has churned since. No single opening count works for a whole year — most of
-  // the year's churn comes from brands that signed after January and were never
-  // in the January number at all.
-  //
-  // Scoped to ALL dated 2026 churns, never to the Board Defined subset. A brand
-  // lost to a non-board reason was still on the book and still at risk, so
-  // dropping it from the denominator would inflate the Board Defined rate
-  // exactly when the toggle is on.
-  var _kmTotalBase=closedWonDeals.length+_kmAll.length;
-  var _kmRate=function(n,open){return open>0?((n/open)*100):null;};
+  // The rate is the MEAN OF THE MONTHLY RATES: each month's churns over that
+  // month's own opening book, averaged across the months in the period. It is
+  // NOT a pooled churns ÷ book — every month carries equal weight, so the
+  // figure reads as "the rate in a typical month" instead of being dominated by
+  // whichever month happened to hold the largest book.
+  var _kmMonthsOf=function(q){
+    var n=new Date();
+    var last=(n.getFullYear()>BD_CHURN_KM_YEAR)?12:(n.getMonth()+1);
+    var from=q?((+q.slice(1)-1)*3+1):1, to=q?Math.min(from+2,last):last;
+    var out=[];
+    for(var m=from;m<=to;m++)out.push(BD_CHURN_KM_YEAR+'-'+('0'+m).slice(-2));
+    return out;
+  };
+  var _kmByMonth={};
+  _kmDeals.forEach(function(dd){
+    var m=_bdMonthOf(dd.pausechurn_date); if(m)_kmByMonth[m]=(_kmByMonth[m]||0)+1;
+  });
+  // A month with no opening book has NO rate, not a zero one, so it is left out
+  // of the sum AND the divisor — averaging in a zero for a month the Snapshot
+  // cannot describe would drag every figure down. The tile says how many months
+  // the average actually ran over, so a short quarter cannot pass for a full one.
+  var _kmMeanRate=function(months){
+    var sum=0,n=0;
+    months.forEach(function(m){
+      var open=_kmOpenAt(m); if(!(open>0))return;
+      sum+=((_kmByMonth[m]||0)/open)*100; n++;
+    });
+    return {pct:n>0?(sum/n):null,months:n};
+  };
 
   var _kmTenure=function(list){
     var sum=0,n=0,skip=0;
@@ -1833,28 +1893,24 @@ function renderBD(){
       +'<div class="tdef">'+def+'</div>'+(strip||'')+'</div>';
   };
 
-  var _kmPct=_kmRate(_kmDeals.length,_kmTotalBase);
+  var _kmTot=_kmMeanRate(_kmMonthsOf(null));
+  var _kmPct=_kmTot.pct;
   var _kmTenAll=_kmTenure(_kmDeals);
 
-  var _cCount={},_cPct={},_cTen={};
+  var _cPct={},_cTen={};
   _kmQShown.forEach(function(q){
     var list=_kmByQ[q]||[];
-    _cCount[q]=String(list.length);
-    var _o=_kmOpenQ(q);
-    var _r=_kmRate(list.length,_o);
-    _cPct[q]=_r!=null?(_r.toFixed(1)+'%'):'—';
+    var _r=_kmMeanRate(_kmMonthsOf(q));
+    _cPct[q]=_r.pct!=null?(_r.pct.toFixed(1)+'%'):'—';
     var _t=_kmTenure(list);
     _cTen[q]=_t.avg!=null?Math.round(_t.avg).toLocaleString():'—';
   });
 
-  hChurn+='<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:stretch">';
-  hChurn+=_chTile('Churned Deals',String(_kmDeals.length),
-    _kmUndated?(_kmUndated+' undated, excluded'):'',
-    (_kmBoard?'Board Defined + Delinquent':'Any churn type')+', dated 2026 onward',
-    _kmQStrip(_cCount));
-  hChurn+=_chTile('Churn Rate',_kmPct!=null?_kmPct.toFixed(1)+'%':'—',
-    _kmTotalBase>0?(_kmDeals.length+' ÷ '+_kmTotalBase+' on the book since 2026'):'no active book',
-    'Churns ÷ every brand on the book since the start of 2026: active now plus churned since. Each quarter divides by the active book at the start of that quarter',
+  hChurn+='<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:stretch">';
+  hChurn+=_chTile('Avg Monthly Churn Rate',_kmPct!=null?_kmPct.toFixed(1)+'%':'—',
+    _kmTot.months>0?('mean of '+_kmTot.months+' monthly rate'+(_kmTot.months===1?'':'s')
+      +(_kmUndated?(' · '+_kmUndated+' undated, excluded'):'')):'no active book',
+    'Each month’s churns ÷ that month’s opening book, then averaged across the months in the period — not a pooled total, so every month weighs the same',
     _kmQStrip(_cPct));
   hChurn+=_chTile('Avg Time to Churn',_kmTenAll.avg!=null?(Math.round(_kmTenAll.avg).toLocaleString()+' days'):'—',
     _kmTenAll.avg!=null?('≈ '+(_kmTenAll.avg/30.44).toFixed(1)+' months · n='+_kmTenAll.n):'',
@@ -1873,7 +1929,7 @@ function renderBD(){
   // from here downward, so this reads them fine. The chart itself is emitted
   // later, once those helpers exist.
   var _chUndated=0;
-  _chDeals.forEach(function(dd){ if(!_bdMonthOf(dd.pausechurn_date))_chUndated++; });
+  _chUndated=_chNoDate;
   var _chPrev=function(m){var q=m.split('-'),y=+q[0],mo=+q[1]-1;if(mo<1){y--;mo=12;}return y+'-'+('0'+mo).slice(-2);};
   var _chOpen=function(m){var p=_snByMonth[_chPrev(m)];return p?p.b:0;};
   // ── Period bucketing, shared by the two toggled charts ──
@@ -1897,7 +1953,7 @@ function renderBD(){
   // render years of "no churn" that are really "not recorded".
   var _chPeriods=function(grain){
     var out={},seen={};
-    _chDeals.forEach(function(dd){
+    _chDeals26.forEach(function(dd){
       var k=_chPeriodOf(dd.pausechurn_date,grain);
       if(k&&k>=BD_CHURN_DETAIL_FROM)seen[k]=1;
     });
@@ -1906,7 +1962,6 @@ function renderBD(){
   // _chTodayKey / _chLatest / _chInPeriod were the period-scoping helpers for
   // C5 and C6. Both cover 2026 to date now, so nothing picks a single period.
   // The floor every section on this tab shares: a churn dated 2026 or later.
-  var _chIn2026=function(dd){var m=_bdMonthOf(dd.pausechurn_date);return !!m&&m>=BD_CHURN_DETAIL_FROM;};
   var _chGrainPill=function(cur,g,label,fnName){
     var on=cur===g;
     return '<span onclick="'+fnName+"('"+g+"')"+'" style="cursor:pointer;padding:4px 13px;border-radius:50px;font-size:11px;font-weight:700;font-family:var(--font-h);'
@@ -1940,7 +1995,7 @@ function renderBD(){
     var periods=_chPeriods(grain);
     if(!periods.length)return '<div style="padding:28px;text-align:center;color:var(--grey);font-size:12px">No churn dated 2026 onward yet</div>';
     var nB={},nN={};
-    _chDeals.forEach(function(dd){
+    _chDeals26.forEach(function(dd){
       var k=_chPeriodOf(dd.pausechurn_date,grain); if(!k||k<BD_CHURN_DETAIL_FROM)return;
       if(_bdIsBoardChurn(dd))nB[k]=(nB[k]||0)+1;
       else if(_chIsNI(dd))nN[k]=(nN[k]||0)+1;
@@ -1980,7 +2035,7 @@ function renderBD(){
     +'<div id="bd-churnrate-tip" class="float-tip"></div></div>';
   hChurn+='<div style="font-size:10px;color:var(--grey);margin-top:8px;font-style:italic;line-height:1.5">'
     +'From 2026 onward — Churn Type is near-empty before that, so earlier periods would read as no board-defined churn rather than as unrecorded. '
-    +(_chUndated?(_chUndated+' of '+_chDeals.length+' churned deals have no Pause/Churn Date and cannot be placed in a period — excluded here, and from the Snapshot denominator too, so the two stay consistent.'):'')
+    +(_chUndated?(_chUndated+' undated churn'+(_chUndated===1?'':'s')+' cannot be placed in a period — excluded here, and from the Snapshot denominator too, so the two stay consistent.'):'')
     +'</div>';
   hChurn+='</div></section>';
 
@@ -1998,7 +2053,7 @@ function renderBD(){
     var cats=BD_CHURN_TYPE_ORDER.map(function(c){return {k:c,l:c,c:BD_CHURN_TYPE_COLORS[c]};});
     var counts={};cats.forEach(function(c){counts[c.k]={};});
     var typed=0;
-    _chDeals.forEach(function(dd){
+    _chDeals26.forEach(function(dd){
       var k=_chPeriodOf(dd.pausechurn_date,grain); if(!k||k<BD_CHURN_DETAIL_FROM)return;
       var c=_chTypeOf(dd); if(!c||!counts[c])return;
       counts[c][k]=(counts[c][k]||0)+1; typed++;
@@ -2016,7 +2071,7 @@ function renderBD(){
       ht:340,
     });
     t+='<div style="font-size:10px;color:var(--grey);margin-top:10px;font-style:italic;line-height:1.5">'
-      +'n = '+typed+' of '+_chDeals.length+' churned deals have a Churn Type and a churn date from '+BD_CHURN_DETAIL_FROM+' on. '
+      +'n = '+typed+' of '+_chDeals26.length+' churned deals dated 2026 onward have a Churn Type. '
       +'The % under each column is that period\u2019s churn as a share of the brands active at the start of it \u2014 the same denominator as the rate above, so the stacked categories sum to it. '
       +'Delinquent Payment is grouped with Board Defined Churn.</div>';
     return t;
@@ -2035,7 +2090,7 @@ function renderBD(){
   var _chReasonChart=function(grain){
     var periods=_chPeriods(grain);
     var tot={},withReason=0;
-    _chDeals.forEach(function(dd){
+    _chDeals26.forEach(function(dd){
       var k=_chPeriodOf(dd.pausechurn_date,grain); if(!k||k<BD_CHURN_DETAIL_FROM)return;
       var r=(dd.churn_reason||'').trim(); if(!r)return;
       tot[r]=(tot[r]||0)+1; withReason++;
@@ -2051,7 +2106,7 @@ function renderBD(){
     // is, and cannot collide with any stored value.
     if(rest.length)cats.push({k:'__other',l:'All remaining reasons ('+rest.length+')',c:BD_CHURN_OTHER_C});
     var counts={};cats.forEach(function(c){counts[c.k]={};});
-    _chDeals.forEach(function(dd){
+    _chDeals26.forEach(function(dd){
       var k=_chPeriodOf(dd.pausechurn_date,grain); if(!k||k<BD_CHURN_DETAIL_FROM)return;
       var r=(dd.churn_reason||'').trim(); if(!r)return;
       var c=top.indexOf(r)>=0?r:'__other';
@@ -2059,7 +2114,7 @@ function renderBD(){
     });
     var t=bdClusterChart(periods,cats,counts,{labelOf:_chPeriodLbl,ht:330});
     t+='<div style="font-size:10px;color:var(--grey);margin-top:10px;font-style:italic;line-height:1.5">'
-      +'n = '+withReason+' of '+_chDeals.length+' churned deals have a reason and a churn date from '+BD_CHURN_DETAIL_FROM+' on. '
+      +'n = '+withReason+' of '+_chDeals26.length+' churned deals dated 2026 onward have a reason. '
       +'Top '+BD_CHURN_REASON_TOP+' reasons by volume are shown separately; the remaining '+rest.length
       +(rest.length?(' are counted in Other \u2014 '+rest.map(function(r){return r+' ('+tot[r]+')';}).join(', ')):'')+'.</div>';
     return t;
@@ -2122,12 +2177,227 @@ function renderBD(){
     return t;
   };
 
-  // ── v. A/B test among board-defined + delinquent churn ──
+  // ── v. What the brands that left had implemented ─────────────────────────
+  //
+  // A COUNT of churned brands, never a churn rate. implemented_products is
+  // written during the CHURN REVIEW, so only churned brands ever carry it and
+  // no active brand does — there is no denominator anywhere in this data that
+  // could turn these into rates. Everything below is built so that misreading
+  // is hard: the magnitude mark is one countable cell per brand, and no
+  // percentage is printed in any value column.
+  //
+  // The four BD_PROD_* constants and _chProdsOf are declared near _chDeals26,
+  // ABOVE this point. They are `var` expressions, so at this call site they
+  // would be hoisted-but-undefined if they still lived where the old C8 kept
+  // them, and the whole tab would render blank.
+  var _c5N=function(v){return Number(v).toLocaleString('en-US');};
+  // _chFmtPct is deliberately not used here. It is the tab's RATE formatter;
+  // borrowing it would dress a count in a rate's clothes.
+
+  var _c5Pool=_chDeals26.filter(function(dd){return _chProdsOf(dd).length>0;});
+  // The rail's numbers come from the POOL and never from the selection: it is a
+  // fixed distribution with a cursor on it. Recomputed under the filter it
+  // would collapse to one bar and stop being a chart.
+  var _c5Rec={},_c5Chn={};
+  for(var _c5i=1;_c5i<=12;_c5i++){var _c5k=('0'+_c5i).slice(-2);_c5Rec[_c5k]=0;_c5Chn[_c5k]=0;}
+  var _c5MonOf=function(dd){var m=_bdMonthOf(dd.pausechurn_date);return m?m.substring(5,7):'';};
+  _chDeals26.forEach(function(dd){var k=_c5MonOf(dd);if(k)_c5Chn[k]++;});
+  _c5Pool.forEach(function(dd){var k=_c5MonOf(dd);if(k)_c5Rec[k]++;});
+  var _c5Max=1;for(var _c5j in _c5Rec){if(_c5Rec[_c5j]>_c5Max)_c5Max=_c5Rec[_c5j];}
+
+  var _c5Set=_bdChurnProdMonth
+    ? _c5Pool.filter(function(dd){return _c5MonOf(dd)===_bdChurnProdMonth;})
+    : _c5Pool;
+  var _c5n=_c5Set.length;
+
+  // Elapsed / in-progress / not yet reached, read from the clock rather than a
+  // constant. NOTE this makes the rail's own appearance time-dependent, which
+  // no test can pin: a month that has not happened is not a month with nothing
+  // in it, and the two must not look alike.
+  var _c5Now=new Date();
+  var _c5MaxM=(_c5Now.getFullYear()>BD_CHURN_KM_YEAR)?12
+            :((_c5Now.getFullYear()<BD_CHURN_KM_YEAR)?0:(_c5Now.getMonth()+1));
+  var _c5MonNm=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  hChurn+='<section class="bd-sec" id="bd-sec-churnprod">';
+  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C5</span>'
+    +'<span class="bd-sec-t">What the Brands That Left Had Implemented</span>'
+    +'<span class="bd-sec-s">Badge and Banner count as one product. A brand counts once per product it had, so the product rows overlap and do not sum.</span></div>';
+  hChurn+='<div class="tile" style="padding:16px 18px">';
+  // The reason this can never be a rate goes directly under the head, at a
+  // weight the reader cannot skip — not in 10px italic at the bottom.
+  hChurn+='<div style="display:flex;align-items:flex-start;gap:10px;background:rgba(245,158,11,.09);border-left:3px solid #F59E0B;border-radius:8px;padding:10px 14px;margin-bottom:15px">'
+    +'<span style="flex:0 0 auto;font-size:9px;font-weight:700;letter-spacing:.05em;color:#92400E;background:rgba(245,158,11,.20);border-radius:3px;padding:3px 7px;white-space:nowrap">A COUNT, NEVER A RATE</span>'
+    +'<span style="flex:1 1 auto;min-width:0;font-size:11.5px;color:var(--navy);line-height:1.55">'
+    +'Every brand below has already churned. Implemented Products is filled in during the churn review, so churned brands are the only ones that carry it — there is no active-brand denominator to divide by.</span></div>';
+
+  hChurn+='<div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">';
+
+  // ── the rail: a distribution you can click ───────────────────────────────
+  // Two numbers per month, recorded / churned, so an empty month says WHICH
+  // kind of empty it is before anyone clicks it.
+  var _c5Item=function(key,label,rec,chn,state){
+    var on=(_bdChurnProdMonth===key);
+    var future=(state==='future');
+    var dim=future?';opacity:.42':'';
+    // Clamped: the All row counts the whole pool, which is bigger than any
+    // single month, so on the month scale its bar would run past its track.
+    var bar=_c5Max>0?Math.min(100,Math.round((rec/_c5Max)*100)):0;
+    var h='<'+(future?'div':'button')
+      +(future?'':' onclick="bdSetChurnProdMonth(\''+key+'\')"')
+      +' style="display:block;width:100%;text-align:left;border:none;background:'+(on?'var(--navy)':'transparent')
+      +';border-radius:6px;padding:5px 8px;margin-bottom:1px;font-family:var(--font-b)'
+      +(future?'':';cursor:pointer')+dim+'">';
+    h+='<div style="display:flex;align-items:baseline;gap:6px">'
+      +'<span style="flex:1 1 auto;font-size:11px;font-weight:'+(on?'700':'600')+';color:'+(on?'#fff':(rec>0?'var(--navy)':'var(--grey)'))+'">'+label+'</span>'
+      +'<span style="font-size:10.5px;font-variant-numeric:tabular-nums;font-weight:700;color:'+(on?'#fff':(rec>0?'var(--navy)':'#A9B4BF'))+'">'+(future?'·':rec)+'</span>'
+      +'<span style="font-size:9.5px;font-variant-numeric:tabular-nums;color:'+(on?'rgba(255,255,255,.62)':'#A9B4BF')+'">'+(future?'':'/ '+chn)+'</span>'
+      +'</div>';
+    h+='<div style="height:3px;margin-top:3px;background:'+(on?'rgba(255,255,255,.22)':'rgba(23,44,69,.07)')+';border-radius:2px;overflow:hidden">'
+      +'<div style="height:100%;width:'+bar+'%;background:'+(on?'#fff':'var(--teal)')+';border-radius:2px;opacity:'+(state==='partial'?'.55':(state==='all'?'.3':'.9'))+'"></div></div>';
+    return h+'</'+(future?'div':'button')+'>';
+  };
+  hChurn+='<div style="flex:0 0 190px;min-width:170px">';
+  hChurn+='<div style="font-size:9px;font-weight:700;letter-spacing:.05em;color:var(--grey);text-transform:uppercase;margin-bottom:6px">Churn month</div>';
+  hChurn+=_c5Item('','All 2026',_c5Pool.length,_chDeals26.length,'all');
+  hChurn+='<div style="height:1px;background:rgba(23,44,69,.08);margin:5px 2px 6px"></div>';
+  for(var _c5m=1;_c5m<=12;_c5m++){
+    var _k=('0'+_c5m).slice(-2);
+    hChurn+=_c5Item(_k,_c5MonNm[_c5m-1],_c5Rec[_k],_c5Chn[_k],
+      _c5m>_c5MaxM?'future':(_c5m===_c5MaxM?'partial':'done'));
+  }
+  hChurn+='<div style="font-size:9px;color:#A9B4BF;line-height:1.5;margin-top:7px">'
+    +'recorded / churned that month. Months with no bar had churn but no Implemented Products recorded.</div>';
+  hChurn+='</div>';
+
+  // ── the panel ────────────────────────────────────────────────────────────
+  hChurn+='<div style="flex:1 1 440px;min-width:320px">';
+  var _c5Lbl=_bdChurnProdMonth?(_c5MonNm[(+_bdChurnProdMonth)-1]+' '+BD_CHURN_KM_YEAR):'2026 to date';
+  if(!_c5n){
+    // Eight clickable empty months need one click back, not a sentence.
+    hChurn+='<div style="border:1px dashed var(--border);border-radius:10px;padding:26px 20px;text-align:center">'
+      +'<div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">Nothing recorded for '+_c5Lbl+'</div>'
+      +'<div style="font-size:11.5px;color:var(--grey);margin-top:5px;line-height:1.55">'
+      +(_c5Chn[_bdChurnProdMonth]>0
+        ? (_c5Chn[_bdChurnProdMonth]+' brand'+(_c5Chn[_bdChurnProdMonth]===1?'':'s')+' churned that month, but none had Implemented Products filled in.')
+        : 'No brand churned that month.')
+      +'</div>'
+      +'<button onclick="bdSetChurnProdMonth(\'\')" style="margin-top:13px;font-family:var(--font-h);font-size:11px;font-weight:700;padding:7px 16px;border:1px solid var(--border);border-radius:50px;background:var(--white);color:var(--navy);cursor:pointer">Show all '+_c5Pool.length+' →</button>'
+      +'</div>';
+  }else{
+    var _c5Ten=_kmTenure(_c5Set);
+    var _c5Thin=(_c5n<5);
+    hChurn+='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">';
+    hChurn+='<div style="flex:1 1 170px;background:var(--white);border:1px solid var(--border);border-left:3px solid var(--teal);border-radius:10px;padding:11px 14px">'
+      +'<div class="tlbl">Brands in this cut</div>'
+      +'<div style="font-family:var(--font-h);font-size:24px;font-weight:700;color:var(--navy);line-height:1.1">'+_c5N(_c5n)+'</div>'
+      +'<div class="tdef">'+_c5Lbl+' · every one of them churned</div></div>';
+    // At n=1 a mean is a single observation, so the label stops saying "Avg".
+    hChurn+='<div style="flex:1 1 170px;background:var(--white);border:1px solid var(--border);border-left:3px solid '+(_c5Thin?'#D97706':'var(--teal)')+';border-radius:10px;padding:11px 14px">'
+      +'<div class="tlbl">'+(_c5Ten.n===1?'Time to churn':'Avg time to churn')+'</div>'
+      +'<div style="font-family:var(--font-h);font-size:'+(_c5Thin?'19':'24')+'px;font-weight:700;color:var(--navy);line-height:1.1">'
+      +(_c5Ten.avg!=null?(Math.round(_c5Ten.avg).toLocaleString()+' days'):'—')+'</div>'
+      +'<div class="tdef">'+(_c5Ten.avg!=null
+          ? ('≈ '+(_c5Ten.avg/30.44).toFixed(1)+' months · n='+_c5Ten.n+(_c5Ten.n===1?' — one brand, not an average':''))
+          : 'no usable dates')+'</div></div>';
+    hChurn+='</div>';
+
+    // One cell per brand in the cut, filled cells first. The denominator is
+    // physically countable, which is what stops a count reading as a rate — so
+    // no percentage is printed anywhere in these rows.
+    var _c5Cells=function(n,fill,colour,dim){
+      if(n>60){
+        return '<div style="height:16px;background:rgba(23,44,69,.05);border-radius:3px;overflow:hidden">'
+          +'<div style="height:100%;width:'+((fill/n)*100)+'%;background:'+colour+';opacity:.92;border-radius:3px"></div></div>';
+      }
+      var h='<div style="display:flex;gap:2px;align-items:stretch">';
+      for(var i=0;i<n;i++){
+        h+='<div style="flex:1 1 0;min-width:0;max-width:22px;height:16px;border-radius:3px;background:'
+          +(i<fill?colour:'rgba(23,44,69,.07)')+(i<fill&&dim?';opacity:'+dim:'')+'"></div>';
+      }
+      return h+'</div>';
+    };
+    var C5G='grid-template-columns:132px minmax(0,1fr) 104px;gap:13px';
+    var C5GB='grid-template-columns:176px minmax(0,1fr) 104px;gap:13px';
+    hChurn+='<div style="font-family:var(--font-h);font-size:12.5px;font-weight:700;color:var(--navy);margin-bottom:2px">By product</div>';
+    hChurn+='<div style="font-size:10.5px;color:var(--grey);margin-bottom:8px">One cell per brand in this cut. Rows overlap — a brand with three products appears in three of them.</div>';
+    var _c5Counts={};BD_PROD_ORDER.forEach(function(pk){_c5Counts[pk]=0;});
+    var _c5Extra={};
+    _c5Set.forEach(function(dd){
+      _chProdsOf(dd).forEach(function(pk){
+        if(_c5Counts[pk]!=null)_c5Counts[pk]++;
+        else _c5Extra[pk]=(_c5Extra[pk]||0)+1;   // never silently dropped
+      });
+    });
+    var _c5Rows=BD_PROD_ORDER.map(function(pk){return {k:pk,c:_c5Counts[pk]};})
+      .concat(Object.keys(_c5Extra).map(function(pk){return {k:pk,c:_c5Extra[pk]};}));
+    _c5Rows.sort(function(a,b){return b.c-a.c;});
+    _c5Rows.forEach(function(r){
+      // A real product that none of them had is a FINDING and keeps its row —
+      // the same rule C8 applies to a segment with no churn. Grey NONE, never
+      // amber: amber on this page means "too few to trust", and a definite zero
+      // is not that.
+      var zero=(r.c===0);
+      hChurn+='<div class="bd-seg-row" style="display:grid;'+C5G+';align-items:center;padding:7px 0;border-bottom:1px solid rgba(23,44,69,.05)">'
+        +'<div title="'+(BD_PROD_FULL[r.k]||r.k)+'" style="display:flex;align-items:center;gap:6px;min-width:0">'
+        +'<span style="flex:0 0 8px;height:8px;border-radius:2px;background:'+(zero?'#CBD5E1':(BD_PROD_C[r.k]||'#94A3B8'))+'"></span>'
+        +'<span style="font-size:11.5px;font-weight:600;color:'+(zero?'var(--grey)':'var(--navy)')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+r.k+'</span></div>'
+        +'<div>'+(zero
+            ? '<div style="height:16px;border:1px dashed rgba(23,44,69,.16);border-radius:3px"></div>'
+            : _c5Cells(_c5n,r.c,BD_PROD_C[r.k]||'#94A3B8',null))+'</div>'
+        +'<div style="text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums">'
+        +(zero
+          ? '<span style="font-size:9px;font-weight:700;letter-spacing:.05em;color:var(--grey);background:rgba(23,44,69,.06);border-radius:3px;padding:2px 7px">NONE</span>'
+          : ('<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">'+_c5N(r.c)+'</span>'
+             +'<span style="font-size:10.5px;color:var(--grey);margin-left:5px">of '+_c5N(_c5n)+'</span>'))
+        +'</div></div>';
+    });
+
+    // The product rows overlap; these partition the same brands and DO sum to
+    // n. Printing both, at the same cell scale, is the clearest statement of
+    // what "overlapping" means that this section can make.
+    var _c5Bun={};
+    _c5Set.forEach(function(dd){
+      var ps=_chProdsOf(dd).slice().sort(function(a,b){
+        var ia=BD_PROD_ORDER.indexOf(a),ib=BD_PROD_ORDER.indexOf(b);
+        return (ia<0?99:ia)-(ib<0?99:ib);
+      });
+      var k=ps.join(' + ');
+      if(!_c5Bun[k])_c5Bun[k]={k:k,n:0,d:ps.length};
+      _c5Bun[k].n++;
+    });
+    var _c5BunL=Object.keys(_c5Bun).map(function(k){return _c5Bun[k];})
+      .sort(function(a,b){return (b.d-a.d)||(b.n-a.n);});
+    var _c5Sum=0;_c5BunL.forEach(function(b){_c5Sum+=b.n;});
+    hChurn+='<div style="font-family:var(--font-h);font-size:12.5px;font-weight:700;color:var(--navy);margin:18px 0 2px">By combination</div>';
+    hChurn+='<div style="font-size:10.5px;color:var(--grey);margin-bottom:8px">The same brands, split by exactly what they had. These do not overlap, so they sum to '+_c5N(_c5Sum)+'.</div>';
+    _c5BunL.forEach(function(b){
+      // One colour at a per-depth opacity. Striping a ~10px cell in two or
+      // three colours is noise; the depth is what the reader is scanning for.
+      var op=(b.d>=4)?1:(b.d===3?.86:(b.d===2?.66:.44));
+      hChurn+='<div class="bd-seg-row" style="display:grid;'+C5GB+';align-items:center;padding:6px 0;border-bottom:1px solid rgba(23,44,69,.05)">'
+        +'<div title="'+b.k+'" style="font-size:10.5px;color:var(--navy);line-height:1.3">'+b.k+'</div>'
+        +'<div>'+_c5Cells(_c5n,b.n,'#475569',op)+'</div>'
+        +'<div style="text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums">'
+        +'<span style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">'+_c5N(b.n)+'</span>'
+        +'<span style="font-size:10px;color:var(--grey);margin-left:5px">'+b.d+' product'+(b.d===1?'':'s')+'</span>'
+        +'</div></div>';
+    });
+  }
+  hChurn+='</div>';   // panel
+  hChurn+='</div>';   // rail + panel row
+
+  hChurn+='<div style="font-size:10px;color:var(--grey);margin-top:11px;font-style:italic;line-height:1.5">'
+    +_c5N(_c5Pool.length)+' of '+_c5N(_chDeals26.length)+' churned brands dated 2026 onward have Implemented Products recorded, and <strong>no active brand carries it at all</strong>. '
+    +'Setting the field on active brands too is what would turn this into a real per-product churn rate.</div>';
+  hChurn+='</div></section>';
+
+  // ── vi. A/B test among board-defined + delinquent churn ──
   // Deliberately a COUNT TABLE and not a scatter. The usable sample is ~27
   // deals spread over ~16 cells, so most cells are 0-3 — that sparseness IS the
   // finding, and a trendline or an r value over 27 points would imply a
   // precision the data does not have.
-  var _chBoard=_chDeals.filter(function(dd){
+  var _chBoard=_chDeals26.filter(function(dd){
     return BD_CHURN_TYPE_GROUP[(dd.never_implemented_churn||'').trim()]===BD_CHURN_BOARD;
   });
   var _chAbRows=[{k:'Yes',l:'A/B tested'},{k:'No',l:'No A/B test'},{k:'Unknown',l:'Unknown'},{k:'',l:'Not recorded'}];
@@ -2140,10 +2410,10 @@ function renderBD(){
   // the grain filters WHICH churns are counted rather than becoming an axis.
   // 2026 to date, like every other section on this tab. Scoping it to one
   // period left 3 of 148 churns in the grid, which is not a cross-tab.
-  var _chAbSet=_chBoard.filter(function(dd){return _chIn2026(dd);});
+  var _chAbSet=_chBoard;   // _chBoard is already 2026-scoped
   var _chAbAnyP=0;_chAbSet.forEach(function(dd){if((dd.ab_test||'').trim())_chAbAnyP++;});
   hChurn+='<section class="bd-sec" id="bd-sec-churnab">';
-  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C5</span><span class="bd-sec-t">A/B Test · Board Defined Churn</span>'
+  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C6</span><span class="bd-sec-t">A/B Test · Board Defined Churn</span>'
     +'<span class="bd-sec-s">Of board-defined and delinquent-payment churns, how many ran an A/B test — against measured web traffic. '
     +'Churns dated 2026 onward.</span></div>';
   hChurn+='<div class="tile" style="padding:16px 18px">'+_chMatrix(_chAbRows,_chAbCols,function(r,c){
@@ -2160,12 +2430,12 @@ function renderBD(){
    +'A measured traffic of 0 is read as no measurement, not as low traffic: the brands storing 0 are almost all ones that never launched. '
    +'No correlation statistic is shown — the sample does not support one.')+'</div></section>';
 
-  // ── vi. Reported vs measured web traffic, against churn reason ──
+  // ── vii. Reported vs measured web traffic, against churn reason ──
   // Reported is a band, measured is a number, so measured is binned into the
   // same bands. Both are shown so the disagreement between what a brand told us
   // and what we measured is visible rather than averaged away.
   var _chReasonTot={};
-  _chDeals.forEach(function(dd){var r=(dd.churn_reason||'').trim();if(r)_chReasonTot[r]=(_chReasonTot[r]||0)+1;});
+  _chDeals26.forEach(function(dd){var r=(dd.churn_reason||'').trim();if(r)_chReasonTot[r]=(_chReasonTot[r]||0)+1;});
   var _chTopReasons=Object.keys(_chReasonTot).sort(function(a,b){return _chReasonTot[b]-_chReasonTot[a];}).slice(0,BD_CHURN_REASON_TOP);
   // Full labels — the headers wrap now, and slicing at 17 chars produced
   // columns like "Alternative Solut…" that could not be told apart. "Other" is
@@ -2186,13 +2456,13 @@ function renderBD(){
   var _chTrRows=BD_TRAFFIC_BANDS.map(function(b){return {k:b.k,l:b.k};})
     .concat([{k:'',l:'No measurement'}]);
   var _chRepN=0,_chBothN=0;
-  _chDeals.forEach(function(dd){
+  _chDeals26.forEach(function(dd){
     if((dd.monthly_web_traffic__reported_at_time_of_churn||'').trim())_chRepN++;
     if((dd.monthly_web_traffic__reported_at_time_of_churn||'').trim()&&dd.web_traffic__measured>0&&(dd.churn_reason||'').trim())_chBothN++;
   });
-  var _chTrSet=_chDeals.filter(function(dd){return _chIn2026(dd);});
+  var _chTrSet=_chDeals26;
   hChurn+='<section class="bd-sec" id="bd-sec-churntraffic">';
-  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C6</span><span class="bd-sec-t">Web Traffic at Churn</span>'
+  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C7</span><span class="bd-sec-t">Web Traffic at Churn</span>'
     +'<span class="bd-sec-s">Measured traffic, binned into the reported field’s own bands, against the churn reason. '
     +'Churns dated 2026 onward.</span></div>';
   hChurn+='<div class="tile" style="padding:16px 18px">'+_chMatrix(_chTrRows,_chTrCols,function(r,c){
@@ -2204,12 +2474,12 @@ function renderBD(){
     });
     return n;
   },'Rows are MEASURED traffic binned into the reported field’s bands. Scoped to '
-   +'2026 onward — '+_chTrSet.length+' of '+_chDeals.length+' churned deals. '
-   +_chRepN+' of '+_chDeals.length+' churned deals carry a reported band at all, and only '+_chBothN+' have a reported band, a measured figure above zero and a reason — which is why this is a count table and not a correlation.')+'</div>';
+   +_chTrSet.length+' churned deals dated 2026 onward. '
+   +_chRepN+' of them carry a reported band at all, and only '+_chBothN+' have a reported band, a measured figure above zero and a reason — which is why this is a count table and not a correlation.')+'</div>';
   // Reported vs measured, side by side, where both exist — the disagreement is
   // the point, and it is lost if only one of them is charted.
   var _chAgree=0,_chDisagree=0,_chRepUnknown=0;
-  _chDeals.forEach(function(dd){
+  _chDeals26.forEach(function(dd){
     var rep=(dd.monthly_web_traffic__reported_at_time_of_churn||'').trim();
     if(!rep)return;
     if(rep==='Unknown'){_chRepUnknown++;return;}
@@ -2223,7 +2493,7 @@ function renderBD(){
     +'<div style="font-size:10px;color:var(--grey);margin-top:5px;font-style:italic">Bands are the reported field’s own, including the odd spelling of "200 -500k". Measured zeroes are excluded as unmeasured.</div>'
     +'</div></section>';
 
-  // ── vii. Board-level churn by Company Segment ──
+  // ── viii. Board-level churn by Company Segment ──
   // A COUNT split, not a rate. Segment lives on the COMPANY and the Snapshot
   // engine has no segment dimension, so active-brands-per-segment does not
   // exist to divide by.
@@ -2269,7 +2539,7 @@ function renderBD(){
   });
   _chSegH+='</div>';
   hChurn+='<section class="bd-sec" id="bd-sec-churnseg">';
-  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C7</span><span class="bd-sec-t">Board Defined Churn by Company Segment</span>'
+  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C8</span><span class="bd-sec-t">Board Defined Churn by Company Segment</span>'
     +'<span class="bd-sec-s">Board-defined and delinquent-payment churns, split by the company’s segment.</span></div>';
   hChurn+='<div class="tile" style="padding:16px 18px">'+_chSegH
     +'<div style="font-size:10px;color:var(--grey);margin-top:8px;font-style:italic">'
@@ -2277,333 +2547,6 @@ function renderBD(){
     +'The grey rows are different things — a company whose segment is unset or unrecognised, versus a deal with no company associated at all — and each appears only when it holds something. '
     +'Rows sum to '+_chBoard.length+'.</div></div></section>';
 
-  // ── viii. Implemented products vs churn ──
-  //
-  // WHY THIS IS NOT "churn rate by product".
-  // implemented_products is filled in during the CHURN REVIEW, not when a brand
-  // launches. Every deal that carries it is churned and not one active deal has
-  // it, so a rate built on it divides churned brands by a denominator that can
-  // only ever hold churned brands — it reads 100% for every product. The field
-  // is used here for the one thing it can honestly answer, the product MIX of
-  // brands that left, and the "are they less likely to churn" question is
-  // answered with # of Total Reviews and # of Products, which both populations
-  // carry.
-  //
-  // WHY THE PLOT IS HTML AND NOT SVG, unlike every other chart in this file.
-  // This section spans the full dashboard width, which runs from ~1000px to
-  // ~2000px. An SVG with a fixed viewBox scales its declared type with the box,
-  // so an 11px label renders near 19px on a wide monitor; preserveAspectRatio
-  // ="none", which this file uses elsewhere, would additionally squash the dots
-  // into ellipses. Percentage-positioned HTML holds type at its declared size
-  // and keeps the dots round at any width. The rows still carry .bd-rate-band,
-  // so bdBindRateBands() — which matches on class and reads getAttribute —
-  // binds the readout with no new CSS and no new handler.
-  //
-  // Badge and Banner count as ONE product, per the ask — they are the same
-  // placement sold two ways.
-  var BD_PROD_GROUP={Badge:'Badge/Banner',Banner:'Badge/Banner'};
-  var BD_PROD_ORDER=['Badge/Banner','Reviews','CAI','CAS'];
-  var BD_PROD_FULL={'Badge/Banner':'Badge or Banner placement','Reviews':'Clinician reviews live on site','CAI':'Clinician AI','CAS':'Clinician Analysis'};
-  var BD_PROD_C={'Badge/Banner':'#7C3AED','Reviews':'#0F766E','CAI':'#1D4ED8','CAS':'#B45309'};
-  // HubSpot returns a multi-select as a ';'-delimited string.
-  var _chProdsOf=function(dd){
-    var raw=(dd.implemented_products||'').trim();
-    if(!raw)return [];
-    var out={},any=false;
-    raw.split(';').forEach(function(v){
-      var t=v.trim(); if(!t)return;
-      out[BD_PROD_GROUP[t]||t]=1; any=true;
-    });
-    return any?Object.keys(out):[];
-  };
-  var _chBook=closedWonDeals.concat(_chDeals);           // every brand that ever signed
-  var _chIsChurned=function(dd){return dd.dealstage===BD_CHURN_STAGE||dd.dealstage===BD_CHURN_ONB_STAGE;};
-  var _chNum=function(v){var n=parseFloat(v);return isFinite(n)?n:null;};
-  var _chPctOf=function(o){return o.n>0?((o.ch/o.n)*100):null;};
-  var _chFmtPct=function(v){return v==null?'—':v.toFixed(1)+'%';};
-  var _c8N=function(v){return Number(v).toLocaleString('en-US');};
-
-  // A band holds every signed brand whose recorded value falls inside it,
-  // active and churned alike, so ch/n is a share of the book and not a share of
-  // churn. A blank is NOT read as zero: coverage of both fields collapses
-  // before 2026 — half the pre-2026 active brands have no review count at all —
-  // so folding blanks into the bottom band would fill it with brands that
-  // merely pre-date the field and manufacture the result.
-  var _chBandStat=function(field,bands){
-    var rows=bands.map(function(b){return {l:b.l,lo:b.lo,hi:b.hi,n:0,ch:0};}), unset=0, unsetCh=0;
-    _chBook.forEach(function(dd){
-      var v=_chNum(dd[field]);
-      if(v==null||v<=0){unset++;if(_chIsChurned(dd))unsetCh++;return;}
-      for(var i=0;i<rows.length;i++){
-        if(v>=rows[i].lo&&(rows[i].hi==null||v<=rows[i].hi)){
-          rows[i].n++; if(_chIsChurned(dd))rows[i].ch++; break;
-        }
-      }
-    });
-    return {rows:rows,unset:unset,unsetCh:unsetCh};
-  };
-  var _chRevB=_chBandStat('of_total_reviews',[{l:'1–2 reviews',lo:1,hi:2},{l:'3–9 reviews',lo:3,hi:9},{l:'10+ reviews',lo:10,hi:null}]);
-  var _chCntB=_chBandStat('of_products',[{l:'1 product',lo:1,hi:1},{l:'2 products',lo:2,hi:2},{l:'3+ products',lo:3,hi:null}]);
-
-  // Wilson score interval, 95%. The textbook normal interval is wrong here —
-  // three of these bands carry fewer than 20 churns, where it runs past zero
-  // and understates its own width badly.
-  var _c8Wilson=function(o){
-    if(!o.n)return null;
-    var z=1.96,p=o.ch/o.n,d=1+z*z/o.n,
-        mid=(p+z*z/(2*o.n))/d,
-        half=z*Math.sqrt(p*(1-p)/o.n+z*z/(4*o.n*o.n))/d;
-    return [Math.max(0,(mid-half)*100),Math.min(100,(mid+half)*100)];
-  };
-  // Two-proportion z. This is the gate on the verdict: below 2, the section
-  // refuses to state a difference at all. The previous cut gated on effect SIZE
-  // (a flat 1pp) with no reference to how many brands were behind it, so it
-  // printed "6.4pp less" in bold for a gap its own counts cannot resolve.
-  var _c8Z=function(a,b){
-    if(!a||!b||!a.n||!b.n)return null;
-    var p=(a.ch+b.ch)/(a.n+b.n);
-    if(p<=0||p>=1)return null;
-    var se=Math.sqrt(p*(1-p)*(1/a.n+1/b.n));
-    return se>0?((a.ch/a.n)-(b.ch/b.n))/se:null;
-  };
-  // Under this many brands, one brand moves the rate by more than 1.5pp, which
-  // is a quarter of the largest gap on the chart.
-  var C8_THIN=60;
-  var _c8Nice=function(maxV){
-    var steps=[2,2.5,5,10,20,25,50];
-    for(var i=0;i<steps.length;i++){
-      var s=steps[i],top=Math.ceil(maxV/s)*s;
-      if(top>0&&top/s<=7)return {top:top,step:s};
-    }
-    return {top:100,step:25};
-  };
-
-  // Every rate row on the chart, both measures, in one list — because they are
-  // one quantity (churn rate over the same book) banded two ways, and putting
-  // them on separate axes is what let a 12.6% rate draw a LONGER bar than an
-  // 11.6% one in the previous cut.
-  var _c8Group=function(b,label,field,colour){
-    var covN=0,covCh=0;
-    b.rows.forEach(function(r){covN+=r.n;covCh+=r.ch;});
-    return {
-      label:label, colour:colour,
-      rows:b.rows.map(function(r){return {l:r.l,n:r.n,ch:r.ch,kind:'band'};}),
-      ctx:{l:'No '+field+' recorded',n:b.unset,ch:b.unsetCh,kind:'ctx'},
-      covN:covN, covCh:covCh,
-      pooled:covN>0?(covCh/covN)*100:null
-    };
-  };
-  var _c8Groups=[
-    _c8Group(_chRevB,'Reviews live','review count',BD_PROD_C.Reviews),
-    _c8Group(_chCntB,'Products implemented','product count',BD_PROD_C['Badge/Banner'])
-  ];
-  var _c8Book=_chBook.length>0?(_chDeals.length/_chBook.length)*100:null;
-
-  // The axis has to reach the context rows, not just the bands. That is the
-  // point: the recorded-or-not gap is several times any gap between bands, and
-  // an axis cropped to the bands would hide the larger fact to magnify the
-  // smaller one.
-  var _c8Max=0;
-  _c8Groups.forEach(function(g){
-    g.rows.concat([g.ctx]).forEach(function(r){
-      var w=_c8Wilson(r); if(w&&w[1]>_c8Max)_c8Max=w[1];
-      var p=_chPctOf(r); if(p!=null&&p>_c8Max)_c8Max=p;
-    });
-  });
-  if(_c8Book!=null&&_c8Book>_c8Max)_c8Max=_c8Book;
-  var _c8Ax=_c8Nice(_c8Max||1);
-  var _c8X=function(v){return Math.max(0,Math.min(100,(v/_c8Ax.top)*100));};
-  var C8_COLS='grid-template-columns:218px minmax(0,1fr) 164px;gap:14px';
-
-  var _c8Ticks=function(){
-    var t='';
-    for(var v=0;v<=_c8Ax.top+0.0001;v+=_c8Ax.step){
-      var at=_c8X(v);
-      // End labels anchor to their edge. Centred, half of "0%" sits left of the
-      // track and half of the top label past its right edge, which is where the
-      // only horizontal overflow in this section came from.
-      var tr=(at<=0.01)?'none':((at>=99.99)?'translateX(-100%)':'translateX(-50%)');
-      t+='<span style="position:absolute;left:'+at+'%;transform:'+tr+';font-size:9.5px;color:#8A97A5;font-variant-numeric:tabular-nums">'+v+'%</span>';
-    }
-    return '<div style="display:grid;'+C8_COLS+';align-items:center"><div></div>'
-      +'<div style="position:relative;height:13px">'+t+'</div><div></div></div>';
-  };
-  // Gridlines and the book rule are one overlay behind the rows rather than
-  // per-row borders, so they stay unbroken down the column.
-  var _c8Grid=function(){
-    var g='';
-    for(var v=0;v<=_c8Ax.top+0.0001;v+=_c8Ax.step){
-      g+='<div style="position:absolute;top:0;bottom:0;left:'+_c8X(v)+'%;width:1px;background:rgba(114,164,191,.22)"></div>';
-    }
-    if(_c8Book!=null){
-      g+='<div style="position:absolute;top:0;bottom:0;left:'+_c8X(_c8Book)+'%;width:0;border-left:1.5px dashed '+BD_CHURN_C+';opacity:.55"></div>';
-    }
-    return '<div style="position:absolute;inset:0;display:grid;'+C8_COLS+';pointer-events:none">'
-      +'<div></div><div style="position:relative">'+g+'</div><div></div></div>';
-  };
-
-  var _c8Row=function(r,colour){
-    var pct=_chPctOf(r), w=_c8Wilson(r), ctxRow=(r.kind==='ctx');
-    var thin=(!ctxRow&&r.n>0&&r.n<C8_THIN);
-    var col=ctxRow?'#94A3B8':(thin?'#D97706':colour);
-    var one=r.n>0?(100/r.n):null;
-    // data-p / data-r* are read by bdBindRateBands — already bound after render.
-    var tip=' data-p="'+r.l+'"'
-      +' data-r1="Churn rate|'+_chFmtPct(pct)+'|'+_c8N(r.ch)+' of '+_c8N(r.n)+' brands|'+col+'"'
-      +(w?' data-r2="Range these counts pin down|'+w[0].toFixed(1)+'–'+w[1].toFixed(1)+'%|wider when fewer brands|'+col+'"':'')
-      +(one!=null?' data-r3="One brand moves this by|'+one.toFixed(1)+'pp||'+col+'"':'');
-    var h='<div class="bd-seg-row bd-rate-band" style="display:grid;'+C8_COLS+';align-items:center;padding:7px 0;position:relative"'+tip+'>';
-    // Row-scoped, not track-scoped: the thin thing is the whole band, not its
-    // bar. An absolutely-positioned child of a grid container is out of flow,
-    // so this consumes no column.
-    if(thin)h+='<div style="position:absolute;inset:0;background:rgba(245,158,11,.07);border-radius:5px;pointer-events:none"></div>';
-    h+='<div style="display:flex;align-items:center;gap:7px;min-width:0;position:relative">'
-      +'<span style="font-size:11.5px;'+(ctxRow?'color:var(--grey);font-style:italic':'color:var(--navy);font-weight:600')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+r.l+'</span>'
-      +(thin?'<span style="flex:0 0 auto;font-size:8.5px;font-weight:700;letter-spacing:.04em;color:#92400E;background:rgba(245,158,11,.16);border-radius:3px;padding:2px 5px;white-space:nowrap">'+_c8N(r.n)+' BRANDS</span>':'')
-      +'</div>';
-    h+='<div style="position:relative;height:16px">';
-    if(w)h+='<div style="position:absolute;top:50%;height:2px;margin-top:-1px;left:'+_c8X(w[0])+'%;width:'+Math.max(0,_c8X(w[1])-_c8X(w[0]))+'%;background:'+col+';opacity:.34;border-radius:1px"></div>';
-    if(pct!=null)h+='<div style="position:absolute;top:50%;left:'+_c8X(pct)+'%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:'+col+(ctxRow?';opacity:.85':'')+'"></div>';
-    h+='</div>';
-    h+='<div style="text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;position:relative">'
-      +'<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:'+(ctxRow?'var(--grey)':'var(--navy)')+'">'+_chFmtPct(pct)+'</span>'
-      +'<span style="font-size:10.5px;color:var(--grey);margin-left:6px">'+_c8N(r.ch)+'/'+_c8N(r.n)+'</span></div>';
-    return h+'</div>';
-  };
-
-  // The verdict is structured rather than a sentence so the badge, the figures
-  // and the reasoning can be set at three different weights — and so that a
-  // verdict which DECLINES never opens with the number it is declining.
-  var _c8Verdict=function(g){
-    var pop=g.rows.filter(function(r){return r.n>0;});
-    if(pop.length<2)return {tone:'none',badge:'Not enough recorded',calc:'Fewer than two bands hold any brands.'};
-    var a=pop[0], z=pop[pop.length-1];
-    var peak=pop.reduce(function(m,r){return _chPctOf(r)>_chPctOf(m)?r:m;},pop[0]);
-    var monotone=(peak===a||peak===z);
-    var thin=pop.filter(function(r){return r.n<C8_THIN;});
-    var thinNote=thin.length?(' The '+thin[0].l+' band holds only '+_c8N(thin[0].n)+' brands, so one brand moves it by '+(100/thin[0].n).toFixed(1)+' points.'):'';
-    if(!monotone){
-      return {tone:'nopattern',badge:'No pattern',
-        calc:'Not a run — the worst band is '+peak.l+' in the middle, not either end.'+thinNote};
-    }
-    var zz=_c8Z(a,z);
-    if(zz==null||Math.abs(zz)<2){
-      return {tone:'nodiff',badge:'No difference we can distinguish',
-        calc:'The gap between the ends is smaller than the error on it at these counts.'+thinNote};
-    }
-    var gap=_chPctOf(a)-_chPctOf(z);
-    return {tone:gap>0?'less':'more',
-      badge:gap>0?'Churn falls as this rises':'Churn rises as this rises',
-      calc:Math.abs(gap).toFixed(1)+'pp '+(gap>0?'lower':'higher')+' at '+z.l
-        +'. Association, not cause: a brand that got this far had already implemented.'+thinNote};
-  };
-
-  hChurn+='<section class="bd-sec" id="bd-sec-churnprod">';
-  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C8</span><span class="bd-sec-t">Implemented Products vs Churn</span>'
-    +'<span class="bd-sec-s">Whether depth of implementation goes with churn, and what the brands that left had in place. Badge and Banner count as one product.</span></div>';
-  hChurn+='<div class="tile" style="padding:16px 18px">';
-
-  // ── Lead: the one finding that crosses both measures ─────────────────────
-  // It is a selection effect, and it is several times larger than anything the
-  // bands show. Previously it appeared only as 10px grey italic under each
-  // chart, which is the smallest type in the section.
-  hChurn+='<div style="background:var(--teal-8);border-left:3px solid var(--teal);border-radius:8px;padding:12px 15px;margin-bottom:16px">'
-    +'<div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);line-height:1.35">'
-    +'What separates the brands that left is mostly whether we have a record at all.</div>'
-    +'<div style="font-size:11.5px;color:var(--navy);margin-top:6px;line-height:1.6">'
-    +'Every band below sits under the '+_chFmtPct(_c8Book)+' rate for all signed brands. The brands with nothing recorded churn at '
-    +_c8Groups.map(function(g){return '<strong>'+_chFmtPct(_chPctOf(g.ctx))+'</strong> ('+g.label.toLowerCase()+')';}).join(' and ')
-    +' — several times any gap between the bands themselves, and neither measure separates churners from stayers by more than its own counts can resolve.'
-    +'</div></div>';
-
-  // ── One shared axis for both measures ────────────────────────────────────
-  hChurn+='<div class="chart-wrap" style="position:relative;min-width:0">';
-  hChurn+=_c8Ticks();
-  hChurn+='<div style="position:relative">'+_c8Grid();
-  _c8Groups.forEach(function(g,gi){
-    // The verdict sits in the group header, beside the rows it is about. It was
-    // a band of cards under the chart, and all it added there was a restatement
-    // of the band percentages already printed in the value column; the badge
-    // and its one reason are the only parts the chart cannot say itself.
-    var v=_c8Verdict(g);
-    var vcol=(v.tone==='less')?'#0F766E':((v.tone==='more')?BD_CHURN_C:'var(--grey)');
-    hChurn+='<div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin:'+(gi?'20px':'4px')+' 0 2px">'
-      +'<span style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy)">'+g.label+'</span>'
-      +'<span style="font-size:9.5px;font-weight:700;letter-spacing:.04em;color:'+((g.covN/_chBook.length)<0.4?'#92400E':'var(--grey)')+';background:'+((g.covN/_chBook.length)<0.4?'rgba(245,158,11,.14)':'var(--teal-8)')+';border-radius:3px;padding:2px 7px;white-space:nowrap">'
-      +_c8N(g.covN)+' of '+_c8N(_chBook.length)+' brands · '+Math.round((g.covN/_chBook.length)*100)+'% · these churn '+_chFmtPct(g.pooled)+'</span>'
-      +'<span style="font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:'+vcol+';white-space:nowrap">'+v.badge+'</span>'
-      +'</div>';
-    hChurn+='<div style="font-size:10.5px;color:var(--grey);margin:0 0 6px;line-height:1.5">'+v.calc+'</div>';
-    g.rows.forEach(function(r){hChurn+=_c8Row(r,g.colour);});
-    if(g.ctx.n>0){
-      hChurn+='<div style="display:grid;'+C8_COLS+';align-items:center;margin:6px 0 1px">'
-        +'<div style="font-size:8.5px;font-weight:700;letter-spacing:.05em;color:#A9B4BF;text-transform:uppercase;white-space:nowrap">For context — not part of the run</div>'
-        +'<div style="border-top:1px dashed rgba(23,44,69,.16)"></div><div></div></div>';
-      hChurn+=_c8Row(g.ctx,'#94A3B8');
-    }
-  });
-  hChurn+='</div>';
-  hChurn+=_c8Ticks();
-  hChurn+='<div class="float-tip"></div></div>';
-
-  hChurn+='<div style="font-size:10px;color:var(--grey);margin-top:8px;line-height:1.6">'
-    +'The dot is the churn rate; the line through it is the range these counts can actually pin down — it widens as the band thins. '
-    +'The dashed rule is all signed brands ('+_chFmtPct(_c8Book)+' · '+_c8N(_chDeals.length)+' of '+_c8N(_chBook.length)+'). '
-    +'Amber rows hold too few brands to carry a conclusion. Grey rows are the brands with no value recorded, plotted so they are not invisible.</div>';
-
-  hChurn+='<div style="font-size:10px;color:var(--grey);margin-top:9px;font-style:italic;line-height:1.5">'
-    +'A blank is never read as zero: coverage of both fields collapses before 2026, so counting blanks as "none" would fill the bottom band with brands that merely pre-date the field. '
-    +'That is also why the unrecorded rows sit apart from the bands rather than inside them.</div>';
-
-  // ── What the brands that left had implemented ────────────────────────────
-  // A COUNT, never a rate — see the header comment. Drawn as a filled share of
-  // a fixed 41-brand track rather than on the axis above, so it cannot be read
-  // against the churn rates.
-  var _chMix={};BD_PROD_ORDER.forEach(function(pk){_chMix[pk]=0;});
-  var _chMixN=0, _chCo=0;
-  _chDeals.forEach(function(dd){
-    var ps=_chProdsOf(dd);
-    if(!ps.length)return;                                  // not recorded — never read as "nothing implemented"
-    _chMixN++;
-    if(ps.indexOf('Reviews')>=0&&ps.indexOf('Badge/Banner')>=0)_chCo++;
-    ps.forEach(function(pk){if(_chMix[pk]!=null)_chMix[pk]++;});
-  });
-  // A product that none of them had is a FINDING, so it keeps its row at zero —
-  // the same rule C7 applies to a segment with no churn. Dropping it would read
-  // as "not measured".
-  var _chMixRows=BD_PROD_ORDER.map(function(pk){
-    return {k:pk,c:_chMix[pk],pct:_chMixN>0?(_chMix[pk]/_chMixN)*100:null};
-  });
-  _chMixRows.sort(function(a,b){return b.c-a.c;});
-  hChurn+='<div style="margin:20px 0 0;padding-top:16px;border-top:1px solid rgba(23,44,69,.10)">';
-  hChurn+='<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:3px">'
-    +'<span style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy)">What the brands that left had implemented</span>'
-    +'<span style="font-size:9.5px;font-weight:700;letter-spacing:.04em;color:#92400E;background:rgba(245,158,11,.14);border-radius:3px;padding:2px 7px;white-space:nowrap">A COUNT, NEVER A CHURN RATE</span></div>';
-  hChurn+='<div style="font-size:10.5px;color:var(--grey);margin-bottom:9px">Of the '+_c8N(_chMixN)+' churned brands whose products were recorded. A brand counts once per product it had, so the rows overlap and do not sum.</div>';
-  if(!_chMixN){
-    hChurn+='<div style="font-size:11.5px;color:var(--grey);padding:10px 0">No churned brand has Implemented Products recorded.</div>';
-  }else{
-    _chMixRows.forEach(function(r){
-      var col=BD_PROD_C[r.k]||'#94A3B8', zero=(r.c===0);
-      hChurn+='<div class="bd-seg-row" style="display:grid;'+C8_COLS+';align-items:center;padding:7px 0;border-bottom:1px solid rgba(23,44,69,.05)">'
-        +'<div title="'+(BD_PROD_FULL[r.k]||r.k)+'" style="font-size:11.5px;color:'+(zero?'var(--grey)':'var(--navy)')+';font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+r.k+'</div>'
-        +'<div style="height:18px;background:rgba(23,44,69,.04);border-radius:4px;overflow:hidden">'
-        +'<div style="height:100%;width:'+(r.pct||0)+'%;background:'+col+';opacity:.92;border-radius:4px"></div></div>'
-        +'<div style="text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap">'
-        +'<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:'+(zero?'var(--grey)':'var(--navy)')+'">'+_c8N(r.c)+'</span>'
-        +'<span style="font-size:10.5px;color:var(--grey);margin-left:5px">of '+_c8N(_chMixN)+' · '+_chFmtPct(r.pct)+'</span></div></div>';
-    });
-    if(_chMix.Reviews>0){
-      hChurn+='<div style="font-size:11px;color:var(--navy);margin-top:9px;line-height:1.55">'
-        +_c8N(_chCo)+' of the '+_c8N(_chMix.Reviews)+' that had reviews live also had a badge or banner.</div>';
-    }
-  }
-  hChurn+='<div style="font-size:10px;color:var(--grey);margin-top:9px;font-style:italic;line-height:1.5">'
-    +'Implemented Products is filled in during the churn review, so only '+_c8N(_chMixN)+' of '+_c8N(_chDeals.length)+' churned brands carry it and <strong>no active brand carries it at all</strong>. '
-    +'That is why this is a count of the brands that left rather than a churn rate: a rate would divide churned brands by a denominator that can only contain churned brands, and read 100% for every product. '
-    +'Setting Implemented Products on active brands too is what would turn this into a real per-product churn rate.</div>';
-  hChurn+='</div>';
-  hChurn+='</div></section>';
 
   // ── ix. All Deals, churned only ──
   // deals.filter(isChurned), NOT sharedFiltered — reusing the Tracker tab's
@@ -2611,7 +2554,7 @@ function renderBD(){
   // Undated churns are DROPPED once a range is set, not kept: a deal with no
   // Pause/Churn Date cannot be said to fall inside a date range, and silently
   // keeping it would make the count disagree with the range on screen.
-  var _chTableRows=_chDeals.filter(function(dd){
+  var _chTableRows=_chDeals26.filter(function(dd){
     if(!_bdChurnFrom&&!_bdChurnTo)return true;
     var d=(dd.pausechurn_date||'').substring(0,10);
     if(!d)return false;
@@ -2623,7 +2566,7 @@ function renderBD(){
   hChurn+='<section class="bd-sec" id="bd-sec-churndeals">';
   var _chRanged=!!(_bdChurnFrom||_bdChurnTo);
   hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C9</span><span class="bd-sec-t">All Churned Deals</span>'
-    +'<span class="bd-sec-s">'+(_chRanged?(_chTableRows.length+' of '+_chDeals.length+' churned deals in range'):(_chDeals.length+' churned deals'))
+    +'<span class="bd-sec-s">'+(_chRanged?(_chTableRows.length+' of '+_chDeals26.length+' churned deals in range'):(_chDeals26.length+' churned deals dated 2026 onward'))
     +' \u00b7 the same table as the Tracker tab, scoped to churn and unaffected by its filters.</span></div>';
   hChurn+='<div class="tile" style="padding:0;overflow:hidden">';
   hChurn+='<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:13px 16px">'

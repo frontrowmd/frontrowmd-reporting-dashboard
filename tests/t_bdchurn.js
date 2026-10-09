@@ -11,16 +11,11 @@ const ctx={console};vm.createContext(ctx);
 vm.runInContext([
   "var BD_CHURN_BOARD='Board Defined';",
   decl(bd,'var BD_CHURN_TYPE_GROUP={','};'),
-  fn(bd,'_bdMonthOfG'), fn(bd,'_bdQuarterOf'), fn(bd,'_bdIsBoardChurn'), fn(bd,'_kmQStartMonth'),
+  fn(bd,'_bdMonthOfG'), fn(bd,'_bdQuarterOf'), fn(bd,'_bdIsBoardChurn'),
   decl(bd,"var BD_CHURN_KM_FROM=","';"), "var BD_CHURN_KM_YEAR=2026;",
-  'Object.assign(globalThis,{_bdMonthOfG,_bdQuarterOf,_bdIsBoardChurn,_kmQStartMonth,BD_CHURN_TYPE_GROUP,BD_CHURN_KM_FROM});',
+  'Object.assign(globalThis,{_bdMonthOfG,_bdQuarterOf,_bdIsBoardChurn,BD_CHURN_TYPE_GROUP,BD_CHURN_KM_FROM});',
 ].join('\n'),ctx);
 ck('the helpers loaded',typeof ctx._bdQuarterOf,'function');
-// The quarter's denominator is read from _snByMonth at this month, so an
-// off-by-one here silently divides by the wrong quarter's book.
-ck('each quarter starts at the right month',
-   ['Q1','Q2','Q3','Q4'].map(q=>ctx._kmQStartMonth(q)),
-   ['2026-01','2026-04','2026-07','2026-10']);
 
 // ── 1. The 2026 floor ─────────────────────────────────────────────────────
 // Before 2026 the book was a handful of brands, where one churn swings a rate
@@ -31,7 +26,34 @@ ck('the scope filter compares months against it',
 ck('and it filters on the churn date, not the create date',
    /var _m=_bdMonthOf\(dd\.pausechurn_date\);\s*\n\s*return !!_m && _m>=BD_CHURN_KM_FROM/.test(bd),true);
 ck('undated churns are counted out loud, not dropped silently',
-   /_kmUndated\?\(_kmUndated\+' undated, excluded'\)/.test(bd),true);
+   /_kmUndated\+' undated, excluded'/.test(bd),true);
+
+// ── 1b. The page says its own scope, once, at the top ─────────────────────
+// Every section reads 2026 onward, so the statement is page-level rather than
+// repeated per chart — and it is the first thing emitted into hChurn.
+ck('the scope band is the first thing on the page',
+   bd.indexOf("2026 only")>0 &&
+   bd.indexOf("2026 only")<bd.indexOf('id="bd-sec-churn"'),true);
+ck('  and names the window in words',
+   /Every figure on this page counts churns dated 1 January 2026 onward/.test(bd),true);
+ck('  with the kept count over the whole set',
+   /\+_chDeals26\.length\+'<\/strong> of '\+_chDeals\.length\+' churned deals\. '/.test(bd),true);
+// What is excluded has to be named, or the band is a claim with no accounting.
+ck('  the pre-2026 churns are counted',
+   /var _chPre26=_chDeals\.length-_chDeals26\.length-_chNoDate;/.test(bd),true);
+ck('  the undated ones too',
+   /var _chNoDate=_chDeals\.filter\(function\(dd\)\{return !_bdMonthOf\(dd\.pausechurn_date\);\}\)\.length;/.test(bd),true);
+ck('  and both are reported in the band',
+   /_chPre26\+' churned before 2026'/.test(bd)&&/no Pause\/Churn Date/.test(bd),true);
+ck('  with nothing claimed when nothing is excluded',
+   /\(\(_chPre26\|\|_chNoDate\)\?', excluded throughout\.':''\)/.test(bd),true);
+// The sections must actually honour it, or the band is a lie.
+ck('the A/B and segment sets read the 2026 book',
+   /var _chBoard=_chDeals26\.filter\(function\(dd\)\{/.test(bd),true);
+ck('  and so does the churned-deals table',
+   /var _chTableRows=_chDeals26\.filter\(function\(dd\)\{/.test(bd),true);
+ck('  leaving no section reading the all-time set',
+   (bd.match(/_chDeals\.forEach/g)||[]).length,0);
 
 // ── 2. Quarters ───────────────────────────────────────────────────────────
 ck('months map to their quarter',
@@ -78,48 +100,72 @@ ck('Board Defined narrows the SAME 2026 set, not the all-time one',
    /_kmDeals=_kmBoard\?_kmAll\.filter\(_bdIsBoardChurn\):_kmAll/.test(bd),true);
 
 // ── 5. Every tile carries its quarter split ───────────────────────────────
-ck('three tiles',(bd.match(/hChurn\+=_chTile\(/g)||[]).length,3);
-ck('each one is handed a quarter strip',(bd.match(/_kmQStrip\(_c(Count|Pct|Ten)\)/g)||[]).length,3);
+// Churned Deals was dropped: the raw count is on the page in three other
+// places, and the two tiles that remain are the ones that say something.
+ck('two tiles',(bd.match(/hChurn\+=_chTile\(/g)||[]).length,2);
+ck('each one is handed a quarter strip',(bd.match(/_kmQStrip\(_c(Pct|Ten)\)/g)||[]).length,2);
 ck('the strip is built once',(bd.match(/var _kmQStrip=/g)||[]).length,1);
-ck('and the tiles are Churned Deals, Churn Rate, Avg Time to Churn',
+ck('and the tiles are the rate and the tenure',
    [...bd.matchAll(/hChurn\+=_chTile\('([^']+)'/g)].map(m=>m[1]),
-   ['Churned Deals','Churn Rate','Avg Time to Churn']);
+   ['Avg Monthly Churn Rate','Avg Time to Churn']);
+ck('  the grid sized itself down with them',
+   /grid-template-columns:repeat\(2,minmax\(0,1fr\)\);gap:14px;align-items:stretch/.test(bd),true);
+ck('  and the dropped count variable went too',/_cCount/.test(bd),false);
 
-// ── 6. The rate divides by the opening book, like C2 ──────────────────────
-// A share of the whole book would make each quarter look smaller merely for
-// being shorter. C1 and C2 read the same snapshot series the same way.
+// ── 6. The rate is the MEAN OF THE MONTHLY RATES ──────────────────────────
+// Each month's churns over that month's own opening book, averaged across the
+// months in the period. Not a pooled churns ÷ book: every month weighs the
+// same, so the figure reads as "the rate in a typical month".
 ck('C1 takes the book at the period start',
    /_kmOpenAt=function\(m\)\{var pv=_snByMonth\[_kmPrevMonth\(m\)\];return pv\?pv\.b:0;\}/.test(bd),true);
 ck('  which is what C2 does',
    /_chOpen=function\(m\)\{var p=_snByMonth\[_chPrev\(m\)\];return p\?p\.b:0;\}/.test(bd),true);
-// Each QUARTER divides by the active book at that quarter's start — one point,
-// not an average across its months.
-ck('each quarter divides by its own opening book',
-   /var _o=_kmOpenQ\(q\);/.test(bd),true);
-ck('  which is the book at the quarter start',
-   /_kmOpenQ=function\(q\)\{return _kmOpenAt\(_kmQStartMonth\(q\)\);\}/.test(bd),true);
-ck('the per-month averaging is gone',/_kmAvgOpen|_kmMonthsOf/.test(bd),false);
-// The TOTAL cannot use any single opening count: most of the year's churn comes
-// from brands that signed after January and were never in that number.
-ck('the total divides by everything on the book since 2026',
-   /var _kmTotalBase=closedWonDeals\.length\+_kmAll\.length;/.test(bd),true);
-ck('  and the headline rate uses it',
-   /var _kmPct=_kmRate\(_kmDeals\.length,_kmTotalBase\);/.test(bd),true);
-// _kmAll is every DATED 2026 churn; _kmDeals is the Board-Defined subset. Built
-// from the subset, the denominator would shrink exactly when the toggle is on
-// and inflate the board rate.
-ck('  built from all 2026 churns, not the Board Defined subset',
-   /_kmTotalBase=closedWonDeals\.length\+_kmDeals\.length/.test(bd),false);
-ck('  and the tile names the denominator it used',
-   /' on the book since 2026'/.test(bd),true);
-ck('the tile spells out both bases',
-   /active now plus churned since\. Each quarter divides by the active book at the start of that quarter/.test(bd),true);
-// The quarter-start map is back: a quarter's denominator is now a single point
-// (its opening book), so there IS a start month to pin again.
-ck('the quarter-start map exists',
-   /_kmQStartMonth=function\(q\)\{return BD_CHURN_KM_YEAR\+'-'\+\('0'\+\(\(\+q\.slice\(1\)-1\)\*3\+1\)\)\.slice\(-2\);\}/.test(bd),true);
-ck('a zero book yields a dash, not a divide-by-zero',
-   /_kmRate=function\(n,open\)\{return open>0\?\(\(n\/open\)\*100\):null;\}/.test(bd),true);
+ck('churns are tallied per month',
+   /_kmByMonth\[m\]=\(_kmByMonth\[m\]\|\|0\)\+1/.test(bd),true);
+ck('  from the scoped set, so the toggle moves the numerator',
+   /_kmDeals\.forEach\(function\(dd\)\{\s*\n\s*var m=_bdMonthOf\(dd\.pausechurn_date\); if\(m\)_kmByMonth/.test(bd),true);
+ck('the headline is a mean of monthly rates',
+   /var _kmTot=_kmMeanRate\(_kmMonthsOf\(null\)\);/.test(bd),true);
+ck('  and each quarter is the mean over its own months',
+   /var _r=_kmMeanRate\(_kmMonthsOf\(q\)\);/.test(bd),true);
+ck('  with no pooled denominator left anywhere',
+   /_kmTotalBase|_kmOpenQ|_kmAvgOpen/.test(bd),false);
+ck('the tile says how many months it averaged',
+   /'mean of '\+_kmTot\.months\+' monthly rate'/.test(bd),true);
+ck('  and names the method, not just the number',
+   /then averaged across the months in the period/.test(bd),true);
+
+// ── 6b. _kmMeanRate, run for real ─────────────────────────────────────────
+const rctx={console};vm.createContext(rctx);
+vm.runInContext([
+  'var _kmByMonth={}, _openBook={};',
+  'var _kmOpenAt=function(m){return _openBook[m]||0;};',
+  fn(bd,'_kmMeanRate'),
+  'Object.assign(globalThis,{_kmMeanRate});',
+].join('\n'),rctx);
+const mean=(open,churn,months)=>{rctx._openBook=open;rctx._kmByMonth=churn;
+  const r=rctx._kmMeanRate(months);return [r.pct==null?null:+r.pct.toFixed(4), r.months];};
+// 10/100 = 10% and 10/200 = 5% average to 7.5%. POOLED would be 20/300 = 6.67%,
+// so this case is what distinguishes the two definitions.
+ck('months are averaged, not pooled',
+   mean({'2026-01':100,'2026-02':200},{'2026-01':10,'2026-02':10},['2026-01','2026-02']),
+   [7.5,2]);
+ck('  a month with a book and no churns counts as a real zero',
+   mean({'2026-01':100,'2026-02':100},{'2026-01':10},['2026-01','2026-02']),[5,2]);
+// A month the Snapshot cannot describe has NO rate, not a zero one — averaging
+// in a zero there would drag every figure down.
+ck('  a month with no opening book is left out of both sum and divisor',
+   mean({'2026-01':100},{'2026-01':10},['2026-01','2026-02','2026-03']),[10,1]);
+ck('  and a period with no book at all yields no rate',
+   mean({},{'2026-01':10},['2026-01','2026-02']),[null,0]);
+ck('  an empty month list yields no rate either',mean({'2026-01':100},{},[]),[null,0]);
+ck('  a zero-churn month is 0%, not a dash',
+   mean({'2026-01':100},{},['2026-01']),[0,1]);
+ck('a quarter spans its own three months',
+   (()=>{const c={console};vm.createContext(c);
+     vm.runInContext(['var BD_CHURN_KM_YEAR=2026;',fn(bd,'_kmMonthsOf'),
+       'Object.assign(globalThis,{_kmMonthsOf});'].join('\n'),c);
+     return c._kmMonthsOf('Q1');})(),['2026-01','2026-02','2026-03']);
 
 // ── 7. One date parser on the page ────────────────────────────────────────
 ck('renderBD delegates to the module-scope parser',
@@ -209,8 +255,13 @@ ck('neither carries a grain toggle',
 // Comments still name them, which is the point of the comment — test live code.
 ck('  and the period-scoping helpers went with them',
    /_chLatest|_chTodayKey|_chInPeriod/.test(bd.replace(/^\s*\/\/.*$/gm,'')),false);
+// Both now inherit the page-level 2026 set instead of re-filtering.
 ck('both cover 2026 onward',
-   (bd.match(/_ch(Ab|Tr)Set=_ch(Board|Deals)\.filter\(function\(dd\)\{return _chIn2026\(dd\);\}\)/g)||[]).length,2);
+   /_chAbSet=_chBoard;/.test(bd)&&/_chTrSet=_chDeals26;/.test(bd),true);
+ck('  because the whole tab is scoped once at the top',
+   /var _chDeals26=_chDeals\.filter\(_chIn2026\);/.test(bd),true);
+ck('  and no section re-derives the floor for itself',
+   (bd.match(/_chIn2026\(dd\)/g)||[]).length,0);
 ck('  through one shared floor test',
    /var _chIn2026=function\(dd\)\{var m=_bdMonthOf\(dd\.pausechurn_date\);return !!m&&m>=BD_CHURN_DETAIL_FROM;\}/.test(bd),true);
 ck('  and each says so on the section',
@@ -314,268 +365,186 @@ ck('Plan Details collapses to Amount and Plan Name only',
 ck('Avg Days cells match their header order',
    /_td\('days_to_close'[\s\S]{0,200}?_td\('to_demo'[\s\S]{0,200}?_td\('from_demo'/.test(bd),true);
 
-// ── 17. C8 — implemented products vs churn ──────────────────────────────
+// ── 17. C5 — what the brands that left had implemented ──────────────────
 // implemented_products is written during the CHURN REVIEW. Every deal that
-// carries it is churned and no active deal has it, so a churn RATE built on it
-// divides churned brands by a denominator that can only hold churned brands and
-// reads 100% for every product. The rate questions therefore run on
-// of_total_reviews / of_products, which both populations carry, and the field
-// itself is used only for the mix of brands that left.
-const C8=(()=>{const i=bd.indexOf('var BD_PROD_GROUP=');return bd.slice(i,bd.indexOf('</section>',i));})();
-ck('the section is locatable',C8.length>1500,true);
-// Badge and Banner are the same placement sold two ways.
-ck('Badge and Banner collapse to one product',
-   /BD_PROD_GROUP=\{Badge:'Badge\/Banner',Banner:'Badge\/Banner'\}/.test(bd),true);
-ck('  and the order lists four products, not five',
-   (()=>{const m=/BD_PROD_ORDER=\[([^\]]*)\]/.exec(bd);
-         return m[1].split(',').map(x=>x.trim().replace(/'/g,''));})(),
-   ['Badge/Banner','Reviews','CAI','CAS']);
-ck('the multi-select is split on its delimiter',/raw\.split\(';'\)/.test(C8),true);
-ck('  and de-duplicated, so Badge+Banner counts once',
-   /out\[BD_PROD_GROUP\[t\]\|\|t\]=1/.test(C8),true);
+// carries it is churned and no active deal has it, so there is no denominator
+// anywhere in this data that could make a rate. The section is built so that
+// misreading is hard: one countable cell per brand, and no percentage printed
+// in any value column.
+const C5=(()=>{const i=bd.search(/^  \/\/ .{1,4} v\. What the brands that left had implemented/m);
+  const E="  hChurn+='</div></section>';\n";
+  return bd.slice(i,bd.indexOf(E,i)+E.length);})();
+ck('the section is locatable',C5.length>4000,true);
 
-// ── regression 1: no rate may be built on implemented_products ──
-ck('no rate is built on implemented_products',
-   /_chProdStat|_chRevYes|_chRevNo|_chProdNone/.test(bd),false);
-ck('  and the section says outright that no active brand carries the field',
-   /no active brand carries it at all/.test(C8),true);
-ck('  and names what would be needed to get a real per-product rate',
-   /Setting Implemented Products on active brands too/.test(C8),true);
+// ── placement ──
+ck('it is numbered C5',/<span class="bd-sec-n">C5<\/span>/.test(C5),true);
+ck('  and sits above the A/B test section',
+   bd.indexOf('id="bd-sec-churnprod"')<bd.indexOf('id="bd-sec-churnab"'),true);
+ck('the sections below it moved down a number',
+   [...bd.matchAll(/bd-sec-n">(C\d)<\/span>'?\s*\+?'?<span class="bd-sec-t">([^<]+)/g)]
+     .map(m=>m[1]+':'+m[2].trim()),
+   ['C1:Key Metrics','C2:Churn Rate Over Time','C3:Churn by Type',
+    'C4:Churn by High Level Reason','C5:What the Brands That Left Had Implemented',
+    'C6:A/B Test · Board Defined Churn','C7:Web Traffic at Churn',
+    'C8:Board Defined Churn by Company Segment','C9:All Churned Deals']);
+ck('the nav entry moved with it',
+   (()=>{const n=[...bd.matchAll(/data-sec="(bd-sec-churn[a-z]*)"/g)].map(m=>m[1]);
+     return n.indexOf('bd-sec-churnprod')===n.indexOf('bd-sec-churnab')-1;})(),true);
 
-// ── regression 2: ONE axis for every rate row ──
-// The previous cut scaled each block to its own maximum, so 11.6% drew a LONGER
-// bar than 12.6% one block away. Every rate row now goes through one _c8X.
-ck('the per-block max-scaled bar renderer is gone',/_chBandBars/.test(bd),false);
-ck('one axis function serves every rate row',
-   (C8.match(/_c8X\s*=\s*function/g)||[]).length,1);
-ck('  and the axis top is computed once',
-   (C8.match(/var _c8Ax=/g)||[]).length,1);
-// The axis must reach the context rows. Cropped to the bands it would hide the
-// larger fact (36-52% unrecorded) to magnify the smaller one (11-19%).
-ck('the axis domain includes the context rows',
-   /g\.rows\.concat\(\[g\.ctx\]\)\.forEach/.test(C8),true);
-ck('  and the book rate too',/_c8Book!=null&&_c8Book>_c8Max/.test(C8),true);
+// ── the hoisting hazard the move creates ──
+// BD_PROD_* and _chProdsOf are `var` expressions. Left where the old section
+// kept them, a section placed earlier would see them hoisted-but-undefined and
+// the whole tab would render blank.
+ck('the shared product constants are declared above the section that uses them',
+   bd.indexOf('var BD_PROD_GROUP=')<bd.search(/^  \/\/ .{1,4} v\. What the brands/m),true);
+ck('  and so is the splitter',
+   bd.indexOf('var _chProdsOf=')<bd.search(/^  \/\/ .{1,4} v\. What the brands/m),true);
+ck('  they are declared exactly once',
+   [(bd.match(/var BD_PROD_GROUP=/g)||[]).length,(bd.match(/var _chProdsOf=/g)||[]).length],[1,1]);
+ck('  and the tenure helper is above it too',
+   bd.indexOf('var _kmTenure=')<bd.search(/^  \/\/ .{1,4} v\. What the brands/m),true);
 
-// ── the rate questions run on fields BOTH populations carry ──
-ck('reviews are banded on the recorded review count',
-   /_chBandStat\('of_total_reviews',/.test(C8),true);
-ck('product depth is banded on the recorded product count',
-   /_chBandStat\('of_products',/.test(C8),true);
-ck('the band denominator is every brand that ever signed',
-   /var _chBook=closedWonDeals\.concat\(_chDeals\);/.test(bd),true);
-ck('  and churn is decided by deal stage, not by the set it came from',
-   /_chIsChurned=function\(dd\)\{return dd\.dealstage===BD_CHURN_STAGE\|\|dd\.dealstage===BD_CHURN_ONB_STAGE;\}/.test(C8),true);
-ck('it is not floored at 2026',/_chIn2026/.test(C8),false);
-// The excluded brands are the biggest effect in the data, so they are plotted
-// rather than left in a footnote — but kept out of the ordinal run.
-ck('the unrecorded brands carry their own churn count',/unsetCh/.test(C8),true);
-ck('  and are plotted as a context row, not folded into a band',
-   /ctx:\{l:'No '\+field\+' recorded'/.test(C8),true);
-ck('  under a rule that says they are not part of the run',
-   /For context — not part of the run/.test(C8),true);
+// ── state, in the house idiom ──
+ck('the month filter has module-scope state',/^var _bdChurnProdMonth='';$/m.test(bd),true);
+ck('  and a setter shaped like the grain setter',
+   /function bdSetChurnProdMonth\(m\)\{if\(_bdChurnProdMonth===m\)return;_bdChurnProdMonth=m;renderBD\(\);\}/.test(bd),true);
+ck('  carrying a month number, not a dated key',/_c5MonOf=function\(dd\)\{var m=_bdMonthOf\(dd\.pausechurn_date\);return m\?m\.substring\(5,7\):'';\}/.test(C5),true);
 
-// ── functional: helpers ──
-const ctx8={console};vm.createContext(ctx8);
-vm.runInContext([
-  "var BD_CHURN_STAGE='3453925110', BD_CHURN_ONB_STAGE='3517067985';",
-  'var _chBook=[];',
-  decl(bd,'var BD_PROD_GROUP={','};'),
-  decl(bd,'var C8_THIN=',';'),
-  fn(bd,'_chProdsOf'), fn(bd,'_chIsChurned'), fn(bd,'_chNum'),
-  fn(bd,'_chPctOf'), fn(bd,'_chFmtPct'), fn(bd,'_c8N'), fn(bd,'_chBandStat'),
-  fn(bd,'_c8Wilson'), fn(bd,'_c8Z'), fn(bd,'_c8Nice'), fn(bd,'_c8Verdict'),
-  'Object.assign(globalThis,{_chProdsOf,_chIsChurned,_chNum,_chPctOf,_chFmtPct,_c8N,'
-    +'_chBandStat,_c8Wilson,_c8Z,_c8Nice,_c8Verdict,C8_THIN});',
-].join('\n'),ctx8);
-ck('the C8 helpers loaded',typeof ctx8._chBandStat,'function');
+// ── the honesty rules ──
+// indexOf returns -1 when the text is gone, and -1 is less than any position,
+// so the ordering check has to assert presence first.
+ck('the count-never-a-rate banner sits under the head, not in a footnote',
+   C5.indexOf('A COUNT, NEVER A RATE')>=0 &&
+   C5.indexOf('A COUNT, NEVER A RATE')<C5.indexOf('Churn month'),true);
+ck('  and says why there is no denominator',
+   /there is no active-brand denominator to divide by/.test(C5),true);
+// The ONLY mention of _chFmtPct in this section is a comment saying it is
+// deliberately unused, so the check has to read live code.
+ck('the rate formatter is not borrowed for a count',
+   /_chFmtPct/.test(C5.replace(/^\s*\/\/.*$/gm,'')),false);
+ck('the section reads the page 2026 set',/_c5Pool=_chDeals26\.filter/.test(C5),true);
+ck('  and never re-derives the floor from the year constant',
+   /substring\(0,4\)===String\(BD_CHURN_KM_YEAR\)/.test(C5),false);
 
-const shipBands=k=>{const m=new RegExp("_chBandStat\\('"+k+"',(\\[[\\s\\S]*?\\])\\)").exec(C8);
-  if(!m)throw new Error('no bands for '+k);return eval(m[1]);};
-const BANDS=shipBands('of_total_reviews'), PBANDS=shipBands('of_products');
-ck('the shipped review bands are the ones under test',
-   BANDS.map(b=>[b.lo,b.hi]),[[1,2],[3,9],[10,null]]);
-ck('  and the product bands likewise',PBANDS.map(b=>[b.lo,b.hi]),[[1,1],[2,2],[3,null]]);
-const contiguous=bs=>bs.every((b,i)=>i===0?b.lo===1:b.lo===bs[i-1].hi+1)&&bs[bs.length-1].hi===null;
-ck('review bands tile the range with no gap and no overlap',contiguous(BANDS),true);
-ck('  and so do the product bands',contiguous(PBANDS),true);
-
-const A={dealstage:'closedwon'}, CH={dealstage:'3453925110'}, CO={dealstage:'3517067985'};
-const mk=(st,v)=>Object.assign({},st,{of_total_reviews:v});
-ctx8._chBook=[
-  mk(A,'1'), mk(A,'2'), mk(CH,'2'),
-  mk(A,'3'), mk(A,'9'), mk(CH,'5'), mk(CO,'4'),
-  mk(A,'10'), mk(A,'400'),
-  mk(A,''), mk(CH,''), mk(A,'0'), mk(A,'abc'),
-];
-const B=ctx8._chBandStat('of_total_reviews',BANDS);
-ck('each band holds the brands whose count falls in it',B.rows.map(r=>r.n),[3,4,2]);
-ck('  and counts the churned ones inside it',B.rows.map(r=>r.ch),[1,2,0]);
-ck('  with both churn stages counting as churned',B.rows[1].ch,2);
-ck('blanks, zero and junk are excluded rather than banded',B.unset,4);
-ck('  and their churns are kept, not discarded',B.unsetCh,1);
-const one=v=>{ctx8._chBook=[Object.assign({},A,{of_total_reviews:String(v)})];
-  const s=ctx8._chBandStat('of_total_reviews',BANDS);
-  const hit=s.rows.map((r,i)=>r.n===1?i:-1).filter(i=>i>=0);
-  return hit.length===1?hit[0]:'landed in '+hit.length;};
-ck('every value lands in exactly one band',[1,2,3,9,10,11,9999].map(one),[0,0,1,1,2,2,2]);
-ctx8._chBook=[];
-const pctKind=r=>{const p=ctx8._chPctOf(r);
-  return p===null?'null':(typeof p==='number'&&!isFinite(p)?'NaN':'num:'+p);};
-ck('an empty book yields no divide-by-zero',
-   ctx8._chBandStat('of_total_reviews',BANDS).rows.map(pctKind),['null','null','null']);
-ck('  and a null rate prints as a dash',ctx8._chFmtPct(null),'—');
-
-// ── functional: Wilson interval ──
-// Checked against the published values for these counts; the textbook normal
-// interval would run below zero on the thinnest band.
-const w=(c,n)=>ctx8._c8Wilson({c:c,n:n,ch:c}).map(v=>+v.toFixed(1));
-ck('the interval matches the published Wilson values',w(62,326),[15.1,23.6]);
-ck('  and widens sharply on a thin band',w(5,32),[6.9,31.8]);
-ck('  staying inside 0-100 at the extremes',
-   [w(0,10)[0]>=0, w(10,10)[1]<=100],[true,true]);
-ck('  and it brackets the point estimate',
-   (()=>{const i=w(16,127);return i[0]<=12.6&&i[1]>=12.6;})(),true);
-ck('an empty band has no interval',ctx8._c8Wilson({n:0,ch:0}),null);
-
-// ── functional: the z gate ──
-const Z=(c1,n1,c2,n2)=>+ctx8._c8Z({ch:c1,n:n1},{ch:c2,n:n2}).toFixed(2);
-ck('the reviews endpoints do not clear the gate',Z(62,326,16,127),1.63);
-ck('the products endpoints do not come close',Z(22,189,17,128),-0.44);
-ck('a real difference does clear it',Math.abs(Z(100,300,20,300))>2,true);
-ck('an empty side yields no z',ctx8._c8Z({ch:0,n:0},{ch:5,n:10}),null);
-
-// ── functional: the verdict REFUSES to overclaim ──
-// This is the bug the redesign exists to kill: the previous gate tested effect
-// SIZE (a flat 1pp) with no reference to how many brands were behind it, and so
-// printed "6.4pp less" in bold for a gap its own counts cannot resolve.
-const G=rows=>({rows});
-const vRev=ctx8._c8Verdict(G([{l:'1–2 reviews',n:326,ch:62},{l:'3–9 reviews',n:258,ch:39},{l:'10+ reviews',n:127,ch:16}]));
-ck('the reviews verdict declines to state a difference',vRev.tone,'nodiff');
-ck('  and never prints a pp figure',/pp/.test(vRev.badge+vRev.calc),false);
-ck('  and explains why in plain words',
-   /smaller than the error on it/.test(vRev.calc),true);
-const vPro=ctx8._c8Verdict(G([{l:'1 product',n:189,ch:22},{l:'2 products',n:32,ch:5},{l:'3+ products',n:128,ch:17}]));
-// Non-monotone: the peak is the MIDDLE band, so an endpoint summary would
-// report a trend that is not in the data.
-ck('the products verdict reports no pattern, not a trend',vPro.tone,'nopattern');
-ck('  naming the middle band as the worst',/2 products in the middle/.test(vPro.calc),true);
-ck('  and flagging that it is too thin to carry it',
-   /only 32 brands, so one brand moves it by 3\.1 points/.test(vPro.calc),true);
-ck('  and never prints a pp figure either',/pp/.test(vPro.badge+vPro.calc),false);
-// A difference that DOES clear the gate is still allowed to be stated.
-const vReal=ctx8._c8Verdict(G([{l:'low',n:300,ch:100},{l:'high',n:300,ch:20}]));
-ck('a difference that clears the gate is stated',vReal.tone,'less');
-ck('  with the gap in points',/pp lower at high/.test(vReal.calc),true);
-ck('  and still refuses to claim cause',/Association, not cause/.test(vReal.calc),true);
-ck('one populated band is not a comparison',
-   ctx8._c8Verdict(G([{l:'a',n:0,ch:0},{l:'b',n:10,ch:4}])).tone,'none');
-// The verdict no longer restates the band percentages: they are already in the
-// value column of every row, which is what made the card band below the chart
-// pure duplication.
-ck('the verdict carries no headline of its own',
-   [vRev,vPro,vReal].map(v=>Object.keys(v).sort().join(',')),
-   ['badge,calc,tone','badge,calc,tone','badge,calc,tone']);
-ck('  and the card band is gone',/flex:1 1 380px/.test(bd),false);
-ck('  with the badge rendered in the group header instead',
-   /\+v\.badge\+'<\/span>'/.test(bd),true);
-ck('  and its one reason directly beneath',
-   /margin:0 0 6px;line-height:1\.5">'\+v\.calc\+'<\/div>'/.test(bd),true);
-
-// ── functional: axis steps ──
-ck('the axis snaps to a familiar step and stays under eight ticks',
-   [52.5,19,8,97].map(v=>{const a=ctx8._c8Nice(v);return [a.top,a.step,a.top/a.step<=7];}),
-   [[60,10,true],[20,5,true],[8,2,true],[100,20,true]]);
-ck('  and always covers the value it was given',
-   [52.5,19,8,97,0.4].every(v=>ctx8._c8Nice(v).top>=v),true);
-
-// ── functional: render the real section and check the OUTPUT ──
-const C8BLOCK=(()=>{const i=bd.indexOf('var BD_PROD_GROUP=');
-  const m="hChurn+='</div></section>';";return bd.slice(i,bd.indexOf(m,i)+m.length);})();
-const fill=(total,spec)=>{const o=[];spec.forEach(([k,v])=>{for(let i=0;i<k;i++)o.push(v);});
-  while(o.length<total)o.push('');return o;};
-const render=()=>{
-  const cRev=fill(315,[[62,'1'],[39,'5'],[16,'12']]), cPro=fill(315,[[22,'1'],[5,'2'],[17,'3']]);
-  const aRev=fill(773,[[264,'1'],[219,'5'],[111,'12']]), aPro=fill(773,[[167,'1'],[27,'2'],[111,'3']]);
-  const impl=[];for(let k=0;k<41;k++){const p=[];
-  // Badge/Banner on 1..40 and Reviews on 0..30, so all 41 carry something, the
-  // marginals match live (40 / 31 / 15 / 0) and exactly 30 hold both.
-    if(k>=1)p.push(k%2?'Badge':'Banner'); if(k<31)p.push('Reviews'); if(k<15)p.push('CAI');
-    impl.push(p.join(';'));}
-  const churned=[],active=[];
-  for(let k=0;k<315;k++)churned.push({dealstage:'3453925110',of_total_reviews:cRev[k],of_products:cPro[k],implemented_products:impl[k]||''});
-  for(let k=0;k<773;k++)active.push({dealstage:'closedwon',of_total_reviews:aRev[k],of_products:aPro[k],implemented_products:''});
-  const c={console,closedWonDeals:active,_chDeals:churned,BD_CHURN_STAGE:'3453925110',
-    BD_CHURN_ONB_STAGE:'3517067985',BD_CHURN_C:'#DC2626',hChurn:''};
-  vm.createContext(c);vm.runInContext(C8BLOCK,c);return c.hChurn;
+// ── functional: render every filter state ──
+const C5BLOCK=C5;
+const renderC5=(sel,pool,rest)=>{
+  const c={console,_chDeals26:pool.concat(rest),_bdChurnProdMonth:sel,
+    BD_CHURN_KM_YEAR:2026,hChurn:'',_bdMonthOf:v=>(v||'').substring(0,7)||''};
+  vm.createContext(c);
+  vm.runInContext([
+    decl(bd,'var BD_PROD_GROUP={','};'), decl(bd,'var BD_PROD_ORDER=[','];'),
+    decl(bd,'var BD_PROD_FULL={','};'), decl(bd,'var BD_PROD_C={','};'),
+    fn(bd,'_chProdsOf'), fn(bd,'_kmTenure'), C5BLOCK,
+  ].join('\n'),c);
+  return c.hChurn;
 };
-const HTML=render();
-ck('the section renders',HTML.length>8000,true);
-const outRows=HTML.split('class="bd-seg-row bd-rate-band"').slice(1).map(seg=>{
-  const l=/data-p="([^"]*)"/.exec(seg), p=/data-r1="Churn rate\|([\d.]+)%/.exec(seg);
-  const x=/left:([\d.]+)%;width:10px;height:10px/.exec(seg);
-  return {l:l&&l[1], pct:p&&+p[1], x:x&&+x[1]};
-});
-ck('every rate row is plotted — three bands and a context row per measure',outRows.length,8);
-ck('  and the live figures come out as expected',
-   outRows.map(r=>r.pct),[19,15.1,12.6,52.5,11.6,15.6,13.3,36.7]);
-// THE regression. Across ALL eight rows, not within a block: a higher rate must
-// never draw further LEFT than a lower one.
-const bySize=[...outRows].sort((a,b)=>a.pct-b.pct);
-ck('no row with a higher rate sits left of a lower one',
-   bySize.filter((r,i)=>i>0&&r.x<bySize[i-1].x-0.01).map(r=>r.l),[]);
-ck('  because every row divides by the same axis top',
-   [...new Set(outRows.map(r=>Math.round(r.pct/r.x*100)))],[60]);
-ck('  and that top clears the largest context row',outRows[3].pct<=60,true);
-// Copy must not leak notation at the reader.
-ck('no statistical notation reaches the rendered copy',
-   /z\s*=|z-score|standard error|p-value|p\s*&lt;|confidence interval|statistically/i.test(HTML),false);
-ck('the thin band is called out by its count, not by jargon',
-   /32 BRANDS<\/span>/.test(HTML),true);
-ck('  and only the thin band is',(HTML.match(/ BRANDS<\/span>/g)||[]).length,1);
-ck('the book rate is drawn as a rule',/border-left:1\.5px dashed/.test(HTML),true);
-ck('  and labelled with its own arithmetic',/29\.0% · 315 of 1,088/.test(HTML),true);
-ck('counts over a thousand are grouped',/1,088/.test(HTML),true);
-// The hover contract: bdBindRateBands matches on class and reads getAttribute.
-ck('rate rows carry the class the existing binder matches',
-   (HTML.match(/class="bd-seg-row bd-rate-band"/g)||[]).length,8);
-ck('  inside a chart-wrap',/class="chart-wrap"/.test(HTML),true);
-ck('  with the float-tip the binder needs',/class="float-tip"/.test(HTML),true);
-ck('  and every row carries a readout',
-   (HTML.match(/data-r1="Churn rate/g)||[]).length,8);
-ck('no new hover binder was added',/bdBindC8|bd-c8-band/.test(bd),false);
+// 40 records across Jul/Aug/Sep/Oct; Badge/Banner 39, Reviews 30, CAI 14, CAS 0.
+const POOL=[];
+[['07',15],['08',9],['09',15],['10',1]].forEach(([m,k])=>{for(let x=0;x<k;x++)POOL.push({m});});
+POOL.forEach((d,i)=>{const p=[];
+  if(i>=1)p.push(i%2?'Badge':'Banner'); if(i<30)p.push('Reviews'); if(i<14)p.push('CAI');
+  if(!p.length)p.push('Reviews');
+  d.implemented_products=p.join(';');
+  d.pausechurn_date='2026-'+d.m+'-'+('0'+((i%27)+1)).slice(-2);
+  d.entered_closedwon='2025-'+('0'+((i%12)+1)).slice(-2)+'-15'; d.dealstage='3453925110';});
+const REST=[];
+[['01',14],['02',11],['03',13],['04',12],['05',16],['06',15],['07',12],['08',10],['09',14],['10',3]]
+  .forEach(([m,k])=>{for(let x=0;x<k;x++)REST.push({implemented_products:'',
+    pausechurn_date:'2026-'+m+'-10',entered_closedwon:'2025-06-01',dealstage:'3453925110'});});
+const ALL=renderC5('',POOL,REST), JUL=renderC5('07',POOL,REST), JAN=renderC5('01',POOL,REST), OCT=renderC5('10',POOL,REST);
 
-// ── functional: the churned-brand mix ──
-ck('Badge and Banner collapse, and a brand counts once',
-   ctx8._chProdsOf({implemented_products:'Badge;Banner;Reviews'}).sort(),['Badge/Banner','Reviews']);
-ck('  an unrecorded field yields nothing',ctx8._chProdsOf({implemented_products:''}),[]);
-ck('  and so does a field of empty segments',ctx8._chProdsOf({implemented_products:';;'}),[]);
-ck('the mix iterates the churned deals alone',
-   /_chDeals\.forEach\(function\(dd\)\{\s*\n\s*var ps=_chProdsOf\(dd\);/.test(C8),true);
-ck('  and is badged a count, never a rate',
-   /A COUNT, NEVER A CHURN RATE/.test(HTML),true);
-ck('  and says the rows overlap',/so the rows overlap and do not sum/.test(C8),true);
-// C7's rule: a real category with zero is a FINDING and keeps its row. Dropping
-// it would read as "not measured".
-ck('a product none of them had keeps its row at zero',
-   /CAS<\/div>/.test(HTML)&&/_chMixRows=BD_PROD_ORDER\.map/.test(C8),true);
-ck('  and the mix counts come out right',
-   (HTML.match(/font-weight:700;color:var\(--navy\)">(\d+)<\/span><span style="font-size:10\.5px;color:var\(--grey\);margin-left:5px">of 41/g)||[]).length,3);
-ck('the co-occurrence is stated as a number, not left to be counted',
-   /30 of the 31 that had reviews live also had a badge or banner/.test(HTML),true);
-ck('an empty mix says so rather than drawing nothing',
-   /No churned brand has Implemented Products recorded/.test(C8),true);
+ck('the All view renders every record',/Brands in this cut<\/div><div style="[^"]*">40</.test(ALL),true);
+ck('  with the product counts out of the cut size',
+   [...ALL.matchAll(/>(\d+)<\/span><span style="font-size:10\.5px;color:var\(--grey\);margin-left:5px">of (\d+)</g)]
+     .map(m=>m[1]+'/'+m[2]),['39/40','30/40','14/40']);
+// THE rule this section exists for: a percentage in a churn section is the one
+// number it must never print.
+// Inline CSS is full of width:100%, so this reads the rendered TEXT.
+// Source order is not render order: a banner that is built and never appended
+// still satisfies a source-position check, so this one reads the output.
+ck('the banner is actually rendered, above the rail',
+   ALL.indexOf('A COUNT, NEVER A RATE')>=0 &&
+   ALL.indexOf('A COUNT, NEVER A RATE')<ALL.indexOf('Churn month'),true);
+const ALLTEXT=ALL.replace(/<[^>]*>/g,' '), JULTEXT=JUL.replace(/<[^>]*>/g,' ');
+ck('no percentage is printed anywhere in the section',/[\d.]+%/.test(ALLTEXT),false);
+ck('  nor in a filtered month',/[\d.]+%/.test(JULTEXT),false);
+// A real product none of them had is a FINDING and keeps its row. Grey NONE,
+// never amber - amber on this page means "too few to trust", and a definite
+// zero is not that.
+ck('a product none of them had keeps its row',/>CAS</.test(ALL),true);
+ck('  marked NONE, in grey rather than amber',
+   /NONE<\/span>/.test(ALL)&&!/NONE<\/span>/.test(ALL.replace(/color:var\(--grey\);background:rgba\(23,44,69,\.06\)[^>]*>NONE<\/span>/,'')),true);
+// The product rows overlap; the combination rows partition the same brands.
+ck('the combinations sum to the cut size',
+   (()=>{const n=[...ALL.matchAll(/font-size:14px;font-weight:700;color:var\(--navy\)">(\d+)</g)].map(m=>+m[1]);
+     return n.reduce((a,b)=>a+b,0);})(),40);
+ck('  and the section states that sum',/These do not overlap, so they sum to 40\./.test(ALL),true);
+ck('a month filter narrows the cut',/Brands in this cut<\/div><div style="[^"]*">15</.test(JUL),true);
+ck('  and the combinations still sum to it',/so they sum to 15\./.test(JUL),true);
 
-// The worker has to actually fetch every field this section reads.
-ck('implemented_products is requested',/'implemented_products',/.test(src),true);
-ck('  and mapped onto the deal row',/implemented_products: p\.implemented_products\|\|'',/.test(src),true);
-ck('of_total_reviews is requested',/'of_total_reviews',/.test(src),true);
-ck('  and mapped onto the deal row',/of_total_reviews: p\.of_total_reviews\|\|'',/.test(src),true);
-ck('of_products is requested',/'of_products',/.test(src),true);
-ck('  and mapped onto the deal row',/of_products: p\.of_products\|\|'',/.test(src),true);
+// ── the rail ──
+// Two numbers per month, recorded / churned, so an empty month says WHICH kind
+// of empty it is before anyone clicks it.
+ck('each month carries recorded and churned',
+   [...ALL.matchAll(/>(\d+)<\/span><span style="font-size:9\.5px[^>]*>\/ (\d+)</g)].map(m=>m[1]+'/'+m[2]).slice(0,8),
+   ['40/160','0/14','0/11','0/13','0/12','0/16','0/15','15/27']);
+ck('  so an elapsed empty month is visibly empty, not just unclicked',
+   /0<\/span><span style="font-size:9\.5px[^>]*>\/ 14</.test(ALL),true);
+ck('  and the rail explains the pair',
+   /recorded \/ churned that month/.test(ALL),true);
+// The All row counts the whole pool, which exceeds any month, so on the month
+// scale its bar ran past its own track.
+ck('the rail bar is clamped so the All row cannot overflow',
+   /Math\.min\(100,Math\.round\(\(rec\/_c5Max\)\*100\)\)/.test(C5),true);
+// A month that has not happened is not a month with nothing in it.
+ck('future months are not buttons',
+   (()=>{const r=/(<div|<button)[^>]*onclick="bdSetChurnProdMonth\('12'\)"/.test(ALL);return r;})(),false);
+ck('  and show a dot rather than a zero',/·<\/span>/.test(ALL),true);
+// Checked on a month OTHER than the selected one: the selected month's own
+// figure is unchanged either way, so it cannot tell a fixed distribution from
+// one that collapses under the filter.
+ck('the rail counts come from the pool, not the selection',
+   /9<\/span><span style="font-size:9\.5px[^>]*>\/ 19</.test(JUL),true);
+ck('  so every other month keeps its figure while one is selected',
+   [...JUL.matchAll(/>(\d+)<\/span><span style="font-size:9\.5px[^>]*>\/ (\d+)</g)]
+     .map(m=>m[1]+'/'+m[2]).slice(0,8),
+   ['40/160','0/14','0/11','0/13','0/12','0/16','0/15','15/27']);
 
-// The deals table moved down a number when this section was inserted.
-ck('the deals table is C9 now',/<span class="bd-sec-n">C9<\/span><span class="bd-sec-t">All Churned Deals/.test(bd),true);
-ck('  and the new section is C8',/<span class="bd-sec-n">C8<\/span><span class="bd-sec-t">Implemented Products/.test(bd),true);
+// ── empty and thin states ──
+ck('an elapsed month with no records says so',/Nothing recorded for Jan 2026/.test(JAN),true);
+ck('  distinguishing no recording from no churn',
+   /brands churned that month, but none had Implemented Products filled in/.test(JAN),true);
+// Eight clickable empty months need one click back, not a sentence.
+ck('  and offers one click back',
+   /onclick="bdSetChurnProdMonth\(''\)"[^>]*>Show all 40/.test(JAN),true);
+// At n=1 a mean is a single observation and must not look like a trend.
+ck('a single-brand month drops the word Avg',
+   /Time to churn<\/div>/.test(OCT)&&!/Avg time to churn<\/div>/.test(OCT),true);
+ck('  and says it is one brand, not an average',
+   /one brand, not an average/.test(OCT),true);
+
+// ── unknown values are never silently dropped ──
+ck('an unrecognised product keeps its own row',
+   (()=>{const one=[{implemented_products:'Badge;Hologram',pausechurn_date:'2026-07-01',
+     entered_closedwon:'2025-01-01',dealstage:'3453925110',m:'07'}];
+     const h=renderC5('',one,[]);
+     // scoped to the per-product block, which is where a silent drop would hide
+     const prod=h.slice(h.indexOf('By product'),h.indexOf('By combination'));
+     return /Hologram/.test(prod);})(),true);
+ck('  and the combination row names it too',
+   (()=>{const one=[{implemented_products:'Badge;Hologram',pausechurn_date:'2026-07-01',
+     entered_closedwon:'2025-01-01',dealstage:'3453925110',m:'07'}];
+     const h=renderC5('',one,[]);
+     return /Badge\/Banner \+ Hologram/.test(h.slice(h.indexOf('By combination')));})(),true);
+
+// ── the caveat survives ──
+ck('the coverage footnote names the churn-only field',
+   /no active brand carries it at all/.test(ALL),true);
+ck('  and what would make a real rate possible',
+   /Setting the field on active brands too/.test(ALL),true);
+ck('the worker still fetches the field',/'implemented_products',/.test(src),true);
+ck('  and maps it onto the deal row',/implemented_products: p\.implemented_products\|\|'',/.test(src),true);
 
 console.log('\n'+pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);
