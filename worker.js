@@ -862,7 +862,7 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v40';   // v40: `prelaunch` added to the brand trend series (third population).
+const API_CACHE_VER = 'v41';   // v41: `prelaunchPaid` added — Non-Paid · Last Click over the pre-launch cohort.
                                // v38: trend/trendRange are actually FORWARDED by buildResponse.
                                //      v37 built them onto currentData but never shipped them, so a
                                //      cached v37 payload has the fields missing, not stale.
@@ -3358,7 +3358,7 @@ function buildBrandTrend(schContacts, windsorRows, from, to) {
     if (!dayKey) return null;
     if (from && dayKey < from) return null;
     if (to && dayKey > to) return null;
-    if (!B[dayKey]) B[dayKey] = { spend: 0, impressions: 0, clicks: 0, regular: 0, paid: 0, prelaunch: 0 };
+    if (!B[dayKey]) B[dayKey] = { spend: 0, impressions: 0, clicks: 0, regular: 0, paid: 0, prelaunch: 0, prelaunchPaid: 0 };
     B[dayKey][field] += (n == null ? 1 : n);
     return B[dayKey];
   };
@@ -3398,9 +3398,17 @@ function buildBrandTrend(schContacts, windsorRows, from, to) {
     // Pre-launch is not "regular", but it is no longer discarded either — it is
     // its own population on the toggle. Returning early keeps it OUT of regular
     // (and therefore out of paid), which is what makes the two sum to the whole.
-    if (wt.includes('pre-launch')) { bump(k, 'prelaunch'); continue; }
-    if (!bump(k, 'regular')) continue;
+    //
+    // It carries its own paid split in prelaunchPaid rather than adding into
+    // `paid`, so Non-Paid · Last Click can be read over EITHER cohort while
+    // `paid` stays strictly a subset of `regular`. Folding the two together
+    // would make the Paid Demos population disagree with the Key Metrics tile.
     const rs = (cp.utm_source || '').trim(), rm = (cp.utm_medium || '').trim();
+    if (wt.includes('pre-launch')) {
+      if (bump(k, 'prelaunch') && mapUtmToChannel(rs, rm)) bump(k, 'prelaunchPaid');
+      continue;
+    }
+    if (!bump(k, 'regular')) continue;
     if (mapUtmToChannel(rs, rm)) bump(k, 'paid');
   }
 
@@ -3429,14 +3437,14 @@ function buildBrandTrend(schContacts, windsorRows, from, to) {
   };
   const roll = (keyOf) => {
     const g = {};
-    const touch = (k) => { if (k && !g[k]) g[k] = { spend: 0, impressions: 0, clicks: 0, regular: 0, paid: 0, prelaunch: 0 }; };
+    const touch = (k) => { if (k && !g[k]) g[k] = { spend: 0, impressions: 0, clicks: 0, regular: 0, paid: 0, prelaunch: 0, prelaunchPaid: 0 }; };
     for (const day of allDays) touch(keyOf(day));
     for (const day of Object.keys(B)) {
       const k = keyOf(day); if (!k) continue;
       touch(k);
       const b = B[day], o = g[k];
       o.spend += b.spend; o.impressions += b.impressions; o.clicks += b.clicks;
-      o.regular += b.regular; o.paid += b.paid; o.prelaunch += b.prelaunch;
+      o.regular += b.regular; o.paid += b.paid; o.prelaunch += b.prelaunch; o.prelaunchPaid += b.prelaunchPaid;
     }
     return Object.keys(g).sort().map(k => {
       const w = g[k];
@@ -3444,7 +3452,7 @@ function buildBrandTrend(schContacts, windsorRows, from, to) {
         wk: k,
         spend: Math.round(w.spend * 100) / 100,
         impressions: w.impressions, clicks: w.clicks,
-        regular: w.regular, paid: w.paid, prelaunch: w.prelaunch,
+        regular: w.regular, paid: w.paid, prelaunch: w.prelaunch, prelaunchPaid: w.prelaunchPaid,
         // EVERY population precomputed so the client can show any of them
         // without a second request. Rates are percentages computed on the
         // period's OWN totals, never averaged from daily rates — a
@@ -6081,7 +6089,7 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     const _btWin = clnTrendWindow(fmt(yd));
     currentData.trendRange = _btWin;
     try {
-      currentData.trend = await kvCachedFetch(env, `brand_trend_${_btWin.from}_${_btWin.to}_v4`, 1800,
+      currentData.trend = await kvCachedFetch(env, `brand_trend_${_btWin.from}_${_btWin.to}_v5`, 1800,
         async () => {
           // HubSpot FIRST, and only then the ad fetch. Kicked off the other way
           // round, the trend's own Windsor chunker can spend the subrequest

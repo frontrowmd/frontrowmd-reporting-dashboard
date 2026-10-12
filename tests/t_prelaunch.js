@@ -41,13 +41,26 @@ ck('  split correctly',[d.regular,d.prelaunch],[2,2]);
 // half of the regular cohort rather than of everything.
 ck('paid remains a subset of regular',[d.paid,d.paid<=d.regular],[1,true]);
 
-// ── 3. A paid-UTM pre-launch contact is NOT paid ──────────────────────────
-// It never reaches the paid test, because pre-launch returns early. Were it
-// counted, paid would no longer be a subset of regular and Non-Paid could go
-// negative.
+// ── 3. A paid-UTM pre-launch contact gets its OWN paid count ──────────────
+// It must never land in `paid`: that would stop paid being a subset of regular
+// and let Non-Paid over the regular cohort go negative. It goes to
+// prelaunchPaid instead, which is what lets Non-Paid work over pre-launch too.
 d=build([C('1','2026-10-05',PRE,'ig','paid-social')]);
-ck('a pre-launch contact with a paid UTM is still only pre-launch',
-   [d.regular,d.paid,d.prelaunch],[0,0,1]);
+ck('a pre-launch contact with a paid UTM stays out of regular and paid',
+   [d.regular,d.paid],[0,0]);
+ck('  and is counted in its own cohort, paid and all',
+   [d.prelaunch,d.prelaunchPaid],[1,1]);
+d=build([C('1','2026-10-05',PRE,'google','organic')]);
+ck('an organic pre-launch contact is pre-launch but not pre-launch-paid',
+   [d.prelaunch,d.prelaunchPaid],[1,0]);
+d=build([C('1','2026-10-05',PRE)]);
+ck('  and an untagged one likewise',[d.prelaunch,d.prelaunchPaid],[1,0]);
+// The mix the live account actually shows: cpc/paid-social alongside
+// organic/referral on the same cohort.
+d=build([C('1','2026-10-05',PRE,'google','cpc'),C('2','2026-10-05',PRE,'ig','paid-social'),
+         C('3','2026-10-05',PRE,'google','organic'),C('4','2026-10-05',PRE,'Zephta','referral')]);
+ck('a realistic pre-launch mix splits paid from organic',
+   [d.prelaunch,d.prelaunchPaid],[4,2]);
 
 // ── 4. The tier test matches processScheduledContacts ─────────────────────
 ck('the live tier string is matched',build([C('1','2026-10-05',PRE)]).prelaunch,1);
@@ -91,10 +104,10 @@ vm.runInContext([
   decl(cli,'const DSH_TR_METRICS=[','];'),
   decl(cli,'const DSH_TR_CARDS=[','];'),
   fn(cli,'_dshTrendPop'),fn(cli,'_dshTrendMetric'),fn(cli,'_dshTrPopDef'),
-  fn(cli,'_dshTrMetricDef'),fn(cli,'_dshTrShown'),
+  fn(cli,'_dshTrMetricDef'),fn(cli,'_dshTrHidden'),fn(cli,'_dshTrShown'),
   fn(cli,'_dshTrParts'),fn(cli,'_dshTrSum'),fn(cli,'_dshTrValue'),
   'Object.assign(globalThis,{DSH_TR_POPS,DSH_TR_METRICS,DSH_TR_CARDS,_dshTrPopDef,'
-   +'_dshTrMetricDef,_dshTrShown,_dshTrParts,_dshTrValue,setPop(p){_dshTrendPopV=p;},'
+   +'_dshTrMetricDef,_dshTrHidden,_dshTrShown,_dshTrParts,_dshTrValue,setPop(p){_dshTrendPopV=p;},'
    +'setMetric(m){_dshTrendMetricV=m;}});',
 ].join('\n'),ctx);
 const P={spend:1000,clicks:500,impressions:20000,regular:40,paid:10,prelaunch:7};
@@ -114,21 +127,28 @@ ck('Count is the pre-launch count',ctx._dshTrValue('count',T),7);
 ck('Cost Per divides by it',ctx._dshTrValue('cost',T),1000/7);
 ck('CVR divides by it',ctx._dshTrValue('cvr',T),(7/500)*100);
 ck('CTR is unaffected by the population',ctx._dshTrValue('ctr',T),(500/20000)*100);
-// Non-Paid · Last Click is defined over the REGULAR cohort, so it must be
-// hidden here exactly as it is over Paid Demos — not shown reading 100%.
+// Non-Paid · Last Click is offered here too: the pre-launch cohort carries its
+// own paid split, so the measure is the organic half of THAT cohort.
 ctx.setPop('prelaunch');
-ck('Non-Paid is hidden on Pre-Launch Demos',
-   ctx._dshTrShown(ctx.DSH_TR_METRICS).map(m=>m.k),['count','cost','cvr','ctr']);
-ck('  and so is its card',
-   ctx._dshTrShown(ctx.DSH_TR_CARDS).map(c=>c.k),['count','cost','cvr','ctr','spend']);
+ck('Non-Paid is offered on Pre-Launch Demos',
+   ctx._dshTrShown(ctx.DSH_TR_METRICS).map(m=>m.k),['count','cost','nonpaid','cvr','ctr']);
+ck('  with its card',
+   ctx._dshTrShown(ctx.DSH_TR_CARDS).map(c=>c.k),['count','cost','nonpaid','cvr','ctr','spend']);
+ck('  reading this cohort\u2019s own split',
+   ctx._dshTrValue('nonpaid',ctx._dshTrParts({...P,prelaunch:80,prelaunchPaid:20},'prelaunch')),75);
 ctx.setMetric('nonpaid');
-ck('  and selecting it then switching here falls back',ctx._dshTrMetricDef().k,'count');
+ck('  and selecting it here sticks',ctx._dshTrMetricDef().k,'nonpaid');
+ctx.setPop('paid');
+ck('  but Paid Demos still falls back',ctx._dshTrMetricDef().k,'count');
 ctx.setPop('regular');
-ck('  while Regular Demos still offers it',ctx._dshTrMetricDef().k,'nonpaid');
+ck('  and Regular Demos still offers it',ctx._dshTrMetricDef().k,'nonpaid');
 
 // ── 9. Neither cache may serve a series without the new field ─────────────
-ck('API_CACHE_VER was bumped for the payload shape',/const API_CACHE_VER = 'v40'/.test(src),true);
-ck('the brand-trend key was bumped too',/_btWin\.to\}_v4`/.test(src),true);
+// Version-agnostic: the intent is "past every shape that lacks these fields".
+ck('API_CACHE_VER is past the shapes without prelaunchPaid',
+   +(/const API_CACHE_VER = 'v(\d+)'/.exec(src)||[])[1]>=41,true);
+ck('the brand-trend key is too',
+   +(/brand_trend_\$\{_btWin\.from\}_\$\{_btWin\.to\}_v(\d+)/.exec(src)||[])[1]>=5,true);
 
 console.log('\n'+pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);

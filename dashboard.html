@@ -3840,13 +3840,15 @@ const DSH_TR_POPS=[
 const DSH_TR_METRICS=[
   {k:'count',    l:'Count',    unit:'#', c:'#4A87A8', pop:true},
   {k:'cost',     l:'Cost Per', unit:'$', c:'#9333EA', pop:true},
-  // The organic half of the regular cohort, matching the Key Metrics tile
-  // "Non-Paid · Last Click" field for field: (regular - paid) / regular, where
-  // paid is the same mapUtmToChannel test on the raw utm pair that the worker
-  // applies for scheduledRegularPaid. pop:false because it never swaps to the
-  // paid cohort; regularOnly because over PAID demos it is zero by definition
-  // and the measure would be meaningless rather than merely uninteresting.
-  {k:'nonpaid',  l:'Non-Paid · Last Click', unit:'%', c:'#B45309', pop:false, regularOnly:true},
+  // The organic half of whichever cohort is selected: (cohort - cohortPaid) /
+  // cohort, where paid is the same mapUtmToChannel test on the raw utm pair the
+  // worker applies for scheduledRegularPaid. Over REGULAR demos that is the Key
+  // Metrics tile "Non-Paid · Last Click" field for field; over PRE-LAUNCH it is
+  // the same split of that cohort, which carries its own prelaunchPaid count.
+  // pop:true because it genuinely differs per cohort now, so the card has to say
+  // which one it is describing. hiddenOn paid: there every contact is paid by
+  // construction, so the answer is a tautological 0%.
+  {k:'nonpaid',  l:'Non-Paid · Last Click', unit:'%', c:'#B45309', pop:true, hiddenOn:['paid']},
   {k:'cvr',      l:'CVR',      unit:'%', c:'#0E7C66', pop:true},
   {k:'ctr',      l:'CTR',      unit:'%', c:'#1D4ED8', pop:false},
 ];
@@ -3863,7 +3865,7 @@ const DSH_TR_METRICS=[
 const DSH_TR_CARDS=[
   {k:'count', metric:'count', unit:'#', pop:true},
   {k:'cost',  metric:'cost',  unit:'$', pop:true},
-  {k:'nonpaid', metric:'nonpaid', unit:'%', pop:false, regularOnly:true},
+  {k:'nonpaid', metric:'nonpaid', unit:'%', pop:true, hiddenOn:['paid']},
   {k:'cvr',   metric:'cvr',   unit:'%', pop:true},
   {k:'ctr',   metric:'ctr',   unit:'%', pop:false},
   {k:'spend', metric:null,    unit:'$', pop:false},
@@ -3874,16 +3876,20 @@ function _dshTrendMetric(){return window._dshTrendMetricV||'count';}
 function _dshTrGrainDef(){return DSH_TR_GRAINS.filter(function(g){return g.k===_dshTrendGrain();})[0]||_trGrainDefault(DSH_TR_GRAINS);}
 function _dshTrMetricDef(){
   var m=DSH_TR_METRICS.filter(function(x){return x.k===_dshTrendMetric();})[0]||DSH_TR_METRICS[0];
-  // Over PAID demos, "non-paid share" is zero by construction. Fall back
-  // rather than draw a flat zero line; _dshTrendMetricV is left alone, so
-  // returning to Regular Demos restores the measure the reader picked.
-  if(m.regularOnly&&_dshTrendPop()!=='regular')return DSH_TR_METRICS[0];
+  // Hidden measures fall back rather than drawing a meaningless line with no
+  // pill lit; _dshTrendMetricV is left alone, so returning to a population that
+  // does offer the measure restores the one the reader picked.
+  if(_dshTrHidden(m))return DSH_TR_METRICS[0];
   return m;
+}
+// A measure is hidden on the populations where it has no meaning — Non-Paid
+// over PAID demos is a tautological 0%.
+function _dshTrHidden(x){
+  return !!(x&&x.hiddenOn&&x.hiddenOn.indexOf(_dshTrendPop())>=0);
 }
 // The measures and cards on offer for the selected population.
 function _dshTrShown(list){
-  var reg=(_dshTrendPop()==='regular');
-  return list.filter(function(x){return !x.regularOnly||reg;});
+  return list.filter(function(x){return !_dshTrHidden(x);});
 }
 function _dshTrPopDef(){return DSH_TR_POPS.filter(function(p){return p.k===_dshTrendPop();})[0]||DSH_TR_POPS[0];}
 // `sfx` lets a second page host this card. Pages share one DOM, so the panel
@@ -3917,23 +3923,24 @@ function _dshTrParts(p,pop){
     // Explicit three-way: an unknown population must fall back to regular
     // rather than silently resolving to it through a two-branch ternary.
     pop:((pop==='paid')?p.paid:(pop==='prelaunch')?p.prelaunch:p.regular)||0,
-    // Non-Paid needs BOTH halves of the regular cohort, not just whichever one
-    // the population toggle selected, so they ride along as raw components. A
-    // rolling window is then a sum of components rather than an average of
-    // ratios, the same way every other measure here works. prelaunch is NOT
-    // among them: it is outside the regular cohort entirely.
-    regular:p.regular||0, paid:p.paid||0,
+    // Non-Paid needs the selected cohort's own total AND its own paid count.
+    // Resolved here, where the population is known, so _dshTrValue stays
+    // population-agnostic and a rolling window remains a sum of components
+    // rather than an average of ratios. Over PAID demos the two are equal, so
+    // the measure reads a truthful 0% — it is hidden there anyway.
+    cohort:((pop==='prelaunch')?p.prelaunch:(pop==='paid')?p.paid:p.regular)||0,
+    cohortPaid:((pop==='prelaunch')?p.prelaunchPaid:(pop==='paid')?p.paid:p.paid)||0,
   };
 }
 function _dshTrSum(parts){
-  var t={spend:0,clicks:0,impressions:0,pop:0,regular:0,paid:0};
+  var t={spend:0,clicks:0,impressions:0,pop:0,cohort:0,cohortPaid:0};
   parts.forEach(function(x){for(var k in t)t[k]+=x[k];});
   return t;
 }
 function _dshTrValue(metric,t){
   if(metric==='count')return t.pop;
   if(metric==='cost')return (t.spend>0&&t.pop>0)?t.spend/t.pop:null;
-  if(metric==='nonpaid')return t.regular>0?((t.regular-t.paid)/t.regular)*100:null;
+  if(metric==='nonpaid')return t.cohort>0?((t.cohort-t.cohortPaid)/t.cohort)*100:null;
   if(metric==='cvr')return t.clicks>0?(t.pop/t.clicks)*100:null;
   if(metric==='ctr')return t.impressions>0?(t.clicks/t.impressions)*100:null;
   return null;
@@ -3951,7 +3958,7 @@ function _dshTrStat(card,T,pdef){
     calc={
       count:fN(T.pop)+' '+popW,
       cost:f$(Math.round(T.spend))+' ÷ '+fN(T.pop)+' '+popW,
-      nonpaid:fN(Math.max(0,T.regular-T.paid))+' ÷ '+fN(T.regular)+' regular demos',
+      nonpaid:fN(Math.max(0,T.cohort-T.cohortPaid))+' ÷ '+fN(T.cohort)+' '+popW,
       cvr:fN(T.pop)+' ÷ '+fN(T.clicks)+' clicks',
       ctr:fN(T.clicks)+' ÷ '+fN(T.impressions)+' impressions',
     }[card.k]||'';
@@ -3968,12 +3975,7 @@ function _dashTrendCard(d,sfx){
   var sub='Independent of the page date filter · '+g.note
     +(rng?(' · series built over '+rng.from+' → '+rng.to):'')
     +'<br>'+(mdef.pop?('Measuring <strong>'+mdef.l+'</strong> over <strong>'+pdef.w+'</strong>')
-            // regularOnly is not the same as "ignores the toggle": it is tied
-            // to the regular cohort and is only offered there, so say that
-            // rather than implying it would hold for paid demos too.
-            :(mdef.regularOnly
-                ? ('Measuring <strong>'+mdef.l+'</strong> — the organic share of <strong>regular demos</strong>, offered on that population only')
-                : ('Measuring <strong>'+mdef.l+'</strong> — does not vary with the population toggle')))
+            :('Measuring <strong>'+mdef.l+'</strong> — does not vary with the population toggle'))
     +' · Ad Spend is the shaded background throughout, whatever is selected';
   var title='<div class="dsec-h dsec-in" id="dsec-dshtrend'+sfx+'" data-nav="Trend Analysis">Trend Analysis</div>'
     +'<div class="irf-card-sub" style="margin-left:15px">'+sub+'</div>';

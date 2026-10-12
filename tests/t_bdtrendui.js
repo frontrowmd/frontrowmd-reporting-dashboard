@@ -45,13 +45,16 @@ const P={spend:1000,clicks:500,impressions:20000,regular:40,paid:10,signed:4};
 ck('regular resolves the regular count',ctx._dshTrParts(P,'regular').pop,40);
 ck('paid resolves the paid count',ctx._dshTrParts(P,'paid').pop,10);
 // Signed was removed as a measure, so the components no longer carry it.
-// regular/paid ride along for Non-Paid · Last Click, which needs BOTH halves of
-// the regular cohort rather than whichever one the toggle selected.
-ck('the components carry both halves of the regular cohort',
+// cohort/cohortPaid ride along for Non-Paid · Last Click: the SELECTED cohort's
+// own total and its own paid count, resolved here where the population is
+// known so _dshTrValue stays population-agnostic.
+ck('the components carry the selected cohort and its paid split',
    Object.keys(ctx._dshTrParts(P,'regular')).sort(),
-   ['clicks','impressions','paid','pop','regular','spend']);
-ck('  and they do not follow the population toggle',
-   (()=>{const a=ctx._dshTrParts(P,'paid');return [a.regular,a.paid];})(),[40,10]);
+   ['clicks','cohort','cohortPaid','impressions','pop','spend']);
+ck('  and they DO follow the population toggle',
+   (()=>{const a=ctx._dshTrParts(P,'regular'),b=ctx._dshTrParts(P,'prelaunch');
+     return [[a.cohort,a.cohortPaid],[b.cohort,b.cohortPaid]];})(),
+   [[40,10],[0,0]]);
 
 // ── 2. The six metrics, in the order asked for ────────────────────────────
 ck('metric pills',ctx.DSH_TR_METRICS.map(m=>m.l),
@@ -59,14 +62,14 @@ ck('metric pills',ctx.DSH_TR_METRICS.map(m=>m.l),
 ck('KPI cards',ctx.DSH_TR_CARDS.map(c=>c.k),['count','cost','nonpaid','cvr','ctr','spend']);
 ck('Ad Spend has a card but is not a selectable measure',
    [ctx.DSH_TR_CARDS.filter(c=>c.k==='spend')[0].metric,ctx.DSH_TR_METRICS.filter(m=>m.k==='spend').length],[null,0]);
-// Two measures do not swap with the toggle, for different reasons. CTR is
-// clicks over impressions — a property of the ads, not of which demos are
-// counted. Non-Paid is pinned to the regular cohort and is offered only there,
-// which is a stronger condition and carries its own flag.
-ck('the pop-invariant measures',
-   ctx.DSH_TR_METRICS.filter(m=>!m.pop).map(m=>m.k),['nonpaid','ctr']);
-ck('  and only one of them is regular-only',
-   ctx.DSH_TR_METRICS.filter(m=>m.regularOnly).map(m=>m.k),['nonpaid']);
+// CTR is clicks over impressions — a property of the ads, not of which demos
+// are counted — so it is the only measure the population toggle leaves alone.
+// Non-Paid DOES vary by cohort, so it takes the suffix like the rest.
+ck('CTR is the only pop-invariant measure',
+   ctx.DSH_TR_METRICS.filter(m=>!m.pop).map(m=>m.k),['ctr']);
+// Hidden where it has no meaning, rather than restricted to one population.
+ck('  and Non-Paid is hidden only on Paid Demos',
+   ctx.DSH_TR_METRICS.filter(m=>m.hiddenOn).map(m=>[m.k,m.hiddenOn]),[['nonpaid',['paid']]]);
 // Signed is gone from EVERY list, not just the pills. A card for a measure
 // that cannot be selected is the half-removal this guards against.
 ck('Signed is absent from the metric pills',
