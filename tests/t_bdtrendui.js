@@ -37,8 +37,9 @@ const BR=src.slice(_i0,_i1);
 ck('  and does not swallow the Clinician one',/CLN_TR_CARDS=|_clnTrendCard/.test(BR),false);
 
 // ── 1. The population toggle the user asked for ───────────────────────────
-ck('two populations: Regular and Paid demos',ctx.DSH_TR_POPS.map(p=>p.l),['Regular Demos','Paid Demos']);
-ck('  keyed regular/paid',ctx.DSH_TR_POPS.map(p=>p.k),['regular','paid']);
+ck('three populations: Regular, Paid and Pre-Launch demos',
+   ctx.DSH_TR_POPS.map(p=>p.l),['Regular Demos','Paid Demos','Pre-Launch Demos']);
+ck('  keyed regular/paid/prelaunch',ctx.DSH_TR_POPS.map(p=>p.k),['regular','paid','prelaunch']);
 ck('the Clinician labels are NOT carried over',/Full Submission/.test(JSON.stringify(ctx.DSH_TR_POPS)),false);
 const P={spend:1000,clicks:500,impressions:20000,regular:40,paid:10,signed:4};
 ck('regular resolves the regular count',ctx._dshTrParts(P,'regular').pop,40);

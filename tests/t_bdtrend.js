@@ -106,8 +106,13 @@ ck('  the first starting Monday Sep 28',wk.wk,'2026-09-28');
 ck('  the second starting Monday Oct 5',t.week[1].wk,'2026-10-05');
 ck('  and the empty one is still a point',
    [t.week[1].regular,t.week[1].spend],[0,0]);
+// prelaunch/cpdPre/cvrPre joined when Pre-Launch Demos became a third
+// population. Every population is precomputed, so this list must stay in step
+// with DSH_TR_POPS or a population exists with no figures behind it.
 ck('a bucket carries exactly the fields the card reads',
-   Object.keys(wk).sort(),['clicks','cpdPaid','cpdReg','ctr','cvrPaid','cvrReg','impressions','paid','regular','spend','wk']);
+   Object.keys(wk).sort(),
+   ['clicks','cpdPaid','cpdPre','cpdReg','ctr','cvrPaid','cvrPre','cvrReg',
+    'impressions','paid','prelaunch','regular','spend','wk']);
 ck('week CTR pools the period totals',wk.ctr,(wk.clicks/wk.impressions)*100);
 ck('  which is NOT the mean of the daily CTRs',
    Math.abs(wk.ctr-((d1.ctr+d2.ctr)/2))>1e-9,true);
@@ -171,10 +176,15 @@ ck('  so it is one HubSpot search, not three',
 // be cached under _v2, and refusing to WRITE one does not remove one already
 // written — kvCachedFetch serves an expired entry as stale when a rebuild
 // throws. Assert by intent: never an older version.
-ck('the cache key was revved past every poisoned version',
-   /brand_trend_\$\{_btWin\.from\}_\$\{_btWin\.to\}_v3/.test(src),true);
+// The intent is "past every version known to be poisoned or stale-shaped",
+// not "is exactly vN" — pinning the literal broke this on every legitimate
+// bump. _v3 and below are out: v1-v2 carried `signed`, and v3 is the series
+// built before `prelaunch` existed.
+const _btVer=(/brand_trend_\$\{_btWin\.from\}_\$\{_btWin\.to\}_v(\d+)/.exec(src)||[])[1];
+ck('the brand-trend cache key is versioned',_btVer!=null,true);
+ck('  past every version known to be poisoned or stale-shaped',+_btVer>=4,true);
 ck('  and no older key is still read',
-   /brand_trend_\$\{_btWin\.from\}_\$\{_btWin\.to\}_v[12]\b/.test(src),false);
+   new RegExp('brand_trend_[^`]*_v[123]\\b').test(src),false);
 // v37 added the fields to currentData; v38 is when they were actually
 // forwarded, so a cached v37 response has them MISSING rather than stale.
 ck('the forwarding fix bumped the cache version past v37',

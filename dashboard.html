@@ -3829,6 +3829,10 @@ const DSH_TR_GRAINS=CLN_TR_GRAINS;
 const DSH_TR_POPS=[
   {k:'regular',l:'Regular Demos',w:'regular demos',short:'regular demos'},
   {k:'paid',   l:'Paid Demos',   w:'paid demos',   short:'paid demos'},
+  // The complement of Regular, not a subset of it: brands on the
+  // "Pre-launch / just launching" traffic tier, which the series used to drop
+  // entirely. regular + prelaunch is every demo; paid is inside regular.
+  {k:'prelaunch',l:'Pre-Launch Demos',w:'pre-launch demos',short:'pre-launch demos'},
 ];
 // `pop:false` marks a measure that does NOT move with the population toggle —
 // CTR is clicks over impressions, which is a property of the ads, not of which
@@ -3910,11 +3914,14 @@ function _dshTrendPts(d){
 function _dshTrParts(p,pop){
   return {
     spend:p.spend||0, clicks:p.clicks||0, impressions:p.impressions||0,
-    pop:((pop==='paid')?p.paid:p.regular)||0,
+    // Explicit three-way: an unknown population must fall back to regular
+    // rather than silently resolving to it through a two-branch ternary.
+    pop:((pop==='paid')?p.paid:(pop==='prelaunch')?p.prelaunch:p.regular)||0,
     // Non-Paid needs BOTH halves of the regular cohort, not just whichever one
     // the population toggle selected, so they ride along as raw components. A
     // rolling window is then a sum of components rather than an average of
-    // ratios, the same way every other measure here works.
+    // ratios, the same way every other measure here works. prelaunch is NOT
+    // among them: it is outside the regular cohort entirely.
     regular:p.regular||0, paid:p.paid||0,
   };
 }

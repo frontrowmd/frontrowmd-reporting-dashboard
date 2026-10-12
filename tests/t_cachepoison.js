@@ -24,9 +24,15 @@ ck('  and both guard before buildBrandTrend runs',
 // Refusing to WRITE does not remove an entry already written — kvCachedFetch
 // serves an expired entry as stale whenever the rebuild throws. The key version
 // is what abandons the poisoned ones.
-ck('the cache key was versioned past the poisoned entries',
-   /brand_trend_\$\{_btWin\.from\}_\$\{_btWin\.to\}_v3/.test(src),true);
-ck('  and no v2 key is still read',/brand_trend_[^`]*_v2/.test(src),false);
+// The intent is "past every version known to be poisoned or stale-shaped",
+// not "is exactly vN" — pinning the literal broke this on every legitimate
+// bump. _v3 and below are out: v1-v2 carried `signed`, and v3 is the series
+// built before `prelaunch` existed.
+const _btVer=(/brand_trend_\$\{_btWin\.from\}_\$\{_btWin\.to\}_v(\d+)/.exec(src)||[])[1];
+ck('the brand-trend cache key is versioned',_btVer!=null,true);
+ck('  past every version known to be poisoned or stale-shaped',+_btVer>=4,true);
+ck('  and no older key is still read',
+   new RegExp('brand_trend_[^`]*_v[123]\\b').test(src),false);
 
 // ── 5. Ordering: the ad fetch must not starve the HubSpot one ─────────────
 // hsSearch returns [] with ZERO http calls once SUBREQ.exhausted is set. Start
