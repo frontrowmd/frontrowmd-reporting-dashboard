@@ -94,12 +94,19 @@ ck('all three render paths check it',(ldr.match(/_mySeq!==S\.irfan\._metaSeq\)re
 ck('the sequence is taken before the fetch starts',
    ldr.indexOf('const _mySeq=')<ldr.indexOf('fetch(AZ_API'),true);
 // Order matters: bailing after the render would not prevent anything.
+// The channel argument is _curAdCh() now (the loader's private _getCh copy was
+// the Executive clinician-toggle bug); assert on the call, not on its argument,
+// so renaming the resolver cannot silently turn this into indexOf(-1).
+const _renderAt=ldr.indexOf('_renderIrfanMetaTables(ad,');
+ck('the render call is found at all',_renderAt>=0,true);
 ck('the success guard precedes the render',
-   ldr.indexOf('if(_mySeq!==S.irfan._metaSeq)return;')<ldr.indexOf('_renderIrfanMetaTables(ad,_getCh())'),true);
+   ldr.indexOf('if(_mySeq!==S.irfan._metaSeq)return;')<_renderAt,true);
 // The payload is still cached under its own key -- it is correct for that
 // window even when a newer one superseded it on screen.
+const _cachePutAt=ldr.indexOf('_azCachePut(_ck,ad);');
+ck('the cache put is found at all',_cachePutAt>=0,true);
 ck('a superseded payload is still cached',
-   ldr.indexOf('_azCachePut(_ck,ad);')<ldr.indexOf('if(_mySeq!==S.irfan._metaSeq)return;'),true);
+   _cachePutAt<ldr.indexOf('if(_mySeq!==S.irfan._metaSeq)return;'),true);
 
 // ── Re-sync control ────────────────────────────────────────────────
 // Picking a table window pins it; before this there was no way back to

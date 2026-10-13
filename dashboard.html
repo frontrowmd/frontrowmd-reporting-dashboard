@@ -4437,9 +4437,12 @@ function _renderIrfanMetaTablesLoader(winOverride){
     _setBoth('<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px">Pick a start and end date above, then click Apply.</div>');
     return;
   }
-  const _getCh=()=>AP==='clinician'?'clinician':(S.dashboard.activeAdChannel||'meta');
+  // Was a LOCAL copy of _curAdCh that never learned about the Executive
+  // page: it resolved AP==='exec' to the Brand channel tab, so switching
+  // the Executive mode toggle to Clinician left the ad tables on Meta.
+  // _curAdCh is the one resolver every other call site already uses.
   const _azFresh=_azCacheGet(_ck,irfWin);
-  if(_azFresh){_renderIrfanMetaTables(_azFresh,_getCh());_updateCpdMatchRate(irfWin);return;}
+  if(_azFresh){_renderIrfanMetaTables(_azFresh,_curAdCh());_updateCpdMatchRate(irfWin);return;}
   // Reuse analyzer's already-loaded payload if same window. Skip for custom —
   // S.analyzer.win==='custom' doesn't guarantee the same date range.
   // Borrowing the analyzer page's payload is only safe if THAT payload is
@@ -4448,7 +4451,7 @@ function _renderIrfanMetaTablesLoader(winOverride){
   const _azBorrowOk=!_azWinIsLive(irfWin)||((Date.now()-(S.analyzer._t||0))<AZ_CACHE_TTL_MS);
   if(irfWin!=='custom'&&_azBorrowOk&&S.analyzer?.data?.channels?.meta&&S.analyzer.win===irfWin){
     _azCachePut(_ck,S.analyzer.data,S.analyzer._t||Date.now());
-    _renderIrfanMetaTables(S.analyzer.data,_getCh());_updateCpdMatchRate(irfWin);return;
+    _renderIrfanMetaTables(S.analyzer.data,_curAdCh());_updateCpdMatchRate(irfWin);return;
   }
   _setBoth('<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px"><span class="sp" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle"></span> Loading ad-channel data…</div>');
   // Wrap the fetch with extra diagnostics so a failure surfaces the HTTP
@@ -4518,7 +4521,7 @@ function _renderIrfanMetaTablesLoader(winOverride){
         // selector, so matching them against it could only ever be a false
         // negative. _renderIrfanMetaTables writes solely to targets that exist in
         // the DOM, so there is nothing to guard against.
-        _renderIrfanMetaTables(ad,_getCh());
+        _renderIrfanMetaTables(ad,_curAdCh());
         _updateCpdMatchRate(irfWin);
       } else {
         // Validate on "has channels", not "has channels.meta": the Clinician page
