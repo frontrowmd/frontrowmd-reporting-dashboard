@@ -13925,7 +13925,7 @@ function renderResDataKey(el){
   ]);
 
   h+=mkSec('Timezone & Date Handling',[
-    ['Timezone','Calculated','America/Los_Angeles (PT)','All date boundaries use Pacific time'],
+    ['Timezone','Calculated','America/New_York (ET)','All date boundaries use Eastern time — the HubSpot portal’s own timezone, so a day here matches a day in HubSpot'],
     ['Date Boundaries','Calculated','new Date("YYYY-MM-DDT00:00:00.000") \u2014 no Z suffix','Z suffix forces UTC; omitting it lets the offset helper apply PT (\u22127 PDT / \u22128 PST)'],
     ['HubSpot Dates','HubSpot','Millisecond timestamps as string values','date_demo_booked is DATE type (midnight UTC ms)'],
     ['Windsor Dates','Windsor','YYYY-MM-DD format, capped at yesterday','Today data always incomplete'],

@@ -683,28 +683,37 @@ const AD_EPOCH = '2024-01-01';
 const WINDSOR_EPOCH = '2025-11-01'; // Windsor ad data starts here; HubSpot can go back further
 
 // ---------------------------------------------------------------------------
-// Date Helpers (US PACIFIC via offset — Workers run UTC)
+// Date Helpers (US EASTERN via offset — Workers run UTC)
 // ---------------------------------------------------------------------------
-// Every date boundary on every page routes through ptOff(), so switching the
-// dashboard's timezone is this one function. The *ET-named* helpers below
-// (etOff / todayET / toMsET) are kept as-is because ~40 call sites use them;
-// they now return PACIFIC values. Prefer the PT names in new code.
+// Every date boundary on every page routes through etOff(), so the dashboard's
+// timezone is this one function. It is EASTERN because the HubSpot portal is
+// America/New_York (utcOffset -04:00, read off the account), and a figure that
+// disagrees with the HubSpot UI someone is checking it against is wrong however
+// defensible the zone.
 //
-// DST: Pacific shares the US transition DATES with Eastern (2nd Sunday March,
-// 1st Sunday November) but flips at 2am LOCAL, i.e. 10:00 UTC entering PDT and
-// 9:00 UTC leaving it — 3h later than the Eastern instants this used before.
-function isPDT(date) {
+// This was Pacific for a while, with etOff() returning ptOff() under an ET
+// name. Every window bound and every day key was therefore Pacific while the
+// code read as Eastern, and a reported off-by-one in a daily count took far
+// longer to place than it should have. ptOff survives only for isPDT; nothing
+// buckets on it.
+//
+// US DST runs 2nd Sunday March → 1st Sunday November in both zones, but it
+// flips at 2am LOCAL, so the UTC INSTANT differs per zone: spring-forward is
+// 2am STANDARD time, fall-back is 2am DAYLIGHT time. Parameterised by the
+// zone's standard offset so the two can never drift apart.
+function _usDst(date, stdOff) {
   const y = date.getUTCFullYear();
   const mar1 = new Date(Date.UTC(y, 2, 1));
   const marSun2 = new Date(Date.UTC(y, 2, 8 + (7 - mar1.getUTCDay()) % 7));
-  const dstStart = new Date(Date.UTC(y, 2, marSun2.getUTCDate(), 10, 0, 0));
+  const dstStart = new Date(Date.UTC(y, 2, marSun2.getUTCDate(), 2 - stdOff, 0, 0));
   const nov1 = new Date(Date.UTC(y, 10, 1));
   const novSun1 = new Date(Date.UTC(y, 10, 1 + (7 - nov1.getUTCDay()) % 7));
-  const dstEnd = new Date(Date.UTC(y, 10, novSun1.getUTCDate(), 9, 0, 0));
+  const dstEnd = new Date(Date.UTC(y, 10, novSun1.getUTCDate(), 2 - (stdOff + 1), 0, 0));
   return date >= dstStart && date < dstEnd;
 }
-function ptOff(d) { return isPDT(d) ? -7 : -8; }   // PDT / PST
-function etOff(d) { return ptOff(d); }             // legacy name, now Pacific
+function isPDT(date) { return _usDst(date, -8); }
+function ptOff(d) { return isPDT(d) ? -7 : -8; }        // PDT / PST — nothing buckets on this
+function etOff(d) { return _usDst(d, -5) ? -4 : -5; }   // EDT / EST — the dashboard's zone
 
 function todayET() {
   const n = new Date(), o = etOff(n);
@@ -717,18 +726,19 @@ function fmt(d) {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
 }
 
-// Pacific day key (YYYY-MM-DD) for a HubSpot date or datetime value. A bare
+// EASTERN day key (YYYY-MM-DD) for a HubSpot date or datetime value. A bare
 // YYYY-MM-DD is already local and passes through untouched; anything carrying a
-// time component is shifted into Pacific first, so an evening close does not
-// land on the following day. Same rule as the local dayKey() inside
-// buildClinicianDaily — hoisted here so the closed-won daily series uses it too.
-function ptDayKeyOf(v) {
+// time component is shifted into Eastern first, so an evening close does not
+// land on the following day. It MUST use the same zone as toMsET: a record that
+// sits inside the fetched window but buckets to a day outside it is how a daily
+// series stops summing to the headline above it.
+function etDayKeyOf(v) {
   if (!v) return null;
   const str = String(v);
   if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
   const t = /^\d+$/.test(str) ? parseInt(str, 10) : new Date(str).getTime();
   if (isNaN(t)) return null;
-  return fmt(new Date(t + ptOff(new Date(t)) * 3600000));
+  return fmt(new Date(t + etOff(new Date(t)) * 3600000));
 }
 
 function toMsET(dateStr, endOfDay = false) {
@@ -862,7 +872,7 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v41';   // v41: `prelaunchPaid` added — Non-Paid · Last Click over the pre-launch cohort.
+const API_CACHE_VER = 'v42';   // v42: day boundaries moved from Pacific to EASTERN (matches the HubSpot portal).
                                // v38: trend/trendRange are actually FORWARDED by buildResponse.
                                //      v37 built them onto currentData but never shipped them, so a
                                //      cached v37 payload has the fields missing, not stale.
@@ -1244,7 +1254,7 @@ const AZ_CRON_SOFTFAIL_TOLERANCE = 5;
 // a2: ad rows now carry the `conversions` array, and Meta/Clinician demos are
 // counted from each ad set's own target — a cached a1 payload holds the old
 // per-campaign conversion and CPD figures, so it must not be served.
-const AZ_DATA_VER = 'a2';
+const AZ_DATA_VER = 'a3';   // a3: Eastern day boundaries
 // Cloudflare caps CONCURRENT in-flight fetches, and a Response whose body is
 // never read never completes — so it holds its slot indefinitely. Past the cap
 // the runtime cancels the OLDEST in-flight response to break the deadlock,
@@ -2489,7 +2499,7 @@ function processClosedWonDeals(deals) {
     const closeMs = isoMs(p.closedate), createMs = isoMs(p.hs_createdate);
     if (!isNaN(closeMs) && !isNaN(createMs) && closeMs > createMs) cycleDays.push((closeMs-createMs)/(1000*60*60*24));
 
-    const _cwDay = ptDayKeyOf(p.closedate);
+    const _cwDay = etDayKeyOf(p.closedate);
     if (_cwDay) byDay[_cwDay] = (byDay[_cwDay]||0) + 1; else noCloseDate++;
   }
 
@@ -3158,14 +3168,14 @@ function buildClinicianDaily(deals, contactsByDeal, from, to) {
   // HubSpot's full ISO timestamp and sliced off the UTC date, so a contact
   // created 7pm PDT (= 02:00Z next day) was counted on the FOLLOWING day.
   // Only a bare YYYY-MM-DD value is taken as-is; anything with a time
-  // component is shifted into Pacific first.
+  // component is shifted into Eastern first.
   const dayKey = (v) => {
     if (!v) return null;
     const str = String(v);
     if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;          // date-only: already local
     const t = /^\d+$/.test(str) ? parseInt(str) : new Date(str).getTime();
     if (isNaN(t)) return null;
-    const d = new Date(t + ptOff(new Date(t)) * 3600000);
+    const d = new Date(t + etOff(new Date(t)) * 3600000);
     return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
   };
   // Seed every day in the window so gaps render as zero rather than collapsing.
@@ -3394,7 +3404,7 @@ function buildBrandTrend(schContacts, windsorRows, from, to) {
     if (!cp.createdate) continue;
     if (c.id) { if (seenC.has(c.id)) continue; seenC.add(c.id); }
     const wt = (cp.average_monthly_web_traffic || '').toLowerCase();
-    const k = ptDayKeyOf(cp.createdate);
+    const k = etDayKeyOf(cp.createdate);
     // Pre-launch is not "regular", but it is no longer discarded either — it is
     // its own population on the toggle. Returning early keeps it OUT of regular
     // (and therefore out of paid), which is what makes the two sum to the whole.
@@ -3691,14 +3701,15 @@ async function fetchClinicianMeetingStarts(token, dealIds) {
   return out;
 }
 
-// Pacific calendar day for a HubSpot timestamp (same rule as Daily Activity).
+// Eastern calendar day for a HubSpot timestamp — same rule as Daily Activity,
+// and the same zone as the bounds its cohort was fetched with.
 function _clnDayKey(v) {
   if (!v) return null;
   const str = String(v);
   if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
   const t = /^\d+$/.test(str) ? parseInt(str) : new Date(str).getTime();
   if (isNaN(t)) return null;
-  const d = new Date(t + ptOff(new Date(t)) * 3600000);
+  const d = new Date(t + etOff(new Date(t)) * 3600000);
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 }
 // owner id → name for the Deal Rep column. Paged; failures degrade to ids.
@@ -6089,7 +6100,7 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     const _btWin = clnTrendWindow(fmt(yd));
     currentData.trendRange = _btWin;
     try {
-      currentData.trend = await kvCachedFetch(env, `brand_trend_${_btWin.from}_${_btWin.to}_v5`, 1800,
+      currentData.trend = await kvCachedFetch(env, `brand_trend_${_btWin.from}_${_btWin.to}_v6`, 1800,
         async () => {
           // HubSpot FIRST, and only then the ad fetch. Kicked off the other way
           // round, the trend's own Windsor chunker can spend the subrequest

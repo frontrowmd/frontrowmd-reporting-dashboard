@@ -19,8 +19,8 @@ vm.runInContext([
   'function todayET(){ return new Date(_TODAY.getTime()); }',
   'globalThis.setToday = (s)=>{ const [y,m,d]=s.split("-").map(Number); _TODAY=new Date(Date.UTC(y,m-1,d)); };',
   'globalThis.setTodayMs = (ms)=>{ _TODAY=new Date(ms); };',
-  fn(src,'isPDT'), fn(src,'ptOff'), fn(src,'etOff'), fn(src,'fmt'),
-  fn(src,'ptDayKeyOf'), fn(src,'toMsET'), fn(src,'toMsUTC'), fn(src,'dateMs'),
+  fn(src,'_usDst'), fn(src,'isPDT'), fn(src,'ptOff'), fn(src,'etOff'), fn(src,'fmt'),
+  fn(src,'etDayKeyOf'), fn(src,'toMsET'), fn(src,'toMsUTC'), fn(src,'dateMs'),
   fn(src,'daysInMonth'), fn(src,'computeWindows'), fn(src,'pagesForWindow'),
 ].join('\n'),ctx);
 
@@ -215,9 +215,8 @@ ck('every date emitted is a well-formed YYYY-MM-DD',(()=>{
 // ---------------------------------------------------------------------------
 // Pacific bucketing helpers
 // ---------------------------------------------------------------------------
-// Pacific flips at 2am LOCAL = 10:00 UTC into PDT, 09:00 UTC out of it. The
-// helper used Eastern instants (3h earlier) before the migration, so a run in
-// that 3-hour band bucketed a day's rows one hour off.
+// US DST runs the same DATES in both zones but flips at 2am LOCAL, so the UTC
+// instant differs: 2am STANDARD entering, 2am DAYLIGHT leaving.
 ck('PDT starts at 10:00 UTC on the 2nd Sunday of March',
    [ctx.isPDT(new Date('2026-03-08T09:59:59Z')),ctx.isPDT(new Date('2026-03-08T10:00:00Z'))],[false,true]);
 ck('PDT ends at 09:00 UTC on the 1st Sunday of November',
@@ -227,22 +226,42 @@ ck('the transition dates move with the year',
     ctx.isPDT(new Date('2024-03-09T10:00:00Z'))],[true,true,false]);
 ck('ptOff is -7 in summer and -8 in winter',
    [ctx.ptOff(new Date('2026-07-01T12:00:00Z')),ctx.ptOff(new Date('2026-01-01T12:00:00Z'))],[-7,-8]);
-// ~40 call sites still say etOff. The migration kept the name and changed the
-// value; if these ever diverge again, half the dashboard silently buckets on
-// Eastern while the other half uses Pacific.
-ck('the legacy etOff name now returns Pacific, identically',
+// EASTERN is the dashboard's zone: the HubSpot portal is America/New_York, and
+// a number that disagrees with the UI someone checks it against is wrong.
+ck('etOff is -4 in summer and -5 in winter',
+   [ctx.etOff(new Date('2026-07-01T12:00:00Z')),ctx.etOff(new Date('2026-01-01T12:00:00Z'))],[-4,-5]);
+// This is the regression that made a daily off-by-one hard to place: etOff used
+// to `return ptOff(d)` under an ET name, so everything bucketed Pacific while
+// the code read Eastern. They must now DIFFER, by exactly three hours.
+ck('etOff is NOT ptOff any more',
    [1,4,7,11].map(m=>{const d=new Date(Date.UTC(2026,m,15));return ctx.etOff(d)===ctx.ptOff(d);}),
-   [true,true,true,true]);
+   [false,false,false,false]);
+ck('  and is exactly three hours ahead year-round',
+   [0,3,6,9].map(m=>{const d=new Date(Date.UTC(2026,m,15));return ctx.etOff(d)-ctx.ptOff(d);}),
+   [3,3,3,3]);
+// Eastern's own transition instants, 3h earlier in UTC than Pacific's.
+ck('EDT starts at 07:00 UTC on the 2nd Sunday of March',
+   [ctx.etOff(new Date('2026-03-08T06:59:59Z')),ctx.etOff(new Date('2026-03-08T07:00:00Z'))],[-5,-4]);
+ck('EDT ends at 06:00 UTC on the 1st Sunday of November',
+   [ctx.etOff(new Date('2026-11-01T05:59:59Z')),ctx.etOff(new Date('2026-11-01T06:00:00Z'))],[-4,-5]);
 
 // A bare date is already local and must pass through untouched — shifting it
 // would move every HubSpot DATE property back a day.
-ck('a bare YYYY-MM-DD passes through ptDayKeyOf',ctx.ptDayKeyOf('2026-09-10'),'2026-09-10');
-// An evening Pacific timestamp is the NEXT day in UTC; it must bucket back.
-ck('a late-evening Pacific instant buckets to the Pacific day',ctx.ptDayKeyOf('2026-09-11T02:00:00Z'),'2026-09-10');
-ck('a morning instant stays on its own day',ctx.ptDayKeyOf('2026-09-11T18:00:00Z'),'2026-09-11');
-ck('epoch millis are accepted as a string',ctx.ptDayKeyOf(String(Date.UTC(2026,8,11,2,0,0))),'2026-09-10');
+ck('a bare YYYY-MM-DD passes through etDayKeyOf',ctx.etDayKeyOf('2026-09-10'),'2026-09-10');
+// An evening Eastern timestamp is the NEXT day in UTC; it must bucket back.
+ck('a late-evening Eastern instant buckets to the Eastern day',ctx.etDayKeyOf('2026-09-11T02:00:00Z'),'2026-09-10');
+ck('a morning instant stays on its own day',ctx.etDayKeyOf('2026-09-11T18:00:00Z'),'2026-09-11');
+ck('epoch millis are accepted as a string',ctx.etDayKeyOf(String(Date.UTC(2026,8,11,2,0,0))),'2026-09-10');
+// The 04:00–07:00 UTC band is where the two zones disagree — the whole point of
+// the migration. 2026-10-12T05:00Z is Oct 12 in Eastern, Oct 11 in Pacific.
+ck('the Eastern/Pacific disagreement band buckets Eastern now',
+   ctx.etDayKeyOf('2026-10-12T05:00:00Z'),'2026-10-12');
+ck('  and the day key agrees with the window bounds it is fetched by',
+   (()=>{const k='2026-10-12';const t=Date.parse('2026-10-12T05:00:00Z');
+     return t>=ctx.toMsET(k)&&t<=ctx.toMsET(k,true)&&ctx.etDayKeyOf(String(t))===k;})(),true);
 ck('blank and unparseable values yield null, not a bogus day',
-   [ctx.ptDayKeyOf(''),ctx.ptDayKeyOf(null),ctx.ptDayKeyOf(undefined),ctx.ptDayKeyOf('not a date')],
+   [ctx.etDayKeyOf(''),ctx.etDayKeyOf(null),ctx.etDayKeyOf(undefined),ctx.etDayKeyOf('not a date')],
+   [ctx.etDayKeyOf(''),ctx.etDayKeyOf(null),ctx.etDayKeyOf(undefined),ctx.etDayKeyOf('not a date')],
    [null,null,null,null]);
 
 // Round trip: both ends of a Pacific day must bucket back to that same day.
@@ -252,8 +271,8 @@ const rtBad=[];
 for(const y of [2024,2025,2026]) for(let i=0;i<366;i++){
   const d=new Date(Date.UTC(y,0,1+i)); if(d.getUTCFullYear()!==y) break;
   const s=d.toISOString().slice(0,10);
-  if(ctx.ptDayKeyOf(ctx.toMsET(s))!==s) rtBad.push(['start',s]);
-  if(ctx.ptDayKeyOf(ctx.toMsET(s,true))!==s) rtBad.push(['end',s]);
+  if(ctx.etDayKeyOf(ctx.toMsET(s))!==s) rtBad.push(['start',s]);
+  if(ctx.etDayKeyOf(ctx.toMsET(s,true))!==s) rtBad.push(['end',s]);
 }
 // .slice(3): a broken offset fails all ~1100 days at once, and the full list
 // buries every other result in the runner's output.
@@ -270,11 +289,16 @@ ck('end of day is just under 24h after the start',
    ctx.toMsET('2026-09-10',true)-ctx.toMsET('2026-09-10'),86399999);
 
 // toMsUTC is the HubSpot DATE-property variant: those are stored at midnight
-// UTC, so applying the Pacific offset to them shifts every deal back a day.
+// UTC, so applying the Eastern offset to them shifts every deal back a day.
 // The two must stay DIFFERENT functions.
 ck('toMsUTC applies no offset',ctx.toMsUTC('2026-09-10'),Date.UTC(2026,8,10));
-ck('toMsET does apply one',ctx.toMsET('2026-09-10')-ctx.toMsUTC('2026-09-10'),7*3600000);
-ck('and the offset follows DST',ctx.toMsET('2026-01-10')-ctx.toMsUTC('2026-01-10'),8*3600000);
+ck('toMsET does apply one, in EASTERN',ctx.toMsET('2026-09-10')-ctx.toMsUTC('2026-09-10'),4*3600000);
+ck('and the offset follows DST',ctx.toMsET('2026-01-10')-ctx.toMsUTC('2026-01-10'),5*3600000);
+// The window bounds and the day key have to agree, or a record inside the
+// fetched window can bucket to a day outside it.
+ck('the window bounds use the same zone as the day key',
+   ctx.toMsET('2026-09-10')-ctx.toMsUTC('2026-09-10'),
+   -ctx.etOff(new Date('2026-09-10T12:00:00Z'))*3600000);
 ck('dateMs reads DATE properties at midnight UTC like toMsUTC',
    ctx.dateMs('2026-09-10'),ctx.toMsUTC('2026-09-10'));
 ck('dateMs passes an epoch-ms string straight through',ctx.dateMs('1788998400000'),1788998400000);
@@ -333,6 +357,28 @@ ck('and those call sites still sort ascending',
    (src.match(/direction: 'ASCENDING' \}\], pagesForWindow\(from, to\)\)/g)||[]).length>=3,true);
 ck('the deals helper lets a caller override the depth',
    /maxPages = opts\.maxPages \?\? pagesForWindow\(from, to\)/.test(src),true);
+
+// THREE helpers bucket a timestamp into a day — etDayKeyOf, _clnDayKey and the
+// local dayKey inside buildClinicianWeekly. They must agree: one returning
+// Pacific while another returns Eastern is precisely the bug this migration
+// fixed, and it is invisible except at the 3-hour boundary.
+const _clnKey=fn(src,'_clnDayKey');
+vm.runInContext(_clnKey+'\nObject.assign(globalThis,{_clnDayKey});',ctx);
+const _tzProbe=['2026-10-12T01:57:42.807Z','2026-10-13T04:31:48.083Z','2026-10-12T05:00:00.000Z',
+                '2026-01-15T04:30:00.000Z','2026-07-04T03:00:00.000Z','2026-09-10'];
+ck('_clnDayKey agrees with etDayKeyOf on every probe',
+   _tzProbe.map(v=>ctx._clnDayKey(v)===ctx.etDayKeyOf(v)),_tzProbe.map(()=>true));
+// The live records behind the reported off-by-one, as HubSpot's own UI shows
+// them (the portal is America/New_York).
+ck('a 01:57Z create is the PREVIOUS Eastern day',
+   ctx._clnDayKey('2026-10-12T01:57:42.807Z'),'2026-10-11');
+ck('a 04:31Z create is the SAME Eastern day it is in UTC',
+   ctx._clnDayKey('2026-10-13T04:31:48.083Z'),'2026-10-13');
+// Under Pacific that second one bucketed to Oct 12; that is the record the
+// migration actually moves.
+ck('  which Pacific would have put a day earlier',
+   (()=>{const t=Date.parse('2026-10-13T04:31:48.083Z');
+     return ctx.fmt(new Date(t+ctx.ptOff(new Date(t))*3600000));})(),'2026-10-12');
 
 console.log(pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);

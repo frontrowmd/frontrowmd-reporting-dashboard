@@ -4,7 +4,7 @@ const {load,fn}=require('./slice.js');const vm=require('vm');
 const src=load(process.env.WORKER_SRC||'worker.js');
 const ctx={console,Object,String,Number,Array,Date,Set,Math,parseInt,parseFloat,isNaN,RegExp,JSON};
 vm.createContext(ctx);
-const names=['categorizeDemoStatus','demoDidHappen','processPipelineDeals','isPDT','ptOff','etOff','fmt','toMsET','toMsUTC','isoMs','r2','detectFunnelStage','mapUtmToChannel'];
+const names=['categorizeDemoStatus','demoDidHappen','processPipelineDeals','_usDst','isPDT','ptOff','etOff','fmt','toMsET','toMsUTC','isoMs','r2','detectFunnelStage','mapUtmToChannel'];
 const code=[];
 for(const n of names){try{code.push(fn(src,n));}catch(e){}}
 try{code.push(src.slice(src.indexOf('const FUNNEL_ORDER'),src.indexOf(';',src.indexOf('const FUNNEL_ORDER'))+1));}catch(e){}
