@@ -1093,18 +1093,45 @@ document.getElementById('pw').addEventListener('keydown',e=>{if(e.key==='Enter')
 
 // Filters
 function bldF(){const s=S[AP];var aiBtn=AI_PANEL_PAGES.indexOf(AP)>=0?'<button id="ai-panel-btn" onclick="toggleAIPanel()" class="fb" style="border:1.5px solid #B8860B;background:'+(_aiPanelOpen?'#B8860B':'#FFF8E1')+';color:'+(_aiPanelOpen?'#fff':'#8B6914')+';font-weight:700" onmouseover="this.style.background=\'#B8860B\';this.style.color=\'#fff\'" onmouseout="if(!_aiPanelOpen){this.style.background=\'#FFF8E1\';this.style.color=\'#8B6914\';}">✦ AI Analysis</button>':'';if(AP==='signup'){document.getElementById('filters').innerHTML='<span style="font-size:13px;color:var(--grey)">Fixed cohorts — independent of time filters</span>'+aiBtn+'<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>';return;}if(AP==='strategy'||AP==='csession'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='content'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='outbound'){document.getElementById('filters').innerHTML=aiBtn;document.getElementById('filters').style.display=aiBtn?'':'none';return;}else{document.getElementById('filters').style.display='';}let h='';const _wPill=w=>{const _aw=(w.k==='custom')?(s.win==='custom'&&!s.quarterKey):(s.win===w.k);return `<button class="fb${_aw?' active':''}" data-w="${w.k}" onclick="selW('${w.k}')">${w.l}</button>`;};/* Fixed presets, then the completed quarters, then Custom. The quarters are presets too, so Custom sitting before them split the presets in two and put the escape hatch in the middle of the row. */for(const w of W){if(w.k!=='custom')h+=_wPill(w);}for(const q of _completedQuarters())h+=`<button class="fb${(s.win==='custom'&&s.quarterKey===q.from+'_'+q.to)?' active':''}" data-q="${q.from}_${q.to}" onclick="selQ('${q.from}','${q.to}')">${q.l}</button>`;{const _cw=W.filter(w=>w.k==='custom')[0];if(_cw)h+=_wPill(_cw);}h+=`<div class="cr${(s.win==='custom'&&!s.quarterKey)?' vis':''}" id="cr"><input type="date" id="cf"><span style="color:var(--grey)">→</span><input type="date" id="ct"><label class="cr-cmp-lbl"><input type="checkbox" id="cc" onchange="document.getElementById('crVs').classList.toggle('vis',this.checked)">Compare</label><span class="cr-vs" id="crVs"><span class="cr-vs-prefix">vs</span><input type="date" id="cvf"><span style="color:var(--grey)">→</span><input type="date" id="cvt"></span><button onclick="goC()">Go</button></div>`;h+=aiBtn;h+=`<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>`;document.getElementById('filters').innerHTML=h;}
-async function selW(w){S[AP].win=w;S[AP].quarterKey=null;document.querySelectorAll('#filters .fb').forEach(b=>b.classList.toggle('active',b.dataset.w===w));const cr=document.getElementById('cr');if(cr)cr.classList.toggle('vis',w==='custom');if(w==='custom')return;if(AP==='webinarPerf'){await fdWebinarPerf(w);return;}if(AP==='clinician'){await fdClinician(w);return;}
-  // The Executive page has two payloads; refetch the one the pill is showing.
-  if(AP==='exec'){S.exec.win=w;if(_execMode()==='clinician'){S.clinician.win=w;S.clinician.data=null;await fdClinician(w);}else{S.exec.data=null;await fd(w);}return;}
-  await fd(w);}
+// ONE routing table for "the window changed, refetch it". selW, selQ and goC
+// each carried their own copy and they had DRIFTED: only selW grew the
+// AP==='exec' branch, so the Executive page's Custom range and its quarter
+// pills ran the BRAND fetcher. In Clinician mode that stores a brand payload in
+// S.exec.data while the page reads S.clinician.data, so the numbers simply
+// never moved — the reported symptom.
+function _mirrorCustomToClinician(win,f,t,vsFrom,vsTo){
+  if(win!=='custom')return;
+  // fdClinician builds its request body from S.clinician.cFrom/cTo, never from
+  // the ACTIVE page's state, so an Executive-page range has to be copied across
+  // or the fetch silently falls back to whatever window was stored there.
+  if(f)S.clinician.cFrom=f;
+  if(t)S.clinician.cTo=t;
+  S.clinician.cVsFrom=vsFrom||null;S.clinician.cVsTo=vsTo||null;
+}
+async function _fetchForWindow(win,f,t,vsFrom,vsTo){
+  if(AP==='webinarPerf'){await fdWebinarPerf(win,f,t,vsFrom,vsTo);return;}
+  if(AP==='clinician'){S.clinician.win=win;_mirrorCustomToClinician(win,f,t,vsFrom,vsTo);await fdClinician(win);return;}
+  // The Executive page has TWO payloads; refetch the one the mode pill shows.
+  if(AP==='exec'){
+    S.exec.win=win;
+    if(_execMode()==='clinician'){
+      S.clinician.win=win;_mirrorCustomToClinician(win,f,t,vsFrom,vsTo);
+      S.clinician.data=null;await fdClinician(win);
+    }else{
+      S.exec.data=null;await fd(win,f,t,vsFrom,vsTo);
+    }
+    return;
+  }
+  await fd(win,f,t,vsFrom,vsTo);
+}
+async function selW(w){S[AP].win=w;S[AP].quarterKey=null;document.querySelectorAll('#filters .fb').forEach(b=>b.classList.toggle('active',b.dataset.w===w));const cr=document.getElementById('cr');if(cr)cr.classList.toggle('vis',w==='custom');if(w==='custom')return;
+  await _fetchForWindow(w);}
 // Completed calendar quarters from 2026-Q1 up to the last quarter that has
 // fully ended (end date before today). A new quarter's pill appears
 // automatically once it completes — Q3 after Sep 30, Q4 after Dec 31, etc.
 function _completedQuarters(){var out=[],now=new Date(),startY=2026,todayMs=Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),now.getUTCDate());for(var y=startY;y<=now.getUTCFullYear();y++){for(var q=0;q<4;q++){var toM=q*3+2,lastDay=new Date(Date.UTC(y,toM+1,0));if(lastDay.getTime()>=todayMs)continue;var from=y+'-'+String(q*3+1).padStart(2,'0')+'-01',to=y+'-'+String(toM+1).padStart(2,'0')+'-'+String(lastDay.getUTCDate()).padStart(2,'0');out.push({l:'Q'+(q+1)+' '+y,from:from,to:to});}}return out;}
 // Quarter pill → resolves to a custom window on the quarter's exact dates.
-async function selQ(f,t){S[AP].win='custom';S[AP].cFrom=f;S[AP].cTo=t;S[AP].cVsFrom=null;S[AP].cVsTo=null;S[AP].quarterKey=f+'_'+t;document.querySelectorAll('#filters .fb').forEach(function(b){b.classList.toggle('active',b.dataset.q===f+'_'+t);});const cr=document.getElementById('cr');if(cr)cr.classList.remove('vis');const cf=document.getElementById('cf'),ct=document.getElementById('ct');if(cf)cf.value=f;if(ct)ct.value=t;if(AP==='webinarPerf'){await fdWebinarPerf('custom',f,t);return;}
-  if(AP==='clinician'){S.clinician.win='custom';await fdClinician('custom');return;}
-  await fd('custom',f,t);}
+async function selQ(f,t){S[AP].win='custom';S[AP].cFrom=f;S[AP].cTo=t;S[AP].cVsFrom=null;S[AP].cVsTo=null;S[AP].quarterKey=f+'_'+t;document.querySelectorAll('#filters .fb').forEach(function(b){b.classList.toggle('active',b.dataset.q===f+'_'+t);});const cr=document.getElementById('cr');if(cr)cr.classList.remove('vis');const cf=document.getElementById('cf'),ct=document.getElementById('ct');if(cf)cf.value=f;if(ct)ct.value=t;await _fetchForWindow('custom',f,t);}
 async function goC(){const f=document.getElementById('cf').value,t=document.getElementById('ct').value;if(!f||!t)return;const cc=document.getElementById('cc');let vsFrom=null,vsTo=null;if(cc&&cc.checked){vsFrom=document.getElementById('cvf').value||null;vsTo=document.getElementById('cvt').value||null;if(!vsFrom||!vsTo)return;}
   // Persist the custom range on the page state so secondary fetches (e.g. the
   // Irfan/Detailed Meta Campaigns/Creatives/Audiences tables, which hit the
@@ -1112,13 +1139,7 @@ async function goC(){const f=document.getElementById('cf').value,t=document.getE
   // this they'd POST {window:'custom'} with no dates and the worker would
   // reject the request — that's why those tables went blank on custom.
   S[AP].cFrom=f;S[AP].cTo=t;S[AP].cVsFrom=vsFrom;S[AP].cVsTo=vsTo;S[AP].quarterKey=null;
-  if(AP==='webinarPerf'){await fdWebinarPerf('custom',f,t,vsFrom,vsTo);return;}
-  // The Clinician page has its own endpoint and its own fetcher; selW() routes to
-  // it but this path did not, so Go ran the Brand Dashboard's fetch against
-  // /api/data and left the clinician view showing the previous window's numbers.
-  // fdClinician reads the range off S.clinician.cFrom/cTo, set just above.
-  if(AP==='clinician'){S.clinician.win='custom';await fdClinician('custom');return;}
-  await fd('custom',f,t,vsFrom,vsTo);}
+  await _fetchForWindow('custom',f,t,vsFrom,vsTo);}
 // Brand Dashboard skeleton — replaces the full #page-dashboard innerHTML
 // with a 9-section layout matching the real page (Daily / Revenue / WT Pie /
 // Funnel / Executive Summary / Conversion Funnel / Demo Outcome / Ad Spend /

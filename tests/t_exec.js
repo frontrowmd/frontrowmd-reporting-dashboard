@@ -85,8 +85,17 @@ ck('fdRevenueOutcome repaints the Executive copy by its own id',
 ck('Brand mode reads /api/data, Clinician mode /api/clinician',
    /_execMode\(\)==='clinician'\?\(S\.clinician&&S\.clinician\.data\):\(S\.exec&&S\.exec\.data\)/.test(cli),true);
 ck('the sub-nav routes the page to its own loader',/if\(AP==='exec'\)\{ _execEnsureData\(\); return; \}/.test(cli),true);
+// This routing used to be inlined in selW, and selQ/goC carried their own
+// copies that had NOT grown the exec branch — so the Custom range and the
+// quarter pills ran the brand fetcher while Clinician mode read a payload that
+// never refetched. It lives in _fetchForWindow now, and all three go through it.
+const _router=fn(cli,'_fetchForWindow');
 ck('a time-frame change refetches the payload the pill is showing',
-   /if\(AP==='exec'\)\{S\.exec\.win=w;if\(_execMode\(\)==='clinician'\)\{[\s\S]{0,120}?fdClinician\(w\);\}else\{[\s\S]{0,60}?fd\(w\);\}return;\}/.test(cli),true);
+   /if\(AP==='exec'\)\{[\s\S]{0,400}?_execMode\(\)==='clinician'[\s\S]{0,200}?fdClinician\(win\);[\s\S]{0,120}?fd\(win,/.test(_router),true);
+ck('  from every entry point, not just the preset pills',
+   (cli.match(/await _fetchForWindow\(/g)||[]).length,3);
+ck('  with no entry point dispatching on AP itself',
+   ['selW','selQ','goC'].filter(n=>/AP==='(clinician|webinarPerf|exec)'/.test(fn(cli,n))),[]);
 ck('fdClinician re-renders the Executive page too',
    /function _clnPage\(\)\{return AP==='clinician'\|\|\(AP==='exec'&&_execMode\(\)==='clinician'\);\}/.test(cli),true);
 ck('  and is used for both its render points',(cli.match(/if\(_clnPage\(\)\)renderPage\(\)/g)||[]).length,2);
