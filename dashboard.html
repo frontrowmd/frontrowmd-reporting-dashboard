@@ -3422,7 +3422,7 @@ const _trGrainDefault=function(list){
 };
 const CLN_TR_POPS=[
   {k:'inquiry',   l:'Inquiry',         w:'inquiries',      short:'inquiries'},
-  {k:'submission',l:'Full Submission', w:'full submissions',short:'full subs'},
+  {k:'submission',l:'Sign Up',          w:'sign ups',         short:'sign ups'},
 ];
 // unit drives the axis, the formatter and the KPI card. `pop:false` means the
 // measure does not move with the population toggle.
@@ -3844,7 +3844,7 @@ function _renderClnTrend(d,sfx){
 // drift apart on how a week is defined or how a null reads.
 //
 // What differs is the population: Regular vs Paid demos, not the Clinician
-// section's Inquiry vs Full Submission. The measures are otherwise the same
+// section's Inquiry vs Sign Up. The measures are otherwise the same
 // four — Count, Cost Per, CVR, CTR — with Ad Spend always shaded behind them.
 const DSH_TR_GRAINS=CLN_TR_GRAINS;
 const DSH_TR_POPS=[
@@ -4916,7 +4916,7 @@ async function fdClinician(win){
 // Which UTM dimension the right-hand Acquisition pie shows.
 window.clinicianSetUtm=function(dim){S.clinician.utmDim=dim;renderClinician();};
 // Acquisition card population: every clinician who came in ("Inquiry") vs only
-// those who got as far as booking a kickoff call ("Full Submission"). Scopes the
+// those who got as far as booking a kickoff call ("Sign Up"). Scopes the
 // whole card — referral source as well as the UTM pie — because a mix computed
 // over two different populations side by side is a comparison nobody can make.
 window.clinicianSetAcq=function(mode){S.clinician.acqMode=mode;renderClinician();};
@@ -5880,13 +5880,13 @@ function renderClinician(){
       +(_vnsPend?(' \u2014 '+fN(_vnsPend)+' of '+fN(_vns.booked||0)+' are in that state right now'):'')+'. '
       +'Scoped on the BOOKED date, not the deal create date, so a deal created earlier and booked in this window belongs to it.');
   // CONTACT-based, straight off the Acquisition section's two populations — the
-  // same pair Key Metrics divides for Full App Rate, so the three agree by
+  // same pair Key Metrics divides for Sign Up Rate, so the three agree by
   // construction rather than by coincidence. Deliberately NOT a funnel stage
   // count, which is deal-based and would disagree.
   sh+=stat('Call Scheduled',pctS(_inq>0?(_booked/_inq)*100:null),
     fN(_booked)+' \u00f7 '+fN(_inq),
     'Inquiries with a kick off call booked \u00b7 higher is better',
-    'Share of clinician contacts created in this window that have a kick off call on the books. Same contact-based population the Acquisition section uses and the same figure as the Key Metrics Full App Rate.',true);
+    'Share of clinician contacts created in this window that have a kick off call on the books. Same contact-based population the Acquisition section uses and the same figure as the Key Metrics Sign Up Rate.',true);
   sh+=cardClose;
   }
 
@@ -5954,7 +5954,7 @@ function renderClinician(){
     const UD=[['utmSource','UTM Source'],['utmMedium','UTM Medium'],['utmCampaign','UTM Campaign']];
     const ud=S.clinician.utmDim||'utmSource';
     const udLabel=(UD.find(x=>x[0]===ud)||UD[0])[1];
-    // Inquiry = everyone who arrived. Full Submission = only those with a kickoff
+    // Inquiry = everyone who arrived. Sign Up = only those with a kickoff
     // call booked. The subset comes from the worker precomputed (comp.submission)
     // rather than being filtered here, because the client never sees the
     // per-clinician rows these breakdowns are built from.
@@ -5977,7 +5977,7 @@ function renderClinician(){
     const acqToggle='<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:0 0 14px">'
             +'<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap">'
       +acqPill('inquiry','Inquiry','Every clinician who came in during the window')
-      +acqPill('submission','Full Submission','Only clinicians who have a kickoff call booked')
+      +acqPill('submission','Sign Up','Only clinicians who have a kickoff call booked')
       +'</div>'
       +(sub?'<span style="font-size:10.5px;color:var(--grey)">'+fN(sub.contacts||0)+' of '+fN(comp.contacts)+' have a call booked'
         +(acqRate!=null?' \u00b7 '+acqRate.toFixed(1)+'%':'')+'</span>':'')
@@ -5995,7 +5995,7 @@ function renderClinician(){
   }
   // ── Section 6: Clinician ad tables, one shared filter set ──
   // The Ads KPI row that used to lead this section is gone; the three cards it
-  // held (pacing, cost per inquiry, cost per full submission) all restate
+  // held (pacing, cost per inquiry, cost per sign up) all restate
   // figures the Key Metrics row at the top already carries.
   {
     // The filter set is the SHARED _metaFilterBar(), written into
@@ -10850,14 +10850,16 @@ function _clnKeyMetricsHTML(d,sfx,win){
   const _div=(a,b)=>(a!=null&&b)?a/b:null;
   const _a=(d.ads&&!d.ads.error)?d.ads:null;
   const _sp=_a?_a.spend:null;
-  // "Full App" = reached Fully Onboarded, a pipeline milestone — NOT Meta's
-  // reported conversions (ads.cacDenom), which is a different number the
-  // worker's own comment says will not agree. The same basis drives the rate
-  // below, so both cards mean one thing by it.
+  // "Sign Up" = a kickoff call is booked. It is NOT Meta's reported
+  // conversions (ads.cacDenom), which is a different number the worker's own
+  // comment says will not agree, and it is NOT the funnel's "Fully Onboarded"
+  // either — these cards were called "Full App" until 2026-10-15, which
+  // invited exactly that reading. The same basis drives the rate below, so
+  // every card here means one thing by it.
   // Both denominators come from the ACQUISITION section's populations, so the
   // two sections can never report different numbers for the same thing:
   //   inquiries       = unique clinician CONTACTS created in the window (deduped)
-  //   full submission = those of them with a kickoff call booked
+  //   sign up         = those of them with a kickoff call booked
   // These are CONTACT-based and deliberately NOT the funnel's deal-based
   // stages, so Cost per Sign Up will not equal the funnel's Fully Onboarded —
   // a kickoff call booked is an earlier milestone than Fully Onboarded.
@@ -10866,7 +10868,7 @@ function _clnKeyMetricsHTML(d,sfx,win){
   const _fo=_acqSub?(_acqSub.contacts||0):0;
   const _add=_acq.contacts||0;   // = the Acquisition section's clinician count
   const _rate=_add>0?(_fo/_add)*100:null;
-  // Ad spend over the full submissions that spend can actually claim: paid
+  // Ad spend over the sign ups that spend can actually claim: paid
   // last-click, excluding Lookalike campaigns. Null on a pre-v43 payload, where
   // the tile shows an em-dash rather than dividing by a missing count.
   const _pnl=(_acqSub&&_acqSub.paidNonLookalike!=null)?_acqSub.paidNonLookalike:null;
@@ -10910,15 +10912,15 @@ function _clnKeyMetricsHTML(d,sfx,win){
     _foot(_div(_sp,_pnl),_div(_kp?_kp.spend:null,_kp?_kp.paidNonLal:0),
           _div(_km?_km.spend:null,_km?_km.paidNonLal:0),'$',true),
     null,
-    'Clinician ad spend ÷ full submissions that carry a PAID last-click UTM and did '
+    'Clinician ad spend ÷ sign ups that carry a PAID last-click UTM and did '
     +'not come from a Lookalike campaign'
-    +(_lalExcl!=null?' — '+fN(_lalExcl)+' of '+fN(_fo)+' full submissions excluded as Lookalike, organic or untagged':''));
+    +(_lalExcl!=null?' — '+fN(_lalExcl)+' of '+fN(_fo)+' sign ups excluded as Lookalike, organic or untagged':''));
   kmh+=_kmTile('Cost per Sign Up',_f$(_div(_sp,_fo)),
-    _f$(_sp)+' ÷ '+fN(_fo)+' full submissions',
+    _f$(_sp)+' ÷ '+fN(_fo)+' sign ups',
     _foot(_div(_sp,_fo),_div(_kp?_kp.spend:null,_kp?_kp.fullSub:0),
           _div(_km?_km.spend:null,_km?_km.fullSub:0),'$',true),
     null,
-    'Clinician ad spend ÷ clinicians with a kickoff call booked — the Acquisition section’s Full Submission count');
+    'Clinician ad spend ÷ clinicians with a kickoff call booked — the Acquisition section’s Sign Up count');
   kmh+=_kmTile('Cost per Inquiry',_f$(_div(_sp,_add)),
     _f$(_sp)+' ÷ '+fN(_add)+' inquiries',
     _foot(_div(_sp,_add),_div(_kp?_kp.spend:null,_kp?_kp.inquiries:0),
@@ -10929,7 +10931,7 @@ function _clnKeyMetricsHTML(d,sfx,win){
     (_ctrOk?fN(_tf.clicks)+' ÷ '+fN(_tf.impressions)+' impressions':'no ad data'),
     _foot(_ctr,null,null,'%',false),null,
     'Cumulative click-through rate across the Clinician campaigns — total clicks over total impressions, not an average of daily rates');
-  kmh+=_kmTile('Full App Rate',_rate!=null?_rate.toFixed(1)+'%':'—',
+  kmh+=_kmTile('Sign Up Rate',_rate!=null?_rate.toFixed(1)+'%':'—',
     fN(_fo)+' ÷ '+fN(_add)+' inquiries',
     _foot(_rate,_pRate(_kp),_pRate(_km),'%',false),null,
     'Share of inquiries with a kickoff call booked — matches the Acquisition section’s rate');
@@ -13941,7 +13943,7 @@ function renderResDataKey(el){
     ['No Show Rate','Calculated','No Show \u00f7 (Meeting Happened + No Show)','Denominator is meetings supposed to occur'],
     ['Disqualification Rate','Calculated','Not a Fit \u00f7 cohort','Excludes deals with attendance = Cancelled Before Demo'],
     ['Daily Activity','HubSpot','contacts by createdate, bucketed in PT','Contacts, not deals. Weekday average shown as a dashed line'],
-    ['Acquisition','HubSpot','clinician_type + UTMs on the contact','Deduped per person, contacts created in the window \u00b7 follows the Inquiry / Full Submission toggle'],
+    ['Acquisition','HubSpot','clinician_type + UTMs on the contact','Deduped per person, contacts created in the window \u00b7 follows the Inquiry / Sign Up toggle'],
   ]);
 
   h+=mkSec('Budget & Pacing',[

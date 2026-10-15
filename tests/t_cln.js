@@ -137,13 +137,18 @@ ck('six Key Metrics tiles, all through the shared _kmTile',(KM.match(/_kmTile\(/
 // Order is load-bearing: CPD Paid Non-Lookalikes sits directly right of Ad
 // Spend, because it answers what that spend bought.
 ck('the tile order',
-   ['Ad Spend','CPD Paid Non-Lookalikes','Cost per Sign Up','Cost per Inquiry','CTR','Full App Rate']
+   ['Ad Spend','CPD Paid Non-Lookalikes','Cost per Sign Up','Cost per Inquiry','CTR','Sign Up Rate']
      .map(l=>KM.indexOf("_kmTile('"+l+"'")),
-   ['Ad Spend','CPD Paid Non-Lookalikes','Cost per Sign Up','Cost per Inquiry','CTR','Full App Rate']
+   ['Ad Spend','CPD Paid Non-Lookalikes','Cost per Sign Up','Cost per Inquiry','CTR','Sign Up Rate']
      .map(l=>KM.indexOf("_kmTile('"+l+"'")).slice().sort((a,b)=>a-b));
 ck('  and none of them is missing',
-   ['Ad Spend','CPD Paid Non-Lookalikes','Cost per Sign Up','Cost per Inquiry','CTR','Full App Rate']
+   ['Ad Spend','CPD Paid Non-Lookalikes','Cost per Sign Up','Cost per Inquiry','CTR','Sign Up Rate']
      .filter(l=>KM.indexOf("_kmTile('"+l+"'")<0),[]);
+// The whole surface says "Sign Up" now — no card, toggle or calc line may
+// still say Full Submission or Full App.
+ck('no Full Submission / Full App label survives',
+   /_kmTile\('[^']*Full (Submission|App)/.test(cli)||/l:'Full Submission'/.test(cli)
+   ||/acqPill\('submission','Full Submission'/.test(cli),false);
 // The rename: "Full App" was never what this card divided by.
 ck('Cost per Full App is gone',/Cost per Full App/.test(cli),false);
 // Cumulative, not the mean of daily rates — that would weight a 10-impression

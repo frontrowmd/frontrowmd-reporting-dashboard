@@ -3315,7 +3315,7 @@ function buildClinicianAds(windsorRows, budgets, funnelAll, cliniciansAdded, row
     // campaigns. cpiDenomAll carries the whole-window clinician count so the card
     // can show the attributed share rather than implying every clinician was paid.
     cpi: div(spend, inquiriesAttr), cpiDenom: inquiriesAttr, cpiDenomAll: cliniciansAdded,
-    // Cost per Full Submission: clinician ad spend ÷ conversions those campaigns
+    // Cost per Sign Up: clinician ad spend ÷ conversions those campaigns
     // reported. Fully Onboarded is kept alongside as the old basis, since it is a
     // pipeline milestone rather than an ad-reported conversion and the two will
     // not agree.
@@ -3601,7 +3601,7 @@ function buildClinicianTrend(deals, contactsByDeal, windsorRows, from, to) {
         impressions: w.impressions, clicks: w.clicks,
         inquiries: w.inquiries, fullApp: w.fullApp,
         // Clinician-type mix for BOTH populations, so the On-Target card can
-        // follow the Acquisition section's Inquiry / Full Submission toggle
+        // follow the Acquisition section's Inquiry / Sign Up toggle
         // without a second request.
         byType: w.byType, bySubType: w.bySubType,
         cpi: cost(w.spend, w.inquiries),
@@ -3802,7 +3802,7 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
   const byRef = {}, byUtmS = {}, byUtmM = {}, byUtmC = {};
   // Same four tallies over the SUBSET that has a kickoff call booked. The
   // Acquisition card toggles between them: "Inquiry" is everyone who arrived,
-  // "Full Submission" only those who got as far as scheduling a call. Kept as a
+  // "Sign Up" only those who got as far as scheduling a call. Kept as a
   // parallel tally rather than a second pass so both come out of one loop.
   const subRef = {}, subUtmS = {}, subUtmM = {}, subUtmC = {}, subType = {};
   let subContacts = 0;
@@ -3844,7 +3844,7 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
     byUtmS[us] = (byUtmS[us] || 0) + 1;
     byUtmM[um] = (byUtmM[um] || 0) + 1;
     byUtmC[uc] = (byUtmC[uc] || 0) + 1;
-    // "Full Submission" = a kickoff call is on the books. clinician_meeting_booked_date
+    // "Sign Up" = a kickoff call is on the books. clinician_meeting_booked_date
     // is the booking field (NOT clinician_meeting_date, which is the meeting day);
     // see the note on CLINICIAN_DEAL_PROPS for why those two are easy to confuse.
     if ((dp.clinician_meeting_booked_date || '').trim()) {
@@ -3921,7 +3921,7 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
     // and a status doesn't jump position as counts change.
     credentials: statusList(byCred), photoVerification: statusList(byPhoto),
     utmSource: capped(byUtmS, 8), utmMedium: capped(byUtmM, 8), utmCampaign: capped(byUtmC, 8),
-    // Acquisition card, "Full Submission" mode: the same breakdowns over
+    // Acquisition card, "Sign Up" mode: the same breakdowns over
     // clinicians who have a kickoff call booked.
     submission: {
       contacts: subContacts,

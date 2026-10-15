@@ -195,7 +195,11 @@ ck('the card states it ignores the page date filter',
 ck('  and names the span the figures actually cover',/Figures below cover/.test(BR),true);
 
 // ── 8. The Clinician section is untouched ─────────────────────────────────
-ck('Clinician still has its own populations',/Full Submission/.test(src),true);
+ck('Clinician still has its own populations',
+   (/const CLN_TR_POPS=\[([\s\S]*?)\n\];/.exec(src)||[])[1].match(/\{k:'/g).length,2);
+ck('  which are Inquiry and Sign Up, not the Brand ones',
+   [...(/const CLN_TR_POPS=\[([\s\S]*?)\n\];/.exec(src)||[])[1].matchAll(/l:'([^']*)'/g)].map(m=>m[1]),
+   ['Inquiry','Sign Up']);
 ck('  its own MD/DO stat',/CLN_MD_TYPE/.test(src),true);
 ck('  and its own card list',/const CLN_TR_CARDS=/.test(src),true);
 ck('the Brand card never reads a clinician field',

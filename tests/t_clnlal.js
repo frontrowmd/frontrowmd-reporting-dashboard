@@ -145,7 +145,7 @@ ck('  which the two values confirm are different cards',
    R.map['CPD Paid Non-Lookalikes']!==R.map['Cost per Sign Up'],true);
 ck('Cost per Inquiry divides by inquiries',R.map['Cost per Inquiry'],'$6');
 ck('Ad Spend shows the spend',R.map['Ad Spend'],'$2,681');
-ck('Full App Rate is full submissions over inquiries',R.map['Full App Rate'],'9.4%');
+ck('Sign Up Rate is sign ups over inquiries',R.map['Sign Up Rate'],'9.4%');
 ck('CTR is cumulative',R.map['CTR'],'3.46%');
 
 // Pacing: only on a month window, and only on Ad Spend.
@@ -165,7 +165,7 @@ ck('  while every other tile still renders',R2.map['Cost per Sign Up'],'$61');
 const NOADS=JSON.parse(JSON.stringify(PAY)); NOADS.ads={error:'down'};
 const R3=read(NOADS);
 ck('a Windsor outage blanks the cost cards, not the section',
-   [R3.map['Ad Spend'],R3.map['CPD Paid Non-Lookalikes'],R3.map['Full App Rate']],
+   [R3.map['Ad Spend'],R3.map['CPD Paid Non-Lookalikes'],R3.map['Sign Up Rate']],
    ['—','—','9.4%']);
 
 // ── 7. The section must survive BOTH pages' Jump To bars ──────────────────
