@@ -10883,8 +10883,16 @@ function _clnKeyMetricsHTML(d,sfx,win){
 
   // Same container, grid and tile as the Brand section — _kmTile is shared, so
   // the two cannot drift apart again.
-  let kmh='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px">';
-  kmh+='<div class="dsec-h dsec-in" id="dsec-clnkm'+sfx+'" data-nav="Key Metrics">Key Metrics</div>';
+  // The Brand row sits inside a static host that owns its margins
+  // (<div class="sec dsec" id="sec-keymetrics">). This one is PREPENDED into
+  // the Clinician page with no such host, so it carries its own bottom margin,
+  // as the card it replaced did.
+  let kmh='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:16px">';
+  // BOTH classes, deliberately: the Clinician page's Jump To bar selects
+  // '#clinician-c .irf-card-title' while the Executive page selects
+  // '#page-exec .dsec-h' (_SECNAV_SEL). Drop either and this section still
+  // renders perfectly but disappears from that page's nav.
+  kmh+='<div class="irf-card-title dsec-h dsec-in" id="dsec-clnkm'+sfx+'" data-nav="Key Metrics">Key Metrics</div>';
   kmh+='<div class="irf-card-sub" style="margin-bottom:12px">Clinician channel · follows the page date filter'
     +(_a?'':' · ad data unavailable for this window')+'</div>';
   kmh+='<div style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin-bottom:16px">';

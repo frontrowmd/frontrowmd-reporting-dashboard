@@ -168,5 +168,29 @@ ck('a Windsor outage blanks the cost cards, not the section',
    [R3.map['Ad Spend'],R3.map['CPD Paid Non-Lookalikes'],R3.map['Full App Rate']],
    ['—','—','9.4%']);
 
+// ── 7. The section must survive BOTH pages' Jump To bars ──────────────────
+// _SECNAV_SEL uses a DIFFERENT selector per page: the Clinician page looks for
+// '.irf-card-title', every other page for '.dsec-h'. A heading carrying only
+// one of them renders perfectly and vanishes from the other page's nav, which
+// is invisible in any screenshot of the section itself. This section is hosted
+// on both pages, so it needs both classes.
+const _navSel=/const _SECNAV_SEL=\{([^}]*)\}/.exec(cli)[1];
+ck('the Clinician page still selects .irf-card-title',
+   /clinician:'#clinician-c \.irf-card-title'/.test(_navSel),true);
+ck('  while the Executive page selects .dsec-h',
+   /exec:'#page-exec \.dsec-h'/.test(_navSel),true);
+const _kmFn=fn(cli,'_clnKeyMetricsHTML');
+ck('the heading carries BOTH classes',
+   /class="irf-card-title dsec-h dsec-in"/.test(_kmFn),true);
+ck('  and is named for the Jump To bar',/data-nav="Key Metrics"/.test(_kmFn),true);
+// Rendered, not just matched in source.
+const _h=dctx._clnKeyMetricsHTML(PAY,'','mtd');
+ck('the rendered heading would be found by the Clinician nav',
+   /<div class="[^"]*\birf-card-title\b[^"]*"[^>]*>Key Metrics</.test(_h),true);
+ck('  and by the Executive nav',
+   /<div class="[^"]*\bdsec-h\b[^"]*"[^>]*>Key Metrics</.test(_h),true);
+// No static host supplies this one's spacing: it is prepended into the page.
+ck('the section carries its own bottom margin',/margin-bottom:16px/.test(_h),true);
+
 console.log('\n'+pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);
