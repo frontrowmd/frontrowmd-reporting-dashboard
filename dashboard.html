@@ -10699,59 +10699,82 @@ function _goalTrackerHTML(opt){
   // Over-delivery keeps the bar full rather than overflowing it; the figure
   // beside it still reads past 100% so the overshoot is not hidden.
   const w=(pct==null)?0:Math.max(0,Math.min(pct,100));
+  // Sized against the ROUNDED width, which is what the browser actually lays
+  // out — computing it from the unrounded value leaves the gradient a fraction
+  // of a percent out of step with the fill it is painting.
+  const wStr=w.toFixed(1);
   // The gradient spans the whole TRACK, and the fill reveals however much of it
   // has been earned — so the bar starts red and greens as it fills, rather than
   // being a flat colour that merely changes. background-size is the fill's own
   // width scaled back up to the track's, which is what keeps the red end
   // anchored at zero instead of being squashed into the filled part.
-  // Sized against the ROUNDED width, which is what the browser actually lays
-  // out — computing it from the unrounded value leaves the gradient a fraction
-  // of a percent out of step with the fill it is painting.
-  const wStr=w.toFixed(1);
   const bg=(+wStr>0)?(10000/(+wStr)):100;
-  const bar='<div style="position:relative;height:14px;background:rgba(2,15,24,.07);border-radius:50px;overflow:visible">'
+  const met=(pct!=null&&pct>=100);
+  // Dark band, same gradient and teal rule as the Key Metrics tiles below it:
+  // on a page of white cards this is the one block that reads as a headline,
+  // which is the job. The red→green fill also carries far better on dark.
+  const pp=(pct!=null)?(pct-elapsed):null;
+  const up=(pp!=null&&pp>=0);
+  // Within 5pp of pace is on track, not a miss worth colouring. Light-on-dark
+  // hues, matching the delta footers on the tiles below.
+  const paceCol=(pp==null)?'rgba(255,255,255,.55)'
+    :(Math.abs(pp)<=5?'rgba(255,255,255,.55)':(up?'#7EE0B8':'#FF9B8F'));
+
+  let h='<div class="sec dsec" id="sec-goal'+sfx+'" style="position:relative;overflow:hidden;'
+    +'background:linear-gradient(135deg,var(--navy),var(--mid-navy));border-radius:14px;'
+    +'border-left:4px solid var(--teal);padding:20px 24px;margin-bottom:16px;'
+    +'box-shadow:0 2px 14px rgba(2,15,24,.18)">';
+  // Top line: the label, and the headline share on the right.
+  h+='<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">';
+  h+='<div>'
+    +'<div style="font-family:var(--font-h);font-size:10px;font-weight:700;color:var(--teal);'
+      +'text-transform:uppercase;letter-spacing:.11em">Monthly Goal'
+      +(opt.month?(' · '+opt.month):'')+'</div>';
+  if(cur!=null){
+    h+='<div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-top:5px">'
+      +'<span style="font-family:var(--font-h);font-size:40px;font-weight:700;color:#fff;'
+        +'line-height:1;font-variant-numeric:tabular-nums">'+fN(cur)+'</span>'
+      +'<span style="font-size:17px;color:rgba(255,255,255,.45);font-weight:600">/ '+fN(goal)+'</span>'
+      +'<span style="font-size:12px;color:rgba(255,255,255,.72);letter-spacing:.02em">'+noun+'</span>'
+      +'</div>';
+  } else {
+    h+='<div style="display:flex;align-items:baseline;gap:9px;margin-top:5px">'
+      +'<span style="font-family:var(--font-h);font-size:40px;font-weight:700;color:rgba(255,255,255,.35);line-height:1">—</span>'
+      +'<span style="font-size:12px;color:rgba(255,255,255,.55)">'+noun+' · no trend data for this window</span>'
+      +'</div>';
+  }
+  h+='</div>';
+  // Right: the share of goal, and whether the month is on track for it.
+  h+='<div style="text-align:right">';
+  if(pct!=null){
+    h+='<div style="font-family:var(--font-h);font-size:30px;font-weight:700;line-height:1;'
+      +'font-variant-numeric:tabular-nums;color:'+(met?'#7EE0B8':'#fff')+'">'+pct.toFixed(0)+'%</div>'
+      +'<div style="font-size:10px;color:rgba(255,255,255,.5);margin-top:3px;letter-spacing:.04em">of goal</div>'
+      +'<div style="margin-top:7px;display:inline-block;padding:3px 10px;border-radius:50px;'
+        +'background:rgba(255,255,255,.10);font-size:11px;font-weight:700;white-space:nowrap;color:'+paceCol+'">'
+      +(up?'↑ +':'↓ −')+Math.abs(pp).toFixed(0)+'pp '+(up?'ahead of':'behind')+' pace</div>';
+  }
+  h+='</div></div>';
+  // The bar. Taller than the tile bars because this is the section's subject,
+  // not a footnote under a number.
+  h+='<div style="position:relative;height:16px;background:rgba(255,255,255,.13);'
+      +'border-radius:50px;margin-top:16px;overflow:visible">'
     +'<div style="height:100%;width:'+wStr+'%;border-radius:50px;'
       +'background-image:linear-gradient(90deg,var(--red) 0%,var(--yellow) 55%,var(--green) 100%);'
-      +'background-size:'+bg.toFixed(1)+'% 100%;background-repeat:no-repeat;transition:width .4s"></div>'
+      +'background-size:'+bg.toFixed(1)+'% 100%;background-repeat:no-repeat;'
+      +'box-shadow:0 0 10px rgba(16,185,129,'+(met?'.45':'.12')+');transition:width .45s ease"></div>'
     // On-pace marker: where the bar would be if the month were being met evenly.
     +'<div title="On pace for this point in the month" style="position:absolute;left:'
-      +Math.min(elapsed,100).toFixed(1)+'%;top:-4px;bottom:-4px;width:2px;background:var(--navy);opacity:.55;border-radius:2px"></div>'
+      +Math.min(elapsed,100).toFixed(1)+'%;top:-5px;bottom:-5px;width:2px;background:#fff;'
+      +'opacity:.85;border-radius:2px;box-shadow:0 0 5px rgba(0,0,0,.35)"></div>'
     +'</div>';
-  let pace='';
-  if(pct!=null){
-    const pp=pct-elapsed, up=pp>=0;
-    // Within 5pp of pace is on track, not a miss worth colouring.
-    const col=Math.abs(pp)<=5?'var(--grey)':(up?'var(--green)':'var(--red)');
-    pace='<span style="color:'+col+';font-weight:700;font-size:12px;white-space:nowrap">'
-      +(up?'↑ +':'↓ −')+Math.abs(pp).toFixed(0)+'pp '+(up?'ahead of':'behind')+' pace</span>';
-  }
-  const headline=(cur!=null)
-    ? '<span style="font-family:var(--font-h);font-size:28px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+fN(cur)+'</span>'
-      +'<span style="font-size:15px;color:var(--grey);font-weight:600"> / '+fN(goal)+'</span>'
-      +'<span style="font-size:13px;color:var(--grey);margin-left:7px">'+noun+'</span>'
-    : '<span style="font-family:var(--font-h);font-size:28px;font-weight:700;color:var(--grey)">—</span>'
-      +'<span style="font-size:13px;color:var(--grey);margin-left:7px">'+noun+' · no trend data for this window</span>';
-  return '<div class="sec dsec" id="sec-goal'+sfx+'" style="background:var(--white);border:1px solid var(--border);'
-      +'border-radius:12px;padding:16px 20px;margin-bottom:16px">'
-    +'<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:9px">'
-      +'<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">'
-        +'<span style="font-family:var(--font-h);font-size:10px;font-weight:700;color:var(--teal);'
-          +'text-transform:uppercase;letter-spacing:.08em">Monthly Goal'
-          +(opt.month?(' · '+opt.month):'')+'</span>'
-        +headline
-      +'</div>'
-      +'<div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap">'
-        +(pct!=null?'<span style="font-family:var(--font-h);font-size:16px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'
-          +pct.toFixed(0)+'%</span><span style="font-size:11px;color:var(--grey)">of goal</span>':'')
-        +pace
-      +'</div>'
-    +'</div>'
-    +bar
-    +'<div style="display:flex;justify-content:space-between;margin-top:6px;font-size:10px;color:var(--grey)">'
-      +'<span>'+elapsed.toFixed(0)+'% of '+(opt.month||'the month')+' elapsed</span>'
-      +'<span>'+(cur!=null&&goal>cur?(fN(goal-cur)+' to go'):(cur!=null?'goal met':''))+'</span>'
-    +'</div>'
-  +'</div>';
+  h+='<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:8px;'
+      +'font-size:10.5px;color:rgba(255,255,255,.5)">'
+    +'<span>'+elapsed.toFixed(0)+'% of '+(opt.month||'the month')+' elapsed</span>'
+    +'<span style="color:'+(met?'#7EE0B8':'rgba(255,255,255,.6)')+';font-weight:'+(met?'700':'400')+'">'
+      +(cur!=null?(met?'goal met':(fN(goal-cur)+' to go')):'')+'</span>'
+    +'</div>';
+  return h+'</div>';
 }
 // ── Key Metrics tiles: ONE contract, used by Brand and Clinician ───────────
 // _kmTile and the pacing bar were locals inside _brandKeyMetricsHTML, so the
@@ -11148,7 +11171,21 @@ function renderExec(){
     return;
   }
   // ── 1. Key Metrics ──
-  if(km)km.innerHTML=(_execMode()==='clinician')?_clnKeyMetricsHTML(d,'-exec'):_brandKeyMetricsHTML(d,{sfx:'-exec',hideCpqd:true});
+  // The goal band leads this section too, on whichever mode the pill shows.
+  // The two modes read DIFFERENT payloads (S.clinician.data vs S.exec.data,
+  // both arriving here as `d`), so each takes its own month grain and its own
+  // goal; a shared one would silently count the other side's population.
+  // sfx '-exec' keeps the section id off the owning page's.
+  if(km){
+    const _cln=(_execMode()==='clinician');
+    const _gm=_goalMonthEntry(_cln?(d.ads&&d.ads.trend&&d.ads.trend.month):(d.trend&&d.trend.month));
+    const _goal=_goalTrackerHTML({
+      cur:_gm?(_cln?_gm.fullApp:_gm.regular):null,
+      goal:_cln?GOAL_CLINICIAN_SIGNUPS:GOAL_BRAND_REGULAR_DEMOS,
+      noun:_cln?'Sign Ups':'Regular Demos',
+      month:_goalMonthName(_gm&&_gm.wk),sfx:'-exec'});
+    km.innerHTML=_goal+(_cln?_clnKeyMetricsHTML(d,'-exec'):_brandKeyMetricsHTML(d,{sfx:'-exec',hideCpqd:true}));
+  }
   // Only the Brand row has a post-insert step (its Revenue Outcome card is
   // emitted empty); the Clinician row is complete as built.
   if(_execMode()==='brand')_brandKeyMetricsAfter(d,'-exec');

@@ -82,12 +82,12 @@ const el=ctx._goalMonthElapsed();
 // bar uses, so one word means one thing on the page.
 const behind=T(Math.round(150*(el-30)/100)), ahead=T(Math.round(150*(el+30)/100));
 ck('well short of pace reads behind',/behind pace/.test(behind),true);
-ck('  in red',/color:var\(--red\)/.test(behind),true);
+ck('  in the light-on-dark red',/color:#FF9B8F/.test(behind),true);
 ck('well ahead reads ahead',/ahead of pace/.test(ahead),true);
-ck('  in green',/color:var\(--green\)/.test(ahead),true);
+ck('  in the light-on-dark green',/color:#7EE0B8/.test(ahead),true);
 // Within 5pp is on track; colouring it would cry wolf every day of the month.
 const onPace=T(Math.round(150*el/100));
-ck('on pace is not coloured as a miss',/color:var\(--grey\);font-weight:700/.test(onPace),true);
+ck('on pace is not coloured as a miss',/color:rgba\(255,255,255,\.55\)">\u2191|color:rgba\(255,255,255,\.55\)">\u2193/.test(onPace),true);
 ck('the on-pace marker is drawn',/On pace for this point in the month/.test(T(62)),true);
 
 // ── 6. No data is stated, not faked ───────────────────────────────────────
@@ -112,7 +112,45 @@ ck('  and renders ABOVE Key Metrics',/\+_clnKeyMetricsHTML\(d,''\)\+h;/.test(cli
 ck('neither call site reads a page window',
    /_goalTrackerHTML\(\{cur:[^}]*S\.(dashboard|clinician)\.win/.test(cli),false);
 
-// ── 8. Scope ──────────────────────────────────────────────────────────────
+// ── 8. It has to STAND OUT ────────────────────────────────────────────────
+// A dark band on a page of white cards. Reverting it to a white card is the
+// regression that would pass every other assertion here.
+const H=T(62);
+ck('the band is a dark hero, not another white card',
+   /background:linear-gradient\(135deg,var\(--navy\),var\(--mid-navy\)\)/.test(H),true);
+ck('  with the teal rule the section headers use',/border-left:4px solid var\(--teal\)/.test(H),true);
+ck('  and lifted off the page',/box-shadow:0 2px 14px/.test(H),true);
+ck('the count is the headline',/font-size:40px;font-weight:700;color:#fff/.test(H),true);
+ck('  with the goal beside it, not competing',/\/ 150/.test(H),true);
+ck('the share of goal is its own figure',/font-size:30px;font-weight:700/.test(H),true);
+ck('the pace reads as a pill',/padding:3px 10px;border-radius:50px/.test(H),true);
+ck('the bar is the subject, not a footnote',/height:16px/.test(H),true);
+// Meeting the goal is worth seeing at a glance.
+const MET=T(160);
+ck('a met goal turns the share green',/font-weight:700;line-height:1;font-variant-numeric:tabular-nums;color:#7EE0B8/.test(MET),true);
+ck('  and says so in the footer',/color:#7EE0B8;font-weight:700">goal met/.test(MET),true);
+ck('  while an unmet one does not',/goal met/.test(H),false);
+
+// ── 9. All THREE hosts render it ──────────────────────────────────────────
+// Brand page, Clinician page, and the Executive page in either mode. The two
+// Executive modes read DIFFERENT payloads, so each must take its own month
+// grain and its own goal — a shared one would count the other side's people.
+ck('the Executive page renders it too',/_goalTrackerHTML\(\{[\s\S]{0,260}?sfx:'-exec'\}\)/.test(cli),true);
+ck('  picking the population from the mode pill',
+   /cur:_gm\?\(_cln\?_gm\.fullApp:_gm\.regular\):null/.test(cli),true);
+ck('  and the goal with it',
+   /goal:_cln\?GOAL_CLINICIAN_SIGNUPS:GOAL_BRAND_REGULAR_DEMOS/.test(cli),true);
+ck('  reading the matching month grain per mode',
+   /_goalMonthEntry\(_cln\?\(d\.ads&&d\.ads\.trend&&d\.ads\.trend\.month\):\(d\.trend&&d\.trend\.month\)\)/.test(cli),true);
+ck('  above Key Metrics there as well',
+   /km\.innerHTML=_goal\+\(_cln\?_clnKeyMetricsHTML/.test(cli),true);
+// Suffixed ids, or the Executive copy collides with the owning page's.
+ck('every host uses a distinct section id',
+   [...cli.matchAll(/_goalTrackerHTML\(\{[\s\S]{0,300}?sfx:'([^']*)'\}\)/g)].map(m=>m[1]).sort(),
+   ['','','-exec']);
+ck('  and the id is built from it',/id="sec-goal'\+sfx\+'"/.test(cli),true);
+
+// ── 10. Scope ─────────────────────────────────────────────────────────────
 // dashboard.html is one inline script; a function-local called from module
 // scope is a blank page, so every piece of this has to be reachable.
 const MODULE=new Set([...cli.matchAll(/^(?:function\s+([A-Za-z_$][\w$]*)|(?:const|let|var)\s+([A-Za-z_$][\w$]*))/gm)]
