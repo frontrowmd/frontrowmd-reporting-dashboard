@@ -872,7 +872,7 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v42';   // v42: day boundaries moved from Pacific to EASTERN (matches the HubSpot portal).
+const API_CACHE_VER = 'v43';   // v43: clinician submission carries the Lookalike-excluded denominators.
                                // v38: trend/trendRange are actually FORWARDED by buildResponse.
                                //      v37 built them onto currentData but never shipped them, so a
                                //      cached v37 payload has the fields missing, not stale.
@@ -1517,6 +1517,15 @@ async function kvCachedFetchNE(env, key, ttlSec, fetchFn) {
   // good cached value over an empty set so deltas stay populated.
   return (stale && stale.length) ? stale : (data || []);
 }
+
+// A Lookalike-audience campaign, by name. Live clinician and brand campaigns
+// spell it "2% Lookalikes" ("S01 - TOF - Clinician Targeting - 2% Lookalikes"),
+// so the plural and the percentage prefix both have to pass. 'lal' is matched
+// only as a whole word — unanchored it hits "LALxyz" and, worse, nothing in
+// the current naming needs it, so it is there for future shorthand rather than
+// for anything live.
+const CLN_LOOKALIKE_RE = /look-?alike|\blal\b/i;
+function isLookalikeCampaign(name) { return CLN_LOOKALIKE_RE.test(String(name || '')); }
 
 // Demos Booked = contacts created in window with date_demo_booked set (guide Section 3)
 // Windsor date clamp — don't query before ad data exists
@@ -3797,6 +3806,15 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
   // parallel tally rather than a second pass so both come out of one loop.
   const subRef = {}, subUtmS = {}, subUtmM = {}, subUtmC = {}, subType = {};
   let subContacts = 0;
+  // Denominators for "CPD Paid Non-Lookalikes": clinician ad spend over the full
+  // submissions that spend can actually claim. Two independent tests, counted
+  // separately so the card can be pointed at either without another fetch:
+  //   subNonLal      -- not from a Lookalike campaign. INCLUDES organic and
+  //                     untagged, which literally did not come from one.
+  //   subPaidNonLal  -- also carries a paid last-click UTM. This is the one the
+  //                     card divides by: dividing ad spend by an organic signup
+  //                     credits the spend with something it did not buy.
+  let subNonLal = 0, subPaidNonLal = 0;
   const byCred = {}, byPhoto = {};
   let verifContacts = 0;   // contacts CREATED in the window (verification scope)
   let contacts = 0;
@@ -3836,6 +3854,16 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
       subUtmS[us] = (subUtmS[us] || 0) + 1;
       subUtmM[um] = (subUtmM[um] || 0) + 1;
       subUtmC[uc] = (subUtmC[uc] || 0) + 1;
+      // RAW utm pair, not the 'Not set'-normalised us/um above — those would
+      // make every untagged contact look tagged. Same mapUtmToChannel test as
+      // every other paid figure on either dashboard.
+      const _rs2 = (cp.utm_source || dp.utm_source || '').trim();
+      const _rm2 = (cp.utm_medium || dp.utm_medium || '').trim();
+      const _lal = isLookalikeCampaign(cp.utm_campaign || dp.utm_campaign || '');
+      if (!_lal) {
+        subNonLal++;
+        if (mapUtmToChannel(_rs2, _rm2)) subPaidNonLal++;
+      }
     }
     // Verification: medical_degree_status is labelled "Credentials Status" in HubSpot.
     // Verification only applies once the meeting has actually happened — before
@@ -3897,6 +3925,9 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
     // clinicians who have a kickoff call booked.
     submission: {
       contacts: subContacts,
+      // Both Lookalike-excluded denominators; see where they are counted.
+      nonLookalike: subNonLal,
+      paidNonLookalike: subPaidNonLal,
       referral: capped(subRef, 9),
       type: capped(subType, 9),
       utmSource: capped(subUtmS, 8), utmMedium: capped(subUtmM, 8), utmCampaign: capped(subUtmC, 8),
@@ -8979,13 +9010,14 @@ export default {
           // deduped per person — deliberately NOT the funnel's deal-based stages.
           const cp = buildClinicianComposition(dw, contactsByDeal, w.from, w.to);
           const fullSub = (cp.submission && cp.submission.contacts) || 0;
+          const paidNonLal = (cp.submission && cp.submission.paidNonLookalike) || 0;
           let spend = null;
           try {
             const wr = await fetchWindsorAds(env.WINDSOR_API_KEY, wFrom(w.from), w.to);
             const a = buildClinicianAds(wr, getBudgetsForMonth(w.from), fp.all && fp.all.funnel, dl.total || 0, fp.rows || [], w.from, w.to);
             spend = a && typeof a.spend === 'number' ? a.spend : null;
           } catch (e) { console.error('Clinician KPI spend ' + w.from + '..' + w.to + ':', e && e.message); }
-          return { spend, fullSub, inquiries: cp.contacts || 0 };
+          return { spend, fullSub, paidNonLal, inquiries: cp.contacts || 0 };
         };
         const [kpiPrior, kpiPriorMonth] = await Promise.all([_clnKpiFor(prior), _clnKpiFor(priorMonth)]);
         const topFunnel = await fetchClinicianTopFunnel(env.WINDSOR_API_KEY, cur.from, cur.to);

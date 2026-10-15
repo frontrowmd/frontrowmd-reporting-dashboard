@@ -37,7 +37,7 @@ ck('and All Clinicians still lands after them',
 // only `d`, so the hazard is gone — what matters instead is that it depends on
 // nothing from renderClinician's scope.
 ck('the row is a standalone builder taking only the payload',
-   /function _clnKeyMetricsHTML\(d,sfx\)/.test(cli),true);
+   /function _clnKeyMetricsHTML\(d,sfx,win\)/.test(cli),true);
 ck('  and reads the payload directly, not a renderClinician local',
    /d\.composition/.test(KM)&&!/\bcomp\b/.test(KM),true);
 
@@ -63,14 +63,15 @@ ck('the delta footer is module scope, not nested in renderDash',
    /\n function _irTileFooterDash|\nfunction _irTileFooterDash/.test(cli),true);
 ck('renderDash no longer declares its own copy',
    /function renderDash\(\)\{[\s\S]{0,400}?function _irTileFooterDash/.test(cli),false);
-ck('the pacing bar is module scope and takes spend+budget',
-   /function _clnPaceBar\(pct,elapsed,spend,budget\)\{/.test(cli),true);
-// Key Metrics is now its only caller — the Ads row that used to share it is
-// gone, so the helper must not have gone with it.
-ck('Key Metrics is the one caller left',
-   (cli.match(/_clnPaceBar\(/g)||[]).length,2);
-ck('and it passes the window spend and budget',
-   /_clnPaceBar\(_pace,_a\?_a\.elapsedPct:null,_sp,_a\?_a\.budget:0\)/.test(cli),true);
+// The clinician-only tile and pacing bar are GONE. Both sections now render
+// _kmTile / _kmPaceBar, so there is no second implementation to drift from the
+// Brand one — which is exactly how they came to look different.
+ck('the clinician-only tile helpers were removed',
+   /function _clnKpiTile\(/.test(cli)||/function _clnPaceBar\(/.test(cli),false);
+ck('the pacing bar is module scope and takes spend, budget and the window',
+   /^function _kmPaceBar\(spend,budget,win\)/.test(fn(cli,'_kmPaceBar')),true);
+ck('Key Metrics passes the window spend, budget and its own window',
+   /_kmPaceBar\(_sp\|\|0,_budget,win\)/.test(KM),true);
 
 // --- the four cards' arithmetic -----------------------------------------
 // Both denominators come from the ACQUISITION section, so the two sections can
@@ -93,8 +94,10 @@ ck('and the Acquisition caption computes it the same way',
 // Both "Full App" cards must share one definition, or the row means two things.
 ck('Full App Rate uses the SAME onboarded basis as Cost per Full App',
    /_rate=_add>0\?\(_fo\/_add\)\*100:null/.test(KM),true);
-ck('lower-is-better is set on the two cost cards only',
-   (KM.match(/,'\$',true\)/g)||[]).length,2);
+// THREE cost cards now: CPD Paid Non-Lookalikes joined the two. Each divides
+// spend by a count, so lower is better on all three.
+ck('lower-is-better is set on the three cost cards only',
+   (KM.match(/,'\$',true\)/g)||[]).length,3);
 ck('and the rate is not inverted',/_foot\(_rate,_pRate\(_kp\),_pRate\(_km\),'%',false\)/.test(KM),true);
 // A Windsor outage must blank one card's numbers, not the whole new section.
 ck('a failed ad fetch degrades instead of throwing',/_a=\(d\.ads&&!d\.ads\.error\)\?d\.ads:null/.test(KM),true);
@@ -103,8 +106,10 @@ ck('and the section says so',/ad data unavailable for this window/.test(KM),true
 // --- the deltas the user asked the worker to provide --------------------
 ck('the worker computes prior and last-month windows',
    /const \{ current: cur, prior, priorMonth \} = computeWindows/.test(src),true);
-ck('and exposes the three KPI inputs for each',
-   /return \{ spend, fullSub, inquiries: cp\.contacts \|\| 0 \};/.test(src),true);
+// FOUR inputs now: paidNonLal joined, or the CPD Paid Non-Lookalikes tile's
+// vs-prior / vs-LM footer would be permanently blank.
+ck('and exposes the four KPI inputs for each',
+   /return \{ spend, fullSub, paidNonLal, inquiries: cp\.contacts \|\| 0 \};/.test(src),true);
 ck('the comparison windows use the Acquisition basis too',
    /const cp = buildClinicianComposition\(dw, contactsByDeal, w\.from, w\.to\);/.test(src),true);
 // Dead payload is how the orphaned multiTouchAttribution field happened.
@@ -128,10 +133,19 @@ ck('and the history funnel is no longer spread',/\n          \.\.\.funnel,/.test
 ck('the history table still ships for All Clinicians',/historyRange: \{ from: CLINICIAN_HISTORY_FROM, to: histTo \},/.test(src),true);
 
 // --- CTR -------------------------------------------------------------------
-ck('a fifth Key Metrics tile exists',(KM.match(/_clnKpiTile\(/g)||[]).length,5);
-ck('CTR sits between Cost per Inquiry and Full App Rate',
-   KM.indexOf("_clnKpiTile('Cost per Inquiry'")<KM.indexOf("_clnKpiTile('CTR'")
-   &&KM.indexOf("_clnKpiTile('CTR'")<KM.indexOf("_clnKpiTile('Full App Rate'"),true);
+ck('six Key Metrics tiles, all through the shared _kmTile',(KM.match(/_kmTile\(/g)||[]).length,6);
+// Order is load-bearing: CPD Paid Non-Lookalikes sits directly right of Ad
+// Spend, because it answers what that spend bought.
+ck('the tile order',
+   ['Ad Spend','CPD Paid Non-Lookalikes','Cost per Sign Up','Cost per Inquiry','CTR','Full App Rate']
+     .map(l=>KM.indexOf("_kmTile('"+l+"'")),
+   ['Ad Spend','CPD Paid Non-Lookalikes','Cost per Sign Up','Cost per Inquiry','CTR','Full App Rate']
+     .map(l=>KM.indexOf("_kmTile('"+l+"'")).slice().sort((a,b)=>a-b));
+ck('  and none of them is missing',
+   ['Ad Spend','CPD Paid Non-Lookalikes','Cost per Sign Up','Cost per Inquiry','CTR','Full App Rate']
+     .filter(l=>KM.indexOf("_kmTile('"+l+"'")<0),[]);
+// The rename: "Full App" was never what this card divided by.
+ck('Cost per Full App is gone',/Cost per Full App/.test(cli),false);
 // Cumulative, not the mean of daily rates — that would weight a 10-impression
 // day the same as a 10,000-impression one.
 ck('CTR is total clicks over total impressions',

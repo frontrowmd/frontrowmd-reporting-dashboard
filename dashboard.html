@@ -5078,34 +5078,9 @@ var _clnPieSeq=0;
 // headline and the table can never disagree. Returns '' for the aggregate when
 // the analyzer payload has not loaded yet, in which case the cards fall back to
 // the worker's page-window figures and say so.
-// Clinician Ads KPI tile. Hoisted out of renderClinician so the cost cards can
-// be repainted on their own once the analyzer payload arrives, without
-// re-rendering the whole page.
-// Budget pacing bar for the Clinician cards. Module scope so both the Ads row
-// and the Key Metrics row draw the identical bar from the same numbers.
-function _clnPaceBar(pct,elapsed,spend,budget){
-  const f$0=(v)=>v==null?'\u2014':'$'+Math.round(v).toLocaleString();
-
-    if(pct==null)return '';
-    const w=Math.max(0,Math.min(100,pct));
-    const over=pct>100;
-    const fill=over?'#FF9B8F':(elapsed!=null&&pct>elapsed+10?'#F0C36A':'#8FD3B6');
-    let h='<div style="margin-top:9px"><div style="position:relative;height:8px;background:rgba(255,255,255,.16);border-radius:50px;overflow:visible">'
-      +'<div style="height:100%;width:'+w.toFixed(1)+'%;background:'+fill+';border-radius:50px;transition:width .3s"></div>';
-    if(elapsed!=null){
-      const e=Math.max(0,Math.min(100,elapsed));
-      h+='<div title="On-pace marker" style="position:absolute;top:-3px;bottom:-3px;left:'+e.toFixed(1)+'%;width:2px;background:rgba(255,255,255,.75);border-radius:2px"></div>';
-    }
-    h+='</div><div style="display:flex;justify-content:space-between;margin-top:4px;font-size:9px;color:rgba(255,255,255,.55)">'
-      +'<span>'+f$0(spend)+' spent</span><span>'+f$0(budget)+' budget</span></div></div>';
-    return h;
-  }
-function _clnKpiTile(lbl,val,calc,sub,tone,extra){return '<div style="flex:1 1 190px;min-width:180px;background:linear-gradient(160deg,var(--navy),var(--midnight));border:1px solid rgba(255,255,255,.10);border-radius:10px;padding:14px 16px;box-shadow:0 2px 8px rgba(2,15,24,.16)">'
-      +'<div style="font-size:9.5px;font-weight:700;color:rgba(255,255,255,.62);text-transform:uppercase;letter-spacing:.05em">'+lbl+'</div>'
-      +'<div style="font-family:var(--font-h);font-size:24px;font-weight:700;color:'+(tone||'#fff')+';margin-top:3px">'+val+'</div>'
-      +(calc?'<div style="font-size:10.5px;color:rgba(255,255,255,.72);margin-top:3px;font-variant-numeric:tabular-nums">'+calc+'</div>':'')
-      +(extra||'')
-      +(sub?'<div style="font-size:9px;color:rgba(255,255,255,.52);margin-top:3px;line-height:1.4">'+sub+'</div>':'')+'</div>';}
+// _clnKpiTile / _clnPaceBar lived here. Both are gone: the Clinician Key
+// Metrics row now renders _kmTile and _kmPaceBar, the same helpers the Brand
+// section uses, so there is no second tile implementation to drift from it.
 // Clinician-only totals cells, split out so each column is one guarded emission
 // like every other cell in this table — a multi-line ternary hid the column
 // count from both the reader and the parity check.
@@ -10673,6 +10648,59 @@ function _dashKmModel(d){
 // Jump To scroll target) and #t-revenue (repainted asynchronously by
 // fdRevenueOutcome) — because getElementById returns the FIRST match in the
 // document, so an unsuffixed second copy would silently steal both.
+// ── Key Metrics tiles: ONE contract, used by Brand and Clinician ───────────
+// _kmTile and the pacing bar were locals inside _brandKeyMetricsHTML, so the
+// Clinician section drew its own look-alike (_clnKpiTile / _clnPaceBar) and the
+// two had drifted: different background, value size, calc treatment and a
+// pacing bar that showed spend-vs-budget instead of pace-against-the-month.
+// Hoisted so both sections render the SAME tile and a change lands on both.
+//
+// Reserved heights: a one-line label beside a two-line one otherwise pushes its
+// value half a line down, and no two tiles in a row line up.
+const _KM_LBL='min-height:36px', _KM_CALC='min-height:46px';
+function _kmTile(label,value,calc,footer,extra,tip,span){
+  return '<div class="tile hero" style="border-left:3px solid var(--teal)'
+    +(span?';grid-column:span '+span:'')+'"'+(tip?' title="'+tip+'"':'')+'>'
+    +'<div class="tlbl" style="'+_KM_LBL+'">'+label+'</div><div class="tval">'+value+'</div>'
+    +'<div style="'+_KM_CALC+'">'+(calc?'<div class="irf-calc">'+calc+'</div>':'')+'</div>'
+    +(footer||'')+(extra||'')+'</div>';
+}
+// Spend pacing against a MONTH budget: the bar is budget spent, the white tick
+// is how much of the month has elapsed, and the right-hand figure is the gap
+// between them in percentage points.
+//
+// Returns '' on any other window. Window spend against a full-month budget
+// would mislead on 7d / YTD / All Time / custom, so the bar is absent rather
+// than wrong — the caller passes its page window and gets nothing if it is not
+// a month.
+function _kmPaceBar(spend,budget,win){
+  const w=win||'mtd';
+  const isMonth=(w==='mtd'||w==='lastMonth');
+  if(!isMonth)return '';
+  if(!(budget>0))return '<div style="margin-top:8px;font-size:10px;color:rgba(255,255,255,.5)">No monthly budget set</div>';
+  const pct=(spend/budget)*100;
+  const now=new Date();
+  // lastMonth is closed, so it is 100% elapsed by definition.
+  const elapsed=w==='lastMonth'?100
+    :(now.getDate()/new Date(now.getFullYear(),now.getMonth()+1,0).getDate())*100;
+  const pp=pct-elapsed;
+  const up=pp>=0;
+  // Only a gap wider than 10pp is worth colouring: ahead reads warm (burning
+  // too fast), behind reads green (underspending against plan).
+  const fill=Math.abs(pp)>10?(up?'#FF9B8F':'#7EE0B8'):'var(--teal)';
+  return '<div style="margin-top:9px" title="'+pct.toFixed(0)+'% of '+f$(budget)
+    +' monthly budget spent · '+elapsed.toFixed(0)+'% of month elapsed">'
+    +'<div style="position:relative;height:8px;background:rgba(255,255,255,.18);border-radius:4px;overflow:visible">'
+    +'<div style="position:absolute;left:0;top:0;height:8px;width:'+Math.min(pct,100)+'%;background:'+fill+';border-radius:4px"></div>'
+    +'<div style="position:absolute;left:'+Math.min(elapsed,100)+'%;top:-2px;bottom:-2px;width:1.5px;background:#fff"></div>'
+    +'</div>'
+    +'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:5px;font-size:10px">'
+    +'<span style="color:rgba(255,255,255,.55)"><span style="font-weight:700;color:#fff;font-variant-numeric:tabular-nums">'
+    +pct.toFixed(0)+'%</span> spent</span>'
+    +'<span style="color:'+(Math.abs(pp)>10?fill:'rgba(255,255,255,.55)')+';font-weight:700">'
+    +(up?'↑ +':'↓ −')+Math.abs(pp).toFixed(0)+'pp '+(up?'ahead':'behind')+'</span>'
+    +'</div></div>';
+}
 function _brandKeyMetricsHTML(d,opt){
   opt=opt||{};
   const sfx=opt.sfx||'', hideCpqd=!!opt.hideCpqd, win=opt.win;
@@ -10700,45 +10728,7 @@ function _brandKeyMetricsHTML(d,opt){
     }
   }
   const _kmSpend=em.totalSpend||0;
-  const _kmPctBudget=_kmBudget>0?(_kmSpend/_kmBudget)*100:null;
-  // Pacing only means something on a MONTH window: window spend against a
-  // full-month budget would mislead on 7d / YTD / All Time / custom.
-  const _kmWin=win||'mtd';
-  const _kmIsMonth=(_kmWin==='mtd'||_kmWin==='lastMonth');
-  const _kmNow=new Date();
-  const _kmElapsed=_kmWin==='lastMonth'?100
-    :(_kmNow.getDate()/new Date(_kmNow.getFullYear(),_kmNow.getMonth()+1,0).getDate())*100;
-  const _kmPP=(_kmIsMonth&&_kmPctBudget!=null)?(_kmPctBudget-_kmElapsed):null;
-  let _kmPace='';
-  if(!_kmIsMonth){
-    _kmPace='';   // window spend against a full-month budget would mislead
-  } else if(_kmBudget===0){
-    _kmPace='<div style="margin-top:8px;font-size:10px;color:rgba(255,255,255,.5)">No monthly budget set</div>';
-  } else if(_kmPP!=null){
-    const _kmUp=_kmPP>=0;
-    const _kmFill=Math.abs(_kmPP)>10?(_kmUp?'#FF9B8F':'#7EE0B8'):'var(--teal)';
-    _kmPace='<div style="margin-top:9px" title="'+_kmPctBudget.toFixed(0)+'% of '+f$(_kmBudget)
-      +' monthly budget spent \u00b7 '+_kmElapsed.toFixed(0)+'% of month elapsed">'
-      +'<div style="position:relative;height:8px;background:rgba(255,255,255,.18);border-radius:4px;overflow:visible">'
-      +'<div style="position:absolute;left:0;top:0;height:8px;width:'+Math.min(_kmPctBudget,100)+'%;background:'+_kmFill+';border-radius:4px"></div>'
-      +'<div style="position:absolute;left:'+Math.min(_kmElapsed,100)+'%;top:-2px;bottom:-2px;width:1.5px;background:#fff"></div>'
-      +'</div>'
-      +'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:5px;font-size:10px">'
-      +'<span style="color:rgba(255,255,255,.55)"><span style="font-weight:700;color:#fff;font-variant-numeric:tabular-nums">'
-      +_kmPctBudget.toFixed(0)+'%</span> spent</span>'
-      +'<span style="color:'+(Math.abs(_kmPP)>10?_kmFill:'rgba(255,255,255,.55)')+';font-weight:700">'
-      +(_kmUp?'\u2191 +':'\u2193 \u2212')+Math.abs(_kmPP).toFixed(0)+'pp '+(_kmUp?'ahead':'behind')+'</span>'
-      +'</div></div>';
-  }
-  // Label and calc get reserved height: a one-line label next to a two-line one
-  // otherwise pushes its value half a line down, and no two tiles in the row line up.
-  const _KM_LBL='min-height:36px', _KM_CALC='min-height:46px';
-  const _kmTile=(label,value,calc,footer,extra,tip,span)=>
-    '<div class="tile hero" style="border-left:3px solid var(--teal)'
-    +(span?';grid-column:span '+span:'')+'"'+(tip?' title="'+tip+'"':'')+'>'
-    +'<div class="tlbl" style="'+_KM_LBL+'">'+label+'</div><div class="tval">'+value+'</div>'
-    +'<div style="'+_KM_CALC+'">'+(calc?'<div class="irf-calc">'+calc+'</div>':'')+'</div>'
-    +(footer||'')+(extra||'')+'</div>';
+  const _kmPace=_kmPaceBar(_kmSpend,_kmBudget,win);
   const _kmFoot=(cur,pv,lmv,fmt,inv)=>_irTileFooterDash(cur,pv,lmv,fmt,inv);
 
   let kmh='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px">';
@@ -10849,66 +10839,94 @@ function _brandKeyMetricsAfter(d,sfx){
 // the same row. It emits NO ids and needs no post-insert step, so unlike the
 // Brand row it carries no collision hazard — `sfx` exists only to label the
 // heading for the Jump To nav.
-function _clnKeyMetricsHTML(d,sfx){
+function _clnKeyMetricsHTML(d,sfx,win){
   sfx=sfx||'';
-  const _card=(title,sub,body)=>'<div class="sec sec-card dsec" style="margin-bottom:16px">'
-    +'<div class="irf-card-title dsec-h dsec-in" id="dsec-clnkm'+sfx+'" data-nav="Key Metrics" style="font-size:22px;font-weight:700;letter-spacing:-.01em;border-left:4px solid var(--teal);padding-left:11px;line-height:1.2">'+title+'</div>'
-    +'<div class="irf-card-sub" style="margin-left:15px">'+sub+'</div>'+body+'</div>';
-    const _f$=(v)=>v==null?'\u2014':'$'+Math.round(v).toLocaleString();
-    const _div=(a,b)=>(a!=null&&b)?a/b:null;
-    const _a=(d.ads&&!d.ads.error)?d.ads:null;
-    const _sp=_a?_a.spend:null;
-    // "Full App" = reached Fully Onboarded, a pipeline milestone — NOT Meta's
-    // reported conversions (ads.cacDenom), which is a different number the
-    // worker's own comment says will not agree. The same basis drives the rate
-    // below, so both cards mean one thing by "Full App".
-    // Both denominators come from the ACQUISITION section's populations, so the
-    // two sections can never report different numbers for the same thing:
-    //   inquiries   = unique clinician CONTACTS created in the window (deduped)
-    //   full submission = those of them with a kickoff call booked
-    // These are CONTACT-based and deliberately NOT the funnel's deal-based
-    // stages, so Cost per Full App will not equal the funnel's Fully Onboarded —
-    // a kickoff call booked is an earlier milestone than Fully Onboarded.
-    const _acq=d.composition||{};
-    const _acqSub=_acq.submission||null;
-    const _fo=_acqSub?(_acqSub.contacts||0):0;
-    const _add=_acq.contacts||0;   // = the Acquisition section's clinician count
-    const _rate=_add>0?(_fo/_add)*100:null;
-    const _kp=d.kpiPrior||null, _km=d.kpiPriorMonth||null;
-    const _pRate=(w)=>(w&&w.inquiries>0)?(w.fullSub/w.inquiries)*100:null;
-    const _foot=(cur,pv,lmv,fmt,inv)=>_irTileFooterDash(cur,pv,lmv,fmt,inv);
-    const _pace=(_a&&_a.budget>0)?(_sp/_a.budget)*100:null;
-    // Cumulative, not the mean of per-day CTRs: that would weight a 10-impression
-    // day the same as a 10,000-impression one.
-    const _tf=d.topFunnel||{};
-    const _ctrOk=(_tf.impressions!=null&&_tf.impressions>0&&_tf.clicks!=null);
-    const _ctr=_ctrOk?(_tf.clicks/_tf.impressions)*100:null;
-    const kmBody='<div style="display:flex;gap:12px;flex-wrap:wrap">'
-      +_clnKpiTile('Ad Spend',_f$(_sp),
-         (_a&&_a.budget>0)?(_f$(_sp)+' \u00f7 '+_f$(_a.budget)+' budget'):'no budget set',
-         'Clinician channel only \u2014 excluded from every other dashboard KPI',null,
-         _clnPaceBar(_pace,_a?_a.elapsedPct:null,_sp,_a?_a.budget:0)
-         +_foot(_sp,_kp?_kp.spend:null,_km?_km.spend:null,'$',false))
-      +_clnKpiTile('Cost per Full App',_f$(_div(_sp,_fo)),
-         _f$(_sp)+' \u00f7 '+fN(_fo)+' full submissions',
-         'Clinician ad spend \u00f7 clinicians with a kickoff call booked \u2014 the Acquisition section\u2019s Full Submission count',null,
-         _foot(_div(_sp,_fo),_div(_kp?_kp.spend:null,_kp?_kp.fullSub:0),_div(_km?_km.spend:null,_km?_km.fullSub:0),'$',true))
-      +_clnKpiTile('Cost per Inquiry',_f$(_div(_sp,_add)),
-         _f$(_sp)+' \u00f7 '+fN(_add)+' inquiries',
-         'Clinician ad spend \u00f7 clinician contacts created in the window \u2014 the Acquisition section\u2019s count',null,
-         _foot(_div(_sp,_add),_div(_kp?_kp.spend:null,_kp?_kp.inquiries:0),_div(_km?_km.spend:null,_km?_km.inquiries:0),'$',true))
-      +_clnKpiTile('CTR',_ctr!=null?_ctr.toFixed(2)+'%':'\u2014',
-         (_ctrOk?fN(_tf.clicks)+' \u00f7 '+fN(_tf.impressions)+' impressions':'no ad data'),
-         'Cumulative click-through rate across the Clinician campaigns \u2014 total clicks over total impressions, not an average of daily rates',null,
-         _foot(_ctr,null,null,'%',false))
-      +_clnKpiTile('Full App Rate',_rate!=null?_rate.toFixed(1)+'%':'\u2014',
-         fN(_fo)+' \u00f7 '+fN(_add)+' inquiries',
-         'Share of inquiries with a kickoff call booked \u2014 matches the Acquisition section\u2019s rate',null,
-         _foot(_rate,_pRate(_kp),_pRate(_km),'%',false))
-      +'</div>';
-  return _card('Key Metrics',
-      'Clinician channel \u00b7 follows the page date filter'
-      +(_a?'':' \u00b7 ad data unavailable for this window'),kmBody);
+  // The page window, for the Ad Spend pacing bar. Both hosts (the Clinician
+  // page and the Executive page in Clinician mode) read the same window off
+  // S.clinician, kept in step by _fetchForWindow, so reading it here cannot
+  // drift from whichever page is rendering.
+  win=win||((typeof S!=='undefined'&&S.clinician&&S.clinician.win)||'mtd');
+  const _f$=(v)=>v==null?'—':'$'+Math.round(v).toLocaleString();
+  const _div=(a,b)=>(a!=null&&b)?a/b:null;
+  const _a=(d.ads&&!d.ads.error)?d.ads:null;
+  const _sp=_a?_a.spend:null;
+  // "Full App" = reached Fully Onboarded, a pipeline milestone — NOT Meta's
+  // reported conversions (ads.cacDenom), which is a different number the
+  // worker's own comment says will not agree. The same basis drives the rate
+  // below, so both cards mean one thing by it.
+  // Both denominators come from the ACQUISITION section's populations, so the
+  // two sections can never report different numbers for the same thing:
+  //   inquiries       = unique clinician CONTACTS created in the window (deduped)
+  //   full submission = those of them with a kickoff call booked
+  // These are CONTACT-based and deliberately NOT the funnel's deal-based
+  // stages, so Cost per Sign Up will not equal the funnel's Fully Onboarded —
+  // a kickoff call booked is an earlier milestone than Fully Onboarded.
+  const _acq=d.composition||{};
+  const _acqSub=_acq.submission||null;
+  const _fo=_acqSub?(_acqSub.contacts||0):0;
+  const _add=_acq.contacts||0;   // = the Acquisition section's clinician count
+  const _rate=_add>0?(_fo/_add)*100:null;
+  // Ad spend over the full submissions that spend can actually claim: paid
+  // last-click, excluding Lookalike campaigns. Null on a pre-v43 payload, where
+  // the tile shows an em-dash rather than dividing by a missing count.
+  const _pnl=(_acqSub&&_acqSub.paidNonLookalike!=null)?_acqSub.paidNonLookalike:null;
+  const _lalExcl=(_pnl!=null)?Math.max(0,_fo-_pnl):null;
+  const _kp=d.kpiPrior||null, _km=d.kpiPriorMonth||null;
+  const _pRate=(w)=>(w&&w.inquiries>0)?(w.fullSub/w.inquiries)*100:null;
+  const _foot=(cur,pv,lmv,fmt,inv)=>_irTileFooterDash(cur,pv,lmv,fmt,inv);
+  // Cumulative, not the mean of per-day CTRs: that would weight a 10-impression
+  // day the same as a 10,000-impression one.
+  const _tf=d.topFunnel||{};
+  const _ctrOk=(_tf.impressions!=null&&_tf.impressions>0&&_tf.clicks!=null);
+  const _ctr=_ctrOk?(_tf.clicks/_tf.impressions)*100:null;
+  const _budget=(_a&&_a.budget>0)?_a.budget:0;
+
+  // Same container, grid and tile as the Brand section — _kmTile is shared, so
+  // the two cannot drift apart again.
+  let kmh='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px">';
+  kmh+='<div class="dsec-h dsec-in" id="dsec-clnkm'+sfx+'" data-nav="Key Metrics">Key Metrics</div>';
+  kmh+='<div class="irf-card-sub" style="margin-bottom:12px">Clinician channel · follows the page date filter'
+    +(_a?'':' · ad data unavailable for this window')+'</div>';
+  kmh+='<div style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin-bottom:16px">';
+  kmh+=_kmTile('Ad Spend',_f$(_sp),
+    (_budget>0?_f$(_sp)+' ÷ '+_f$(_budget)+' budget':'no budget set'),
+    _foot(_sp,_kp?_kp.spend:null,_km?_km.spend:null,'$',false),
+    _kmPaceBar(_sp||0,_budget,win),
+    'Clinician channel only — excluded from every other dashboard KPI');
+  // Directly right of Ad Spend: what that spend cost per acquisition it can
+  // actually claim. Lookalike campaigns are excluded because they are
+  // prospecting off an existing audience, and organic/untagged signups are
+  // excluded because ad spend did not buy them.
+  kmh+=_kmTile('CPD Paid Non-Lookalikes',_f$(_div(_sp,_pnl)),
+    (_pnl!=null?_f$(_sp)+' ÷ '+fN(_pnl)+' paid non-LAL':'not in this payload'),
+    _foot(_div(_sp,_pnl),_div(_kp?_kp.spend:null,_kp?_kp.paidNonLal:0),
+          _div(_km?_km.spend:null,_km?_km.paidNonLal:0),'$',true),
+    null,
+    'Clinician ad spend ÷ full submissions that carry a PAID last-click UTM and did '
+    +'not come from a Lookalike campaign'
+    +(_lalExcl!=null?' — '+fN(_lalExcl)+' of '+fN(_fo)+' full submissions excluded as Lookalike, organic or untagged':''));
+  kmh+=_kmTile('Cost per Sign Up',_f$(_div(_sp,_fo)),
+    _f$(_sp)+' ÷ '+fN(_fo)+' full submissions',
+    _foot(_div(_sp,_fo),_div(_kp?_kp.spend:null,_kp?_kp.fullSub:0),
+          _div(_km?_km.spend:null,_km?_km.fullSub:0),'$',true),
+    null,
+    'Clinician ad spend ÷ clinicians with a kickoff call booked — the Acquisition section’s Full Submission count');
+  kmh+=_kmTile('Cost per Inquiry',_f$(_div(_sp,_add)),
+    _f$(_sp)+' ÷ '+fN(_add)+' inquiries',
+    _foot(_div(_sp,_add),_div(_kp?_kp.spend:null,_kp?_kp.inquiries:0),
+          _div(_km?_km.spend:null,_km?_km.inquiries:0),'$',true),
+    null,
+    'Clinician ad spend ÷ clinician contacts created in the window — the Acquisition section’s count');
+  kmh+=_kmTile('CTR',_ctr!=null?_ctr.toFixed(2)+'%':'—',
+    (_ctrOk?fN(_tf.clicks)+' ÷ '+fN(_tf.impressions)+' impressions':'no ad data'),
+    _foot(_ctr,null,null,'%',false),null,
+    'Cumulative click-through rate across the Clinician campaigns — total clicks over total impressions, not an average of daily rates');
+  kmh+=_kmTile('Full App Rate',_rate!=null?_rate.toFixed(1)+'%':'—',
+    fN(_fo)+' ÷ '+fN(_add)+' inquiries',
+    _foot(_rate,_pRate(_kp),_pRate(_km),'%',false),null,
+    'Share of inquiries with a kickoff call booked — matches the Acquisition section’s rate');
+  kmh+='</div></div>';
+  return kmh;
 }
 
 // ── Executive Dashboard ─────────────────────────────────────────────────────

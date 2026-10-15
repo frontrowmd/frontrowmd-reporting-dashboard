@@ -6,6 +6,11 @@ function ck(n,g,w){const ok=JSON.stringify(g)===JSON.stringify(w);ok?pass++:fail
   console.log((ok?'PASS ':'FAIL ')+n+'  got='+JSON.stringify(g)+(ok?'':' want='+JSON.stringify(w)));}
 const html=fs.readFileSync(process.env.DASH_SRC||'dashboard.html','utf8');
 const at=id=>html.indexOf(id);
+// The Brand Key Metrics builder ALONE. `html` is the whole file, and the
+// Clinician section now renders the same _kmTile, so a file-wide count of tiles
+// silently doubled when it started sharing the helper.
+const {fn}=require('./slice.js');
+const brandKm=fn(html,'_brandKeyMetricsHTML');
 
 // ── Order on the Detailed Dashboard ──
 const order=['id="dsec-demoinsights"','id="dsec-cvrfunnel"','id="sec-row2"',
@@ -211,7 +216,7 @@ ck('  and the pages using it get the section spacing',
 ck('  with the Executive page spaced by its containers',
    /#page-exec>div\{margin-bottom:24px\}/.test(html)&&!/#page-exec \.dsec(?![-\w])/.test(html),true);
 ck('six headline tiles (five via _kmTile, the split one inline)',
-   (html.match(/kmh\+=_kmTile\(/g)||[]).length+(html.match(/kmh\+='<div class="tile hero"/g)||[]).length,6);
+   (brandKm.match(/kmh\+=_kmTile\(/g)||[]).length+(brandKm.match(/kmh\+='<div class="tile hero"/g)||[]).length,6);
 ck('in the order asked for',
    ['Ad Spend','CPD \\u00b7 Paid','Non-Paid \\u00b7 Last Click','CPD \\u00b7 Regular Demos',
     'CPQD \\u00b7 Regular Demos','Pre-Launch %','CVR \\u00b7 Regular']
@@ -233,7 +238,13 @@ ck('laid out five across like the Irfan page',
 ck('Ad Spend leads with the spend',/_kmTile\('Ad Spend',f\$\(_kmSpend\)/.test(html),true);
 ck('its budget skips excluded and pending channels',
    /if\(_bc\.pendingConnector\|\|_bc\.kpiExcluded\)continue;/.test(html),true);
-ck('pacing only on month windows',/_kmIsMonth=\(_kmWin==='mtd'\|\|_kmWin==='lastMonth'\)/.test(html),true);
+// The pacing block is the shared _kmPaceBar now, used by Brand AND Clinician.
+const paceFn=fn(html,'_kmPaceBar');
+ck('pacing only on month windows',
+   /const isMonth=\(w==='mtd'\|\|w==='lastMonth'\);/.test(paceFn)&&/if\(!isMonth\)return '';/.test(paceFn),true);
+ck('  with an elapsed marker',/top:-2px;bottom:-2px;width:1\.5px;background:#fff/.test(paceFn),true);
+ck('  and Ad Spend is the only tile that gets it',
+   (html.match(/_kmPaceBar\(/g)||[]).length,3);
 
 // Revenue Outcome moved out of the Snapshot row into Key Metrics.
 ck('Revenue Outcome lives in Key Metrics',
@@ -269,8 +280,12 @@ ck('Ad Spend shows spend over budget',
    /f\$\(_kmSpend\)\+' \\u00f7 '\+f\$\(_kmBudget\)\+' budget'/.test(html),true);
 // Pacing sparkline: fill = budget spent, hairline = month elapsed.
 ck('the pacing sparkline is drawn',/position:relative;height:8px;background:rgba\(255,255,255,\.18\)/.test(html),true);
-ck('with an elapsed marker',/left:'\+Math\.min\(_kmElapsed,100\)\+'%;top:-2px;bottom:-2px;width:1\.5px;background:#fff/.test(html),true);
-ck('and it is light-on-dark for the hero tile',/var\(--lighter\)/.test(html.slice(html.indexOf('let _kmPace='),html.indexOf('const _kmTile='))),false);
+// The locals this used to read (_kmElapsed, let _kmPace=, const _kmTile=) are
+// gone: the block is the shared _kmPaceBar now. Scoped to that function, which
+// is also what stops the slice below from silently matching the whole file.
+ck('with an elapsed marker',
+   /left:'\+Math\.min\(elapsed,100\)\+'%;top:-2px;bottom:-2px;width:1\.5px;background:#fff/.test(paceFn),true);
+ck('and it is light-on-dark for the hero tile',/var\(--lighter\)/.test(paceFn),false);
 ck('no budget set is stated rather than drawn',/No monthly budget set/.test(html),true);
 
 // --- the Clinician payload is warmed at sign-in ---------------------------

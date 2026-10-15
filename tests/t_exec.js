@@ -117,6 +117,9 @@ vm.createContext(ctx);
 vm.runInContext([
   'var window=this;var f$=this.f$,fN=this.fN;var S={dashboard:{win:'+"'mtd'"+'}};',
   'function _irTileFooterDash(){return "";}function _buildRevenueOutcomeCard(){return "";}',
+  // _kmTile / _kmPaceBar are module scope now, shared with the Clinician
+  // section, so the harness has to load them like any other dependency.
+  decl(cli,'const _KM_LBL=',';'), fn(cli,'_kmTile'), fn(cli,'_kmPaceBar'),
   fn(cli,'_dashKmModel'), fn(cli,'_brandKeyMetricsHTML'),
   'Object.assign(globalThis,{_dashKmModel,_brandKeyMetricsHTML});',
 ].join('\n'),ctx);
@@ -151,8 +154,12 @@ ck('every tile the two share reads the same value',
      return v(brand)!==v(exec);}),[]);
 // The pacing bar used to read S.dashboard.win directly — a third page would
 // have silently shown the Brand page's window.
+// Now inside the hoisted _kmPaceBar, which BOTH sections call — so reading a
+// page global there would hand the Clinician section the Brand page's window.
+const _paceSrc=fn(cli,'_kmPaceBar');
 ck('the window is a parameter, not the Brand page’s global',
-   /const _kmWin=win\|\|'mtd';/.test(cli)&&!/const _kmWin=\(S\.dashboard&&S\.dashboard\.win\)/.test(cli),true);
+   /^function _kmPaceBar\(spend,budget,win\)/.test(_paceSrc)&&/const w=win\|\|'mtd';/.test(_paceSrc),true);
+ck('  and the pacing bar reads no page state at all',/\bS\./.test(_paceSrc),false);
 
 
 // ── Section rhythm ────────────────────────────────────────────────────────
