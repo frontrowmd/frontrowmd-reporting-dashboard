@@ -2852,7 +2852,14 @@ function renderDash(){
   const sbEl=document.getElementById('t-signedbrands');
   if(sbEl){sbEl.innerHTML=_dashSignedBrandsHTML(d);_renderDashSignedPie();}
   const kmEl=document.getElementById('t-keymetrics');
-  if(kmEl)kmEl.innerHTML=kmh;
+  // The goal band sits ABOVE Key Metrics, in the same host, so it cannot drift
+  // away from the row it describes. `regular` is the trend series' own Regular
+  // Demos count for the current month — the same population the Key Metrics
+  // tiles divide by, and independent of the page date filter.
+  { const _gm=_goalMonthEntry(d.trend&&d.trend.month);
+    const _goal=_goalTrackerHTML({cur:_gm?_gm.regular:null,goal:GOAL_BRAND_REGULAR_DEMOS,
+      noun:'Regular Demos',month:_goalMonthName(_gm&&_gm.wk),sfx:''});
+    if(kmEl)kmEl.innerHTML=_goal+kmh; }
   // Rendered after the container is in the DOM, and re-rendered on its own by
   // fdRevenueOutcome(), which writes straight into #t-revenue.
   _brandKeyMetricsAfter(d,'');
@@ -6030,7 +6037,13 @@ function renderClinician(){
   // ── Section 0: Key Metrics ──
   // PREPENDED, so it leads the page. Built by the shared builder — the
   // Executive Dashboard renders the identical row from the identical numbers.
-  h=_clnKeyMetricsHTML(d,'')+h;
+  // Same band above this page's Key Metrics. `fullApp` is the trend series'
+  // Sign Up count for the current month — the population the Sign Up Rate
+  // tile below divides by.
+  { const _gm=_goalMonthEntry(d.ads&&d.ads.trend&&d.ads.trend.month);
+    h=_goalTrackerHTML({cur:_gm?_gm.fullApp:null,goal:GOAL_CLINICIAN_SIGNUPS,
+      noun:'Sign Ups',month:_goalMonthName(_gm&&_gm.wk),sfx:''})
+      +_clnKeyMetricsHTML(d,'')+h; }
   const refCard=(k,title,sub,body,n)=>'<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:16px">'
     +'<div onclick="clnRefToggle(\''+k+'\')" style="cursor:pointer;user-select:none">'
       +'<div class="irf-card-title" data-nav="'+title+'" style="font-size:22px;font-weight:700;letter-spacing:-.01em;border-left:4px solid var(--teal);padding-left:11px;line-height:1.2">'
@@ -10648,6 +10661,98 @@ function _dashKmModel(d){
 // Jump To scroll target) and #t-revenue (repainted asynchronously by
 // fdRevenueOutcome) — because getElementById returns the FIRST match in the
 // document, so an unsuffixed second copy would silently steal both.
+// ── Monthly goal tracker ───────────────────────────────────────────────────
+// Full-width band above Key Metrics on the Brand and Clinician dashboards.
+//
+// It reads the TREND series' own MONTH grain, never the page window. The page
+// filter can be 7 days, a quarter or All Time, and counting any of those
+// against a monthly goal would be meaningless. The trend series runs to today
+// independent of that filter, so its LAST month entry is the current month —
+// matched by POSITION rather than by building a 'YYYY-MM-01' key, which would
+// need the dashboard's timezone and land on the wrong month on the 1st for a
+// reader whose browser is somewhere else.
+const GOAL_BRAND_REGULAR_DEMOS=150;
+const GOAL_CLINICIAN_SIGNUPS=150;
+const _GOAL_MONTHS=['January','February','March','April','May','June',
+                    'July','August','September','October','November','December'];
+function _goalMonthEntry(months){
+  return (Array.isArray(months)&&months.length)?months[months.length-1]:null;
+}
+// Share of the current calendar month elapsed, by DAY. Same basis as the Ad
+// Spend pacing bar, so "behind pace" means one thing across the page.
+function _goalMonthElapsed(){
+  const n=new Date();
+  return (n.getDate()/new Date(n.getFullYear(),n.getMonth()+1,0).getDate())*100;
+}
+function _goalMonthName(wk){
+  const q=String(wk||'').split('-');
+  const i=(+q[1])-1;
+  return (q.length>=2&&i>=0&&i<12)?_GOAL_MONTHS[i]:'';
+}
+// opt: {cur, goal, noun, month, sfx}
+function _goalTrackerHTML(opt){
+  opt=opt||{};
+  const goal=opt.goal||0, noun=opt.noun||'', sfx=opt.sfx||'';
+  const cur=(opt.cur!=null&&isFinite(opt.cur))?opt.cur:null;
+  const pct=(cur!=null&&goal>0)?(cur/goal)*100:null;
+  const elapsed=_goalMonthElapsed();
+  // Over-delivery keeps the bar full rather than overflowing it; the figure
+  // beside it still reads past 100% so the overshoot is not hidden.
+  const w=(pct==null)?0:Math.max(0,Math.min(pct,100));
+  // The gradient spans the whole TRACK, and the fill reveals however much of it
+  // has been earned — so the bar starts red and greens as it fills, rather than
+  // being a flat colour that merely changes. background-size is the fill's own
+  // width scaled back up to the track's, which is what keeps the red end
+  // anchored at zero instead of being squashed into the filled part.
+  // Sized against the ROUNDED width, which is what the browser actually lays
+  // out — computing it from the unrounded value leaves the gradient a fraction
+  // of a percent out of step with the fill it is painting.
+  const wStr=w.toFixed(1);
+  const bg=(+wStr>0)?(10000/(+wStr)):100;
+  const bar='<div style="position:relative;height:14px;background:rgba(2,15,24,.07);border-radius:50px;overflow:visible">'
+    +'<div style="height:100%;width:'+wStr+'%;border-radius:50px;'
+      +'background-image:linear-gradient(90deg,var(--red) 0%,var(--yellow) 55%,var(--green) 100%);'
+      +'background-size:'+bg.toFixed(1)+'% 100%;background-repeat:no-repeat;transition:width .4s"></div>'
+    // On-pace marker: where the bar would be if the month were being met evenly.
+    +'<div title="On pace for this point in the month" style="position:absolute;left:'
+      +Math.min(elapsed,100).toFixed(1)+'%;top:-4px;bottom:-4px;width:2px;background:var(--navy);opacity:.55;border-radius:2px"></div>'
+    +'</div>';
+  let pace='';
+  if(pct!=null){
+    const pp=pct-elapsed, up=pp>=0;
+    // Within 5pp of pace is on track, not a miss worth colouring.
+    const col=Math.abs(pp)<=5?'var(--grey)':(up?'var(--green)':'var(--red)');
+    pace='<span style="color:'+col+';font-weight:700;font-size:12px;white-space:nowrap">'
+      +(up?'↑ +':'↓ −')+Math.abs(pp).toFixed(0)+'pp '+(up?'ahead of':'behind')+' pace</span>';
+  }
+  const headline=(cur!=null)
+    ? '<span style="font-family:var(--font-h);font-size:28px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+fN(cur)+'</span>'
+      +'<span style="font-size:15px;color:var(--grey);font-weight:600"> / '+fN(goal)+'</span>'
+      +'<span style="font-size:13px;color:var(--grey);margin-left:7px">'+noun+'</span>'
+    : '<span style="font-family:var(--font-h);font-size:28px;font-weight:700;color:var(--grey)">—</span>'
+      +'<span style="font-size:13px;color:var(--grey);margin-left:7px">'+noun+' · no trend data for this window</span>';
+  return '<div class="sec dsec" id="sec-goal'+sfx+'" style="background:var(--white);border:1px solid var(--border);'
+      +'border-radius:12px;padding:16px 20px;margin-bottom:16px">'
+    +'<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:9px">'
+      +'<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">'
+        +'<span style="font-family:var(--font-h);font-size:10px;font-weight:700;color:var(--teal);'
+          +'text-transform:uppercase;letter-spacing:.08em">Monthly Goal'
+          +(opt.month?(' · '+opt.month):'')+'</span>'
+        +headline
+      +'</div>'
+      +'<div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap">'
+        +(pct!=null?'<span style="font-family:var(--font-h);font-size:16px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'
+          +pct.toFixed(0)+'%</span><span style="font-size:11px;color:var(--grey)">of goal</span>':'')
+        +pace
+      +'</div>'
+    +'</div>'
+    +bar
+    +'<div style="display:flex;justify-content:space-between;margin-top:6px;font-size:10px;color:var(--grey)">'
+      +'<span>'+elapsed.toFixed(0)+'% of '+(opt.month||'the month')+' elapsed</span>'
+      +'<span>'+(cur!=null&&goal>cur?(fN(goal-cur)+' to go'):(cur!=null?'goal met':''))+'</span>'
+    +'</div>'
+  +'</div>';
+}
 // ── Key Metrics tiles: ONE contract, used by Brand and Clinician ───────────
 // _kmTile and the pacing bar were locals inside _brandKeyMetricsHTML, so the
 // Clinician section drew its own look-alike (_clnKpiTile / _clnPaceBar) and the

@@ -279,7 +279,7 @@ ck('the toggles carry the suffix back, so the right copy redraws',
   ck('and above Acquisition', iFunnel<iAcq, true);
   // Key Metrics is PREPENDED, so it still comes first on screen.
   ck('with Key Metrics still prepended ahead of it',
-     /h=_clnKeyMetricsHTML\(d,''\)\+h;/.test(cli), true);
+     /\+_clnKeyMetricsHTML\(d,''\)\+h;/.test(cli), true);
 }
 ck('the Daily Activity section it used to follow is gone',
    /card\('Daily Activity'/.test(cli), false);

@@ -14,7 +14,11 @@ const KM=fn(cli,'_clnKeyMetricsHTML');
 // --- section order -------------------------------------------------------
 // h STARTS as the funnel, adsH (Ads + Ad Tables) is appended, then All Clinicians,
 // then the ref cards; Key Metrics is PREPENDED last.
-ck('Key Metrics is prepended, not appended',/h=_clnKeyMetricsHTML\(d,''\)\+h;/.test(RC),true);
+ck('Key Metrics is prepended, not appended',
+   /\+_clnKeyMetricsHTML\(d,''\)\+h;/.test(RC)&&!/h\+=_clnKeyMetricsHTML/.test(RC),true);
+// The monthly goal band is the one thing allowed above it.
+ck('  with the goal tracker directly above it',
+   /_goalTrackerHTML\(\{[\s\S]{0,200}?\}\)\s*\n?\s*\+_clnKeyMetricsHTML\(d,''\)/.test(RC),true);
 ck('All Clinicians is appended after the ad tables, not promoted to the top',
    /h\+=allClinH;/.test(RC)&&!/h=allClinH\+h;/.test(RC),true);
 // The Ads KPI row is gone: its three cards (pacing, cost per inquiry, cost per

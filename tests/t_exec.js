@@ -58,7 +58,7 @@ ck('Trend reuses both builders',
 ck('  and their post-render step',
    /_renderClnTrend\(d,'-exec'\); else _renderDashTrend\(d,'-exec'\)/.test(cli),true);
 ck('the owning pages call the SAME builders',
-   /_brandKeyMetricsHTML\(d,\{sfx:'',hideCpqd:false/.test(cli)&&/h=_clnKeyMetricsHTML\(d,''\)\+h;/.test(cli),true);
+   /_brandKeyMetricsHTML\(d,\{sfx:'',hideCpqd:false/.test(cli)&&/\+_clnKeyMetricsHTML\(d,''\)\+h;/.test(cli),true);
 // Ad tables already had a multi-page target list; this extends it rather than
 // adding a fourth renderer.
 for(const k of ['campaigns','creatives','audiences','adsets'])
