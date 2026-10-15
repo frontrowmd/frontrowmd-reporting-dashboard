@@ -270,14 +270,16 @@ const BUDGET_BY_MONTH = {
   // number forward into chatgpt/tiktok/youtube here. ChatGPT ran $5,000 in
   // August and is switched off for September.
   '2026-09': { meta: 20080, clinician: 10000, linkedin: 4920, google: 10000, reddit: 5000, chatgpt: 0, tiktok: 0, youtube: 0 },
-  // October plan, set 2026-10-02. THREE funded lines totalling $21,000:
-  // Meta Brand $12,000, Meta Clinician $6,000, Google $3,000. LinkedIn, ChatGPT
-  // and Reddit are explicitly $0 for the month — that is the instruction, not an
-  // omission, so do NOT carry September's numbers forward into them.
-  // Note the roll-up total differs from the $21,000 plan: `clinician` is in
+  // October plan, set 2026-10-02; Clinician raised $6,000 -> $9,000 on
+  // 2026-10-15. THREE funded lines totalling $24,000: Meta Brand $12,000,
+  // Meta Clinician $9,000, Google $3,000. LinkedIn, ChatGPT and Reddit are
+  // explicitly $0 for the month — that is the instruction, not an omission, so
+  // do NOT carry September's numbers forward into them.
+  // Note the roll-up total differs from the $24,000 plan: `clinician` is in
   // KPI_EXCLUDED_CHANNELS (worker.js:176), so every KPI budget — including the
-  // Ad Spend pacing card — sees $15,000 (Meta + Google).
-  '2026-10': { meta: 12000, clinician: 6000, linkedin: 0, google: 3000, reddit: 0, chatgpt: 0, tiktok: 0, youtube: 0 },
+  // Ad Spend pacing card — still sees $15,000 (Meta + Google). The Clinician
+  // page's own Ad Spend card is the one that moves.
+  '2026-10': { meta: 12000, clinician: 9000, linkedin: 0, google: 3000, reddit: 0, chatgpt: 0, tiktok: 0, youtube: 0 },
 };
 // Pinned to a literal month, this silently paced every unlisted month against a
 // plan that kept getting older — August's $42,500 would have stood in for

@@ -21,14 +21,15 @@ const EXCL=new Set(['clinician']);   // KPI_EXCLUDED_CHANNELS
 const oct=monthBudget('2026-10');
 ck('October is listed',oct!==null,true);
 ck('Meta Brand',oct.meta,12000);
-ck('Meta Clinician',oct.clinician,6000);
+ck('Meta Clinician',oct.clinician,9000);   // raised from 6000 on 2026-10-15
 ck('Google',oct.google,3000);
 ck('LinkedIn, ChatGPT and Reddit are explicitly zero',
    [oct.linkedin,oct.chatgpt,oct.reddit],[0,0,0]);
 ck('TikTok and YouTube stay off',[oct.tiktok,oct.youtube],[0,0]);
-ck('the plan totals $21,000',Object.values(oct).reduce((a,b)=>a+b,0),21000);
-// The pacing card divides by the KPI roll-up, which skips clinician.
-ck('the KPI roll-up is $15,000',
+ck('the plan totals $24,000',Object.values(oct).reduce((a,b)=>a+b,0),24000);
+// The pacing card divides by the KPI roll-up, which skips clinician — so
+// raising the Clinician line moves the plan total WITHOUT moving this.
+ck('the KPI roll-up is $15,000, unmoved by the Clinician raise',
    Object.entries(oct).reduce((a,[k,v])=>a+(EXCL.has(k)?0:v),0),15000);
 ck('clinician is still the only KPI-excluded channel',
    /const KPI_EXCLUDED_CHANNELS = new Set\(\['clinician'\]\);/.test(src),true);
