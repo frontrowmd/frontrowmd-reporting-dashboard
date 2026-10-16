@@ -2141,6 +2141,16 @@ function renderBD(){
     var mx=0;grid.forEach(function(row){row.forEach(function(n){if(n>mx)mx=n;});});
     var colT=colsDef.map(function(_,ci){var t=0;grid.forEach(function(row){t+=row[ci];});return t;});
     var grand=colT.reduce(function(a,b){return a+b;},0);
+    // Share of the grid's own total, for the margins only. Rendered under the
+    // count in grey so the count stays the figure being read; a percentage in
+    // every CELL would dress single-digit counts as precision the sample
+    // cannot support, which is the same reason this is a count table at all.
+    var _pctOf=function(n){
+      if(!grand||!n)return '';
+      return '<div style="font-size:9px;font-weight:600;color:var(--grey);'
+        +'font-variant-numeric:tabular-nums;margin-top:1px;line-height:1">'
+        +(n/grand*100).toFixed(0)+'%</div>';
+    };
     // table-layout:fixed with a sized label column. Left to size itself the
     // browser gave every shaded cell a different width, so the fill read as
     // floating blocks rather than a grid.
@@ -2167,11 +2177,12 @@ function renderBD(){
       });
       t+='<tr><td title="'+String(r.full||r.l).replace(/"/g,'&quot;')+'" style="padding:6px 9px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-bottom:1px solid rgba(23,44,69,.05)'
         +((r.k&&String(r.k).indexOf('__')===0)?';color:var(--grey);font-style:italic':';color:var(--navy)')+'">'+r.l+'</td>'+cells
-        +'<td style="text-align:right;padding:6px 9px;font-variant-numeric:tabular-nums;font-weight:700;color:var(--navy);border-bottom:1px solid rgba(23,44,69,.05);border-left:1.5px solid rgba(23,44,69,.12);background:rgba(23,44,69,.03)">'+(rt||'·')+'</td></tr>';
+        +'<td style="text-align:right;padding:6px 9px;font-variant-numeric:tabular-nums;font-weight:700;color:var(--navy);border-bottom:1px solid rgba(23,44,69,.05);border-left:1.5px solid rgba(23,44,69,.12);background:rgba(23,44,69,.03)">'+(rt||'·')+_pctOf(rt)+'</td></tr>';
     });
     t+='<tr><td style="padding:7px 9px;font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.03em;border-top:1.5px solid rgba(23,44,69,.12)">Total</td>';
-    colT.forEach(function(n){t+='<td style="text-align:center;padding:7px 5px;font-variant-numeric:tabular-nums;font-weight:700;color:var(--navy);background:rgba(23,44,69,.03);border-top:1.5px solid rgba(23,44,69,.12);border-left:1px solid rgba(23,44,69,.05)">'+(n||'·')+'</td>';});
-    t+='<td style="text-align:right;padding:7px 9px;font-variant-numeric:tabular-nums;font-weight:700;color:var(--navy);background:rgba(23,44,69,.06);border-top:1.5px solid rgba(23,44,69,.12);border-left:1.5px solid rgba(23,44,69,.12)">'+grand+'</td></tr>';
+    colT.forEach(function(n){t+='<td style="text-align:center;padding:7px 5px;font-variant-numeric:tabular-nums;font-weight:700;color:var(--navy);background:rgba(23,44,69,.03);border-top:1.5px solid rgba(23,44,69,.12);border-left:1px solid rgba(23,44,69,.05)">'+(n||'·')+_pctOf(n)+'</td>';});
+    t+='<td style="text-align:right;padding:7px 9px;font-variant-numeric:tabular-nums;font-weight:700;color:var(--navy);background:rgba(23,44,69,.06);border-top:1.5px solid rgba(23,44,69,.12);border-left:1.5px solid rgba(23,44,69,.12)">'+grand
+      +(grand?'<div style="font-size:9px;font-weight:600;color:var(--grey);margin-top:1px;line-height:1">100%</div>':'')+'</td></tr>';
     t+='</tbody></table></div>';
     t+='<div style="font-size:10px;color:var(--grey);margin-top:10px;font-style:italic;line-height:1.5">'+note+'</div>';
     return t;
@@ -2231,7 +2242,7 @@ function renderBD(){
     +'<span style="flex:1 1 auto;min-width:0;font-size:11.5px;color:var(--navy);line-height:1.55">'
     +'Every brand below has already churned. Implemented Products is filled in during the churn review, so churned brands are the only ones that carry it — there is no active-brand denominator to divide by.</span></div>';
 
-  hChurn+='<div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">';
+  hChurn+='<div style="display:flex;gap:26px;align-items:flex-start;flex-wrap:wrap">';
 
   // ── the rail: a distribution you can click ───────────────────────────────
   // Two numbers per month, recorded / churned, so an empty month says WHICH
@@ -2257,7 +2268,7 @@ function renderBD(){
       +'<div style="height:100%;width:'+bar+'%;background:'+(on?'#fff':'var(--teal)')+';border-radius:2px;opacity:'+(state==='partial'?'.55':(state==='all'?'.3':'.9'))+'"></div></div>';
     return h+'</'+(future?'div':'button')+'>';
   };
-  hChurn+='<div style="flex:0 0 190px;min-width:170px">';
+  hChurn+='<div style="flex:0 0 200px;min-width:180px">';
   hChurn+='<div style="font-size:9px;font-weight:700;letter-spacing:.05em;color:var(--grey);text-transform:uppercase;margin-bottom:6px">Churn month</div>';
   hChurn+=_c5Item('','All 2026',_c5Pool.length,_chDeals26.length,'all');
   hChurn+='<div style="height:1px;background:rgba(23,44,69,.08);margin:5px 2px 6px"></div>';
@@ -2266,7 +2277,7 @@ function renderBD(){
     hChurn+=_c5Item(_k,_c5MonNm[_c5m-1],_c5Rec[_k],_c5Chn[_k],
       _c5m>_c5MaxM?'future':(_c5m===_c5MaxM?'partial':'done'));
   }
-  hChurn+='<div style="font-size:9px;color:#A9B4BF;line-height:1.5;margin-top:7px">'
+  hChurn+='<div style="font-size:9.5px;color:var(--grey);line-height:1.55;margin-top:10px">'
     +'recorded / churned that month. Months with no bar had churn but no Implemented Products recorded.</div>';
   hChurn+='</div>';
 
@@ -2287,7 +2298,7 @@ function renderBD(){
   }else{
     var _c5Ten=_kmTenure(_c5Set);
     var _c5Thin=(_c5n<5);
-    hChurn+='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">';
+    hChurn+='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">';
     hChurn+='<div style="flex:1 1 170px;background:var(--white);border:1px solid var(--border);border-left:3px solid var(--teal);border-radius:10px;padding:11px 14px">'
       +'<div class="tlbl">Brands in this cut</div>'
       +'<div style="font-family:var(--font-h);font-size:24px;font-weight:700;color:var(--navy);line-height:1.1">'+_c5N(_c5n)+'</div>'
@@ -2317,10 +2328,20 @@ function renderBD(){
       }
       return h+'</div>';
     };
-    var C5G='grid-template-columns:132px minmax(0,1fr) 104px;gap:13px';
-    var C5GB='grid-template-columns:176px minmax(0,1fr) 104px;gap:13px';
-    hChurn+='<div style="font-family:var(--font-h);font-size:12.5px;font-weight:700;color:var(--navy);margin-bottom:2px">By product</div>';
-    hChurn+='<div style="font-size:10.5px;color:var(--grey);margin-bottom:8px">One cell per brand in this cut. Rows overlap — a brand with three products appears in three of them.</div>';
+    // ONE grid for BOTH sub-tables. They used to differ (132px vs 176px label
+    // columns), so two stacked tables that obviously belong together started
+    // their cells and ended their values at different x positions — nothing in
+    // the section lined up vertically. Sized for the longer combination labels
+    // ("Badge/Banner + Reviews + CAI"), which is the binding constraint.
+    var C5G='grid-template-columns:184px minmax(0,1fr) 112px;gap:14px';
+    var C5GB=C5G;
+    // One rhythm for both: same heading spacing, same row padding, so the two
+    // read as one table with a divider rather than two near-miss ones.
+    var C5H='font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy);letter-spacing:-.01em';
+    var C5SUB='font-size:10.5px;color:var(--grey);margin:3px 0 10px;line-height:1.5';
+    var C5ROW='align-items:center;padding:7px 0;border-bottom:1px solid rgba(23,44,69,.05)';
+    hChurn+='<div style="'+C5H+'">By product</div>';
+    hChurn+='<div style="'+C5SUB+'">One cell per brand in this cut. Rows overlap — a brand with three products appears in three of them.</div>';
     var _c5Counts={};BD_PROD_ORDER.forEach(function(pk){_c5Counts[pk]=0;});
     var _c5Extra={};
     _c5Set.forEach(function(dd){
@@ -2332,13 +2353,14 @@ function renderBD(){
     var _c5Rows=BD_PROD_ORDER.map(function(pk){return {k:pk,c:_c5Counts[pk]};})
       .concat(Object.keys(_c5Extra).map(function(pk){return {k:pk,c:_c5Extra[pk]};}));
     _c5Rows.sort(function(a,b){return b.c-a.c;});
+    hChurn+='<div data-c5="product">';
     _c5Rows.forEach(function(r){
       // A real product that none of them had is a FINDING and keeps its row —
       // the same rule C8 applies to a segment with no churn. Grey NONE, never
       // amber: amber on this page means "too few to trust", and a definite zero
       // is not that.
       var zero=(r.c===0);
-      hChurn+='<div class="bd-seg-row" style="display:grid;'+C5G+';align-items:center;padding:7px 0;border-bottom:1px solid rgba(23,44,69,.05)">'
+      hChurn+='<div class="bd-seg-row" style="display:grid;'+C5G+';'+C5ROW+'">'
         +'<div title="'+(BD_PROD_FULL[r.k]||r.k)+'" style="display:flex;align-items:center;gap:6px;min-width:0">'
         +'<span style="flex:0 0 8px;height:8px;border-radius:2px;background:'+(zero?'#CBD5E1':(BD_PROD_C[r.k]||'#94A3B8'))+'"></span>'
         +'<span style="font-size:11.5px;font-weight:600;color:'+(zero?'var(--grey)':'var(--navy)')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+r.k+'</span></div>'
@@ -2352,6 +2374,7 @@ function renderBD(){
              +'<span style="font-size:10.5px;color:var(--grey);margin-left:5px">of '+_c5N(_c5n)+'</span>'))
         +'</div></div>';
     });
+    hChurn+='</div>';
 
     // The product rows overlap; these partition the same brands and DO sum to
     // n. Printing both, at the same cell scale, is the clearest statement of
@@ -2369,20 +2392,27 @@ function renderBD(){
     var _c5BunL=Object.keys(_c5Bun).map(function(k){return _c5Bun[k];})
       .sort(function(a,b){return (b.d-a.d)||(b.n-a.n);});
     var _c5Sum=0;_c5BunL.forEach(function(b){_c5Sum+=b.n;});
-    hChurn+='<div style="font-family:var(--font-h);font-size:12.5px;font-weight:700;color:var(--navy);margin:18px 0 2px">By combination</div>';
-    hChurn+='<div style="font-size:10.5px;color:var(--grey);margin-bottom:8px">The same brands, split by exactly what they had. These do not overlap, so they sum to '+_c5N(_c5Sum)+'.</div>';
+    // A rule between the two: they answer different questions off the same
+    // brands (one overlaps, one does not), and that distinction was carried
+    // only by the sub-line.
+    hChurn+='<div style="height:1px;background:rgba(23,44,69,.09);margin:20px 0 16px"></div>';
+    hChurn+='<div style="'+C5H+'">By combination</div>';
+    hChurn+='<div style="'+C5SUB+'">The same brands, split by exactly what they had. These do not overlap, so they sum to '+_c5N(_c5Sum)+'.</div>';
+    hChurn+='<div data-c5="combination">';
     _c5BunL.forEach(function(b){
       // One colour at a per-depth opacity. Striping a ~10px cell in two or
       // three colours is noise; the depth is what the reader is scanning for.
       var op=(b.d>=4)?1:(b.d===3?.86:(b.d===2?.66:.44));
-      hChurn+='<div class="bd-seg-row" style="display:grid;'+C5GB+';align-items:center;padding:6px 0;border-bottom:1px solid rgba(23,44,69,.05)">'
-        +'<div title="'+b.k+'" style="font-size:10.5px;color:var(--navy);line-height:1.3">'+b.k+'</div>'
+      hChurn+='<div class="bd-seg-row" style="display:grid;'+C5GB+';'+C5ROW+'">'
+        +'<div title="'+b.k+'" style="font-size:11.5px;font-weight:600;color:var(--navy);line-height:1.35;'
+          +'overflow:hidden;text-overflow:ellipsis">'+b.k+'</div>'
         +'<div>'+_c5Cells(_c5n,b.n,'#475569',op)+'</div>'
         +'<div style="text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums">'
-        +'<span style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">'+_c5N(b.n)+'</span>'
-        +'<span style="font-size:10px;color:var(--grey);margin-left:5px">'+b.d+' product'+(b.d===1?'':'s')+'</span>'
+        +'<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">'+_c5N(b.n)+'</span>'
+        +'<span style="font-size:10.5px;color:var(--grey);margin-left:5px">'+b.d+' product'+(b.d===1?'':'s')+'</span>'
         +'</div></div>';
     });
+    hChurn+='</div>';
   }
   hChurn+='</div>';   // panel
   hChurn+='</div>';   // rail + panel row
@@ -2400,7 +2430,16 @@ function renderBD(){
   var _chBoard=_chDeals26.filter(function(dd){
     return BD_CHURN_TYPE_GROUP[(dd.never_implemented_churn||'').trim()]===BD_CHURN_BOARD;
   });
-  var _chAbRows=[{k:'Yes',l:'A/B tested'},{k:'No',l:'No A/B test'},{k:'Unknown',l:'Unknown'},{k:'',l:'Not recorded'}];
+  // Labelled from the STORED value, which is Yes / No / Unknown — verified
+  // against the live property 2026-10-16, where those are the only three
+  // options and the only three values present. The first row read
+  // "A/B tested" beside a sibling reading "No A/B test", so the pair did not
+  // obviously describe one field. "Not recorded" is the blank, kept apart
+  // from the stored "Unknown".
+  var _chAbRows=[{k:'Yes',l:'Yes A/B test',full:'A/B Test is Yes'},
+                 {k:'No',l:'No A/B test',full:'A/B Test is No'},
+                 {k:'Unknown',l:'Unknown',full:'A/B Test is the stored value Unknown'},
+                 {k:'',l:'Not recorded',full:'A/B Test is blank on the deal'}];
   // `full` drives the header title tooltip in _chMatrix; without it a clipped
   // header has nothing to hover.
   var _chAbCols=BD_TRAFFIC_BANDS.map(function(b){return {k:b.k,l:b.k,full:b.k+' measured monthly visits'};})

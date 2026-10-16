@@ -288,8 +288,13 @@ ck('  and C2 reuses that one count',/_chUndated=_chNoDate;/.test(bd), true);
 // ── Sections v and vi are count tables, deliberately ──
 ck('no correlation statistic is claimed',
    /No correlation statistic is shown/.test(bd), true);
+// Asserted as two DISTINCT rows rather than as one literal: the row list was
+// reformatted and gained `full` tooltips, which a literal match forbids without
+// anything being wrong. What matters is that the stored "Unknown" and the blank
+// field keep separate rows - collapsing them overstates what is known.
 ck('"Unknown" is kept apart from "not recorded"',
-   /\{k:'Unknown',l:'Unknown'\},\{k:'',l:'Not recorded'\}/.test(bd), true);
+   /\{k:'Unknown',l:'Unknown'/.test(bd)&&/\{k:'',l:'Not recorded'/.test(bd), true);
+ck('  and the Yes row names the stored value',/\{k:'Yes',l:'Yes A\/B test'/.test(bd), true);
 // vii must sum: a deal with no company resolved is a different gap from a
 // company with no segment set.
 ck('the segment split has both missing-data buckets',

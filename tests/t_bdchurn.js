@@ -476,9 +476,20 @@ ck('a product none of them had keeps its row',/>CAS</.test(ALL),true);
 ck('  marked NONE, in grey rather than amber',
    /NONE<\/span>/.test(ALL)&&!/NONE<\/span>/.test(ALL.replace(/color:var\(--grey\);background:rgba\(23,44,69,\.06\)[^>]*>NONE<\/span>/,'')),true);
 // The product rows overlap; the combination rows partition the same brands.
+// Scoped to the named block. This used to scrape by font-size, which the two
+// sub-tables no longer differ on - they share one grid and one value style
+// deliberately, so that both line up. A size-based scrape would now sum the
+// OVERLAPPING product rows in with the partitioning combination rows.
+const _c5Block=(h,name)=>{const i=h.indexOf('data-c5="'+name+'"');if(i<0)return '';
+  const j=h.indexOf('data-c5="',i+10);return h.slice(i,j<0?undefined:j);};
+ck('the combination block is findable',_c5Block(ALL,'combination').length>0,true);
 ck('the combinations sum to the cut size',
-   (()=>{const n=[...ALL.matchAll(/font-size:14px;font-weight:700;color:var\(--navy\)">(\d+)</g)].map(m=>+m[1]);
+   (()=>{const n=[..._c5Block(ALL,'combination').matchAll(/font-weight:700;color:var\(--navy\)">(\d+)</g)].map(m=>+m[1]);
      return n.reduce((a,b)=>a+b,0);})(),40);
+// The product rows cover the same brands but OVERLAP, so they must sum to more.
+ck('  while the product rows overlap and sum to more',
+   (()=>{const n=[..._c5Block(ALL,'product').matchAll(/font-weight:700;color:var\(--navy\)">(\d+)</g)].map(m=>+m[1]);
+     return n.reduce((a,b)=>a+b,0)>40;})(),true);
 ck('  and the section states that sum',/These do not overlap, so they sum to 40\./.test(ALL),true);
 ck('a month filter narrows the cut',/Brands in this cut<\/div><div style="[^"]*">15</.test(JUL),true);
 ck('  and the combinations still sum to it',/so they sum to 15\./.test(JUL),true);
@@ -545,6 +556,61 @@ ck('  and what would make a real rate possible',
    /Setting the field on active brands too/.test(ALL),true);
 ck('the worker still fetches the field',/'implemented_products',/.test(src),true);
 ck('  and maps it onto the deal row',/implemented_products: p\.implemented_products\|\|'',/.test(src),true);
+
+// ── C6 / C7 margins carry a share of the grid's own total ─────────────────
+// Counts stay the figure being read; the percentage rides under them in grey.
+// Deliberately NOT in the cells: a 16-cell grid built on ~29 deals would be
+// printing percentages over single-digit counts, which is the same precision
+// claim this section refuses to make by being a count table at all.
+{
+  const mi=bd.indexOf('  var _chMatrix=function(rowsDef,colsDef,cellOf,note,accent){');
+  const mj=bd.indexOf('\n  };',mi)+5;
+  const mctx={console};vm.createContext(mctx);
+  vm.runInContext('var BD_CHURN_C="#7C3AED";\n'+bd.slice(mi,mj)+'\nObject.assign(globalThis,{_chMatrix});',mctx);
+  const rows=[{k:'Yes',l:'Yes A/B test'},{k:'No',l:'No A/B test'},{k:'Unknown',l:'Unknown'},{k:'',l:'Not recorded'}];
+  const cols=[{k:'a',l:'A'},{k:'b',l:'B'},{k:'',l:'No measurement'}];
+  const D={Yes:[4,2,4],No:[6,1,4],Unknown:[2,0,5],'':[0,0,0]};
+  const H=mctx._chMatrix(rows,cols,(r,c)=>D[r.k][cols.indexOf(c)],'note');
+  const rowPct=[...H.matchAll(/<td style="text-align:right;padding:6px 9px[^>]*>(\d+|·)(?:<div[^>]*>(\d+)%<\/div>)?<\/td>/g)]
+    .map(m=>[m[1],m[2]||null]);
+  ck('each row total carries its share',rowPct,[['10','36'],['11','39'],['7','25'],['·',null]]);
+  const colPct=[...H.matchAll(/<td style="text-align:center;padding:7px 5px[^>]*>(\d+|·)(?:<div[^>]*>(\d+)%<\/div>)?<\/td>/g)]
+    .map(m=>[m[1],m[2]||null]);
+  ck('each column total carries its share',colPct,[['12','43'],['3','11'],['13','46']]);
+  ck('the grand total is the 100% those are shares of',/>28<div[^>]*>100%<\/div>/.test(H),true);
+  // An empty total has no share to state, and "0%" beside a dot reads as a
+  // measured zero rather than nothing.
+  ck('an empty total prints no percentage',rowPct[3],['·',null]);
+  // The CELLS stay pure counts.
+  ck('no percentage appears in a cell',
+     [...H.matchAll(/<td style="text-align:center;padding:6px 5px[^>]*>([^<]*)</g)].filter(m=>/%/.test(m[1])).length,0);
+  ck('  so the only percentages are the margins',(H.match(/%<\/div>/g)||[]).length,
+     rowPct.filter(r=>r[1]).length+colPct.filter(c=>c[1]).length+1);
+}
+
+// ── C6 rows are labelled from the STORED value ────────────────────────────
+// The property is an enumeration of exactly Yes / No / Unknown (verified live
+// 2026-10-16). The first row read "A/B tested" beside "No A/B test", so the
+// pair did not obviously describe one field.
+ck('C6 leads with Yes A/B test',/\{k:'Yes',l:'Yes A\/B test'/.test(bd),true);
+ck('  then No, Unknown and the blank, in that order',
+   ['Yes A/B test','No A/B test','Unknown','Not recorded']
+     .map(l=>bd.indexOf("l:'"+l+"'")).every((v,i,a)=>v>0&&(i===0||v>a[i-1])),true);
+ck('  and every row has a tooltip saying which stored value it is',
+   (bd.match(/full:'A\/B Test is /g)||[]).length,4);
+
+// ── C5: the two sub-tables share ONE grid ─────────────────────────────────
+// They had different label columns, so two stacked tables that obviously
+// belong together started their cells and ended their values at different x
+// positions. That misalignment was most of why the section was hard to read.
+ck('C5 defines one grid and reuses it',/var C5GB=C5G;/.test(bd),true);
+ck('  sized for the longest combination label',/grid-template-columns:184px minmax\(0,1fr\) 112px/.test(bd),true);
+ck('  with one row rhythm for both',(bd.match(/'\+C5ROW\+'"/g)||[]).length,2);
+// Named blocks: sharing a grid and a value style is the point, but it leaves
+// nothing in the markup telling the two apart.
+ck('both C5 blocks are named',
+   [...ALL.matchAll(/data-c5="(\w+)"/g)].map(m=>m[1]),['product','combination']);
+ck('  and a rule separates them',/height:1px;background:rgba\(23,44,69,\.09\);margin:20px 0 16px/.test(ALL),true);
 
 console.log('\n'+pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);
