@@ -157,8 +157,15 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
    Vertical stickiness off; the label column stays frozen on the horizontal
    axis, which these do need because they scroll sideways. Specificity matches
    the rules above and these come later, so no !important. */
-.stbl.stbl-matrix thead tr th{position:static;top:auto}
-.stbl.stbl-matrix thead tr th:first-child{position:sticky;left:0;top:auto;z-index:8}
+.stbl.stbl-matrix thead tr th{position:static;top:auto;left:auto}
+/* The header's first cell and the label column are unpinned too. Leaving the
+   first cell sticky while its row-mates were static left ONE sticky box in a
+   static row, which slid down over the first body row's LABEL — numbers
+   visible, label gone, which is exactly how this looked. These tables are
+   sized to fit (min-width 620px) rather than to be scrolled behind a frozen
+   column, so nothing is lost and nothing can overlap anything. */
+.stbl.stbl-matrix thead tr th:first-child{position:static;top:auto;left:auto;z-index:auto;box-shadow:none}
+.stbl.stbl-matrix tbody td:first-child{position:static;left:auto;z-index:auto;box-shadow:none}
 .float-tip{display:none;position:fixed;background:#172C45;color:#fff;padding:8px 12px;border-radius:8px;font-size:12px;pointer-events:none;z-index:999;box-shadow:0 4px 12px rgba(0,0,0,.15);max-width:320px;white-space:normal;line-height:1.4}
 /* Chart-hover variant. Scoped with .ftc so the attribution and table tooltips,
    which share .float-tip and write their own innerHTML, are untouched. */
@@ -2205,16 +2212,28 @@ function renderBD(){
   // written during the CHURN REVIEW, so only churned brands ever carry it and
   // no active brand does — there is no denominator anywhere in this data that
   // could turn these into rates. Everything below is built so that misreading
-  // is hard: the magnitude mark is one countable cell per brand, and no
-  // percentage is printed in any value column.
+  // is hard: the magnitude mark is one countable cell per brand, and the only
+  // percentage printed is an explicit share OF THE BRANDS SHOWN, sitting under
+  // a value that already names its denominator ("42 of 43"). That is a share
+  // of this cut, never a churn rate — there is no active-brand denominator in
+  // this data that a rate could be built from, which is what the banner at the
+  // top of the section says in so many words.
   //
   // The four BD_PROD_* constants and _chProdsOf are declared near _chDeals26,
   // ABOVE this point. They are `var` expressions, so at this call site they
   // would be hoisted-but-undefined if they still lived where the old C8 kept
   // them, and the whole tab would render blank.
   var _c5N=function(v){return Number(v).toLocaleString('en-US');};
-  // _chFmtPct is deliberately not used here. It is the tab's RATE formatter;
-  // borrowing it would dress a count in a rate's clothes.
+  // _chFmtPct is still deliberately not used here. It is the tab's RATE
+  // formatter; borrowing it would dress a share of this cut in a rate's
+  // clothes. _c5Pct below is its own thing: whole numbers, grey, under a value
+  // that states the denominator it is a share of.
+  var _c5Pct=function(n,d){
+    if(!d||!n)return '';
+    return '<div style="font-size:9.5px;font-weight:600;color:var(--grey);'
+      +'font-variant-numeric:tabular-nums;margin-top:1px;line-height:1">'
+      +Math.round(n/d*100)+'% of cut</div>';
+  };
 
   var _c5Pool=_chDeals26.filter(function(dd){return _chProdsOf(dd).length>0;});
   // The rail's numbers come from the POOL and never from the selection: it is a
@@ -2388,7 +2407,8 @@ function renderBD(){
         +(zero
           ? '<span style="font-size:9px;font-weight:700;letter-spacing:.05em;color:var(--grey);background:rgba(23,44,69,.06);border-radius:3px;padding:2px 7px">NONE</span>'
           : ('<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">'+_c5N(r.c)+'</span>'
-             +'<span style="font-size:10.5px;color:var(--grey);margin-left:5px">of '+_c5N(_c5n)+'</span>'))
+             +'<span style="font-size:10.5px;color:var(--grey);margin-left:5px">of '+_c5N(_c5n)+'</span>'
+             +_c5Pct(r.c,_c5n)))
         +'</div></div>';
     });
     hChurn+='</div>';
@@ -2427,6 +2447,7 @@ function renderBD(){
         +'<div style="text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums">'
         +'<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">'+_c5N(b.n)+'</span>'
         +'<span style="font-size:10.5px;color:var(--grey);margin-left:5px">'+b.d+' product'+(b.d===1?'':'s')+'</span>'
+        +_c5Pct(b.n,_c5n)
         +'</div></div>';
     });
     hChurn+='</div>';

@@ -467,8 +467,14 @@ ck('the banner is actually rendered, above the rail',
    ALL.indexOf('A COUNT, NEVER A RATE')>=0 &&
    ALL.indexOf('A COUNT, NEVER A RATE')<ALL.indexOf('Churn month'),true);
 const ALLTEXT=ALL.replace(/<[^>]*>/g,' '), JULTEXT=JUL.replace(/<[^>]*>/g,' ');
-ck('no percentage is printed anywhere in the section',/[\d.]+%/.test(ALLTEXT),false);
-ck('  nor in a filtered month',/[\d.]+%/.test(JULTEXT),false);
+// Percentages ARE printed now, but only ever as a share of the cut shown, and
+// only beside a value that names that denominator. What stays forbidden is a
+// RATE: there is no active-brand denominator in this data for one.
+ck('every percentage in the section is a share of the cut',
+   (ALLTEXT.match(/[\d.]+%/g)||[]).length===(ALLTEXT.match(/[\d.]+% of cut/g)||[]).length,true);
+ck('  in a filtered month too',
+   (JULTEXT.match(/[\d.]+%/g)||[]).length===(JULTEXT.match(/[\d.]+% of cut/g)||[]).length,true);
+ck('  and none of them is called a rate',/churn rate|% churn|rate of/i.test(ALLTEXT.replace(/real per-product churn rate/,'')),false);
 // A real product none of them had is a FINDING and keeps its row. Grey NONE,
 // never amber - amber on this page means "too few to trust", and a definite
 // zero is not that.
@@ -633,15 +639,17 @@ ck('  and a rule separates them',/height:1px;background:rgba\(23,44,69,\.09\);ma
 ck('the cross-tabs opt out of the two-row sticky header',
    /class="stbl stbl-matrix"/.test(bd),true);
 ck('  with a rule that unpins them vertically',
-   /\.stbl\.stbl-matrix thead tr th\{position:static;top:auto\}/.test(bd),true);
+   /\.stbl\.stbl-matrix thead tr th\{position:static;top:auto/.test(bd),true);
 ck('  and the rule comes AFTER the one it overrides, so no !important is needed',
    bd.indexOf('.stbl thead tr:not(.bd-grp-row) th{position:sticky;top:28px')
      <bd.indexOf('.stbl.stbl-matrix thead tr th{position:static'),true);
 // The label column still freezes sideways: these DO scroll horizontally.
-ck('the label column stays frozen on the horizontal axis',
-   /\.stbl\.stbl-matrix thead tr th:first-child\{position:sticky;left:0;top:auto/.test(bd),true);
-ck('  and no top offset survives on it',
-   /\.stbl\.stbl-matrix thead tr th:first-child\{[^}]*top:28px/.test(bd),false);
+// The label column is NOT frozen any more. One sticky box left in an otherwise
+// static row is exactly what slid over the first body row's label.
+ck('the label column is unpinned too',
+   /\.stbl\.stbl-matrix thead tr th:first-child\{position:static/.test(bd),true);
+ck('  with no offset of any kind surviving on it',
+   /\.stbl\.stbl-matrix thead tr th:first-child\{[^}]*(top:28px|left:0)/.test(bd),false);
 // Every row the data defines must reach the markup — the bug hid one visually,
 // not structurally, so this guards the data path too.
 ck('all four A/B rows render',
@@ -659,6 +667,70 @@ ck('  while still growing from a zero basis',/flex:1 1 0;min-width:3px;max-width
 // Capping the PANEL was the first attempt and just moved the void outside the
 // rows: 570px of white inside the tile. The panel fills again.
 ck('the panel is not capped',/min-width:320px;max-width:1120px/.test(bd),false);
+
+// ── C5 shares: OF THE CUT, never a churn rate ─────────────────────────────
+// This section refuses to print a churn rate, because implemented_products is
+// written during the churn review and no active brand carries it — there is no
+// denominator a rate could use. A share of the brands SHOWN is a different
+// thing, and it sits under a value that already names that denominator.
+const _c5pcts=(h,name)=>[...(((h.match(new RegExp('data-c5="'+name+'"[\\s\\S]*?(?=data-c5="|$)'))||[])[0])||'')
+  .matchAll(/>(\d+)% of cut</g)].map(m=>+m[1]);
+ck('every product row carries its share of the cut',_c5pcts(ALL,'product'),[98,75,35]);
+// CAS is a product none of them had. A zero has no share worth printing, and
+// "0% of cut" beside NONE reads as a measured zero.
+ck('  and the product none of them had prints none',
+   (ALL.match(/NONE<\/span>[\s\S]{0,60}?% of cut/)||[]).length,0);
+// The product rows OVERLAP — a brand with three products is in three of them —
+// so their shares must exceed 100. That is the finding, not an error.
+ck('  so the product shares exceed 100%',
+   _c5pcts(ALL,'product').reduce((a,b)=>a+b,0)>100,true);
+// The combination rows PARTITION the same brands, so theirs must land on 100.
+ck('every combination row carries its share',_c5pcts(ALL,'combination').length,4);
+ck('  and they sum to 100% within a rounding step',
+   Math.abs(_c5pcts(ALL,'combination').reduce((a,b)=>a+b,0)-100)<=2,true);
+// The denominator is the CUT, so a month filter changes it.
+// Asserted as an invariant rather than a magic number: each share is that
+// row's own count over the cut size, in whichever cut is selected.
+const _c5rows=(h,name)=>[...(((h.match(new RegExp('data-c5="'+name+'"[\\s\\S]*?(?=data-c5="|$)'))||[])[0])||'')
+  .matchAll(/color:var\(--navy\)">([\d,]+)<\/span>[\s\S]{0,320}?>(\d+)% of cut</g)]
+  .map(m=>[+m[1].replace(/,/g,''),+m[2]]);
+const _c5cut=(h)=>+(/Brands in this cut<\/div><div style="[^"]*">([\d,]+)</i.exec(h)||[0,'0'])[1].replace(/,/g,'');
+// .every() on an EMPTY array is true, so the row count is asserted first —
+// without it a regex that stops matching turns both of these green.
+ck('the product rows are found with their shares',
+   [_c5rows(ALL,'product').length,_c5rows(JUL,'product').length],[3,3]);
+ck('the share is the row count over the cut size',
+   _c5rows(ALL,'product').map(([n,p])=>p===Math.round(n/_c5cut(ALL)*100)),[true,true,true]);
+ck('  and it follows the selected CUT, not the whole pool',
+   _c5rows(JUL,'product').map(([n,p])=>p===Math.round(n/_c5cut(JUL)*100)),[true,true,true]);
+ck('  which are different numbers, or that proves nothing',
+   _c5cut(JUL)<_c5cut(ALL)&&_c5cut(JUL)>0,true);
+// The combination shares need the same check: in the ALL cut the pool and the
+// cut are the same number, so only a FILTERED cut can tell them apart.
+ck('the combination rows are found with their shares in a filtered cut',
+   _c5rows(JUL,'combination').length>0,true);
+ck('  and divide by the cut, not the pool',
+   _c5rows(JUL,'combination').map(([n,p])=>p===Math.round(n/_c5cut(JUL)*100))
+     .every(Boolean),true);
+ck('the tab’s RATE formatter is still not borrowed here',
+   /_chFmtPct\(/.test(C5BLOCK),false);
+ck('  and the share says what it is a share of',/% of cut/.test(ALL),true);
+// The banner that forbids reading any of this as a rate must survive.
+ck('the "a count, never a rate" banner is still there',/A COUNT, NEVER A RATE/i.test(ALL),true);
+
+// ── The cross-tabs carry no sticky cell at all ────────────────────────────
+// One sticky box left in an otherwise static row slid over the first body
+// row's LABEL: numbers visible, label gone. Nothing is pinned now, so nothing
+// can overlap anything.
+ck('no matrix cell is pinned',
+   /\.stbl\.stbl-matrix thead tr th\{position:static/.test(bd)
+   &&/\.stbl\.stbl-matrix thead tr th:first-child\{position:static/.test(bd)
+   &&/\.stbl\.stbl-matrix tbody td:first-child\{position:static/.test(bd),true);
+ck('  including the label column',
+   /\.stbl\.stbl-matrix tbody td:first-child\{position:static;left:auto/.test(bd),true);
+ck('  and each override comes after the rule it overrides',
+   bd.indexOf('.stbl tbody td:first-child{position:sticky')
+     <bd.indexOf('.stbl.stbl-matrix tbody td:first-child{position:static'),true);
 
 console.log('\n'+pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);
