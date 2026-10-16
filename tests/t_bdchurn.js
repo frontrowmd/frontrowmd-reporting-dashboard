@@ -557,6 +557,18 @@ ck('  and what would make a real rate possible',
 ck('the worker still fetches the field',/'implemented_products',/.test(src),true);
 ck('  and maps it onto the deal row',/implemented_products: p\.implemented_products\|\|'',/.test(src),true);
 
+// A rendered A/B matrix, for the row-visibility assertions below.
+const ALL_AB=(()=>{
+  const mi=bd.indexOf('  var _chMatrix=function(rowsDef,colsDef,cellOf,note,accent){');
+  const mj=bd.indexOf('\n  };',mi)+5;
+  const c={console};vm.createContext(c);
+  vm.runInContext('var BD_CHURN_C="#DC2626";\n'+bd.slice(mi,mj)+'\nObject.assign(globalThis,{_chMatrix});',c);
+  const rows=[{k:'Yes',l:'Yes A/B test'},{k:'No',l:'No A/B test'},
+              {k:'Unknown',l:'Unknown'},{k:'',l:'Not recorded'}];
+  const cols=[{k:'a',l:'A'},{k:'',l:'No measurement'}];
+  return c._chMatrix(rows,cols,(r,ci)=>1,'note');
+})();
+
 // ── C6 / C7 margins carry a share of the grid's own total ─────────────────
 // Counts stay the figure being read; the percentage rides under them in grey.
 // Deliberately NOT in the cells: a 16-cell grid built on ~29 deals would be
@@ -611,6 +623,42 @@ ck('  with one row rhythm for both',(bd.match(/'\+C5ROW\+'"/g)||[]).length,2);
 ck('both C5 blocks are named',
    [...ALL.matchAll(/data-c5="(\w+)"/g)].map(m=>m[1]),['product','combination']);
 ck('  and a rule separates them',/height:1px;background:rgba\(23,44,69,\.09\);margin:20px 0 16px/.test(ALL),true);
+
+// ── C6 / C7: no row may hide under the header ─────────────────────────────
+// These borrow .stbl for its cell styling, but that class carries sticky rules
+// written for the big data grid, which has a TWO-row header: its column header
+// pins at top:28px, beneath the group row above it. A ONE-row header pinned at
+// 28px sits lower than it is painted and covers the first body row — the top
+// row of C6 and C7 was simply missing, with a sliver of its total showing.
+ck('the cross-tabs opt out of the two-row sticky header',
+   /class="stbl stbl-matrix"/.test(bd),true);
+ck('  with a rule that unpins them vertically',
+   /\.stbl\.stbl-matrix thead tr th\{position:static;top:auto\}/.test(bd),true);
+ck('  and the rule comes AFTER the one it overrides, so no !important is needed',
+   bd.indexOf('.stbl thead tr:not(.bd-grp-row) th{position:sticky;top:28px')
+     <bd.indexOf('.stbl.stbl-matrix thead tr th{position:static'),true);
+// The label column still freezes sideways: these DO scroll horizontally.
+ck('the label column stays frozen on the horizontal axis',
+   /\.stbl\.stbl-matrix thead tr th:first-child\{position:sticky;left:0;top:auto/.test(bd),true);
+ck('  and no top offset survives on it',
+   /\.stbl\.stbl-matrix thead tr th:first-child\{[^}]*top:28px/.test(bd),false);
+// Every row the data defines must reach the markup — the bug hid one visually,
+// not structurally, so this guards the data path too.
+ck('all four A/B rows render',
+   ['Yes A/B test','No A/B test','Unknown','Not recorded']
+     .filter(l=>!new RegExp('>'+l.replace(/\//g,'\\/')+'<').test(ALL_AB)).length,0);
+
+// ── C5 rows reach their own value column ──────────────────────────────────
+// The cells grow to fill the track. Capped at 22px they stopped hundreds of
+// pixels short on a wide screen and every row carried a band of dead air
+// through its middle — which is the "empty space" complaint.
+ck('the cells can grow wide enough to fill a typical cut',
+   /max-width:34px/.test(bd),true);
+ck('  and keep a floor so a big cut still shows them',/min-width:3px/.test(bd),true);
+ck('  while still growing from a zero basis',/flex:1 1 0;min-width:3px;max-width:34px/.test(bd),true);
+// Capping the PANEL was the first attempt and just moved the void outside the
+// rows: 570px of white inside the tile. The panel fills again.
+ck('the panel is not capped',/min-width:320px;max-width:1120px/.test(bd),false);
 
 console.log('\n'+pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);

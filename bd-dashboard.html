@@ -148,6 +148,17 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
    multiple columns; it scrolls horizontally with the rest of the banner. */
 .stbl tbody td:first-child{position:sticky;left:0;z-index:3;box-shadow:2px 0 4px -2px rgba(23,44,69,.08)}
 .stbl thead tr:not(.bd-grp-row) th:first-child{position:sticky;left:0;top:28px;z-index:8;box-shadow:2px 0 4px -2px rgba(23,44,69,.08)}
+/* The churn cross-tabs (C6, C7) borrow .stbl for its cell styling but are NOT
+   the scrollable data grid those sticky rules were written for. That grid has a
+   TWO-row header, so its column header pins at top:28px, under the group row
+   above it. These have a ONE-row header, which pinned 28px lower than it is
+   painted and covered the first body row — the top row of both tables was
+   simply missing, with a sliver of its total showing through.
+   Vertical stickiness off; the label column stays frozen on the horizontal
+   axis, which these do need because they scroll sideways. Specificity matches
+   the rules above and these come later, so no !important. */
+.stbl.stbl-matrix thead tr th{position:static;top:auto}
+.stbl.stbl-matrix thead tr th:first-child{position:sticky;left:0;top:auto;z-index:8}
 .float-tip{display:none;position:fixed;background:#172C45;color:#fff;padding:8px 12px;border-radius:8px;font-size:12px;pointer-events:none;z-index:999;box-shadow:0 4px 12px rgba(0,0,0,.15);max-width:320px;white-space:normal;line-height:1.4}
 /* Chart-hover variant. Scoped with .ftc so the attribution and table tooltips,
    which share .float-tip and write their own innerHTML, are untouched. */
@@ -2154,7 +2165,7 @@ function renderBD(){
     // table-layout:fixed with a sized label column. Left to size itself the
     // browser gave every shaded cell a different width, so the fill read as
     // floating blocks rather than a grid.
-    var t='<div style="overflow-x:auto"><table class="stbl" style="width:100%;min-width:620px;font-size:11.5px;border-collapse:separate;border-spacing:0;table-layout:fixed">';
+    var t='<div style="overflow-x:auto"><table class="stbl stbl-matrix" style="width:100%;min-width:620px;font-size:11.5px;border-collapse:separate;border-spacing:0;table-layout:fixed">';
     t+='<colgroup><col style="width:168px">'+colsDef.map(function(){return '<col>';}).join('')+'<col style="width:68px"></colgroup>';
     t+='<thead><tr><th style="text-align:left;padding:7px 9px;border-bottom:1.5px solid rgba(23,44,69,.16)"></th>';
     // white-space:normal and overflow:visible are the point: the .stbl th rule sets
@@ -2323,7 +2334,13 @@ function renderBD(){
       }
       var h='<div style="display:flex;gap:2px;align-items:stretch">';
       for(var i=0;i<n;i++){
-        h+='<div style="flex:1 1 0;min-width:0;max-width:22px;height:16px;border-radius:3px;background:'
+        // The cells grow to fill the track. They were capped at 22px, so on a
+        // wide screen a 40-odd-brand cut stopped hundreds of pixels short of
+        // its own value column and every row carried a band of dead air
+        // through its middle. The cap is now loose enough that a typical cut
+        // reaches the end; a big cut shrinks the cells instead, and min-width
+        // keeps them visible rather than collapsing them to nothing.
+        h+='<div style="flex:1 1 0;min-width:3px;max-width:34px;height:16px;border-radius:3px;background:'
           +(i<fill?colour:'rgba(23,44,69,.07)')+(i<fill&&dim?';opacity:'+dim:'')+'"></div>';
       }
       return h+'</div>';
