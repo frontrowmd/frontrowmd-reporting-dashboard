@@ -166,6 +166,12 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
    column, so nothing is lost and nothing can overlap anything. */
 .stbl.stbl-matrix thead tr th:first-child{position:static;top:auto;left:auto;z-index:auto;box-shadow:none}
 .stbl.stbl-matrix tbody td:first-child{position:static;left:auto;z-index:auto;box-shadow:none}
+.rwtbl{border-collapse:separate;border-spacing:0;font-size:12.5px;font-variant-numeric:tabular-nums;table-layout:fixed;width:100%}
+.rwtbl th,.rwtbl td{padding:8px 4px;text-align:center;white-space:nowrap;border-bottom:1px solid rgba(23,44,69,.04);border-left:2px solid rgba(255,255,255,.95)}
+.rwtbl thead th{font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.03em;border-bottom:1.5px solid rgba(23,44,69,.16);padding-bottom:7px;vertical-align:bottom}
+.rwtbl .rw-c{position:sticky;left:0;z-index:2;background:var(--white);text-align:left;padding-left:2px;font-weight:600;color:var(--navy);box-shadow:1px 0 0 rgba(23,44,69,.08)}
+.rwtbl .rw-n{position:sticky;left:78px;z-index:2;background:var(--white);color:var(--grey);font-weight:700;box-shadow:1px 0 0 rgba(23,44,69,.12)}
+.rwtbl tbody tr:hover .rw-c{color:var(--teal)}
 .float-tip{display:none;position:fixed;background:#172C45;color:#fff;padding:8px 12px;border-radius:8px;font-size:12px;pointer-events:none;z-index:999;box-shadow:0 4px 12px rgba(0,0,0,.15);max-width:320px;white-space:normal;line-height:1.4}
 /* Chart-hover variant. Scoped with .ftc so the attribution and table tooltips,
    which share .float-tip and write their own innerHTML, are untouched. */
@@ -260,6 +266,7 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
     <span id="bd-nav-churn" style="display:none"><span class="bd-navdiv"></span>
     <a class="bd-nav-i" href="#bd-sec-churn" data-sec="bd-sec-churn" onclick="bdNavGo(event,'bd-sec-churn')">Key Metrics</a>
     <a class="bd-nav-i" href="#bd-sec-churnrate" data-sec="bd-sec-churnrate" onclick="bdNavGo(event,'bd-sec-churnrate')">Churn Rate</a>
+    <a class="bd-nav-i" href="#bd-sec-churnret" data-sec="bd-sec-churnret" onclick="bdNavGo(event,'bd-sec-churnret')">Retention</a>
     <a class="bd-nav-i" href="#bd-sec-churntype" data-sec="bd-sec-churntype" onclick="bdNavGo(event,'bd-sec-churntype')">By Type</a>
     <a class="bd-nav-i" href="#bd-sec-churnreason" data-sec="bd-sec-churnreason" onclick="bdNavGo(event,'bd-sec-churnreason')">By Reason</a>
     <a class="bd-nav-i" href="#bd-sec-churnprod" data-sec="bd-sec-churnprod" onclick="bdNavGo(event,'bd-sec-churnprod')">Products</a>
@@ -448,6 +455,42 @@ function bdSetChurnRateGrain(g){if(_bdChurnRateGrain===g)return;_bdChurnRateGrai
 var _bdChurnProdMonth='';
 function bdSetChurnProdMonth(m){if(_bdChurnProdMonth===m)return;_bdChurnProdMonth=m;renderBD();}
 function bdSetChurnKmScope(v){if(_bdChurnKmScope===v)return;_bdChurnKmScope=v;renderBD();}
+// C3's cell mode. '%' by default: a share is what makes two cohorts of
+// different size comparable at a glance, which is the whole point of the grid.
+// The counts are never hidden — they ride in every cell's tooltip and in the
+// Brands column — so this only picks which of the two is printed.
+var _bdRetMode='pct';
+function bdSetRetMode(m){if(_bdRetMode===m)return;_bdRetMode=m;renderBD();}
+// C3's metric. Churn is the exact complement of retention (100 − retained), so
+// this changes only the figure PRINTED — the fill still encodes retention, and
+// has to: a cell at 8% churn is the same cell at 92% retained, so leaving the
+// colour alone is what keeps green meaning good under either label. Inverting
+// the ramp as well would cancel out and paint high churn green.
+var _bdRetMetric='ret';
+function bdSetRetMetric(m){if(_bdRetMetric===m)return;_bdRetMetric=m;renderBD();}
+// C3's churn-attribute filters. 'all' is no filter; '' is the real, selectable
+// value "not recorded", which is why these cannot default to '' — blank is a
+// legitimate cut here, not an absence of one. prod is a multi-select and an
+// empty array means no filter.
+// Sentinel for "no products recorded" in the product multi-select. It cannot
+// intersect with a real product — a brand either implemented one or did not —
+// so the two sides clear each other below rather than letting the grid reach a
+// state that is guaranteed to match nothing.
+var RW_PROD_NONE='__none';
+var _bdRetF={type:'all',seg:'all',ab:'all',prod:[]};
+function bdSetRetF(k,v){if(_bdRetF[k]===v)return;_bdRetF[k]=v;renderBD();}
+function bdToggleRetFProd(v){
+  var i=_bdRetF.prod.indexOf(v);
+  if(i>=0){_bdRetF.prod.splice(i,1);}
+  else if(v===RW_PROD_NONE){_bdRetF.prod=[v];}
+  else{_bdRetF.prod=_bdRetF.prod.filter(function(x){return x!==RW_PROD_NONE;}).concat([v]);}
+  renderBD();
+}
+function bdClearRetFProd(){if(!_bdRetF.prod.length)return;_bdRetF.prod=[];renderBD();}
+function _bdRetFActive(){
+  return _bdRetF.type!=='all'||_bdRetF.seg!=='all'||_bdRetF.ab!=='all'
+    ||_bdRetF.prod.length>0;
+}
 // Churn Type is grouped before testing, so Delinquent Payment counts as Board
 // Defined here exactly as it does in the By Type chart.
 function _bdIsBoardChurn(dd){return BD_CHURN_TYPE_GROUP[(dd.never_implemented_churn||'').trim()]===BD_CHURN_BOARD;}
@@ -2057,7 +2100,501 @@ function renderBD(){
     +'</div>';
   hChurn+='</div></section>';
 
-  // ── iii. Churn count by Churn Type ──
+  // ── iii. Retention waterfall ──────────────────────────────────────────────
+  //
+  // Cohort retention. Rows are the month a brand signed, columns are whole
+  // months of tenure, each cell the share of that cohort still live that far
+  // in. It answers the one question no other section on this tab can: whether
+  // brands signed in a given month leave FASTER than brands signed in another.
+  // Everything else here buckets on the CHURN date, which says when churn
+  // happened but never how long those brands had lasted.
+  //
+  // Four data rules differ from the rest of the tab, all of them deliberate:
+  //
+  //  1. Its own floor, RW_FROM, which is NOT BD_CHURN_DETAIL_FROM even though
+  //     the two currently hold the same value. That constant is about field
+  //     coverage — Churn Type and Churn Reason are near-empty before 2026 —
+  //     and this section reads neither field, only a signing date and a churn
+  //     date. They coincide by choice, not by dependency, so moving one must
+  //     not move the other; a test asserts this section never reads the other.
+  //     '2026-01' gives ten rows, and the oldest reaches Month 10, so the grid
+  //     stops short of a 12-month read. Reaching back to 2025-01 would buy 22
+  //     rows and a populated Month 12 for eleven of them; 2024 is not worth
+  //     having at any setting — every 2024 close date sits on a record created
+  //     in the Feb-2025 or May-2026 bulk batches, three of those months hold
+  //     fewer than ten signings, and 30 of their 104 churns carry no churn
+  //     date, so 17% of each row is known-churned but unplaceable.
+  //
+  //  2. The signing date is the EARLIER of closedate and entered_closedwon —
+  //     NOT the (entered_closedwon || createdate || closedate) chain the
+  //     Snapshot uses.
+  //     entered_closedwon is the date of the LAST entry into closed-won and has
+  //     been bulk-rewritten at least five times (2025-02-06, 2025-02-20,
+  //     2026-03-04, 2026-03-20, 2026-05-06 — about 289 of the 1,097 deals carry
+  //     one of those stamps). Of the 198 dated churns holding both fields, 130
+  //     have entered_closedwon in a LATER month than closedate and 91 are later
+  //     by three months or more. Leading with it put 50 of 266 churns at
+  //     NEGATIVE tenure and piled 163 deals (15% of the book) into one phantom
+  //     Feb-2025 row; taking the earlier of the two leaves 17 there and 2
+  //     negatives. closedate-first alone would be almost as good — the two
+  //     agree on 1,096 of 1,097 deals — but on the one deal where they differ
+  //     (MD Logic Health: closedate 2026-08-28, two days AFTER its churn, so
+  //     the close date was overwritten at churn) the earlier date is the right
+  //     one. Strictly better, never worse.
+  //     closedate is a HubSpot date field stored at Eastern midnight
+  //     ('2024-06-03T04:00:00Z', '2024-01-03T05:00:00Z' — note the DST shift),
+  //     so slicing it to 'YYYY-MM' already reads as an Eastern month and needs
+  //     no offset. Only the 66 deals with no closedate fall back to the
+  //     timestamp, and every one of those is a churn, so the fallback cannot
+  //     bias the survivor side.
+  //
+  //  3. The denominator is the cohort, never the opening book. A cell is "of
+  //     the brands that signed in month M, how many are still live" — it is
+  //     NOT the churn rate C2 plots and will not tie to it. Said out loud in
+  //     the footnote, because the two invite exactly that misreading.
+  //
+  //  4. No Board-Defined / All switch, unlike C1. 159 of the 317 churns carry
+  //     no Churn Type at all, so a Board-Defined cut would drop two thirds of
+  //     the churn out of the numerator and render those brands as retained by
+  //     omission. The grid counts every churn and the header says so.
+  //
+  // The unit is the signed DEAL. A brand that churned and later re-signed is a
+  // member of both cohorts, which is what a cohort view should do.
+  var RW_FROM='2026-01';
+  // Retention at which the fill goes neutral, and the floor the red arm spans
+  // to. Not 50%/0%: retention here lives between about 55% and 100%, so an arm
+  // stretched to zero would compress every real difference into one pale step.
+  // RW_LOW clamps rather than extends — anything at or below it is the darkest
+  // red, and the legend prints both bounds so the scale is never guessed at.
+  var RW_NEUTRAL=0.90,RW_LOW=0.55;
+  // Diverging ramp, one hue per arm off the page's own two poles (#16A34A /
+  // #DC2626) over white. Lightness is monotone outward on each arm and every
+  // step clears 4.5:1 against navy text — both checked, not eyeballed.
+  // Floors on the blended row. At the far right of the grid only the oldest
+  // one or two cohorts have reached that tenure, so the blend stops being a
+  // blend and reads as retention RECOVERING, which is the opposite of what it
+  // means. Both floors matter: RW_BLEND_MIN catches a thin tail, and the
+  // two-cohort rule catches a single LARGE cohort standing alone out there —
+  // which is exactly what the Jan-2026 row does at Month 10.
+  var RW_BLEND_MIN=30,RW_BLEND_MIN_COHORTS=2;
+  // Column widths. RW_W_LBL is ALSO the sticky offset of the Signed column in
+  // CSS (.rw-n{left:78px}) — the two must agree or that opaque cell lands on
+  // top of Month 1, so a test pins them together.
+  // RW_W_CELL is the MINIMUM a tenure column may be; RW_W_CELL_MAX caps how
+  // far it stretches, so a ten-column grid fills a laptop without turning into
+  // four characters marooned in a 180px cell on an ultrawide.
+  var RW_W_LBL=78,RW_W_N=58,RW_W_CELL=42,RW_W_CELL_MAX=104;
+  var RW_GREEN=['#E3F4E9','#C7E9D4','#A6DCBA','#81CD9D','#57BD7D'];
+  var RW_RED=['#FBE7E7','#F7CFCF','#F3B5B5','#EF9999','#E97878'];
+  var _rwMN=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  // Whole months from a to b, both 'YYYY-MM'. Negative when b precedes a, which
+  // is a real case here (two deals churn before every candidate signing date)
+  // and must stay negative rather than clamp to 0 — a clamp would book them as
+  // a month-one loss in a cohort they never belonged to.
+  var _rwDiff=function(a,b){
+    if(!a||!b)return null;
+    var pa=a.split('-'),pb=b.split('-');
+    return (+pb[0]-+pa[0])*12+(+pb[1]-+pa[1]);
+  };
+  var _rwAdd=function(m,n){
+    var p=m.split('-'),y=+p[0],mo=+p[1]-1+n;
+    y+=Math.floor(mo/12);mo=((mo%12)+12)%12;
+    return y+'-'+('0'+(mo+1)).slice(-2);
+  };
+  var _rwLbl=function(m){var p=m.split('-');return _rwMN[+p[1]-1]+' '+p[0].substring(2);};
+  // See rule 2 above. Earliest of the two real date fields; createdate only as a
+  // last resort, and only because a row with no date at all is excluded anyway.
+  var _rwSignOf=function(dd){
+    var a=_bdMonthOf(dd.closedate),b=_bdMonthOf(dd.entered_closedwon);
+    if(a&&b)return a<b?a:b;
+    return a||b||_bdMonthOf(dd.createdate)||'';
+  };
+  var _rwFill=function(pct){
+    if(pct===null||pct===undefined)return '';
+    if(pct>=0.999)return RW_GREEN[4];
+    if(pct>RW_NEUTRAL)return RW_GREEN[Math.min(4,Math.floor(((pct-RW_NEUTRAL)/(1-RW_NEUTRAL))*5))];
+    if(pct<RW_NEUTRAL)return RW_RED[Math.min(4,Math.floor(Math.min(1,(RW_NEUTRAL-pct)/(RW_NEUTRAL-RW_LOW))*4.999))];
+    return '';
+  };
+  // rows: [{sign,churn,churned}]. Returns the triangle plus every exclusion,
+  // counted rather than dropped — the same accounting the page band does for
+  // the churn set.
+  var _rwBuild=function(rows,from,now){
+    var ex={noSign:0,preFloor:0,undated:0,negative:0},byM={};
+    rows.forEach(function(r){
+      // Order matters. The floor is tested BEFORE the date tests, so the
+      // undated/negative tallies count only rows that would otherwise have been
+      // drawn — the footnote presents them as holes in THIS grid, and counting
+      // them book-wide overstated them roughly 2.4x (30 of the 51 undated
+      // churns sit on 2024 signing months, below the floor).
+      if(!r.sign){ex.noSign++;return;}
+      if(r.sign<from){ex.preFloor++;return;}
+      if(r.sign>now)return;
+      if(r.churned&&!r.churn){ex.undated++;return;}
+      if(r.churned&&_rwDiff(r.sign,r.churn)<0){ex.negative++;return;}
+      (byM[r.sign]=byM[r.sign]||[]).push(r);
+    });
+    var cohorts=[],m=from,guard=0;
+    while(m<=now&&guard++<400){
+      var pool=byM[m]||[],maxK=_rwDiff(m,now)+1,cells=[];
+      for(var k=1;k<=maxK;k++){
+        var alive=0;
+        for(var i=0;i<pool.length;i++){
+          var r=pool[i];
+          // A churn in month M removes the brand FROM M, matching the
+          // end-of-month convention the Snapshot chart already uses.
+          if(!r.churned||_rwDiff(r.sign,r.churn)>=k)alive++;
+        }
+        cells.push({k:k,alive:alive,lost:pool.length-alive,pct:pool.length?alive/pool.length:null});
+      }
+      cohorts.push({m:m,n:pool.length,cells:cells});
+      m=_rwAdd(m,1);
+    }
+    // Blended curve: at tenure k, every cohort that has actually REACHED k.
+    // Each k carries its own denominator, which is why it sits below the grid
+    // with its cohort count printed rather than reading as a Total row.
+    var blend=[],wide=_rwDiff(from,now)+1;
+    for(var k=1;k<=wide;k++){
+      var a=0,d=0,c=0;
+      cohorts.forEach(function(co){
+        if(co.cells.length>=k&&co.n){a+=co.cells[k-1].alive;d+=co.n;c++;}
+      });
+      blend.push({k:k,alive:a,n:d,cohorts:c,pct:d?a/d:null});
+    }
+    return {cohorts:cohorts,maxK:wide,excluded:ex,blend:blend};
+  };
+  // ── Churn-attribute filters ───────────────────────────────────────────────
+  //
+  // A selection restricts the grid to the brands that match it — survivors and
+  // churns alike. The cohort IS the filtered set, so the Signed column moves
+  // with the filters and nothing is quietly recategorised as retained.
+  //
+  // The five fields are not alike, and the difference decides what you get:
+  // Company Segment lives on the COMPANY record, so both populations carry it
+  // and filtering by it is a genuine retention cut — VIP brands against
+  // Mid-Market ones. The other three are written at the CHURN REVIEW, so only 3
+  // of 780 closed-won deals carry any of them; selecting a NAMED value on those
+  // leaves a cohort made entirely of brands that churned, and the grid becomes
+  // a time-to-churn view whose every curve ends at 0%. Their "Not recorded"
+  // option does the opposite — a survivor is blank on all of them, so it keeps
+  // every single one. That is a real reading —
+  // "these brands lasted this long" — but it is not retention, so the band
+  // under the pills detects the case from the data and says which one is on
+  // screen rather than letting a reader assume the first.
+  //
+  // The coverage is thin and that is the hazard: of 317 churns, 159 have no
+  // Churn Type, 213 no A/B Test and 199 no Implemented Products. Each filter
+  // therefore carries an explicit
+  // "Not recorded" option rather than folding blanks into a named value, and
+  // every option prints the number of churns behind it.
+  var _rwTypeOf=function(dd){
+    // Board Defined folds in Delinquent Payment, exactly as C4 and C7 do.
+    // _chTypeOf is NOT used here: it is a var function expression declared in
+    // section iv, BELOW this one, so at this point it is hoisted-but-undefined
+    // and calling it would blank the whole tab.
+    var g=BD_CHURN_TYPE_GROUP[(dd.never_implemented_churn||'').trim()];
+    if(!g)return '';
+    return g===BD_CHURN_BOARD?'board':'ni';
+  };
+  var _rwFilters=[
+    {k:'type',l:'Churn Type',of:_rwTypeOf,
+     opts:[['board','Board Defined','Board Defined Churn and Delinquent Payment'],
+           ['ni','Never Implemented','All three Never Imp reasons'],
+           ['','Not recorded','No Churn Type stored on the deal']]},
+    {k:'seg',l:'Company Segment',of:function(dd){return dd.companySegment||'';},
+     opts:BD_SEGMENT_ORDER.map(function(sg){return [sg,sg,'Company Segment is '+sg];})
+          .concat([['','Not recorded','No Company Segment on the associated company']])},
+    {k:'ab',l:'A/B Test',of:function(dd){return (dd.ab_test||'').trim();},
+     opts:[['Yes','Yes','A/B Test is Yes'],['No','No','A/B Test is No'],
+           ['Unknown','Unknown','A/B Test is the stored value Unknown'],
+           ['','Not recorded','A/B Test is blank on the deal']]},
+  ];
+  // Products is the odd one out: a deal can hold several, so it multi-selects.
+  // Selecting two means the INTERSECTION — a brand had to implement BOTH to
+  // match — so adding a product can only ever narrow the set, never widen it.
+  // An empty selection means no filter.
+  var _rwProdMatch=function(dd){
+    if(!_bdRetF.prod.length)return true;
+    var has=_chProdsOf(dd);
+    // "Not recorded" is its own question, not a product to intersect with.
+    if(_bdRetF.prod.indexOf(RW_PROD_NONE)>=0)return has.length===0;
+    for(var i=0;i<_bdRetF.prod.length;i++)if(has.indexOf(_bdRetF.prod[i])<0)return false;
+    return true;
+  };
+  var _rwKept=function(dd){
+    for(var i=0;i<_rwFilters.length;i++){
+      var f=_rwFilters[i],sel=_bdRetF[f.k];
+      if(sel!=='all'&&f.of(dd)!==sel)return false;
+    }
+    return _rwProdMatch(dd);
+  };
+  // Rendered AFTER the book is built so each option can print the number of
+  // churns behind it — with coverage this thin, an option list without counts
+  // hides that picking almost anything discards most of the churn.
+  // "(total [churned])" — the brands an option would keep, and how many of them
+  // left. Set smaller than the label it trails so the option stays the thing
+  // being read. All carries no count: it is the unfiltered book, which the band
+  // and the Signed column already state.
+  var _rwCnt=function(tot,chn){
+    return '<span style="font-size:9px;font-weight:600;opacity:.7;margin-left:4px;'
+      +'font-variant-numeric:tabular-nums">('+tot+' ['+chn+'])</span>';
+  };
+  var _rwFilterRows=function(surv,churns){
+    var h='<div style="border-top:1px solid rgba(23,44,69,.08);margin-top:12px;padding-top:11px">';
+    _rwFilters.forEach(function(f){
+      // Totals span BOTH populations, because the filters do. For every field
+      // but Company Segment a survivor's value is blank, so survivors pile into
+      // the "Not recorded" option — which is exactly what that option selects.
+      var cnt={},chn={};
+      surv.forEach(function(dd){var v=f.of(dd);cnt[v]=(cnt[v]||0)+1;});
+      churns.forEach(function(dd){var v=f.of(dd);cnt[v]=(cnt[v]||0)+1;chn[v]=(chn[v]||0)+1;});
+      h+='<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:6px;flex-wrap:wrap">'
+        +'<span style="flex:0 0 118px;font-size:9.5px;font-weight:700;color:var(--grey);'
+        +'text-transform:uppercase;letter-spacing:.04em;line-height:1.5">'+f.l
+        +(f.note?'<span style="display:block;font-weight:600;text-transform:none;letter-spacing:0;font-size:9px;font-style:italic">'+f.note+'</span>':'')
+        +'</span><span style="display:inline-flex;gap:5px;flex-wrap:wrap">'
+        +fp(_bdRetF[f.k]==='all','All',"bdSetRetF('"+f.k+"','all')");
+      f.opts.forEach(function(o){
+        h+='<span title="'+String(o[2]).replace(/"/g,'&quot;')+'">'
+          +fp(_bdRetF[f.k]===o[0],o[1]+_rwCnt(cnt[o[0]]||0,chn[o[0]]||0),
+              "bdSetRetF('"+f.k+"','"+String(o[0]).replace(/'/g,"\\'")+"')")+'</span>';
+      });
+      h+='</span></div>';
+    });
+    // Products: multi-select, matching the intersection.
+    var pc={},pchn={},_noProd=0,_noProdChn=0;
+    surv.forEach(function(dd){
+      var ps=_chProdsOf(dd); if(!ps.length){_noProd++;return;}
+      ps.forEach(function(pz){pc[pz]=(pc[pz]||0)+1;});});
+    churns.forEach(function(dd){
+      var ps=_chProdsOf(dd); if(!ps.length){_noProd++;_noProdChn++;return;}
+      ps.forEach(function(pz){pc[pz]=(pc[pz]||0)+1;pchn[pz]=(pchn[pz]||0)+1;});});
+    h+='<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">'
+      +'<span style="flex:0 0 118px;font-size:9.5px;font-weight:700;color:var(--grey);'
+      +'text-transform:uppercase;letter-spacing:.04em;line-height:1.5">Implemented Products'
+      +'<span style="display:block;font-weight:600;text-transform:none;letter-spacing:0;font-size:9px;font-style:italic">all of</span></span>'
+      +'<span style="display:inline-flex;gap:5px;flex-wrap:wrap">';
+    BD_PROD_ORDER.forEach(function(pz){
+      h+='<span title="'+BD_PROD_FULL[pz]+'">'
+        +fpMulti(_bdRetF.prod.indexOf(pz)>=0,pz+_rwCnt(pc[pz]||0,pchn[pz]||0),
+                 "bdToggleRetFProd('"+pz+"')")+'</span>';
+    });
+    h+='<span title="No Implemented Products on the deal. This field is written at the CHURN REVIEW, '
+      +'so a blank is a review that never recorded any, not a brand that implemented nothing \u2014 and all but '
+      +'one surviving brand is blank too, which makes this the one product choice that keeps them.">'
+      +fpMulti(_bdRetF.prod.indexOf(RW_PROD_NONE)>=0,'Not recorded'+_rwCnt(_noProd,_noProdChn),
+               "bdToggleRetFProd('"+RW_PROD_NONE+"')")+'</span>'
+      +(_bdRetF.prod.length?('<span style="font-size:9.5px;align-self:center">'
+        +fp(false,'Clear','bdClearRetFProd()')+'</span>'):'')
+      +'</span></div>';
+    return h+'</div>';
+  };
+  // The book is stage-partitioned, not brand_status-partitioned. brand_status
+  // 'Paused' matches ZERO deals here, and the pause signal actually lives in
+  // the paused_billing_* fields — where 20 of the 33 recorded pauses have
+  // already restarted with the brand still Signed or Paying. A pause is a
+  // billing holiday inside a retained relationship, so closed-won counts as
+  // retained whatever those fields say. Ten closed-won deals do carry a
+  // pausechurn_date; they stay retained here because the field is
+  // "Pause/Churn Date" and every other section on this tab also keys churn on
+  // the STAGE. Counted in the footnote so the choice is visible.
+  var _rwBook=closedWonDeals.filter(_rwKept).map(function(dd){
+    return {sign:_rwSignOf(dd),churn:'',churned:false,pc:!!dd.pausechurn_date};
+  // Both populations go through the SAME predicate, so the cohort is exactly
+  // the filtered set and the Signed column counts only the brands on screen.
+  // Nothing is recategorised as retained to keep a denominator intact.
+  }).concat(_chDeals.filter(_rwKept).map(function(dd){
+    return {sign:_rwSignOf(dd),churn:_bdMonthOf(dd.pausechurn_date),churned:true};
+  }));
+  // Scoped to the window for the same reason the exclusion tallies are — the
+  // footnote calls these deals the grid is counting as retained.
+  var _rwCwPc=_rwBook.filter(function(r){
+    return r.pc&&r.sign&&r.sign>=RW_FROM&&r.sign<=_cmKey;}).length;
+  var _rw=_rwBuild(_rwBook,RW_FROM,_cmKey);
+  // The churns inside the plotted window, which is the population every filter
+  // count below is taken over. Derived with the SAME signing rule and the SAME
+  // window as the grid, so an option's count cannot disagree with the grid it
+  // filters. Dated churns only: an undated one has no cohort to be counted in.
+  var _rwWinChurns=_chDeals.filter(function(dd){
+    var sg=_rwSignOf(dd),cm=_bdMonthOf(dd.pausechurn_date);
+    return sg&&cm&&sg>=RW_FROM&&sg<=_cmKey&&_rwDiff(sg,cm)>=0;
+  });
+  var _rwKeptChurns=_rwWinChurns.filter(_rwKept).length;
+  // Survivors in the window, and how many survive the filters. Company Segment
+  // lives on the COMPANY record so survivors carry it; the other three are
+  // written at the churn review, so selecting a NAMED value on them leaves zero
+  // survivors and the grid becomes a time-to-churn view — while their
+  // "Not recorded" option keeps every survivor, being blank on all of them.
+  // Detected from the data rather than hard-coded per field, so it stays right
+  // whichever of those two a filter lands on.
+  var _rwWinSurvArr=closedWonDeals.filter(function(dd){
+    var sg=_rwSignOf(dd);return sg&&sg>=RW_FROM&&sg<=_cmKey;});
+  var _rwWinSurv=_rwWinSurvArr.length;
+  var _rwKeptSurv=_rwWinSurvArr.filter(_rwKept).length;
+  var _rwPct=function(p){return (p*100).toFixed(0)+'%';};
+  // Value shown in a cell, and the words behind it on hover. The tooltip always
+  // carries BOTH the share and the counts, whichever mode the grid is in, so
+  // flipping the toggle is never needed to read one cell.
+  var _rwChurnView=(_bdRetMetric==='churn');
+  // Churn is rendered as a LOSS, so it carries a minus. The sign is decided on
+  // the FORMATTED string, not the raw share: a churn of 0.4% rounds to '0%' and
+  // '-0%' is not a number anyone writes. Zero stays unsigned for the same
+  // reason a cohort that has lost nobody should not look like it lost someone.
+  var _rwSigned=function(v,fmt){
+    var t=fmt?_rwPct(v):String(v);
+    return (t==='0%'||t==='0')?t:'-'+t;
+  };
+  // One place decides what a cell shows, so the grid, the blended row and the
+  // tooltips cannot disagree about either the metric or the sign.
+  var _rwCellVal=function(alive,lost,pct){
+    if(_bdRetMode==='n')return _rwChurnView?_rwSigned(lost,false):alive;
+    return _rwChurnView?_rwSigned(1-pct,true):_rwPct(pct);
+  };
+  // Both figures ride in every tooltip whichever view is selected, so no cell
+  // ever needs a toggle flipped to be read — only the order changes.
+  var _rwCellTip=function(mo,c,n){
+    var h=_rwLbl(mo)+' cohort · Month '+c.k+' — ';
+    return _rwChurnView
+      ? h+c.lost+' of '+n+' churned by then ('+_rwSigned(1-c.pct,true)+'), '+c.alive+' still live'
+      : h+c.alive+' of '+n+' still live ('+_rwPct(c.pct)+')'+(c.lost?', '+c.lost+' churned by then':'');
+  };
+  hChurn+='<section class="bd-sec" id="bd-sec-churnret">';
+  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C3</span><span class="bd-sec-t">Retention Waterfall</span>'
+    +'<span class="bd-sec-s">Share of each signing month’s brands '
+    +(_rwChurnView?'that had LEFT by':'still live in')
+    +' each month of tenure, Month 1 being the signing month itself. Read DOWN a column to compare cohorts at the same age — along a row the '
+    +(_rwChurnView?'rise':'decline')+' is only the cohort getting older.</span>'
+    +'</div>';
+  hChurn+='<div class="tile" style="padding:16px 18px 12px">';
+  // No measure on the grid: it fills the section. Capping it left half the row
+  // empty on a wide monitor. The FOOTNOTE still gets a measure of its own below,
+  // because prose at 2000px is unreadable even where a grid at 2000px is not.
+  // Scale legend. A heatmap whose only key is the reader's intuition invites
+  // the wrong one, and this ramp is deliberately NOT anchored at 50%.
+  hChurn+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">'
+    // Unit first, then metric: the unit decides whether the metric reads as a
+    // share or a headcount, so it is the outer choice of the two.
+    +'<span style="display:inline-flex;align-items:center;background:rgba(23,44,69,.07);border:1.5px solid rgba(23,44,69,.16);border-radius:50px;padding:3px;gap:3px;flex-shrink:0">'
+    +_chGrainPill(_bdRetMode,'pct','%','bdSetRetMode')
+    +_chGrainPill(_bdRetMode,'n','Brands','bdSetRetMode')+'</span>'
+    +'<span style="display:inline-flex;align-items:center;background:rgba(23,44,69,.07);border:1.5px solid rgba(23,44,69,.16);border-radius:50px;padding:3px;gap:3px;flex-shrink:0">'
+    +_chGrainPill(_bdRetMetric,'ret','Retention','bdSetRetMetric')
+    +_chGrainPill(_bdRetMetric,'churn','Churn','bdSetRetMetric')+'</span>'
+    // The ramp itself never flips — only the numbers that label its ends do,
+    // because churn runs the opposite way along the same scale.
+    +'<span style="font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em">'
+    +(_rwChurnView?'Churned':'Retained')+'</span>'
+    +'<span style="font-size:10px;color:var(--grey)">'
+    +'≤'+(_rwChurnView?_rwSigned(1-RW_LOW,true):_rwPct(RW_LOW))+'</span>'
+    +'<span style="display:inline-flex;border:1px solid rgba(23,44,69,.12);border-radius:3px;overflow:hidden">'
+    +RW_RED.slice().reverse().concat(['#FFFFFF']).concat(RW_GREEN).map(function(c){
+        return '<span style="width:20px;height:11px;background:'+c+'"></span>';}).join('')
+    +'</span><span style="font-size:10px;color:var(--grey)">'+(_rwChurnView?'0%':'100%')+'</span>'
+    +'<span style="font-size:10px;color:var(--grey);font-style:italic">— neutral at '
+    +(_rwChurnView?_rwSigned(1-RW_NEUTRAL,true):_rwPct(RW_NEUTRAL))+'</span></div>';
+  hChurn+=_rwFilterRows(_rwWinSurvArr,_rwWinChurns);
+  // Said at the point of use, not only in the footnote: a filter here moves the
+  // numerator and leaves the denominator alone, so every figure above rises.
+  if(_bdRetFActive())
+    hChurn+='<div style="margin-top:10px;padding:7px 11px;border-radius:7px;background:rgba(220,38,38,.07);'
+      +'border-left:3px solid '+BD_CHURN_C+';font-size:10.5px;color:var(--navy);line-height:1.55">'
+      +'<strong>'+(_rwKeptSurv+_rwKeptChurns)+' of '+(_rwWinSurv+_rwWinChurns.length)+'</strong> brands in the window '
+      +'match \u2014 '+_rwKeptSurv+' still live, '+_rwKeptChurns+' churned. The rest leave their cohorts entirely, so '
+      +'the <strong>Signed</strong> column counts only the brands shown. '
+      +(_rwKeptSurv===0
+        ? '<strong>Every brand here has churned</strong>, so this is a time-to-churn view \u2014 how long they lasted \u2014 '
+          +'and each curve ends at 0%. Three of these four fields are written at the churn review, so no surviving '
+          +'brand carries a named value on them; Company Segment is the exception.'
+        : 'Survivors are in this cut, so it still reads as retention. They carry a Company Segment, and they are '
+          +'blank on every churn-review field \u2014 so a Not-recorded option keeps them as well.')
+      +'</div>';
+  (function(){
+    var W=_rw.maxK;
+    // min-width, not just the <col> widths: a table-layout:fixed table with
+    // width:auto still shrink-to-fits, and a compressed column 1 slides out
+    // from under the sticky cell pinned to its nominal width.
+    var _rwW=RW_W_LBL+RW_W_N+RW_W_CELL*W;
+    var t='<div style="overflow-x:auto"><table class="rwtbl" style="width:100%;min-width:'+_rwW+'px">';
+    // The two label columns keep their pixel widths — the sticky offset is
+    // pinned to the first one — and the tenure columns are left unsized, so
+    // table-layout:fixed splits whatever is left equally between them.
+    t+='<colgroup><col style="width:'+RW_W_LBL+'px"><col style="width:'+RW_W_N+'px">'
+      +new Array(W+1).join('<col>')+'</colgroup>';
+    t+='<thead><tr><th class="rw-c" style="text-align:left">Cohort</th>'
+      +'<th class="rw-n" title="Signed deals dated into this month that can be placed on the timeline — '
+      +'the denominator for every cell in the row">Signed</th>';
+    for(var k=1;k<=W;k++)t+='<th>'+k+'</th>';
+    t+='</tr></thead><tbody>';
+    _rw.cohorts.forEach(function(co){
+      t+='<tr><td class="rw-c">'+_rwLbl(co.m)+'</td>'
+        +'<td class="rw-n">'+(co.n||'·')+'</td>';
+      for(var k=1;k<=W;k++){
+        var c=co.cells[k-1];
+        // Beyond the cohort's own age there is nothing to know yet. Blank, never
+        // 0 and never 100 — the null-vs-zero rule the Trend charts already follow.
+        if(!c||!co.n){t+='<td></td>';continue;}
+        var f=_rwFill(c.pct);
+        t+='<td title="'+_rwCellTip(co.m,c,co.n)+'" style="'
+          +(f?'background:'+f+';':'')
+          +'color:var(--navy);font-weight:'+(c.pct>=0.999||c.pct<=RW_LOW?'700':'600')+'">'
+          +_rwCellVal(c.alive,c.lost,c.pct)+'</td>';
+      }
+      t+='</tr>';
+    });
+    // Blended curve. Each column has its OWN denominator — only the cohorts old
+    // enough to have reached that month — so it is a separate read from the grid
+    // above it, not a total of it. The cohort count rides in the tooltip.
+    // Guarded: an empty blend means the floor sits ahead of the current month,
+    // which cannot happen while RW_FROM is a past constant — but reading [0] off
+    // an empty array would throw mid-render, and this page's failure mode for a
+    // throw is a blank tab with nothing in the console.
+    if(_rw.blend.length){
+    t+='<tr><td class="rw-c" style="border-top:1.5px solid rgba(23,44,69,.14);font-style:italic">All cohorts</td>'
+      +'<td class="rw-n" style="border-top:1.5px solid rgba(23,44,69,.14)">'+_rw.blend[0].n+'</td>';
+    _rw.blend.forEach(function(b){
+      var thin=(b.pct===null||b.n<RW_BLEND_MIN||b.cohorts<RW_BLEND_MIN_COHORTS);
+      var f=thin?'':_rwFill(b.pct);
+      t+='<td style="border-top:1.5px solid rgba(23,44,69,.14);'+(f?'background:'+f+';':'')
+        +'color:var(--navy);font-weight:700" title="Month '+b.k+' — '
+        +(b.pct===null?'no cohort has reached this month yet'
+          :(b.alive+' of '+b.n+' across the '+b.cohorts
+            +(b.cohorts===1?' cohort that has':' cohorts that have')
+            +' reached it ('+_rwPct(b.pct)+')'
+            +((b.n<RW_BLEND_MIN||b.cohorts<RW_BLEND_MIN_COHORTS)?' — too few to blend, so not shown':'')))
+        +'">'+(thin?'':_rwCellVal(b.alive,b.n-b.alive,b.pct))+'</td>';
+    });
+    t+='</tr>';
+    }
+    t+='</tbody></table></div>';
+    hChurn+=t;
+  })();
+  hChurn+='<div style="font-size:10px;color:var(--grey);margin-top:14px;font-style:italic;line-height:1.6;max-width:1180px">'
+    +'Columns are whole calendar months of tenure, Month 1 being the signing month itself; a churn dated in month M '
+    +'removes the brand from M, the same end-of-month convention the Snapshot chart uses. '
+    +'Cohort = signing month, taken as the earlier of Close Date and Entered Closed-Won — the latter alone has been '
+    +'bulk-rewritten and would pile well over a hundred deals into a phantom Feb 2025 row. Rows start at '+_rwLbl(RW_FROM)
+    +'; the 2024 book is a CRM import rather than organic signing and nearly a third of its churns carry no date. '
+    +'<strong style="color:var(--navy)">This is not the churn rate C2 plots</strong> — that divides churns by the '
+    +'active book each month, where a cell here follows one signing month forward, so the two measure different '
+    +'populations on different clocks and will not tie out. '
+    +(_rw.excluded.undated?_rw.excluded.undated+' churned brand'+(_rw.excluded.undated===1?'':'s')+' with no Pause/Churn Date '
+      +(_rw.excluded.undated===1?'is':'are')+' excluded from every cohort — known to have left, but not when. ':'')
+    +(_rw.excluded.negative?_rw.excluded.negative+(_rw.excluded.undated?' more':'')+' churned before '+(_rw.excluded.negative===1?'its':'their')
+      +' own signing date and '+(_rw.excluded.negative===1?'is':'are')+' excluded rather than clamped to month one. ':'')
+    +(_rw.excluded.noSign?_rw.excluded.noSign+' signed deal'+(_rw.excluded.noSign===1?' carries':'s carry')
+      +' no date at all and cannot be placed. ':'')
+    +(_rwCwPc?_rwCwPc+' closed-won deal'+(_rwCwPc===1?' carries':'s carry')+' a Pause/Churn Date and '
+      +(_rwCwPc===1?'is':'are')+' still counted as retained, matching how every other section here reads churn off the stage. ':'')
+    +'The All-cohorts row blends only those cohorts that have reached each month, so every column there carries '
+    +'its own denominator; where fewer than '+RW_BLEND_MIN+' brands or fewer than '+RW_BLEND_MIN_COHORTS
+    +' cohorts have got that far it is blank rather than printed off a single row. Under Brands its counts fall '
+    +'partly because cohorts age out of the window rather than because brands left, so the share is the safer read '
+    +'of that row; the denominator behind each column is in its tooltip. '
+    +'The last row is a month still in progress. The unit counted is the signed deal, not the brand, so a brand that churned and later '
+    +'re-signed belongs to both its cohorts.</div>';
+  hChurn+='</div></section>';
+
+  // ── iv. Churn count by Churn Type ──
   // The stored VALUES are not the labels — "Yes - Ghosted" displays as
   // "Never Imp - Ghosted" — so everything aggregates on value and renders the
   // label. Delinquent Payment folds in with Board Defined, per the ask.
@@ -2095,12 +2632,12 @@ function renderBD(){
     return t;
   };
   hChurn+='<section class="bd-sec" id="bd-sec-churntype">';
-  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C3</span><span class="bd-sec-t">Churn by Type</span>'
+  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C4</span><span class="bd-sec-t">Churn by Type</span>'
     +'<span class="bd-sec-s">Counts and contribution to the churn rate, by Churn Type.</span>'
     +_chGrainSeg(_bdChurnTypeGrain,'bdSetChurnTypeGrain')+'</div>';
   hChurn+='<div class="tile" style="padding:16px 18px">'+_chTypeChart(_bdChurnTypeGrain)+'</div></section>';
 
-  // ── iv. Churn High Level Reason ──
+  // ── v. Churn High Level Reason ──
   // 20 stored options, visibly two generations of vocabulary. All 20 in a
   // period table is unreadable, so the top N by total volume are shown and the
   // tail is rolled into one labelled Other — which is counted, not dropped, and
@@ -2138,7 +2675,7 @@ function renderBD(){
     return t;
   };
   hChurn+='<section class="bd-sec" id="bd-sec-churnreason">';
-  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C4</span><span class="bd-sec-t">Churn by High Level Reason</span>'
+  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C5</span><span class="bd-sec-t">Churn by High Level Reason</span>'
     +'<span class="bd-sec-s">The reason recorded on the deal at churn.</span>'
     +_chGrainSeg(_bdChurnReasonGrain,'bdSetChurnReasonGrain')+'</div>';
   hChurn+='<div class="tile" style="padding:16px 18px">'+_chReasonChart(_bdChurnReasonGrain)+'</div></section>';
@@ -2206,7 +2743,7 @@ function renderBD(){
     return t;
   };
 
-  // ── v. What the brands that left had implemented ─────────────────────────
+  // ── vi. What the brands that left had implemented ─────────────────────────
   //
   // A COUNT of churned brands, never a churn rate. implemented_products is
   // written during the CHURN REVIEW, so only churned brands ever carry it and
@@ -2261,7 +2798,7 @@ function renderBD(){
   var _c5MonNm=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
   hChurn+='<section class="bd-sec" id="bd-sec-churnprod">';
-  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C5</span>'
+  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C6</span>'
     +'<span class="bd-sec-t">What the Brands That Left Had Implemented</span>'
     +'<span class="bd-sec-s">Badge and Banner count as one product. A brand counts once per product it had, so the product rows overlap and do not sum.</span></div>';
   hChurn+='<div class="tile" style="padding:16px 18px">';
@@ -2460,7 +2997,7 @@ function renderBD(){
     +'Setting the field on active brands too is what would turn this into a real per-product churn rate.</div>';
   hChurn+='</div></section>';
 
-  // ── vi. A/B test among board-defined + delinquent churn ──
+  // ── vii. A/B test among board-defined + delinquent churn ──
   // Deliberately a COUNT TABLE and not a scatter. The usable sample is ~27
   // deals spread over ~16 cells, so most cells are 0-3 — that sparseness IS the
   // finding, and a trendline or an r value over 27 points would imply a
@@ -2490,7 +3027,7 @@ function renderBD(){
   var _chAbSet=_chBoard;   // _chBoard is already 2026-scoped
   var _chAbAnyP=0;_chAbSet.forEach(function(dd){if((dd.ab_test||'').trim())_chAbAnyP++;});
   hChurn+='<section class="bd-sec" id="bd-sec-churnab">';
-  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C6</span><span class="bd-sec-t">A/B Test · Board Defined Churn</span>'
+  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C7</span><span class="bd-sec-t">A/B Test · Board Defined Churn</span>'
     +'<span class="bd-sec-s">Of board-defined and delinquent-payment churns, how many ran an A/B test — against measured web traffic. '
     +'Churns dated 2026 onward.</span></div>';
   hChurn+='<div class="tile" style="padding:16px 18px">'+_chMatrix(_chAbRows,_chAbCols,function(r,c){
@@ -2507,7 +3044,7 @@ function renderBD(){
    +'A measured traffic of 0 is read as no measurement, not as low traffic: the brands storing 0 are almost all ones that never launched. '
    +'No correlation statistic is shown — the sample does not support one.')+'</div></section>';
 
-  // ── vii. Reported vs measured web traffic, against churn reason ──
+  // ── viii. Reported vs measured web traffic, against churn reason ──
   // Reported is a band, measured is a number, so measured is binned into the
   // same bands. Both are shown so the disagreement between what a brand told us
   // and what we measured is visible rather than averaged away.
@@ -2539,7 +3076,7 @@ function renderBD(){
   });
   var _chTrSet=_chDeals26;
   hChurn+='<section class="bd-sec" id="bd-sec-churntraffic">';
-  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C7</span><span class="bd-sec-t">Web Traffic at Churn</span>'
+  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C8</span><span class="bd-sec-t">Web Traffic at Churn</span>'
     +'<span class="bd-sec-s">Measured traffic, binned into the reported field’s own bands, against the churn reason. '
     +'Churns dated 2026 onward.</span></div>';
   hChurn+='<div class="tile" style="padding:16px 18px">'+_chMatrix(_chTrRows,_chTrCols,function(r,c){
@@ -2570,7 +3107,7 @@ function renderBD(){
     +'<div style="font-size:10px;color:var(--grey);margin-top:5px;font-style:italic">Bands are the reported field’s own, including the odd spelling of "200 -500k". Measured zeroes are excluded as unmeasured.</div>'
     +'</div></section>';
 
-  // ── viii. Board-level churn by Company Segment ──
+  // ── ix. Board-level churn by Company Segment ──
   // A COUNT split, not a rate. Segment lives on the COMPANY and the Snapshot
   // engine has no segment dimension, so active-brands-per-segment does not
   // exist to divide by.
@@ -2616,7 +3153,7 @@ function renderBD(){
   });
   _chSegH+='</div>';
   hChurn+='<section class="bd-sec" id="bd-sec-churnseg">';
-  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C8</span><span class="bd-sec-t">Board Defined Churn by Company Segment</span>'
+  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C9</span><span class="bd-sec-t">Board Defined Churn by Company Segment</span>'
     +'<span class="bd-sec-s">Board-defined and delinquent-payment churns, split by the company’s segment.</span></div>';
   hChurn+='<div class="tile" style="padding:16px 18px">'+_chSegH
     +'<div style="font-size:10px;color:var(--grey);margin-top:8px;font-style:italic">'
@@ -2625,7 +3162,7 @@ function renderBD(){
     +'Rows sum to '+_chBoard.length+'.</div></div></section>';
 
 
-  // ── ix. All Deals, churned only ──
+  // ── x. All Deals, churned only ──
   // deals.filter(isChurned), NOT sharedFiltered — reusing the Tracker tab's
   // filter pills would let a control on another tab silently move this table.
   // Undated churns are DROPPED once a range is set, not kept: a deal with no
@@ -2642,7 +3179,7 @@ function renderBD(){
   var _chSorted=_chTableRows.slice().sort(_bdSortCmp);
   hChurn+='<section class="bd-sec" id="bd-sec-churndeals">';
   var _chRanged=!!(_bdChurnFrom||_bdChurnTo);
-  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C9</span><span class="bd-sec-t">All Churned Deals</span>'
+  hChurn+='<div class="bd-sec-head"><span class="bd-sec-n">C10</span><span class="bd-sec-t">All Churned Deals</span>'
     +'<span class="bd-sec-s">'+(_chRanged?(_chTableRows.length+' of '+_chDeals26.length+' churned deals in range'):(_chDeals26.length+' churned deals dated 2026 onward'))
     +' \u00b7 the same table as the Tracker tab, scoped to churn and unaffected by its filters.</span></div>';
   hChurn+='<div class="tile" style="padding:0;overflow:hidden">';

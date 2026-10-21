@@ -180,7 +180,8 @@ const navIds=[...bd.matchAll(/bdNavGo\(event,'(bd-sec-churn[a-z]*)'\)/g)].map(m=
 const secIds=[...bd.matchAll(/<section class="bd-sec" id="(bd-sec-churn[a-z]*)">/g)].map(m=>m[1]);
 ck('every churn section has a nav link',secIds.filter(id=>navIds.indexOf(id)<0),[]);
 ck('and every churn nav link has a section',navIds.filter(id=>secIds.indexOf(id)<0),[]);
-ck('there are nine of them',[navIds.length,secIds.length],[9,9]);
+ck('there are ten of them',[navIds.length,secIds.length],[10,10]);
+ck('  including the retention waterfall',navIds.indexOf('bd-sec-churnret')>=0,true);
 ck('  including the new products section',navIds.indexOf('bd-sec-churnprod')>=0,true);
 ck('the churn group is revealed on the Churn tab',
    /var cn=document\.getElementById\('bd-nav-churn'\);if\(cn\)cn\.style\.display=\(t==='churn'\)\?'contents':'none';/.test(bd),true);
@@ -371,22 +372,23 @@ ck('Avg Days cells match their header order',
 // anywhere in this data that could make a rate. The section is built so that
 // misreading is hard: one countable cell per brand, and no percentage printed
 // in any value column.
-const C5=(()=>{const i=bd.search(/^  \/\/ .{1,4} v\. What the brands that left had implemented/m);
+const C5=(()=>{const i=bd.search(/^  \/\/ .{1,4} vi\. What the brands that left had implemented/m);
   const E="  hChurn+='</div></section>';\n";
   return bd.slice(i,bd.indexOf(E,i)+E.length);})();
 ck('the section is locatable',C5.length>4000,true);
 
 // ── placement ──
-ck('it is numbered C5',/<span class="bd-sec-n">C5<\/span>/.test(C5),true);
+ck('it is numbered C6',/<span class="bd-sec-n">C6<\/span>/.test(C5),true);
 ck('  and sits above the A/B test section',
    bd.indexOf('id="bd-sec-churnprod"')<bd.indexOf('id="bd-sec-churnab"'),true);
 ck('the sections below it moved down a number',
-   [...bd.matchAll(/bd-sec-n">(C\d)<\/span>'?\s*\+?'?<span class="bd-sec-t">([^<]+)/g)]
+   [...bd.matchAll(/bd-sec-n">(C\d+)<\/span>'?\s*\+?'?<span class="bd-sec-t">([^<]+)/g)]
      .map(m=>m[1]+':'+m[2].trim()),
-   ['C1:Key Metrics','C2:Churn Rate Over Time','C3:Churn by Type',
-    'C4:Churn by High Level Reason','C5:What the Brands That Left Had Implemented',
-    'C6:A/B Test · Board Defined Churn','C7:Web Traffic at Churn',
-    'C8:Board Defined Churn by Company Segment','C9:All Churned Deals']);
+   ['C1:Key Metrics','C2:Churn Rate Over Time','C3:Retention Waterfall',
+    'C4:Churn by Type','C5:Churn by High Level Reason',
+    'C6:What the Brands That Left Had Implemented',
+    'C7:A/B Test · Board Defined Churn','C8:Web Traffic at Churn',
+    'C9:Board Defined Churn by Company Segment','C10:All Churned Deals']);
 ck('the nav entry moved with it',
    (()=>{const n=[...bd.matchAll(/data-sec="(bd-sec-churn[a-z]*)"/g)].map(m=>m[1]);
      return n.indexOf('bd-sec-churnprod')===n.indexOf('bd-sec-churnab')-1;})(),true);
@@ -396,13 +398,13 @@ ck('the nav entry moved with it',
 // kept them, a section placed earlier would see them hoisted-but-undefined and
 // the whole tab would render blank.
 ck('the shared product constants are declared above the section that uses them',
-   bd.indexOf('var BD_PROD_GROUP=')<bd.search(/^  \/\/ .{1,4} v\. What the brands/m),true);
+   bd.indexOf('var BD_PROD_GROUP=')<bd.search(/^  \/\/ .{1,4} vi\. What the brands/m),true);
 ck('  and so is the splitter',
-   bd.indexOf('var _chProdsOf=')<bd.search(/^  \/\/ .{1,4} v\. What the brands/m),true);
+   bd.indexOf('var _chProdsOf=')<bd.search(/^  \/\/ .{1,4} vi\. What the brands/m),true);
 ck('  they are declared exactly once',
    [(bd.match(/var BD_PROD_GROUP=/g)||[]).length,(bd.match(/var _chProdsOf=/g)||[]).length],[1,1]);
 ck('  and the tenure helper is above it too',
-   bd.indexOf('var _kmTenure=')<bd.search(/^  \/\/ .{1,4} v\. What the brands/m),true);
+   bd.indexOf('var _kmTenure=')<bd.search(/^  \/\/ .{1,4} vi\. What the brands/m),true);
 
 // ── state, in the house idiom ──
 ck('the month filter has module-scope state',/^var _bdChurnProdMonth='';$/m.test(bd),true);
