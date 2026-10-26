@@ -8779,6 +8779,465 @@ async function fetchSalesData(mode, env) {
   return { error: 'Unknown mode: ' + mode };
 }
 
+// ── Slack changelog: request verification and event intake ──────────────────
+//
+// Step one of the changelog feed. Slack pushes a reaction event here the moment
+// someone marks a message; this file verifies the request is genuinely Slack's
+// and records what arrived. It deliberately does NOT yet fetch the message,
+// summarise it or write a log entry — that lands once the Request URL is saved
+// and we have confirmed real events are reaching the worker.
+//
+// The reaction that marks a message. Slack sends the emoji NAME without colons,
+// identically whether it is a standard or a workspace-custom emoji, so this is a
+// plain string match — with any ::skin-tone-N suffix stripped before comparing,
+// which costs nothing and keeps the matcher correct if the trigger is ever
+// changed to an emoji that has tone variants.
+const SLACK_LOG_REACTION = 'wood';
+const SLACK_EVT_KEY = 'slack_evt_recent_v1';
+const SLACK_SIG_WINDOW_SEC = 300;
+
+// Constant-time string compare. A plain === leaks, through its own timing, how
+// much of a forged signature was correct, which is enough to reconstruct one
+// byte at a time. The length check is not secret: these are fixed-length hex
+// digests, so an attacker learns nothing from it.
+function _slackEq(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+  let d = 0;
+  for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return d === 0;
+}
+
+// Verifies Slack's v0 signature over the RAW body. The body must be the exact
+// bytes Slack sent — re-serialising a parsed object changes key order and
+// whitespace and the signature will never match, which is why the route reads
+// text() and parses afterwards rather than calling json().
+async function slackVerify(raw, tsHeader, sigHeader, secret) {
+  if (!secret) return { ok: false, why: 'SLACK_SIGNING_SECRET is not configured' };
+  if (!tsHeader || !sigHeader) return { ok: false, why: 'missing Slack signature headers' };
+  const ts = parseInt(tsHeader, 10);
+  if (!isFinite(ts)) return { ok: false, why: 'unparseable timestamp' };
+  // Slack signs the timestamp, so it cannot be forged — but without this a
+  // captured request stays replayable for ever.
+  const age = Math.abs(Math.floor(Date.now() / 1000) - ts);
+  if (age > SLACK_SIG_WINDOW_SEC) return { ok: false, why: `timestamp ${age}s outside the ${SLACK_SIG_WINDOW_SEC}s window` };
+  try {
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey('raw', enc.encode(secret),
+      { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    const mac = await crypto.subtle.sign('HMAC', key, enc.encode('v0:' + tsHeader + ':' + raw));
+    const mine = 'v0=' + Array.from(new Uint8Array(mac))
+      .map(b => b.toString(16).padStart(2, '0')).join('');
+    return { ok: _slackEq(mine, sigHeader), why: 'signature mismatch' };
+  } catch (e) {
+    return { ok: false, why: 'verify threw: ' + (e && e.message) };
+  }
+}
+
+// Records an event so the handshake can be confirmed without wrangler tail.
+// Nothing here acts on the event yet; `matches` is the flag that will gate the
+// capture step, surfaced now so we can see the reaction is being recognised.
+async function slackRecordEvent(body, env) {
+  const e = (body && body.event) || {};
+  const rec = {
+    at: Date.now(),
+    eventId: body.event_id || '',
+    type: e.type || '',
+    reaction: String(e.reaction || '').replace(/::skin-tone-\d+$/, ''),
+    user: e.user || '',
+    channel: (e.item && e.item.channel) || e.channel || '',
+    itemType: (e.item && e.item.type) || '',
+    ts: (e.item && e.item.ts) || '',
+    evTs: body.event_ts || e.event_ts || '',
+  };
+  rec.matches = (rec.type === 'reaction_added' || rec.type === 'reaction_removed')
+    && rec.reaction === SLACK_LOG_REACTION && rec.itemType === 'message';
+  console.log('slack event:', JSON.stringify(rec));
+  if (!env.CONTENT_STORE) return;
+  try {
+    const prev = await env.CONTENT_STORE.get(SLACK_EVT_KEY, 'json');
+    const list = Array.isArray(prev) ? prev : [];
+    // Slack re-delivers anything it did not see a fast 200 for, reusing the same
+    // event_id. Without this the same reaction is recorded several times.
+    if (rec.eventId && list.some(x => x && x.eventId === rec.eventId)) return;
+    list.unshift(rec);
+    await env.CONTENT_STORE.put(SLACK_EVT_KEY, JSON.stringify(list.slice(0, 40)),
+      { expirationTtl: 7 * 24 * 3600 });
+  } catch (err) {
+    console.error('slack event record failed:', err && err.message);
+  }
+}
+
+// ── Slack changelog: capture ────────────────────────────────────────────────
+//
+// A wood reaction becomes a log entry. Everything here is driven by events, so it
+// has to cope with a message of ANY age and with thread replies, neither of
+// which a poll over conversations.history would ever see.
+const SLACK_LOG_IDX = 'log_index_v1';
+const SLACK_ERR_KEY = 'slack_err_recent_v1';
+const SLACK_SWEEP_MAX = 12;
+const SLACK_USER_KEY = 'slack_users_v1';
+const SLACK_CH_NAMES = { C0A5366LG2D:'gtm', C0ADJP50GJE:'sessioninteractive', C0CBELQAZQA:'changelog' };
+
+// Every call here is form-encoded. Slack documents x-www-form-urlencoded for the
+// read methods this uses; a JSON body is accepted by some of them and rejected by
+// others with a bare `invalid_arguments` that names neither the method's problem
+// nor the offending field — which is precisely how the thread-reply capture died
+// silently while top-level captures went through.
+async function slackApi(method, params, env) {
+  const form = new URLSearchParams();
+  for (const k of Object.keys(params || {})) {
+    const v = params[k];
+    if (v !== undefined && v !== null) form.set(k, String(v));
+  }
+  const r = await fetch('https://slack.com/api/' + method, {
+    method: 'POST',
+    headers: { 'Content-Type':'application/x-www-form-urlencoded; charset=utf-8',
+               Authorization: 'Bearer ' + env.SLACK_BOT_TOKEN },
+    body: form.toString(),
+  });
+  const j = await r.json();
+  if (!j.ok) {
+    // A bare error code is not enough to act on. Slack puts the actionable part
+    // in needed/provided for scope failures and in response_metadata elsewhere.
+    const extra = [
+      j.needed ? 'needed=' + j.needed : '',
+      j.provided ? 'provided=' + j.provided : '',
+      ((j.response_metadata && j.response_metadata.messages) || []).join('; '),
+    ].filter(Boolean).join(' ');
+    throw new Error(method + ': ' + (j.error || 'unknown') + (extra ? ' (' + extra + ')' : ''));
+  }
+  return j;
+}
+
+// Slack stores mentions and links as markup. Left raw, a summary comes back
+// quoting <@U03DCGDJN8G|Irfan Alam> verbatim, so it is resolved before the
+// model ever sees it.
+function slackPlain(text) {
+  return String(text || '')
+    .replace(/<@([UW][A-Z0-9]+)\|([^>]+)>/g, '$2')
+    .replace(/<#C[A-Z0-9]+\|([^>]+)>/g, '#$1')
+    .replace(/<(https?:[^|>]+)\|([^>]+)>/g, '$2')
+    .replace(/<(https?:[^>]+)>/g, '$1')
+    .replace(/<!here>|<!channel>/g, '')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/[ \t]+/g, ' ').trim();
+}
+
+// Fetches the reacted message, and its thread parent when it is a reply.
+// conversations.history only ever returns top-level messages, so a reply comes
+// back empty there; conversations.replies accepts a REPLY's ts and returns the
+// whole thread, which is how the parent is obtained in the same call.
+// conversations.replies called with a REPLY's ts can come back holding only that
+// reply and no parent. The parent is what carries the decision a reply like
+// "great, im updating now" is confirming, so it is fetched from the message's own
+// thread_ts rather than hoped for.
+async function slackThreadParent(channel, msg, env) {
+  const tt = msg && msg.thread_ts;
+  if (!tt || tt === msg.ts) return null;
+  try {
+    const r = await slackApi('conversations.replies', { channel, ts: tt, limit: 1 }, env);
+    const p = (r.messages || [])[0];
+    return p && p.ts !== msg.ts ? p : null;
+  } catch (e) { console.warn('slack thread parent:', e.message); return null; }
+}
+
+async function slackFetchForLog(channel, ts, env) {
+  let msg = null;
+  try {
+    const h = await slackApi('conversations.history',
+      { channel, latest: ts, oldest: ts, inclusive: true, limit: 1 }, env);
+    const m = (h.messages || [])[0];
+    if (m && m.ts === ts) msg = m;
+  } catch (e) { console.warn('slack history lookup:', e.message); }
+  let parent = null;
+  if (!msg) {
+    const r = await slackApi('conversations.replies', { channel, ts, limit: 100 }, env);
+    const all = r.messages || [];
+    msg = all.find(x => x && x.ts === ts);
+    if (!msg) throw new Error('message ' + ts + ' not found in ' + channel);
+    parent = all[0] && all[0].ts !== ts ? all[0] : null;
+  }
+  if (!parent) parent = await slackThreadParent(channel, msg, env);
+  return { msg, parent, isReply: !!parent };
+}
+
+async function slackUserName(id, env) {
+  if (!id) return '';
+  let map = {};
+  try { map = (await env.CONTENT_STORE.get(SLACK_USER_KEY, 'json')) || {}; } catch {}
+  if (map[id]) return map[id];
+  try {
+    const u = await slackApi('users.info', { user: id }, env);
+    const nm = (u.user && (u.user.real_name || u.user.name)) || id;
+    map[id] = nm;
+    await env.CONTENT_STORE.put(SLACK_USER_KEY, JSON.stringify(map), { expirationTtl: 30*24*3600 });
+    return nm;
+  } catch (e) {
+    console.warn('slack users.info:', e.message);
+    await slackRecordErr(id, 'users.info: ' + (e && e.message), env);
+    return id;
+  }
+}
+
+// A headline the model declined to write, taken from the summary instead. Used
+// when the two-part format comes back malformed, and by the backfill for entries
+// written before headlines existed.
+function _slackDeriveHeadline(text) {
+  let t = String(text || '').trim();
+  const dot = t.indexOf('. ');
+  if (dot > 0) t = t.slice(0, dot);
+  t = t.replace(/\.$/, '').trim();
+  if (t.length <= 52) return t;
+  const cut = t.slice(0, 52), sp = cut.lastIndexOf(' ');
+  return (sp > 20 ? cut.slice(0, sp) : cut).trim() + '\u2026';
+}
+
+// The model is asked for two labelled parts. It mostly complies, but a changelog
+// that loses an entry because a label was missing is worse than one with a
+// derived headline, so every malformed shape still yields something usable.
+function _slackParseSummary(out) {
+  const text = String(out || '');
+  const hm = text.match(/^[ \t]*HEADLINE:[ \t]*(.+?)[ \t]*$/m);
+  const sm = text.match(/^[ \t]*SUMMARY:[ \t]*([\s\S]+)$/m);
+  let summary = sm ? sm[1].trim() : '';
+  if (!summary) summary = text.replace(/^[ \t]*HEADLINE:.*$/m, '').trim();
+  let headline = hm ? hm[1].trim() : '';
+  if (!headline) headline = _slackDeriveHeadline(summary);
+  headline = headline.replace(/^["'\u201c]+|["'\u201d]+$/g, '').replace(/\.$/, '').trim();
+  return { headline, summary };
+}
+
+// One line, written once at capture and stored. The page never re-summarises:
+// it would cost a call per view and the same entry could read differently on
+// two loads. The prompt is deliberately anti-inventive — a changelog that
+// embellishes is worse than one that is terse.
+async function slackSummarize(text, parentText, env) {
+  const ctx = parentText
+    ? 'The message is a reply in a thread. Thread parent:\n"""' + parentText + '"""\n\nThe reply:\n"""' + text + '"""'
+    : 'Message:\n"""' + text + '"""';
+  const req = {
+    model: 'claude-sonnet-5-5',
+    // Sonnet 5.5 runs adaptive thinking whenever `thinking` is omitted. A
+    // one-line changelog entry does not need it, and at a tight max_tokens the
+    // thinking block ate the whole budget: responses came back as a lone
+    // thinking block with stop_reason max_tokens and no text, or with the
+    // sentence cut mid-clause. `between_tools` is how thinking is turned off on
+    // this model — `{type:'disabled'}` is a 400 — and it is accepted only at
+    // effort high or below, so the effort is pinned next to it. The ceiling is
+    // generous on purpose; output is billed on what is actually produced.
+    thinking: { type: 'between_tools' },
+    output_config: { effort: 'low' },
+    max_tokens: 400,
+    system: 'You write entries for a company changelog. Given a Slack message, reply with '
+      + 'EXACTLY two lines and nothing else:\n'
+      + 'HEADLINE: <3 to 7 words naming the thing that changed. Sentence case. No trailing period.>\n'
+      + 'SUMMARY: <ONE sentence of plain past tense saying what changed, shipped, broke or was decided.>\n'
+      + 'Be concrete: name the feature, campaign, number or page involved. The headline must not '
+      + 'simply repeat the first words of the summary — it names the subject, the summary gives the detail. '
+      + 'Use ONLY what the message says — never infer a cause, a result or a next step that is not written. '
+      + 'When the message is a thread reply, the decision usually sits in the parent and the reply only '
+      + 'confirms it; describe the actual change, not the confirmation. '
+      + 'No preamble, no bullet points, no quotes.',
+    messages: [{ role: 'user', content: ctx }],
+  };
+  let why = '';
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await proxyAnthropicAI(req, env);
+    if (res && res.error) throw new Error('summarise: ' + res.message);
+    const out = ((res && res.content || []).map(c => c.text || '').join('') || '').trim();
+    if (out) return _slackParseSummary(out);
+    // Empty content is not an API error, so it arrives looking like success.
+    // Record what the model actually returned before trying again.
+    why = 'stop_reason=' + ((res && res.stop_reason) || 'none')
+        + ' blocks=' + JSON.stringify(((res && res.content) || []).map(c => c && c.type));
+  }
+  throw new Error('summarise: empty response after 2 attempts (' + why + ')');
+}
+
+function slackLogKey(ms) {
+  const d = new Date(ms);
+  return 'log_' + d.getUTCFullYear() + '-' + String(d.getUTCMonth()+1).padStart(2,'0') + '_v1';
+}
+
+// Upsert by id, guarded on the event clock. Slack does not guarantee delivery
+// order, and a remove/re-add pair one second apart can arrive inverted — which
+// would delete an entry that should exist. Comparing event_ts rather than
+// arrival time makes the outcome the same whichever order they land in.
+async function slackLogWrite(entry, env) {
+  const key = slackLogKey(entry.at);
+  const list = (await env.CONTENT_STORE.get(key, 'json')) || [];
+  const i = list.findIndex(x => x && x.id === entry.id);
+  if (i >= 0 && parseFloat(list[i].evTs || 0) > parseFloat(entry.evTs || 0)) {
+    console.log('slack log: ignoring out-of-order event for', entry.id);
+    return;
+  }
+  if (i >= 0) list[i] = entry; else list.push(entry);
+  list.sort((a, b) => parseFloat(b.ts) - parseFloat(a.ts));
+  await env.CONTENT_STORE.put(key, JSON.stringify(list));
+  const idx = (await env.CONTENT_STORE.get(SLACK_LOG_IDX, 'json')) || { months: {} };
+  idx.months = idx.months || {};
+  idx.months[key] = list.length;
+  await env.CONTENT_STORE.put(SLACK_LOG_IDX, JSON.stringify(idx));
+}
+
+async function slackLogDelete(id, atMs, evTs, env) {
+  const key = slackLogKey(atMs);
+  const list = (await env.CONTENT_STORE.get(key, 'json')) || [];
+  const i = list.findIndex(x => x && x.id === id);
+  if (i < 0) return;
+  if (parseFloat(list[i].evTs || 0) > parseFloat(evTs || 0)) {
+    console.log('slack log: ignoring out-of-order removal for', id);
+    return;
+  }
+  list.splice(i, 1);
+  await env.CONTENT_STORE.put(key, JSON.stringify(list));
+  const idx = (await env.CONTENT_STORE.get(SLACK_LOG_IDX, 'json')) || { months: {} };
+  idx.months = idx.months || {};
+  idx.months[key] = list.length;
+  await env.CONTENT_STORE.put(SLACK_LOG_IDX, JSON.stringify(idx));
+}
+
+// A capture runs inside waitUntil, so a throw reaches no response and the only
+// trace is a log line nobody is tailing. Keeping the last failures in KV is what
+// makes a silent capture diagnosable after the fact.
+async function slackRecordErr(id, message, env) {
+  if (!env.CONTENT_STORE) return;
+  try {
+    const prev = await env.CONTENT_STORE.get(SLACK_ERR_KEY, 'json');
+    const list = Array.isArray(prev) ? prev : [];
+    list.unshift({ at: Date.now(), id, message: String(message || 'unknown').slice(0, 300) });
+    await env.CONTENT_STORE.put(SLACK_ERR_KEY, JSON.stringify(list.slice(0, 25)));
+  } catch (e) { console.warn('slack error log:', e && e.message); }
+}
+
+async function slackHandleReaction(body, env) {
+  const e = (body && body.event) || {};
+  const reaction = String(e.reaction || '').replace(/::skin-tone-\d+$/, '');
+  if (reaction !== SLACK_LOG_REACTION) return;
+  if (!e.item || e.item.type !== 'message') return;
+  if (!env.SLACK_BOT_TOKEN) { console.warn('slack capture: SLACK_BOT_TOKEN not configured'); return; }
+  const channel = e.item.channel, ts = e.item.ts;
+  const id = channel + ':' + ts;
+  const atMs = Math.round(parseFloat(ts) * 1000);
+  const evTs = e.event_ts || body.event_ts || '0';
+  try {
+    if (e.type === 'reaction_removed') { await slackLogDelete(id, atMs, evTs, env); return; }
+    const { msg, parent, isReply } = await slackFetchForLog(channel, ts, env);
+    const raw = slackPlain(msg.text);
+    const parentRaw = parent ? slackPlain(parent.text) : '';
+    if (!raw && !parentRaw) {
+      console.warn('slack capture: nothing to summarise for', id);
+      await slackRecordErr(id, 'nothing to summarise — message carries no text', env);
+      return;
+    }
+    let permalink = '';
+    try { permalink = (await slackApi('chat.getPermalink', { channel, message_ts: ts }, env)).permalink || ''; }
+    catch (err) { console.warn('slack permalink:', err.message); }
+    const summarised = await slackSummarize(raw, parentRaw, env);
+    const entry = {
+      id, channel, ts, at: atMs,
+      chName: SLACK_CH_NAMES[channel] || channel,
+      author: msg.user || '',
+      authorName: await slackUserName(msg.user, env),
+      permalink, raw, parentRaw, isReply,
+      headline: summarised.headline,
+      summary: summarised.summary,
+      evTs, loggedAt: Date.now(), loggedBy: e.user || '', source: 'reaction',
+    };
+    await slackLogWrite(entry, env);
+    console.log('slack log: captured', id, '—', entry.headline);
+  } catch (err) {
+    console.error('slack capture failed for', id, '—', err && err.message);
+    await slackRecordErr(id, err && err.message, env);
+  }
+}
+
+// A capture can die after the event was accepted — a Slack API hiccup, a missing
+// scope, a summariser outage — and because the reaction is already in place,
+// nothing ever retries it. The sweep re-runs any matched reaction whose entry is
+// missing, using the diagnostic ring buffer as its worklist.
+//
+// This only recovers events that REACHED the worker and then failed downstream.
+// Events Slack never delivered at all are a different gap, and need the trailing
+// per-channel scan instead.
+// Repairs entries captured by an earlier, more broken version of this code: a
+// missing headline, and an author name left as a raw Slack id because users.info
+// failed under the JSON body that also broke conversations.replies. Each entry is
+// touched once — the conditions are both self-clearing.
+async function slackBackfillEntries(env) {
+  if (!env.CONTENT_STORE || !env.SLACK_BOT_TOKEN) return;
+  const idx = (await env.CONTENT_STORE.get(SLACK_LOG_IDX, 'json')) || { months: {} };
+  const keys = Object.keys(idx.months || {}).sort().reverse().slice(0, 3);
+  let filled = 0;
+  for (const key of keys) {
+    const list = await env.CONTENT_STORE.get(key, 'json');
+    if (!Array.isArray(list) || !list.length) continue;
+    let touched = false;
+    for (const e of list) {
+      if (!e || filled >= SLACK_SWEEP_MAX) continue;
+      let changed = false;
+      if (!e.headline) {
+        try {
+          const s = await slackSummarize(e.raw || e.summary || '', e.parentRaw || '', env);
+          e.headline = s.headline;
+          if (s.summary) e.summary = s.summary;
+        } catch (err) {
+          // Settle for a derived headline rather than retrying forever on a
+          // message the model will not summarise.
+          e.headline = _slackDeriveHeadline(e.summary || '');
+          await slackRecordErr(e.id, 'headline backfill: ' + (err && err.message), env);
+        }
+        changed = true;
+      }
+      // A raw id is what the page would otherwise have to hide.
+      if (e.author && /^[UW][A-Z0-9]{6,}$/.test(String(e.authorName || ''))) {
+        const nm = await slackUserName(e.author, env);
+        if (nm && nm !== e.authorName) { e.authorName = nm; changed = true; }
+      }
+      if (changed) { touched = true; filled++; }
+    }
+    if (touched) await env.CONTENT_STORE.put(key, JSON.stringify(list));
+  }
+  if (filled) console.log('slack: repaired', filled, 'entr(ies)');
+}
+
+async function slackSweep(env) {
+  if (!env.CONTENT_STORE || !env.SLACK_BOT_TOKEN) return;
+  let evts = null;
+  try { evts = await env.CONTENT_STORE.get(SLACK_EVT_KEY, 'json'); } catch {}
+  if (!Array.isArray(evts) || !evts.length) return;
+
+  // The buffer is newest-first, so the first sighting of a message is its latest
+  // state. Collapsing to that keeps an added-then-removed reaction from being
+  // resurrected by a replay of the older add.
+  const latest = new Map();
+  for (const e of evts) {
+    if (!e || !e.matches || e.itemType !== 'message' || !e.channel || !e.ts) continue;
+    const id = e.channel + ':' + e.ts;
+    if (!latest.has(id)) latest.set(id, e);
+  }
+
+  let checked = 0, retried = 0;
+  for (const [id, e] of latest) {
+    if (e.type !== 'reaction_added') continue;
+    if (checked >= SLACK_SWEEP_MAX) break;
+    checked++;
+    let list = null;
+    try { list = await env.CONTENT_STORE.get(slackLogKey(Math.round(parseFloat(e.ts) * 1000)), 'json'); } catch {}
+    if (Array.isArray(list) && list.some(x => x && x.id === id)) continue;
+    // evTs was not recorded before this sweep existed. Arrival time sits within
+    // milliseconds of the real event clock, and is only ever compared here
+    // against an entry that is known to be absent.
+    const evTs = e.evTs || String((e.at || Date.now()) / 1000);
+    await slackHandleReaction({
+      event: { type: 'reaction_added', reaction: SLACK_LOG_REACTION, user: e.user || '',
+               item: { type: 'message', channel: e.channel, ts: e.ts }, event_ts: evTs },
+    }, env);
+    retried++;
+  }
+  if (retried) console.log('slack sweep: retried', retried, 'of', checked, 'matched reaction(s)');
+}
+
 export default {
   // Cron. The browser aborts at a fixed timeout and cannot wait for a Year to
   // Date rebuild, so compute those windows here and leave them in KV for the
@@ -8812,6 +9271,14 @@ export default {
         } catch (e) { console.error(`cron warm ${win} failed after ${Date.now()-t0}ms:`, e && e.message); }
       }
     })());
+    // Separate from the warm loop on purpose: neither should be able to starve
+    // or fail the other.
+    ctx.waitUntil((async () => {
+      try { await slackSweep(env); }
+      catch (e) { console.error('slack sweep failed:', e && e.message); }
+      try { await slackBackfillEntries(env); }
+      catch (e) { console.error('slack entry backfill failed:', e && e.message); }
+    })());
   },
 
   async fetch(request, env, ctx) {
@@ -8837,6 +9304,93 @@ export default {
     }
 
     // POST /api/data → Dashboard API
+    // ── Slack changelog intake ───────────────────────────────────────────
+    // Unauthenticated by design: Slack cannot send a password, so the SIGNATURE
+    // is the authentication. Nothing downstream of the verify runs for a request
+    // that fails it.
+    if (request.method === 'POST' && url.pathname === '/api/slack/events') {
+      // text(), not json(): the signature covers the exact bytes sent.
+      const raw = await request.text();
+      const v = await slackVerify(raw, request.headers.get('X-Slack-Request-Timestamp'),
+                                  request.headers.get('X-Slack-Signature'), env.SLACK_SIGNING_SECRET);
+      if (!v.ok) {
+        console.warn('slack events: REJECTED \u2014', v.why);
+        return jr({ error: 'Unauthorized' }, 401);
+      }
+      let body;
+      try { body = JSON.parse(raw); } catch { return jr({ error: 'Invalid JSON' }, 400); }
+      // The one-time handshake Slack runs when the Request URL is saved. It is
+      // signed like any other request, so it is verified above before replying.
+      if (body.type === 'url_verification') {
+        console.log('slack events: url_verification handshake answered');
+        return jr({ challenge: body.challenge });
+      }
+      if (body.type === 'event_callback') {
+        // Slack allows 3 seconds and retries anything slower, so the answer goes
+        // back now and the work hangs off waitUntil. That ordering is what makes
+        // the eventual fetch + summarise step safe to add here.
+        ctx.waitUntil(slackRecordEvent(body, env));
+        ctx.waitUntil(slackHandleReaction(body, env));
+        return jr({ ok: true });
+      }
+      return jr({ ok: true, ignored: body.type || 'unknown' });
+    }
+
+    // Read back what Slack has sent, to confirm the wiring without wrangler tail.
+    if (request.method === 'POST' && url.pathname === '/api/slack/recent') {
+      let body;
+      try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
+      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      const list = env.CONTENT_STORE ? await env.CONTENT_STORE.get(SLACK_EVT_KEY, 'json') : null;
+      const events = Array.isArray(list) ? list : [];
+      const errList = env.CONTENT_STORE ? await env.CONTENT_STORE.get(SLACK_ERR_KEY, 'json') : null;
+      return jr({
+        ok: true,
+        reaction: SLACK_LOG_REACTION,
+        signingSecretConfigured: !!env.SLACK_SIGNING_SECRET,
+        botTokenConfigured: !!env.SLACK_BOT_TOKEN,
+        matched: events.filter(e => e && e.matches).length,
+        errors: Array.isArray(errList) ? errList : [],
+        events,
+      });
+    }
+
+    // Changelog entries for the Resources page. Months newest-first; `months`
+    // bounds how far back to read so the page is not forced to pull the whole
+    // archive to render the current week.
+    if (request.method === 'POST' && url.pathname === '/api/changelog') {
+      let body;
+      try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
+      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      if (!env.CONTENT_STORE) return jr({ ok: true, entries: [], months: [] });
+      // The index is a convenience, not the source of truth. It is a second,
+      // non-atomic put after the month blob, and a concurrent capture can lose
+      // it to a read-modify-write — which would hide a whole month from this
+      // page until something else happened to be logged in that same month.
+      // Listing the keys cannot go stale that way; the index only tops it up.
+      const idx = (await env.CONTENT_STORE.get(SLACK_LOG_IDX, 'json')) || { months: {} };
+      let listed = { keys: [] };
+      try { listed = await env.CONTENT_STORE.list({ prefix: 'log_' }); } catch (e) { console.warn('changelog list:', e && e.message); }
+      const keys = Array.from(new Set(
+        (listed.keys || []).map(k => k && k.name).filter(n => /^log_\d{4}-\d{2}_v1$/.test(n))
+          .concat(Object.keys(idx.months || {}))
+      )).sort().reverse();
+      const want = Math.max(1, Math.min(parseInt(body.months, 10) || 6, 36));
+      const entries = [];
+      for (const k of keys.slice(0, want)) {
+        const list = await env.CONTENT_STORE.get(k, 'json');
+        if (Array.isArray(list)) entries.push(...list);
+      }
+      entries.sort((a, b) => parseFloat(b.ts) - parseFloat(a.ts));
+      // raw/parentRaw stay server-side: the page shows the summary, and the
+      // permalink is what a reader follows for the original.
+      return jr({ ok: true, months: keys, total: keys.reduce((t,k)=>t+(idx.months[k]||0),0),
+        entries: entries.map(e => ({ id:e.id, ts:e.ts, at:e.at, chName:e.chName,
+          authorName:e.authorName, permalink:e.permalink,
+          headline:e.headline || _slackDeriveHeadline(e.summary), summary:e.summary,
+          isReply:!!e.isReply, source:e.source || 'reaction' })) });
+    }
+
     if (request.method === 'POST' && url.pathname === '/api/data') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }

@@ -641,6 +641,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
       <div class="ni grp" onclick="autoExpand();toggleResMenu()" data-page="resources" id="res-menu-parent" title="Resources"><span class="ic">📚</span><span>Resources</span><span id="res-arrow" style="margin-left:auto;font-size:10px;transition:transform .2s">▼</span></div>
       <div id="res-submenu" style="display:none;padding-left:24px">
         <div class="ni sub" onclick="window.open('/bd','_blank')" data-page="resources" data-sub="bd-dash"><span class="ic" style="font-size:12px">💼</span><span>BD Tracker</span><span style="margin-left:auto;font-size:9px;opacity:.5">↗</span></div>
+        <div class="ni sub" onclick="switchRes('changelog')" data-page="resources" data-sub="changelog"><span class="ic" style="font-size:12px">🪵</span><span>Changelog</span></div>
         <div class="ni sub" onclick="window.open('/sales','_blank')" data-page="resources" data-sub="sales-dash"><span class="ic" style="font-size:12px">📋</span><span>Sales Dashboard</span><span style="margin-left:auto;font-size:9px;opacity:.5">↗</span></div>
         <div class="ni sub" onclick="switchToCalculator()" data-page="resources" data-sub="calculator"><span class="ic" style="font-size:12px">🧮</span><span>ARR Calculator</span></div>
         <div class="ni sub" onclick="switchRes('brand-guide')" data-page="resources" data-sub="brand-guide"><span class="ic" style="font-size:12px">🎨</span><span>Brand Guide</span></div>
@@ -11299,8 +11300,13 @@ function switchRes(subId){
   document.querySelectorAll('#res-submenu .ni').forEach(function(n){n.classList.toggle('active',n.dataset.sub===subId);});
   document.getElementById('res-menu-parent').classList.add('active');
   // Update title
-  document.getElementById('ptitle').textContent=subId==='brand-guide'?'Brand Guide':'Data Source Key';
+  document.getElementById('ptitle').textContent=({'brand-guide':'Brand Guide','data-key':'Data Source Key','changelog':'Changelog'})[subId]||'Resources';
   document.getElementById('filters').innerHTML='';
+  // The Jump To bar lives in .main .topbar, which survives a page switch, so
+  // without this every Resources page inherits whichever bar the previous page
+  // built. buildSectionNav clears it and returns early for a page that has no
+  // sections of its own, which is all of these.
+  buildSectionNav('resources');
   // Show page-content, hide others
   document.querySelectorAll('.pg').forEach(function(p){p.classList.remove('active');});
   document.getElementById('page-content').classList.add('active');
@@ -11314,6 +11320,134 @@ function renderResources(){
   var sub=S.resSub||'brand-guide';
   if(sub==='brand-guide')renderResBrandGuide(el);
   else if(sub==='data-key')renderResDataKey(el);
+  else if(sub==='changelog')renderChangelog(el);
+}
+
+// ── Changelog ───────────────────────────────────────────────────────────────
+// A dated log of what the company shipped, decided or broke, fed by the wood
+// reaction in Slack. The page renders the stored one-line summary only; the
+// original message is a click away on the permalink rather than duplicated
+// here, which is what keeps a week of entries scannable.
+var _clgCache=null;
+// Monday-anchored week key. Entries group under the week they happened in, not
+// the week they were logged in — a reaction added days later still files the
+// change under when it actually happened.
+function _clgWeekKey(ms){
+  var d=new Date(ms); d.setHours(0,0,0,0);
+  d.setDate(d.getDate()-((d.getDay()+6)%7));
+  return d.getTime();
+}
+function _clgWeekLabel(ms){
+  var a=new Date(ms), b=new Date(ms+6*864e5);
+  var M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var now=_clgWeekKey(Date.now());
+  if(ms===now)return 'This week';
+  if(ms===now-7*864e5)return 'Last week';
+  var sameMonth=a.getMonth()===b.getMonth();
+  return M[a.getMonth()]+' '+a.getDate()+' – '+(sameMonth?'':M[b.getMonth()]+' ')+b.getDate()
+    +(a.getFullYear()!==new Date().getFullYear()?(', '+a.getFullYear()):'');
+}
+var _CLG_CH={gtm:'#72A4BF',sessioninteractive:'#7C3AED',changelog:'#0F766E'};
+var _CLG_DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+// Hover and the row rhythm need real rules, not inline styles.
+var _CLG_CSS='<style>'
+ +'.clg-row{display:flex;gap:17px;padding:14px 11px;border-radius:9px;border-bottom:1px solid rgba(23,44,69,.06);transition:background .13s ease}'
+ +'.clg-row:hover{background:var(--teal-8)}'
+ +'.clg-week .clg-row:last-child{border-bottom:none}'
+ +'.clg-date{flex:0 0 46px;text-align:center;padding-top:2px}'
+ +'.clg-day{display:block;font-family:var(--font-h,inherit);font-size:21px;font-weight:700;color:var(--navy);line-height:1;font-variant-numeric:tabular-nums}'
+ +'.clg-dow{display:block;margin-top:4px;font-size:9.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--grey)}'
+ +'.clg-body{flex:1;min-width:0}'
+ +'.clg-head{display:block;font-size:14px;font-weight:600;color:var(--navy);line-height:1.35}'
+ +'.clg-sum{display:block;margin-top:5px;font-size:12.5px;color:rgba(23,44,69,.70);line-height:1.6}'
+ +'.clg-meta{display:block;margin-top:8px;font-size:10.5px;color:var(--grey)}'
+ +'.clg-dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:6px;vertical-align:middle}'
+ +'.clg-sep{opacity:.45;margin:0 2px}'
+ +'.clg-link{color:var(--teal);text-decoration:none;font-weight:500}'
+ +'.clg-link:hover{text-decoration:underline}'
+ +'</style>';
+// Entries written before headlines existed fall back to one derived here. The
+// worker regenerates them properly on its next sweep, so this is a stopgap.
+function _clgHead(e){
+  if(e.headline)return e.headline;
+  var t=String(e.summary||'').trim(), d=t.indexOf('. ');
+  if(d>0)t=t.slice(0,d);
+  t=t.replace(/\.$/,'').trim();
+  if(t.length<=52)return t;
+  var c=t.slice(0,52), sp=c.lastIndexOf(' ');
+  return (sp>20?c.slice(0,sp):c).trim()+'\u2026';
+}
+// users.info can fail, and when it does the author falls back to a raw Slack id.
+// Showing "U077TPV2PFV" to a reader is worse than showing no name at all.
+function _clgName(n){ n=String(n||''); return /^[UW][A-Z0-9]{6,}$/.test(n)?'':n; }
+function renderChangelog(el){
+  if(!_clgCache){
+    el.innerHTML='<div class="card"><div style="padding:40px;text-align:center;color:var(--grey);font-size:13px">Loading changelog…</div></div>';
+    fetch('/api/changelog',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({password:PW,months:12})})
+      .then(function(r){return r.json();})
+      .then(function(d){_clgCache=d&&d.ok?d:{entries:[],error:(d&&d.error)||'failed'};renderChangelog(el);})
+      .catch(function(e){_clgCache={entries:[],error:e.message};renderChangelog(el);});
+    return;
+  }
+  var d=_clgCache, ents=d.entries||[];
+  var h=_CLG_CSS+'<div class="card"><div class="card-title" style="display:flex;align-items:baseline;gap:10px">Changelog'
+    +'<span style="font-size:11px;font-weight:400;color:var(--grey)">'
+    +(ents.length?(ents.length+' entr'+(ents.length===1?'y':'ies')):'nothing logged yet')+'</span>'
+    +'<span style="margin-left:auto;font-size:11px;color:var(--grey);font-weight:400">'
+    +'React \uD83E\uDEB5 in Slack to add an entry</span></div>';
+  if(d.error) h+='<div style="padding:14px 0;color:var(--red,#DC2626);font-size:12px">Could not load: '+d.error+'</div>';
+  if(!ents.length&&!d.error){
+    h+='<div style="padding:34px 4px;color:var(--grey);font-size:12.5px;line-height:1.7">'
+      +'Nothing logged yet. React with \uD83E\uDEB5 on any message in <strong>#gtm</strong>, '
+      +'<strong>#sessioninteractive</strong> or <strong>#changelog</strong> and it will appear here '
+      +'within seconds. Removing the reaction removes the entry.</div>';
+  }
+  // Group by the week the change happened in.
+  var weeks={},order=[];
+  ents.forEach(function(e){
+    var k=_clgWeekKey(e.at);
+    if(!weeks[k]){weeks[k]=[];order.push(k);}
+    weeks[k].push(e);
+  });
+  order.sort(function(a,b){return b-a;});
+  order.forEach(function(k){
+    h+='<div style="margin-top:26px;margin-bottom:5px;display:flex;align-items:center;gap:12px">'
+      +'<span style="font-family:var(--font-h,inherit);font-size:13px;font-weight:700;color:var(--navy)">'
+      +_clgWeekLabel(+k)+'</span>'
+      +'<span style="flex:1;height:1px;background:rgba(23,44,69,.10)"></span>'
+      +'<span style="font-size:9.5px;font-weight:600;letter-spacing:.07em;color:var(--grey)">'
+      +weeks[k].length+(weeks[k].length===1?' ENTRY':' ENTRIES')+'</span></div>';
+    h+='<div class="clg-week">';
+    weeks[k].forEach(function(e){
+      var dt=new Date(e.at);
+      var c=_CLG_CH[e.chName]||'#94A3B8';
+      var nm=_clgName(e.authorName);
+      h+='<div class="clg-row">'
+        +'<span class="clg-date">'
+          +'<span class="clg-day">'+dt.getDate()+'</span>'
+          +'<span class="clg-dow">'+_CLG_DOW[dt.getDay()]+'</span>'
+        +'</span>'
+        +'<span class="clg-body">'
+          +'<span class="clg-head">'+_clgEsc(_clgHead(e))+'</span>'
+          +'<span class="clg-sum">'+_clgEsc(e.summary)+'</span>'
+          +'<span class="clg-meta">'
+            +'<span class="clg-dot" style="background:'+c+'"></span>'
+            +'#'+_clgEsc(e.chName)
+            +(nm?('<span class="clg-sep">·</span>'+_clgEsc(nm)):'')
+            +(e.isReply?'<span class="clg-sep">·</span>in thread':'')
+            +(e.permalink?('<span class="clg-sep">·</span><a href="'+_clgEsc(e.permalink)+'" target="_blank" rel="noopener" class="clg-link">open in Slack \u2197</a>'):'')
+          +'</span>'
+        +'</span></div>';
+    });
+    h+='</div>';
+  });
+  h+='</div>';
+  el.innerHTML=h;
+}
+function _clgEsc(v){
+  return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 function toggleContentMenu(){
   const sub=document.getElementById('content-submenu');
