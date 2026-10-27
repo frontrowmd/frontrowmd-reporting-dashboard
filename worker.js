@@ -8876,7 +8876,11 @@ const SLACK_LOG_IDX = 'log_index_v1';
 const SLACK_ERR_KEY = 'slack_err_recent_v1';
 const SLACK_SWEEP_MAX = 12;
 const SLACK_USER_KEY = 'slack_users_v1';
+// Seed names only. The capture path has no channel allowlist — a reaction in any
+// channel the bot sits in is logged — so this map exists purely so a known id
+// renders as a name even if conversations.info is unavailable.
 const SLACK_CH_NAMES = { C0A5366LG2D:'gtm', C0ADJP50GJE:'sessioninteractive', C0CBELQAZQA:'changelog' };
+const SLACK_CH_KEY = 'slack_channels_v1';
 
 // Every call here is form-encoded. Slack documents x-www-form-urlencoded for the
 // read methods this uses; a JSON body is accepted by some of them and rejected by
@@ -8959,6 +8963,29 @@ async function slackFetchForLog(channel, ts, env) {
   }
   if (!parent) parent = await slackThreadParent(channel, msg, env);
   return { msg, parent, isReply: !!parent };
+}
+
+// Resolved from Slack and cached, so adding a channel to the changelog is an
+// invite in Slack and nothing else. Falls back to the seed map and then to the
+// raw id, because a missing name must never cost an entry.
+async function slackChannelName(id, env) {
+  if (!id) return '';
+  if (SLACK_CH_NAMES[id]) return SLACK_CH_NAMES[id];
+  let map = {};
+  try { map = (await env.CONTENT_STORE.get(SLACK_CH_KEY, 'json')) || {}; } catch {}
+  if (map[id]) return map[id];
+  try {
+    const c = await slackApi('conversations.info', { channel: id }, env);
+    const nm = (c.channel && c.channel.name) || '';
+    if (!nm) return id;
+    map[id] = nm;
+    await env.CONTENT_STORE.put(SLACK_CH_KEY, JSON.stringify(map), { expirationTtl: 30*24*3600 });
+    return nm;
+  } catch (e) {
+    console.warn('slack conversations.info:', e.message);
+    await slackRecordErr(id, 'conversations.info: ' + (e && e.message), env);
+    return id;
+  }
 }
 
 async function slackUserName(id, env) {
@@ -9136,7 +9163,7 @@ async function slackHandleReaction(body, env) {
     const summarised = await slackSummarize(raw, parentRaw, env);
     const entry = {
       id, channel, ts, at: atMs,
-      chName: SLACK_CH_NAMES[channel] || channel,
+      chName: await slackChannelName(channel, env),
       author: msg.user || '',
       authorName: await slackUserName(msg.user, env),
       permalink, raw, parentRaw, isReply,
@@ -9193,6 +9220,10 @@ async function slackBackfillEntries(env) {
       if (e.author && /^[UW][A-Z0-9]{6,}$/.test(String(e.authorName || ''))) {
         const nm = await slackUserName(e.author, env);
         if (nm && nm !== e.authorName) { e.authorName = nm; changed = true; }
+      }
+      if (e.channel && /^[CGD][A-Z0-9]{6,}$/.test(String(e.chName || ''))) {
+        const cn = await slackChannelName(e.channel, env);
+        if (cn && cn !== e.chName) { e.chName = cn; changed = true; }
       }
       if (changed) { touched = true; filled++; }
     }

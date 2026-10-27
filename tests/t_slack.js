@@ -582,13 +582,64 @@ ck('  with a summariser failure falling back, not looping',
 ck('the cron runs it',/await slackBackfillEntries\(env\)/.test(src),true);
 ck('  and the old name is gone',/slackBackfillHeadlines/.test(src),false);
 
+// ── 4e. Channels ──────────────────────────────────────────
+// Adding a channel to the changelog must be an invite in Slack and nothing
+// else, so the capture path deliberately has no allowlist.
+ck('capture is not gated on a known channel',
+   (()=>{const i=src.indexOf('async function slackHandleReaction');
+     const j=src.indexOf('export default',i);
+     const b=src.slice(i,j);
+     return !/SLACK_CH_NAMES\[channel\]/.test(b)
+         && !/CHANNELS?\.(includes|indexOf|has)\(/.test(b);})(),true);
+
+const CH=(()=>{const c={console,JSON,String,Object,Error,Promise};
+  c.calls=[];
+  c.slackApi=async(method,params)=>{c.calls.push([method,params.channel]);
+    if(c.info===undefined) throw new Error(method+': missing_scope');
+    return c.info;};
+  c.slackRecordErr=async()=>{};
+  vm.createContext(c);
+  vm.runInContext([
+    decl(src,"const SLACK_CH_NAMES = ",'};'),
+    decl(src,"const SLACK_CH_KEY = '","';"),
+    fn(src,'slackChannelName'),
+    'Object.assign(globalThis,{slackChannelName,SLACK_CH_NAMES});'].join('\n'),c);
+  return c;})();
+const store={};
+const chEnv={CONTENT_STORE:{
+  async get(k,t){const v=store[k];return v===undefined?null:JSON.parse(v);},
+  async put(k,v){store[k]=v;}}};
+const chName=async(id,info)=>{CH.calls=[];CH.info=info;return await CH.slackChannelName(id,chEnv);};
+
+ck('a seeded channel resolves without asking Slack',
+   [await chName('C0A5366LG2D',undefined),CH.calls.length],['gtm',0]);
+ck('an unknown channel is resolved from Slack',
+   await chName('C0NEW00001',{channel:{name:'virtualclinicians'}}),'virtualclinicians');
+ck('  and is cached, so the next entry costs no call',
+   [await chName('C0NEW00001',{channel:{name:'virtualclinicians'}}),CH.calls.length],
+   ['virtualclinicians',0]);
+ck('a lookup that fails falls back to the id rather than losing the entry',
+   await chName('C0NEW00002',undefined),'C0NEW00002');
+ck('  and a nameless channel does too',
+   await chName('C0NEW00003',{channel:{}}),'C0NEW00003');
+ck('an empty channel is survived',await chName('',undefined),'');
+
+ck('the capture stores the resolved name',
+   /chName: await slackChannelName\(channel, env\)/.test(src),true);
+ck('the backfill repairs a chName left as a raw channel id',
+   (()=>{const i=src.indexOf('async function slackBackfillEntries');
+     const j=src.indexOf('async function slackSweep',i);
+     const b=src.slice(i,j);
+     return /\^\[CGD\]\[A-Z0-9\]\{6,\}\$/.test(b)&&/slackChannelName\(e\.channel, env\)/.test(b);})(),true);
+
 // ── 5. The Changelog page ──────────────────────────────────
 const dash=load(process.env.DASH_SRC||'dashboard.html');
 const PG={console,Date,String,Number,Math,JSON,Array};
 vm.createContext(PG);
 vm.runInContext([fn(dash,'_clgWeekKey'),fn(dash,'_clgWeekLabel'),fn(dash,'_clgEsc'),
-  fn(dash,'_clgHead'),fn(dash,'_clgName'),
-  'Object.assign(globalThis,{_clgWeekKey,_clgWeekLabel,_clgEsc,_clgHead,_clgName});'].join('\n'),PG);
+  fn(dash,'_clgHead'),fn(dash,'_clgName'),fn(dash,'_clgTime'),
+  decl(dash,'var _CLG_CH=','};'), decl(dash,'var _CLG_CH_ALT=','];'), fn(dash,'_clgColour'),
+  'Object.assign(globalThis,{_clgWeekKey,_clgWeekLabel,_clgEsc,_clgHead,_clgName,_clgTime,_clgColour,_CLG_CH,_CLG_CH_ALT});'].join('\n'),PG);
 
 // Entries file under the week the change HAPPENED, not the week it was logged —
 // a reaction added days later still lands in the right place.
@@ -659,6 +710,118 @@ ck('the date is larger than the summary text',
 ck('  and the headline is heavier than the summary',
    (()=>{const h=/\.clg-head\{[^}]*font-weight:(\d+)/.exec(dash);
      return !!h&&parseInt(h[1],10)>=600;})(),true);
+
+// A mapped channel keeps its colour; an unmapped one still gets a distinct dot.
+ck('a mapped channel keeps its colour',PG._clgColour('gtm'),'#72A4BF');
+ck('an unmapped channel still gets a colour',
+   /^#[0-9A-F]{6}$/i.test(PG._clgColour('virtualclinicians')),true);
+ck('  the same one every time',
+   PG._clgColour('virtualclinicians'),PG._clgColour('virtualclinicians'));
+// The recurring bug in this codebase: a fallback colour that equals a mapped one.
+ck('  and never one of the mapped colours',
+   (()=>{const mapped=Object.values(PG._CLG_CH).map(c=>c.toUpperCase());
+     return PG._CLG_CH_ALT.every(c=>!mapped.includes(c.toUpperCase()));})(),true);
+ck('  with the fallback palette holding no duplicates of its own',
+   new Set(PG._CLG_CH_ALT.map(c=>c.toUpperCase())).size,PG._CLG_CH_ALT.length);
+ck('the empty state no longer hardcodes a channel list',
+   (()=>{const i=dash.indexOf('function renderChangelog');
+     const j=dash.indexOf('function _clgEsc',i);
+     const b=dash.slice(i,j);
+     return !b.includes('sessioninteractive')&&/invited to/.test(b);})(),true);
+
+// ── Refresh ───────────────────────────────────────────────
+ck('the card header carries a refresh button',
+   (()=>{const i=dash.indexOf('function renderChangelog');
+     const j=dash.indexOf('function _clgEsc',i);
+     const b=dash.slice(i,j);
+     return /id="clg-rfb"/.test(b)&&/onclick="refreshChangelog\(\)"/.test(b)
+         && /class="rfb"/.test(b);})(),true);
+ck('  reusing the dashboard-wide button style, not a new one',
+   /\.rfb\{/.test(dash)&&/\.rfb\.loading\{/.test(dash),true);
+// Blanking the list to a spinner on refresh reads as breakage, not reloading.
+ck('a refresh does not blank the list while it loads',
+   (()=>{const i=dash.indexOf('function refreshChangelog');
+     const j=dash.indexOf('function renderChangelog',i);
+     return !/innerHTML/.test(dash.slice(i,j));})(),true);
+ck('render falls back to the remembered container',
+   dash.includes("el=el||_clgEl||document.getElementById('content-c')"),true);
+
+ck('midnight reads as 12 AM',PG._clgTime(new Date(2026,9,26,0,5).getTime()),'12:05 AM');
+ck('noon reads as 12 PM',PG._clgTime(new Date(2026,9,26,12,0).getTime()),'12:00 PM');
+ck('the afternoon pads its minutes',PG._clgTime(new Date(2026,9,26,16,7).getTime()),'4:07 PM');
+
+const RF=(()=>{const c={console,JSON,Date,String,Object,Promise};
+  c.PW='pw'; c.renders=0; c.fetches=0; c.S={resSub:'changelog'};
+  c.btn={classList:{_s:[],add(x){this._s.push(x);},contains(x){return this._s.includes(x);}},
+         textContent:'↻ Refresh'};
+  c.document={getElementById:(id)=>id==='clg-rfb'?c.btn:null};
+  c.fetch=(url,init)=>{c.fetches++;c.lastBody=JSON.parse(init.body);
+    return new Promise(res=>{c.release=()=>res({json:async()=>c.reply});});};
+  vm.createContext(c);
+  vm.runInContext([
+    'var _clgCache=null,_clgEl=null,_clgBusy=false,_clgAt=0;',
+    fn(dash,'_clgLive'), fn(dash,'_clgFetch'), fn(dash,'refreshChangelog'),
+    'function renderChangelog(){renders++;}',
+    'Object.assign(globalThis,{refreshChangelog,_clgLive});'].join('\n'),c);
+  return c;})();
+
+RF.reply={ok:true,entries:[{id:'a'}]};
+RF.refreshChangelog();
+ck('a refresh starts a fetch',RF.fetches,1);
+ck('  sending the password the page actually holds',RF.lastBody.password,'pw');
+ck('  and marks the button busy',
+   [RF.btn.classList.contains('loading'),/Refreshing/.test(RF.btn.textContent)],[true,true]);
+// A second click must not stack a second request behind the first.
+RF.refreshChangelog();
+ck('a second click while busy is ignored',RF.fetches,1);
+RF.release();
+await new Promise(r=>setTimeout(r,0));
+ck('the list re-renders once the data lands',RF.renders,1);
+ck('  the busy flag clears',RF._clgBusy,false);
+ck('  the cache is replaced',RF._clgCache.entries.length,1);
+ck('  and the timestamp advances',RF._clgAt>0,true);
+// And it must be usable again afterwards.
+RF.refreshChangelog();
+ck('a later refresh works again',RF.fetches,2);
+RF.release();
+await new Promise(r=>setTimeout(r,0));
+ck('  and completes',RF.renders,2);
+// A failed refresh must not wedge the button permanently.
+RF.fetch=()=>{RF.fetches++;return Promise.reject(new Error('offline'));};
+RF.refreshChangelog();
+await new Promise(r=>setTimeout(r,0));
+ck('a failed refresh still clears the busy flag',RF._clgBusy,false);
+ck('  and surfaces the error rather than silently keeping stale data',
+   RF._clgCache.error,'offline');
+
+// The three Resources pages share one container. A refresh landing after the
+// user has switched away must not paint the changelog over the page they moved
+// to — but it must still clear the busy flag, or Refresh wedges on return.
+RF.fetch=(url,init)=>{RF.fetches++;
+  return new Promise(res=>{RF.release=()=>res({json:async()=>RF.reply});});};
+RF.reply={ok:true,entries:[{id:'b'},{id:'c'}]};
+RF.refreshChangelog();
+RF.S.resSub='brand-guide';
+const before=RF.renders;
+RF.release();
+await new Promise(r=>setTimeout(r,0));
+ck('a refresh landing on another page does not render over it',RF.renders,before);
+ck('  but the data is still cached for when the user comes back',
+   RF._clgCache.entries.length,2);
+ck('  and the button is not left wedged',RF._clgBusy,false);
+RF.S.resSub='changelog';
+// Both the refresh and the first load render from a callback, and both can land
+// after the user has moved on — so neither may be left ungated.
+ck('every late render is gated on the page still being the changelog',
+   (()=>{const i=dash.indexOf('function _clgLive');
+     const j=dash.indexOf('function toggleContentMenu',i);
+     const b=dash.slice(i,j);
+     const calls=(b.match(/_clgFetch\(function\(\)\{/g)||[]).length;
+     const guards=(b.match(/if\(_clgLive\(\)\)/g)||[]).length;
+     return calls>=2&&guards===calls;})(),true);
+ck('the live check tracks the current sub-page',
+   [RF._clgLive(),(()=>{RF.S.resSub='data-key';const v=RF._clgLive();RF.S.resSub='changelog';return v;})()],
+   [true,false]);
 
 ck('the menu row sits directly under BD Tracker',
    (()=>{const bd=dash.indexOf('data-sub="bd-dash"');

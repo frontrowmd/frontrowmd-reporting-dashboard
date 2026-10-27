@@ -11328,7 +11328,36 @@ function renderResources(){
 // reaction in Slack. The page renders the stored one-line summary only; the
 // original message is a click away on the permalink rather than duplicated
 // here, which is what keeps a week of entries scannable.
-var _clgCache=null;
+var _clgCache=null,_clgEl=null,_clgBusy=false,_clgAt=0;
+function _clgTime(ms){
+  var d=new Date(ms),h=d.getHours(),m=d.getMinutes(),ap=h<12?'AM':'PM';
+  h=h%12; if(!h)h=12;
+  return h+':'+(m<10?'0':'')+m+' '+ap;
+}
+// Brand Guide, Data Source Key and Changelog all render into #content-c, so a
+// fetch that lands after the user has moved on would paint the changelog over
+// whichever page they switched to. Every late render is gated on this.
+function _clgLive(){
+  try { return (S.resSub||'brand-guide')==='changelog'; } catch(e) { return false; }
+}
+function _clgFetch(done){
+  fetch('/api/changelog',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({password:PW,months:12})})
+    .then(function(r){return r.json();})
+    .then(function(d){_clgCache=d&&d.ok?d:{entries:[],error:(d&&d.error)||'failed'};_clgAt=Date.now();done();})
+    .catch(function(e){_clgCache={entries:[],error:e.message};_clgAt=Date.now();done();});
+}
+// Entries arrive by cron and by reaction, so a page left open goes stale with no
+// way to tell. The list stays on screen while this runs — blanking it back to a
+// spinner reads as something breaking rather than something reloading. _clgBusy
+// is what stops a second click stacking a second fetch behind the first.
+function refreshChangelog(){
+  if(_clgBusy)return;
+  _clgBusy=true;
+  var btn=document.getElementById('clg-rfb');
+  if(btn){btn.classList.add('loading');btn.textContent='\u21bb Refreshing\u2026';}
+  _clgFetch(function(){_clgBusy=false;if(_clgLive())renderChangelog(_clgEl);});
+}
 // Monday-anchored week key. Entries group under the week they happened in, not
 // the week they were logged in — a reaction added days later still files the
 // change under when it actually happened.
@@ -11348,6 +11377,16 @@ function _clgWeekLabel(ms){
     +(a.getFullYear()!==new Date().getFullYear()?(', '+a.getFullYear()):'');
 }
 var _CLG_CH={gtm:'#72A4BF',sessioninteractive:'#7C3AED',changelog:'#0F766E'};
+// A channel nobody mapped still needs a dot of its own. The fallback palette
+// shares no hex with the mapped three on purpose: two channels drawing the same
+// colour is exactly the confusion the dot exists to prevent.
+var _CLG_CH_ALT=['#C2410C','#4338CA','#B45309','#0E7490','#9D174D','#15803D'];
+function _clgColour(name){
+  if(_CLG_CH[name])return _CLG_CH[name];
+  var n=String(name||''),h=0;
+  for(var i=0;i<n.length;i++)h=(h*31+n.charCodeAt(i))>>>0;
+  return _CLG_CH_ALT[h%_CLG_CH_ALT.length];
+}
 var _CLG_DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 // Hover and the row rhythm need real rules, not inline styles.
 var _CLG_CSS='<style>'
@@ -11381,27 +11420,32 @@ function _clgHead(e){
 // Showing "U077TPV2PFV" to a reader is worse than showing no name at all.
 function _clgName(n){ n=String(n||''); return /^[UW][A-Z0-9]{6,}$/.test(n)?'':n; }
 function renderChangelog(el){
+  // A refresh re-renders after the page element is long out of scope, so the
+  // container is remembered rather than demanded on every call.
+  el=el||_clgEl||document.getElementById('content-c');
+  if(!el)return;
+  _clgEl=el;
   if(!_clgCache){
     el.innerHTML='<div class="card"><div style="padding:40px;text-align:center;color:var(--grey);font-size:13px">Loading changelog…</div></div>';
-    fetch('/api/changelog',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({password:PW,months:12})})
-      .then(function(r){return r.json();})
-      .then(function(d){_clgCache=d&&d.ok?d:{entries:[],error:(d&&d.error)||'failed'};renderChangelog(el);})
-      .catch(function(e){_clgCache={entries:[],error:e.message};renderChangelog(el);});
+    _clgFetch(function(){if(_clgLive())renderChangelog(el);});
     return;
   }
   var d=_clgCache, ents=d.entries||[];
-  var h=_CLG_CSS+'<div class="card"><div class="card-title" style="display:flex;align-items:baseline;gap:10px">Changelog'
+  var h=_CLG_CSS+'<div class="card"><div class="card-title" style="display:flex;align-items:center;gap:10px">Changelog'
     +'<span style="font-size:11px;font-weight:400;color:var(--grey)">'
-    +(ents.length?(ents.length+' entr'+(ents.length===1?'y':'ies')):'nothing logged yet')+'</span>'
-    +'<span style="margin-left:auto;font-size:11px;color:var(--grey);font-weight:400">'
-    +'React \uD83E\uDEB5 in Slack to add an entry</span></div>';
+    +(ents.length?(ents.length+' entr'+(ents.length===1?'y':'ies')):'nothing logged yet')
+    +(_clgAt?(' \u00b7 updated '+_clgEsc(_clgTime(_clgAt))):'')+'</span>'
+    +'<span style="margin-left:auto;display:flex;align-items:center;gap:12px">'
+    +'<span style="font-size:11px;color:var(--grey);font-weight:400">'
+    +'React \uD83E\uDEB5 in Slack to add an entry</span>'
+    +'<button class="rfb" id="clg-rfb" style="margin-left:0;padding:6px 14px"'
+    +' onclick="refreshChangelog()">\u21bb Refresh</button></span></div>';
   if(d.error) h+='<div style="padding:14px 0;color:var(--red,#DC2626);font-size:12px">Could not load: '+d.error+'</div>';
   if(!ents.length&&!d.error){
     h+='<div style="padding:34px 4px;color:var(--grey);font-size:12.5px;line-height:1.7">'
-      +'Nothing logged yet. React with \uD83E\uDEB5 on any message in <strong>#gtm</strong>, '
-      +'<strong>#sessioninteractive</strong> or <strong>#changelog</strong> and it will appear here '
-      +'within seconds. Removing the reaction removes the entry.</div>';
+      +'Nothing logged yet. React with \uD83E\uDEB5 on any message in a channel the '
+      +'Changelog bot has been invited to and it will appear here within seconds. '
+      +'Removing the reaction removes the entry.</div>';
   }
   // Group by the week the change happened in.
   var weeks={},order=[];
@@ -11421,7 +11465,7 @@ function renderChangelog(el){
     h+='<div class="clg-week">';
     weeks[k].forEach(function(e){
       var dt=new Date(e.at);
-      var c=_CLG_CH[e.chName]||'#94A3B8';
+      var c=_clgColour(e.chName);
       var nm=_clgName(e.authorName);
       h+='<div class="clg-row">'
         +'<span class="clg-date">'
