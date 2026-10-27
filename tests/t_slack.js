@@ -636,41 +636,155 @@ ck('the backfill repairs a chName left as a raw channel id',
 const dash=load(process.env.DASH_SRC||'dashboard.html');
 const PG={console,Date,String,Number,Math,JSON,Array};
 vm.createContext(PG);
-vm.runInContext([fn(dash,'_clgWeekKey'),fn(dash,'_clgWeekLabel'),fn(dash,'_clgEsc'),
-  fn(dash,'_clgHead'),fn(dash,'_clgName'),fn(dash,'_clgTime'),
+vm.runInContext([fn(dash,'_clgEsc'),fn(dash,'_clgHead'),fn(dash,'_clgName'),fn(dash,'_clgTime'),
+  decl(dash,'var _CLG_MON=','];'), decl(dash,'var _CLG_DOW=','];'), decl(dash,'var _CLG_DOWF=','];'),
+  fn(dash,'_clgMonthKey'), fn(dash,'_clgDayKey'), fn(dash,'_clgMonthLabel'),
+  fn(dash,'_clgMonthTitle'), fn(dash,'_clgDayLabel'),
   decl(dash,'var _CLG_CH=','};'), decl(dash,'var _CLG_CH_ALT=','];'), fn(dash,'_clgColour'),
-  'Object.assign(globalThis,{_clgWeekKey,_clgWeekLabel,_clgEsc,_clgHead,_clgName,_clgTime,_clgColour,_CLG_CH,_CLG_CH_ALT});'].join('\n'),PG);
+  'Object.assign(globalThis,{_clgEsc,_clgHead,_clgName,_clgTime,_clgColour,_CLG_CH,_CLG_CH_ALT,'
+  +'_clgMonthKey,_clgDayKey,_clgMonthLabel,_clgMonthTitle,_clgDayLabel});'].join('\n'),PG);
 
-// Entries file under the week the change HAPPENED, not the week it was logged —
-// a reaction added days later still lands in the right place.
-ck('a week key is Monday-anchored',
-   (()=>{const mon=PG._clgWeekKey(new Date(2026,9,19,9,0).getTime());
-     return [new Date(mon).getDay(),new Date(mon).getDate()];})(),[1,19]);
-ck('  every day of one week maps to the same key',
-   (()=>{const ks=[19,20,21,22,23,24,25].map(d=>PG._clgWeekKey(new Date(2026,9,d,13,0).getTime()));
-     return new Set(ks).size;})(),1);
-ck('  and Sunday belongs to the week that preceded it',
-   (()=>{const sun=PG._clgWeekKey(new Date(2026,9,25,23,0).getTime());
-     const mon=PG._clgWeekKey(new Date(2026,9,19,1,0).getTime());
-     return sun===mon;})(),true);
-ck('  while the next Monday starts a new one',
-   PG._clgWeekKey(new Date(2026,9,26,1,0).getTime())===PG._clgWeekKey(new Date(2026,9,19,1,0).getTime()),false);
-// Jun 29 – Jul 5 2026: a week that straddles two months, far enough back that
-// it takes a date label rather than a relative one.
-ck('a week spanning two months names both',
-   (()=>{const L=PG._clgWeekLabel(PG._clgWeekKey(new Date(2026,6,1).getTime()));
-     return /Jun/.test(L)&&/Jul/.test(L);})(),true);
-ck('  while a week inside one month names it once',
-   (()=>{const L=PG._clgWeekLabel(PG._clgWeekKey(new Date(2026,6,8).getTime()));
-     return (L.match(/Jul/g)||[]).length;})(),1);
-// The two most-read headers are relative, because "this week" is what someone
-// opening a changelog is usually looking for.
-ck('the current week is named relatively',
-   PG._clgWeekLabel(PG._clgWeekKey(Date.now())),'This week');
+// Keys are zero-padded so they sort as plain strings — the grouping and the
+// calendar both rely on that rather than parsing dates back out.
+ck('a month key is zero-padded',
+   [PG._clgMonthKey(new Date(2026,0,9,23,0).getTime()),
+    PG._clgMonthKey(new Date(2026,9,1,0,0).getTime())],['2026-01','2026-10']);
+ck('a day key extends it',PG._clgDayKey(new Date(2026,9,5,13,0).getTime()),'2026-10-05');
+ck('  and keys sort chronologically as strings',
+   ['2026-10-05','2026-01-09','2026-10-20','2025-12-31'].slice().sort(),
+   ['2025-12-31','2026-01-09','2026-10-05','2026-10-20']);
+// Entries file under the month the change HAPPENED, not when it was logged.
+ck('every day of a month maps to one key',
+   new Set([1,9,10,28,31].map(d=>PG._clgMonthKey(new Date(2026,9,d,12,0).getTime()))).size,1);
+
+// The two most-read headers stay relative; older months are named outright.
+const _mk=(d)=>PG._clgMonthKey(d.getTime());
+ck('the current month is named relatively',
+   PG._clgMonthLabel(_mk(new Date())),'This month');
 ck('  as is the one before it',
-   PG._clgWeekLabel(PG._clgWeekKey(Date.now())-7*864e5),'Last week');
+   (()=>{const n=new Date();return PG._clgMonthLabel(_mk(new Date(n.getFullYear(),n.getMonth()-1,1)));})(),
+   'Last month');
 ck('  but not the one before that',
-   /week/.test(PG._clgWeekLabel(PG._clgWeekKey(Date.now())-14*864e5)),false);
+   (()=>{const n=new Date();
+     return /month/.test(PG._clgMonthLabel(_mk(new Date(n.getFullYear(),n.getMonth()-2,1))));})(),false);
+// Crossing the year boundary is where an off-by-one would hide.
+ck('December is last month when it is January',
+   (()=>{const n=new Date();
+     const dec=PG._clgMonthLabel(_mk(new Date(n.getFullYear(),n.getMonth()-1,1)));
+     return dec==='Last month';})(),true);
+ck('a month in an earlier year carries the year',
+   /^[A-Z][a-z]+ 20\d\d$/.test(PG._clgMonthLabel('2019-03')),true);
+ck('  while one in this year does not',
+   (()=>{const y=new Date().getFullYear();
+     const other=new Date().getMonth()===5?'07':'06';
+     return /\d{4}/.test(PG._clgMonthLabel(y+'-'+other));})(),false);
+// The calendar heading sits above a grid of dates, so "This month" there would
+// only restate what the grid shows.
+ck('the calendar heading always names the month outright',
+   PG._clgMonthTitle(_mk(new Date())).indexOf('month'),-1);
+ck('  with the year',/^[A-Z][a-z]+ 20\d\d$/.test(PG._clgMonthTitle('2026-10')),true);
+ck('a malformed key yields nothing, not "undefined NaN"',
+   [PG._clgMonthTitle(''),PG._clgMonthTitle('nope'),PG._clgMonthLabel('2026-13')],['','','']);
+ck('a day heading reads as a date',PG._clgDayLabel('2026-10-26'),'Monday 26 October');
+ck('  and a malformed one is empty',PG._clgDayLabel('2026-10'),'');
+
+// Calendar is the default; a stored preference wins; junk does not.
+const viewWith=(ls)=>{const c={localStorage:ls};vm.createContext(c);
+  vm.runInContext(/var _clgView=.*\n/.exec(dash)[0]+';globalThis.v=_clgView;',c);
+  return c.v;};
+ck('calendar is the default view',viewWith({getItem:()=>null}),'cal');
+ck('  a stored list preference is honoured',viewWith({getItem:()=>'list'}),'list');
+ck('  junk in storage falls back to calendar',viewWith({getItem:()=>'nonsense'}),'cal');
+ck('  and storage that throws does not break the page',
+   viewWith({getItem(){throw new Error('blocked');}}),'cal');
+
+// _clgMonthLabel reads the clock, so the year boundary needs a fixed one.
+const atDate=(iso)=>{const R=Date;
+  function F(){return arguments.length?new R(...arguments):new R(iso);}
+  F.now=()=>new R(iso).getTime(); F.prototype=R.prototype; F.UTC=R.UTC; return F;};
+const labelAt=(iso,key)=>{const c={Date:atDate(iso),String,Number};
+  vm.createContext(c);
+  vm.runInContext([decl(dash,'var _CLG_MON=','];'),fn(dash,'_clgMonthLabel'),
+    'globalThis.out=_clgMonthLabel('+JSON.stringify(key)+');'].join('\n'),c);
+  return c.out;};
+ck('in January, December of the previous year is "Last month"',
+   labelAt('2027-01-15T12:00:00','2026-12'),'Last month');
+ck('  January itself is "This month"',labelAt('2027-01-15T12:00:00','2027-01'),'This month');
+ck('  and November is named with its year',
+   labelAt('2027-01-15T12:00:00','2026-11'),'November 2026');
+ck('mid-year the same rules hold',
+   [labelAt('2026-07-15T12:00:00','2026-06'),labelAt('2026-07-15T12:00:00','2026-07'),
+    labelAt('2026-07-15T12:00:00','2026-05')],['Last month','This month','May']);
+
+// ── The calendar grid ─────────────────────────────────────
+const CAL=(()=>{const c={console,Date,String,Number,Math,JSON,Array,Object,Set};
+  vm.createContext(c);
+  vm.runInContext([
+    'var _clgMonth=null,_clgDay=null;',
+    decl(dash,'var _CLG_MON=','];'), decl(dash,'var _CLG_DOW=','];'), decl(dash,'var _CLG_DOWF=','];'),
+    decl(dash,'var _CLG_CH=','};'), decl(dash,'var _CLG_CH_ALT=','];'),
+    fn(dash,'_clgColour'), fn(dash,'_clgEsc'), fn(dash,'_clgHead'), fn(dash,'_clgName'),
+    fn(dash,'_clgMonthKey'), fn(dash,'_clgDayKey'), fn(dash,'_clgMonthTitle'), fn(dash,'_clgDayLabel'),
+    fn(dash,'_clgRow'), fn(dash,'_clgCalendar'), fn(dash,'_clgList'), fn(dash,'_clgMonthLabel'),
+    'Object.assign(globalThis,{_clgCalendar,_clgList});'].join('\n'),c);
+  return c;})();
+const mkEnt=(y,m,d,o)=>Object.assign({at:new Date(y,m-1,d,12,0).getTime(),chName:'gtm',
+  authorName:'Alex Melkonian',headline:'Shipped a thing',summary:'A thing was shipped.',
+  permalink:'https://x',isReply:false},o||{});
+// Oct 2026 starts on a Thursday, so a Monday-first grid needs three blanks.
+const OCT=[mkEnt(2026,10,26,{headline:'Monday one'}),mkEnt(2026,10,26,{headline:'Monday two'}),
+           mkEnt(2026,10,26,{headline:'Monday three'}),mkEnt(2026,10,20,{headline:'Earlier'}),
+           mkEnt(2026,9,14,{headline:'September'})];
+CAL._clgMonth=null; CAL._clgDay=null;
+const calH=CAL._clgCalendar(OCT);
+
+ck('the week header runs Monday first',
+   (calH.match(/class="clg-gh">(\w+)</g)||[]).map(x=>x.slice(-4,-1)),
+   ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']);
+ck('October 2026 is padded with exactly three leading blanks',
+   (()=>{const i=calH.indexOf('clg-cnum');
+     return (calH.slice(0,i).match(/clg-cell clg-out/g)||[]).length;})(),3);
+ck('  and the grid holds whole weeks',
+   (()=>{const cells=(calH.match(/class="clg-cell/g)||[]).length;return cells%7;})(),0);
+ck('  covering every day of the month',
+   (()=>{const nums=(calH.match(/class="clg-cnum">(\d+)</g)||[]).map(x=>+x.replace(/\D/g,''));
+     return [nums.length,nums[0],nums[nums.length-1]];})(),[31,1,31]);
+ck('the month is named in the heading',/October 2026/.test(calH),true);
+ck('  with a count of what is in it',/4 entries/.test(calH),true);
+ck('a day with entries is clickable',/onclick="clgPickDay\('2026-10-20'\)"/.test(calH),true);
+ck('  and an empty day is not',/onclick="clgPickDay\('2026-10-02'\)"/.test(calH),false);
+// Three entries on one day must not blow the cell open.
+ck('a crowded day shows two chips and a count',
+   [(calH.match(/clg-chip-t/g)||[]).length,/\+1 more/.test(calH)],[3,true]);
+ck('the newest day in the month opens by default',
+   /clg-sel-head">Monday 26 October/.test(calH),true);
+ck('  showing every entry from that day',
+   ['Monday one','Monday two','Monday three'].every(t=>calH.includes(t)),true);
+ck('  as compact rows, without repeating the date beside each one',
+   (()=>{const i=calH.indexOf('clg-sel-head');
+     return /clg-date/.test(calH.slice(i));})(),false);
+ck('an entry from another month is not drawn into this grid',
+   /September</.test(calH.replace(/clg-cal-title[\s\S]*?<\/span>/,'')),false);
+
+// A day picked in one month must not survive a step into the next.
+CAL._clgDay='2026-10-20';
+CAL._clgMonth='2026-11';
+const novH=CAL._clgCalendar(OCT);
+ck('a stale day from another month does not open its panel',
+   [/clg-sel-head/.test(novH),/clg-row/.test(novH)],[false,false]);
+ck('  and an empty month says so',/nothing this month/.test(novH),true);
+
+// ── List view, grouped by month ───────────────────────────
+const listH=CAL._clgList(OCT);
+ck('the list groups by month, not by week',
+   [/This month|October/.test(listH),/week/i.test(listH)],[true,false]);
+ck('  with one heading per month',
+   (listH.match(/clg-group/g)||[]).length,2);
+ck('  newest month first',
+   (()=>{const a=listH.indexOf('Monday one'),b=listH.indexOf('September');
+     return a>=0&&b>=0&&a<b;})(),true);
+ck('  and a per-month count',/4 ENTRIES/.test(listH)&&/1 ENTRY/.test(listH),true);
+ck('list rows keep the date column',/clg-date/.test(listH),true);
 
 ck('summaries are escaped before they reach the page',
    PG._clgEsc('<img src=x onerror=alert(1)> & "q"'),
@@ -743,18 +857,24 @@ ck('a refresh does not blank the list while it loads',
    (()=>{const i=dash.indexOf('function refreshChangelog');
      const j=dash.indexOf('function renderChangelog',i);
      return !/innerHTML/.test(dash.slice(i,j));})(),true);
-ck('render falls back to the remembered container',
-   dash.includes("el=el||_clgEl||document.getElementById('content-c')"),true);
+ck('render prefers the live container over a remembered one',
+   dash.includes("el=el||document.getElementById('content-c')||_clgEl"),true);
+ck('both the card and the loading state carry the marker the guard looks for',
+   (dash.match(/class="card" data-clg="1"/g)||[]).length,2);
 
 ck('midnight reads as 12 AM',PG._clgTime(new Date(2026,9,26,0,5).getTime()),'12:05 AM');
 ck('noon reads as 12 PM',PG._clgTime(new Date(2026,9,26,12,0).getTime()),'12:00 PM');
 ck('the afternoon pads its minutes',PG._clgTime(new Date(2026,9,26,16,7).getTime()),'4:07 PM');
 
 const RF=(()=>{const c={console,JSON,Date,String,Object,Promise};
-  c.PW='pw'; c.renders=0; c.fetches=0; c.S={resSub:'changelog'};
+  c.PW='pw'; c.renders=0; c.fetches=0;
+  // The guard asks whether our own content is still on screen, so the stub
+  // models that: a container that may or may not still hold the marker.
+  c.marker=true;
+  c.host={querySelector:(sel)=>c.marker?{}:null};
   c.btn={classList:{_s:[],add(x){this._s.push(x);},contains(x){return this._s.includes(x);}},
          textContent:'↻ Refresh'};
-  c.document={getElementById:(id)=>id==='clg-rfb'?c.btn:null};
+  c.document={getElementById:(id)=>id==='clg-rfb'?c.btn:(id==='content-c'?c.host:null)};
   c.fetch=(url,init)=>{c.fetches++;c.lastBody=JSON.parse(init.body);
     return new Promise(res=>{c.release=()=>res({json:async()=>c.reply});});};
   vm.createContext(c);
@@ -794,22 +914,22 @@ ck('a failed refresh still clears the busy flag',RF._clgBusy,false);
 ck('  and surfaces the error rather than silently keeping stale data',
    RF._clgCache.error,'offline');
 
-// The three Resources pages share one container. A refresh landing after the
-// user has switched away must not paint the changelog over the page they moved
-// to — but it must still clear the busy flag, or Refresh wedges on return.
+// #content-c is shared by the Resources pages AND by Social Content. A render
+// landing after the user has moved on must not paint over the page they are now
+// looking at — but it must still clear the busy flag, or Refresh wedges.
 RF.fetch=(url,init)=>{RF.fetches++;
   return new Promise(res=>{RF.release=()=>res({json:async()=>RF.reply});});};
 RF.reply={ok:true,entries:[{id:'b'},{id:'c'}]};
 RF.refreshChangelog();
-RF.S.resSub='brand-guide';
+RF.marker=false;            // another page rendered over the shared container
 const before=RF.renders;
 RF.release();
 await new Promise(r=>setTimeout(r,0));
-ck('a refresh landing on another page does not render over it',RF.renders,before);
+ck('a render landing after another page took the container is dropped',RF.renders,before);
 ck('  but the data is still cached for when the user comes back',
    RF._clgCache.entries.length,2);
 ck('  and the button is not left wedged',RF._clgBusy,false);
-RF.S.resSub='changelog';
+RF.marker=true;
 // Both the refresh and the first load render from a callback, and both can land
 // after the user has moved on — so neither may be left ungated.
 ck('every late render is gated on the page still being the changelog',
@@ -819,9 +939,36 @@ ck('every late render is gated on the page still being the changelog',
      const calls=(b.match(/_clgFetch\(function\(\)\{/g)||[]).length;
      const guards=(b.match(/if\(_clgLive\(\)\)/g)||[]).length;
      return calls>=2&&guards===calls;})(),true);
-ck('the live check tracks the current sub-page',
-   [RF._clgLive(),(()=>{RF.S.resSub='data-key';const v=RF._clgLive();RF.S.resSub='changelog';return v;})()],
+ck('the live check follows our own content, not a page variable',
+   [RF._clgLive(),(()=>{RF.marker=false;const v=RF._clgLive();RF.marker=true;return v;})()],
    [true,false]);
+
+// A failed refresh used to blank the list, and a non-null cache is never
+// re-fetched, so it stayed blank until someone clicked Refresh again.
+RF.reply={ok:true,entries:[{id:'x'},{id:'y'},{id:'z'}]};
+RF.fetch=(url,init)=>{RF.fetches++;
+  return new Promise(res=>{RF.release=()=>res({json:async()=>RF.reply});});};
+RF.refreshChangelog(); RF.release(); await new Promise(r=>setTimeout(r,0));
+const goodAt=RF._clgAt;
+ck('a loaded changelog is on screen',RF._clgCache.entries.length,3);
+RF.fetch=()=>{RF.fetches++;return Promise.reject(new Error('Failed to fetch'));};
+RF.refreshChangelog(); await new Promise(r=>setTimeout(r,0));
+ck('a failed refresh keeps the entries it already had',RF._clgCache.entries.length,3);
+ck('  while still reporting the error',RF._clgCache.error,'Failed to fetch');
+ck('  and does not advance the updated stamp to a time nothing arrived',RF._clgAt,goodAt);
+// A non-ok body (a 401, say) is a failure too, not an empty changelog.
+RF.fetch=()=>{RF.fetches++;return Promise.resolve({json:async()=>({error:'Unauthorized'})});};
+RF.refreshChangelog(); await new Promise(r=>setTimeout(r,0));
+ck('an unauthorized response does not empty the list either',
+   [RF._clgCache.entries.length,RF._clgCache.error],[3,'Unauthorized']);
+
+// The first load leaves _clgCache null for the whole request, so without the
+// same busy guard every re-entry to the page starts another identical POST.
+ck('the first load is serialised by the same busy flag',
+   (()=>{const i=dash.indexOf('Loading changelog');
+     const j=dash.indexOf('var d=_clgCache',i);
+     const b=dash.slice(i,j);
+     return /if\(!_clgBusy\)\{/.test(b)&&/_clgBusy=true;/.test(b)&&/_clgBusy=false;/.test(b);})(),true);
 
 ck('the menu row sits directly under BD Tracker',
    (()=>{const bd=dash.indexOf('data-sub="bd-dash"');
@@ -838,8 +985,14 @@ ck('the page sends the password global that actually exists',
    /body:JSON\.stringify\(\{password:PW,months:12\}\)/.test(dash)&&!/S\.pw/.test(dash),true);
 // U+1FAB5 is outside the BMP, so a 4-digit \u escape cannot express it and was
 // being read as \u1FAB followed by a literal '5'.
-ck('the wood emoji is written as a surrogate pair, not a truncated escape',
-   (dash.match(/\\uD83E\\uDEB5/g)||[]).length>=2&&!/\\u1FAB5/i.test(dash),true);
+// The original bug was \u1FAB5 — a 4-digit escape cannot express U+1FAB5, so it
+// read as \u1FAB + a literal "5". Either a correct surrogate pair or the literal
+// character is fine; that broken escape never is.
+ck('the wood emoji can actually render',
+   (()=>{const pairs=(dash.match(/\\uD83E\\uDEB5/g)||[]).length;
+     const literal=(dash.match(/\u{1FAB5}/gu)||[]).length;
+     return pairs+literal>=3;})(),true);
+ck('  and is never written as a truncated escape',/\\u1FAB5/i.test(dash),false);
 // buildSectionNav clears the bar and returns early for a page with no sections;
 // without the call, every Resources page keeps the previous page's bar.
 ck('switching to a Resources page clears the stale Jump To bar',

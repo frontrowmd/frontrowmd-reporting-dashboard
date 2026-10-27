@@ -11334,18 +11334,38 @@ function _clgTime(ms){
   h=h%12; if(!h)h=12;
   return h+':'+(m<10?'0':'')+m+' '+ap;
 }
-// Brand Guide, Data Source Key and Changelog all render into #content-c, so a
-// fetch that lands after the user has moved on would paint the changelog over
-// whichever page they switched to. Every late render is gated on this.
+// #content-c is shared by the three Resources pages AND by every Social Content
+// page, and each tracks "which page am I" in a different variable — S.resSub is
+// never cleared when you leave Resources, so a state check says "still the
+// changelog" while Social Content is on screen, and a late render paints over
+// a live Content Writer draft.
+//
+// So this does not ask what the state thinks. It asks whether what we rendered
+// is still there: any other renderer assigns innerHTML on this node, which takes
+// our marker with it. That holds for a page that does not exist yet too.
 function _clgLive(){
-  try { return (S.resSub||'brand-guide')==='changelog'; } catch(e) { return false; }
+  var el=document.getElementById('content-c')||_clgEl;
+  return !!(el&&el.querySelector&&el.querySelector('[data-clg]'));
 }
 function _clgFetch(done){
   fetch('/api/changelog',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({password:PW,months:12})})
     .then(function(r){return r.json();})
-    .then(function(d){_clgCache=d&&d.ok?d:{entries:[],error:(d&&d.error)||'failed'};_clgAt=Date.now();done();})
-    .catch(function(e){_clgCache={entries:[],error:e.message};_clgAt=Date.now();done();});
+    // A refresh that fails must not take the loaded entries with it. Before the
+    // Refresh button this only ran on first load, when there was nothing on
+    // screen to lose; now a single network blip would blank a full changelog and
+    // leave it blank, because a non-null cache is never re-fetched. The error is
+    // shown ALONGSIDE whatever was already loaded, and the "updated" stamp only
+    // moves on success — a timestamp from a failed fetch is a lie.
+    .then(function(d){
+      if(d&&d.ok){_clgCache=d;_clgAt=Date.now();}
+      else _clgCache={entries:(_clgCache&&_clgCache.entries)||[],error:(d&&d.error)||'failed'};
+      done();
+    })
+    .catch(function(e){
+      _clgCache={entries:(_clgCache&&_clgCache.entries)||[],error:e.message};
+      done();
+    });
 }
 // Entries arrive by cron and by reaction, so a page left open goes stale with no
 // way to tell. The list stays on screen while this runs — blanking it back to a
@@ -11356,25 +11376,55 @@ function refreshChangelog(){
   _clgBusy=true;
   var btn=document.getElementById('clg-rfb');
   if(btn){btn.classList.add('loading');btn.textContent='\u21bb Refreshing\u2026';}
-  _clgFetch(function(){_clgBusy=false;if(_clgLive())renderChangelog(_clgEl);});
+  _clgFetch(function(){_clgBusy=false;if(_clgLive())renderChangelog();});
 }
-// Monday-anchored week key. Entries group under the week they happened in, not
-// the week they were logged in — a reaction added days later still files the
-// change under when it actually happened.
-function _clgWeekKey(ms){
-  var d=new Date(ms); d.setHours(0,0,0,0);
-  d.setDate(d.getDate()-((d.getDay()+6)%7));
-  return d.getTime();
+// Calendar is the default view. Entries land a few a week, and a month grid
+// shows the rhythm of shipping — the quiet weeks as much as the busy ones — in
+// a way a list cannot. The list is still there for reading straight through.
+var _clgView=(function(){try{return localStorage.getItem('clgView')==='list'?'list':'cal';}catch(e){return 'cal';}})();
+var _clgMonth=null,_clgDay=null;
+function clgSetView(v){
+  if(_clgView===v)return;
+  _clgView=v;
+  try{localStorage.setItem('clgView',v);}catch(e){}
+  renderChangelog(_clgEl);
 }
-function _clgWeekLabel(ms){
-  var a=new Date(ms), b=new Date(ms+6*864e5);
-  var M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  var now=_clgWeekKey(Date.now());
-  if(ms===now)return 'This week';
-  if(ms===now-7*864e5)return 'Last week';
-  var sameMonth=a.getMonth()===b.getMonth();
-  return M[a.getMonth()]+' '+a.getDate()+' – '+(sameMonth?'':M[b.getMonth()]+' ')+b.getDate()
-    +(a.getFullYear()!==new Date().getFullYear()?(', '+a.getFullYear()):'');
+function clgMonthStep(n){
+  var p=String(_clgMonth||'').split('-'),y=+p[0],m=+p[1]-1;
+  if(!y)return;
+  var d=new Date(y,m+n,1);
+  _clgMonth=_clgMonthKey(d.getTime());
+  _clgDay=null;   // a day picked in another month means nothing in this one
+  renderChangelog(_clgEl);
+}
+function clgPickDay(k){ _clgDay=(_clgDay===k?null:k); renderChangelog(_clgEl); }
+
+var _CLG_MON=['January','February','March','April','May','June','July','August','September','October','November','December'];
+var _CLG_DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+var _CLG_DOWF=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+// Keys are local-time and zero-padded so they sort as strings.
+function _clgMonthKey(ms){var d=new Date(ms),m=d.getMonth()+1;return d.getFullYear()+'-'+(m<10?'0':'')+m;}
+function _clgDayKey(ms){var d=new Date(ms),n=d.getDate();return _clgMonthKey(ms)+'-'+(n<10?'0':'')+n;}
+// Relative where it helps a reader place the month, absolute once it does not.
+function _clgMonthLabel(key){
+  var p=String(key||'').split('-'),y=+p[0],m=+p[1]-1;
+  if(!y||m<0||m>11)return '';
+  var now=new Date(),cy=now.getFullYear(),cm=now.getMonth();
+  if(y===cy&&m===cm)return 'This month';
+  if(y===(cm===0?cy-1:cy)&&m===(cm===0?11:cm-1))return 'Last month';
+  return _CLG_MON[m]+(y===cy?'':' '+y);
+}
+// The calendar header always names the month outright — "This month" above a
+// grid of dates would be telling the reader what the grid already shows.
+function _clgMonthTitle(key){
+  var p=String(key||'').split('-'),y=+p[0],m=+p[1]-1;
+  return (y&&m>=0&&m<12)?(_CLG_MON[m]+' '+y):'';
+}
+function _clgDayLabel(key){
+  var p=String(key||'').split('-');
+  if(p.length!==3)return '';
+  var d=new Date(+p[0],+p[1]-1,+p[2]);
+  return _CLG_DOWF[d.getDay()]+' '+d.getDate()+' '+_CLG_MON[d.getMonth()];
 }
 var _CLG_CH={gtm:'#72A4BF',sessioninteractive:'#7C3AED',changelog:'#0F766E'};
 // A channel nobody mapped still needs a dot of its own. The fallback palette
@@ -11387,12 +11437,11 @@ function _clgColour(name){
   for(var i=0;i<n.length;i++)h=(h*31+n.charCodeAt(i))>>>0;
   return _CLG_CH_ALT[h%_CLG_CH_ALT.length];
 }
-var _CLG_DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-// Hover and the row rhythm need real rules, not inline styles.
+// Hover, the row rhythm and the grid need real rules, not inline styles.
 var _CLG_CSS='<style>'
  +'.clg-row{display:flex;gap:17px;padding:14px 11px;border-radius:9px;border-bottom:1px solid rgba(23,44,69,.06);transition:background .13s ease}'
  +'.clg-row:hover{background:var(--teal-8)}'
- +'.clg-week .clg-row:last-child{border-bottom:none}'
+ +'.clg-group .clg-row:last-child{border-bottom:none}'
  +'.clg-date{flex:0 0 46px;text-align:center;padding-top:2px}'
  +'.clg-day{display:block;font-family:var(--font-h,inherit);font-size:21px;font-weight:700;color:var(--navy);line-height:1;font-variant-numeric:tabular-nums}'
  +'.clg-dow{display:block;margin-top:4px;font-size:9.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--grey)}'
@@ -11400,10 +11449,29 @@ var _CLG_CSS='<style>'
  +'.clg-head{display:block;font-size:14px;font-weight:600;color:var(--navy);line-height:1.35}'
  +'.clg-sum{display:block;margin-top:5px;font-size:12.5px;color:rgba(23,44,69,.70);line-height:1.6}'
  +'.clg-meta{display:block;margin-top:8px;font-size:10.5px;color:var(--grey)}'
- +'.clg-dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:6px;vertical-align:middle}'
+ +'.clg-dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:6px;vertical-align:middle;flex:0 0 auto}'
  +'.clg-sep{opacity:.45;margin:0 2px}'
  +'.clg-link{color:var(--teal);text-decoration:none;font-weight:500}'
  +'.clg-link:hover{text-decoration:underline}'
+ +'.clg-nav-row{display:flex;align-items:center;gap:10px;margin-top:20px;margin-bottom:12px}'
+ +'.clg-nav{width:26px;height:26px;border-radius:50%;border:1.5px solid rgba(23,44,69,.16);background:transparent;color:var(--navy);cursor:pointer;font-size:15px;line-height:1;font-family:var(--font-b);transition:all .15s}'
+ +'.clg-nav:hover{background:var(--teal-8);border-color:var(--teal)}'
+ +'.clg-cal-title{font-family:var(--font-h,inherit);font-size:15px;font-weight:700;color:var(--navy)}'
+ +'.clg-cal-count{margin-left:auto;font-size:9.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--grey)}'
+ +'.clg-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}'
+ +'.clg-gh{font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--grey);text-align:center;padding-bottom:2px}'
+ +'.clg-cell{min-height:86px;border:1px solid rgba(23,44,69,.07);border-radius:8px;padding:6px 7px;background:rgba(255,255,255,.45);display:flex;flex-direction:column;gap:3px;overflow:hidden;transition:all .13s ease}'
+ +'.clg-out{background:transparent;border-color:transparent}'
+ +'.clg-has{cursor:pointer;background:#fff;border-color:rgba(23,44,69,.13)}'
+ +'.clg-has:hover{border-color:var(--teal);background:var(--teal-8)}'
+ +'.clg-sel{border-color:var(--navy);box-shadow:0 0 0 1.5px var(--navy)}'
+ +'.clg-cnum{font-size:11px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;height:19px;line-height:19px}'
+ +'.clg-today .clg-cnum{background:var(--navy);color:#fff;border-radius:50%;width:19px;text-align:center;line-height:19px}'
+ +'.clg-chip{display:flex;align-items:center;font-size:9.5px;line-height:1.35;color:var(--navy);background:rgba(114,164,191,.16);border-radius:4px;padding:2px 5px;overflow:hidden;white-space:nowrap}'
+ +'.clg-chip-t{overflow:hidden;text-overflow:ellipsis}'
+ +'.clg-more{font-size:9px;color:var(--grey);font-weight:600;padding-left:2px}'
+ +'.clg-sel-head{margin-top:22px;margin-bottom:2px;font-family:var(--font-h,inherit);font-size:13px;font-weight:700;color:var(--navy)}'
+ +'@media(max-width:900px){.clg-cell{min-height:68px;padding:4px 5px}.clg-chip{font-size:8.5px}}'
  +'</style>';
 // Entries written before headlines existed fall back to one derived here. The
 // worker regenerates them properly on its next sweep, so this is a stopgap.
@@ -11414,80 +11482,154 @@ function _clgHead(e){
   t=t.replace(/\.$/,'').trim();
   if(t.length<=52)return t;
   var c=t.slice(0,52), sp=c.lastIndexOf(' ');
-  return (sp>20?c.slice(0,sp):c).trim()+'\u2026';
+  return (sp>20?c.slice(0,sp):c).trim()+'…';
 }
 // users.info can fail, and when it does the author falls back to a raw Slack id.
 // Showing "U077TPV2PFV" to a reader is worse than showing no name at all.
 function _clgName(n){ n=String(n||''); return /^[UW][A-Z0-9]{6,}$/.test(n)?'':n; }
+function _clgViewSeg(){
+  var pill=function(v,label){
+    var on=_clgView===v;
+    return '<span onclick="clgSetView(\''+v+'\')" role="button" tabindex="0" aria-pressed="'+(on?'true':'false')+'"'
+      +' style="cursor:pointer;padding:4px 13px;border-radius:50px;font-size:11px;font-weight:700;font-family:var(--font-h);'
+      +(on?'background:var(--navy);color:#fff;':'background:transparent;color:var(--grey);')+'">'+label+'</span>';
+  };
+  return '<span style="display:inline-flex;align-items:center;background:rgba(23,44,69,.07);'
+    +'border:1.5px solid rgba(23,44,69,.16);border-radius:50px;padding:3px;gap:3px">'
+    +pill('cal','Calendar')+pill('list','List')+'</span>';
+}
 function renderChangelog(el){
   // A refresh re-renders after the page element is long out of scope, so the
   // container is remembered rather than demanded on every call.
-  el=el||_clgEl||document.getElementById('content-c');
+  el=el||document.getElementById('content-c')||_clgEl;
   if(!el)return;
   _clgEl=el;
   if(!_clgCache){
-    el.innerHTML='<div class="card"><div style="padding:40px;text-align:center;color:var(--grey);font-size:13px">Loading changelog…</div></div>';
-    _clgFetch(function(){if(_clgLive())renderChangelog(el);});
+    el.innerHTML='<div class="card" data-clg="1"><div style="padding:40px;text-align:center;color:var(--grey);font-size:13px">Loading changelog…</div></div>';
+    // _clgCache stays null for the whole request, so without this every re-entry
+    // to the page during a slow first load starts another identical POST.
+    if(!_clgBusy){
+      _clgBusy=true;
+      _clgFetch(function(){_clgBusy=false;if(_clgLive())renderChangelog();});
+    }
     return;
   }
-  var d=_clgCache, ents=d.entries||[];
-  var h=_CLG_CSS+'<div class="card"><div class="card-title" style="display:flex;align-items:center;gap:10px">Changelog'
+  var d=_clgCache, ents=(d.entries||[]).slice();
+  ents.sort(function(a,b){return (b.at||0)-(a.at||0);});
+  var h=_CLG_CSS+'<div class="card" data-clg="1"><div class="card-title" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">Changelog'
     +'<span style="font-size:11px;font-weight:400;color:var(--grey)">'
     +(ents.length?(ents.length+' entr'+(ents.length===1?'y':'ies')):'nothing logged yet')
-    +(_clgAt?(' \u00b7 updated '+_clgEsc(_clgTime(_clgAt))):'')+'</span>'
+    +(_clgAt?(' · updated '+_clgEsc(_clgTime(_clgAt))):'')+'</span>'
     +'<span style="margin-left:auto;display:flex;align-items:center;gap:12px">'
     +'<span style="font-size:11px;color:var(--grey);font-weight:400">'
-    +'React \uD83E\uDEB5 in Slack to add an entry</span>'
+    +'React 🪵 in Slack to add an entry</span>'
+    +_clgViewSeg()
     +'<button class="rfb" id="clg-rfb" style="margin-left:0;padding:6px 14px"'
-    +' onclick="refreshChangelog()">\u21bb Refresh</button></span></div>';
+    +' onclick="refreshChangelog()">↻ Refresh</button></span></div>';
   if(d.error) h+='<div style="padding:14px 0;color:var(--red,#DC2626);font-size:12px">Could not load: '+d.error+'</div>';
-  if(!ents.length&&!d.error){
-    h+='<div style="padding:34px 4px;color:var(--grey);font-size:12.5px;line-height:1.7">'
-      +'Nothing logged yet. React with \uD83E\uDEB5 on any message in a channel the '
+  if(!ents.length){
+    if(!d.error) h+='<div style="padding:34px 4px;color:var(--grey);font-size:12.5px;line-height:1.7">'
+      +'Nothing logged yet. React with 🪵 on any message in a channel the '
       +'Changelog bot has been invited to and it will appear here within seconds. '
       +'Removing the reaction removes the entry.</div>';
+  } else {
+    h+=(_clgView==='list'?_clgList(ents):_clgCalendar(ents));
   }
-  // Group by the week the change happened in.
-  var weeks={},order=[];
-  ents.forEach(function(e){
-    var k=_clgWeekKey(e.at);
-    if(!weeks[k]){weeks[k]=[];order.push(k);}
-    weeks[k].push(e);
-  });
-  order.sort(function(a,b){return b-a;});
-  order.forEach(function(k){
-    h+='<div style="margin-top:26px;margin-bottom:5px;display:flex;align-items:center;gap:12px">'
-      +'<span style="font-family:var(--font-h,inherit);font-size:13px;font-weight:700;color:var(--navy)">'
-      +_clgWeekLabel(+k)+'</span>'
-      +'<span style="flex:1;height:1px;background:rgba(23,44,69,.10)"></span>'
-      +'<span style="font-size:9.5px;font-weight:600;letter-spacing:.07em;color:var(--grey)">'
-      +weeks[k].length+(weeks[k].length===1?' ENTRY':' ENTRIES')+'</span></div>';
-    h+='<div class="clg-week">';
-    weeks[k].forEach(function(e){
-      var dt=new Date(e.at);
-      var c=_clgColour(e.chName);
-      var nm=_clgName(e.authorName);
-      h+='<div class="clg-row">'
-        +'<span class="clg-date">'
-          +'<span class="clg-day">'+dt.getDate()+'</span>'
-          +'<span class="clg-dow">'+_CLG_DOW[dt.getDay()]+'</span>'
-        +'</span>'
-        +'<span class="clg-body">'
-          +'<span class="clg-head">'+_clgEsc(_clgHead(e))+'</span>'
-          +'<span class="clg-sum">'+_clgEsc(e.summary)+'</span>'
-          +'<span class="clg-meta">'
-            +'<span class="clg-dot" style="background:'+c+'"></span>'
-            +'#'+_clgEsc(e.chName)
-            +(nm?('<span class="clg-sep">·</span>'+_clgEsc(nm)):'')
-            +(e.isReply?'<span class="clg-sep">·</span>in thread':'')
-            +(e.permalink?('<span class="clg-sep">·</span><a href="'+_clgEsc(e.permalink)+'" target="_blank" rel="noopener" class="clg-link">open in Slack \u2197</a>'):'')
-          +'</span>'
-        +'</span></div>';
-    });
-    h+='</div>';
-  });
   h+='</div>';
   el.innerHTML=h;
+}
+// One entry. `compact` drops the date column for the calendar's day panel,
+// where every row shares the date already named in the heading above them.
+function _clgRow(e,compact){
+  var dt=new Date(e.at), c=_clgColour(e.chName), nm=_clgName(e.authorName);
+  return '<div class="clg-row">'
+    +(compact?'':('<span class="clg-date"><span class="clg-day">'+dt.getDate()+'</span>'
+      +'<span class="clg-dow">'+_CLG_DOW[dt.getDay()]+'</span></span>'))
+    +'<span class="clg-body">'
+    +'<span class="clg-head">'+_clgEsc(_clgHead(e))+'</span>'
+    +'<span class="clg-sum">'+_clgEsc(e.summary)+'</span>'
+    +'<span class="clg-meta">'
+    +'<span class="clg-dot" style="background:'+c+'"></span>'
+    +'#'+_clgEsc(e.chName)
+    +(nm?('<span class="clg-sep">·</span>'+_clgEsc(nm)):'')
+    +(e.isReply?'<span class="clg-sep">·</span>in thread':'')
+    +(e.permalink?('<span class="clg-sep">·</span><a href="'+_clgEsc(e.permalink)+'" target="_blank" rel="noopener" class="clg-link">open in Slack ↗</a>'):'')
+    +'</span></span></div>';
+}
+// Grouped by the month the change happened in, not the month it was logged in —
+// a reaction added weeks later still files under when the thing actually shipped.
+function _clgList(ents){
+  var months={},order=[];
+  ents.forEach(function(e){
+    var k=_clgMonthKey(e.at);
+    if(!months[k]){months[k]=[];order.push(k);}
+    months[k].push(e);
+  });
+  order.sort(function(a,b){return a<b?1:(a>b?-1:0);});
+  var h='';
+  order.forEach(function(k){
+    var n=months[k].length;
+    h+='<div style="margin-top:26px;margin-bottom:5px;display:flex;align-items:center;gap:12px">'
+      +'<span style="font-family:var(--font-h,inherit);font-size:13px;font-weight:700;color:var(--navy)">'
+      +_clgEsc(_clgMonthLabel(k))+'</span>'
+      +'<span style="flex:1;height:1px;background:rgba(23,44,69,.10)"></span>'
+      +'<span style="font-size:9.5px;font-weight:600;letter-spacing:.07em;color:var(--grey)">'
+      +n+(n===1?' ENTRY':' ENTRIES')+'</span></div><div class="clg-group">';
+    months[k].forEach(function(e){h+=_clgRow(e);});
+    h+='</div>';
+  });
+  return h;
+}
+function _clgCalendar(ents){
+  var byDay={};
+  ents.forEach(function(e){var k=_clgDayKey(e.at);(byDay[k]=byDay[k]||[]).push(e);});
+  // Open on the month of the newest entry rather than on a current month that
+  // may well be empty.
+  if(!_clgMonth)_clgMonth=_clgMonthKey(ents.length?ents[0].at:Date.now());
+  var p=_clgMonth.split('-'),y=+p[0],m=+p[1]-1;
+  var lead=(new Date(y,m,1).getDay()+6)%7;          // Monday-first
+  var days=new Date(y,m+1,0).getDate();
+  var todayK=_clgDayKey(Date.now());
+  var inMonth=function(k){return k.indexOf(_clgMonth+'-')===0;};
+  var count=0; for(var k0 in byDay){if(inMonth(k0))count+=byDay[k0].length;}
+
+  var h='<div class="clg-nav-row">'
+    +'<button class="clg-nav" onclick="clgMonthStep(-1)" aria-label="Previous month">‹</button>'
+    +'<span class="clg-cal-title">'+_clgEsc(_clgMonthTitle(_clgMonth))+'</span>'
+    +'<button class="clg-nav" onclick="clgMonthStep(1)" aria-label="Next month">›</button>'
+    +'<span class="clg-cal-count">'+(count?(count+(count===1?' entry':' entries')):'nothing this month')+'</span></div>';
+  h+='<div class="clg-grid">';
+  for(var w=0;w<7;w++)h+='<div class="clg-gh">'+_CLG_DOW[(w+1)%7]+'</div>';
+  for(var i=0;i<lead;i++)h+='<div class="clg-cell clg-out"></div>';
+  for(var n=1;n<=days;n++){
+    var key=_clgMonth+'-'+(n<10?'0':'')+n, list=byDay[key]||[];
+    h+='<div class="clg-cell'+(list.length?' clg-has':'')+(key===_clgDay?' clg-sel':'')
+      +(key===todayK?' clg-today':'')+'"'
+      +(list.length?(' onclick="clgPickDay(\''+key+'\')" role="button" tabindex="0"'):'')
+      +'><span class="clg-cnum">'+n+'</span>';
+    for(var j=0;j<list.length&&j<2;j++)
+      h+='<span class="clg-chip"><span class="clg-dot" style="background:'+_clgColour(list[j].chName)+'"></span>'
+        +'<span class="clg-chip-t">'+_clgEsc(_clgHead(list[j]))+'</span></span>';
+    if(list.length>2)h+='<span class="clg-more">+'+(list.length-2)+' more</span>';
+    h+='</div>';
+  }
+  var tail=(lead+days)%7;
+  if(tail)for(var t=tail;t<7;t++)h+='<div class="clg-cell clg-out"></div>';
+  h+='</div>';
+
+  // The grid shows WHEN; the summaries are still the substance, so the chosen
+  // day opens underneath rather than hiding in a tooltip.
+  var sel=(_clgDay&&byDay[_clgDay]&&inMonth(_clgDay))?byDay[_clgDay]:null;
+  if(!sel){
+    var ks=Object.keys(byDay).filter(inMonth).sort();
+    if(ks.length){_clgDay=ks[ks.length-1];sel=byDay[_clgDay];}
+  }
+  if(sel){
+    h+='<div class="clg-sel-head">'+_clgEsc(_clgDayLabel(_clgDay))+'</div><div class="clg-group">';
+    sel.forEach(function(e){h+=_clgRow(e,true);});
+    h+='</div>';
+  }
+  return h;
 }
 function _clgEsc(v){
   return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;')
