@@ -613,6 +613,13 @@ const chName=async(id,info)=>{CH.calls=[];CH.info=info;return await CH.slackChan
 
 ck('a seeded channel resolves without asking Slack',
    [await chName('C0A5366LG2D',undefined),CH.calls.length],['gtm',0]);
+// Seeding is only a fallback for a failed conversations.info, so the one channel
+// that cannot be re-read on a bad day is the one that benefits most.
+ck('  every seeded channel, not just the first',
+   (()=>Object.keys(CH.SLACK_CH_NAMES).every(id=>/^C[A-Z0-9]{6,}$/.test(id)
+     &&/^[a-z0-9_-]+$/.test(CH.SLACK_CH_NAMES[id])))(),true);
+ck('  #virtualclinicians among them',
+   [await chName('C0BPCQWD00L',undefined),CH.calls.length],['virtualclinicians',0]);
 ck('an unknown channel is resolved from Slack',
    await chName('C0NEW00001',{channel:{name:'virtualclinicians'}}),'virtualclinicians');
 ck('  and is cached, so the next entry costs no call',
@@ -724,6 +731,7 @@ const CAL=(()=>{const c={console,Date,String,Number,Math,JSON,Array,Object,Set};
     decl(dash,'var _CLG_MON=','];'), decl(dash,'var _CLG_DOW=','];'), decl(dash,'var _CLG_DOWF=','];'),
     decl(dash,'var _CLG_CH=','};'), decl(dash,'var _CLG_CH_ALT=','];'),
     fn(dash,'_clgColour'), fn(dash,'_clgEsc'), fn(dash,'_clgHead'), fn(dash,'_clgName'),
+    fn(dash,'_clgSafeUrl'),
     fn(dash,'_clgMonthKey'), fn(dash,'_clgDayKey'), fn(dash,'_clgCalKey'),
     fn(dash,'_clgMonthTitle'), fn(dash,'_clgDayLabel'),
     fn(dash,'_clgRow'), fn(dash,'_clgCalendar'), fn(dash,'_clgList'), fn(dash,'_clgMonthLabel'),
@@ -902,7 +910,10 @@ ck('  including every field rendered from the entry',
      const body=dash.slice(i,j);
      return /_clgEsc\(_clgHead\(e\)\)/.test(body)&&/_clgEsc\(e\.summary\)/.test(body)
          && /_clgEsc\(e\.chName\)/.test(body)&&/_clgEsc\(nm\)/.test(body)
-         && /_clgEsc\(e\.permalink\)/.test(body);})(),true);
+         // permalink goes through _clgSafeUrl first: escaping stops it breaking
+         // the attribute, but only the scheme check stops a javascript: href.
+         && /var pl=_clgSafeUrl\(e\.permalink\)/.test(body)
+         && /_clgEsc\(pl\)/.test(body);})(),true);
 ck('  and no entry text is concatenated unescaped',
    (()=>{const i=dash.indexOf('function renderChangelog');
      const j=dash.indexOf('function _clgEsc',i);
@@ -934,16 +945,20 @@ ck('  and the headline is heavier than the summary',
 
 // A mapped channel keeps its colour; an unmapped one still gets a distinct dot.
 ck('a mapped channel keeps its colour',PG._clgColour('gtm'),'#72A4BF');
+ck('  including the fourth',PG._clgColour('virtualclinicians'),'#B91C1C');
 ck('an unmapped channel still gets a colour',
-   /^#[0-9A-F]{6}$/i.test(PG._clgColour('virtualclinicians')),true);
+   /^#[0-9A-F]{6}$/i.test(PG._clgColour('product-eng')),true);
 ck('  the same one every time',
-   PG._clgColour('virtualclinicians'),PG._clgColour('virtualclinicians'));
+   PG._clgColour('product-eng'),PG._clgColour('product-eng'));
 // The recurring bug in this codebase: a fallback colour that equals a mapped one.
 ck('  and never one of the mapped colours',
    (()=>{const mapped=Object.values(PG._CLG_CH).map(c=>c.toUpperCase());
      return PG._CLG_CH_ALT.every(c=>!mapped.includes(c.toUpperCase()));})(),true);
 ck('  with the fallback palette holding no duplicates of its own',
    new Set(PG._CLG_CH_ALT.map(c=>c.toUpperCase())).size,PG._CLG_CH_ALT.length);
+ck('  and the mapped channels holding none either',
+   (()=>{const v=Object.values(PG._CLG_CH).map(c=>c.toUpperCase());
+     return new Set(v).size===v.length;})(),true);
 ck('the empty state no longer hardcodes a channel list',
    (()=>{const i=dash.indexOf('function renderChangelog');
      const j=dash.indexOf('function _clgEsc',i);

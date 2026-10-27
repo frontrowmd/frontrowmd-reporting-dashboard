@@ -3315,6 +3315,7 @@ function _wkTipEl(){
   return tip;
 }
 function clnWkTip(e,el){
+  if(_clgMkPinEl)return;                 // a pinned Change Log panel owns this element
   var tip=_wkTipEl();
   while(tip.firstChild)tip.removeChild(tip.firstChild);
   // The date is WHICH point you are reading — every number under it is only
@@ -3404,6 +3405,7 @@ function clnWkTip(e,el){
   clnWkTipMove(e);
 }
 function clnWkTipMove(e){
+  if(_clgMkPinEl)return;                 // pinned: anchored to the click, not the cursor
   var tip=document.getElementById('cln-wk-tip');
   if(!tip||tip.style.opacity==='0')return;
   var tw=tip.offsetWidth||0,th=tip.offsetHeight||0,pad=14;
@@ -3411,7 +3413,10 @@ function clnWkTipMove(e){
   var top=e.clientY-th-10; if(top<4)top=e.clientY+pad;
   tip.style.left=left+'px'; tip.style.top=top+'px';
 }
-function clnWkTipHide(){var tip=document.getElementById('cln-wk-tip');if(tip)tip.style.opacity='0';}
+function clnWkTipHide(){
+  if(_clgMkPinEl)return;                 // pinned: only the X, Esc or a click outside closes it
+  var tip=document.getElementById('cln-wk-tip');if(tip)tip.style.opacity='0';
+}
 
 // ── Clinician Trend Analysis ───────────────────────────────────────────────
 // Three independent choices, each a toggle row: how finely to plot, WHICH
@@ -3745,6 +3750,15 @@ var _clgWaiters=null;
 // One background attempt per page load. The charts fetch on a page the user
 // never asked the Change Log for, so this must not become a retry loop.
 var _clgMkTried=false;
+// The panel is pointer-events:none and dies on mouseout, so a reader can look
+// at a hovered list but never reach into it. Clicking a marker PINS the panel:
+// it stops following the cursor, takes pointer events, drops the preview cap
+// and turns every row into a disclosure onto that entry's full summary, author
+// and Slack link. While it is pinned nothing else may take the panel -- it is
+// one element shared with the band readout, and a band hover crossing under a
+// pinned panel would otherwise replace what the reader just opened.
+var _clgMkPinEl=null;
+var _clgMkAnchor=null;
 function _clgLoadOnce(done){
   if(_clgWaiters){if(done)_clgWaiters.push(done);return;}
   _clgWaiters=done?[done]:[];
@@ -3822,7 +3836,17 @@ function _clgMkWhen(ms){
 }
 // The marker layer. Both charts emit it AFTER their hover bands: a band painted
 // over a marker swallows the hover, and the band is the bigger target of the two.
+//
+// The rect carries only what the marker DREW -- the bucket key, its grain, the
+// heading and the count. The entries themselves are read back out of _clgCache
+// at hover time rather than serialised into attributes, because the panel now
+// shows a summary, an author and a permalink per entry and packing six free-text
+// fields per row into markup is how an escaping bug gets written. A key and a
+// grain are both generated, so nothing a model wrote ever reaches an attribute.
 function _clgMkSvg(pts,grain,xAt,padT,padL){
+  // Any call means a chart is being rebuilt and the pinned rect is about to be
+  // discarded, so the panel must not stay anchored to an element nobody can see.
+  clgMkUnpin();
   if(!pts||!pts.length)return '';
   var map=_clgMkMap(grain),out='',drew=0;
   var esc=function(x){return String(x==null?'':x).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');};
@@ -3830,22 +3854,14 @@ function _clgMkSvg(pts,grain,xAt,padT,padL){
     var list=map[p.wk]; if(!list||!list.length)return;
     drew++;
     var x=xAt(i),n=list.length;
-    var a=' data-mkhead="'+esc(_clnTrHead(p.wk,grain))+'" data-mkn="'+n+'"';
-    // One attribute per field. The band readout packs its rows pipe-delimited,
-    // but its fields are local constants; a headline is free text written by a
-    // model from an arbitrary Slack message, so a single '|' in it would shift
-    // the channel into the date slot and show the rest of the headline as the
-    // channel name.
-    list.slice(0,CLG_MK_MAX).forEach(function(e,j){
-      var m=' data-mk'+(j+1);
-      a+=m+'h="'+esc(_clgHead(e))+'"'+m+'c="'+esc(e.chName||'')+'"'
-        +(grain==='week'?(m+'d="'+esc(_clgMkWhen(e.at))+'"'):'');
-    });
+    var a=' data-mkhead="'+esc(_clnTrHead(p.wk,grain))+'" data-mkn="'+n+'"'
+      +' data-mkkey="'+esc(p.wk)+'" data-mkg="'+esc(grain)+'"';
     out+='<line x1="'+x+'" y1="'+padT+'" x2="'+x+'" y2="'+(padT+11)+'" stroke="'+CLG_MK_C+'" stroke-width="1" stroke-opacity=".34" pointer-events="none"/>'
       +'<path d="M '+x+' '+(padT-6)+' L '+(x+5)+' '+padT+' L '+x+' '+(padT+6)+' L '+(x-5)+' '+padT+' Z" fill="'+CLG_MK_C+'" stroke="#fff" stroke-width="1.2" pointer-events="none"/>'
       +(n>1?('<text x="'+(x+7.5)+'" y="'+(padT+3.5)+'" font-size="8.5" font-weight="700" fill="'+CLG_MK_C+'" pointer-events="none">'+n+'</text>'):'')
       +'<rect x="'+(x-9)+'" y="'+(padT-10)+'" width="18" height="20" fill="transparent"'+a
-      +' style="cursor:pointer" onmouseover="clgMkTip(event,this)" onmousemove="clnWkTipMove(event)" onmouseout="clnWkTipHide()"/>';
+      +' style="cursor:pointer" onmouseover="clgMkTip(event,this)" onmousemove="clnWkTipMove(event)"'
+      +' onmouseout="clnWkTipHide()" onclick="clgMkPin(event,this)"/>';
   });
   // A diamond nobody can name is just a dot. The key appears only when there is
   // something on screen for it to explain, and it sits at the LEFT: changes
@@ -3854,11 +3870,116 @@ function _clgMkSvg(pts,grain,xAt,padT,padL){
   if(drew)out+='<text x="'+padL+'" y="'+(padT-9)+'" font-size="8.5" font-weight="700" fill="'+CLG_MK_C+'" fill-opacity=".85" pointer-events="none">\u25C6 CHANGE LOG</text>';
   return out;
 }
-// Built into the same panel as the band readout, so the two can never be on
-// screen at once and positioning and hiding stay in one place.
-function clgMkTip(e,el){
+// The entries behind a marker, straight from the cache the Change Log page
+// reads, so the two views cannot disagree about what happened when.
+function _clgMkRows(el){
+  if(!el||!el.getAttribute)return [];
+  var k=el.getAttribute('data-mkkey'),g=el.getAttribute('data-mkg');
+  if(!k||!g)return [];
+  return _clgMkMap(g)[k]||[];
+}
+// The bucket is an EASTERN calendar day, so a clock time under it reads Eastern
+// too. A local clock would put a late-evening change on the far side of midnight
+// from the marker it is filed under, for every reader outside ET.
+function _clgMkClock(ms){
+  try{
+    return new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',
+      hour:'numeric',minute:'2-digit'}).format(new Date(ms))+' ET';
+  }catch(e){return _clgTime(ms);}
+}
+// One row. Hovered it is a line of text; pinned it is a disclosure, and the
+// detail is built up front rather than on first open so the row has something
+// to measure and the panel can clamp itself the moment it grows.
+function _clgMkRow(e,grain,first,pinned){
+  var wrap=document.createElement('div');
+  wrap.style.cssText='margin-top:'+(first?'7px':'4px');
+  var row=document.createElement('div');
+  row.style.cssText='display:flex;align-items:baseline;gap:7px;max-width:'+(pinned?'430px':'360px')+';'
+    +(pinned?'cursor:pointer;padding:2px 5px 2px 4px;margin-left:-4px;border-radius:5px':'');
+  // The dot is the CHANNEL, as it is on the Change Log page -- two changes on
+  // one day usually came from two different places, and that is the first thing
+  // worth knowing about them.
+  var dot=document.createElement('span');
+  dot.style.cssText='flex:0 0 auto;width:6px;height:6px;border-radius:50%;background:'+_clgColour(e.chName);
+  row.appendChild(dot);
+  if(pinned){
+    // Beside the dot, not after the channel: a disclosure arrow has to sit in a
+    // straight column to read as one, and a ragged right edge made it look like
+    // punctuation on the end of the channel name.
+    var chev=document.createElement('span');
+    chev.style.cssText='flex:0 0 auto;width:7px;margin-right:-1px;font-size:9.5px;line-height:1;'
+      +'color:rgba(255,255,255,.5);transition:transform .12s ease;'
+      +'transform-origin:50% 50%;display:inline-block';
+    chev.textContent='\u25B8';
+    row.appendChild(chev);
+  }
+  var txt=document.createElement('div');
+  txt.style.cssText='flex:1 1 auto;font-size:11.5px;color:#fff;line-height:1.35';
+  txt.textContent=_clgHead(e);
+  row.appendChild(txt);
+  var meta=document.createElement('div');
+  meta.style.cssText='flex:0 0 auto;font-size:9.5px;color:rgba(255,255,255,.55);white-space:nowrap';
+  meta.textContent=(grain==='week'&&e.at?(_clgMkWhen(e.at)+' \u00b7 '):'')+(e.chName?'#'+e.chName:'');
+  row.appendChild(meta);
+  wrap.appendChild(row);
+  if(!pinned){return wrap;}
+  var det=document.createElement('div');
+  det.style.cssText='display:none;margin:3px 0 7px 24px;max-width:399px';
+  if(e.summary){
+    var sum=document.createElement('div');
+    sum.style.cssText='font-size:11px;line-height:1.5;color:rgba(255,255,255,.80)';
+    sum.textContent=e.summary;
+    det.appendChild(sum);
+  }
+  var bits=[];
+  var nm=_clgName(e.authorName); if(nm)bits.push(nm);
+  if(e.at)bits.push(_clgMkClock(e.at));
+  if(e.isReply)bits.push('in thread');
+  if(bits.length){
+    var sub=document.createElement('div');
+    sub.style.cssText='margin-top:5px;font-size:9.5px;color:rgba(255,255,255,.5)';
+    sub.textContent=bits.join(' \u00b7 ');
+    det.appendChild(sub);
+  }
+  var pl=_clgSafeUrl(e.permalink);
+  if(pl){
+    var a=document.createElement('a');
+    a.href=pl; a.target='_blank'; a.rel='noopener';
+    a.style.cssText='display:inline-block;margin-top:5px;font-size:9.5px;font-weight:700;'
+      +'color:#8FD3E8;text-decoration:none';
+    a.textContent='open in Slack \u2197';
+    // The link is inside a row whose own click toggles the row. Without this,
+    // following the link also collapses what you were reading.
+    a.onclick=function(ev){if(ev&&ev.stopPropagation)ev.stopPropagation();};
+    det.appendChild(a);
+  }
+  if(!det.children.length){
+    var none=document.createElement('div');
+    none.style.cssText='font-size:10px;color:rgba(255,255,255,.45)';
+    none.textContent='No further detail was captured.';
+    det.appendChild(none);
+  }
+  wrap.appendChild(det);
+  row.onclick=function(ev){
+    if(ev&&ev.stopPropagation)ev.stopPropagation();
+    var open=det.style.display!=='none';
+    det.style.display=open?'none':'block';
+    row.style.background=open?'':'rgba(255,255,255,.07)';
+    chev.style.color=open?'rgba(255,255,255,.5)':'rgba(255,255,255,.75)';
+    chev.style.transform=open?'':'rotate(90deg)';
+    _clgMkPlace();
+  };
+  return wrap;
+}
+// One builder for both modes, so the hover and the thing it opens into cannot
+// drift apart. Hover caps the list and says it is clickable; pinned shows every
+// entry, scrolls if it has to, and closes itself.
+function _clgMkPanel(el,pinned){
   var tip=_wkTipEl();
   while(tip.firstChild)tip.removeChild(tip.firstChild);
+  var rows=_clgMkRows(el);
+  var n=parseInt(el.getAttribute('data-mkn')||'0',10)||rows.length;
+  var grain=el.getAttribute('data-mkg')||'day';
   var cap=document.createElement('div');
   cap.style.cssText='border-bottom:1px solid rgba(255,255,255,.15);padding-bottom:6px;margin-bottom:1px';
   var headRow=document.createElement('div');
@@ -3868,46 +3989,122 @@ function clgMkTip(e,el){
     +'color:#fff;letter-spacing:.01em;white-space:nowrap';
   head.textContent=el.getAttribute('data-mkhead')||'';
   headRow.appendChild(head);
-  var n=parseInt(el.getAttribute('data-mkn')||'0',10)||0;
   var tag=document.createElement('div');
   tag.style.cssText='flex:0 0 auto;font-size:8.5px;font-weight:700;letter-spacing:.09em;'
     +'text-transform:uppercase;color:rgba(255,255,255,.45)';
   tag.textContent=(n===1?'1 change':n+' changes');
   headRow.appendChild(tag);
+  if(pinned){
+    var x=document.createElement('span');
+    x.style.cssText='flex:0 0 auto;cursor:pointer;font-size:15px;line-height:.9;'
+      +'color:rgba(255,255,255,.5);padding:0 0 0 2px';
+    x.textContent='\u00d7';
+    x.onclick=function(ev){if(ev&&ev.stopPropagation)ev.stopPropagation();clgMkUnpin();};
+    headRow.appendChild(x);
+  }
   cap.appendChild(headRow);
   tip.appendChild(cap);
-  var shown=0;
-  for(var i=1;i<=CLG_MK_MAX;i++){
-    var htxt=el.getAttribute('data-mk'+i+'h'); if(htxt==null)continue;
-    var ch=el.getAttribute('data-mk'+i+'c')||'';
-    var when=el.getAttribute('data-mk'+i+'d')||'';
-    shown++;
-    var row=document.createElement('div');
-    row.style.cssText='display:flex;align-items:baseline;gap:7px;max-width:360px;'
-      +'margin-top:'+(shown===1?'7px':'5px');
-    var dot=document.createElement('span');
-    dot.style.cssText='flex:0 0 auto;width:6px;height:6px;border-radius:50%;background:'+CLG_MK_C;
-    row.appendChild(dot);
-    var txt=document.createElement('div');
-    txt.style.cssText='flex:1 1 auto;font-size:11.5px;color:#fff;line-height:1.35';
-    txt.textContent=htxt||'';
-    row.appendChild(txt);
-    var meta=document.createElement('div');
-    meta.style.cssText='flex:0 0 auto;font-size:9.5px;color:rgba(255,255,255,.55);white-space:nowrap';
-    meta.textContent=(when?when+' \u00b7 ':'')+(ch?'#'+ch:'');
-    row.appendChild(meta);
-    tip.appendChild(row);
+  // The cache is read at hover time, so in principle it could have been
+  // replaced since the marker drew. The heading and the count came off the rect
+  // and are still true; saying so beats an empty panel under a live marker.
+  if(!rows.length){
+    var gone=document.createElement('div');
+    gone.style.cssText='margin-top:7px;font-size:10.5px;color:rgba(255,255,255,.55)';
+    gone.textContent='Open the Change Log for the detail.';
+    tip.appendChild(gone);
+    return tip;
   }
-  // The cap keeps a crowded day from becoming a wall of text; the count above
-  // already said how many there are, so this only has to name the remainder.
-  if(n>shown){
-    var more=document.createElement('div');
-    more.style.cssText='margin-top:6px;font-size:9.5px;color:rgba(255,255,255,.55)';
-    more.textContent='+'+(n-shown)+' more \u2014 open the Change Log';
-    tip.appendChild(more);
+  var list=pinned?rows:rows.slice(0,CLG_MK_MAX);
+  var body=document.createElement('div');
+  if(pinned)body.style.cssText='max-height:44vh;overflow-y:auto;margin-right:-5px;padding-right:5px';
+  list.forEach(function(e,i){body.appendChild(_clgMkRow(e,grain,i===0,pinned));});
+  tip.appendChild(body);
+  if(!pinned){
+    var foot=document.createElement('div');
+    foot.style.cssText='margin-top:7px;padding-top:5px;border-top:1px solid rgba(255,255,255,.10);'
+      +'font-size:9.5px;color:rgba(255,255,255,.5);display:flex;gap:10px;white-space:nowrap';
+    // The cap keeps a crowded day from becoming a wall of text on hover. It is
+    // not a cap on the pinned panel, so it says what opens the rest.
+    var more=document.createElement('span');
+    more.style.cssText='flex:1 1 auto';
+    more.textContent=(n>list.length?('+'+(n-list.length)+' more'):'');
+    foot.appendChild(more);
+    var hint=document.createElement('span');
+    hint.style.cssText='flex:0 0 auto;font-weight:700;color:rgba(255,255,255,.62)';
+    hint.textContent='Click for details';
+    foot.appendChild(hint);
+    tip.appendChild(foot);
   }
+  return tip;
+}
+// Built into the same panel as the band readout, so the two can never be on
+// screen at once and positioning and hiding stay in one place.
+function clgMkTip(e,el){
+  if(_clgMkPinEl)return;
+  var tip=_clgMkPanel(el,false);
   tip.style.opacity='1';
   clnWkTipMove(e);
+}
+function clgMkPin(e,el){
+  if(e&&e.stopPropagation)e.stopPropagation();
+  // Release first, always: a second click on the same marker closes it, and a
+  // click on a DIFFERENT one moves the pin rather than binding a second set of
+  // listeners onto a panel that can only ever be anchored to one marker.
+  var same=(_clgMkPinEl===el);
+  clgMkUnpin();
+  if(same)return;
+  _clgMkPinEl=el;
+  var tip=_clgMkPanel(el,true);
+  tip.style.pointerEvents='auto';
+  tip.style.opacity='1';
+  _clgMkAnchor={x:(e&&e.clientX)||0,y:(e&&e.clientY)||0};
+  _clgMkPlace();
+  // mousedown, not click: this click's mousedown has already been dispatched,
+  // so binding here cannot close the panel on the very event that opened it.
+  if(document.addEventListener){
+    document.addEventListener('mousedown',_clgMkOutside,true);
+    document.addEventListener('keydown',_clgMkEsc,true);
+    window.addEventListener('scroll',_clgMkScroll,true);
+  }
+}
+function clgMkUnpin(){
+  if(!_clgMkPinEl)return;
+  _clgMkPinEl=null; _clgMkAnchor=null;
+  if(document.removeEventListener){
+    document.removeEventListener('mousedown',_clgMkOutside,true);
+    document.removeEventListener('keydown',_clgMkEsc,true);
+    window.removeEventListener('scroll',_clgMkScroll,true);
+  }
+  var tip=document.getElementById('cln-wk-tip');
+  if(tip){tip.style.pointerEvents='none';tip.style.opacity='0';}
+}
+function _clgMkOutside(ev){
+  var tip=document.getElementById('cln-wk-tip');
+  if(tip&&tip.contains&&ev&&ev.target&&tip.contains(ev.target))return;
+  clgMkUnpin();
+}
+function _clgMkEsc(ev){ if(ev&&ev.key==='Escape')clgMkUnpin(); }
+// The panel is position:fixed and the chart is not, so a scrolled page leaves it
+// floating over whatever happens to be underneath. Scrolling INSIDE it is how a
+// long day is read, though, so that one does not count.
+function _clgMkScroll(ev){
+  var tip=document.getElementById('cln-wk-tip');
+  if(tip&&tip.contains&&ev&&ev.target&&ev.target.nodeType===1&&tip.contains(ev.target))return;
+  clgMkUnpin();
+}
+// Clamped on every expand, not once at open: a panel pinned low on a chart would
+// otherwise push its own detail off the bottom of the window as it grows.
+function _clgMkPlace(){
+  var tip=document.getElementById('cln-wk-tip');
+  if(!tip||!_clgMkPinEl||!_clgMkAnchor)return;
+  var tw=tip.offsetWidth||0,th=tip.offsetHeight||0,pad=14;
+  var left=_clgMkAnchor.x+pad;
+  if(left+tw+8>window.innerWidth)left=_clgMkAnchor.x-tw-pad;
+  if(left<4)left=4;
+  var top=_clgMkAnchor.y-th-10;
+  if(top<4)top=_clgMkAnchor.y+pad;
+  if(top+th+4>window.innerHeight)top=Math.max(4,window.innerHeight-th-4);
+  tip.style.left=left+'px'; tip.style.top=top+'px';
 }
 function _renderClnTrend(d,sfx){
   var host=document.getElementById('cln-trend-panels'+(sfx||'')); if(!host)return;
@@ -11640,7 +11837,8 @@ function _clgDayLabel(key){
   var d=new Date(+p[0],+p[1]-1,+p[2]);
   return _CLG_DOWF[d.getDay()]+' '+d.getDate()+' '+_CLG_MON[d.getMonth()];
 }
-var _CLG_CH={gtm:'#72A4BF',sessioninteractive:'#7C3AED',changelog:'#0F766E'};
+var _CLG_CH={gtm:'#72A4BF',sessioninteractive:'#7C3AED',changelog:'#0F766E',
+  virtualclinicians:'#B91C1C'};
 // A channel nobody mapped still needs a dot of its own. The fallback palette
 // shares no hex with the mapped three on purpose: two channels drawing the same
 // colour is exactly the confusion the dot exists to prevent.
@@ -11753,8 +11951,15 @@ function renderChangelog(el){
 }
 // One entry. `compact` drops the date column for the calendar's day panel,
 // where every row shares the date already named in the heading above them.
+// permalink is the one entry field that becomes a live href rather than text.
+// It comes from Slack's own chat.getPermalink, so in practice it is always an
+// https slack.com URL -- but an attribute escaper passes a javascript: scheme
+// straight through, and so does assigning to .href, so the scheme is checked
+// rather than assumed. Anything else drops the link and keeps the row.
+function _clgSafeUrl(u){ u=String(u||''); return /^https?:\/\//i.test(u)?u:''; }
 function _clgRow(e,compact){
   var dt=new Date(e.at), c=_clgColour(e.chName), nm=_clgName(e.authorName);
+  var pl=_clgSafeUrl(e.permalink);
   return '<div class="clg-row">'
     +(compact?'':('<span class="clg-date"><span class="clg-day">'+dt.getDate()+'</span>'
       +'<span class="clg-dow">'+_CLG_DOW[dt.getDay()]+'</span></span>'))
@@ -11769,7 +11974,7 @@ function _clgRow(e,compact){
       ?('<span class="clg-sep">·</span>'+_CLG_DOW[dt.getDay()]+' '+dt.getDate()
         +' '+_CLG_MON[dt.getMonth()].slice(0,3)):'')
     +(e.isReply?'<span class="clg-sep">·</span>in thread':'')
-    +(e.permalink?('<span class="clg-sep">·</span><a href="'+_clgEsc(e.permalink)+'" target="_blank" rel="noopener" class="clg-link">open in Slack ↗</a>'):'')
+    +(pl?('<span class="clg-sep">·</span><a href="'+_clgEsc(pl)+'" target="_blank" rel="noopener" class="clg-link">open in Slack ↗</a>'):'')
     +'</span></span></div>';
 }
 // Grouped by the month the change happened in, not the month it was logged in —

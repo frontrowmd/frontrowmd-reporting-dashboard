@@ -9,31 +9,63 @@ let pass=0,fail=0;
 const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify(w);console.log((ok?'PASS ':'FAIL ')+n+'  got='+JSON.stringify(g)+(ok?'':' want='+JSON.stringify(w)));ok?pass++:fail++;};
 
 // ── a DOM small enough to be obviously honest ──────────────────────────────
-function El(tag){this.tag=tag;this.children=[];this.attrs={};this.style={cssText:'',opacity:'',left:'',top:''};this._text='';}
+// A browser parses a cssText assignment into properties, and the panel reads
+// style.display back out to decide which way a row toggles. A stub that only
+// stored the string would report undefined and invert every disclosure.
+function Style(){this._t='';this.opacity='';this.left='';this.top='';
+  this.display='';this.pointerEvents='';this.background='';this.transform='';}
+Object.defineProperty(Style.prototype,'cssText',{get(){return this._t;},
+  set(v){this._t=String(v||'');
+    this._t.split(';').forEach(d=>{const i=d.indexOf(':');if(i<0)return;
+      const k=d.slice(0,i).trim().replace(/-([a-z])/g,(m,c)=>c.toUpperCase());
+      if(k)this[k]=d.slice(i+1).trim();});}});
+function El(tag){this.tag=tag;this.children=[];this.attrs={};this.style=new Style();this._text='';}
 El.prototype.appendChild=function(c){this.children.push(c);return c;};
 El.prototype.removeChild=function(c){this.children=this.children.filter(x=>x!==c);return c;};
 El.prototype.getAttribute=function(k){return (k in this.attrs)?this.attrs[k]:null;};
+El.prototype.contains=function(n){return n===this||this.children.some(c=>c.contains&&c.contains(n));};
+Object.defineProperty(El.prototype,'nodeType',{get(){return 1;}});
 Object.defineProperty(El.prototype,'firstChild',{get(){return this.children[0]||null;}});
 Object.defineProperty(El.prototype,'textContent',{get(){return this._text;},set(v){this._text=v;}});
 Object.defineProperty(El.prototype,'offsetWidth',{get(){return 200;}});
-Object.defineProperty(El.prototype,'offsetHeight',{get(){return 120;}});
+// Height is settable so a test can make the panel GROW the way an expanded row
+// grows it. A fixed height cannot tell re-clamping from clamping once.
+let OH=120;
+Object.defineProperty(El.prototype,'offsetHeight',{get(){return OH;}});
 const byId={};
 const document={createElement:t=>new El(t),getElementById:id=>byId[id]||null,body:new El('body')};
 document.body.appendChild=function(c){byId[c.id]=c;El.prototype.appendChild.call(this,c);return c;};
 const mkEl=a=>{const e=new El('rect');e.attrs=a;return e;};
+// The pinned panel binds and unbinds document/window listeners. Recording them
+// by type is what lets the pin tests fire a real outside click rather than
+// asserting that a string containing "addEventListener" exists.
+const LSN={};
+document.addEventListener=(t,f)=>{(LSN[t]=LSN[t]||[]).push(f);};
+document.removeEventListener=(t,f)=>{LSN[t]=(LSN[t]||[]).filter(x=>x!==f);};
+const win={innerWidth:1400,innerHeight:900,
+  addEventListener:(t,f)=>{(LSN[t]=LSN[t]||[]).push(f);},
+  removeEventListener:(t,f)=>{LSN[t]=(LSN[t]||[]).filter(x=>x!==f);}};
+const fire=(t,ev)=>{(LSN[t]||[]).slice().forEach(f=>f(ev));};
+const bound=t=>(LSN[t]||[]).length;
 
 const C={console,Date,String,Number,Math,JSON,Array,Object,Set,Intl,parseInt,document,
-         window:{innerWidth:1400,innerHeight:900}};
+         window:win};
 vm.createContext(C);
 vm.runInContext([
   'var _clgCache=null;',
   decl(src,"const CLN_TR_MON=['Jan'","const CLN_TR_DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];"),
   fn(src,'_clnTrLabel'), fn(src,'_clnTrEnd'), fn(src,'_clnTrHead'), fn(src,'_clgHead'),
-  decl(src,"var CLG_MK_C=","var _clgMkTried=false;"),
+  decl(src,"var CLG_MK_C=","var _clgMkAnchor=null;"),
+  decl(src,'var _CLG_CH=','};'), decl(src,'var _CLG_CH_ALT=','];'), fn(src,'_clgColour'),
+  fn(src,'_clgName'), fn(src,'_clgTime'), fn(src,'_clgSafeUrl'),
   fn(src,'_clgPad2'), fn(src,'_clgEtDay'), fn(src,'_clgEtWeek'), fn(src,'_clgMkBucket'),
-  fn(src,'_clgMkMap'), fn(src,'_clgMkWhen'), fn(src,'_clgMkSvg'),
-  fn(src,'_wkTipEl'), fn(src,'clnWkTipMove'), fn(src,'clnWkTipHide'), fn(src,'clgMkTip'),
-  'Object.assign(globalThis,{_clgEtDay,_clgEtWeek,_clgMkBucket,_clgMkMap,_clgMkSvg,clgMkTip,clnWkTipHide,CLG_MK_MAX});'
+  fn(src,'_clgMkMap'), fn(src,'_clgMkWhen'), fn(src,'_clgMkSvg'), fn(src,'_clgMkRows'),
+  fn(src,'_clgMkClock'), fn(src,'_clgMkRow'), fn(src,'_clgMkPanel'), fn(src,'_clgMkPlace'),
+  fn(src,'_wkTipEl'), fn(src,'clnWkTip'), fn(src,'clnWkTipMove'), fn(src,'clnWkTipHide'),
+  fn(src,'clgMkTip'), fn(src,'clgMkPin'), fn(src,'clgMkUnpin'),
+  fn(src,'_clgMkOutside'), fn(src,'_clgMkEsc'), fn(src,'_clgMkScroll'),
+  'Object.assign(globalThis,{_clgEtDay,_clgEtWeek,_clgMkBucket,_clgMkMap,_clgMkSvg,_clgMkRows,'
+  +'_clgMkClock,clgMkTip,clgMkPin,clgMkUnpin,clnWkTip,clnWkTipHide,CLG_MK_MAX});'
 ].join('\n'),C);
 ck('the real source loaded',[typeof C._clgMkSvg,typeof C._clgEtDay],['function','function']);
 
@@ -118,8 +150,9 @@ ck('  and its hover target is centred there too',
    new RegExp('<rect x="'+(xAt(0)-9)+'" y="'+(padT-10)+'"').test(dayH),true);
 ck('a crowded bucket shows the count, a single one does not',
    [/>2<\/text>/.test(dayH),/>1<\/text>/.test(dayH)],[true,false]);
-ck('the hover carries every entry in the bucket',
-   [/data-mk1h=/.test(dayH),/data-mk2h=/.test(dayH),/data-mkn="2"/.test(dayH)],[true,true,true]);
+ck('the rect carries the bucket and the grain, so the panel can find the entries',
+   [/data-mkkey="2026-10-26"/.test(dayH),/data-mkg="day"/.test(dayH),/data-mkn="2"/.test(dayH)],
+   [true,true,true]);
 ck('the readout heading is the chart’s own, not a second format',
    dayH.indexOf('data-mkhead="'+C._clnTrHead('2026-10-26','day')+'"')>=0,true);
 ck('a key names the diamond, once',(dayH.match(/CHANGE LOG/g)||[]).length,1);
@@ -127,54 +160,75 @@ ck('nothing is drawn, key included, when no bucket has entries',
    C._clgMkSvg([{wk:'2025-01-06'}],'day',xAt,padT,padL),'');
 ck('the monthly grain draws nothing even where entries exist',
    C._clgMkSvg([{wk:'2026-10-26'}],'month',xAt,padT,padL),'');
-// Weekly rows name the day inside the range; daily rows would only repeat the
-// heading, so they do not.
-const wkH=C._clgMkSvg([{wk:'2026-10-26'}],'week',xAt,padT,padL);
-ck('a weekly row names the day inside the week',/Mon 26 Oct/.test(wkH),true);
-ck('  a daily row does not repeat its own date',/Mon 26 Oct/.test(dayH),false);
-// The payload surviving as TEXT is fine and expected; what must not survive is
-// a raw < or a raw " , either of which would end the attribute early.
-ck('markup from a headline cannot break out of the attribute',
+ck('a marker is both hoverable and clickable',
+   [/onmouseover="clgMkTip\(event,this\)"/.test(dayH),
+    /onclick="clgMkPin\(event,this\)"/.test(dayH)],[true,true]);
+// Nothing a model wrote reaches the markup at all now: the rect carries a
+// bucket key, a grain, a count and the chart’s own heading, every one of them
+// generated. The panel reads the entries out of the cache instead, which is
+// what lets it show a summary and a permalink without six free-text fields per
+// row going through an escaper.
+ck('no entry text reaches an attribute, however hostile the headline',
    (()=>{const keep=C._clgCache;
-     C._clgCache={entries:[E(2026,10,26,{headline:'<img src=x onerror=alert(1)> & "q"'})]};
+     C._clgCache={entries:[E(2026,10,26,{headline:'<img src=x onerror=alert(1)> & "q"',
+       summary:'" onload="x',chName:'gt"m'})]};
      const h=C._clgMkSvg([{wk:'2026-10-26'}],'day',xAt,padT,padL); C._clgCache=keep;
-     const v=/data-mk1h="([^"]*)"/.exec(h);
-     return [!!v, v?/<img/.test(v[1]):true, v?/&lt;img/.test(v[1]):false,
-             v?/&quot;q&quot;/.test(v[1]):false];})(),[true,false,true,true]);
-ck('a bucket past the panel cap still reports its true size',
+     return [/<img/.test(h),/onerror/.test(h),/onload/.test(h),
+             (h.match(/data-mk/g)||[]).length];})(),[false,false,false,4]);
+ck('a bucket past the panel cap still reports its true size on the rect',
    (()=>{const keep=C._clgCache;
      C._clgCache={entries:Array.from({length:C.CLG_MK_MAX+4},(_,i)=>E(2026,10,26,{headline:'H'+i}))};
      const h=C._clgMkSvg([{wk:'2026-10-26'}],'day',xAt,padT,padL); C._clgCache=keep;
-     return [(h.match(/data-mk\d+h=/g)||[]).length,/data-mkn="(\d+)"/.exec(h)[1]];})(),
-   [require('fs').readFileSync('dashboard.html','utf8').match(/var CLG_MK_MAX=(\d+)/)[1]*1,
-    String(require('fs').readFileSync('dashboard.html','utf8').match(/var CLG_MK_MAX=(\d+)/)[1]*1+4)]);
+     return /data-mkn="(\d+)"/.exec(h)[1];})(),String(C.CLG_MK_MAX+4));
+ck('  and CLG_MK_MAX is the source’s own, not a number copied into the test',
+   C.CLG_MK_MAX,require('fs').readFileSync(process.env.DASH_SRC||'dashboard.html','utf8')
+     .match(/var CLG_MK_MAX=(\d+)/)[1]*1);
 
-// ── 4. The hover panel ─────────────────────────────────────────────────────
+// ── 4. The hover panel ─────────────────────────────────
 const ev={clientX:400,clientY:300};
-C.clgMkTip(ev,mkEl({'data-mkhead':'Mon, Oct 26','data-mkn':'2',
-  'data-mk1h':'Calendar view ships','data-mk1c':'gtm',
-  'data-mk2h':'Refresh button','data-mk2c':'sessioninteractive'}));
-const tip=byId['cln-wk-tip'];
-const texts=(function walk(e,out){out.push(e._text);(e.children||[]).forEach(c=>walk(c,out));return out;})(tip,[]);
-ck('the panel leads with the date',texts.indexOf('Mon, Oct 26')>=0,true);
-ck('  says how many changes',texts.indexOf('2 changes')>=0,true);
+const TXT=e=>(function w(x,o){o.push(x._text);(x.children||[]).forEach(c=>w(c,o));return o;})(e,[]);
+const tipTxt=()=>TXT(byId['cln-wk-tip']);
+const setCache=ents=>{C._clgCache={entries:ents};};
+// Built exactly the way _clgMkSvg builds it: the count comes off the same map
+// the panel will read, so a test can never hand the panel a count it disagrees with.
+const mk=(key,grain,head)=>mkEl({'data-mkhead':head||'Mon, Oct 26',
+  'data-mkn':String((C._clgMkMap(grain)[key]||[]).length),'data-mkkey':key,'data-mkg':grain});
+
+setCache([E(2026,10,26,{headline:'Calendar view ships'}),
+          E(2026,10,26,{headline:'Refresh button',chName:'sessioninteractive',at:at(2026,10,26,20)})]);
+C.clgMkTip(ev,mk('2026-10-26','day'));
+ck('the panel leads with the date',tipTxt().indexOf('Mon, Oct 26')>=0,true);
+ck('  says how many changes',tipTxt().indexOf('2 changes')>=0,true);
 ck('  and lists each one with its channel',
-   [texts.indexOf('Calendar view ships')>=0,texts.indexOf('#sessioninteractive')>=0],[true,true]);
+   [tipTxt().indexOf('Calendar view ships')>=0,tipTxt().indexOf('#sessioninteractive')>=0],[true,true]);
+ck('  in the order the bucket holds them, oldest first',
+   (()=>{const t=tipTxt();
+     return t.indexOf('Calendar view ships')<t.indexOf('Refresh button');})(),true);
+ck('  and says it opens into something',tipTxt().indexOf('Click for details')>=0,true);
+// The dot is the channel, as it is on the Change Log page: two changes on one
+// day usually came from two different places.
+ck('each row is dotted in its own channel’s colour',
+   (()=>{const b=byId['cln-wk-tip'].children[1];
+     return b.children.map(w=>w.children[0].children[0].style.background);})(),
+   [C._clgColour('gtm'),C._clgColour('sessioninteractive')]);
+ck('  which is the Change Log page’s mapping, not a second palette',
+   C._clgColour('gtm'),'#72A4BF');
 ck('one change is not called "1 changes"',
-   (()=>{C.clgMkTip(ev,mkEl({'data-mkhead':'Tue, Oct 27','data-mkn':'1','data-mk1h':'Only one','data-mk1c':'gtm'}));
-     const t=(function w(e,o){o.push(e._text);(e.children||[]).forEach(c=>w(c,o));return o;})(byId['cln-wk-tip'],[]);
-     return [t.indexOf('1 change')>=0,t.indexOf('1 changes')>=0];})(),[true,false]);
+   (()=>{setCache([E(2026,10,27,{headline:'Only one'})]);
+     C.clgMkTip(ev,mk('2026-10-27','day','Tue, Oct 27'));
+     const t=tipTxt();return [t.indexOf('1 change')>=0,t.indexOf('1 changes')>=0];})(),[true,false]);
 ck('a bucket bigger than the panel says what it is not showing',
-   (()=>{const a={'data-mkhead':'Mon, Oct 26','data-mkn':'12'};
-     for(let i=1;i<=C.CLG_MK_MAX;i++){a['data-mk'+i+'h']='H'+i;a['data-mk'+i+'c']='gtm';}
-     C.clgMkTip(ev,mkEl(a));
-     const t=(function w(e,o){o.push(e._text);(e.children||[]).forEach(c=>w(c,o));return o;})(byId['cln-wk-tip'],[]);
-     return t.some(x=>/^\+5 more/.test(String(x)));})(),true);
+   (()=>{setCache(Array.from({length:C.CLG_MK_MAX+5},(_,i)=>E(2026,10,26,{headline:'H'+i})));
+     C.clgMkTip(ev,mk('2026-10-26','day'));
+     const t=tipTxt();
+     return [t.filter(x=>/^H\d+$/.test(String(x))).length,t.indexOf('+5 more')>=0];})(),
+   [C.CLG_MK_MAX,true]);
 ck('reopening the panel does not stack the previous one underneath',
-   (()=>{C.clgMkTip(ev,mkEl({'data-mkhead':'A','data-mkn':'1','data-mk1':'X|gtm|'}));
-     C.clgMkTip(ev,mkEl({'data-mkhead':'B','data-mkn':'1','data-mk1':'Y|gtm|'}));
-     const t=(function w(e,o){o.push(e._text);(e.children||[]).forEach(c=>w(c,o));return o;})(byId['cln-wk-tip'],[]);
-     return [t.indexOf('A')>=0,t.indexOf('X')>=0];})(),[false,false]);
+   (()=>{setCache([E(2026,10,26,{headline:'X'})]);
+     C.clgMkTip(ev,mk('2026-10-26','day','A'));
+     setCache([E(2026,10,26,{headline:'Y'})]);
+     C.clgMkTip(ev,mk('2026-10-26','day','B'));
+     const t=tipTxt();return [t.indexOf('A')>=0,t.indexOf('X')>=0];})(),[false,false]);
 ck('the band readout and the marker readout share one panel element',
    Object.keys(byId).filter(k=>/tip/.test(k)),['cln-wk-tip']);
 // _wkTipEl builds the panel at opacity 0 and clnWkTipHide puts it back there
@@ -183,32 +237,45 @@ ck('the band readout and the marker readout share one panel element',
 // the top-left corner of the window.
 ck('the panel is made visible and positioned when it opens',
    (()=>{C.clnWkTipHide();
-     C.clgMkTip(ev,mkEl({'data-mkhead':'Mon, Oct 26','data-mkn':'1','data-mk1h':'X','data-mk1c':'gtm'}));
-     const t=byId['cln-wk-tip'];
+     const t=byId['cln-wk-tip']; t.style.left=''; t.style.top='';
+     C.clgMkTip(ev,mk('2026-10-26','day'));
      return [t.style.opacity,t.style.left!=='',t.style.top!==''];})(),['1',true,true]);
 ck('  and raises it again after a previous hover hid it',
    (()=>{C.clnWkTipHide();const a=byId['cln-wk-tip'].style.opacity;
-     C.clgMkTip(ev,mkEl({'data-mkhead':'B','data-mkn':'1','data-mk1h':'Y','data-mk1c':'gtm'}));
+     C.clgMkTip(ev,mk('2026-10-26','day','B'));
      return [a,byId['cln-wk-tip'].style.opacity];})(),['0','1']);
+ck('  but stays untouchable while it is only hovered',
+   byId['cln-wk-tip'].style.pointerEvents,'none');
 // A weekly bucket spans five days, so the row has to say which one it was.
 ck('a weekly row shows the day beside the channel',
-   (()=>{C.clgMkTip(ev,mkEl({'data-mkhead':'Oct 26 \u2013 Nov 1','data-mkn':'1',
-     'data-mk1h':'Shipped on Wednesday','data-mk1c':'gtm','data-mk1d':'Wed 28 Oct'}));
-     const t=(function w(e,o){o.push(e._text);(e.children||[]).forEach(c=>w(c,o));return o;})(byId['cln-wk-tip'],[]);
-     return t.indexOf('Wed 28 Oct \u00b7 #gtm')>=0;})(),true);
-// The bug this encoding exists to prevent: a pipe in a model-written headline
-// used to shift the channel into the date slot and show the headline's tail as
-// the channel name.
+   (()=>{setCache([E(2026,10,28,{headline:'Shipped on Wednesday'})]);
+     C.clgMkTip(ev,mk('2026-10-26','week','Oct 26 \u2013 Nov 1'));
+     return tipTxt().indexOf('Wed 28 Oct \u00b7 #gtm')>=0;})(),true);
+ck('  a daily row does not repeat its own date',
+   (()=>{setCache([E(2026,10,26,{headline:'Shipped'})]);
+     C.clgMkTip(ev,mk('2026-10-26','day'));
+     return tipTxt().some(x=>/26 Oct/.test(String(x)));})(),false);
+// The bug the old encoding existed to prevent: a pipe in a model-written
+// headline shifted the channel into the date slot. Nothing is packed now, but
+// the headline still has to arrive whole.
 ck('a pipe in a headline survives intact, fields unshifted',
-   (()=>{const keep=C._clgCache;
-     C._clgCache={entries:[E(2026,10,26,{headline:'Calendar | list toggle ships',chName:'sessioninteractive'})]};
-     const h=C._clgMkSvg([{wk:'2026-10-26'}],'day',xAt,padT,padL); C._clgCache=keep;
-     const at1=k=>{const m=new RegExp('data-mk1'+k+'="([^"]*)"').exec(h);return m?m[1]:null;};
-     C.clgMkTip(ev,mkEl({'data-mkhead':'Mon, Oct 26','data-mkn':'1',
-       'data-mk1h':at1('h'),'data-mk1c':at1('c')}));
-     const t=(function w(e,o){o.push(e._text);(e.children||[]).forEach(c=>w(c,o));return o;})(byId['cln-wk-tip'],[]);
-     return [at1('h'),t.indexOf('Calendar | list toggle ships')>=0,t.indexOf('#sessioninteractive')>=0];})(),
-   ['Calendar | list toggle ships',true,true]);
+   (()=>{setCache([E(2026,10,26,{headline:'Calendar | list toggle ships',
+     chName:'sessioninteractive'})]);
+     C.clgMkTip(ev,mk('2026-10-26','day'));
+     const t=tipTxt();
+     return [t.indexOf('Calendar | list toggle ships')>=0,t.indexOf('#sessioninteractive')>=0];})(),
+   [true,true]);
+// The cache is read at hover time, so it could in principle have been replaced
+// since the marker drew. The heading and count came off the rect and are still
+// true; saying so beats an empty panel under a live marker.
+ck('a marker whose entries have gone still names its day and sends you somewhere',
+   (()=>{setCache([E(2026,10,26,{headline:'Gone'})]);
+     const el=mk('2026-10-26','day');
+     setCache([]);
+     C.clgMkTip(ev,el);
+     const t=tipTxt();
+     return [t.indexOf('Mon, Oct 26')>=0,t.some(x=>/Open the Change Log/.test(String(x)))];})(),
+   [true,true]);
 
 // ── 5. Wired into both charts, and only after the bands ────────────────────
 const CLN=src.slice(src.indexOf('function _renderClnTrend'),src.indexOf('function _dashTrendCard'));
@@ -321,6 +388,202 @@ ck('an error with entries behind it is kept, not thrown away',
    (()=>{const L=loadCtx();L._clgMkEnsure(function(){});
      L.pending({entries:[{at:1,headline:'H'}],error:'stale'});
      return L._clgCache&&L._clgCache.error;})(),'stale');
+
+// ── 7. Pinned, and expandable ─────────────────────────────
+// A hover panel is pointer-events:none and dies on mouseout, so the detail has
+// to live behind a click. These run the real handlers against the stub DOM
+// rather than grepping for them: a disclosure that never opens, a listener that
+// is bound but never unbound, and a guard that lets a band hover overwrite a
+// pinned panel all look identical in the source.
+const click=()=>({clientX:400,clientY:300,stopPropagation(){}});
+const body=()=>byId['cln-wk-tip'].children[1];
+const rowOf=i=>body().children[i];
+const FULL=[E(2026,10,26,{headline:'Calendar view ships',summary:'The Change Log calendar now runs Monday to Friday.',
+              authorName:'Alex Melkonian',at:at(2026,10,26,14),permalink:'https://slack.com/x'}),
+            E(2026,10,26,{headline:'Refresh button',summary:'A refresh control was added.',
+              chName:'sessioninteractive',authorName:'U077TPV2PFV',at:at(2026,10,26,20),isReply:true})];
+
+C.clgMkUnpin();
+setCache(FULL);
+const pinEl=mk('2026-10-26','day');
+C.clgMkPin(click(),pinEl);
+ck('clicking a marker pins the panel and makes it reachable',
+   [byId['cln-wk-tip'].style.opacity,byId['cln-wk-tip'].style.pointerEvents],['1','auto']);
+ck('  with the close control the hover panel has no use for',
+   tipTxt().indexOf('\u00d7')>=0,true);
+ck('  and no "click for details" prompt once you already did',
+   tipTxt().indexOf('Click for details')>=0,false);
+// The cap is a hover affordance, not a limit on what you can read.
+ck('pinning lifts the preview cap',
+   (()=>{C.clgMkUnpin();setCache(Array.from({length:C.CLG_MK_MAX+5},(_,i)=>E(2026,10,26,{headline:'H'+i})));
+     const el=mk('2026-10-26','day');
+     C.clgMkTip(ev,el); const hovered=tipTxt().filter(x=>/^H\d+$/.test(String(x))).length;
+     C.clgMkPin(click(),el); const pinned=tipTxt().filter(x=>/^H\d+$/.test(String(x))).length;
+     C.clgMkUnpin();
+     return [hovered,pinned];})(),[C.CLG_MK_MAX,C.CLG_MK_MAX+5]);
+
+setCache(FULL);
+C.clgMkPin(click(),mk('2026-10-26','day'));
+ck('a row starts collapsed',rowOf(0).children[1].style.display,'none');
+ck('  and opens onto the full summary',
+   (()=>{rowOf(0).children[0].onclick(click());
+     return [rowOf(0).children[1].style.display,
+             TXT(rowOf(0)).indexOf('The Change Log calendar now runs Monday to Friday.')>=0];})(),
+   ['block',true]);
+// The only thing on a collapsed row that says it opens. It is 9.5px of 50%
+// white, so if it does not move there is nothing at all to distinguish an open
+// row from a shut one but the detail itself.
+ck('  and the arrow turns to say so',
+   (()=>{const ch=rowOf(0).children[0].children[1];
+     return [ch.textContent,ch.style.transform];})(),['\u25b8','rotate(90deg)']);
+ck('  naming who logged it and when',
+   TXT(rowOf(0)).map(x=>String(x).replace(/\u202f/g,' '))
+     .filter(x=>/^Alex Melkonian \u00b7 /.test(x)),['Alex Melkonian \u00b7 10:00 AM ET']);
+ck('  with a link out to the message itself',
+   (()=>{const a=rowOf(0).children[1].children.filter(c=>c.tag==='a')[0];
+     return [TXT(rowOf(0)).indexOf('open in Slack \u2197')>=0,a&&a.href,a&&a.rel];})(),
+   [true,'https://slack.com/x','noopener']);
+ck('  and clicking it again closes it, arrow included',
+   (()=>{rowOf(0).children[0].onclick(click());
+     return [rowOf(0).children[1].style.display,
+             rowOf(0).children[0].children[1].style.transform];})(),['none','']);
+// The clock is the one place a local zone could contradict the bucket the
+// marker sits in. 20:00 ET on the 26th is the 27th in UTC and 17:00 on the
+// west coast, so this fixture fails under either substitution.
+ck('the detail clock reads Eastern, like the bucket',
+   C._clgMkClock(at(2026,10,26,20)).replace(/\u202f/g,' '),'4:00 PM ET');
+ck('  (neither UTC nor the west coast would read that hour)',
+   [new Intl.DateTimeFormat('en-US',{timeZone:'America/Los_Angeles',hour:'numeric',
+      minute:'2-digit'}).format(new Date(at(2026,10,26,20))).replace(/\u202f/g,' '),
+    new Intl.DateTimeFormat('en-US',{timeZone:'UTC',hour:'numeric',
+      minute:'2-digit'}).format(new Date(at(2026,10,26,20))).replace(/\u202f/g,' ')],
+   ['1:00 PM','8:00 PM']);
+// users.info can fail, and when it does authorName is a raw Slack id. Showing
+// "U077TPV2PFV" is worse than showing no name at all.
+ck('a raw Slack id is not passed off as an author',
+   (()=>{rowOf(1).children[0].onclick(click());
+     return TXT(rowOf(1)).some(x=>/U077TPV2PFV/.test(String(x)));})(),false);
+ck('  though the thread marker still shows',
+   TXT(rowOf(1)).some(x=>/in thread/.test(String(x))),true);
+// Following the link must not also collapse the row you were reading.
+ck('the Slack link does not toggle the row it sits in',
+   (()=>{const det=rowOf(1).children[1];
+     const a=det.children.filter(c=>c.tag==='a');
+     if(a.length)return 'link should not exist here';
+     return rowOf(1).children[1].style.display;})(),'block');
+ck('  and where there is one, its click is stopped',
+   (()=>{const det=rowOf(0).children[1];
+     rowOf(0).children[0].onclick(click());          // reopen
+     const a=det.children.filter(c=>c.tag==='a')[0];
+     let stopped=false;
+     a.onclick({stopPropagation(){stopped=true;}});
+     return [stopped,rowOf(0).children[1].style.display];})(),[true,'block']);
+
+// One element, shared with the band readout. While it is pinned nothing else
+// may take it, or a mouse crossing the chart erases what the reader opened.
+ck('a marker hover cannot replace a pinned panel',
+   (()=>{setCache([E(2026,10,28,{headline:'Elsewhere'})]);
+     C.clgMkTip(ev,mk('2026-10-28','day','Wed, Oct 28'));
+     setCache(FULL);
+     return tipTxt().indexOf('Elsewhere')>=0;})(),false);
+ck('  nor can a band hover',
+   (()=>{C.clnWkTip(ev,mkEl({'data-wk':'Mon, Oct 26','data-grain':'Day','data-r1':'Demos|12||#72A4BF|'}));
+     return tipTxt().indexOf('Demos')>=0;})(),false);
+ck('  nor can a mouseout hide it',
+   (()=>{C.clnWkTipHide();return byId['cln-wk-tip'].style.opacity;})(),'1');
+
+// Closing. Every route has to unbind as well as hide, or the next pin stacks a
+// second outside-click handler and the panel closes on its own opening click.
+ck('a click inside the panel leaves it open',
+   (()=>{fire('mousedown',{target:body()});return byId['cln-wk-tip'].style.opacity;})(),'1');
+ck('a click outside closes it',
+   (()=>{fire('mousedown',{target:new El('div')});
+     return [byId['cln-wk-tip'].style.opacity,byId['cln-wk-tip'].style.pointerEvents];})(),
+   ['0','none']);
+ck('  and takes its listeners with it',
+   [bound('mousedown'),bound('keydown'),bound('scroll')],[0,0,0]);
+ck('Escape closes it too',
+   (()=>{C.clgMkPin(click(),mk('2026-10-26','day'));
+     fire('keydown',{key:'a'});
+     const still=byId['cln-wk-tip'].style.opacity;
+     fire('keydown',{key:'Escape'});
+     return [still,byId['cln-wk-tip'].style.opacity,bound('keydown')];})(),['1','0',0]);
+// position:fixed, on a page that scrolls under it.
+ck('scrolling the page closes it, scrolling inside it does not',
+   (()=>{C.clgMkPin(click(),mk('2026-10-26','day'));
+     fire('scroll',{target:body()});
+     const inner=byId['cln-wk-tip'].style.opacity;
+     fire('scroll',{target:document});
+     return [inner,byId['cln-wk-tip'].style.opacity];})(),['1','0']);
+ck('a second click on the same marker closes it',
+   (()=>{const el=mk('2026-10-26','day');
+     C.clgMkPin(click(),el);const open=byId['cln-wk-tip'].style.opacity;
+     C.clgMkPin(click(),el);
+     return [open,byId['cln-wk-tip'].style.opacity,bound('mousedown')];})(),['1','0',0]);
+// A second set of outside-click listeners survives the first unpin and closes
+// the NEXT panel on the very click that opens it.
+ck('clicking a different marker moves the pin rather than stacking one',
+   (()=>{C.clgMkPin(click(),mk('2026-10-26','day','Mon, Oct 26'));
+     setCache([E(2026,10,28,{headline:'Elsewhere'})]);
+     C.clgMkPin(click(),mk('2026-10-28','day','Wed, Oct 28'));
+     const t=tipTxt(),n=bound('mousedown');
+     C.clgMkUnpin();setCache(FULL);
+     return [t.indexOf('Wed, Oct 28')>=0,t.indexOf('Mon, Oct 26')>=0,n];})(),
+   [true,false,1]);
+// THE REGRESSION: the chart re-renders on every grain change and every redraw,
+// which destroys the rect the panel is anchored to. A panel left pinned would
+// float over the new chart, anchored to an element nobody can click again.
+ck('redrawing a chart releases the pin',
+   (()=>{C.clgMkPin(click(),mk('2026-10-26','day'));
+     const open=byId['cln-wk-tip'].style.opacity;
+     C._clgMkSvg(PTS,'day',xAt,padT,padL);
+     return [open,byId['cln-wk-tip'].style.opacity,bound('mousedown')];})(),['1','0',0]);
+ck('  even when the redraw has nothing to draw',
+   (()=>{C.clgMkPin(click(),mk('2026-10-26','day'));
+     C._clgMkSvg([{wk:'2025-01-06'}],'day',xAt,padT,padL);
+     return byId['cln-wk-tip'].style.opacity;})(),'0');
+ck('unpinning twice is harmless',
+   (()=>{C.clgMkUnpin();C.clgMkUnpin();return bound('mousedown');})(),0);
+// The panel grows as rows open. Pinned low on a tall chart it would otherwise
+// push its own detail off the bottom of the window.
+ck('a panel too tall to sit above the click is clamped to the window',
+   (()=>{setCache(FULL);OH=800;
+     C.clgMkPin({clientX:400,clientY:100,stopPropagation(){}},mk('2026-10-26','day'));
+     const t=parseInt(byId['cln-wk-tip'].style.top,10);
+     OH=120;C.clgMkUnpin();
+     return [t,t+800<=win.innerHeight];})(),[96,true]);
+ck('  and re-clamped when a row opens, not left where it was pinned',
+   (()=>{setCache(FULL);OH=200;
+     C.clgMkPin({clientX:400,clientY:600,stopPropagation(){}},mk('2026-10-26','day'));
+     const before=parseInt(byId['cln-wk-tip'].style.top,10);
+     OH=820;                                  // the row just expanded
+     rowOf(0).children[0].onclick(click());
+     const after=parseInt(byId['cln-wk-tip'].style.top,10);
+     OH=120;C.clgMkUnpin();
+     return [before,after!==before,after+820<=win.innerHeight];})(),[390,true,true]);
+
+// .href assignment EXECUTES a javascript: scheme, and an attribute escaper does
+// not stop one either. Slack is the only writer of this field today, which is
+// exactly the assumption worth not building on.
+ck('a permalink that is not a web URL is dropped, not turned into a link',
+   (()=>{setCache([E(2026,10,26,{headline:'Hostile',permalink:'javascript:alert(1)'})]);
+     C.clgMkPin(click(),mk('2026-10-26','day'));
+     rowOf(0).children[0].onclick(click());
+     const det=rowOf(0).children[1];
+     const r=[det.children.filter(c=>c.tag==='a').length,
+              TXT(rowOf(0)).indexOf('open in Slack \u2197')>=0];
+     C.clgMkUnpin();setCache(FULL);
+     return r;})(),[0,false]);
+ck('  while an http(s) one is kept, whatever its case',
+   [C._clgSafeUrl('https://a.slack.com/x'),C._clgSafeUrl('HTTP://a/x'),
+    C._clgSafeUrl('javascript:alert(1)'),C._clgSafeUrl(' javascript:alert(1)'),
+    C._clgSafeUrl('data:text/html,x'),C._clgSafeUrl(null)],
+   ['https://a.slack.com/x','HTTP://a/x','','','','']);
+// The Change Log page writes the same field into the same kind of href.
+ck('  and the Change Log page checks the same field the same way',
+   (()=>{const b=fn(src,'_clgRow');
+     return /_clgSafeUrl\(e\.permalink\)/.test(b)
+         &&!/href="'\+_clgEsc\(e\.permalink\)/.test(b);})(),true);
 
 console.log('\n'+pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);

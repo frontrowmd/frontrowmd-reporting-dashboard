@@ -25,6 +25,8 @@ document.body.appendChild=function(c){byId[c.id]=c;El.prototype.appendChild.call
 const ctx={console,document,window:{innerWidth:1400,innerHeight:900},Date};
 vm.createContext(ctx);
 vm.runInContext([
+  // clnWkTip and clnWkTipMove both stand aside for a pinned Change Log panel.
+  'var _clgMkPinEl=null;',
   decl(src,"const CLN_TR_MON=['Jan'","const CLN_TR_DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];"),
   fn(src,'_clnTrLabel'), fn(src,'_clnTrEnd'), fn(src,'_clnTrHead'),
   fn(src,'_wkTipEl'), fn(src,'clnWkTip'), fn(src,'clnWkTipMove'),

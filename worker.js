@@ -8879,7 +8879,8 @@ const SLACK_USER_KEY = 'slack_users_v1';
 // Seed names only. The capture path has no channel allowlist — a reaction in any
 // channel the bot sits in is logged — so this map exists purely so a known id
 // renders as a name even if conversations.info is unavailable.
-const SLACK_CH_NAMES = { C0A5366LG2D:'gtm', C0ADJP50GJE:'sessioninteractive', C0CBELQAZQA:'changelog' };
+const SLACK_CH_NAMES = { C0A5366LG2D:'gtm', C0ADJP50GJE:'sessioninteractive', C0CBELQAZQA:'changelog',
+                         C0BPCQWD00L:'virtualclinicians' };
 const SLACK_CH_KEY = 'slack_channels_v1';
 
 // Every call here is form-encoded. Slack documents x-www-form-urlencoded for the
