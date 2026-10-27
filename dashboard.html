@@ -641,7 +641,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
       <div class="ni grp" onclick="autoExpand();toggleResMenu()" data-page="resources" id="res-menu-parent" title="Resources"><span class="ic">📚</span><span>Resources</span><span id="res-arrow" style="margin-left:auto;font-size:10px;transition:transform .2s">▼</span></div>
       <div id="res-submenu" style="display:none;padding-left:24px">
         <div class="ni sub" onclick="window.open('/bd','_blank')" data-page="resources" data-sub="bd-dash"><span class="ic" style="font-size:12px">💼</span><span>BD Tracker</span><span style="margin-left:auto;font-size:9px;opacity:.5">↗</span></div>
-        <div class="ni sub" onclick="switchRes('changelog')" data-page="resources" data-sub="changelog"><span class="ic" style="font-size:12px">🪵</span><span>Changelog</span></div>
+        <div class="ni sub" onclick="switchRes('changelog')" data-page="resources" data-sub="changelog"><span class="ic" style="font-size:12px">🪵</span><span>Change Log</span></div>
         <div class="ni sub" onclick="window.open('/sales','_blank')" data-page="resources" data-sub="sales-dash"><span class="ic" style="font-size:12px">📋</span><span>Sales Dashboard</span><span style="margin-left:auto;font-size:9px;opacity:.5">↗</span></div>
         <div class="ni sub" onclick="switchToCalculator()" data-page="resources" data-sub="calculator"><span class="ic" style="font-size:12px">🧮</span><span>ARR Calculator</span></div>
         <div class="ni sub" onclick="switchRes('brand-guide')" data-page="resources" data-sub="brand-guide"><span class="ic" style="font-size:12px">🎨</span><span>Brand Guide</span></div>
@@ -11300,7 +11300,7 @@ function switchRes(subId){
   document.querySelectorAll('#res-submenu .ni').forEach(function(n){n.classList.toggle('active',n.dataset.sub===subId);});
   document.getElementById('res-menu-parent').classList.add('active');
   // Update title
-  document.getElementById('ptitle').textContent=({'brand-guide':'Brand Guide','data-key':'Data Source Key','changelog':'Changelog'})[subId]||'Resources';
+  document.getElementById('ptitle').textContent=({'brand-guide':'Brand Guide','data-key':'Data Source Key','changelog':'Change Log'})[subId]||'Resources';
   document.getElementById('filters').innerHTML='';
   // The Jump To bar lives in .main .topbar, which survives a page switch, so
   // without this every Resources page inherits whichever bar the previous page
@@ -11405,6 +11405,25 @@ var _CLG_DOWF=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Satu
 // Keys are local-time and zero-padded so they sort as strings.
 function _clgMonthKey(ms){var d=new Date(ms),m=d.getMonth()+1;return d.getFullYear()+'-'+(m<10?'0':'')+m;}
 function _clgDayKey(ms){var d=new Date(ms),n=d.getDate();return _clgMonthKey(ms)+'-'+(n<10?'0':'')+n;}
+// Saturday and Sunday have no column, so a weekend entry files onto the
+// weekday next to it rather than vanishing off the grid: Saturday back to
+// Friday, Sunday on to Monday. The row it opens still prints the real day,
+// and list view is untouched, so nothing loses its actual date.
+function _clgCalKey(ms){
+  var d=new Date(ms),w=d.getDay();
+  if(w!==0&&w!==6)return _clgDayKey(ms);
+  d.setDate(d.getDate()+(w===6?-1:1));
+  // A fold must never carry an entry out of its own month. Only two dates can:
+  // a Saturday 1st and a Sunday last. Both turn around and fold the other way,
+  // so the calendar and the list always agree on which month an entry is in —
+  // otherwise the month it left would read "nothing this month" while holding
+  // it. No month is short enough for the turn to run out of weekdays.
+  if(_clgMonthKey(d.getTime())!==_clgMonthKey(ms)){
+    d=new Date(ms);
+    d.setDate(d.getDate()+(w===6?2:-2));
+  }
+  return _clgDayKey(d.getTime());
+}
 // Relative where it helps a reader place the month, absolute once it does not.
 function _clgMonthLabel(key){
   var p=String(key||'').split('-'),y=+p[0],m=+p[1]-1;
@@ -11458,7 +11477,7 @@ var _CLG_CSS='<style>'
  +'.clg-nav:hover{background:var(--teal-8);border-color:var(--teal)}'
  +'.clg-cal-title{font-family:var(--font-h,inherit);font-size:15px;font-weight:700;color:var(--navy)}'
  +'.clg-cal-count{margin-left:auto;font-size:9.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--grey)}'
- +'.clg-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}'
+ +'.clg-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}'
  +'.clg-gh{font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--grey);text-align:center;padding-bottom:2px}'
  +'.clg-cell{min-height:86px;border:1px solid rgba(23,44,69,.07);border-radius:8px;padding:6px 7px;background:rgba(255,255,255,.45);display:flex;flex-direction:column;gap:3px;overflow:hidden;transition:all .13s ease}'
  +'.clg-out{background:transparent;border-color:transparent}'
@@ -11505,7 +11524,7 @@ function renderChangelog(el){
   if(!el)return;
   _clgEl=el;
   if(!_clgCache){
-    el.innerHTML='<div class="card" data-clg="1"><div style="padding:40px;text-align:center;color:var(--grey);font-size:13px">Loading changelog…</div></div>';
+    el.innerHTML='<div class="card" data-clg="1"><div style="padding:40px;text-align:center;color:var(--grey);font-size:13px">Loading the change log…</div></div>';
     // _clgCache stays null for the whole request, so without this every re-entry
     // to the page during a slow first load starts another identical POST.
     if(!_clgBusy){
@@ -11516,7 +11535,7 @@ function renderChangelog(el){
   }
   var d=_clgCache, ents=(d.entries||[]).slice();
   ents.sort(function(a,b){return (b.at||0)-(a.at||0);});
-  var h=_CLG_CSS+'<div class="card" data-clg="1"><div class="card-title" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">Changelog'
+  var h=_CLG_CSS+'<div class="card" data-clg="1"><div class="card-title" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">Change Log'
     +'<span style="font-size:11px;font-weight:400;color:var(--grey)">'
     +(ents.length?(ents.length+' entr'+(ents.length===1?'y':'ies')):'nothing logged yet')
     +(_clgAt?(' · updated '+_clgEsc(_clgTime(_clgAt))):'')+'</span>'
@@ -11552,6 +11571,9 @@ function _clgRow(e,compact){
     +'<span class="clg-dot" style="background:'+c+'"></span>'
     +'#'+_clgEsc(e.chName)
     +(nm?('<span class="clg-sep">·</span>'+_clgEsc(nm)):'')
+    +((compact&&(dt.getDay()===0||dt.getDay()===6))
+      ?('<span class="clg-sep">·</span>'+_CLG_DOW[dt.getDay()]+' '+dt.getDate()
+        +' '+_CLG_MON[dt.getMonth()].slice(0,3)):'')
     +(e.isReply?'<span class="clg-sep">·</span>in thread':'')
     +(e.permalink?('<span class="clg-sep">·</span><a href="'+_clgEsc(e.permalink)+'" target="_blank" rel="noopener" class="clg-link">open in Slack ↗</a>'):'')
     +'</span></span></div>';
@@ -11582,13 +11604,17 @@ function _clgList(ents){
 }
 function _clgCalendar(ents){
   var byDay={};
-  ents.forEach(function(e){var k=_clgDayKey(e.at);(byDay[k]=byDay[k]||[]).push(e);});
+  ents.forEach(function(e){var k=_clgCalKey(e.at);(byDay[k]=byDay[k]||[]).push(e);});
   // Open on the month of the newest entry rather than on a current month that
-  // may well be empty.
+  // may well be empty. Safe unfolded: _clgCalKey never moves an entry out of
+  // its own month, so the month it is drawn in is the month it happened in.
   if(!_clgMonth)_clgMonth=_clgMonthKey(ents.length?ents[0].at:Date.now());
   var p=_clgMonth.split('-'),y=+p[0],m=+p[1]-1;
-  var lead=(new Date(y,m,1).getDay()+6)%7;          // Monday-first
+  var w1=new Date(y,m,1).getDay();
+  var lead=(w1===0||w1===6)?0:(w1-1);   // Monday-first, five columns
   var days=new Date(y,m+1,0).getDate();
+  // Left unfolded on purpose: on a weekend there is no cell to circle, and
+  // circling Friday instead would be a lie about what day it is.
   var todayK=_clgDayKey(Date.now());
   var inMonth=function(k){return k.indexOf(_clgMonth+'-')===0;};
   var count=0; for(var k0 in byDay){if(inMonth(k0))count+=byDay[k0].length;}
@@ -11599,9 +11625,13 @@ function _clgCalendar(ents){
     +'<button class="clg-nav" onclick="clgMonthStep(1)" aria-label="Next month">›</button>'
     +'<span class="clg-cal-count">'+(count?(count+(count===1?' entry':' entries')):'nothing this month')+'</span></div>';
   h+='<div class="clg-grid">';
-  for(var w=0;w<7;w++)h+='<div class="clg-gh">'+_CLG_DOW[(w+1)%7]+'</div>';
+  for(var w=0;w<5;w++)h+='<div class="clg-gh">'+_CLG_DOW[w+1]+'</div>';
   for(var i=0;i<lead;i++)h+='<div class="clg-cell clg-out"></div>';
+  var cells=lead;
   for(var n=1;n<=days;n++){
+    var wd=new Date(y,m,n).getDay();
+    if(wd===0||wd===6)continue;
+    cells++;
     var key=_clgMonth+'-'+(n<10?'0':'')+n, list=byDay[key]||[];
     h+='<div class="clg-cell'+(list.length?' clg-has':'')+(key===_clgDay?' clg-sel':'')
       +(key===todayK?' clg-today':'')+'"'
@@ -11613,8 +11643,8 @@ function _clgCalendar(ents){
     if(list.length>2)h+='<span class="clg-more">+'+(list.length-2)+' more</span>';
     h+='</div>';
   }
-  var tail=(lead+days)%7;
-  if(tail)for(var t=tail;t<7;t++)h+='<div class="clg-cell clg-out"></div>';
+  var tail=cells%5;
+  if(tail)for(var t=tail;t<5;t++)h+='<div class="clg-cell clg-out"></div>';
   h+='</div>';
 
   // The grid shows WHEN; the summaries are still the substance, so the chosen

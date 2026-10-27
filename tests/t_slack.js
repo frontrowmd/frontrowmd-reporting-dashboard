@@ -724,35 +724,40 @@ const CAL=(()=>{const c={console,Date,String,Number,Math,JSON,Array,Object,Set};
     decl(dash,'var _CLG_MON=','];'), decl(dash,'var _CLG_DOW=','];'), decl(dash,'var _CLG_DOWF=','];'),
     decl(dash,'var _CLG_CH=','};'), decl(dash,'var _CLG_CH_ALT=','];'),
     fn(dash,'_clgColour'), fn(dash,'_clgEsc'), fn(dash,'_clgHead'), fn(dash,'_clgName'),
-    fn(dash,'_clgMonthKey'), fn(dash,'_clgDayKey'), fn(dash,'_clgMonthTitle'), fn(dash,'_clgDayLabel'),
+    fn(dash,'_clgMonthKey'), fn(dash,'_clgDayKey'), fn(dash,'_clgCalKey'),
+    fn(dash,'_clgMonthTitle'), fn(dash,'_clgDayLabel'),
     fn(dash,'_clgRow'), fn(dash,'_clgCalendar'), fn(dash,'_clgList'), fn(dash,'_clgMonthLabel'),
-    'Object.assign(globalThis,{_clgCalendar,_clgList});'].join('\n'),c);
+    'Object.assign(globalThis,{_clgCalendar,_clgList,_clgCalKey,_clgMonthKey,_clgMonthLabel});'].join('\n'),c);
   return c;})();
 const mkEnt=(y,m,d,o)=>Object.assign({at:new Date(y,m-1,d,12,0).getTime(),chName:'gtm',
   authorName:'Alex Melkonian',headline:'Shipped a thing',summary:'A thing was shipped.',
   permalink:'https://x',isReply:false},o||{});
-// Oct 2026 starts on a Thursday, so a Monday-first grid needs three blanks.
+// Oct 2026 starts on a Thursday, so a Mon-Fri grid needs three blanks.
 const OCT=[mkEnt(2026,10,26,{headline:'Monday one'}),mkEnt(2026,10,26,{headline:'Monday two'}),
            mkEnt(2026,10,26,{headline:'Monday three'}),mkEnt(2026,10,20,{headline:'Earlier'}),
            mkEnt(2026,9,14,{headline:'September'})];
 CAL._clgMonth=null; CAL._clgDay=null;
 const calH=CAL._clgCalendar(OCT);
 
-ck('the week header runs Monday first',
+ck('the week header is Monday to Friday, with no weekend',
    (calH.match(/class="clg-gh">(\w+)</g)||[]).map(x=>x.slice(-4,-1)),
-   ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']);
+   ['Mon','Tue','Wed','Thu','Fri']);
 ck('October 2026 is padded with exactly three leading blanks',
    (()=>{const i=calH.indexOf('clg-cnum');
      return (calH.slice(0,i).match(/clg-cell clg-out/g)||[]).length;})(),3);
-ck('  and the grid holds whole weeks',
-   (()=>{const cells=(calH.match(/class="clg-cell/g)||[]).length;return cells%7;})(),0);
-ck('  covering every day of the month',
+ck('  and the grid holds whole five-day weeks',
+   (()=>{const cells=(calH.match(/class="clg-cell/g)||[]).length;return cells%5;})(),0);
+// Oct 2026 has 22 weekdays; the 3rd, 4th, 10th... are weekend and must be gone.
+ck('  covering every weekday of the month and no weekend day',
    (()=>{const nums=(calH.match(/class="clg-cnum">(\d+)</g)||[]).map(x=>+x.replace(/\D/g,''));
-     return [nums.length,nums[0],nums[nums.length-1]];})(),[31,1,31]);
+     const bad=nums.filter(n=>{const w=new Date(2026,9,n).getDay();return w===0||w===6;});
+     return [nums.length,nums[0],nums[nums.length-1],bad.length];})(),[22,1,30,0]);
 ck('the month is named in the heading',/October 2026/.test(calH),true);
 ck('  with a count of what is in it',/4 entries/.test(calH),true);
 ck('a day with entries is clickable',/onclick="clgPickDay\('2026-10-20'\)"/.test(calH),true);
 ck('  and an empty day is not',/onclick="clgPickDay\('2026-10-02'\)"/.test(calH),false);
+ck('  and a weekend day has no cell at all',
+   /clgPickDay\('2026-10-(03|04|31)'\)|clg-cnum">(3|4)</.test(calH),false);
 // Three entries on one day must not blow the cell open.
 ck('a crowded day shows two chips and a count',
    [(calH.match(/clg-chip-t/g)||[]).length,/\+1 more/.test(calH)],[3,true]);
@@ -765,6 +770,108 @@ ck('  as compact rows, without repeating the date beside each one',
      return /clg-date/.test(calH.slice(i));})(),false);
 ck('an entry from another month is not drawn into this grid',
    /September</.test(calH.replace(/clg-cal-title[\s\S]*?<\/span>/,'')),false);
+
+// March 2026 starts on a Sunday, so the first weekday cell is Monday the 2nd
+// and there is nothing to pad with.
+CAL._clgMonth='2026-03'; CAL._clgDay=null;
+const marH=CAL._clgCalendar([mkEnt(2026,3,2,{headline:'March'})]);
+ck('a month that starts on a Sunday needs no leading blanks',
+   (()=>{const i=marH.indexOf('clg-cnum');
+     return [(marH.slice(0,i).match(/clg-cell clg-out/g)||[]).length,
+             /class="clg-cnum">2</.test(marH)];})(),[0,true]);
+// Without the weekend guard a Sunday start gives lead=-1, which pads nothing
+// and so passes the assertion above while desyncing the cell count. A Saturday
+// start is the half that shows: lead would be 5, a whole blank first row.
+ck('  and its grid is still whole five-day weeks',
+   (marH.match(/class="clg-cell/g)||[]).length%5,0);
+CAL._clgMonth='2026-08'; CAL._clgDay=null;
+const augH=CAL._clgCalendar([mkEnt(2026,8,3,{headline:'August'})]);
+ck('a month that starts on a Saturday needs none either',
+   (()=>{const i=augH.indexOf('clg-cnum');
+     return [(augH.slice(0,i).match(/clg-cell clg-out/g)||[]).length,
+             (augH.match(/class="clg-cnum">(\d+)</g)||[])[0].replace(/\D/g,''),
+             (augH.match(/class="clg-cell/g)||[]).length%5];})(),[0,'3',0]);
+
+// Rectangularity, derived from the calendar rather than from the padding rule
+// it already obeys: count the weekdays and the lead independently and check
+// the grid is exactly the rows those two need.
+ck('every month renders a rectangular grid, 2024 through 2028',
+   (()=>{const bad=[];
+     for(let y=2024;y<=2028;y++)for(let m=1;m<=12;m++){
+       const key=y+'-'+(m<10?'0':'')+m;
+       CAL._clgMonth=key; CAL._clgDay=null;
+       const h=CAL._clgCalendar([]);
+       const last=new Date(y,m,0).getDate();
+       let wd=0; for(let n=1;n<=last;n++){const w=new Date(y,m-1,n).getDay();if(w!==0&&w!==6)wd++;}
+       const w1=new Date(y,m-1,1).getDay();
+       const lead=(w1===0||w1===6)?0:(w1-1);
+       const want=Math.ceil((lead+wd)/5)*5;
+       const got=(h.match(/class="clg-cell/g)||[]).length;
+       const nums=(h.match(/class="clg-cnum">(\d+)</g)||[]).map(x=>+x.replace(/\D/g,''));
+       const weekend=nums.filter(n=>{const w=new Date(y,m-1,n).getDay();return w===0||w===6;});
+       if(got!==want||nums.length!==wd||weekend.length)bad.push(key+':'+got+'/'+want+':'+nums.length+'/'+wd);
+     }
+     return bad;})(),[]);
+
+// Sat 2026-10-24 folds back to Fri the 23rd; Sun the 25th forward to Mon the 26th.
+ck('a Saturday files onto the Friday before it',CAL._clgCalKey(new Date(2026,9,24,12).getTime()),'2026-10-23');
+ck('  and a Sunday onto the Monday after',CAL._clgCalKey(new Date(2026,9,25,12).getTime()),'2026-10-26');
+ck('  while a weekday is left where it is',CAL._clgCalKey(new Date(2026,9,20,12).getTime()),'2026-10-20');
+// The two dates whose natural fold would leave the month turn around instead.
+ck('a Saturday 1st folds forward, not back out of its month',
+   CAL._clgCalKey(new Date(2026,7,1,12).getTime()),'2026-08-03');   // Sat 1 Aug
+ck('  and a Sunday last day folds back, not on into the next',
+   CAL._clgCalKey(new Date(2026,4,31,12).getTime()),'2026-05-29');  // Sun 31 May
+ck('  including across a year boundary',
+   [CAL._clgCalKey(new Date(2027,0,1,12).getTime()),   // Fri 1 Jan, untouched
+    CAL._clgCalKey(new Date(2026,11,31,12).getTime())], // Thu 31 Dec, untouched
+   ['2027-01-01','2026-12-31']);
+ck('  and on a Sunday 31 December, which folds back into December',
+   CAL._clgCalKey(new Date(2028,11,31,12).getTime()),'2028-12-29');
+// The whole point of the turn-around: calendar and list can never disagree
+// about which month an entry belongs to.
+ck('no fold ever leaves its own month, 2024 through 2030',
+   (()=>{const bad=[];
+     for(let y=2024;y<=2030;y++)for(let m=1;m<=12;m++){
+       const last=new Date(y,m,0).getDate();
+       for(let n=1;n<=last;n++){
+         const t=new Date(y,m-1,n,12).getTime();
+         const k=CAL._clgCalKey(t);
+         const w=new Date(k.slice(0,4),+k.slice(5,7)-1,+k.slice(8)).getDay();
+         if(k.slice(0,7)!==CAL._clgMonthKey(t)||w===0||w===6)bad.push(k);
+       }}
+     return bad;})(),[]);
+
+// A folded entry must not quietly claim the weekday it was drawn on.
+CAL._clgMonth=null; CAL._clgDay=null;
+const wkH=CAL._clgCalendar([mkEnt(2026,10,24,{headline:'Weekend work'})]);
+ck('a weekend entry still appears, on the adjacent weekday',
+   [/clgPickDay\('2026-10-23'\)/.test(wkH),/Weekend work/.test(wkH)],[true,true]);
+ck('  and its row names the day it really happened',/Sat 24 Oct/.test(wkH),true);
+// The Sunday arm folds the other way and needs its own fixture: a Sunday entry
+// drawn under a Monday heading is exactly the row that must not read as Monday.
+CAL._clgMonth=null; CAL._clgDay=null;
+const sunH=CAL._clgCalendar([mkEnt(2026,10,25,{headline:'Sunday work'})]);
+ck('a Sunday entry files onto the Monday after it',
+   [/clgPickDay\('2026-10-26'\)/.test(sunH),/clg-sel-head">Monday 26 October/.test(sunH)],[true,true]);
+ck('  and it too names its real day',/Sun 25 Oct/.test(sunH),true);
+ck('a weekday entry gets no such note',/Mon 26 Oct|Tue 20 Oct/.test(calH),false);
+// The regression this guard exists for: the two views must agree on the month.
+ck('the calendar count never contradicts the list for the same entries',
+   (()=>{const bad=[];
+     [[2026,8,1],[2026,5,31],[2026,10,24],[2026,10,25],[2027,1,31],[2028,12,31],
+      [2026,8,3],[2026,2,28]].forEach(d=>{
+       const e=[mkEnt(d[0],d[1],d[2],{headline:'X'})];
+       const key=d[0]+'-'+(d[1]<10?'0':'')+d[1];
+       CAL._clgMonth=key; CAL._clgDay=null;
+       const cal=CAL._clgCalendar(e), list=CAL._clgList(e);
+       // The list groups on the true date; the calendar must draw the entry
+       // in that same month, which is what the turn-around guarantees.
+       const drawn=/1 entry/.test(cal)&&/X</.test(cal);
+       const listed=/1 ENTRY/.test(list)&&list.includes(CAL._clgMonthLabel(key));
+       if(!drawn||!listed)bad.push(key+'-'+d[2]+':cal='+drawn+' list='+listed);
+     });
+     return bad;})(),[]);
 
 // A day picked in one month must not survive a step into the next.
 CAL._clgDay='2026-10-20';
@@ -965,7 +1072,7 @@ ck('an unauthorized response does not empty the list either',
 // The first load leaves _clgCache null for the whole request, so without the
 // same busy guard every re-entry to the page starts another identical POST.
 ck('the first load is serialised by the same busy flag',
-   (()=>{const i=dash.indexOf('Loading changelog');
+   (()=>{const i=dash.indexOf('Loading the change log');
      const j=dash.indexOf('var d=_clgCache',i);
      const b=dash.slice(i,j);
      return /if\(!_clgBusy\)\{/.test(b)&&/_clgBusy=true;/.test(b)&&/_clgBusy=false;/.test(b);})(),true);
@@ -977,7 +1084,7 @@ ck('the menu row sits directly under BD Tracker',
      return bd>0&&cl>bd&&cl<sl;})(),true);
 ck('  and is wired to the in-page renderer, not a new tab',
    /onclick="switchRes\('changelog'\)" data-page="resources" data-sub="changelog"/.test(dash),true);
-ck('  with a title of its own',/'changelog':'Changelog'/.test(dash),true);
+ck('  with a title of its own',/'changelog':'Change Log'/.test(dash),true);
 ck('  and a dispatch branch',/else if\(sub==='changelog'\)renderChangelog\(el\);/.test(dash),true);
 // PW is the page's password global; S.pw never existed, so the first build of
 // this page could only ever 401.
