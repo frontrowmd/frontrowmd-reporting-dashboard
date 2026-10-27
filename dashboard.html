@@ -3300,7 +3300,9 @@ window.toggleCpdWeekMode=function(chartId,mode){
 // only thing read from an attribute into a style is a hex from CLN_TR_SERIES.
 // Rows arrive as "label|value|sub|hex|dash" -- labels are local constants, so the
 // pipe split cannot be broken by data.
-function clnWkTip(e,el){
+// The hover panel itself. One element, one style, shared by the band readout
+// and the Change Log marker readout so neither can appear beside the other.
+function _wkTipEl(){
   var tip=document.getElementById('cln-wk-tip');
   if(!tip){
     tip=document.createElement('div');
@@ -3310,6 +3312,10 @@ function clnWkTip(e,el){
       +'opacity:0;transition:opacity .08s ease;min-width:180px';
     document.body.appendChild(tip);
   }
+  return tip;
+}
+function clnWkTip(e,el){
+  var tip=_wkTipEl();
   while(tip.firstChild)tip.removeChild(tip.firstChild);
   // The date is WHICH point you are reading — every number under it is only
   // meaningful once you know that. It used to render at 9.5px in 62% white and
@@ -3721,11 +3727,194 @@ function _clnTrendCard(d,sfx){
     +'<div id="cln-trend-panels'+sfx+'"></div></div>';
 }
 
+// ── Change Log markers on the Trend charts ────────────────────────
+// A tick at the top of the plot on every bucket that carries Change Log
+// entries, hovered for the list of what shipped. Daily and Weekly only: a month
+// holds so many entries that one marker stops pointing at anything actionable.
+//
+// The entries are read from the same _clgCache the Change Log page uses, so the
+// two views can never disagree about what happened when.
+var CLG_MK_C='#C2410C';
+var CLG_MK_MAX=7;          // rows before the panel rolls the rest into "+N more"
+// One cold load, however many things ask for it. The Change Log page and the
+// trend markers read the same cache; when each kept its own in-flight flag,
+// asking from both inside one round trip fired two identical 12-month fetches
+// and let whichever landed second overwrite the other. Waiters are a QUEUE,
+// not a slot: two charts can render during one flight and both need redrawing.
+var _clgWaiters=null;
+// One background attempt per page load. The charts fetch on a page the user
+// never asked the Change Log for, so this must not become a retry loop.
+var _clgMkTried=false;
+function _clgLoadOnce(done){
+  if(_clgWaiters){if(done)_clgWaiters.push(done);return;}
+  _clgWaiters=done?[done]:[];
+  _clgFetch(function(){
+    var ws=_clgWaiters;_clgWaiters=null;
+    // A waiter that throws must not strand the ones queued behind it.
+    ws.forEach(function(f){try{f();}catch(e){console.warn('changelog waiter:',e&&e.message);}});
+  });
+}
+function _clgPad2(x){return (x<10?'0':'')+x;}
+// The series bucket on an EASTERN calendar day — worker _clnDayKey and
+// etDayKeyOf, both through etOff — so a marker has to use that zone too.
+// Browser-local would shift a whole column for anyone outside ET, and for an
+// evening reaction it would shift for everyone.
+function _clgEtDay(ms){
+  var d=new Date(ms);
+  try{
+    return new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',
+      year:'numeric',month:'2-digit',day:'2-digit'}).format(d);
+  }catch(e){
+    return d.getFullYear()+'-'+_clgPad2(d.getMonth()+1)+'-'+_clgPad2(d.getDate());
+  }
+}
+// The ISO Monday of that Eastern day, matching the worker's own monOf.
+function _clgEtWeek(ms){
+  var q=_clgEtDay(ms).split('-');
+  var d=new Date(Date.UTC(+q[0],+q[1]-1,+q[2])),dow=d.getUTCDay();
+  d.setUTCDate(d.getUTCDate()-(dow===0?6:dow-1));
+  return d.getUTCFullYear()+'-'+_clgPad2(d.getUTCMonth()+1)+'-'+_clgPad2(d.getUTCDate());
+}
+function _clgMkBucket(ms,grain){return grain==='week'?_clgEtWeek(ms):_clgEtDay(ms);}
+// Entries grouped onto the buckets a chart at this grain plots. Every grain but
+// day and week comes back empty, and that is what keeps Monthly bare.
+function _clgMkMap(grain){
+  var out={};
+  if(grain!=='day'&&grain!=='week')return out;
+  var ents=(_clgCache&&_clgCache.entries)||[];
+  ents.forEach(function(e){
+    if(!e||!e.at)return;
+    var k=_clgMkBucket(e.at,grain);
+    (out[k]=out[k]||[]).push(e);
+  });
+  Object.keys(out).forEach(function(k){
+    out[k].sort(function(a,b){return (a.at||0)-(b.at||0);});
+  });
+  return out;
+}
+// These charts sit on pages the Change Log does not, so the entries are usually
+// unloaded when one first draws. Fetch once, then redraw. A failure leaves the
+// chart exactly as it is, only without markers.
+function _clgMkEnsure(redraw){
+  if(_clgCache)return;                      // already loaded, nothing to do
+  if(_clgMkTried&&!_clgWaiters)return;      // one background attempt, already spent
+  _clgMkTried=true;
+  _clgLoadOnce(function(){
+    // A failure nobody saw must not become the Change Log page's state. That
+    // page treats any non-null cache as loaded, so a silent background failure
+    // here would leave it showing "Could not load" over an empty list on the
+    // user's FIRST visit, having made no request, with no way back but Refresh.
+    // Rolling an empty error back to null restores exactly the pre-marker
+    // behaviour: the page fetches for itself and reports its own errors.
+    if(_clgCache&&_clgCache.error&&!((_clgCache.entries||[]).length))_clgCache=null;
+    // The Change Log page shares this cache and may itself be the thing waiting
+    // on the response that just landed.
+    if(_clgLive())renderChangelog();
+    if(redraw)redraw();
+  });
+}
+// Which day inside the bucket. Only earns its space on the weekly grain, where
+// the heading names a range rather than the day the entry actually landed on.
+function _clgMkWhen(ms){
+  var q=_clgEtDay(ms).split('-');
+  var d=new Date(Date.UTC(+q[0],+q[1]-1,+q[2]));
+  return CLN_TR_DOW[d.getUTCDay()]+' '+(+q[2])+' '+CLN_TR_MON[+q[1]-1];
+}
+// The marker layer. Both charts emit it AFTER their hover bands: a band painted
+// over a marker swallows the hover, and the band is the bigger target of the two.
+function _clgMkSvg(pts,grain,xAt,padT,padL){
+  if(!pts||!pts.length)return '';
+  var map=_clgMkMap(grain),out='',drew=0;
+  var esc=function(x){return String(x==null?'':x).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');};
+  pts.forEach(function(p,i){
+    var list=map[p.wk]; if(!list||!list.length)return;
+    drew++;
+    var x=xAt(i),n=list.length;
+    var a=' data-mkhead="'+esc(_clnTrHead(p.wk,grain))+'" data-mkn="'+n+'"';
+    // One attribute per field. The band readout packs its rows pipe-delimited,
+    // but its fields are local constants; a headline is free text written by a
+    // model from an arbitrary Slack message, so a single '|' in it would shift
+    // the channel into the date slot and show the rest of the headline as the
+    // channel name.
+    list.slice(0,CLG_MK_MAX).forEach(function(e,j){
+      var m=' data-mk'+(j+1);
+      a+=m+'h="'+esc(_clgHead(e))+'"'+m+'c="'+esc(e.chName||'')+'"'
+        +(grain==='week'?(m+'d="'+esc(_clgMkWhen(e.at))+'"'):'');
+    });
+    out+='<line x1="'+x+'" y1="'+padT+'" x2="'+x+'" y2="'+(padT+11)+'" stroke="'+CLG_MK_C+'" stroke-width="1" stroke-opacity=".34" pointer-events="none"/>'
+      +'<path d="M '+x+' '+(padT-6)+' L '+(x+5)+' '+padT+' L '+x+' '+(padT+6)+' L '+(x-5)+' '+padT+' Z" fill="'+CLG_MK_C+'" stroke="#fff" stroke-width="1.2" pointer-events="none"/>'
+      +(n>1?('<text x="'+(x+7.5)+'" y="'+(padT+3.5)+'" font-size="8.5" font-weight="700" fill="'+CLG_MK_C+'" pointer-events="none">'+n+'</text>'):'')
+      +'<rect x="'+(x-9)+'" y="'+(padT-10)+'" width="18" height="20" fill="transparent"'+a
+      +' style="cursor:pointer" onmouseover="clgMkTip(event,this)" onmousemove="clnWkTipMove(event)" onmouseout="clnWkTipHide()"/>';
+  });
+  // A diamond nobody can name is just a dot. The key appears only when there is
+  // something on screen for it to explain, and it sits at the LEFT: changes
+  // cluster at the recent end, which is the right, and a key there would crowd
+  // the marker most likely to be on screen.
+  if(drew)out+='<text x="'+padL+'" y="'+(padT-9)+'" font-size="8.5" font-weight="700" fill="'+CLG_MK_C+'" fill-opacity=".85" pointer-events="none">\u25C6 CHANGE LOG</text>';
+  return out;
+}
+// Built into the same panel as the band readout, so the two can never be on
+// screen at once and positioning and hiding stay in one place.
+function clgMkTip(e,el){
+  var tip=_wkTipEl();
+  while(tip.firstChild)tip.removeChild(tip.firstChild);
+  var cap=document.createElement('div');
+  cap.style.cssText='border-bottom:1px solid rgba(255,255,255,.15);padding-bottom:6px;margin-bottom:1px';
+  var headRow=document.createElement('div');
+  headRow.style.cssText='display:flex;align-items:baseline;gap:10px;white-space:nowrap';
+  var head=document.createElement('div');
+  head.style.cssText='flex:1 1 auto;font-family:var(--font-h);font-size:15px;font-weight:700;'
+    +'color:#fff;letter-spacing:.01em;white-space:nowrap';
+  head.textContent=el.getAttribute('data-mkhead')||'';
+  headRow.appendChild(head);
+  var n=parseInt(el.getAttribute('data-mkn')||'0',10)||0;
+  var tag=document.createElement('div');
+  tag.style.cssText='flex:0 0 auto;font-size:8.5px;font-weight:700;letter-spacing:.09em;'
+    +'text-transform:uppercase;color:rgba(255,255,255,.45)';
+  tag.textContent=(n===1?'1 change':n+' changes');
+  headRow.appendChild(tag);
+  cap.appendChild(headRow);
+  tip.appendChild(cap);
+  var shown=0;
+  for(var i=1;i<=CLG_MK_MAX;i++){
+    var htxt=el.getAttribute('data-mk'+i+'h'); if(htxt==null)continue;
+    var ch=el.getAttribute('data-mk'+i+'c')||'';
+    var when=el.getAttribute('data-mk'+i+'d')||'';
+    shown++;
+    var row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:baseline;gap:7px;max-width:360px;'
+      +'margin-top:'+(shown===1?'7px':'5px');
+    var dot=document.createElement('span');
+    dot.style.cssText='flex:0 0 auto;width:6px;height:6px;border-radius:50%;background:'+CLG_MK_C;
+    row.appendChild(dot);
+    var txt=document.createElement('div');
+    txt.style.cssText='flex:1 1 auto;font-size:11.5px;color:#fff;line-height:1.35';
+    txt.textContent=htxt||'';
+    row.appendChild(txt);
+    var meta=document.createElement('div');
+    meta.style.cssText='flex:0 0 auto;font-size:9.5px;color:rgba(255,255,255,.55);white-space:nowrap';
+    meta.textContent=(when?when+' \u00b7 ':'')+(ch?'#'+ch:'');
+    row.appendChild(meta);
+    tip.appendChild(row);
+  }
+  // The cap keeps a crowded day from becoming a wall of text; the count above
+  // already said how many there are, so this only has to name the remainder.
+  if(n>shown){
+    var more=document.createElement('div');
+    more.style.cssText='margin-top:6px;font-size:9.5px;color:rgba(255,255,255,.55)';
+    more.textContent='+'+(n-shown)+' more \u2014 open the Change Log';
+    tip.appendChild(more);
+  }
+  tip.style.opacity='1';
+  clnWkTipMove(e);
+}
 function _renderClnTrend(d,sfx){
   var host=document.getElementById('cln-trend-panels'+(sfx||'')); if(!host)return;
   var pts=_clnTrendPts(d); if(!pts.length)return;
   window._clnTrendData=d;
   var g=_clnTrGrainDef(), mdef=_clnTrMetricDef(), pdef=_clnTrPopDef(), pop=pdef.k;
+  if(g.k==='day'||g.k==='week')_clgMkEnsure(function(){_clnTrendRedraw(sfx);});
   var parts=pts.map(function(p){return _clnTrParts(p,pop);});
   var vals=parts.map(function(x){return _clnTrValue(mdef.k,x);});
 
@@ -3842,6 +4031,7 @@ function _renderClnTrend(d,sfx){
     svg+='<rect class="clnwk-band" x="'+bx+'" y="'+padT+'" width="'+bw+'" height="'+innerH+'"'+a
       +' style="cursor:pointer" onmouseover="clnWkTip(event,this)" onmousemove="clnWkTipMove(event)" onmouseout="clnWkTipHide()"/>';
   });
+  svg+=_clgMkSvg(pts,g.k,xAt,padT,padL);
   svg+='</svg>';
   host.innerHTML='<div style="overflow-x:auto">'+svg+'</div>';
 }
@@ -4095,6 +4285,7 @@ function _renderDashTrend(d,sfx){
   var pts=_dshTrendPts(d); if(!pts.length)return;
   window._dshTrendData=d;
   var g=_dshTrGrainDef(), mdef=_dshTrMetricDef(), pdef=_dshTrPopDef(), pop=pdef.k;
+  if(g.k==='day'||g.k==='week')_clgMkEnsure(function(){_dshTrendRedraw(sfx);});
   var parts=pts.map(function(p){return _dshTrParts(p,pop);});
   var vals=parts.map(function(x){return _dshTrValue(mdef.k,x);});
 
@@ -4194,6 +4385,7 @@ function _renderDashTrend(d,sfx){
     svg+='<rect class="dshwk-band" x="'+bx+'" y="'+padT+'" width="'+bw+'" height="'+innerH+'"'+a
       +' style="cursor:pointer" onmouseover="clnWkTip(event,this)" onmousemove="clnWkTipMove(event)" onmouseout="clnWkTipHide()"/>';
   });
+  svg+=_clgMkSvg(pts,g.k,xAt,padT,padL);
   svg+='</svg>';
   host.innerHTML='<div style="overflow-x:auto">'+svg+'</div>';
 }
@@ -11376,7 +11568,10 @@ function refreshChangelog(){
   _clgBusy=true;
   var btn=document.getElementById('clg-rfb');
   if(btn){btn.classList.add('loading');btn.textContent='\u21bb Refreshing\u2026';}
-  _clgFetch(function(){_clgBusy=false;if(_clgLive())renderChangelog();});
+  // Joins an in-flight load rather than stacking a second one: two concurrent
+  // writes to _clgCache would otherwise race, and the reply that happens to
+  // land second wins whether or not it is the better one.
+  _clgLoadOnce(function(){_clgBusy=false;if(_clgLive())renderChangelog();});
 }
 // Calendar is the default view. Entries land a few a week, and a month grid
 // shows the rhythm of shipping — the quiet weeks as much as the busy ones — in
@@ -11526,11 +11721,10 @@ function renderChangelog(el){
   if(!_clgCache){
     el.innerHTML='<div class="card" data-clg="1"><div style="padding:40px;text-align:center;color:var(--grey);font-size:13px">Loading the change log…</div></div>';
     // _clgCache stays null for the whole request, so without this every re-entry
-    // to the page during a slow first load starts another identical POST.
-    if(!_clgBusy){
-      _clgBusy=true;
-      _clgFetch(function(){_clgBusy=false;if(_clgLive())renderChangelog();});
-    }
+    // to the page during a slow first load starts another identical POST — and
+    // since the trend markers load the same entries, so would a chart drawing
+    // on another page at the same moment. _clgLoadOnce serialises both.
+    _clgLoadOnce(function(){if(_clgLive())renderChangelog();});
     return;
   }
   var d=_clgCache, ents=(d.entries||[]).slice();

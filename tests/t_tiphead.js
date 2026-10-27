@@ -27,7 +27,7 @@ vm.createContext(ctx);
 vm.runInContext([
   decl(src,"const CLN_TR_MON=['Jan'","const CLN_TR_DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];"),
   fn(src,'_clnTrLabel'), fn(src,'_clnTrEnd'), fn(src,'_clnTrHead'),
-  fn(src,'clnWkTip'), fn(src,'clnWkTipMove'),
+  fn(src,'_wkTipEl'), fn(src,'clnWkTip'), fn(src,'clnWkTipMove'),
   'Object.assign(globalThis,{_clnTrHead,clnWkTip,CLN_TR_MONF,CLN_TR_DOW});'
 ].join('\n'),ctx);
 ck('the real header formatter loaded',typeof ctx._clnTrHead,'function');

@@ -986,8 +986,8 @@ const RF=(()=>{const c={console,JSON,Date,String,Object,Promise};
     return new Promise(res=>{c.release=()=>res({json:async()=>c.reply});});};
   vm.createContext(c);
   vm.runInContext([
-    'var _clgCache=null,_clgEl=null,_clgBusy=false,_clgAt=0;',
-    fn(dash,'_clgLive'), fn(dash,'_clgFetch'), fn(dash,'refreshChangelog'),
+    'var _clgCache=null,_clgEl=null,_clgBusy=false,_clgAt=0,_clgWaiters=null;',
+    fn(dash,'_clgLive'), fn(dash,'_clgFetch'), fn(dash,'_clgLoadOnce'), fn(dash,'refreshChangelog'),
     'function renderChangelog(){renders++;}',
     'Object.assign(globalThis,{refreshChangelog,_clgLive});'].join('\n'),c);
   return c;})();
@@ -1043,9 +1043,11 @@ ck('every late render is gated on the page still being the changelog',
    (()=>{const i=dash.indexOf('function _clgLive');
      const j=dash.indexOf('function toggleContentMenu',i);
      const b=dash.slice(i,j);
-     const calls=(b.match(/_clgFetch\(function\(\)\{/g)||[]).length;
-     const guards=(b.match(/if\(_clgLive\(\)\)/g)||[]).length;
-     return calls>=2&&guards===calls;})(),true);
+     // A bare renderChangelog() is a callback firing later; one with an
+     // argument is a direct call from something the user just did.
+     const late=(b.match(/renderChangelog\(\);/g)||[]).length;
+     const gated=(b.match(/if\(_clgLive\(\)\)renderChangelog\(\);/g)||[]).length;
+     return [late>=2,late===gated];})(),[true,true]);
 ck('the live check follows our own content, not a page variable',
    [RF._clgLive(),(()=>{RF.marker=false;const v=RF._clgLive();RF.marker=true;return v;})()],
    [true,false]);
@@ -1069,13 +1071,22 @@ RF.refreshChangelog(); await new Promise(r=>setTimeout(r,0));
 ck('an unauthorized response does not empty the list either',
    [RF._clgCache.entries.length,RF._clgCache.error],[3,'Unauthorized']);
 
-// The first load leaves _clgCache null for the whole request, so without the
-// same busy guard every re-entry to the page starts another identical POST.
-ck('the first load is serialised by the same busy flag',
+// The first load leaves _clgCache null for the whole request, so every re-entry
+// during it has to JOIN that request rather than start another — and since the
+// Trend charts load the same entries from other pages, the queue has to be
+// shared rather than a flag this page keeps to itself.
+ck('the first load joins the one shared in-flight load',
    (()=>{const i=dash.indexOf('Loading the change log');
      const j=dash.indexOf('var d=_clgCache',i);
      const b=dash.slice(i,j);
-     return /if\(!_clgBusy\)\{/.test(b)&&/_clgBusy=true;/.test(b)&&/_clgBusy=false;/.test(b);})(),true);
+     return [/_clgLoadOnce\(function\(\)\{if\(_clgLive\(\)\)renderChangelog\(\);\}\);/.test(b),
+             /_clgFetch\(/.test(b)];})(),[true,false]);
+// If anything else learns to call _clgFetch directly it is back outside the
+// queue, which is exactly how the duplicate POST happened the first time.
+ck('  and _clgFetch has a single caller, so nothing can bypass the queue',
+   (()=>{const defs=(dash.match(/function _clgFetch\(/g)||[]).length;
+     const all=(dash.match(/_clgFetch\(/g)||[]).length;
+     return [defs,all-defs];})(),[1,1]);
 
 ck('the menu row sits directly under BD Tracker',
    (()=>{const bd=dash.indexOf('data-sub="bd-dash"');
