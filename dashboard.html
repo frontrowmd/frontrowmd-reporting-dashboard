@@ -5191,6 +5191,22 @@ const CLINICIAN_CONTACT_PROPS_REF = [
   ['contact_state','State','string'],
   ['zip_code','ZIP Code','string'],
   ['reviews_submitted','# Reviews Submitted','number'],
+  // Clinician Admin App + Clinician Inquiry Form cards (2026-10-27).
+  ['clinician_inquiry_completed','Clinician Inquiry Completed','date'],
+  ['clinician_video_watched','Clinician Video Watched','date'],
+  ['clinician_practice_completed','Clinician Practice Details Complete','date'],
+  ['clinician_preferences_completed','Clinician Preferences Complete','date'],
+  ['clinician_credentials_completed','Clinician Credentials Complete','date \u00b7 = Sign Up'],
+  ['clinician_first_sample_shipped','Clinician First Sample Shipped','date'],
+  ['eligible_samples','Eligible For Samples','enum'],
+  ['clinician_discount_store_url','Clinician Discount Store URL','string'],
+  ['clinician_review_link','Clinician Review Link','string'],
+  ['clinician_health_brand_preferences','Clinician Health Brand Preferences','string (; separated)'],
+  ['clinician_product_category_preferences','Clinician Product Category Preferences','string (; separated)'],
+  ['clinician_app_review','Clinician Meeting Booked Date','datetime \u00b7 CONTACT field, not the deal one'],
+  ['gender','Gender','string'],
+  ['years_of_experience','Years of Experience','number'],
+  ['clinician_signup_link','Clinician Signup Link','string'],
 ];
 // Stage colours mirrored from the HubSpot Clinician pipeline settings so the
 // funnel reads the same as the pipeline board.
@@ -5206,17 +5222,25 @@ const CLINICIAN_CONTACT_PROPS_REF = [
 // The nine funnel stages, each its own hue — the pre-CRM four warm, the CRM five
 // cool, so the hand-off from paid traffic to pipeline reads at a glance. Checked
 // against each other, not just against the old stage palette.
+// Only the pre-pipeline rows live here now. Every pipeline row is a HubSpot stage
+// and takes its colour from CLINICIAN_STAGE_COLORS, so the funnel bar and the
+// table badge for a stage are the same colour.
 const CLN_FUNNEL9_COLORS={
   'Impressions':'#C9A227','Link Clicks':'#E07A54','Page Views':'#CC5B54','CTA Click':'#B5527F',
-  'Inquiries':'#7B75D4','Approved':'#4F7FBF','Fully Onboarded':'#1D8F6E',
-  'Sample Shipped':'#0F766E','Review Submitted':'#17514A'};
+  'Inquiries':'#7B75D4'};
+// Rebuilt 2026-10-27 with the pipeline: read off a screenshot of HubSpot's
+// pipeline editor, so close matches, not exact values (HubSpot does not expose
+// stage colours through the API). Key ORDER is the table's stage-filter order.
+// The five (OLD) stages are HubSpot's flat grey, and sit after the exits: they
+// are off the path, so they belong with the stages nothing advances out of.
 const CLINICIAN_STAGE_COLORS={
-  'Meeting Scheduled':'#EFE0A4','Meeting Happened':'#E0C244',
-  'Signed Up':'#CFE8E2','Clinician Inquiry':'#C7D9EC',
-  'Form Submitted':'#EFCDB2','Clinician Approved':'#5B6BD6','Fully Onboarded':'#6C3CD4',
-  '1st Sample Shipped':'#4A7C46',
-  '1st Review Submitted':'#5A8E8E','2nd Review Submitted':'#487A7A','3rd+ Review Submitted':'#366464',
-  'No Show':'#1C1C1C','Not a Fit':'#B03A2C'};
+  'Clinician Inquiry Complete':'#DCD6F7','Video Watched':'#FBE7BE',
+  'Practice Details Complete':'#F8D2C6','Preferences Complete':'#C6F1EC',
+  'Credentials Submitted':'#CDEBD9','Call Scheduled':'#CCE2F4',
+  'Call Happened':'#0A6CDB','Sample Shipped':'#0B8A3B','Review Submitted':'#0E7A7B',
+  'No Show':'#1C1C1C','Not a Fit':'#A8102A',
+  '(OLD) Meeting Scheduled':'#C9CED4','(OLD) Meeting Happened':'#C9CED4',
+  '(OLD) Signed Up':'#C9CED4','(OLD) Form Submitted':'#C9CED4','(OLD) Clinician Approved':'#C9CED4'};
 // HubSpot shows these as small dots in a table; the funnel uses them as large
 // bar fills, where a pastel on a white card is effectively invisible. _clnInk
 // returns a version dark enough to read as a fill, keeping the HUE so identity
@@ -5753,7 +5777,11 @@ const CLN_GROUPS=[
   // There is now a Workflow Type FILTER that reaches formVsDemo's neighbours, so
   // hiding the column does not hide the ability to slice by it.
   {k:'dates',n:'Dates',bg:'rgba(124,58,237,.07)',cols:['callScheduled','formVsDemo','createdate','bookedDate','meetingDate'],collapsed:['callScheduled','createdate']},
-  {k:'intake',n:'Intake Form',bg:'rgba(114,164,191,.10)',cols:['specialty','clinicianType','npi','message','referral'],collapsed:['specialty']},
+  {k:'intake',n:'Intake Form',bg:'rgba(114,164,191,.10)',cols:['specialty','clinicianType','gender','yearsExperience','npi','message','referral','appMeetingBooked','signupLink'],collapsed:['specialty']},
+  // The Clinician Admin App's own record of the onboarding steps, in the order a
+  // clinician completes them. Credentials Complete stays visible when the group
+  // is closed: it IS Sign Up (2026-10-27).
+  {k:'app',n:'Admin App',bg:'rgba(220,214,247,.32)',cols:['inquiryCompleted','videoWatched','practiceCompleted','preferencesCompleted','credentialsCompleted','firstSampleShipped','eligibleSamples','discountStoreUrl','reviewLink','healthBrandPrefs','productCategoryPrefs'],collapsed:['credentialsCompleted']},
   {k:'creds',n:'Credentials',bg:'rgba(230,197,92,.14)',cols:['photoStatus','credStatus','address','proofLink','samplePrefs'],collapsed:['photoStatus','credStatus']},
   {k:'samples',n:'Samples Shipped',bg:'rgba(109,183,154,.13)',cols:['samplesArrival','samplesTracking','samplesCount','whichSamples'],collapsed:['samplesArrival']},
   // Blue-green = #5E9CB4 at .13, the same hue CLN_WORKFLOW_C uses for Virtual.
@@ -5772,30 +5800,43 @@ const CLN_COLS={
   photoStatus:'Photo Verification',credStatus:'Credentials Status',address:'Street Address',proofLink:'Proof Link',samplePrefs:'Sample Pref Notes',
   samplesArrival:'Samples Arrival',samplesTracking:'Tracking #',samplesCount:'# Shipped',whichSamples:'Which Samples',
   reviewsSubmitted:'Reviews Submitted',
+  gender:'Gender',yearsExperience:'Years Exp.',appMeetingBooked:'Meeting Booked (Contact)',signupLink:'Signup Link',
+  inquiryCompleted:'Inquiry Completed',videoWatched:'Video Watched',practiceCompleted:'Practice Details',
+  preferencesCompleted:'Preferences',credentialsCompleted:'Credentials Complete',firstSampleShipped:'First Sample Shipped',
+  eligibleSamples:'Eligible For Samples',discountStoreUrl:'Discount Store',reviewLink:'Review Link',
+  healthBrandPrefs:'Brand Preferences',productCategoryPrefs:'Category Preferences',
   utmSource:'UTM Source',utmMedium:'UTM Medium',utmCampaign:'UTM Campaign',
 };
 // What has to happen next for a deal sitting in each stage. Shown in the Action
 // Needed card so the counts come with an owner and a next step.
+// The four Admin App steps carry no owner prefix: the clinician completes them
+// in the app, so naming someone on our side would misstate who acts.
+// DRAFTED 2026-10-27 for the rebuilt pipeline -- confirm the owners and wording
+// with the team; the pre-rebuild lines were written by the people who own them.
 const CLN_ACTIONS={
-  'Meeting Scheduled':'<b>Rep:</b> hold the scheduled meeting with the clinician',
-  'Meeting Happened':'<b>Rep:</b> move the deal to Signed Up if the clinician agreed to join',
-  // No owner prefix: unlike every other row this step is automated, so naming a
-  // person would misstate who acts.
-  'Clinician Inquiry':'Auto-enrolled into nurture sequence to complete form and schedule kickoff call',
-  'Signed Up':'<b>Rep:</b> enroll the clinician in the follow-up sequence to get the credentials form submitted',
-  'Form Submitted':'<b>Dr. Jones:</b> review the submitted credentials \u00b7 <b>Rep:</b> complete photo verification',
-  'Clinician Approved':'<b>Rep:</b> submit the Admin form, then move the deal to Fully Onboarded \u00b7 <b>Virtual:</b> clinician still needs to schedule kickoff call',
-  'Fully Onboarded':'<b>Ops:</b> ready to prepare the sample shipment',
-  '1st Sample Shipped':'<b>Ops:</b> submit the Accept Samples flow',
-  '1st Review Submitted':'<b>Ops:</b> follow up to collect the 2nd review',
-  '2nd Review Submitted':'<b>Ops:</b> follow up to collect the 3rd review',
-  '3rd+ Review Submitted':'<b>Ops:</b> follow up to collect the next review',
+  'Clinician Inquiry Complete':'Auto-enrolled into the nurture sequence \u00b7 clinician to watch the onboarding video',
+  'Video Watched':'Clinician to complete practice details in the Admin App',
+  'Practice Details Complete':'Clinician to set brand and product preferences in the Admin App',
+  'Preferences Complete':'Clinician to submit credentials in the Admin App',
+  'Credentials Submitted':'<b>Dr. Jones:</b> review the submitted credentials \u00b7 clinician to book the kickoff call',
+  'Call Scheduled':'<b>Rep:</b> hold the scheduled kickoff call',
+  'Call Happened':'<b>Ops:</b> prepare the sample shipment',
+  'Sample Shipped':'<b>Ops:</b> follow up to collect the review',
+  'Review Submitted':'<b>Ops:</b> follow up to collect the next review',
   'No Show':'<b>Rep:</b> call to reschedule and enroll the clinician in the no-show sequence',
   'Not a Fit':'Clinician has been disqualified \u2014 no further action',
+  '(OLD) Meeting Scheduled':'Legacy stage \u2014 move the deal into the new pipeline',
+  '(OLD) Meeting Happened':'Legacy stage \u2014 move the deal into the new pipeline',
+  '(OLD) Signed Up':'Legacy stage \u2014 move the deal into the new pipeline',
+  '(OLD) Form Submitted':'Legacy stage \u2014 move the deal into the new pipeline',
+  '(OLD) Clinician Approved':'Legacy stage \u2014 move the deal into the new pipeline',
 };
 // Terminal stages: nothing advances out of them, so they render below a divider.
-const CLN_EXIT_STAGES=['No Show','Not a Fit'];
-const CLN_STATUS_C={'Approved':'#2E9E6B','Pending':'#E0A93A','Not Approved':'#CC5B54'};
+const CLN_EXIT_STAGES=['No Show','Not a Fit'];   // the (OLD) stages follow these, below the same divider
+const CLN_STATUS_C={'Approved':'#2E9E6B','Pending':'#E0A93A','Not Approved':'#CC5B54','Submitted':'#5E9CB4'};
+// Admin App milestone columns. DATE properties, shipped by the worker as plain
+// 'YYYY-MM-DD'; dfmt reads them in UTC, which keeps the calendar day intact.
+const CLN_APP_DATE_COLS=['inquiryCompleted','videoWatched','practiceCompleted','preferencesCompleted','credentialsCompleted','firstSampleShipped'];
 // Call Scheduled. Colour AND glyph together — a tick that is only green would be
 // invisible to a colourblind reader, and each state carries a title attribute so
 // the meaning survives without either.
@@ -5808,7 +5849,9 @@ function _clnCallCell(v){
 }
 function _clnT(){ // Default view is the active middle of the pipeline — the stages with work in
 // them — rather than all 370 deals including the Meeting Scheduled backlog.
-S.clinician.tbl=S.clinician.tbl||{f:{},stages:['Meeting Happened','Clinician Inquiry','Signed Up','Form Submitted','Clinician Approved'],sort:{c:'createdate',d:'asc'},q:'',open:{},sampleMonth:false}; return S.clinician.tbl; }
+// Rebuilt pipeline: everything between the Inquiry Complete backlog and the
+// samples tail -- the stages where a clinician is mid-onboarding.
+S.clinician.tbl=S.clinician.tbl||{f:{},stages:['Video Watched','Practice Details Complete','Preferences Complete','Credentials Submitted','Call Scheduled','Call Happened'],sort:{c:'createdate',d:'asc'},q:'',open:{},sampleMonth:false}; return S.clinician.tbl; }
 window.clnTblSort=function(c){const t=_clnT();if(t.sort.c===c)t.sort.d=t.sort.d==='desc'?'asc':'desc';else{t.sort.c=c;t.sort.d='desc';}renderClinician();};
 window.clnTblFilter=function(k,v){const t=_clnT();if(v==='all')delete t.f[k];else t.f[k]=v;renderClinician();};
 // Deal Stage is multi-select: 'all' clears, any value toggles its membership.
@@ -5890,7 +5933,7 @@ function _clnTable(rows,stageColors){
     out=out.filter(r=>{const v=r.samplesArrival;if(!v)return false;const ms=/^\d+$/.test(String(v))?parseInt(v):new Date(v).getTime();if(isNaN(ms))return false;const d=new Date(ms);return (d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0'))===ym;});}
   // sort
   const sc=t.sort.c,sd=t.sort.d==='desc'?-1:1;
-  const num=k=>['samplesCount','reviewsSubmitted'].includes(k), dt=k=>['createdate','bookedDate','meetingDate','samplesArrival'].includes(k);
+  const num=k=>['samplesCount','reviewsSubmitted','yearsExperience'].includes(k), dt=k=>['createdate','bookedDate','meetingDate','samplesArrival','appMeetingBooked'].includes(k)||CLN_APP_DATE_COLS.indexOf(k)>=0;
   // Ordinal, not alphabetical: sorting these as text gives After / Before /
   // Same Day, which reads as noise. Blanks sort last either way.
   const CLN_ORD={formVsDemo:{'Before':1,'Same Day':2,'After':3},callScheduled:{'yes':1,'no':2,'na':3}};
@@ -6029,8 +6072,10 @@ function _clnTable(rows,stageColors){
       const shown=(t.open[g.k]?g.cols:g.collapsed);
       for(const c of shown){
         let v=r[c],cell;
-        if(['createdate','bookedDate','meetingDate','samplesArrival'].includes(c))cell=esc(dfmt(v))||'\u2014';
-        else if(c==='photoStatus'||c==='credStatus')cell=badge(v,CLN_STATUS_C[v]||'#9AA7B4')||'\u2014';
+        if(['createdate','bookedDate','meetingDate','samplesArrival','appMeetingBooked'].includes(c)||CLN_APP_DATE_COLS.indexOf(c)>=0)cell=esc(dfmt(v))||'\u2014';
+        else if(c==='photoStatus'||c==='credStatus'||c==='eligibleSamples')cell=badge(v,CLN_STATUS_C[v]||'#9AA7B4')||'\u2014';
+        else if(c==='discountStoreUrl'||c==='reviewLink'||c==='signupLink')cell=/^https?:\/\//i.test(String(v||''))?'<a href="'+esc(v)+'" target="_blank" rel="noopener" style="color:var(--teal);text-decoration:none;border-bottom:1px dotted var(--teal)">Link</a>':(v?esc(trunc(v,24)):'\u2014');
+        else if(c==='healthBrandPrefs'||c==='productCategoryPrefs')cell=v?'<span'+hov(String(v).replace(/;\s*/g,', '))+'>'+esc(trunc(String(v).replace(/;\s*/g,', '),26))+'</span>':'\u2014';
         else if(c==='proofLink')cell=v?'<a href="'+esc(v)+'" target="_blank" style="color:var(--teal);text-decoration:none;border-bottom:1px dotted var(--teal)">Link</a>':'\u2014';
         else if(c==='message'||c==='whichSamples'||c==='samplePrefs'||c==='address')cell=v?'<span'+hov(v)+'>'+esc(trunc(v,26))+'</span>':'\u2014';
         else if(c==='callScheduled')cell=_clnCallCell(v);
@@ -6091,7 +6136,11 @@ function renderClinician(){
   // 'both' reads the combined top-level segments; a single flow reads byFlow,
   // whose funnel array carries only that flow's stages. Falls back to combined
   // if an older worker hasn't shipped byFlow yet.
-  const flow='virtual';   // Demo / Field pills removed \u2014 this funnel is Virtual only
+  // Every workflow, since the 2026-10-27 pipeline rebuild: there is one path now,
+  // and the deals still parked in (OLD) stages are mostly demo-flow ones, so a
+  // Virtual-only funnel would have dropped the very deals the side bucket exists
+  // to count.
+  const flow='both';
   // fd is the FUNNEL's payload — the override from its own date filter when one
   // is applied, otherwise the history-scoped funnel /api/clinician returned.
   // Everything else on the page keeps reading `d` (the page window).
@@ -6186,6 +6235,32 @@ function renderClinician(){
       +'</div></div>';
   }
 
+  // ── Side bucket: deals still in a pre-rebuild (OLD) stage ──
+  // Off the path, so no bar, no reached count and no conversion: just where they
+  // are parked, so they are neither lost from the count nor passed off as
+  // progress. Every OLD stage is listed, empty ones dimmed, the same way the
+  // table's stage filter lists empty stages rather than hiding them.
+  {
+    const _old=Array.isArray(segData.oldStages)?segData.oldStages:[];
+    const _oldN=segData.oldTotal!=null?segData.oldTotal:_old.reduce((a,o)=>a+(o.count||0),0);
+    if(_old.length){
+      fh+='<div style="margin-top:16px;padding:11px 14px;border:1px dashed rgba(23,44,69,.22);border-radius:9px;background:rgba(201,206,212,.12)">'
+        +'<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap">'
+        +'<span style="font-family:var(--font-h);font-size:12px;font-weight:700;color:var(--navy)">Still in (OLD) stages</span>'
+        +'<span><span style="font-family:var(--font-h);font-size:18px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+fN(_oldN)+'</span>'
+        +'<span style="font-size:11px;color:var(--grey);margin-left:5px">deal'+(_oldN===1?'':'s')+' here now \u00b7 not counted in the funnel above</span></span></div>'
+        +'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">';
+      for(const o of _old){
+        const z=!(o.count>0);
+        fh+='<span style="display:inline-flex;align-items:baseline;gap:6px;padding:3px 10px;border-radius:50px;'
+          +'background:#fff;border:1px solid var(--border);opacity:'+(z?'.5':'1')+'">'
+          +'<span style="font-size:10.5px;color:var(--navy)">'+String(o.label||'').replace(/^\(OLD\)\s*/,'')+'</span>'
+          +'<strong style="font-family:var(--font-h);font-size:12px;color:var(--navy);font-variant-numeric:tabular-nums">'+fN(o.count||0)+'</strong></span>';
+      }
+      fh+='</div></div>';
+    }
+  }
+
   // Stat card (segment-aware)
   const st=segData.stats||{};
   // last=true drops the divider so the card doesn't end on a rule.
@@ -6205,9 +6280,9 @@ function renderClinician(){
   const flowBar='<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:2px 0 14px">'
     +'<span style="display:inline-flex;align-items:center;gap:7px;padding:5px 13px;border-radius:50px;'
     +'background:var(--navy);color:#fff;font-family:var(--font-h);font-size:11px;font-weight:700;letter-spacing:.02em">'
-    +'<span style="width:7px;height:7px;border-radius:50%;background:#7EE0B8"></span>Virtual Workflow'
-    +'<span style="opacity:.7;font-weight:600">'+fN((flowSrc&&flowSrc.all&&flowSrc.all.total)||0)+'</span></span>'
-    +'<span style="font-size:10.5px;color:var(--grey)">every stage below is Virtual-workflow only</span></div>';
+    +'<span style="width:7px;height:7px;border-radius:50%;background:#7EE0B8"></span>All Workflows'
+    +'<span style="opacity:.7;font-weight:600">'+fN((segData&&segData.total)||0)+'</span></span>'
+    +'<span style="font-size:10.5px;color:var(--grey)">one pipeline path for every workflow \u00b7 Inquiries counts contacts, every stage after it counts deals</span></div>';
   const segBar=flowBar;   // Clinician Type pill row removed
   // ── Stats panel: PATH-SCOPED CARDS ──────────────────────────────────────────
   // Rebuilt from a flat 13-row list. The organising axis is SCOPE, because scope
@@ -6255,10 +6330,13 @@ function renderClinician(){
   // inquiries get a call on the books, the other how many of those calls are
   // actually held — so there is no shared polarity heading. Each states its own
   // direction in words instead, which is also what lets them sit together.
-  if(flow==='virtual'){
+  {
   const _comp=d.composition||{};
   const _inq=_comp.contacts||0;
-  const _booked=(_comp.submission&&_comp.submission.contacts)||0;
+  // Inquiries with a kickoff call on the books. This was the Sign Up population
+  // until 2026-10-27; Sign Up is now Credentials Complete, so the card reads its
+  // own count rather than following that one. null on an older payload.
+  const _booked=(_comp.bookedCall!=null)?_comp.bookedCall:null;
   sh+=cardOpen('Kick Off Calls',fN(_inq)+' inquiries in the window',true);
   // 1 - (calls given / calls BOOKED in the window). Everything that is not a
   // Demo Given counts against it — no-shows, cancellations, and calls still on
@@ -6280,10 +6358,13 @@ function renderClinician(){
   // same pair Key Metrics divides for Sign Up Rate, so the three agree by
   // construction rather than by coincidence. Deliberately NOT a funnel stage
   // count, which is deal-based and would disagree.
-  sh+=stat('Call Scheduled',pctS(_inq>0?(_booked/_inq)*100:null),
-    fN(_booked)+' \u00f7 '+fN(_inq),
+  // Named "Call Booked", not "Call Scheduled": the funnel beside it now has a
+  // Call Scheduled STAGE, a deal count on a different basis, and two numbers
+  // sharing one name a few inches apart would be read as a contradiction.
+  sh+=stat('Call Booked',pctS((_booked!=null&&_inq>0)?(_booked/_inq)*100:null),
+    (_booked!=null?fN(_booked):'\u2014')+' \u00f7 '+fN(_inq),
     'Inquiries with a kick off call booked \u00b7 higher is better',
-    'Share of clinician contacts created in this window that have a kick off call on the books. Same contact-based population the Acquisition section uses and the same figure as the Key Metrics Sign Up Rate.',true);
+    'Share of clinician contacts created in this window whose deal has a Clinician Meeting Booked Date. Contact-based, like the Acquisition section. This was the definition of Sign Up until Oct 27, 2026; Sign Up is now Clinician Credentials Complete.',true);
   sh+=cardClose;
   }
 
@@ -6351,9 +6432,10 @@ function renderClinician(){
     const UD=[['utmSource','UTM Source'],['utmMedium','UTM Medium'],['utmCampaign','UTM Campaign']];
     const ud=S.clinician.utmDim||'utmSource';
     const udLabel=(UD.find(x=>x[0]===ud)||UD[0])[1];
-    // Inquiry = everyone who arrived. Sign Up = only those with a kickoff
-    // call booked. The subset comes from the worker precomputed (comp.submission)
-    // rather than being filtered here, because the client never sees the
+    // Inquiry = everyone who arrived in the window. Sign Up = everyone who
+    // completed credentials in it (2026-10-27) -- NOT a subset of the window's
+    // inquiries, since a sign up can come from an earlier arrival. Precomputed by
+    // the worker (comp.submission) because the client never sees the
     // per-clinician rows these breakdowns are built from.
     const acqMode=(S.clinician.acqMode==='submission')?'submission':'inquiry';
     const sub=comp.submission||null;
@@ -6374,14 +6456,18 @@ function renderClinician(){
     const acqToggle='<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:0 0 14px">'
             +'<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap">'
       +acqPill('inquiry','Inquiry','Every clinician who came in during the window')
-      +acqPill('submission','Sign Up','Only clinicians who have a kickoff call booked')
+      +acqPill('submission','Sign Up','Clinicians who completed credentials in the window')
       +'</div>'
-      +(sub?'<span style="font-size:10.5px;color:var(--grey)">'+fN(sub.contacts||0)+' of '+fN(comp.contacts)+' have a call booked'
-        +(acqRate!=null?' \u00b7 '+acqRate.toFixed(1)+'%':'')+'</span>':'')
+      // Not "X of Y": a window's sign ups are not drawn from its inquiries.
+      +(sub?'<span style="font-size:10.5px;color:var(--grey)">'+fN(sub.contacts||0)+' sign up'+((sub.contacts||0)===1?'':'s')
+        +' \u00b7 '+fN(comp.contacts)+' inquiries'
+        +(acqRate!=null?' \u00b7 Sign Up Rate '+acqRate.toFixed(1)+'%':'')+'</span>':'')
       +'</div>';
     const noSub=(acqMode==='submission'&&(!sub||!(sub.contacts>0)))
-      ?'<div style="padding:20px;text-align:center;color:var(--grey);font-size:12px">No clinicians in this window have a kickoff call booked yet.</div>':'';
-    h+=card('Acquisition','Where clinicians came from \u00b7 contacts created in the selected window, deduped per person \u00b7 UTMs read from the contact, falling back to the deal',
+      ?'<div style="padding:20px;text-align:center;color:var(--grey);font-size:12px">No clinician completed credentials in this window.</div>':'';
+    h+=card('Acquisition','Where clinicians came from \u00b7 '
+        +(acqMode==='submission'?'contacts who completed credentials in the selected window':'contacts created in the selected window')
+        +', deduped per person \u00b7 UTMs read from the contact, falling back to the deal',
       // The chart leads the section: it answers "is the mix moving, and what is
       // it costing", and the two pies below break the current window down. Same
       // population for all three — the toggle above scopes the whole card.
@@ -6763,7 +6849,7 @@ function _renderAdKpis(az, ch){
   // Onboarded and labels the basis. Read the label rather than hardcoding a
   // second definition here.
   var wonBasis=(!isAll&&c.wonBasis)
-    ? esc(chLabel)+' spend ÷ clinicians who reached Fully Onboarded'
+    ? esc(chLabel)+' spend ÷ clinicians who reached Call Scheduled (formerly Fully Onboarded)'
     : (isAll?'Ad spend ÷ closed-won deals attributed to ads'
             :esc(chLabel)+' spend ÷ closed-won deals attributed to '+esc(chLabel));
   h+=kpi('CAC',
@@ -9009,7 +9095,7 @@ function renderCPDTable(d){
     '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px" title="Monthly ad budget for this channel">Budget</th>'+
     '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px">Conversions</th>'+
     '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px">CPD</th>'+
-    '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px" title="Closed-won deals attributed via UTMs \u00b7 Clinician counts deals that reached Fully Onboarded, which is what winning means in that pipeline">Won</th>'+
+    '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px" title="Closed-won deals attributed via UTMs \u00b7 Clinician counts deals that reached Call Scheduled (the stage formerly named Fully Onboarded)">Won</th>'+
     '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px" title="Ad spend \u00f7 Won for this channel">CAC</th>'+
     '<th style="text-align:right;font-weight:600;color:var(--grey);padding:8px 4px;font-size:11px" title="Churn-adjusted ARR from UTM-attributed closed-won deals (MRR \u00d7 effective months)">ARR</th>'+
     '</tr></thead><tbody>';
@@ -11368,19 +11454,20 @@ function _clnKeyMetricsHTML(d,sfx,win){
   const _div=(a,b)=>(a!=null&&b)?a/b:null;
   const _a=(d.ads&&!d.ads.error)?d.ads:null;
   const _sp=_a?_a.spend:null;
-  // "Sign Up" = a kickoff call is booked. It is NOT Meta's reported
-  // conversions (ads.cacDenom), which is a different number the worker's own
-  // comment says will not agree, and it is NOT the funnel's "Fully Onboarded"
-  // either — these cards were called "Full App" until 2026-10-15, which
-  // invited exactly that reading. The same basis drives the rate below, so
-  // every card here means one thing by it.
+  // "Sign Up" = Clinician Credentials Complete is set (2026-10-27; it was "a
+  // kickoff call is booked" before that, and "Full App" before 2026-10-15). It is
+  // NOT Meta's reported conversions (ads.cacDenom), and NOT the funnel's
+  // Credentials Submitted stage either -- that one counts deals by stage, this
+  // one counts people by the Admin App's own completion date.
   // Both denominators come from the ACQUISITION section's populations, so the
   // two sections can never report different numbers for the same thing:
-  //   inquiries       = unique clinician CONTACTS created in the window (deduped)
-  //   sign up         = those of them with a kickoff call booked
-  // These are CONTACT-based and deliberately NOT the funnel's deal-based
-  // stages, so Cost per Sign Up will not equal the funnel's Fully Onboarded —
-  // a kickoff call booked is an earlier milestone than Fully Onboarded.
+  //   inquiries = unique clinician CONTACTS created in the window (deduped)
+  //   sign ups  = unique clinician contacts whose credentials were COMPLETED
+  //               in the window -- dated by completion, not by arrival
+  // So Sign Up Rate is sign ups over inquiries in the same window, NOT one
+  // cohort's conversion: a sign up can come from an earlier window's inquiry.
+  // Nothing has a Credentials Complete date before 2026-10-20, when the Admin
+  // App started writing it, so any window before then reads zero sign ups.
   const _acq=d.composition||{};
   const _acqSub=_acq.submission||null;
   const _fo=_acqSub?(_acqSub.contacts||0):0;
@@ -11438,7 +11525,7 @@ function _clnKeyMetricsHTML(d,sfx,win){
     _foot(_div(_sp,_fo),_div(_kp?_kp.spend:null,_kp?_kp.fullSub:0),
           _div(_km?_km.spend:null,_km?_km.fullSub:0),'$',true),
     null,
-    'Clinician ad spend ÷ clinicians with a kickoff call booked — the Acquisition section’s Sign Up count');
+    'Clinician ad spend ÷ clinicians who completed credentials in the window — the Acquisition section’s Sign Up count');
   kmh+=_kmTile('Cost per Inquiry',_f$(_div(_sp,_add)),
     _f$(_sp)+' ÷ '+fN(_add)+' inquiries',
     _foot(_div(_sp,_add),_div(_kp?_kp.spend:null,_kp?_kp.inquiries:0),
@@ -11452,7 +11539,7 @@ function _clnKeyMetricsHTML(d,sfx,win){
   kmh+=_kmTile('Sign Up Rate',_rate!=null?_rate.toFixed(1)+'%':'—',
     fN(_fo)+' ÷ '+fN(_add)+' inquiries',
     _foot(_rate,_pRate(_kp),_pRate(_km),'%',false),null,
-    'Share of inquiries with a kickoff call booked — matches the Acquisition section’s rate');
+    'Sign ups ÷ inquiries in the same window — not one cohort: a sign up can come from an earlier window’s inquiry');
   kmh+='</div></div>';
   return kmh;
 }
@@ -14827,14 +14914,15 @@ function renderResDataKey(el){
 
   h+=mkSec('Clinician Dashboard',[
     ['Clinician Cohort','HubSpot','deals: pipeline = 2486191840 AND createdate in window','Cohorts on deal CREATE date. A meeting-date basis silently drops clinicians with no meeting booked yet'],
-    ['Pipeline Stages','HubSpot','dealstage \u2014 13 stages','TWO paths share one pipeline, so this is not a single line. Demo: Meeting Scheduled \u2192 Meeting Happened \u2192 Signed Up \u2192 Form Submitted \u2192 Clinician Approved \u2192 Fully Onboarded \u2192 1st Sample Shipped \u2192 1st/2nd/3rd+ Review Submitted. Virtual: Clinician Inquiry \u2192 Clinician Approved \u2192 Fully Onboarded \u2192 1st Sample Shipped \u2192 1st/2nd/3rd+ Review Submitted (no Form Submitted step). Exits: No Show (demo only), Not a Fit'],
+    ['Pipeline Stages','HubSpot','dealstage \u2014 9 on the path, 2 exits, 5 (OLD)','ONE path since the Oct 20 2026 rebuild: Clinician Inquiry Complete \u2192 Video Watched \u2192 Practice Details Complete \u2192 Preferences Complete \u2192 Credentials Submitted \u2192 Call Scheduled \u2192 Call Happened \u2192 Sample Shipped \u2192 Review Submitted. Exits: No Show, Not a Fit. The five (OLD) stages are shown beside the funnel as a count, never as a step'],
+    ['Sign Up','HubSpot','contact: clinician_credentials_completed (date)','Since Oct 27 2026. Dated by when credentials were completed, not when the contact arrived. Written by the Admin App from Oct 20 2026, so earlier windows read zero'],
     ['Meeting Date','HubSpot','clinician_meeting_date (date)','NOT clinician_meeting_booked_date \u2014 that one is when the booking happened, not the meeting'],
     ['Attendance','HubSpot','clinician_attendance_status','Values use em dashes: \u201cDemo Given \u2014 Originally Scheduled\u201d, \u201cDemo Given \u2014 Rescheduled\u201d, plus Scheduled / Rescheduled / No Show / Cancelled Before Demo'],
     ['Conversion %','Calculated','ever-reached count \u00f7 previous stage ever-reached','Ever-reached, not current-stage, so the funnel does not shrink as deals advance'],
     ['No Show Rate','Calculated','No Show \u00f7 (Meeting Happened + No Show)','Denominator is meetings supposed to occur'],
     ['Disqualification Rate','Calculated','Not a Fit \u00f7 cohort','Excludes deals with attendance = Cancelled Before Demo'],
     ['Daily Activity','HubSpot','contacts by createdate, bucketed in PT','Contacts, not deals. Weekday average shown as a dashed line'],
-    ['Acquisition','HubSpot','clinician_type + UTMs on the contact','Deduped per person, contacts created in the window \u00b7 follows the Inquiry / Sign Up toggle'],
+    ['Acquisition','HubSpot','clinician_type + UTMs on the contact','Deduped per person \u00b7 Inquiry: contacts created in the window \u00b7 Sign Up: contacts whose credentials were completed in the window'],
   ]);
 
   h+=mkSec('Budget & Pacing',[

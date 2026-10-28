@@ -28,14 +28,15 @@ ck('Samples & Reviews is gone',/cardOpen\('Samples & Reviews'/.test(cli),false);
 // --- 5 + 6. path cards gated on the workflow ----------------------------
 // Renamed: the card is about the kick off call, not about a code path, and
 // "Virtual Path" meant nothing to a reader now that the workflow toggle is gone.
-ck('the card is gated on the virtual workflow',
-   /if\(flow==='virtual'\)\{[\s\S]{0,400}?sh\+=cardOpen\('Kick Off Calls'/.test(RC),true);
+// Ungated since the 2026-10-27 rebuild: the funnel shows every workflow on one
+// path, so a Virtual gate would have hidden the card for good.
+ck('the Kick Off Calls card renders for the all-workflow funnel',
+   /sh\+=cardOpen\('Kick Off Calls'/.test(RC)&&!/if\(flow==='virtual'\)\{/.test(RC),true);
 ck('and the old path name is gone',/cardOpen\('Virtual Path'/.test(cli),false);
 ck('Demo Path renders only on the demo workflow',
    /if\(flow==='demo'\)\{\s*\n\s*sh\+=cardOpen\('Demo Path'/.test(RC),true);
-ck('each gate closes its own card',
-   /if\(flow==='virtual'\)\{[\s\S]{0,2400}?sh\+=cardClose;\s*\n\s*\}/.test(RC)
-   &&/if\(flow==='demo'\)\{[\s\S]{0,2600}?sh\+=cardClose;\s*\n\s*\}/.test(RC),true);
+ck('the demo gate closes its own card',
+   /if\(flow==='demo'\)\{[\s\S]{0,2600}?sh\+=cardClose;\s*\n\s*\}/.test(RC),true);
 // The old copy said "blank on the Demo pill" — now it simply is not rendered.
 ck('the stale blank-on-pill wording is gone',/blank on the (Demo|Virtual) pill/.test(cli),false);
 
@@ -46,14 +47,21 @@ ck('and the old label is gone',/Virtual No Show Rate/.test(cli),false);
 // Replaced the backlog stat. Stuck-in-Clinician-Approved was a current-stage
 // snapshot of a queue; this is the entry rate the section actually turns on.
 ck('Stuck in Clinician Approved is gone',/stat\('Stuck in Clinician Approved'/.test(cli),false);
-ck('Call Scheduled replaces it',/stat\('Call Scheduled'/.test(RC),true);
+// Renamed from "Call Scheduled": the funnel now has a Call Scheduled STAGE, a
+// deal count on a different basis, and one name for two numbers would read as a
+// contradiction.
+ck('Call Booked replaces it',/stat\('Call Booked'/.test(RC)&&!/stat\('Call Scheduled'/.test(RC),true);
 // CONTACT-based, straight off the Acquisition populations — the same pair Key
 // Metrics divides for Full App Rate, so the three agree by construction. A
 // funnel-stage count here would be deal-based and would disagree.
+// Its OWN count now. It used to read submission.contacts, which was Sign Up;
+// Sign Up moved to Credentials Complete and this card stayed on the booking.
 ck('it divides the Acquisition populations, not a funnel stage',
    /const _inq=_comp\.contacts\|\|0;/.test(RC)
-   &&/const _booked=\(_comp\.submission&&_comp\.submission\.contacts\)\|\|0;/.test(RC),true);
-ck('and guards a zero denominator',/_inq>0\?\(_booked\/_inq\)\*100:null/.test(RC),true);
+   &&/const _booked=\(_comp\.bookedCall!=null\)\?_comp\.bookedCall:null;/.test(RC),true);
+ck('  and no longer reads the Sign Up population',
+   /_booked=\(_comp\.submission/.test(RC),false);
+ck('and guards a zero denominator',/\(_booked!=null&&_inq>0\)\?\(_booked\/_inq\)\*100:null/.test(RC),true);
 // The two stats pull in opposite directions, so the shared polarity heading
 // went and each states its own direction in words.
 ck('the Backlog heading is gone',/Backlog/.test(cli),false);
@@ -109,10 +117,14 @@ ck('both Demo Given values are the held set',
 
 // --- 8. the nine stages -------------------------------------------------
 const defs=(/const CLN_FUNNEL9 = \[([\s\S]*?)\n\];/.exec(src)||[])[1]||'';
-ck('seven stages are defined (Approved and Page Views removed)',(defs.match(/\{ key:/g)||[]).length,7);
+// Rebuilt 2026-10-27: three ad stages, contact-based Inquiries, then the
+// pipeline path from Video Watched. Clinician Inquiry Complete is not drawn --
+// Inquiries stands in for it (Alex: keep Inquiries contact-based).
+ck('twelve stages are defined',(defs.match(/\{ key:/g)||[]).length,12);
 ck('in the order asked for',
    [...defs.matchAll(/label: '([^']+)'/g)].map(m=>m[1]),
-   ['Impressions','Link Clicks','CTA Click','Inquiries','Fully Onboarded','Sample Shipped','Review Submitted']);
+   ['Impressions','Link Clicks','CTA Click','Inquiries','Video Watched','Practice Details Complete',
+    'Preferences Complete','Credentials Submitted','Call Scheduled','Call Happened','Sample Shipped','Review Submitted']);
 ck('Page Views is gone from the funnel',/key: 'pageViews'/.test(src),false);
 // The GA4 page fetch that fed it still runs. Left in deliberately — nothing
 // else reads topFunnel.pageViews, so if it stays unused that call can go.
@@ -121,22 +133,26 @@ ck('but the fetch that fed it is still there, and flagged',
 ck('Approved is gone',/Clinician Approved', id: CLS\.CLINICIAN_APPROVED/.test(src),false);
 // Only Sample Shipped keys off a single dealstage now: the four pre-CRM stages
 // have no id, Inquiries/Fully Onboarded are acq-sourced, Review uses ids[].
-ck('only Sample Shipped keys off a single dealstage',(defs.match(/\bid: CLS\./g)||[]).length,1);
+ck('every pipeline row keys off one dealstage',(defs.match(/\bid: CLS\./g)||[]).length,8);
+ck('  and no row combines several any more',/\bids: \[/.test(defs),false);
 // Key Metrics is the authority for these two; both now read d.composition, so
 // the funnel and Key Metrics cannot report different numbers for the same thing.
-ck('Inquiries and Fully Onboarded are sourced from Acquisition',
+ck('Inquiries is sourced from Acquisition, and nothing else is',
    /\{ key: 'inquiry',     label: 'Inquiries',        sub: 'clinician contacts created', acq: 'contacts' \}/.test(src)
-   &&/\{ key: 'onboarded',   label: 'Fully Onboarded',  sub: 'kickoff call booked',    acq: 'submission' \}/.test(src),true);
+   &&(defs.match(/\bacq: /g)||[]).length===1,true);
 ck('and the client resolves them off the same object Key Metrics reads',
    /\}else if\(dfn\.acq\)\{[\s\S]{0,320}?const _cm=d\.composition\|\|\{\};/.test(RC),true);
 ck('Inquiries uses composition.contacts, like Cost per Inquiry',
    /\(_cm\.contacts\|\|0\)/.test(RC)&&/const _add=_acq\.contacts\|\|0;/.test(cli),true);
-ck('Fully Onboarded uses composition.submission, like Cost per Full App',
-   /\(\(_cm\.submission&&_cm\.submission\.contacts\)\|\|0\)/.test(RC)&&/const _fo=_acqSub\?\(_acqSub\.contacts\|\|0\):0;/.test(cli),true);
-// Sample Shipped is 1st Sample Shipped relabelled; Review Submitted folds all three.
-ck('Sample Shipped maps to 1st Sample Shipped',/label: 'Sample Shipped',   sub: '1st Sample Shipped', id: CLS\.SAMPLE_1/.test(src),true);
-ck('Review Submitted combines 1st + 2nd + 3rd\u002b',
-   /ids: \[CLS\.REVIEW_1, CLS\.REVIEW_2, CLS\.REVIEW_3\]/.test(src),true);
+ck('Key Metrics Sign Up still reads composition.submission',
+   /const _fo=_acqSub\?\(_acqSub\.contacts\|\|0\):0;/.test(cli),true);
+// 2nd and 3rd+ Review Submitted were deleted from the pipeline; their stamp
+// properties no longer exist, so any reference to them reads nothing forever.
+ck('Sample Shipped and Review Submitted key off their own stages',
+   /label: 'Sample Shipped',            id: CLS\.SAMPLE_SHIPPED/.test(src)
+   &&/label: 'Review Submitted',          id: CLS\.REVIEW_SUBMITTED/.test(src),true);
+ck('the deleted 2nd / 3rd+ Review stages are referenced nowhere',
+   /REVIEW_2|REVIEW_3|4164547318|4164547319/.test(src.split('\n').filter(l=>!/^\s*\/\//.test(l)).join('\n')),false);
 // Measured, not inferred: these are the field choices live data proved.
 // Both are fetched now (clicks feeds the CTR tile), but the Link Clicks STAGE
 // must still key off link_clicks — measured 8,601 vs 13,060, a real difference.
@@ -196,11 +212,17 @@ ck('the funnel date filter defaults to the page window',
   const m=/const CLN_FUNNEL9_COLORS=\{([\s\S]*?)\};/.exec(cli);
   ck('a dedicated nine-stage palette exists',!!m,true);
   const hexes=[...(m?m[1]:'').matchAll(/'(#[0-9A-Fa-f]{6})'/g)].map(x=>x[1].toLowerCase());
-  ck('it covers all nine stages',hexes.length,9);
+  // Pre-pipeline rows only; every pipeline row takes its HubSpot stage colour.
+  ck('it covers the five pre-pipeline rows',hexes.length,5);
   ck('with no colour used twice',hexes.length-new Set(hexes).size,0);
   const labels=[...(m?m[1]:'').matchAll(/'([^'#]+)':/g)].map(x=>x[1]);
-  ck('and a colour for every stage label',
-     ['Impressions','Link Clicks','Page Views','CTA Click','Inquiries','Approved','Fully Onboarded','Sample Shipped','Review Submitted'].filter(l=>!labels.includes(l)),[]);
+  const sm=/const CLINICIAN_STAGE_COLORS=\{([\s\S]*?)\};/.exec(cli);
+  const stageLabels=[...(sm?sm[1]:'').matchAll(/'([^'#]+)':/g)].map(x=>x[1]);
+  // The JOIN, across files: every label the worker draws must resolve a colour
+  // on the client, from one map or the other. A miss falls to var(--teal).
+  ck('and a colour for every funnel label the worker sends',
+     [...defs.matchAll(/label: '([^']+)'/g)].map(x=>x[1])
+       .filter(l=>!labels.includes(l)&&!stageLabels.includes(l)),[]);
   ck('the renderer prefers it over the old stage palette',
      /CLN_FUNNEL9_COLORS\[st\.label\]\|\|CLINICIAN_STAGE_COLORS\[st\.label\]/.test(RC),true);
 }
@@ -221,8 +243,10 @@ ck('and the funnel endpoint carries its own',/return jr\(\{ range: \{ from, to \
 ck('no worker-side funnel9 remains',/buildClinicianFunnel9\(/.test(src),false);
 
 // --- the index defect the sweep found ------------------------------------
+// Meeting Happened is an (OLD) stage now, off the path: left there, findIndex
+// returned -1 and the Verification section went silently empty.
 ck('the verification stage test is by id, not array index',
-   /const _vFrom = CLINICIAN_STAGES\.findIndex\(x => x\.id === CLS\.MEETING_HAPPENED\);/.test(src),true);
+   /const _vFrom = CLINICIAN_STAGES\.findIndex\(x => x\.id === CLS\.CREDENTIALS_SUBMITTED\);/.test(src),true);
 ck('and the old index comparison is gone',/if \(vIdx >= 1\) \{/.test(src),false);
 
 // --- top-level TDZ ---------------------------------------------------------
@@ -262,8 +286,10 @@ ck('zero still renders empty, not at the floor',/\(v==null\|\|v<=0\)\?0:Math\.ma
 // --- virtual only ---------------------------------------------------------
 ck('the Demo and Field pills are gone',/flowPill/.test(cli),false);
 ck('and their setter with them',/clinicianSetFlow/.test(cli),false);
-ck('flow is pinned to virtual',/const flow='virtual';/.test(RC),true);
-ck('the funnel says so in its own header',/Virtual Workflow/.test(RC),true);
+// One path for every workflow since 2026-10-27; the (OLD) side bucket would
+// otherwise lose the demo-flow deals it exists to count.
+ck('flow is every workflow',/const flow='both';/.test(RC),true);
+ck('the funnel says so in its own header',/All Workflows/.test(RC)&&!/Virtual Workflow/.test(RC),true);
 
 // --- the funnel has NO date filter of its own ----------------------------
 // It used to carry one, independent of the page selector, with a pinned range

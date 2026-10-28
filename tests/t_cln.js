@@ -114,8 +114,12 @@ ck('the worker computes prior and last-month windows',
 // vs-prior / vs-LM footer would be permanently blank.
 ck('and exposes the four KPI inputs for each',
    /return \{ spend, fullSub, paidNonLal, inquiries: cp\.contacts \|\| 0 \};/.test(src),true);
+// Over the whole fetched superset, not the window's deals: Sign Up is dated by
+// credentials completion, and a deal created before the window can sign up in it.
 ck('the comparison windows use the Acquisition basis too',
-   /const cp = buildClinicianComposition\(dw, contactsByDeal, w\.from, w\.to\);/.test(src),true);
+   /const cp = buildClinicianComposition\(deals, contactsByDeal, w\.from, w\.to\);/.test(src),true);
+ck('  as does the page window itself',
+   /const composition = buildClinicianComposition\(deals, contactsByDeal, cur\.from, cur\.to\);/.test(src),true);
 // Dead payload is how the orphaned multiTouchAttribution field happened.
 ck('the now-unused virtualReached field is gone',/virtualReached/.test(src),false);
 ck('they ride the payload',/kpiPrior, kpiPriorMonth,/.test(src),true);

@@ -28,12 +28,17 @@ const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify(w);console.log((o
 // has NO kickoff booked, so inquiries and fullApp differ on 2026-09-02 and every
 // derived metric comes out distinct: a fixture where they tie lets a transposed
 // w.fullApp/w.inquiries pass unnoticed. d4's contact predates the window.
+// Sign Up = Clinician Credentials Complete, dated by its OWN day (2026-10-27).
+// c3 is the case that only the new definition counts: created in August, outside
+// the window, credentials completed 15 Sep, inside it. c2 completes after the
+// window closes, so it is an inquiry in September and a sign up in nobody's
+// September. The deals still carry bookings to prove a booking is not a sign up.
 const contacts={
-  d1:{__cid:'c1',createdate:'2026-09-02T12:00:00Z'},
-  d2:{__cid:'c1',createdate:'2026-09-02T12:00:00Z'},
+  d1:{__cid:'c1',createdate:'2026-09-02T12:00:00Z',clinician_credentials_completed:'2026-09-02'},
+  d2:{__cid:'c1',createdate:'2026-09-02T12:00:00Z',clinician_credentials_completed:'2026-09-02'},
   d5:{__cid:'c4',createdate:'2026-09-02T18:00:00Z'},
-  d3:{__cid:'c2',createdate:'2026-09-09T12:00:00Z'},
-  d4:{__cid:'c3',createdate:'2026-08-20T12:00:00Z'},
+  d3:{__cid:'c2',createdate:'2026-09-09T12:00:00Z',clinician_credentials_completed:'2026-10-03'},
+  d4:{__cid:'c3',createdate:'2026-08-20T12:00:00Z',clinician_credentials_completed:'2026-09-15'},
 };
 const deals=[
   {id:'d1',properties:{clinician_meeting_booked_date:'2026-09-20'}},
@@ -70,6 +75,14 @@ ck('one person with two deals counts once', comp.contacts, 3);
 // assertion below about fullApp is satisfied by the inquiry figure too.
 ck('inquiries and full apps differ in the fixture',
    comp.contacts!==comp.submission.contacts, true);
+// The three behaviours the 2026-10-27 definition turns on.
+ck('a sign up files under its credentials day, not its create day',
+   [at(t.day,'2026-09-15').fullApp, at(t.day,'2026-09-15').inquiries], [1,0]);
+ck('  so a contact created before the window still counts in it', comp.submission.contacts, 2);
+ck('  and one completing after the window does not',
+   t.day.some(p=>p.wk==='2026-09-09'&&p.fullApp>0), false);
+ck('a booked call with no credentials is not a sign up',
+   at(t.day,'2026-09-02').fullApp, 1);
 
 // ── Row filtering ──
 ck('non-Meta, non-Clinician and out-of-window spend dropped', sum(t.day,'spend'), 300);

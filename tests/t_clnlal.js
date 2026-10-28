@@ -37,8 +37,12 @@ const mk=(id,src_,med,camp,booked)=>({
   id:'d'+id, properties:{clinician_meeting_booked_date:booked?'2026-11-12T18:15:00Z':'',
     dealstage:'4201261817', createdate:'2026-10-10T12:00:00.000Z'}});
 const contacts={};
+// `booked` now marks a SIGN UP, which is Clinician Credentials Complete on the
+// contact (2026-10-27). The deal still carries a booking so the fixture proves
+// the booking alone no longer counts.
 const add=(id,src_,med,camp,booked)=>{
   contacts['d'+id]={__cid:'c'+id,createdate:'2026-10-10T12:00:00.000Z',
+    clinician_credentials_completed:booked?'2026-10-12':'',
     utm_source:src_,utm_medium:med,utm_campaign:camp,clinician_type:'MD/DO'};
   return mk(id,src_,med,camp,booked);
 };

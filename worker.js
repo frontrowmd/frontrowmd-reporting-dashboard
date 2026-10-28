@@ -874,7 +874,8 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v43';   // v43: clinician submission carries the Lookalike-excluded denominators.
+const API_CACHE_VER = 'v44';   // v44: clinician pipeline rebuilt; Sign Up = Credentials Complete.
+                               // v43: clinician submission carries the Lookalike-excluded denominators.
                                // v38: trend/trendRange are actually FORWARDED by buildResponse.
                                //      v37 built them onto currentData but never shipped them, so a
                                //      cached v37 payload has the fields missing, not stale.
@@ -2625,103 +2626,115 @@ const CLINICIAN_PIPELINE_ID = '2486191840';
 // Everything else on the page (Daily Activity, Composition, Ads, Weekly CPD)
 // stays on the page window — spend is window-scoped, so its denominators must be.
 const CLINICIAN_HISTORY_FROM = '2026-07-01';
-// Order here IS the funnel order the dashboard renders. Stage ids verified
-// against the live HubSpot `dealstage` property on 2026-08-24.
-// NOTE: HubSpot's enumeration happens to list Clinician Inquiry AFTER Signed Up;
-// it sits BEFORE it here because that is the actual funnel order.
+// Order here IS the funnel order the dashboard renders. Stage ids and labels
+// verified against the live HubSpot `dealstage` property on 2026-10-27.
+//
+// THE PIPELINE WAS REBUILT around 2026-10-20 into ONE linear path. Four stage ids
+// survived it under new names, so a deal that was "Fully Onboarded" last month is
+// "Call Scheduled" today without having moved:
+//   4201261817  Clinician Inquiry      -> Clinician Inquiry Complete
+//   4135230193  Fully Onboarded        -> Call Scheduled
+//   4133870318  1st Sample Shipped     -> Sample Shipped
+//   4164547317  1st Review Submitted   -> Review Submitted   (HubSpot: Won)
+// 2nd and 3rd+ Review Submitted (4164547318 / 4164547319) were DELETED -- their
+// hs_v2_date_entered_* properties no longer exist, so they are not requested.
+// Five more were kept but renamed "(OLD) ..." -- see CLINICIAN_OLD_STAGES.
 const CLINICIAN_STAGES = [
-  // Order here IS the combined ("Both") funnel's display order. The two flows'
-  // ENTRY stages are kept adjacent at the top -- Meeting Scheduled opens the demo
-  // path, Clinician Inquiry opens the virtual path -- so the combined view reads
-  // as "everyone enters here" rather than dropping the virtual entry point in
-  // between two demo-only stages. Safe to reorder: every consumer looks these up
-  // by id (see the note below).
-  { id: '4128510704', label: 'Meeting Scheduled' },
-  { id: '4201261817', label: 'Clinician Inquiry' },
-  { id: '4128510705', label: 'Meeting Happened' },
-  { id: '4128510709', label: 'Signed Up' },
-  { id: '4133870316', label: 'Form Submitted' },
-  { id: '4133870317', label: 'Clinician Approved' },
-  { id: '4135230193', label: 'Fully Onboarded' },
-  { id: '4133870318', label: '1st Sample Shipped' },
-  { id: '4164547317', label: '1st Review Submitted' },
-  { id: '4164547318', label: '2nd Review Submitted' },
-  { id: '4164547319', label: '3rd+ Review Submitted' },   // matches HubSpot's own stage name
+  { id: '4201261817', label: 'Clinician Inquiry Complete' },
+  { id: '4471161546', label: 'Video Watched' },
+  { id: '4471161547', label: 'Practice Details Complete' },
+  { id: '4470045405', label: 'Preferences Complete' },
+  { id: '4470045406', label: 'Credentials Submitted' },
+  { id: '4135230193', label: 'Call Scheduled' },
+  { id: '4474737370', label: 'Call Happened' },
+  { id: '4133870318', label: 'Sample Shipped' },
+  { id: '4164547317', label: 'Review Submitted' },
+];
+// The pre-rebuild stages, still live in HubSpot as "(OLD) ..." and still holding
+// deals. They are NOT on the path: a deal sitting in one is reported in the
+// funnel's side bucket and is never credited with a path stage on its account.
+// Kept as a list rather than dropped so those deals render with a real name in
+// the All Clinicians table instead of a raw stage id.
+const CLINICIAN_OLD_STAGES = [
+  { id: '4128510704', label: '(OLD) Meeting Scheduled' },
+  { id: '4128510705', label: '(OLD) Meeting Happened' },
+  { id: '4128510709', label: '(OLD) Signed Up' },
+  { id: '4133870316', label: '(OLD) Form Submitted' },
+  { id: '4133870317', label: '(OLD) Clinician Approved' },
 ];
 // Referenced by id, never by array index. The previous code reached in as
 // CLINICIAN_STAGES[0] / [5], which meant inserting a stage anywhere before
 // Fully Onboarded silently repointed the velocity + CAC metrics at the wrong
 // stage — the old comment above the list existed only to work around that.
 const CLINICIAN_STAGE_MEETING_SCHEDULED = '4128510704';
+// 4135230193 is now labelled CALL SCHEDULED. The constant keeps its old name
+// because the brand dashboards' clinician "won" count (fetchClinicianOnboardedCount)
+// and the funnel's velocity read it, and both still point at this stage id.
 const CLINICIAN_STAGE_FULLY_ONBOARDED   = '4135230193';
 // Every stage referenced by NAME anywhere below. Rates used to index cnt[] by
 // position (cnt[7]/cnt[6] for the review rate, cnt[3] for close rate,
 // reached[5] for velocity), which silently repointed at the wrong stages the
 // moment Clinician Inquiry was inserted mid-list. Look them up by id instead.
+// The legacy keys stay: they name (OLD) stages that still hold deals, and the
+// Form-vs-Demo column still reads the Form Submitted stamp.
 const CLS = {
-  MEETING_SCHEDULED: '4128510704', MEETING_HAPPENED: '4128510705',
-  CLINICIAN_INQUIRY: '4201261817', SIGNED_UP:        '4128510709',
-  FORM_SUBMITTED:    '4133870316', CLINICIAN_APPROVED:'4133870317',
-  FULLY_ONBOARDED:   '4135230193', SAMPLE_1:         '4133870318',
-  REVIEW_1:          '4164547317', REVIEW_2:         '4164547318',
-  REVIEW_3:          '4164547319',
+  // the path
+  INQUIRY_COMPLETE:      '4201261817', VIDEO_WATCHED:   '4471161546',
+  PRACTICE_DETAILS:      '4471161547', PREFERENCES:     '4470045405',
+  CREDENTIALS_SUBMITTED: '4470045406', CALL_SCHEDULED:  '4135230193',
+  CALL_HAPPENED:         '4474737370', SAMPLE_SHIPPED:  '4133870318',
+  REVIEW_SUBMITTED:      '4164547317',
+  // same ids under their pre-rebuild names
+  CLINICIAN_INQUIRY: '4201261817', FULLY_ONBOARDED: '4135230193',
+  SAMPLE_1:          '4133870318', REVIEW_1:        '4164547317',
+  // (OLD) stages
+  MEETING_SCHEDULED: '4128510704', MEETING_HAPPENED:  '4128510705',
+  SIGNED_UP:         '4128510709', FORM_SUBMITTED:    '4133870316',
+  CLINICIAN_APPROVED:'4133870317',
 };
 
-// The Clinician Funnel's nine stages, in the order the dashboard shows them.
-// Four are pre-CRM (ad + analytics) and five are HubSpot stages, so this is a
-// deliberate sequence rather than a subset of CLINICIAN_FLOWS — neither existing
-// flow matches it. The ad/analytics stages have no "here now": nobody sits in an
-// impression. Window-scoped throughout, which is what lets the conversion rate
-// from CTA Click to Inquiries mean anything.
+// The Clinician Funnel, in the order the dashboard shows it. Three pre-CRM
+// stages (ad + analytics), Inquiries from the Acquisition population, then the
+// pipeline path from Video Watched to Review Submitted. The ad/analytics stages
+// have no "here now": nobody sits in an impression. Window-scoped throughout,
+// which is what lets the conversion rate from CTA Click to Inquiries mean
+// anything. (The name is historical; it no longer has nine rows.)
+//
+// Inquiries stays CONTACT-based on purpose (Alex, 2026-10-27): Key Metrics is the
+// authority for it. Clinician Inquiry Complete, the deal stage it stands in for,
+// is therefore not drawn -- the two would be the same idea counted two ways, a
+// few apart, one above the other.
 const CLN_FUNNEL9 = [
   { key: 'impressions', label: 'Impressions',      sub: 'Meta \u00b7 Clinician campaigns' },
   { key: 'linkClicks',  label: 'Link Clicks',      sub: 'Meta \u00b7 Clinician campaigns' },
   { key: 'ctaClicks',   label: 'CTA Click',        sub: 'click_join_for_free events' },
-  // acq: read from the Acquisition populations, not a dealstage. Key Metrics is
-  // the authority for these two, and it counts deduped CONTACTS; a deal-based
-  // stage count is a different number and the two were visibly disagreeing.
   { key: 'inquiry',     label: 'Inquiries',        sub: 'clinician contacts created', acq: 'contacts' },
-  { key: 'onboarded',   label: 'Fully Onboarded',  sub: 'kickoff call booked',    acq: 'submission' },
-  { key: 'sample',      label: 'Sample Shipped',   sub: '1st Sample Shipped', id: CLS.SAMPLE_1 },
-  // 1st + 2nd + 3rd+ combined. Ever-reached is nested (you cannot reach 2nd
-  // without 1st) so reached is the max, but "here now" is the SUM — a clinician
-  // sitting at 3rd+ is not also sitting at 1st.
-  { key: 'review',      label: 'Review Submitted', sub: '1st + 2nd + 3rd+',
-    ids: [CLS.REVIEW_1, CLS.REVIEW_2, CLS.REVIEW_3] },
+  { key: 'video',       label: 'Video Watched',             id: CLS.VIDEO_WATCHED },
+  { key: 'practice',    label: 'Practice Details Complete', id: CLS.PRACTICE_DETAILS },
+  { key: 'prefs',       label: 'Preferences Complete',      id: CLS.PREFERENCES },
+  { key: 'creds',       label: 'Credentials Submitted',     id: CLS.CREDENTIALS_SUBMITTED },
+  { key: 'callSched',   label: 'Call Scheduled',            id: CLS.CALL_SCHEDULED },
+  { key: 'callHeld',    label: 'Call Happened',             id: CLS.CALL_HAPPENED },
+  { key: 'sample',      label: 'Sample Shipped',            id: CLS.SAMPLE_SHIPPED },
+  { key: 'review',      label: 'Review Submitted',          id: CLS.REVIEW_SUBMITTED },
 ];
-// Two workflows share this one HubSpot pipeline, each walking a different
-// subset. A deal's own flow decides which stages it can legitimately be
-// credited with — see the `reached` logic below.
+// ONE path now. The three workflows (`clinician_workflow`) used to walk three
+// different subsets of this pipeline; after the rebuild every new deal walks the
+// same sequence whatever its workflow, so all three point at it. The workflow is
+// still read and still shown in the All Clinicians table -- it just no longer
+// changes which stages a deal can be credited with.
+//
+// Legacy deals that were already past the old Fully Onboarded when the pipeline
+// was rebuilt now sit in Call Scheduled / Sample Shipped / Review Submitted. The
+// monotonic closure below credits them with every stage before that, including
+// the four intake stages that did not exist yet. Deliberate (Alex, 2026-10-27):
+// the path is strictly sequential, and a funnel that widens as it descends reads
+// as broken.
+const CLINICIAN_PATH = CLINICIAN_STAGES.map(st => st.id);
 const CLINICIAN_FLOWS = {
-  demo: {
-    label: 'Clinician Demo Flow',
-    stages: [CLS.MEETING_SCHEDULED, CLS.MEETING_HAPPENED, CLS.SIGNED_UP, CLS.FORM_SUBMITTED,
-             CLS.CLINICIAN_APPROVED, CLS.FULLY_ONBOARDED, CLS.SAMPLE_1,
-             CLS.REVIEW_1, CLS.REVIEW_2, CLS.REVIEW_3],
-    exits: ['4128854721', '4128510710'],   // No Show, Not a Fit
-  },
-  virtual: {
-    label: 'Virtual Clinician Onboarding',
-    // Confirmed by Alex 2026-09-08: the virtual path runs through Clinician
-    // Approved, NOT Form Submitted. Consequence worth knowing: a virtual deal is
-    // no longer credited with Form Submitted by monotonic inference, so it only
-    // counts toward Form Submitted if it carries a real stage-entry timestamp for
-    // it. That is what the Cost Per Signup denominator reads.
-    stages: [CLS.CLINICIAN_INQUIRY, CLS.CLINICIAN_APPROVED, CLS.FULLY_ONBOARDED, CLS.SAMPLE_1,
-             CLS.REVIEW_1, CLS.REVIEW_2, CLS.REVIEW_3],
-    exits: ['4128510710'],                 // Not a Fit only — no meeting to no-show
-  },
-  // ASSUMED SEQUENCE — still unconfirmed. It NO LONGER mirrors Virtual: Virtual
-  // was corrected to run through Clinician Approved (2026-09-08) and this one was
-  // deliberately left alone, because correcting one unconfirmed path from a
-  // different path's correction is a guess, not a fix. So Field still carries
-  // Form Submitted. Confirm the real Field Rep path and swap the array below.
-  field: {
-    label: 'Field Rep Signup',
-    stages: [CLS.CLINICIAN_INQUIRY, CLS.FORM_SUBMITTED, CLS.FULLY_ONBOARDED, CLS.SAMPLE_1,
-             CLS.REVIEW_1, CLS.REVIEW_2, CLS.REVIEW_3],
-    exits: ['4128510710'],
-  },
+  demo:    { label: 'Clinician Demo Flow',          stages: CLINICIAN_PATH, exits: ['4128854721', '4128510710'] },
+  virtual: { label: 'Virtual Clinician Onboarding', stages: CLINICIAN_PATH, exits: ['4128854721', '4128510710'] },
+  field:   { label: 'Field Rep Signup',             stages: CLINICIAN_PATH, exits: ['4128854721', '4128510710'] },
 };
 // HubSpot `clinician_workflow` option value → flow key. Option values verified
 // against the live property on 2026-08-24 (value === label for all three).
@@ -2744,7 +2757,11 @@ function clinicianFlowOf(p) {
 }
 const CLINICIAN_STAGE_NO_SHOW = '4128854721';
 const CLINICIAN_STAGE_NOT_A_FIT = '4128510710';
+// Path + exits. (OLD) stages are deliberately NOT here: this list is what the
+// funnel treats as a stage it can place a deal in, and an (OLD) stage places a
+// deal nowhere on the path.
 const CLINICIAN_ALL_STAGE_IDS = CLINICIAN_STAGES.map(x => x.id).concat([CLINICIAN_STAGE_NO_SHOW, CLINICIAN_STAGE_NOT_A_FIT]);
+const CLINICIAN_OLD_STAGE_IDS = CLINICIAN_OLD_STAGES.map(x => x.id);
 // Stage-entry timestamps give a true "ever reached this stage" signal (and the
 // stamps velocity needs) rather than a current-stage snapshot.
 //
@@ -2780,7 +2797,9 @@ function clnEnteredAt(p, stageId) {
 function clnPathStartAt(p, seqIds) {
   return clnEnteredAt(p, seqIds[0]) || p.createdate || null;
 }
-const CLINICIAN_ENTERED_PROPS = CLINICIAN_ALL_STAGE_IDS.map(clnEnteredProp).filter(Boolean);
+// (OLD) stamps are still requested: the Form-vs-Demo column reads the Form
+// Submitted one, and a stamp is the only evidence of what a legacy deal walked.
+const CLINICIAN_ENTERED_PROPS = CLINICIAN_ALL_STAGE_IDS.concat(CLINICIAN_OLD_STAGE_IDS).map(clnEnteredProp).filter(Boolean);
 const CLINICIAN_DEAL_PROPS = [
   'dealstage', 'pipeline', 'clinician_meeting_date', 'clinician_meeting_booked_date',
   'clinician_attendance_status', 'clinician_qualification_outcome', 'createdate',
@@ -2807,6 +2826,33 @@ const CLINICIAN_CONTACT_PROPS = [
   // it cannot be attributed to a time period. Anything period-scoped must come
   // from the dated hs_v2_date_entered_<reviewStage> timestamps instead.
   'reviews_submitted',
+  // The Clinician Admin App's own milestones (live 2026-10-20). Each is a DATE
+  // property -- 'YYYY-MM-DD', no time -- written by the app as the clinician
+  // completes that step, so read them through _clnDateKey, never _clnDayKey.
+  // clinician_credentials_completed is what "Sign Up" now means.
+  'clinician_inquiry_completed', 'clinician_video_watched', 'clinician_practice_completed',
+  'clinician_preferences_completed', 'clinician_credentials_completed',
+  'clinician_first_sample_shipped',
+  // Labelled "Eligible For Samples" in HubSpot; the internal name is eligible_samples.
+  'eligible_samples',
+  'clinician_discount_store_url', 'clinician_review_link',
+  'clinician_health_brand_preferences', 'clinician_product_category_preferences',
+  // Clinician Inquiry Form card. NOTE clinician_app_review is the CONTACT field
+  // HubSpot LABELS "Clinician Meeting Booked Date" -- a different property from
+  // the DEAL's clinician_meeting_booked_date, which has the same label. There is
+  // no contact property called clinician_meeting_booked_date.
+  'clinician_app_review', 'gender', 'years_of_experience', 'clinician_signup_link',
+];
+// The Admin App milestone columns, in the order a clinician completes them.
+// [row key, contact property]. One list so the table row, the contact fetch and
+// any future definition read the same names.
+const CLN_APP_MILESTONES = [
+  ['inquiryCompleted',     'clinician_inquiry_completed'],
+  ['videoWatched',         'clinician_video_watched'],
+  ['practiceCompleted',    'clinician_practice_completed'],
+  ['preferencesCompleted', 'clinician_preferences_completed'],
+  ['credentialsCompleted', 'clinician_credentials_completed'],
+  ['firstSampleShipped',   'clinician_first_sample_shipped'],
 ];
 
 // A "won" clinician is one who reached FULLY ONBOARDED — there is no closed-won
@@ -3070,7 +3116,9 @@ function applyClinicianWon(channels, counts) {
   // analyzer, priorMonthClosedWon in the Detailed Dashboard payload). Setting
   // both is cheaper than making this helper care which caller it has.
   if (counts.pm != null) { c.pmClosedWon = counts.pm; c.priorMonthClosedWon = counts.pm; }
-  c.wonBasis = 'Reached Fully Onboarded in this window';
+  // Stage 4135230193 was renamed Fully Onboarded -> Call Scheduled in the
+  // 2026-10-20 rebuild. The count is unchanged; the words follow HubSpot's.
+  c.wonBasis = 'Reached Call Scheduled (formerly Fully Onboarded) in this window';
 }
 
 // Deals in the Clinician pipeline created within the window. Cohorting on
@@ -3331,12 +3379,12 @@ function buildClinicianAds(windsorRows, budgets, funnelAll, cliniciansAdded, row
 //
 // Every denominator here is the one the Key Metrics row uses, deliberately:
 //   inquiries = unique clinician CONTACTS created that day (deduped per person)
-//   fullApp   = those of them with a kickoff call booked
-// Both are attributed to the CONTACT's create date, not to the booking date, so
-// summing either daily series across the window reproduces the Key Metrics total
-// exactly. Bucketing fullApp on clinician_meeting_booked_date reads more
-// naturally and does NOT tie out — a contact created inside the window can book
-// outside it, and vice versa.
+//   fullApp   = Sign Ups: contacts whose Clinician Credentials Complete date is
+//               that day (2026-10-27; was "kickoff call booked", on createdate)
+// Each is dated by its OWN event, exactly as buildClinicianComposition dates it,
+// so summing either daily series across a window reproduces the Key Metrics
+// total. The two series are no longer one cohort: a day's sign ups are not a
+// subset of that day's inquiries.
 //
 // CTR and both CVRs ride the same Meta rows that already fund `spend`, so the
 // whole section still costs no extra subrequest.
@@ -3539,19 +3587,21 @@ function buildClinicianTrend(deals, contactsByDeal, windsorRows, from, to) {
     const cid = cp.__cid || ('deal:' + d.id);
     if (seen.has(cid)) continue;
     seen.add(cid);
-    const k = _clnDayKey(cp.createdate);
-    if (!k) continue;
-    const bk = bump(k, 'inquiries');
-    if (!bk) continue;
     // Clinician type, on the same 'Not set' fallback buildClinicianComposition
     // uses — the On-Target card's mix has to reconcile with the Acquisition pie
     // beside it, and a different blank label would split one category in two.
     const ty = (cp.clinician_type || '').trim() || 'Not set';
-    bk.byType[ty] = (bk.byType[ty] || 0) + 1;
-    if (((d.properties || {}).clinician_meeting_booked_date || '').trim()) {
-      bump(k, 'fullApp');
-      bk.bySubType[ty] = (bk.bySubType[ty] || 0) + 1;
-    }
+    const k = _clnDayKey(cp.createdate);
+    const bk = k ? bump(k, 'inquiries') : null;
+    if (bk) bk.byType[ty] = (bk.byType[ty] || 0) + 1;
+    // Sign Up files under the day credentials were COMPLETED, independently of
+    // when the contact arrived -- the same two tests buildClinicianComposition
+    // applies, so the series still sums to the Key Metrics card. It used to sit
+    // inside the inquiry branch, keyed on createdate; a clinician created before
+    // the window who signs up inside it would have been dropped.
+    const sk = _clnDateKey(cp.clinician_credentials_completed);
+    const bs = sk ? bump(sk, 'fullApp') : null;
+    if (bs) bs.bySubType[ty] = (bs.bySubType[ty] || 0) + 1;
   }
 
   const div = (n, dd) => (dd > 0 ? n / dd : null);
@@ -3714,6 +3764,22 @@ async function fetchClinicianMeetingStarts(token, dealIds) {
 
 // Eastern calendar day for a HubSpot timestamp — same rule as Daily Activity,
 // and the same zone as the bounds its cohort was fetched with.
+// For HubSpot DATE properties (no time): the Admin App milestones, and so Sign
+// Up. HubSpot stores a date as UTC midnight, so the value IS the calendar day.
+// _clnDayKey must not be used on these when they arrive as epoch ms or as an ISO
+// midnight: shifting UTC midnight into Eastern lands on the PREVIOUS day, and
+// every sign up would file under the day before it happened.
+function _clnDateKey(v) {
+  if (v == null || v === '') return null;
+  const str = String(v).trim();
+  const m = /^(\d{4}-\d{2}-\d{2})(?:T00:00(?::00(?:\.0+)?)?Z)?$/.exec(str);
+  if (m) return m[1];
+  if (/^\d+$/.test(str)) {
+    const d = new Date(parseInt(str));
+    return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+  }
+  return _clnDayKey(str);
+}
 function _clnDayKey(v) {
   if (!v) return null;
   const str = String(v);
@@ -3749,6 +3815,8 @@ async function fetchClinicianOwners(token) {
 function buildClinicianTable(deals, contactsByDeal, ownerMap, meetingStarts) {
   const stageLabel = {};
   for (const st of CLINICIAN_STAGES) stageLabel[st.id] = st.label;
+  // (OLD) stages still hold deals; without these they render as a raw stage id.
+  for (const st of CLINICIAN_OLD_STAGES) stageLabel[st.id] = st.label;
   stageLabel[CLINICIAN_STAGE_NO_SHOW] = 'No Show';
   stageLabel[CLINICIAN_STAGE_NOT_A_FIT] = 'Not a Fit';
   return deals.map(d => {
@@ -3792,6 +3860,21 @@ function buildClinicianTable(deals, contactsByDeal, ownerMap, meetingStarts) {
       // states, and the renderer turns '' into an em-dash like every other
       // contact-sourced column.
       reviewsSubmitted: (c.reviews_submitted == null || c.reviews_submitted === '') ? '' : c.reviews_submitted,
+      // Admin App milestones, as 'YYYY-MM-DD' calendar days (see _clnDateKey).
+      ...Object.fromEntries(CLN_APP_MILESTONES.map(([k, prop]) => [k, _clnDateKey(c[prop]) || ''])),
+      eligibleSamples: (c.eligible_samples || '').trim(),
+      discountStoreUrl: c.clinician_discount_store_url || '', reviewLink: c.clinician_review_link || '',
+      // Semicolon-separated multi-picks in HubSpot, shipped as the raw string.
+      healthBrandPrefs: c.clinician_health_brand_preferences || '',
+      productCategoryPrefs: c.clinician_product_category_preferences || '',
+      // The CONTACT's "Clinician Meeting Booked Date" (clinician_app_review), a
+      // datetime -- not the deal's bookedDate above, which shares its label.
+      // Reduced to its EASTERN day here: the table's date formatter reads UTC,
+      // which is right for DATE properties and a day late for an evening booking.
+      appMeetingBooked: _clnDayKey(c.clinician_app_review) || '',
+      gender: c.gender || '',
+      yearsExperience: (c.years_of_experience == null || c.years_of_experience === '') ? '' : c.years_of_experience,
+      signupLink: c.clinician_signup_link || '',
       utmSource: c.utm_source || p.utm_source || '', utmMedium: c.utm_medium || p.utm_medium || '',
       utmCampaign: c.utm_campaign || p.utm_campaign || '',
     };
@@ -3802,10 +3885,11 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
   const seen = new Set();
   const byType = {}, bySpec = {};
   const byRef = {}, byUtmS = {}, byUtmM = {}, byUtmC = {};
-  // Same four tallies over the SUBSET that has a kickoff call booked. The
-  // Acquisition card toggles between them: "Inquiry" is everyone who arrived,
-  // "Sign Up" only those who got as far as scheduling a call. Kept as a
-  // parallel tally rather than a second pass so both come out of one loop.
+  // Same tallies over the window's SIGN UPS -- contacts whose Clinician
+  // Credentials Complete date falls in it. The Acquisition card toggles between
+  // them: "Inquiry" is everyone who arrived, "Sign Up" everyone who finished
+  // credentials. Kept as a parallel tally rather than a second pass so both come
+  // out of one loop. NOT a subset of the inquiries any more: see the loop.
   const subRef = {}, subUtmS = {}, subUtmM = {}, subUtmC = {}, subType = {};
   let subContacts = 0;
   // Denominators for "CPD Paid Non-Lookalikes": clinician ad spend over the full
@@ -3819,37 +3903,50 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
   let subNonLal = 0, subPaidNonLal = 0;
   const byCred = {}, byPhoto = {};
   let verifContacts = 0;   // contacts CREATED in the window (verification scope)
-  let contacts = 0;
+  let contacts = 0, bookedCall = 0;
   for (const deal of deals) {
     const cp = contactsByDeal[deal.id];
     if (!cp) continue;
     const cid = cp.__cid || ('deal:' + deal.id);
     if (seen.has(cid)) continue;
     seen.add(cid);
-    // ONE scope for the whole section: the contact's own create date must fall in
-    // the window. Previously only Verification applied this, so Composition and
-    // Acquisition were built from a wider population and their totals disagreed.
+    // TWO independent date tests, one per population:
+    //   inquiry  -- the CONTACT was created in the window (unchanged)
+    //   sign up  -- the contact's Clinician Credentials Complete date falls in
+    //               the window (2026-10-27; was "kickoff call booked")
+    // Sign Up is dated by WHEN credentials were completed, not by when the
+    // contact arrived (Alex, 2026-10-27), so a clinician created last month who
+    // finishes this month is this month's sign up. That is why the caller hands
+    // this function the whole fetched superset rather than the window's deals:
+    // the sign ups in a window are not a subset of its inquiries.
     const ck = _clnDayKey(cp.createdate);
-    if (from && to && (!ck || ck < from || ck > to)) continue;
-    contacts++;
+    const created = !(from && to) || (!!ck && ck >= from && ck <= to);
+    const sk = _clnDateKey(cp.clinician_credentials_completed);
+    const signedUp = !!sk && (!(from && to) || (sk >= from && sk <= to));
+    if (!created && !signedUp) continue;
     const t = (cp.clinician_type || '').trim() || 'Not set';
-    const sp = (cp.clinician_specialty || '').trim() || 'Not set';
-    byType[t] = (byType[t] || 0) + 1;
-    bySpec[sp] = (bySpec[sp] || 0) + 1;
     // Acquisition. UTMs may sit on either object, so take the contact's value and
     // fall back to the deal's rather than assuming one of them.
     const dp = deal.properties || {};
     const pick = (k) => ((cp[k] || dp[k] || '').trim()) || 'Not set';
     const rs = (cp.clinician_referral_source || '').trim() || 'Not set';
-    byRef[rs] = (byRef[rs] || 0) + 1;
     const us = pick('utm_source'), um = pick('utm_medium'), uc = pick('utm_campaign');
-    byUtmS[us] = (byUtmS[us] || 0) + 1;
-    byUtmM[um] = (byUtmM[um] || 0) + 1;
-    byUtmC[uc] = (byUtmC[uc] || 0) + 1;
-    // "Sign Up" = a kickoff call is on the books. clinician_meeting_booked_date
-    // is the booking field (NOT clinician_meeting_date, which is the meeting day);
-    // see the note on CLINICIAN_DEAL_PROPS for why those two are easy to confuse.
-    if ((dp.clinician_meeting_booked_date || '').trim()) {
+    if (created) {
+      contacts++;
+      const sp = (cp.clinician_specialty || '').trim() || 'Not set';
+      byType[t] = (byType[t] || 0) + 1;
+      bySpec[sp] = (bySpec[sp] || 0) + 1;
+      byRef[rs] = (byRef[rs] || 0) + 1;
+      byUtmS[us] = (byUtmS[us] || 0) + 1;
+      byUtmM[um] = (byUtmM[um] || 0) + 1;
+      byUtmC[uc] = (byUtmC[uc] || 0) + 1;
+      // A kickoff call on the books. This WAS Sign Up until 2026-10-27; it is
+      // kept as its own count because the Kick Off Calls card still reports it.
+      // clinician_meeting_booked_date is the DEAL's booking field (NOT
+      // clinician_meeting_date, which is the meeting day).
+      if ((dp.clinician_meeting_booked_date || '').trim()) bookedCall++;
+    }
+    if (signedUp) {
       subContacts++;
       subRef[rs] = (subRef[rs] || 0) + 1;
       subType[t] = (subType[t] || 0) + 1;
@@ -3867,18 +3964,26 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
         if (mapUtmToChannel(_rs2, _rm2)) subPaidNonLal++;
       }
     }
+    if (!created) continue;   // verification is a property of the window's inquiries
     // Verification: medical_degree_status is labelled "Credentials Status" in HubSpot.
-    // Verification only applies once the meeting has actually happened — before
-    // that there is nothing to verify, so Meeting Scheduled deals would pad the
-    // mix with a meaningless "Pending"/"Not set". Both exit stages (No Show,
-    // Not a Fit) are excluded too, so this counts only clinicians still live in
-    // the pipeline at Meeting Happened or beyond.
+    // Verification only applies once there are credentials to verify — before
+    // that, an earlier-stage deal would pad the mix with a meaningless
+    // "Pending"/"Not set". On the rebuilt path that point is Credentials
+    // Submitted (it was Meeting Happened, now an (OLD) stage — left as it was,
+    // this gate matched nothing and the section went silently empty). Exits and
+    // (OLD) stages are not on the path, so findIndex returns -1 and they stay out.
     const vStage = (dp.dealstage || '').trim();
     // By ID, not by array index: `vIdx >= 1` silently repointed at a different
     // stage whenever one was inserted earlier in CLINICIAN_STAGES.
-    const _vFrom = CLINICIAN_STAGES.findIndex(x => x.id === CLS.MEETING_HAPPENED);
+    const _vFrom = CLINICIAN_STAGES.findIndex(x => x.id === CLS.CREDENTIALS_SUBMITTED);
     const vIdx = CLINICIAN_STAGES.findIndex(x => x.id === vStage);
-    if (vIdx >= 0 && _vFrom >= 0 && vIdx >= _vFrom) {
+    // Legacy deals still parked in an (OLD) stage at or past the old Meeting
+    // Happened counted under the old gate, and the ones in (OLD) Form Submitted /
+    // Clinician Approved are precisely clinicians with credentials awaiting or
+    // through review. Dropping them would shrink the Pending slice the card
+    // exists to show, for no reason to do with verification.
+    const _vLegacy = [CLS.MEETING_HAPPENED, CLS.SIGNED_UP, CLS.FORM_SUBMITTED, CLS.CLINICIAN_APPROVED].indexOf(vStage) >= 0;
+    if ((vIdx >= 0 && _vFrom >= 0 && vIdx >= _vFrom) || _vLegacy) {
       verifContacts++;
       const cr = (cp.medical_degree_status || '').trim() || 'Not set';
       const ph = (cp.photo_verification_status || '').trim() || 'Not set';
@@ -3914,6 +4019,9 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
   };
   return {
     contacts, verifContacts,
+    // Inquiries in the window with a kickoff call booked -- the old Sign Up,
+    // still what the Kick Off Calls card's "Call Scheduled" rate divides.
+    bookedCall,
     // Capped at 9 = CLINICIAN_PIE_COLORS.length, so the client's i%9 can never
     // wrap. clinician_specialty has 12 options in HubSpot; the overflow rolls
     // into the expandable Other bucket rather than reusing colour 0.
@@ -3923,8 +4031,8 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
     // and a status doesn't jump position as counts change.
     credentials: statusList(byCred), photoVerification: statusList(byPhoto),
     utmSource: capped(byUtmS, 8), utmMedium: capped(byUtmM, 8), utmCampaign: capped(byUtmC, 8),
-    // Acquisition card, "Sign Up" mode: the same breakdowns over
-    // clinicians who have a kickoff call booked.
+    // Acquisition card, "Sign Up" mode: the same breakdowns over the
+    // clinicians who completed credentials in the window.
     submission: {
       contacts: subContacts,
       // Both Lookalike-excluded denominators; see where they are counted.
@@ -3941,20 +4049,15 @@ function buildClinicianFunnel(deals, contactsByDeal, meetingStarts) {
   const _ms = (v) => { if (!v) return NaN; return /^\d+$/.test(String(v)) ? parseInt(v) : new Date(v).getTime(); };
   // A deal "reached" a stage if HubSpot stamped its entered-date; fall back to
   // the current stage's position so deals predating stage tracking still count.
-  // Meetings still in the future haven't had their chance to happen yet, so
-  // counting them drags Show Rate down and inflates the Meeting Scheduled bar.
-  // Excluded here (deals with NO meeting date are kept — they're unscheduled,
-  // not future-dated). Count is reported so the drop is visible, not silent.
-  const _today = new Date();
-  const _todayEnd = Date.UTC(_today.getUTCFullYear(), _today.getUTCMonth(), _today.getUTCDate(), 23, 59, 59, 999);
-  let excludedFuture = 0;
-  const rows = deals.filter(d => {
-    const md = (d.properties || {}).clinician_meeting_date;
-    if (!md) return true;
-    const t = /^\d+$/.test(String(md)) ? parseInt(md) : new Date(md).getTime();
-    if (!isNaN(t) && t > _todayEnd) { excludedFuture++; return false; }
-    return true;
-  }).map(d => {
+  // No future-meeting exclusion any more (2026-10-27). It existed for the old
+  // Meeting Scheduled bar and Show Rate: a meeting not yet held had not had its
+  // chance to happen. On the rebuilt path a future meeting date is exactly what a
+  // deal WAITING in Call Scheduled carries, so the exclusion removed every booked
+  // kickoff call from the whole funnel -- Call Scheduled's "here now" read near
+  // zero by construction, and those deals vanished from every intake stage too.
+  // excludedFuture stays in the payload, at 0, for the caption that reads it.
+  const excludedFuture = 0;
+  const rows = deals.map(d => {
     const p = d.properties || {};
     const cur = (p.dealstage || '').trim();
     // "Ever reached" per stage id.
@@ -3992,6 +4095,9 @@ function buildClinicianFunnel(deals, contactsByDeal, meetingStarts) {
     // added in HubSpot after this list was verified) is not evidence of anything,
     // and seeding it would silently assert a stage the deal may never have walked
     // — which matters most for the Field Rep flow, whose sequence is still ASSUMED.
+    // An (OLD) stage is not in CLINICIAN_ALL_STAGE_IDS, so a deal parked in one
+    // is not seeded either: it sits in the side bucket, and is credited with a
+    // path stage only where HubSpot actually stamped it.
     const _curKnown = !cur || posInSeq >= 0
       || (CLINICIAN_FLOWS[flow].exits || []).indexOf(cur) >= 0
       || CLINICIAN_ALL_STAGE_IDS.indexOf(cur) >= 0;
@@ -4206,6 +4312,12 @@ function buildClinicianFunnel(deals, contactsByDeal, meetingStarts) {
         };
       }),
       exits: exitDefs.map(e => ({ label: e.label, count: rs.filter(r => r.cur === e.id).length })),
+      // The side bucket: deals still parked in a pre-rebuild "(OLD)" stage. A
+      // current-stage snapshot only -- these stages are off the path, so they
+      // have no reached count and no conversion, and the deals in them are not
+      // credited with any path stage unless HubSpot stamped one.
+      oldStages: CLINICIAN_OLD_STAGES.map(o => ({ id: o.id, label: o.label, count: rs.filter(r => r.cur === o.id).length })),
+      oldTotal: rs.filter(r => CLINICIAN_OLD_STAGE_IDS.indexOf(r.cur) >= 0).length,
       stats: {
         // Of clinicians who received samples, how many submitted their 1st review.
         reviewRate: pct(cntOf(CLS.REVIEW_1), cntOf(CLS.SAMPLE_1)),
@@ -9569,7 +9681,11 @@ export default {
         const funnel = buildClinicianFunnel(dealsHist, contactsByDeal, meetingStarts);
         const funnelPage = buildClinicianFunnel(dealsPage, contactsByDeal, meetingStarts);
         const daily = buildClinicianDaily(dealsPage, contactsByDeal, cur.from, cur.to);
-        const composition = buildClinicianComposition(dealsPage, contactsByDeal, cur.from, cur.to);
+        // `deals`, the whole fetched superset, NOT dealsPage. Sign Up is dated by
+        // Clinician Credentials Complete, and a clinician whose deal was created
+        // before the window can complete credentials inside it. Inquiries are
+        // unaffected: they filter on the contact's own createdate either way.
+        const composition = buildClinicianComposition(deals, contactsByDeal, cur.from, cur.to);
         // The Verification Funnel is a HISTORY view like the Funnel and the All
         // Clinicians table, so it gets its own pass over dealsHist. `composition`
         // itself stays PAGE-scoped because Clinician Composition and Acquisition
@@ -9594,9 +9710,10 @@ export default {
           const fp = buildClinicianFunnel(dw, contactsByDeal, meetingStarts);
           const dl = buildClinicianDaily(dw, contactsByDeal, w.from, w.to);
           // Acquisition's two populations: unique contacts created in the window,
-          // and those of them with a kickoff call booked. CONTACT-based and
+          // and contacts whose credentials were completed in it. CONTACT-based and
           // deduped per person — deliberately NOT the funnel's deal-based stages.
-          const cp = buildClinicianComposition(dw, contactsByDeal, w.from, w.to);
+          // Over `deals`, not `dw`, for the same reason as the page composition.
+          const cp = buildClinicianComposition(deals, contactsByDeal, w.from, w.to);
           const fullSub = (cp.submission && cp.submission.contacts) || 0;
           const paidNonLal = (cp.submission && cp.submission.paidNonLookalike) || 0;
           let spend = null;
