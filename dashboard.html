@@ -3517,6 +3517,18 @@ const CLN_MD_TYPE='MD/DO';
 // in s while already being singular ("Status" -> "statu") would need a word
 // list, and none of the funnel's stage labels is such a word. Check here if a
 // stage is ever renamed.
+// The hover on a funnel row's "% from prior". Stage to stage it is a COHORT
+// share -- of the deals at the stage above, how many reached this one -- which
+// is not this row's Reached over the row above's once legacy deals sit in the
+// counts. Across a source change (ad metric -> contacts -> deals) it is a plain
+// ratio. The text says which, with the real numbers, so the chip never has to
+// be taken on trust.
+function _clnConvTip(st){
+  var c=st&&st.convCalc; if(!c||c.den==null)return '';
+  var pct=(st.convFromPrior!=null)?st.convFromPrior.toFixed(1)+'%':'\u2014';
+  if(c.cohort)return pct+' = '+fN(c.num)+' of the '+fN(c.den)+' deals that reached '+c.prev+' also reached '+st.label;
+  return pct+' = '+fN(c.num)+' '+st.label+' \u00f7 '+fN(c.den)+' '+c.prev;
+}
 function _clnSingular(label){
   var w=String(label||'').toLowerCase();
   if(/ies$/.test(w))return w.replace(/ies$/,'y');
@@ -6243,8 +6255,13 @@ function renderClinician(){
       ? _sr.fromPrevPct
       : ((_prev!=null&&_prev>0&&reached!=null)?(reached/_prev)*100:null);
     const cost=(_spend!=null&&reached!=null&&reached>0)?_spend/reached:null;
+    // The arithmetic behind the chip, for its hover: the cohort's own numerator
+    // and denominator, or the two reached counts when it is a plain ratio.
+    const convCalc=(conv==null)?null:(_sr&&_sr.fromPrevPct!==undefined)
+      ? {cohort:true,num:_sr.fromPrevNum,den:_sr.fromPrevDen,prev:_prevDef.label}
+      : {cohort:false,num:reached,den:_prev,prev:_prevDef?_prevDef.label:''};
     _prev=reached;_prevDef=dfn;
-    return {label:dfn.label,sub:dfn.sub||'',reached,here,convFromPrior:conv,cost};
+    return {label:dfn.label,sub:dfn.sub||'',reached,here,convFromPrior:conv,cost,convCalc};
   }):fn.map(x=>({label:x.label,sub:'',reached:x.reachedCount||0,here:x.count||0,convFromPrior:null,cost:null}));
   const maxN=rows9.reduce((m,x)=>Math.max(m,x.reached||0),0)||1;
   // Impressions dwarf every CRM stage — 31,360 against 13 — so a linear bar
@@ -6292,7 +6309,7 @@ function renderClinician(){
       +'<span style="text-align:right;font-family:var(--font-h);font-size:19px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+_n(rc)+'</span>'
       // from prior
       +'<span style="text-align:right">'+(st.convFromPrior!=null
-        ? '<span title="Of everything at the stage above, the share that reached this one" style="display:inline-block;padding:3px 10px;border-radius:50px;background:'+col+'26;border:1px solid '+col+'80;'
+        ? '<span data-tip="'+_clnConvTip(st).replace(/"/g,'&quot;')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" style="cursor:help;display:inline-block;padding:3px 10px;border-radius:50px;background:'+col+'26;border:1px solid '+col+'80;'
           +'font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+st.convFromPrior.toFixed(1)+'%</span>'
         : '<span style="color:var(--grey)">\u2014</span>')+'</span>'
       // here now
@@ -6306,6 +6323,26 @@ function renderClinician(){
       +'</div>';
   }
   fh+='</div></div>';
+
+  // All Time only: why Reached does not taper and what the chip measures.
+  // Deals created before the 2026-10-20 rebuild walked the OLD pipeline, so on
+  // a span reaching back past it two rows can hold more than the row above.
+  // The counts are read off this payload, not hard-coded: entered without the
+  // stage above = this row's reached minus its cohort numerator.
+  if(_clnFunnelAT()){
+    const _r=(l)=>rows9.filter(x=>x.label===l)[0]||null;
+    const _skip=(l)=>{const x=_r(l);return (x&&x.convCalc&&x.convCalc.cohort&&x.reached!=null)?Math.max(0,x.reached-x.convCalc.num):0;};
+    const _cs=_skip('Call Scheduled'),_ss=_skip('Sample Shipped');
+    fh+='<div style="margin-top:12px;padding:10px 14px;border-left:3px solid var(--teal);background:rgba(114,164,191,.08);border-radius:0 8px 8px 0;font-size:11.5px;color:var(--navy);line-height:1.55">'
+      +'<strong>Why some rows grow on All Time.</strong> Deals created before the Oct 20 rebuild walked the old pipeline '
+      +'(Fully Onboarded \u2192 Sample Shipped \u2192 Review), which had no Video Watched, Practice Details, Preferences, '
+      +'Credentials Submitted or Call Happened stage.'
+      +(_cs?(' '+fN(_cs)+' reached Call Scheduled \u2014 then named Fully Onboarded \u2014 without passing Credentials Submitted.'):'')
+      +(_ss?(' '+fN(_ss)+' shipped samples without a Call Happened.'):'')
+      +' So <em>Reached</em> can rise from one row to the next, and <em>% from prior</em> is not this row \u00f7 the row above: '
+      +'it is the share of deals at the stage above that went on to reach this one. Hover a percentage for its numbers.'
+      +'</div>';
+  }
 
   // ── Side bucket: deals still in a pre-rebuild (OLD) stage ──
   // Off the path, so no bar, no reached count and no conversion: just where they

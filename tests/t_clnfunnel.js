@@ -197,8 +197,31 @@ ck('page and event GA4 calls are separate (different tables)',
 // Per-stage metrics, composed client-side from segData.
 ck('the stage ORDER comes from the worker, not duplicated on the client',
    /funnelStages: CLN_FUNNEL9,/.test(src)&&/const _defs=Array\.isArray\(d\.funnelStages\)/.test(RC),true);
-ck('each stage carries reached / here / conversion / cost',
-   /return \{label:dfn\.label,sub:dfn\.sub\|\|'',reached,here,convFromPrior:conv,cost\};/.test(RC),true);
+ck('each stage carries reached / here / conversion / cost, and the arithmetic',
+   /return \{label:dfn\.label,sub:dfn\.sub\|\|'',reached,here,convFromPrior:conv,cost,convCalc\};/.test(RC),true);
+// The hover on "% from prior" (2026-10-28): RUN it on the live All Time numbers.
+{
+  const vm=require('vm');const T={fN:n=>Number(n).toLocaleString('en-US')};vm.createContext(T);
+  vm.runInContext(fn(cli,'_clnConvTip')+';globalThis._clnConvTip=_clnConvTip;',T);
+  ck('a stage-to-stage chip explains itself as a cohort share',
+     T._clnConvTip({label:'Call Scheduled',convFromPrior:94.99,convCalc:{cohort:true,num:455,den:479,prev:'Credentials Submitted'}}),
+     '95.0% = 455 of the 479 deals that reached Credentials Submitted also reached Call Scheduled');
+  ck('  and an ad-to-ad chip as the plain ratio it is',
+     T._clnConvTip({label:'Link Clicks',convFromPrior:2.33,convCalc:{cohort:false,num:18719,den:803294,prev:'Impressions'}}),
+     '2.3% = 18,719 Link Clicks \u00f7 803,294 Impressions');
+  ck('  and a row with nothing to explain says nothing',T._clnConvTip({label:'Impressions',convFromPrior:null,convCalc:null}),'');
+  ck('the chip carries it in the shared tooltip',
+     /data-tip="'\+_clnConvTip\(st\)\.replace\(\/"\/g,'&quot;'\)\+'" onmouseover="dbcTip\(event,this\)"/.test(RC),true);
+  ck('  the cohort numbers come from the worker, the ratio from the two rows',
+     /\? \{cohort:true,num:_sr\.fromPrevNum,den:_sr\.fromPrevDen,prev:_prevDef\.label\}/.test(RC)
+     &&/: \{cohort:false,num:reached,den:_prev,prev:_prevDef\?_prevDef\.label:''\};/.test(RC),true);
+}
+// The All Time note: only on All Time, with its counts read off the payload.
+ck('the All Time view explains why rows can grow',
+   /if\(_clnFunnelAT\(\)\)\{[\s\S]{0,400}?const _cs=_skip\('Call Scheduled'\),_ss=_skip\('Sample Shipped'\);/.test(RC)
+   &&/Why some rows grow on All Time\./.test(RC),true);
+ck('  counting the skips as reached minus the cohort numerator',
+   /Math\.max\(0,x\.reached-x\.convCalc\.num\)/.test(RC),true);
 // Stage to stage it is the worker's cohort figure; across a source change
 // (ad metric -> contacts -> deals) there is no shared population, so a ratio.
 ck('conversion is from the PRIOR stage',
