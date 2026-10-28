@@ -6255,7 +6255,20 @@ function renderClinician(){
   const _barW=(v)=>(v==null||v<=0)?0:Math.max(3,(_lg(v)/_lgMax)*100);
   const _n=(v)=>v==null?'\u2014':fN(v);
   const _c$=(v)=>v==null?'\u2014':(v>=100?'$'+Math.round(v).toLocaleString():'$'+v.toFixed(2));
-  let fh='';
+  // ── Stage table (redesigned 2026-10-28) ──
+  // One aligned row per stage, so a column of numbers reads straight down. The
+  // three numbers the funnel exists to show -- Reached, % from prior, Here now
+  // -- are the large ones; cost per stage is supporting detail and sits small
+  // and grey. The bar is the last column: track = ever reached (log scale, so
+  // 800k impressions and 195 reviews both stay visible), solid = here now.
+  // Before this the numbers floated at the far ends of 12 stacked cards, and
+  // nothing lined up for a reader comparing one stage to the next.
+  const _CLN_FT_COLS='minmax(190px,1.7fr) 92px 112px 84px 88px minmax(140px,2.2fr)';
+  const _ftHead=(t,al)=>'<span style="font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;text-align:'+(al||'right')+'">'+t+'</span>';
+  let fh='<div style="overflow-x:auto"><div style="min-width:760px">'
+    +'<div style="display:grid;grid-template-columns:'+_CLN_FT_COLS+';gap:14px;align-items:end;padding:0 10px 8px;border-bottom:1.5px solid var(--border)">'
+    +_ftHead('Stage','left')+_ftHead('Reached')+_ftHead('From prior')+_ftHead('Here now')+_ftHead('Cost per')
+    +_ftHead('Reached \u00b7 here now','left')+'</div>';
   for(let i=0;i<rows9.length;i++){
     const st=rows9[i];
     const rc=st.reached, cc=st.here;
@@ -6265,37 +6278,34 @@ function renderClinician(){
     // pretending nothing happened.
     const trackW=_barW(rc);
     const fillW=(rc!=null&&rc>0&&cc!=null)?Math.min(100,(cc/rc)*100):0;
-    fh+='<div style="margin-bottom:12px">'
-      +'<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:5px;gap:12px">'
-      +'<span style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">'
-        +'<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:'+col+';border:1px solid rgba(2,15,24,.18);margin-right:7px;vertical-align:middle"></span>'+st.label
-        +(st.sub?'<span style="font-family:var(--font-b);font-size:9.5px;font-weight:600;color:var(--grey);margin-left:7px">'+st.sub+'</span>':'')+'</span>'
-      +'<span style="white-space:nowrap"><span style="font-family:var(--font-h);font-size:18px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+_n(rc)+'</span>'
-      +'<span style="font-size:11px;color:var(--grey);margin-left:5px">reached'
-        +(cc!=null?' · '+fN(cc)+' here now':'')+'</span></span></div>'
-      +'<div style="background:rgba(114,164,191,.07);border-radius:6px;height:26px;overflow:hidden">'
-      +'<div title="'+_n(rc)+' reached'+(cc!=null?(' · '+fN(cc)+' still in this stage'):'')+'" style="height:100%;width:'+trackW+'%;background:'+col+'66;border:1px solid rgba(2,15,24,.22);border-radius:6px;overflow:hidden;transition:width .3s">'
-      +'<div style="height:100%;width:'+fillW+'%;background:'+ink+'"></div></div></div>'
-      // Conversion from the previous stage and the cost of reaching this one —
-      // the two numbers the funnel exists to show, so they get chips rather than
-      // the grey footnote they were.
-      +'<div style="display:flex;gap:7px;margin-top:6px;flex-wrap:wrap">'
-      +(st.convFromPrior!=null
-        ? ('<span style="display:inline-flex;align-items:baseline;gap:5px;padding:3px 9px;border-radius:50px;'
-          +'background:'+col+'1F;border:1px solid '+col+'59">'
-          +'<strong style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'
-          +st.convFromPrior.toFixed(1)+'%</strong>'
-          +'<span style="font-size:9.5px;color:var(--navy);opacity:.72">from prior</span></span>')
-        : '')
-      +(st.cost!=null
-        ? ('<span style="display:inline-flex;align-items:baseline;gap:5px;padding:3px 9px;border-radius:50px;'
-          +'background:rgba(23,44,69,.06);border:1px solid rgba(23,44,69,.16)">'
-          +'<strong style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'
-          +_c$(st.cost)+'</strong>'
-          +'<span style="font-size:9.5px;color:var(--navy);opacity:.72">per '+_clnSingular(st.label)+'</span></span>')
-        : '')
-      +'</div></div>';
+    // The ad rows and the pipeline rows are different kinds of thing; a hairline
+    // above Inquiries marks where paid traffic hands over to people.
+    const _hand=(i>0&&_defs.length>i&&!_defs[i-1].acq&&!_defs[i-1].id&&!_defs[i-1].ids&&(_defs[i].acq||_defs[i].id));
+    fh+='<div style="display:grid;grid-template-columns:'+_CLN_FT_COLS+';gap:14px;align-items:center;padding:9px 10px;'
+      +'border-bottom:1px solid var(--border)'+(_hand?';border-top:2px solid rgba(23,44,69,.18)':'')+'">'
+      // stage
+      +'<span style="display:flex;align-items:center;gap:8px;min-width:0">'
+        +'<span style="flex:0 0 auto;width:10px;height:10px;border-radius:50%;background:'+col+';border:1px solid rgba(2,15,24,.18)"></span>'
+        +'<span style="min-width:0"><span style="display:block;font-family:var(--font-h);font-size:13.5px;font-weight:700;color:var(--navy);line-height:1.2">'+st.label+'</span>'
+        +(st.sub?'<span style="display:block;font-size:9.5px;color:var(--grey);line-height:1.3">'+st.sub+'</span>':'')+'</span></span>'
+      // reached
+      +'<span style="text-align:right;font-family:var(--font-h);font-size:19px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+_n(rc)+'</span>'
+      // from prior
+      +'<span style="text-align:right">'+(st.convFromPrior!=null
+        ? '<span title="Of everything at the stage above, the share that reached this one" style="display:inline-block;padding:3px 10px;border-radius:50px;background:'+col+'26;border:1px solid '+col+'80;'
+          +'font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+st.convFromPrior.toFixed(1)+'%</span>'
+        : '<span style="color:var(--grey)">\u2014</span>')+'</span>'
+      // here now
+      +'<span style="text-align:right;font-family:var(--font-h);font-size:17px;font-weight:700;color:'+(cc!=null?ink:'var(--grey)')+';font-variant-numeric:tabular-nums">'+(cc!=null?fN(cc):'\u2014')+'</span>'
+      // cost
+      +'<span style="text-align:right;font-size:11.5px;color:var(--grey);font-variant-numeric:tabular-nums" title="'+(st.cost!=null?('Ad spend \u00f7 '+_n(rc)+' \u00b7 per '+_clnSingular(st.label)):'')+'">'+(st.cost!=null?_c$(st.cost):'\u2014')+'</span>'
+      // bar
+      +'<span style="display:block;background:rgba(114,164,191,.07);border-radius:5px;height:18px;overflow:hidden">'
+      +'<span title="'+_n(rc)+' reached'+(cc!=null?(' \u00b7 '+fN(cc)+' still in this stage'):'')+'" style="display:block;height:100%;width:'+trackW+'%;background:'+col+'66;border:1px solid rgba(2,15,24,.22);border-radius:5px;overflow:hidden;transition:width .3s">'
+      +'<span style="display:block;height:100%;width:'+fillW+'%;background:'+ink+'"></span></span></span>'
+      +'</div>';
   }
+  fh+='</div></div>';
 
   // ── Side bucket: deals still in a pre-rebuild (OLD) stage ──
   // Off the path, so no bar, no reached count and no conversion: just where they
@@ -6399,51 +6409,43 @@ function renderClinician(){
     +'<span style="font-size:10.5px;color:var(--grey)">'+unit+'</span></div>'
     +(sub?'<div style="font-size:9px;color:var(--grey);margin-top:2px;line-height:1.4">'+sub+'</div>':'')+'</div>';
 
-  // ── Card 1: KICK OFF CALLS ──
-  // Leads the panel: booking and holding the kick off call is the whole virtual
-  // motion, so it carries the `first` flag (no rule above it).
-  //
-  // The two stats pull in opposite directions by design — one says how many
-  // inquiries get a call on the books, the other how many of those calls are
-  // actually held — so there is no shared polarity heading. Each states its own
-  // direction in words instead, which is also what lets them sit together.
+  // ── KICK OFF CALLS strip (2026-10-28) ──
+  // Full width under the funnel, not a side panel: the table needs the width,
+  // and these are numbers to read across, not a sidebar to glance at.
+  // RESOLVED calls only (Alex): No-Show Rate = 1 - given / (given + no show).
+  // Calls still Scheduled or Rescheduled have not had their chance yet, and the
+  // old rate counted every one of them as a no-show. The "Call Booked" share
+  // that sat under it is gone: it divided bookings by inquiries on the booking
+  // DATE, so it could never agree with the funnel's own Call Scheduled row.
+  let kickH='';
   {
-  // Follows the funnel's range: this card sits inside the funnel section.
-  const _comp=fd.composition||d.composition||{};
-  const _inq=_comp.contacts||0;
-  // Inquiries with a kickoff call on the books. This was the Sign Up population
-  // until 2026-10-27; Sign Up is now Credentials Complete, so the card reads its
-  // own count rather than following that one. null on an older payload.
-  const _booked=(_comp.bookedCall!=null)?_comp.bookedCall:null;
-  sh+=cardOpen('Kick Off Calls',fN(_inq)+' inquiries '+(_clnFunnelAT()?'all time':'in the window'),true);
-  // 1 - (calls given / calls BOOKED in the window). Everything that is not a
-  // Demo Given counts against it — no-shows, cancellations, and calls still on
-  // the books alike — so it is broader than a no-show rate in the usual sense.
-  // The pending count is called out because those calls have not happened yet
-  // and will move the number as they resolve.
+  // Follows the funnel's range: this strip is part of the funnel section.
   const _vns=fd.virtualNoShow||d.virtualNoShow||{};
-  const _vnsPend=_vns.pending||0;
-  sh+=stat('Kick Off Call No-Show Rate',pctS(_vns.rate),
-    fN(_vns.given||0)+' given \u00f7 '+fN(_vns.booked||0)+' booked',
-    '1 \u2212 calls given \u00f7 calls booked in the window \u00b7 higher is worse'
-      +(_vnsPend?(' \u00b7 '+fN(_vnsPend)+' still upcoming'):''),
-    'Every deal whose Clinician Meeting Booked Date falls in this window, against those recorded as Demo Given (originally scheduled or rescheduled). '
-      +'Anything else counts against the rate: No Show, Cancelled Before Demo, and calls still Scheduled or Rescheduled. '
-      +'A call booked inside the window but due to happen after it has not happened yet, so it pushes the rate up until it resolves'
-      +(_vnsPend?(' \u2014 '+fN(_vnsPend)+' of '+fN(_vns.booked||0)+' are in that state right now'):'')+'. '
-      +'Scoped on the BOOKED date, not the deal create date, so a deal created earlier and booked in this window belongs to it.');
-  // CONTACT-based, straight off the Acquisition section's two populations — the
-  // same pair Key Metrics divides for Sign Up Rate, so the three agree by
-  // construction rather than by coincidence. Deliberately NOT a funnel stage
-  // count, which is deal-based and would disagree.
-  // Named "Call Booked", not "Call Scheduled": the funnel beside it now has a
-  // Call Scheduled STAGE, a deal count on a different basis, and two numbers
-  // sharing one name a few inches apart would be read as a contradiction.
-  sh+=stat('Call Booked',pctS((_booked!=null&&_inq>0)?(_booked/_inq)*100:null),
-    (_booked!=null?fN(_booked):'\u2014')+' \u00f7 '+fN(_inq),
-    'Inquiries with a kick off call booked \u00b7 higher is better',
-    'Share of clinician contacts created in this window whose deal has a Clinician Meeting Booked Date. Contact-based, like the Acquisition section. This was the definition of Sign Up until Oct 27, 2026; Sign Up is now Clinician Credentials Complete.',true);
-  sh+=cardClose;
+  const _res=(_vns.resolved!=null)?_vns.resolved:((_vns.given||0)+(_vns.noShow||0));
+  // Recomputed here from the counts so an older payload, whose `rate` was still
+  // 1 - given / booked, cannot put the superseded number on screen.
+  const _nsr=_res>0?((_vns.noShow||0)/_res)*100:null;
+  const _shr=_res>0?((_vns.given||0)/_res)*100:null;
+  const tile=(lbl,val,sub,accent,tip)=>'<div title="'+(tip||'').replace(/"/g,'&quot;')+'" style="flex:1 1 150px;background:var(--white);border:1px solid var(--border);border-left:4px solid '+accent+';border-radius:9px;padding:10px 14px">'
+    +'<div style="font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em">'+lbl+'</div>'
+    +'<div style="font-family:var(--font-h);font-size:24px;font-weight:700;color:var(--navy);line-height:1.15;margin-top:2px;font-variant-numeric:tabular-nums">'+val+'</div>'
+    +'<div style="font-size:10px;color:var(--grey);margin-top:1px">'+sub+'</div></div>';
+  kickH='<div style="margin-top:18px">'
+    +'<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:9px">'
+    +'<span style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">Kick Off Calls</span>'
+    +'<span style="font-size:10.5px;color:var(--grey)">resolved calls only \u00b7 calls booked '+(_clnFunnelAT()?'all time':'in the window')+' \u00b7 from Clinician Attendance Status</span></div>'
+    +'<div style="display:flex;gap:10px;flex-wrap:wrap">'
+    +tile('Show Rate',pctS(_shr),fN(_vns.given||0)+' \u00f7 '+fN(_res)+' resolved','#2E9E6B','Demo Given \u00f7 (Demo Given + No Show). Higher is better.')
+    +tile('No-Show Rate',pctS(_nsr),fN(_vns.noShow||0)+' \u00f7 '+fN(_res)+' resolved','#C0392B','1 \u2212 Demo Given \u00f7 (Demo Given + No Show). Calls still scheduled or rescheduled are left out until they resolve. Higher is worse.')
+    +tile('Calls Given',fN(_vns.given||0),'Demo Given \u2014 original or rescheduled','#2E9E6B')
+    +tile('No Shows',fN(_vns.noShow||0),'attendance = No Show','#C0392B')
+    +tile('Still Upcoming',fN(_vns.pending||0),'scheduled or rescheduled \u00b7 not in either rate','#9AA7B4')
+    +'</div>'
+    +(((_vns.cancelled||0)+(_vns.blank||0))>0
+      ? '<div style="font-size:10px;color:var(--grey);margin-top:6px">Also outside both rates: '+fN(_vns.cancelled||0)+' cancelled before the call'
+        +((_vns.blank||0)?(', '+fN(_vns.blank)+' with no attendance status'):'')+'.</div>'
+      : '')
+    +'</div>';
   }
 
   // ── Card 2: DEMO PATH ──
@@ -6498,11 +6500,12 @@ function renderClinician(){
     (_clnFunnelAT()?'All Time \u00b7 independent of the page date filter \u00b7 ':'')
       +'Deals created '+_fr.from+' \u2192 '+_fr.to+' \u00b7 '+fN(_fcount)+' deal'+(_fcount===1?'':'s')
       +((fd.excludedFuture||0)?' \u00b7 '+fN(fd.excludedFuture)+' future-dated meeting'+(fd.excludedFuture===1?'':'s')+' excluded':'')
-      +' \u00b7 bar length = how many ever reached the stage, solid = how many are there now',
-    entryStrip+segBar+'<div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">'
-      +'<div style="flex:1 1 73%;min-width:340px">'+fh+'</div>'
-      +'<div style="flex:0 1 25%;min-width:230px;background:var(--lighter);border:1px solid var(--border);border-radius:10px;padding:12px 14px">'+sh+'</div>'
-    +'</div>');
+      +' \u00b7 bar: light = ever reached, solid = there now',
+    // Full width: the side panel only ever held the Kick Off card, which is now
+    // the strip under the table. `sh` still collects the demo-path card, which
+    // is gated off on this all-workflow funnel, so it renders only if non-empty.
+    entryStrip+segBar+fh+kickH
+      +(sh?'<div style="margin-top:14px;background:var(--lighter);border:1px solid var(--border);border-radius:10px;padding:12px 14px">'+sh+'</div>':''));
   const comp=d.composition||{};
   // Clinician Composition is gone: Specialty Breakdown was dropped and Type of
   // Clinician moved into Acquisition, which left the card with nothing in it.

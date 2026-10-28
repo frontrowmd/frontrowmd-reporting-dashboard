@@ -1113,7 +1113,9 @@ async function fetchClinicianTopFunnel(apiKey, from, to) {
 }
 
 
-// Kick Off Call No-Show Rate = 1 - (calls given / calls BOOKED in the window).
+// Kick Off Call No-Show Rate. SUPERSEDED 2026-10-28: the rate is now over
+// RESOLVED calls only -- see the return below. Kept for the history:
+// it was 1 - (calls given / calls BOOKED in the window).
 //
 // Per Alex: the denominator is every deal whose clinician_meeting_booked_date
 // falls in the window, and the numerator is those recorded as Demo Given. So
@@ -1149,10 +1151,18 @@ function buildClinicianVirtualNoShow(deals, from, to) {
     else if (att === 'Cancelled Before Demo') cancelled++;
     else blank++;
   }
+  // RESOLVED calls only (Alex, 2026-10-28): No-Show Rate = 1 - given / (given +
+  // no show). Calls still Scheduled or Rescheduled have not had their chance
+  // yet; the old 1 - given / booked counted every one of them as a no-show
+  // (all time: 149 of them, so 64.5% instead of 60%). Cancelled Before Demo and
+  // a blank status are neither a call held nor a no-show, so they sit outside
+  // both rates and are reported as counts.
+  const resolved = given + noShow;
   return {
-    booked, given, noShow, pending, cancelled, blank,
+    booked, given, noShow, pending, cancelled, blank, resolved,
     held: given,                       // kept: the client labels this "given"
-    rate: booked > 0 ? (1 - given / booked) * 100 : null,
+    rate: resolved > 0 ? (1 - given / resolved) * 100 : null,
+    showRate: resolved > 0 ? (given / resolved) * 100 : null,
   };
 }
 

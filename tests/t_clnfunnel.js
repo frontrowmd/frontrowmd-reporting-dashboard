@@ -30,8 +30,12 @@ ck('Samples & Reviews is gone',/cardOpen\('Samples & Reviews'/.test(cli),false);
 // "Virtual Path" meant nothing to a reader now that the workflow toggle is gone.
 // Ungated since the 2026-10-27 rebuild: the funnel shows every workflow on one
 // path, so a Virtual gate would have hidden the card for good.
-ck('the Kick Off Calls card renders for the all-workflow funnel',
-   /sh\+=cardOpen\('Kick Off Calls'/.test(RC)&&!/if\(flow==='virtual'\)\{/.test(RC),true);
+// A full-width strip under the stage table since 2026-10-28, not a side card.
+ck('the Kick Off Calls strip renders for the all-workflow funnel',
+   /kickH='<div style="margin-top:18px">'/.test(RC)&&/entryStrip\+segBar\+fh\+kickH/.test(RC)
+   &&!/sh\+=cardOpen\('Kick Off Calls'/.test(RC)&&!/if\(flow==='virtual'\)\{/.test(RC),true);
+ck('  and the side panel is gone, so the table takes the full width',
+   /min-width:230px;background:var\(--lighter\)/.test(RC),false);
 ck('and the old path name is gone',/cardOpen\('Virtual Path'/.test(cli),false);
 ck('Demo Path renders only on the demo workflow',
    /if\(flow==='demo'\)\{\s*\n\s*sh\+=cardOpen\('Demo Path'/.test(RC),true);
@@ -42,7 +46,8 @@ ck('the stale blank-on-pill wording is gone',/blank on the (Demo|Virtual) pill/.
 
 // --- 7. Virtual No Show Rate --------------------------------------------
 ck('No Call Scheduled Yet is gone',/stat\('No Call Scheduled Yet'/.test(cli),false);
-ck('Kick Off Call No-Show Rate replaces it',/stat\('Kick Off Call No-Show Rate'/.test(RC),true);
+ck('the strip leads with Show Rate and No-Show Rate',
+   /tile\('Show Rate',pctS\(_shr\)/.test(RC)&&/tile\('No-Show Rate',pctS\(_nsr\)/.test(RC),true);
 ck('and the old label is gone',/Virtual No Show Rate/.test(cli),false);
 // Replaced the backlog stat. Stuck-in-Clinician-Approved was a current-stage
 // snapshot of a queue; this is the entry rate the section actually turns on.
@@ -50,27 +55,32 @@ ck('Stuck in Clinician Approved is gone',/stat\('Stuck in Clinician Approved'/.t
 // Renamed from "Call Scheduled": the funnel now has a Call Scheduled STAGE, a
 // deal count on a different basis, and one name for two numbers would read as a
 // contradiction.
-ck('Call Booked replaces it',/stat\('Call Booked'/.test(RC)&&!/stat\('Call Scheduled'/.test(RC),true);
+// Call Booked is gone (2026-10-28): inquiries with a booked call over all
+// inquiries, on the booking date, could never agree with the funnel's own Call
+// Scheduled row. The funnel row carries that now.
+ck('Call Booked is gone',/'Call Booked'/.test(RC)||/stat\('Call Scheduled'/.test(RC),false);
 // CONTACT-based, straight off the Acquisition populations — the same pair Key
 // Metrics divides for Full App Rate, so the three agree by construction. A
 // funnel-stage count here would be deal-based and would disagree.
 // Its OWN count now. It used to read submission.contacts, which was Sign Up;
 // Sign Up moved to Credentials Complete and this card stayed on the booking.
-ck('it divides the Acquisition populations, not a funnel stage',
-   /const _inq=_comp\.contacts\|\|0;/.test(RC)
-   &&/const _booked=\(_comp\.bookedCall!=null\)\?_comp\.bookedCall:null;/.test(RC),true);
-ck('  and no longer reads the Sign Up population',
-   /_booked=\(_comp\.submission/.test(RC),false);
-ck('and guards a zero denominator',/\(_booked!=null&&_inq>0\)\?\(_booked\/_inq\)\*100:null/.test(RC),true);
+// Recomputed from the counts on the client, so an older payload whose `rate`
+// was still 1 - given / booked cannot put the superseded number on screen.
+ck('both rates are over resolved calls, recomputed from the counts',
+   /const _nsr=_res>0\?\(\(_vns\.noShow\|\|0\)\/_res\)\*100:null;/.test(RC)
+   &&/const _shr=_res>0\?\(\(_vns\.given\|\|0\)\/_res\)\*100:null;/.test(RC),true);
+ck('  and resolved means given plus no-show, nothing else',
+   /const _res=\(_vns\.resolved!=null\)\?_vns\.resolved:\(\(_vns\.given\|\|0\)\+\(_vns\.noShow\|\|0\)\);/.test(RC),true);
 // The two stats pull in opposite directions, so the shared polarity heading
 // went and each states its own direction in words.
 ck('the Backlog heading is gone',/Backlog/.test(cli),false);
-ck('each stat states its own polarity',
-   [/higher is worse/.test(RC),/higher is better/.test(RC)],[true,true]);
+ck('each rate states its own polarity',
+   [/Higher is worse/.test(RC),/Higher is better/.test(RC)],[true,true]);
 // The funnel's own payload first, so an All Time funnel's card is All Time too.
 ck('it reads the worker-computed value',/const _vns=fd\.virtualNoShow\|\|d\.virtualNoShow\|\|\{\};/.test(RC),true);
-// The rate is now 1 - (given / booked in the window). RUN it: the whole change
-// is which attendance states land in the denominator, and that is behaviour.
+// The rate is 1 - given / (given + no show): RESOLVED calls only (Alex,
+// 2026-10-28). RUN it: the whole change is which attendance states land in the
+// denominator, and that is behaviour.
 {
   const vm=require('vm');
   const wctx={console,Date,Math,JSON,Set,Map,Object,String,Number,Array,parseInt,parseFloat,isNaN,RegExp,
@@ -93,10 +103,16 @@ ck('it reads the worker-computed value',/const _vns=fd\.virtualNoShow\|\|d\.virt
   ],W[0],W[1]);
   ck('the denominator is every call BOOKED in the window',r.booked,7);
   ck('both Demo Given variants count as given',r.given,2);
-  // THE change: everything that is not a Demo Given counts against the rate.
-  ck('the rate is 1 minus given over booked',Math.round(r.rate*10)/10,71.4);
-  ck('and the other five states are all in the denominator',
+  // THE change: only a held call and a no-show are resolved. The old rate
+  // (1 - given / booked) read 71.4% on this same fixture, counting the two
+  // still-upcoming calls, the cancellation and the blank as no-shows.
+  ck('the rate is 1 minus given over given-plus-no-show',Math.round(r.rate*10)/10,33.3);
+  ck('  with the show rate as its complement',Math.round(r.showRate*10)/10,66.7);
+  ck('  over the resolved calls only',r.resolved,3);
+  ck('and the other states are still counted, outside both rates',
      [r.noShow,r.pending,r.cancelled,r.blank],[1,2,1,1]);
+  ck('nothing resolved yet gives null, not 0% or 100%',
+     wctx.buildClinicianVirtualNoShow([mk('Scheduled','2026-09-08')],W[0],W[1]).rate,null);
   ck('the split accounts for every booked call',r.given+r.noShow+r.pending+r.cancelled+r.blank,r.booked);
   // Scoped on the BOOKED date, so the window excludes calls booked outside it
   // and anything never booked at all.
@@ -107,7 +123,7 @@ ck('it reads the worker-computed value',/const _vns=fd\.virtualNoShow\|\|d\.virt
   // it resolves — the card has to say how many are in that state.
   ck('pending is reported so the number can be read honestly',
      /_vns\.pending\|\|0/.test(cli),true);
-  ck('and the card shows it',/still upcoming/.test(cli),true);
+  ck('and the strip shows it',/tile\('Still Upcoming',fN\(_vns\.pending\|\|0\)/.test(cli),true);
 }
 // Scoped on the booked date, so it must be handed the full history rather than
 // the page cohort — a deal created in June and booked in September is September's.
@@ -234,8 +250,18 @@ ck('the funnel date filter defaults to the page window',
      /CLN_FUNNEL9_COLORS\[st\.label\]\|\|CLINICIAN_STAGE_COLORS\[st\.label\]/.test(RC),true);
 }
 // --- the two numbers the funnel exists to show ---------------------------
-ck('conversion and cost render as chips, not grey footnotes',
-   /from prior<\/span><\/span>'/.test(RC)&&/border-radius:50px;'/.test(RC),true);
+// The stage table: one aligned row per stage. Reached, From prior and Here now
+// are the large numbers; cost is small and grey.
+ck('the funnel is a column-aligned table with the three headline columns',
+   /_ftHead\('Reached'\)\+_ftHead\('From prior'\)\+_ftHead\('Here now'\)\+_ftHead\('Cost per'\)/.test(RC),true);
+ck('  every row uses the same column template as the header',
+   (RC.match(/grid-template-columns:'\+_CLN_FT_COLS\+'/g)||[]).length,2);
+ck('  reached and here now are large, cost is small and grey',
+   /font-size:19px;font-weight:700;color:var\(--navy\);font-variant-numeric:tabular-nums">'\+_n\(rc\)/.test(RC)
+   &&/font-size:17px;font-weight:700;color:'\+\(cc!=null\?ink/.test(RC)
+   &&/font-size:11\.5px;color:var\(--grey\);font-variant-numeric:tabular-nums" title="'\+\(st\.cost/.test(RC),true);
+ck('  and from prior is a large chip in the stage colour',
+   /font-size:15px;font-weight:700;color:var\(--navy\);font-variant-numeric:tabular-nums">'\+st\.convFromPrior\.toFixed\(1\)\+'%/.test(RC),true);
 
 // --- scoping: the whole point --------------------------------------------
 // Window-scoped end to end, or the CTA Click -> Inquiries rate is meaningless
