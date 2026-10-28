@@ -874,7 +874,8 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v45';   // v45: Sign Up before 2026-10-20 = booked call; funnel All Time.
+const API_CACHE_VER = 'v46';   // v46: mrrArr.pilot -- the Revenue Outcome pilot toggle.
+                               // v45: Sign Up before 2026-10-20 = booked call; funnel All Time.
                                // v44: clinician pipeline rebuilt; Sign Up = Credentials Complete.
                                // v43: clinician submission carries the Lookalike-excluded denominators.
                                // v38: trend/trendRange are actually FORWARDED by buildResponse.
@@ -1547,6 +1548,14 @@ function wFrom(dateStr) { return dateStr < WINDSOR_EPOCH ? WINDSOR_EPOCH : dateS
 
 // Filter deals: exclude Paused, Churned, and Never Implemented - Churned
 // Keeps: Paying, Signed, and empty/unset (new pipeline deals not yet categorized)
+// A PILOT brand is a signed deal whose Pilot Waitlist Status is filled in --
+// any of its four values (Alex, 2026-10-28). The Revenue Outcome card leaves
+// them out unless "Include Pilot Brands" is ticked. Deal property, enumeration;
+// verified against the live HubSpot property 2026-10-28 (12 closed-won deals,
+// all closed Oct 22-28 2026).
+function isPilotBrand(deal) {
+  return !!String((deal && deal.properties && deal.properties.pilot_waitlist_status) || '').trim();
+}
 function filterActiveBrands(deals) {
   return deals.filter(d => {
     const bs = (d.properties?.brand_status || '').toLowerCase();
@@ -1809,7 +1818,9 @@ async function fetchClosedWonDeals(token, from, to) {
       { propertyName: 'closedate', operator: 'GTE', value: String(toMsET(from)) },
       { propertyName: 'closedate', operator: 'LTE', value: String(toMsET(to, true)) },
     ],
-  }], ['amount','closedate','hs_createdate','utm_source','utm_medium','utm_campaign','utm_content','hubspot_owner_id','brand_status','average_monthly_web_traffic__cloned_','average_monthly_web_traffic'],
+  }], ['amount','closedate','hs_createdate','utm_source','utm_medium','utm_campaign','utm_content','hubspot_owner_id','brand_status','average_monthly_web_traffic__cloned_','average_monthly_web_traffic',
+        // Pilot brands: the Revenue Outcome card's "Include Pilot Brands" box.
+        'pilot_waitlist_status'],
      200, [{ propertyName: 'hs_createdate', direction: 'ASCENDING' }], pagesForWindow(from, to));
 }
 
@@ -2502,10 +2513,12 @@ function processClosedWonDeals(deals) {
   const byDay = {};
   let noCloseDate = 0;
 
+  let pilotMrr = 0, pilotCount = 0;   // the pilot share of mrr / count -- see isPilotBrand
   for (const deal of deals) {
     const p = deal.properties||{};
     const amt = parseFloat(p.amount)||0;
     mrr += amt; count++;
+    if (isPilotBrand(deal)) { pilotMrr += amt; pilotCount++; }
 
     const rep = p.hubspot_owner_id || 'unassigned';
     if (!byRep[rep]) byRep[rep] = { mrr:0, count:0 };
@@ -2527,7 +2540,7 @@ function processClosedWonDeals(deals) {
   }
 
   const avgCycleDays = cycleDays.length > 0 ? cycleDays.reduce((a,b)=>a+b,0)/cycleDays.length : null;
-  return { mrr, count, byRep, byChannel, byStage, avgCycleDays, byDay, noCloseDate };
+  return { mrr, count, pilotMrr, pilotCount, byRep, byChannel, byStage, avgCycleDays, byDay, noCloseDate };
 }
 
 // ---------------------------------------------------------------------------
@@ -5370,6 +5383,13 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
     mrr: buildTile(c.closedWon.mrr, p.closedWon?.mrr??null, pm.closedWon?.mrr??null, 'Sum of amount on closed-won deals (by closedate)'),
     dealCount: buildTile(c.closedWon.count, p.closedWon?.count??null, pm.closedWon?.count??null, 'Deals with dealstage = closedwon (by closedate)'),
     avgCycleDays: c.closedWon.avgCycleDays,
+    // The pilot share of mrr / dealCount for each window, so the Revenue
+    // Outcome card can leave pilots out before its live numbers arrive.
+    pilot: {
+      cur:   { mrr: c.closedWon.pilotMrr || 0, count: c.closedWon.pilotCount || 0 },
+      prior: p.closedWon ? { mrr: p.closedWon.pilotMrr || 0, count: p.closedWon.pilotCount || 0 } : null,
+      lm:    pm.closedWon ? { mrr: pm.closedWon.pilotMrr || 0, count: pm.closedWon.pilotCount || 0 } : null,
+    },
     closedWonByRep: c.closedWon.byRep,
     closedWonByChannel: c.closedWon.byChannel,
   };
@@ -5872,7 +5892,20 @@ async function processRevenueOutcome(env, windowType, customFrom, customTo, vsFr
     prior ? fetchClosedWonDeals(hsToken, prior.from, prior.to) : Promise.resolve(null),
     priorMonth ? fetchClosedWonDeals(hsToken, priorMonth.from, priorMonth.to) : Promise.resolve(null),
   ]);
-  const tot = (deals) => { if (!deals) return null; const a = filterActiveBrands(deals); let m = 0; for (const d of a) m += parseFloat(d.properties && d.properties.amount) || 0; return { mrr: m, count: a.length }; };
+  // mrr / count include pilot brands, as they always have; pilotMrr /
+  // pilotCount are the pilot share of those same totals, so the client can take
+  // them out without a second request when "Include Pilot Brands" is unticked.
+  const tot = (deals) => {
+    if (!deals) return null;
+    const a = filterActiveBrands(deals);
+    let m = 0, pm = 0, pc = 0;
+    for (const d of a) {
+      const amt = parseFloat(d.properties && d.properties.amount) || 0;
+      m += amt;
+      if (isPilotBrand(d)) { pm += amt; pc++; }
+    }
+    return { mrr: m, count: a.length, pilotMrr: pm, pilotCount: pc };
+  };
   return {
     current: tot(cCW), prior: tot(pCW), priorMonth: tot(pmCW),
     period: current, priorPeriod: prior, priorMonthPeriod: priorMonth,

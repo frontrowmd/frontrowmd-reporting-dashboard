@@ -940,10 +940,39 @@ function getChurnRate(){return _churnPct/100;}
 // (always-accurate current/prior/LM closed-won). _roSeq guards out-of-order
 // responses so a stale window's result can't clobber the current one.
 var _revOutcome=null,_roSeq=0;
+// Pilot scope (2026-10-28): All / Excluding Pilot / Pilot Only. A pilot brand
+// is a signed deal with Pilot Waitlist Status filled in. Default is Excluding
+// Pilot. One setting for every copy of the card (Brand, Irfan, Executive),
+// remembered per browser. It briefly shipped in preview as an "Include Pilot
+// Brands" checkbox, so a stored tick from that reads as All.
+var RO_PILOT_MODES=[{k:'all',l:'All'},{k:'excl',l:'Excluding Pilot'},{k:'only',l:'Pilot Only'}];
+var _roPilotMode=(function(){
+  try{
+    var m=localStorage.getItem('roPilotMode');
+    if(m==='all'||m==='excl'||m==='only')return m;
+    if(localStorage.getItem('roIncludePilots')==='1')return 'all';
+  }catch(e){}
+  return 'excl';
+})();
+// Re-render whichever Revenue Outcome card is on screen. Shared by the live
+// fetch below and the pilot checkbox, so the two cannot drift.
+function _roRerender(){
+  if(AP==='dashboard'&&S.dashboard&&S.dashboard.data){var de=document.getElementById('t-revenue');if(de)de.innerHTML=_buildRevenueOutcomeCard(S.dashboard.data);}
+  if(AP==='irfan'&&S.irfan&&S.irfan.data){var ie=document.getElementById('irfan-revoutcome');if(ie)ie.innerHTML=_buildRevenueOutcomeCard(S.irfan.data);}
+  // The Executive Dashboard's Brand mode carries its own suffixed copy. Without
+  // this it would keep the cached numbers while the Brand page refreshed to live
+  // ones — the same card showing two different figures depending on the page.
+  if(AP==='exec'&&_execMode()==='brand'&&S.exec&&S.exec.data){var xe=document.getElementById('t-revenue-exec');if(xe)xe.innerHTML=_buildRevenueOutcomeCard(S.exec.data);}
+}
+window.roSetPilotMode=function(m){
+  if(m!=='all'&&m!=='excl'&&m!=='only')return;
+  _roPilotMode=m;
+  try{localStorage.setItem('roPilotMode',m);}catch(e){}
+  _roRerender();
+};
 // Shared Revenue Outcome card (dark navy). Headline metric = Signed ARR
-// (MRR × 12). ROAS keeps the product-standard churn-adjusted definition
-// (churn-adjusted ARR ÷ spend) so it matches the ROAS used elsewhere. Used by
-// both the Brand Dashboard (renderDash) and the Irfan Dashboard.
+// (MRR × 12). Used by the Brand Dashboard (renderDash), the Irfan Dashboard and
+// the Executive Dashboard's Brand mode. ROAS was removed 2026-10-28.
 function _buildRevenueOutcomeCard(d){
   // Prefer the dedicated /api/revenue-outcome live result (accurate prior/LM)
   // when it's loaded for this page's current window; otherwise fall back to the
@@ -956,23 +985,40 @@ function _buildRevenueOutcomeCard(d){
   var pmMRR=_ro?(_ro.priorMonth?_ro.priorMonth.mrr:null):((d.mrrArr&&d.mrrArr.mrr&&d.mrrArr.mrr.lastMonth)?d.mrrArr.mrr.lastMonth.value:null);
   var pDeal=_ro?(_ro.prior?_ro.prior.count:null):((d.mrrArr&&d.mrrArr.dealCount&&d.mrrArr.dealCount.sameTimePrior)?d.mrrArr.dealCount.sameTimePrior.value:null);
   var pmDeal=_ro?(_ro.priorMonth?_ro.priorMonth.count:null):((d.mrrArr&&d.mrrArr.dealCount&&d.mrrArr.dealCount.lastMonth)?d.mrrArr.dealCount.lastMonth.value:null);
+  // The pilot share of each window, from the SAME source as the totals above, so
+  // what is taken out is exactly what was counted in. Live: each window object
+  // carries pilotMrr / pilotCount. Cached: mrrArr.pilot.{cur,prior,lm}.
+  var _pil=_ro
+    ? {cur:_ro.current,prior:_ro.prior,lm:_ro.priorMonth,live:true}
+    : ((d.mrrArr&&d.mrrArr.pilot)?{cur:d.mrrArr.pilot.cur,prior:d.mrrArr.pilot.prior,lm:d.mrrArr.pilot.lm}:null);
+  var _pv=function(w,k){var o=_pil&&_pil[w];if(!o)return null;var v=_pil.live?o['pilot'+k]:o[k.toLowerCase()];return (typeof v==='number')?v:null;};
+  // An older payload has no pilot split at all. Then the card can only show
+  // All, and it says so rather than labelling a total it cannot split.
+  var _pilotKnown=_pv('cur','Mrr')!=null;
+  var _mode=_pilotKnown?_roPilotMode:'all';
+  // Each window becomes its non-pilot remainder (excl) or its pilot share (only),
+  // so the prior and LM comparisons always set like against like. A window whose
+  // split is missing becomes null and its delta a dash, never a mixed figure.
+  var _scope=function(tot,w,k){
+    if(_mode==='all'||tot==null)return tot;
+    var pv=_pv(w,k); if(pv==null)return null;
+    return _mode==='only'?pv:tot-pv;
+  };
+  mrr=_scope(mrr,'cur','Mrr')||0; dealCount=_scope(dealCount,'cur','Count')||0;
+  pMRR=_scope(pMRR,'prior','Mrr'); pDeal=_scope(pDeal,'prior','Count');
+  pmMRR=_scope(pmMRR,'lm','Mrr'); pmDeal=_scope(pmDeal,'lm','Count');
   // Signed Brands = closed-won + churned deals that still carry a Close Date in
   // the window (matches the Marketing Funnel "Signed Brands" calc). The churned
   // add-back is only available for the current window, so prior/LM deltas
   // compare against closed-won only (the add-back is a handful of deals).
-  var _churnAdd=(d&&d.signedChurnedByCloseCount)||0;
+  // The churned add-back is not split by pilot. Pilot brands are brand new (the
+  // first signed Oct 22 2026), so it is non-pilot by construction and is left
+  // out of Pilot Only rather than credited to it.
+  var _churnAdd=(_mode==='only')?0:((d&&d.signedChurnedByCloseCount)||0);
   var signedBrands=dealCount+_churnAdd;
-  var spend=(d.adSpend&&d.adSpend.total&&d.adSpend.total.value)||0;
-  var cr=getChurnRate(),eM=effM(cr);
   var signedARR=mrr*12;            // headline
-  var adjARR=mrr*eM;               // churn-adjusted ARR — used only for the ROAS row
   var acv=signedBrands>0?mrr/signedBrands:null;  // per Signed Brand (incl. churned by closedate)
-  var roas=spend>0?adjARR/spend:null;
-  var pSpend=(d.adSpend&&d.adSpend.total&&d.adSpend.total.sameTimePrior)?d.adSpend.total.sameTimePrior.value:null;
-  var pmSpend=(d.adSpend&&d.adSpend.total&&d.adSpend.total.lastMonth)?d.adSpend.total.lastMonth.value:null;
   var pSignedARR=pMRR!=null?pMRR*12:null, pmSignedARR=pmMRR!=null?pmMRR*12:null;
-  var pAdjARR=pMRR!=null?pMRR*eM:null, pmAdjARR=pmMRR!=null?pmMRR*eM:null;
-  var pROAS=(pAdjARR!=null&&pSpend>0)?pAdjARR/pSpend:null, pmROAS=(pmAdjARR!=null&&pmSpend>0)?pmAdjARR/pmSpend:null;
   var pACV=(pDeal>0&&pMRR!=null)?pMRR/pDeal:null, pmACV=(pmDeal>0&&pmMRR!=null)?pmMRR/pmDeal:null;
   function nf(n,fmt,dec){if(n==null)return '—';var s=n>=0?'+':'-';var a=Math.abs(n);var dd=dec!=null?dec:1;if(fmt==='$')return s+'$'+Math.round(a).toLocaleString();if(fmt==='#')return s+Math.round(a).toLocaleString();if(fmt==='%')return s+a.toFixed(dd)+'%';if(fmt==='x')return s+a.toFixed(2)+'x';return s+a.toFixed(dd);}
   function dk(cur,prev,fmt,sz){if(cur==null||prev==null)return '<span style="color:rgba(255,255,255,.4);font-size:'+(sz||11)+'px">—</span>';var nd=cur-prev;var pd=prev!==0?((cur-prev)/prev)*100:null;var arrow=nd>=0?'↑':'↓';var color=nd===0?'rgba(255,255,255,.5)':(nd>0?'#4ADE80':'#FCA5A5');var pStr=pd!=null?'('+(pd>=0?'+':'')+pd.toFixed(1)+'%)':'';return '<span style="color:'+color+';font-weight:600;font-size:'+(sz||11)+'px">'+arrow+' '+nf(nd,fmt)+' '+pStr+'</span>';}
@@ -997,7 +1043,17 @@ function _buildRevenueOutcomeCard(d){
   // went with it; Revenue Outcome lives inside Key Metrics now and that section
   // supplies its own heading.
   return '<div style="background:linear-gradient(135deg,#020F18 0%,#172C45 58%,#1D4053 100%);border:1px solid var(--mid-navy);border-radius:14px;padding:20px 24px;box-shadow:inset 3px 0 0 var(--teal),0 6px 20px rgba(2,15,24,.18);color:#fff;height:100%">'
-    +'<div style="font-family:var(--font-h);font-size:10.5px;color:rgba(255,255,255,.5);margin-bottom:14px;text-transform:uppercase;letter-spacing:.1em">Revenue Outcome</div>'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">'
+      +'<span style="font-family:var(--font-h);font-size:10.5px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.1em">Revenue Outcome</span>'
+      // Pilot scope: three pills on the dark card. Disabled until the payload
+      // carries a pilot split; the note says why rather than leaving dead pills.
+      +'<span style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap" title="Pilot brands are signed deals with Pilot Waitlist Status filled in in HubSpot">'
+        +(_pilotKnown?'':'<span style="font-size:10.5px;color:#FCA5A5">pilot split loading</span>')
+        +'<span role="group" aria-label="Pilot brands" style="display:inline-flex;border:1px solid rgba(114,164,191,.35);border-radius:50px;overflow:hidden;opacity:'+(_pilotKnown?'1':'.5')+'">'
+        +RO_PILOT_MODES.map(function(o){var on=(o.k===_mode);
+          return '<button'+(_pilotKnown?'':' disabled')+' onclick="roSetPilotMode(\''+o.k+'\')" aria-pressed="'+on+'" style="font-family:var(--font-h);font-size:10.5px;font-weight:700;letter-spacing:.02em;padding:4px 11px;border:none;cursor:'+(_pilotKnown?'pointer':'default')+';'
+            +'background:'+(on?'var(--teal)':'transparent')+';color:'+(on?'#020F18':'rgba(255,255,255,.72)')+'">'+o.l+'</button>';}).join('')
+        +'</span></span></div>'
     +'<div style="display:flex;flex-wrap:wrap;gap:18px 36px;align-items:flex-start">'
       +'<div style="flex:1 1 190px;min-width:180px">'
         +'<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:3px"><span style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.05em">Signed ARR</span><span style="font-size:10.5px;color:rgba(255,255,255,.45)">MRR × 12</span></div>'
@@ -1007,7 +1063,6 @@ function _buildRevenueOutcomeCard(d){
       +'</div>'
       +'<div style="flex:1.6 1 300px;min-width:260px">'
         +metricRow('MRR',f$(mrr),mrr,pMRR,pmMRR,'$')
-        +metricRow('ROAS',roas!=null?roas.toFixed(2)+'x':'—',roas,pROAS,pmROAS,'x')
         +metricRow('ACV',acv!=null?f$(acv):'—',acv,pACV,pmACV,'$')
         +metricRow('Signed Brands',fN(signedBrands),signedBrands,pDeal,pmDeal,'#')
       +'</div>'
@@ -1025,12 +1080,7 @@ async function fdRevenueOutcome(win,from,to,vsFrom,vsTo){
     if(!r.ok)return;var d=await r.json();if(!d||d.error)return;
     if(my!==_roSeq)return; // a newer window/refresh superseded this fetch
     _revOutcome={win:win,current:d.current,prior:d.prior,priorMonth:d.priorMonth};
-    if(AP==='dashboard'&&S.dashboard&&S.dashboard.data){var de=document.getElementById('t-revenue');if(de)de.innerHTML=_buildRevenueOutcomeCard(S.dashboard.data);}
-    if(AP==='irfan'&&S.irfan&&S.irfan.data){var ie=document.getElementById('irfan-revoutcome');if(ie)ie.innerHTML=_buildRevenueOutcomeCard(S.irfan.data);}
-    // The Executive Dashboard's Brand mode carries its own suffixed copy. Without
-    // this it would keep the cached numbers while the Brand page refreshed to live
-    // ones — the same card showing two different figures depending on the page.
-    if(AP==='exec'&&_execMode()==='brand'&&S.exec&&S.exec.data){var xe=document.getElementById('t-revenue-exec');if(xe)xe.innerHTML=_buildRevenueOutcomeCard(S.exec.data);}
+    _roRerender();
   }catch(e){console.error('fdRevenueOutcome',e);}
 }
 function churnBg(v){return `linear-gradient(90deg,var(--teal) ${v*10}%,var(--teal-30) ${v*10}%)`;}
@@ -11285,6 +11335,7 @@ function _goalMonthName(wk){
   return (q.length>=2&&i>=0&&i<12)?_GOAL_MONTHS[i]:'';
 }
 // opt: {cur, goal, noun, month, sfx}
+const EXEC_SHOW_BRAND_GOAL=false;
 function _goalTrackerHTML(opt){
   opt=opt||{};
   const goal=opt.goal||0, noun=opt.noun||'', sfx=opt.sfx||'';
@@ -11775,7 +11826,10 @@ function renderExec(){
   if(km){
     const _cln=(_execMode()==='clinician');
     const _gm=_goalMonthEntry(_cln?(d.ads&&d.ads.trend&&d.ads.trend.month):(d.trend&&d.trend.month));
-    const _goal=_goalTrackerHTML({
+    // The Brand goal band is off on the Executive Dashboard for now (Alex,
+    // 2026-10-28; "will probably add back later"). Executive only: the Brand
+    // Dashboard keeps its own. Flip EXEC_SHOW_BRAND_GOAL to bring it back.
+    const _goal=(!_cln&&!EXEC_SHOW_BRAND_GOAL)?'':_goalTrackerHTML({
       cur:_gm?(_cln?_gm.fullApp:_gm.regular):null,
       goal:_cln?GOAL_CLINICIAN_SIGNUPS:GOAL_BRAND_REGULAR_DEMOS,
       noun:_cln?'Sign Ups':'Regular Demos',
