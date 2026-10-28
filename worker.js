@@ -874,7 +874,8 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v44';   // v44: clinician pipeline rebuilt; Sign Up = Credentials Complete.
+const API_CACHE_VER = 'v45';   // v45: Sign Up before 2026-10-20 = booked call; funnel All Time.
+                               // v44: clinician pipeline rebuilt; Sign Up = Credentials Complete.
                                // v43: clinician submission carries the Lookalike-excluded denominators.
                                // v38: trend/trendRange are actually FORWARDED by buildResponse.
                                //      v37 built them onto currentData but never shipped them, so a
@@ -3138,6 +3139,34 @@ async function fetchClinicianDeals(token, from, to) {
   }], CLINICIAN_DEAL_PROPS, 200, [{ propertyName: 'createdate', direction: 'DESCENDING' }], 20);
 }
 
+// The Clinician Funnel's All Time view. The earliest clinician deal is
+// 2025-06-23 (checked 2026-10-27), so this start loses nothing.
+const CLINICIAN_ALLTIME_FROM = '2025-06-01';
+// The same fetch, one calendar month at a time. A single search is capped twice:
+// fetchClinicianDeals stops at 20 pages (4,000 deals), and HubSpot refuses to
+// page any one search past 10,000 results. All Time was 3,697 deals on
+// 2026-10-27 and growing by ~1,000 a month, so one query would start silently
+// dropping the OLDEST deals within days. A month has never come near either cap.
+// Sequential, so a long span cannot burst HubSpot's per-second limit.
+async function fetchClinicianDealsByMonth(token, from, to) {
+  const out = [], seen = new Set();
+  let cur = from;
+  while (cur <= to) {
+    const d = new Date(cur + 'T00:00:00Z');
+    const end = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0));
+    let sliceTo = end.toISOString().slice(0, 10);
+    if (sliceTo > to) sliceTo = to;
+    for (const deal of await fetchClinicianDeals(token, cur, sliceTo)) {
+      if (seen.has(deal.id)) continue;
+      seen.add(deal.id);
+      out.push(deal);
+    }
+    const next = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1));
+    cur = next.toISOString().slice(0, 10);
+  }
+  return out;
+}
+
 // deal → associated contact properties, via two batch reads (associations then
 // contacts) so the subrequest cost stays flat regardless of cohort size.
 async function fetchClinicianContacts(token, dealIds) {
@@ -3379,8 +3408,8 @@ function buildClinicianAds(windsorRows, budgets, funnelAll, cliniciansAdded, row
 //
 // Every denominator here is the one the Key Metrics row uses, deliberately:
 //   inquiries = unique clinician CONTACTS created that day (deduped per person)
-//   fullApp   = Sign Ups: contacts whose Clinician Credentials Complete date is
-//               that day (2026-10-27; was "kickoff call booked", on createdate)
+//   fullApp   = Sign Ups on that day, per clnSignUpKey: Credentials Complete
+//               from 2026-10-20, a booked kickoff call (on createdate) before it
 // Each is dated by its OWN event, exactly as buildClinicianComposition dates it,
 // so summing either daily series across a window reproduces the Key Metrics
 // total. The two series are no longer one cohort: a day's sign ups are not a
@@ -3599,7 +3628,7 @@ function buildClinicianTrend(deals, contactsByDeal, windsorRows, from, to) {
     // applies, so the series still sums to the Key Metrics card. It used to sit
     // inside the inquiry branch, keyed on createdate; a clinician created before
     // the window who signs up inside it would have been dropped.
-    const sk = _clnDateKey(cp.clinician_credentials_completed);
+    const sk = clnSignUpKey(cp, d.properties || {});
     const bs = sk ? bump(sk, 'fullApp') : null;
     if (bs) bs.bySubType[ty] = (bs.bySubType[ty] || 0) + 1;
   }
@@ -3780,6 +3809,23 @@ function _clnDateKey(v) {
   }
   return _clnDayKey(str);
 }
+// SIGN UP, one rule for every consumer (composition, trend, Key Metrics, goal).
+// The Admin App only started writing Clinician Credentials Complete on
+// 2026-10-20, so before that the old definition still applies (Alex,
+// 2026-10-27):
+//   * contact created BEFORE the cutover whose deal has a kickoff call booked
+//     -> a sign up on the contact's create day, exactly what the dashboard
+//        counted at the time, so historical periods keep their numbers
+//   * otherwise, credentials completed -> a sign up on that day
+// One date per person, never two: a clinician who booked a call in early
+// October and then completed credentials on the 22nd is October's old-rule sign
+// up, not counted again on the 22nd. Returns a 'YYYY-MM-DD' or null.
+const CLN_SIGNUP_CUTOVER = '2026-10-20';
+function clnSignUpKey(cp, dp) {
+  const ck = _clnDayKey((cp || {}).createdate);
+  if (ck && ck < CLN_SIGNUP_CUTOVER && ((dp || {}).clinician_meeting_booked_date || '').trim()) return ck;
+  return _clnDateKey((cp || {}).clinician_credentials_completed);
+}
 function _clnDayKey(v) {
   if (!v) return null;
   const str = String(v);
@@ -3912,22 +3958,23 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
     seen.add(cid);
     // TWO independent date tests, one per population:
     //   inquiry  -- the CONTACT was created in the window (unchanged)
-    //   sign up  -- the contact's Clinician Credentials Complete date falls in
-    //               the window (2026-10-27; was "kickoff call booked")
-    // Sign Up is dated by WHEN credentials were completed, not by when the
-    // contact arrived (Alex, 2026-10-27), so a clinician created last month who
-    // finishes this month is this month's sign up. That is why the caller hands
-    // this function the whole fetched superset rather than the window's deals:
-    // the sign ups in a window are not a subset of its inquiries.
+    //   sign up  -- the person's sign up day (clnSignUpKey) falls in the window:
+    //               Credentials Complete from 2026-10-20, a booked kickoff call
+    //               before it
+    // Sign Up is dated by its own event, not by when the contact arrived (Alex,
+    // 2026-10-27), so a clinician created last month who finishes this month is
+    // this month's sign up. That is why the caller hands this function the whole
+    // fetched superset rather than the window's deals: the sign ups in a window
+    // are not a subset of its inquiries.
+    const dp = deal.properties || {};
     const ck = _clnDayKey(cp.createdate);
     const created = !(from && to) || (!!ck && ck >= from && ck <= to);
-    const sk = _clnDateKey(cp.clinician_credentials_completed);
+    const sk = clnSignUpKey(cp, dp);
     const signedUp = !!sk && (!(from && to) || (sk >= from && sk <= to));
     if (!created && !signedUp) continue;
     const t = (cp.clinician_type || '').trim() || 'Not set';
     // Acquisition. UTMs may sit on either object, so take the contact's value and
     // fall back to the deal's rather than assuming one of them.
-    const dp = deal.properties || {};
     const pick = (k) => ((cp[k] || dp[k] || '').trim()) || 'Not set';
     const rs = (cp.clinician_referral_source || '').trim() || 'Not set';
     const us = pick('utm_source'), um = pick('utm_medium'), uc = pick('utm_campaign');
@@ -9623,11 +9670,26 @@ export default {
       if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
       try {
         const _d = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null);
-        const from = _d(body.from) || CLINICIAN_HISTORY_FROM;
-        const to = _d(body.to) || fmt(todayET());
+        // All Time ignores any from/to sent with it: it is the funnel's own
+        // toggle, independent of the page's date filter by design.
+        const allTime = body.allTime === true;
+        const from = allTime ? CLINICIAN_ALLTIME_FROM : (_d(body.from) || CLINICIAN_HISTORY_FROM);
+        const to = allTime ? fmt(todayET()) : (_d(body.to) || fmt(todayET()));
         if (to < from) return jr({ error: 'Invalid range', detail: 'to is before from' }, 400);
+        // All Time is ~100 HubSpot calls and every one of them returns the same
+        // answer for the next half hour, so it is cached. Keyed on the day and on
+        // API_CACHE_VER, so neither a new day nor a payload-shape change can serve
+        // a stale copy. ?fresh (the page's Refresh) bypasses it.
+        const _ftCk = allTime ? ('cln_funnel_alltime_' + API_CACHE_VER + '_' + to) : null;
+        if (_ftCk && !body.fresh) {
+          try {
+            const hit = await env.CONTENT_STORE.get(_ftCk, 'json');
+            if (hit) return jr(Object.assign(hit, { cached: true }));
+          } catch (e) { console.warn('clinician all-time cache read:', e && e.message); }
+        }
         const token = env.HUBSPOT_TOKEN;
-        const deals = await fetchClinicianDeals(token, from, to);
+        const deals = allTime ? await fetchClinicianDealsByMonth(token, from, to)
+                              : await fetchClinicianDeals(token, from, to);
         const contactsByDeal = await fetchClinicianContacts(token, deals.map(d => d.id));
         // Same same-day disambiguation as /api/clinician, or this endpoint would
         // report a different Form-vs-Demo split than the main page for one range.
@@ -9641,8 +9703,17 @@ export default {
           const a = buildClinicianAds(wr, getBudgetsForMonth(from), funnel.all && funnel.all.funnel, 0, funnel.rows || [], from, to);
           clnSpend = (a && typeof a.spend === 'number') ? a.spend : null;
         } catch (e) { console.error('Clinician funnel spend:', e && e.message); }
-        return jr({ range: { from, to }, topFunnel, clnSpend, ...funnel,
-          meta: { generatedAt: new Date().toISOString(), dealsFetched: deals.length, cohortField: 'createdate' } });
+        // The funnel card's Inquiries row and its Kick Off Calls card read these;
+        // without them an All Time funnel would sit beside page-window numbers.
+        const composition = buildClinicianComposition(deals, contactsByDeal, from, to);
+        const virtualNoShow = buildClinicianVirtualNoShow(deals, from, to);
+        const _out = { range: { from, to }, allTime, topFunnel, clnSpend, composition, virtualNoShow, ...funnel,
+          meta: { generatedAt: new Date().toISOString(), dealsFetched: deals.length, cohortField: 'createdate' } };
+        if (_ftCk) {
+          try { await env.CONTENT_STORE.put(_ftCk, JSON.stringify(_out), { expirationTtl: 1800 }); }
+          catch (e) { console.warn('clinician all-time cache write:', e && e.message); }
+        }
+        return jr(_out);
       } catch(err) { console.error('Clinician funnel endpoint error:', err); return jr({ error: 'Internal error', detail: err.message }, 500); }
     }
 

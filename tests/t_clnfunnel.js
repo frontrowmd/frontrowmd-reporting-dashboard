@@ -67,7 +67,8 @@ ck('and guards a zero denominator',/\(_booked!=null&&_inq>0\)\?\(_booked\/_inq\)
 ck('the Backlog heading is gone',/Backlog/.test(cli),false);
 ck('each stat states its own polarity',
    [/higher is worse/.test(RC),/higher is better/.test(RC)],[true,true]);
-ck('it reads the worker-computed value',/const _vns=d\.virtualNoShow\|\|\{\};/.test(RC),true);
+// The funnel's own payload first, so an All Time funnel's card is All Time too.
+ck('it reads the worker-computed value',/const _vns=fd\.virtualNoShow\|\|d\.virtualNoShow\|\|\{\};/.test(RC),true);
 // The rate is now 1 - (given / booked in the window). RUN it: the whole change
 // is which attendance states land in the denominator, and that is behaviour.
 {
@@ -140,8 +141,10 @@ ck('  and no row combines several any more',/\bids: \[/.test(defs),false);
 ck('Inquiries is sourced from Acquisition, and nothing else is',
    /\{ key: 'inquiry',     label: 'Inquiries',        sub: 'clinician contacts created', acq: 'contacts' \}/.test(src)
    &&(defs.match(/\bacq: /g)||[]).length===1,true);
+// Same shape of object Key Metrics reads -- the funnel's own when All Time is
+// on, the page's otherwise.
 ck('and the client resolves them off the same object Key Metrics reads',
-   /\}else if\(dfn\.acq\)\{[\s\S]{0,320}?const _cm=d\.composition\|\|\{\};/.test(RC),true);
+   /\}else if\(dfn\.acq\)\{[\s\S]{0,420}?const _cm=fd\.composition\|\|d\.composition\|\|\{\};/.test(RC),true);
 ck('Inquiries uses composition.contacts, like Cost per Inquiry',
    /\(_cm\.contacts\|\|0\)/.test(RC)&&/const _add=_acq\.contacts\|\|0;/.test(cli),true);
 ck('Key Metrics Sign Up still reads composition.submission',
@@ -237,7 +240,7 @@ ck('the top-of-funnel fetch uses the PAGE window',
    /fetchClinicianTopFunnel\(env\.WINDSOR_API_KEY, cur\.from, cur\.to\)/.test(src),true);
 ck('the page payload carries spend for the default range',
    /clnSpend: \(ads && !ads\.error && typeof ads\.spend === 'number'\) \? ads\.spend : null,/.test(src),true);
-ck('and the funnel endpoint carries its own',/return jr\(\{ range: \{ from, to \}, topFunnel, clnSpend,/.test(src),true);
+ck('and the funnel endpoint carries its own',/const _out = \{ range: \{ from, to \}, allTime, topFunnel, clnSpend,/.test(src),true);
 // The old worker-side composer is gone — a second, differently-scoped copy in the
 // payload is exactly how the dead multiTouchAttribution field happened.
 ck('no worker-side funnel9 remains',/buildClinicianFunnel9\(/.test(src),false);
@@ -306,12 +309,13 @@ ck('and the fetch only they could reach',/fdClinicianFunnel/.test(cli),false);
 ck('no funnel-override state survives',
    [/funnelRange/.test(cli),/funnelData/.test(cli),/_pinnedFor/.test(cli)],[false,false,false]);
 // What replaces it: the range comes straight off the payload's period.
+// The page window unless the All Time toggle has a payload in hand.
 ck('the funnel range is the page window',
-   /function _clnFunnelRange\(d\)\{\s*const pp=\(d&&d\.period\)\|\|null;/.test(cli),true);
+   /function _clnFunnelRange\(d\)\{\s*const at=_clnFunnelAT\(\);[\s\S]{0,140}?const pp=\(d&&d\.period\)\|\|null;/.test(cli),true);
 ck('with the history range as the only fallback',
    /return \{from:CLINICIAN_HISTORY_FROM,to:\(hr&&hr\.to\)\|\|CLINICIAN_HISTORY_FROM\};/.test(cli),true);
-ck('and the funnel payload is simply what the endpoint returned',
-   /function _clnFunnelData\(d\)\{ return d; \}/.test(cli),true);
+ck('and the funnel payload is the page one unless All Time is loaded',
+   /function _clnFunnelData\(d\)\{ return _clnFunnelAT\(\)\|\|d; \}/.test(cli),true);
 
 // --- removals -------------------------------------------------------------
 ck('the Exited Pipeline card is gone',/cardOpen\('Exited Pipeline'/.test(cli),false);

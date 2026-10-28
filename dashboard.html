@@ -2037,7 +2037,7 @@ function renderWebinarPerf(){
   el.innerHTML=h;
 }
 
-async function refreshData(){const btn=document.getElementById('rfb');if(btn){btn.classList.add('loading');btn.textContent='↻ Refreshing...';}if(AP==='clinician'){S.clinician.data=null;await fdClinician(S.clinician.win||'mtd');}else if(AP==='signup'){await fdSignup();}else if(AP==='csession'){S.analyzer.data=null;await fdAnalyzer(S.analyzer.win||S.dashboard?.win||'mtd');}else if(AP==='webinarPerf'){S.webinarPerf.data=null;await fdWebinarPerf(S.webinarPerf.win||'mtd');}else{
+async function refreshData(){const btn=document.getElementById('rfb');if(btn){btn.classList.add('loading');btn.textContent='↻ Refreshing...';}if(AP==='clinician'){S.clinician.data=null;S.clinician.funnelAT=null;S.clinician.funnelATErr=null;S.clinician.funnelATFresh=true;if(S.clinician.funnelAllTime)_clnFetchFunnelAT();await fdClinician(S.clinician.win||'mtd');}else if(AP==='signup'){await fdSignup();}else if(AP==='csession'){S.analyzer.data=null;await fdAnalyzer(S.analyzer.win||S.dashboard?.win||'mtd');}else if(AP==='webinarPerf'){S.webinarPerf.data=null;await fdWebinarPerf(S.webinarPerf.win||'mtd');}else{
   // Bust the shared analyzer cache + analyzer payload so the Meta
   // Campaigns/Ad Sets/Creatives tables (Status + which assets are listed)
   // re-fetch from Windsor on Refresh. Without this, _renderIrfanMetaTablesLoader
@@ -5293,15 +5293,67 @@ const CLINICIAN_HISTORY_FROM='2026-07-01';
 // like every other section. The history fallback remains for a payload with no
 // period on it.
 function _clnFunnelRange(d){
+  const at=_clnFunnelAT();
+  if(at&&at.range&&at.range.from&&at.range.to)return {from:at.range.from,to:at.range.to};
   const pp=(d&&d.period)||null;
   if(pp&&pp.from&&pp.to)return {from:pp.from,to:pp.to};
   const hr=(d&&d.historyRange)||null;
   return {from:CLINICIAN_HISTORY_FROM,to:(hr&&hr.to)||CLINICIAN_HISTORY_FROM};
 }
-// The funnel payload on screen. With the override filter gone this is always
-// what /api/clinician returned; kept as one named call site so the funnel
-// section does not reach into the payload three different ways.
-function _clnFunnelData(d){ return d; }
+// ── All Time (2026-10-27) ──
+// The funnel's own toggle, independent of the page's date filter: with it on,
+// changing the page window moves every other section and leaves the funnel on
+// All Time. Its payload comes from /api/clinician-funnel {allTime:true} -- its
+// own invocation, so ~100 HubSpot calls never compete with the page fetch's
+// subrequest budget -- and is held for the session, since All Time does not
+// depend on the page window. Refresh drops it along with the page data.
+// The All Time payload, or null when the toggle is off or it has not landed.
+function _clnFunnelAT(){
+  const c=S.clinician;
+  return (c&&c.funnelAllTime&&c.funnelAT&&!c.funnelAT.error)?c.funnelAT:null;
+}
+// The funnel payload on screen: All Time when that is on and loaded, else the
+// page payload. One named call site, so the funnel section does not reach into
+// two payloads three different ways.
+function _clnFunnelData(d){ return _clnFunnelAT()||d; }
+async function _clnFetchFunnelAT(){
+  const c=S.clinician;
+  if(c.funnelATLoading)return;
+  c.funnelATLoading=true; c.funnelATErr=null;
+  const fresh=!!c.funnelATFresh; c.funnelATFresh=false;
+  try{
+    const r=await fetch(CLINICIAN_FUNNEL_API,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({password:PW,allTime:true,fresh:fresh})});
+    const j=await r.json();
+    if(!r.ok||j.error)throw new Error(j.detail||j.error||('HTTP '+r.status));
+    c.funnelAT=j;
+  }catch(e){
+    // Kept OFF the payload slot: a failed All Time must never stand in for a
+    // funnel. The card says it failed and shows the page window meanwhile.
+    c.funnelATErr=(e&&e.message)||'failed';
+  }
+  c.funnelATLoading=false;
+  if(_clnPage())renderClinician();
+}
+// The pills, plus the state between click and data: loading, or a failure.
+function _clnFunnelTimeToggle(){
+  const c=S.clinician, on=!!c.funnelAllTime;
+  const pill=(v,lbl)=>{const a=(v===on);
+    return '<button onclick="clinicianSetFunnelAllTime('+v+')" aria-pressed="'+a+'" style="font-family:var(--font-h);font-size:11px;font-weight:700;letter-spacing:.02em;padding:5px 13px;border:none;cursor:pointer;'
+      +'background:'+(a?'var(--navy)':'transparent')+';color:'+(a?'#fff':'var(--grey)')+'">'+lbl+'</button>';};
+  let note='';
+  if(on&&c.funnelATLoading)note='<span style="font-size:10.5px;color:var(--grey)">Loading All Time\u2026 showing the page timeframe until it lands</span>';
+  else if(on&&c.funnelATErr)note='<span style="font-size:10.5px;color:#C0392B">All Time failed to load ('+String(c.funnelATErr).replace(/</g,'&lt;')+') \u00b7 showing the page timeframe \u00b7 '
+    +'<a href="javascript:void(0)" onclick="_clnFetchFunnelAT()" style="color:#C0392B">retry</a></span>';
+  return '<span style="margin-left:auto;display:inline-flex;align-items:center;gap:9px;flex-wrap:wrap">'+note
+    +'<span style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden">'
+    +pill(false,'Page Timeframe')+pill(true,'All Time')+'</span></span>';
+}
+window.clinicianSetFunnelAllTime=function(on){
+  const c=S.clinician; c.funnelAllTime=!!on;
+  if(on&&!c.funnelAT)_clnFetchFunnelAT();
+  renderClinician();
+};
 // Pages that render from the clinician payload. The Executive Dashboard shows
 // it under its Clinician pill, so a fetch that only re-rendered #page-clinician
 // would leave the Executive page on its skeleton forever.
@@ -6171,8 +6223,9 @@ function renderClinician(){
       const r=_byId[dfn.id];
       if(r){reached=r.reachedCount||0;here=r.count||0;}
     }else if(dfn.acq){
-      // Key Metrics is the authority for these; both read d.composition.
-      const _cm=d.composition||{};
+      // Key Metrics is the authority for these. The FUNNEL's composition, so an
+      // All Time funnel counts all-time inquiries rather than the page window's.
+      const _cm=fd.composition||d.composition||{};
       reached=dfn.acq==='submission'
         ? ((_cm.submission&&_cm.submission.contacts)||0)
         : (_cm.contacts||0);
@@ -6282,7 +6335,8 @@ function renderClinician(){
     +'background:var(--navy);color:#fff;font-family:var(--font-h);font-size:11px;font-weight:700;letter-spacing:.02em">'
     +'<span style="width:7px;height:7px;border-radius:50%;background:#7EE0B8"></span>All Workflows'
     +'<span style="opacity:.7;font-weight:600">'+fN((segData&&segData.total)||0)+'</span></span>'
-    +'<span style="font-size:10.5px;color:var(--grey)">one pipeline path for every workflow \u00b7 Inquiries counts contacts, every stage after it counts deals</span></div>';
+    +'<span style="font-size:10.5px;color:var(--grey)">one pipeline path for every workflow \u00b7 Inquiries counts contacts, every stage after it counts deals</span>'
+    +_clnFunnelTimeToggle()+'</div>';
   const segBar=flowBar;   // Clinician Type pill row removed
   // ── Stats panel: PATH-SCOPED CARDS ──────────────────────────────────────────
   // Rebuilt from a flat 13-row list. The organising axis is SCOPE, because scope
@@ -6331,19 +6385,20 @@ function renderClinician(){
   // actually held — so there is no shared polarity heading. Each states its own
   // direction in words instead, which is also what lets them sit together.
   {
-  const _comp=d.composition||{};
+  // Follows the funnel's range: this card sits inside the funnel section.
+  const _comp=fd.composition||d.composition||{};
   const _inq=_comp.contacts||0;
   // Inquiries with a kickoff call on the books. This was the Sign Up population
   // until 2026-10-27; Sign Up is now Credentials Complete, so the card reads its
   // own count rather than following that one. null on an older payload.
   const _booked=(_comp.bookedCall!=null)?_comp.bookedCall:null;
-  sh+=cardOpen('Kick Off Calls',fN(_inq)+' inquiries in the window',true);
+  sh+=cardOpen('Kick Off Calls',fN(_inq)+' inquiries '+(_clnFunnelAT()?'all time':'in the window'),true);
   // 1 - (calls given / calls BOOKED in the window). Everything that is not a
   // Demo Given counts against it — no-shows, cancellations, and calls still on
   // the books alike — so it is broader than a no-show rate in the usual sense.
   // The pending count is called out because those calls have not happened yet
   // and will move the number as they resolve.
-  const _vns=d.virtualNoShow||{};
+  const _vns=fd.virtualNoShow||d.virtualNoShow||{};
   const _vnsPend=_vns.pending||0;
   sh+=stat('Kick Off Call No-Show Rate',pctS(_vns.rate),
     fN(_vns.given||0)+' given \u00f7 '+fN(_vns.booked||0)+' booked',
@@ -6417,7 +6472,8 @@ function renderClinician(){
   // everything, so the order ends up Key Metrics, Trend, Funnel.
   let h=_clnTrendCard(d);
   h+=card('Clinician Funnel',
-    'Deals created '+_fr.from+' \u2192 '+_fr.to+' \u00b7 '+fN(_fcount)+' deal'+(_fcount===1?'':'s')
+    (_clnFunnelAT()?'All Time \u00b7 independent of the page date filter \u00b7 ':'')
+      +'Deals created '+_fr.from+' \u2192 '+_fr.to+' \u00b7 '+fN(_fcount)+' deal'+(_fcount===1?'':'s')
       +((fd.excludedFuture||0)?' \u00b7 '+fN(fd.excludedFuture)+' future-dated meeting'+(fd.excludedFuture===1?'':'s')+' excluded':'')
       +' \u00b7 bar length = how many ever reached the stage, solid = how many are there now',
     entryStrip+segBar+'<div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">'

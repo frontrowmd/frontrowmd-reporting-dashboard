@@ -28,11 +28,12 @@ const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify(w);console.log((o
 // has NO kickoff booked, so inquiries and fullApp differ on 2026-09-02 and every
 // derived metric comes out distinct: a fixture where they tie lets a transposed
 // w.fullApp/w.inquiries pass unnoticed. d4's contact predates the window.
-// Sign Up = Clinician Credentials Complete, dated by its OWN day (2026-10-27).
-// c3 is the case that only the new definition counts: created in August, outside
-// the window, credentials completed 15 Sep, inside it. c2 completes after the
-// window closes, so it is an inquiry in September and a sign up in nobody's
-// September. The deals still carry bookings to prove a booking is not a sign up.
+// Sign Up per clnSignUpKey, dated by its OWN day. These fixtures exercise the
+// Credentials Complete path, so only c1 carries a booking (its credentials day
+// IS its create day, so either rule files it on 09-02). c3 is created in August,
+// outside the window, and completes credentials on 15 Sep, inside it. c2
+// completes after the window closes. The pre-cutover booked-call rule has its
+// own fixtures in t_clnalltime.js.
 const contacts={
   d1:{__cid:'c1',createdate:'2026-09-02T12:00:00Z',clinician_credentials_completed:'2026-09-02'},
   d2:{__cid:'c1',createdate:'2026-09-02T12:00:00Z',clinician_credentials_completed:'2026-09-02'},
@@ -44,8 +45,8 @@ const deals=[
   {id:'d1',properties:{clinician_meeting_booked_date:'2026-09-20'}},
   {id:'d2',properties:{}},
   {id:'d5',properties:{}},
-  {id:'d3',properties:{clinician_meeting_booked_date:'2026-10-01'}},
-  {id:'d4',properties:{clinician_meeting_booked_date:'2026-08-25'}},
+  {id:'d3',properties:{}},
+  {id:'d4',properties:{}},
 ];
 // fetchWindsorAds is handed a WIDENED `from`, so out-of-window rows really do
 // arrive here; google_ads and non-Clinician campaigns really are in the same
