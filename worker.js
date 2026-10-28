@@ -2732,6 +2732,15 @@ const CLN_FUNNEL9 = [
 // the path is strictly sequential, and a funnel that widens as it descends reads
 // as broken.
 const CLINICIAN_PATH = CLINICIAN_STAGES.map(st => st.id);
+// The day the rebuilt path went live (Eastern). Deals created before it are
+// LEGACY: the funnel credits them only with stages HubSpot stamped, never by
+// filling in the path behind them. Same day as CLN_SIGNUP_CUTOVER, kept as its
+// own name because the two answer different questions.
+const CLINICIAN_PATH_FROM = '2026-10-20';
+// The path stages that existed BEFORE the rebuild, under their old names: Fully
+// Onboarded, 1st Sample Shipped, 1st Review Submitted. Only these may be filled
+// in behind a legacy deal; see the reached logic in buildClinicianFunnel.
+const CLINICIAN_LEGACY_ERA = new Set(['4135230193', '4133870318', '4164547317']);
 const CLINICIAN_FLOWS = {
   demo:    { label: 'Clinician Demo Flow',          stages: CLINICIAN_PATH, exits: ['4128854721', '4128510710'] },
   virtual: { label: 'Virtual Clinician Onboarding', stages: CLINICIAN_PATH, exits: ['4128854721', '4128510710'] },
@@ -3167,6 +3176,24 @@ async function fetchClinicianDealsByMonth(token, from, to) {
   return out;
 }
 
+// One HubSpot batch POST, retried ONCE on a 429 or 5xx. Each batch carries 100
+// clinicians, and a single transient 500 used to drop all of them for that load
+// with nothing but a console line -- seen live on 2026-10-28 ('clinician
+// contacts 500'). Returns the Response; the caller still checks r.ok.
+async function _clnBatchPost(url, token, body) {
+  let r = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    r = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body,
+    });
+    if (r.ok || !(r.status === 429 || r.status >= 500) || attempt === 1) return r;
+    azDrain(r);
+    await new Promise(res => setTimeout(res, 600));
+  }
+  return r;
+}
 // deal → associated contact properties, via two batch reads (associations then
 // contacts) so the subrequest cost stays flat regardless of cohort size.
 async function fetchClinicianContacts(token, dealIds) {
@@ -3177,12 +3204,9 @@ async function fetchClinicianContacts(token, dealIds) {
   const contactIds = new Set();
   for (const batch of chunk(dealIds, 100)) {
     try {
-      const r = await fetch('https://api.hubapi.com/crm/v4/associations/deals/contacts/batch/read', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inputs: batch.map(id => ({ id: String(id) })) }),
-      });
-      if (!r.ok) { azDrain(r); console.error('clinician assoc', r.status); continue; }
+      const r = await _clnBatchPost('https://api.hubapi.com/crm/v4/associations/deals/contacts/batch/read', token,
+        JSON.stringify({ inputs: batch.map(id => ({ id: String(id) })) }));
+      if (!r.ok) { azDrain(r); console.error('clinician assoc', r.status, '(after retry)'); continue; }
       const j = await r.json();
       for (const row of (j.results || [])) {
         const did = row.from && row.from.id; if (!did) continue;
@@ -3202,12 +3226,9 @@ async function fetchClinicianContacts(token, dealIds) {
   const byContact = {};
   for (const batch of chunk(Array.from(contactIds), 100)) {
     try {
-      const r = await fetch('https://api.hubapi.com/crm/v3/objects/contacts/batch/read', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ properties: CLINICIAN_CONTACT_PROPS, inputs: batch.map(id => ({ id })) }),
-      });
-      if (!r.ok) { azDrain(r); console.error('clinician contacts', r.status); continue; }
+      const r = await _clnBatchPost('https://api.hubapi.com/crm/v3/objects/contacts/batch/read', token,
+        JSON.stringify({ properties: CLINICIAN_CONTACT_PROPS, inputs: batch.map(id => ({ id })) }));
+      if (!r.ok) { azDrain(r); console.error('clinician contacts', r.status, '(after retry)'); continue; }
       const j = await r.json();
       for (const c of (j.results || [])) byContact[String(c.id)] = Object.assign({ __cid: String(c.id) }, c.properties || {});
     } catch (e) { console.error('clinician contacts threw', e.message); }
@@ -4151,7 +4172,33 @@ function buildClinicianFunnel(deals, contactsByDeal, meetingStarts) {
     let maxIdx = _curKnown ? Math.max(posInSeq, 0) : posInSeq;
     seqIds.forEach((id, i) => { if (i > maxIdx && clnEnteredAt(p, id)) maxIdx = i; });
     const reachedIds = new Set();
-    seqIds.forEach((id, i) => { if (i <= maxIdx) reachedIds.add(id); });
+    // LEGACY deals -- created before the 2026-10-20 rebuild -- walked a DIFFERENT
+    // pipeline, so the fill may only run along the stages that existed then:
+    // Call Scheduled (it was Fully Onboarded), Sample Shipped and Review
+    // Submitted, in that order. A legacy deal stamped into Review is credited
+    // with Sample Shipped even without a Sample stamp -- nobody reviews a sample
+    // they were never shipped, and 31 such deals sat in Review on 2026-10-28.
+    // The five stages the rebuild ADDED (Video Watched, Practice Details,
+    // Preferences, Credentials Submitted, Call Happened) are never filled for a
+    // legacy deal: they did not exist when it onboarded, and filling them
+    // credited 220-270 legacy deals per stage with steps none of them took
+    // (All Time, 2026-10-28: Credentials Submitted read 745 against 478 that
+    // entered it). A legacy deal counts for one of those only with a stamp, or
+    // by standing in it now -- which a bulk re-stage on 2026-10-28 did to 115.
+    // Consequence, deliberate: Call Scheduled can exceed Credentials Submitted,
+    // because 187 deals entered it as Fully Onboarded; fromPrev keeps the
+    // stage-to-stage conversion an honest share.
+    // New-path deals keep the full fill: their path IS sequential, and it only
+    // papers over the odd missing stamp (about one deal per stage).
+    const _legacy = (_clnDayKey(p.createdate) || '') < CLINICIAN_PATH_FROM;
+    if (_legacy) {
+      seqIds.forEach((id, i) => {
+        if (i === posInSeq || clnEnteredAt(p, id)
+            || (CLINICIAN_LEGACY_ERA.has(id) && i <= maxIdx)) reachedIds.add(id);
+      });
+    } else {
+      seqIds.forEach((id, i) => { if (i <= maxIdx) reachedIds.add(id); });
+    }
     for (const st of CLINICIAN_STAGES) {
       if (!seqIds.includes(st.id) && clnEnteredAt(p, st.id)) reachedIds.add(st.id);
     }
@@ -4334,6 +4381,17 @@ function buildClinicianFunnel(deals, contactsByDeal, meetingStarts) {
         const nextId = i < stageList.length - 1 ? stageList[i + 1].id : null;
         return {
           id: st.id, label: st.label, count: curOf(st.id), reachedCount: cntOf(st.id),
+          // Of the deals that reached the PREVIOUS stage, how many reached this
+          // one. A ratio of the two reached counts is not a conversion once legacy
+          // deals are credited only with what they did: 698 Call Scheduled over 478
+          // Credentials Submitted read 146%. The intersection cannot pass 100%.
+          ...(function(){
+            if (!i) return { fromPrevNum: null, fromPrevDen: null, fromPrevPct: null };
+            const prevId = stageList[i - 1].id;
+            const den = rs.filter(r => r.reachedIds.has(prevId));
+            const num = den.filter(r => r.reachedIds.has(st.id)).length;
+            return { fromPrevNum: num, fromPrevDen: den.length, fromPrevPct: pct(num, den.length) };
+          })(),
           // Conversion uses EVER-REACHED counts so it reads as a true funnel; the
           // bar itself still shows current stage.
           //
@@ -9738,7 +9796,11 @@ export default {
         let histFrom = CLINICIAN_HISTORY_FROM < cur.from ? CLINICIAN_HISTORY_FROM : cur.from;
         for (const _w of [prior, priorMonth, trendWin]) if (_w && _w.from < histFrom) histFrom = _w.from;
         const histTo = cur.to > _today ? cur.to : _today;
-        const deals = await fetchClinicianDeals(token, histFrom, histTo);
+        // Month by month, like All Time. This span reaches back to Jul 1 and held
+        // 3,695 deals on 2026-10-28 against fetchClinicianDeals' 4,000-deal stop;
+        // past it, the oldest deals would have fallen silently out of the history
+        // funnel and the All Clinicians table.
+        const deals = await fetchClinicianDealsByMonth(token, histFrom, histTo);
         const contactsByDeal = await fetchClinicianContacts(token, deals.map(d => d.id));
         // Slice by the deal's createdate — the same cohort field fetchClinicianDeals
         // filters on, so these subsets are exactly what a narrower fetch would return.

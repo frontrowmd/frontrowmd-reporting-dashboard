@@ -5342,7 +5342,7 @@ function _clnFunnelTimeToggle(){
     return '<button onclick="clinicianSetFunnelAllTime('+v+')" aria-pressed="'+a+'" style="font-family:var(--font-h);font-size:11px;font-weight:700;letter-spacing:.02em;padding:5px 13px;border:none;cursor:pointer;'
       +'background:'+(a?'var(--navy)':'transparent')+';color:'+(a?'#fff':'var(--grey)')+'">'+lbl+'</button>';};
   let note='';
-  if(on&&c.funnelATLoading)note='<span style="font-size:10.5px;color:var(--grey)">Loading All Time\u2026 showing the page timeframe until it lands</span>';
+  if(on&&c.funnelATLoading)note='<span style="font-size:10.5px;color:var(--grey)">Loading All Time\u2026</span>';
   else if(on&&c.funnelATErr)note='<span style="font-size:10.5px;color:#C0392B">All Time failed to load ('+String(c.funnelATErr).replace(/</g,'&lt;')+') \u00b7 showing the page timeframe \u00b7 '
     +'<a href="javascript:void(0)" onclick="_clnFetchFunnelAT()" style="color:#C0392B">retry</a></span>';
   return '<span style="margin-left:auto;display:inline-flex;align-items:center;gap:9px;flex-wrap:wrap">'+note
@@ -6211,7 +6211,7 @@ function renderClinician(){
   const _topF=(fd&&fd.topFunnel)||d.topFunnel||{};
   const _spend=(fd&&fd.clnSpend!=null)?fd.clnSpend:(d.clnSpend!=null?d.clnSpend:null);
   const _byId={};for(const r of fn)_byId[r.id]=r;
-  let _prev=null;
+  let _prev=null,_prevDef=null;
   const rows9=_defs.length?_defs.map(dfn=>{
     let reached=null,here=null;
     if(dfn.ids&&dfn.ids.length){
@@ -6232,9 +6232,18 @@ function renderClinician(){
     }else{
       reached=_topF[dfn.key]!=null?_topF[dfn.key]:null;
     }
-    const conv=(_prev!=null&&_prev>0&&reached!=null)?(reached/_prev)*100:null;
+    // Stage to stage, the worker's cohort conversion: of the deals that reached
+    // the prior stage, the share that reached this one. Legacy deals count only
+    // for stages they entered, so the reached counts no longer have to taper and
+    // their plain ratio can pass 100% (Call Scheduled over Credentials
+    // Submitted did). Across a source change -- ad metric to contacts, contacts
+    // to deals -- there is no shared population, so that hop stays a ratio.
+    const _sr=(dfn.id&&_prevDef&&_prevDef.id)?_byId[dfn.id]:null;
+    const conv=(_sr&&_sr.fromPrevPct!==undefined)
+      ? _sr.fromPrevPct
+      : ((_prev!=null&&_prev>0&&reached!=null)?(reached/_prev)*100:null);
     const cost=(_spend!=null&&reached!=null&&reached>0)?_spend/reached:null;
-    _prev=reached;
+    _prev=reached;_prevDef=dfn;
     return {label:dfn.label,sub:dfn.sub||'',reached,here,convFromPrior:conv,cost};
   }):fn.map(x=>({label:x.label,sub:'',reached:x.reachedCount||0,here:x.count||0,convFromPrior:null,cost:null}));
   const maxN=rows9.reduce((m,x)=>Math.max(m,x.reached||0),0)||1;
@@ -6312,6 +6321,20 @@ function renderClinician(){
       }
       fh+='</div></div>';
     }
+  }
+
+  // All Time requested and still on its way: replace the bars outright. Leaving
+  // the page-window funnel on screen with a small note beside the pills read as
+  // "the toggle did nothing" (reported 2026-10-28) -- the first, uncached build
+  // takes a while, and nothing in the main body of the card changed meanwhile.
+  if(S.clinician.funnelAllTime&&S.clinician.funnelATLoading&&!_clnFunnelAT()){
+    fh='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;min-height:420px;'
+      +'border:1px dashed var(--border);border-radius:10px;background:var(--lighter);text-align:center;padding:24px">'
+      +'<span class="sp" style="width:26px;height:26px;border-width:3px;display:inline-block"></span>'
+      +'<div style="font-family:var(--font-h);font-size:16px;font-weight:700;color:var(--navy)">Loading the All Time funnel\u2026</div>'
+      +'<div style="font-size:12px;color:var(--grey);max-width:420px;line-height:1.5">Every clinician deal since June 2025. '
+      +'The first load can take a minute; after that it is cached for 30 minutes. '
+      +'<a href="javascript:void(0)" onclick="clinicianSetFunnelAllTime(false)" style="color:var(--teal)">Back to the page timeframe</a></div></div>';
   }
 
   // Stat card (segment-aware)

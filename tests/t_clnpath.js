@@ -106,6 +106,70 @@ const one=(deal)=>{const f=W.buildClinicianFunnel([deal],{},{});return {f,r:reac
      [h['Call Scheduled'],r['Credentials Submitted'],f.excludedFuture],[1,1,0]);
 }
 
+// ── 2b. LEGACY deals: credited only with what HubSpot shows they did ───────
+// Created before the 2026-10-20 rebuild, so the intake stages did not exist for
+// them. Alex asked on 10-27 for them to be credited with the whole path, saw the
+// All Time funnel read 745 Credentials Submitted against 478 that entered it,
+// and reversed it on 10-28. Every fixture above is created on 10-21, so none of
+// them could tell the difference; these are created in September.
+const LD=(stage,stamps,wf)=>{const d=D(stage,stamps,wf);d.properties.createdate='2026-09-15T15:00:00Z';return d;};
+{ // The case that inflated the funnel: an old Fully Onboarded, now Call Scheduled.
+  const {r}=one(LD(ST['Sample Shipped'],[ST['Call Scheduled'],ST['Sample Shipped']],'Onboarding Demo'));
+  ck('a legacy deal is NOT credited with intake stages it never entered',
+     [r['Video Watched'],r['Practice Details Complete'],r['Preferences Complete'],r['Credentials Submitted'],r['Call Happened']],
+     [0,0,0,0,0]);
+  ck('  only with the stages it was stamped into, and the one it is in',
+     [r['Call Scheduled'],r['Sample Shipped'],r['Review Submitted']],[1,1,0]);
+}
+{ // THE 31: in Review with no Sample Shipped stamp. A review needs a sample,
+  // and Sample Shipped existed before the rebuild, so it is filled in -- unlike
+  // the five stages the rebuild added.
+  const {r}=one(LD(ST['Review Submitted'],[ST['Call Scheduled'],ST['Review Submitted']]));
+  ck('a legacy deal in Review is credited with the Sample Shipped it must have had',
+     [r['Sample Shipped'],r['Call Scheduled'],r['Review Submitted']],[1,1,1]);
+  ck('  but still not with the stages the rebuild added',
+     [r['Video Watched'],r['Credentials Submitted'],r['Call Happened']],[0,0,0]);
+  const r2=one(LD(ST['Review Submitted'],[ST['Review Submitted']])).r;
+  ck('  and the old-era fill reaches back to Call Scheduled with no stamp at all',
+     [r2['Call Scheduled'],r2['Sample Shipped'],r2['Credentials Submitted']],[1,1,0]);
+}
+{ // Bulk re-staged backward on 2026-10-28: a Sept clinician who shipped a sample
+  // on Sep 12 now standing in Call Happened. History stands; the new stage it was
+  // dropped into counts because it is there.
+  const {r,h}=one(LD(ST['Call Happened'],[ST['Call Scheduled'],ST['Sample Shipped'],ST['Call Happened']]));
+  ck('a legacy deal re-staged backward keeps its real history',
+     [r['Call Scheduled'],r['Call Happened'],r['Sample Shipped'],r['Credentials Submitted'],h['Call Happened']],[1,1,1,0,1]);
+}
+{ // Its current stage counts even when HubSpot never stamped it.
+  const {r}=one(LD(ST['Call Scheduled'],[]));
+  ck('a legacy deal is credited with the stage it stands in',[r['Call Scheduled'],r['Credentials Submitted']],[1,0]);
+}
+{ // Re-staged backwards into the new path: both stamps are real history.
+  const {r,h}=one(LD(ST['Preferences Complete'],[ST['Preferences Complete'],ST['Call Scheduled']]));
+  ck('a legacy deal moved back keeps the later stage it really reached',
+     [r['Preferences Complete'],r['Call Scheduled'],r['Credentials Submitted'],h['Preferences Complete']],[1,1,0,1]);
+}
+{ // The boundary is the Eastern day the path went live.
+  const mk=(iso)=>{const d=D(ST['Credentials Submitted'],[ST['Credentials Submitted']]);d.properties.createdate=iso;return one(d).r['Video Watched'];};
+  ck('the legacy line is Oct 20 Eastern',
+     [mk('2026-10-20T03:30:00Z'),mk('2026-10-20T05:00:00Z')],[0,1]);
+}
+{ // The conversion that cannot pass 100% even when the bars stop tapering.
+  const deals=[];
+  for(let k=0;k<5;k++)deals.push(LD(ST['Call Scheduled'],[ST['Call Scheduled']]));            // legacy, skipped creds
+  for(let k=0;k<2;k++)deals.push(D(ST['Call Scheduled'],[ST['Credentials Submitted'],ST['Call Scheduled']]));
+  deals.push(D(ST['Credentials Submitted'],[ST['Credentials Submitted']]));
+  const f=W.buildClinicianFunnel(deals,{},{}).all.funnel;
+  const row=l=>f.find(x=>x.label===l);
+  ck('Call Scheduled can now exceed Credentials Submitted',
+     [row('Credentials Submitted').reachedCount,row('Call Scheduled').reachedCount],[3,7]);
+  ck('  and its conversion is a cohort share, never above 100%',
+     [row('Call Scheduled').fromPrevNum,row('Call Scheduled').fromPrevDen,Math.round(row('Call Scheduled').fromPrevPct)],[2,3,67]);
+  ck('  with no conversion on the first stage',row('Clinician Inquiry Complete').fromPrevPct,null);
+  ck('every stage has one, and none passes 100%',
+     f.slice(1).every(x=>x.fromPrevPct==null||(x.fromPrevPct>=0&&x.fromPrevPct<=100)),true);
+}
+
 // ── 3. The invariants, over a mixed cohort ─────────────────────────────────
 {
   const deals=[], ids=HS_PATH.map(x=>x[0]);

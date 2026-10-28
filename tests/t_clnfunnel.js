@@ -183,7 +183,11 @@ ck('the stage ORDER comes from the worker, not duplicated on the client',
    /funnelStages: CLN_FUNNEL9,/.test(src)&&/const _defs=Array\.isArray\(d\.funnelStages\)/.test(RC),true);
 ck('each stage carries reached / here / conversion / cost',
    /return \{label:dfn\.label,sub:dfn\.sub\|\|'',reached,here,convFromPrior:conv,cost\};/.test(RC),true);
-ck('conversion is from the PRIOR stage',/const conv=\(_prev!=null&&_prev>0&&reached!=null\)/.test(RC),true);
+// Stage to stage it is the worker's cohort figure; across a source change
+// (ad metric -> contacts -> deals) there is no shared population, so a ratio.
+ck('conversion is from the PRIOR stage',
+   /const _sr=\(dfn\.id&&_prevDef&&_prevDef\.id\)\?_byId\[dfn\.id\]:null;/.test(RC)
+   &&/const conv=\(_sr&&_sr\.fromPrevPct!==undefined\)\s*\? _sr\.fromPrevPct\s*: \(\(_prev!=null&&_prev>0&&reached!=null\)\?\(reached\/_prev\)\*100:null\);/.test(RC),true);
 ck('cost divides spend by that stage',/const cost=\(_spend!=null&&reached!=null&&reached>0\)/.test(RC),true);
 // A missing stage must be a dash, never a 0 — a zero asserts something false.
 ck('a stage with no data is null, not zero',/reached=_topF\[dfn\.key\]!=null\?_topF\[dfn\.key\]:null;/.test(RC),true);

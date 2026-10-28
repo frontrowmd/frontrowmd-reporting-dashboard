@@ -121,6 +121,39 @@ ck('the cutover day is Eastern',
        /S\.clinician\.funnelAT=null;S\.clinician\.funnelATErr=null;S\.clinician\.funnelATFresh=true;if\(S\.clinician\.funnelAllTime\)_clnFetchFunnelAT\(\);/.test(cli),true);
     ck('the funnel card mounts the toggle',/\+_clnFunnelTimeToggle\(\)\+'<\/div>';/.test(fn(cli,'renderClinician')),true);
 
+    // ── 5. Follow-ups from the live "the toggle did nothing" report ──
+    // The main page fetch reached back to Jul 1 with 3,695 deals against a
+    // 4,000-deal stop; past it the oldest fell silently out of the history views.
+    ck('the main clinician fetch is month by month too',
+       /const deals = await fetchClinicianDealsByMonth\(token, histFrom, histTo\);/.test(src)
+       &&!/const deals = await fetchClinicianDeals\(token, histFrom, histTo\);/.test(src),true);
+    // One transient HubSpot 500 used to drop a whole 100-contact batch.
+    {
+      const R={azDrain(){},console};vm.createContext(R);
+      vm.runInContext(fn(src,'_clnBatchPost')+';globalThis._clnBatchPost=_clnBatchPost;',R);
+      const run=async(codes)=>{const seen=[];R.setTimeout=(f)=>f();
+        R.fetch=async()=>{const c=codes[Math.min(seen.length,codes.length-1)];seen.push(c);return {ok:c<300,status:c};};
+        const r=await R._clnBatchPost('u','t','{}');return [seen.length,r.status];};
+      ck('a 500 is retried once and the retry is what comes back',await run([500,200]),[2,200]);
+      ck('  as is a 429',await run([429,200]),[2,200]);
+      ck('  but only once',await run([500,500,200]),[2,500]);
+      ck('  and a 400 is not retried at all',await run([400,200]),[1,400]);
+      ck('  nor a success',await run([200]),[1,200]);
+      ck('both clinician batch reads go through it',
+         (src.match(/await _clnBatchPost\('https:\/\/api\.hubapi\.com\/crm\/v[34]\/(associations\/deals\/contacts|objects\/contacts)\/batch\/read'/g)||[]).length,2);
+    }
+    // While All Time loads, the bars are replaced -- not left showing the page
+    // window with a small note, which is what read as "did nothing".
+    {
+      const RC=fn(cli,'renderClinician');
+      ck('the funnel body becomes a loading panel while All Time is in flight',
+         /if\(S\.clinician\.funnelAllTime&&S\.clinician\.funnelATLoading&&!_clnFunnelAT\(\)\)\{\s*fh='/.test(RC)
+         &&/Loading the All Time funnel/.test(RC),true);
+      ck('  placed after the bars and side bucket are built, so it replaces them',
+         RC.indexOf('Loading the All Time funnel')>RC.indexOf('Still in (OLD) stages'),true);
+      ck('  with a way back',/onclick="clinicianSetFunnelAllTime\(false\)"[^>]*>Back to the page timeframe/.test(RC),true);
+    }
+
     console.log('\n'+pass+' passed, '+fail+' failed');
     process.exit(fail?1:0);
   })().catch(e=>{console.log('THREW',e&&e.stack);process.exit(1);});
