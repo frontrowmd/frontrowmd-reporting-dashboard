@@ -681,15 +681,16 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
            every toggle, so nothing static may live inside it. -->
       <div id="t-dshtrend"></div>
 
-      <!-- Row 1c: Demo Insights — Volume / Quality / Efficiency, directly under
-           Key Metrics. Header lives here rather than inside the Volume panel
-           so all three columns start on the same line. -->
-      <div class="sec sec-card dsec"><div class="dsec-h dsec-in" id="dsec-demoinsights">Demo Insights</div><div id="t-overview"></div></div>
-
-      <!-- Row 1d: Conversion Funnel, directly under Demo Insights — the funnel's
-           terminal card IS the Qualified Demos figure above it, so the two read
-           together. -->
+      <!-- Row 1c: Conversion Funnel, ABOVE Demo Insights (2026-10-29) — the
+           whole path from traffic to signed brands first, the detail after. The
+           DOM order is all that moved: renderDash still builds Demo Insights
+           first, because the funnel reads constants computed there. -->
       <div class="sec sec-card dsec"><div class="dsec-h dsec-in" id="dsec-cvrfunnel">Conversion Funnel</div><div id="t-funnel"></div></div>
+
+      <!-- Row 1d: Demo Insights — Volume / Quality / Efficiency. Header lives
+           here rather than inside the Volume panel so all three columns start on
+           the same line. -->
+      <div class="sec sec-card dsec"><div class="dsec-h dsec-in" id="dsec-demoinsights">Demo Insights</div><div id="t-overview"></div></div>
 
       <!-- Marketing Funnel + Demo Acquisition + Demo Composition (1.8fr / 1fr / 1fr) -->
       <div class="sec dsec" id="sec-row2" style="display:grid;grid-template-columns:1.8fr minmax(0,1fr) minmax(0,1fr);gap:16px"><div class="sec-card"><div class="dsec-h dsec-in" id="dsec-mktfunnel">Marketing Funnel</div><div class="st"><span style="display:inline-block;width:8px;height:8px;background:var(--teal);border-radius:50%;margin-right:8px;vertical-align:middle"></span>Marketing Funnel</div><div id="t-trends"></div></div><div class="sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:#E6C55C;border-radius:50%;margin-right:8px;vertical-align:middle"></span>Demo Acquisition</div><div style="font-size:12px;color:var(--grey);margin-bottom:6px">Where demos came from · UTMs on the contact that booked</div><div id="t-demoacq"></div></div><div class="sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:#9333EA;border-radius:50%;margin-right:8px;vertical-align:middle"></span>Demo Composition</div><div style="font-size:12px;color:var(--grey);margin-bottom:6px">% of demos booked in each tier · ordered Pre-launch → 500K+ clockwise</div><div id="t-webtraffic"></div></div></div>
@@ -1296,7 +1297,15 @@ function _renderDashSkeleton(pct, step){
       </div>
     </div>
 
-    <!-- Row 3: Volume / Quality / Efficiency — 3-panel (header removed) -->
+    <!-- Row 3: Conversion Funnel (above Demo Insights, as on the page) -->
+    <div class="dash-skel-card" style="margin-bottom:16px">
+      ${cardHead(160)}
+      <div class="dash-skel-conv-funnel">
+        ${'<div class="su-skel-bar dash-skel-conv-stage" style="width:100%"></div>'.repeat(8)}
+      </div>
+    </div>
+
+    <!-- Row 4: Volume / Quality / Efficiency — 3-panel (header removed) -->
     <div class="dash-skel-card" style="margin-bottom:16px">
       <div class="dash-skel-row-3">
         <div class="dash-skel-exec-panel">
@@ -1311,14 +1320,6 @@ function _renderDashSkeleton(pct, step){
           ${bar('dash-skel-exec-title-bar')}
           <div class="dash-skel-exec-tile-stack">${'<div class="su-skel-bar dash-skel-exec-tile"></div>'.repeat(4)}</div>
         </div>
-      </div>
-    </div>
-
-    <!-- Row 4: Conversion Funnel -->
-    <div class="dash-skel-card" style="margin-bottom:16px">
-      ${cardHead(160)}
-      <div class="dash-skel-conv-funnel">
-        ${[100,86,72,58,44,30].map(w=>`<div class="su-skel-bar dash-skel-conv-stage" style="width:${w}%"></div>`).join('')}
       </div>
     </div>
 
@@ -2528,32 +2529,7 @@ function renderDash(){
   }
   // A sub-row rate, set lighter than the count it follows.
   function _fnPct(v){return v==null?'':'<span style="font-size:10.5px;font-weight:600;color:var(--grey)"> \u00b7 '+v.toFixed(1)+'%</span>';}
-  function fnStage(o){
-    const acc=!!o.accent;
-    return `<div style="min-width:0;display:flex;flex-direction:column;border-radius:12px;padding:14px 16px;${acc?'background:linear-gradient(135deg,rgba(114,164,191,.07) 0%,rgba(114,164,191,.14) 100%);border:1px solid #A6CDDB':'background:var(--white);border:1px solid var(--border)'}">`
-      +`<div style="font-family:var(--font-h);font-size:9px;font-weight:700;color:${acc?'var(--teal)':'var(--grey)'};text-transform:uppercase;letter-spacing:.07em;line-height:1.25;margin-bottom:7px;min-height:2.5em">${o.label}</div>`
-      +`<div style="font-family:var(--font-h);font-size:30px;font-weight:700;color:var(--navy);line-height:1;letter-spacing:-.015em;margin-bottom:${o.vnote?'3px':'9px'}">${o.value}</div>`
-      +(o.vnote?`<div style="font-size:10px;color:var(--grey);line-height:1.3;margin-bottom:8px">${o.vnote}</div>`:'')
-      +fDelta(o.cur,o.pv,o.lmv,o.fmt)
-      +fnSub(o.sub,o.subTone)
-      +'</div>';
-  }
-  // The connector states the pass-through rate AND draws it as a plain share of
-  // the track — no rescaling, so a 6.6% step cannot look like a 60% one.
-  function fnStep(rate){
-    // Rate and arrow in ONE dark pill. Previous passes split them across the
-    // column -- type over a rule, then a bordered pill between two rules -- and
-    // every variant read as loose parts rather than one marker on the path.
-    // padding-top aligns it with the stage VALUES: label floor 2.5em (~28px)
-    // plus 7px, and the 30px value centres ~15px into that.
-    return '<div style="display:flex;align-items:center;justify-content:center;padding-top:46px;min-width:0">'
-      +'<div style="display:inline-flex;align-items:center;gap:6px;background:var(--navy);border-radius:99px;padding:5px 11px;box-shadow:0 1px 2px rgba(2,15,24,.10)">'
-      +`<span style="font-family:var(--font-h);font-size:11px;font-weight:700;color:#fff;line-height:1;white-space:nowrap;font-variant-numeric:tabular-nums">${rate!=null?rate.toFixed(1)+'%':'\u2014'}</span>`
-      +'<svg width="11" height="8" viewBox="0 0 11 8" style="flex-shrink:0;display:block">'
-      +'<path d="M0.8 4 L8.6 4 M6.3 1.3 L9.2 4 L6.3 6.7" stroke="rgba(255,255,255,.85)" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'
-      +'</svg>'
-      +'</div></div>';
-  }
+
 
   // ─── Compute everything we need ──────────────────────────────
   const mrr=d.mrrArr.mrr?.value||0,dealCount=d.mrrArr.dealCount?.value||0;
@@ -2869,56 +2845,144 @@ function renderDash(){
   // card since the separate "Qualified" step was removed.
   const e2e=visitors>0?(held/visitors*100):null;
 
-  // Header: section description + Website CVR, one segment per scheduled
-  // population so each conversion rate names the denominator it belongs to.
-  // Header: one line of context, with the three conversion rates sitting on the
-  // right as a single grouped chip so each rate names the population it belongs to.
+  // ── Conversion Funnel, Clinician-style stage table (redesigned 2026-10-29) ──
+  // One aligned row per step: Reached, % from prior, Here now, cost per, the
+  // deltas, and a bar (track = reached on a log scale, solid = here now). The
+  // page's own steps (Visitors ... Qualified Regular Demos) keep their figures and
+  // their step rates exactly; HubSpot's Sales-pipeline stages are interleaved
+  // around them as a COHORT -- deals created in this window, pre-launch excluded
+  // (worker buildBrandStageFunnel). Regular Demos Scheduled and Qualified Regular
+  // Demos sit as sub-cohorts under Appointment Scheduled and Demo Happened; the
+  // webinar stages run in parallel with those two. Off-path stages go in a side
+  // box; CVRs, End-to-end, Biggest drop and the losses go in a strip below.
+  const _BSF=d.brandStageFunnel||null;
+  const _bsC=_BSF&&_BSF.cur, _bsP=_BSF&&_BSF.prior, _bsL=_BSF&&_BSF.lm;
+  const _bsSt=(w,id)=>(w&&w.stages&&w.stages[id])||null;
+  const _bsN=(w,id,k)=>{const o=_bsSt(w,id);return o?o[k]:null;};
+  const _bsX=(id,k)=>(_bsC&&_bsC.exits&&_bsC.exits[id])?_bsC.exits[id][k]:null;
+  const _ftPct=(n,dn)=>(dn>0&&n!=null)?(n/dn)*100:null;
+  const _apptR=_bsN(_bsC,BRAND_STAGE_IDS.appt,'reached');
+  const _stg=(id,label,col,extra)=>Object.assign({kind:'deal',id,label,col,
+    reached:_bsN(_bsC,id,'reached'),here:_bsN(_bsC,id,'here'),
+    pv:_bsN(_bsP,id,'reached'),lmv:_bsN(_bsL,id,'reached'),
+    conv:_bsN(_bsC,id,'fromPrevPct'),num:_bsN(_bsC,id,'fromPrevNum'),den:_bsN(_bsC,id,'fromPrevDen')},extra||{});
+  const _ftPctS=v=>v!=null?v.toFixed(1)+'%':'\u2014';
+  const _ftRows=[
+    {kind:'page',label:'Visitors',col:'#72A4BF',reached:visitors,pv:visitorsPV,lmv:visitorsLMV,conv:null},
+    {kind:'page',label:'Demo clicks',col:'#4E89A8',reached:demoClicks,pv:demoClicksPV,lmv:demoClicksLMV,conv:r1,base:'of visitors',
+      tip:_ftPctS(r1)+' = '+fN(demoClicks)+' demo clicks \u00f7 '+fN(visitors)+' visitors'},
+    _stg(BRAND_STAGE_IDS.appt,'Appointment Scheduled',BRAND_STAGE_COLORS.appt,{
+      conv:_ftPct(_apptR,demoClicks),base:'of demo clicks',
+      tip:_ftPctS(_ftPct(_apptR,demoClicks))+' = '+fN(_apptR)+' deals reached Appointment Scheduled \u00f7 '+fN(demoClicks)+' demo clicks'}),
+    {kind:'page',sub:true,label:'Regular Demos Scheduled',col:'#3B8FB0',reached:_regC,pv:_regP,lmv:_regL,conv:r2,base:'all '+fN(_bothC)+' \u00f7 demo clicks',
+      note:fN(_preC)+' pre-launch \u00b7 '+fN(_bothC)+' all',
+      tip:_ftPctS(r2)+' = '+fN(_bothC)+' demos scheduled (regular + pre-launch) \u00f7 '+fN(demoClicks)+' demo clicks'},
+    // HubSpot's own grey; _clnInk would hue-shift an achromatic colour to red.
+    _stg(BRAND_STAGE_IDS.webReg,'Webinar Registered',BRAND_STAGE_COLORS.webReg,{par:true,conv:null,ink:'#6B7280'}),
+    {kind:'page',label:'Regular Demos Supposed to Happen',col:'#8FA3B5',reached:demosSupposed,pv:demosSupposedPV,lmv:demosSupposedLMV,conv:rSupposed,base:'of all scheduled',
+      tip:_ftPctS(rSupposed)+' = '+fN(demosSupposed)+' supposed to happen \u00f7 '+fN(_bothC)+' demos scheduled (all)'},
+    _stg(BRAND_STAGE_IDS.demo,'Demo Happened',BRAND_STAGE_COLORS.demo,{prevLabel:'Appointment Scheduled',base:'of appt. scheduled'}),
+    {kind:'page',sub:true,label:'Qualified Regular Demos',col:'#1D9E75',reached:held,pv:heldPV,lmv:heldLMV,conv:rHeldOverall,base:'of supposed to happen',
+      tip:_ftPctS(rHeldOverall)+' = '+fN(held)+' qualified \u00f7 '+fN(demosSupposed)+' supposed to happen'},
+    _stg(BRAND_STAGE_IDS.webHap,'Webinar Happened',BRAND_STAGE_COLORS.webHap,{par:true,prevLabel:'Webinar Registered',base:'of registered'}),
+    _stg(BRAND_STAGE_IDS.dm,'Decision Maker Brought-In',BRAND_STAGE_COLORS.dm,{prevLabel:'Demo Happened or Webinar Happened',base:'of demos + webinars held'}),
+    _stg(BRAND_STAGE_IDS.cs,'Contract Sent',BRAND_STAGE_COLORS.cs,{prevLabel:'Decision Maker Brought-In',base:'of decision maker'}),
+    _stg(BRAND_STAGE_IDS.won,'Closed Won',BRAND_STAGE_COLORS.won,{prevLabel:'Contract Sent',base:'of contract sent'}),
+  ];
+  // Hover text for a deal row's % from prior, from the worker's own num / den --
+  // the numerator is always inside this row's Reached, as on the Clinician table.
+  _ftRows.forEach(r=>{
+    if(r.kind!=='deal'||r.tip||r.conv==null)return;
+    r.tip=_ftPctS(r.conv)+' = '+fN(r.num)+' of the '+fN(r.den)+' deals that reached '+r.prevLabel+' also reached '+r.label;
+  });
+  const _ftMax=Math.max(1,..._ftRows.map(r=>r.reached||0));
+  const _ftLg=v=>(v==null||v<=0)?0:Math.log10(1+v);
+  const _ftBar=v=>(v==null||v<=0)?0:Math.max(3,(_ftLg(v)/(_ftLg(_ftMax)||1))*100);
+  const _ft$=v=>v==null?'\u2014':(v>=100?'$'+Math.round(v).toLocaleString():'$'+v.toFixed(2));
+  const _FT_COLS='minmax(230px,1.9fr) 84px 104px 76px 72px 150px minmax(120px,1.6fr)';
+  const _ftHead=(t,al)=>'<span style="font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;text-align:'+(al||'right')+'">'+t+'</span>';
+  let fh='<div style="font-size:12px;color:var(--grey);margin-bottom:12px">From website traffic to signed brands. '
+    +'Deal stages are a cohort: Sales-pipeline deals created in this window'
+    +(_bsC?' ('+fN(_bsC.total)+' deals)':'')+', pre-launch excluded on the deal\u2019s traffic tier \u2014 most webinar deals carry no tier, so they stay in.</div>';
+  if(!_bsC) fh+='<div style="font-size:11px;color:#B91C1C;margin-bottom:10px">Deal stages did not load; the page’s own steps are unaffected.</div>';
+  fh+='<div style="overflow-x:auto"><div style="min-width:900px">'
+    +'<div style="display:grid;grid-template-columns:'+_FT_COLS+';gap:12px;align-items:end;padding:0 10px 8px;border-bottom:1.5px solid var(--border)">'
+    +_ftHead('Stage','left')+_ftHead('Reached')+_ftHead('From prior')+_ftHead('Here now')+_ftHead('Cost per')
+    +_ftHead('vs prior \u00b7 LM','left')+_ftHead('Reached \u00b7 here now','left')+'</div>';
+  for(let i=0;i<_ftRows.length;i++){
+    const st=_ftRows[i], col=st.col, ink=st.ink||_clnInk(col);
+    const rc=st.reached, cc=st.kind==='deal'?st.here:null;
+    const fillW=(rc!=null&&rc>0&&cc!=null)?Math.min(100,(cc/rc)*100):0;
+    const cost=(rc!=null&&rc>0&&cSpend>0)?cSpend/rc:null;
+    // A hairline where the page's own traffic steps hand over to the pipeline.
+    const _hand=i>0&&_ftRows[i-1].kind==='page'&&!_ftRows[i-1].sub&&st.kind==='deal'&&!st.par&&i===2;
+    const tag=st.sub?'<span style="color:var(--grey);margin-right:4px">\u21b3</span>'
+      :(st.par?'<span style="font-size:8.5px;font-weight:700;color:#4E89A8;border:1px solid #A6CDDB;border-radius:4px;padding:0 4px;margin-right:6px;letter-spacing:.04em">PARALLEL</span>':'');
+    fh+='<div style="display:grid;grid-template-columns:'+_FT_COLS+';gap:12px;align-items:center;padding:'+(st.sub?'6px':'9px')+' 10px;'
+      +'border-bottom:1px solid var(--border)'+(_hand?';border-top:2px solid rgba(23,44,69,.18)':'')
+      +(st.par?';background:rgba(203,227,242,.16);border-left:2px dashed #A6CDDB':'')+'">'
+      +'<span style="display:flex;align-items:center;gap:8px;min-width:0;'+(st.sub||st.par?'padding-left:18px':'')+'">'
+        +'<span style="flex:0 0 auto;width:10px;height:10px;border-radius:50%;background:'+col+';border:1px solid rgba(2,15,24,.18)"></span>'
+        +'<span style="min-width:0"><span style="display:block;font-family:var(--font-h);font-size:'+(st.sub?'12px':'13.5px')+';font-weight:700;color:var(--navy);line-height:1.2">'+tag+st.label+'</span>'
+        +(st.note?'<span style="display:block;font-size:9.5px;color:var(--grey);line-height:1.3">'+st.note+'</span>':'')+'</span></span>'
+      +'<span style="text-align:right;font-family:var(--font-h);font-size:'+(st.sub?'16px':'19px')+';font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+(rc!=null?fN(rc):'\u2014')+'</span>'
+      +'<span style="text-align:right">'+(st.conv!=null
+        ? '<span data-tip="'+String(st.tip||'').replace(/"/g,'&quot;')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" style="cursor:help;display:inline-block;padding:3px 10px;border-radius:50px;background:'+col+'26;border:1px solid '+col+'80;'
+          +'font-family:var(--font-h);font-size:'+(st.sub?'13px':'15px')+';font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+st.conv.toFixed(1)+'%</span>'
+        : '<span style="color:var(--grey)">\u2014</span>')
+      // The base under every rate: interleaving puts some rows under a row that
+      // is NOT their denominator, so the denominator is named, not implied.
+      +(st.base?'<span style="display:block;font-size:9px;color:var(--grey);line-height:1.2;margin-top:2px;white-space:nowrap">'+st.base+'</span>':'')+'</span>'
+      +'<span style="text-align:right;font-family:var(--font-h);font-size:17px;font-weight:700;color:'+(cc!=null?ink:'var(--grey)')+';font-variant-numeric:tabular-nums">'+(cc!=null?fN(cc):'\u2014')+'</span>'
+      +'<span style="text-align:right;font-size:11.5px;color:var(--grey);font-variant-numeric:tabular-nums" title="'+(cost!=null?('Ad spend \u00f7 '+fN(rc)):'')+'">'+(cost!=null?_ft$(cost):'\u2014')+'</span>'
+      +'<span style="min-width:0">'+fDelta(rc,st.pv,st.lmv)+'</span>'
+      +'<span style="display:block;background:rgba(114,164,191,.07);border-radius:5px;height:'+(st.sub?'12px':'18px')+';overflow:hidden">'
+      +'<span title="'+(rc!=null?fN(rc):'\u2014')+' reached'+(cc!=null?(' \u00b7 '+fN(cc)+' still in this stage'):'')+'" style="display:block;height:100%;width:'+_ftBar(rc)+'%;background:'+col+'66;border:1px solid rgba(2,15,24,.22);border-radius:5px;overflow:hidden;transition:width .3s">'
+      +'<span style="display:block;height:100%;width:'+fillW+'%;background:'+ink+'"></span></span></span>'
+      +'</div>';
+  }
+  fh+='</div></div>';
+
+  // Why a later deal stage can out-count the one above: the middle stages are
+  // optional and some deals are created straight into Closed Won. Read off the
+  // payload, never hard-coded.
+  {
+    const _sk=[];
+    const _won=_bsSt(_bsC,BRAND_STAGE_IDS.won),_cs=_bsSt(_bsC,BRAND_STAGE_IDS.cs);
+    if(_won&&_won.noDemo>0)_sk.push(fN(_won.noDemo)+' of the '+fN(_won.reached)+' Closed Won have no recorded demo or webinar'
+      +(_won.direct>0?' ('+fN(_won.direct)+' created straight into Closed Won)':''));
+    if(_won&&_won.skippedPrev>0)_sk.push(fN(_won.skippedPrev)+' Closed Won skipped Contract Sent');
+    if(_cs&&_cs.skippedPrev>0)_sk.push(fN(_cs.skippedPrev)+' Contract Sent skipped Decision Maker Brought-In');
+    if(_sk.length)fh+='<div style="margin-top:10px;padding:8px 12px;border-left:3px solid var(--teal);background:rgba(114,164,191,.08);border-radius:0 6px 6px 0;font-size:11px;color:var(--navy);line-height:1.5">'
+      +'<b>Why a later stage can be larger than the one above.</b> Reached is what HubSpot recorded, and the middle stages are optional: '+_sk.join('; ')+'. '
+      +'From prior only counts deals that went through the stage above, so it stays at or under 100%.</div>';
+  }
+
+  // Off the path: stages a deal can land in that are not a step forward.
+  {
+    const _ex=[['interested','Interested, Circle Back Later'],['noShow','No Show'],['notFit','Not a fit'],['lost','Closed Lost'],['churned','Churned']];
+    fh+='<div style="margin-top:14px;border:1px dashed rgba(23,44,69,.22);background:rgba(201,206,212,.12);border-radius:10px;padding:10px 14px">'
+      +'<div style="font-family:var(--font-h);font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Off the path \u00b7 same cohort \u00b7 also counted above wherever they reached a stage</div>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:8px">'
+      +_ex.map(([k,l])=>{const id=BRAND_STAGE_IDS[k],rc=_bsX(id,'reached'),hc=_bsX(id,'here'),c=BRAND_STAGE_COLORS[k];
+        return '<span style="display:inline-flex;align-items:center;gap:7px;background:var(--white);border:1px solid var(--border);border-radius:8px;padding:5px 10px;'+(rc?'':'opacity:.5')+'">'
+          +'<span style="width:9px;height:9px;border-radius:50%;background:'+c+';border:1px solid rgba(2,15,24,.18)"></span>'
+          +'<span style="font-size:11.5px;font-weight:600;color:var(--navy)">'+l+'</span>'
+          +'<span style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">'+(rc!=null?fN(rc):'\u2014')+'</span>'
+          +'<span style="font-size:10px;color:var(--grey)">reached \u00b7 '+(hc!=null?fN(hc):'\u2014')+' here now'
+          // No Show is shared by both routes, and most are webinar no-shows.
+          +((k==='noShow'&&rc>0&&_bsX(id,'viaWebinar')!=null)?' \u00b7 '+fN(_bsX(id,'viaWebinar'))+' webinar, '+fN(rc-_bsX(id,'viaWebinar'))+' demo':'')
+          +'</span></span>';}).join('')
+      +'</div></div>';
+  }
+
+  // ── The strip: CVRs, End-to-end and Biggest drop, and the losses ──
   const _cvrSeg=(label,color,v,pv,lmv,tint)=>`
       <div style="display:flex;flex-direction:column;align-items:flex-start;line-height:1;padding:9px 15px;${tint?'background:'+tint+';':''}">
         <span style="font-family:var(--font-h);font-size:9px;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;white-space:nowrap">${label}</span>
         <span style="font-family:var(--font-h);font-size:19px;font-weight:700;color:var(--navy);line-height:1;margin-bottom:4px;letter-spacing:-.01em">${v!=null?v.toFixed(2)+'%':'—'}</span>
         <div style="width:100%">${fDelta(v,pv,lmv,'%',2)}</div>
       </div>`;
-  let fh=`<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;gap:16px;flex-wrap:wrap">
-    <div style="font-size:12px;color:var(--grey);padding-top:4px">From website traffic to qualified demos</div>
-    <div style="display:inline-flex;align-items:stretch;gap:0;background:linear-gradient(135deg,rgba(114,164,191,.05) 0%,rgba(114,164,191,.10) 100%);border:1px solid #A6CDDB;border-radius:10px;overflow:hidden">
-      ${_cvrSeg('CVR · Regular','var(--teal)',_cvrReg,_cvrRegPV,_cvrRegLM,null)}
-      <div style="width:1px;background:#A6CDDB"></div>
-      ${_cvrSeg('CVR · Pre-Launch','#BA7517',_cvrPre,_cvrPrePV,_cvrPreLM,'rgba(186,117,23,.05)')}
-      <div style="width:1px;background:#A6CDDB"></div>
-      ${_cvrSeg('CVR · All','#7C3AED',_cvrAll,_cvrAllPV,_cvrAllLM,'rgba(124,58,237,.04)')}
-    </div>
-  </div>`;
-
-  // The rail. Five stages, four connectors. "Demos supposed to happen" used to be
-  // a second row behind a divider reading "90% of scheduled" — it is simply the
-  // next step, so it is a stage now and that 90% is its connector.
-  fh+='<div style="display:grid;grid-template-columns:1fr 72px 1fr 72px 1fr 72px 1.1fr 72px 1.05fr;gap:4px;align-items:start;padding:4px 0 16px">';
-  fh+=fnStage({label:'Visitors',value:fN(visitors),cur:visitors,pv:visitorsPV,lmv:visitorsLMV});
-  fh+=fnStep(r1);
-  fh+=fnStage({label:'Demo clicks',value:fN(demoClicks),cur:demoClicks,pv:demoClicksPV,lmv:demoClicksLMV});
-  fh+=fnStep(r2);
-  fh+=fnStage({label:'Regular Demos Scheduled',value:fN(_regC),cur:_regC,pv:_regP,lmv:_regL,accent:true,
-    vnote:'regular demos',
-    sub:[{label:'Pre-Launch',value:fN(_preC)},{label:'All',value:fN(_bothC)}]});
-  fh+=fnStep(rSupposed);
-  // Prune and the demo no-show are measured over the 242 deals in this stage;
-  // the webinar figure is measured over registrants, a different population, so
-  // each says what it is a share of rather than reading as one tally.
-  fh+=fnStage({label:'Regular Demos Supposed to Happen',value:fN(demosSupposed),cur:demosSupposed,pv:demosSupposedPV,lmv:demosSupposedLMV,
-    subTone:'loss',
-    // Each loss carries its rate (2026-10-29), and is the SAME count and rate as
-    // the Quality card -- prune and demo no-show pre-launch-free, the webinar
-    // no-show over all registrants -- so a count never sits beside a % built
-    // from a different one. The note names each rate's denominator.
-    sub:[{label:'Prune',value:fN(_cxPreC)+_fnPct(_pruneAllC),note:'of '+fN(_supOutcomeC)+' settled demos'},
-         {label:'Demo no-show',value:fN(_nsPreC)+_fnPct(_noShowAllC),note:'of '+fN(_nsDenAllC)+' held + no-show'},
-         {label:'Webinar no-show',value:(_wnsC!=null?fN(_wnsC):'\u2014')+_fnPct(_wnsRateC),note:'of '+(_wnrC!=null?fN(_wnrC):'\u2014')+' registrants'}]});
-  fh+=fnStep(rHeldOverall);
-  fh+=fnStage({label:'Qualified Regular Demos',value:fN(held),cur:held,pv:heldPV,lmv:heldLMV,accent:true});
-  fh+='</div>';
-
-  // Footer — the end-to-end rate and the step that loses the most.
   const drops=[
     {label:'Visitors \u2192 Demo clicks',pct:r1!=null?100-r1:null},
     {label:'Demo clicks \u2192 Scheduled',pct:r2!=null?100-r2:null},
@@ -2926,17 +2990,36 @@ function renderDash(){
     {label:'Supposed to happen \u2192 Qualified',pct:rHeldOverall!=null?100-rHeldOverall:null}
   ];
   const biggest=drops.filter(x=>x.pct!=null).sort((a,b)=>b.pct-a.pct)[0];
-  fh+=`<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;padding-top:14px;border-top:1px solid var(--border);font-size:11px;color:var(--grey)">
-    <div style="display:flex;align-items:baseline;gap:8px">
-      <span style="font-family:var(--font-h);font-size:10px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.06em">End-to-end</span>
-      <span style="font-family:var(--font-h);color:var(--navy);font-size:15px;font-weight:700">${e2e!=null?e2e.toFixed(2)+'%':'—'}</span>
-      <span>visitor \u2192 qualified demos</span>
+  fh+=`<div style="display:flex;flex-wrap:wrap;gap:14px;align-items:stretch;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+    <div style="display:inline-flex;align-items:stretch;gap:0;background:linear-gradient(135deg,rgba(114,164,191,.05) 0%,rgba(114,164,191,.10) 100%);border:1px solid #A6CDDB;border-radius:10px;overflow:hidden">
+      ${_cvrSeg('CVR · Regular','var(--teal)',_cvrReg,_cvrRegPV,_cvrRegLM,null)}
+      <div style="width:1px;background:#A6CDDB"></div>
+      ${_cvrSeg('CVR · Pre-Launch','#BA7517',_cvrPre,_cvrPrePV,_cvrPreLM,'rgba(186,117,23,.05)')}
+      <div style="width:1px;background:#A6CDDB"></div>
+      ${_cvrSeg('CVR · All','#7C3AED',_cvrAll,_cvrAllPV,_cvrAllLM,'rgba(124,58,237,.04)')}
     </div>
-    ${biggest?`<div style="display:flex;align-items:baseline;gap:8px">
-      <span style="font-family:var(--font-h);font-size:10px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.06em">Biggest drop</span>
-      <span style="color:var(--navy)">${biggest.label}</span>
-      <span style="color:var(--red);font-weight:600">${biggest.pct.toFixed(1)}% leave</span>
-    </div>`:''}
+    <div style="display:flex;flex-direction:column;justify-content:center;gap:8px;padding:6px 14px;border:1px solid var(--border);border-radius:10px;font-size:11px;color:var(--grey)">
+      <div style="display:flex;align-items:baseline;gap:8px">
+        <span style="font-family:var(--font-h);font-size:10px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.06em">End-to-end</span>
+        <span style="font-family:var(--font-h);color:var(--navy);font-size:15px;font-weight:700">${e2e!=null?e2e.toFixed(2)+'%':'—'}</span>
+        <span>visitor \u2192 qualified demos</span>
+      </div>
+      ${biggest?`<div style="display:flex;align-items:baseline;gap:8px">
+        <span style="font-family:var(--font-h);font-size:10px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.06em">Biggest drop</span>
+        <span style="color:var(--navy)">${biggest.label}</span>
+        <span style="color:var(--red);font-weight:600">${biggest.pct.toFixed(1)}% leave</span>
+      </div>`:''}
+    </div>
+    <div style="flex:1 1 220px;min-width:220px;padding:8px 14px;border:1px solid var(--border);border-radius:10px">
+      <div style="font-family:var(--font-h);font-size:10px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.06em">Lost before the demo</div>
+      ${fnSub([
+        // Same counts and rates as the Quality card -- prune and demo no-show
+        // pre-launch-free, the webinar no-show over all registrants -- each
+        // with the base its rate is a share of.
+        {label:'Prune',value:fN(_cxPreC)+_fnPct(_pruneAllC),note:'of '+fN(_supOutcomeC)+' settled demos'},
+        {label:'Demo no-show',value:fN(_nsPreC)+_fnPct(_noShowAllC),note:'of '+fN(_nsDenAllC)+' held + no-show'},
+        {label:'Webinar no-show',value:(_wnsC!=null?fN(_wnsC):'\u2014')+_fnPct(_wnsRateC),note:'of '+(_wnrC!=null?fN(_wnrC):'\u2014')+' registrants'}],'loss')}
+    </div>
   </div>`;
   document.getElementById('t-funnel').innerHTML=fh;
 
@@ -5379,6 +5462,13 @@ function _clnHslToRgb(hh,ss,ll){
     if(t<1/6)return pp+(q-pp)*6*t; if(t<1/2)return q; if(t<2/3)return pp+(q-pp)*(2/3-t)*6; return pp;};
   return [f(hh+1/3),f(hh),f(hh-1/3)].map(v=>Math.round(Math.max(0,Math.min(1,v))*255));
 }
+// Brand Sales pipeline ('default') stage ids, as worker BST, and their HubSpot
+// colours -- the Conversion Funnel's deal rows and off-path box.
+const BRAND_STAGE_IDS={appt:'appointmentscheduled',demo:'1084214349',interested:'3722491612',dm:'decisionmakerboughtin',
+  cs:'contractsent',won:'closedwon',lost:'closedlost',noShow:'3453957850',notFit:'1062974581',churned:'3453925110',
+  webReg:'3741686470',webHap:'3741686471'};
+const BRAND_STAGE_COLORS={appt:'#F6E3B4',demo:'#F2B33D',interested:'#D3168A',dm:'#7B55E0',cs:'#0B7A80',won:'#16843A',
+  lost:'#A3101E',noShow:'#D2470F',notFit:'#F4C7C7',churned:'#151515',webReg:'#D9D9D9',webHap:'#BFDCEF'};
 function _clnInk(hex){
   const rgb=_clnHexToRgb(hex); if(!rgb)return hex;
   if(_clnContrastWhite(rgb)>=_CLN_INK_MIN_CONTRAST)return hex;   // already reads as a fill

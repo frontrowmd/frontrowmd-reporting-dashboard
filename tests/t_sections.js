@@ -13,7 +13,8 @@ const {fn}=require('./slice.js');
 const brandKm=fn(html,'_brandKeyMetricsHTML');
 
 // ── Order on the Detailed Dashboard ──
-const order=['id="dsec-demoinsights"','id="dsec-cvrfunnel"','id="sec-row2"',
+// The Conversion Funnel moved ABOVE Demo Insights (Alex, 2026-10-29).
+const order=['id="dsec-cvrfunnel"','id="dsec-demoinsights"','id="sec-row2"',
              'id="sec-adkpis"','id="dsec-adchannelperf"','id="dsec-adtables"',
              'id="dsec-demoattendance"','id="sec-field-ref"'];
 ck('page sections run in the intended order',
@@ -170,7 +171,7 @@ ck('the sibling dashboards are untouched',
 
 // ── Key Metrics is now the first section ───────────────────────────
 ck('Key Metrics container precedes every other section',
-   ['id="sec-keymetrics"','id="dsec-demoinsights"','id="dsec-cvrfunnel"','id="sec-row2"']
+   ['id="sec-keymetrics"','id="dsec-cvrfunnel"','id="dsec-demoinsights"','id="sec-row2"']
      .map(at).every((v,i,a)=>v>0&&(i===0||v>a[i-1])),true);
 
 // ── Snapshot and Trend Analysis are gone from this page ────────────

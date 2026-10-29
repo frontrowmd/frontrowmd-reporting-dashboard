@@ -105,38 +105,33 @@ ck('CPD All replaces CPD Regular + Pre-Launch',
    /statRow\('CPD All'/.test(body)&&!/CPD Regular \+ Pre-Launch/.test(body),true);
 
 // ── Conversion Funnel ──────────────────────────────────────────────
-ck('Conversion Funnel follows Demo Insights',
-   html.indexOf('id="dsec-demoinsights"')<html.indexOf('id="dsec-cvrfunnel"'),true);
+ck('Conversion Funnel sits ABOVE Demo Insights (2026-10-29)',
+   html.indexOf('id="dsec-cvrfunnel"')<html.indexOf('id="dsec-demoinsights"'),true);
 ck('and still precedes the Marketing Funnel',
    html.indexOf('id="dsec-cvrfunnel"')<html.indexOf('id="sec-row2"'),true);
+ck('the loading skeleton matches: funnel before Volume / Quality / Efficiency',
+   html.indexOf('<!-- Row 3: Conversion Funnel')>0&&html.indexOf('<!-- Row 3: Conversion Funnel')<html.indexOf('<!-- Row 4: Volume / Quality / Efficiency'),true);
 
 const fstart=html.indexOf('const _cvrOf=(n,v)');
 const fend=html.indexOf("getElementById('t-funnel')");
 ck('funnel block located',fstart>0&&fend>fstart,true);
 const fn_=html.slice(fstart,fend);
 
-// ONE rail: five stages, four connectors, each stage a subset of the last.
-// Replaced two rows of bordered cards split by a divider.
-const stages=['Visitors','Demo clicks','Regular Demos Scheduled','Regular Demos Supposed to Happen','Qualified Regular Demos'];
-ck('five stages on one rail',(fn_.match(/fh\+=fnStage\(/g)||[]).length,5);
-ck('four connectors between them',(fn_.match(/fh\+=fnStep\(/g)||[]).length,4);
-ck('stages run in funnel order',
-   stages.map(x=>fn_.indexOf("label:'"+x+"'")).every((v,i,a)=>v>0&&(i===0||v>a[i-1])),true);
-ck('no bordered-card stage helpers remain',/funnelStage\(|funnelTrio\(|funnelStageSplit/.test(html),false);
-ck('the "90% of scheduled" divider is now just a connector',
-   /Demos that reached their date/i.test(fn_),false);
-
-// Breakdowns hang under the stage they describe rather than taking a card.
-// Scheduled leads with Regular demos; Pre-Launch and All sit in its breakdown.
-ck('Scheduled leads with Regular demos',/label:'Regular Demos Scheduled',value:fN\(_regC\),cur:_regC,pv:_regP,lmv:_regL,accent:true/.test(fn_),true);
-ck('and says which slice that is',/vnote:'regular demos'/.test(fn_),true);
-ck('Pre-Launch and All drop into its breakdown',
-   /label:'Pre-Launch',value:fN\(_preC\)/.test(fn_)&&/label:'All',value:fN\(_bothC\)/.test(fn_),true);
-ck('the step is highlighted',(fn_.match(/accent:true/g)||[]).length,2);
-ck('no stage is still labelled "Reached their date"',/Reached their date/.test(fn_),false);
-ck('losses hang under Reached their date',
-   (fn_.match(/label:'(Prune|Demo no-show|Webinar no-show)'/g)||[]).length,3);
-ck('losses are toned as losses',/subTone:'loss'/.test(fn_),true);
+// The rail of five cards became a Clinician-style stage table. Every one of the
+// page's own steps is still a row, in the same order, with HubSpot's deal
+// stages interleaved around them.
+const rowsOrder=['Visitors','Demo clicks','Appointment Scheduled','Regular Demos Scheduled','Webinar Registered',
+  'Regular Demos Supposed to Happen','Demo Happened','Qualified Regular Demos','Webinar Happened',
+  'Decision Maker Brought-In','Contract Sent','Closed Won'];
+ck('every row, in the order asked for',
+   rowsOrder.map(x=>fn_.indexOf("'"+x+"'")).every((v,i,a)=>v>0&&(i===0||v>a[i-1])),true);
+ck('no rail cards or connectors remain',/fh\+=fnStage\(|fh\+=fnStep\(/.test(fn_),false);
+ck('the two sub-cohorts are marked as such',(fn_.match(/kind:'page',sub:true,label:'(Regular Demos Scheduled|Qualified Regular Demos)'/g)||[]).length,2);
+ck('the two webinar stages run in parallel',(fn_.match(/'Webinar (Registered|Happened)',BRAND_STAGE_COLORS\.\w+,\{par:true/g)||[]).length,2);
+ck('Regular Demos Scheduled keeps its Pre-Launch and All detail',
+   /note:fN\(_preC\)\+' pre-launch \\u00b7 '\+fN\(_bothC\)\+' all'/.test(fn_),true);
+ck('the losses keep their loss tone, in the strip',/'loss'\)\}/.test(fn_),true);
+ck('three losses',(fn_.match(/label:'(Prune|Demo no-show|Webinar no-show)'/g)||[]).length,3);
 // Each loss names its own base -- the webinar one in particular is over
 // registrants, not over the deals in that stage.
 ck('webinar no-show names its own base',/note:'of '\+\(_wnrC!=null\?fN\(_wnrC\):'\\u2014'\)\+' registrants'/.test(fn_),true);
@@ -154,8 +149,8 @@ ck('clicks to scheduled uses ALL scheduled too',/r2=demoClicks>0\?\(_bothC\/demo
 ck('neither rate still divides by the demo-only count',
    /\(demosSupposed\/scheduled|\(scheduled\/demoClicks/.test(fn_),false);
 // All four steps are candidates, so Biggest drop cannot miss the real worst one.
-ck('every rail step can win Biggest drop',(fn_.match(/',pct:/g)||[]).length,4);
-ck('including the two that were added with the rail',
+ck('every page step can win Biggest drop',(fn_.match(/',pct:/g)||[]).length,4);
+ck('including Scheduled -> Supposed and Supposed -> Qualified',
    fn_.includes("Scheduled \\u2192 Supposed to happen")&&fn_.includes("Supposed to happen \\u2192 Qualified"),true);
 
 // Chrome: one delta renderer, and it SUPPRESSES vs-LM when there is no value.
@@ -163,22 +158,6 @@ ck('a single delta renderer for the funnel',/function fDelta\(cur,pv,lmv,fmt,dec
 ck('vs LM renders only when a value exists',/if\(lmv!=null\)h\+=`<div style="display:flex;gap:5px"><span[^`]*vs LM/.test(html),true);
 ck('nothing hand-rolls its own vs-LM row',/vs LM<\/span>\$\{fmtDC/.test(fn_),false);
 ck('CVR segments use it too, at 2dp',/fDelta\(v,pv,lmv,'%',2\)/.test(fn_),true);
-// The connector reads as an arrow: proportional track plus a fixed arrowhead
-// (a stretched viewBox would squash the head at wide column widths).
-// Rate and arrow in ONE dark pill. Earlier passes split them across the column
-// -- type over a rule, then a bordered pill between two rules -- and each read
-// as loose parts rather than one marker on the path.
-ck('rate and arrow share one pill',
-   /display:inline-flex;align-items:center;gap:6px;background:var\(--navy\);border-radius:99px/.test(html),true);
-ck('the pill is dark with light type',
-   /font-weight:700;color:#fff;line-height:1;white-space:nowrap;font-variant-numeric:tabular-nums/.test(html),true);
-ck('the arrow is inside it and light',
-   /stroke="rgba\(255,255,255,\.85\)"/.test(html),true);
-ck('nothing sits outside the pill',/\+rule\n/.test(html),false);
-ck('no pale bordered pill remains',/border:1px solid '\+\(strong\?'var\(--teal\)'/.test(html),false);
-ck('centred against the stage values',
-   /display:flex;align-items:center;justify-content:center;padding-top:46px;min-width:0/.test(html),true);
-
 // "(none)" read like a bug beside "N/A". They are different source values, so
 // both stay -- the empty one just says what it means now.
 ck('the empty tier is labelled',/'\(none\)':'Not set'/.test(html),true);
@@ -192,15 +171,6 @@ ck('the donut is no longer squeezed next to them',
 
 ck('breakdown rows stay a readable width',/max-width:240px/.test(html),true);
 
-// Every funnel stage is carded. Only the two accented ones were before, so the
-// row read as two objects and three loose columns.
-ck('plain stages get a card outline',
-   /'background:var\(--white\);border:1px solid var\(--border\)'/.test(html),true);
-ck('accented stages keep their teal treatment',
-   /border:1px solid #A6CDDB'/.test(html),true);
-ck('both share one padding and radius',
-   /border-radius:12px;padding:14px 16px;\$\{acc\?/.test(html),true);
-ck('no stage is left bare',/'padding:14px 2px'/.test(html),false);
 
 // Demo Insights order: Efficiency, Volume, Quality. Done with CSS order, not by
 // moving the blocks -- the Efficiency block declares consts the Conversion
