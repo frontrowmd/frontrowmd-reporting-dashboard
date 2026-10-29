@@ -304,7 +304,6 @@ ck('the client derives the figure in exactly one place',
 for(const [what,re_] of [
   ['the Demo Insights card',/statRow\('Qualified Regular Demos','Demos held excl\. pre-launch \+ Webinars Happened',fN\(qd\)/],
   ['the Efficiency CPQD',/\$\{fN\(qd\)\} qualified demos/],
-  ['the Conversion Funnel',/const held=qd,heldPV=qdPV,heldLMV=qdLMV;/],
   ['the trend item',/trendItem\('Qualified Demos','Demos held excl\. pre-launch \+ webinars held',fN\(qd\)\)/],
 ]) ck(what+' reads that one binding',re_.test(cli),true);
 // The split is presentational: webinars are subtracted OUT of the canonical

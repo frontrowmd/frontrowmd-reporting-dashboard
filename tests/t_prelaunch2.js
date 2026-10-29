@@ -79,14 +79,15 @@ ck('scale counters still exist for their own consumers',
    /if \(!isLow\) demoGivenScaleCount\+\+;/.test(src),true);
 
 // ── Labels name the population ──
+// 'Regular Demos Scheduled' left with the Conversion Funnel's page rows (2026-10-29).
 for(const L of ['Regular Demos to Occur','Regular Demos Supposed to Happen',
-                'Qualified Regular Demos','Regular Demos Scheduled']){
+                'Qualified Regular Demos']){
   ck('label: '+L,cli.includes("'"+L+"'"),true);
 }
 ck('no bare "Demos to occur" card remains',/statRow\('Demos to occur'/.test(cli),false);
 ck('nor a bare Qualified Demos card',/statRow\('Qualified Demos'/.test(cli),false);
-ck('funnel drop labels track the stage names',
-   cli.includes('Scheduled \\u2192 Supposed to happen')&&cli.includes('Supposed to happen \\u2192 Qualified'),true);
+// Biggest drop is built from the funnel's own rows now, so it can't drift from them.
+ck('funnel drop labels come from the rows themselves',/label:_ftRows\[i\]\.label\+' \\u2192 '\+st\.label/.test(cli),true);
 
 console.log('\n'+pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);

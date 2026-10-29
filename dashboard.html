@@ -2806,55 +2806,23 @@ function renderDash(){
   const visitors=d.webPerformance.visitors?.value||0;
   const visitorsPV=d.webPerformance.visitors?.sameTimePrior?.value,visitorsLMV=d.webPerformance.visitors?.lastMonth?.value;
   const demoClicks=wm2.demoClicks||0,demoClicksPV=wm2.demoClicksPrior,demoClicksLMV=wm2.demoClicksLastMonth;
-  const scheduled=totalScheduled;
   const _cvrOf=(n,v)=>(v>0&&n!=null)?(n/v*100):null;
   const _cvrReg=_cvrOf(_regC,visitors),_cvrRegPV=_cvrOf(_regP,visitorsPV),_cvrRegLM=_cvrOf(_regL,visitorsLMV);
   const _cvrPre=_cvrOf(_preC,visitors),_cvrPrePV=_cvrOf(_preP,visitorsPV),_cvrPreLM=_cvrOf(_preL,visitorsLMV);
   const _cvrAll=_cvrOf(_bothC,visitors),_cvrAllPV=_cvrOf(_bothP,visitorsPV),_cvrAllLM=_cvrOf(_bothL,visitorsLMV);
-  // All-traffic "Demos supposed to happen" (matches the Volume all-traffic card
-  // and keeps the sub-flow internally consistent: supposed = held + prune +
-  // no-show, all measured across every traffic tier). _supAllC/P/L computed above.
-  const demosSupposed=_supAllC;
-  const demosSupposedPV=_supAllP,demosSupposedLMV=_supAllL;
-  // Conversion Funnel "Qualified" card uses the redefined metric:
-  // Of Demos Held (excl. pre-launch), how many had demo_qualification_outcome = Qualified.
-  // qualScaleCur / qualScalePV / qualScaleLMV are computed earlier in renderDash
-  // (from qmeta.qualifiedRawScaleCount + its priors).
-  const qualified=qualScaleCur||0;
-  // Conversion Funnel's last step IS the Qualified Demos figure.
-  const held=qd,heldPV=qdPV,heldLMV=qdLMV;
   const r1=visitors>0?(demoClicks/visitors*100):null;
-  const r2=demoClicks>0?(_bothC/demoClicks*100):null;
-  const rSupposed=_bothC>0?(demosSupposed/_bothC*100):null;
-  const cancelledN=qmeta.cancelledBeforeDemoCount||0;
-  const noShowN=qmeta.noShowCount||0;
-  const pruned=cancelledN+noShowN;
-  const cancelledPV=qmeta.cancelledBeforeDemoCountPrior;
-  const cancelledLMV=qmeta.cancelledBeforeDemoCountLastMonth;
-  const noShowPriorV=qmeta.noShowCountPrior;
-  const noShowLastMonthV=qmeta.noShowCountLastMonth;
-  const prunedPV=(cancelledPV!=null||noShowPriorV!=null)?((cancelledPV||0)+(noShowPriorV||0)):null;
-  const prunedLMV=(cancelledLMV!=null||noShowLastMonthV!=null)?((cancelledLMV||0)+(noShowLastMonthV||0)):null;
-  const rPruneRate=demosSupposed>0?(pruned/demosSupposed*100):null;
-  const rHeldOverall=demosSupposed>0?(held/demosSupposed*100):null;
-  // r4 = Held → Qualified rate. Now uses the redefined Qualified denominator
-  // (Demos Held excl. pre-launch) so the arrow matches the Qualified card's
-  // new calculation.
-  const r4=heldScaleCur>0?(qualified/heldScaleCur*100):null;
-  // End-to-end now targets Qualified Demos — the funnel's terminal
-  // card since the separate "Qualified" step was removed.
-  const e2e=visitors>0?(held/visitors*100):null;
 
   // ── Conversion Funnel, Clinician-style stage table (redesigned 2026-10-29) ──
   // One aligned row per step: Reached, % from prior, Here now, cost per, the
-  // deltas, and a bar (track = reached on a log scale, solid = here now). The
-  // page's own steps (Visitors ... Qualified Regular Demos) keep their figures and
-  // their step rates exactly; HubSpot's Sales-pipeline stages are interleaved
-  // around them as a COHORT -- deals created in this window, pre-launch excluded
-  // (worker buildBrandStageFunnel). Regular Demos Scheduled and Qualified Regular
-  // Demos sit as sub-cohorts under Appointment Scheduled and Demo Happened; the
-  // webinar stages run in parallel with those two. Off-path stages go in a side
-  // box; CVRs, End-to-end, Biggest drop and the losses go in a strip below.
+  // deltas, and a bar (track = reached on a log scale, solid = here now).
+  // Visitors and Demo clicks, then HubSpot's Sales-pipeline stages as a COHORT --
+  // deals created in this window, pre-launch excluded (worker
+  // buildBrandStageFunnel). Revised the same day at Alex's request: the webinar
+  // stages moved to their own box, and Regular Demos Scheduled / Supposed to
+  // Happen / Qualified Regular Demos came off -- they count demos by DEMO DATE,
+  // so beside a created-in-window cohort they read as contradictions (157
+  // qualified next to 57 Demo Happened). Off-path stages go in a side box; CVRs,
+  // End-to-end, Biggest drop and the losses in a strip below.
   const _BSF=d.brandStageFunnel||null;
   const _bsC=_BSF&&_BSF.cur, _bsP=_BSF&&_BSF.prior, _bsL=_BSF&&_BSF.lm;
   const _bsSt=(w,id)=>(w&&w.stages&&w.stages[id])||null;
@@ -2874,20 +2842,10 @@ function renderDash(){
     _stg(BRAND_STAGE_IDS.appt,'Appointment Scheduled',BRAND_STAGE_COLORS.appt,{
       conv:_ftPct(_apptR,demoClicks),base:'of demo clicks',
       tip:_ftPctS(_ftPct(_apptR,demoClicks))+' = '+fN(_apptR)+' deals reached Appointment Scheduled \u00f7 '+fN(demoClicks)+' demo clicks'}),
-    {kind:'page',sub:true,label:'Regular Demos Scheduled',col:'#3B8FB0',reached:_regC,pv:_regP,lmv:_regL,conv:r2,base:'all '+fN(_bothC)+' \u00f7 demo clicks',
-      note:fN(_preC)+' pre-launch \u00b7 '+fN(_bothC)+' all',
-      tip:_ftPctS(r2)+' = '+fN(_bothC)+' demos scheduled (regular + pre-launch) \u00f7 '+fN(demoClicks)+' demo clicks'},
-    // HubSpot's own grey; _clnInk would hue-shift an achromatic colour to red.
-    _stg(BRAND_STAGE_IDS.webReg,'Webinar Registered',BRAND_STAGE_COLORS.webReg,{par:true,conv:null,ink:'#6B7280'}),
-    {kind:'page',label:'Regular Demos Supposed to Happen',col:'#8FA3B5',reached:demosSupposed,pv:demosSupposedPV,lmv:demosSupposedLMV,conv:rSupposed,base:'of all scheduled',
-      tip:_ftPctS(rSupposed)+' = '+fN(demosSupposed)+' supposed to happen \u00f7 '+fN(_bothC)+' demos scheduled (all)'},
     _stg(BRAND_STAGE_IDS.demo,'Demo Happened',BRAND_STAGE_COLORS.demo,{prevLabel:'Appointment Scheduled',base:'of appt. scheduled'}),
-    {kind:'page',sub:true,label:'Qualified Regular Demos',col:'#1D9E75',reached:held,pv:heldPV,lmv:heldLMV,conv:rHeldOverall,base:'of supposed to happen',
-      tip:_ftPctS(rHeldOverall)+' = '+fN(held)+' qualified \u00f7 '+fN(demosSupposed)+' supposed to happen'},
-    _stg(BRAND_STAGE_IDS.webHap,'Webinar Happened',BRAND_STAGE_COLORS.webHap,{par:true,prevLabel:'Webinar Registered',base:'of registered'}),
-    _stg(BRAND_STAGE_IDS.dm,'Decision Maker Brought-In',BRAND_STAGE_COLORS.dm,{prevLabel:'Demo Happened or Webinar Happened',base:'of demos + webinars held'}),
-    _stg(BRAND_STAGE_IDS.cs,'Contract Sent',BRAND_STAGE_COLORS.cs,{prevLabel:'Decision Maker Brought-In',base:'of decision maker'}),
-    _stg(BRAND_STAGE_IDS.won,'Closed Won',BRAND_STAGE_COLORS.won,{prevLabel:'Contract Sent',base:'of contract sent'}),
+    // Decision Maker Brought-In and Contract Sent were dropped (Alex, 2026-10-29):
+    // the team does not use them, so Closed Won follows Demo Happened directly.
+    _stg(BRAND_STAGE_IDS.won,'Closed Won',BRAND_STAGE_COLORS.won,{prevLabel:'Demo Happened',base:'of demo happened'}),
   ];
   // Hover text for a deal row's % from prior, from the worker's own num / den --
   // the numerator is always inside this row's Reached, as on the Clinician table.
@@ -2914,21 +2872,19 @@ function renderDash(){
     const rc=st.reached, cc=st.kind==='deal'?st.here:null;
     const fillW=(rc!=null&&rc>0&&cc!=null)?Math.min(100,(cc/rc)*100):0;
     const cost=(rc!=null&&rc>0&&cSpend>0)?cSpend/rc:null;
-    // A hairline where the page's own traffic steps hand over to the pipeline.
-    const _hand=i>0&&_ftRows[i-1].kind==='page'&&!_ftRows[i-1].sub&&st.kind==='deal'&&!st.par&&i===2;
-    const tag=st.sub?'<span style="color:var(--grey);margin-right:4px">\u21b3</span>'
-      :(st.par?'<span style="font-size:8.5px;font-weight:700;color:#4E89A8;border:1px solid #A6CDDB;border-radius:4px;padding:0 4px;margin-right:6px;letter-spacing:.04em">PARALLEL</span>':'');
-    fh+='<div style="display:grid;grid-template-columns:'+_FT_COLS+';gap:12px;align-items:center;padding:'+(st.sub?'6px':'9px')+' 10px;'
+    // A hairline where the web traffic steps hand over to the pipeline.
+    const _hand=i>0&&_ftRows[i-1].kind==='page'&&st.kind==='deal';
+    fh+='<div style="display:grid;grid-template-columns:'+_FT_COLS+';gap:12px;align-items:center;padding:9px 10px;'
       +'border-bottom:1px solid var(--border)'+(_hand?';border-top:2px solid rgba(23,44,69,.18)':'')
-      +(st.par?';background:rgba(203,227,242,.16);border-left:2px dashed #A6CDDB':'')+'">'
-      +'<span style="display:flex;align-items:center;gap:8px;min-width:0;'+(st.sub||st.par?'padding-left:18px':'')+'">'
+      +'">'
+      +'<span style="display:flex;align-items:center;gap:8px;min-width:0">'
         +'<span style="flex:0 0 auto;width:10px;height:10px;border-radius:50%;background:'+col+';border:1px solid rgba(2,15,24,.18)"></span>'
-        +'<span style="min-width:0"><span style="display:block;font-family:var(--font-h);font-size:'+(st.sub?'12px':'13.5px')+';font-weight:700;color:var(--navy);line-height:1.2">'+tag+st.label+'</span>'
+        +'<span style="min-width:0"><span style="display:block;font-family:var(--font-h);font-size:13.5px;font-weight:700;color:var(--navy);line-height:1.2">'+st.label+'</span>'
         +(st.note?'<span style="display:block;font-size:9.5px;color:var(--grey);line-height:1.3">'+st.note+'</span>':'')+'</span></span>'
-      +'<span style="text-align:right;font-family:var(--font-h);font-size:'+(st.sub?'16px':'19px')+';font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+(rc!=null?fN(rc):'\u2014')+'</span>'
+      +'<span style="text-align:right;font-family:var(--font-h);font-size:19px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+(rc!=null?fN(rc):'\u2014')+'</span>'
       +'<span style="text-align:right">'+(st.conv!=null
         ? '<span data-tip="'+String(st.tip||'').replace(/"/g,'&quot;')+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" style="cursor:help;display:inline-block;padding:3px 10px;border-radius:50px;background:'+col+'26;border:1px solid '+col+'80;'
-          +'font-family:var(--font-h);font-size:'+(st.sub?'13px':'15px')+';font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+st.conv.toFixed(1)+'%</span>'
+          +'font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums">'+st.conv.toFixed(1)+'%</span>'
         : '<span style="color:var(--grey)">\u2014</span>')
       // The base under every rate: interleaving puts some rows under a row that
       // is NOT their denominator, so the denominator is named, not implied.
@@ -2936,26 +2892,48 @@ function renderDash(){
       +'<span style="text-align:right;font-family:var(--font-h);font-size:17px;font-weight:700;color:'+(cc!=null?ink:'var(--grey)')+';font-variant-numeric:tabular-nums">'+(cc!=null?fN(cc):'\u2014')+'</span>'
       +'<span style="text-align:right;font-size:11.5px;color:var(--grey);font-variant-numeric:tabular-nums" title="'+(cost!=null?('Ad spend \u00f7 '+fN(rc)):'')+'">'+(cost!=null?_ft$(cost):'\u2014')+'</span>'
       +'<span style="min-width:0">'+fDelta(rc,st.pv,st.lmv)+'</span>'
-      +'<span style="display:block;background:rgba(114,164,191,.07);border-radius:5px;height:'+(st.sub?'12px':'18px')+';overflow:hidden">'
+      +'<span style="display:block;background:rgba(114,164,191,.07);border-radius:5px;height:18px;overflow:hidden">'
       +'<span title="'+(rc!=null?fN(rc):'\u2014')+' reached'+(cc!=null?(' \u00b7 '+fN(cc)+' still in this stage'):'')+'" style="display:block;height:100%;width:'+_ftBar(rc)+'%;background:'+col+'66;border:1px solid rgba(2,15,24,.22);border-radius:5px;overflow:hidden;transition:width .3s">'
       +'<span style="display:block;height:100%;width:'+fillW+'%;background:'+ink+'"></span></span></span>'
       +'</div>';
   }
   fh+='</div></div>';
 
-  // Why a later deal stage can out-count the one above: the middle stages are
-  // optional and some deals are created straight into Closed Won. Read off the
-  // payload, never hard-coded.
+  // The won deals outside Closed Won's rate: it is measured on deals that
+  // reached Demo Happened, so wins with no demo on record, or won through the
+  // webinar route, count in Reached only. Read off the payload, never hard-coded.
   {
     const _sk=[];
-    const _won=_bsSt(_bsC,BRAND_STAGE_IDS.won),_cs=_bsSt(_bsC,BRAND_STAGE_IDS.cs);
-    if(_won&&_won.noDemo>0)_sk.push(fN(_won.noDemo)+' of the '+fN(_won.reached)+' Closed Won have no recorded demo or webinar'
-      +(_won.direct>0?' ('+fN(_won.direct)+' created straight into Closed Won)':''));
-    if(_won&&_won.skippedPrev>0)_sk.push(fN(_won.skippedPrev)+' Closed Won skipped Contract Sent');
-    if(_cs&&_cs.skippedPrev>0)_sk.push(fN(_cs.skippedPrev)+' Contract Sent skipped Decision Maker Brought-In');
+    const _won=_bsSt(_bsC,BRAND_STAGE_IDS.won);
+    if(_won&&_won.noDemo>0)_sk.push(fN(_won.noDemo)+' have no recorded demo or webinar'
+      +(_won.direct>0?' ('+fN(_won.direct)+' with no other funnel stage on record)':''));
+    if(_won&&_won.viaWebinar>0)_sk.push(fN(_won.viaWebinar)+' came through the webinar route');
     if(_sk.length)fh+='<div style="margin-top:10px;padding:8px 12px;border-left:3px solid var(--teal);background:rgba(114,164,191,.08);border-radius:0 6px 6px 0;font-size:11px;color:var(--navy);line-height:1.5">'
-      +'<b>Why a later stage can be larger than the one above.</b> Reached is what HubSpot recorded, and the middle stages are optional: '+_sk.join('; ')+'. '
-      +'From prior only counts deals that went through the stage above, so it stays at or under 100%.</div>';
+      +'<b>Closed Won\u2019s '+fN(_won.reached)+' includes deals outside its rate.</b> Of them, '+_sk.join('; ')+'. '
+      +'From prior only counts the deals that reached Demo Happened.</div>';
+  }
+
+  // The webinar route, beside the table rather than in it: same cohort, its
+  // own two stages. Webinar Happened's rate is of the deals that registered.
+  {
+    const _wr=_bsSt(_bsC,BRAND_STAGE_IDS.webReg),_wh=_bsSt(_bsC,BRAND_STAGE_IDS.webHap);
+    const _wPV=(id)=>_bsN(_bsP,id,'reached'),_wLM=(id)=>_bsN(_bsL,id,'reached');
+    const _wCell=(lab,o,id,col,ink,extra)=>'<div style="flex:1 1 200px;min-width:200px;display:flex;align-items:center;gap:10px">'
+      +'<span style="width:10px;height:10px;border-radius:50%;background:'+col+';border:1px solid rgba(2,15,24,.18);flex:0 0 auto"></span>'
+      +'<div style="min-width:0"><div style="font-family:var(--font-h);font-size:12.5px;font-weight:700;color:var(--navy)">'+lab+'</div>'
+      +'<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">'
+      +'<span style="font-family:var(--font-h);font-size:18px;font-weight:700;color:var(--navy)">'+(o?fN(o.reached):'\u2014')+'</span>'
+      +'<span style="font-size:10px;color:var(--grey)">reached \u00b7 <b style="color:'+ink+'">'+(o?fN(o.here):'\u2014')+'</b> here now</span>'+(extra||'')+'</div>'
+      +fDelta(o?o.reached:null,_wPV(id),_wLM(id))+'</div></div>';
+    const _whTip=(_wh&&_wh.fromPrevPct!=null)?_ftPctS(_wh.fromPrevPct)+' = '+fN(_wh.fromPrevNum)+' of the '+fN(_wh.fromPrevDen)+' deals that registered also attended':'';
+    fh+='<div style="margin-top:14px;border:1px solid #A6CDDB;background:rgba(203,227,242,.14);border-radius:10px;padding:10px 14px">'
+      +'<div style="font-family:var(--font-h);font-size:10px;font-weight:700;color:#4E89A8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Webinar route \u00b7 same cohort, not in the table above</div>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:16px">'
+      // HubSpot's own grey; _clnInk would hue-shift an achromatic colour to red.
+      +_wCell('Webinar Registered',_wr,BRAND_STAGE_IDS.webReg,BRAND_STAGE_COLORS.webReg,'#6B7280')
+      +_wCell('Webinar Happened',_wh,BRAND_STAGE_IDS.webHap,BRAND_STAGE_COLORS.webHap,_clnInk(BRAND_STAGE_COLORS.webHap),
+        (_wh&&_wh.fromPrevPct!=null)?'<span data-tip="'+_whTip+'" onmouseover="dbcTip(event,this)" onmousemove="dbcTipMove(event)" onmouseout="dbcTipHide()" style="cursor:help;font-family:var(--font-h);font-size:12px;font-weight:700;color:var(--navy);padding:1px 8px;border-radius:50px;background:'+BRAND_STAGE_COLORS.webHap+'40;border:1px solid '+BRAND_STAGE_COLORS.webHap+'">'+_ftPctS(_wh.fromPrevPct)+' of registered</span>':'')
+      +'</div></div>';
   }
 
   // Off the path: stages a deal can land in that are not a step forward.
@@ -2983,12 +2961,15 @@ function renderDash(){
         <span style="font-family:var(--font-h);font-size:19px;font-weight:700;color:var(--navy);line-height:1;margin-bottom:4px;letter-spacing:-.01em">${v!=null?v.toFixed(2)+'%':'—'}</span>
         <div style="width:100%">${fDelta(v,pv,lmv,'%',2)}</div>
       </div>`;
-  const drops=[
-    {label:'Visitors \u2192 Demo clicks',pct:r1!=null?100-r1:null},
-    {label:'Demo clicks \u2192 Scheduled',pct:r2!=null?100-r2:null},
-    {label:'Scheduled \u2192 Supposed to happen',pct:rSupposed!=null?100-rSupposed:null},
-    {label:'Supposed to happen \u2192 Qualified',pct:rHeldOverall!=null?100-rHeldOverall:null}
-  ];
+  // Biggest drop over the steps up to Demo Happened. Closed Won is left out: in
+  // a young cohort most held demos are still open (Here now), so its rate is a
+  // deal cycle in progress, not a leak. A row with no rate is left out.
+  const _FT_DROP_TO=['Demo clicks','Appointment Scheduled','Demo Happened'];
+  const drops=_ftRows.slice(1).map((st,i)=>({label:_ftRows[i].label+' \u2192 '+st.label,to:st.label,pct:st.conv!=null?100-st.conv:null}))
+    .filter(x=>_FT_DROP_TO.indexOf(x.to)>=0);
+  // End-to-end: the cohort's Closed Won over the window's visitors.
+  const _wonR=_bsN(_bsC,BRAND_STAGE_IDS.won,'reached');
+  const e2e=(visitors>0&&_wonR!=null)?(_wonR/visitors*100):null;
   const biggest=drops.filter(x=>x.pct!=null).sort((a,b)=>b.pct-a.pct)[0];
   fh+=`<div style="display:flex;flex-wrap:wrap;gap:14px;align-items:stretch;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
     <div style="display:inline-flex;align-items:stretch;gap:0;background:linear-gradient(135deg,rgba(114,164,191,.05) 0%,rgba(114,164,191,.10) 100%);border:1px solid #A6CDDB;border-radius:10px;overflow:hidden">
@@ -3002,7 +2983,7 @@ function renderDash(){
       <div style="display:flex;align-items:baseline;gap:8px">
         <span style="font-family:var(--font-h);font-size:10px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.06em">End-to-end</span>
         <span style="font-family:var(--font-h);color:var(--navy);font-size:15px;font-weight:700">${e2e!=null?e2e.toFixed(2)+'%':'—'}</span>
-        <span>visitor \u2192 qualified demos</span>
+        <span>visitor \u2192 closed won</span>
       </div>
       ${biggest?`<div style="display:flex;align-items:baseline;gap:8px">
         <span style="font-family:var(--font-h);font-size:10px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.06em">Biggest drop</span>
@@ -5464,10 +5445,10 @@ function _clnHslToRgb(hh,ss,ll){
 }
 // Brand Sales pipeline ('default') stage ids, as worker BST, and their HubSpot
 // colours -- the Conversion Funnel's deal rows and off-path box.
-const BRAND_STAGE_IDS={appt:'appointmentscheduled',demo:'1084214349',interested:'3722491612',dm:'decisionmakerboughtin',
-  cs:'contractsent',won:'closedwon',lost:'closedlost',noShow:'3453957850',notFit:'1062974581',churned:'3453925110',
+const BRAND_STAGE_IDS={appt:'appointmentscheduled',demo:'1084214349',interested:'3722491612',
+  won:'closedwon',lost:'closedlost',noShow:'3453957850',notFit:'1062974581',churned:'3453925110',
   webReg:'3741686470',webHap:'3741686471'};
-const BRAND_STAGE_COLORS={appt:'#F6E3B4',demo:'#F2B33D',interested:'#D3168A',dm:'#7B55E0',cs:'#0B7A80',won:'#16843A',
+const BRAND_STAGE_COLORS={appt:'#F6E3B4',demo:'#F2B33D',interested:'#D3168A',won:'#16843A',
   lost:'#A3101E',noShow:'#D2470F',notFit:'#F4C7C7',churned:'#151515',webReg:'#D9D9D9',webHap:'#BFDCEF'};
 function _clnInk(hex){
   const rgb=_clnHexToRgb(hex); if(!rgb)return hex;

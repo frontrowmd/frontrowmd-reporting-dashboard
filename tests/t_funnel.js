@@ -41,13 +41,12 @@ vm.runInContext([
 const SID={appt:'appointmentscheduled',demo:'1084214349',interested:'3722491612',dm:'decisionmakerboughtin',cs:'contractsent',
   won:'closedwon',lost:'closedlost',noShow:'3453957850',notFit:'1062974581',churned:'3453925110',webReg:'3741686470',webHap:'3741686471'};
 const ST=(reached,here,num,den,extra)=>Object.assign({reached,here,fromPrevNum:num,fromPrevDen:den,
-  fromPrevPct:(den>0&&num!=null)?num/den*100:null,noDemo:null,skippedPrev:null},extra||{});
+  fromPrevPct:(den>0&&num!=null)?num/den*100:null},extra||{});
 function BSF(lm){
   const cur={total:120,stages:{
     [SID.appt]:ST(80,30,null,null),[SID.webReg]:ST(25,5,null,null),
     [SID.demo]:ST(50,20,50,80),[SID.webHap]:ST(20,15,20,25),
-    [SID.dm]:ST(4,2,10,70,{noDemo:0}),[SID.cs]:ST(6,3,8,10,{noDemo:0,skippedPrev:2}),
-    [SID.won]:ST(12,11,4,8,{noDemo:5,direct:2,skippedPrev:3})},
+    [SID.won]:ST(12,11,6,50,{noDemo:5,direct:2,viaWebinar:1})},
     exits:{[SID.interested]:{reached:3,here:3},[SID.noShow]:{reached:9,here:4,viaWebinar:7},[SID.notFit]:{reached:0,here:0},
            [SID.lost]:{reached:7,here:7},[SID.churned]:{reached:1,here:1}}};
   const half=JSON.parse(JSON.stringify(cur));
@@ -113,77 +112,75 @@ const H=run();
 const T=tableRows(H);
 
 // ── 1. every row, in the order asked for ───────────────────────────────────
+// Revised 2026-10-29: the webinar stages moved to their own box, and the three
+// demo-date rows (Regular Demos Scheduled / Supposed to Happen / Qualified) came off.
 ck('the rows, in order',T.map(r=>r.label),
-   ['Visitors','Demo clicks','Appointment Scheduled','Regular Demos Scheduled','Webinar Registered',
-    'Regular Demos Supposed to Happen','Demo Happened','Qualified Regular Demos','Webinar Happened',
-    'Decision Maker Brought-In','Contract Sent','Closed Won']);
-ck('Regular Demos Scheduled and Qualified Regular Demos are sub-cohorts',T.filter(r=>r.sub).map(r=>r.label),
-   ['Regular Demos Scheduled','Qualified Regular Demos']);
-ck('the webinar stages are marked parallel',T.filter(r=>r.par).map(r=>r.label),['Webinar Registered','Webinar Happened']);
+   ['Visitors','Demo clicks','Appointment Scheduled','Demo Happened','Closed Won']);
+// Decision Maker Brought-In and Contract Sent were dropped (Alex, 2026-10-29): unused.
+ck('Decision Maker and Contract Sent are gone',/Decision Maker|Contract Sent/.test(H),false);
+ck('no sub-cohort or parallel rows remain in the table',T.filter(r=>r.sub||r.par).length,0);
+// One hairline, where web traffic hands over to the pipeline.
+ck('a single hand-off line, above Appointment Scheduled',
+   H.split('gap:12px;align-items:center;padding:').slice(1).map((c,i)=>c.includes('border-top:2px solid')?i:-1).filter(i=>i>=0),[2]);
 
-// ── 2. the page's own steps keep their figures and their step rates ────────
-ck('Visitors, Demo clicks, Scheduled, Supposed, Qualified read the same figures as before',
-   ['Visitors','Demo clicks','Regular Demos Scheduled','Regular Demos Supposed to Happen','Qualified Regular Demos'].map(l=>row(H,l).reached),
-   [nf(10000),nf(1000),nf(150),nf(100),nf(40)]);
-ck('  and the same four step rates',
-   ['Demo clicks','Regular Demos Scheduled','Regular Demos Supposed to Happen','Qualified Regular Demos'].map(l=>row(H,l).conv),
-   ['10.0%','20.0%','50.0%','40.0%']);
-ck('Scheduled still carries its Pre-Launch and All detail',/>50 pre-launch \u00b7 200 all</.test(H),true);
-{
-  const h=run({reg:50,pre:150});           // same _bothC=200, different headline
-  ck('the Scheduled rate follows the combined total, not the headline',row(h,'Regular Demos Scheduled').conv,'20.0%');
-  ck('  while the headline itself moves',row(h,'Regular Demos Scheduled').reached,nf(50));
-}
-ck('page rows have no Here now',['Visitors','Demo clicks','Regular Demos Scheduled','Regular Demos Supposed to Happen','Qualified Regular Demos']
-   .map(l=>row(H,l).here),['\u2014','\u2014','\u2014','\u2014','\u2014']);
+// ── 2. the traffic rows ────────────────────────────────────────────────────
+ck('Visitors and Demo clicks read the page figures',[row(H,'Visitors').reached,row(H,'Demo clicks').reached],[nf(10000),nf(1000)]);
+ck('  Demo clicks keeps its step rate',row(H,'Demo clicks').conv,'10.0%');
+ck('  and they have no Here now',[row(H,'Visitors').here,row(H,'Demo clicks').here],['—','—']);
 
 // ── 3. the deal stages: the worker's cohort, as sent ───────────────────────
 ck('deal rows show Reached and Here now from the cohort',
-   ['Appointment Scheduled','Webinar Registered','Demo Happened','Webinar Happened','Decision Maker Brought-In','Contract Sent','Closed Won']
+   ['Appointment Scheduled','Demo Happened','Closed Won']
      .map(l=>[row(H,l).reached,row(H,l).here]),
-   [['80','30'],['25','5'],['50','20'],['20','15'],['4','2'],['6','3'],['12','11']]);
-ck('their from-prior is the worker\u2019s num \u00f7 den',
-   ['Demo Happened','Webinar Happened','Decision Maker Brought-In','Contract Sent','Closed Won'].map(l=>row(H,l).conv),
-   ['62.5%','80.0%','14.3%','80.0%','50.0%']);
-ck('Appointment Scheduled is divided by Demo clicks; Webinar Registered has none',
-   [row(H,'Appointment Scheduled').conv,row(H,'Webinar Registered').conv],['8.0%','\u2014']);
+   [['80','30'],['50','20'],['12','11']]);
+ck('their from-prior is the worker’s num ÷ den',
+   ['Demo Happened','Closed Won'].map(l=>row(H,l).conv),
+   ['62.5%','12.0%']);
+ck('Appointment Scheduled is divided by Demo clicks',row(H,'Appointment Scheduled').conv,'8.0%');
 ck('every rate says how it was worked out on hover',
-   [row(H,'Demo clicks').tip,row(H,'Appointment Scheduled').tip,row(H,'Demo Happened').tip,row(H,'Contract Sent').tip,row(H,'Qualified Regular Demos').tip],
-   ['10.0% = 1,000 demo clicks \u00f7 10,000 visitors',
-    '8.0% = 80 deals reached Appointment Scheduled \u00f7 1,000 demo clicks',
+   [row(H,'Demo clicks').tip,row(H,'Appointment Scheduled').tip,row(H,'Demo Happened').tip,row(H,'Closed Won').tip],
+   ['10.0% = 1,000 demo clicks ÷ 10,000 visitors',
+    '8.0% = 80 deals reached Appointment Scheduled ÷ 1,000 demo clicks',
     '62.5% = 50 of the 80 deals that reached Appointment Scheduled also reached Demo Happened',
-    '80.0% = 8 of the 10 deals that reached Decision Maker Brought-In also reached Contract Sent',
-    '40.0% = 40 qualified \u00f7 100 supposed to happen']);
-ck('the bar\u2019s solid part is Here now \u00f7 Reached',[row(H,'Closed Won').fill,row(H,'Appointment Scheduled').fill],[11/12*100,30/80*100]);
+    '12.0% = 6 of the 50 deals that reached Demo Happened also reached Closed Won']);
+ck('every rate names its base, and each is the row directly above',T.filter(r=>r.conv!=='—').map(r=>[r.label,r.base]),
+   [['Demo clicks','of visitors'],['Appointment Scheduled','of demo clicks'],['Demo Happened','of appt. scheduled'],
+    ['Closed Won','of demo happened']]);
+ck('the bar’s solid part is Here now ÷ Reached',[row(H,'Closed Won').fill,row(H,'Appointment Scheduled').fill],[11/12*100,30/80*100]);
 // $100 and up rounds to whole dollars, as on the Clinician table.
-ck('cost per is ad spend \u00f7 reached',[row(H,'Closed Won').cost,row(H,'Visitors').cost],['$167','$0.20']);
+ck('cost per is ad spend ÷ reached',[row(H,'Closed Won').cost,row(H,'Visitors').cost],['$167','$0.20']);
 {
   // Deal rows compare against the PRIOR window's cohort (fixture prior = half).
-  const seg=h=>{const i=h.indexOf('>Closed Won</span>');return h.slice(i,h.indexOf('</div><div style="display:grid',i)>0?h.indexOf('</div><div style="display:grid',i):i+3000);};
+  const seg=h=>{const i=h.indexOf('>Closed Won</span>');return h.slice(i,i+3000);};
   ck('deal rows compare with the prior window’s cohort',seg(H).includes(ctx.fDelta(12,6,null)),true);
-  const z=run({spend:1000,bsf:(()=>{const b=BSF(false);b.cur.stages[SID.dm].reached=0;b.cur.stages[SID.dm].here=0;return b;})()});
-  ck('a row nobody reached has no cost per, not $Infinity',row(z,'Decision Maker Brought-In').cost,'—');
+  const z=run({spend:1000,bsf:(()=>{const b=BSF(false);b.cur.stages[SID.won].reached=0;b.cur.stages[SID.won].here=0;return b;})()});
+  ck('a row nobody reached has no cost per, not $Infinity',row(z,'Closed Won').cost,'—');
 }
 ck('the header names the cohort, its size, and that the pre-launch test rides the deal tier',
-   /Sales-pipeline deals created in this window \(120 deals\), pre-launch excluded on the deal\u2019s traffic tier/.test(H),true);
-// Interleaving puts some rows under a row that is not their denominator, so
-// every rate names its base right under it.
-ck('every rate names its base',T.filter(r=>r.conv!=='\u2014').map(r=>[r.label,r.base]),
-   [['Demo clicks','of visitors'],['Appointment Scheduled','of demo clicks'],['Regular Demos Scheduled','all 200 \u00f7 demo clicks'],
-    ['Regular Demos Supposed to Happen','of all scheduled'],['Demo Happened','of appt. scheduled'],['Qualified Regular Demos','of supposed to happen'],
-    ['Webinar Happened','of registered'],['Decision Maker Brought-In','of demos + webinars held'],['Contract Sent','of decision maker'],['Closed Won','of contract sent']]);
-ck('Webinar Registered\u2019s grey stays grey, not hue-shifted to red',
-   /color:#6B7280;font-variant-numeric:tabular-nums">5</.test(H.slice(H.indexOf('>Webinar Registered<'))),true);
+   /Sales-pipeline deals created in this window \(120 deals\), pre-launch excluded on the deal’s traffic tier/.test(H),true);
 
-// Why later rows can be larger -- read off the payload.
-ck('the skip note explains a larger later row with the payload\u2019s counts',
-   [/5 of the 12 Closed Won have no recorded demo or webinar \(2 created straight into Closed Won\)/.test(H),/3 Closed Won skipped Contract Sent/.test(H),/2 Contract Sent skipped Decision Maker Brought-In/.test(H)],
-   [true,true,true]);
+// The webinar route, in its own box beside the table.
 {
-  const b=BSF(false);b.cur.stages[SID.won].noDemo=0;b.cur.stages[SID.won].skippedPrev=0;b.cur.stages[SID.cs].skippedPrev=0;
+  const i=H.indexOf('Webinar route'),box=H.slice(i,H.indexOf('CVR \u00b7 Regular',i));
+  ck('the webinar stages have their own box',i>0,true);
+  ck('  with Reached and Here now for each',
+     [/>Webinar Registered<\/div>[\s\S]*?>25<\/span>[\s\S]*?>5<\/b> here now/.test(box),/>Webinar Happened<\/div>[\s\S]*?>20<\/span>[\s\S]*?>15<\/b> here now/.test(box)],[true,true]);
+  ck('  Webinar Happened’s rate is of the deals that registered',/>80\.0% of registered</.test(box),true);
+  ck('  with its working on hover',/data-tip="80\.0% = 20 of the 25 deals that registered also attended"/.test(box),true);
+  ck('  and its own deltas, against the prior cohort',[box.split('vs prior').length-1,box.includes(ctx.fDelta(25,13,null))],[2,true]);
+  ck('Registered’s grey stays grey, not hue-shifted to red',/color:#6B7280">5<\/b>/.test(box),true);
+}
+
+// The won deals outside Closed Won's rate -- read off the payload.
+ck('the note says which won deals sit outside the rate, with the payload\u2019s counts',
+   [/Closed Won\u2019s 12 includes deals outside its rate/.test(H),/5 have no recorded demo or webinar \(2 with no other funnel stage on record\)/.test(H),
+    /1 came through the webinar route/.test(H),/only counts the deals that reached Demo Happened/.test(H)],
+   [true,true,true,true]);
+{
+  const b=BSF(false);b.cur.stages[SID.won].noDemo=0;b.cur.stages[SID.won].viaWebinar=0;
   const b2=BSF(false);b2.cur.stages[SID.won].noDemo=0;
-  ck('  each line only when its own count is there',[/no recorded demo or webinar/.test(run({bsf:b2})),/3 Closed Won skipped Contract Sent/.test(run({bsf:b2}))],[false,true]);
-  ck('  and is left out when nothing was skipped',/Why later stages can be larger/.test(run({bsf:b})),false);
+  ck('  each line only when its own count is there',[/no recorded demo or webinar/.test(run({bsf:b2})),/1 came through the webinar route/.test(run({bsf:b2}))],[false,true]);
+  ck('  and the note is left out when there are none',/includes deals outside its rate/.test(run({bsf:b})),false);
 }
 // Off the path.
 {
@@ -203,47 +200,50 @@ ck('a missing current value is an em-dash, not NaN',
    /—/.test(ctx.fDelta(null,8,6,'#'))&&!/NaN/.test(ctx.fDelta(null,8,6,'#')),true);
 {
   const withLM=run({lm:true});
-  // 12 rows + 3 CVR chips all route through the ONE renderer.
+  // 5 rows + 2 webinar figures + 3 CVR chips all route through the ONE renderer.
   ck('with no LM data no row shows vs LM',H.split('vs LM').length-1,0);
-  ck('with LM data every row and every CVR chip shows one',withLM.split('vs LM').length-1,15);
+  ck('with LM data every row, webinar figure and CVR chip shows one',withLM.split('vs LM').length-1,10);
   // +1: the column header itself reads "vs prior \u00b7 LM".
-  ck('vs prior is unconditional on both',[H.split('vs prior').length-1,withLM.split('vs prior').length-1],[16,16]);
+  ck('vs prior is unconditional on both',[H.split('vs prior').length-1,withLM.split('vs prior').length-1],[11,11]);
 }
 ck('every copy of fDelta gates the vs-LM row',
    (cli.match(/function fDelta\(/g)||[]).length,(cli.match(/if\(lmv!=null\)h\+=/g)||[]).length);
 ck('the CVR chips use the same renderer as the rows',/\$\{fDelta\(v,pv,lmv,'%',2\)\}/.test(RAIL),true);
 
-// ── 5. every page step is a Biggest-drop candidate ─────────────────────────
+// ── 5. every step of the table is a Biggest-drop candidate ─────────────────
 {
-  const scen=[
-    {name:'Visitors → Demo clicks',      visitors:10000,clicks:1000, reg:900, pre:0, supposed:810, qual:729},
-    {name:'Demo clicks → Scheduled',     visitors:10000,clicks:9000, reg:900, pre:0, supposed:810, qual:729},
-    {name:'Scheduled → Supposed to happen',visitors:10000,clicks:9000,reg:8100,pre:0,supposed:810, qual:729},
-    {name:'Supposed to happen → Qualified',visitors:10000,clicks:9000,reg:8100,pre:0,supposed:7290,qual:729},
-  ];
-  const got=scen.map(s=>{const b=biggest(run(s));return b&&b[0];});
-  ck('each of the four steps can win Biggest drop',got,scen.map(s=>s.name));
-  ck('and the losing share is stated, not the pass-through rate',biggest(run(scen[0]))[1],'90.0% leave');
+  // Fixture rates: clicks 10%, appt 8% of clicks, demo 62.5%, won 12%.
+  ck('the worst step is named, with its losing share',biggest(H),['Demo clicks → Appointment Scheduled','92.0% leave']);
+  const b=BSF(false);b.cur.stages[SID.demo].fromPrevPct=3;
+  ck('  whichever required step it is',biggest(run({bsf:b})),['Appointment Scheduled → Demo Happened','97.0% leave']);
+  // Closed Won is left out: in a young cohort most held demos are still open,
+  // so its low rate is a deal cycle in progress, not a leak.
+  const c=BSF(false);c.cur.stages[SID.won].fromPrevPct=0;
+  ck('  Closed Won is never named, even at 0%',biggest(run({bsf:c}))[0],'Demo clicks → Appointment Scheduled');
+  const e=BSF(false);e.cur.stages[SID.demo].fromPrevPct=null;
+  ck('  a row with no rate is left out, not read as a 100% drop',biggest(run({bsf:e}))[0],'Demo clicks → Appointment Scheduled');
 }
 
 // ── 6. empty / missing data degrades to dashes, never NaN ──────────────────
 {
-  const z=run({visitors:0,clicks:0,reg:0,pre:0,supposed:0,qual:0,spend:0});
-  ck('with no traffic the page step rates are em-dashes',
-     ['Demo clicks','Regular Demos Scheduled','Regular Demos Supposed to Happen','Qualified Regular Demos','Appointment Scheduled'].map(l=>row(z,l).conv),
-     ['\u2014','\u2014','\u2014','\u2014','\u2014']);
+  const z=run({visitors:0,clicks:0,reg:0,pre:0,supposed:0,qual:0,spend:0,bsf:null});
+  ck('with no traffic and no stages every rate is an em-dash',T.map(r=>r.label).map(l=>row(z,l).conv),
+     ['—','—','—','—','—']);
   ck('and nothing renders NaN',/NaN|Infinity/.test(z),false);
   ck('Biggest drop is omitted rather than guessed',biggest(z),null);
-  ck('end-to-end falls back to an em-dash',e2e(z),'\u2014');
+  ck('end-to-end falls back to an em-dash',e2e(z),'—');
 }
 {
   const m=run({bsf:null});
   ck('with no deal-stage payload the deal rows are dashes and say so',
      [row(m,'Closed Won').reached,row(m,'Closed Won').here,row(m,'Demo Happened').conv,/Deal stages did not load/.test(m),/NaN/.test(m)],
-     ['\u2014','\u2014','\u2014',true,false]);
-  ck('  while the page\u2019s own steps are untouched',row(m,'Qualified Regular Demos').reached,nf(40));
+     ['—','—','—',true,false]);
+  ck('  while the traffic rows are untouched',row(m,'Demo clicks').reached,nf(1000));
+  ck('  and end-to-end is a dash, not 0.00%',e2e(m),'\u2014');
 }
-ck('end-to-end is qualified demos over visitors, to two decimals',e2e(H),'0.40%');
+// Closed Won 12 of 10,000 visitors.
+ck('end-to-end is the cohort’s Closed Won over visitors, to two decimals',e2e(H),'0.12%');
+ck('  and says so',/visitor → closed won/.test(H),true);
 
 // ── 8. the stage figures exclude pre-launch ────────────────────────────────
 {
@@ -269,9 +269,8 @@ ck('which the worker computes with pre-launch split out',/scheduledRegularTotal:
 // The terminal stage is the canonical Qualified Demos figure. Reading it off
 // executiveSummary._meta returned undefined and fell through to held-all-traffic,
 // so the card and the rate beside it described different populations.
-ck('the terminal stage is qmeta.qualDemoCount, not the all-traffic held count',
-   /const held=qd,heldPV=qdPV,heldLMV=qdLMV;/.test(RAIL)
-   &&/const qd=\(qmeta\.qualDemoCount!=null\?qmeta\.qualDemoCount:/.test(cli),true);
+ck('Qualified Demos stays one derivation (Demo Insights), and the funnel no longer reads it',
+   [/const qd=\(qmeta\.qualDemoCount!=null\?qmeta\.qualDemoCount:/.test(cli),/\bqd\b/.test(RAIL)],[true,false]);
 ck('and the worker excludes pre-launch when counting it',
    /if \(demoDidHappen\(att, rawSt\) && !_isPreLaunchDeal\) \{/.test(src),true);
 ck('with Webinars Happened folded in additively',/pl\.qualifiedRawCount = \(pl\.qualifiedRawCount \|\| 0\) \+ n;/.test(src),true);

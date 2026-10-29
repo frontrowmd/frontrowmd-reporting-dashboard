@@ -117,19 +117,19 @@ const fend=html.indexOf("getElementById('t-funnel')");
 ck('funnel block located',fstart>0&&fend>fstart,true);
 const fn_=html.slice(fstart,fend);
 
-// The rail of five cards became a Clinician-style stage table. Every one of the
-// page's own steps is still a row, in the same order, with HubSpot's deal
-// stages interleaved around them.
-const rowsOrder=['Visitors','Demo clicks','Appointment Scheduled','Regular Demos Scheduled','Webinar Registered',
-  'Regular Demos Supposed to Happen','Demo Happened','Qualified Regular Demos','Webinar Happened',
-  'Decision Maker Brought-In','Contract Sent','Closed Won'];
+// A Clinician-style stage table: Visitors and Demo clicks, then the Sales-pipeline
+// stages. Revised 2026-10-29 at Alex's request: the webinar stages moved to their
+// own box and the three demo-date rows (Regular Demos Scheduled / Supposed to
+// Happen / Qualified Regular Demos) came off the funnel.
+const rowsOrder=['Visitors','Demo clicks','Appointment Scheduled','Demo Happened','Closed Won'];
 ck('every row, in the order asked for',
    rowsOrder.map(x=>fn_.indexOf("'"+x+"'")).every((v,i,a)=>v>0&&(i===0||v>a[i-1])),true);
 ck('no rail cards or connectors remain',/fh\+=fnStage\(|fh\+=fnStep\(/.test(fn_),false);
-ck('the two sub-cohorts are marked as such',(fn_.match(/kind:'page',sub:true,label:'(Regular Demos Scheduled|Qualified Regular Demos)'/g)||[]).length,2);
-ck('the two webinar stages run in parallel',(fn_.match(/'Webinar (Registered|Happened)',BRAND_STAGE_COLORS\.\w+,\{par:true/g)||[]).length,2);
-ck('Regular Demos Scheduled keeps its Pre-Launch and All detail',
-   /note:fN\(_preC\)\+' pre-launch \\u00b7 '\+fN\(_bothC\)\+' all'/.test(fn_),true);
+ck('Decision Maker and Contract Sent are off the funnel (unused)',/'(Decision Maker Brought-In|Contract Sent)'/.test(fn_),false);
+ck('the demo-date rows are off the funnel',
+   /label:'(Regular Demos Scheduled|Regular Demos Supposed to Happen|Qualified Regular Demos)'/.test(fn_),false);
+ck('the webinar stages are not table rows',/_stg\(BRAND_STAGE_IDS\.web(Reg|Hap)/.test(fn_),false);
+ck('  they have their own box',/Webinar route \\u00b7 same cohort, not in the table above/.test(fn_),true);
 ck('the losses keep their loss tone, in the strip',/'loss'\)\}/.test(fn_),true);
 ck('three losses',(fn_.match(/label:'(Prune|Demo no-show|Webinar no-show)'/g)||[]).length,3);
 // Each loss names its own base -- the webinar one in particular is over
@@ -142,16 +142,9 @@ ck('CVRs read the same three totals',
    /_cvrReg=_cvrOf\(_regC/.test(fn_)&&/_cvrPre=_cvrOf\(_preC/.test(fn_)&&/_cvrAll=_cvrOf\(_bothC/.test(fn_),true);
 ck('no demos+webinars CVR remains',/_cvrDW/.test(fn_),false);
 
-// Rates: both keyed on ALL scheduled. The old divider divided a
-// webinar-inclusive numerator by a demo-only denominator and printed 191%.
-ck('supposed-to-happen divides by ALL scheduled',/rSupposed=_bothC>0\?\(demosSupposed\/_bothC/.test(fn_),true);
-ck('clicks to scheduled uses ALL scheduled too',/r2=demoClicks>0\?\(_bothC\/demoClicks/.test(fn_),true);
-ck('neither rate still divides by the demo-only count',
-   /\(demosSupposed\/scheduled|\(scheduled\/demoClicks/.test(fn_),false);
-// All four steps are candidates, so Biggest drop cannot miss the real worst one.
-ck('every page step can win Biggest drop',(fn_.match(/',pct:/g)||[]).length,4);
-ck('including Scheduled -> Supposed and Supposed -> Qualified',
-   fn_.includes("Scheduled \\u2192 Supposed to happen")&&fn_.includes("Supposed to happen \\u2192 Qualified"),true);
+// Every step of the table is a Biggest-drop candidate, built from the rows
+// themselves so a row can't be added without becoming one.
+ck('Biggest drop is built from the table rows',/const drops=_ftRows\.slice\(1\)\.map\(/.test(fn_),true);
 
 // Chrome: one delta renderer, and it SUPPRESSES vs-LM when there is no value.
 ck('a single delta renderer for the funnel',/function fDelta\(cur,pv,lmv,fmt,dec\)/.test(html),true);

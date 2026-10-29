@@ -90,7 +90,9 @@ ck('worker exposes the canonical count + its priors',
 // Read off qmeta — the object the worker actually emits qualDemoCount into.
 // See t_join.js, which proves every meta read resolves to a field that exists.
 ck('client derives one figure from it',/const qd=\(qmeta\.qualDemoCount!=null/.test(cli),true);
-ck('Conversion Funnel reads it',/const held=qd,heldPV=qdPV,heldLMV=qdLMV;/.test(cli),true);
+// The Conversion Funnel no longer shows it (2026-10-29): it counts demos by demo
+// date, which read as a contradiction beside the funnel's created-in-window cohort.
+ck('Conversion Funnel no longer reads it',/const held=qd,heldPV=qdPV,heldLMV=qdLMV;/.test(cli),false);
 ck('Efficiency CPQD divides by it',/\$\{fN\(qd\)\} qualified demos/.test(cli),true);
 ck('the trend item reads it',/trendItem\('Qualified Demos','Demos held excl\. pre-launch \+ webinars held',fN\(qd\)\)/.test(cli),true);
 ck('no Qualified display still reads demosHeldFull',

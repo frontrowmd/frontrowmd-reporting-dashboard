@@ -874,7 +874,9 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v49';   // v49: brandStageFunnel -- Sales-pipeline deal stages on the Conversion Funnel.
+const API_CACHE_VER = 'v51';   // v51: Decision Maker / Contract Sent dropped; Closed Won measured on Demo Happened.
+                               // v50: brandStageFunnel counts a held demo as Demo Happened; DM measured on Demo Happened.
+                               // v49: brandStageFunnel -- Sales-pipeline deal stages on the Conversion Funnel.
                                // v48: regular0to10K actually shipped; webinar no-show over ALL registrants.
                                // v47: 0-10K share of regular demos; webinar no-show by brand size.
                                // v46: mrrArr.pilot -- the Revenue Outcome pilot toggle.
@@ -3132,36 +3134,34 @@ function webinarNoShowRateAll(pl) {
 //
 // Reached is HubSpot's own stage-entry stamp OR the current stage, plus only the
 // implications that are true by definition -- a demo needs an appointment, a
-// webinar attended needs a registration, a churned brand had signed. The middle
-// stages are NOT filled: Decision Maker Brought-In and Contract Sent are skipped
-// on most won deals, and many deals are created straight into Closed Won (no
-// demo at all). Filling those would invent steps; the card shows the skips.
+// webinar attended needs a registration, a churned brand had signed. Some deals
+// are created straight into Closed Won with no demo at all; nothing is invented
+// for them, and the card says how many there are.
+// Decision Maker Brought-In and Contract Sent are NOT tracked (Alex, 2026-10-29):
+// the team does not use them -- in Oct 2026, 2 of 66 demos reached Decision Maker
+// and none reached Contract Sent -- so Closed Won follows Demo Happened directly.
 const BRAND_PIPELINE_ID = 'default';
 const BST = {
   appt: 'appointmentscheduled', demo: '1084214349', interested: '3722491612',
-  dm: 'decisionmakerboughtin', cs: 'contractsent', won: 'closedwon', lost: 'closedlost',
+  won: 'closedwon', lost: 'closedlost',
   noShow: '3453957850', notFit: '1062974581', churned: '3453925110',
   webReg: '3741686470', webHap: '3741686471',
 };
-// The path, in table order. Webinar Registered / Happened run in parallel with
-// Appointment Scheduled / Demo Happened and both feed Decision Maker Brought-In.
-const BRAND_FUNNEL_PATH = [BST.appt, BST.webReg, BST.demo, BST.webHap, BST.dm, BST.cs, BST.won];
+// Every stage the card shows. The table is appt -> demo -> won; the two webinar
+// stages are computed here but shown in their own box beside it.
+const BRAND_FUNNEL_PATH = [BST.appt, BST.webReg, BST.demo, BST.webHap, BST.won];
 const BRAND_FUNNEL_EXITS = [BST.interested, BST.noShow, BST.notFit, BST.lost, BST.churned];
 const BRAND_STAGE_IMPLIES = { [BST.demo]: [BST.appt], [BST.webHap]: [BST.webReg], [BST.churned]: [BST.won] };
-// From-prior, as on the Clinician Funnel: of the deals that reached the stage(s)
+// From-prior, as on the Clinician Funnel: of the deals that reached the stage
 // above, the share that ALSO reached this one -- so the numerator is always
-// inside this row's own Reached and the rate is never over 100%. Decision Maker
-// is measured against either kind of held meeting (Demo Happened or Webinar
-// Happened). Appointment Scheduled and Webinar Registered have none here -- the
-// card divides the first by Demo clicks, a page figure.
-// (An "at least as far as" variant was tried and dropped: with no deal at
-// Contract Sent in Oct 2026 it printed 66.7% beside a Reached of 0.)
-const BRAND_STAGE_PREV = {
-  [BST.demo]: [BST.appt], [BST.webHap]: [BST.webReg],
-  [BST.dm]: [BST.demo, BST.webHap], [BST.cs]: [BST.dm], [BST.won]: [BST.cs],
-};
-const BRAND_POST_STAGES = [BST.dm, BST.cs, BST.won];
-const BRAND_STAGE_PROPS = ['dealstage', 'createdate', 'average_monthly_web_traffic__cloned_']
+// inside this row's own Reached and the rate is never over 100%. Closed Won is
+// measured against Demo Happened, the row above it -- the webinar stages sit in
+// their own box (Alex, 2026-10-29), so a deal that won through a webinar is in
+// Closed Won's Reached but not its rate; the card says how many. Appointment
+// Scheduled and Webinar Registered have none here -- the card divides the first
+// by Demo clicks, a page figure.
+const BRAND_STAGE_PREV = { [BST.demo]: [BST.appt], [BST.webHap]: [BST.webReg], [BST.won]: [BST.demo] };
+const BRAND_STAGE_PROPS = ['dealstage', 'createdate', 'average_monthly_web_traffic__cloned_', 'demo_attendance_status']
   .concat([...BRAND_FUNNEL_PATH, ...BRAND_FUNNEL_EXITS].map(id => 'hs_v2_date_entered_' + id));
 
 // THROWS when HubSpot refused any page (or the subrequest pool was spent):
@@ -3189,6 +3189,10 @@ function brandReachedStages(p) {
     if (p && p['hs_v2_date_entered_' + id]) got.add(id);
   }
   if (p && p.dealstage) got.add(String(p.dealstage));
+  // A held demo on the attendance field IS Demo Happened, whatever the stage
+  // says: 8 of the 62 Oct 2026 deals with one were never moved out of
+  // Appointment Scheduled (or jumped past Demo Happened).
+  if (p && String(p.demo_attendance_status || '').startsWith('Demo Given')) got.add(BST.demo);
   for (const id of [...got]) for (const imp of (BRAND_STAGE_IMPLIES[id] || [])) got.add(imp);
   return got;
 }
@@ -3207,35 +3211,36 @@ function buildBrandStageFunnel(deals, from, to) {
     if ((p.average_monthly_web_traffic__cloned_ || '') === PRE_LAUNCH_TIER) continue;
     seen.add(String(d.id));
     const reached = brandReachedStages(p);
+    // held = a demo or a webinar on record; only the skip note reads it, and a
+    // won deal that came in through a webinar did not skip anything.
     rows.push({ cur: String(p.dealstage || ''), reached,
       held: reached.has(BST.demo) || reached.has(BST.webHap),
-      // Nothing on record but the win (or the churn that implies it).
+      // No tracked stage on record but the win (or the churn that implies it).
+      // Decision Maker / Contract Sent are not fetched, so this is "no funnel
+      // stage", not "created straight into Closed Won".
       direct: [...reached].every(id => id === BST.won || id === BST.churned) });
   }
   const stages = {};
   for (const id of BRAND_FUNNEL_PATH) {
     const prev = BRAND_STAGE_PREV[id] || null;
-    const k = BRAND_POST_STAGES.indexOf(id);         // -1 unless a post-demo stage
-    let reached = 0, here = 0, num = 0, den = 0, noDemo = 0, direct = 0, skippedPrev = 0;
+    const isWon = id === BST.won;
+    let reached = 0, here = 0, num = 0, den = 0, noDemo = 0, direct = 0, viaWebinar = 0;
     for (const r of rows) {
       const hit = r.reached.has(id);
       if (hit) reached++;
       if (r.cur === id) here++;
       if (prev && prev.some(x => r.reached.has(x))) { den++; if (hit) num++; }
-      if (k >= 0 && hit) {
-        if (!r.held) { noDemo++; if (r.direct) direct++; }
-        else if (k > 0 && !r.reached.has(BRAND_POST_STAGES[k - 1])) skippedPrev++;
+      if (isWon && hit && !r.reached.has(BST.demo)) {
+        if (!r.held) { noDemo++; if (r.direct) direct++; } else viaWebinar++;
       }
     }
     stages[id] = { reached, here,
       fromPrevNum: prev ? num : null, fromPrevDen: prev ? den : null,
-      fromPrevPct: (prev && den > 0) ? (num / den) * 100 : null,
-      // Post-demo stages only, for the card's "why a later row is larger" note:
-      // reached it with no recorded demo or webinar (of which, created straight
-      // into Closed Won with nothing else on record), and -- having held one --
-      // skipped the stage above.
-      noDemo: k >= 0 ? noDemo : null, direct: k >= 0 ? direct : null,
-      skippedPrev: k > 0 ? skippedPrev : null };
+      fromPrevPct: (prev && den > 0) ? (num / den) * 100 : null };
+    // Closed Won only -- the won deals outside its rate's base, for the card's
+    // note: no recorded demo or webinar (of which, created straight into Closed
+    // Won with nothing else on record), and won through the webinar route.
+    if (isWon) Object.assign(stages[id], { noDemo, direct, viaWebinar });
   }
   const exits = {};
   for (const id of BRAND_FUNNEL_EXITS) {
@@ -6715,7 +6720,7 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     // and the card says the stages did not load. Through KV it comes back as the
     // stale copy, or [] -- and a span this long is never genuinely empty.
     const _bsDeals = _bsSpan > 92
-      ? await kvCachedFetchNE(env, `brand_stage_deals_v1_${_bsFrom}_${_bsTo}`, 1800, () => fetchBrandStageDeals(hsToken, _bsFrom, _bsTo))
+      ? await kvCachedFetchNE(env, `brand_stage_deals_v2_${_bsFrom}_${_bsTo}`, 1800, () => fetchBrandStageDeals(hsToken, _bsFrom, _bsTo))
       : await fetchBrandStageDeals(hsToken, _bsFrom, _bsTo);
     if (_bsSpan > 92 && !_bsDeals.length) throw new Error('no deals over a long span -- refused, not empty');
     _bsf = {
