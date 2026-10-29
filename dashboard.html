@@ -2526,6 +2526,8 @@ function renderDash(){
     }
     return h+'</div>';
   }
+  // A sub-row rate, set lighter than the count it follows.
+  function _fnPct(v){return v==null?'':'<span style="font-size:10.5px;font-weight:600;color:var(--grey)"> \u00b7 '+v.toFixed(1)+'%</span>';}
   function fnStage(o){
     const acc=!!o.accent;
     return `<div style="min-width:0;display:flex;flex-direction:column;border-radius:12px;padding:14px 16px;${acc?'background:linear-gradient(135deg,rgba(114,164,191,.07) 0%,rgba(114,164,191,.14) 100%);border:1px solid #A6CDDB':'background:var(--white);border:1px solid var(--border)'}">`
@@ -2716,8 +2718,8 @@ function renderDash(){
   const _qdDenL=(_qdOnlyL!=null&&qmeta.disqualifiedRawCountLastMonth!=null)?_qdOnlyL+qmeta.disqualifiedRawCountLastMonth:null;
   const _qualRateDemoP=(_qdDenP&&_qdDenP>0)?(_qdOnlyP/_qdDenP)*100:null;
   const _qualRateDemoL=(_qdDenL&&_qdDenL>0)?(_qdOnlyL/_qdDenL)*100:null;
-  // All registrants, pre-launch included (2026-10-29). The funnel's webinar
-  // no-show below keeps qmeta.webinarNoShow, which is pre-launch-free.
+  // All registrants, pre-launch included (2026-10-29). The funnel's Webinar
+  // no-show row below reads these same figures.
   const _wnrC=qmeta.webinarRegistrantsAll,_wnsC=qmeta.webinarNoShowAll;
   const _wnsRateC=qmeta.webinarNoShowRateAll,_wnsRateP=qmeta.webinarNoShowRateAllPrior,_wnsRateL=qmeta.webinarNoShowRateAllLastMonth;
   oh+=colOpen('Quality','#1D9E75',false,3);
@@ -2850,7 +2852,6 @@ function renderDash(){
   const rSupposed=_bothC>0?(demosSupposed/_bothC*100):null;
   const cancelledN=qmeta.cancelledBeforeDemoCount||0;
   const noShowN=qmeta.noShowCount||0;
-  const _wbNsN=qmeta.webinarNoShow||0;
   const pruned=cancelledN+noShowN;
   const cancelledPV=qmeta.cancelledBeforeDemoCountPrior;
   const cancelledLMV=qmeta.cancelledBeforeDemoCountLastMonth;
@@ -2906,9 +2907,13 @@ function renderDash(){
   // each says what it is a share of rather than reading as one tally.
   fh+=fnStage({label:'Regular Demos Supposed to Happen',value:fN(demosSupposed),cur:demosSupposed,pv:demosSupposedPV,lmv:demosSupposedLMV,
     subTone:'loss',
-    sub:[{label:'Prune',value:fN(cancelledN)},
-         {label:'Demo no-show',value:fN(noShowN)},
-         {label:'Webinar no-show',value:fN(_wbNsN),note:'of '+fN(qmeta.webinarRegistrants||0)+' registrants'}]});
+    // Each loss carries its rate (2026-10-29), and is the SAME count and rate as
+    // the Quality card -- prune and demo no-show pre-launch-free, the webinar
+    // no-show over all registrants -- so a count never sits beside a % built
+    // from a different one. The note names each rate's denominator.
+    sub:[{label:'Prune',value:fN(_cxPreC)+_fnPct(_pruneAllC),note:'of '+fN(_supOutcomeC)+' settled demos'},
+         {label:'Demo no-show',value:fN(_nsPreC)+_fnPct(_noShowAllC),note:'of '+fN(_nsDenAllC)+' held + no-show'},
+         {label:'Webinar no-show',value:(_wnsC!=null?fN(_wnsC):'\u2014')+_fnPct(_wnsRateC),note:'of '+(_wnrC!=null?fN(_wnrC):'\u2014')+' registrants'}]});
   fh+=fnStep(rHeldOverall);
   fh+=fnStage({label:'Qualified Regular Demos',value:fN(held),cur:held,pv:heldPV,lmv:heldLMV,accent:true});
   fh+='</div>';

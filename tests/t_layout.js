@@ -137,9 +137,9 @@ ck('no stage is still labelled "Reached their date"',/Reached their date/.test(f
 ck('losses hang under Reached their date',
    (fn_.match(/label:'(Prune|Demo no-show|Webinar no-show)'/g)||[]).length,3);
 ck('losses are toned as losses',/subTone:'loss'/.test(fn_),true);
-// The webinar figure is measured over registrants, not over the deals in that
-// stage, so it must keep saying so.
-ck('webinar no-show names its own base',/note:'of '\+fN\(qmeta\.webinarRegistrants\|\|0\)\+' registrants'/.test(fn_),true);
+// Each loss names its own base -- the webinar one in particular is over
+// registrants, not over the deals in that stage.
+ck('webinar no-show names its own base',/note:'of '\+\(_wnrC!=null\?fN\(_wnrC\):'\\u2014'\)\+' registrants'/.test(fn_),true);
 
 // Three CVRs, one per scheduled population, on the same totals as the rail.
 ck('three CVR segments',(fn_.match(/_cvrSeg\(/g)||[]).length,3);

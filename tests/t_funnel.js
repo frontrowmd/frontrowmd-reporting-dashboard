@@ -28,7 +28,7 @@ vm.runInContext([
   'var document={getElementById:function(id){return {set innerHTML(v){__id=id;__out=v;}};}};',
   decl(cli,'const fN=v=>','toLocaleString();'),
   fn(cli,'nfmt'),fn(cli,'fmtDC'),fn(cli,'fDelta'),
-  fn(cli,'fnSub'),fn(cli,'fnStage'),fn(cli,'fnStep'),
+  fn(cli,'fnSub'),fn(cli,'_fnPct'),fn(cli,'fnStage'),fn(cli,'fnStep'),
   'function __rail(){\n'+RAIL+'\n}',
   'function __sup(){\n'+SUP+'\nreturn {c:_supAllC,p:_supAllP,l:_supAllL};\n}',
 ].join('\n'),ctx);
@@ -45,6 +45,11 @@ function run(o){
           lastMonth:undefined},lastMonth:lm?{value:vis/4}:undefined}},demoTracking:{}};
   ctx.wm2={demoClicks:clicks,demoClicksPrior:clicks/2,demoClicksLastMonth:lm?clicks/4:undefined};
   ctx.qmeta={cancelledBeforeDemoCount:7,noShowCount:5,webinarNoShow:3,webinarRegistrants:40};
+  // The losses' counts and rates, as the Quality card computes them above the rail.
+  const L=o.loss||{};
+  ctx._cxPreC=6; ctx._supOutcomeC=80; ctx._pruneAllC=7.5;
+  ctx._nsPreC=4; ctx._nsDenAllC=74; ctx._noShowAllC=4/74*100;
+  ctx._wnsC='wnsC' in L?L.wnsC:62; ctx._wnrC='wnrC' in L?L.wnrC:143; ctx._wnsRateC='wnsRate' in L?L.wnsRate:62/143*100;
   ctx.totalScheduled=reg+pre;
   ctx._regC=reg; ctx._regP=reg/2; ctx._regL=lm?reg/4:null;
   ctx._preC=pre; ctx._preP=pre/2; ctx._preL=lm?pre/4:null;
@@ -218,6 +223,21 @@ ck('with Webinars Happened folded in additively',/pl\.qualifiedRawCount = \(pl\.
 ck('the rail renders into the Conversion Funnel container',ctx.__id,'t-funnel');
 ck('which the static page provides under that section header',
    /id="dsec-cvrfunnel">Conversion Funnel<\/div><div id="t-funnel"><\/div>/.test(cli),true);
+
+// ── the losses under Supposed to Happen carry their rates (2026-10-29) ──────
+{
+  const losses=h=>{const i=h.indexOf('Regular Demos Supposed to Happen');const seg=h.slice(i,h.indexOf('Qualified Regular Demos',i));
+    return [...seg.matchAll(/<span style="color:#B91C1C[^"]*">([^<]*)<\/span>\s*<span[^>]*>([\s\S]*?)<\/span><\/div>(?:<div[^>]*>([^<]*)<\/div>)?/g)]
+      .map(m=>[m[1],m[2].replace(/<[^>]+>/g,''),m[3]||null]);};
+  ck('each loss shows its count, its rate and what the rate is of',losses(H),
+     [['Prune','6 \u00b7 7.5%','of 80 settled demos'],
+      ['Demo no-show','4 \u00b7 5.4%','of 74 held + no-show'],
+      ['Webinar no-show','62 \u00b7 43.4%','of 143 registrants']]);
+  ck('  the same counts the Quality card shows, not the pre-launch-inclusive ones',
+     /value:fN\(cancelledN\)|value:fN\(noShowN\)|qmeta\.webinarRegistrants\|\|0/.test(RAIL),false);
+  ck('a missing rate drops the % rather than printing 0% or NaN',
+     losses(run({loss:{wnsC:null,wnrC:null,wnsRate:null}}))[2],['Webinar no-show','\u2014','of \u2014 registrants']);
+}
 
 console.log(pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);

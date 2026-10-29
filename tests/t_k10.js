@@ -161,8 +161,7 @@ const D=dt=>({executiveSummary:{_meta:{totalSpend:1000,pTotalSpend:900,pmTotalSp
      /const _wnrC=qmeta\.webinarRegistrantsAll,_wnsC=qmeta\.webinarNoShowAll;\s*const _wnsRateC=qmeta\.webinarNoShowRateAll,_wnsRateP=qmeta\.webinarNoShowRateAllPrior,_wnsRateL=qmeta\.webinarNoShowRateAllLastMonth;/.test(cli),true);
   ck('  and says so, with no pre-launch exclusion in its definition',
      /statRow\('Webinar no-show rate','Registrants who did not attend \\u00f7 all registrants',/.test(cli),true);
-  ck('the Regular funnel\u2019s webinar no-show keeps the pre-launch-free count',
-     /const _wbNsN=qmeta\.webinarNoShow\|\|0;/.test(cli)&&/note:'of '\+fN\(qmeta\.webinarRegistrants\|\|0\)\+' registrants'/.test(cli),true);
+  ck('the funnel no longer reads the pre-launch-free webinar count',/qmeta\.webinarNoShow\b(?!All|Rate)/.test(cli),false);
 }
 
 console.log('\n'+pass+' passed, '+fail+' failed');

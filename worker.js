@@ -2972,8 +2972,8 @@ async function fetchWebinarDateDealIds(token, from, to) {
   // No-show by brand size (Alex, 2026-10-29), over EVERY registrant -- pre-launch
   // included, because whether pre-launch brands drive the no-shows is the
   // question it answers. Summed, it is also the Webinar no-show card's headline
-  // (webinarTierTotals). registrants/attended below stay pre-launch-free for the
-  // Regular funnel.
+  // (webinarTierTotals) and the funnel's Webinar no-show row. registrants/attended
+  // below stay pre-launch-free; since 2026-10-29 nothing on the page shows them.
   const byTier = { pre: { reg: 0, att: 0 }, k0to10: { reg: 0, att: 0 }, k10plus: { reg: 0, att: 0 }, unknown: { reg: 0, att: 0 } };
   const tierSeen = new Set();
   for (const c of (contacts || [])) {
@@ -3097,8 +3097,8 @@ function applyWebinarDateDeals(periodData, res) {
   pl.webinarByTier = res.byTier || null;
   // Every registrant, pre-launch included (Alex, 2026-10-29): the Webinar no-show
   // card's headline. Summed from byTier so the headline is exactly the sum of
-  // the by-size rows under it. webinarRegistrants above stays pre-launch-free --
-  // it is the Regular funnel's webinar no-show.
+  // the by-size rows under it, and the funnel's Webinar no-show row reads it too.
+  // webinarRegistrants above stays pre-launch-free but is no longer displayed.
   const _wa = webinarTierTotals(res.byTier);
   pl.webinarRegistrantsAll = _wa ? _wa.reg : null;
   pl.webinarAttendedAll = _wa ? _wa.att : null;
@@ -5266,8 +5266,9 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
         ? ((p.pipeline.webinarNoShow||0) / p.pipeline.webinarRegistrants) * 100 : null,
       webinarNoShowRateLastMonth: (pm.pipeline?.webinarRegistrants||0) > 0
         ? ((pm.pipeline.webinarNoShow||0) / pm.pipeline.webinarRegistrants) * 100 : null,
-      // The Webinar no-show card's headline: every registrant, pre-launch
-      // included. The fields above stay pre-launch-free for the Regular funnel.
+      // What the page shows for webinar no-shows (card headline AND funnel row):
+      // every registrant, pre-launch included. The pre-launch-free fields above
+      // are kept in the payload but nothing displays them since 2026-10-29.
       webinarRegistrantsAll: c.pipeline.webinarRegistrantsAll ?? null,
       webinarNoShowAll: c.pipeline.webinarRegistrantsAll != null
         ? Math.max(0, c.pipeline.webinarRegistrantsAll - (c.pipeline.webinarAttendedAll || 0)) : null,
