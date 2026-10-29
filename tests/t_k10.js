@@ -41,6 +41,17 @@ ck('the payload ships current, prior and LM',
    [/scheduledRegular0to10K: c\.scheduled\.regular0to10K \?\? null/,/scheduledRegular0to10KPrior: prior \? \(p\.scheduled\?\.regular0to10K/,
     /scheduledRegular0to10KLastMonth: priorMonth \? \(pm\.scheduled\?\.regular0to10K/].map(re=>re.test(src)),[true,true,true]);
 
+// The count shipped blank on the first deploy: processPeriod copies the
+// scheduled result through an explicit allow-list (scheduledOut) and the new
+// field was not on it. Guard EVERY field, not just this one.
+{
+  const out=/const scheduledOut = \{([\s\S]*?)\n  \};/.exec(src)[1].replace(/\/\/.*$/gm,'');
+  const listed=new Set([...out.matchAll(/(\w+):\s*scheduled\.(\w+)/g)].filter(m=>m[1]===m[2]).map(m=>m[1]));
+  const read=[...new Set([...src.matchAll(/\b(?:c|p|pm)\.scheduled\??\.(\w+)/g)].map(m=>m[1]))];
+  ck('every scheduled field the response reads is on the scheduledOut allow-list',read.filter(k=>!listed.has(k)),[]);
+  ck('  including the 0-10K count',listed.has('regular0to10K'),true);
+}
+
 // ── 2. Worker: webinar registrants split by brand size ──────────────────────
 {
   const body=fn(src,'fetchWebinarDateDealIds');
@@ -57,8 +68,27 @@ ck('the payload ships current, prior and LM',
      [/return \{ dealIds: active,[^}]*byTier \}/.test(body),/pl\.webinarByTier = res\.byTier/.test(src),
       /webinarByTierPrior: p\.pipeline\?\.webinarByTier/.test(src),/webinarByTierLastMonth: pm\.pipeline\?\.webinarByTier/.test(src)],
      [true,true,true,true]);
-  ck('  while the headline still leaves pre-launch out',
+  ck('  while the Regular funnel\u2019s registrant count still leaves pre-launch out',
      /if \(String\(c\.properties\?\.average_monthly_web_traffic \|\| ''\)\.toLowerCase\(\)\.includes\('pre-launch'\)\) continue;\n    seen\.set/.test(body),true);
+}
+// The card's headline: ALL registrants (Alex, 2026-10-29), summed from the split.
+{
+  const A={console:{log(){},warn(){},error(){}}};vm.createContext(A);
+  vm.runInContext(src.slice(0,src.indexOf('\nexport default'))
+    +'\nObject.assign(globalThis,{applyWebinarDateDeals,webinarNoShowRateAll,webinarTierTotals});',A);
+  const bt={pre:{reg:66,att:39},k0to10:{reg:45,att:22},k10plus:{reg:10,att:5},unknown:{reg:22,att:15}};
+  const per={pipeline:{extendedDealIds:new Set(),supposedDealIds:new Set(),totalExtended:0}};
+  A.applyWebinarDateDeals(per,{dealIds:new Set(),registrants:77,attended:42,byTier:bt});
+  const pl=per.pipeline;
+  ck('the headline counts every registrant, pre-launch included',[pl.webinarRegistrantsAll,pl.webinarAttendedAll],[143,81]);
+  ck('  and is the sum of the by-size rows',+A.webinarNoShowRateAll(pl).toFixed(2),+((143-81)/143*100).toFixed(2));
+  ck('  while the Regular funnel keeps its pre-launch-free count',[pl.webinarRegistrants,pl.webinarNoShow],[77,35]);
+  ck('no registrants, or no split, is a dash, not 0%',
+     [A.webinarNoShowRateAll({webinarRegistrantsAll:0}),A.webinarNoShowRateAll({}),A.webinarNoShowRateAll(undefined),A.webinarTierTotals(null)].map(v=>v===null),[true,true,true,true]);
+  ck('the payload carries it for all three windows',
+     [/webinarNoShowRateAll: webinarNoShowRateAll\(c\.pipeline\)/,/webinarNoShowRateAllPrior: webinarNoShowRateAll\(p\.pipeline\)/,
+      /webinarNoShowRateAllLastMonth: webinarNoShowRateAll\(pm\.pipeline\)/,/webinarRegistrantsAll: c\.pipeline\.webinarRegistrantsAll \?\? null/].map(re=>re.test(src)),
+     [true,true,true,true]);
 }
 
 // ── 3. The Pre-Launch % tile's second line ──────────────────────────────────
@@ -110,12 +140,15 @@ const D=dt=>({executiveSummary:{_meta:{totalSpend:1000,pTotalSpend:900,pmTotalSp
     decl(cli,'window.toggleWnsTier=function','\n};'),fn(cli,'_webinarTierHTML'),
     'Object.assign(globalThis,{_webinarTierHTML});'].join('\n'),T);
   const qm={webinarByTier:{pre:{reg:66,att:39},k0to10:{reg:45,att:22},k10plus:{reg:10,att:5},unknown:{reg:22,att:15}},
-    webinarByTierPrior:{pre:{reg:10,att:5},k0to10:{reg:0,att:0},k10plus:{reg:4,att:1},unknown:{reg:0,att:0}}};
+    webinarByTierPrior:{pre:{reg:10,att:5},k0to10:{reg:0,att:0},k10plus:{reg:4,att:1},unknown:{reg:0,att:0}},
+    webinarByTierLastMonth:{pre:{reg:10,att:5},k0to10:{reg:0,att:0},k10plus:{reg:4,att:1},unknown:{reg:0,att:0}}};
   const h=T._webinarTierHTML(qm);
   const rows=[...h.matchAll(/<tr style="border-top[^>]*>([\s\S]*?)<\/tr>/g)].map(m=>m[1].replace(/<[^>]+>/g,'|').split('|').filter(Boolean));
-  ck('one row per size, with registered / no-shows / rate / prior / LM',rows,
-     [['Pre-launch','66','27','40.9%','50.0%','—'],['0-10K','45','23','51.1%','—','—'],
-      ['10K+','10','5','50.0%','75.0%','—'],['Tier not set','22','7','31.8%','—','—']]);
+  ck('one row per size, with registered / no-shows / rate / LM -- no Prior column',rows,
+     [['Pre-launch','66','27','40.9%','50.0%'],['0-10K','45','23','51.1%','—'],
+      ['10K+','10','5','50.0%','75.0%'],['Tier not set','22','7','31.8%','—']]);
+  ck('  and the header matches',[...h.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map(m=>m[1]),
+     ['Brand size','Registered','No-shows','No-show rate','LM']);
   ck('a rate at or over 50% is flagged red, under it is not',
      [/#C0392B">51\.1%/.test(h),/#C0392B">50\.0%/.test(h),/#C0392B">40\.9%/.test(h)],[true,true,false]);
   ck('closed by default, behind a click',[/id="wns-tier" style="display:none/.test(h),/onclick="toggleWnsTier\(\)"/.test(h)],[true,true]);
@@ -124,6 +157,12 @@ const D=dt=>({executiveSummary:{_meta:{totalSpend:1000,pTotalSpend:900,pmTotalSp
   ck('  the click opens it, and stays open across a re-render',[box.style.display,car.textContent,/id="wns-tier" style="display:;/.test(T._webinarTierHTML(qm))],['','▾',true]);
   ck('an older payload with no split shows nothing',T._webinarTierHTML({}),'');
   ck('the card hands it the qmeta it reads',/extra:_webinarTierHTML\(qmeta\)/.test(cli),true);
+  ck('the card headline reads the ALL-registrant figures, for every window',
+     /const _wnrC=qmeta\.webinarRegistrantsAll,_wnsC=qmeta\.webinarNoShowAll;\s*const _wnsRateC=qmeta\.webinarNoShowRateAll,_wnsRateP=qmeta\.webinarNoShowRateAllPrior,_wnsRateL=qmeta\.webinarNoShowRateAllLastMonth;/.test(cli),true);
+  ck('  and says so, with no pre-launch exclusion in its definition',
+     /statRow\('Webinar no-show rate','Registrants who did not attend \\u00f7 all registrants',/.test(cli),true);
+  ck('the Regular funnel\u2019s webinar no-show keeps the pre-launch-free count',
+     /const _wbNsN=qmeta\.webinarNoShow\|\|0;/.test(cli)&&/note:'of '\+fN\(qmeta\.webinarRegistrants\|\|0\)\+' registrants'/.test(cli),true);
 }
 
 console.log('\n'+pass+' passed, '+fail+' failed');

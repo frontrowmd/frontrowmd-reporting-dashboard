@@ -874,7 +874,8 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v47';   // v47: 0-10K share of regular demos; webinar no-show by brand size.
+const API_CACHE_VER = 'v48';   // v48: regular0to10K actually shipped; webinar no-show over ALL registrants.
+                               // v47: 0-10K share of regular demos; webinar no-show by brand size.
                                // v46: mrrArr.pilot -- the Revenue Outcome pilot toggle.
                                // v45: Sign Up before 2026-10-20 = booked call; funnel All Time.
                                // v44: clinician pipeline rebuilt; Sign Up = Credentials Complete.
@@ -2970,7 +2971,9 @@ async function fetchWebinarDateDealIds(token, from, to) {
   const seen = new Map();
   // No-show by brand size (Alex, 2026-10-29), over EVERY registrant -- pre-launch
   // included, because whether pre-launch brands drive the no-shows is the
-  // question it answers. The headline below still excludes them.
+  // question it answers. Summed, it is also the Webinar no-show card's headline
+  // (webinarTierTotals). registrants/attended below stay pre-launch-free for the
+  // Regular funnel.
   const byTier = { pre: { reg: 0, att: 0 }, k0to10: { reg: 0, att: 0 }, k10plus: { reg: 0, att: 0 }, unknown: { reg: 0, att: 0 } };
   const tierSeen = new Set();
   for (const c of (contacts || [])) {
@@ -3092,9 +3095,28 @@ function applyWebinarDateDeals(periodData, res) {
   pl.webinarAttended = res.attended || 0;
   pl.webinarNoShow = Math.max(0, (res.registrants || 0) - (res.attended || 0));
   pl.webinarByTier = res.byTier || null;
+  // Every registrant, pre-launch included (Alex, 2026-10-29): the Webinar no-show
+  // card's headline. Summed from byTier so the headline is exactly the sum of
+  // the by-size rows under it. webinarRegistrants above stays pre-launch-free --
+  // it is the Regular funnel's webinar no-show.
+  const _wa = webinarTierTotals(res.byTier);
+  pl.webinarRegistrantsAll = _wa ? _wa.reg : null;
+  pl.webinarAttendedAll = _wa ? _wa.att : null;
   pl.webinarDateExtraExtended = extraExt;
   pl.webinarDateExtraSupposed = extraSup;
   pl.totalExtended = (pl.totalExtended || 0) + extraExt;
+}
+
+function webinarTierTotals(bt) {
+  if (!bt) return null;
+  let reg = 0, att = 0;
+  for (const k of Object.keys(bt)) { reg += bt[k].reg || 0; att += bt[k].att || 0; }
+  return { reg, att };
+}
+// No-show % over every registrant; null when there were none or the split is missing.
+function webinarNoShowRateAll(pl) {
+  const reg = pl?.webinarRegistrantsAll;
+  return reg > 0 ? ((reg - (pl.webinarAttendedAll || 0)) / reg) * 100 : null;
 }
 
 // Folds the webinar count into a period's Qualified Demo totals. Kept additive
@@ -5244,8 +5266,16 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
         ? ((p.pipeline.webinarNoShow||0) / p.pipeline.webinarRegistrants) * 100 : null,
       webinarNoShowRateLastMonth: (pm.pipeline?.webinarRegistrants||0) > 0
         ? ((pm.pipeline.webinarNoShow||0) / pm.pipeline.webinarRegistrants) * 100 : null,
+      // The Webinar no-show card's headline: every registrant, pre-launch
+      // included. The fields above stay pre-launch-free for the Regular funnel.
+      webinarRegistrantsAll: c.pipeline.webinarRegistrantsAll ?? null,
+      webinarNoShowAll: c.pipeline.webinarRegistrantsAll != null
+        ? Math.max(0, c.pipeline.webinarRegistrantsAll - (c.pipeline.webinarAttendedAll || 0)) : null,
+      webinarNoShowRateAll: webinarNoShowRateAll(c.pipeline),
+      webinarNoShowRateAllPrior: webinarNoShowRateAll(p.pipeline),
+      webinarNoShowRateAllLastMonth: webinarNoShowRateAll(pm.pipeline),
       // { pre, k0to10, k10plus, unknown } -> { reg, att } per window, over every
-      // registrant INCLUDING pre-launch (the headline above excludes them).
+      // registrant -- the rows of the card's by-size breakout.
       webinarByTier: c.pipeline.webinarByTier || null,
       webinarByTierPrior: p.pipeline?.webinarByTier || null,
       webinarByTierLastMonth: pm.pipeline?.webinarByTier || null,
@@ -5508,6 +5538,9 @@ function buildPeriodData(period, windsorRows, linkedInDemos, ga4Rows, scheduledC
     byWebTraffic: scheduled.byWebTraffic, byWebTrafficTrue: scheduled.byWebTrafficTrue,
     byDayRegular: scheduled.byDayRegular, byDayPre: scheduled.byDayPre,
     regularTotal: scheduled.regularTotal, preTotal: scheduled.preTotal,
+    // 0-10K inside regularTotal -- the Pre-Launch % tile's second line. Shipped
+    // blank for a deploy because it was missing from this list.
+    regular0to10K: scheduled.regular0to10K,
     regularPaid: scheduled.regularPaid, regularOrganicTagged: scheduled.regularOrganicTagged,
     regularUntagged: scheduled.regularUntagged, byDayRegularPaid: scheduled.byDayRegularPaid,
     weekdayRegular: scheduled.weekdayRegular, weekdayPre: scheduled.weekdayPre,

@@ -972,9 +972,8 @@ window.roSetPilotMode=function(m){
 };
 // Webinar no-show by brand size (2026-10-29), behind a toggle on the Webinar
 // no-show rate card. Asked to answer "are pre-launch brands driving the
-// no-shows?", so it covers EVERY registrant, pre-launch included -- the
-// headline above it excludes them, and the note says so. Same registrants and
-// the same attended flag as the headline, split on the contact's traffic tier.
+// no-shows?", so it covers EVERY registrant, pre-launch included -- the same
+// registrants as the headline, whose counts are summed from these rows.
 var WNS_TIERS=[{k:'pre',l:'Pre-launch'},{k:'k0to10',l:'0-10K'},{k:'k10plus',l:'10K+'},{k:'unknown',l:'Tier not set'}];
 window._wnsTierOpen=window._wnsTierOpen||false;
 window.toggleWnsTier=function(){
@@ -988,7 +987,7 @@ function _webinarTierHTML(qm){
   if(!bt)return '';   // pre-v47 payload: nothing to break out
   var rate=function(o){return (o&&o.reg>0)?((o.reg-o.att)/o.reg)*100:null;};
   var pct=function(v){return v==null?'\u2014':v.toFixed(1)+'%';};
-  var P=qm.webinarByTierPrior||null, L=qm.webinarByTierLastMonth||null;
+  var L=qm.webinarByTierLastMonth||null;
   var th=function(t,al){return '<th style="text-align:'+(al||'right')+';padding:4px 6px;font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em">'+t+'</th>';};
   var rows=WNS_TIERS.map(function(t){
     var o=bt[t.k]||{reg:0,att:0}, r=rate(o);
@@ -998,16 +997,15 @@ function _webinarTierHTML(qm){
       +'<td style="padding:5px 6px;text-align:right">'+fN(o.reg)+'</td>'
       +'<td style="padding:5px 6px;text-align:right">'+fN(o.reg-o.att)+'</td>'
       +'<td style="padding:5px 6px;text-align:right;font-family:var(--font-h);font-weight:700;color:'+(hot?'#C0392B':'var(--navy)')+'">'+pct(r)+'</td>'
-      +'<td style="padding:5px 6px;text-align:right">'+pct(P?rate(P[t.k]):null)+'</td>'
       +'<td style="padding:5px 6px;text-align:right">'+pct(L?rate(L[t.k]):null)+'</td></tr>';
   }).join('');
   return '<a href="javascript:void(0)" onclick="toggleWnsTier()" style="color:var(--teal);font-weight:700;text-decoration:none">'
       +'<span id="wns-tier-caret">'+(window._wnsTierOpen?'\u25be':'\u25b8')+'</span> See by brand size</a>'
     +'<div id="wns-tier" style="display:'+(window._wnsTierOpen?'':'none')+';margin-top:6px">'
     +'<table style="width:100%;border-collapse:collapse;font-size:11px;color:var(--navy)">'
-    +'<tr>'+th('Brand size','left')+th('Registered')+th('No-shows')+th('No-show rate')+th('Prior')+th('LM')+'</tr>'
+    +'<tr>'+th('Brand size','left')+th('Registered')+th('No-shows')+th('No-show rate')+th('LM')+'</tr>'
     +rows+'</table>'
-    +'<div style="margin-top:5px;line-height:1.45">All registrants, pre-launch included. The headline rate above leaves pre-launch out, so pre-launch cannot be what moves it.</div>'
+    +'<div style="margin-top:5px;line-height:1.45">The same registrants as the headline rate above, split by the brand\u2019s monthly web traffic.</div>'
     +'</div>';
 }
 // Shared Revenue Outcome card (dark navy). Headline metric = Signed ARR
@@ -2718,13 +2716,15 @@ function renderDash(){
   const _qdDenL=(_qdOnlyL!=null&&qmeta.disqualifiedRawCountLastMonth!=null)?_qdOnlyL+qmeta.disqualifiedRawCountLastMonth:null;
   const _qualRateDemoP=(_qdDenP&&_qdDenP>0)?(_qdOnlyP/_qdDenP)*100:null;
   const _qualRateDemoL=(_qdDenL&&_qdDenL>0)?(_qdOnlyL/_qdDenL)*100:null;
-  const _wnrC=qmeta.webinarRegistrants||0,_wnsC=qmeta.webinarNoShow||0;
-  const _wnsRateC=qmeta.webinarNoShowRate,_wnsRateP=qmeta.webinarNoShowRatePrior,_wnsRateL=qmeta.webinarNoShowRateLastMonth;
+  // All registrants, pre-launch included (2026-10-29). The funnel's webinar
+  // no-show below keeps qmeta.webinarNoShow, which is pre-launch-free.
+  const _wnrC=qmeta.webinarRegistrantsAll,_wnsC=qmeta.webinarNoShowAll;
+  const _wnsRateC=qmeta.webinarNoShowRateAll,_wnsRateP=qmeta.webinarNoShowRateAllPrior,_wnsRateL=qmeta.webinarNoShowRateAllLastMonth;
   oh+=colOpen('Quality','#1D9E75',false,3);
   oh+=statRow('Prune rate','Cancelled before demo \u00f7 settled demo outcomes, excl. pre-launch',_pruneAllC!=null?_pruneAllC.toFixed(1)+'%':'\u2014',`${fN(_cxPreC)} \u00f7 ${fN(_supOutcomeC)}`,_pruneAllC,_pruneAllP,_pruneAllL,'%',{noMargin:true,inv:true,warnIf:20});
   oh+='<div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:10px">';
   oh+=statRow('Demo no-show rate','No Show \u00f7 (held + No Show), demos only, excl. pre-launch',_noShowAllC!=null?_noShowAllC.toFixed(1)+'%':'\u2014',`${fN(_nsPreC)} \u00f7 ${fN(_nsDenAllC)}`,_noShowAllC,_noShowAllP,_noShowAllL,'%',{noMargin:true,inv:true,warnIf:20});
-  oh+=statRow('Webinar no-show rate','Registrants who did not attend \u00f7 registrants, excl. pre-launch',_wnsRateC!=null?_wnsRateC.toFixed(1)+'%':'\u2014',`${fN(_wnsC)} \u00f7 ${fN(_wnrC)}`,_wnsRateC,_wnsRateP,_wnsRateL,'%',{noMargin:true,inv:true,warnIf:50,extra:_webinarTierHTML(qmeta)});
+  oh+=statRow('Webinar no-show rate','Registrants who did not attend \u00f7 all registrants',_wnsRateC!=null?_wnsRateC.toFixed(1)+'%':'\u2014',_wnrC!=null?`${fN(_wnsC)} \u00f7 ${fN(_wnrC)}`:'\u2014',_wnsRateC,_wnsRateP,_wnsRateL,'%',{noMargin:true,inv:true,warnIf:50,extra:_webinarTierHTML(qmeta)});
   oh+='</div>';
   oh+=statRow('Qualification rate','Qualified \u00f7 (Qualified + Disqualified), demos only',_qualRateDemoC!=null?_qualRateDemoC.toFixed(1)+'%':'\u2014',`${fN(_qdOnlyC)} \u00f7 ${fN(_qdOnlyDen)}`,_qualRateDemoC,_qualRateDemoP,_qualRateDemoL,'%',{noMargin:true});
   oh+='</div>';
