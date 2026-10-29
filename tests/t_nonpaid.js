@@ -27,8 +27,8 @@ ck('the helpers loaded',typeof ctx._dshTrValue,'function');
 
 // ── 1. Position and shape ─────────────────────────────────────────────────
 ck('the measure sits directly after Cost Per',
-   ctx.DSH_TR_METRICS.map(m=>m.k),['count','cost','nonpaid','cvr','ctr']);
-ck('  and so does its card',ctx.DSH_TR_CARDS.map(c=>c.k),['count','cost','nonpaid','cvr','ctr','spend']);
+   ctx.DSH_TR_METRICS.map(m=>m.k),['count','cost','nonpaid','cvr','ctr','k10share']);
+ck('  and so does its card',ctx.DSH_TR_CARDS.map(c=>c.k),['count','cost','nonpaid','cvr','ctr','k10share','spend']);
 const NP=ctx.DSH_TR_METRICS.find(m=>m.k==='nonpaid');
 ck('it is a percentage',NP.unit,'%');
 ck('it is named as the Key Metrics tile names it',NP.l,'Non-Paid · Last Click');
@@ -90,15 +90,15 @@ ck('the pooled share is not the mean of the ratios',
 // ── 5. Offered on Regular AND Pre-Launch, hidden on Paid ──────────────────
 ctx.setPop('regular');
 ck('Regular Demos offers it',ctx._dshTrShown(ctx.DSH_TR_METRICS).map(m=>m.k),
-   ['count','cost','nonpaid','cvr','ctr']);
+   ['count','cost','nonpaid','cvr','ctr','k10share']);
 ctx.setPop('prelaunch');
 ck('Pre-Launch Demos offers it too',ctx._dshTrShown(ctx.DSH_TR_METRICS).map(m=>m.k),
-   ['count','cost','nonpaid','cvr','ctr']);
+   ['count','cost','nonpaid','cvr','ctr','k10share']);
 ck('  including its card',ctx._dshTrShown(ctx.DSH_TR_CARDS).map(c=>c.k),
-   ['count','cost','nonpaid','cvr','ctr','spend']);
+   ['count','cost','nonpaid','cvr','ctr','k10share','spend']);
 ctx.setPop('paid');
-ck('Paid Demos hides it',ctx._dshTrShown(ctx.DSH_TR_METRICS).map(m=>m.k),['count','cost','cvr','ctr']);
-ck('  and its card',ctx._dshTrShown(ctx.DSH_TR_CARDS).map(c=>c.k),['count','cost','cvr','ctr','spend']);
+ck('Paid Demos hides it',ctx._dshTrShown(ctx.DSH_TR_METRICS).map(m=>m.k),['count','cost','cvr','ctr','k10share']);
+ck('  and its card',ctx._dshTrShown(ctx.DSH_TR_CARDS).map(c=>c.k),['count','cost','cvr','ctr','k10share','spend']);
 ck('  while every other measure stays',
    ctx._dshTrShown(ctx.DSH_TR_METRICS).length,ctx.DSH_TR_METRICS.length-1);
 

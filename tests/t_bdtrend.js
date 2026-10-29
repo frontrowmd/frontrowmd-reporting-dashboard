@@ -112,7 +112,7 @@ ck('  and the empty one is still a point',
 ck('a bucket carries exactly the fields the card reads',
    Object.keys(wk).sort(),
    ['clicks','cpdPaid','cpdPre','cpdReg','ctr','cvrPaid','cvrPre','cvrReg',
-    'impressions','paid','prelaunch','prelaunchPaid','regular','spend','wk']);
+    'impressions','paid','prelaunch','prelaunchPaid','regular','regular10k','spend','wk']);
 ck('week CTR pools the period totals',wk.ctr,(wk.clicks/wk.impressions)*100);
 ck('  which is NOT the mean of the daily CTRs',
    Math.abs(wk.ctr-((d1.ctr+d2.ctr)/2))>1e-9,true);

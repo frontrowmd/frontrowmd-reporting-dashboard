@@ -50,7 +50,7 @@ ck('paid resolves the paid count',ctx._dshTrParts(P,'paid').pop,10);
 // known so _dshTrValue stays population-agnostic.
 ck('the components carry the selected cohort and its paid split',
    Object.keys(ctx._dshTrParts(P,'regular')).sort(),
-   ['clicks','cohort','cohortPaid','impressions','pop','spend']);
+   ['clicks','cohort','cohortPaid','impressions','pop','reg','reg10k','spend']);
 ck('  and they DO follow the population toggle',
    (()=>{const a=ctx._dshTrParts(P,'regular'),b=ctx._dshTrParts(P,'prelaunch');
      return [[a.cohort,a.cohortPaid],[b.cohort,b.cohortPaid]];})(),
@@ -58,15 +58,15 @@ ck('  and they DO follow the population toggle',
 
 // ── 2. The six metrics, in the order asked for ────────────────────────────
 ck('metric pills',ctx.DSH_TR_METRICS.map(m=>m.l),
-   ['Count','Cost Per','Non-Paid · Last Click','CVR','CTR']);
-ck('KPI cards',ctx.DSH_TR_CARDS.map(c=>c.k),['count','cost','nonpaid','cvr','ctr','spend']);
+   ['Count','Cost Per','Non-Paid · Last Click','CVR','CTR','0-10K % of Regular']);
+ck('KPI cards',ctx.DSH_TR_CARDS.map(c=>c.k),['count','cost','nonpaid','cvr','ctr','k10share','spend']);
 ck('Ad Spend has a card but is not a selectable measure',
    [ctx.DSH_TR_CARDS.filter(c=>c.k==='spend')[0].metric,ctx.DSH_TR_METRICS.filter(m=>m.k==='spend').length],[null,0]);
 // CTR is clicks over impressions — a property of the ads, not of which demos
 // are counted — so it is the only measure the population toggle leaves alone.
 // Non-Paid DOES vary by cohort, so it takes the suffix like the rest.
-ck('CTR is the only pop-invariant measure',
-   ctx.DSH_TR_METRICS.filter(m=>!m.pop).map(m=>m.k),['ctr']);
+ck('CTR and the 0-10K share are the pop-invariant measures',
+   ctx.DSH_TR_METRICS.filter(m=>!m.pop).map(m=>m.k),['ctr','k10share']);
 // Hidden where it has no meaning, rather than restricted to one population.
 ck('  and Non-Paid is hidden only on Paid Demos',
    ctx.DSH_TR_METRICS.filter(m=>m.hiddenOn).map(m=>[m.k,m.hiddenOn]),[['nonpaid',['paid']]]);

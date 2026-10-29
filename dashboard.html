@@ -970,6 +970,46 @@ window.roSetPilotMode=function(m){
   try{localStorage.setItem('roPilotMode',m);}catch(e){}
   _roRerender();
 };
+// Webinar no-show by brand size (2026-10-29), behind a toggle on the Webinar
+// no-show rate card. Asked to answer "are pre-launch brands driving the
+// no-shows?", so it covers EVERY registrant, pre-launch included -- the
+// headline above it excludes them, and the note says so. Same registrants and
+// the same attended flag as the headline, split on the contact's traffic tier.
+var WNS_TIERS=[{k:'pre',l:'Pre-launch'},{k:'k0to10',l:'0-10K'},{k:'k10plus',l:'10K+'},{k:'unknown',l:'Tier not set'}];
+window._wnsTierOpen=window._wnsTierOpen||false;
+window.toggleWnsTier=function(){
+  window._wnsTierOpen=!window._wnsTierOpen;
+  var b=document.getElementById('wns-tier'),c=document.getElementById('wns-tier-caret');
+  if(b)b.style.display=window._wnsTierOpen?'':'none';
+  if(c)c.textContent=window._wnsTierOpen?'\u25be':'\u25b8';
+};
+function _webinarTierHTML(qm){
+  var bt=qm&&qm.webinarByTier;
+  if(!bt)return '';   // pre-v47 payload: nothing to break out
+  var rate=function(o){return (o&&o.reg>0)?((o.reg-o.att)/o.reg)*100:null;};
+  var pct=function(v){return v==null?'\u2014':v.toFixed(1)+'%';};
+  var P=qm.webinarByTierPrior||null, L=qm.webinarByTierLastMonth||null;
+  var th=function(t,al){return '<th style="text-align:'+(al||'right')+';padding:4px 6px;font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em">'+t+'</th>';};
+  var rows=WNS_TIERS.map(function(t){
+    var o=bt[t.k]||{reg:0,att:0}, r=rate(o);
+    var hot=(r!=null&&r>=50);
+    return '<tr style="border-top:1px solid var(--border)">'
+      +'<td style="padding:5px 6px;color:var(--navy);font-weight:600">'+t.l+'</td>'
+      +'<td style="padding:5px 6px;text-align:right">'+fN(o.reg)+'</td>'
+      +'<td style="padding:5px 6px;text-align:right">'+fN(o.reg-o.att)+'</td>'
+      +'<td style="padding:5px 6px;text-align:right;font-family:var(--font-h);font-weight:700;color:'+(hot?'#C0392B':'var(--navy)')+'">'+pct(r)+'</td>'
+      +'<td style="padding:5px 6px;text-align:right">'+pct(P?rate(P[t.k]):null)+'</td>'
+      +'<td style="padding:5px 6px;text-align:right">'+pct(L?rate(L[t.k]):null)+'</td></tr>';
+  }).join('');
+  return '<a href="javascript:void(0)" onclick="toggleWnsTier()" style="color:var(--teal);font-weight:700;text-decoration:none">'
+      +'<span id="wns-tier-caret">'+(window._wnsTierOpen?'\u25be':'\u25b8')+'</span> See by brand size</a>'
+    +'<div id="wns-tier" style="display:'+(window._wnsTierOpen?'':'none')+';margin-top:6px">'
+    +'<table style="width:100%;border-collapse:collapse;font-size:11px;color:var(--navy)">'
+    +'<tr>'+th('Brand size','left')+th('Registered')+th('No-shows')+th('No-show rate')+th('Prior')+th('LM')+'</tr>'
+    +rows+'</table>'
+    +'<div style="margin-top:5px;line-height:1.45">All registrants, pre-launch included. The headline rate above leaves pre-launch out, so pre-launch cannot be what moves it.</div>'
+    +'</div>';
+}
 // Shared Revenue Outcome card (dark navy). Headline metric = Signed ARR
 // (MRR × 12). Used by the Brand Dashboard (renderDash), the Irfan Dashboard and
 // the Executive Dashboard's Brand mode. ROAS was removed 2026-10-28.
@@ -2684,7 +2724,7 @@ function renderDash(){
   oh+=statRow('Prune rate','Cancelled before demo \u00f7 settled demo outcomes, excl. pre-launch',_pruneAllC!=null?_pruneAllC.toFixed(1)+'%':'\u2014',`${fN(_cxPreC)} \u00f7 ${fN(_supOutcomeC)}`,_pruneAllC,_pruneAllP,_pruneAllL,'%',{noMargin:true,inv:true,warnIf:20});
   oh+='<div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:10px">';
   oh+=statRow('Demo no-show rate','No Show \u00f7 (held + No Show), demos only, excl. pre-launch',_noShowAllC!=null?_noShowAllC.toFixed(1)+'%':'\u2014',`${fN(_nsPreC)} \u00f7 ${fN(_nsDenAllC)}`,_noShowAllC,_noShowAllP,_noShowAllL,'%',{noMargin:true,inv:true,warnIf:20});
-  oh+=statRow('Webinar no-show rate','Registrants who did not attend \u00f7 registrants',_wnsRateC!=null?_wnsRateC.toFixed(1)+'%':'\u2014',`${fN(_wnsC)} \u00f7 ${fN(_wnrC)}`,_wnsRateC,_wnsRateP,_wnsRateL,'%',{noMargin:true,inv:true,warnIf:50});
+  oh+=statRow('Webinar no-show rate','Registrants who did not attend \u00f7 registrants, excl. pre-launch',_wnsRateC!=null?_wnsRateC.toFixed(1)+'%':'\u2014',`${fN(_wnsC)} \u00f7 ${fN(_wnrC)}`,_wnsRateC,_wnsRateP,_wnsRateL,'%',{noMargin:true,inv:true,warnIf:50,extra:_webinarTierHTML(qmeta)});
   oh+='</div>';
   oh+=statRow('Qualification rate','Qualified \u00f7 (Qualified + Disqualified), demos only',_qualRateDemoC!=null?_qualRateDemoC.toFixed(1)+'%':'\u2014',`${fN(_qdOnlyC)} \u00f7 ${fN(_qdOnlyDen)}`,_qualRateDemoC,_qualRateDemoP,_qualRateDemoL,'%',{noMargin:true});
   oh+='</div>';
@@ -4329,6 +4369,10 @@ const DSH_TR_METRICS=[
   {k:'nonpaid',  l:'Non-Paid · Last Click', unit:'%', c:'#B45309', pop:true, hiddenOn:['paid']},
   {k:'cvr',      l:'CVR',      unit:'%', c:'#0E7C66', pop:true},
   {k:'ctr',      l:'CTR',      unit:'%', c:'#1D4ED8', pop:false},
+  // 0-10K brands as a share of REGULAR demos (2026-10-29), the Pre-Launch %
+  // tile's second line over time. pop:false: it is defined on the regular cohort
+  // whatever the toggle shows, so it must not pretend to follow it.
+  {k:'k10share', l:'0-10K % of Regular', unit:'%', c:'#C2410C', pop:false},
 ];
 // The stat row, in ONE order, used by the KPI cards and the hover readout
 // alike — deriving both from this list is what makes "same stats, same order,
@@ -4346,6 +4390,7 @@ const DSH_TR_CARDS=[
   {k:'nonpaid', metric:'nonpaid', unit:'%', pop:true, hiddenOn:['paid']},
   {k:'cvr',   metric:'cvr',   unit:'%', pop:true},
   {k:'ctr',   metric:'ctr',   unit:'%', pop:false},
+  {k:'k10share', metric:'k10share', unit:'%', pop:false},
   {k:'spend', metric:null,    unit:'$', pop:false},
 ];
 function _dshTrendGrain(){return window._dshTrendGrainV||'week';}
@@ -4408,10 +4453,12 @@ function _dshTrParts(p,pop){
     // the measure reads a truthful 0% — it is hidden there anyway.
     cohort:((pop==='prelaunch')?p.prelaunch:(pop==='paid')?p.paid:p.regular)||0,
     cohortPaid:((pop==='prelaunch')?p.prelaunchPaid:(pop==='paid')?p.paid:p.paid)||0,
+    // 0-10K share: always the regular cohort, whatever the toggle says.
+    reg:p.regular||0, reg10k:p.regular10k||0,
   };
 }
 function _dshTrSum(parts){
-  var t={spend:0,clicks:0,impressions:0,pop:0,cohort:0,cohortPaid:0};
+  var t={spend:0,clicks:0,impressions:0,pop:0,cohort:0,cohortPaid:0,reg:0,reg10k:0};
   parts.forEach(function(x){for(var k in t)t[k]+=x[k];});
   return t;
 }
@@ -4421,6 +4468,7 @@ function _dshTrValue(metric,t){
   if(metric==='nonpaid')return t.cohort>0?((t.cohort-t.cohortPaid)/t.cohort)*100:null;
   if(metric==='cvr')return t.clicks>0?(t.pop/t.clicks)*100:null;
   if(metric==='ctr')return t.impressions>0?(t.clicks/t.impressions)*100:null;
+  if(metric==='k10share')return t.reg>0?(t.reg10k/t.reg)*100:null;
   return null;
 }
 function _dshTrStat(card,T,pdef){
@@ -4439,6 +4487,7 @@ function _dshTrStat(card,T,pdef){
       nonpaid:fN(Math.max(0,T.cohort-T.cohortPaid))+' ÷ '+fN(T.cohort)+' '+popW,
       cvr:fN(T.pop)+' ÷ '+fN(T.clicks)+' clicks',
       ctr:fN(T.clicks)+' ÷ '+fN(T.impressions)+' impressions',
+      k10share:fN(T.reg10k)+' ÷ '+fN(T.reg)+' regular demos',
     }[card.k]||'';
   }
   return {lbl:lbl,val:val,calc:calc,c:colour,split:split};
@@ -11287,6 +11336,12 @@ function _dashKmModel(d){
   const _preShare=_bothC>0?(_preC/_bothC*100):null;
   const _preShareP=(_bothP!=null&&_bothP>0&&_preP!=null)?(_preP/_bothP*100):null;
   const _preShareL=(_bothL!=null&&_bothL>0&&_preL!=null)?(_preL/_bothL*100):null;
+  // 0-10K brands as a share of REGULAR demos (2026-10-29): the Pre-Launch %
+  // tile's second line. Denominator is _regC itself; null on a pre-v47 payload.
+  const _k10C=_wtDW.scheduledRegular0to10K;
+  const _k10Share=(_k10C!=null&&_regC>0)?(_k10C/_regC*100):null;
+  const _k10ShareP=(_wtDW.scheduledRegular0to10KPrior!=null&&_regP)?(_wtDW.scheduledRegular0to10KPrior/_regP*100):null;
+  const _k10ShareL=(_wtDW.scheduledRegular0to10KLastMonth!=null&&_regL)?(_wtDW.scheduledRegular0to10KLastMonth/_regL*100):null;
   const _spC=em.totalSpend||0,_spP=em.pTotalSpend,_spL=em.pmTotalSpend;
   const _cpdSeg=(sp,n)=>(n!=null&&n>0&&sp!=null)?sp/n:null;
   const _cRegC=_cpdSeg(_spC,_regC),_cRegP=_cpdSeg(_spP,_regP),_cRegL=_cpdSeg(_spL,_regL);
@@ -11299,7 +11354,7 @@ function _dashKmModel(d){
   const _cvrOf=(n,v)=>(v>0&&n!=null)?(n/v*100):null;
   const _cvrReg=_cvrOf(_regC,visitors),_cvrRegPV=_cvrOf(_regP,visitorsPV),_cvrRegLM=_cvrOf(_regL,visitorsLMV);
   return {em,qd,cpqd,cpqdPV,cpqdLMV,_regC,_preC,_bothC,_acqP,_acqO,_acqU,_acqOK,
-    _npPct,_npPctPV,_npPctLM,_preShare,_preShareP,_preShareL,_spC,
+    _npPct,_npPctPV,_npPctLM,_preShare,_preShareP,_preShareL,_k10C,_k10Share,_k10ShareP,_k10ShareL,_spC,
     _cRegC,_cRegP,_cRegL,_cPaidC,_cPaidP,_cPaidL,_cvrReg,_cvrRegPV,_cvrRegLM,visitors};
 }
 // The row itself. `sfx` suffixes the two ids it emits — #dsec-keymetrics (the
@@ -11586,9 +11641,23 @@ function _brandKeyMetricsHTML(d,opt){
   // Efficiency card ("Paid ads CAC") and the Marketing Funnel, both on this page.
   // Down is green -- pre-launch brands are the low-value tier, which is why the
   // page already flags this share in orange once it clears 30%.
+  // Second line, same tile (2026-10-29): of the REGULAR demos -- everything but
+  // pre-launch -- the share that are 0-10K brands, so a drift toward tiny brands
+  // shows up even while Pre-Launch % holds steady. Computed in _dashKmModel
+  // beside Pre-Launch % itself; a dash on a pre-v47 payload.
+  const _k10C=M._k10C,_k10Share=M._k10Share,_k10ShareP=M._k10ShareP,_k10ShareL=M._k10ShareL;
+  const _k10Line='<div style="margin-top:10px;padding-top:9px;border-top:1px solid rgba(255,255,255,.14)">'
+    // Styled like .tlbl but NOT that class: this is a second line inside one
+    // tile, and the tile counts (and the Jump To row) key off .tlbl.
+    +'<div style="font-family:var(--font-h);font-size:11px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">0-10K % of Regular</div>'
+    +'<div style="font-family:var(--font-h);font-size:22px;font-weight:700;line-height:1.1">'+(_k10Share!=null?_k10Share.toFixed(1)+'%':'\u2014')+'</div>'
+    +'<div class="irf-calc">'+(_k10C!=null?fN(_k10C):'\u2014')+' \u00f7 '+fN(_regC)+' regular demos</div>'
+    // Down is green here too: a rising share of 0-10K brands is the drift to watch.
+    +_kmFoot(_k10Share,_k10ShareP,_k10ShareL,'%',true)
+    +'</div>';
   kmh+=_kmTile('Pre-Launch %',_preShare!=null?_preShare.toFixed(1)+'%':'\u2014',
     fN(_preC)+' \u00f7 '+fN(_bothC)+' demos booked',
-    _kmFoot(_preShare,_preShareP,_preShareL,'%',true),null,
+    _kmFoot(_preShare,_preShareP,_preShareL,'%',true),_k10Line,
     'Share of ALL demos booked in this window that came from a pre-launch brand '
     +'\u2014 the demo\u2019s own web-traffic tier, not a name match. Same denominator as '
     +'the Demo Composition pie, so this is that pie\u2019s first slice as a number.');

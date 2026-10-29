@@ -874,7 +874,8 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v46';   // v46: mrrArr.pilot -- the Revenue Outcome pilot toggle.
+const API_CACHE_VER = 'v47';   // v47: 0-10K share of regular demos; webinar no-show by brand size.
+                               // v46: mrrArr.pilot -- the Revenue Outcome pilot toggle.
                                // v45: Sign Up before 2026-10-20 = booked call; funnel All Time.
                                // v44: clinician pipeline rebuilt; Sign Up = Credentials Complete.
                                // v43: clinician submission carries the Lookalike-excluded denominators.
@@ -2014,6 +2015,10 @@ function processScheduledContacts(contacts) {
   const byDayRegular = {};
   const byDayPre = {};
   let regularTotal = 0, preTotal = 0;
+  // The 0-10K brands INSIDE regularTotal (Alex, 2026-10-29): the Pre-Launch %
+  // tile's second line, "% of regular demos that are 0-10K". Counted in the same
+  // else branch below, so its denominator is regularTotal exactly.
+  let regular0to10K = 0;
   let weekdayRegular = 0, weekdayPre = 0;   // weekday-only mirrors, for the Weekday Avg tile
   // Last-click acquisition split of the SAME regular cohort, three-way so the
   // unknown is visible rather than silently folded into "organic":
@@ -2105,6 +2110,7 @@ function processScheduledContacts(contacts) {
       const _isWeekdayAll = (_adow !== 0 && _adow !== 6);
       if (wt.includes('pre-launch')) { byDayPre[_ak] = (byDayPre[_ak]||0) + 1; preTotal++; if (_isWeekdayAll) weekdayPre++; }
       else { byDayRegular[_ak] = (byDayRegular[_ak]||0) + 1; regularTotal++; if (_isWeekdayAll) weekdayRegular++;
+        if (is0to10KTier(wt)) regular0to10K++;
         // RAW properties, not the _us/_um pair below -- those are 'Not set'-normalised,
         // which would make every untagged contact look tagged.
         const _rs = (c.properties?.utm_source || '').trim(), _rm = (c.properties?.utm_medium || '').trim();
@@ -2157,7 +2163,7 @@ function processScheduledContacts(contacts) {
   }
   return {
     total: dailyTotal, byDay, byDayScale, byDayScale10KPlus, byDayAll, byDayRegular, byDayPre,
-    regularTotal, preTotal, weekdayRegular, weekdayPre, byWebTraffic, byWebTrafficTrue,
+    regularTotal, preTotal, regular0to10K, weekdayRegular, weekdayPre, byWebTraffic, byWebTrafficTrue,
     regularPaid, regularOrganicTagged, regularUntagged, byDayRegularPaid,
     // Acquisition mix, capped at 8 slices like the clinician equivalent.
     utmSource: cappedCounts(byUtmS, 8), utmMedium: cappedCounts(byUtmM, 8), utmCampaign: cappedCounts(byUtmC, 8),
@@ -2626,6 +2632,12 @@ function attBump(o, att, isWon) {
 // "Small brands" = Pre-launch + 0-10K + Very Small. Lowercase-substring match
 // so it works on both the cloned tier string and the live property. The
 // canonical % Pruned / % No-Show exclude these (matching True CPD/CPQD).
+// The "0-10K monthly web visitors" tier. Substring on the lowercased value,
+// like every other tier test here: contact and deal copies of the field have
+// differed in casing. Distinct from pre-launch, which never matches it.
+function is0to10KTier(wt) {
+  return String(wt || '').toLowerCase().indexOf('0-10k') >= 0;
+}
 function isSmallBrandWT(wt) {
   const s = (wt || '').toLowerCase();
   return s.indexOf('pre-launch') >= 0 || s.indexOf('0-10k') >= 0 || s.indexOf('very small') >= 0;
@@ -2956,6 +2968,22 @@ async function fetchWebinarDateDealIds(token, from, to) {
   // 'true' counts as a no-show, so a blank (never reconciled) reads as no-show
   // rather than silently shrinking the denominator.
   const seen = new Map();
+  // No-show by brand size (Alex, 2026-10-29), over EVERY registrant -- pre-launch
+  // included, because whether pre-launch brands drive the no-shows is the
+  // question it answers. The headline below still excludes them.
+  const byTier = { pre: { reg: 0, att: 0 }, k0to10: { reg: 0, att: 0 }, k10plus: { reg: 0, att: 0 }, unknown: { reg: 0, att: 0 } };
+  const tierSeen = new Set();
+  for (const c of (contacts || [])) {
+    if (!c || !c.id || tierSeen.has(String(c.id))) continue;
+    tierSeen.add(String(c.id));
+    const wt = String(c.properties?.average_monthly_web_traffic || '').toLowerCase();
+    // "Very Small" is the webinar-funnel label, not a traffic tier, so it is
+    // grouped with blank as unknown rather than guessed into a size.
+    const t = wt.includes('pre-launch') ? 'pre' : is0to10KTier(wt) ? 'k0to10'
+      : (wt && wt !== 'very small') ? 'k10plus' : 'unknown';
+    byTier[t].reg++;
+    if (String(c.properties?.webinar_has_attended || '').toLowerCase() === 'true') byTier[t].att++;
+  }
   for (const c of (contacts || [])) {
     if (!c || !c.id) continue;
     // Pre-launch is excluded from every Volume and Quality figure. Matched on
@@ -2970,7 +2998,7 @@ async function fetchWebinarDateDealIds(token, from, to) {
     if (String(c.properties?.webinar_has_attended || '').toLowerCase() === 'true') attended++;
   }
   const ids = [...seen.keys()];
-  if (!ids.length) return { dealIds: new Set(), contacts: 0, failed: 0, registrants: 0, attended: 0 };
+  if (!ids.length) return { dealIds: new Set(), contacts: 0, failed: 0, registrants: 0, attended: 0, byTier };
   // Batch reads cap at 100 inputs. Chunk and accumulate partial results rather
   // than collapsing to zero on one bad batch — the failure mode that silently
   // zeroed webinar Closed Won before.
@@ -3041,7 +3069,7 @@ async function fetchWebinarDateDealIds(token, from, to) {
     console.warn(`fetchWebinarDateDealIds: PARTIAL — ${failed}/${ids.length} contact lookups and `
       + `${dealsFailed}/${resolved.length} deal lookups failed; ${active.size} active of ${dealIds.size} resolved`);
   }
-  return { dealIds: active, contacts: ids.length, resolved: dealIds.size, failed: failed + dealsFailed, registrants, attended };
+  return { dealIds: active, contacts: ids.length, resolved: dealIds.size, failed: failed + dealsFailed, registrants, attended, byTier };
 }
 
 // Folds webinar-date deals into "Demos to occur" and "Demos supposed to happen".
@@ -3063,6 +3091,7 @@ function applyWebinarDateDeals(periodData, res) {
   pl.webinarRegistrants = res.registrants || 0;
   pl.webinarAttended = res.attended || 0;
   pl.webinarNoShow = Math.max(0, (res.registrants || 0) - (res.attended || 0));
+  pl.webinarByTier = res.byTier || null;
   pl.webinarDateExtraExtended = extraExt;
   pl.webinarDateExtraSupposed = extraSup;
   pl.totalExtended = (pl.totalExtended || 0) + extraExt;
@@ -3500,7 +3529,7 @@ function buildBrandTrend(schContacts, windsorRows, from, to) {
     if (!dayKey) return null;
     if (from && dayKey < from) return null;
     if (to && dayKey > to) return null;
-    if (!B[dayKey]) B[dayKey] = { spend: 0, impressions: 0, clicks: 0, regular: 0, paid: 0, prelaunch: 0, prelaunchPaid: 0 };
+    if (!B[dayKey]) B[dayKey] = { spend: 0, impressions: 0, clicks: 0, regular: 0, paid: 0, prelaunch: 0, prelaunchPaid: 0, regular10k: 0 };
     B[dayKey][field] += (n == null ? 1 : n);
     return B[dayKey];
   };
@@ -3552,6 +3581,8 @@ function buildBrandTrend(schContacts, windsorRows, from, to) {
     }
     if (!bump(k, 'regular')) continue;
     if (mapUtmToChannel(rs, rm)) bump(k, 'paid');
+    // 0-10K share of regular: a subset of `regular`, same test as the tile.
+    if (is0to10KTier(wt)) bump(k, 'regular10k');
   }
 
   const div = (n, dd) => (dd > 0 ? n / dd : null);
@@ -3579,7 +3610,7 @@ function buildBrandTrend(schContacts, windsorRows, from, to) {
   };
   const roll = (keyOf) => {
     const g = {};
-    const touch = (k) => { if (k && !g[k]) g[k] = { spend: 0, impressions: 0, clicks: 0, regular: 0, paid: 0, prelaunch: 0, prelaunchPaid: 0 }; };
+    const touch = (k) => { if (k && !g[k]) g[k] = { spend: 0, impressions: 0, clicks: 0, regular: 0, paid: 0, prelaunch: 0, prelaunchPaid: 0, regular10k: 0 }; };
     for (const day of allDays) touch(keyOf(day));
     for (const day of Object.keys(B)) {
       const k = keyOf(day); if (!k) continue;
@@ -3587,6 +3618,7 @@ function buildBrandTrend(schContacts, windsorRows, from, to) {
       const b = B[day], o = g[k];
       o.spend += b.spend; o.impressions += b.impressions; o.clicks += b.clicks;
       o.regular += b.regular; o.paid += b.paid; o.prelaunch += b.prelaunch; o.prelaunchPaid += b.prelaunchPaid;
+      o.regular10k += b.regular10k;
     }
     return Object.keys(g).sort().map(k => {
       const w = g[k];
@@ -3595,6 +3627,7 @@ function buildBrandTrend(schContacts, windsorRows, from, to) {
         spend: Math.round(w.spend * 100) / 100,
         impressions: w.impressions, clicks: w.clicks,
         regular: w.regular, paid: w.paid, prelaunch: w.prelaunch, prelaunchPaid: w.prelaunchPaid,
+        regular10k: w.regular10k,
         // EVERY population precomputed so the client can show any of them
         // without a second request. Rates are percentages computed on the
         // period's OWN totals, never averaged from daily rates — a
@@ -5211,6 +5244,11 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
         ? ((p.pipeline.webinarNoShow||0) / p.pipeline.webinarRegistrants) * 100 : null,
       webinarNoShowRateLastMonth: (pm.pipeline?.webinarRegistrants||0) > 0
         ? ((pm.pipeline.webinarNoShow||0) / pm.pipeline.webinarRegistrants) * 100 : null,
+      // { pre, k0to10, k10plus, unknown } -> { reg, att } per window, over every
+      // registrant INCLUDING pre-launch (the headline above excludes them).
+      webinarByTier: c.pipeline.webinarByTier || null,
+      webinarByTierPrior: p.pipeline?.webinarByTier || null,
+      webinarByTierLastMonth: pm.pipeline?.webinarByTier || null,
       webinarDateExtraSupposed: c.pipeline.webinarDateExtraSupposed||0,
       webinarDateExtraSupposedPrior: p.pipeline?.webinarDateExtraSupposed ?? null,
       webinarDateExtraSupposedLastMonth: pm.pipeline?.webinarDateExtraSupposed ?? null,
@@ -5263,6 +5301,10 @@ function buildResponse(current, prior, priorMonth, isAllTime, ownerMap, windowTy
     scheduledByDayPre: c.scheduled.byDayPre,
     scheduledRegularTotal: c.scheduled.regularTotal,
     scheduledPreTotal: c.scheduled.preTotal,
+    // 0-10K brands inside scheduledRegularTotal, each window.
+    scheduledRegular0to10K: c.scheduled.regular0to10K ?? null,
+    scheduledRegular0to10KPrior: prior ? (p.scheduled?.regular0to10K ?? null) : null,
+    scheduledRegular0to10KLastMonth: priorMonth ? (pm.scheduled?.regular0to10K ?? null) : null,
     scheduledRegularTotalPrior: prior ? (p.scheduled?.regularTotal ?? null) : null,
     scheduledPreTotalPrior: prior ? (p.scheduled?.preTotal ?? null) : null,
     scheduledRegularPaid: c.scheduled.regularPaid,
@@ -6393,7 +6435,7 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     const _btWin = clnTrendWindow(fmt(yd));
     currentData.trendRange = _btWin;
     try {
-      currentData.trend = await kvCachedFetch(env, `brand_trend_${_btWin.from}_${_btWin.to}_v6`, 1800,
+      currentData.trend = await kvCachedFetch(env, `brand_trend_${_btWin.from}_${_btWin.to}_v7`, 1800,
         async () => {
           // HubSpot FIRST, and only then the ad fetch. Kicked off the other way
           // round, the trend's own Windsor chunker can spend the subrequest

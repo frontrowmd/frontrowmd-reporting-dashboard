@@ -131,9 +131,9 @@ ck('CTR is unaffected by the population',ctx._dshTrValue('ctr',T),(500/20000)*10
 // own paid split, so the measure is the organic half of THAT cohort.
 ctx.setPop('prelaunch');
 ck('Non-Paid is offered on Pre-Launch Demos',
-   ctx._dshTrShown(ctx.DSH_TR_METRICS).map(m=>m.k),['count','cost','nonpaid','cvr','ctr']);
+   ctx._dshTrShown(ctx.DSH_TR_METRICS).map(m=>m.k),['count','cost','nonpaid','cvr','ctr','k10share']);
 ck('  with its card',
-   ctx._dshTrShown(ctx.DSH_TR_CARDS).map(c=>c.k),['count','cost','nonpaid','cvr','ctr','spend']);
+   ctx._dshTrShown(ctx.DSH_TR_CARDS).map(c=>c.k),['count','cost','nonpaid','cvr','ctr','k10share','spend']);
 ck('  reading this cohort\u2019s own split',
    ctx._dshTrValue('nonpaid',ctx._dshTrParts({...P,prelaunch:80,prelaunchPaid:20},'prelaunch')),75);
 ctx.setMetric('nonpaid');
