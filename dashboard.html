@@ -2681,6 +2681,15 @@ function renderDash(){
   oh+=statRow('Regular Demos to Occur','Deals by date_demo_booked, or an associated contact\u2019s Webinar Date, in window',fN(demosToOccur),null,demosToOccur,demosToOccurPV,demosToOccurLMV,'#',{noMargin:true});
   oh+=statRow('Regular Demos Supposed to Happen','Held + No shows + Pruned + Webinar Date deals, excl. pre-launch',fN(_supAllC),`${fN(_heldPreC)} held + ${fN(_nsPreC)} no-show + ${fN(_cxPreC)} pruned + ${fN(_wdSupC)} webinar`,_supAllC,_supAllP,_supAllL,'#',{noMargin:true});
   oh+=statRow('Qualified Regular Demos','Demos held excl. pre-launch + Webinars Happened',fN(qd),`${fN(_qdDemo)} demos held + ${fN(_qdWeb)} webinars`,qd,qdPV,qdLMV,'#',{noMargin:true});
+  // Paid Demos (2026-10-30): the regular demos whose booking contact carries a
+  // paid last-click UTM -- the same count as the Key Metrics "CPD \u00b7 Paid"
+  // denominator, read off the payload here because the Efficiency block that
+  // names it (_acqP) is built after this column.
+  {
+    const _dtV=d.demoTracking||{};
+    const _pdC=_dtV.scheduledRegularPaid,_pdP=_dtV.scheduledRegularPaidPrior,_pdL=_dtV.scheduledRegularPaidLastMonth;
+    oh+=statRow('Paid Demos','Regular demos booked with a paid last-click UTM',_pdC!=null?fN(_pdC):'\u2014',_pdC!=null?`${fN(_pdC)} of ${fN(_dtV.scheduledRegularTotal||0)} regular demos`:null,_pdC,_pdP,_pdL,'#',{noMargin:true});
+  }
   oh+='</div>';
   // \u2500\u2500 Quality \u2014 DEMOS ONLY. Webinars are deliberately excluded from every
   // rate here: a webinar has no prune/no-show/qualification outcome on the deal,
@@ -2700,10 +2709,10 @@ function renderDash(){
   const _wnsRateC=qmeta.webinarNoShowRateAll,_wnsRateP=qmeta.webinarNoShowRateAllPrior,_wnsRateL=qmeta.webinarNoShowRateAllLastMonth;
   oh+=colOpen('Quality','#1D9E75',false,3);
   oh+=statRow('Prune rate','Cancelled before demo \u00f7 settled demo outcomes, excl. pre-launch',_pruneAllC!=null?_pruneAllC.toFixed(1)+'%':'\u2014',`${fN(_cxPreC)} \u00f7 ${fN(_supOutcomeC)}`,_pruneAllC,_pruneAllP,_pruneAllL,'%',{noMargin:true,inv:true,warnIf:20});
-  oh+='<div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:10px">';
+  // Demo and webinar no-show each take a full row (2026-10-30): the webinar card
+  // carries the by-size breakout, which a half-width column squeezed.
   oh+=statRow('Demo no-show rate','No Show \u00f7 (held + No Show), demos only, excl. pre-launch',_noShowAllC!=null?_noShowAllC.toFixed(1)+'%':'\u2014',`${fN(_nsPreC)} \u00f7 ${fN(_nsDenAllC)}`,_noShowAllC,_noShowAllP,_noShowAllL,'%',{noMargin:true,inv:true,warnIf:20});
   oh+=statRow('Webinar no-show rate','Registrants who did not attend \u00f7 all registrants',_wnsRateC!=null?_wnsRateC.toFixed(1)+'%':'\u2014',_wnrC!=null?`${fN(_wnsC)} \u00f7 ${fN(_wnrC)}`:'\u2014',_wnsRateC,_wnsRateP,_wnsRateL,'%',{noMargin:true,inv:true,warnIf:50,extra:_webinarTierHTML(qmeta)});
-  oh+='</div>';
   oh+=statRow('Qualification rate','Qualified \u00f7 (Qualified + Disqualified), demos only',_qualRateDemoC!=null?_qualRateDemoC.toFixed(1)+'%':'\u2014',`${fN(_qdOnlyC)} \u00f7 ${fN(_qdOnlyDen)}`,_qualRateDemoC,_qualRateDemoP,_qualRateDemoL,'%',{noMargin:true});
   oh+='</div>';
   oh+=colOpen('Efficiency','#BA7517',true,1);
@@ -2785,6 +2794,9 @@ function renderDash(){
   oh+=statRow('CPQD','Ad spend \u00f7 Qualified Demos',cpqd!=null?f$(cpqd):'\u2014',`${f$(em.totalSpend||0)} \u00f7 ${fN(qd)} qualified demos`,cpqd,cpqdPV,cpqdLMV,'$',{inv:true,noMargin:true,highlighted:true});
   // Paid ads CAC: full-width card
   oh+=statRow('Paid ads CAC','Total ad spend \u00f7 Signed Brands',cacSB!=null?f$(cacSB):'\u2014',`${f$(em.totalSpend||0)} \u00f7 ${fN(_sbCount)}`,cacSB,pCac,pmCac,'$',{inv:true,noMargin:true});
+  // Non-Paid \u00b7 Last Click (2026-10-30): the Key Metrics stat, same figures.
+  // Up is red there too -- a growing non-paid share is a shrinking paid one.
+  oh+=statRow('Non-Paid \u00b7 Last Click','Regular demos with no paid last-click UTM \u00f7 regular demos',_npPct!=null?_npPct.toFixed(1)+'%':'\u2014',_acqOK?`${fN(_acqO+_acqU)} \u00f7 ${fN(_regC)} regular demos`:'last-click UTM',_npPct,_npPctPV,_npPctLM,'%',{inv:true,noMargin:true});
   oh+='</div>';
   oh+='</div>';
 

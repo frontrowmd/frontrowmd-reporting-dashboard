@@ -221,7 +221,9 @@ ck('six headline tiles (five via _kmTile, the split one inline)',
 ck('in the order asked for',
    ['Ad Spend','CPD \\u00b7 Paid','Non-Paid \\u00b7 Last Click','CPD \\u00b7 Regular Demos',
     'CPQD \\u00b7 Regular Demos','Pre-Launch %','CVR \\u00b7 Regular']
-     .map(t=>html.indexOf("('"+t+"'")).every((v,i,a)=>v>0&&(i===0||v>a[i-1])),true);
+     // Scoped to the Key Metrics builder: Demo Insights carries a card of the same
+     // name (Non-Paid \u00b7 Last Click) earlier in the file.
+     .map(t=>brandKm.indexOf("('"+t+"'")).every((v,i,a)=>v>0&&(i===0||v>a[i-1])),true);
 // The paid pair sits directly right of Ad Spend, so nothing separates the spend
 // from what it bought.
 ck('the split tile is the second thing in the row, right after Ad Spend',

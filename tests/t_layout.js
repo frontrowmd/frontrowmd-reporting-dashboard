@@ -7,7 +7,7 @@ let pass=0,fail=0;
 function ck(n,g,w){const ok=JSON.stringify(g)===JSON.stringify(w);ok?pass++:fail++;
   console.log((ok?'PASS ':'FAIL ')+n+'  got='+JSON.stringify(g)+(ok?'':' want='+JSON.stringify(w)));}
 
-const cli=fs.readFileSync('dashboard.html','utf8').split('\n');
+const cli=fs.readFileSync(process.env.DASH_SRC||'dashboard.html','utf8').split('\n');
 
 // The section runs from the 3-col grid open to the line that closes it.
 const start=cli.findIndex(l=>l.includes("colOpen('Volume','#3B82F6'"))-1;
@@ -48,9 +48,16 @@ const vol=body.slice(0,body.indexOf("colOpen('Quality'"));
 const qual=body.slice(body.indexOf("colOpen('Quality'"),body.indexOf("colOpen('Efficiency'"));
 const html=cli.join('\n');
 ck('no _exTag cards remain in Volume',/_exTag/.test(vol),false);
-ck('Volume has exactly three stat rows',(vol.match(/oh\+=statRow\(/g)||[]).length,3);
+// Paid Demos joined Volume (2026-10-30), directly under Qualified Regular Demos.
+ck('Volume has exactly four stat rows',(vol.match(/oh\+=statRow\(/g)||[]).length,4);
+ck('  Paid Demos sits directly under Qualified Regular Demos',
+   /oh\+=statRow\('Qualified Regular Demos'[^\n]*\n[\s\S]{0,600}?oh\+=statRow\('Paid Demos'/.test(vol)
+   &&vol.indexOf("statRow('Paid Demos'")>vol.indexOf("statRow('Qualified Regular Demos'"),true);
 ck('Volume keeps all three cards, renamed for the population they count',
    ["'Regular Demos to Occur'","'Regular Demos Supposed to Happen'","'Qualified Regular Demos'"].every(x=>vol.includes(x)),true);
+ck('  counting the same paid demos as Key Metrics \u201cCPD \u00b7 Paid\u201d, with its priors',
+   /const _pdC=_dtV\.scheduledRegularPaid,_pdP=_dtV\.scheduledRegularPaidPrior,_pdL=_dtV\.scheduledRegularPaidLastMonth;/.test(vol)
+   &&/,_pdC,_pdP,_pdL,'#',\{noMargin:true\}\)/.test(vol),true);
 ck('the reconciliation "Demos held" row is gone',/statRow\('Demos held'/.test(vol),false);
 // Spacing is the COLUMN's job now (flex + gap), so no card carries its own
 // margin -- a stray default margin would stack on top of the gap and break the
@@ -64,12 +71,18 @@ ck('the column header no longer adds its own bottom margin',
    /gap:8px;margin-bottom:0;padding-bottom:10px;border-bottom/.test(html),true);
 ck('no inner grid still sets a bottom margin',
    /gap:8px;margin-bottom:10px">/.test(body),false);
-// The two no-show rates share a row, which also levels Quality with the others.
-ck('no-show rates sit on one row',
-   /repeat\(2, minmax\(0, 1fr\)\);gap:10px">';\n\s*oh\+=statRow\('Demo no-show rate'[\s\S]*?oh\+=statRow\('Webinar no-show rate'/.test(body),true);
-ck('all three columns are three rows deep',
-   [vol,qual,body.slice(body.indexOf("colOpen('Efficiency'"))]
-     .map(c=>(c.match(/oh\+=statRow\(/g)||[]).length),[3,4,5]);
+// Webinar no-show takes its own row under Demo no-show (2026-10-30): its
+// by-size breakout was squeezed in a half-width column.
+ck('the no-show rates are each a full row, webinar directly under demo',
+   /oh\+=statRow\('Demo no-show rate'[^\n]*\n\s*oh\+=statRow\('Webinar no-show rate'/.test(qual)&&!/repeat\(2, minmax\(0, 1fr\)\)/.test(qual),true);
+// Non-Paid \u00b7 Last Click joined Efficiency under Paid ads CAC (2026-10-30).
+const eff=body.slice(body.indexOf("colOpen('Efficiency'"));
+ck('Non-Paid \u00b7 Last Click sits directly under Paid ads CAC',
+   /oh\+=statRow\('Paid ads CAC'[^\n]*\n(?:\s*\/\/[^\n]*\n)*\s*oh\+=statRow\('Non-Paid \\u00b7 Last Click'/.test(eff),true);
+ck('  reading the Key Metrics figures, red when it rises',
+   /statRow\('Non-Paid \\u00b7 Last Click'[^\n]*,_npPct,_npPctPV,_npPctLM,'%',\{inv:true,noMargin:true\}\)/.test(eff),true);
+ck('stat rows per column',
+   [vol,qual,eff].map(c=>(c.match(/oh\+=statRow\(/g)||[]).length),[4,4,6]);
 
 // The old two-column wrapper must be fully gone, not just bypassed.
 ck('no orphaned 2-col Quality/Efficiency grid',
@@ -183,3 +196,4 @@ ck('field-reference headers declare a nav label',/class="dsec-h dsec-in" data-na
 ck('the nav prefers it over textContent',/getAttribute\('data-nav'\)\|\|el\.textContent/.test(html),true);
 
 console.log('\n'+pass+' passed, '+fail+' failed');
+process.exit(fail?1:0);
