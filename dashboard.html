@@ -1807,22 +1807,42 @@ async function fdPilot(){
   const el=document.getElementById('pilot-c');
   document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));
   document.getElementById('page-pilot').classList.add('active');
-  if(el)el.innerHTML='<div style="text-align:center;padding:60px"><div class="sp" style="width:28px;height:28px;border-width:3px;margin:0 auto 16px"></div><div style="font-family:var(--font-h);font-size:16px;color:var(--navy)">Loading pilot waitlist deals…</div></div>';
+  if(S.pilot._prog)S.pilot._prog.stop();
+  const _prog=S.pilot._prog=_loadProgress('pilot-c',['Connecting to HubSpot\u2026','Fetching pilot waitlist deals\u2026','Fetching deal stage labels\u2026','Building status & stage breakdown\u2026','Rendering dashboard\u2026'],700);
+  if(el)el.innerHTML=_pilotSkeleton();
   try{
     const r=await fetch(PILOT_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:PW})});
     const d=await r.json();
     if(!r.ok||d.error){
+      _prog.stop();
       if(el)el.innerHTML='<div style="padding:60px;text-align:center;color:var(--red);font-size:13px">Failed to load: '+_pilotEsc(d.detail||d.error||('HTTP '+r.status))+'</div>';
       return;
     }
+    if(AP==='pilot')await _prog.done(); else _prog.stop();
     S.pilot.data=d;
     if(AP==='pilot')renderPage();
   }catch(e){
     console.error('fdPilot failed:',e);
+    _prog.stop();
     if(el)el.innerHTML='<div style="padding:60px;text-align:center;color:var(--red);font-size:13px">Failed to load: '+_pilotEsc(e.message)+'</div>';
   }finally{
     S.pilot._fetching=false;
   }
+}
+// Section-shaped placeholders under the loading banner: tiles, two tables, list.
+function _pilotSkeleton(){
+  const bar=(w,h)=>'<div class="su-skel-bar" style="width:'+w+';height:'+h+'px"></div>';
+  const head=w=>'<div class="su-skel-head"><div class="su-skel-title">'+bar(w,20)+'</div>'+bar('120px',14)+'</div>';
+  let h=_loadBannerHTML('Loading Pilot Dashboard',S.pilot._prog)+'<div class="su-skel-grid">';
+  h+='<div class="su-skel-card">'+head('160px')+'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px">';
+  for(let i=0;i<5;i++)h+=bar('100%',96);
+  h+='</div></div>';
+  for(const n of [5,5,8]){
+    h+='<div class="su-skel-card">'+head('200px');
+    for(let i=0;i<n;i++)h+='<div style="margin-bottom:10px">'+bar('100%',22)+'</div>';
+    h+='</div>';
+  }
+  return h+'</div>';
 }
 // Deal-list filters. Re-rendering the page is cheap: everything is in memory.
 window.pilotFilter=function(kind,val){
@@ -1868,52 +1888,43 @@ function renderPilot(){
   // ── 2. Status breakdown ──
   h+='<div class="dsec" style="'+card+'"><div class="dsec-h dsec-in" id="dsec-pilot-status">Waitlist Status</div>';
   h+='<div class="irf-card-sub">Where each deal is on the pilot waitlist, and what it has closed so far</div>';
-  h+='<table class="ctbl"><thead><tr><th>Status</th><th class="n">Deals</th><th class="n">% of waitlist</th><th style="width:30%"></th><th class="n">Closed Won</th><th class="n">Win rate</th><th class="n">MRR</th><th class="n">ARR</th></tr></thead><tbody>';
   const maxN=Math.max(1,...order.map(s=>(by[s]||{}).n||0));
-  for(const s of order){
-    const a=by[s]||{n:0,won:0,mrr:0}, c=PILOT_STATUS_COLORS[s]||'#9CA3AF';
-    h+='<tr><td>'+_pilotPill(s,c)+'</td><td class="n">'+fN(a.n)+'</td><td class="n">'+_pilotPct(a.n,total)+'</td>'
-      +'<td><div style="height:8px;border-radius:4px;background:var(--teal-8)"><div style="height:8px;border-radius:4px;width:'+(a.n/maxN*100).toFixed(1)+'%;background:'+c+'"></div></div></td>'
-      +'<td class="n">'+fN(a.won)+'</td><td class="n">'+_pilotPct(a.won,a.n)+'</td><td class="n">'+_pilotUsd(a.mrr)+'</td><td class="n">'+_pilotUsd(a.mrr*12)+'</td></tr>';
-  }
-  h+='<tr style="font-weight:700"><td>Total</td><td class="n">'+fN(total)+'</td><td class="n">100%</td><td></td><td class="n">'+fN(won.n||0)+'</td><td class="n">'+_pilotPct(won.n||0,total)+'</td><td class="n">'+_pilotUsd(won.mrr||0)+'</td><td class="n">'+_pilotUsd(won.arr||0)+'</td></tr>';
-  h+='</tbody></table></div>';
+  h+=_pilotTable('status',[{l:'Status',t:1},{l:'Deals'},{l:'% of waitlist'},{l:'',sty:'width:30%',ns:1},{l:'Closed Won'},{l:'Win rate'},{l:'MRR'},{l:'ARR'}],
+    order.map(s=>{
+      const a=by[s]||{n:0,won:0,mrr:0}, c=PILOT_STATUS_COLORS[s]||'#9CA3AF', wr=a.n?a.won/a.n:null;
+      return {k:[s,a.n,a.n,null,a.won,wr,a.mrr,a.mrr],c:['<td>'+_pilotPill(s,c)+'</td>','<td class="n">'+fN(a.n)+'</td>','<td class="n">'+_pilotPct(a.n,total)+'</td>',
+        '<td><div style="height:8px;border-radius:4px;background:var(--teal-8)"><div style="height:8px;border-radius:4px;width:'+(a.n/maxN*100).toFixed(1)+'%;background:'+c+'"></div></div></td>',
+        '<td class="n">'+fN(a.won)+'</td>','<td class="n">'+_pilotPct(a.won,a.n)+'</td>','<td class="n">'+_pilotUsd(a.mrr)+'</td>','<td class="n">'+_pilotUsd(a.mrr*12)+'</td>']};
+    }),
+    '<tr style="font-weight:700"><td>Total</td><td class="n">'+fN(total)+'</td><td class="n">100%</td><td></td><td class="n">'+fN(won.n||0)+'</td><td class="n">'+_pilotPct(won.n||0,total)+'</td><td class="n">'+_pilotUsd(won.mrr||0)+'</td><td class="n">'+_pilotUsd(won.arr||0)+'</td></tr>');
+  h+='</div>';
 
   // ── 3. Status x deal stage ──
   h+='<div class="dsec" style="'+card+'"><div class="dsec-h dsec-in" id="dsec-pilot-matrix">Status × Deal Stage</div>';
   h+='<div class="irf-card-sub">Current HubSpot deal stage for each waitlist status. Darker cells hold more deals.</div>';
-  h+='<div style="overflow-x:auto"><table class="ctbl"><thead><tr><th>Status</th>';
-  for(const st of stages){
-    const c=_pilotStageColor(st.id);
-    h+='<th class="n" style="white-space:normal;min-width:70px"><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:'+c+';margin-right:4px"></span>'+_pilotEsc(_pilotStageLabel(d,st.id))+'</th>';
-  }
-  h+='<th class="n">Total</th></tr></thead><tbody>';
   const mx=d.matrix||{};
   let cellMax=1; for(const s of order)for(const st of stages)cellMax=Math.max(cellMax,(mx[s]||{})[st.id]||0);
-  for(const s of order){
-    h+='<tr><td>'+_pilotPill(s,PILOT_STATUS_COLORS[s])+'</td>';
-    for(const st of stages){
-      const v=(mx[s]||{})[st.id]||0;
-      h+='<td class="n" style="'+(v?'background:rgba(114,164,191,'+(0.08+0.5*v/cellMax).toFixed(2)+')':'color:var(--grey)')+'">'+(v?fN(v):'·')+'</td>';
-    }
-    h+='<td class="n" style="font-weight:700">'+fN((by[s]||{}).n||0)+'</td></tr>';
-  }
-  h+='<tr style="font-weight:700"><td>Total</td>';
-  for(const st of stages)h+='<td class="n">'+fN(st.n)+'</td>';
-  h+='<td class="n">'+fN(total)+'</td></tr></tbody></table></div></div>';
+  h+=_pilotTable('matrix',[{l:'Status',t:1}].concat(stages.map(st=>({l:'<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:'+_pilotStageColor(st.id)+';margin-right:4px"></span>'+_pilotEsc(_pilotStageLabel(d,st.id)),sty:'white-space:normal;min-width:70px'}))).concat([{l:'Total'}]),
+    order.map(s=>{
+      const vs=stages.map(st=>(mx[s]||{})[st.id]||0);
+      return {k:[s].concat(vs,[(by[s]||{}).n||0]),c:['<td>'+_pilotPill(s,PILOT_STATUS_COLORS[s])+'</td>']
+        .concat(vs.map(v=>'<td class="n" style="'+(v?'background:rgba(114,164,191,'+(0.08+0.5*v/cellMax).toFixed(2)+')':'color:var(--grey)')+'">'+(v?fN(v):'·')+'</td>'),
+          ['<td class="n" style="font-weight:700">'+fN((by[s]||{}).n||0)+'</td>'])};
+    }),
+    '<tr style="font-weight:700"><td>Total</td>'+stages.map(st=>'<td class="n">'+fN(st.n)+'</td>').join('')+'<td class="n">'+fN(total)+'</td></tr>','overflow-x:auto');
+  h+='</div>';
 
   // ── 4. By outreach date ──
   h+='<div class="dsec" style="'+card+'"><div class="dsec-h dsec-in" id="dsec-pilot-outreach">By Outreach Date</div>';
   h+='<div class="irf-card-sub">Deals grouped by their Pilot Waitlist Outreach Date, with where each batch stands now</div>';
-  h+='<div style="overflow-x:auto"><table class="ctbl"><thead><tr><th>Outreach date</th><th class="n">Deals</th>';
-  for(const s of order)h+='<th class="n" style="white-space:normal;min-width:80px">'+_pilotEsc(s)+'</th>';
-  h+='<th class="n">Closed Won</th><th class="n">Win rate</th><th class="n">MRR</th></tr></thead><tbody>';
-  for(const r of (d.outreach||[])){
-    h+='<tr><td>'+(r.date?_pilotDay(r.date):'(No outreach date)')+'</td><td class="n">'+fN(r.n)+'</td>';
-    for(const s of order){const v=(r.byStatus||{})[s]||0;h+='<td class="n"'+(v?'':' style="color:var(--grey)"')+'>'+(v?fN(v):'·')+'</td>';}
-    h+='<td class="n">'+fN(r.won)+'</td><td class="n">'+_pilotPct(r.won,r.n)+'</td><td class="n">'+_pilotUsd(r.mrr)+'</td></tr>';
-  }
-  h+='</tbody></table></div></div>';
+  h+=_pilotTable('outreach',[{l:'Outreach date',t:1},{l:'Deals'}].concat(order.map(s=>({l:_pilotEsc(s),sty:'white-space:normal;min-width:80px'})),[{l:'Closed Won'},{l:'Win rate'},{l:'MRR'}]),
+    (d.outreach||[]).map(r=>{
+      const vs=order.map(s=>(r.byStatus||{})[s]||0);
+      return {k:[r.date,r.n].concat(vs,[r.won,r.n?r.won/r.n:null,r.mrr]),c:['<td>'+(r.date?_pilotDay(r.date):'(No outreach date)')+'</td>','<td class="n">'+fN(r.n)+'</td>']
+        .concat(vs.map(v=>'<td class="n"'+(v?'':' style="color:var(--grey)"')+'>'+(v?fN(v):'·')+'</td>'),
+          ['<td class="n">'+fN(r.won)+'</td>','<td class="n">'+_pilotPct(r.won,r.n)+'</td>','<td class="n">'+_pilotUsd(r.mrr)+'</td>'])};
+    }),'','overflow-x:auto');
+  h+='</div>';
 
   // ── 5. Closed Won revenue ──
   const wonDeals=deals.filter(x=>x.won).sort((a,b)=>String(b.closeDay||'').localeCompare(String(a.closeDay||''))||(b.mrr||0)-(a.mrr||0));
@@ -1922,13 +1933,10 @@ function renderPilot(){
   if(!wonDeals.length){
     h+='<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px">No waitlist deal has closed yet.</div>';
   }else{
-    h+='<div style="overflow-x:auto"><table class="ctbl"><thead><tr><th>Deal</th><th>Status</th><th>Outreach</th><th>Closed</th><th class="n">MRR</th><th class="n">ARR</th></tr></thead><tbody>';
-    for(const x of wonDeals){
-      h+='<tr><td>'+_pilotDealCell(x)+'</td><td>'+_pilotPill(x.status,PILOT_STATUS_COLORS[x.status])+'</td><td>'+_pilotDayShort(x.outreach)+'</td>'
-        +'<td>'+_pilotDayShort(x.closeDay)+(x.wonBeforeOutreach?' <span class="pill" style="background:#F59E0B22;color:#B45309;font-size:9px" title="Closed before its outreach date">before outreach</span>':'')+'</td>'
-        +'<td class="n">'+_pilotUsd(x.mrr)+'</td><td class="n">'+(x.mrr==null?'—':_pilotUsd(x.mrr*12))+'</td></tr>';
-    }
-    h+='</tbody></table></div>';
+    h+=_pilotTable('won',[{l:'Deal',t:1},{l:'Status',t:1},{l:'Outreach',t:1},{l:'Closed',t:1},{l:'MRR'},{l:'ARR'}],
+      wonDeals.map(x=>({k:[x.name,x.status,x.outreach,x.closeDay,x.mrr,x.mrr],c:['<td>'+_pilotDealCell(x)+'</td>','<td>'+_pilotPill(x.status,PILOT_STATUS_COLORS[x.status])+'</td>','<td>'+_pilotDayShort(x.outreach)+'</td>',
+        '<td>'+_pilotDayShort(x.closeDay)+(x.wonBeforeOutreach?' <span class="pill" style="background:#F59E0B22;color:#B45309;font-size:9px" title="Closed before its outreach date">before outreach</span>':'')+'</td>',
+        '<td class="n">'+_pilotUsd(x.mrr)+'</td>','<td class="n">'+(x.mrr==null?'—':_pilotUsd(x.mrr*12))+'</td>']})),'','overflow-x:auto');
   }
   h+='</div>';
 
@@ -1936,8 +1944,9 @@ function renderPilot(){
   const fS=S.pilot.fStatus||null, fG=S.pilot.fStage||null;
   const shown=deals.filter(x=>(!fS||x.status===fS)&&(!fG||x.stage===fG))
     .sort((a,b)=>String(b.outreach||'').localeCompare(String(a.outreach||''))||String(a.name).localeCompare(String(b.name)));
+  const _dsort=(S.pilot.sort||{}).deals;
   h+='<div class="dsec" style="'+card+'"><div class="dsec-h dsec-in" id="dsec-pilot-deals">All Waitlist Deals</div>';
-  h+='<div class="irf-card-sub">'+fN(shown.length)+' of '+fN(total)+' deals · newest outreach first</div>';
+  h+='<div class="irf-card-sub">'+fN(shown.length)+' of '+fN(total)+' deals · '+(_dsort?'sorted by the highlighted column':'newest outreach first')+'</div>';
   h+='<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:12px">';
   h+='<button class="fb'+(fS?'':' active')+'" onclick="pilotFilter(\'status\',S.pilot.fStatus)">All statuses</button>';
   order.forEach((s,i)=>{h+='<button class="fb'+(fS===s?' active':'')+'" onclick="pilotFilter(\'status\',S.pilot.data.statusOrder['+i+'])">'+_pilotEsc(s)+' ('+fN((by[s]||{}).n||0)+')</button>';});
@@ -1945,17 +1954,59 @@ function renderPilot(){
   h+='<option value="">All deal stages</option>';
   for(const st of stages)h+='<option value="'+_pilotEsc(st.id)+'"'+(fG===st.id?' selected':'')+'>'+_pilotEsc(_pilotStageLabel(d,st.id))+' ('+fN(st.n)+')</option>';
   h+='</select></div>';
-  h+='<div style="overflow-x:auto;max-height:640px;overflow-y:auto"><table class="ctbl"><thead><tr><th>Deal</th><th>Status</th><th>Deal stage</th><th>Outreach</th><th>Created</th><th>Closed</th><th class="n">MRR</th></tr></thead><tbody>';
-  for(const x of shown){
-    const sc=_pilotStageColor(x.stage);
-    h+='<tr><td>'+_pilotDealCell(x)+'</td><td>'+_pilotPill(x.status,PILOT_STATUS_COLORS[x.status])+'</td>'
-      +'<td>'+_pilotPill(_pilotStageLabel(d,x.stage),sc)+'</td><td>'+_pilotDayShort(x.outreach)+'</td><td>'+_pilotDayShort(x.created)+'</td>'
-      +'<td>'+(x.won?_pilotDayShort(x.closeDay):'—')+'</td><td class="n">'+(x.won?_pilotUsd(x.mrr):(x.mrr!=null?'<span style="color:var(--grey)" title="Amount on an open deal">'+_pilotUsd(x.mrr)+'</span>':'—'))+'</td></tr>';
-  }
-  if(!shown.length)h+='<tr><td colspan="7" style="text-align:center;color:var(--grey);padding:20px">No deals match these filters.</td></tr>';
-  h+='</tbody></table></div></div>';
+  // Deal stage sorts in PIPELINE order (the order of d.stages), not A-Z.
+  const _stIdx={}; stages.forEach((st,i)=>{_stIdx[st.id]=i;});
+  h+=_pilotTable('deals',[{l:'Deal',t:1},{l:'Status',t:1},{l:'Deal stage',t:1},{l:'Outreach',t:1},{l:'Created',t:1},{l:'Closed',t:1},{l:'MRR'}],
+    shown.map(x=>({k:[x.name,x.status,_stIdx[x.stage],x.outreach,x.created,x.won?x.closeDay:null,x.mrr],c:['<td>'+_pilotDealCell(x)+'</td>','<td>'+_pilotPill(x.status,PILOT_STATUS_COLORS[x.status])+'</td>',
+      '<td>'+_pilotPill(_pilotStageLabel(d,x.stage),_pilotStageColor(x.stage))+'</td>','<td>'+_pilotDayShort(x.outreach)+'</td>','<td>'+_pilotDayShort(x.created)+'</td>',
+      '<td>'+(x.won?_pilotDayShort(x.closeDay):'—')+'</td>','<td class="n">'+(x.won?_pilotUsd(x.mrr):(x.mrr!=null?'<span style="color:var(--grey)" title="Amount on an open deal">'+_pilotUsd(x.mrr)+'</span>':'—'))+'</td>']})),
+    shown.length?'':'<tr><td colspan="7" style="text-align:center;color:var(--grey);padding:20px">No deals match these filters.</td></tr>',
+    'overflow-x:auto;max-height:640px;overflow-y:auto');
+  h+='</div>';
+  // A sort or filter re-renders the page; keep the deal list's own scroll.
+  const _dsc=document.getElementById('pilot-tbl-deals'), _dTop=_dsc?_dsc.scrollTop:0;
   el.innerHTML=h;
+  const _dsc2=document.getElementById('pilot-tbl-deals'); if(_dsc2&&_dTop)_dsc2.scrollTop=_dTop;
 }
+// One sortable table. cols: {l: header html, t: 1 for a text column (left-aligned,
+// first click A-Z; numbers start high-to-low), ns: not sortable, sty: extra th
+// style}. rows: {k: sort key per column, c: cell html
+// per column}, in the table's natural order, which is what shows until a header
+// is clicked. foot (a Total row) always stays last. Blank keys sort last in
+// either direction, so a sort by MRR never opens on a wall of dashes.
+function _pilotTable(id,cols,rows,foot,wrapSty){
+  (_pilotTable._cols||(_pilotTable._cols={}))[id]=cols;
+  const st=(S.pilot.sort||{})[id];
+  const rs=rows.map((r,i)=>Object.assign({i},r));
+  if(st&&cols[st.c]&&!cols[st.c].ns){
+    rs.sort((a,b)=>{
+      const x=a.k[st.c],y=b.k[st.c],xn=(x==null||x===''),yn=(y==null||y==='');
+      if(xn||yn)return (xn?1:0)-(yn?1:0)||a.i-b.i;
+      const c=(typeof x==='number'&&typeof y==='number')?x-y:String(x).localeCompare(String(y));
+      return c*st.d||a.i-b.i;
+    });
+  }
+  let h='<div id="pilot-tbl-'+id+'"'+(wrapSty?' style="'+wrapSty+'"':'')+'><table class="ctbl"><thead><tr>';
+  cols.forEach((c,ci)=>{
+    const num=!c.t, on=st&&st.c===ci;
+    h+='<th'+(num?' class="n"':'')+(c.ns?'':' onclick="pilotSort(\''+id+'\','+ci+')"')+' style="'+(c.ns?'':'cursor:pointer;user-select:none;')+(on?'color:var(--navy);':'')+(c.sty||'')+'"'
+      +(c.ns?'':' title="Sort"')+'>'+c.l+(on?(st.d<0?' ↓':' ↑'):'')+'</th>';
+  });
+  h+='</tr></thead><tbody>';
+  for(const r of rs)h+='<tr>'+r.c.join('')+'</tr>';
+  return h+(foot||'')+'</tbody></table></div>';
+}
+// Header click: a new column starts in its natural direction, the same column
+// flips. Sorts live in S.pilot.sort, so they survive Refresh and a filter.
+window.pilotSort=function(id,ci){
+  const all=S.pilot.sort||(S.pilot.sort={}), cur=all[id];
+  if(cur&&cur.c===ci)cur.d=-cur.d;
+  else all[id]={c:ci,d:_pilotSortD0(id,ci)};
+  renderPilot();
+};
+// First direction for a column: text A-Z, numbers high-to-low. The table
+// registers its columns as it renders, so this reads the same definition.
+function _pilotSortD0(id,ci){const c=((_pilotTable._cols||{})[id]||[])[ci];return c&&!c.t?-1:1;}
 function _pilotDealCell(x){
   return '<div style="display:flex;align-items:center;gap:4px;max-width:320px"><span style="overflow:hidden;text-overflow:ellipsis" title="'+_pilotEsc(x.name)+'">'+_pilotEsc(x.name||'(unnamed deal)')+'</span>'
     +'<a href="https://app.hubspot.com/contacts/46815331/record/0-3/'+encodeURIComponent(x.id)+'" target="_blank" rel="noopener" style="flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:4px;background:rgba(114,164,191,.1);color:var(--teal);font-size:9px;text-decoration:none">↗</a></div>';
@@ -5752,6 +5803,8 @@ window.clinicianSetFunnelAllTime=function(on){
 function _clnPage(){return AP==='clinician'||(AP==='exec'&&_execMode()==='clinician');}
 async function fdClinician(win){
   S.clinician._loading=true;
+  if(S.clinician._prog)S.clinician._prog.stop();
+  const _prog=S.clinician._prog=_loadProgress('clinician-c',['Connecting to HubSpot\u2026','Fetching clinician deals\u2026','Fetching sign-ups & stage history\u2026','Fetching ad spend\u2026','Building the funnel\u2026','Building composition & acquisition\u2026','Rendering dashboard\u2026'],2000);
   // renderPage() applies .active to #page-clinician (switchDashSub returns early
   // for this page). Guarded by AP so a background preload can't re-render or
   // disturb whichever page the user is actually on.
@@ -5769,8 +5822,10 @@ async function fdClinician(win){
     const r=await fetch(CLINICIAN_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
     const d=await r.json();
     if(!r.ok||d.error){throw new Error(d.error||('HTTP '+r.status));}
+    if(AP==='clinician')await _prog.done(); else _prog.stop();
     S.clinician.data=d; S.clinician._loading=false; if(_clnPage())renderPage();
   }catch(e){
+    _prog.stop();
     S.clinician._loading=false;
     if(el&&AP==='clinician')el.innerHTML='<div style="padding:32px;text-align:center"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:#C62828;margin-bottom:6px">Clinician funnel failed to load</div><div style="font-size:12px;color:var(--grey)">'+(e.message||e)+'</div></div>';
   }
@@ -6153,10 +6208,35 @@ window.irfanAdsClear=function(){
 };
 // Skeleton shown while the Clinician payload loads — reuses the shared su-skel-*
 // shimmer so it matches the other pages rather than a bare "Loading" line.
+// Loading banner for the pages that fetch their own payload (Clinician, Pilot):
+// the Brand Dashboard's .su-skel-banner with a timed step ticker. The fill is an
+// ESTIMATE -- the worker reports no progress -- so it creeps to 92% and reaches
+// 100% only when the payload lands. The banner lives inside the page's content
+// element, so the real render replaces it; the state object survives a
+// re-render of the skeleton (navigating away and back) and paints from there.
+function _loadBannerHTML(title,p){
+  const pct=p?p.pct:6, step=p?p.step:'';
+  return '<div class="su-skel-banner" role="status" aria-live="polite"><div class="su-skel-banner-spin" aria-hidden="true"></div>'
+    +'<div class="su-skel-banner-text"><div class="su-skel-banner-title">'+title+'</div><div class="su-skel-banner-step">'+(step||'')+'</div></div>'
+    +'<div class="su-skel-banner-bar"><div class="su-skel-banner-fill" style="width:'+pct+'%"></div></div>'
+    +'<div class="su-skel-banner-pct">'+Math.round(pct)+'%</div></div>';
+}
+function _loadProgress(rootId,steps,ms){
+  const st={pct:6,step:steps[0]};
+  const paint=()=>{const r=document.getElementById(rootId);if(!r)return;
+    const f=r.querySelector('.su-skel-banner-fill'),sp=r.querySelector('.su-skel-banner-step'),pc=r.querySelector('.su-skel-banner-pct');
+    if(f)f.style.width=st.pct+'%';if(sp)sp.textContent=st.step;if(pc)pc.textContent=Math.round(st.pct)+'%';};
+  let si=0;
+  const iv=setInterval(()=>{si++;st.pct=Math.min(6+si*10,92);st.step=steps[Math.min(si,steps.length-1)];paint();},ms||2300);
+  st.stop=()=>clearInterval(iv);
+  st.done=async()=>{clearInterval(iv);st.pct=100;st.step='Complete!';paint();await new Promise(ok=>setTimeout(ok,260));};
+  st.fail=msg=>{clearInterval(iv);st.step=msg;paint();};
+  return st;
+}
 function _clinicianSkeleton(){
   const bar=(w,h)=>'<div class="su-skel-bar" style="width:'+w+';height:'+h+'px"></div>';
   const head=(w)=>'<div class="su-skel-head"><div class="su-skel-title">'+bar(w,20)+'</div>'+bar('120px',14)+'</div>';
-  let h='<div class="su-skel-grid">';
+  let h=_loadBannerHTML('Loading Clinician Dashboard',S.clinician._prog)+'<div class="su-skel-grid">';
   // Funnel: stage rows + stat column
   h+='<div class="su-skel-card">'+head('190px')
     +'<div style="display:flex;gap:16px;flex-wrap:wrap"><div style="flex:1 1 70%;min-width:320px">';
@@ -12231,8 +12311,9 @@ function switchDashSub(sub){
   // an empty/zero response from an earlier failed fetch — switching to
   // the page should always pull fresh numbers.
   if(AP==='webinarPerf'){fdWebinarPerf(S.webinarPerf.win||'mtd');return;}
-  // Pilot: no window, so it loads once and Refresh (refreshData) re-pulls it.
-  if(AP==='pilot'){ if(S.pilot.data){renderPage();} else {fdPilot();} return; }
+  // Pilot: every nav click re-pulls it, like Webinar Performance -- the page is
+  // a live working list, so a click should never show a stale one.
+  if(AP==='pilot'){fdPilot();return;}
   // Load once. Nav clicks re-render from cached data; a refetch only happens on a
   // time-frame change (selW) or the Refresh button (refreshData clears .data).
   if(AP==='clinician'){ if(S.clinician.data){renderPage();} else {fdClinician(S.clinician.win||'mtd');} return; }

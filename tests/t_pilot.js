@@ -106,9 +106,9 @@ ck('an empty list is all zeros, not a crash',(()=>{const e=W.buildPilotDashboard
     "function _clnInk(h){return h;}",
     pick('const PILOT_STATUS_COLORS=','};'),
     pick('let _pilotStageColorMap=null;','function renderPilot(){').replace(/function renderPilot\(\)\{$/,''),
-    fn(cli,'renderPilot'),fn(cli,'_pilotDealCell'),
+    fn(cli,'renderPilot'),fn(cli,'_pilotDealCell'),fn(cli,'_pilotTable'),fn(cli,'_pilotSortD0'),pick('window.pilotSort=function','\n};'),
     "var AP='pilot';var S={pilot:{data:null,fStatus:null,fStage:null,_fetching:true}};",
-    "Object.assign(globalThis,{renderPilot,S,pilotFilter:window.pilotFilter});",
+    "Object.assign(globalThis,{renderPilot,S,pilotFilter:window.pilotFilter,pilotSort:window.pilotSort});",
   ].join('\n'),C);
   const evil=W.buildPilotDashboard([D(OLR,'closedwon',{dealname:'<img src=x onerror=alert(1)>',amount:'2500',closedate:'2026-10-25T15:00:00Z'})].concat(deals),meta);
   C.S.pilot.data=JSON.parse(JSON.stringify(evil));
@@ -139,6 +139,31 @@ ck('an empty list is all zeros, not a crash',(()=>{const e=W.buildPilotDashboard
   ck('every heading carries a stable id, so Jump-to survives a filter re-render',
      [...el.innerHTML.matchAll(/<div class="dsec-h dsec-in"( id="dsec-pilot-[a-z]+")?>/g)].map(m=>!!m[1]),[true,true,true,true,true,true]);
   ck('a second visit during the first fetch re-shows the page',/if\(S\.pilot\._fetching\)\{[^}]*getElementById\('page-pilot'\)\.classList\.add\('active'\)/.test(fn(cli,'fdPilot')),true);
+  // ── Sorting (2026-11-02) ──
+  // Column texts of one table's body rows, read off the CURRENT render.
+  const col=(id,ci)=>{const x=el.innerHTML;const i=x.indexOf('id="pilot-tbl-'+id+'"');const t0=x.indexOf('<tbody>',i),t1=x.indexOf('</tbody>',t0);
+    return x.slice(t0,t1).split('<tr').slice(1).map(r=>{const cells=r.split('<td').slice(1);const c=cells[ci]||'';return c.replace(/<[^>]*>/g,'').replace(/^[^>]*>/,'').trim();});};
+  ck('every table header is clickable',(el.innerHTML.match(/onclick="pilotSort\('(status|matrix|outreach|won|deals)',\d+\)"/g)||[]).length>=30,true);
+  C.pilotSort('deals',6);
+  const mrrDesc=col('deals',6);
+  ck('a numeric column sorts high-to-low first, blanks last',[mrrDesc[0],mrrDesc[mrrDesc.length-1]],['$4,250','—']);
+  ck('  and the header shows the arrow',/pilotSort\('deals',6\)"[^>]*>MRR ↓<\/th>/.test(el.innerHTML),true);
+  C.pilotSort('deals',6);
+  const mrrAsc=col('deals',6);
+  ck('a second click flips it, blanks still last',[mrrAsc[0],mrrAsc[mrrAsc.length-1]],['$500','—']);
+  C.pilotSort('deals',2);
+  ck('deal stage sorts in pipeline order, not A-Z',[...new Set(col('deals',2))],['Appointment Scheduled','Demo Happened','Closed Won','No Show','Webinar Happened']);
+  C.pilotFilter('status',NMT);
+  ck('a sort survives a filter',col('deals',2),['Closed Won','Webinar Happened']);
+  C.pilotFilter('status',NMT);
+  C.pilotSort('status',1);
+  ck('a summary table sorts, with Total pinned last',col('status',0),['Onboarding Link Requested','Outreach Sent / No Response','Needs More Time','Not Interested','(No status)','Total']);
+  C.pilotSort('status',0);
+  ck('a text column starts A-Z',col('status',0).slice(0,2),['(No status)','Needs More Time']);
+  ck('the bar column is not sortable',/onclick="pilotSort\('status',3\)"/.test(el.innerHTML),false);
+  C.pilotSort('outreach',0);
+  ck('the date column sorts by date',col('outreach',0),['Oct 20, 2026','Oct 22, 2026','Oct 26, 2026','Oct 27, 2026','Oct 29, 2026']);
+  C.S.pilot.sort={};C.renderPilot();
   ck('the Closed Won table lists the won deals',rowsIn('Closed Won Revenue'),6);
 
   console.log('\n'+pass+' passed, '+fail+' failed');process.exit(fail?1:0);
