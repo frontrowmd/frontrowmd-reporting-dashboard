@@ -48,8 +48,21 @@ ck('no literal month is pinned as the fallback',/BUDGET_FALLBACK = BUDGET_BY_MON
 ck('an unlisted month logs a warning',/budget: no plan for \$\{key\}/.test(src),true);
 ck('and names what to do about it',/Add the month to BUDGET_BY_MONTH/.test(src),true);
 // The newest key must resolve to the month we just added.
-ck('newest key is October',
-   [...src.slice(src.indexOf('const BUDGET_BY_MONTH')).matchAll(/'(\d{4}-\d{2})':/g)].map(m=>m[1]).sort().pop(),'2026-10');
+ck('newest key is November',
+   [...src.slice(src.indexOf('const BUDGET_BY_MONTH')).matchAll(/'(\d{4}-\d{2})':/g)].map(m=>m[1]).sort().pop(),'2026-11');
+
+// November plan, set 2026-11-02.
+const nov=monthBudget('2026-11');
+ck('November is listed',nov!==null,true);
+ck('Nov: Meta Brand / Meta Clinician / Google / LinkedIn',
+   [nov.meta,nov.clinician,nov.google,nov.linkedin],[40000,10000,10000,6500]);
+ck('Nov: ChatGPT, Reddit, TikTok and YouTube are explicitly zero',
+   [nov.chatgpt,nov.reddit,nov.tiktok,nov.youtube],[0,0,0,0]);
+ck('Nov: the plan totals $66,500',Object.values(nov).reduce((a,b)=>a+b,0),66500);
+ck('Nov: the KPI roll-up (clinician excluded) is $56,500',
+   Object.entries(nov).reduce((a,[k,v])=>a+(EXCL.has(k)?0:v),0),56500);
+ck('November names every channel September does',
+   Object.keys(sept).filter(k=>!(k in nov)),[]);
 
 console.log('\n'+pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);

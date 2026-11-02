@@ -118,7 +118,7 @@ ck('Decision Maker and Contract Sent are not tracked at all',
      /cur: buildBrandStageFunnel\(_bsDeals, current\.from, current\.to\),\s*prior: prior \? buildBrandStageFunnel\(_bsDeals, prior\.from, prior\.to\) : null,\s*lm: priorMonth \? buildBrandStageFunnel\(_bsDeals, priorMonth\.from, priorMonth\.to\) : null,/.test(src)
      &&/resp\.brandStageFunnel = _bsf;/.test(src),true);
   ck('  a failure degrades to no deal rows, not a 500',/\} catch \(e\) \{ console\.error\('brand stage funnel failed:'/.test(src),true);
-  ck('the payload change bumped the cache version',/const API_CACHE_VER = 'v51';/.test(src),true);
+  ck('the payload change bumped the cache version',+(/const API_CACHE_VER = 'v(\d+)'/.exec(src)||[])[1]>=51,true);
   ck('  and the long-span deal cache, whose rows gained a property',/brand_stage_deals_v2_/.test(src)&&W.BRAND_STAGE_PROPS.includes('demo_attendance_status'),true);
 }
 // The two copies of the stage ids must agree.

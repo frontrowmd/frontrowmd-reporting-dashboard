@@ -280,6 +280,11 @@ const BUDGET_BY_MONTH = {
   // Ad Spend pacing card — still sees $15,000 (Meta + Google). The Clinician
   // page's own Ad Spend card is the one that moves.
   '2026-10': { meta: 12000, clinician: 9000, linkedin: 0, google: 3000, reddit: 0, chatgpt: 0, tiktok: 0, youtube: 0 },
+  // November plan, set 2026-11-02. FOUR funded lines totalling $66,500: Meta
+  // Brand $40,000, Meta Clinician $10,000, Google $10,000, LinkedIn $6,500.
+  // Reddit, ChatGPT, TikTok and YouTube are explicitly $0. As in October,
+  // `clinician` is KPI-excluded, so the Brand KPI budgets see $56,500.
+  '2026-11': { meta: 40000, clinician: 10000, linkedin: 6500, google: 10000, reddit: 0, chatgpt: 0, tiktok: 0, youtube: 0 },
 };
 // Pinned to a literal month, this silently paced every unlisted month against a
 // plan that kept getting older — August's $42,500 would have stood in for
@@ -874,7 +879,8 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v51';   // v51: Decision Maker / Contract Sent dropped; Closed Won measured on Demo Happened.
+const API_CACHE_VER = 'v52';   // v52: November ad budgets.
+                               // v51: Decision Maker / Contract Sent dropped; Closed Won measured on Demo Happened.
                                // v50: brandStageFunnel counts a held demo as Demo Happened; DM measured on Demo Happened.
                                // v49: brandStageFunnel -- Sales-pipeline deal stages on the Conversion Funnel.
                                // v48: regular0to10K actually shipped; webinar no-show over ALL registrants.
