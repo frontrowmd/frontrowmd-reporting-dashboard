@@ -622,6 +622,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
     <div class="snav">
       <div class="ni" onclick="switchDashSub('exec')" data-page="exec" data-sub="exec"><span class="ic" style="font-size:12px">⭐</span><span>Executive Dashboard</span></div>
       <div class="ni" onclick="switchDashSub('overview')" data-page="dashboard" data-sub="overview"><span class="ic" style="font-size:12px">📊</span><span>Brand Dashboard</span></div>
+      <div class="ni" onclick="switchDashSub('pilot')" data-page="pilot" data-sub="pilot"><span class="ic" style="font-size:12px">🧪</span><span>Pilot Dashboard</span></div>
       <div class="ni" onclick="clinicianNav()" data-page="clinician" data-sub="clinician"><span class="ic" style="font-size:12px">🩺</span><span>Clinician Dashboard</span></div>
       <div class="ni grp" onclick="autoExpand();toggleDashMenu()" data-page="dashboard" id="dash-menu-parent" title="Additional Insights"><span class="ic">📊</span><span>Additional Insights</span><span id="dash-arrow" style="margin-left:auto;font-size:10px;transition:transform .2s">▶</span></div>
       <div id="dash-submenu" style="display:none;padding-left:24px">
@@ -877,6 +878,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
     <div class="pg" id="page-clinician"><div id="clinician-date-header" style="margin-bottom:24px"></div><div id="clinician-c"></div></div>
     <div class="pg" id="page-demoQuality"><div id="dq-c"></div></div>
     <div class="pg" id="page-webinarPerf"><div id="wp-c"></div></div>
+    <div class="pg" id="page-pilot"><div id="pilot-c"></div></div>
     <div class="pg" id="page-csession"><div id="csession-c"></div></div>
 
     <div class="pg" id="page-content"><div id="content-c"></div></div>
@@ -904,12 +906,13 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 const _BUILD_VER='s5t268';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
+const PILOT_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/pilot':'/api/pilot';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
 const WP_BASELINE_SAVE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline/save':'/api/baseline/save';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
 let PW='';
-const S={exec:{win:'mtd',data:null,mode:'brand',adChannel:'meta'},dashboard:{win:'mtd',data:null,sub:'exec'},irfan:{win:'mtd',data:null},strategy:{data:null,win:'lastMonth'},calculator:{win:'mtd',data:null},signup:{win:null,data:null},clinician:{win:'mtd',data:null},analyzer:{win:'mtd',data:null,tab:'overview',sub:'overview'},demoQuality:{win:'mtd',data:null},webinarPerf:{win:'mtd',data:null},csession:{step:1},content:{data:null,sub:'cs-intel'},outbound:{data:null}};let AP='exec';
+const S={exec:{win:'mtd',data:null,mode:'brand',adChannel:'meta'},dashboard:{win:'mtd',data:null,sub:'exec'},irfan:{win:'mtd',data:null},strategy:{data:null,win:'lastMonth'},calculator:{win:'mtd',data:null},signup:{win:null,data:null},clinician:{win:'mtd',data:null},analyzer:{win:'mtd',data:null,tab:'overview',sub:'overview'},demoQuality:{win:'mtd',data:null},webinarPerf:{win:'mtd',data:null},pilot:{data:null,fStatus:null,fStage:null},csession:{step:1},content:{data:null,sub:'cs-intel'},outbound:{data:null}};let AP='exec';
 const f$=v=>v==null?'—':'$'+Math.round(v).toLocaleString();
 const fN=v=>v==null?'—':Math.round(v).toLocaleString();
 const fP=(v,d=1)=>v==null?'—':v.toFixed(d)+'%';
@@ -925,7 +928,7 @@ function _staleAge(sec){
 // % No-Show exclude these (matching True CPD/CPQD + the worker). Lowercase
 // substring so it works on cloned tier strings or live values.
 const isSmallBrandWT=wt=>{const s=(wt||'').toLowerCase();return s.indexOf('pre-launch')>=0||s.indexOf('0-10k')>=0||s.indexOf('very small')>=0;};
-const T={exec:'Executive Dashboard',dashboard:'Brand Dashboard',irfan:'Irfan Dashboard',resources:'Resources',calculator:'ARR Calculator',signup:'Sign-Up Rate',csession:'Creative Session',demoQuality:'Demo Quality',webinarPerf:'Webinar Performance',content:'Social Media Content',outbound:'Outbound Sequences'};
+const T={exec:'Executive Dashboard',dashboard:'Brand Dashboard',pilot:'Pilot Dashboard',irfan:'Irfan Dashboard',resources:'Resources',calculator:'ARR Calculator',signup:'Sign-Up Rate',csession:'Creative Session',demoQuality:'Demo Quality',webinarPerf:'Webinar Performance',content:'Social Media Content',outbound:'Outbound Sequences'};
 // Window presets, in render order. All Time was removed 2026-10-08: it was the
 // slowest window on every page by a wide margin and nobody was reading it.
 // Custom stays LAST in this list and is also rendered last — see bldF, which
@@ -1182,7 +1185,7 @@ async function doLogin(){
 document.getElementById('pw').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
 
 // Filters
-function bldF(){const s=S[AP];var aiBtn=AI_PANEL_PAGES.indexOf(AP)>=0?'<button id="ai-panel-btn" onclick="toggleAIPanel()" class="fb" style="border:1.5px solid #B8860B;background:'+(_aiPanelOpen?'#B8860B':'#FFF8E1')+';color:'+(_aiPanelOpen?'#fff':'#8B6914')+';font-weight:700" onmouseover="this.style.background=\'#B8860B\';this.style.color=\'#fff\'" onmouseout="if(!_aiPanelOpen){this.style.background=\'#FFF8E1\';this.style.color=\'#8B6914\';}">✦ AI Analysis</button>':'';if(AP==='signup'){document.getElementById('filters').innerHTML='<span style="font-size:13px;color:var(--grey)">Fixed cohorts — independent of time filters</span>'+aiBtn+'<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>';return;}if(AP==='strategy'||AP==='csession'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='content'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='outbound'){document.getElementById('filters').innerHTML=aiBtn;document.getElementById('filters').style.display=aiBtn?'':'none';return;}else{document.getElementById('filters').style.display='';}let h='';const _wPill=w=>{const _aw=(w.k==='custom')?(s.win==='custom'&&!s.quarterKey):(s.win===w.k);return `<button class="fb${_aw?' active':''}" data-w="${w.k}" onclick="selW('${w.k}')">${w.l}</button>`;};/* Fixed presets, then the completed quarters, then Custom. The quarters are presets too, so Custom sitting before them split the presets in two and put the escape hatch in the middle of the row. */for(const w of W){if(w.k!=='custom')h+=_wPill(w);}for(const q of _completedQuarters())h+=`<button class="fb${(s.win==='custom'&&s.quarterKey===q.from+'_'+q.to)?' active':''}" data-q="${q.from}_${q.to}" onclick="selQ('${q.from}','${q.to}')">${q.l}</button>`;{const _cw=W.filter(w=>w.k==='custom')[0];if(_cw)h+=_wPill(_cw);}h+=`<div class="cr${(s.win==='custom'&&!s.quarterKey)?' vis':''}" id="cr"><input type="date" id="cf"><span style="color:var(--grey)">→</span><input type="date" id="ct"><label class="cr-cmp-lbl"><input type="checkbox" id="cc" onchange="document.getElementById('crVs').classList.toggle('vis',this.checked)">Compare</label><span class="cr-vs" id="crVs"><span class="cr-vs-prefix">vs</span><input type="date" id="cvf"><span style="color:var(--grey)">→</span><input type="date" id="cvt"></span><button onclick="goC()">Go</button></div>`;h+=aiBtn;h+=`<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>`;document.getElementById('filters').innerHTML=h;}
+function bldF(){const s=S[AP];var aiBtn=AI_PANEL_PAGES.indexOf(AP)>=0?'<button id="ai-panel-btn" onclick="toggleAIPanel()" class="fb" style="border:1.5px solid #B8860B;background:'+(_aiPanelOpen?'#B8860B':'#FFF8E1')+';color:'+(_aiPanelOpen?'#fff':'#8B6914')+';font-weight:700" onmouseover="this.style.background=\'#B8860B\';this.style.color=\'#fff\'" onmouseout="if(!_aiPanelOpen){this.style.background=\'#FFF8E1\';this.style.color=\'#8B6914\';}">✦ AI Analysis</button>':'';if(AP==='signup'){document.getElementById('filters').innerHTML='<span style="font-size:13px;color:var(--grey)">Fixed cohorts — independent of time filters</span>'+aiBtn+'<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>';return;}if(AP==='pilot'){const _f=document.getElementById('filters');_f.style.display='';_f.innerHTML='<span style="font-size:13px;color:var(--grey)">Every pilot waitlist deal — no date filter</span><button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>';return;}if(AP==='strategy'||AP==='csession'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='content'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='outbound'){document.getElementById('filters').innerHTML=aiBtn;document.getElementById('filters').style.display=aiBtn?'':'none';return;}else{document.getElementById('filters').style.display='';}let h='';const _wPill=w=>{const _aw=(w.k==='custom')?(s.win==='custom'&&!s.quarterKey):(s.win===w.k);return `<button class="fb${_aw?' active':''}" data-w="${w.k}" onclick="selW('${w.k}')">${w.l}</button>`;};/* Fixed presets, then the completed quarters, then Custom. The quarters are presets too, so Custom sitting before them split the presets in two and put the escape hatch in the middle of the row. */for(const w of W){if(w.k!=='custom')h+=_wPill(w);}for(const q of _completedQuarters())h+=`<button class="fb${(s.win==='custom'&&s.quarterKey===q.from+'_'+q.to)?' active':''}" data-q="${q.from}_${q.to}" onclick="selQ('${q.from}','${q.to}')">${q.l}</button>`;{const _cw=W.filter(w=>w.k==='custom')[0];if(_cw)h+=_wPill(_cw);}h+=`<div class="cr${(s.win==='custom'&&!s.quarterKey)?' vis':''}" id="cr"><input type="date" id="cf"><span style="color:var(--grey)">→</span><input type="date" id="ct"><label class="cr-cmp-lbl"><input type="checkbox" id="cc" onchange="document.getElementById('crVs').classList.toggle('vis',this.checked)">Compare</label><span class="cr-vs" id="crVs"><span class="cr-vs-prefix">vs</span><input type="date" id="cvf"><span style="color:var(--grey)">→</span><input type="date" id="cvt"></span><button onclick="goC()">Go</button></div>`;h+=aiBtn;h+=`<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>`;document.getElementById('filters').innerHTML=h;}
 // ONE routing table for "the window changed, refetch it". selW, selQ and goC
 // each carried their own copy and they had DRIFTED: only selW grew the
 // AP==='exec' branch, so the Executive page's Custom range and its quarter
@@ -1768,6 +1771,196 @@ async function fdWebinarPerf(win, from, to, vsFrom, vsTo){
   }
 }
 
+// ── Pilot Dashboard ─────────────────────────────────────────────────────────
+// Every deal with a Pilot Waitlist Status (/api/pilot). No date filter and no
+// deltas: it is one outreach campaign, so the page is the whole list, live.
+// Revenue reads `amount` as MRR; ARR = MRR x 12, as Signed ARR does elsewhere.
+// Status colours are HubSpot's own option colours, so the pills match the CRM.
+const PILOT_STATUS_COLORS={'Outreach Sent / No Response':'#E2C14E','Onboarding Link Requested':'#4C7F3B',
+  'Needs More Time':'#B23A8E','Not Interested':'#8C2B25'};
+// Built on first use: BRAND_STAGE_IDS is a const declared further down the
+// script, so reading it here at load time would throw.
+let _pilotStageColorMap=null;
+function _pilotStageColor(id){
+  if(!_pilotStageColorMap){_pilotStageColorMap={};for(const k in BRAND_STAGE_IDS)_pilotStageColorMap[BRAND_STAGE_IDS[k]]=BRAND_STAGE_COLORS[k];}
+  return _pilotStageColorMap[id]||'#9CA3AF';
+}
+const _pilotEsc=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const _pilotUsd=v=>v==null?'—':'$'+Math.round(v).toLocaleString();
+const _pilotPct=(a,b)=>b?(a/b*100).toFixed(1)+'%':'—';
+const _pilotDay=s=>{if(!s)return '—';const p=String(s).split('-');return new Date(p[0],p[1]-1,p[2]).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});};
+const _pilotDayShort=s=>{if(!s)return '—';const p=String(s).split('-');return new Date(p[0],p[1]-1,p[2]).toLocaleDateString('en-US',{month:'short',day:'numeric'});};
+function _pilotPill(text,hex){
+  const c=hex||'#9CA3AF';
+  return '<span class="pill" style="background:'+c+'22;color:'+_clnInk(c)+';font-size:10px">'+_pilotEsc(text)+'</span>';
+}
+function _pilotStageLabel(d,id){
+  if(!id)return '(No stage)';
+  const st=(d.stages||[]).find(s=>s.id===id);
+  return (st&&st.label)||STAGE_LABELS[id]||id;
+}
+async function fdPilot(){
+  // Back on Pilot while its first fetch is in flight: show the loading page
+  // again (the previous page is still active) and let that fetch finish.
+  if(S.pilot._fetching){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));document.getElementById('page-pilot').classList.add('active');if(typeof _syncNav==='function')_syncNav();return;}
+  S.pilot._fetching=true;
+  const el=document.getElementById('pilot-c');
+  document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-pilot').classList.add('active');
+  if(el)el.innerHTML='<div style="text-align:center;padding:60px"><div class="sp" style="width:28px;height:28px;border-width:3px;margin:0 auto 16px"></div><div style="font-family:var(--font-h);font-size:16px;color:var(--navy)">Loading pilot waitlist deals…</div></div>';
+  try{
+    const r=await fetch(PILOT_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:PW})});
+    const d=await r.json();
+    if(!r.ok||d.error){
+      if(el)el.innerHTML='<div style="padding:60px;text-align:center;color:var(--red);font-size:13px">Failed to load: '+_pilotEsc(d.detail||d.error||('HTTP '+r.status))+'</div>';
+      return;
+    }
+    S.pilot.data=d;
+    if(AP==='pilot')renderPage();
+  }catch(e){
+    console.error('fdPilot failed:',e);
+    if(el)el.innerHTML='<div style="padding:60px;text-align:center;color:var(--red);font-size:13px">Failed to load: '+_pilotEsc(e.message)+'</div>';
+  }finally{
+    S.pilot._fetching=false;
+  }
+}
+// Deal-list filters. Re-rendering the page is cheap: everything is in memory.
+window.pilotFilter=function(kind,val){
+  if(kind==='status')S.pilot.fStatus=(S.pilot.fStatus===val?null:val);
+  else if(kind==='stage')S.pilot.fStage=val||null;
+  renderPilot();
+};
+function renderPilot(){
+  const d=S.pilot.data;
+  const el=document.getElementById('pilot-c'); if(!el)return;
+  if(!d){if(!S.pilot._fetching)fdPilot();return;}
+  const total=d.total||0, won=d.won||{}, by=d.byStatus||{}, order=d.statusOrder||[];
+  const stages=d.stages||[], deals=d.deals||[];
+  // A filter can outlive its value across Refresh (the last Contract Sent deal
+  // closes); left in place it shows an empty list the dropdown cannot clear.
+  if(S.pilot.fStatus&&order.indexOf(S.pilot.fStatus)<0)S.pilot.fStatus=null;
+  if(S.pilot.fStage&&!stages.some(st=>st.id===S.pilot.fStage))S.pilot.fStage=null;
+  const card='background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:24px';
+  const rng=d.outreachRange;
+  const rngTxt=rng?(rng.from===rng.to?_pilotDay(rng.from):_pilotDayShort(rng.from)+' – '+_pilotDay(rng.to)):'no outreach dates';
+  const linkN=(by['Onboarding Link Requested']||{}).n||0;
+  let h='';
+
+  // ── 1. Key metrics ──
+  h+='<div class="dsec" style="'+card+'"><div class="dsec-h dsec-in" id="dsec-pilot-kpis">Pilot Waitlist</div>';
+  h+='<div class="irf-card-sub">Every deal with a Pilot Waitlist Status · outreach '+rngTxt+' · no date filter</div>';
+  h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px">';
+  h+=_kmTile('Waitlist Deals',fN(total),'outreach '+rngTxt);
+  h+=_kmTile('Onboarding Link Requested',fN(linkN),_pilotPct(linkN,total)+' of the waitlist');
+  h+=_kmTile('Closed Won',fN(won.n||0),_pilotPct(won.n||0,total)+' of the waitlist');
+  h+=_kmTile('MRR',_pilotUsd(won.mrr||0),fN(won.n||0)+' won · avg '+_pilotUsd(won.avgMrr));
+  h+=_kmTile('ARR',_pilotUsd(won.arr||0),'MRR × 12');
+  h+='</div>';
+  if(won.beforeOutreach&&won.beforeOutreach.n){
+    h+='<div style="margin-top:10px;font-size:11px;color:var(--grey)">'+fN(won.beforeOutreach.n)+' of the Closed Won ('
+      +_pilotUsd(won.beforeOutreach.mrr)+' MRR) closed <b>before</b> their outreach date. They are in the revenue above and flagged in the tables below.</div>';
+  }
+  if(won.unpriced){
+    h+='<div style="margin-top:6px;font-size:11px;color:var(--grey)">'+fN(won.unpriced)+' Closed Won deal'+(won.unpriced===1?' has':'s have')+' no amount; the average is over the '+fN(won.priced)+' that do.</div>';
+  }
+  h+='</div>';
+
+  // ── 2. Status breakdown ──
+  h+='<div class="dsec" style="'+card+'"><div class="dsec-h dsec-in" id="dsec-pilot-status">Waitlist Status</div>';
+  h+='<div class="irf-card-sub">Where each deal is on the pilot waitlist, and what it has closed so far</div>';
+  h+='<table class="ctbl"><thead><tr><th>Status</th><th class="n">Deals</th><th class="n">% of waitlist</th><th style="width:30%"></th><th class="n">Closed Won</th><th class="n">Win rate</th><th class="n">MRR</th><th class="n">ARR</th></tr></thead><tbody>';
+  const maxN=Math.max(1,...order.map(s=>(by[s]||{}).n||0));
+  for(const s of order){
+    const a=by[s]||{n:0,won:0,mrr:0}, c=PILOT_STATUS_COLORS[s]||'#9CA3AF';
+    h+='<tr><td>'+_pilotPill(s,c)+'</td><td class="n">'+fN(a.n)+'</td><td class="n">'+_pilotPct(a.n,total)+'</td>'
+      +'<td><div style="height:8px;border-radius:4px;background:var(--teal-8)"><div style="height:8px;border-radius:4px;width:'+(a.n/maxN*100).toFixed(1)+'%;background:'+c+'"></div></div></td>'
+      +'<td class="n">'+fN(a.won)+'</td><td class="n">'+_pilotPct(a.won,a.n)+'</td><td class="n">'+_pilotUsd(a.mrr)+'</td><td class="n">'+_pilotUsd(a.mrr*12)+'</td></tr>';
+  }
+  h+='<tr style="font-weight:700"><td>Total</td><td class="n">'+fN(total)+'</td><td class="n">100%</td><td></td><td class="n">'+fN(won.n||0)+'</td><td class="n">'+_pilotPct(won.n||0,total)+'</td><td class="n">'+_pilotUsd(won.mrr||0)+'</td><td class="n">'+_pilotUsd(won.arr||0)+'</td></tr>';
+  h+='</tbody></table></div>';
+
+  // ── 3. Status x deal stage ──
+  h+='<div class="dsec" style="'+card+'"><div class="dsec-h dsec-in" id="dsec-pilot-matrix">Status × Deal Stage</div>';
+  h+='<div class="irf-card-sub">Current HubSpot deal stage for each waitlist status. Darker cells hold more deals.</div>';
+  h+='<div style="overflow-x:auto"><table class="ctbl"><thead><tr><th>Status</th>';
+  for(const st of stages){
+    const c=_pilotStageColor(st.id);
+    h+='<th class="n" style="white-space:normal;min-width:70px"><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:'+c+';margin-right:4px"></span>'+_pilotEsc(_pilotStageLabel(d,st.id))+'</th>';
+  }
+  h+='<th class="n">Total</th></tr></thead><tbody>';
+  const mx=d.matrix||{};
+  let cellMax=1; for(const s of order)for(const st of stages)cellMax=Math.max(cellMax,(mx[s]||{})[st.id]||0);
+  for(const s of order){
+    h+='<tr><td>'+_pilotPill(s,PILOT_STATUS_COLORS[s])+'</td>';
+    for(const st of stages){
+      const v=(mx[s]||{})[st.id]||0;
+      h+='<td class="n" style="'+(v?'background:rgba(114,164,191,'+(0.08+0.5*v/cellMax).toFixed(2)+')':'color:var(--grey)')+'">'+(v?fN(v):'·')+'</td>';
+    }
+    h+='<td class="n" style="font-weight:700">'+fN((by[s]||{}).n||0)+'</td></tr>';
+  }
+  h+='<tr style="font-weight:700"><td>Total</td>';
+  for(const st of stages)h+='<td class="n">'+fN(st.n)+'</td>';
+  h+='<td class="n">'+fN(total)+'</td></tr></tbody></table></div></div>';
+
+  // ── 4. By outreach date ──
+  h+='<div class="dsec" style="'+card+'"><div class="dsec-h dsec-in" id="dsec-pilot-outreach">By Outreach Date</div>';
+  h+='<div class="irf-card-sub">Deals grouped by their Pilot Waitlist Outreach Date, with where each batch stands now</div>';
+  h+='<div style="overflow-x:auto"><table class="ctbl"><thead><tr><th>Outreach date</th><th class="n">Deals</th>';
+  for(const s of order)h+='<th class="n" style="white-space:normal;min-width:80px">'+_pilotEsc(s)+'</th>';
+  h+='<th class="n">Closed Won</th><th class="n">Win rate</th><th class="n">MRR</th></tr></thead><tbody>';
+  for(const r of (d.outreach||[])){
+    h+='<tr><td>'+(r.date?_pilotDay(r.date):'(No outreach date)')+'</td><td class="n">'+fN(r.n)+'</td>';
+    for(const s of order){const v=(r.byStatus||{})[s]||0;h+='<td class="n"'+(v?'':' style="color:var(--grey)"')+'>'+(v?fN(v):'·')+'</td>';}
+    h+='<td class="n">'+fN(r.won)+'</td><td class="n">'+_pilotPct(r.won,r.n)+'</td><td class="n">'+_pilotUsd(r.mrr)+'</td></tr>';
+  }
+  h+='</tbody></table></div></div>';
+
+  // ── 5. Closed Won revenue ──
+  const wonDeals=deals.filter(x=>x.won).sort((a,b)=>String(b.closeDay||'').localeCompare(String(a.closeDay||''))||(b.mrr||0)-(a.mrr||0));
+  h+='<div class="dsec" style="'+card+'"><div class="dsec-h dsec-in" id="dsec-pilot-won">Closed Won Revenue</div>';
+  h+='<div class="irf-card-sub">'+fN(won.n||0)+' won · '+_pilotUsd(won.mrr||0)+' MRR · '+_pilotUsd(won.arr||0)+' ARR · avg '+_pilotUsd(won.avgMrr)+' MRR per deal</div>';
+  if(!wonDeals.length){
+    h+='<div style="padding:24px;text-align:center;color:var(--grey);font-size:12px">No waitlist deal has closed yet.</div>';
+  }else{
+    h+='<div style="overflow-x:auto"><table class="ctbl"><thead><tr><th>Deal</th><th>Status</th><th>Outreach</th><th>Closed</th><th class="n">MRR</th><th class="n">ARR</th></tr></thead><tbody>';
+    for(const x of wonDeals){
+      h+='<tr><td>'+_pilotDealCell(x)+'</td><td>'+_pilotPill(x.status,PILOT_STATUS_COLORS[x.status])+'</td><td>'+_pilotDayShort(x.outreach)+'</td>'
+        +'<td>'+_pilotDayShort(x.closeDay)+(x.wonBeforeOutreach?' <span class="pill" style="background:#F59E0B22;color:#B45309;font-size:9px" title="Closed before its outreach date">before outreach</span>':'')+'</td>'
+        +'<td class="n">'+_pilotUsd(x.mrr)+'</td><td class="n">'+(x.mrr==null?'—':_pilotUsd(x.mrr*12))+'</td></tr>';
+    }
+    h+='</tbody></table></div>';
+  }
+  h+='</div>';
+
+  // ── 6. Every waitlist deal ──
+  const fS=S.pilot.fStatus||null, fG=S.pilot.fStage||null;
+  const shown=deals.filter(x=>(!fS||x.status===fS)&&(!fG||x.stage===fG))
+    .sort((a,b)=>String(b.outreach||'').localeCompare(String(a.outreach||''))||String(a.name).localeCompare(String(b.name)));
+  h+='<div class="dsec" style="'+card+'"><div class="dsec-h dsec-in" id="dsec-pilot-deals">All Waitlist Deals</div>';
+  h+='<div class="irf-card-sub">'+fN(shown.length)+' of '+fN(total)+' deals · newest outreach first</div>';
+  h+='<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:12px">';
+  h+='<button class="fb'+(fS?'':' active')+'" onclick="pilotFilter(\'status\',S.pilot.fStatus)">All statuses</button>';
+  order.forEach((s,i)=>{h+='<button class="fb'+(fS===s?' active':'')+'" onclick="pilotFilter(\'status\',S.pilot.data.statusOrder['+i+'])">'+_pilotEsc(s)+' ('+fN((by[s]||{}).n||0)+')</button>';});
+  h+='<select onchange="pilotFilter(\'stage\',this.value)" style="margin-left:auto;padding:6px 8px;border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--navy);background:var(--white)">';
+  h+='<option value="">All deal stages</option>';
+  for(const st of stages)h+='<option value="'+_pilotEsc(st.id)+'"'+(fG===st.id?' selected':'')+'>'+_pilotEsc(_pilotStageLabel(d,st.id))+' ('+fN(st.n)+')</option>';
+  h+='</select></div>';
+  h+='<div style="overflow-x:auto;max-height:640px;overflow-y:auto"><table class="ctbl"><thead><tr><th>Deal</th><th>Status</th><th>Deal stage</th><th>Outreach</th><th>Created</th><th>Closed</th><th class="n">MRR</th></tr></thead><tbody>';
+  for(const x of shown){
+    const sc=_pilotStageColor(x.stage);
+    h+='<tr><td>'+_pilotDealCell(x)+'</td><td>'+_pilotPill(x.status,PILOT_STATUS_COLORS[x.status])+'</td>'
+      +'<td>'+_pilotPill(_pilotStageLabel(d,x.stage),sc)+'</td><td>'+_pilotDayShort(x.outreach)+'</td><td>'+_pilotDayShort(x.created)+'</td>'
+      +'<td>'+(x.won?_pilotDayShort(x.closeDay):'—')+'</td><td class="n">'+(x.won?_pilotUsd(x.mrr):(x.mrr!=null?'<span style="color:var(--grey)" title="Amount on an open deal">'+_pilotUsd(x.mrr)+'</span>':'—'))+'</td></tr>';
+  }
+  if(!shown.length)h+='<tr><td colspan="7" style="text-align:center;color:var(--grey);padding:20px">No deals match these filters.</td></tr>';
+  h+='</tbody></table></div></div>';
+  el.innerHTML=h;
+}
+function _pilotDealCell(x){
+  return '<div style="display:flex;align-items:center;gap:4px;max-width:320px"><span style="overflow:hidden;text-overflow:ellipsis" title="'+_pilotEsc(x.name)+'">'+_pilotEsc(x.name||'(unnamed deal)')+'</span>'
+    +'<a href="https://app.hubspot.com/contacts/46815331/record/0-3/'+encodeURIComponent(x.id)+'" target="_blank" rel="noopener" style="flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:4px;background:rgba(114,164,191,.1);color:var(--teal);font-size:9px;text-decoration:none">↗</a></div>';
+}
+
 // Save a new baseline value (Attended → Closed Won target). Persists to KV
 // via the worker and updates the in-memory data so the on-page rendering
 // reflects the change without a full refetch.
@@ -2126,7 +2319,7 @@ function renderWebinarPerf(){
   el.innerHTML=h;
 }
 
-async function refreshData(){const btn=document.getElementById('rfb');if(btn){btn.classList.add('loading');btn.textContent='↻ Refreshing...';}if(AP==='clinician'){S.clinician.data=null;S.clinician.funnelAT=null;S.clinician.funnelATErr=null;S.clinician.funnelATFresh=true;if(S.clinician.funnelAllTime)_clnFetchFunnelAT();await fdClinician(S.clinician.win||'mtd');}else if(AP==='signup'){await fdSignup();}else if(AP==='csession'){S.analyzer.data=null;await fdAnalyzer(S.analyzer.win||S.dashboard?.win||'mtd');}else if(AP==='webinarPerf'){S.webinarPerf.data=null;await fdWebinarPerf(S.webinarPerf.win||'mtd');}else{
+async function refreshData(){const btn=document.getElementById('rfb');if(btn){btn.classList.add('loading');btn.textContent='↻ Refreshing...';}if(AP==='clinician'){S.clinician.data=null;S.clinician.funnelAT=null;S.clinician.funnelATErr=null;S.clinician.funnelATFresh=true;if(S.clinician.funnelAllTime)_clnFetchFunnelAT();await fdClinician(S.clinician.win||'mtd');}else if(AP==='signup'){await fdSignup();}else if(AP==='csession'){S.analyzer.data=null;await fdAnalyzer(S.analyzer.win||S.dashboard?.win||'mtd');}else if(AP==='webinarPerf'){S.webinarPerf.data=null;await fdWebinarPerf(S.webinarPerf.win||'mtd');}else if(AP==='pilot'){S.pilot.data=null;await fdPilot();}else{
   // Bust the shared analyzer cache + analyzer payload so the Meta
   // Campaigns/Ad Sets/Creatives tables (Status + which assets are listed)
   // re-fetch from Windsor on Refresh. Without this, _renderIrfanMetaTablesLoader
@@ -2167,7 +2360,7 @@ function switchPage(pg){AP=pg;document.querySelectorAll('.ni').forEach(n=>n.clas
 // data-page==='dashboard', so after the restructure Irfan and Clinician never
 // lit up and the Additional Insights parent stayed lit permanently.
 function _navToken(){
-  const map={exec:"switchDashSub('exec')",irfan:"switchDashSub('irfan')",dashboard:"switchDashSub('overview')",clinician:"clinicianNav()",
+  const map={exec:"switchDashSub('exec')",irfan:"switchDashSub('irfan')",dashboard:"switchDashSub('overview')",pilot:"switchDashSub('pilot')",clinician:"clinicianNav()",
     signup:"switchDashSub('signup')",webinarPerf:"switchDashSub('webinarPerf')",demoQuality:"switchDashSub('demoQuality')",
     outbound:"switchDashSub('outbound')",strategy:"switchDashSub('strategy')",calculator:"switchToCalculator()",
     csession:"switchPage('csession')"};
@@ -2191,7 +2384,7 @@ function _syncNav(){
     if(arrow)arrow.textContent='\u25BC';
   }
 }
-function renderPage(){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));if(AP==='exec')renderExec();else if(AP==='dashboard')renderDash();else if(AP==='irfan')renderIrfan();else if(AP==='clinician')renderClinician();else if(AP==='calculator')updCalc();else if(AP==='signup')renderSignUp();else if(AP==='strategy')renderStrategy();else if(AP==='demoQuality')renderDemoQuality();else if(AP==='webinarPerf')renderWebinarPerf();else if(AP==='csession')renderCreativeSession();else if(AP==='content')renderContent();else if(AP==='outbound')renderOutbound();document.getElementById('page-'+AP).classList.add('active');
+function renderPage(){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));if(AP==='exec')renderExec();else if(AP==='dashboard')renderDash();else if(AP==='irfan')renderIrfan();else if(AP==='clinician')renderClinician();else if(AP==='calculator')updCalc();else if(AP==='signup')renderSignUp();else if(AP==='strategy')renderStrategy();else if(AP==='demoQuality')renderDemoQuality();else if(AP==='webinarPerf')renderWebinarPerf();else if(AP==='pilot')renderPilot();else if(AP==='csession')renderCreativeSession();else if(AP==='content')renderContent();else if(AP==='outbound')renderOutbound();document.getElementById('page-'+AP).classList.add('active');
 // Every route ends here, including boot, so the title is set here rather than
 // only in switchDashSub — which boot does not call.
 {const _pt=document.getElementById('ptitle');if(_pt&&T[AP])_pt.textContent=T[AP];}
@@ -6852,7 +7045,7 @@ function renderClinician(){
 // Auto-derived from the headings already on the page (no per-section markup),
 // so it stays correct as sections are added or renamed. Scroll container is
 // .main, not the window.
-const _SECNAV_SEL={exec:'#page-exec .dsec-h', dashboard:'#page-dashboard .dsec-h', irfan:'#irfan-c .dsec-h', clinician:'#clinician-c .irf-card-title'};
+const _SECNAV_SEL={exec:'#page-exec .dsec-h', dashboard:'#page-dashboard .dsec-h', irfan:'#irfan-c .dsec-h', clinician:'#clinician-c .irf-card-title', pilot:'#pilot-c .dsec-h'};
 function buildSectionNav(page){
   // Clear any existing bar FIRST. The nav lives in .main .topbar, which persists
   // across pages, so returning early for a page without a selector used to leave
@@ -12014,10 +12207,10 @@ const DASH_MENU_SUBS=['signup','webinarPerf','demoQuality','outbound','strategy'
 function switchDashSub(sub){
   S.dashboard.sub=sub;
   // Map sub to AP
-  var apMap={exec:'exec',overview:'dashboard',clinician:'clinician',irfan:'irfan',signup:'signup',calculator:'calculator',strategy:'strategy',demoQuality:'demoQuality',outbound:'outbound',webinarPerf:'webinarPerf'};
+  var apMap={exec:'exec',overview:'dashboard',pilot:'pilot',clinician:'clinician',irfan:'irfan',signup:'signup',calculator:'calculator',strategy:'strategy',demoQuality:'demoQuality',outbound:'outbound',webinarPerf:'webinarPerf'};
   AP=apMap[sub]||'dashboard';
   // Update titles
-  var titleMap={exec:'Executive Dashboard',overview:'Brand Dashboard',clinician:'Clinician Dashboard',irfan:'Irfan Dashboard',signup:'Sign-Up Rate',calculator:'ARR Calculator',strategy:'Monthly Review',demoQuality:'Demo Quality',outbound:'Outbound Sequences',webinarPerf:'Webinar Performance'};
+  var titleMap={exec:'Executive Dashboard',overview:'Brand Dashboard',pilot:'Pilot Dashboard',clinician:'Clinician Dashboard',irfan:'Irfan Dashboard',signup:'Sign-Up Rate',calculator:'ARR Calculator',strategy:'Monthly Review',demoQuality:'Demo Quality',outbound:'Outbound Sequences',webinarPerf:'Webinar Performance'};
   document.getElementById('ptitle').textContent=titleMap[sub]||'Brand Dashboard';
   // Highlight nav items
   // highlighting handled centrally by _syncNav() on render
@@ -12038,6 +12231,8 @@ function switchDashSub(sub){
   // an empty/zero response from an earlier failed fetch — switching to
   // the page should always pull fresh numbers.
   if(AP==='webinarPerf'){fdWebinarPerf(S.webinarPerf.win||'mtd');return;}
+  // Pilot: no window, so it loads once and Refresh (refreshData) re-pulls it.
+  if(AP==='pilot'){ if(S.pilot.data){renderPage();} else {fdPilot();} return; }
   // Load once. Nav clicks re-render from cached data; a refetch only happens on a
   // time-frame change (selW) or the Refresh button (refreshData clears .data).
   if(AP==='clinician'){ if(S.clinician.data){renderPage();} else {fdClinician(S.clinician.win||'mtd');} return; }

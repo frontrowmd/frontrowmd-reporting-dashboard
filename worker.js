@@ -3256,6 +3256,133 @@ function buildBrandStageFunnel(deals, from, to) {
   return { total: rows.length, stages, exits };
 }
 
+// ---------------------------------------------------------------------------
+// Pilot Dashboard (2026-11-02). Every deal carrying a Pilot Waitlist Status or
+// Outreach Date -- the pilot-waitlist outreach that began 2026-10-20. There is
+// NO date window: the population is the property itself. Revenue reads
+// `amount` as MRR, the convention Signed ARR uses everywhere else (ARR = x12).
+// ---------------------------------------------------------------------------
+// HubSpot's option order. An option added later still shows, after these.
+const PILOT_STATUSES = ['Outreach Sent / No Response', 'Onboarding Link Requested', 'Needs More Time', 'Not Interested'];
+const PILOT_NO_STATUS = '(No status)';
+const PILOT_PROPS = ['dealname', 'pipeline', 'dealstage', 'amount', 'closedate', 'createdate',
+  'pilot_waitlist_status', 'pilot_waitlist_outreach_date'];
+const PILOT_MAX_PAGES = 25;   // 5,000 deals; 204 in Nov 2026
+
+async function fetchPilotDeals(token) {
+  if (!token) throw new Error('pilot deals: no token');
+  const _err0 = HS_ERR.n;
+  // Two groups = OR: a deal with only an outreach date is still on the list.
+  const rows = await hsSearch(token, 'deals', [
+    { filters: [{ propertyName: 'pilot_waitlist_status', operator: 'HAS_PROPERTY' }] },
+    { filters: [{ propertyName: 'pilot_waitlist_outreach_date', operator: 'HAS_PROPERTY' }] },
+  ], PILOT_PROPS, 200, [{ propertyName: 'createdate', direction: 'DESCENDING' }], PILOT_MAX_PAGES);
+  if (HS_ERR.n > _err0 || SUBREQ.exhausted) throw new Error('pilot deals: HubSpot refused -- not showing a partial list');
+  if (rows.length >= PILOT_MAX_PAGES * 200) throw new Error('pilot deals: hit the ' + (PILOT_MAX_PAGES * 200) + '-row cap -- raise PILOT_MAX_PAGES');
+  return rows;
+}
+
+// {stageId: {label, order, pipeline}} from HubSpot's own pipeline config, so a
+// stage nobody has mapped (Decision Maker, a new pipeline) still gets its real
+// name and place. Optional: a failure returns {} and the page falls back to its
+// own labels -- it never fails the deal list, and never counts as a refusal.
+async function fetchDealStageMeta(token) {
+  if (!token || SUBREQ.exhausted) return {};
+  try {
+    SUBREQ.n++; SUBREQ.hubspot++;
+    const r = await fetch('https://api.hubapi.com/crm/v3/pipelines/deals', { headers: { Authorization: `Bearer ${token}` } });
+    if (!r.ok) { console.error('pipelines/deals ' + r.status); await azDrain(r); return {}; }
+    const d = await r.json();
+    const out = {};
+    (d.results || []).forEach((pl, pi) => {
+      (pl.stages || []).forEach(st => {
+        out[st.id] = { label: st.label, order: pi * 1000 + (Number(st.displayOrder) || 0), pipeline: pl.id };
+      });
+    });
+    return out;
+  } catch (e) { console.error('pipelines/deals failed:', e && e.message); return {}; }
+}
+
+// A HubSpot DATE property: 'YYYY-MM-DD', an ISO midnight-UTC string, or epoch
+// ms at midnight UTC. Read in UTC -- etDayKeyOf would shift it to the day before.
+function pilotDateKey(v) {
+  if (!v) return null;
+  const s = String(v);
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  if (/^\d+$/.test(s)) return fmt(new Date(parseInt(s, 10)));
+  return null;
+}
+
+function buildPilotDashboard(deals, stageMeta) {
+  const meta = stageMeta || {};
+  const list = (deals || []).map(r => {
+    const p = r.properties || {};
+    const raw = p.pilot_waitlist_status;
+    const status = raw ? String(raw) : PILOT_NO_STATUS;
+    const stage = p.dealstage ? String(p.dealstage) : '';
+    const won = stage === 'closedwon';
+    const amt = parseFloat(p.amount);
+    const outreach = pilotDateKey(p.pilot_waitlist_outreach_date);
+    // closedate on an open deal is a FORECAST, so it is only a close date once won.
+    // It is a datetime, bucketed in Eastern like every other day on the dashboard.
+    const closeDay = won ? etDayKeyOf(p.closedate) : null;
+    return {
+      id: String(r.id), name: p.dealname || '', status, stage, pipeline: p.pipeline || '',
+      outreach, created: etDayKeyOf(p.createdate), closeDay, won,
+      mrr: isFinite(amt) ? amt : null,
+      wonBeforeOutreach: !!(won && closeDay && outreach && closeDay < outreach),
+    };
+  });
+
+  const seen = new Set(list.map(d => d.status));
+  const statusOrder = PILOT_STATUSES.filter(s => seen.has(s))
+    .concat([...seen].filter(s => !PILOT_STATUSES.includes(s) && s !== PILOT_NO_STATUS).sort())
+    .concat(seen.has(PILOT_NO_STATUS) ? [PILOT_NO_STATUS] : []);
+  const blankAgg = () => ({ n: 0, won: 0, mrr: 0 });
+  const add = (a, d) => { a.n++; if (d.won) { a.won++; a.mrr += d.mrr || 0; } };
+
+  const byStatus = {}; statusOrder.forEach(s => { byStatus[s] = blankAgg(); });
+  const matrix = {}; statusOrder.forEach(s => { matrix[s] = {}; });
+  const stageN = {};
+  const byDate = {};
+  for (const d of list) {
+    add(byStatus[d.status], d);
+    matrix[d.status][d.stage] = (matrix[d.status][d.stage] || 0) + 1;
+    stageN[d.stage] = (stageN[d.stage] || 0) + 1;
+    const k = d.outreach || '';
+    if (!byDate[k]) byDate[k] = Object.assign(blankAgg(), { byStatus: {} });
+    add(byDate[k], d);
+    byDate[k].byStatus[d.status] = (byDate[k].byStatus[d.status] || 0) + 1;
+  }
+  const stages = Object.keys(stageN).map(id => ({
+    id, n: stageN[id],
+    label: (meta[id] && meta[id].label) || null,
+    order: meta[id] ? meta[id].order : 1e9,
+  })).sort((a, b) => a.order - b.order || b.n - a.n);
+  // Dated rows oldest first; the undated bucket, if any, last.
+  const outreach = Object.keys(byDate).sort((a, b) => (a ? 0 : 1) - (b ? 0 : 1) || a.localeCompare(b))
+    .map(date => Object.assign({ date: date || null }, byDate[date]));
+
+  const wonList = list.filter(d => d.won);
+  const sumMrr = a => a.reduce((s, d) => s + (d.mrr || 0), 0);
+  const priced = wonList.filter(d => d.mrr != null && d.mrr > 0);
+  const before = wonList.filter(d => d.wonBeforeOutreach);
+  const mrr = sumMrr(wonList);
+  const won = {
+    n: wonList.length, mrr, arr: mrr * 12,
+    // Average over the deals that HAVE an amount: a blank is unknown, not $0.
+    avgMrr: priced.length ? sumMrr(priced) / priced.length : null,
+    priced: priced.length, unpriced: wonList.length - priced.length,
+    beforeOutreach: { n: before.length, mrr: sumMrr(before) },
+  };
+  const dated = list.map(d => d.outreach).filter(Boolean).sort();
+  return {
+    total: list.length, statusOrder, byStatus, matrix, stages, outreach, won,
+    outreachRange: dated.length ? { from: dated[0], to: dated[dated.length - 1] } : null,
+    deals: list,
+  };
+}
+
 function applyWebinarHeld(periodData, n) {
   if (!periodData || !periodData.pipeline) return;
   const pl = periodData.pipeline;
@@ -10229,6 +10356,19 @@ export default {
         const result = await processSpecial1Request(env);
         return jr(result);
       } catch(err) { console.error('Special1 endpoint error:', err); return jr({ error: 'Internal error', detail: err.message }, 500); }
+    }
+
+    // POST /api/pilot → Pilot Dashboard: every deal with a Pilot Waitlist
+    // Status, no window. Live on every load -- two HubSpot calls, nothing cached.
+    if (request.method === 'POST' && url.pathname === '/api/pilot') {
+      let body;
+      try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
+      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      try {
+        const hsToken = env.HUBSPOT_TOKEN;
+        const [deals, stageMeta] = await Promise.all([fetchPilotDeals(hsToken), fetchDealStageMeta(hsToken)]);
+        return jr(Object.assign(buildPilotDashboard(deals, stageMeta), { meta: { generatedAt: new Date().toISOString() } }));
+      } catch (err) { console.error('Pilot endpoint error:', err); return jr({ error: 'Internal error', detail: err.message }, 500); }
     }
 
     // POST /api/webinar-performance → Webinar vs Demo funnel comparison page
