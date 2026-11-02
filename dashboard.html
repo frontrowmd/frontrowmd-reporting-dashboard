@@ -1885,18 +1885,37 @@ function renderPilot(){
   }
   h+='</div>';
 
-  // ── 2. Status breakdown ──
-  h+='<div class="dsec" style="'+card+'"><div class="dsec-h dsec-in" id="dsec-pilot-status">Waitlist Status</div>';
-  h+='<div class="irf-card-sub">Where each deal is on the pilot waitlist, and what it has closed so far</div>';
-  const maxN=Math.max(1,...order.map(s=>(by[s]||{}).n||0));
-  h+=_pilotTable('status',[{l:'Status',t:1},{l:'Deals'},{l:'% of waitlist'},{l:'',sty:'width:30%',ns:1},{l:'Closed Won'},{l:'Win rate'},{l:'MRR'},{l:'ARR'}],
-    order.map(s=>{
-      const a=by[s]||{n:0,won:0,mrr:0}, c=PILOT_STATUS_COLORS[s]||'#9CA3AF', wr=a.n?a.won/a.n:null;
-      return {k:[s,a.n,a.n,null,a.won,wr,a.mrr,a.mrr],c:['<td>'+_pilotPill(s,c)+'</td>','<td class="n">'+fN(a.n)+'</td>','<td class="n">'+_pilotPct(a.n,total)+'</td>',
-        '<td><div style="height:8px;border-radius:4px;background:var(--teal-8)"><div style="height:8px;border-radius:4px;width:'+(a.n/maxN*100).toFixed(1)+'%;background:'+c+'"></div></div></td>',
-        '<td class="n">'+fN(a.won)+'</td>','<td class="n">'+_pilotPct(a.won,a.n)+'</td>','<td class="n">'+_pilotUsd(a.mrr)+'</td>','<td class="n">'+_pilotUsd(a.mrr*12)+'</td>']};
-    }),
-    '<tr style="font-weight:700"><td>Total</td><td class="n">'+fN(total)+'</td><td class="n">100%</td><td></td><td class="n">'+fN(won.n||0)+'</td><td class="n">'+_pilotPct(won.n||0,total)+'</td><td class="n">'+_pilotUsd(won.mrr||0)+'</td><td class="n">'+_pilotUsd(won.arr||0)+'</td></tr>');
+  // ── 2. Waitlist funnel ──
+  // Reached = ever held the status (HubSpot history + today's value); Here now =
+  // holds it today. A funnel reads top to bottom, so unlike the tables below it
+  // does not sort.
+  const F=d.funnel||{rows:[]};
+  h+='<div class="dsec" style="'+card+'"><div class="dsec-h dsec-in" id="dsec-pilot-status">Waitlist Funnel</div>';
+  h+='<div class="irf-card-sub">Reached = ever held this status in HubSpot’s history · Here now = holds it today · From prior = of the deals that reached the step above</div>';
+  if(!F.historyOk)h+='<div style="margin-bottom:10px;padding:8px 12px;border-radius:8px;background:#FEF2F2;color:#B91C1C;font-size:11px">Status history did not load, so Reached counts only today’s statuses (it can only be too low). Refresh to retry.</div>';
+  const fMax=Math.max(1,...F.rows.map(r=>r.reached||0));
+  const fColor=r=>r.key==='outreach'?PILOT_STATUS_COLORS['Outreach Sent / No Response']:r.key==='link'?PILOT_STATUS_COLORS['Onboarding Link Requested']:r.key==='won'?_pilotStageColor('closedwon'):(PILOT_STATUS_COLORS[r.key]||'#9CA3AF');
+  const fRow=r=>{
+    const c=fColor(r), fp=r.fromPrevDen?r.fromPrevNum/r.fromPrevDen*100:null;
+    return '<tr><td>'+(r.kind==='exit'?'<span style="color:var(--grey);margin-right:4px">↳</span>':'')+_pilotPill(r.label,c)+'</td>'
+      +'<td class="n" style="font-weight:700">'+fN(r.reached)+'</td><td class="n">'+fN(r.here)+'</td>'
+      +'<td class="n">'+(fp==null?'—':'<span title="'+fN(r.fromPrevNum)+' of '+fN(r.fromPrevDen)+'">'+fp.toFixed(1)+'%</span>')+'</td>'
+      +'<td class="n">'+_pilotPct(r.reached,total)+'</td>'
+      +'<td><div style="height:8px;border-radius:4px;background:var(--teal-8)"><div style="height:8px;border-radius:4px;width:'+((r.reached||0)/fMax*100).toFixed(1)+'%;background:'+c+'"></div></div></td>'
+      +'<td class="n">'+fN(r.won)+'</td><td class="n">'+_pilotUsd(r.mrr)+'</td><td class="n">'+_pilotUsd((r.mrr||0)*12)+'</td></tr>';
+  };
+  h+='<table class="ctbl"><thead><tr><th>Step</th><th class="n">Reached</th><th class="n">Here now</th><th class="n">From prior</th><th class="n">% of waitlist</th><th style="width:22%"></th><th class="n" title="Of the deals that reached this step, how many are Closed Won today">Closed Won</th><th class="n">MRR</th><th class="n">ARR</th></tr></thead><tbody>';
+  F.rows.filter(r=>r.kind==='path').forEach(r=>{h+=fRow(r);});
+  const _ex=F.rows.filter(r=>r.kind==='exit');
+  if(_ex.length){
+    h+='<tr><td colspan="9" style="padding-top:14px;font-family:var(--font-h);font-size:10px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.04em">Side exits · from prior = of every waitlist deal</td></tr>';
+    _ex.forEach(r=>{h+=fRow(r);});
+  }
+  h+='</tbody></table>';
+  const _fn=[];
+  if(F.wonWithoutLink)_fn.push(fN(F.wonWithoutLink)+' Closed Won deal'+(F.wonWithoutLink===1?' never':'s never')+' had Onboarding Link Requested, so '+(F.wonWithoutLink===1?'it is':'they are')+' in Closed Won’s Reached but outside its From prior.');
+  if(F.historyOk&&F.moved!=null)_fn.push(fN(F.moved)+' of '+fN(total)+' deals have changed status at least once; that is why Reached can be higher than Here now.');
+  if(_fn.length)h+='<div style="margin-top:10px;font-size:11px;color:var(--grey);line-height:1.5">'+_fn.join('<br>')+'</div>';
   h+='</div>';
 
   // ── 3. Status x deal stage ──

@@ -3266,7 +3266,10 @@ function buildBrandStageFunnel(deals, from, to) {
 const PILOT_STATUSES = ['Outreach Sent / No Response', 'Onboarding Link Requested', 'Needs More Time', 'Not Interested'];
 const PILOT_NO_STATUS = '(No status)';
 const PILOT_PROPS = ['dealname', 'pipeline', 'dealstage', 'amount', 'closedate', 'createdate',
-  'pilot_waitlist_status', 'pilot_waitlist_outreach_date'];
+  'pilot_waitlist_status', 'pilot_waitlist_outreach_date',
+  // Closed Won "reached" = these stamps or the current stage; Churned => won.
+  'hs_v2_date_entered_closedwon', 'hs_v2_date_entered_3453925110'];
+const PILOT_HISTORY_BATCH = 50;
 const PILOT_MAX_PAGES = 25;   // 5,000 deals; 204 in Nov 2026
 
 async function fetchPilotDeals(token) {
@@ -3303,6 +3306,82 @@ async function fetchDealStageMeta(token) {
   } catch (e) { console.error('pipelines/deals failed:', e && e.message); return {}; }
 }
 
+// Every value pilot_waitlist_status has ever held, per deal: {id: [values]}.
+// Search cannot return history, so this is a batch read by id. Returns null if
+// any batch is refused -- the funnel then says history did not load and counts
+// current statuses only, rather than passing a partial history off as whole.
+async function fetchPilotStatusHistory(token, ids) {
+  if (!token) return null;
+  const out = {};
+  for (let i = 0; i < ids.length; i += PILOT_HISTORY_BATCH) {
+    const inputs = ids.slice(i, i + PILOT_HISTORY_BATCH).map(id => ({ id: String(id) }));
+    let r = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (SUBREQ.exhausted) return null;
+      SUBREQ.n++; SUBREQ.hubspot++;
+      try {
+        r = await fetch('https://api.hubapi.com/crm/v3/objects/deals/batch/read', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ inputs, properties: ['pilot_waitlist_status'], propertiesWithHistory: ['pilot_waitlist_status'] }),
+        });
+      } catch (e) { r = null; if (noteSubreqError(e)) return null; await sleep(500 * (attempt + 1)); continue; }
+      if (r.status === 429) { azDrain(r); r = null; await sleep(1000 * (attempt + 1)); continue; }
+      break;
+    }
+    if (!r || !r.ok) { if (r) { console.error('pilot status history ' + r.status); azDrain(r); } return null; }
+    const d = await r.json();
+    for (const row of (d.results || [])) {
+      const h = ((row.propertiesWithHistory || {}).pilot_waitlist_status || []);
+      out[String(row.id)] = h.map(x => x && x.value).filter(Boolean).map(String);
+    }
+  }
+  return out;
+}
+
+// Waitlist funnel: Outreach Sent -> Onboarding Link Requested -> Closed Won,
+// with the other replies as side exits. Reached = ever held (history, plus the
+// current value); Here now = holds it today. Nothing is back-filled: a deal won
+// without ever requesting a link is NOT counted as having requested one, so
+// Closed Won's "from prior" is strictly of the deals that did.
+const PILOT_LINK = 'Onboarding Link Requested';
+const PILOT_OUTREACH = 'Outreach Sent / No Response';
+function buildPilotFunnel(list, statusOrder, history) {
+  const ok = !!history;
+  const reachedOf = d => {
+    const got = new Set(ok ? (history[d.id] || []) : []);
+    if (d.status !== PILOT_NO_STATUS) got.add(d.status);
+    return got;
+  };
+  const rows = list.map(d => ({ d, got: reachedOf(d) }));
+  const agg = (reachFn, hereFn, prevFn) => {
+    const r = rows.filter(x => reachFn(x));
+    const prev = prevFn ? rows.filter(x => prevFn(x)) : null;
+    const won = r.filter(x => x.d.won);
+    return {
+      reached: r.length, here: rows.filter(x => hereFn(x)).length,
+      fromPrevNum: prev ? prev.filter(x => reachFn(x)).length : null, fromPrevDen: prev ? prev.length : null,
+      won: won.length, mrr: won.reduce((s, x) => s + (x.d.mrr || 0), 0),
+    };
+  };
+  const isLink = x => x.got.has(PILOT_LINK);
+  const isWon = x => x.d.reachedWon;
+  const path = [
+    // Every deal on the list was reached out to: that is how it got here.
+    Object.assign({ key: 'outreach', label: 'Outreach Sent', kind: 'path' }, agg(() => true, x => x.d.status === PILOT_OUTREACH, null)),
+    Object.assign({ key: 'link', label: PILOT_LINK, kind: 'path' }, agg(isLink, x => x.d.status === PILOT_LINK, () => true)),
+    Object.assign({ key: 'won', label: 'Closed Won', kind: 'path' }, agg(isWon, x => x.d.won, isLink)),
+  ];
+  const exits = statusOrder.filter(s => s !== PILOT_OUTREACH && s !== PILOT_LINK && s !== PILOT_NO_STATUS)
+    .map(s => Object.assign({ key: s, label: s, kind: 'exit' }, agg(x => x.got.has(s), x => x.d.status === s, () => true)));
+  return {
+    historyOk: ok, rows: path.concat(exits),
+    wonWithoutLink: rows.filter(x => isWon(x) && !isLink(x)).length,
+    // Deals whose status moved at least once -- the reason Reached can exceed Here now.
+    moved: ok ? rows.filter(x => new Set(history[x.d.id] || []).size > 1).length : null,
+  };
+}
+
 // A HubSpot DATE property: 'YYYY-MM-DD', an ISO midnight-UTC string, or epoch
 // ms at midnight UTC. Read in UTC -- etDayKeyOf would shift it to the day before.
 function pilotDateKey(v) {
@@ -3313,7 +3392,7 @@ function pilotDateKey(v) {
   return null;
 }
 
-function buildPilotDashboard(deals, stageMeta) {
+function buildPilotDashboard(deals, stageMeta, history) {
   const meta = stageMeta || {};
   const list = (deals || []).map(r => {
     const p = r.properties || {};
@@ -3331,6 +3410,7 @@ function buildPilotDashboard(deals, stageMeta) {
       outreach, created: etDayKeyOf(p.createdate), closeDay, won,
       mrr: isFinite(amt) ? amt : null,
       wonBeforeOutreach: !!(won && closeDay && outreach && closeDay < outreach),
+      reachedWon: won || stage === '3453925110' || !!p.hs_v2_date_entered_closedwon || !!p.hs_v2_date_entered_3453925110,
     };
   });
 
@@ -3379,6 +3459,7 @@ function buildPilotDashboard(deals, stageMeta) {
   return {
     total: list.length, statusOrder, byStatus, matrix, stages, outreach, won,
     outreachRange: dated.length ? { from: dated[0], to: dated[dated.length - 1] } : null,
+    funnel: buildPilotFunnel(list, statusOrder, history === undefined ? null : history),
     deals: list,
   };
 }
@@ -10359,7 +10440,8 @@ export default {
     }
 
     // POST /api/pilot → Pilot Dashboard: every deal with a Pilot Waitlist
-    // Status, no window. Live on every load -- two HubSpot calls, nothing cached.
+    // Status, no window. Live on every load (search + pipelines + ~5 history
+    // batches for ~200 deals), nothing cached.
     if (request.method === 'POST' && url.pathname === '/api/pilot') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
@@ -10367,7 +10449,8 @@ export default {
       try {
         const hsToken = env.HUBSPOT_TOKEN;
         const [deals, stageMeta] = await Promise.all([fetchPilotDeals(hsToken), fetchDealStageMeta(hsToken)]);
-        return jr(Object.assign(buildPilotDashboard(deals, stageMeta), { meta: { generatedAt: new Date().toISOString() } }));
+        const history = await fetchPilotStatusHistory(hsToken, deals.map(r => r.id));
+        return jr(Object.assign(buildPilotDashboard(deals, stageMeta, history), { meta: { generatedAt: new Date().toISOString() } }));
       } catch (err) { console.error('Pilot endpoint error:', err); return jr({ error: 'Internal error', detail: err.message }, 500); }
     }
 

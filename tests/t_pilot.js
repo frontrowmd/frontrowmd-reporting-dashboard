@@ -37,6 +37,7 @@ const deals=[
 const meta={appointmentscheduled:{label:'Appointment Scheduled',order:0},'1084214349':{label:'Demo Happened',order:2},
   closedwon:{label:'Closed Won',order:7},'3453957850':{label:'No Show',order:9},'3741686471':{label:'Webinar Happened',order:12}};
 const r=W.buildPilotDashboard(deals,meta);
+const HIST={'5':[NMT,OLR,OSR],'8':[NMT,OSR],'7':[OSR,OSR]};   // a re-save of the same value is not a move
 ck('total counts every deal',r.total,10);
 ck('statuses in HubSpot order, no-status last',r.statusOrder,[OSR,OLR,NMT,NI,W.PILOT_NO_STATUS]);
 ck('per-status counts',r.statusOrder.map(s=>r.byStatus[s].n),[3,3,2,1,1]);
@@ -57,6 +58,27 @@ ck('  and its stage columns sum to the stage totals',r.stages.map(st=>r.statusOr
 ck('outreach dates oldest first',r.outreach.map(o=>o.date),['2026-10-20','2026-10-22','2026-10-26','2026-10-27','2026-10-29']);
 ck('  and they sum to the total',r.outreach.reduce((a,o)=>a+o.n,0),10);
 ck('the outreach range',r.outreachRange,{from:'2026-10-20',to:'2026-10-29'});
+// ── Waitlist funnel: reached (history) vs here now ──
+{
+  const f=W.buildPilotDashboard(deals,meta,HIST).funnel;
+  const row=k=>{const x=f.rows.find(r=>r.key===k);return x&&[x.reached,x.here,x.fromPrevNum,x.fromPrevDen];};
+  ck('funnel: the main path then the side exits',f.rows.map(r=>r.key+':'+r.kind),['outreach:path','link:path','won:path',NMT+':exit',NI+':exit']);
+  ck('Outreach Sent: every deal reached it; Here now is today\'s status',row('outreach'),[10,3,null,null]);
+  ck('Link Requested reached includes a deal that has since moved on',row('link'),[4,3,4,10]);
+  ck('Closed Won from prior is strictly of the deals that requested a link',row('won'),[5,5,4,4]);
+  ck('  and the won deal that never did is counted out loud',f.wonWithoutLink,1);
+  ck('a side exit: reached from history, here from today',row(NMT),[2,2,2,10]);
+  ck('a row carries the Closed Won MRR of the deals that reached it',f.rows.find(r=>r.key==='link').mrr,5500);
+  ck('deals that changed status',f.moved,2);
+  ck('history loaded',f.historyOk,true);
+  const g=W.buildPilotDashboard(deals,meta,null).funnel;
+  ck('no history: flagged, and Reached falls back to today\'s status only',[g.historyOk,g.rows.find(r=>r.key==='link').reached,g.moved],[false,3,null]);
+  const ch=W.buildPilotDashboard([D(OLR,'3453925110',{amount:'900',hs_v2_date_entered_closedwon:'2026-10-25T00:00:00Z'}),D(OLR,'1084214349')],{},{}).funnel;
+  ck('a churned deal reached Closed Won but is not here now',ch.rows.find(r=>r.key==='won').reached+'/'+ch.rows.find(r=>r.key==='won').here,'1/0');
+  ck('  and its MRR is not counted as revenue (it churned)',[ch.rows.find(r=>r.key==='won').won,ch.rows.find(r=>r.key==='won').mrr],[0,0]);
+  const ch2=W.buildPilotDashboard([D(OLR,'3453925110')],{},{}).funnel;
+  ck('Churned with no stamp still reached Closed Won',ch2.rows.find(r=>r.key==='won').reached,1);
+}
 // A stage HubSpot's pipeline call did not return still shows, after the known ones.
 const r2=W.buildPilotDashboard([D(OSR,'mystery'),D(OSR,'closedwon',{amount:'100'})],{closedwon:{label:'Closed Won',order:7}});
 ck('an unmapped stage sorts last with no label',r2.stages.map(s=>[s.id,s.label]),[['closedwon','Closed Won'],['mystery',null]]);
@@ -67,7 +89,7 @@ ck('an empty list is all zeros, not a crash',(()=>{const e=W.buildPilotDashboard
 // ── 3. Refusals throw; the label call never fails the page ───────────────────
 (async()=>{
   const mk=fetchImpl=>{const G={console:{log(){},warn(){},error(){}},fetch:fetchImpl,setTimeout:(f)=>f()};vm.createContext(G);
-    vm.runInContext(src.slice(0,src.indexOf('\nexport default'))+'\nObject.assign(globalThis,{fetchPilotDeals,fetchDealStageMeta});',G);return G;};
+    vm.runInContext(src.slice(0,src.indexOf('\nexport default'))+'\nObject.assign(globalThis,{fetchPilotDeals,fetchDealStageMeta,fetchPilotStatusHistory});',G);return G;};
   const bad=mk(async()=>({ok:false,status:500,text:async()=>'boom',json:async()=>({}),headers:{get:()=>null}}));
   let threw=false;try{await bad.fetchPilotDeals('tok');}catch(e){threw=true;}
   ck('a deal fetch HubSpot refused throws (the page says it failed, never a short list)',threw,true);
@@ -80,6 +102,13 @@ ck('an empty list is all zeros, not a crash',(()=>{const e=W.buildPilotDashboard
   ck('the search ORs status and outreach date',body.filterGroups.map(g=>g.filters.map(f=>f.propertyName+' '+f.operator)),
      [['pilot_waitlist_status HAS_PROPERTY'],['pilot_waitlist_outreach_date HAS_PROPERTY']]);
   const pl=mk(async()=>({ok:true,status:200,json:async()=>({results:[{id:'default',stages:[{id:'a',label:'A',displayOrder:1}]},{id:'p2',stages:[{id:'b',label:'B',displayOrder:0}]}]})}));
+  let hb=[];
+  const hist=mk(async(u,o)=>{const b=JSON.parse(o.body);hb.push(b);return {ok:true,status:200,json:async()=>({results:b.inputs.map(x=>({id:x.id,propertiesWithHistory:{pilot_waitlist_status:[{value:OLR,timestamp:'2'},{value:OSR,timestamp:'1'}]}}))})};});
+  const H=await hist.fetchPilotStatusHistory('tok',Array.from({length:120},(_,i)=>String(i+1)));
+  ck('history is read in batches of 50',hb.map(b=>b.inputs.length),[50,50,20]);
+  ck('  asking for the status history',hb[0].propertiesWithHistory,['pilot_waitlist_status']);
+  ck('  and returns every value held, per deal',[Object.keys(H).length,H['7']],[120,[OLR,OSR]]);
+  ck('a refused history batch returns null (the page says so), never a partial map',await bad.fetchPilotStatusHistory('tok',['1','2']),null);
   ck('stage labels carry pipeline order',await pl.fetchDealStageMeta('tok'),{a:{label:'A',order:1,pipeline:'default'},b:{label:'B',order:1000,pipeline:'p2'}});
 
   // ── 4. Route + nav wiring ──────────────────────────────────────────────────
@@ -119,7 +148,9 @@ ck('an empty list is all zeros, not a crash',(()=>{const e=W.buildPilotDashboard
   ck('MRR and ARR on the tiles',[h.indexOf('<div class="tval">$12,250</div>')>=0,h.indexOf('<div class="tval">$147,000</div>')>=0],[true,true]);
   ck('the before-outreach note names the count',/2 of the Closed Won \(\$7,250 MRR\) closed <b>before<\/b>/.test(h),true);
   ck('every section header',[...h.matchAll(/<div class="dsec-h dsec-in"[^>]*>([^<]+)<\/div>/g)].map(m=>m[1]),
-     ['Pilot Waitlist','Waitlist Status','Status × Deal Stage','By Outreach Date','Closed Won Revenue','All Waitlist Deals']);
+     ['Pilot Waitlist','Waitlist Funnel','Status × Deal Stage','By Outreach Date','Closed Won Revenue','All Waitlist Deals']);
+  ck('the funnel card renders its rows',['Outreach Sent','Onboarding Link Requested','Closed Won','Needs More Time','Not Interested'].every(l=>el.innerHTML.indexOf('>'+l+'</span></td><td class="n" style="font-weight:700">')>=0),true);
+  ck('  and a missing history is flagged on the page',/Status history did not load/.test(h),true);
   ck('no prior-period deltas anywhere',/vs prior|vs LM|vs last month/i.test(h),false);
   // Body rows only, read off the CURRENT render (a filter re-renders el).
   const rowsIn=sec=>{const x=el.innerHTML;const i=x.indexOf('>'+sec+'</div>');const t=x.indexOf('<tbody>',i);const j=x.indexOf('</table>',t);return (x.slice(t,j).match(/<tr>/g)||[]).length;};
@@ -156,11 +187,11 @@ ck('an empty list is all zeros, not a crash',(()=>{const e=W.buildPilotDashboard
   C.pilotFilter('status',NMT);
   ck('a sort survives a filter',col('deals',2),['Closed Won','Webinar Happened']);
   C.pilotFilter('status',NMT);
-  C.pilotSort('status',1);
-  ck('a summary table sorts, with Total pinned last',col('status',0),['Onboarding Link Requested','Outreach Sent / No Response','Needs More Time','Not Interested','(No status)','Total']);
-  C.pilotSort('status',0);
-  ck('a text column starts A-Z',col('status',0).slice(0,2),['(No status)','Needs More Time']);
-  ck('the bar column is not sortable',/onclick="pilotSort\('status',3\)"/.test(el.innerHTML),false);
+  C.pilotSort('matrix',6);
+  ck('a summary table sorts, with Total pinned last',col('matrix',0),['Onboarding Link Requested','Outreach Sent / No Response','Needs More Time','Not Interested','(No status)','Total']);
+  C.pilotSort('matrix',0);
+  ck('a text column starts A-Z',col('matrix',0).slice(0,2),['(No status)','Needs More Time']);
+  ck('the funnel does not sort (it reads top to bottom)',/pilotSort\('status',/.test(el.innerHTML),false);
   C.pilotSort('outreach',0);
   ck('the date column sorts by date',col('outreach',0),['Oct 20, 2026','Oct 22, 2026','Oct 26, 2026','Oct 27, 2026','Oct 29, 2026']);
   C.S.pilot.sort={};C.renderPilot();
