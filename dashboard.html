@@ -8000,9 +8000,6 @@ function _renderIrfanMetaTables(d, channel){
     s+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+f$(ncr.spend||0)+'</td>';
     s+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.demos||0)+_capiSub(ncr,channel)+'</td>';
     s+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(ncCpd!=null?f$(ncCpd):'—')+'</td>';
-    // Same reasoning as the ad-set row: utm_campaign attributes an inquiry to a
-    // CAMPAIGN, so a creative has no share of its own to show.
-    if(_clnAdCols)s+='<td></td><td></td>';
     s+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.impressions||0)+'</td>';
     s+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+fN(ncr.clicks||0)+'</td>';
     s+='<td style="text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums;font-size:10px">'+(ncr.ctr!=null?ncr.ctr.toFixed(2)+'%':'—')+'</td>';
@@ -8041,10 +8038,6 @@ function _renderIrfanMetaTables(d, channel){
     s+='<td style="text-align:right;padding:7px 6px;font-variant-numeric:tabular-nums;font-size:10.5px">'+f$(a.spend||0)+'</td>';
     s+='<td style="text-align:right;padding:7px 6px;font-variant-numeric:tabular-nums;font-size:10.5px">'+fN(a.demos||0)+_capiSub(a,channel)+'</td>';
     s+='<td style="text-align:right;padding:7px 6px;font-variant-numeric:tabular-nums;font-size:10.5px">'+(cpd!=null?f$(cpd):'—')+'</td>';
-    // Inquiries attribute to a CAMPAIGN, not to an ad set or creative — utm_campaign
-    // is the only key we have. Blank rather than a number that would invite the
-    // reader to add the children up to the parent.
-    if(_clnAdCols)s+='<td></td><td></td>';
     s+='<td style="text-align:right;padding:7px 6px;font-variant-numeric:tabular-nums;font-size:10.5px">'+fN(a.impressions||0)+'</td>';
     s+='<td style="text-align:right;padding:7px 6px;font-variant-numeric:tabular-nums;font-size:10.5px">'+fN(a.clicks||0)+'</td>';
     s+='<td style="text-align:right;padding:7px 6px;font-variant-numeric:tabular-nums;font-size:10.5px">'+(a.ctr!=null?a.ctr.toFixed(2)+'%':'—')+'</td>';

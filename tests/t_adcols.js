@@ -58,6 +58,17 @@ ck('the counter sees the Status Date / Status Days pair',
 ck('header, body and totals agree on the clinician channel',
    [H.clinician,B.clinician,T.clinician],[15,15,15]);
 ck('  and on the brand channels',[H.brand,B.brand,T.brand],[16,16,16]);
+// The nested rows live in their own builders but sit in the SAME table, so they
+// must match too. They kept two blank cells for the removed Inquiries / CPI
+// columns, which shifted every expanded ad set and creative two columns right
+// of its campaign on the clinician channel (2026-11-06).
+const fnBlk=(sig)=>{const i=cli.indexOf(sig);const j=cli.indexOf('\n  }\n',i);return i<0||j<0?'':cli.slice(i,j);};
+const AS=tally(fnBlk('function _renderCampAdsetRow('));
+const CR=tally(fnBlk('function _renderCreRow('));
+ck('an expanded ad set has as many cells as the header (clinician)',AS.clinician,H.clinician);
+ck('  and on the brand channels',AS.brand,H.brand);
+ck('an expanded creative has as many cells as the header (clinician)',CR.clinician,H.clinician);
+ck('  and on the brand channels',CR.brand,H.brand);
 // what this change did.
 ck('the empty-state colspan is counted off the header',
    /const _campColN=\(campH\.match\(\/<th\\b\/g\)\|\|\[\]\)\.length;/.test(cli),true);
