@@ -182,5 +182,55 @@ ck('and its daily-average tile with it',/mini\('Daily Avg'/.test(cli),false);
 ck('the worker still computes it, unused',
    /dailyAvg: _spanDays > 0 \? total \/ _spanDays : null, days: _spanDays/.test(src),true);
 
+// --- Clinician Specialty pie (2026-11-06) -----------------------------------
+// Right after Type, on the same panel builder, and following the Inquiry / Sign
+// Up toggle like every other Acquisition pie.
+ck('Clinician Specialty is an Acquisition panel, right after Type',
+   /acqPanel\('Type of Clinician',acqSrc\.type\|\|\[\]\)\s*\+acqPanel\('Clinician Specialty',acqSrc\.specialty\|\|\[\]\)\s*\+acqPanel\(udLabel/.test(cli),true);
+ck('the Sign Up population gets its own specialty mix',
+   /specialty: capped\(subSpec, 9\),/.test(src)&&/subSpec\[sp\] = \(subSpec\[sp\] \|\| 0\) \+ 1;/.test(src),true);
+// Run the builder: a clinician created before the window who signs up inside it
+// must land in the Sign Up specialty mix only, and the two mixes must each sum
+// to their own population.
+{
+  const sb={console:{log(){},warn(){},error(){}}};vm.createContext(sb);
+  let ok=true;
+  try{ vm.runInContext(src.slice(0,src.indexOf('\nexport default'))+'\nglobalThis.BC=buildClinicianComposition;',sb); }
+  catch(e){ok=false;console.log('  (could not load worker: '+e.message+')');}
+  if(ok&&typeof sb.BC==='function'){
+    const deals=[{id:'1',properties:{}},{id:'2',properties:{}},{id:'3',properties:{}}];
+    const C={
+      '1':{__cid:'a',createdate:'2026-11-02T15:00:00Z',clinician_specialty:'Dermatology',clinician_type:'MD'},
+      '2':{__cid:'b',createdate:'2026-11-03T15:00:00Z',clinician_specialty:'',clinician_type:'NP'},
+      '3':{__cid:'c',createdate:'2026-10-01T15:00:00Z',clinician_specialty:'Dermatology',clinician_type:'MD',clinician_credentials_completed:'2026-11-04'},
+    };
+    let r=null;
+    try{ r=sb.BC(deals,C,'2026-11-01','2026-11-06'); }catch(e){ console.log('  (builder threw: '+e.message+')'); }
+    ck('the builder ran',!!r,true);
+    if(r){
+      ck('inquiry specialty mix counts the window\'s contacts, blank as Not set',
+         JSON.parse(JSON.stringify(r.specialty)),[{label:'Dermatology',count:1},{label:'Not set',count:1}]);
+      ck('  and sums to the inquiry count',r.specialty.reduce((a,x)=>a+x.count,0),r.contacts);
+      ck('a sign up created before the window lands in the Sign Up specialty mix',
+         JSON.parse(JSON.stringify(r.submission.specialty)),[{label:'Dermatology',count:1}]);
+      ck('sign up specialty mix sums to the sign up count',
+         ((r.submission&&r.submission.specialty)||[]).reduce((a,x)=>a+x.count,0),r.submission.contacts);
+    }
+  }
+}
+
+// --- Clinician campaign matcher (2026-11-06) ---------------------------------
+{
+  const sb={};vm.createContext(sb);
+  vm.runInContext(fn(src,'isClinicianCampaign').replace(/^/,(src.match(/const CLINICIAN_CAMPAIGN_NAMES = new Set\(\[[\s\S]*?\]\);/)||[''])[0]+'\n')+';globalThis.f=isClinicianCampaign;',sb);
+  const f=sb.f;
+  ck('Clinician Targeting campaigns still match',f('S01 - TOF - Clinician Targeting - 2% Lookalikes'),true);
+  ck('the Dermatologists campaign is a Clinician campaign',f('S01 - TOF - Dermatologists - CAPI'),true);
+  ck('  regardless of case and spacing',f('  s01 - tof -  dermatologists - capi '),true);
+  ck('a brand campaign that mentions a specialty does not',f('S01 - TOF - Dermatologist Recommended Brands'),false);
+  ck('brand campaigns stay Meta',f('S01 - TOF - Cold - Supplements'),false);
+  ck('blank is not clinician',f(''),false);
+}
+
 console.log(pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);

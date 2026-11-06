@@ -15,8 +15,19 @@ const DASH_CHANNELS = ['meta', 'clinician', 'linkedin', 'google', 'reddit', 'cha
 // contains "Clinician Targeting", split out into their own channel. Those rows
 // are removed from Meta entirely (spend, stats, budget) so nothing is counted
 // twice.
+// Clinician campaigns whose names DON'T say "Clinician Targeting" are listed here
+// by exact name (case- and whitespace-insensitive). Exact rather than a keyword
+// like /dermatolog/ so a future BRAND campaign that mentions a specialty can't be
+// silently pulled out of Meta. Add the next one here.
+//   * "S01 - TOF - Dermatologists - CAPI" — added 2026-11-06; its ad set
+//     optimizes for the raw pixel event "Clinician -- Dermatologist".
+const CLINICIAN_CAMPAIGN_NAMES = new Set([
+  's01 - tof - dermatologists - capi',
+]);
 function isClinicianCampaign(campaignName) {
-  return /clinician\s*targeting/i.test(campaignName || '');
+  const n = String(campaignName || '');
+  return /clinician\s*targeting/i.test(n)
+    || CLINICIAN_CAMPAIGN_NAMES.has(n.trim().replace(/\s+/g, ' ').toLowerCase());
 }
 // Channels deliberately EXCLUDED from every roll-up KPI (total ad spend, CPD,
 // CPQD, CAC, ROAS, budget pacing) on both dashboards. They still render as their
@@ -879,7 +890,8 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v52';   // v52: November ad budgets.
+const API_CACHE_VER = 'v53';   // v53: "S01 - TOF - Dermatologists - CAPI" is a Clinician campaign; specialty pie.
+                               // v52: November ad budgets.
                                // v51: Decision Maker / Contract Sent dropped; Closed Won measured on Demo Happened.
                                // v50: brandStageFunnel counts a held demo as Demo Happened; DM measured on Demo Happened.
                                // v49: brandStageFunnel -- Sales-pipeline deal stages on the Conversion Funnel.
@@ -4382,7 +4394,7 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
   // them: "Inquiry" is everyone who arrived, "Sign Up" everyone who finished
   // credentials. Kept as a parallel tally rather than a second pass so both come
   // out of one loop. NOT a subset of the inquiries any more: see the loop.
-  const subRef = {}, subUtmS = {}, subUtmM = {}, subUtmC = {}, subType = {};
+  const subRef = {}, subUtmS = {}, subUtmM = {}, subUtmC = {}, subType = {}, subSpec = {};
   let subContacts = 0;
   // Denominators for "CPD Paid Non-Lookalikes": clinician ad spend over the full
   // submissions that spend can actually claim. Two independent tests, counted
@@ -4424,9 +4436,11 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
     const pick = (k) => ((cp[k] || dp[k] || '').trim()) || 'Not set';
     const rs = (cp.clinician_referral_source || '').trim() || 'Not set';
     const us = pick('utm_source'), um = pick('utm_medium'), uc = pick('utm_campaign');
+    // Specialty, on the same 'Not set' fallback as type. Read here rather than in
+    // the inquiry branch because the Sign Up mix needs it too.
+    const sp = (cp.clinician_specialty || '').trim() || 'Not set';
     if (created) {
       contacts++;
-      const sp = (cp.clinician_specialty || '').trim() || 'Not set';
       byType[t] = (byType[t] || 0) + 1;
       bySpec[sp] = (bySpec[sp] || 0) + 1;
       byRef[rs] = (byRef[rs] || 0) + 1;
@@ -4443,6 +4457,7 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
       subContacts++;
       subRef[rs] = (subRef[rs] || 0) + 1;
       subType[t] = (subType[t] || 0) + 1;
+      subSpec[sp] = (subSpec[sp] || 0) + 1;
       subUtmS[us] = (subUtmS[us] || 0) + 1;
       subUtmM[um] = (subUtmM[um] || 0) + 1;
       subUtmC[uc] = (subUtmC[uc] || 0) + 1;
@@ -4533,6 +4548,7 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
       paidNonLookalike: subPaidNonLal,
       referral: capped(subRef, 9),
       type: capped(subType, 9),
+      specialty: capped(subSpec, 9),
       utmSource: capped(subUtmS, 8), utmMedium: capped(subUtmM, 8), utmCampaign: capped(subUtmC, 8),
     },
   };
