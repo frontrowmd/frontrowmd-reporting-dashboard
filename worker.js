@@ -21,6 +21,10 @@ const DASH_CHANNELS = ['meta', 'clinician', 'linkedin', 'google', 'reddit', 'cha
 // silently pulled out of Meta. Add the next one here.
 //   * "S01 - TOF - Dermatologists - CAPI" — added 2026-11-06; its ad set
 //     optimizes for the raw pixel event "Clinician -- Dermatologist".
+// Changing this list (or the regex) re-homes campaigns, so bump AZ_DATA_VER as
+// well as API_CACHE_VER: the ad tables read their own KV payload, which serves
+// last-good while it rebuilds. Bumping only API_CACHE_VER on 2026-11-06 left
+// the Brand ad tables showing this campaign under Meta until the cron rebuilt.
 const CLINICIAN_CAMPAIGN_NAMES = new Set([
   's01 - tof - dermatologists - capi',
 ]);
