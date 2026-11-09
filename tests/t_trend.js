@@ -227,18 +227,25 @@ ck('one setter per toggle row',
   dctx._clnTrDimV={type:'Nurse Practitioner',spec:'Pediatrics'};
   const inq2=dctx._clnTrParts(p,'inquiry');
   ck('a different pick re-counts', [inq2.typeN,inq2.specN], [12,4]);
+  // Specialty: three old names sit beside the widened list's longer ones.
+  const p3={bySpec:{'PCP / family medicine':2,'Family Medicine':1,'Pediatrician':1,'Pediatrics':1,'OB/GYN':1,'Obstetrics and Gynecology':3,'Dermatology':2,'Not set':9},bySubSpec:{}};
+  ck('duplicate specialties merge into one option each', JSON.parse(JSON.stringify(dctx.__opts({ads:{trend:{day:[p3]}}},'spec'))),
+     ['Obstetrics and Gynecology','Family Medicine','Dermatology','Pediatrics','Not set']);
+  dctx._clnTrDimV={spec:'Obstetrics and Gynecology'};
+  ck('  and count both names', dctx._clnTrParts(Object.assign({inquiries:20},p3),'inquiry').specN, 4);
   dctx._clnTrDimV={};
   ck('Clinician Type defaults to MD/DO', dctx._clnTrParts(p,'inquiry').typeN, 8);
   // The dropdown lists every value in the series, MD and DO folded into MD/DO,
   // largest first and Not set last.
   const d={ads:{trend:{day:[p]}}};
-  ck('the type options fold MD and DO into MD/DO', JSON.parse(JSON.stringify(dctx.__opts(d,'type'))),
-     ['Nurse Practitioner','MD/DO']);
+  // MD/DO is pinned first even when it is not the largest (2026-11-09).
+  ck('the type options fold MD and DO into MD/DO, listed first', JSON.parse(JSON.stringify(dctx.__opts(d,'type'))),
+     ['MD/DO','Nurse Practitioner']);
   // NP, PA and RDN have the same short/long duplicates in HubSpot.
   const p2={byType:{'NP':3,'Nurse Practitioner':2,'PA':1,'Physician Assistant':1,'RDN':1,'RDN with Master\u2019s Degree':2,'Pharmacist':1},bySubType:{}};
   const d2={ads:{trend:{day:[p2]}}};
   ck('NP, PA and RDN fold into one option each', JSON.parse(JSON.stringify(dctx.__opts(d2,'type'))),
-     ['Nurse Practitioner','RDN','Physician Assistant','Pharmacist','MD/DO']);
+     ['MD/DO','Nurse Practitioner','RDN','Physician Assistant','Pharmacist']);
   const P=(sel)=>{dctx._clnTrDimV={type:sel};return dctx._clnTrParts(Object.assign({inquiries:10},p2),'inquiry').typeN;};
   ck('  and each counts both spellings', [P('Nurse Practitioner'),P('Physician Assistant'),P('RDN'),P('Pharmacist')], [5,2,3,1]);
   dctx._clnTrDimV={};

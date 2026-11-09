@@ -241,6 +241,27 @@ ck('the Sign Up population gets its own specialty mix',
      JSON.stringify(clientGroups),JSON.stringify(JSON.parse(JSON.stringify(sb.G))));
 }
 
+// --- Specialty pie merges duplicate names (2026-11-09) -------------------------
+{
+  const sb={console:{log(){},warn(){},error(){}}};vm.createContext(sb);
+  vm.runInContext(src.slice(0,src.indexOf('\nexport default'))+'\nglobalThis.BC=buildClinicianComposition;globalThis.G=CLINICIAN_SPECIALTY_GROUPS;',sb);
+  const SP=['PCP / family medicine','Family Medicine','Pediatrician','OB/GYN','Obstetrics and Gynecology','Dermatology'];
+  const deals=SP.map((_,i)=>({id:'s'+i,properties:{}}));
+  const C={};SP.forEach((x,i)=>{C['s'+i]={__cid:'q'+i,createdate:'2026-11-03T15:00:00Z',clinician_specialty:x};});
+  const r=sb.BC(deals,C,'2026-11-01','2026-11-06');
+  const m=Object.fromEntries(r.specialty.map(x=>[x.label,x.count]));
+  ck('the Specialty pie merges duplicate names',
+     [m['Family Medicine'],m['Pediatrics'],m['Obstetrics and Gynecology'],m['Dermatology'],m['OB/GYN'],m['Pediatrician']],
+     [2,1,2,1,undefined,undefined]);
+  const cg=(cli.match(/groups:\{'Family Medicine':\[[\s\S]*?\]\}\}/)||[''])[0];
+  // Missing list = a failed check, not a crash that hides the rest of the file.
+  const clientGroups=cg?vm.runInContext('({'+cg.replace(/^groups:\{/,'').replace(/\}$/,'')+')',vm.createContext({})):null;
+  ck('the worker and the Trend dropdown merge specialties identically',
+     JSON.stringify(clientGroups),JSON.stringify(JSON.parse(JSON.stringify(sb.G))));
+}
+// The dropdown shows plain names, not the spellings a group folds in.
+ck('dropdown options carry no "(incl. ...)" suffix',/\(incl\. /.test(fn(cli,'_clnTrendCard')),false);
+
 // --- Clinician campaign matcher (2026-11-06) ---------------------------------
 {
   const sb={};vm.createContext(sb);

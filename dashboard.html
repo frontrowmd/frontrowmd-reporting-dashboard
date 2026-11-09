@@ -3900,12 +3900,17 @@ const CLN_TR_METRICS=[
 const CLN_TR_DIMS={
   // NP / PA / RDN have the same short-and-long duplicates (grouped 2026-11-09).
   // The RDN value uses a CURLY apostrophe (U+2019), exactly as HubSpot stores it.
-  type:{l:'Clinician Type', src:'byType', subSrc:'bySubType', def:'MD/DO',
+  type:{l:'Clinician Type', src:'byType', subSrc:'bySubType', def:'MD/DO', first:'MD/DO',
         groups:{'MD/DO':['MD/DO','MD','DO'],
                 'Nurse Practitioner':['Nurse Practitioner','NP'],
                 'Physician Assistant':['Physician Assistant','PA'],
                 'RDN':['RDN','RDN with Master\u2019s Degree']}},
-  spec:{l:'Specialty',      src:'bySpec', subSrc:'bySubSpec', def:null, groups:{}},
+  // HubSpot's specialty list was widened with longer names beside three old
+  // ones; each pair is one specialty (2026-11-09).
+  spec:{l:'Specialty',      src:'bySpec', subSrc:'bySubSpec', def:null,
+        groups:{'Family Medicine':['Family Medicine','PCP / family medicine'],
+                'Pediatrics':['Pediatrics','Pediatrician'],
+                'Obstetrics and Gynecology':['Obstetrics and Gynecology','OB/GYN']}},
 };
 const CLN_TR_SPEND={k:'spend',n:'Ad Spend',c:'#64748B',unit:'$'};
 // The stat row, in ONE order, used by the KPI cards and the hover readout
@@ -3989,8 +3994,10 @@ function _clnTrDimOptions(d,dim){
     });
   });
   if(D.def&&!(D.def in tot))tot[D.def]=0;
+  // `first` pins one option to the top (MD/DO); the rest run largest first,
+  // with 'Not set' last.
   return Object.keys(tot).sort(function(a,b){
-    return (a==='Not set')-(b==='Not set')||tot[b]-tot[a]||(a<b?-1:a>b?1:0);
+    return (b===D.first)-(a===D.first)||(a==='Not set')-(b==='Not set')||tot[b]-tot[a]||(a<b?-1:a>b?1:0);
   });
 }
 
@@ -4183,10 +4190,11 @@ function _clnTrendCard(d,sfx){
   // select changes the pick (and activates it too). Styled as a pill so the
   // row still reads as one choice.
   var ddPill=function(x){
-    var on=mdef.k===x.k,sel=_clnTrSel(x.dim),grp=(CLN_TR_DIMS[x.dim].groups||{});
+    var on=mdef.k===x.k,sel=_clnTrSel(x.dim);
+    // Plain names: a group's option is its own name, never a list of the
+    // spellings it folds in.
     var opts=_clnTrDimOptions(d,x.dim).map(function(o){
-      var lab=o+(grp[o]?(' (incl. '+grp[o].filter(function(m){return m!==o;}).join(', ')+')'):'');
-      return '<option value="'+_trEsc(o)+'"'+(o===sel?' selected':'')+'>'+_trEsc(lab)+'</option>';
+      return '<option value="'+_trEsc(o)+'"'+(o===sel?' selected':'')+'>'+_trEsc(o)+'</option>';
     }).join('');
     return '<span style="display:inline-flex;align-items:center;gap:7px;padding:0 8px 0 14px;background:'+(on?'var(--navy)':'transparent')+';transition:background .15s">'
       +'<span onclick="toggleClnTrendMetric(\''+x.k+'\',\''+sfx+'\')" style="font-family:var(--font-h);font-size:11px;font-weight:700;letter-spacing:.02em;color:'+(on?'#fff':'var(--grey)')+';cursor:pointer;white-space:nowrap">'+x.l+'</span>'

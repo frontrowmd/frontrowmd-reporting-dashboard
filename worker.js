@@ -894,7 +894,8 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v55';   // v55: Acquisition Type pie groups MD/DO, NP, PA, RDN spellings.
+const API_CACHE_VER = 'v56';   // v56: Acquisition Specialty pie merges duplicate specialty names.
+                               // v55: Acquisition Type pie groups MD/DO, NP, PA, RDN spellings.
                                // v54: clinician trend buckets carry bySpec / bySubSpec.
                                // v53: "S01 - TOF - Dermatologists - CAPI" is a Clinician campaign; specialty pie.
                                // v52: November ad budgets.
@@ -4408,6 +4409,17 @@ const CLINICIAN_TYPE_GROUPS = {
   'Physician Assistant': ['Physician Assistant', 'PA'],
   'RDN': ['RDN', 'RDN with Master\u2019s Degree'],
 };
+// Specialty has the same problem: three old names beside the widened list's
+// longer ones. Same list as CLN_TR_DIMS.spec.groups in dashboard.html.
+const CLINICIAN_SPECIALTY_GROUPS = {
+  'Family Medicine': ['Family Medicine', 'PCP / family medicine'],
+  'Pediatrics': ['Pediatrics', 'Pediatrician'],
+  'Obstetrics and Gynecology': ['Obstetrics and Gynecology', 'OB/GYN'],
+};
+function clinicianSpecialtyGroup(t) {
+  for (const k of Object.keys(CLINICIAN_SPECIALTY_GROUPS)) if (CLINICIAN_SPECIALTY_GROUPS[k].indexOf(t) >= 0) return k;
+  return t;
+}
 function clinicianTypeGroup(t) {
   for (const k of Object.keys(CLINICIAN_TYPE_GROUPS)) if (CLINICIAN_TYPE_GROUPS[k].indexOf(t) >= 0) return k;
   return t;
@@ -4465,7 +4477,7 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
     const us = pick('utm_source'), um = pick('utm_medium'), uc = pick('utm_campaign');
     // Specialty, on the same 'Not set' fallback as type. Read here rather than in
     // the inquiry branch because the Sign Up mix needs it too.
-    const sp = (cp.clinician_specialty || '').trim() || 'Not set';
+    const sp = clinicianSpecialtyGroup((cp.clinician_specialty || '').trim() || 'Not set');
     if (created) {
       contacts++;
       byType[t] = (byType[t] || 0) + 1;
