@@ -234,6 +234,14 @@ ck('one setter per toggle row',
   const d={ads:{trend:{day:[p]}}};
   ck('the type options fold MD and DO into MD/DO', JSON.parse(JSON.stringify(dctx.__opts(d,'type'))),
      ['Nurse Practitioner','MD/DO']);
+  // NP, PA and RDN have the same short/long duplicates in HubSpot.
+  const p2={byType:{'NP':3,'Nurse Practitioner':2,'PA':1,'Physician Assistant':1,'RDN':1,'RDN with Master\u2019s Degree':2,'Pharmacist':1},bySubType:{}};
+  const d2={ads:{trend:{day:[p2]}}};
+  ck('NP, PA and RDN fold into one option each', JSON.parse(JSON.stringify(dctx.__opts(d2,'type'))),
+     ['Nurse Practitioner','RDN','Physician Assistant','Pharmacist','MD/DO']);
+  const P=(sel)=>{dctx._clnTrDimV={type:sel};return dctx._clnTrParts(Object.assign({inquiries:10},p2),'inquiry').typeN;};
+  ck('  and each counts both spellings', [P('Nurse Practitioner'),P('Physician Assistant'),P('RDN'),P('Pharmacist')], [5,2,3,1]);
+  dctx._clnTrDimV={};
   ck('the specialty options put Not set last', JSON.parse(JSON.stringify(dctx.__opts(d,'spec'))),
      ['Dermatology','Pediatrics','Not set']);
   // CTR must not move with the population — it is clicks over impressions.

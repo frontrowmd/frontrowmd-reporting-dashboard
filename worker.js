@@ -894,7 +894,8 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v54';   // v54: clinician trend buckets carry bySpec / bySubSpec.
+const API_CACHE_VER = 'v55';   // v55: Acquisition Type pie groups MD/DO, NP, PA, RDN spellings.
+                               // v54: clinician trend buckets carry bySpec / bySubSpec.
                                // v53: "S01 - TOF - Dermatologists - CAPI" is a Clinician campaign; specialty pie.
                                // v52: November ad budgets.
                                // v51: Decision Maker / Contract Sent dropped; Closed Won measured on Demo Happened.
@@ -4395,6 +4396,22 @@ function buildClinicianTable(deals, contactsByDeal, ownerMap, meetingStarts) {
   });
 }
 
+// clinician_type carries short and long spellings of the same role (MD and DO
+// beside the legacy MD/DO since 2026-09-11; NP, PA and RDN likewise). The
+// Acquisition Type pie counts each group as one slice, under the same names the
+// Trend Analysis Clinician Type dropdown uses (CLN_TR_DIMS.type.groups in
+// dashboard.html -- t_cln.js asserts the two lists match).
+// The RDN value uses a CURLY apostrophe (U+2019), exactly as HubSpot stores it.
+const CLINICIAN_TYPE_GROUPS = {
+  'MD/DO': ['MD/DO', 'MD', 'DO'],
+  'Nurse Practitioner': ['Nurse Practitioner', 'NP'],
+  'Physician Assistant': ['Physician Assistant', 'PA'],
+  'RDN': ['RDN', 'RDN with Master\u2019s Degree'],
+};
+function clinicianTypeGroup(t) {
+  for (const k of Object.keys(CLINICIAN_TYPE_GROUPS)) if (CLINICIAN_TYPE_GROUPS[k].indexOf(t) >= 0) return k;
+  return t;
+}
 function buildClinicianComposition(deals, contactsByDeal, from, to) {
   const seen = new Set();
   const byType = {}, bySpec = {};
@@ -4440,7 +4457,7 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
     const sk = clnSignUpKey(cp, dp);
     const signedUp = !!sk && (!(from && to) || (sk >= from && sk <= to));
     if (!created && !signedUp) continue;
-    const t = (cp.clinician_type || '').trim() || 'Not set';
+    const t = clinicianTypeGroup((cp.clinician_type || '').trim() || 'Not set');
     // Acquisition. UTMs may sit on either object, so take the contact's value and
     // fall back to the deal's rather than assuming one of them.
     const pick = (k) => ((cp[k] || dp[k] || '').trim()) || 'Not set';

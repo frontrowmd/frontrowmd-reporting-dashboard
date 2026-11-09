@@ -219,6 +219,28 @@ ck('the Sign Up population gets its own specialty mix',
   }
 }
 
+// --- Type of Clinician pie groups spellings (2026-11-09) ----------------------
+{
+  const sb={console:{log(){},warn(){},error(){}}};vm.createContext(sb);
+  vm.runInContext(src.slice(0,src.indexOf('\nexport default'))+'\nglobalThis.BC=buildClinicianComposition;globalThis.G=CLINICIAN_TYPE_GROUPS;',sb);
+  const T=['MD','DO','MD/DO','NP','Nurse Practitioner','PA','RDN with Master\u2019s Degree','Pharmacist'];
+  const deals=T.map((_,i)=>({id:'t'+i,properties:{}}));
+  const C={};T.forEach((ty,i)=>{C['t'+i]={__cid:'p'+i,createdate:'2026-11-03T15:00:00Z',clinician_type:ty};});
+  const r=sb.BC(deals,C,'2026-11-01','2026-11-06');
+  ck('the Type pie counts each spelling group as one slice',
+     r.type.map(x=>x.label).sort(),['MD/DO','Nurse Practitioner','Pharmacist','Physician Assistant','RDN']);
+  const m=Object.fromEntries(r.type.map(x=>[x.label,x.count]));
+  ck('  MD/DO, NP, PA and RDN each fold their spellings',
+     [m['MD/DO'],m['Nurse Practitioner'],m['Physician Assistant'],m['RDN'],m['Pharmacist'],m['MD'],m['NP']],
+     [3,2,1,1,1,undefined,undefined]);
+  ck('  and the slices still sum to the clinicians', r.type.reduce((a,x)=>a+x.count,0), r.contacts);
+  // One grouping, two copies (worker pie, client trend dropdown): they must agree.
+  const cg=(cli.match(/groups:\{'MD\/DO':\[[\s\S]*?\]\}\}/)||[''])[0];
+  const clientGroups=vm.runInContext('({'+cg.replace(/^groups:\{/,'').replace(/\}$/,'')+')',vm.createContext({}));
+  ck('the worker and the Trend dropdown group types identically',
+     JSON.stringify(clientGroups),JSON.stringify(JSON.parse(JSON.stringify(sb.G))));
+}
+
 // --- Clinician campaign matcher (2026-11-06) ---------------------------------
 {
   const sb={};vm.createContext(sb);

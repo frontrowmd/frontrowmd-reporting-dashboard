@@ -3898,8 +3898,13 @@ const CLN_TR_METRICS=[
 // same doctor. The old Doctors measure matched 'MD/DO' only and missed the split
 // values.
 const CLN_TR_DIMS={
+  // NP / PA / RDN have the same short-and-long duplicates (grouped 2026-11-09).
+  // The RDN value uses a CURLY apostrophe (U+2019), exactly as HubSpot stores it.
   type:{l:'Clinician Type', src:'byType', subSrc:'bySubType', def:'MD/DO',
-        groups:{'MD/DO':['MD/DO','MD','DO']}},
+        groups:{'MD/DO':['MD/DO','MD','DO'],
+                'Nurse Practitioner':['Nurse Practitioner','NP'],
+                'Physician Assistant':['Physician Assistant','PA'],
+                'RDN':['RDN','RDN with Master\u2019s Degree']}},
   spec:{l:'Specialty',      src:'bySpec', subSrc:'bySubSpec', def:null, groups:{}},
 };
 const CLN_TR_SPEND={k:'spend',n:'Ad Spend',c:'#64748B',unit:'$'};
