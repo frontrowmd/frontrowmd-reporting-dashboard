@@ -200,10 +200,10 @@ ck('Clinician still has its own populations',
 ck('  which are Inquiry and Sign Up, not the Brand ones',
    [...(/const CLN_TR_POPS=\[([\s\S]*?)\n\];/.exec(src)||[])[1].matchAll(/l:'([^']*)'/g)].map(m=>m[1]),
    ['Inquiry','Sign Up']);
-ck('  its own MD/DO stat',/CLN_MD_TYPE/.test(src),true);
+ck('  its own Clinician Type / Specialty dimensions',/const CLN_TR_DIMS=/.test(src),true);
 ck('  and its own card list',/const CLN_TR_CARDS=/.test(src),true);
 ck('the Brand card never reads a clinician field',
-   /fullApp|inquiries|bySubType|CLN_MD_TYPE/.test(BR),false);
+   /fullApp|inquiries|bySubType|bySubSpec|CLN_TR_DIMS/.test(BR),false);
 ck('  and the Clinician card never reads a Brand one',
    (()=>{const c0=src.indexOf('// \u2500\u2500 Clinician Trend Analysis');
          const CL=src.slice(c0,src.indexOf('// \u2500\u2500 Trend Analysis (Brand Dashboard)',c0));

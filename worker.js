@@ -894,7 +894,8 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v53';   // v53: "S01 - TOF - Dermatologists - CAPI" is a Clinician campaign; specialty pie.
+const API_CACHE_VER = 'v54';   // v54: clinician trend buckets carry bySpec / bySubSpec.
+                               // v53: "S01 - TOF - Dermatologists - CAPI" is a Clinician campaign; specialty pie.
                                // v52: November ad budgets.
                                // v51: Decision Maker / Contract Sent dropped; Closed Won measured on Demo Happened.
                                // v50: brandStageFunnel counts a held demo as Demo Happened; DM measured on Demo Happened.
@@ -4050,7 +4051,7 @@ function buildClinicianTrend(deals, contactsByDeal, windsorRows, from, to) {
     if (!dayKey) return null;
     if (from && dayKey < from) return null;
     if (to && dayKey > to) return null;
-    if (!B[dayKey]) B[dayKey] = { spend: 0, impressions: 0, clicks: 0, inquiries: 0, fullApp: 0, byType: {}, bySubType: {} };
+    if (!B[dayKey]) B[dayKey] = { spend: 0, impressions: 0, clicks: 0, inquiries: 0, fullApp: 0, byType: {}, bySubType: {}, bySpec: {}, bySubSpec: {} };
     B[dayKey][field] += (n == null ? 1 : n);
     return B[dayKey];
   };
@@ -4082,9 +4083,12 @@ function buildClinicianTrend(deals, contactsByDeal, windsorRows, from, to) {
     // uses — the On-Target card's mix has to reconcile with the Acquisition pie
     // beside it, and a different blank label would split one category in two.
     const ty = (cp.clinician_type || '').trim() || 'Not set';
+    // Specialty on the same fallback the Acquisition Specialty pie uses, for the
+    // Trend Analysis Specialty / Specialty % measures.
+    const spc = (cp.clinician_specialty || '').trim() || 'Not set';
     const k = _clnDayKey(cp.createdate);
     const bk = k ? bump(k, 'inquiries') : null;
-    if (bk) bk.byType[ty] = (bk.byType[ty] || 0) + 1;
+    if (bk) { bk.byType[ty] = (bk.byType[ty] || 0) + 1; bk.bySpec[spc] = (bk.bySpec[spc] || 0) + 1; }
     // Sign Up files under the day credentials were COMPLETED, independently of
     // when the contact arrived -- the same two tests buildClinicianComposition
     // applies, so the series still sums to the Key Metrics card. It used to sit
@@ -4092,7 +4096,7 @@ function buildClinicianTrend(deals, contactsByDeal, windsorRows, from, to) {
     // the window who signs up inside it would have been dropped.
     const sk = clnSignUpKey(cp, d.properties || {});
     const bs = sk ? bump(sk, 'fullApp') : null;
-    if (bs) bs.bySubType[ty] = (bs.bySubType[ty] || 0) + 1;
+    if (bs) { bs.bySubType[ty] = (bs.bySubType[ty] || 0) + 1; bs.bySubSpec[spc] = (bs.bySubSpec[spc] || 0) + 1; }
   }
 
   const div = (n, dd) => (dd > 0 ? n / dd : null);
@@ -4121,7 +4125,7 @@ function buildClinicianTrend(deals, contactsByDeal, windsorRows, from, to) {
   const roll = (keyOf) => {
     const g = {};
     const touch = (k) => {
-      if (k && !g[k]) g[k] = { spend: 0, impressions: 0, clicks: 0, inquiries: 0, fullApp: 0, byType: {}, bySubType: {} };
+      if (k && !g[k]) g[k] = { spend: 0, impressions: 0, clicks: 0, inquiries: 0, fullApp: 0, byType: {}, bySubType: {}, bySpec: {}, bySubSpec: {} };
     };
     const addMap = (dst, srcMap) => {
       for (const t of Object.keys(srcMap || {})) dst[t] = (dst[t] || 0) + srcMap[t];
@@ -4135,6 +4139,7 @@ function buildClinicianTrend(deals, contactsByDeal, windsorRows, from, to) {
       o.spend += b.spend; o.impressions += b.impressions; o.clicks += b.clicks;
       o.inquiries += b.inquiries; o.fullApp += b.fullApp;
       addMap(o.byType, b.byType); addMap(o.bySubType, b.bySubType);
+      addMap(o.bySpec, b.bySpec); addMap(o.bySubSpec, b.bySubSpec);
     }
     return Object.keys(g).sort().map(k => {
       const w = g[k];
@@ -4147,6 +4152,7 @@ function buildClinicianTrend(deals, contactsByDeal, windsorRows, from, to) {
         // follow the Acquisition section's Inquiry / Sign Up toggle
         // without a second request.
         byType: w.byType, bySubType: w.bySubType,
+        bySpec: w.bySpec, bySubSpec: w.bySubSpec,
         cpi: cost(w.spend, w.inquiries),
         cpfa: cost(w.spend, w.fullApp),
         // Rates as PERCENTAGES, computed on the period's own totals rather than

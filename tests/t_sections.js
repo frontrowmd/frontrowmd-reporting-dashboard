@@ -353,10 +353,11 @@ ck('Daily Activity is gone', /card\('Daily Activity'/.test(html), false);
 ck('On-Target Mix is gone',
    [/_clnTypeCard/.test(html),/_renderClnOnTarget/.test(html),/_clnTypeBands/.test(html),
     /CLN_ON_TARGET/.test(html),/CLN_OT_RATE_C/.test(html)], [false,false,false,false,false]);
-// The worker still ships byType/bySubType — Trend Analysis's Doctors and
-// Doctor % measures read them, so that is live, not residue.
+// The worker still ships byType/bySubType — Trend Analysis's Clinician Type
+// and Clinician Type % measures read them, so that is live, not residue.
 ck('but the type cut it used is still live in Trend Analysis',
-   /var types=\(sub\?p\.bySubType:p\.byType\)\|\|\{\};/.test(html), true);
+   /type:\{l:'Clinician Type', src:'byType', subSrc:'bySubType'/.test(html)
+   && /m=\(sub\?p\[D\.subSrc\]:p\[D\.src\]\)\|\|\{\}/.test(html), true);
 
 console.log('\n'+pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);

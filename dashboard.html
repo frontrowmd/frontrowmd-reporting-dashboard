@@ -3884,17 +3884,33 @@ const CLN_TR_METRICS=[
   {k:'cost',  l:'Cost Per',  unit:'$', c:'#9333EA', pop:true},
   {k:'cvr',   l:'CVR',       unit:'%', c:'#0E7C66', pop:true},
   {k:'ctr',   l:'CTR',       unit:'%', c:'#1D4ED8', pop:false},
-  {k:'md',    l:'Doctors',   unit:'#', c:'#BE123C', pop:true},
-  {k:'mdpct', l:'Doctor %',  unit:'%', c:'#B45309', pop:true},
+  {k:'type',    l:'Clinician Type',   unit:'#', c:'#BE123C', pop:true, dim:'type'},
+  {k:'typepct', l:'Clinician Type %', unit:'%', c:'#B45309', pop:true, dim:'type'},
+  {k:'spec',    l:'Specialty',        unit:'#', c:'#C026D3', pop:true, dim:'spec'},
+  {k:'specpct', l:'Specialty %',      unit:'%', c:'#4D7C0F', pop:true, dim:'spec'},
 ];
+// The four `dim` measures are dropdowns: each counts (or takes the share of) ONE
+// chosen value of a contact field. A measure and its % share the dimension's
+// selection, so picking "Dermatology" under Specialty % also points Specialty at
+// it — the KPI card shows both readings of the one cut. `groups` folds raw
+// HubSpot values into one option: clinician_type offers MD and DO separately
+// beside the legacy combined MD/DO (widened 2026-09-11), and all three are the
+// same doctor. The old Doctors measure matched 'MD/DO' only and missed the split
+// values.
+const CLN_TR_DIMS={
+  type:{l:'Clinician Type', src:'byType', subSrc:'bySubType', def:'MD/DO',
+        groups:{'MD/DO':['MD/DO','MD','DO']}},
+  spec:{l:'Specialty',      src:'bySpec', subSrc:'bySubSpec', def:null, groups:{}},
+};
 const CLN_TR_SPEND={k:'spend',n:'Ad Spend',c:'#64748B',unit:'$'};
 // The stat row, in ONE order, used by the KPI cards and the hover readout
 // alike. Previously each built its own list, which is how the hover ended up
 // repeating whichever stat was also the selected measure. Deriving both from
 // this list makes "same stats, same order, no duplicates" true by construction.
 //
-// Doctors is one entry carrying a count AND a share — they are two readings of
-// the same cut, and splitting them put the same number on screen twice. Ad
+// Clinician Type and Specialty are each one entry carrying a count AND a share —
+// two readings of the same cut; splitting them put the same number on screen
+// twice. Ad
 // Spend is here but is not a selectable MEASURE: it is always drawn as the
 // background, so it always has a card.
 const CLN_TR_CARDS=[
@@ -3902,7 +3918,8 @@ const CLN_TR_CARDS=[
   {k:'cost',  metric:'cost',  unit:'$', pop:true},
   {k:'cvr',   metric:'cvr',   unit:'%', pop:true},
   {k:'ctr',   metric:'ctr',   unit:'%', pop:false},
-  {k:'doctor',metric:'md',    unit:'#', pop:true, withPct:'mdpct'},
+  {k:'type',  metric:'type',  unit:'#', pop:true, withPct:'typepct'},
+  {k:'spec',  metric:'spec',  unit:'#', pop:true, withPct:'specpct'},
   {k:'spend', metric:null,    unit:'$', pop:false},
 ];
 // Label, value and working for one stat, against summed components.
@@ -3912,13 +3929,14 @@ function _clnTrStat(card,T,pdef){
   if(card.k==='spend'){
     lbl='Ad Spend'; val=_clnTrFmt(T.spend,'$'); colour=CLN_TR_SPEND.c;
     calc='clinician channel \u00b7 always on the chart';
-  }else if(card.k==='doctor'){
+  }else if(card.withPct){
     // A SPLIT stat: the count and the share are two readings of one cut, so
     // both are values. The share used to be buried in the caption line, which
     // made it read as working-out rather than as a figure in its own right.
-    var pct=T.pop>0?(T.md/T.pop)*100:null;
-    lbl=CLN_MD_TYPE+(card.pop?(' \u00b7 '+pdef.l):''); val=fN(T.md); colour=mdef?mdef.c:CLN_TR_SPEND.c;
-    split=_clnTrFmt(pct,'%');
+    // Labelled with the chosen value itself ("MD/DO", "Dermatology").
+    var n=_clnTrValue(card.metric,T);
+    lbl=_clnTrSel(mdef.dim)+(card.pop?(' \u00b7 '+pdef.l):''); val=fN(n); colour=mdef?mdef.c:CLN_TR_SPEND.c;
+    split=_clnTrFmt(_clnTrValue(card.withPct,T),'%');
     calc='of '+fN(T.pop)+' '+popW;
   }else{
     var v=_clnTrValue(card.metric,T);
@@ -3940,7 +3958,36 @@ const CLN_TR_MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','N
 // space is the constraint and the reader is scanning rather than reading one date.
 const CLN_TR_MONF=['January','February','March','April','May','June','July','August','September','October','November','December'];
 const CLN_TR_DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-const CLN_MD_TYPE='MD/DO';
+// The selected value of a dropdown dimension: the reader's pick, else the
+// default resolved from the data (_clnTrDimDef, set when the card renders),
+// else the dimension's static default.
+function _clnTrSel(dim){
+  var v=(window._clnTrDimV||{})[dim];
+  if(v)return v;
+  var dd=(window._clnTrDimDef||{})[dim];
+  return dd||(CLN_TR_DIMS[dim]&&CLN_TR_DIMS[dim].def)||'Not set';
+}
+// Raw HubSpot value -> the option it counts under.
+function _clnTrDimKey(dim,raw){
+  var g=(CLN_TR_DIMS[dim]||{}).groups||{};
+  for(var k in g)if(g[k].indexOf(raw)>=0)return k;
+  return raw;
+}
+// The options a dropdown offers: every value present anywhere in the worker's
+// series (either population, so switching population never empties the list),
+// largest first, 'Not set' last. A group's members collapse into it.
+function _clnTrDimOptions(d,dim){
+  var D=CLN_TR_DIMS[dim],t=(d&&d.ads&&d.ads.trend)||{},tot={};
+  (t.day||[]).forEach(function(p){
+    [p[D.src],p[D.subSrc]].forEach(function(m){
+      for(var k in (m||{})){var o=_clnTrDimKey(dim,k);tot[o]=(tot[o]||0)+m[k];}
+    });
+  });
+  if(D.def&&!(D.def in tot))tot[D.def]=0;
+  return Object.keys(tot).sort(function(a,b){
+    return (a==='Not set')-(b==='Not set')||tot[b]-tot[a]||(a<b?-1:a>b?1:0);
+  });
+}
 
 // "per Inquiries" reads wrong and a bare /s$/ strip gives "per inquirie".
 // -ies -> -y, otherwise a single trailing s drops; a double-s ending is left
@@ -3989,21 +4036,36 @@ function _clnTrendRedraw(sfx){
 window.toggleClnTrendGrain=function(g,sfx){window._clnTrendGrainV=g;_clnTrendRedraw(sfx);};
 window.toggleClnTrendPop=function(p,sfx){window._clnTrendPopV=p;_clnTrendRedraw(sfx);};
 window.toggleClnTrendMetric=function(m,sfx){window._clnTrendMetricV=m;_clnTrendRedraw(sfx);};
+// A dropdown pick sets the dimension's value AND makes that dropdown's measure
+// the plotted one: choosing a value is choosing to look at it.
+window.setClnTrendDim=function(dim,v,m,sfx){
+  (window._clnTrDimV=window._clnTrDimV||{})[dim]=v;
+  window._clnTrendMetricV=m;
+  _clnTrendRedraw(sfx);
+};
+// The measure's name as the legend, subtitle and hover say it: a dropdown
+// measure carries its chosen value ("Specialty %: Dermatology").
+function _clnTrMLabel(mdef){return mdef.dim?(mdef.l+': '+_clnTrSel(mdef.dim)):mdef.l;}
 
 // The raw components for one period, resolved against the population toggle.
 // Every metric is derived from these, never from another metric, so a rolling
 // window can be computed by summing components rather than averaging ratios.
 function _clnTrParts(p,pop){
   var sub=pop==='submission';
-  var types=(sub?p.bySubType:p.byType)||{};
+  // The chosen value's count in this period, its group members included.
+  var dimN=function(dim){
+    var D=CLN_TR_DIMS[dim],m=(sub?p[D.subSrc]:p[D.src])||{},sel=_clnTrSel(dim),n=0;
+    for(var k in m)if(_clnTrDimKey(dim,k)===sel)n+=m[k]||0;
+    return n;
+  };
   return {
     spend:p.spend||0, clicks:p.clicks||0, impressions:p.impressions||0,
     pop:(sub?p.fullApp:p.inquiries)||0,
-    md:types[CLN_MD_TYPE]||0,
+    typeN:dimN('type'), specN:dimN('spec'),
   };
 }
 function _clnTrSum(parts){
-  var t={spend:0,clicks:0,impressions:0,pop:0,md:0};
+  var t={spend:0,clicks:0,impressions:0,pop:0,typeN:0,specN:0};
   parts.forEach(function(x){for(var k in t)t[k]+=x[k];});
   return t;
 }
@@ -4012,11 +4074,13 @@ function _clnTrSum(parts){
 // per outcome with no spend is undefined rather than zero.
 function _clnTrValue(metric,t){
   if(metric==='count')return t.pop;
-  if(metric==='md')return t.md;
+  if(metric==='type')return t.typeN;
+  if(metric==='spec')return t.specN;
   if(metric==='cost')return (t.spend>0&&t.pop>0)?t.spend/t.pop:null;
   if(metric==='cvr')return t.clicks>0?(t.pop/t.clicks)*100:null;
   if(metric==='ctr')return t.impressions>0?(t.clicks/t.impressions)*100:null;
-  if(metric==='mdpct')return t.pop>0?(t.md/t.pop)*100:null;
+  if(metric==='typepct')return t.pop>0?(t.typeN/t.pop)*100:null;
+  if(metric==='specpct')return t.pop>0?(t.specN/t.pop)*100:null;
   return null;
 }
 function _clnTrFmt(v,unit){
@@ -4080,12 +4144,17 @@ function _clnTrendPts(d){
 function _clnTrendCard(d,sfx){
   sfx=sfx||'';
   window._clnTrendData=d;
+  // Specialty has no fixed default: it opens on the largest specialty in the
+  // series. Resolved before anything reads a selection.
+  var _specOpts=_clnTrDimOptions(d,'spec');
+  (window._clnTrDimDef=window._clnTrDimDef||{}).spec=_specOpts.filter(function(o){return o!=='Not set';})[0]||_specOpts[0]||'Not set';
   var pts=_clnTrendPts(d);
   var g=_clnTrGrainDef(), mdef=_clnTrMetricDef(), pdef=_clnTrPopDef();
   var rng=(d&&d.ads&&d.ads.trendRange)||null;
+  var _trEsc=function(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');};
   var sub='Independent of the page date filter · '+g.note
     +(rng?(' · series built over '+rng.from+' → '+rng.to):'')
-    +'<br>'+(mdef.pop?('Measuring <strong>'+mdef.l+'</strong> over <strong>'+pdef.w+'</strong>')
+    +'<br>'+(mdef.pop?('Measuring <strong>'+_trEsc(_clnTrMLabel(mdef))+'</strong> over <strong>'+pdef.w+'</strong>')
                      :('Measuring <strong>'+mdef.l+'</strong> — clicks ÷ impressions, which does not vary with the population toggle'))
     +' · Ad Spend is the shaded background throughout, whatever is selected';
   var title='<div class="irf-card-title" id="cln-trend-h'+sfx+'" data-nav="Trend Analysis" style="font-size:22px;font-weight:700;letter-spacing:-.01em;border-left:4px solid var(--teal);padding-left:11px;line-height:1.2">Trend Analysis</div>'
@@ -4099,15 +4168,32 @@ function _clnTrendCard(d,sfx){
   };
   // No captions. The pills name themselves — Weekly / Inquiry / Cost Per —
   // and three stacked label columns were more chrome than the choices needed.
-  // The groups sit on one wrapping row, spaced apart so they still read as
-  // three separate choices rather than one long strip of twelve.
+  // Period and population share the first row; the measures have a row of
+  // their own (2026-11-09), since four of them are now dropdowns and the strip
+  // no longer fits beside the other two.
   var seg=function(inner){
     return '<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap">'+inner+'</div>';
+  };
+  // A dropdown measure: its name activates it with the current pick, and the
+  // select changes the pick (and activates it too). Styled as a pill so the
+  // row still reads as one choice.
+  var ddPill=function(x){
+    var on=mdef.k===x.k,sel=_clnTrSel(x.dim),grp=(CLN_TR_DIMS[x.dim].groups||{});
+    var opts=_clnTrDimOptions(d,x.dim).map(function(o){
+      var lab=o+(grp[o]?(' (incl. '+grp[o].filter(function(m){return m!==o;}).join(', ')+')'):'');
+      return '<option value="'+_trEsc(o)+'"'+(o===sel?' selected':'')+'>'+_trEsc(lab)+'</option>';
+    }).join('');
+    return '<span style="display:inline-flex;align-items:center;gap:7px;padding:0 8px 0 14px;background:'+(on?'var(--navy)':'transparent')+';transition:background .15s">'
+      +'<span onclick="toggleClnTrendMetric(\''+x.k+'\',\''+sfx+'\')" style="font-family:var(--font-h);font-size:11px;font-weight:700;letter-spacing:.02em;color:'+(on?'#fff':'var(--grey)')+';cursor:pointer;white-space:nowrap">'+x.l+'</span>'
+      +'<select aria-label="'+_trEsc(x.l)+'" onchange="setClnTrendDim(\''+x.dim+'\',this.value,\''+x.k+'\',\''+sfx+'\')" style="font-family:var(--font-h);font-size:11px;font-weight:700;max-width:180px;margin:4px 0;padding:2px 4px;border-radius:6px;cursor:pointer;border:1px solid '+(on?'rgba(255,255,255,.4)':'var(--border)')+';background:'+(on?'var(--navy)':'var(--white)')+';color:'+(on?'#fff':'var(--navy)')+'">'+opts+'</select>'
+      +'</span>';
   };
   var toggles='<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin:12px 0 4px 15px">'
     +seg(CLN_TR_GRAINS.map(function(x){return pill(g.k===x.k,x.l,"toggleClnTrendGrain('"+x.k+"','"+sfx+"')",x.note);}).join(''))
     +seg(CLN_TR_POPS.map(function(x){return pill(pdef.k===x.k,x.l,"toggleClnTrendPop('"+x.k+"','"+sfx+"')",'');}).join(''))
-    +seg(CLN_TR_METRICS.map(function(x){return pill(mdef.k===x.k,x.l,"toggleClnTrendMetric('"+x.k+"','"+sfx+"')",'');}).join(''))
+    +'</div>'
+    +'<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin:10px 0 4px 15px">'
+    +seg(CLN_TR_METRICS.map(function(x){return x.dim?ddPill(x):pill(mdef.k===x.k,x.l,"toggleClnTrendMetric('"+x.k+"','"+sfx+"')",'');}).join(''))
     +'</div>';
 
   // ── What the KPI figures actually cover ──────────────────────────────────
@@ -4166,7 +4252,7 @@ function _clnTrendCard(d,sfx){
     +'</div>';
 
   var lg='<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:var(--navy)">'
-    +'<span style="display:inline-block;width:14px;height:0;border-top:3px solid '+mdef.c+'"></span>'+mdef.l+(mdef.pop?(' · '+pdef.l):'')+'</span>';
+    +'<span style="display:inline-block;width:14px;height:0;border-top:3px solid '+mdef.c+'"></span>'+_trEsc(_clnTrMLabel(mdef))+(mdef.pop?(' · '+pdef.l):'')+'</span>';
   if(g.k==='day')lg+='<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:var(--navy)">'
     +'<span style="display:inline-block;width:14px;height:0;border-top:2.5px dashed '+CLN_TR_ROLL_C+'"></span>'+CLN_TR_ROLL_DAYS+'-day average</span>';
   lg+='<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:var(--navy)">'
@@ -4664,7 +4750,7 @@ function _renderClnTrend(d,sfx){
     });
     // The rolling line is a chart series, not a card, so it goes last — and only
     // when it is actually drawn.
-    if(roll)rows.push(CLN_TR_ROLL_DAYS+'-day avg \u00b7 '+mdef.l+'|'+_clnTrFmt(roll[i],mdef.unit)+'|rolling|'+CLN_TR_ROLL_C+'|dash');
+    if(roll)rows.push(CLN_TR_ROLL_DAYS+'-day avg \u00b7 '+_clnTrMLabel(mdef)+'|'+_clnTrFmt(roll[i],mdef.unit)+'|rolling|'+CLN_TR_ROLL_C+'|dash');
     // data-grain labels what KIND of bucket this is. With three grains a
     // reader to whom "Sep 28" is shown cannot otherwise tell a single day from
     // the week that starts on it.

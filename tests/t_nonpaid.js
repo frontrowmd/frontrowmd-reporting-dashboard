@@ -139,7 +139,7 @@ ck('  with neither reading the unfiltered list directly',
 ck('the Clinician trend is untouched',
    (()=>{const m=/const CLN_TR_METRICS=\[([\s\S]*?)\n\];/.exec(cli);
      return [...m[1].matchAll(/\{k:'(\w+)'/g)].map(x=>x[1]);})(),
-   ['count','cost','cvr','ctr','md','mdpct']);
+   ['count','cost','cvr','ctr','type','typepct','spec','specpct']);
 
 // ── 9. Scope: every helper the filter bar calls must be REACHABLE ─────────
 function _stripLiterals(s){

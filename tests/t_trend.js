@@ -35,11 +35,11 @@ const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify(w);console.log((o
 // completes after the window closes. The pre-cutover booked-call rule has its
 // own fixtures in t_clnalltime.js.
 const contacts={
-  d1:{__cid:'c1',createdate:'2026-09-02T12:00:00Z',clinician_credentials_completed:'2026-09-02'},
-  d2:{__cid:'c1',createdate:'2026-09-02T12:00:00Z',clinician_credentials_completed:'2026-09-02'},
-  d5:{__cid:'c4',createdate:'2026-09-02T18:00:00Z'},
+  d1:{__cid:'c1',createdate:'2026-09-02T12:00:00Z',clinician_credentials_completed:'2026-09-02',clinician_specialty:'Dermatology'},
+  d2:{__cid:'c1',createdate:'2026-09-02T12:00:00Z',clinician_credentials_completed:'2026-09-02',clinician_specialty:'Dermatology'},
+  d5:{__cid:'c4',createdate:'2026-09-02T18:00:00Z',clinician_specialty:'Pediatrics'},
   d3:{__cid:'c2',createdate:'2026-09-09T12:00:00Z',clinician_credentials_completed:'2026-10-03'},
-  d4:{__cid:'c3',createdate:'2026-08-20T12:00:00Z',clinician_credentials_completed:'2026-09-15'},
+  d4:{__cid:'c3',createdate:'2026-08-20T12:00:00Z',clinician_credentials_completed:'2026-09-15',clinician_specialty:'Dermatology'},
 };
 const deals=[
   {id:'d1',properties:{clinician_meeting_booked_date:'2026-09-20'}},
@@ -71,6 +71,16 @@ ck('weekly inquiries sum == Key Metrics inquiries',  sum(t.week,'inquiries'), co
 ck('daily fullApp sum == Key Metrics full subs',     sum(t.day,'fullApp'),   comp.submission.contacts);
 ck('weekly fullApp sum == Key Metrics full subs',    sum(t.week,'fullApp'),  comp.submission.contacts);
 ck('both grains agree on spend', sum(t.day,'spend'), sum(t.week,'spend'));
+// The Specialty / Specialty % measures tie out to the Acquisition Specialty pie
+// for BOTH populations, at both grains.
+const mapSum=(a,k)=>a.reduce((o,p)=>{for(const x in (p[k]||{}))o[x]=(o[x]||0)+p[k][x];return o;},{});
+const pieMap=l=>Object.fromEntries((l||[]).map(x=>[x.label,x.count]));
+const sorted=o=>Object.fromEntries(Object.keys(o).sort().map(k=>[k,o[k]]));
+ck('daily specialty mix == the Acquisition Specialty pie (inquiry)', sorted(mapSum(t.day,'bySpec')), sorted(pieMap(comp.specialty)));
+ck('weekly specialty mix == the pie too', sorted(mapSum(t.week,'bySpec')), sorted(pieMap(comp.specialty)));
+ck('sign up specialty mix == the Sign Up pie', sorted(mapSum(t.day,'bySubSpec')), sorted(pieMap(comp.submission.specialty)));
+ck('  and the fixture can tell the two apart',
+   JSON.stringify(sorted(mapSum(t.day,'bySpec')))!==JSON.stringify(sorted(mapSum(t.day,'bySubSpec'))), true);
 ck('one person with two deals counts once', comp.contacts, 3);
 // The fixture must be able to tell the two populations apart, or every
 // assertion below about fullApp is satisfied by the inquiry figure too.
@@ -161,17 +171,22 @@ ck('client reads ads.trend', /\(d&&d\.ads&&d\.ads\.trend\)/.test(cli), true);
   const pops=(/const CLN_TR_POPS=\[([\s\S]*?)\n\];/.exec(cli)||[,''])[1];
   ck('two populations', [...pops.matchAll(/\{k:'(\w+)'/g)].map(m=>m[1]), ['inquiry','submission']);
   const mets=(/const CLN_TR_METRICS=\[([\s\S]*?)\n\];/.exec(cli)||[,''])[1];
-  ck('six measures, in the order asked for',
+  // Doctors / Doctor % became the Clinician Type / Clinician Type % dropdowns,
+  // and Specialty / Specialty % joined them (2026-11-09).
+  ck('eight measures, in the order asked for',
      [...mets.matchAll(/\{k:'(\w+)',\s*l:'([^']+)'/g)].map(m=>m[1]),
-     ['count','cost','cvr','ctr','md','mdpct']);
+     ['count','cost','cvr','ctr','type','typepct','spec','specpct']);
+  ck('the four dropdown measures name their dimension',
+     [...mets.matchAll(/\{k:'(\w+)'[^}]*dim:'(\w+)'\}/g)].map(m=>m[1]+':'+m[2]),
+     ['type:type','typepct:type','spec:spec','specpct:spec']);
   // Each measure declares its own unit, which is what makes a single axis
   // possible — only one is ever plotted.
   ck('every measure declares a unit',
-     [...mets.matchAll(/unit:'([#$%])'/g)].map(m=>m[1]), ['#','$','%','%','#','%']);
+     [...mets.matchAll(/unit:'([#$%])'/g)].map(m=>m[1]), ['#','$','%','%','#','%','#','%']);
   // CTR is clicks over impressions and has no population in it. A toggle that
   // appeared to change it would be lying.
   ck('CTR is marked population-independent', /\{k:'ctr',[^}]*pop:false\}/.test(mets), true);
-  ck('and every other measure is not', (mets.match(/pop:true/g)||[]).length, 5);
+  ck('and every other measure is not', (mets.match(/pop:true/g)||[]).length, 7);
 }
 ck('one setter per toggle row',
    [/window\.toggleClnTrendGrain=/.test(cli),/window\.toggleClnTrendPop=/.test(cli),/window\.toggleClnTrendMetric=/.test(cli)],
@@ -185,38 +200,61 @@ ck('one setter per toggle row',
   dctx.window=dctx;
   vm.createContext(dctx);
   vm.runInContext([
-    'const CLN_MD_TYPE="MD/DO";',
+    cli.slice(cli.indexOf('const CLN_TR_DIMS={'), cli.indexOf('const CLN_TR_SPEND=')),
+    fn(cli,'_clnTrSel'),fn(cli,'_clnTrDimKey'),fn(cli,'_clnTrDimOptions'),
     fn(cli,'_clnTrParts'),fn(cli,'_clnTrSum'),fn(cli,'_clnTrValue'),
+    'globalThis.__opts=_clnTrDimOptions;',
   ].join('\n'),dctx);
+  // MD/DO is the legacy combined value; MD and DO are the split ones written
+  // since 2026-09-11. All three are doctors and count under one option.
   const p={spend:400,clicks:100,impressions:5000,inquiries:20,fullApp:5,
-           byType:{'MD/DO':8,'Nurse Practitioner':12},bySubType:{'MD/DO':2,'Nurse Practitioner':3}};
+           byType:{'MD/DO':5,'MD':2,'DO':1,'Nurse Practitioner':12},bySubType:{'MD/DO':1,'MD':1,'Nurse Practitioner':3},
+           bySpec:{'Dermatology':6,'Pediatrics':4,'Not set':10},bySubSpec:{'Dermatology':1,'Not set':4}};
+  dctx._clnTrDimV={spec:'Dermatology'};
   const inq=dctx._clnTrParts(p,'inquiry'), sub=dctx._clnTrParts(p,'submission');
   ck('the population toggle picks the count', [inq.pop,sub.pop], [20,5]);
-  ck('and the matching MD/DO cut', [inq.md,sub.md], [8,2]);
+  ck('MD/DO counts MD/DO, MD and DO together', [inq.typeN,sub.typeN], [8,2]);
+  ck('and the chosen specialty is counted per population', [inq.specN,sub.specN], [6,1]);
   const V=(m,x)=>dctx._clnTrValue(m,x);
   ck('Count',      [V('count',inq),V('count',sub)], [20,5]);
-  ck('Doctors',    [V('md',inq),V('md',sub)], [8,2]);
+  ck('Clinician Type', [V('type',inq),V('type',sub)], [8,2]);
   ck('Cost Per',   [V('cost',inq),V('cost',sub)], [20,80]);
   ck('CVR',        [V('cvr',inq),V('cvr',sub)], [20,5]);
-  ck('Doctor %',   [V('mdpct',inq),V('mdpct',sub)], [40,40]);
+  ck('Clinician Type %', [V('typepct',inq),V('typepct',sub)], [40,40]);
+  ck('Specialty',  [V('spec',inq),V('spec',sub)], [6,1]);
+  ck('Specialty %',[V('specpct',inq),V('specpct',sub)], [30,20]);
+  // A different pick re-counts; a non-MD type has no group, so it is itself.
+  dctx._clnTrDimV={type:'Nurse Practitioner',spec:'Pediatrics'};
+  const inq2=dctx._clnTrParts(p,'inquiry');
+  ck('a different pick re-counts', [inq2.typeN,inq2.specN], [12,4]);
+  dctx._clnTrDimV={};
+  ck('Clinician Type defaults to MD/DO', dctx._clnTrParts(p,'inquiry').typeN, 8);
+  // The dropdown lists every value in the series, MD and DO folded into MD/DO,
+  // largest first and Not set last.
+  const d={ads:{trend:{day:[p]}}};
+  ck('the type options fold MD and DO into MD/DO', JSON.parse(JSON.stringify(dctx.__opts(d,'type'))),
+     ['Nurse Practitioner','MD/DO']);
+  ck('the specialty options put Not set last', JSON.parse(JSON.stringify(dctx.__opts(d,'spec'))),
+     ['Dermatology','Pediatrics','Not set']);
   // CTR must not move with the population — it is clicks over impressions.
   ck('CTR ignores the population', [V('ctr',inq),V('ctr',sub)], [2,2]);
   // A COST with no spend is undefined, not zero: at zero it would plot on the
   // floor and read as the cheapest period in the window.
   ck('no spend makes a cost null, not 0',
-     V('cost',{spend:0,clicks:9,impressions:9,pop:4,md:1}), null);
+     V('cost',{spend:0,clicks:9,impressions:9,pop:4,typeN:1,specN:0}), null);
   // A RATE with a real denominator and a zero numerator is genuinely 0.
   ck('but a rate with a real denominator is 0, not null',
-     V('cvr',{spend:5,clicks:10,impressions:10,pop:0,md:0}), 0);
+     V('cvr',{spend:5,clicks:10,impressions:10,pop:0,typeN:0,specN:0}), 0);
   ck('and a rate with no denominator is null',
-     [V('cvr',{spend:5,clicks:0,impressions:0,pop:3,md:1}),
-      V('ctr',{spend:5,clicks:3,impressions:0,pop:3,md:1}),
-      V('mdpct',{spend:5,clicks:3,impressions:9,pop:0,md:0})], [null,null,null]);
+     [V('cvr',{spend:5,clicks:0,impressions:0,pop:3,typeN:1,specN:0}),
+      V('ctr',{spend:5,clicks:3,impressions:0,pop:3,typeN:1,specN:0}),
+      V('typepct',{spend:5,clicks:3,impressions:9,pop:0,typeN:0,specN:0}),
+      V('specpct',{spend:5,clicks:3,impressions:9,pop:0,typeN:0,specN:0})], [null,null,null,null]);
   // THE rule for the rolling average and the KPI cards: a window's value is
   // computed from SUMMED components, never averaged across periods. The mean of
   // two CVRs is not the window's CVR.
-  const a={spend:100,clicks:10,impressions:100,pop:1,md:1};
-  const b={spend:100,clicks:990,impressions:9900,pop:99,md:9};
+  const a={spend:100,clicks:10,impressions:100,pop:1,typeN:1,specN:0};
+  const b={spend:100,clicks:990,impressions:9900,pop:99,typeN:9,specN:0};
   const pooled=V('cvr',dctx._clnTrSum([a,b]));
   const averaged=(V('cvr',a)+V('cvr',b))/2;
   ck('a window CVR is pooled, not averaged', [Math.round(pooled*100)/100, Math.round(averaged*100)/100], [10,10]);
@@ -308,11 +346,14 @@ ck('the old Weekly Cost card is gone', /_clnWeeklyCard|_renderClnWeekly/.test(cl
   const cardsSrc=(/const CLN_TR_CARDS=\[([\s\S]*?)\n\];/.exec(cli)||[,''])[1];
   ck('the stat row is declared once',
      [...cardsSrc.matchAll(/\{k:'(\w+)'/g)].map(m=>m[1]),
-     ['count','cost','cvr','ctr','doctor','spend']);
-  // Doctors is ONE entry carrying a count and a share: two readings of the same
-  // cut, and splitting them put the same number on screen twice.
-  ck('Doctors carries its count and its share together',
-     /\{k:'doctor',\s*metric:'md',\s*unit:'#',\s*pop:true,\s*withPct:'mdpct'\}/.test(cardsSrc), true);
+     ['count','cost','cvr','ctr','type','spec','spend']);
+  // Clinician Type and Specialty are each ONE entry carrying a count and a
+  // share: two readings of the same cut, and splitting them put the same number
+  // on screen twice.
+  ck('Clinician Type carries its count and its share together',
+     /\{k:'type',\s*metric:'type',\s*unit:'#',\s*pop:true,\s*withPct:'typepct'\}/.test(cardsSrc), true);
+  ck('and so does Specialty',
+     /\{k:'spec',\s*metric:'spec',\s*unit:'#',\s*pop:true,\s*withPct:'specpct'\}/.test(cardsSrc), true);
   // Ad Spend is a card but not a selectable measure — it is always the
   // background, so it always has a card.
   ck('Ad Spend is a card but not a measure',
@@ -327,10 +368,10 @@ ck('the old Weekly Cost card is gone', /_clnWeeklyCard|_renderClnWeekly/.test(cl
      (hoverZone.match(/rows\.push\(/g)||[]).length, 1);
   ck('and it is the rolling line', /rows\.push\(CLN_TR_ROLL_DAYS\+'-day avg/.test(hoverZone), true);
   ck('Clicks is no longer a readout row', /rows\.push\('Clicks\|/.test(cli), false);
-  // The tooltip must cover six cards plus the rolling row, or the last row is
+  // The tooltip must cover seven cards plus the rolling row, or the last row is
   // silently dropped.
   ck('the tooltip loops over every row the readout can emit',
-     (+(/for\(var i=1;i<=(\d+);i\+\+\)/.exec(cli)||[,0])[1]) >= 7, true);
+     (+(/for\(var i=1;i<=(\d+);i\+\+\)/.exec(cli)||[,0])[1]) >= 8, true);
 }
 
 // ── _clnTrStat, RUN ───────────────────────────────────────────────────────
@@ -349,29 +390,33 @@ ck('the old Weekly Cost card is gone', /_clnWeeklyCard|_renderClnWeekly/.test(cl
     // context, so the bindings have to be handed out explicitly.
     'globalThis.__cards=CLN_TR_CARDS; globalThis.__stat=_clnTrStat;',
   ].join('\n'),dctx);
-  const T={spend:400,clicks:100,impressions:5000,pop:20,md:8};
+  const T={spend:400,clicks:100,impressions:5000,pop:20,typeN:8,specN:5};
   const pdef={k:'inquiry',l:'Inquiry',w:'inquiries',short:'inquiries'};
+  dctx._clnTrDimV={spec:'Dermatology'};
   const got=dctx.__cards.map(c=>{const st=dctx.__stat(c,T,pdef);return [st.lbl,st.val];});
+  // A dropdown card is labelled with the chosen value itself.
   ck('every card renders a value, in order', got,
      [['Count · Inquiry','20'],['Cost Per · Inquiry','$20'],['CVR · Inquiry','20.0%'],
-      ['CTR','2.00%'],['MD/DO · Inquiry','8'],['Ad Spend','$400']]);
+      ['CTR','2.00%'],['MD/DO · Inquiry','8'],['Dermatology · Inquiry','5'],['Ad Spend','$400']]);
   // CTR carries no population in its label, because it has none in its maths.
-  ck('CTR is the one card with no population in its label', got.filter(g=>/·/.test(g[0])).length, 4);
+  ck('CTR is the one card with no population in its label', got.filter(g=>/·/.test(g[0])).length, 5);
   // No stat may appear twice — that was the complaint.
   ck('no label repeats', new Set(got.map(g=>g[0])).size, got.length);
   // Doctors is a SPLIT stat: the count and the share are two readings of one
   // cut, so both are VALUES. The share used to sit in the caption, where it
   // read as working-out rather than as a figure.
   const doc=dctx.__stat(dctx.__cards[4],T,pdef);
-  ck('the Doctors card splits count and share', [doc.val,doc.split,doc.calc],
+  ck('the Clinician Type card splits count and share', [doc.val,doc.split,doc.calc],
      ['8','40.0%','of 20 inquiries']);
-  // Only Doctors splits — every other stat has one value, and a stray split
+  const spc=dctx.__stat(dctx.__cards[5],T,pdef);
+  ck('and so does Specialty', [spc.val,spc.split], ['5','25.0%']);
+  // Only those two split — every other stat has one value, and a stray split
   // would read as two measures on one row.
   ck('and nothing else does',
      dctx.__cards.map(c=>!!dctx.__stat(c,T,pdef).split),
-     [false,false,false,false,true,false]);
+     [false,false,false,false,true,true,false]);
   // A split must survive a zero denominator rather than printing NaN%.
-  const doc0=dctx.__stat(dctx.__cards[4],{spend:0,clicks:0,impressions:0,pop:0,md:0},pdef);
+  const doc0=dctx.__stat(dctx.__cards[4],{spend:0,clicks:0,impressions:0,pop:0,typeN:0,specN:0},pdef);
   ck('with no population the share is a dash, not NaN', doc0.split, '\u2014');
 }
 
@@ -412,7 +457,30 @@ ck('and says plainly it is not the page filter', /not the page date filter/.test
   // one strip and the three choices are no longer distinguishable.
   ck('the three groups stay separate', (cardFn.match(/\+seg\(/g)||[]).length, 3);
   ck('spaced apart on one row', /gap:18px;flex-wrap:wrap;margin:12px 0 4px 15px/.test(cardFn), true);
+  // The measures moved to their own row (2026-11-09): period and population
+  // close the first row, and the measure strip opens a second.
+  ck('the measure strip has its own row',
+     /\+seg\(CLN_TR_POPS\.map[\s\S]*?\+'<\/div>'\s*\n\s*\+'<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin:10px 0 4px 15px">'\s*\n\s*\+seg\(CLN_TR_METRICS\.map/.test(cardFn), true);
+  ck('dropdown measures render as selects, the rest as pills',
+     /return x\.dim\?ddPill\(x\):pill\(/.test(cardFn) && /<select aria-label=/.test(cardFn), true);
+  ck('a pick sets the value and plots that measure',
+     /onchange="setClnTrendDim\(/.test(cardFn), true);
 }
+{
+  // The setter, RUN: picking a value also selects the measure it belongs to.
+  const c={};c.window=c;let redrawn=0;vm.createContext(c);
+  vm.runInContext("function _clnTrendRedraw(){globalThis.__r=(globalThis.__r||0)+1;}\n"
+    +cli.slice(cli.indexOf('window.setClnTrendDim='),cli.indexOf('// The measure\'s name as the legend')),c);
+  c.setClnTrendDim('spec','Dermatology','specpct','');
+  ck('setClnTrendDim stores the pick and the measure', [c._clnTrDimV.spec,c._clnTrendMetricV,c.__r],['Dermatology','specpct',1]);
+}
+// The worker ships the specialty mix per bucket for both populations, alongside
+// the type mix, and rolls it up the same way.
+ck('trend buckets carry bySpec / bySubSpec',
+   /bk\.bySpec\[spc\] = \(bk\.bySpec\[spc\] \|\| 0\) \+ 1;/.test(src)
+   && /bs\.bySubSpec\[spc\] = \(bs\.bySubSpec\[spc\] \|\| 0\) \+ 1;/.test(src)
+   && /addMap\(o\.bySpec, b\.bySpec\); addMap\(o\.bySubSpec, b\.bySubSpec\);/.test(src)
+   && /bySpec: w\.bySpec, bySubSpec: w\.bySubSpec,/.test(src), true);
 
 // ── The plotted measure leads the hover ───────────────────────────────────
 // Order still follows the cards — only the emphasis moves. The row the chart is
@@ -420,9 +488,9 @@ ck('and says plainly it is not the page filter', /not the page date filter/.test
 ck('the hover flags the selected row',
    /var isSel=\(card\.metric===mdef\.k\)\|\|\(card\.withPct&&card\.withPct===mdef\.k\);/.test(cli), true);
 ck('and passes it through as a field', /\+\(isSel\?'1':''\)\+'\|'\+\(st\.split\|\|''\)/.test(cli), true);
-// Selecting Doctor % must light the Doctors row, since that card carries both.
-ck('Doctor % lights the Doctors row via withPct',
-   /\{k:'doctor',\s*metric:'md',\s*unit:'#',\s*pop:true,\s*withPct:'mdpct'\}/.test(cli), true);
+// Selecting a % measure must light its count's row, since that card carries both.
+ck('Clinician Type % lights the Clinician Type row via withPct',
+   /\{k:'type',\s*metric:'type',\s*unit:'#',\s*pop:true,\s*withPct:'typepct'\}/.test(cli), true);
 {
   const tip=cli.slice(cli.indexOf('function clnWkTip(e,el){'), cli.indexOf('function clnWkTipMove'));
   ck('the tooltip reads the flag', /var isPrimary=\(f\[5\]==='1'\);/.test(tip), true);
