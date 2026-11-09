@@ -29,7 +29,7 @@ const CLINICIAN_CAMPAIGN_NAMES = new Set([
   's01 - tof - dermatologists - capi',
 ]);
 function isClinicianCampaign(campaignName) {
-  const n = String(campaignName || '');
+  const n = resolveUtmCampaign(campaignName);
   return /clinician\s*targeting/i.test(n)
     || CLINICIAN_CAMPAIGN_NAMES.has(n.trim().replace(/\s+/g, ' ').toLowerCase());
 }
@@ -894,7 +894,8 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v56';   // v56: Acquisition Specialty pie merges duplicate specialty names.
+const API_CACHE_VER = 'v57';   // v57: clinician spend + contacts split core / LAL / Derm (Key Metrics row 2).
+                               // v56: Acquisition Specialty pie merges duplicate specialty names.
                                // v55: Acquisition Type pie groups MD/DO, NP, PA, RDN spellings.
                                // v54: clinician trend buckets carry bySpec / bySubSpec.
                                // v53: "S01 - TOF - Dermatologists - CAPI" is a Clinician campaign; specialty pie.
@@ -1571,6 +1572,32 @@ async function kvCachedFetchNE(env, key, ttlSec, fetchFn) {
 // for anything live.
 const CLN_LOOKALIKE_RE = /look-?alike|\blal\b/i;
 function isLookalikeCampaign(name) { return CLN_LOOKALIKE_RE.test(String(name || '')); }
+
+// Some clinician ads tag utm_campaign with the Meta campaign ID instead of its
+// name. Measured 2026-11-09: the Dermatologists campaign reached 102 contacts,
+// 70 of them tagged '120253712026790502' and only 32 by name — a name-only
+// match misses two thirds of its inquiries. No other clinician campaign does
+// this today; add the next ID here (Windsor's facebook `campaign_id` field
+// gives the mapping).
+const CLINICIAN_CAMPAIGN_ID_NAMES = {
+  '120253712026790502': 'S01 - TOF - Dermatologists - CAPI',
+};
+function resolveUtmCampaign(v) {
+  const s = String(v || '').trim();
+  return CLINICIAN_CAMPAIGN_ID_NAMES[s] || s;
+}
+// The Key Metrics cost cards split clinician spend and the contacts it bought
+// three ways (2026-11-09): Dermatology campaigns, Lookalike campaigns, and the
+// core rest. ONE classifier for both sides, so a campaign's spend and its
+// contacts always land in the same bucket. Derm wins over Lookalike, so a future
+// "Dermatologists - Lookalikes" campaign is costed as Derm.
+function isDermCampaign(name) { return /dermatolog/i.test(String(name || '')); }
+function clnCampaignSegment(name) {
+  const n = resolveUtmCampaign(name);
+  if (isDermCampaign(n)) return 'derm';
+  if (isLookalikeCampaign(n)) return 'lal';
+  return 'core';
+}
 
 // Demos Booked = contacts created in window with date_demo_booked set (guide Section 3)
 // Windsor date clamp — don't query before ad data exists
@@ -3793,6 +3820,7 @@ function buildClinicianDaily(deals, contactsByDeal, from, to) {
 // the population the paid campaigns actually account for.
 function buildClinicianAds(windsorRows, budgets, funnelAll, cliniciansAdded, rows, from, to) {
   let spend = 0, conversions = 0;
+  const spendBySeg = { core: 0, lal: 0, derm: 0 };
   const byDay = {};
   for (const r of (windsorRows || [])) {
     const ds = (r.datasource || '').toLowerCase();
@@ -3808,6 +3836,7 @@ function buildClinicianAds(windsorRows, budgets, funnelAll, cliniciansAdded, row
     if (to && rk && rk > to) continue;
     const v = parseFloat(r.spend) || 0;
     spend += v;
+    spendBySeg[clnCampaignSegment(r.campaign_name)] += v;
     // Conversions the clinician campaigns actually reported, summed across BOTH
     // CAPI eras (see CLINICIAN_CONV_FIELDS) — the same number the Conversions
     // column totals in the Clinician Ad Tables.
@@ -3847,6 +3876,8 @@ function buildClinicianAds(windsorRows, budgets, funnelAll, cliniciansAdded, row
   }
   return {
     spend, budget, paceSeries,
+    // Spend by campaign segment (clnCampaignSegment); the three sum to `spend`.
+    spendCore: spendBySeg.core, spendLal: spendBySeg.lal, spendDerm: spendBySeg.derm,
     pacePct: budget > 0 ? (spend / budget) * 100 : null,
     // Cost Per Inquiry: clinician ad spend ÷ clinician DEALS created. Renamed from
     // CPD because that is what the denominator has always been -- a created deal is
@@ -4444,6 +4475,21 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
   //                     card divides by: dividing ad spend by an organic signup
   //                     credits the spend with something it did not buy.
   let subNonLal = 0, subPaidNonLal = 0;
+  // Segment-attributed counts for the second Key Metrics row: sign ups and
+  // inquiries whose utm_campaign is a Lookalike / Dermatology campaign.
+  let subLal = 0, subDerm = 0, inqDerm = 0;
+  // The Acquisition Specialty filter (2026-11-09): the Type and UTM mixes again,
+  // per specialty, for both populations. Keys are the same grouped specialty
+  // names the Specialty pie shows.
+  const xInq = {}, xSub = {};
+  const xBump = (X, spc, t, us, um, uc) => {
+    const o = X[spc] || (X[spc] = { contacts: 0, type: {}, utmSource: {}, utmMedium: {}, utmCampaign: {} });
+    o.contacts++;
+    o.type[t] = (o.type[t] || 0) + 1;
+    o.utmSource[us] = (o.utmSource[us] || 0) + 1;
+    o.utmMedium[um] = (o.utmMedium[um] || 0) + 1;
+    o.utmCampaign[uc] = (o.utmCampaign[uc] || 0) + 1;
+  };
   const byCred = {}, byPhoto = {};
   let verifContacts = 0;   // contacts CREATED in the window (verification scope)
   let contacts = 0, bookedCall = 0;
@@ -4474,12 +4520,18 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
     // fall back to the deal's rather than assuming one of them.
     const pick = (k) => ((cp[k] || dp[k] || '').trim()) || 'Not set';
     const rs = (cp.clinician_referral_source || '').trim() || 'Not set';
-    const us = pick('utm_source'), um = pick('utm_medium'), uc = pick('utm_campaign');
+    // utm_campaign resolved from a Meta campaign ID to its name, so the UTM
+    // Campaign pie and the segment counts read one campaign as one slice.
+    const _campRaw = resolveUtmCampaign(cp.utm_campaign || dp.utm_campaign || '');
+    const _seg = clnCampaignSegment(_campRaw);
+    const us = pick('utm_source'), um = pick('utm_medium'), uc = _campRaw || 'Not set';
     // Specialty, on the same 'Not set' fallback as type. Read here rather than in
     // the inquiry branch because the Sign Up mix needs it too.
     const sp = clinicianSpecialtyGroup((cp.clinician_specialty || '').trim() || 'Not set');
     if (created) {
       contacts++;
+      if (_seg === 'derm') inqDerm++;
+      xBump(xInq, sp, t, us, um, uc);
       byType[t] = (byType[t] || 0) + 1;
       bySpec[sp] = (bySpec[sp] || 0) + 1;
       byRef[rs] = (byRef[rs] || 0) + 1;
@@ -4494,6 +4546,9 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
     }
     if (signedUp) {
       subContacts++;
+      if (_seg === 'lal') subLal++;
+      if (_seg === 'derm') subDerm++;
+      xBump(xSub, sp, t, us, um, uc);
       subRef[rs] = (subRef[rs] || 0) + 1;
       subType[t] = (subType[t] || 0) + 1;
       subSpec[sp] = (subSpec[sp] || 0) + 1;
@@ -4505,10 +4560,13 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
       // every other paid figure on either dashboard.
       const _rs2 = (cp.utm_source || dp.utm_source || '').trim();
       const _rm2 = (cp.utm_medium || dp.utm_medium || '').trim();
-      const _lal = isLookalikeCampaign(cp.utm_campaign || dp.utm_campaign || '');
+      const _lal = isLookalikeCampaign(_campRaw);
       if (!_lal) {
         subNonLal++;
-        if (mapUtmToChannel(_rs2, _rm2)) subPaidNonLal++;
+        // Paid non-LAL is the CORE segment only since 2026-11-09: Dermatology
+        // campaign sign ups left the denominator when Derm spend left the
+        // numerator, so "Cost Per Paid Non-LAL" is core spend over core sign ups.
+        if (_seg === 'core' && mapUtmToChannel(_rs2, _rm2)) subPaidNonLal++;
       }
     }
     if (!created) continue;   // verification is a property of the window's inquiries
@@ -4564,8 +4622,21 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
     head.push({ label: `Other (${tail.length} more)`, count: rest, children: tail });
     return head;
   };
+  // Per-specialty lists, capped exactly like the page-wide pies.
+  const xOut = (X) => {
+    const out = {};
+    for (const k of Object.keys(X)) {
+      const o = X[k];
+      out[k] = { contacts: o.contacts, type: capped(o.type, 9),
+                 utmSource: capped(o.utmSource, 8), utmMedium: capped(o.utmMedium, 8), utmCampaign: capped(o.utmCampaign, 8) };
+    }
+    return out;
+  };
   return {
     contacts, verifContacts,
+    bySpecialty: xOut(xInq),
+    // Inquiries attributed to a Dermatology campaign (Cost per Derm Inquiry).
+    dermInquiries: inqDerm,
     // Inquiries in the window with a kickoff call booked -- the old Sign Up,
     // still what the Kick Off Calls card's "Call Scheduled" rate divides.
     bookedCall,
@@ -4585,6 +4656,9 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
       // Both Lookalike-excluded denominators; see where they are counted.
       nonLookalike: subNonLal,
       paidNonLookalike: subPaidNonLal,
+      // Sign ups attributed to a Lookalike / Dermatology campaign.
+      lookalike: subLal, derm: subDerm,
+      bySpecialty: xOut(xSub),
       referral: capped(subRef, 9),
       type: capped(subType, 9),
       specialty: capped(subSpec, 9),
@@ -10395,13 +10469,18 @@ export default {
           const cp = buildClinicianComposition(deals, contactsByDeal, w.from, w.to);
           const fullSub = (cp.submission && cp.submission.contacts) || 0;
           const paidNonLal = (cp.submission && cp.submission.paidNonLookalike) || 0;
-          let spend = null;
+          const lalSub = (cp.submission && cp.submission.lookalike) || 0;
+          const dermSub = (cp.submission && cp.submission.derm) || 0;
+          const dermInq = cp.dermInquiries || 0;
+          let spend = null, spendCore = null, spendLal = null, spendDerm = null;
           try {
             const wr = await fetchWindsorAds(env.WINDSOR_API_KEY, wFrom(w.from), w.to);
             const a = buildClinicianAds(wr, getBudgetsForMonth(w.from), fp.all && fp.all.funnel, dl.total || 0, fp.rows || [], w.from, w.to);
             spend = a && typeof a.spend === 'number' ? a.spend : null;
+            if (spend != null) { spendCore = a.spendCore; spendLal = a.spendLal; spendDerm = a.spendDerm; }
           } catch (e) { console.error('Clinician KPI spend ' + w.from + '..' + w.to + ':', e && e.message); }
-          return { spend, fullSub, paidNonLal, inquiries: cp.contacts || 0 };
+          return { spend, fullSub, paidNonLal, inquiries: cp.contacts || 0,
+                   spendCore, spendLal, spendDerm, lalSub, dermSub, dermInq };
         };
         const [kpiPrior, kpiPriorMonth] = await Promise.all([_clnKpiFor(prior), _clnKpiFor(priorMonth)]);
         const topFunnel = await fetchClinicianTopFunnel(env.WINDSOR_API_KEY, cur.from, cur.to);

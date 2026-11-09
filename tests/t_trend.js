@@ -374,11 +374,13 @@ ck('the old Weekly Cost card is gone', /_clnWeeklyCard|_renderClnWeekly/.test(cl
   ck('Ad Spend is a card but not a measure',
      /\{k:'spend',\s*metric:null/.test(cardsSrc)
      && !/\{k:'spend'/.test((/const CLN_TR_METRICS=\[([\s\S]*?)\n\];/.exec(cli)||[,''])[1]), true);
-  ck('the cards are rendered from it', /CLN_TR_CARDS\.map\(function\(card\)\{\s*\n\s*var st=_clnTrStat\(card,T,pdef\);/.test(cli), true);
-  ck('and so is the hover', /var rows=CLN_TR_CARDS\.map\(function\(card\)\{/.test(cli), true);
+  // Both go through _clnTrShownCards, which drops the Type / Specialty cards
+  // unless their own dropdown is the plotted measure (2026-11-09).
+  ck('the cards are rendered from it', /_clnTrShownCards\(mdef\)\.map\(function\(card\)\{\s*\n\s*var st=_clnTrStat\(card,T,pdef\);/.test(cli), true);
+  ck('and so is the hover', /var rows=_clnTrShownCards\(mdef\)\.map\(function\(card\)\{/.test(cli), true);
   // Nothing may be pushed onto the readout outside that map, except the rolling
   // line — which is a chart series, not a card.
-  const hoverZone=cli.slice(cli.indexOf('var rows=CLN_TR_CARDS.map'), cli.indexOf("var a=' data-wk=", cli.indexOf('var rows=CLN_TR_CARDS.map')));
+  const hoverZone=cli.slice(cli.indexOf('var rows=_clnTrShownCards(mdef).map'), cli.indexOf("var a=' data-wk=", cli.indexOf('var rows=_clnTrShownCards(mdef).map')));
   ck('the only extra readout row is the rolling line',
      (hoverZone.match(/rows\.push\(/g)||[]).length, 1);
   ck('and it is the rolling line', /rows\.push\(CLN_TR_ROLL_DAYS\+'-day avg/.test(hoverZone), true);
@@ -403,7 +405,7 @@ ck('the old Weekly Cost card is gone', /_clnWeeklyCard|_renderClnWeekly/.test(cl
     fn(cli,'_clnTrValue'),fn(cli,'_clnTrFmt'),fn(cli,'_clnTrSum'),
     // `const` at the top level of a vm script does NOT become a property of the
     // context, so the bindings have to be handed out explicitly.
-    'globalThis.__cards=CLN_TR_CARDS; globalThis.__stat=_clnTrStat;',
+    'globalThis.__cards=CLN_TR_CARDS; globalThis.__stat=_clnTrStat; globalThis.__shown=_clnTrShownCards;',
   ].join('\n'),dctx);
   const T={spend:400,clicks:100,impressions:5000,pop:20,typeN:8,specN:5};
   const pdef={k:'inquiry',l:'Inquiry',w:'inquiries',short:'inquiries'};
@@ -433,6 +435,13 @@ ck('the old Weekly Cost card is gone', /_clnWeeklyCard|_renderClnWeekly/.test(cl
   // A split must survive a zero denominator rather than printing NaN%.
   const doc0=dctx.__stat(dctx.__cards[4],{spend:0,clicks:0,impressions:0,pop:0,typeN:0,specN:0},pdef);
   ck('with no population the share is a dash, not NaN', doc0.split, '\u2014');
+  // Shown only when selected (2026-11-09): Type / Specialty cards appear only
+  // while their own dropdown (count or %) is the plotted measure.
+  const S=k=>dctx.__shown({k:k}).map(c=>c.k);
+  ck('a plain measure hides both dropdown cards', S('count'), ['count','cost','cvr','ctr','spend']);
+  ck('Clinician Type shows only the Type card', S('type'), ['count','cost','cvr','ctr','type','spend']);
+  ck('  and so does Clinician Type %', S('typepct'), ['count','cost','cvr','ctr','type','spend']);
+  ck('Specialty % shows only the Specialty card', S('specpct'), ['count','cost','cvr','ctr','spec','spend']);
 }
 
 // ── What the KPI figures cover, stated above them ─────────────────────────

@@ -55,7 +55,7 @@ ck('and its helpers went with it',
 ck('its data-source reference row is gone too',/\['Verification Funnel','HubSpot'/.test(cli),false);
 
 // --- Type of Clinician moved into Acquisition ----------------------------
-ck('Type of Clinician is now an Acquisition panel',/acqPanel\('Type of Clinician',acqSrc\.type\|\|\[\]\)/.test(cli),true);
+ck('Type of Clinician is now an Acquisition panel',/acqPanel\('Type of Clinician'[^\n]*_fSrc\.type\|\|\[\]/.test(cli),true);
 // acqSrc follows the Inquiry / Full Submission toggle, so the submission
 // population needs its own type mix or the panel blanks in that mode.
 ck('acqSrc still follows the population toggle',/const acqSrc=\(acqMode==='submission'&&sub\)\?sub:comp;/.test(cli),true);
@@ -98,10 +98,10 @@ ck('and the Acquisition caption computes it the same way',
 // Both "Full App" cards must share one definition, or the row means two things.
 ck('Full App Rate uses the SAME onboarded basis as Cost per Full App',
    /_rate=_add>0\?\(_fo\/_add\)\*100:null/.test(KM),true);
-// THREE cost cards now: CPD Paid Non-Lookalikes joined the two. Each divides
-// spend by a count, so lower is better on all three.
-ck('lower-is-better is set on the three cost cards only',
-   (KM.match(/,'\$',true\)/g)||[]).length,3);
+// SIX cost cards now: Cost per Sign Up / Inquiry in row one, and the four
+// segment costs in row two (2026-11-09). Lower is better on every one.
+ck('lower-is-better is set on the six cost cards only',
+   (KM.match(/,'\$',true\)/g)||[]).length,6);
 ck('and the rate is not inverted',/_foot\(_rate,_pRate\(_kp\),_pRate\(_km\),'%',false\)/.test(KM),true);
 // A Windsor outage must blank one card's numbers, not the whole new section.
 ck('a failed ad fetch degrades instead of throwing',/_a=\(d\.ads&&!d\.ads\.error\)\?d\.ads:null/.test(KM),true);
@@ -110,10 +110,10 @@ ck('and the section says so',/ad data unavailable for this window/.test(KM),true
 // --- the deltas the user asked the worker to provide --------------------
 ck('the worker computes prior and last-month windows',
    /const \{ current: cur, prior, priorMonth \} = computeWindows/.test(src),true);
-// FOUR inputs now: paidNonLal joined, or the CPD Paid Non-Lookalikes tile's
-// vs-prior / vs-LM footer would be permanently blank.
-ck('and exposes the four KPI inputs for each',
-   /return \{ spend, fullSub, paidNonLal, inquiries: cp\.contacts \|\| 0 \};/.test(src),true);
+// The segment spends and counts ride along too, or the second row's vs-prior /
+// vs-LM footers would be permanently blank.
+ck('and exposes the KPI inputs for each, segments included',
+   /return \{ spend, fullSub, paidNonLal, inquiries: cp\.contacts \|\| 0,\s*spendCore, spendLal, spendDerm, lalSub, dermSub, dermInq \};/.test(src),true);
 // Over the whole fetched superset, not the window's deals: Sign Up is dated by
 // credentials completion, and a deal created before the window can sign up in it.
 ck('the comparison windows use the Acquisition basis too',
@@ -141,17 +141,17 @@ ck('and the history funnel is no longer spread',/\n          \.\.\.funnel,/.test
 ck('the history table still ships for All Clinicians',/historyRange: \{ from: CLINICIAN_HISTORY_FROM, to: histTo \},/.test(src),true);
 
 // --- CTR -------------------------------------------------------------------
-ck('six Key Metrics tiles, all through the shared _kmTile',(KM.match(/_kmTile\(/g)||[]).length,6);
-// Order is load-bearing: CPD Paid Non-Lookalikes sits directly right of Ad
-// Spend, because it answers what that spend bought.
+ck('nine Key Metrics tiles, all through the shared _kmTile',(KM.match(/_kmTile\(/g)||[]).length,9);
+// Row one: five; row two (compact): Cost Per LAL leads, then Paid Non-LAL and
+// the two Derm costs (2026-11-09).
 ck('the tile order',
-   ['Ad Spend','CPD Paid Non-Lookalikes','Cost per Sign Up','Cost per Inquiry','CTR','Sign Up Rate']
-     .map(l=>KM.indexOf("_kmTile('"+l+"'")),
-   ['Ad Spend','CPD Paid Non-Lookalikes','Cost per Sign Up','Cost per Inquiry','CTR','Sign Up Rate']
-     .map(l=>KM.indexOf("_kmTile('"+l+"'")).slice().sort((a,b)=>a-b));
+   ['Ad Spend','Cost per Sign Up','Cost per Inquiry','CTR','Sign Up Rate','Cost Per LAL','Cost Per Paid Non-LAL','Cost Per Derm Sign Up','Cost per Derm Inquiry'].map(l=>KM.indexOf("_kmTile('"+l+"'")),
+   ['Ad Spend','Cost per Sign Up','Cost per Inquiry','CTR','Sign Up Rate','Cost Per LAL','Cost Per Paid Non-LAL','Cost Per Derm Sign Up','Cost per Derm Inquiry'].map(l=>KM.indexOf("_kmTile('"+l+"'")).slice().sort((a,b)=>a-b));
 ck('  and none of them is missing',
-   ['Ad Spend','CPD Paid Non-Lookalikes','Cost per Sign Up','Cost per Inquiry','CTR','Sign Up Rate']
-     .filter(l=>KM.indexOf("_kmTile('"+l+"'")<0),[]);
+   ['Ad Spend','Cost per Sign Up','Cost per Inquiry','CTR','Sign Up Rate','Cost Per LAL','Cost Per Paid Non-LAL','Cost Per Derm Sign Up','Cost per Derm Inquiry'].filter(l=>KM.indexOf("_kmTile('"+l+"'")<0),[]);
+ck('the old CPD Paid Non-Lookalikes card is gone',/_kmTile\('CPD Paid Non-Lookalikes'/.test(KM),false);
+ck('row one is five across, row two four across',
+   [/repeat\(5,minmax\(0,1fr\)\);gap:12px;margin-bottom:12px/.test(KM),/repeat\(4,minmax\(0,1fr\)\);gap:12px;margin-bottom:16px/.test(KM)],[true,true]);
 // The whole surface says "Sign Up" now — no card, toggle or calc line may
 // still say Full Submission or Full App.
 ck('no Full Submission / Full App label survives',
@@ -186,7 +186,7 @@ ck('the worker still computes it, unused',
 // Right after Type, on the same panel builder, and following the Inquiry / Sign
 // Up toggle like every other Acquisition pie.
 ck('Clinician Specialty is an Acquisition panel, right after Type',
-   /acqPanel\('Type of Clinician',acqSrc\.type\|\|\[\]\)\s*\+acqPanel\('Clinician Specialty',acqSrc\.specialty\|\|\[\]\)\s*\+acqPanel\(udLabel/.test(cli),true);
+   /acqPanel\('Type of Clinician'[^\n]*\n\s*\+acqPanel\('Clinician Specialty',acqSrc\.specialty\|\|\[\][^\n]*\n\s*\+acqPanel\(udLabel/.test(cli),true);
 ck('the Sign Up population gets its own specialty mix',
    /specialty: capped\(subSpec, 9\),/.test(src)&&/subSpec\[sp\] = \(subSpec\[sp\] \|\| 0\) \+ 1;/.test(src),true);
 // Run the builder: a clinician created before the window who signs up inside it
@@ -262,10 +262,45 @@ ck('the Sign Up population gets its own specialty mix',
 // The dropdown shows plain names, not the spellings a group folds in.
 ck('dropdown options carry no "(incl. ...)" suffix',/\(incl\. /.test(fn(cli,'_clnTrendCard')),false);
 
+// --- Acquisition Specialty filter (2026-11-09) --------------------------------
+{
+  const sb={console:{log(){},warn(){},error(){}}};vm.createContext(sb);
+  vm.runInContext(src.slice(0,src.indexOf('\nexport default'))+'\nglobalThis.BC=buildClinicianComposition;',sb);
+  const P=[ // [specialty, type, utm_source, signs up]
+    ['Dermatology','MD','fb',true],['Dermatology','PA','ig',false],['Dermatology','NP','fb',true],
+    ['Pediatrician','MD','fb',false],['Pediatrics','DO','google',true],['','NP','',false],
+  ];
+  const deals=P.map((_,i)=>({id:'z'+i,properties:{}}));
+  const C={};P.forEach((x,i)=>{C['z'+i]={__cid:'z'+i,createdate:'2026-11-03T15:00:00Z',clinician_specialty:x[0],clinician_type:x[1],
+    utm_source:x[2],clinician_credentials_completed:x[3]?'2026-11-04':''};});
+  const r=sb.BC(deals,C,'2026-11-01','2026-11-06');
+  const m=l=>Object.fromEntries((l||[]).map(x=>[x.label,x.count]));
+  ck('inquiry cross-tab is keyed by the grouped specialty names',Object.keys(r.bySpecialty).sort(),['Dermatology','Not set','Pediatrics']);
+  ck('  the Dermatology type mix',m(r.bySpecialty.Dermatology.type),{'MD/DO':1,'Physician Assistant':1,'Nurse Practitioner':1});
+  ck('  Pediatrician + Pediatrics are one specialty, types grouped',m(r.bySpecialty.Pediatrics.type),{'MD/DO':2});
+  ck('  the Dermatology UTM source mix',m(r.bySpecialty.Dermatology.utmSource),{fb:2,ig:1});
+  ck('  per-specialty counts sum to the inquiries',Object.values(r.bySpecialty).reduce((a,x)=>a+x.contacts,0),r.contacts);
+  ck('sign up cross-tab follows the Sign Up population',
+     [r.submission.bySpecialty.Dermatology.contacts,m(r.submission.bySpecialty.Dermatology.type)],[2,{'MD/DO':1,'Nurse Practitioner':1}]);
+  ck('  and sums to the sign ups',Object.values(r.submission.bySpecialty).reduce((a,x)=>a+x.contacts,0),r.submission.contacts);
+}
+{
+  const RC2=fn(cli,'renderClinician');
+  ck('the Specialty select sits in the Acquisition controls',/\+'<\/div>'\s*\n\s*\+specSel/.test(RC2)&&/onchange="clinicianSetAcqSpec\(this\.value\)"/.test(RC2),true);
+  ck('it filters the Type and UTM pies, each over its own total',
+     /acqPanel\('Type of Clinician'\+\(acqSpec\?[^)]*\):''\),_fSrc\.type\|\|\[\],null,_fTot\)/.test(RC2)
+     &&/acqPanel\(udLabel\+\(acqSpec\?[^)]*\):''\),_fSrc\[ud\]\|\|\[\],utmToggle,_fTot\)/.test(RC2),true);
+  ck('the Specialty pie stays the full mix',/acqPanel\('Clinician Specialty',acqSrc\.specialty\|\|\[\],null,acqTotal\)/.test(RC2),true);
+  ck('the filter follows the Inquiry / Sign Up toggle',/const _bs=\(acqMode==='submission'&&sub\)\?_bsS:_bsI;/.test(RC2),true);
+  ck('a pick that no longer exists falls back to All',/_specOpts\.indexOf\(S\.clinician\.acqSpec\)>=0\)\?S\.clinician\.acqSpec:''/.test(RC2),true);
+}
+
 // --- Clinician campaign matcher (2026-11-06) ---------------------------------
 {
   const sb={};vm.createContext(sb);
-  vm.runInContext(fn(src,'isClinicianCampaign').replace(/^/,(src.match(/const CLINICIAN_CAMPAIGN_NAMES = new Set\(\[[\s\S]*?\]\);/)||[''])[0]+'\n')+';globalThis.f=isClinicianCampaign;',sb);
+  vm.runInContext([(src.match(/const CLINICIAN_CAMPAIGN_NAMES = new Set\(\[[\s\S]*?\]\);/)||[''])[0],
+    (src.match(/const CLINICIAN_CAMPAIGN_ID_NAMES = \{[\s\S]*?\};/)||[''])[0],
+    fn(src,'resolveUtmCampaign'),fn(src,'isClinicianCampaign'),'globalThis.f=isClinicianCampaign;'].join('\n'),sb);
   const f=sb.f;
   ck('Clinician Targeting campaigns still match',f('S01 - TOF - Clinician Targeting - 2% Lookalikes'),true);
   ck('the Dermatologists campaign is a Clinician campaign',f('S01 - TOF - Dermatologists - CAPI'),true);

@@ -234,6 +234,7 @@ html,body{height:100%}body{font-family:var(--font-b);font-size:15px;color:var(--
 .tile.highlight .tc .d.up{color:#6EE7B7}.tile.highlight .tc .d.dn{color:#FCA5A5}
 .tile.sm-teal{background:linear-gradient(135deg,rgba(114,164,191,.08),rgba(114,164,191,.15));border:1px solid rgba(114,164,191,.2);padding:14px 18px}
 .tile.sm-teal .tval{font-size:20px}
+.tile.km-sm{padding:14px 16px}.tile.km-sm .tval{font-size:20px}
 .tile.sm-teal .tcomps{gap:2px}.tile.sm-teal .tc{font-size:10px}
 .tlbl{font-family:var(--font-h);font-size:11px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
 .tval{font-family:var(--font-h);font-size:26px;font-weight:700;color:var(--navy);margin-bottom:2px}
@@ -3932,6 +3933,15 @@ const CLN_TR_CARDS=[
   {k:'spec',  metric:'spec',  unit:'#', pop:true, withPct:'specpct'},
   {k:'spend', metric:null,    unit:'$', pop:false},
 ];
+// The stat row actually shown: the Clinician Type and Specialty cards appear
+// only while their own dropdown is the plotted measure (2026-11-09). One filter
+// for the cards AND the hover readout, so the two still list the same stats.
+function _clnTrShownCards(mdef){
+  return CLN_TR_CARDS.filter(function(c){
+    if(!c.withPct)return true;
+    return !!mdef&&(mdef.k===c.metric||mdef.k===c.withPct);
+  });
+}
 // Label, value and working for one stat, against summed components.
 function _clnTrStat(card,T,pdef){
   var mdef=CLN_TR_METRICS.filter(function(m){return m.k===card.metric;})[0]||null;
@@ -4248,7 +4258,7 @@ function _clnTrendCard(d,sfx){
   // The selected measure is accented so the link between the row and the line
   // on the chart is visible without reading the legend.
   var minis=_trRangeBand+'<div style="display:flex;gap:9px;flex-wrap:wrap;margin:10px 0 4px">'
-    +CLN_TR_CARDS.map(function(card){
+    +_clnTrShownCards(mdef).map(function(card){
       var st=_clnTrStat(card,T,pdef);
       var on=(card.metric===mdef.k)||(card.withPct&&card.withPct===mdef.k);
       return '<div style="flex:1 1 150px;min-width:146px;background:var(--lighter);border:1px solid '
@@ -4752,7 +4762,7 @@ function _renderClnTrend(d,sfx){
     // repeated whichever stat was the selected measure and carried a Clicks row
     // the cards never had.
     var xT=_clnTrSum([xp]);
-    var rows=CLN_TR_CARDS.map(function(card){
+    var rows=_clnTrShownCards(mdef).map(function(card){
       var st=_clnTrStat(card,xT,pdef);
       // The row the chart is plotting is the reason the reader is hovering, so
       // it carries the weight. Order still follows the cards — only the
@@ -5958,6 +5968,8 @@ window.clinicianSetUtm=function(dim){S.clinician.utmDim=dim;renderClinician();};
 // whole card — referral source as well as the UTM pie — because a mix computed
 // over two different populations side by side is a comparison nobody can make.
 window.clinicianSetAcq=function(mode){S.clinician.acqMode=mode;renderClinician();};
+// Acquisition Specialty filter: '' = all specialties.
+window.clinicianSetAcqSpec=function(v){S.clinician.acqSpec=v||'';renderClinician();};
 // Pie chart for the Clinician Composition cards. Percentages sit on the slices,
 // a legend runs underneath, and each slice carries an instant hover (dbcTip)
 // reading "count (pct) - name".
@@ -7143,12 +7155,35 @@ function renderClinician(){
     const acqPill=(k,lbl,note)=>{const on=acqMode===k;return '<button onclick="clinicianSetAcq(\''+k+'\')" title="'+note+'" style="font-family:var(--font-h);font-size:11px;font-weight:700;letter-spacing:.02em;padding:6px 16px;border:none;background:'+(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+';cursor:pointer;transition:background .15s,color .15s">'+lbl+'</button>';};
     // Three across (Type, Specialty, UTM); each wraps to its own row on a narrow
     // screen, and the pie inside stacks above its legend when the panel is slim.
-    const acqPanel=(t,rows,extra)=>'<div style="flex:1 1 30%;min-width:300px;background:var(--white);border:1px solid var(--border);border-radius:10px;padding:16px 18px 18px">'
+    // Specialty filter (2026-11-09): narrows the Type and UTM pies to one
+    // specialty, for whichever population is selected. The Specialty pie itself
+    // stays the full mix -- filtered, it would be one 100% slice. Options are
+    // every specialty in either population, largest first, Not set last.
+    const _bsI=comp.bySpecialty||null, _bsS=(sub&&sub.bySpecialty)||null;
+    const _specOpts=(function(){
+      const tot={};
+      [_bsI,_bsS].forEach(function(m){for(const k in (m||{}))tot[k]=(tot[k]||0)+(m[k].contacts||0);});
+      return Object.keys(tot).sort(function(a,b){return (a==='Not set')-(b==='Not set')||tot[b]-tot[a]||(a<b?-1:1);});
+    })();
+    const acqSpec=(S.clinician.acqSpec&&_specOpts.indexOf(S.clinician.acqSpec)>=0)?S.clinician.acqSpec:'';
+    const _bs=(acqMode==='submission'&&sub)?_bsS:_bsI;
+    const _sx=acqSpec?((_bs&&_bs[acqSpec])||{contacts:0,type:[],utmSource:[],utmMedium:[],utmCampaign:[]}):null;
+    const _fTot=_sx?(_sx.contacts||0):acqTotal;
+    const _fSrc=_sx||acqSrc;
+    const _esc=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const specSel=(_bsI||_bsS)?'<label style="display:inline-flex;align-items:center;gap:7px;font-family:var(--font-h);font-size:11px;font-weight:700;color:'+(acqSpec?'var(--navy)':'var(--grey)')+'">Specialty'
+      +'<select aria-label="Specialty" onchange="clinicianSetAcqSpec(this.value)" style="font-family:var(--font-h);font-size:11px;font-weight:700;max-width:220px;padding:4px 6px;border-radius:6px;cursor:pointer;border:1px solid '+(acqSpec?'var(--navy)':'var(--border)')+';background:'+(acqSpec?'var(--navy)':'var(--white)')+';color:'+(acqSpec?'#fff':'var(--navy)')+'">'
+      +'<option value=""'+(acqSpec?'':' selected')+'>All specialties</option>'
+      +_specOpts.map(function(o){return '<option value="'+_esc(o)+'"'+(o===acqSpec?' selected':'')+'>'+_esc(o)+'</option>';}).join('')
+      +'</select></label>':'';
+    // `tot` is the panel's own population: a filtered panel divides by that
+    // specialty's clinicians, not the whole window's.
+    const acqPanel=(t,rows,extra,tot)=>'<div style="flex:1 1 30%;min-width:300px;background:var(--white);border:1px solid var(--border);border-radius:10px;padding:16px 18px 18px">'
       +'<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:'+(extra?'10':'16')+'px;padding-bottom:10px;border-bottom:1px solid var(--border)">'
       +'<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">'+t+'</span>'
-      +'<span style="font-size:10px;color:var(--grey);white-space:nowrap">'+fN(acqTotal)+' clinician'+(acqTotal===1?'':'s')+' \u00b7 '+fN(_catCount(rows))+' categories</span></div>'
+      +'<span style="font-size:10px;color:var(--grey);white-space:nowrap">'+fN(tot)+' clinician'+(tot===1?'':'s')+' \u00b7 '+fN(_catCount(rows))+' categories</span></div>'
       +(extra||'')
-      +_clinicianPie(rows,acqTotal)+'</div>';
+      +_clinicianPie(rows,tot)+'</div>';
     const utmToggle='<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap;margin:0 0 14px">'
       +UD.map(x=>udPill(x[0],x[1])).join('')+'</div>';
     // Card-level population switch, above both panels so its scope is obvious.
@@ -7158,6 +7193,7 @@ function renderClinician(){
       +acqPill('inquiry','Inquiry','Every clinician who came in during the window')
       +acqPill('submission','Sign Up','Clinicians who completed credentials in the window')
       +'</div>'
+      +specSel
       // Not "X of Y": a window's sign ups are not drawn from its inquiries.
       +(sub?'<span style="font-size:10.5px;color:var(--grey)">'+fN(sub.contacts||0)+' sign up'+((sub.contacts||0)===1?'':'s')
         +' \u00b7 '+fN(comp.contacts)+' inquiries'
@@ -7172,9 +7208,9 @@ function renderClinician(){
       // it costing", and the three pies below break the current window down. Same
       // population for all three — the toggle above scopes the whole card.
       acqToggle+(noSub||('<div style="display:flex;gap:18px;align-items:stretch;flex-wrap:wrap">'
-       +acqPanel('Type of Clinician',acqSrc.type||[])
-       +acqPanel('Clinician Specialty',acqSrc.specialty||[])
-       +acqPanel(udLabel,acqSrc[ud]||[],utmToggle)
+       +acqPanel('Type of Clinician'+(acqSpec?' \u00b7 '+_esc(acqSpec):''),_fSrc.type||[],null,_fTot)
+       +acqPanel('Clinician Specialty',acqSrc.specialty||[],null,acqTotal)
+       +acqPanel(udLabel+(acqSpec?' \u00b7 '+_esc(acqSpec):''),_fSrc[ud]||[],utmToggle,_fTot)
       +'</div>')));
   }
   // ── Section 6: Clinician ad tables, one shared filter set ──
@@ -11963,8 +11999,9 @@ function _goalTrackerHTML(opt){
 // Reserved heights: a one-line label beside a two-line one otherwise pushes its
 // value half a line down, and no two tiles in a row line up.
 const _KM_LBL='min-height:36px', _KM_CALC='min-height:46px';
-function _kmTile(label,value,calc,footer,extra,tip,span){
-  return '<div class="tile hero" style="border-left:3px solid var(--teal)'
+// `sm` renders the compact variant (the Clinician Key Metrics second row).
+function _kmTile(label,value,calc,footer,extra,tip,span,sm){
+  return '<div class="tile hero'+(sm?' km-sm':'')+'" style="border-left:3px solid var(--teal)'
     +(span?';grid-column:span '+span:'')+'"'+(tip?' title="'+tip+'"':'')+'>'
     +'<div class="tlbl" style="'+_KM_LBL+'">'+label+'</div><div class="tval">'+value+'</div>'
     +'<div style="'+_KM_CALC+'">'+(calc?'<div class="irf-calc">'+calc+'</div>':'')+'</div>'
@@ -12217,24 +12254,12 @@ function _clnKeyMetricsHTML(d,sfx,win){
   kmh+='<div class="irf-card-title dsec-h dsec-in" id="dsec-clnkm'+sfx+'" data-nav="Key Metrics">Key Metrics</div>';
   kmh+='<div class="irf-card-sub" style="margin-bottom:12px">Clinician channel · follows the page date filter'
     +(_a?'':' · ad data unavailable for this window')+'</div>';
-  kmh+='<div style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin-bottom:16px">';
+  kmh+='<div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-bottom:12px">';
   kmh+=_kmTile('Ad Spend',_f$(_sp),
     (_budget>0?_f$(_sp)+' ÷ '+_f$(_budget)+' budget':'no budget set'),
     _foot(_sp,_kp?_kp.spend:null,_km?_km.spend:null,'$',false),
     _kmPaceBar(_sp||0,_budget,win),
     'Clinician channel only — excluded from every other dashboard KPI');
-  // Directly right of Ad Spend: what that spend cost per acquisition it can
-  // actually claim. Lookalike campaigns are excluded because they are
-  // prospecting off an existing audience, and organic/untagged signups are
-  // excluded because ad spend did not buy them.
-  kmh+=_kmTile('CPD Paid Non-Lookalikes',_f$(_div(_sp,_pnl)),
-    (_pnl!=null?_f$(_sp)+' ÷ '+fN(_pnl)+' paid non-LAL':'not in this payload'),
-    _foot(_div(_sp,_pnl),_div(_kp?_kp.spend:null,_kp?_kp.paidNonLal:0),
-          _div(_km?_km.spend:null,_km?_km.paidNonLal:0),'$',true),
-    null,
-    'Clinician ad spend ÷ sign ups that carry a PAID last-click UTM and did '
-    +'not come from a Lookalike campaign'
-    +(_lalExcl!=null?' — '+fN(_lalExcl)+' of '+fN(_fo)+' sign ups excluded as Lookalike, organic or untagged':''));
   kmh+=_kmTile('Cost per Sign Up',_f$(_div(_sp,_fo)),
     _f$(_sp)+' ÷ '+fN(_fo)+' sign ups',
     _foot(_div(_sp,_fo),_div(_kp?_kp.spend:null,_kp?_kp.fullSub:0),
@@ -12255,6 +12280,52 @@ function _clnKeyMetricsHTML(d,sfx,win){
     fN(_fo)+' ÷ '+fN(_add)+' inquiries',
     _foot(_rate,_pRate(_kp),_pRate(_km),'%',false),null,
     'Sign ups ÷ inquiries in the same window — not one cohort: a sign up can come from an earlier window’s inquiry');
+  kmh+='</div>';
+  // ── Second row: cost per segment (2026-11-09) ─────────────────────────────
+  // Clinician spend is split by campaign (worker clnCampaignSegment): Lookalike
+  // campaigns, Dermatology campaigns, and the core rest. Each card divides ONE
+  // segment's spend by the contacts that segment's utm_campaign brought in.
+  // Null on a pre-v57 payload, where each card shows an em-dash.
+  const _seg=(k)=>(_a&&typeof _a[k]==='number')?_a[k]:null;
+  const _spLal=_seg('spendLal'),_spDerm=_seg('spendDerm'),_spCore=_seg('spendCore');
+  const _lalN=(_acqSub&&_acqSub.lookalike!=null)?_acqSub.lookalike:null;
+  const _dermN=(_acqSub&&_acqSub.derm!=null)?_acqSub.derm:null;
+  const _dermI=(_acq.dermInquiries!=null)?_acq.dermInquiries:null;
+  const _pk=(w,k)=>(w&&w[k]!=null)?w[k]:null;
+  kmh+='<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px">';
+  kmh+=_kmTile('Cost Per LAL',_f$(_div(_spLal,_lalN)),
+    (_spLal!=null&&_lalN!=null?_f$(_spLal)+' ÷ '+fN(_lalN)+' LAL sign ups':'not in this payload'),
+    _foot(_div(_spLal,_lalN),_div(_pk(_kp,'spendLal'),_pk(_kp,'lalSub')),
+          _div(_pk(_km,'spendLal'),_pk(_km,'lalSub')),'$',true),
+    null,
+    'Ad spend on Lookalike clinician campaigns ÷ sign ups whose utm_campaign is a Lookalike campaign',
+    null,true);
+  // Was "CPD Paid Non-Lookalikes" in row one. Since 2026-11-09 it is the CORE
+  // segment on both sides: spend that is neither Lookalike nor Dermatology, over
+  // paid last-click sign ups from neither kind of campaign.
+  kmh+=_kmTile('Cost Per Paid Non-LAL',_f$(_div(_spCore,_pnl)),
+    (_spCore!=null&&_pnl!=null?_f$(_spCore)+' ÷ '+fN(_pnl)+' paid non-LAL':'not in this payload'),
+    _foot(_div(_spCore,_pnl),_div(_pk(_kp,'spendCore'),_kp?_kp.paidNonLal:0),
+          _div(_pk(_km,'spendCore'),_km?_km.paidNonLal:0),'$',true),
+    null,
+    'Ad spend on clinician campaigns that are neither Lookalike nor Dermatology ÷ sign ups that carry a PAID last-click UTM and did '
+    +'not come from a Lookalike or Dermatology campaign'
+    +(_lalExcl!=null?' — '+fN(_lalExcl)+' of '+fN(_fo)+' sign ups excluded as Lookalike, Dermatology, organic or untagged':''),
+    null,true);
+  kmh+=_kmTile('Cost Per Derm Sign Up',_f$(_div(_spDerm,_dermN)),
+    (_spDerm!=null&&_dermN!=null?_f$(_spDerm)+' ÷ '+fN(_dermN)+' derm sign ups':'not in this payload'),
+    _foot(_div(_spDerm,_dermN),_div(_pk(_kp,'spendDerm'),_pk(_kp,'dermSub')),
+          _div(_pk(_km,'spendDerm'),_pk(_km,'dermSub')),'$',true),
+    null,
+    'Ad spend on Dermatology campaigns ÷ sign ups whose utm_campaign is a Dermatology campaign (by name or Meta campaign ID)',
+    null,true);
+  kmh+=_kmTile('Cost per Derm Inquiry',_f$(_div(_spDerm,_dermI)),
+    (_spDerm!=null&&_dermI!=null?_f$(_spDerm)+' ÷ '+fN(_dermI)+' derm inquiries':'not in this payload'),
+    _foot(_div(_spDerm,_dermI),_div(_pk(_kp,'spendDerm'),_pk(_kp,'dermInq')),
+          _div(_pk(_km,'spendDerm'),_pk(_km,'dermInq')),'$',true),
+    null,
+    'Ad spend on Dermatology campaigns ÷ inquiries whose utm_campaign is a Dermatology campaign (by name or Meta campaign ID)',
+    null,true);
   kmh+='</div></div>';
   return kmh;
 }
