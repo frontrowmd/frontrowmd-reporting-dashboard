@@ -340,7 +340,9 @@ ck('the toggles carry the suffix back, so the right copy redraws',
 {
   const iTrend=cli.indexOf('let h=_clnTrendCard(d);');
   const iFunnel=cli.indexOf("h+=card('Clinician Funnel'");
-  const iAcq=cli.indexOf("h+=card('Acquisition'");
+  // Acquisition is built by the shared _clnAcquisitionHTML since 2026-11-09;
+  // its call site inside renderClinician is what fixes the page order.
+  const iAcq=cli.indexOf("h+=_clnAcquisitionHTML(d,'');");
   ck('Trend Analysis opens the page body', iTrend>0, true);
   ck('above the Clinician Funnel', iTrend<iFunnel, true);
   ck('and above Acquisition', iFunnel<iAcq, true);

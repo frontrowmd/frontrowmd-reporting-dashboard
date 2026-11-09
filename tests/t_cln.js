@@ -285,7 +285,7 @@ ck('dropdown options carry no "(incl. ...)" suffix',/\(incl\. /.test(fn(cli,'_cl
   ck('  and sums to the sign ups',Object.values(r.submission.bySpecialty).reduce((a,x)=>a+x.contacts,0),r.submission.contacts);
 }
 {
-  const RC2=fn(cli,'renderClinician');
+  const RC2=fn(cli,'_clnAcquisitionHTML');   // shared builder since 2026-11-09
   ck('the Specialty select sits in the Acquisition controls',/\+'<\/div>'\s*\n\s*\+specSel/.test(RC2)&&/onchange="clinicianSetAcqSpec\(this\.value\)"/.test(RC2),true);
   ck('it filters the Type and UTM pies, each over its own total',
      /acqPanel\('Type of Clinician'\+\(acqSpec\?[^)]*\):''\),_fSrc\.type\|\|\[\],null,_fTot\)/.test(RC2)
@@ -293,6 +293,22 @@ ck('dropdown options carry no "(incl. ...)" suffix',/\(incl\. /.test(fn(cli,'_cl
   ck('the Specialty pie stays the full mix',/acqPanel\('Clinician Specialty',acqSrc\.specialty\|\|\[\],null,acqTotal\)/.test(RC2),true);
   ck('the filter follows the Inquiry / Sign Up toggle',/const _bs=\(acqMode==='submission'&&sub\)\?_bsS:_bsI;/.test(RC2),true);
   ck('a pick that no longer exists falls back to All',/_specOpts\.indexOf\(S\.clinician\.acqSpec\)>=0\)\?S\.clinician\.acqSpec:''/.test(RC2),true);
+}
+
+// --- Acquisition is shared with the Executive Clinician tab (2026-11-09) ------
+{
+  const RC3=fn(cli,'renderClinician'), RE=fn(cli,'renderExec');
+  ck('the Clinician page renders Acquisition through the shared builder',/h\+=_clnAcquisitionHTML\(d,''\);/.test(RC3),true);
+  ck('  and no longer builds it inline',/card\('Acquisition'/.test(RC3),false);
+  ck('the Executive page hosts it on the Clinician tab only',
+     /if\(acq\)acq\.innerHTML=\(_execMode\(\)==='clinician'\)\?_clnAcquisitionHTML\(d,'-exec'\):'';/.test(RE),true);
+  ck('  directly under Trend Analysis, above the Ad Tables',
+     ['<div id="exec-trend"></div>','<div id="exec-acq"></div>','<div id="exec-ads"></div>'].map(x=>cli.indexOf(x)).every((v,i,a)=>v>0&&(i===0||v>a[i-1])),true);
+  ck('  with its own heading id per host, visible to both Jump To bars',
+     /class="irf-card-title dsec-h dsec-in" id="dsec-clnacq'\+sfx\+'" data-nav="Acquisition"/.test(fn(cli,'_clnAcquisitionHTML')),true);
+  ck('the three toggles re-render whichever page shows them',
+     ['clinicianSetUtm','clinicianSetAcq','clinicianSetAcqSpec'].every(h=>new RegExp('window\\.'+h+'=function\\([^)]*\\)\\{[^}]*_clnAcqRerender\\(\\);\\};').test(cli)),true);
+  ck('  which on Executive repaints only its own host',/if\(el\)el\.innerHTML=_clnAcquisitionHTML\(_execData\(\),'-exec'\);/.test(fn(cli,'_clnAcqRerender')),true);
 }
 
 // --- Clinician campaign matcher (2026-11-06) ---------------------------------

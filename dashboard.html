@@ -27,8 +27,15 @@ html,body{height:100%}body{font-family:var(--font-b);font-size:15px;color:var(--
 .gbox button:disabled{opacity:.7;cursor:not-allowed;transform:none}
 .gerr{color:#FCA5A5;font-size:13px;margin-top:12px;display:none}
 
-#app{display:none;height:100vh}#app.active{display:flex}
-.sidebar{width:var(--sidebar-w);min-width:var(--sidebar-w);height:100vh;background:linear-gradient(180deg,var(--midnight),var(--navy));color:var(--white);display:flex;flex-direction:column;z-index:10;transition:width .25s ease,min-width .25s ease;overflow:hidden}
+/* The whole app renders at 90% (2026-11-09: pages were hard to read on smaller
+   displays). The login gate is outside #app and stays at 100%. Measured in
+   Chromium: inside a zoomed box, 100vh comes out 10% SHORT while 100% fills,
+   so #app compensates and its full-height children use 100%, not 100vh. And
+   left/top set from mouse clientX land 10% short, so every in-app tooltip
+   divides by UI_ZOOM (JS); tooltips appended to <body> are outside the zoom
+   and need nothing. Keep UI_ZOOM in step with this value (t_zoom.js). */
+#app{display:none;zoom:.9;height:calc(100vh / .9)}#app.active{display:flex}
+.sidebar{width:var(--sidebar-w);min-width:var(--sidebar-w);height:100%;background:linear-gradient(180deg,var(--midnight),var(--navy));color:var(--white);display:flex;flex-direction:column;z-index:10;transition:width .25s ease,min-width .25s ease;overflow:hidden}
 /* Full-height hover columns on the trend charts. An SVG <rect> with no fill
    paints BLACK, so these rules are load-bearing, not cosmetic — without one the
    chart renders as a solid block. ONE rule for every band class: the third
@@ -274,7 +281,7 @@ html,body{height:100%}body{font-family:var(--font-b);font-size:15px;color:var(--
 input[type="range"]{-webkit-appearance:none;cursor:pointer}
 input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;background:var(--navy);border-radius:50%;border:3px solid var(--white);box-shadow:0 2px 6px rgba(2,15,24,.2);cursor:pointer}
 /* Content Studio */
-.cs-panel{position:fixed;top:0;right:-480px;width:480px;height:100vh;background:linear-gradient(135deg,#F5F7FA 0%,#EBF3F8 60%,#D8ECF5 100%);border-left:1px solid #D4E6EF;box-shadow:-12px 0 40px rgba(2,15,24,.15);z-index:20;transition:right .2s ease;overflow-y:auto;display:flex;flex-direction:column}
+.cs-panel{position:fixed;top:0;right:-480px;width:480px;height:100%;background:linear-gradient(135deg,#F5F7FA 0%,#EBF3F8 60%,#D8ECF5 100%);border-left:1px solid #D4E6EF;box-shadow:-12px 0 40px rgba(2,15,24,.15);z-index:20;transition:right .2s ease;overflow-y:auto;display:flex;flex-direction:column}
 @media(max-width:600px){.cs-panel{width:100%;right:-100%}}
 .cs-panel.open{right:0}
 .cs-panel-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.2);z-index:19}
@@ -657,7 +664,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
     <div class="dqb" id="dqb">⚠️ Some data sources may not have fully loaded. <button class="rfb" onclick="refreshData()" style="margin-left:8px;padding:6px 14px">Refresh</button><span id="dqb-diag" style="display:block;margin-top:8px;font-size:11px;font-family:var(--font-b);color:#92400E;line-height:1.6"></span></div>
     <!-- AI Analysis Panel -->
     <div id="ai-panel-overlay" onclick="toggleAIPanel()" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(2,15,24,.3);z-index:998;transition:opacity .25s;opacity:0"></div>
-    <div id="ai-panel" style="position:fixed;top:0;right:-530px;width:520px;height:100vh;background:linear-gradient(180deg,#F8FAFC,#F0F5F9);border-left:1px solid #D4E6EF;z-index:999;transition:right .3s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;box-shadow:-8px 0 32px rgba(2,15,24,.1)">
+    <div id="ai-panel" style="position:fixed;top:0;right:-530px;width:520px;height:100%;background:linear-gradient(180deg,#F8FAFC,#F0F5F9);border-left:1px solid #D4E6EF;z-index:999;transition:right .3s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;box-shadow:-8px 0 32px rgba(2,15,24,.1)">
       <div style="padding:20px 24px 16px;border-bottom:1px solid #D4E6EF;flex-shrink:0">
         <div style="display:flex;align-items:center;justify-content:space-between">
           <div style="font-family:'Libre Baskerville',serif;font-size:16px;font-weight:700;color:#172C45">✦ AI Analysis</div>
@@ -873,6 +880,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
       <div id="exec-mode-bar"></div>
       <div id="exec-km"></div>
       <div id="exec-trend"></div>
+      <div id="exec-acq"></div>
       <div id="exec-ads"></div>
     </div>
     <div class="pg" id="page-irfan"><div id="irfan-date-header" style="margin-bottom:24px"></div><div id="irfan-c"></div></div>
@@ -904,6 +912,13 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gv-panel-tab" onclick="openGVPanel()" style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#172C45;color:#fff;padding:12px 6px;border-radius:8px 0 0 8px;cursor:pointer;font-size:11px;font-family:'Libre Baskerville',Georgia,serif;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;z-index:999;display:none;box-shadow:-2px 0 8px rgba(0,0,0,.15)">Variants</div>
 
 <script>
+// Mirrors the CSS zoom on #app. Positions computed from mouse coordinates are in
+// VISUAL px, but left/top on an element inside #app are scaled by the zoom, so
+// in-app tooltips divide by this. Element rects (getBoundingClientRect) come back
+// in visual px too, which is why hit-testing needs no change.
+const UI_ZOOM=0.9;
+function _uz(v){return v/UI_ZOOM;}
+
 const _BUILD_VER='s5t268';console.log('Dashboard build: '+_BUILD_VER);const API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/data':'/api/data';
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
@@ -2712,7 +2727,7 @@ function renderDash(){
             var tipX=p.x,tipY=p.y-50;
             if(tipX>w-100)tipX=w-120;
             if(tipX<10)tipX=10;
-            tip.style.left=tipX+'px';tip.style.top=tipY+'px';
+            tip.style.left=_uz(tipX)+'px';tip.style.top=_uz(tipY)+'px';
           } else {tip.style.display='none';}
         });
         cv.addEventListener('mouseleave',function(){tip.style.display='none';});
@@ -5962,14 +5977,14 @@ async function fdClinician(win){
 // Two workflows share the Clinician pipeline, each walking a different subset of
 // stages, so the funnel is scoped to one of them (or both combined).
 // Which UTM dimension the right-hand Acquisition pie shows.
-window.clinicianSetUtm=function(dim){S.clinician.utmDim=dim;renderClinician();};
+window.clinicianSetUtm=function(dim){S.clinician.utmDim=dim;_clnAcqRerender();};
 // Acquisition card population: every clinician who came in ("Inquiry") vs only
 // those who got as far as booking a kickoff call ("Sign Up"). Scopes the
 // whole card — referral source as well as the UTM pie — because a mix computed
 // over two different populations side by side is a comparison nobody can make.
-window.clinicianSetAcq=function(mode){S.clinician.acqMode=mode;renderClinician();};
+window.clinicianSetAcq=function(mode){S.clinician.acqMode=mode;_clnAcqRerender();};
 // Acquisition Specialty filter: '' = all specialties.
-window.clinicianSetAcqSpec=function(v){S.clinician.acqSpec=v||'';renderClinician();};
+window.clinicianSetAcqSpec=function(v){S.clinician.acqSpec=v||'';_clnAcqRerender();};
 // Pie chart for the Clinician Composition cards. Percentages sit on the slices,
 // a legend runs underneath, and each slice carries an instant hover (dbcTip)
 // reading "count (pct) - name".
@@ -6754,6 +6769,103 @@ function _clnTable(rows,stageColors){
     +'<table id="cln-tbl" style="width:100%;border-collapse:collapse;font-size:11.5px">'
     +'<thead>'+grpRow+head+'</thead><tbody>'+body+'</tbody></table></div>';
 }
+// ── Clinician Acquisition (shared) ─────────────────────────────────────────
+// Lifted out of renderClinician (2026-11-09) so the Executive Dashboard's
+// Clinician tab can host the same section under its Trend Analysis. Toggle
+// STATE stays on S.clinician, so a pick made on one page is the one shown on
+// the other; `sfx` only keeps the heading id unique per host.
+function _clnAcquisitionHTML(d,sfx){
+  sfx=sfx||'';
+  const comp=(d&&d.composition)||{};
+  if(!((comp.contacts||0)>0))return '';
+  // Both heading classes, like Key Metrics: the Clinician page's Jump To bar
+  // reads .irf-card-title and the Executive page's reads .dsec-h.
+  const card=(title,sub,body)=>'<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:16px">'
+    +'<div class="irf-card-title dsec-h dsec-in" id="dsec-clnacq'+sfx+'" data-nav="Acquisition" style="font-size:22px;font-weight:700;letter-spacing:-.01em;border-left:4px solid var(--teal);padding-left:11px;line-height:1.2">'+title+'</div>'
+    +'<div class="irf-card-sub" style="margin-left:15px">'+sub+'</div>'+body+'</div>';
+  const UD=[['utmSource','UTM Source'],['utmMedium','UTM Medium'],['utmCampaign','UTM Campaign']];
+  const ud=S.clinician.utmDim||'utmSource';
+  const udLabel=(UD.find(x=>x[0]===ud)||UD[0])[1];
+  // Inquiry = everyone who arrived in the window. Sign Up = everyone who
+  // completed credentials in it (2026-10-27) -- NOT a subset of the window's
+  // inquiries, since a sign up can come from an earlier arrival. Precomputed by
+  // the worker (comp.submission) because the client never sees the
+  // per-clinician rows these breakdowns are built from.
+  const acqMode=(S.clinician.acqMode==='submission')?'submission':'inquiry';
+  const sub=comp.submission||null;
+  const acqSrc=(acqMode==='submission'&&sub)?sub:comp;
+  const acqTotal=(acqMode==='submission'&&sub)?(sub.contacts||0):(comp.contacts||0);
+  const udPill=(k,lbl)=>{const on=ud===k;return '<button onclick="clinicianSetUtm(\''+k+'\')" style="font-family:var(--font-h);font-size:11px;font-weight:700;letter-spacing:.02em;padding:6px 14px;border:none;background:'+(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+';cursor:pointer;transition:background .15s,color .15s">'+lbl+'</button>';};
+  const acqPill=(k,lbl,note)=>{const on=acqMode===k;return '<button onclick="clinicianSetAcq(\''+k+'\')" title="'+note+'" style="font-family:var(--font-h);font-size:11px;font-weight:700;letter-spacing:.02em;padding:6px 16px;border:none;background:'+(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+';cursor:pointer;transition:background .15s,color .15s">'+lbl+'</button>';};
+  // Three across (Type, Specialty, UTM); each wraps to its own row on a narrow
+  // screen, and the pie inside stacks above its legend when the panel is slim.
+  // Specialty filter (2026-11-09): narrows the Type and UTM pies to one
+  // specialty, for whichever population is selected. The Specialty pie itself
+  // stays the full mix -- filtered, it would be one 100% slice. Options are
+  // every specialty in either population, largest first, Not set last.
+  const _bsI=comp.bySpecialty||null, _bsS=(sub&&sub.bySpecialty)||null;
+  const _specOpts=(function(){
+    const tot={};
+    [_bsI,_bsS].forEach(function(m){for(const k in (m||{}))tot[k]=(tot[k]||0)+(m[k].contacts||0);});
+    return Object.keys(tot).sort(function(a,b){return (a==='Not set')-(b==='Not set')||tot[b]-tot[a]||(a<b?-1:1);});
+  })();
+  const acqSpec=(S.clinician.acqSpec&&_specOpts.indexOf(S.clinician.acqSpec)>=0)?S.clinician.acqSpec:'';
+  const _bs=(acqMode==='submission'&&sub)?_bsS:_bsI;
+  const _sx=acqSpec?((_bs&&_bs[acqSpec])||{contacts:0,type:[],utmSource:[],utmMedium:[],utmCampaign:[]}):null;
+  const _fTot=_sx?(_sx.contacts||0):acqTotal;
+  const _fSrc=_sx||acqSrc;
+  const _esc=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const specSel=(_bsI||_bsS)?'<label style="display:inline-flex;align-items:center;gap:7px;font-family:var(--font-h);font-size:11px;font-weight:700;color:'+(acqSpec?'var(--navy)':'var(--grey)')+'">Specialty'
+    +'<select aria-label="Specialty" onchange="clinicianSetAcqSpec(this.value)" style="font-family:var(--font-h);font-size:11px;font-weight:700;max-width:220px;padding:4px 6px;border-radius:6px;cursor:pointer;border:1px solid '+(acqSpec?'var(--navy)':'var(--border)')+';background:'+(acqSpec?'var(--navy)':'var(--white)')+';color:'+(acqSpec?'#fff':'var(--navy)')+'">'
+    +'<option value=""'+(acqSpec?'':' selected')+'>All specialties</option>'
+    +_specOpts.map(function(o){return '<option value="'+_esc(o)+'"'+(o===acqSpec?' selected':'')+'>'+_esc(o)+'</option>';}).join('')
+    +'</select></label>':'';
+  // `tot` is the panel's own population: a filtered panel divides by that
+  // specialty's clinicians, not the whole window's.
+  const acqPanel=(t,rows,extra,tot)=>'<div style="flex:1 1 30%;min-width:300px;background:var(--white);border:1px solid var(--border);border-radius:10px;padding:16px 18px 18px">'
+    +'<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:'+(extra?'10':'16')+'px;padding-bottom:10px;border-bottom:1px solid var(--border)">'
+    +'<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">'+t+'</span>'
+    +'<span style="font-size:10px;color:var(--grey);white-space:nowrap">'+fN(tot)+' clinician'+(tot===1?'':'s')+' \u00b7 '+fN(_catCount(rows))+' categories</span></div>'
+    +(extra||'')
+    +_clinicianPie(rows,tot)+'</div>';
+  const utmToggle='<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap;margin:0 0 14px">'
+    +UD.map(x=>udPill(x[0],x[1])).join('')+'</div>';
+  // Card-level population switch, above both panels so its scope is obvious.
+  const acqRate=(comp.contacts>0&&sub)?((sub.contacts||0)/comp.contacts*100):null;
+  const acqToggle='<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:0 0 14px">'
+          +'<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap">'
+    +acqPill('inquiry','Inquiry','Every clinician who came in during the window')
+    +acqPill('submission','Sign Up','Clinicians who completed credentials in the window')
+    +'</div>'
+    +specSel
+    // Not "X of Y": a window's sign ups are not drawn from its inquiries.
+    +(sub?'<span style="font-size:10.5px;color:var(--grey)">'+fN(sub.contacts||0)+' sign up'+((sub.contacts||0)===1?'':'s')
+      +' \u00b7 '+fN(comp.contacts)+' inquiries'
+      +(acqRate!=null?' \u00b7 Sign Up Rate '+acqRate.toFixed(1)+'%':'')+'</span>':'')
+    +'</div>';
+  const noSub=(acqMode==='submission'&&(!sub||!(sub.contacts>0)))
+    ?'<div style="padding:20px;text-align:center;color:var(--grey);font-size:12px">No clinician completed credentials in this window.</div>':'';
+  return card('Acquisition','Where clinicians came from \u00b7 '
+      +(acqMode==='submission'?'contacts who completed credentials in the selected window':'contacts created in the selected window')
+      +', deduped per person \u00b7 UTMs read from the contact, falling back to the deal',
+    // The chart leads the section: it answers "is the mix moving, and what is
+    // it costing", and the three pies below break the current window down. Same
+    // population for all three — the toggle above scopes the whole card.
+    acqToggle+(noSub||('<div style="display:flex;gap:18px;align-items:stretch;flex-wrap:wrap">'
+     +acqPanel('Type of Clinician'+(acqSpec?' \u00b7 '+_esc(acqSpec):''),_fSrc.type||[],null,_fTot)
+     +acqPanel('Clinician Specialty',acqSrc.specialty||[],null,acqTotal)
+     +acqPanel(udLabel+(acqSpec?' \u00b7 '+_esc(acqSpec):''),_fSrc[ud]||[],utmToggle,_fTot)
+    +'</div>')));
+}
+// Acquisition toggles re-render only the page that is showing them.
+function _clnAcqRerender(){
+  if(typeof AP!=='undefined'&&AP==='exec'){
+    var el=document.getElementById('exec-acq');
+    if(el)el.innerHTML=_clnAcquisitionHTML(_execData(),'-exec');
+    return;
+  }
+  renderClinician();
+}
 function renderClinician(){
   const d=S.clinician.data;
   const dhEl=document.getElementById('clinician-date-header');
@@ -7137,82 +7249,8 @@ function renderClinician(){
   // Clinician Composition is gone: Specialty Breakdown was dropped and Type of
   // Clinician moved into Acquisition, which left the card with nothing in it.
   // Specialty came back on 2026-11-06 as an Acquisition pie beside Type.
-  // ── Section 4: Acquisition ──
-  if((comp.contacts||0)>0){
-    const UD=[['utmSource','UTM Source'],['utmMedium','UTM Medium'],['utmCampaign','UTM Campaign']];
-    const ud=S.clinician.utmDim||'utmSource';
-    const udLabel=(UD.find(x=>x[0]===ud)||UD[0])[1];
-    // Inquiry = everyone who arrived in the window. Sign Up = everyone who
-    // completed credentials in it (2026-10-27) -- NOT a subset of the window's
-    // inquiries, since a sign up can come from an earlier arrival. Precomputed by
-    // the worker (comp.submission) because the client never sees the
-    // per-clinician rows these breakdowns are built from.
-    const acqMode=(S.clinician.acqMode==='submission')?'submission':'inquiry';
-    const sub=comp.submission||null;
-    const acqSrc=(acqMode==='submission'&&sub)?sub:comp;
-    const acqTotal=(acqMode==='submission'&&sub)?(sub.contacts||0):(comp.contacts||0);
-    const udPill=(k,lbl)=>{const on=ud===k;return '<button onclick="clinicianSetUtm(\''+k+'\')" style="font-family:var(--font-h);font-size:11px;font-weight:700;letter-spacing:.02em;padding:6px 14px;border:none;background:'+(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+';cursor:pointer;transition:background .15s,color .15s">'+lbl+'</button>';};
-    const acqPill=(k,lbl,note)=>{const on=acqMode===k;return '<button onclick="clinicianSetAcq(\''+k+'\')" title="'+note+'" style="font-family:var(--font-h);font-size:11px;font-weight:700;letter-spacing:.02em;padding:6px 16px;border:none;background:'+(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+';cursor:pointer;transition:background .15s,color .15s">'+lbl+'</button>';};
-    // Three across (Type, Specialty, UTM); each wraps to its own row on a narrow
-    // screen, and the pie inside stacks above its legend when the panel is slim.
-    // Specialty filter (2026-11-09): narrows the Type and UTM pies to one
-    // specialty, for whichever population is selected. The Specialty pie itself
-    // stays the full mix -- filtered, it would be one 100% slice. Options are
-    // every specialty in either population, largest first, Not set last.
-    const _bsI=comp.bySpecialty||null, _bsS=(sub&&sub.bySpecialty)||null;
-    const _specOpts=(function(){
-      const tot={};
-      [_bsI,_bsS].forEach(function(m){for(const k in (m||{}))tot[k]=(tot[k]||0)+(m[k].contacts||0);});
-      return Object.keys(tot).sort(function(a,b){return (a==='Not set')-(b==='Not set')||tot[b]-tot[a]||(a<b?-1:1);});
-    })();
-    const acqSpec=(S.clinician.acqSpec&&_specOpts.indexOf(S.clinician.acqSpec)>=0)?S.clinician.acqSpec:'';
-    const _bs=(acqMode==='submission'&&sub)?_bsS:_bsI;
-    const _sx=acqSpec?((_bs&&_bs[acqSpec])||{contacts:0,type:[],utmSource:[],utmMedium:[],utmCampaign:[]}):null;
-    const _fTot=_sx?(_sx.contacts||0):acqTotal;
-    const _fSrc=_sx||acqSrc;
-    const _esc=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    const specSel=(_bsI||_bsS)?'<label style="display:inline-flex;align-items:center;gap:7px;font-family:var(--font-h);font-size:11px;font-weight:700;color:'+(acqSpec?'var(--navy)':'var(--grey)')+'">Specialty'
-      +'<select aria-label="Specialty" onchange="clinicianSetAcqSpec(this.value)" style="font-family:var(--font-h);font-size:11px;font-weight:700;max-width:220px;padding:4px 6px;border-radius:6px;cursor:pointer;border:1px solid '+(acqSpec?'var(--navy)':'var(--border)')+';background:'+(acqSpec?'var(--navy)':'var(--white)')+';color:'+(acqSpec?'#fff':'var(--navy)')+'">'
-      +'<option value=""'+(acqSpec?'':' selected')+'>All specialties</option>'
-      +_specOpts.map(function(o){return '<option value="'+_esc(o)+'"'+(o===acqSpec?' selected':'')+'>'+_esc(o)+'</option>';}).join('')
-      +'</select></label>':'';
-    // `tot` is the panel's own population: a filtered panel divides by that
-    // specialty's clinicians, not the whole window's.
-    const acqPanel=(t,rows,extra,tot)=>'<div style="flex:1 1 30%;min-width:300px;background:var(--white);border:1px solid var(--border);border-radius:10px;padding:16px 18px 18px">'
-      +'<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:'+(extra?'10':'16')+'px;padding-bottom:10px;border-bottom:1px solid var(--border)">'
-      +'<span style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">'+t+'</span>'
-      +'<span style="font-size:10px;color:var(--grey);white-space:nowrap">'+fN(tot)+' clinician'+(tot===1?'':'s')+' \u00b7 '+fN(_catCount(rows))+' categories</span></div>'
-      +(extra||'')
-      +_clinicianPie(rows,tot)+'</div>';
-    const utmToggle='<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap;margin:0 0 14px">'
-      +UD.map(x=>udPill(x[0],x[1])).join('')+'</div>';
-    // Card-level population switch, above both panels so its scope is obvious.
-    const acqRate=(comp.contacts>0&&sub)?((sub.contacts||0)/comp.contacts*100):null;
-    const acqToggle='<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:0 0 14px">'
-            +'<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap">'
-      +acqPill('inquiry','Inquiry','Every clinician who came in during the window')
-      +acqPill('submission','Sign Up','Clinicians who completed credentials in the window')
-      +'</div>'
-      +specSel
-      // Not "X of Y": a window's sign ups are not drawn from its inquiries.
-      +(sub?'<span style="font-size:10.5px;color:var(--grey)">'+fN(sub.contacts||0)+' sign up'+((sub.contacts||0)===1?'':'s')
-        +' \u00b7 '+fN(comp.contacts)+' inquiries'
-        +(acqRate!=null?' \u00b7 Sign Up Rate '+acqRate.toFixed(1)+'%':'')+'</span>':'')
-      +'</div>';
-    const noSub=(acqMode==='submission'&&(!sub||!(sub.contacts>0)))
-      ?'<div style="padding:20px;text-align:center;color:var(--grey);font-size:12px">No clinician completed credentials in this window.</div>':'';
-    h+=card('Acquisition','Where clinicians came from \u00b7 '
-        +(acqMode==='submission'?'contacts who completed credentials in the selected window':'contacts created in the selected window')
-        +', deduped per person \u00b7 UTMs read from the contact, falling back to the deal',
-      // The chart leads the section: it answers "is the mix moving, and what is
-      // it costing", and the three pies below break the current window down. Same
-      // population for all three — the toggle above scopes the whole card.
-      acqToggle+(noSub||('<div style="display:flex;gap:18px;align-items:stretch;flex-wrap:wrap">'
-       +acqPanel('Type of Clinician'+(acqSpec?' \u00b7 '+_esc(acqSpec):''),_fSrc.type||[],null,_fTot)
-       +acqPanel('Clinician Specialty',acqSrc.specialty||[],null,acqTotal)
-       +acqPanel(udLabel+(acqSpec?' \u00b7 '+_esc(acqSpec):''),_fSrc[ud]||[],utmToggle,_fTot)
-      +'</div>')));
-  }
+  // ── Section 4: Acquisition (shared builder, also on the Executive page) ──
+  h+=_clnAcquisitionHTML(d,'');
   // ── Section 6: Clinician ad tables, one shared filter set ──
   // The Ads KPI row that used to lead this section is gone; the three cards it
   // held (pacing, cost per inquiry, cost per sign up) all restate
@@ -7330,7 +7368,8 @@ function _secNavOffset(){
 window.secNavGo=function(id){
   const el=document.getElementById(id),main=_secNavMain(); if(!el||!main)return;
   const delta=el.getBoundingClientRect().top-main.getBoundingClientRect().top;
-  main.scrollTo({top:Math.max(0,main.scrollTop+delta-_secNavOffset()),behavior:'smooth'});
+  // Rects are visual px, scrollTop is the zoomed element's own px: convert.
+  main.scrollTo({top:Math.max(0,main.scrollTop+_uz(delta-_secNavOffset())),behavior:'smooth'});
 };
 // Highlight whichever section is currently at the top of the viewport.
 function _secNavSpy(){
@@ -9177,12 +9216,12 @@ function renderOverviewOutcomeBreakdown(d){
     if(tip){
       segs.forEach(function(seg){
         seg.addEventListener('mouseenter',function(){seg.style.opacity='0.8';tip.style.display='block';tip.innerHTML='<strong>'+seg.dataset.label+'</strong>: '+seg.dataset.cnt+' ('+seg.dataset.pct+'%)';});
-        seg.addEventListener('mousemove',function(e){var tw=tip.offsetWidth||220;var vw=window.innerWidth;var x=e.clientX+12;if(x+tw>vw-8){x=e.clientX-tw-12;}tip.style.left=x+'px';tip.style.top=(e.clientY-30)+'px';});
+        seg.addEventListener('mousemove',function(e){var tw=tip.offsetWidth||220;var vw=window.innerWidth;var x=e.clientX+12;if(x+tw>vw-8){x=e.clientX-tw-12;}tip.style.left=_uz(x)+'px';tip.style.top=_uz(e.clientY-30)+'px';});
         seg.addEventListener('mouseleave',function(){seg.style.opacity='1';tip.style.display='none';});
       });
       kpis.forEach(function(k){
         k.addEventListener('mouseenter',function(){k.style.opacity='0.8';tip.style.display='block';tip.innerHTML=k.dataset.tip||'';});
-        k.addEventListener('mousemove',function(e){var tw=tip.offsetWidth||220;var vw=window.innerWidth;var x=e.clientX+12;if(x+tw>vw-8){x=e.clientX-tw-12;}tip.style.left=x+'px';tip.style.top=(e.clientY-30)+'px';});
+        k.addEventListener('mousemove',function(e){var tw=tip.offsetWidth||220;var vw=window.innerWidth;var x=e.clientX+12;if(x+tw>vw-8){x=e.clientX-tw-12;}tip.style.left=_uz(x)+'px';tip.style.top=_uz(e.clientY-30)+'px';});
         k.addEventListener('mouseleave',function(){k.style.opacity='1';tip.style.display='none';});
       });
     }
@@ -9747,7 +9786,7 @@ function renderNoShowAnalysis(d){
         var txt=r.getAttribute('data-tip');
         if(!txt)return;
         r.addEventListener('mouseenter',function(){tip.textContent=txt;tip.style.display='block';r.style.background='rgba(114,164,191,.06)';r.style.borderRadius='4px';});
-        r.addEventListener('mousemove',function(e){var tw=tip.offsetWidth||220,vw=window.innerWidth;var x=e.clientX+14;if(x+tw>vw-8)x=e.clientX-tw-14;tip.style.left=x+'px';tip.style.top=(e.clientY-34)+'px';});
+        r.addEventListener('mousemove',function(e){var tw=tip.offsetWidth||220,vw=window.innerWidth;var x=e.clientX+14;if(x+tw>vw-8)x=e.clientX-tw-14;tip.style.left=_uz(x)+'px';tip.style.top=_uz(e.clientY-34)+'px';});
         r.addEventListener('mouseleave',function(){tip.style.display='none';r.style.background='';});
       });
     });
@@ -10294,7 +10333,7 @@ function attachHover(containerId,tipId,selector,textFn,isClass){
   var elems=isClass?container.querySelectorAll('.'+selector):container.querySelectorAll('div['+selector+']');
   elems.forEach(function(el){
     el.addEventListener('mouseenter',function(e){tip.style.display='block';tip.innerHTML=textFn(el);el.style.opacity='0.85';});
-    el.addEventListener('mousemove',function(e){var r=container.closest('[style*="position:relative"]')||container.parentElement;var br=r.getBoundingClientRect();tip.style.left=(e.clientX-br.left+12)+'px';tip.style.top=(e.clientY-br.top-30)+'px';});
+    el.addEventListener('mousemove',function(e){var r=container.closest('[style*="position:relative"]')||container.parentElement;var br=r.getBoundingClientRect();tip.style.left=_uz(e.clientX-br.left+12)+'px';tip.style.top=_uz(e.clientY-br.top-30)+'px';});
     el.addEventListener('mouseleave',function(){tip.style.display='none';el.style.opacity='1';});
   });
 }
@@ -10320,7 +10359,7 @@ function drawStackedBar(canvasId,dataObj,repIds,colorMap,fixedLabels){
   var tip=document.getElementById(canvasId+'-tip');
   cv.onmousemove=function(e){var br=cv.getBoundingClientRect();var mx=e.clientX-br.left;
     var found=null;for(var ti=0;ti<tipZones.length;ti++){if(mx>=tipZones[ti].x&&mx<=tipZones[ti].x+tipZones[ti].w){found=tipZones[ti];break;}}
-    if(found&&tip){tip.style.display='block';tip.style.left=(e.clientX-br.left+12)+'px';tip.style.top=(e.clientY-br.top-30)+'px';
+    if(found&&tip){tip.style.display='block';tip.style.left=_uz(e.clientX-br.left+12)+'px';tip.style.top=_uz(e.clientY-br.top-30)+'px';
     var th2='<strong>'+found.label+'</strong> — '+found.total+' demos<br>';found.breakdown.forEach(function(b){th2+='<span style="color:'+colorMap[b.rep]+'">●</span> '+b.rep+': '+b.cnt+'<br>';});tip.innerHTML=th2;}
     else if(tip)tip.style.display='none';};
   cv.onmouseleave=function(){if(tip)tip.style.display='none';};
@@ -11096,12 +11135,12 @@ function renderDemoQuality(){try{
     if(outcTip){
       outcSegs.forEach(function(seg){
         seg.addEventListener('mouseenter',function(){seg.style.opacity='0.8';outcTip.style.display='block';outcTip.innerHTML='<strong>'+seg.dataset.label+'</strong>: '+seg.dataset.cnt+' ('+seg.dataset.pct+'%)';});
-        seg.addEventListener('mousemove',function(e){outcTip.style.left=(e.clientX+12)+'px';outcTip.style.top=(e.clientY-30)+'px';});
+        seg.addEventListener('mousemove',function(e){outcTip.style.left=_uz(e.clientX+12)+'px';outcTip.style.top=_uz(e.clientY-30)+'px';});
         seg.addEventListener('mouseleave',function(){seg.style.opacity='1';outcTip.style.display='none';});
       });
       outcKpis.forEach(function(k){
         k.addEventListener('mouseenter',function(){k.style.opacity='0.8';outcTip.style.display='block';outcTip.innerHTML=k.dataset.tip||'';});
-        k.addEventListener('mousemove',function(e){outcTip.style.left=(e.clientX+12)+'px';outcTip.style.top=(e.clientY-30)+'px';});
+        k.addEventListener('mousemove',function(e){outcTip.style.left=_uz(e.clientX+12)+'px';outcTip.style.top=_uz(e.clientY-30)+'px';});
         k.addEventListener('mouseleave',function(){k.style.opacity='1';outcTip.style.display='none';});
       });
     }
@@ -11152,12 +11191,12 @@ renderDemoQuality();
 function dqRepTip(el,ev){
   var tip=document.getElementById('dq-repbar-tip');if(!tip)return;
   tip.innerHTML='<strong>'+el.dataset.rep+'</strong><br>'+el.dataset.cnt+' demos ('+el.dataset.pct+'%)';
-  tip.style.display='block';tip.style.left=(ev.clientX+12)+'px';tip.style.top=(ev.clientY-40)+'px';
+  tip.style.display='block';tip.style.left=_uz(ev.clientX+12)+'px';tip.style.top=_uz(ev.clientY-40)+'px';
 }
 function dqOutcomeTip(el,ev){
   var tip=document.getElementById('dq-outcome-tip');if(!tip)return;
   tip.innerHTML='<strong>'+el.dataset.label+'</strong><br>'+el.dataset.cnt+' demos ('+el.dataset.pct+'%)';
-  tip.style.display='block';tip.style.left=(ev.clientX+12)+'px';tip.style.top=(ev.clientY-40)+'px';
+  tip.style.display='block';tip.style.left=_uz(ev.clientX+12)+'px';tip.style.top=_uz(ev.clientY-40)+'px';
 }
 
 function drawDQCharts(deals,ownerMap,winType){
@@ -11197,7 +11236,7 @@ ctx.fillStyle='#999';ctx.font='8px Inter,sans-serif';ctx.textAlign='center';var 
 // Hover tooltip
 var tip=document.getElementById(canvasId+'-tip');if(!tip)return;
 cv.addEventListener('mousemove',function(e){var br=cv.getBoundingClientRect();var mx2=e.clientX-br.left;var best=null,bestDist=999;for(var j=0;j<barPts.length;j++){var dx=Math.abs(barPts[j].x-mx2);if(dx<bestDist){bestDist=dx;best=j;}}
-if(best!==null&&bestDist<gap/2+5){var p=barPts[best];var html='<div style="font-weight:700;margin-bottom:3px">'+p.label+' — '+p.total+' demos</div>';for(var bi2=0;bi2<p.breakdown.length;bi2++){html+='<div style="font-size:11px"><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:'+(colorMap[p.breakdown[bi2].rep]||'#72A4BF')+';margin-right:4px"></span>'+p.breakdown[bi2].rep+': '+p.breakdown[bi2].cnt+'</div>';}tip.innerHTML=html;tip.style.display='block';var tipX=p.x,tipY=40;if(tipX>w-140)tipX=w-160;if(tipX<10)tipX=10;tip.style.left=tipX+'px';tip.style.top=tipY+'px';}else{tip.style.display='none';}});
+if(best!==null&&bestDist<gap/2+5){var p=barPts[best];var html='<div style="font-weight:700;margin-bottom:3px">'+p.label+' — '+p.total+' demos</div>';for(var bi2=0;bi2<p.breakdown.length;bi2++){html+='<div style="font-size:11px"><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:'+(colorMap[p.breakdown[bi2].rep]||'#72A4BF')+';margin-right:4px"></span>'+p.breakdown[bi2].rep+': '+p.breakdown[bi2].cnt+'</div>';}tip.innerHTML=html;tip.style.display='block';var tipX=p.x,tipY=40;if(tipX>w-140)tipX=w-160;if(tipX<10)tipX=10;tip.style.left=_uz(tipX)+'px';tip.style.top=_uz(tipY)+'px';}else{tip.style.display='none';}});
 cv.addEventListener('mouseleave',function(){tip.style.display='none';});
 }
 
@@ -11222,7 +11261,7 @@ ctx.fillStyle='#172C45';ctx.font='bold 11px Inter,sans-serif';ctx.textAlign='lef
 barPts.push({y:y,h:bh,rep:reps[i],total:rd.total||0,breakdown:breakdown});}
 var tip=document.getElementById(canvasId+'-tip');if(!tip)return;
 cv.addEventListener('mousemove',function(e){var br=cv.getBoundingClientRect();var my=e.clientY-br.top;var found=null;for(var j=0;j<barPts.length;j++){if(my>=barPts[j].y&&my<=barPts[j].y+barPts[j].h){found=barPts[j];break;}}
-if(found){var htm='<div style="font-weight:700;margin-bottom:4px">'+found.rep+' — '+found.total+' demos</div>';for(var bi=0;bi<found.breakdown.length;bi++){var b=found.breakdown[bi];htm+='<div style="font-size:11px"><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:'+b.color+';margin-right:4px"></span>'+b.label+': '+b.cnt+'</div>';}tip.innerHTML=htm;tip.style.display='block';tip.style.left=(padL+60)+'px';tip.style.top=(found.y-10)+'px';}else{tip.style.display='none';}});
+if(found){var htm='<div style="font-weight:700;margin-bottom:4px">'+found.rep+' — '+found.total+' demos</div>';for(var bi=0;bi<found.breakdown.length;bi++){var b=found.breakdown[bi];htm+='<div style="font-size:11px"><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:'+b.color+';margin-right:4px"></span>'+b.label+': '+b.cnt+'</div>';}tip.innerHTML=htm;tip.style.display='block';tip.style.left=_uz(padL+60)+'px';tip.style.top=_uz(found.y-10)+'px';}else{tip.style.display='none';}});
 cv.addEventListener('mouseleave',function(){tip.style.display='none';});
 }
 
@@ -12424,13 +12463,14 @@ function renderExec(){
   var bar=document.getElementById('exec-mode-bar');
   if(bar)bar.innerHTML=_execModeBarHTML();
   var km=document.getElementById('exec-km'),tr=document.getElementById('exec-trend'),ads=document.getElementById('exec-ads');
+  var acq=document.getElementById('exec-acq');
   var d=_execData();
   if(!d){
     var msg=_execLoading()
       ? 'Loading '+(_execMode()==='clinician'?'clinician':'brand')+' data…'
       : 'No data yet for this view.';
     if(km)km.innerHTML='<div class="sec sec-card dsec" style="padding:28px;text-align:center;color:var(--grey);font-size:12px">'+msg+'</div>';
-    if(tr)tr.innerHTML=''; if(ads)ads.innerHTML='';
+    if(tr)tr.innerHTML=''; if(ads)ads.innerHTML=''; if(acq)acq.innerHTML='';
     return;
   }
   // ── 1. Key Metrics ──
@@ -12460,7 +12500,9 @@ function renderExec(){
     tr.innerHTML=(_execMode()==='clinician')?_clnTrendCard(d,'-exec'):_dashTrendCard(d,'-exec');
     if(_execMode()==='clinician')_renderClnTrend(d,'-exec'); else _renderDashTrend(d,'-exec');
   }
-  // ── 3. Ad Tables ──
+  // ── 3. Acquisition (Clinician tab only, 2026-11-09) ──
+  if(acq)acq.innerHTML=(_execMode()==='clinician')?_clnAcquisitionHTML(d,'-exec'):'';
+  // ── 4. Ad Tables ──
   if(ads){
     ads.innerHTML=_execAdsSectionHTML();
     // Same loader the other pages use; it writes into whichever targets exist.
@@ -13586,7 +13628,7 @@ function renderOutbound(){
       if(idx>=0&&idx<trend.length){
         var t2=trend[idx];
         tip.innerHTML='<b>'+(t2.week||'')+'</b><br>Sent: '+t2.sent+'<br>Opened: '+(t2.opened||0)+'<br>Replied: '+(t2.replied||0)+'<br>Clicked: '+(t2.clicked||0);
-        tip.style.display='block';tip.style.left=Math.min(e.clientX-br2.left+10,W-150)+'px';tip.style.top=(e.clientY-br2.top-70)+'px';
+        tip.style.display='block';tip.style.left=_uz(Math.min(e.clientX-br2.left+10,W-150))+'px';tip.style.top=_uz(e.clientY-br2.top-70)+'px';
       }else{tip.style.display='none';}
     };
     cv.onmouseleave=function(){tip.style.display='none';};
