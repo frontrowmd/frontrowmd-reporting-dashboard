@@ -937,7 +937,7 @@ const WP_BASELINE_SAVE_API=location.protocol==='file:'?'https://frontrowmd-dashb
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
 let PW='';
-const S={exec:{win:'mtd',data:null,mode:'brand',adChannel:'meta'},dashboard:{win:'mtd',data:null,sub:'exec'},skincare:{win:'mtd',data:null,typeF:''},irfan:{win:'mtd',data:null},strategy:{data:null,win:'lastMonth'},calculator:{win:'mtd',data:null},signup:{win:null,data:null},clinician:{win:'mtd',data:null},analyzer:{win:'mtd',data:null,tab:'overview',sub:'overview'},demoQuality:{win:'mtd',data:null},webinarPerf:{win:'mtd',data:null},pilot:{data:null,fStatus:null,fStage:null},csession:{step:1},content:{data:null,sub:'cs-intel'},outbound:{data:null}};let AP='exec';
+const S={exec:{win:'mtd',data:null,mode:'brand',adChannel:'meta'},dashboard:{win:'mtd',data:null,sub:'exec'},skincare:{data:null,typeF:''},irfan:{win:'mtd',data:null},strategy:{data:null,win:'lastMonth'},calculator:{win:'mtd',data:null},signup:{win:null,data:null},clinician:{win:'mtd',data:null},analyzer:{win:'mtd',data:null,tab:'overview',sub:'overview'},demoQuality:{win:'mtd',data:null},webinarPerf:{win:'mtd',data:null},pilot:{data:null,fStatus:null,fStage:null},csession:{step:1},content:{data:null,sub:'cs-intel'},outbound:{data:null}};let AP='exec';
 const f$=v=>v==null?'—':'$'+Math.round(v).toLocaleString();
 const fN=v=>v==null?'—':Math.round(v).toLocaleString();
 const fP=(v,d=1)=>v==null?'—':v.toFixed(d)+'%';
@@ -1218,7 +1218,7 @@ async function doLogin(){
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){doLogin();});else setTimeout(doLogin,0);
 
 // Filters
-function bldF(){const s=S[AP];var aiBtn=AI_PANEL_PAGES.indexOf(AP)>=0?'<button id="ai-panel-btn" onclick="toggleAIPanel()" class="fb" style="border:1.5px solid #B8860B;background:'+(_aiPanelOpen?'#B8860B':'#FFF8E1')+';color:'+(_aiPanelOpen?'#fff':'#8B6914')+';font-weight:700" onmouseover="this.style.background=\'#B8860B\';this.style.color=\'#fff\'" onmouseout="if(!_aiPanelOpen){this.style.background=\'#FFF8E1\';this.style.color=\'#8B6914\';}">✦ AI Analysis</button>':'';if(AP==='signup'){document.getElementById('filters').innerHTML='<span style="font-size:13px;color:var(--grey)">Fixed cohorts — independent of time filters</span>'+aiBtn+'<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>';return;}if(AP==='pilot'){const _f=document.getElementById('filters');_f.style.display='';_f.innerHTML='<span style="font-size:13px;color:var(--grey)">Every pilot waitlist deal — no date filter</span><button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>';return;}if(AP==='strategy'||AP==='csession'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='content'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='outbound'){document.getElementById('filters').innerHTML=aiBtn;document.getElementById('filters').style.display=aiBtn?'':'none';return;}else{document.getElementById('filters').style.display='';}let h='';const _wPill=w=>{const _aw=(w.k==='custom')?(s.win==='custom'&&!s.quarterKey):(s.win===w.k);return `<button class="fb${_aw?' active':''}" data-w="${w.k}" onclick="selW('${w.k}')">${w.l}</button>`;};/* Fixed presets, then the completed quarters, then Custom. The quarters are presets too, so Custom sitting before them split the presets in two and put the escape hatch in the middle of the row. */for(const w of W){if(w.k!=='custom')h+=_wPill(w);}for(const q of _completedQuarters())h+=`<button class="fb${(s.win==='custom'&&s.quarterKey===q.from+'_'+q.to)?' active':''}" data-q="${q.from}_${q.to}" onclick="selQ('${q.from}','${q.to}')">${q.l}</button>`;{const _cw=W.filter(w=>w.k==='custom')[0];if(_cw)h+=_wPill(_cw);}h+=`<div class="cr${(s.win==='custom'&&!s.quarterKey)?' vis':''}" id="cr"><input type="date" id="cf"><span style="color:var(--grey)">→</span><input type="date" id="ct"><label class="cr-cmp-lbl"><input type="checkbox" id="cc" onchange="document.getElementById('crVs').classList.toggle('vis',this.checked)">Compare</label><span class="cr-vs" id="crVs"><span class="cr-vs-prefix">vs</span><input type="date" id="cvf"><span style="color:var(--grey)">→</span><input type="date" id="cvt"></span><button onclick="goC()">Go</button></div>`;h+=aiBtn;h+=`<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>`;document.getElementById('filters').innerHTML=h;}
+function bldF(){const s=S[AP];var aiBtn=AI_PANEL_PAGES.indexOf(AP)>=0?'<button id="ai-panel-btn" onclick="toggleAIPanel()" class="fb" style="border:1.5px solid #B8860B;background:'+(_aiPanelOpen?'#B8860B':'#FFF8E1')+';color:'+(_aiPanelOpen?'#fff':'#8B6914')+';font-weight:700" onmouseover="this.style.background=\'#B8860B\';this.style.color=\'#fff\'" onmouseout="if(!_aiPanelOpen){this.style.background=\'#FFF8E1\';this.style.color=\'#8B6914\';}">✦ AI Analysis</button>':'';if(AP==='signup'){document.getElementById('filters').innerHTML='<span style="font-size:13px;color:var(--grey)">Fixed cohorts — independent of time filters</span>'+aiBtn+'<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>';return;}if(AP==='skincare'){const _f=document.getElementById('filters');_f.style.display='';_f.innerHTML='<span style="font-size:13px;color:var(--grey)">All time \u2014 no date filter</span><button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>';return;}if(AP==='pilot'){const _f=document.getElementById('filters');_f.style.display='';_f.innerHTML='<span style="font-size:13px;color:var(--grey)">Every pilot waitlist deal — no date filter</span><button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>';return;}if(AP==='strategy'||AP==='csession'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='content'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='outbound'){document.getElementById('filters').innerHTML=aiBtn;document.getElementById('filters').style.display=aiBtn?'':'none';return;}else{document.getElementById('filters').style.display='';}let h='';const _wPill=w=>{const _aw=(w.k==='custom')?(s.win==='custom'&&!s.quarterKey):(s.win===w.k);return `<button class="fb${_aw?' active':''}" data-w="${w.k}" onclick="selW('${w.k}')">${w.l}</button>`;};/* Fixed presets, then the completed quarters, then Custom. The quarters are presets too, so Custom sitting before them split the presets in two and put the escape hatch in the middle of the row. */for(const w of W){if(w.k!=='custom')h+=_wPill(w);}for(const q of _completedQuarters())h+=`<button class="fb${(s.win==='custom'&&s.quarterKey===q.from+'_'+q.to)?' active':''}" data-q="${q.from}_${q.to}" onclick="selQ('${q.from}','${q.to}')">${q.l}</button>`;{const _cw=W.filter(w=>w.k==='custom')[0];if(_cw)h+=_wPill(_cw);}h+=`<div class="cr${(s.win==='custom'&&!s.quarterKey)?' vis':''}" id="cr"><input type="date" id="cf"><span style="color:var(--grey)">→</span><input type="date" id="ct"><label class="cr-cmp-lbl"><input type="checkbox" id="cc" onchange="document.getElementById('crVs').classList.toggle('vis',this.checked)">Compare</label><span class="cr-vs" id="crVs"><span class="cr-vs-prefix">vs</span><input type="date" id="cvf"><span style="color:var(--grey)">→</span><input type="date" id="cvt"></span><button onclick="goC()">Go</button></div>`;h+=aiBtn;h+=`<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>`;document.getElementById('filters').innerHTML=h;}
 // ONE routing table for "the window changed, refetch it". selW, selQ and goC
 // each carried their own copy and they had DRIFTED: only selW grew the
 // AP==='exec' branch, so the Executive page's Custom range and its quarter
@@ -1236,7 +1236,6 @@ function _mirrorCustomToClinician(win,f,t,vsFrom,vsTo){
 }
 async function _fetchForWindow(win,f,t,vsFrom,vsTo){
   if(AP==='webinarPerf'){await fdWebinarPerf(win,f,t,vsFrom,vsTo);return;}
-  if(AP==='skincare'){S.skincare.win=win;S.skincare.cr={from:f||null,to:t||null,vsFrom:vsFrom||null,vsTo:vsTo||null};S.skincare.data=null;await fdSkincare();return;}
   if(AP==='clinician'){S.clinician.win=win;_mirrorCustomToClinician(win,f,t,vsFrom,vsTo);await fdClinician(win);return;}
   // The Executive page has TWO payloads; refetch the one the mode pill shows.
   if(AP==='exec'){
@@ -1853,9 +1852,7 @@ async function fdSkincare(){
   const _prog=S.skincare._prog=_loadProgress('skincare-c',['Connecting to HubSpot\u2026','Fetching skincare-tagged deals\u2026','Fetching dermatologist clinicians\u2026','Building the funnel\u2026','Rendering dashboard\u2026'],700);
   if(el)el.innerHTML=_loadBannerHTML('Loading Skincare Dashboard',_prog);
   try{
-    const cr=S.skincare.cr||{};
-    const body={password:PW,window:S.skincare.win||'mtd'};
-    if((S.skincare.win||'')==='custom'){if(cr.from)body.from=cr.from;if(cr.to)body.to=cr.to;if(cr.vsFrom)body.vsFrom=cr.vsFrom;if(cr.vsTo)body.vsTo=cr.vsTo;}
+    const body={password:PW};
     const r=await fetch(SKINCARE_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
     if(mySeq!==S.skincare._seq){_prog.stop();return;}
@@ -1871,15 +1868,6 @@ async function fdSkincare(){
   }finally{if(mySeq===S.skincare._seq)S.skincare._fetching=false;}
 }
 window.skincareSetType=function(t){S.skincare.typeF=t||'';renderSkincare();};
-// A count for one clinician type out of a capped pie list (the rolled-up
-// "Other (n more)" bucket carries its rows as children).
-function _sknTypeCount(list,t){
-  for(const x of (list||[])){
-    if(x.label===t)return x.count||0;
-    for(const c of (x.children||[]))if(c.label===t)return c.count||0;
-  }
-  return 0;
-}
 function _sknPct(n,d){return d>0?(n/d*100).toFixed(1)+'%':'\u2014';}
 function renderSkincare(){
   const el=document.getElementById('skincare-c'); if(!el)return;
@@ -1892,20 +1880,18 @@ function renderSkincare(){
     +'<div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy);margin-bottom:4px">Waiting on app data</div>'
     +what+'<div style="margin-top:6px;font-size:11px">Source: '+src+' \u00b7 needs the read-only Metabase key</div></div>';
   const grid=(n,inner)=>'<div style="display:grid;grid-template-columns:repeat('+n+',minmax(0,1fr));gap:12px">'+inner+'</div>';
-  const foot=(c,p,l)=>_irTileFooterDash(c,p,l,'#',false);
-  const w=d.window||{}, B=d.brands||{}, bc=B.current||{}, bp=B.prior||null, bl=B.priorMonth||null;
-  let h='<div style="font-size:12px;color:var(--grey);margin:0 0 14px 2px">Skincare = skincare, hair care and clean beauty / cosmetics \u00b7 '
-    +_sknEsc((w.from||'')+' \u2192 '+(w.to||''))+'</div>';
+  const B=d.brands||{}, bc=B.current||{};
+  let h='<div style="font-size:12px;color:var(--grey);margin:0 0 14px 2px">Skincare = skincare, hair care and clean beauty / cosmetics \u00b7 all time</div>';
 
   // ── 1. Skincare brand pipeline ──
   const tagNote=(B.skincareTagged||0)===0
     ?'No deals are tagged <b>Skin &amp; haircare</b> in Brand Product Category yet. These fill in once the demo booking form asks for it; deals booked before then are not tagged.'
-    :fN(B.skincareTagged)+' deals tagged Skin &amp; haircare (first '+_sknEsc(B.firstTagged||'')+'). Deals booked before the booking form asked for a category are not tagged, so earlier windows undercount.';
-  h+=card('brands','Skincare Brand Pipeline','Sales pipeline deals whose Brand Product Category includes Skin &amp; haircare \u00b7 each step dated by when the deal entered it',
+    :fN(B.skincareTagged)+' deals tagged Skin &amp; haircare (first '+_sknEsc(B.firstTagged||'')+'). Deals booked before the booking form asked for a category are not tagged, so these counts start from then.';
+  h+=card('brands','Skincare Brand Pipeline','Sales pipeline deals whose Brand Product Category includes Skin &amp; haircare \u00b7 all time',
     grid(3,
-      _kmTile('Demos Scheduled',fN(bc.scheduled||0),'entered Appointment Scheduled',foot(bc.scheduled,bp&&bp.scheduled,bl&&bl.scheduled))
-     +_kmTile('Demos Completed',fN(bc.completed||0),'entered Demo Happened',foot(bc.completed,bp&&bp.completed,bl&&bl.completed))
-     +_kmTile('Signed',fN(bc.signed||0),'closed won in the window',foot(bc.signed,bp&&bp.signed,bl&&bl.signed)))
+      _kmTile('Demos Scheduled',fN(bc.scheduled||0),'entered Appointment Scheduled','')
+     +_kmTile('Demos Completed',fN(bc.completed||0),'entered Demo Happened','')
+     +_kmTile('Signed',fN(bc.signed||0),'closed won (incl. since churned)',''))
     +'<div style="margin-top:10px;font-size:11px;color:var(--grey)">'+tagNote+'</div>');
 
   // ── 2. Review demand (app data) ──
@@ -1914,7 +1900,7 @@ function renderSkincare(){
       'app review orders (review_orders / review_order_items)'));
 
   // ── 3. Dermatologist funnel ──
-  const D=d.derm||{}, cohort=D.cohort||{}, all=D.allTime||{};
+  const D=d.derm||{}, all=D.allTime||{};
   const types=Object.keys((all.byType)||{}).sort(function(a,b){
     return (b===SKN_TYPE_FIRST)-(a===SKN_TYPE_FIRST)||(a==='Not set')-(b==='Not set')||((all.byType[b].inquiries||0)-(all.byType[a].inquiries||0));
   });
@@ -1923,10 +1909,7 @@ function renderSkincare(){
   const typeBar='<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap;margin:0 0 14px">'
     +pill('','All types')+types.map(t=>pill(t,t)).join('')+'</div>';
   const st=(o)=>tf?((o.byType||{})[tf]||{inquiries:0,signUps:0,samples:0,reviews:0}):o;
-  const wc=D.current||{}, wp=D.prior||null, wl=D.priorMonth||null;
-  const wInq=(x)=>x?(tf?_sknTypeCount(x.inquiryTypes,tf):x.inquiries):null;
-  const wSu=(x)=>x?(tf?_sknTypeCount(x.signUpTypes,tf):x.signUps):null;
-  const co=st(cohort);
+  const co=st(all);
   const steps=[['Inquired','inquiries'],['Signed up','signUps'],['Samples shipped','samples'],['Review submitted','reviews']];
   const fRow=(o,lbl,k,i)=>{const v=o[k]||0,prev=i>0?(o[steps[i-1][1]]||0):null;
     return '<tr style="border-bottom:1px solid var(--border)"><td style="padding:8px 6px;color:var(--navy);font-weight:600">'+lbl+'</td>'
@@ -1947,13 +1930,13 @@ function renderSkincare(){
     +(tf?' \u00b7 filtered to <b>'+_sknEsc(tf)+'</b>':''),
     typeBar
     +grid(4,
-       _kmTile('Inquiries',fN(wInq(wc)||0),'contacts created in the window',foot(wInq(wc),wInq(wp),wInq(wl)))
-      +_kmTile('Sign Ups',fN(wSu(wc)||0),'credentials completed in the window',foot(wSu(wc),wSu(wp),wSu(wl)))
-      +_kmTile('Samples Shipped',fN(st(all).samples||0),'reached Sample Shipped \u00b7 all time','')
-      +_kmTile('Reviews Submitted',fN(st(all).reviews||0),'reached Review Submitted \u00b7 all time',''))
+       _kmTile('Inquiries',fN(co.inquiries||0),'dermatologists in HubSpot','')
+      +_kmTile('Sign Ups',fN(co.signUps||0),'completed credentials','')
+      +_kmTile('Samples Shipped',fN(co.samples||0),'reached Sample Shipped','')
+      +_kmTile('Reviews Submitted',fN(co.reviews||0),'reached Review Submitted',''))
     +'<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:16px;margin-top:16px">'
-    +'<div><div style="font-family:var(--font-h);font-size:13.5px;font-weight:700;color:var(--navy);margin-bottom:2px">Funnel \u00b7 dermatologists who inquired in the window</div>'
-    +'<div style="font-size:10px;color:var(--grey);margin-bottom:8px">How far each has got since \u2014 every step is a subset of the one above</div>'+fTbl(co)+'</div>'
+    +'<div><div style="font-family:var(--font-h);font-size:13.5px;font-weight:700;color:var(--navy);margin-bottom:2px">Funnel \u00b7 all time</div>'
+    +'<div style="font-size:10px;color:var(--grey);margin-bottom:8px">How far each dermatologist has got \u2014 every step is a subset of the one above</div>'+fTbl(co)+'</div>'
     +'<div><div style="font-family:var(--font-h);font-size:13.5px;font-weight:700;color:var(--navy);margin-bottom:2px">By clinician type \u00b7 all time</div>'
     +'<div style="font-size:10px;color:var(--grey);margin-bottom:8px">Every dermatologist in HubSpot, furthest step reached</div>'+typeTbl(all)+'</div></div>');
 

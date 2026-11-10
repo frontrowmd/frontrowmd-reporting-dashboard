@@ -33,6 +33,8 @@ const deals=[
 ];
 ck('Nov: scheduled / completed / signed',JSON.parse(JSON.stringify(W.buildSkincareBrandWindow(deals,'2026-11-01','2026-11-30'))),{scheduled:3,completed:2,signed:2});
 ck('Oct: the October booking counts there, not in November',JSON.parse(JSON.stringify(W.buildSkincareBrandWindow(deals,'2026-10-01','2026-10-31'))),{scheduled:2,completed:0,signed:0});
+// The page is ALL TIME (Alex, 2026-11-10): no bounds = every dated step.
+ck('all time (no bounds): every skincare deal, the non-skincare one still out',JSON.parse(JSON.stringify(W.buildSkincareBrandWindow(deals,null,null))),{scheduled:5,completed:2,signed:2});
 
 // ── 3. Dermatologists ───────────────────────────────────────────────────────
 const P=W.CLINICIAN_PIPELINE_ID, S=W.CLS;
@@ -51,26 +53,20 @@ const C={
   d:{__cid:'pd',createdate:'2026-09-03T15:00:00Z',clinician_type:'MD/DO',clinician_credentials_completed:'2026-11-06'},
   e:{__cid:'pa',createdate:'2026-11-03T15:00:00Z',clinician_type:'MD',clinician_credentials_completed:'2026-11-04'},
 };
-const cur={from:'2026-11-01',to:'2026-11-30'}, prior={from:'2026-10-01',to:'2026-10-31'};
-const r=JSON.parse(JSON.stringify(W.buildSkincareDerm(dd,C,cur,prior,null)));
+const r=JSON.parse(JSON.stringify(W.buildSkincareDerm(dd,C)));
 ck('one person with two deals is one dermatologist',r.people,4);
-ck('window inquiries / sign ups use the Clinician page definitions',[r.current.inquiries,r.current.signUps],[3,3]);
-ck('  and equal buildClinicianComposition itself',
-   [r.current.inquiries,r.current.signUps],(c=>[c.contacts,c.submission.contacts])(W.buildClinicianComposition(dd,C,cur.from,cur.to)));
-// An older inquiry who signs up now counts as a sign up NOW, not in the cohort.
-ck('cohort = inquired in the window; furthest step per person',
-   [r.cohort.inquiries,r.cohort.signUps,r.cohort.samples,r.cohort.reviews],[3,2,2,1]);
-ck('  and the funnel never widens',r.cohort.signUps<=r.cohort.inquiries&&r.cohort.samples<=r.cohort.inquiries&&r.cohort.reviews<=r.cohort.samples,true);
-ck('all time includes the older inquiry',[r.allTime.inquiries,r.allTime.signUps],[4,3]);
+ck('no window fields: the page is all time',[r.current,r.prior,r.cohort],[undefined,undefined,undefined]);
+ck('all time: furthest step per person, older inquiry included',
+   [r.allTime.inquiries,r.allTime.signUps,r.allTime.samples,r.allTime.reviews],[4,3,2,1]);
+ck('  and the funnel never widens',r.allTime.signUps<=r.allTime.inquiries&&r.allTime.samples<=r.allTime.signUps&&r.allTime.reviews<=r.allTime.samples,true);
 ck('types are grouped: MD, DO and MD/DO are MD/DO',Object.keys(r.allTime.byType).sort(),['MD/DO','Nurse Practitioner']);
 ck('  MD/DO all time',r.allTime.byType['MD/DO'],{inquiries:3,signUps:2,samples:1,reviews:1});
 // A later step implies the earlier ones, so the funnel cannot widen: a legacy
 // clinician at Sample Shipped with no recorded sign-up date still signed up.
 {
   const dd2=[cd('x',S.SAMPLE_SHIPPED)], C2={x:{__cid:'px',createdate:'2026-11-03T15:00:00Z',clinician_type:'PA'}};
-  const r2=JSON.parse(JSON.stringify(W.buildSkincareDerm(dd2,C2,cur,null,null)));
-  ck('a sample with no sign-up date still counts as signed up',[r2.cohort.signUps,r2.cohort.samples],[1,1]);
-  ck('  while the WINDOW sign-up count stays dated (it has no date, so none)',r2.current.signUps,0);
+  const r2=JSON.parse(JSON.stringify(W.buildSkincareDerm(dd2,C2)));
+  ck('a sample with no sign-up date still counts as signed up',[r2.allTime.signUps,r2.allTime.samples],[1,1]);
 }
 // Current-stage-only: a deal sitting in Review Submitted with no Sample stamp
 // is credited with Sample Shipped (it cannot review a sample it never got).
@@ -110,8 +106,8 @@ ck('Signed counts Churned Onboarding too, like the Brand Dashboard',
   let got=null; try{ got=await W2.__f('tok'); }catch(e){ console.log('  (threw: '+e.message+')'); }
   ck('duplicate contacts merge: the deal keeps the dermatologist',got&&Object.keys(got.contactsByDeal),['D1']);
   ck('  and picks up the credentials from the duplicate record',got&&got.contactsByDeal.D1.clinician_credentials_completed,'2026-11-04');
-  const rr=got&&JSON.parse(JSON.stringify(W2.__b(got.deals,got.contactsByDeal,{from:'2026-11-01',to:'2026-11-30'},null,null)));
-  ck('  so the window counts the sign up',rr&&rr.current.signUps,1);
+  const rr=got&&JSON.parse(JSON.stringify(W2.__b(got.deals,got.contactsByDeal)));
+  ck('  so the sign up counts',rr&&rr.allTime.signUps,1);
   // A read that returns nothing for deals that exist is a refusal, not zero.
   W2.fetch=async(url)=>{
     const ok=(j)=>({ok:true,status:200,json:async()=>j,body:null});
@@ -132,7 +128,9 @@ const nav=cli.slice(cli.indexOf('<span>Clinician Dashboard</span>'),cli.indexOf(
 ck('the nav entry sits right after Clinician Dashboard',/switchDashSub\('skincare'\)[^\n]*<span>Skincare Dashboard<\/span>/.test(nav),true);
 ck('it has a page, a title and a highlight',
    [cli.indexOf('<div class="pg" id="page-skincare"><div id="skincare-c"></div></div>')>=0,/var titleMap=\{[^}]*skincare:'Skincare Dashboard'/.test(cli),/skincare:"switchDashSub\('skincare'\)"/.test(fn(cli,'_navToken'))],[true,true,true]);
-ck('the date pills refetch it',/if\(AP==='skincare'\)\{S\.skincare\.win=win;[^\n]*await fdSkincare\(\);return;\}/.test(fn(cli,'_fetchForWindow')),true);
+ck('no date pills: the filter bar says all time, with Refresh only',
+   (b=>/if\(AP==='skincare'\)\{[^}]*All time[^}]*refreshData\(\)[^}]*return;\}/.test(b)&&!/AP==='skincare'[^}]*selW/.test(b))(fn(cli,'bldF')),true);
+ck('  and no window is sent or handled',[/skincare/.test(fn(cli,'_fetchForWindow')),/window:/.test(fn(cli,'fdSkincare')),/computeWindows/.test(fn(src,'processSkincareRequest'))],[false,false,false]);
 ck('renderPage and Refresh know it',[/else if\(AP==='skincare'\)renderSkincare\(\);/.test(cli),/else if\(AP==='skincare'\)\{S\.skincare\.data=null;await fdSkincare\(\);\}/.test(cli)],[true,true]);
 ck('Jump To reads its headings',/skincare:'#skincare-c \.dsec-h'/.test(cli),true);
 

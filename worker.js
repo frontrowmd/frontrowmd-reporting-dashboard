@@ -3542,8 +3542,9 @@ async function fetchDermClinicians(token) {
 // never by where it sits now -- a demo that has since signed still counts as a
 // demo completed in the window it happened. Signed is closedate in the window on a
 // deal that is closed won now or churned since (the Brand Dashboard's basis).
+// No from/to = all time (the page has no time frame): any dated step counts.
 function buildSkincareBrandWindow(deals, from, to) {
-  const inW = (v) => { const k = _clnDayKey(v); return !!k && k >= from && k <= to; };
+  const inW = (v) => { const k = _clnDayKey(v); return !!k && (!from || k >= from) && (!to || k <= to); };
   let scheduled = 0, completed = 0, signed = 0;
   for (const d of deals) {
     const p = d.properties || {};
@@ -3596,55 +3597,27 @@ function _dermSteps(people) {
   }
   return Object.assign(tot, { byType: by });
 }
-function buildSkincareDerm(deals, contactsByDeal, cur, prior, priorMonth) {
+// All time: the page has no time frame. Every dermatologist in HubSpot, each
+// credited with the furthest step any of their deals reached.
+function buildSkincareDerm(deals, contactsByDeal) {
   const people = _dermPeople(deals, contactsByDeal);
-  const inWin = (k, w) => !!k && !!w && k >= w.from && k <= w.to;
-  // Windowed activity, on the Clinician page's own definitions: inquiries are
-  // contacts created in the window, sign ups are dated by their own sign-up day.
-  // Built by buildClinicianComposition, so with Specialty = Dermatology the
-  // Clinician page's Acquisition section shows the same two numbers.
-  // One deal per person: the one carrying their EARLIEST sign-up, the deal
-  // _dermPeople takes it from, so the window count and the cohort cannot pick
-  // different deals for a clinician with several.
-  const best = {};
-  for (const d of deals) {
-    const cp = contactsByDeal[d.id]; if (!cp) continue;
-    const k = clnSignUpKey(cp, d.properties || {}), b = best[cp.__cid];
-    if (!b || (k && (!b.k || k < b.k))) best[cp.__cid] = { d, k };
-  }
-  const compDeals = Object.values(best).map(x => x.d);
-  const win = (w) => {
-    if (!w) return null;
-    const c = buildClinicianComposition(compDeals, contactsByDeal, w.from, w.to);
-    return { inquiries: c.contacts || 0, signUps: (c.submission && c.submission.contacts) || 0,
-             inquiryTypes: c.type || [], signUpTypes: (c.submission && c.submission.type) || [] };
-  };
-  return {
-    current: win(cur), prior: win(prior), priorMonth: win(priorMonth),
-    // Cohort: dermatologists who INQUIRED in the window, and how far each has got
-    // since. Every step is a subset of the one above, so the funnel never widens.
-    cohort: _dermSteps(people.filter(x => inWin(x.created, cur))),
-    // Everyone, ever: the base for engagement and the capacity check.
-    allTime: _dermSteps(people),
-    people: people.length,
-  };
+  return { allTime: _dermSteps(people), people: people.length };
 }
+
 async function processSkincareRequest(body, env) {
   const token = env.HUBSPOT_TOKEN;
-  const { current: cur, prior, priorMonth } = computeWindows(body.window || 'mtd', body.from || null, body.to || null, body.vsFrom || null, body.vsTo || null);
+  // No time frame: the Skincare page is all time (Alex, 2026-11-10).
   const [brandDeals, derm] = await Promise.all([fetchSkincareBrandDeals(token), fetchDermClinicians(token)]);
   const tagged = brandDeals.filter(d => isSkincareCategory((d.properties || {}).brand_product_category));
   const firstTagged = tagged.map(d => _clnDayKey((d.properties || {}).createdate)).filter(Boolean).sort()[0] || null;
   return {
-    window: cur, priorWindow: prior, priorMonthWindow: priorMonth,
+    allTime: true,
     brands: {
-      current: buildSkincareBrandWindow(brandDeals, cur.from, cur.to),
-      prior: prior ? buildSkincareBrandWindow(brandDeals, prior.from, prior.to) : null,
-      priorMonth: priorMonth ? buildSkincareBrandWindow(brandDeals, priorMonth.from, priorMonth.to) : null,
+      current: buildSkincareBrandWindow(brandDeals, null, null),
       // How much of HubSpot carries the category yet, so a zero can say why.
       categorised: brandDeals.length, skincareTagged: tagged.length, firstTagged,
     },
-    derm: buildSkincareDerm(derm.deals, derm.contactsByDeal, cur, prior, priorMonth),
+    derm: buildSkincareDerm(derm.deals, derm.contactsByDeal),
     // Sections that wait on the app's tables (Metabase key).
     pending: ['reviewDemand', 'engagement', 'capacity'],
     meta: { generatedAt: new Date().toISOString() },
