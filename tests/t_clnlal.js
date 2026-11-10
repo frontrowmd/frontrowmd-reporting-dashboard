@@ -234,18 +234,25 @@ ck('the section carries its own bottom margin',/margin-bottom:16px/.test(_h),tru
   // Contacts: a Derm inquiry by name, one by ID that also signs up, a LAL sign
   // up, and a core one.
   const C={
-    x1:{__cid:'x1',createdate:'2026-11-05T15:00:00Z',utm_source:'fb',utm_medium:'paid-social',utm_campaign:'S01 - TOF - Dermatologists - CAPI'},
-    x2:{__cid:'x2',createdate:'2026-11-05T15:00:00Z',utm_source:'ig',utm_medium:'paid-social',utm_campaign:'120253712026790502',clinician_credentials_completed:'2026-11-06'},
+    x1:{__cid:'x1',createdate:'2026-11-05T15:00:00Z',utm_source:'fb',utm_medium:'paid-social',utm_campaign:'S01 - TOF - Dermatologists - CAPI',clinician_specialty:'Dermatology'},
+    x2:{__cid:'x2',createdate:'2026-11-05T15:00:00Z',utm_source:'ig',utm_medium:'paid-social',utm_campaign:'120253712026790502',clinician_credentials_completed:'2026-11-06',clinician_specialty:'Dermatology'},
+    // Reached by the Derm campaign but NOT a dermatologist: not a Derm count.
+    x5:{__cid:'x5',createdate:'2026-11-05T15:00:00Z',utm_source:'fb',utm_medium:'paid-social',utm_campaign:'120253712026790502',clinician_credentials_completed:'2026-11-06',clinician_specialty:'Family Medicine'},
+    // A dermatologist from ANOTHER campaign: not a Derm count either.
+    x6:{__cid:'x6',createdate:'2026-11-05T15:00:00Z',utm_source:'fb',utm_medium:'paid-social',utm_campaign:'S01 - TOF - Clinician Targeting - CAPI',clinician_specialty:'Dermatology'},
     x3:{__cid:'x3',createdate:'2026-11-05T15:00:00Z',utm_source:'ig',utm_medium:'paid-social',utm_campaign:'S01 - TOF - Clinician Targeting - 2% Lookalikes',clinician_credentials_completed:'2026-11-06'},
     x4:{__cid:'x4',createdate:'2026-11-05T15:00:00Z',utm_source:'fb',utm_medium:'paid-social',utm_campaign:'S01 - TOF - Clinician Targeting - CAPI',clinician_credentials_completed:'2026-11-06'},
   };
   const D=Object.keys(C).map(k=>({id:k,properties:{}}));
   const c=W.buildClinicianComposition(D,C,'2026-11-01','2026-11-30');
-  ck('Derm inquiries count name AND ID tags',c.dermInquiries,2);
+  // Derm = a DERMATOLOGIST from a Dermatology campaign (2026-11-10).
+  ck('Derm inquiries: dermatologists from the Derm campaign, by name AND ID',c.dermInquiries,2);
   ck('Derm and LAL sign ups',[c.submission.derm,c.submission.lookalike],[1,1]);
+  ck('  a non-dermatologist from the Derm campaign and a dermatologist from elsewhere both stay out',
+     [c.contacts,c.dermInquiries],[6,2]);
   // Paid non-LAL is the CORE segment only: the Derm sign up left with Derm spend.
   ck('paid non-LAL excludes Derm sign ups',c.submission.paidNonLookalike,1);
-  ck('  while non-Lookalike (unpaid test) still counts them',c.submission.nonLookalike,2);
+  ck('  while non-Lookalike (unpaid test) still counts them',c.submission.nonLookalike,3);
   // The UTM Campaign pie reads the resolved name, so one campaign is one slice.
   ck('the UTM Campaign pie shows the name, not the ID',
      c.utmCampaign.map(x=>x.label).filter(l=>/^\d{12,}$/.test(l)).length,0);

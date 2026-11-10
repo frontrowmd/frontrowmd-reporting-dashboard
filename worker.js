@@ -894,7 +894,8 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v57';   // v57: clinician spend + contacts split core / LAL / Derm (Key Metrics row 2).
+const API_CACHE_VER = 'v58';   // v58: Derm = dermatologists from the Derm campaign; trend buckets carry spendDerm / dermCamp*.
+                               // v57: clinician spend + contacts split core / LAL / Derm (Key Metrics row 2).
                                // v56: Acquisition Specialty pie merges duplicate specialty names.
                                // v55: Acquisition Type pie groups MD/DO, NP, PA, RDN spellings.
                                // v54: clinician trend buckets carry bySpec / bySubSpec.
@@ -1592,6 +1593,14 @@ function resolveUtmCampaign(v) {
 // contacts always land in the same bucket. Derm wins over Lookalike, so a future
 // "Dermatologists - Lookalikes" campaign is costed as Derm.
 function isDermCampaign(name) { return /dermatolog/i.test(String(name || '')); }
+// A "Derm" inquiry / sign up on the Key Metrics cards and the Trend Analysis
+// Dermatology cost: a DERMATOLOGIST who came from a Dermatology campaign
+// (Alex, 2026-11-10). Nov 1-10 the campaign brought 118 contacts, but only 80
+// were dermatologists, and 21 more dermatologists came from other campaigns;
+// counting either side alone made the two sections disagree.
+function isDermCampaignDermatologist(seg, specialty) {
+  return seg === 'derm' && specialty === 'Dermatology';
+}
 function clnCampaignSegment(name) {
   const n = resolveUtmCampaign(name);
   if (isDermCampaign(n)) return 'derm';
@@ -4084,7 +4093,7 @@ function buildClinicianTrend(deals, contactsByDeal, windsorRows, from, to) {
     if (!dayKey) return null;
     if (from && dayKey < from) return null;
     if (to && dayKey > to) return null;
-    if (!B[dayKey]) B[dayKey] = { spend: 0, impressions: 0, clicks: 0, inquiries: 0, fullApp: 0, byType: {}, bySubType: {}, bySpec: {}, bySubSpec: {} };
+    if (!B[dayKey]) B[dayKey] = { spend: 0, impressions: 0, clicks: 0, inquiries: 0, fullApp: 0, byType: {}, bySubType: {}, bySpec: {}, bySubSpec: {}, spendDerm: 0, dermCampInq: 0, dermCampSub: 0 };
     B[dayKey][field] += (n == null ? 1 : n);
     return B[dayKey];
   };
@@ -4099,6 +4108,9 @@ function buildClinicianTrend(deals, contactsByDeal, windsorRows, from, to) {
     const k = String(r.date || '').slice(0, 10);
     if (!k) continue;
     bump(k, 'spend', parseFloat(r.spend) || 0);
+    // Dermatology campaign spend, for the Trend Cost Per while Dermatology is
+    // the selected specialty -- the same split as the Key Metrics Derm cards.
+    if (clnCampaignSegment(r.campaign_name) === 'derm') bump(k, 'spendDerm', parseFloat(r.spend) || 0);
     bump(k, 'impressions', parseInt(r.impressions) || 0);
     bump(k, 'clicks', parseInt(r.clicks) || 0);
   }
@@ -4119,9 +4131,13 @@ function buildClinicianTrend(deals, contactsByDeal, windsorRows, from, to) {
     // Specialty on the same fallback the Acquisition Specialty pie uses, for the
     // Trend Analysis Specialty / Specialty % measures.
     const spc = (cp.clinician_specialty || '').trim() || 'Not set';
+    // Same Derm rule and the same utm fallback (contact, then deal) as the
+    // Key Metrics cards, so the two counts are one count.
+    const _dc = isDermCampaignDermatologist(
+      clnCampaignSegment(cp.utm_campaign || (d.properties || {}).utm_campaign || ''), clinicianSpecialtyGroup(spc));
     const k = _clnDayKey(cp.createdate);
     const bk = k ? bump(k, 'inquiries') : null;
-    if (bk) { bk.byType[ty] = (bk.byType[ty] || 0) + 1; bk.bySpec[spc] = (bk.bySpec[spc] || 0) + 1; }
+    if (bk) { bk.byType[ty] = (bk.byType[ty] || 0) + 1; bk.bySpec[spc] = (bk.bySpec[spc] || 0) + 1; if (_dc) bk.dermCampInq++; }
     // Sign Up files under the day credentials were COMPLETED, independently of
     // when the contact arrived -- the same two tests buildClinicianComposition
     // applies, so the series still sums to the Key Metrics card. It used to sit
@@ -4129,7 +4145,7 @@ function buildClinicianTrend(deals, contactsByDeal, windsorRows, from, to) {
     // the window who signs up inside it would have been dropped.
     const sk = clnSignUpKey(cp, d.properties || {});
     const bs = sk ? bump(sk, 'fullApp') : null;
-    if (bs) { bs.bySubType[ty] = (bs.bySubType[ty] || 0) + 1; bs.bySubSpec[spc] = (bs.bySubSpec[spc] || 0) + 1; }
+    if (bs) { bs.bySubType[ty] = (bs.bySubType[ty] || 0) + 1; bs.bySubSpec[spc] = (bs.bySubSpec[spc] || 0) + 1; if (_dc) bs.dermCampSub++; }
   }
 
   const div = (n, dd) => (dd > 0 ? n / dd : null);
@@ -4158,7 +4174,7 @@ function buildClinicianTrend(deals, contactsByDeal, windsorRows, from, to) {
   const roll = (keyOf) => {
     const g = {};
     const touch = (k) => {
-      if (k && !g[k]) g[k] = { spend: 0, impressions: 0, clicks: 0, inquiries: 0, fullApp: 0, byType: {}, bySubType: {}, bySpec: {}, bySubSpec: {} };
+      if (k && !g[k]) g[k] = { spend: 0, impressions: 0, clicks: 0, inquiries: 0, fullApp: 0, byType: {}, bySubType: {}, bySpec: {}, bySubSpec: {}, spendDerm: 0, dermCampInq: 0, dermCampSub: 0 };
     };
     const addMap = (dst, srcMap) => {
       for (const t of Object.keys(srcMap || {})) dst[t] = (dst[t] || 0) + srcMap[t];
@@ -4170,6 +4186,7 @@ function buildClinicianTrend(deals, contactsByDeal, windsorRows, from, to) {
       touch(k);
       const b = B[day], o = g[k];
       o.spend += b.spend; o.impressions += b.impressions; o.clicks += b.clicks;
+      o.spendDerm += b.spendDerm; o.dermCampInq += b.dermCampInq; o.dermCampSub += b.dermCampSub;
       o.inquiries += b.inquiries; o.fullApp += b.fullApp;
       addMap(o.byType, b.byType); addMap(o.bySubType, b.bySubType);
       addMap(o.bySpec, b.bySpec); addMap(o.bySubSpec, b.bySubSpec);
@@ -4186,6 +4203,8 @@ function buildClinicianTrend(deals, contactsByDeal, windsorRows, from, to) {
         // without a second request.
         byType: w.byType, bySubType: w.bySubType,
         bySpec: w.bySpec, bySubSpec: w.bySubSpec,
+        // Dermatology campaign spend, and the dermatologists it brought in.
+        spendDerm: Math.round(w.spendDerm * 100) / 100, dermCampInq: w.dermCampInq, dermCampSub: w.dermCampSub,
         cpi: cost(w.spend, w.inquiries),
         cpfa: cost(w.spend, w.fullApp),
         // Rates as PERCENTAGES, computed on the period's own totals rather than
@@ -4530,7 +4549,7 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
     const sp = clinicianSpecialtyGroup((cp.clinician_specialty || '').trim() || 'Not set');
     if (created) {
       contacts++;
-      if (_seg === 'derm') inqDerm++;
+      if (isDermCampaignDermatologist(_seg, sp)) inqDerm++;
       xBump(xInq, sp, t, us, um, uc);
       byType[t] = (byType[t] || 0) + 1;
       bySpec[sp] = (bySpec[sp] || 0) + 1;
@@ -4547,7 +4566,7 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
     if (signedUp) {
       subContacts++;
       if (_seg === 'lal') subLal++;
-      if (_seg === 'derm') subDerm++;
+      if (isDermCampaignDermatologist(_seg, sp)) subDerm++;
       xBump(xSub, sp, t, us, um, uc);
       subRef[rs] = (subRef[rs] || 0) + 1;
       subType[t] = (subType[t] || 0) + 1;

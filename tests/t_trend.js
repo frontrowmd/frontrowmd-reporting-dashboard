@@ -71,6 +71,25 @@ ck('weekly inquiries sum == Key Metrics inquiries',  sum(t.week,'inquiries'), co
 ck('daily fullApp sum == Key Metrics full subs',     sum(t.day,'fullApp'),   comp.submission.contacts);
 ck('weekly fullApp sum == Key Metrics full subs',    sum(t.week,'fullApp'),  comp.submission.contacts);
 ck('both grains agree on spend', sum(t.day,'spend'), sum(t.week,'spend'));
+// The Derm campaign dermatologists in the trend are the Key Metrics Derm cards'
+// count, by construction (one rule, isDermCampaignDermatologist).
+{
+  // A fixture that actually HAS Derm traffic, or the tie-out is 0 == 0.
+  const C2={
+    e1:{__cid:'e1',createdate:'2026-11-03T15:00:00Z',utm_campaign:'120253712026790502',clinician_specialty:'Dermatology',clinician_credentials_completed:'2026-11-04'},
+    e2:{__cid:'e2',createdate:'2026-11-03T15:00:00Z',utm_campaign:'S01 - TOF - Dermatologists - CAPI',clinician_specialty:'Dermatology'},
+    e3:{__cid:'e3',createdate:'2026-11-03T15:00:00Z',utm_campaign:'S01 - TOF - Dermatologists - CAPI',clinician_specialty:'Family Medicine',clinician_credentials_completed:'2026-11-04'},
+    e4:{__cid:'e4',createdate:'2026-11-03T15:00:00Z',utm_campaign:'S01 - TOF - Clinician Targeting - CAPI',clinician_specialty:'Dermatology'},
+  };
+  const D2=Object.keys(C2).map(k=>({id:k,properties:{}}));
+  const R2=[{datasource:'facebook',campaign_name:'S01 - TOF - Dermatologists - CAPI',date:'2026-11-03',spend:'60',clicks:'1',impressions:'10'},
+            {datasource:'facebook',campaign_name:'S01 - TOF - Clinician Targeting - CAPI',date:'2026-11-03',spend:'40',clicks:'1',impressions:'10'}];
+  const t2=ctx.buildClinicianTrend(D2,C2,R2,'2026-11-01','2026-11-06'), c2=ctx.buildClinicianComposition(D2,C2,'2026-11-01','2026-11-06');
+  ck('trend Derm-campaign dermatologists == Key Metrics Derm inquiries', [sum(t2.day,'dermCampInq'),c2.dermInquiries], [2,2]);
+  ck('  and sign ups', [sum(t2.day,'dermCampSub'),c2.submission.derm], [1,1]);
+  ck('  Derm spend is the Derm campaign only', [sum(t2.day,'spendDerm'),sum(t2.day,'spend')], [60,100]);
+  ck('  and the monthly roll-up carries it', [sum(t2.month,'spendDerm'),sum(t2.month,'dermCampInq')], [60,2]);
+}
 // The Specialty / Specialty % measures tie out to the Acquisition Specialty pie
 // for BOTH populations, at both grains.
 const mapSum=(a,k)=>a.reduce((o,p)=>{for(const x in (p[k]||{}))o[x]=(o[x]||0)+p[k][x];return o;},{});
@@ -444,12 +463,20 @@ ck('the old Weekly Cost card is gone', /_clnWeeklyCard|_renderClnWeekly/.test(cl
   const F=(sel)=>Object.fromEntries(dctx.__cards.map(c=>{const st=dctx.__stat(c,T,pdef,sel);return [c.k,[st.lbl,st.val,st.calc,st.split]];}));
   const ft=F({k:'type',dim:'type'});
   ck('Clinician Type: Count is the MD/DO inquiries', ft.count.slice(0,3), ['Count · Inquiry · MD/DO','8','8 MD/DO inquiries']);
-  ck('  Cost Per is spend over them', ft.cost.slice(1,3), ['$50','$400 ÷ 8 MD/DO inquiries']);
+  ck('  Cost Per is all clinician spend over them, and says so', ft.cost.slice(1,3), ['$50','$400 all clinician spend ÷ 8 MD/DO inquiries']);
   ck('  CVR is them over clicks', ft.cvr.slice(1,3), ['8.00%','8 ÷ 100 clicks']);
   ck('  CTR and Ad Spend stay whole', [ft.ctr[0],ft.ctr[1],ft.spend[1]], ['CTR','2.00%','$400']);
   ck('  the split card keeps its share of ALL inquiries', [ft.type[1],ft.type[3],ft.type[2]], ['8','40.0%','of 20 inquiries']);
   const fsp=F({k:'specpct',dim:'spec'});
   ck('Specialty %: the cards narrow to Dermatology', [fsp.count[1],fsp.cost[1],fsp.cvr[1]], ['5','$80','5.00%']);
+  // Dermatology has its own campaign: Cost Per is THAT spend over the
+  // dermatologists it brought in, the Key Metrics Derm figure (2026-11-10).
+  const TD=Object.assign({},T,{spendDerm:120,dermCamp:4,hasDerm:1});
+  const fd=Object.fromEntries(dctx.__cards.map(c=>{const st=dctx.__stat(c,TD,pdef,{k:'spec',dim:'spec'});return [c.k,[st.lbl,st.val,st.calc]];}));
+  ck('Dermatology: Cost Per is Derm campaign spend over its dermatologists', fd.cost, ['Cost Per · Inquiry · Dermatology','$30','$120 Derm campaign spend ÷ 4 Dermatology inquiries from it']);
+  ck('  while Count stays every dermatologist (the Acquisition pie figure)', fd.count[1], '5');
+  // An older payload without the Derm split falls back rather than dividing 0.
+  ck('  a payload without the split falls back to all spend', F({k:'spec',dim:'spec'}).cost[1], '$80');
   const f0=F({k:'count'});
   ck('a plain measure leaves every card whole', [f0.count[0],f0.count[1],f0.cost[1]], ['Count · Inquiry','20','$20']);
   // Shown only when selected (2026-11-09): Type / Specialty cards appear only

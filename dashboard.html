@@ -3934,6 +3934,10 @@ const CLN_TR_DIMS={
                 'Obstetrics and Gynecology':['Obstetrics and Gynecology','OB/GYN']}},
 };
 const CLN_TR_SPEND={k:'spend',n:'Ad Spend',c:'#64748B',unit:'$'};
+// Specialties that have a campaign of their own: their Trend Cost Per divides
+// that campaign's spend by the specialty's contacts from it (worker
+// isDermCampaignDermatologist). Add the next one with its worker fields.
+const CLN_TR_SPEC_CAMPAIGN={'Dermatology':{l:'Derm campaign'}};
 // The stat row, in ONE order, used by the KPI cards and the hover readout
 // alike. Previously each built its own list, which is how the hover ended up
 // repeating whichever stat was also the selected measure. Deriving both from
@@ -3978,6 +3982,17 @@ function _clnTrStat(card,T,pdef,sel){
     T=Object.assign({},T,{pop:fdim==='type'?T.typeN:T.specN});
     popW=fName+' '+popW;
   }
+  // Cost Per while a specialty WITH ITS OWN CAMPAIGN is selected (2026-11-10):
+  // that campaign's spend over the dermatologists it brought in -- the same
+  // figure as the Key Metrics Derm cards. Any other pick falls back to all
+  // clinician spend over the filtered count, and says so.
+  var camp=(fdim==='spec'&&card.k==='cost')?CLN_TR_SPEC_CAMPAIGN[fName]:null;
+  if(camp&&T.hasDerm>0){
+    return {lbl:'Cost Per \u00b7 '+pdef.l+' \u00b7 '+fName,
+      val:_clnTrFmt((T.spendDerm>0&&T.dermCamp>0)?T.spendDerm/T.dermCamp:null,'$'),
+      calc:f$(Math.round(T.spendDerm))+' '+camp.l+' spend \u00f7 '+fN(T.dermCamp)+' '+fName+' '+pdef.short+' from it',
+      c:mdef?mdef.c:CLN_TR_SPEND.c,split:null};
+  }
   if(card.k==='spend'){
     lbl='Ad Spend'; val=_clnTrFmt(T.spend,'$'); colour=CLN_TR_SPEND.c;
     calc='clinician channel \u00b7 always on the chart';
@@ -3996,7 +4011,7 @@ function _clnTrStat(card,T,pdef,sel){
     val=_clnTrFmt(v,card.unit); colour=mdef?mdef.c:CLN_TR_SPEND.c;
     calc={
       count:fN(T.pop)+' '+popW,
-      cost:f$(Math.round(T.spend))+' \u00f7 '+fN(T.pop)+' '+popW,
+      cost:f$(Math.round(T.spend))+(fdim?' all clinician spend':'')+' \u00f7 '+fN(T.pop)+' '+popW,
       cvr:fN(T.pop)+' \u00f7 '+fN(T.clicks)+' clicks',
       ctr:fN(T.clicks)+' \u00f7 '+fN(T.impressions)+' impressions',
     }[card.k]||'';
@@ -4116,10 +4131,14 @@ function _clnTrParts(p,pop){
     spend:p.spend||0, clicks:p.clicks||0, impressions:p.impressions||0,
     pop:(sub?p.fullApp:p.inquiries)||0,
     typeN:dimN('type'), specN:dimN('spec'),
+    // Dermatology campaign spend and the dermatologists it brought in, for the
+    // Cost Per card while Dermatology is selected (worker v58).
+    spendDerm:p.spendDerm||0, dermCamp:(sub?p.dermCampSub:p.dermCampInq)||0,
+    hasDerm:(p.spendDerm!=null)?1:0,
   };
 }
 function _clnTrSum(parts){
-  var t={spend:0,clicks:0,impressions:0,pop:0,typeN:0,specN:0};
+  var t={spend:0,clicks:0,impressions:0,pop:0,typeN:0,specN:0,spendDerm:0,dermCamp:0,hasDerm:0};
   parts.forEach(function(x){for(var k in t)t[k]+=x[k];});
   return t;
 }
@@ -12374,18 +12393,18 @@ function _clnKeyMetricsHTML(d,sfx,win){
     +(_lalExcl!=null?' — '+fN(_lalExcl)+' of '+fN(_fo)+' sign ups excluded as Lookalike, Dermatology, organic or untagged':''),
     null,true);
   kmh+=_kmTile('Cost Per Derm Sign Up',_f$(_div(_spDerm,_dermN)),
-    (_spDerm!=null&&_dermN!=null?_f$(_spDerm)+' ÷ '+fN(_dermN)+' derm sign ups':'not in this payload'),
+    (_spDerm!=null&&_dermN!=null?_f$(_spDerm)+' ÷ '+fN(_dermN)+' dermatologist sign ups':'not in this payload'),
     _foot(_div(_spDerm,_dermN),_div(_pk(_kp,'spendDerm'),_pk(_kp,'dermSub')),
           _div(_pk(_km,'spendDerm'),_pk(_km,'dermSub')),'$',true),
     null,
-    'Ad spend on Dermatology campaigns ÷ sign ups whose utm_campaign is a Dermatology campaign (by name or Meta campaign ID)',
+    'Ad spend on Dermatology campaigns ÷ DERMATOLOGISTS who signed up from a Dermatology campaign (utm_campaign by name or Meta campaign ID). Non-dermatologists the campaign reached are not counted.',
     null,true);
   kmh+=_kmTile('Cost per Derm Inquiry',_f$(_div(_spDerm,_dermI)),
-    (_spDerm!=null&&_dermI!=null?_f$(_spDerm)+' ÷ '+fN(_dermI)+' derm inquiries':'not in this payload'),
+    (_spDerm!=null&&_dermI!=null?_f$(_spDerm)+' ÷ '+fN(_dermI)+' dermatologist inquiries':'not in this payload'),
     _foot(_div(_spDerm,_dermI),_div(_pk(_kp,'spendDerm'),_pk(_kp,'dermInq')),
           _div(_pk(_km,'spendDerm'),_pk(_km,'dermInq')),'$',true),
     null,
-    'Ad spend on Dermatology campaigns ÷ inquiries whose utm_campaign is a Dermatology campaign (by name or Meta campaign ID)',
+    'Ad spend on Dermatology campaigns ÷ DERMATOLOGIST inquiries from a Dermatology campaign (utm_campaign by name or Meta campaign ID). Non-dermatologists the campaign reached are not counted.',
     null,true);
   kmh+='</div></div>';
   return kmh;
