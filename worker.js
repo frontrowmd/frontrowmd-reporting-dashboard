@@ -3453,6 +3453,204 @@ function pilotDateKey(v) {
   return null;
 }
 
+// ─── Skincare Dashboard (Phase 1, 2026-11-10) ──────────────────────────────
+// "Skincare" always means skincare + hair care + clean beauty / cosmetics.
+// Phase 1 is HubSpot only: the skincare brand pipeline and the dermatologist
+// clinician funnel. Reviews ordered / submitted, engagement and capacity read the
+// app's tables and wait on the Metabase key (memory: skincare-dashboard-spec).
+//
+// A demo-stage brand has no app record, so skincare is read off the DEAL's
+// "Brand Product Category" (brand_product_category). It is being converted to a
+// multiple-checkbox field carrying the app's Health Concern names; HubSpot stores
+// a multi-checkbox value as 'A;B;C', so this splits on ';' and also accepts the
+// plain text the field holds today.
+const SKINCARE_CONCERN = 'Skin & haircare';
+function isSkincareCategory(v) {
+  return String(v || '').split(';').some(x => x.trim().toLowerCase() === SKINCARE_CONCERN.toLowerCase());
+}
+const SKINCARE_DEAL_PROPS = ['dealname', 'dealstage', 'pipeline', 'createdate', 'closedate', 'brand_product_category',
+  'hs_v2_date_entered_appointmentscheduled', 'hs_v2_date_entered_1084214349', 'hs_v2_date_entered_closedwon',
+  // Webinar stamps: a webinar deal never booked a demo, so it must not fall
+  // back to createdate as a Demo Scheduled.
+  'hs_v2_date_entered_3741686470', 'hs_v2_date_entered_3741686471'];
+// Signed = closed won now, or churned since signing (either churn stage, the
+// set fetchChurnedByCloseDate gives the Brand Dashboard).
+const SKINCARE_SIGNED_STAGES = ['closedwon', '3453925110', '3517067985'];
+// Every Sales-pipeline deal with the category filled. No date filter: the field
+// only starts filling when the booking form asks for it, so the set is small, and
+// the windows are cut in memory. Throws on a refused search rather than returning
+// an empty pipeline that would read as "no skincare demos".
+async function fetchSkincareBrandDeals(token) {
+  const e0 = HS_ERR.n;
+  const deals = await hsSearch(token, 'deals', [{ filters: [
+    { propertyName: 'pipeline', operator: 'EQ', value: 'default' },
+    { propertyName: 'brand_product_category', operator: 'HAS_PROPERTY' },
+  ] }], SKINCARE_DEAL_PROPS, 200, [{ propertyName: 'createdate', direction: 'DESCENDING' }], 25);
+  if (HS_ERR.n > e0 || SUBREQ.exhausted) throw new Error('HubSpot refused the skincare deal search');
+  return deals;
+}
+// Every dermatologist clinician, fetched from the CONTACT side: the specialty
+// lives on the contact, and there are few of them (163 on 2026-11-10), so one
+// contact search plus two batch reads beats walking the whole clinician pipeline.
+// Returns the same {deals, contactsByDeal} shape the Clinician builders take, so
+// buildClinicianComposition and clinicianReached apply unchanged.
+async function fetchDermClinicians(token) {
+  const e0 = HS_ERR.n;
+  const contacts = await hsSearch(token, 'contacts', [{ filters: [
+    { propertyName: 'clinician_specialty', operator: 'EQ', value: 'Dermatology' },
+  ] }], CLINICIAN_CONTACT_PROPS, 200, [{ propertyName: 'createdate', direction: 'DESCENDING' }], 25);
+  if (HS_ERR.n > e0 || SUBREQ.exhausted) throw new Error('HubSpot refused the dermatologist contact search');
+  const byContact = {};
+  for (const c of contacts) byContact[String(c.id)] = Object.assign({ __cid: String(c.id) }, c.properties || {});
+  const chunk = (arr, n) => { const o = []; for (let i = 0; i < arr.length; i += n) o.push(arr.slice(i, i + n)); return o; };
+  const dealToContact = {};
+  for (const batch of chunk(Object.keys(byContact), 100)) {
+    const r = await _clnBatchPost('https://api.hubapi.com/crm/v4/associations/contacts/deals/batch/read', token,
+      JSON.stringify({ inputs: batch.map(id => ({ id })) }));
+    if (!r.ok) { azDrain(r); throw new Error('dermatologist deal associations ' + r.status); }
+    const j = await r.json();
+    for (const row of (j.results || [])) {
+      const cid = row.from && String(row.from.id);
+      for (const t of (row.to || [])) { const did = t && t.toObjectId && String(t.toObjectId); if (did && !dealToContact[did]) dealToContact[did] = cid; }
+    }
+  }
+  const deals = [];
+  for (const batch of chunk(Object.keys(dealToContact), 100)) {
+    const r = await _clnBatchPost('https://api.hubapi.com/crm/v3/objects/deals/batch/read', token,
+      JSON.stringify({ properties: CLINICIAN_DEAL_PROPS, inputs: batch.map(id => ({ id })) }));
+    if (!r.ok) { azDrain(r); throw new Error('dermatologist deals ' + r.status); }
+    const j = await r.json();
+    for (const d of (j.results || [])) if ((d.properties || {}).pipeline === CLINICIAN_PIPELINE_ID) deals.push(d);
+  }
+  // Contacts through the Clinician page's OWN reader, so duplicate records on one
+  // deal merge the same way (first non-empty value per field). Then keep only
+  // deals whose MERGED record is a dermatologist -- the Clinician page's
+  // Specialty filter applied to the same record.
+  const e1 = HS_ERR.n;
+  const contactsByDeal = await fetchClinicianContacts(token, deals.map(d => String(d.id)));
+  // fetchClinicianContacts logs a failed batch rather than throwing, so a read
+  // that returned NOTHING for deals that exist is the refusal signal here.
+  if (HS_ERR.n > e1 || SUBREQ.exhausted || (deals.length && !Object.keys(contactsByDeal).length))
+    throw new Error('HubSpot refused the dermatologist contact read');
+  for (const id of Object.keys(contactsByDeal)) {
+    if ((contactsByDeal[id].clinician_specialty || '').trim() !== 'Dermatology') delete contactsByDeal[id];
+  }
+  return { deals: deals.filter(d => contactsByDeal[d.id]), contactsByDeal, contactCount: contacts.length };
+}
+// Skincare brand pipeline for one window. HubSpot keeps only a deal's CURRENT
+// stage, so each step is dated by the moment the deal ENTERED it (the v2 stamp),
+// never by where it sits now -- a demo that has since signed still counts as a
+// demo completed in the window it happened. Signed is closedate in the window on a
+// deal that is closed won now or churned since (the Brand Dashboard's basis).
+function buildSkincareBrandWindow(deals, from, to) {
+  const inW = (v) => { const k = _clnDayKey(v); return !!k && k >= from && k <= to; };
+  let scheduled = 0, completed = 0, signed = 0;
+  for (const d of deals) {
+    const p = d.properties || {};
+    if (!isSkincareCategory(p.brand_product_category)) continue;
+    const st = (p.dealstage || '').trim();
+    // A demo deal is created INTO Appointment Scheduled, and some carry no stamp
+    // for the stage they were created in, so createdate stands in -- but only
+    // for a deal that could have started there. A webinar registration, or a
+    // renewal / "- New Deal" created straight into Closed Won with no demo
+    // stamp, never booked a demo (the brandReachedStages rule).
+    const offPath = !!(p.hs_v2_date_entered_3741686470 || p.hs_v2_date_entered_3741686471)
+      || (['3741686470', '3741686471', 'closedwon', '3453925110', '3517067985'].indexOf(st) >= 0 && !p.hs_v2_date_entered_1084214349);
+    if (inW(p.hs_v2_date_entered_appointmentscheduled || (offPath ? null : p.createdate))) scheduled++;
+    if (inW(p.hs_v2_date_entered_1084214349)) completed++;
+    if (SKINCARE_SIGNED_STAGES.indexOf(st) >= 0 && inW(p.closedate)) signed++;
+  }
+  return { scheduled, completed, signed };
+}
+// One dermatologist per CONTACT, credited with the furthest any of their deals
+// reached. Type grouped (MD + DO = MD/DO, ...) exactly as the Clinician pages.
+function _dermPeople(deals, contactsByDeal) {
+  const P = {};
+  for (const d of deals) {
+    const cp = contactsByDeal[d.id]; if (!cp) continue;
+    const id = cp.__cid;
+    const r = clinicianReached(d.properties || {}).reachedIds;
+    const o = P[id] || (P[id] = { id, type: clinicianTypeGroup((cp.clinician_type || '').trim() || 'Not set'),
+      created: _clnDayKey(cp.createdate), signUp: null, sample: false, review: false });
+    const sk = clnSignUpKey(cp, d.properties || {});
+    if (sk && (!o.signUp || sk < o.signUp)) o.signUp = sk;
+    if (r.has(CLS.SAMPLE_SHIPPED)) o.sample = true;
+    if (r.has(CLS.REVIEW_SUBMITTED)) o.review = true;
+  }
+  return Object.values(P);
+}
+// The four funnel steps over a set of people, overall and per clinician type.
+function _dermSteps(people) {
+  const by = {};
+  const add = (t, k) => { const o = by[t] || (by[t] = { inquiries: 0, signUps: 0, samples: 0, reviews: 0 }); o[k]++; };
+  const tot = { inquiries: 0, signUps: 0, samples: 0, reviews: 0 };
+  for (const x of people) {
+    // The steps are sequential, so a later one implies the earlier ones: a legacy
+    // clinician shipped a sample before sign-up dates were recorded still signed
+    // up. Without this the funnel could widen at Samples Shipped.
+    const review = x.review, sample = x.sample || review, signUp = !!x.signUp || sample;
+    tot.inquiries++; add(x.type, 'inquiries');
+    if (signUp) { tot.signUps++; add(x.type, 'signUps'); }
+    if (sample) { tot.samples++; add(x.type, 'samples'); }
+    if (review) { tot.reviews++; add(x.type, 'reviews'); }
+  }
+  return Object.assign(tot, { byType: by });
+}
+function buildSkincareDerm(deals, contactsByDeal, cur, prior, priorMonth) {
+  const people = _dermPeople(deals, contactsByDeal);
+  const inWin = (k, w) => !!k && !!w && k >= w.from && k <= w.to;
+  // Windowed activity, on the Clinician page's own definitions: inquiries are
+  // contacts created in the window, sign ups are dated by their own sign-up day.
+  // Built by buildClinicianComposition, so with Specialty = Dermatology the
+  // Clinician page's Acquisition section shows the same two numbers.
+  // One deal per person: the one carrying their EARLIEST sign-up, the deal
+  // _dermPeople takes it from, so the window count and the cohort cannot pick
+  // different deals for a clinician with several.
+  const best = {};
+  for (const d of deals) {
+    const cp = contactsByDeal[d.id]; if (!cp) continue;
+    const k = clnSignUpKey(cp, d.properties || {}), b = best[cp.__cid];
+    if (!b || (k && (!b.k || k < b.k))) best[cp.__cid] = { d, k };
+  }
+  const compDeals = Object.values(best).map(x => x.d);
+  const win = (w) => {
+    if (!w) return null;
+    const c = buildClinicianComposition(compDeals, contactsByDeal, w.from, w.to);
+    return { inquiries: c.contacts || 0, signUps: (c.submission && c.submission.contacts) || 0,
+             inquiryTypes: c.type || [], signUpTypes: (c.submission && c.submission.type) || [] };
+  };
+  return {
+    current: win(cur), prior: win(prior), priorMonth: win(priorMonth),
+    // Cohort: dermatologists who INQUIRED in the window, and how far each has got
+    // since. Every step is a subset of the one above, so the funnel never widens.
+    cohort: _dermSteps(people.filter(x => inWin(x.created, cur))),
+    // Everyone, ever: the base for engagement and the capacity check.
+    allTime: _dermSteps(people),
+    people: people.length,
+  };
+}
+async function processSkincareRequest(body, env) {
+  const token = env.HUBSPOT_TOKEN;
+  const { current: cur, prior, priorMonth } = computeWindows(body.window || 'mtd', body.from || null, body.to || null, body.vsFrom || null, body.vsTo || null);
+  const [brandDeals, derm] = await Promise.all([fetchSkincareBrandDeals(token), fetchDermClinicians(token)]);
+  const tagged = brandDeals.filter(d => isSkincareCategory((d.properties || {}).brand_product_category));
+  const firstTagged = tagged.map(d => _clnDayKey((d.properties || {}).createdate)).filter(Boolean).sort()[0] || null;
+  return {
+    window: cur, priorWindow: prior, priorMonthWindow: priorMonth,
+    brands: {
+      current: buildSkincareBrandWindow(brandDeals, cur.from, cur.to),
+      prior: prior ? buildSkincareBrandWindow(brandDeals, prior.from, prior.to) : null,
+      priorMonth: priorMonth ? buildSkincareBrandWindow(brandDeals, priorMonth.from, priorMonth.to) : null,
+      // How much of HubSpot carries the category yet, so a zero can say why.
+      categorised: brandDeals.length, skincareTagged: tagged.length, firstTagged,
+    },
+    derm: buildSkincareDerm(derm.deals, derm.contactsByDeal, cur, prior, priorMonth),
+    // Sections that wait on the app's tables (Metabase key).
+    pending: ['reviewDemand', 'engagement', 'capacity'],
+    meta: { generatedAt: new Date().toISOString() },
+  };
+}
+
 function buildPilotDashboard(deals, stageMeta, history) {
   const meta = stageMeta || {};
   const list = (deals || []).map(r => {
@@ -4686,6 +4884,75 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
   };
 }
 
+// Stages a deal has "ever reached" -- lifted verbatim out of buildClinicianFunnel
+// (2026-11-10) so the Skincare Dashboard's dermatologist funnel uses the SAME
+// rule: HubSpot keeps only a deal's CURRENT stage, so reached = a stage's entry
+// stamp, or standing at/beyond it on the deal's own path. Every comment that
+// explains the rule stays with it below. Returns {flow, seqIds, reachedIds}.
+function clinicianReached(p) {
+  const cur = (p.dealstage || '').trim();
+  const flow = clinicianFlowOf(p);
+  const seqIds = CLINICIAN_FLOWS[flow].stages;
+  const posInSeq = seqIds.indexOf(cur);
+  // Seed at 0: the deal was created into its own flow's first stage, so it has
+  // entered at least that. (Meeting Scheduled, Clinician Inquiry and the two
+  // exit stages carry no hs_v2_date_entered_* property at all, so there is no
+  // stamp to find for the demo path's opener.)
+  // Seed at 0 only when the current stage is one we can actually place: on the
+  // deal's own path, one of its exits, or blank. An UNRECOGNISED stage id (one
+  // added in HubSpot after this list was verified) is not evidence of anything,
+  // and seeding it would silently assert a stage the deal may never have walked
+  // — which matters most for the Field Rep flow, whose sequence is still ASSUMED.
+  // An (OLD) stage is not in CLINICIAN_ALL_STAGE_IDS, so a deal parked in one
+  // is not seeded either: it sits in the side bucket, and is credited with a
+  // path stage only where HubSpot actually stamped it.
+  const _curKnown = !cur || posInSeq >= 0
+    || (CLINICIAN_FLOWS[flow].exits || []).indexOf(cur) >= 0
+    || CLINICIAN_ALL_STAGE_IDS.indexOf(cur) >= 0;
+  let maxIdx = _curKnown ? Math.max(posInSeq, 0) : posInSeq;
+  seqIds.forEach((id, i) => { if (i > maxIdx && clnEnteredAt(p, id)) maxIdx = i; });
+  const reachedIds = new Set();
+  // LEGACY deals -- created before the 2026-10-20 rebuild -- walked a DIFFERENT
+  // pipeline, so the fill may only run along the stages that existed then:
+  // Call Scheduled (it was Fully Onboarded), Sample Shipped and Review
+  // Submitted, in that order. A legacy deal stamped into Review is credited
+  // with Sample Shipped even without a Sample stamp -- nobody reviews a sample
+  // they were never shipped, and 31 such deals sat in Review on 2026-10-28.
+  // The five stages the rebuild ADDED (Video Watched, Practice Details,
+  // Preferences, Credentials Submitted, Call Happened) are never filled for a
+  // legacy deal: they did not exist when it onboarded, and filling them
+  // credited 220-270 legacy deals per stage with steps none of them took
+  // (All Time, 2026-10-28: Credentials Submitted read 745 against 478 that
+  // entered it). A legacy deal counts for one of those only with a stamp, or
+  // by standing in it now -- which a bulk re-stage on 2026-10-28 did to 115.
+  // Consequence, deliberate: Call Scheduled can exceed Credentials Submitted,
+  // because 187 deals entered it as Fully Onboarded; fromPrev keeps the
+  // stage-to-stage conversion an honest share.
+  // New-path deals keep the full fill: their path IS sequential, and it only
+  // papers over the odd missing stamp (about one deal per stage).
+  const _legacy = (_clnDayKey(p.createdate) || '') < CLINICIAN_PATH_FROM;
+  if (_legacy) {
+    seqIds.forEach((id, i) => {
+      if (i === posInSeq || clnEnteredAt(p, id)
+          || (CLINICIAN_LEGACY_ERA.has(id) && i <= maxIdx)) reachedIds.add(id);
+    });
+  } else {
+    seqIds.forEach((id, i) => { if (i <= maxIdx) reachedIds.add(id); });
+  }
+  for (const st of CLINICIAN_STAGES) {
+    if (!seqIds.includes(st.id) && clnEnteredAt(p, st.id)) reachedIds.add(st.id);
+  }
+  // A deal is standing in its current stage, so it has by definition reached
+  // it. Without this the renderer's implicit invariant (reachedCount >= count)
+  // breaks for an OFF-PATH current stage: a Virtual or Field deal sitting in
+  // Meeting Scheduled is counted by curOf but never by cntOf — Meeting
+  // Scheduled is off its flow AND has no stamp property to find — so the bar
+  // rendered "0 reached · 3 here now" as an empty 2%-wide sliver. Exits are
+  // excluded: they are counted by current stage in their own list, and are
+  // not funnel stages.
+  if (cur && CLINICIAN_STAGES.some(st => st.id === cur)) reachedIds.add(cur);
+  return { flow, seqIds, reachedIds };
+}
 function buildClinicianFunnel(deals, contactsByDeal, meetingStarts) {
   const _ms = (v) => { if (!v) return NaN; return /^\d+$/.test(String(v)) ? parseInt(v) : new Date(v).getTime(); };
   // A deal "reached" a stage if HubSpot stamped its entered-date; fall back to
@@ -4724,66 +4991,7 @@ function buildClinicianFunnel(deals, contactsByDeal, meetingStarts) {
     // with Meeting Scheduled / Meeting Happened / Signed Up / Clinician
     // Approved, which are not on its path. Off-path stages count only when
     // HubSpot actually stamped them, and never drag the closure with them.
-    const flow = clinicianFlowOf(p);
-    const seqIds = CLINICIAN_FLOWS[flow].stages;
-    const posInSeq = seqIds.indexOf(cur);
-    // Seed at 0: the deal was created into its own flow's first stage, so it has
-    // entered at least that. (Meeting Scheduled, Clinician Inquiry and the two
-    // exit stages carry no hs_v2_date_entered_* property at all, so there is no
-    // stamp to find for the demo path's opener.)
-    // Seed at 0 only when the current stage is one we can actually place: on the
-    // deal's own path, one of its exits, or blank. An UNRECOGNISED stage id (one
-    // added in HubSpot after this list was verified) is not evidence of anything,
-    // and seeding it would silently assert a stage the deal may never have walked
-    // — which matters most for the Field Rep flow, whose sequence is still ASSUMED.
-    // An (OLD) stage is not in CLINICIAN_ALL_STAGE_IDS, so a deal parked in one
-    // is not seeded either: it sits in the side bucket, and is credited with a
-    // path stage only where HubSpot actually stamped it.
-    const _curKnown = !cur || posInSeq >= 0
-      || (CLINICIAN_FLOWS[flow].exits || []).indexOf(cur) >= 0
-      || CLINICIAN_ALL_STAGE_IDS.indexOf(cur) >= 0;
-    let maxIdx = _curKnown ? Math.max(posInSeq, 0) : posInSeq;
-    seqIds.forEach((id, i) => { if (i > maxIdx && clnEnteredAt(p, id)) maxIdx = i; });
-    const reachedIds = new Set();
-    // LEGACY deals -- created before the 2026-10-20 rebuild -- walked a DIFFERENT
-    // pipeline, so the fill may only run along the stages that existed then:
-    // Call Scheduled (it was Fully Onboarded), Sample Shipped and Review
-    // Submitted, in that order. A legacy deal stamped into Review is credited
-    // with Sample Shipped even without a Sample stamp -- nobody reviews a sample
-    // they were never shipped, and 31 such deals sat in Review on 2026-10-28.
-    // The five stages the rebuild ADDED (Video Watched, Practice Details,
-    // Preferences, Credentials Submitted, Call Happened) are never filled for a
-    // legacy deal: they did not exist when it onboarded, and filling them
-    // credited 220-270 legacy deals per stage with steps none of them took
-    // (All Time, 2026-10-28: Credentials Submitted read 745 against 478 that
-    // entered it). A legacy deal counts for one of those only with a stamp, or
-    // by standing in it now -- which a bulk re-stage on 2026-10-28 did to 115.
-    // Consequence, deliberate: Call Scheduled can exceed Credentials Submitted,
-    // because 187 deals entered it as Fully Onboarded; fromPrev keeps the
-    // stage-to-stage conversion an honest share.
-    // New-path deals keep the full fill: their path IS sequential, and it only
-    // papers over the odd missing stamp (about one deal per stage).
-    const _legacy = (_clnDayKey(p.createdate) || '') < CLINICIAN_PATH_FROM;
-    if (_legacy) {
-      seqIds.forEach((id, i) => {
-        if (i === posInSeq || clnEnteredAt(p, id)
-            || (CLINICIAN_LEGACY_ERA.has(id) && i <= maxIdx)) reachedIds.add(id);
-      });
-    } else {
-      seqIds.forEach((id, i) => { if (i <= maxIdx) reachedIds.add(id); });
-    }
-    for (const st of CLINICIAN_STAGES) {
-      if (!seqIds.includes(st.id) && clnEnteredAt(p, st.id)) reachedIds.add(st.id);
-    }
-    // A deal is standing in its current stage, so it has by definition reached
-    // it. Without this the renderer's implicit invariant (reachedCount >= count)
-    // breaks for an OFF-PATH current stage: a Virtual or Field deal sitting in
-    // Meeting Scheduled is counted by curOf but never by cntOf — Meeting
-    // Scheduled is off its flow AND has no stamp property to find — so the bar
-    // rendered "0 reached · 3 here now" as an empty 2%-wide sliver. Exits are
-    // excluded: they are counted by current stage in their own list, and are
-    // not funnel stages.
-    if (cur && CLINICIAN_STAGES.some(st => st.id === cur)) reachedIds.add(cur);
+    const { flow, seqIds, reachedIds } = clinicianReached(p);
     const cp = contactsByDeal[d.id] || {};
     return {
       cur, flow, reachedIds,
@@ -10713,6 +10921,16 @@ export default {
         const history = await fetchPilotStatusHistory(hsToken, deals.map(r => r.id));
         return jr(Object.assign(buildPilotDashboard(deals, stageMeta, history), { meta: { generatedAt: new Date().toISOString() } }));
       } catch (err) { console.error('Pilot endpoint error:', err); return jr({ error: 'Internal error', detail: err.message }, 500); }
+    }
+
+    // POST /api/skincare → Skincare Dashboard (Phase 1: HubSpot only). Live per
+    // load, like the Pilot page; a few HubSpot calls, so no KV cache.
+    if (request.method === 'POST' && url.pathname === '/api/skincare') {
+      let body;
+      try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
+      try { return jr(await processSkincareRequest(body, env)); }
+      catch (err) { console.error('Skincare endpoint error:', err); return jr({ error: 'Internal error', detail: err.message }, 500); }
     }
 
     // POST /api/webinar-performance → Webinar vs Demo funnel comparison page

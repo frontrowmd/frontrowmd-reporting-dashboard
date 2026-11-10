@@ -638,6 +638,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
            Everything behind it is intact; delete the display:none to restore. -->
       <div class="ni" onclick="switchDashSub('pilot')" data-page="pilot" data-sub="pilot" style="display:none"><span class="ic" style="font-size:12px">🧪</span><span>Pilot Dashboard</span></div>
       <div class="ni" onclick="clinicianNav()" data-page="clinician" data-sub="clinician"><span class="ic" style="font-size:12px">🩺</span><span>Clinician Dashboard</span></div>
+      <div class="ni" onclick="switchDashSub('skincare')" data-page="skincare" data-sub="skincare"><span class="ic" style="font-size:12px">🧴</span><span>Skincare Dashboard</span></div>
       <div class="ni grp" onclick="autoExpand();toggleDashMenu()" data-page="dashboard" id="dash-menu-parent" title="Additional Insights"><span class="ic">📊</span><span>Additional Insights</span><span id="dash-arrow" style="margin-left:auto;font-size:10px;transition:transform .2s">▶</span></div>
       <div id="dash-submenu" style="display:none;padding-left:24px">
         <div class="ni sub" onclick="switchDashSub('signup')" data-page="dashboard" data-sub="signup"><span class="ic" style="font-size:12px">📋</span><span>Sign-Up Rate</span></div>
@@ -894,6 +895,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
     <div class="pg" id="page-demoQuality"><div id="dq-c"></div></div>
     <div class="pg" id="page-webinarPerf"><div id="wp-c"></div></div>
     <div class="pg" id="page-pilot"><div id="pilot-c"></div></div>
+    <div class="pg" id="page-skincare"><div id="skincare-c"></div></div>
     <div class="pg" id="page-csession"><div id="csession-c"></div></div>
 
     <div class="pg" id="page-content"><div id="content-c"></div></div>
@@ -929,12 +931,13 @@ const _BUILD_VER='s5t268';console.log('Dashboard build: '+_BUILD_VER);const API=
 const AZ_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/analyzer':'/api/analyzer';
 const WP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/webinar-performance':'/api/webinar-performance';
 const PILOT_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/pilot':'/api/pilot';
+const SKINCARE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/skincare':'/api/skincare';
 const WP_BASELINE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline':'/api/baseline';
 const WP_BASELINE_SAVE_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/baseline/save':'/api/baseline/save';
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
 let PW='';
-const S={exec:{win:'mtd',data:null,mode:'brand',adChannel:'meta'},dashboard:{win:'mtd',data:null,sub:'exec'},irfan:{win:'mtd',data:null},strategy:{data:null,win:'lastMonth'},calculator:{win:'mtd',data:null},signup:{win:null,data:null},clinician:{win:'mtd',data:null},analyzer:{win:'mtd',data:null,tab:'overview',sub:'overview'},demoQuality:{win:'mtd',data:null},webinarPerf:{win:'mtd',data:null},pilot:{data:null,fStatus:null,fStage:null},csession:{step:1},content:{data:null,sub:'cs-intel'},outbound:{data:null}};let AP='exec';
+const S={exec:{win:'mtd',data:null,mode:'brand',adChannel:'meta'},dashboard:{win:'mtd',data:null,sub:'exec'},skincare:{win:'mtd',data:null,typeF:''},irfan:{win:'mtd',data:null},strategy:{data:null,win:'lastMonth'},calculator:{win:'mtd',data:null},signup:{win:null,data:null},clinician:{win:'mtd',data:null},analyzer:{win:'mtd',data:null,tab:'overview',sub:'overview'},demoQuality:{win:'mtd',data:null},webinarPerf:{win:'mtd',data:null},pilot:{data:null,fStatus:null,fStage:null},csession:{step:1},content:{data:null,sub:'cs-intel'},outbound:{data:null}};let AP='exec';
 const f$=v=>v==null?'—':'$'+Math.round(v).toLocaleString();
 const fN=v=>v==null?'—':Math.round(v).toLocaleString();
 const fP=(v,d=1)=>v==null?'—':v.toFixed(d)+'%';
@@ -950,7 +953,7 @@ function _staleAge(sec){
 // % No-Show exclude these (matching True CPD/CPQD + the worker). Lowercase
 // substring so it works on cloned tier strings or live values.
 const isSmallBrandWT=wt=>{const s=(wt||'').toLowerCase();return s.indexOf('pre-launch')>=0||s.indexOf('0-10k')>=0||s.indexOf('very small')>=0;};
-const T={exec:'Executive Dashboard',dashboard:'Brand Dashboard',pilot:'Pilot Dashboard',irfan:'Irfan Dashboard',resources:'Resources',calculator:'ARR Calculator',signup:'Sign-Up Rate',csession:'Creative Session',demoQuality:'Demo Quality',webinarPerf:'Webinar Performance',content:'Social Media Content',outbound:'Outbound Sequences'};
+const T={exec:'Executive Dashboard',dashboard:'Brand Dashboard',pilot:'Pilot Dashboard',skincare:'Skincare Dashboard',irfan:'Irfan Dashboard',resources:'Resources',calculator:'ARR Calculator',signup:'Sign-Up Rate',csession:'Creative Session',demoQuality:'Demo Quality',webinarPerf:'Webinar Performance',content:'Social Media Content',outbound:'Outbound Sequences'};
 // Window presets, in render order. All Time was removed 2026-10-08: it was the
 // slowest window on every page by a wide margin and nobody was reading it.
 // Custom stays LAST in this list and is also rendered last — see bldF, which
@@ -1198,7 +1201,7 @@ async function doLogin(){
       });
     };
     try{_warmClinician(1);}catch(e){console.error('clinician preload',e);}
-    const d=await r.json();for(const k of Object.keys(S)){if(k!=='analyzer'&&k!=='content'&&k!=='clinician')S[k].data=d;}
+    const d=await r.json();for(const k of Object.keys(S)){if(k!=='analyzer'&&k!=='content'&&k!=='clinician'&&k!=='skincare')S[k].data=d;}
     document.getElementById('gate').style.display='none';document.getElementById('app').classList.add('active');
     document.getElementById('loading').style.display='none';
     document.getElementById('prgWrap').style.display='none';
@@ -1233,6 +1236,7 @@ function _mirrorCustomToClinician(win,f,t,vsFrom,vsTo){
 }
 async function _fetchForWindow(win,f,t,vsFrom,vsTo){
   if(AP==='webinarPerf'){await fdWebinarPerf(win,f,t,vsFrom,vsTo);return;}
+  if(AP==='skincare'){S.skincare.win=win;S.skincare.cr={from:f||null,to:t||null,vsFrom:vsFrom||null,vsTo:vsTo||null};S.skincare.data=null;await fdSkincare();return;}
   if(AP==='clinician'){S.clinician.win=win;_mirrorCustomToClinician(win,f,t,vsFrom,vsTo);await fdClinician(win);return;}
   // The Executive page has TWO payloads; refetch the one the mode pill shows.
   if(AP==='exec'){
@@ -1829,6 +1833,147 @@ function _pilotStageLabel(d,id){
   const st=(d.stages||[]).find(s=>s.id===id);
   return (st&&st.label)||STAGE_LABELS[id]||id;
 }
+// ── Skincare Dashboard (Phase 1, 2026-11-10) ───────────────────────────────
+// "Skincare" = skincare + hair care + clean beauty / cosmetics. Phase 1 reads
+// HubSpot only (worker processSkincareRequest); the app-data sections show what
+// they will hold and that they are waiting on the Metabase key.
+const SKN_TYPE_FIRST='MD/DO';
+function _sknEsc(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+async function fdSkincare(){
+  // A sequence number, not a busy flag: a date pill, Custom Apply or Refresh
+  // clicked mid-load must still fetch ITS window, and the superseded response
+  // must not land under the new selection.
+  const mySeq=S.skincare._seq=(S.skincare._seq||0)+1;
+  S.skincare._fetching=true;
+  const el=document.getElementById('skincare-c');
+  document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-skincare').classList.add('active');
+  if(typeof _syncNav==='function')_syncNav();
+  if(S.skincare._prog)S.skincare._prog.stop();
+  const _prog=S.skincare._prog=_loadProgress('skincare-c',['Connecting to HubSpot\u2026','Fetching skincare-tagged deals\u2026','Fetching dermatologist clinicians\u2026','Building the funnel\u2026','Rendering dashboard\u2026'],700);
+  if(el)el.innerHTML=_loadBannerHTML('Loading Skincare Dashboard',_prog);
+  try{
+    const cr=S.skincare.cr||{};
+    const body={password:PW,window:S.skincare.win||'mtd'};
+    if((S.skincare.win||'')==='custom'){if(cr.from)body.from=cr.from;if(cr.to)body.to=cr.to;if(cr.vsFrom)body.vsFrom=cr.vsFrom;if(cr.vsTo)body.vsTo=cr.vsTo;}
+    const r=await fetch(SKINCARE_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(mySeq!==S.skincare._seq){_prog.stop();return;}
+    if(!r.ok||d.error){_prog.stop();if(el)el.innerHTML='<div style="padding:60px;text-align:center;color:var(--red);font-size:13px">Failed to load: '+_sknEsc(d.detail||d.error||('HTTP '+r.status))+'</div>';return;}
+    if(AP==='skincare')await _prog.done(); else _prog.stop();
+    if(mySeq!==S.skincare._seq)return;
+    S.skincare.data=d;
+    if(AP==='skincare')renderPage();
+  }catch(e){
+    if(mySeq!==S.skincare._seq)return;
+    console.error('fdSkincare failed:',e);_prog.stop();
+    if(el)el.innerHTML='<div style="padding:60px;text-align:center;color:var(--red);font-size:13px">Failed to load: '+_sknEsc(e.message)+'</div>';
+  }finally{if(mySeq===S.skincare._seq)S.skincare._fetching=false;}
+}
+window.skincareSetType=function(t){S.skincare.typeF=t||'';renderSkincare();};
+// A count for one clinician type out of a capped pie list (the rolled-up
+// "Other (n more)" bucket carries its rows as children).
+function _sknTypeCount(list,t){
+  for(const x of (list||[])){
+    if(x.label===t)return x.count||0;
+    for(const c of (x.children||[]))if(c.label===t)return c.count||0;
+  }
+  return 0;
+}
+function _sknPct(n,d){return d>0?(n/d*100).toFixed(1)+'%':'\u2014';}
+function renderSkincare(){
+  const el=document.getElementById('skincare-c'); if(!el)return;
+  const d=S.skincare.data;
+  if(!d){if(!S.skincare._fetching)fdSkincare();return;}
+  const card=(id,title,sub,body)=>'<div class="sec sec-card dsec" style="margin-bottom:16px">'
+    +'<div class="dsec-h dsec-in" id="dsec-skn-'+id+'" data-nav="'+_sknEsc(title)+'">'+title+'</div>'
+    +(sub?'<div class="irf-card-sub" style="margin-left:15px;margin-bottom:12px">'+sub+'</div>':'')+body+'</div>';
+  const pending=(what,src)=>'<div style="border:1.5px dashed var(--border);border-radius:10px;padding:18px 20px;background:var(--lighter);color:var(--grey);font-size:12px;line-height:1.6">'
+    +'<div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy);margin-bottom:4px">Waiting on app data</div>'
+    +what+'<div style="margin-top:6px;font-size:11px">Source: '+src+' \u00b7 needs the read-only Metabase key</div></div>';
+  const grid=(n,inner)=>'<div style="display:grid;grid-template-columns:repeat('+n+',minmax(0,1fr));gap:12px">'+inner+'</div>';
+  const foot=(c,p,l)=>_irTileFooterDash(c,p,l,'#',false);
+  const w=d.window||{}, B=d.brands||{}, bc=B.current||{}, bp=B.prior||null, bl=B.priorMonth||null;
+  let h='<div style="font-size:12px;color:var(--grey);margin:0 0 14px 2px">Skincare = skincare, hair care and clean beauty / cosmetics \u00b7 '
+    +_sknEsc((w.from||'')+' \u2192 '+(w.to||''))+'</div>';
+
+  // ── 1. Skincare brand pipeline ──
+  const tagNote=(B.skincareTagged||0)===0
+    ?'No deals are tagged <b>Skin &amp; haircare</b> in Brand Product Category yet. These fill in once the demo booking form asks for it; deals booked before then are not tagged.'
+    :fN(B.skincareTagged)+' deals tagged Skin &amp; haircare (first '+_sknEsc(B.firstTagged||'')+'). Deals booked before the booking form asked for a category are not tagged, so earlier windows undercount.';
+  h+=card('brands','Skincare Brand Pipeline','Sales pipeline deals whose Brand Product Category includes Skin &amp; haircare \u00b7 each step dated by when the deal entered it',
+    grid(3,
+      _kmTile('Demos Scheduled',fN(bc.scheduled||0),'entered Appointment Scheduled',foot(bc.scheduled,bp&&bp.scheduled,bl&&bl.scheduled))
+     +_kmTile('Demos Completed',fN(bc.completed||0),'entered Demo Happened',foot(bc.completed,bp&&bp.completed,bl&&bl.completed))
+     +_kmTile('Signed',fN(bc.signed||0),'closed won in the window',foot(bc.signed,bp&&bp.signed,bl&&bl.signed)))
+    +'<div style="margin-top:10px;font-size:11px;color:var(--grey)">'+tagNote+'</div>');
+
+  // ── 2. Review demand (app data) ──
+  h+=card('demand','Review Demand','Reviews ordered by skincare brands',
+    pending('Reviews ordered, delivered and outstanding by skincare brands, by month, with the brands carrying the largest backlog.',
+      'app review orders (review_orders / review_order_items)'));
+
+  // ── 3. Dermatologist funnel ──
+  const D=d.derm||{}, cohort=D.cohort||{}, all=D.allTime||{};
+  const types=Object.keys((all.byType)||{}).sort(function(a,b){
+    return (b===SKN_TYPE_FIRST)-(a===SKN_TYPE_FIRST)||(a==='Not set')-(b==='Not set')||((all.byType[b].inquiries||0)-(all.byType[a].inquiries||0));
+  });
+  const tf=(S.skincare.typeF&&types.indexOf(S.skincare.typeF)>=0)?S.skincare.typeF:'';
+  const pill=(k,l)=>{const on=tf===k;return '<button onclick="skincareSetType(\''+_sknEsc(k).replace(/'/g,"\\'")+'\')" style="font-family:var(--font-h);font-size:11px;font-weight:700;padding:6px 14px;border:none;background:'+(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+';cursor:pointer">'+_sknEsc(l)+'</button>';};
+  const typeBar='<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap;margin:0 0 14px">'
+    +pill('','All types')+types.map(t=>pill(t,t)).join('')+'</div>';
+  const st=(o)=>tf?((o.byType||{})[tf]||{inquiries:0,signUps:0,samples:0,reviews:0}):o;
+  const wc=D.current||{}, wp=D.prior||null, wl=D.priorMonth||null;
+  const wInq=(x)=>x?(tf?_sknTypeCount(x.inquiryTypes,tf):x.inquiries):null;
+  const wSu=(x)=>x?(tf?_sknTypeCount(x.signUpTypes,tf):x.signUps):null;
+  const co=st(cohort);
+  const steps=[['Inquired','inquiries'],['Signed up','signUps'],['Samples shipped','samples'],['Review submitted','reviews']];
+  const fRow=(o,lbl,k,i)=>{const v=o[k]||0,prev=i>0?(o[steps[i-1][1]]||0):null;
+    return '<tr style="border-bottom:1px solid var(--border)"><td style="padding:8px 6px;color:var(--navy);font-weight:600">'+lbl+'</td>'
+      +'<td style="padding:8px 6px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700">'+fN(v)+'</td>'
+      +'<td style="padding:8px 6px;text-align:right;color:var(--grey);font-variant-numeric:tabular-nums">'+(i>0?_sknPct(v,prev):'\u2014')+'</td>'
+      +'<td style="padding:8px 6px;text-align:right;color:var(--grey);font-variant-numeric:tabular-nums">'+(i>0?_sknPct(v,o.inquiries||0):'100%')+'</td></tr>';};
+  const fTbl=(o)=>'<table class="irf-meta-table" style="width:100%;font-size:12px;border-collapse:collapse"><thead><tr style="border-bottom:1.5px solid var(--border)">'
+    +'<th style="text-align:left;padding:8px 6px;font-size:10px;color:var(--grey);text-transform:uppercase">Step</th><th style="text-align:right;padding:8px 6px;font-size:10px;color:var(--grey);text-transform:uppercase">Dermatologists</th>'
+    +'<th style="text-align:right;padding:8px 6px;font-size:10px;color:var(--grey);text-transform:uppercase">From prior</th><th style="text-align:right;padding:8px 6px;font-size:10px;color:var(--grey);text-transform:uppercase">Of inquired</th></tr></thead><tbody>'
+    +steps.map((x,i)=>fRow(o,x[0],x[1],i)).join('')+'</tbody></table>';
+  const typeTbl=(o)=>'<table class="irf-meta-table" style="width:100%;font-size:12px;border-collapse:collapse"><thead><tr style="border-bottom:1.5px solid var(--border)">'
+    +'<th style="text-align:left;padding:8px 6px;font-size:10px;color:var(--grey);text-transform:uppercase">Clinician type</th>'
+    +steps.map(x=>'<th style="text-align:right;padding:8px 6px;font-size:10px;color:var(--grey);text-transform:uppercase">'+x[0]+'</th>').join('')+'</tr></thead><tbody>'
+    +types.map(t=>{const r=(o.byType||{})[t]||{};return '<tr style="border-bottom:1px solid var(--border)'+(t===tf?';background:var(--teal-8)':'')+'"><td style="padding:8px 6px;color:var(--navy);font-weight:600">'+_sknEsc(t)+'</td>'
+      +steps.map(x=>'<td style="padding:8px 6px;text-align:right;font-variant-numeric:tabular-nums">'+fN(r[x[1]]||0)+'</td>').join('')+'</tr>';}).join('')
+    +'<tr style="background:var(--lighter);font-weight:700"><td style="padding:9px 6px">Total</td>'+steps.map(x=>'<td style="padding:9px 6px;text-align:right;font-variant-numeric:tabular-nums">'+fN(o[x[1]]||0)+'</td>').join('')+'</tr></tbody></table>';
+  h+=card('derm','Dermatologist Clinicians','Clinicians with specialty Dermatology \u00b7 HubSpot keeps only a deal\u2019s current stage, so a step counts as reached when the deal entered it or sits at or beyond it'
+    +(tf?' \u00b7 filtered to <b>'+_sknEsc(tf)+'</b>':''),
+    typeBar
+    +grid(4,
+       _kmTile('Inquiries',fN(wInq(wc)||0),'contacts created in the window',foot(wInq(wc),wInq(wp),wInq(wl)))
+      +_kmTile('Sign Ups',fN(wSu(wc)||0),'credentials completed in the window',foot(wSu(wc),wSu(wp),wSu(wl)))
+      +_kmTile('Samples Shipped',fN(st(all).samples||0),'reached Sample Shipped \u00b7 all time','')
+      +_kmTile('Reviews Submitted',fN(st(all).reviews||0),'reached Review Submitted \u00b7 all time',''))
+    +'<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:16px;margin-top:16px">'
+    +'<div><div style="font-family:var(--font-h);font-size:13.5px;font-weight:700;color:var(--navy);margin-bottom:2px">Funnel \u00b7 dermatologists who inquired in the window</div>'
+    +'<div style="font-size:10px;color:var(--grey);margin-bottom:8px">How far each has got since \u2014 every step is a subset of the one above</div>'+fTbl(co)+'</div>'
+    +'<div><div style="font-family:var(--font-h);font-size:13.5px;font-weight:700;color:var(--navy);margin-bottom:2px">By clinician type \u00b7 all time</div>'
+    +'<div style="font-size:10px;color:var(--grey);margin-bottom:8px">Every dermatologist in HubSpot, furthest step reached</div>'+typeTbl(all)+'</div></div>');
+
+  // ── 4. Engagement ──
+  const a=st(all);
+  h+=card('engage','Engagement','Of the dermatologists who have reached Samples Shipped, how many are submitting reviews',
+    grid(2,
+      _kmTile('Reviewing Rate',_sknPct(a.reviews||0,a.samples||0),fN(a.reviews||0)+' \u00f7 '+fN(a.samples||0)+' reached Sample Shipped \u00b7 HubSpot stages','')
+     +'<div>'+pending('Average reviews per dermatologist who submits reviews (shared or approved reviews, any product).','app reviews (notes)')+'</div>'));
+
+  // ── 5. Capacity vs demand ──
+  const mdS=(((all.byType||{})[SKN_TYPE_FIRST])||{}).samples||0;
+  h+=card('capacity','Capacity vs Demand','Can MD/DO dermatologists keep up with skincare review demand, at 2 reviews each per month?',
+    grid(2,
+      _kmTile('Monthly Capacity',fN(mdS*2),fN(mdS)+' MD/DO dermatologists past Sample Shipped \u00d7 2 reviews / month','')
+     +'<div>'+pending('Outstanding skincare reviews (ordered \u2212 delivered) plus the average new orders per month, against this capacity: monthly surplus or gap, and months to clear the backlog.','app review orders + reviews')+'</div>'));
+
+  el.innerHTML=h;
+}
+
 async function fdPilot(){
   // Back on Pilot while its first fetch is in flight: show the loading page
   // again (the previous page is still active) and let that fetch finish.
@@ -2419,7 +2564,7 @@ function renderWebinarPerf(){
   el.innerHTML=h;
 }
 
-async function refreshData(){const btn=document.getElementById('rfb');if(btn){btn.classList.add('loading');btn.textContent='↻ Refreshing...';}if(AP==='clinician'){S.clinician.data=null;S.clinician.funnelAT=null;S.clinician.funnelATErr=null;S.clinician.funnelATFresh=true;if(S.clinician.funnelAllTime)_clnFetchFunnelAT();await fdClinician(S.clinician.win||'mtd');}else if(AP==='signup'){await fdSignup();}else if(AP==='csession'){S.analyzer.data=null;await fdAnalyzer(S.analyzer.win||S.dashboard?.win||'mtd');}else if(AP==='webinarPerf'){S.webinarPerf.data=null;await fdWebinarPerf(S.webinarPerf.win||'mtd');}else if(AP==='pilot'){S.pilot.data=null;await fdPilot();}else{
+async function refreshData(){const btn=document.getElementById('rfb');if(btn){btn.classList.add('loading');btn.textContent='↻ Refreshing...';}if(AP==='clinician'){S.clinician.data=null;S.clinician.funnelAT=null;S.clinician.funnelATErr=null;S.clinician.funnelATFresh=true;if(S.clinician.funnelAllTime)_clnFetchFunnelAT();await fdClinician(S.clinician.win||'mtd');}else if(AP==='signup'){await fdSignup();}else if(AP==='csession'){S.analyzer.data=null;await fdAnalyzer(S.analyzer.win||S.dashboard?.win||'mtd');}else if(AP==='webinarPerf'){S.webinarPerf.data=null;await fdWebinarPerf(S.webinarPerf.win||'mtd');}else if(AP==='pilot'){S.pilot.data=null;await fdPilot();}else if(AP==='skincare'){S.skincare.data=null;await fdSkincare();}else{
   // Bust the shared analyzer cache + analyzer payload so the Meta
   // Campaigns/Ad Sets/Creatives tables (Status + which assets are listed)
   // re-fetch from Windsor on Refresh. Without this, _renderIrfanMetaTablesLoader
@@ -2460,7 +2605,7 @@ function switchPage(pg){AP=pg;document.querySelectorAll('.ni').forEach(n=>n.clas
 // data-page==='dashboard', so after the restructure Irfan and Clinician never
 // lit up and the Additional Insights parent stayed lit permanently.
 function _navToken(){
-  const map={exec:"switchDashSub('exec')",irfan:"switchDashSub('irfan')",dashboard:"switchDashSub('overview')",pilot:"switchDashSub('pilot')",clinician:"clinicianNav()",
+  const map={exec:"switchDashSub('exec')",irfan:"switchDashSub('irfan')",dashboard:"switchDashSub('overview')",pilot:"switchDashSub('pilot')",skincare:"switchDashSub('skincare')",clinician:"clinicianNav()",
     signup:"switchDashSub('signup')",webinarPerf:"switchDashSub('webinarPerf')",demoQuality:"switchDashSub('demoQuality')",
     outbound:"switchDashSub('outbound')",strategy:"switchDashSub('strategy')",calculator:"switchToCalculator()",
     csession:"switchPage('csession')"};
@@ -2484,7 +2629,7 @@ function _syncNav(){
     if(arrow)arrow.textContent='\u25BC';
   }
 }
-function renderPage(){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));if(AP==='exec')renderExec();else if(AP==='dashboard')renderDash();else if(AP==='irfan')renderIrfan();else if(AP==='clinician')renderClinician();else if(AP==='calculator')updCalc();else if(AP==='signup')renderSignUp();else if(AP==='strategy')renderStrategy();else if(AP==='demoQuality')renderDemoQuality();else if(AP==='webinarPerf')renderWebinarPerf();else if(AP==='pilot')renderPilot();else if(AP==='csession')renderCreativeSession();else if(AP==='content')renderContent();else if(AP==='outbound')renderOutbound();document.getElementById('page-'+AP).classList.add('active');
+function renderPage(){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));if(AP==='exec')renderExec();else if(AP==='dashboard')renderDash();else if(AP==='irfan')renderIrfan();else if(AP==='clinician')renderClinician();else if(AP==='calculator')updCalc();else if(AP==='signup')renderSignUp();else if(AP==='strategy')renderStrategy();else if(AP==='demoQuality')renderDemoQuality();else if(AP==='webinarPerf')renderWebinarPerf();else if(AP==='pilot')renderPilot();else if(AP==='skincare')renderSkincare();else if(AP==='csession')renderCreativeSession();else if(AP==='content')renderContent();else if(AP==='outbound')renderOutbound();document.getElementById('page-'+AP).classList.add('active');
 // Every route ends here, including boot, so the title is set here rather than
 // only in switchDashSub — which boot does not call.
 {const _pt=document.getElementById('ptitle');if(_pt&&T[AP])_pt.textContent=T[AP];}
@@ -7366,7 +7511,7 @@ function renderClinician(){
 // Auto-derived from the headings already on the page (no per-section markup),
 // so it stays correct as sections are added or renamed. Scroll container is
 // .main, not the window.
-const _SECNAV_SEL={exec:'#page-exec .dsec-h', dashboard:'#page-dashboard .dsec-h', irfan:'#irfan-c .dsec-h', clinician:'#clinician-c .irf-card-title', pilot:'#pilot-c .dsec-h'};
+const _SECNAV_SEL={exec:'#page-exec .dsec-h', dashboard:'#page-dashboard .dsec-h', irfan:'#irfan-c .dsec-h', clinician:'#clinician-c .irf-card-title', pilot:'#pilot-c .dsec-h', skincare:'#skincare-c .dsec-h'};
 function buildSectionNav(page){
   // Clear any existing bar FIRST. The nav lives in .main .topbar, which persists
   // across pages, so returning early for a page without a selector used to leave
@@ -12565,10 +12710,10 @@ const DASH_MENU_SUBS=['signup','webinarPerf','demoQuality','outbound','strategy'
 function switchDashSub(sub){
   S.dashboard.sub=sub;
   // Map sub to AP
-  var apMap={exec:'exec',overview:'dashboard',pilot:'pilot',clinician:'clinician',irfan:'irfan',signup:'signup',calculator:'calculator',strategy:'strategy',demoQuality:'demoQuality',outbound:'outbound',webinarPerf:'webinarPerf'};
+  var apMap={exec:'exec',overview:'dashboard',pilot:'pilot',skincare:'skincare',clinician:'clinician',irfan:'irfan',signup:'signup',calculator:'calculator',strategy:'strategy',demoQuality:'demoQuality',outbound:'outbound',webinarPerf:'webinarPerf'};
   AP=apMap[sub]||'dashboard';
   // Update titles
-  var titleMap={exec:'Executive Dashboard',overview:'Brand Dashboard',pilot:'Pilot Dashboard',clinician:'Clinician Dashboard',irfan:'Irfan Dashboard',signup:'Sign-Up Rate',calculator:'ARR Calculator',strategy:'Monthly Review',demoQuality:'Demo Quality',outbound:'Outbound Sequences',webinarPerf:'Webinar Performance'};
+  var titleMap={exec:'Executive Dashboard',overview:'Brand Dashboard',pilot:'Pilot Dashboard',skincare:'Skincare Dashboard',clinician:'Clinician Dashboard',irfan:'Irfan Dashboard',signup:'Sign-Up Rate',calculator:'ARR Calculator',strategy:'Monthly Review',demoQuality:'Demo Quality',outbound:'Outbound Sequences',webinarPerf:'Webinar Performance'};
   document.getElementById('ptitle').textContent=titleMap[sub]||'Brand Dashboard';
   // Highlight nav items
   // highlighting handled centrally by _syncNav() on render
@@ -12592,6 +12737,14 @@ function switchDashSub(sub){
   // Pilot: every nav click re-pulls it, like Webinar Performance -- the page is
   // a live working list, so a click should never show a stale one.
   if(AP==='pilot'){fdPilot();return;}
+  // Back on Skincare while its fetch is in flight: re-show the loading page and
+  // let that fetch land, rather than restarting it.
+  if(AP==='skincare'){
+    if(S.skincare.data)renderPage();
+    else if(S.skincare._fetching){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));document.getElementById('page-skincare').classList.add('active');if(typeof _syncNav==='function')_syncNav();}
+    else fdSkincare();
+    return;
+  }
   // Load once. Nav clicks re-render from cached data; a refetch only happens on a
   // time-frame change (selW) or the Refresh button (refreshData clears .data).
   if(AP==='clinician'){ if(S.clinician.data){renderPage();} else {fdClinician(S.clinician.win||'mtd');} return; }
