@@ -242,6 +242,9 @@ html,body{height:100%}body{font-family:var(--font-b);font-size:15px;color:var(--
 .tile.sm-teal{background:linear-gradient(135deg,rgba(114,164,191,.08),rgba(114,164,191,.15));border:1px solid rgba(114,164,191,.2);padding:14px 18px}
 .tile.sm-teal .tval{font-size:20px}
 .tile.km-sm{padding:14px 16px}.tile.km-sm .tval{font-size:20px}
+/* Second row reads as secondary: the hero gradient, a step lighter (2026-11-10).
+   Still dark enough for the white value and the green/red delta footers. */
+.tile.hero.km-sm{background:linear-gradient(135deg,#27445F,#2E5A70)}
 .tile.sm-teal .tcomps{gap:2px}.tile.sm-teal .tc{font-size:10px}
 .tlbl{font-family:var(--font-h);font-size:11px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
 .tval{font-family:var(--font-h);font-size:26px;font-weight:700;color:var(--navy);margin-bottom:2px}
@@ -630,7 +633,9 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
     <div class="snav">
       <div class="ni" onclick="switchDashSub('exec')" data-page="exec" data-sub="exec"><span class="ic" style="font-size:12px">⭐</span><span>Executive Dashboard</span></div>
       <div class="ni" onclick="switchDashSub('overview')" data-page="dashboard" data-sub="overview"><span class="ic" style="font-size:12px">📊</span><span>Brand Dashboard</span></div>
-      <div class="ni" onclick="switchDashSub('pilot')" data-page="pilot" data-sub="pilot"><span class="ic" style="font-size:12px">🧪</span><span>Pilot Dashboard</span></div>
+      <!-- Pilot Dashboard hidden 2026-11-10 (Alex: "we will bring it back later").
+           Everything behind it is intact; delete the display:none to restore. -->
+      <div class="ni" onclick="switchDashSub('pilot')" data-page="pilot" data-sub="pilot" style="display:none"><span class="ic" style="font-size:12px">🧪</span><span>Pilot Dashboard</span></div>
       <div class="ni" onclick="clinicianNav()" data-page="clinician" data-sub="clinician"><span class="ic" style="font-size:12px">🩺</span><span>Clinician Dashboard</span></div>
       <div class="ni grp" onclick="autoExpand();toggleDashMenu()" data-page="dashboard" id="dash-menu-parent" title="Additional Insights"><span class="ic">📊</span><span>Additional Insights</span><span id="dash-arrow" style="margin-left:auto;font-size:10px;transition:transform .2s">▶</span></div>
       <div id="dash-submenu" style="display:none;padding-left:24px">
@@ -3958,9 +3963,21 @@ function _clnTrShownCards(mdef){
   });
 }
 // Label, value and working for one stat, against summed components.
-function _clnTrStat(card,T,pdef){
+// `sel` is the PLOTTED measure. When it is a Clinician Type / Specialty
+// dropdown, the population cards (Count, Cost Per, CVR) narrow to the chosen
+// value (2026-11-10): Count is the MD/DO inquiries, Cost Per is clinician spend
+// over them, CVR is them over clicks. CTR and Ad Spend have no population in
+// them and stay whole; the split card keeps its share of the WHOLE population,
+// which is what that share means.
+function _clnTrStat(card,T,pdef,sel){
   var mdef=CLN_TR_METRICS.filter(function(m){return m.k===card.metric;})[0]||null;
   var popW=pdef.short, lbl, val, calc, colour, split=null;
+  var fdim=(sel&&sel.dim)?sel.dim:null;
+  var fName=fdim?_clnTrSel(fdim):'';
+  if(fdim&&card.pop&&!card.withPct){
+    T=Object.assign({},T,{pop:fdim==='type'?T.typeN:T.specN});
+    popW=fName+' '+popW;
+  }
   if(card.k==='spend'){
     lbl='Ad Spend'; val=_clnTrFmt(T.spend,'$'); colour=CLN_TR_SPEND.c;
     calc='clinician channel \u00b7 always on the chart';
@@ -3975,7 +3992,7 @@ function _clnTrStat(card,T,pdef){
     calc='of '+fN(T.pop)+' '+popW;
   }else{
     var v=_clnTrValue(card.metric,T);
-    lbl=(mdef?mdef.l:card.k)+(card.pop?(' \u00b7 '+pdef.l):'');
+    lbl=(mdef?mdef.l:card.k)+(card.pop?(' \u00b7 '+pdef.l):'')+((fdim&&card.pop)?(' \u00b7 '+fName):'');
     val=_clnTrFmt(v,card.unit); colour=mdef?mdef.c:CLN_TR_SPEND.c;
     calc={
       count:fN(T.pop)+' '+popW,
@@ -4274,7 +4291,7 @@ function _clnTrendCard(d,sfx){
   // on the chart is visible without reading the legend.
   var minis=_trRangeBand+'<div style="display:flex;gap:9px;flex-wrap:wrap;margin:10px 0 4px">'
     +_clnTrShownCards(mdef).map(function(card){
-      var st=_clnTrStat(card,T,pdef);
+      var st=_clnTrStat(card,T,pdef,mdef);
       var on=(card.metric===mdef.k)||(card.withPct&&card.withPct===mdef.k);
       return '<div style="flex:1 1 150px;min-width:146px;background:var(--lighter);border:1px solid '
         +(on?st.c:'var(--border)')+';border-radius:10px;padding:11px 13px;border-top:3px solid '+st.c
@@ -4778,7 +4795,7 @@ function _renderClnTrend(d,sfx){
     // the cards never had.
     var xT=_clnTrSum([xp]);
     var rows=_clnTrShownCards(mdef).map(function(card){
-      var st=_clnTrStat(card,xT,pdef);
+      var st=_clnTrStat(card,xT,pdef,mdef);
       // The row the chart is plotting is the reason the reader is hovering, so
       // it carries the weight. Order still follows the cards — only the
       // emphasis moves, not the position.
@@ -8624,6 +8641,11 @@ function _renderIrfanMetaTables(d, channel){
     };
     const sorted=audiences.slice().sort(_audSort);
     const aSp=audiences.map(a=>a.spend||0),aDe=audiences.map(a=>a.demos||0),aCp=audiences.map(a=>a.demos>0?a.spend/a.demos:0);
+    // Impressions / Clicks / CTR / CPC heat too (2026-11-10), on the same
+    // conventions as the Campaigns and Ad Sets tables: more volume and a higher
+    // CTR read green, a lower CPC reads green.
+    const aIm=audiences.map(a=>a.impressions||0),aCl=audiences.map(a=>a.clicks||0),aCt=audiences.map(a=>a.ctr||0);
+    const aCc=audiences.map(a=>a.clicks>0?a.spend/a.clicks:0);
     let aTSp=0,aTDe=0,aTIm=0,aTCl=0;
     audH+='<div style="font-size:11px;color:var(--grey);font-variant-numeric:tabular-nums;margin-bottom:10px">'+sorted.length+' '+audItemLabel+(sorted.length===1?'':'s')+' · sort by '+audSort.col+' '+audSort.dir+'</div>';
     audH+='<div style="overflow-x:auto"><table class="irf-meta-table" style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr style="border-bottom:1.5px solid var(--border)">';
@@ -8644,10 +8666,10 @@ function _renderIrfanMetaTables(d, channel){
       audH+='<tr style="border-bottom:1px solid var(--border)">';
       audH+='<td class="irf-nm" style="padding:8px 6px;color:var(--navy);font-weight:500" title="'+(a.name||'').replace(/"/g,'&quot;')+'">'+nm+'</td>';
       audH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(aSp,a.spend,true)+'">'+f$(a.spend||0)+'</td>';
-      audH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+fN(a.impressions||0)+'</td>';
-      audH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+fN(a.clicks||0)+'</td>';
-      audH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+(a.ctr!=null?a.ctr.toFixed(2)+'%':'—')+'</td>';
-      audH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums">'+(cpc!=null?f$(cpc):'—')+'</td>';
+      audH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(aIm,a.impressions||0,false)+'">'+fN(a.impressions||0)+'</td>';
+      audH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(aCl,a.clicks||0,false)+'">'+fN(a.clicks||0)+'</td>';
+      audH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(aCt,a.ctr||0,false)+'">'+(a.ctr!=null?a.ctr.toFixed(2)+'%':'—')+'</td>';
+      audH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(aCc,cpc||0,true)+'">'+(cpc!=null?f$(cpc):'—')+'</td>';
       audH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(aDe,a.demos||0,false)+'">'+fN(a.demos||0)+'</td>';
       audH+='<td style="text-align:right;padding:8px 6px;font-variant-numeric:tabular-nums;'+_irfanHeat(aCp,cpd||0,true)+'">'+(cpd!=null?f$(cpd):'—')+'</td>';
       audH+='</tr>';

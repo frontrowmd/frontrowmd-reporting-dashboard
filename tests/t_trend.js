@@ -378,7 +378,8 @@ ck('the old Weekly Cost card is gone', /_clnWeeklyCard|_renderClnWeekly/.test(cl
      && !/\{k:'spend'/.test((/const CLN_TR_METRICS=\[([\s\S]*?)\n\];/.exec(cli)||[,''])[1]), true);
   // Both go through _clnTrShownCards, which drops the Type / Specialty cards
   // unless their own dropdown is the plotted measure (2026-11-09).
-  ck('the cards are rendered from it', /_clnTrShownCards\(mdef\)\.map\(function\(card\)\{\s*\n\s*var st=_clnTrStat\(card,T,pdef\);/.test(cli), true);
+  ck('the cards are rendered from it', /_clnTrShownCards\(mdef\)\.map\(function\(card\)\{\s*\n\s*var st=_clnTrStat\(card,T,pdef,mdef\);/.test(cli), true);
+  ck('  and the hover passes the plotted measure too', /var st=_clnTrStat\(card,xT,pdef,mdef\);/.test(cli), true);
   ck('and so is the hover', /var rows=_clnTrShownCards\(mdef\)\.map\(function\(card\)\{/.test(cli), true);
   // Nothing may be pushed onto the readout outside that map, except the rolling
   // line — which is a chart series, not a card.
@@ -437,6 +438,20 @@ ck('the old Weekly Cost card is gone', /_clnWeeklyCard|_renderClnWeekly/.test(cl
   // A split must survive a zero denominator rather than printing NaN%.
   const doc0=dctx.__stat(dctx.__cards[4],{spend:0,clicks:0,impressions:0,pop:0,typeN:0,specN:0},pdef);
   ck('with no population the share is a dash, not NaN', doc0.split, '\u2014');
+  // A Type / Specialty measure narrows the population cards (2026-11-10).
+  // T: 20 inquiries, 8 MD/DO, 5 Dermatology, $400 spend, 100 clicks.
+  dctx._clnTrDimV={spec:'Dermatology'};
+  const F=(sel)=>Object.fromEntries(dctx.__cards.map(c=>{const st=dctx.__stat(c,T,pdef,sel);return [c.k,[st.lbl,st.val,st.calc,st.split]];}));
+  const ft=F({k:'type',dim:'type'});
+  ck('Clinician Type: Count is the MD/DO inquiries', ft.count.slice(0,3), ['Count · Inquiry · MD/DO','8','8 MD/DO inquiries']);
+  ck('  Cost Per is spend over them', ft.cost.slice(1,3), ['$50','$400 ÷ 8 MD/DO inquiries']);
+  ck('  CVR is them over clicks', ft.cvr.slice(1,3), ['8.00%','8 ÷ 100 clicks']);
+  ck('  CTR and Ad Spend stay whole', [ft.ctr[0],ft.ctr[1],ft.spend[1]], ['CTR','2.00%','$400']);
+  ck('  the split card keeps its share of ALL inquiries', [ft.type[1],ft.type[3],ft.type[2]], ['8','40.0%','of 20 inquiries']);
+  const fsp=F({k:'specpct',dim:'spec'});
+  ck('Specialty %: the cards narrow to Dermatology', [fsp.count[1],fsp.cost[1],fsp.cvr[1]], ['5','$80','5.00%']);
+  const f0=F({k:'count'});
+  ck('a plain measure leaves every card whole', [f0.count[0],f0.count[1],f0.cost[1]], ['Count · Inquiry','20','$20']);
   // Shown only when selected (2026-11-09): Type / Specialty cards appear only
   // while their own dropdown (count or %) is the plotted measure.
   const S=k=>dctx.__shown({k:k}).map(c=>c.k);

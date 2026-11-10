@@ -295,6 +295,10 @@ ck('dropdown options carry no "(incl. ...)" suffix',/\(incl\. /.test(fn(cli,'_cl
   ck('a pick that no longer exists falls back to All',/_specOpts\.indexOf\(S\.clinician\.acqSpec\)>=0\)\?S\.clinician\.acqSpec:''/.test(RC2),true);
 }
 
+// The compact second Key Metrics row is a step lighter than the hero row.
+ck('the second-row tiles have their own lighter background',
+   /\.tile\.hero\.km-sm\{background:linear-gradient\(135deg,#27445F,#2E5A70\)\}/.test(cli),true);
+
 // --- Acquisition is shared with the Executive Clinician tab (2026-11-09) ------
 {
   const RC3=fn(cli,'renderClinician'), RE=fn(cli,'renderExec');

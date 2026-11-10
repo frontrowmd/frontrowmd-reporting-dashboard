@@ -80,5 +80,17 @@ ck('  with no literal left behind',/_clnAdCols\?17:16/.test(cli),false);
 ck('Qual stays off the clinician tables',
    /if\(!_clnAdCols\)campH\+=_irfanSortableTh\('Qual','qualified'/.test(cli),true);
 
+// ── 5. Audiences heatmap (2026-11-10) ───────────────────────────────────────
+// Every metric column is heat-shaded, like the other three tables: volume and
+// CTR higher-is-better, CPC lower-is-better.
+{
+  const aud=cli.slice(cli.indexOf('// ── Audiences table (rendered to its own target div'),cli.indexOf('const aTCpd=aTDe>0'));
+  const heat=(arr,inv)=>new RegExp("_irfanHeat\\("+arr+",[^)]*,"+inv+"\\)").test(aud);
+  ck('Audiences heat-shades Impressions, Clicks, CTR and CPC',
+     [heat('aIm',false),heat('aCl',false),heat('aCt',false),heat('aCc',true)],[true,true,true,true]);
+  ck('  alongside Spend, Conversions and Cost per Conversion',
+     [heat('aSp',true),heat('aDe',false),heat('aCp',true)],[true,true,true]);
+}
+
 console.log('\n'+pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);

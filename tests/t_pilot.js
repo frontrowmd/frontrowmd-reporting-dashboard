@@ -115,6 +115,8 @@ ck('an empty list is all zeros, not a crash',(()=>{const e=W.buildPilotDashboard
   ck('the route is password-guarded',/url\.pathname === '\/api\/pilot'\) \{[\s\S]{0,200}body\.password !== env\.TEAM_PASSWORD/.test(src),true);
   const nav=cli.slice(cli.indexOf('<span>Brand Dashboard</span>'),cli.indexOf('<span>Clinician Dashboard</span>'));
   ck('the nav item sits right after Brand Dashboard',/switchDashSub\('pilot'\)[^\n]*<span>Pilot Dashboard<\/span>/.test(nav),true);
+  // Hidden 2026-11-10 until Alex brings it back: the entry stays, display:none.
+  ck('  and is hidden for now',/onclick="switchDashSub\('pilot'\)"[^>]*style="display:none"/.test(nav),true);
   ck('it has a page',cli.indexOf('<div class="pg" id="page-pilot"><div id="pilot-c"></div></div>')>=0,true);
   ck('switchDashSub maps it',/var apMap=\{[^}]*pilot:'pilot'/.test(cli)&&/var titleMap=\{[^}]*pilot:'Pilot Dashboard'/.test(cli),true);
   ck('renderPage routes it',/else if\(AP==='pilot'\)renderPilot\(\);/.test(cli),true);
