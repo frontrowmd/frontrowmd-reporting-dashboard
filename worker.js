@@ -10126,6 +10126,104 @@ async function slackSweep(env) {
   if (retried) console.log('slack sweep: retried', retried, 'of', checked, 'matched reaction(s)');
 }
 
+// ─── Sign-in: Cloudflare Access (Google), 2026-11-10 ─────────────────────────
+// The team password is gone. Every data route instead requires the signed
+// token Cloudflare Access attaches after a Google sign-in, and checks it HERE
+// rather than trusting that Access sat in front of the request: the Access app
+// covers the plain workers.dev hostname only, so a version preview URL
+// (<ver>-frontrowmd-dashboard-api.….workers.dev) reaches this code with no
+// sign-in at all. A request without a valid token for a company account gets
+// 401, whatever hostname it came in on.
+//
+// Checked: RS256 signature against the team's published keys, issuer = the
+// team domain, audience = the Dashboard Access app, not expired, and an
+// @thefrontrowhealth.com email. The AUD tag is public (it is in every login
+// redirect), not a secret. A second Access app — e.g. a future custom domain —
+// has its own AUD; add it to ACCESS_AUD (comma-separated var) rather than here.
+const ACCESS_TEAM = 'https://frontrowmd.cloudflareaccess.com';
+const ACCESS_AUDS = ['7daa3d49c47e143739e3a8fbf4e43e9ccb4ff2ad9c434fc866495c8bdb29209e'];
+const ACCESS_EMAIL_DOMAIN = '@thefrontrowhealth.com';
+const ACCESS_SKEW_S = 60;
+let _accessKeys = null, _accessKeysAt = 0, _accessForcedAt = 0;
+function _b64uBytes(s) {
+  s = String(s).replace(/-/g, '+').replace(/_/g, '/');
+  while (s.length % 4) s += '=';
+  const b = atob(s), u = new Uint8Array(b.length);
+  for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i);
+  return u;
+}
+function _b64uJson(s) { return JSON.parse(new TextDecoder().decode(_b64uBytes(s))); }
+// Keys are cached for an hour. An unknown kid (key rotation) forces a refetch,
+// but at most once a minute, so a stream of forged kids cannot turn every
+// request into a certs fetch.
+async function accessKeys(force) {
+  const now = Date.now();
+  if (_accessKeys && now - _accessKeysAt < 3600e3 && !(force && now - _accessForcedAt > 60e3)) return _accessKeys;
+  if (force) _accessForcedAt = now;
+  const r = await fetch(ACCESS_TEAM + '/cdn-cgi/access/certs');
+  if (!r.ok) { azDrain(r); throw new Error('Access certs HTTP ' + r.status); }
+  const j = await r.json();
+  const m = new Map();
+  for (const k of (j && j.keys) || []) {
+    if (!k || k.kty !== 'RSA' || !k.kid || !k.n || !k.e) continue;
+    m.set(k.kid, await crypto.subtle.importKey('jwk', { kty: 'RSA', n: k.n, e: k.e, alg: 'RS256', ext: true },
+      { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']));
+  }
+  _accessKeys = m; _accessKeysAt = now;
+  return m;
+}
+function accessAuds(env) {
+  const extra = String((env && env.ACCESS_AUD) || '').split(',').map(s => s.trim()).filter(Boolean);
+  return ACCESS_AUDS.concat(extra);
+}
+// The sign-in cookie rides along on ANY request the browser sends here,
+// including one a different website triggers (a form POST, a no-cors fetch).
+// The old password lived only in the page, so it doubled as a cross-site
+// request forgery guard; without it, a signed-in teammate visiting a hostile
+// page could have it wipe content_state or pq_results, or run the paid AI
+// routes. So a data request must come from this site's own pages. Browsers
+// stamp Sec-Fetch-Site and Origin themselves and pages cannot forge them;
+// a request with neither (curl, a server) has no cookie to ride on anyway and
+// still needs a valid token.
+function sameOriginRequest(request, url) {
+  const sfs = request.headers.get('Sec-Fetch-Site');
+  if (sfs && sfs !== 'same-origin') return false;
+  const origin = request.headers.get('Origin');
+  if (origin && origin !== url.origin) return false;
+  return true;
+}
+// → { email } for a valid company sign-in, else null. Never throws: a certs
+// outage fails CLOSED (null → 401), it does not wave requests through.
+async function accessIdentity(request, env) {
+  try {
+    const tok = request.headers.get('Cf-Access-Jwt-Assertion');
+    if (!tok) return null;
+    const parts = tok.split('.');
+    if (parts.length !== 3) return null;
+    const h = _b64uJson(parts[0]), p = _b64uJson(parts[1]);
+    if (!h || h.alg !== 'RS256' || !h.kid || !p || typeof p !== 'object') return null;
+    let key = (await accessKeys(false)).get(h.kid);
+    if (!key) key = (await accessKeys(true)).get(h.kid);
+    if (!key) return null;
+    const ok = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, _b64uBytes(parts[2]),
+      new TextEncoder().encode(parts[0] + '.' + parts[1]));
+    if (!ok) return null;
+    const now = Math.floor(Date.now() / 1000);
+    if (p.iss !== ACCESS_TEAM) return null;
+    const aud = Array.isArray(p.aud) ? p.aud : [p.aud];
+    const want = accessAuds(env);
+    if (!aud.some(a => want.includes(a))) return null;
+    if (typeof p.exp !== 'number' || p.exp + ACCESS_SKEW_S < now) return null;
+    if (typeof p.nbf === 'number' && p.nbf - ACCESS_SKEW_S > now) return null;
+    const email = String(p.email || '').trim().toLowerCase();
+    if (!email.endsWith(ACCESS_EMAIL_DOMAIN) || email.length <= ACCESS_EMAIL_DOMAIN.length) return null;
+    return { email };
+  } catch (e) {
+    console.error('access check:', e && e.message);
+    return null;
+  }
+}
+
 export default {
   // Cron. The browser aborts at a fixed timeout and cannot wait for a Year to
   // Date rebuild, so compute those windows here and leave them in KV for the
@@ -10172,6 +10270,10 @@ export default {
   async fetch(request, env, ctx) {
     subreqReset();   // the pool is per-invocation, so the counters are too
     const url = new URL(request.url);
+    // One sign-in check per request, run only by the routes that need it (the
+    // Slack events route and the HTML pages do not). See accessIdentity.
+    let _authP = null;
+    const authed = () => (_authP || (_authP = (sameOriginRequest(request, url) ? accessIdentity(request, env) : Promise.resolve(null))));
 
     // CORS preflight
     if (request.method === 'OPTIONS') return new Response(null, { headers: { 'Access-Control-Allow-Origin':'*','Access-Control-Allow-Methods':'POST, OPTIONS','Access-Control-Allow-Headers':'Content-Type','Access-Control-Max-Age':'86400' } });
@@ -10228,7 +10330,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/api/slack/recent') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
-      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       const list = env.CONTENT_STORE ? await env.CONTENT_STORE.get(SLACK_EVT_KEY, 'json') : null;
       const events = Array.isArray(list) ? list : [];
       const errList = env.CONTENT_STORE ? await env.CONTENT_STORE.get(SLACK_ERR_KEY, 'json') : null;
@@ -10249,7 +10351,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/api/changelog') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
-      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       if (!env.CONTENT_STORE) return jr({ ok: true, entries: [], months: [] });
       // The index is a convenience, not the source of truth. It is a second,
       // non-atomic put after the month blob, and a concurrent capture can lose
@@ -10282,7 +10384,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/api/data') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
-      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       // Short (60s) response cache. Rapid refreshes / tab-switches otherwise
       // re-run the full HubSpot fetch chain every time; under repeated use that
       // rate-limits HubSpot and makes the worker slow/unresponsive, which froze
@@ -10344,7 +10446,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/api/revenue-outcome') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
-      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       try {
         const result = await processRevenueOutcome(env, body.window||'mtd', body.from||null, body.to||null, body.vsFrom||null, body.vsTo||null);
         return jr(result);
@@ -10364,7 +10466,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/api/clinician-funnel') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
-      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       try {
         const _d = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null);
         // All Time ignores any from/to sent with it: it is the funnel's own
@@ -10417,7 +10519,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/api/clinician') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
-      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       try {
         const token = env.HUBSPOT_TOKEN;
         const { current: cur, prior, priorMonth } = computeWindows(body.window || 'mtd', body.from || null, body.to || null, body.vsFrom || null, body.vsTo || null);
@@ -10576,7 +10678,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/api/signup-cohorts') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
-      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       try {
         const result = await processSignupRequest(env);
         return jr(result);
@@ -10591,7 +10693,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/api/special1-cohorts') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
-      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       try {
         const result = await processSpecial1Request(env);
         return jr(result);
@@ -10604,7 +10706,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/api/pilot') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
-      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       try {
         const hsToken = env.HUBSPOT_TOKEN;
         const [deals, stageMeta] = await Promise.all([fetchPilotDeals(hsToken), fetchDealStageMeta(hsToken)]);
@@ -10617,7 +10719,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/api/webinar-performance') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
-      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       try {
         const result = await processWebinarPerfRequest(body.window||'mtd', body.from||null, body.to||null, env, body.vsFrom||null, body.vsTo||null);
         return jr(result);
@@ -10628,7 +10730,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/api/baseline') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
-      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       try {
         const v = await readWebinarBaseline(env);
         return jr({ ok: true, attendedToClosedWonPct: v });
@@ -10638,7 +10740,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/api/baseline/save') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
-      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       try {
         const res = await saveWebinarBaseline(env, body.attendedToClosedWonPct);
         return jr(res);
@@ -10649,7 +10751,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/api/analyzer') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
-      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       // This endpoint had NO cache, so every load recomputed a fetch chain that
       // measured 70s+ on a Year to Date window — past the dashboard's 75s abort.
       // Ad data barely moves intraday, so a short TTL turns every load after the
@@ -10775,7 +10877,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/api/content') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
-      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       // Merge saved state if KV is available
       let saved = null;
       if (env.CONTENT_STORE) {
@@ -10794,7 +10896,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/api/content/ai') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
-      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       try {
         const result = await proxyAnthropicAI(body.aiBody, env);
         return jr(result);
@@ -10806,7 +10908,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/api/pq') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
-      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       if (!env.CONTENT_STORE) return jr({ pqMap: {}, _kvAvailable: false });
       try {
         kvOp();
@@ -10829,7 +10931,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/api/csession/actions') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
-      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       if (!env.CONTENT_STORE) return jr({ ok: false, error: 'KV not configured' }, 200);
       try {
         let existing = {};
@@ -10856,7 +10958,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/api/pq/save') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
-      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       if (!env.CONTENT_STORE) {
         return jr({ ok: false, error: 'KV not configured. Run: npx wrangler kv namespace create CONTENT_STORE' }, 200);
       }
@@ -10883,7 +10985,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/api/content/save') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
-      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       try {
         if (env.CONTENT_STORE) {
           kvOp();
@@ -10906,7 +11008,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/api/websites') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
-      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       const dealIds = (body.dealIds || []).slice(0, 10); // max 10 per batch
       if (!dealIds.length) return jr({ websites: {} });
       const hsToken = env.HUBSPOT_TOKEN;
@@ -10959,7 +11061,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/api/engagement') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
-      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       const dealIds = (body.dealIds || []).slice(0, 10);
       if (!dealIds.length) return jr({ engagement: {} });
       const hsToken = env.HUBSPOT_TOKEN;
@@ -11032,7 +11134,7 @@ export default {
       console.log('/api/outbound: handler reached');
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
-      if (body.password !== env.TEAM_PASSWORD) { console.log('/api/outbound: bad password'); return jr({ error: 'Unauthorized' }, 401); }
+      if (!(await authed())) { console.log('/api/outbound: not signed in'); return jr({ error: 'Unauthorized' }, 401); }
       const apolloKey = env.APOLLO_API_KEY;
       if (!apolloKey) { console.log('/api/outbound: no APOLLO_API_KEY'); return jr({ error: 'APOLLO_API_KEY not configured. Run: npx wrangler secret put APOLLO_API_KEY' }); }
       console.log('/api/outbound: key present, length=' + apolloKey.length);
@@ -11145,7 +11247,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/api/content/adlibrary') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
-      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       if (!env.META_AD_LIBRARY_TOKEN) return jr({ error: 'META_AD_LIBRARY_TOKEN not configured. Run: npx wrangler secret put META_AD_LIBRARY_TOKEN' }, 200);
       try {
         const searchTerm = body.search_term || '';
@@ -11201,7 +11303,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/api/content/imagegen') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
-      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       if (!env.GEMINI_API_KEY) return jr({ error: 'GEMINI_API_KEY not configured. Run: npx wrangler secret put GEMINI_API_KEY' }, 200);
       try {
         const prompt = body.prompt || 'A professional marketing ad creative';
@@ -11245,7 +11347,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/api/content/social') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
-      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       try {
         const apiKey = env.WINDSOR_API_KEY;
         const period = body.period || 'last_30d';
@@ -11322,7 +11424,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/api/sales') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
-      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       try {
         const result = await fetchSalesData(body.mode || 'preDemoData', env);
         return jr(result);
@@ -11333,7 +11435,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/api/bd') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
-      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       try {
         const result = await fetchBDData(env, body.fresh === true);
         return jr(result);
@@ -11348,7 +11450,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/api/bd/lookup-companies') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
-      if (body.password !== env.TEAM_PASSWORD) return jr({ error: 'Unauthorized' }, 401);
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       try {
         const result = await lookupBDCompanies(env, body.companyIds || [], body.fresh === true);
         return jr({ ok: true, ...result });

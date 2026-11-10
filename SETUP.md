@@ -18,7 +18,6 @@ A Cloudflare Worker that serves as the API backend for the live marketing dashbo
 wrangler login
 
 # 2. Set secrets (you'll be prompted to paste each value)
-wrangler secret put TEAM_PASSWORD
 wrangler secret put WINDSOR_API_KEY
 wrangler secret put HUBSPOT_TOKEN
 
@@ -29,19 +28,25 @@ wrangler deploy
 After deploy, Wrangler will output the Worker URL, e.g.:
 `https://frontrowmd-dashboard-api.<your-subdomain>.workers.dev`
 
-## Test with curl
+## Sign-in (Cloudflare Access)
 
-```bash
-curl -X POST https://frontrowmd-dashboard-api.<your-subdomain>.workers.dev/api/data \
-  -H "Content-Type: application/json" \
-  -d '{"password":"your-team-password","window":"7d"}'
-```
+There is no team password (removed 2026-11-10). The workers.dev hostname sits
+behind Cloudflare Zero Trust → Access (team domain `frontrowmd.cloudflareaccess.com`,
+Google login, Allow = emails ending in `@thefrontrowhealth.com`), with a Bypass
+app on path `api/slack/events` — Slack's request signature is that route's auth.
+
+The worker re-checks the Access token itself (`accessIdentity` in worker.js)
+because Access does not cover version preview URLs, and it refuses data requests
+that do not come from the dashboard's own pages (cross-site request forgery guard).
+So data routes only answer a signed-in browser on the production hostname:
+`curl`, `wrangler dev` and opening the HTML from `file://` all get 401. A new
+Access app (e.g. a custom domain) has its own AUD tag — add it as the
+`ACCESS_AUD` var (comma-separated).
 
 ## Request Format
 
 ```json
 {
-  "password": "team-password",
   "window": "7d",          // "7d" | "mtd" | "lastMonth" | "custom" | "allTime"
   "from": "2026-02-01",    // only needed for "custom"
   "to": "2026-02-28"       // only needed for "custom"
@@ -88,7 +93,6 @@ Each "tile" object follows this format:
 
 | Secret | Source |
 |--------|--------|
-| TEAM_PASSWORD | Your chosen dashboard access password |
 | WINDSOR_API_KEY | Windsor.ai → Settings → API |
 | HUBSPOT_TOKEN | HubSpot → Settings → Integrations → Private Apps |
 

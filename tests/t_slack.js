@@ -225,8 +225,8 @@ ck('the url_verification handshake echoes the challenge',
 // Slack allows 3 seconds and retries anything slower.
 ck('event work is deferred so the 200 is immediate',
    /ctx\.waitUntil\(slackRecordEvent\(body, env\)\);[\s\S]{0,120}?return jr\(\{ ok: true \}\);/.test(src),true);
-ck('the inspection route is password-guarded',
-   /url\.pathname === '\/api\/slack\/recent'[\s\S]{0,260}?body\.password !== env\.TEAM_PASSWORD/.test(src),true);
+ck('the inspection route is sign-in-guarded',
+   /url\.pathname === '\/api\/slack\/recent'[\s\S]{0,260}?!\(await authed\(\)\)/.test(src),true);
 ck('  and reports whether the secrets are configured',
    /signingSecretConfigured: !!env\.SLACK_SIGNING_SECRET/.test(src)
    &&/botTokenConfigured: !!env\.SLACK_BOT_TOKEN/.test(src),true);
@@ -253,15 +253,15 @@ ck('the read endpoint does not ship raw Slack text',
      const j=src.indexOf("url.pathname === '/api/data'",i);
      const b=src.slice(i,j);
      return /summary:e\.summary/.test(b)&&!/raw:\s*e\.raw/.test(b);})(),true);
-ck('  and is password-guarded',
-   /url\.pathname === '\/api\/changelog'[\s\S]{0,300}?body\.password !== env\.TEAM_PASSWORD/.test(src),true);
+ck('  and is sign-in-guarded',
+   /url\.pathname === '\/api\/changelog'[\s\S]{0,300}?!\(await authed\(\)\)/.test(src),true);
 ck('capture runs alongside the diagnostic record',
    /ctx\.waitUntil\(slackRecordEvent\(body, env\)\);\s*\n\s*ctx\.waitUntil\(slackHandleReaction\(body, env\)\);/.test(src),true);
 
-ck('the events route is NOT password-guarded — the signature is the auth',
+ck('the events route is NOT sign-in-guarded — the signature is the auth',
    (()=>{const i=src.indexOf("url.pathname === '/api/slack/events'");
      const j=src.indexOf("url.pathname === '/api/slack/recent'");
-     return /TEAM_PASSWORD/.test(src.slice(i,j));})(),false);
+     return /TEAM_PASSWORD|authed\(\)/.test(src.slice(i,j));})(),false);
 
 // ── 4b. The sweep ─────────────────────────────────────────
 // A capture that dies inside waitUntil leaves the reaction in place with nothing
@@ -352,8 +352,8 @@ ck('the diagnostic route exposes the failures',
    (()=>{const i=src.indexOf("url.pathname === '/api/slack/recent'");
      const j=src.indexOf("url.pathname === '/api/changelog'",i);
      const b=src.slice(i,j);return /SLACK_ERR_KEY/.test(b)&&/errors:/.test(b);})(),true);
-ck('  and stays password-guarded',
-   /url\.pathname === '\/api\/slack\/recent'[\s\S]{0,300}?body\.password !== env\.TEAM_PASSWORD/.test(src),true);
+ck('  and stays sign-in-guarded',
+   /url\.pathname === '\/api\/slack\/recent'[\s\S]{0,300}?!\(await authed\(\)\)/.test(src),true);
 
 // ── 4c. Request encoding and the summariser ───────────────
 // Slack documents form encoding for these read methods. A JSON body is accepted
@@ -1130,7 +1130,7 @@ ck('  and is never written as a truncated escape',/\\u1FAB5/i.test(dash),false);
 // without the call, every Resources page keeps the previous page's bar.
 ck('switching to a Resources page clears the stale Jump To bar',
    /buildSectionNav\('resources'\);/.test(dash),true);
-ck('the page asks the password-guarded endpoint',
+ck('the page asks the sign-in-guarded endpoint',
    /fetch\('\/api\/changelog'[\s\S]{0,160}?password:PW/.test(dash),true);
 ck('an empty log explains how to add to it rather than looking broken',
    /Nothing logged yet\. React with/.test(dash),true);

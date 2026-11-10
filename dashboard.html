@@ -621,9 +621,10 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 <div id="gate">
   <div class="gbox">
     <div style="text-align:center;margin-bottom:28px"><img src="https://raw.githubusercontent.com/frontrowmd/frontrowmd-reporting-dashboard/main/FrontrowMD_White_Logo.png" alt="frontrowMD" style="height:36px"></div>
-    <div class="field"><input type="password" id="pw" placeholder="Team password" autocomplete="off"><div class="lock">🔒</div></div>
-    <button id="loginBtn" onclick="doLogin()">Log In →</button>
-    <div class="gerr" id="gerr">Incorrect password.</div>
+    <!-- Sign-in is Google via Cloudflare Access, before this page loads; the gate
+         is only the loading screen, and the button reloads after a failure. -->
+    <button id="loginBtn" onclick="location.reload()">Reload →</button>
+    <div class="gerr" id="gerr"></div>
   </div>
 </div>
 
@@ -1167,14 +1168,20 @@ function dtxt(cur,prior,inv){if(prior==null||prior===0)return'';const d2=cur-pri
 function roasCard(label,val,tile){const v=val!=null?val.toFixed(2)+'x':'—';let c2='';if(tile?.sameTimePrior){const p=tile.sameTimePrior,dir=p.nominalDelta>0?'up':p.nominalDelta<0?'dn':'n',sg=p.nominalDelta>0?'+':'';c2+=`<div class="tc"><span class="lbl">Prior: </span><span class="val">${p.value!=null?p.value.toFixed(2)+'x':'—'}</span> <span class="d ${dir}">${sg}${p.nominalDelta!=null?p.nominalDelta.toFixed(2):''}x</span></div>`;}if(tile?.lastMonth){const lm2=tile.lastMonth;let ld2='';if(lm2.nominalDelta!=null){const dir2=lm2.nominalDelta>0?'up':lm2.nominalDelta<0?'dn':'n',sg2=lm2.nominalDelta>0?'+':'';ld2=` <span class="d ${dir2}">${sg2}${lm2.nominalDelta.toFixed(2)}x</span>`;}c2+=`<div class="tc"><span class="lbl">${_lmLabel}: </span><span class="val">${lm2.value!=null?lm2.value.toFixed(2)+'x':'—'}</span>${ld2}</div>`;}return`<div class="tile accent"><div class="tlbl">${label}</div><div class="tval" id="dashRoasV">${v}</div><div class="tdef">Churn-Adjusted ARR ÷ Total Ad Spend</div><div class="tcomps" id="dashRoasC">${c2}</div></div>`;}
 
 // Auth
+// There is no password any more: Google sign-in through Cloudflare Access
+// happens before the page loads, and the worker checks that sign-in on every
+// request. doLogin runs on load. PW is set to a placeholder once the first
+// load succeeds — it is still sent in request bodies (the worker ignores it)
+// and the "if(!PW)" checks elsewhere still mean "not loaded yet".
 async function doLogin(){
-  const pw=document.getElementById('pw').value;if(!pw)return;PW=pw;
+  const pw='sso';
   const btn=document.getElementById('loginBtn');
-  btn.disabled=true;btn.innerHTML='<span class="sp" style="width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:8px"></span>Signing in...';
+  btn.disabled=true;btn.innerHTML='<span class="sp" style="width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:8px"></span>Loading...';
   document.getElementById('gerr').style.display='none';
   try{
     const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw,window:S[AP]?.win||'7d'})});
-    if(r.status===401){document.getElementById('gerr').style.display='block';btn.disabled=false;btn.textContent='Log In →';return;}
+    if(r.status===401){document.getElementById('gerr').textContent='This Google account doesn\u2019t have access. Sign in with your @thefrontrowhealth.com account.';document.getElementById('gerr').style.display='block';btn.disabled=false;btn.textContent='Reload →';return;}
+    PW=pw;
     // Warm the Clinician payload NOW — the password is known good, and both the
     // parse below and the first render are slow enough that starting after them
     // added their cost to the wait. It is a different endpoint doing its own
@@ -1199,11 +1206,13 @@ async function doLogin(){
     pqLoadFromKV().then(function(){ try{ if(typeof renderDemoQuality==='function')renderDemoQuality(); }catch(e){} });
     bldF();renderPage();
   }catch(e){
-    document.getElementById('gerr').textContent='Connection error. Try again.';document.getElementById('gerr').style.display='block';
-    btn.disabled=false;btn.textContent='Log In →';
+    document.getElementById('gerr').textContent='Couldn\u2019t load the dashboard. Your sign-in may have expired \u2014 reload the page.';document.getElementById('gerr').style.display='block';
+    btn.disabled=false;btn.textContent='Reload →';
   }
 }
-document.getElementById('pw').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+// Runs once the whole script has loaded: what doLogin calls after its first
+// fetch is defined further down the file.
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){doLogin();});else setTimeout(doLogin,0);
 
 // Filters
 function bldF(){const s=S[AP];var aiBtn=AI_PANEL_PAGES.indexOf(AP)>=0?'<button id="ai-panel-btn" onclick="toggleAIPanel()" class="fb" style="border:1.5px solid #B8860B;background:'+(_aiPanelOpen?'#B8860B':'#FFF8E1')+';color:'+(_aiPanelOpen?'#fff':'#8B6914')+';font-weight:700" onmouseover="this.style.background=\'#B8860B\';this.style.color=\'#fff\'" onmouseout="if(!_aiPanelOpen){this.style.background=\'#FFF8E1\';this.style.color=\'#8B6914\';}">✦ AI Analysis</button>':'';if(AP==='signup'){document.getElementById('filters').innerHTML='<span style="font-size:13px;color:var(--grey)">Fixed cohorts — independent of time filters</span>'+aiBtn+'<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>';return;}if(AP==='pilot'){const _f=document.getElementById('filters');_f.style.display='';_f.innerHTML='<span style="font-size:13px;color:var(--grey)">Every pilot waitlist deal — no date filter</span><button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>';return;}if(AP==='strategy'||AP==='csession'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='content'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='outbound'){document.getElementById('filters').innerHTML=aiBtn;document.getElementById('filters').style.display=aiBtn?'':'none';return;}else{document.getElementById('filters').style.display='';}let h='';const _wPill=w=>{const _aw=(w.k==='custom')?(s.win==='custom'&&!s.quarterKey):(s.win===w.k);return `<button class="fb${_aw?' active':''}" data-w="${w.k}" onclick="selW('${w.k}')">${w.l}</button>`;};/* Fixed presets, then the completed quarters, then Custom. The quarters are presets too, so Custom sitting before them split the presets in two and put the escape hatch in the middle of the row. */for(const w of W){if(w.k!=='custom')h+=_wPill(w);}for(const q of _completedQuarters())h+=`<button class="fb${(s.win==='custom'&&s.quarterKey===q.from+'_'+q.to)?' active':''}" data-q="${q.from}_${q.to}" onclick="selQ('${q.from}','${q.to}')">${q.l}</button>`;{const _cw=W.filter(w=>w.k==='custom')[0];if(_cw)h+=_wPill(_cw);}h+=`<div class="cr${(s.win==='custom'&&!s.quarterKey)?' vis':''}" id="cr"><input type="date" id="cf"><span style="color:var(--grey)">→</span><input type="date" id="ct"><label class="cr-cmp-lbl"><input type="checkbox" id="cc" onchange="document.getElementById('crVs').classList.toggle('vis',this.checked)">Compare</label><span class="cr-vs" id="crVs"><span class="cr-vs-prefix">vs</span><input type="date" id="cvf"><span style="color:var(--grey)">→</span><input type="date" id="cvt"></span><button onclick="goC()">Go</button></div>`;h+=aiBtn;h+=`<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>`;document.getElementById('filters').innerHTML=h;}

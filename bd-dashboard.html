@@ -234,9 +234,9 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
   <div class="gbox">
     <div style="text-align:center;margin-bottom:12px"><img src="https://raw.githubusercontent.com/frontrowmd/frontrowmd-reporting-dashboard/main/FrontrowMD_White_Logo.png" alt="frontrowMD" style="height:36px"></div>
     <div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--teal);letter-spacing:.12em;text-transform:uppercase;margin-bottom:28px">BD Tracker</div>
-    <input type="password" id="pw" placeholder="Team password">
-    <button id="loginBtn" onclick="doLogin()">Log In →</button>
-    <div id="gerr">Invalid password</div>
+    <!-- Sign-in is Google via Cloudflare Access; this is only the loading screen. -->
+    <button id="loginBtn" onclick="location.reload()">Reload →</button>
+    <div id="gerr"></div>
   </div>
 </div>
 <div id="app">
@@ -596,15 +596,19 @@ function _bdStopSkeleton(){
 function doLogin(){
   var btn=document.getElementById('loginBtn');
   btn.innerHTML='<span class="sp" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle"></span> Logging in...';btn.disabled=true;btn.style.opacity='.7';
-  var pw=document.getElementById('pw').value;
-  fetch('/api/bd',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})}).then(function(r){return r.json();}).then(function(d){
-    if(d.error){document.getElementById('gerr').style.display='block';btn.innerHTML='Log In \u2192';btn.disabled=false;btn.style.opacity='1';return;}
+  // No password: Google sign-in via Cloudflare Access, checked by the worker.
+  var pw='sso';
+  fetch('/api/bd',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})}).then(function(r){
+    if(r.status===401){var e=new Error('denied');e.denied=true;throw e;}
+    return r.json();
+  }).then(function(d){
+    if(d.error){_bdStopSkeleton();document.getElementById('gerr').textContent='Couldn\u2019t load the dashboard. Your sign-in may have expired \u2014 reload the page.';document.getElementById('gerr').style.display='block';btn.innerHTML='Reload \u2192';btn.disabled=false;btn.style.opacity='1';return;}
     BD.pw=pw;BD.data=d;document.getElementById('gate').style.display='none';document.getElementById('app').style.display='block';
     // Show the skeleton briefly so the user sees the page structure before
     // the real render swaps in \u2014 feels less janky than an instant flicker.
     _bdStartSkeleton();_bdUpdateSkeletonProgress(96,'Rendering deals\u2026');
     setTimeout(function(){_bdStopSkeleton();renderBD();bdLookupMissingCompanies();},120);
-  }).catch(function(){document.getElementById('gerr').style.display='block';btn.innerHTML='Log In \u2192';btn.disabled=false;btn.style.opacity='1';});
+  }).catch(function(e){_bdStopSkeleton();document.getElementById('gerr').textContent=(e&&e.denied)?'This Google account doesn\u2019t have access. Sign in with your @thefrontrowhealth.com account.':'Couldn\u2019t load the dashboard. Your sign-in may have expired \u2014 reload the page.';document.getElementById('gerr').style.display='block';btn.innerHTML='Reload \u2192';btn.disabled=false;btn.style.opacity='1';});
   // Render skeleton into the bd-content area immediately so it's visible
   // the moment the gate fades away (login UX continuity).
   _bdStartSkeleton();
@@ -776,7 +780,9 @@ function bdRefresh(){
     btn.innerHTML='\u21bb Refresh';btn.disabled=false;
   }).catch(function(){_bdStopSkeleton();btn.innerHTML='\u21bb Refresh';btn.disabled=false;});
 }
-document.getElementById('pw').addEventListener('keydown',function(e){if(e.key==='Enter')doLogin();});
+// Runs once the whole script has loaded: what doLogin calls after its first
+// fetch is defined further down the file.
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){doLogin();});else setTimeout(doLogin,0);
 function f$(v){if(v==null||isNaN(v))return'\u2014';return'$'+Math.round(v).toLocaleString();}
 // MM/DD/YYYY for chart hovers. Zero-padded so the dates column-align in a tooltip.
 function _bdMDY(dt){if(!dt)return '';return String(dt.getMonth()+1).padStart(2,'0')+'/'+String(dt.getDate()).padStart(2,'0')+'/'+dt.getFullYear();}

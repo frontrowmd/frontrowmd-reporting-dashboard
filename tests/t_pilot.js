@@ -112,7 +112,7 @@ ck('an empty list is all zeros, not a crash',(()=>{const e=W.buildPilotDashboard
   ck('stage labels carry pipeline order',await pl.fetchDealStageMeta('tok'),{a:{label:'A',order:1,pipeline:'default'},b:{label:'B',order:1000,pipeline:'p2'}});
 
   // ── 4. Route + nav wiring ──────────────────────────────────────────────────
-  ck('the route is password-guarded',/url\.pathname === '\/api\/pilot'\) \{[\s\S]{0,200}body\.password !== env\.TEAM_PASSWORD/.test(src),true);
+  ck('the route is sign-in-guarded',/url\.pathname === '\/api\/pilot'\) \{[\s\S]{0,200}!\(await authed\(\)\)/.test(src),true);
   const nav=cli.slice(cli.indexOf('<span>Brand Dashboard</span>'),cli.indexOf('<span>Clinician Dashboard</span>'));
   ck('the nav item sits right after Brand Dashboard',/switchDashSub\('pilot'\)[^\n]*<span>Pilot Dashboard<\/span>/.test(nav),true);
   // Hidden 2026-11-10 until Alex brings it back: the entry stays, display:none.

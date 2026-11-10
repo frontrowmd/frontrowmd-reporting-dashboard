@@ -93,9 +93,9 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
   <div class="gbox">
     <div style="text-align:center;margin-bottom:12px"><img src="https://raw.githubusercontent.com/frontrowmd/frontrowmd-reporting-dashboard/main/FrontrowMD_White_Logo.png" alt="frontrowMD" style="height:36px"></div>
     <div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--teal);letter-spacing:.12em;text-transform:uppercase;margin-bottom:28px">Sales Dashboard</div>
-    <input type="password" id="pw" placeholder="Team password">
-    <button id="loginBtn" onclick="doLogin()">Log In →</button>
-    <div id="gerr">Invalid password</div>
+    <!-- Sign-in is Google via Cloudflare Access; this is only the loading screen. -->
+    <button id="loginBtn" onclick="location.reload()">Reload →</button>
+    <div id="gerr"></div>
   </div>
 </div>
 <div id="app">
@@ -203,20 +203,24 @@ function pqBadge(v){return v==='Y'?'<span class="pill" style="background:#E8F5E9
 function fp(active,label,oc){return '<button class="fpill'+(active?' active':'')+'" onclick="'+oc+'">'+label+'</button>';}
 
 async function doLogin(){
-  var pw=document.getElementById('pw').value;if(!pw)return;PW=pw;
+  // No password: Google sign-in via Cloudflare Access, checked by the worker.
+  var pw='sso';
   var btn=document.getElementById('loginBtn');
   btn.disabled=true;btn.innerHTML='<span class="sp" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px"></span>Loading...';
   document.getElementById('gerr').style.display='none';
   try{
     var r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw,mode:'preDemoData'})});
-    if(r.status===401){document.getElementById('gerr').style.display='block';btn.disabled=false;btn.textContent='Log In →';return;}
+    if(r.status===401){document.getElementById('gerr').textContent='This Google account doesn\u2019t have access. Sign in with your @thefrontrowhealth.com account.';document.getElementById('gerr').style.display='block';btn.disabled=false;btn.textContent='Reload →';return;}
+    PW=pw;
     var d=await r.json();S.preDemo.data=d;
     document.getElementById('gate').style.display='none';document.getElementById('app').classList.add('active');
     pqLoadFromKV().then(function(){ try{ renderPage(); }catch(e){} });
     renderPage();
-  }catch(e){document.getElementById('gerr').textContent='Connection error';document.getElementById('gerr').style.display='block';btn.disabled=false;btn.textContent='Log In →';}
+  }catch(e){document.getElementById('gerr').textContent='Couldn\u2019t load the dashboard. Your sign-in may have expired \u2014 reload the page.';document.getElementById('gerr').style.display='block';btn.disabled=false;btn.textContent='Reload →';}
 }
-document.getElementById('pw').addEventListener('keydown',function(e){if(e.key==='Enter')doLogin();});
+// Runs once the whole script has loaded: what doLogin calls after its first
+// fetch is defined further down the file.
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){doLogin();});else setTimeout(doLogin,0);
 function switchPage(pg){AP=pg;if(pg==='preDemo')_repFilter='all';if(pg==='postDemo')_pdRepFilter='all';document.querySelectorAll('.snav .ni').forEach(function(n){n.classList.toggle('active',n.dataset.page===pg);});document.querySelectorAll('.pg').forEach(function(p){p.classList.remove('active');});document.getElementById('page-'+pg).classList.add('active');document.getElementById('ptitle').textContent=TITLES[pg]||pg;if(!S[pg].data){loadData(pg);}else{renderPage();}}
 async function loadData(pg){var mode=pg==='preDemo'?'preDemoData':'postDemoData';document.getElementById('loading').style.display='flex';try{var r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:PW,mode:mode})});var d=await r.json();S[pg].data=d;document.getElementById('loading').style.display='none';renderPage();}catch(e){document.getElementById('loading').style.display='none';}}
 function refreshData(){S[AP].data=null;loadData(AP);}
