@@ -123,26 +123,40 @@ ck('Signed counts Churned Onboarding too, like the Brand Dashboard',
 // ── 3c. Phase 2: app data via Metabase (2026-11-11) ─────────────────────────
 {
   const app=JSON.parse(JSON.stringify(W.buildSkincareApp({
-    derm:[{T:'MD',CLINICIANS:80,SAMPLES:11,REVIEWERS:4,REVIEWS:62,SAMPLE_REVIEWERS:3,REVIEWS90:21,ACTIVE90:4},
-          {T:'DO',CLINICIANS:16,SAMPLES:1,REVIEWERS:1,REVIEWS:2,SAMPLE_REVIEWERS:1,REVIEWS90:2,ACTIVE90:1},
+    derm:[{T:'MD',CLINICIANS:80,SAMPLES:11,REVIEWERS:4,REVIEWS:62,SAMPLE_REVIEWERS:3,REVIEWS90:21,ACTIVE90:4,SK_REVIEWS:50,SK_REVIEWS90:20,B1:1,B2_5:1,B6_20:1,B21:1},
+          {T:'DO',CLINICIANS:16,SAMPLES:1,REVIEWERS:1,REVIEWS:2,SAMPLE_REVIEWERS:1,REVIEWS90:2,ACTIVE90:1,SK_REVIEWS:2,SK_REVIEWS90:1,B1:0,B2_5:1,B6_20:0,B21:0},
           {T:'NP',CLINICIANS:54,SAMPLES:5,REVIEWERS:3,REVIEWS:9,SAMPLE_REVIEWERS:3,REVIEWS90:9,ACTIVE90:3},
           {T:'Not set',CLINICIANS:53,SAMPLES:28,REVIEWERS:30,REVIEWS:418,SAMPLE_REVIEWERS:19,REVIEWS90:55,ACTIVE90:10}],
     demand:[{K:'total',BRANDS:200,ORDERS:217,ORDERED:1216,DELIVERED:544,OUTSTANDING:641},
             {K:'month',M:'2026-04',ORDERED:600,ORDERS:9,BRANDS:9},   // 7 months back: outside the average
             {K:'month',M:'2026-05',ORDERED:60,ORDERS:6,BRANDS:5},{K:'month',M:'2026-09',ORDERED:120,ORDERS:12,BRANDS:10},
             {K:'month',M:'2026-11',ORDERED:999,ORDERS:20,BRANDS:18},  // the current month: partial, outside it
-            {K:'reviewed',M:'2026-06',REVIEWS:40},{K:'reviewed',M:'2026-12',REVIEWS:5}],  // a future month is dropped
-    backlog:[{NAME:'Brand A',ORDERED:30,DELIVERED:0,OUTSTANDING:30}],
-    brands:[{N:359}]},'2026-11-11')));
+            {K:'reviewed',M:'2026-06',REVIEWS:40},{K:'reviewed',M:'2026-12',REVIEWS:5},  // a future month is dropped
+            {K:'reviewed',M:'2026-01',REVIEWS:7},  // reviews before the first skincare ORDER do not start the series
+            {K:'allmonth',M:'2026-05',ORDERED:300},{K:'allmonth',M:'2026-09',ORDERED:600},{K:'allmonth',M:'2026-11',ORDERED:5000},
+            {K:'allmonth',M:'2025-01',ORDERED:10}],
+    backlog:[{NAME:'Brand A',ORDERED:30,DELIVERED:0,OUTSTANDING:30,OLDEST:412}],
+    ages:[{K:'open',N:136,DAYS:127,OWED90:349},{K:'fulfil',N:64,DAYS:82.5,OWED90:null}],
+    writers:[{DERM:1,T:'MD',WRITERS:12,REVIEWS:153,REVIEWS90:26,WRITERS90:6},{DERM:1,T:'DO',WRITERS:1,REVIEWS:2,REVIEWS90:2,WRITERS90:1},
+             {DERM:1,T:'RN',WRITERS:1,REVIEWS:1,REVIEWS90:0,WRITERS90:0},{DERM:0,T:'NP',WRITERS:66,REVIEWS:186,REVIEWS90:135,WRITERS90:53},
+             {DERM:0,T:'RDN',WRITERS:2,REVIEWS:3,REVIEWS90:1,WRITERS90:1}],
+    brands:[{S:'active',N:192,CUR:62},{S:'pilot',N:28,CUR:0},{S:'none',N:93,CUR:0},{S:'paused',N:14,CUR:1}]},'2026-11-11')));
   ck('app: MD and DO group to MD/DO, as on the Clinician pages',Object.keys(app.derm.byType).sort(),['MD/DO','Not set','Nurse Practitioner']);
-  ck('  MD/DO = MD + DO',app.derm.byType['MD/DO'],{clinicians:96,samples:12,reviewers:5,reviews:64,sampleReviewers:4,reviews90:23,active90:5});
+  ck('  MD/DO = MD + DO',app.derm.byType['MD/DO'],{clinicians:96,samples:12,reviewers:5,reviews:64,sampleReviewers:4,reviews90:23,active90:5,
+     skReviews:52,skReviews90:21,b1:1,b2_5:2,b6_20:1,b21:1});
   ck('  totals add every type',[app.derm.total.clinicians,app.derm.total.samples,app.derm.total.reviewers,app.derm.total.reviews],[203,45,38,491]);
   ck('demand totals pass through',[app.demand.ordered,app.demand.delivered,app.demand.outstanding,app.demand.brands,app.demand.orders],[1216,544,641,200,217]);
-  ck('months run unbroken from the first to the current, gaps as zero',app.demand.months.map(x=>x.m+':'+x.ordered+'/'+x.reviews),
+  ck('months run unbroken from the first ORDER to the current, gaps as zero',app.demand.months.map(x=>x.m+':'+x.ordered+'/'+x.reviews),
      ['2026-04:600/0','2026-05:60/0','2026-06:0/40','2026-07:0/0','2026-08:0/0','2026-09:120/0','2026-10:0/0','2026-11:999/0']);
   ck('new demand = the last 6 COMPLETE months (May-Oct), zeros included',[app.demand.avgNewPerMonth,app.demand.avgWindow],[30,['2026-05','2026-10']]);
   ck('  a year boundary steps right',W.buildSkincareApp({demand:[{K:'month',M:'2025-12',ORDERED:6}]},'2026-02-03').demand.avgWindow.join(','),'2025-08,2026-01');
-  ck('backlog brands and app brand count',[app.demand.topBrands[0].name,app.skincareBrandsInApp],['Brand A',359]);
+  ck('backlog brands, their oldest open order, and the app brand count (every subscription state)',[app.demand.topBrands[0].name,app.demand.topBrands[0].oldestDays,app.skincareBrandsInApp],['Brand A',412,327]);
+  ck('skincare brands by latest subscription, with the current-billing-period count',app.subs,{active:{n:192,current:62},pilot:{n:28,current:0},none:{n:93,current:0},paused:{n:14,current:1}});
+  ck('skincare share of ALL reviews ordered, same 6 complete months',[app.demand.share6,app.demand.allOrdered6],[20,900]);
+  ck('backlog age and time to fulfil pass through',app.demand.ages,{openOrders:136,openMedianDays:127,owedOver90:349,fulfilledOrders:64,fulfilMedianDays:82.5});
+  ck('who writes: dermatologist or not x MD/DO / NP / PA / other title, dermatologists first',
+     app.writers.map(w=>w.group+':'+w.reviews90+'/'+w.writers),
+     ['Dermatologist \u00b7 MD/DO:28/13','Dermatologist \u00b7 other title:0/1','Other specialty \u00b7 Nurse Practitioner:135/66','Other specialty \u00b7 other title:1/2']);
   ck('empty Metabase results are zeros, not a crash',(a=>[a.demand.ordered,a.demand.months.length,a.derm.total.clinicians])(W.buildSkincareApp({},'2026-11-11')),[0,0,0]);
   // The SQL carries the agreed definitions.
   const Q=W.SKN_MB_SQL;
@@ -159,15 +173,42 @@ ck('Signed counts Churned Onboarding too, like the Brand Dashboard',
   ck('SQL: discarded and demo brands are out of demand, backlog and outstanding',
      /ob\.DISCARDED_AT IS NULL AND COALESCE\(ob\.DEMO, FALSE\) = FALSE/.test(Q.demand)&&/ob\.DISCARDED_AT IS NULL/.test(Q.backlog),true);
   ck('SQL: the app brand count needs a live (not discarded) skincare product',/AND p\.DISCARDED_AT IS NULL/.test(Q.brands),true);
+  // Page rework (2026-11-11).
+  ck('SQL: brands by their LATEST subscription; current = period ending within 35 days or later',
+     [/INT_BRAND_LATEST_SUBSCRIPTION/.test(Q.brands),/CURRENT_PERIOD_ENDS_AT >= DATEADD\(day, -35, SYSDATE\(\)\)/.test(Q.brands)],[true,true]);
+  ck('SQL: the all-product share uses the same order rule, without the skincare join',
+     (m=>!!m&&!/JOIN sk ON/.test(m[0])&&/o\.STATUS IN \('confirmed', 'completed'\)/.test(m[0])&&/ob\.DISCARDED_AT IS NULL/.test(m[0]))(Q.demand.match(/ia AS \([\s\S]*?\)\nSELECT/)),true);
+  ck('SQL: who writes = skincare notes, shared or approved, by specialty and the clinician\'s own title first',
+     [/JOIN sk ON sk\.pid = n\.HEALTH_BRAND_PRODUCT_ID/.test(Q.writers),/STATUS IN \('shared', 'approved'\)/.test(Q.writers),/COALESCE\(NULLIF\(TRIM\(c\.TITLE\)/.test(Q.writers)],[true,true,true]);
+  ck('SQL: derm skincare-only counts ride the any-product ones (LEFT JOIN, so no review is dropped)',/LEFT JOIN sk ON sk\.pid = nt\.HEALTH_BRAND_PRODUCT_ID/.test(Q.derm),true);
+  ck('SQL: open-order age counts only confirmed orders still owed',/WHERE st = 'confirmed' GROUP BY oid HAVING SUM\(owed\) > 0/.test(Q.ages),true);
   ck('a Metabase failure blanks only the app sections',/fetchSkincareApp\(env\)\.catch\(e => \{[^}]*return \{ error: e\.message \}/.test(src),true);
 }
 const rs=fn(cli,'renderSkincare');
 ck('client: no "Waiting on app data" placeholders remain',/Waiting on app data/.test(rs),false);
 ck('client: an app error shows in each app section',/appFail\('review demand'\)/.test(rs)&&/appFail\('engagement'\)/.test(rs)&&/appFail\('capacity'\)/.test(rs),true);
-ck('client: capacity = every MD/DO dermatologist x 2',/md=\(\(adBy\[SKN_TYPE_FIRST\]\)\|\|\{\}\)\.clinicians\|\|0, cap=md\*2/.test(rs),true);
-ck('client: Reviews Submitted shows reviews, with the reviewer count beneath',/_kmTile\('Reviews Submitted',appV\('reviews'\),appErr\?'app data unavailable':'shared or approved, by '\+fN\(ap\.reviewers/.test(rs),true);
-ck('client: the surplus is rounded once, so its sign and months-to-clear agree',/net=Math\.round\(cap-nw\)/.test(rs),true);
+ck('client: capacity = every MD/DO dermatologist x 2',/md=mdA\.clinicians\|\|0, cap=md\*2/.test(rs),true);
+ck('client: the headline pace is MD/DO dermatologists\' SKINCARE reviews over 90 days, a month',/pace=Math\.round\(\(mdA\.skReviews90\|\|0\)\/3\)/.test(rs),true);
+ck('client: gap and surplus are rounded once, so sign and months-to-clear agree',[/gap=Math\.round\(pace-nw\)/.test(rs),/capNet=Math\.round\(cap-nw\)/.test(rs)],[true,true]);
+ck('client: Capacity leads the page',rs.indexOf("card('capacity'")>=0&&rs.indexOf("card('capacity'")<rs.indexOf("card('demand'")&&rs.indexOf("card('demand'")<rs.indexOf("card('writers'")&&rs.indexOf("card('engage'")<rs.indexOf("card('brands'"),true);
+ck('client: Reviews Submitted shows reviews, with the skincare count beneath',/_kmTile\('Reviews Submitted',appV\('reviews'\),appErr\?'app data unavailable':'shared or approved, any product \\u00b7 '\+fN\(ap\.skReviews/.test(rs),true);
+ck('client: Capacity does not follow the type filter',/const mdA=adBy\[SKN_TYPE_FIRST\]/.test(rs)&&!/const mdA=[^;]*\bap\b/.test(rs),true);
 ck('client: brand names are escaped',/td\(_sknEsc\(x\.name\),1\)/.test(rs),true);
+// Type folding: MD/DO, NP and PA keep their own rows; every other title is Other.
+{
+  const C2={};vm.createContext(C2);vm.runInContext(fn(cli,'_sknFold').replace(/^/,"const SKN_MAIN_TYPES=['MD/DO','Nurse Practitioner','Physician Assistant'];\n")+'\n'+fn(cli,'_sknFoldBy')+'\nglobalThis.f=_sknFoldBy;',C2);
+  // Month chart: whole, distinct axis labels; a tiny bar is drawn at its true height.
+  const C3={fN:v=>Math.round(v).toLocaleString(),_sknEsc:v=>String(v)};vm.createContext(C3);
+  vm.runInContext(fn(cli,'_sknMonthChart')+'\nglobalThis.f=_sknMonthChart;',C3);
+  const ax=o=>[...o.matchAll(/text-anchor="end" font-size="10" fill="var\(--grey\)">([^<]*)</g)].map(m=>m[1]);
+  ck('client: month chart axis labels are whole and distinct (busiest month = 3)',ax(C3.f([{m:'2026-10',ordered:3,reviews:1,brands:1},{m:'2026-11',ordered:2,reviews:0,brands:1}])),['0','1','2','3','4']);
+  const big=C3.f([{m:'2026-10',ordered:150,reviews:0,brands:1},{m:'2026-11',ordered:1,reviews:0,brands:1}]);
+  // Drawn height = baseline minus the highest point the path reaches; the
+  // corner's start (V) must not dip below the baseline.
+  const bars=[...big.matchAll(/<path d="M[\d.]+,([\d.]+) V([\d.]+) q0,-([\d.]+)/g)].map(m=>({h:+m[1]-Math.min(+m[2],+m[2]-+m[3]),v:+m[2],base:+m[1]}));
+  ck('client: a 1-review bar on a 200 scale is under 1px tall, not a 4px minimum',bars[1].h>0&&bars[1].h<1&&bars[1].v<=bars[1].base,true);
+  ck('client: minor titles fold into Other, numbers summed',JSON.parse(JSON.stringify(C2.f({'MD/DO':{reviews:5},RDN:{reviews:1,clinicians:2},'Not set':{reviews:2,clinicians:8}}))),{'MD/DO':{reviews:5},Other:{reviews:3,clinicians:10}});
+}
 
 // ── 4. Route + wiring ───────────────────────────────────────────────────────
 ck('the route is sign-in-guarded',/url\.pathname === '\/api\/skincare'\) \{[\s\S]{0,200}!\(await authed\(\)\)/.test(src),true);

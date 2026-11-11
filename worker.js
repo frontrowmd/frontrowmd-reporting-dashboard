@@ -3710,54 +3710,105 @@ const SKN_MB_ET_MONTH = (col) => `TO_CHAR(CONVERT_TIMEZONE('UTC', 'America/New_Y
 // a completed order's shortfall was closed out, not owed. Discarded and demo
 // brands are out, the same rule as the brand count (a deleted brand's open
 // order is not a backlog anyone will work).
-const SKN_MB_ITEMS = `it AS (SELECT o.ID oid, o.STATUS st, o.HEALTH_BRAND_ID bid,
+// skOnly=false is the same rule over EVERY product (the skincare share).
+const SKN_MB_ITEMS_OF = (name, skOnly) => `${name} AS (SELECT o.ID oid, o.STATUS st, o.HEALTH_BRAND_ID bid,
+    COALESCE(o.CONFIRMED_AT, o.CREATED_AT) t,
     ${SKN_MB_ET_MONTH('COALESCE(o.CONFIRMED_AT, o.CREATED_AT)')} m,
     COALESCE(i.QUANTITY, 0) q, COALESCE(i.DELIVERED_COUNT, 0) d,
     IFF(o.STATUS = 'confirmed', GREATEST(COALESCE(i.QUANTITY, 0) - COALESCE(i.DELIVERED_COUNT, 0), 0), 0) owed
   FROM STAGING.STG_REVIEW_ORDER_ITEMS i
   JOIN STAGING.STG_REVIEW_ORDERS o ON o.ID = i.REVIEW_ORDER_ID
-  JOIN sk ON sk.pid = i.HEALTH_BRAND_PRODUCT_ID
+  ${skOnly ? 'JOIN sk ON sk.pid = i.HEALTH_BRAND_PRODUCT_ID' : ''}
   JOIN STAGING.STG_BRANDS ob ON ob.ID = o.HEALTH_BRAND_ID
   WHERE o.STATUS IN ('confirmed', 'completed')
     AND ob.DISCARDED_AT IS NULL AND COALESCE(ob.DEMO, FALSE) = FALSE)`;
+const SKN_MB_ITEMS = SKN_MB_ITEMS_OF('it', true);
+// The clinician's own title first, the provider profile's as fallback (a
+// profile is often a shared practice account).
+const SKN_MB_TITLE = `COALESCE(NULLIF(TRIM(c.TITLE), ''), NULLIF(TRIM(pp.TITLE), ''), 'Not set')`;
+// Live skincare brands: brand and product not discarded, brand not demo.
+const SKN_MB_BRANDS = `skb AS (SELECT DISTINCT p.HEALTH_BRAND_ID bid FROM sk
+  JOIN STAGING.STG_PRODUCTS p ON p.ID = sk.pid
+  JOIN STAGING.STG_BRANDS b ON b.ID = p.HEALTH_BRAND_ID
+  WHERE b.DISCARDED_AT IS NULL AND COALESCE(b.DEMO, FALSE) = FALSE AND p.DISCARDED_AT IS NULL)`;
 const SKN_MB_SQL = {
   // Totals, orders by month, and reviews written on skincare products by month.
-  demand: `WITH ${SKN_MB_SK}, ${SKN_MB_ITEMS}
+  // 'allmonth' = reviews ordered on EVERY product, for the skincare share.
+  demand: `WITH ${SKN_MB_SK}, ${SKN_MB_ITEMS}, ${SKN_MB_ITEMS_OF('ia', false)}
 SELECT 'total' K, NULL M, COUNT(DISTINCT bid) BRANDS, COUNT(DISTINCT oid) ORDERS, SUM(q) ORDERED, SUM(d) DELIVERED, SUM(owed) OUTSTANDING, NULL REVIEWS FROM it
 UNION ALL SELECT 'month', m, COUNT(DISTINCT bid), COUNT(DISTINCT oid), SUM(q), NULL, NULL, NULL FROM it GROUP BY m
+UNION ALL SELECT 'allmonth', m, NULL, NULL, SUM(q), NULL, NULL, NULL FROM ia GROUP BY m
 UNION ALL SELECT 'reviewed', ${SKN_MB_ET_MONTH('n.CREATED_AT')}, NULL, NULL, NULL, NULL, NULL, COUNT(*)
   FROM STAGING.STG_NOTES n JOIN sk ON sk.pid = n.HEALTH_BRAND_PRODUCT_ID
   WHERE n.STATUS IN ('shared', 'approved') GROUP BY 2`,
   // The brands with the most reviews still owed.
   backlog: `WITH ${SKN_MB_SK}, ${SKN_MB_ITEMS}
-SELECT b.NAME NAME, SUM(it.q) ORDERED, SUM(it.d) DELIVERED, SUM(it.owed) OUTSTANDING
+SELECT b.NAME NAME, SUM(it.q) ORDERED, SUM(it.d) DELIVERED, SUM(it.owed) OUTSTANDING,
+  DATEDIFF(day, MIN(IFF(it.owed > 0, it.t, NULL)), SYSDATE()) OLDEST
 FROM it JOIN STAGING.STG_BRANDS b ON b.ID = it.bid
 GROUP BY b.ID, b.NAME HAVING SUM(it.owed) > 0 ORDER BY OUTSTANDING DESC, NAME LIMIT 10`,
-  // Brands in the app with at least one live skincare product (brand and product
-  // not discarded, brand not demo).
-  brands: `WITH ${SKN_MB_SK}
-SELECT COUNT(DISTINCT p.HEALTH_BRAND_ID) N FROM sk
-JOIN STAGING.STG_PRODUCTS p ON p.ID = sk.pid
-JOIN STAGING.STG_BRANDS b ON b.ID = p.HEALTH_BRAND_ID
-WHERE b.DISCARDED_AT IS NULL AND COALESCE(b.DEMO, FALSE) = FALSE AND p.DISCARDED_AT IS NULL`,
+  // How old the open backlog is, and how long a completed order took. Orders
+  // have no completion timestamp (COMPLETION_EMAIL_SENT_AT is never set), so
+  // "fulfilled" = the order's last shared/approved review.
+  ages: `WITH ${SKN_MB_SK}, ${SKN_MB_ITEMS},
+  op AS (SELECT oid, MIN(t) t, SUM(owed) ow FROM it WHERE st = 'confirmed' GROUP BY oid HAVING SUM(owed) > 0),
+  cp AS (SELECT oid, MIN(t) t FROM it WHERE st = 'completed' GROUP BY oid),
+  ln AS (SELECT i.REVIEW_ORDER_ID oid, MAX(n.CREATED_AT) ln FROM STAGING.STG_NOTES n
+    JOIN STAGING.STG_REVIEW_ORDER_ITEMS i ON i.ID = n.REVIEW_ORDER_ITEM_ID
+    WHERE n.STATUS IN ('shared', 'approved') GROUP BY 1)
+SELECT 'open' K, COUNT(*) N, MEDIAN(DATEDIFF(day, t, SYSDATE())) DAYS, SUM(IFF(DATEDIFF(day, t, SYSDATE()) > 90, ow, 0)) OWED90 FROM op
+UNION ALL SELECT 'fulfil', COUNT(*), MEDIAN(DATEDIFF(day, cp.t, ln.ln)), NULL FROM cp JOIN ln ON ln.oid = cp.oid`,
+  // Skincare brands in the app by their LATEST subscription's status. App
+  // 'active' is stale (no cancel sync: most active subs have lapsed periods),
+  // so CUR counts those with a billing period ending in the last 35 days or later.
+  brands: `WITH ${SKN_MB_SK}, ${SKN_MB_BRANDS}
+SELECT COALESCE(l.SUBSCRIPTION_STATUS, 'none') S, COUNT(*) N,
+  SUM(IFF(s.CURRENT_PERIOD_ENDS_AT >= DATEADD(day, -35, SYSDATE()), 1, 0)) CUR
+FROM skb LEFT JOIN INTERMEDIATE.INT_BRAND_LATEST_SUBSCRIPTION l ON l.BRAND_ID = skb.bid
+LEFT JOIN STAGING.STG_SUBSCRIPTIONS s ON s.ID = l.SUBSCRIPTION_ID GROUP BY 1`,
+  // Who writes skincare reviews: every clinician with a shared/approved review
+  // on a skincare product, by dermatologist or not and by title.
+  writers: `WITH ${SKN_MB_SK},
+  w AS (SELECT n.CLINICIAN_ID cid, COUNT(*) r, SUM(IFF(n.CREATED_AT >= DATEADD(day, -90, SYSDATE()), 1, 0)) r90
+    FROM STAGING.STG_NOTES n JOIN sk ON sk.pid = n.HEALTH_BRAND_PRODUCT_ID
+    WHERE n.STATUS IN ('shared', 'approved') GROUP BY 1)
+SELECT IFF(TRIM(pp.SPECIALTY) ILIKE 'dermatology', 1, 0) DERM, ${SKN_MB_TITLE} T,
+  COUNT(*) WRITERS, SUM(w.r) REVIEWS, SUM(w.r90) REVIEWS90, SUM(IFF(w.r90 > 0, 1, 0)) WRITERS90
+FROM w LEFT JOIN STAGING.STG_CLINICIANS c ON c.ID = w.cid
+LEFT JOIN STAGING.STG_PROVIDER_PROFILES pp ON pp.ID = c.PROVIDER_PROFILE_ID GROUP BY 1, 2`,
   // Dermatologists in the app, by raw title (grouped in JS like the Clinician
   // pages). The title is the CLINICIAN's own, falling back to the provider
   // profile's: a profile is often a shared practice account (an MD under an NP
   // or blank-titled profile), and the profile title dropped 21 MD/DOs from
   // capacity. Samples shipped = a review-group commitment with Accepted Samples =
   // yes (Alex, 2026-11-11). Reviews = notes shared or approved, any product.
-  derm: `WITH d AS (SELECT c.ID cid, COALESCE(NULLIF(TRIM(c.TITLE), ''), NULLIF(TRIM(pp.TITLE), ''), 'Not set') t
+  // SK_* = the same counts on skincare products only; B* = reviewers by how
+  // many reviews each has written (concentration).
+  derm: `WITH ${SKN_MB_SK}, d AS (SELECT c.ID cid, ${SKN_MB_TITLE} t
     FROM STAGING.STG_CLINICIANS c JOIN STAGING.STG_PROVIDER_PROFILES pp ON pp.ID = c.PROVIDER_PROFILE_ID
     WHERE TRIM(pp.SPECIALTY) ILIKE 'dermatology'),
   s AS (SELECT DISTINCT CLINICIAN_ID cid FROM STAGING.STG_REVIEW_GROUP_COMMITMENTS WHERE ACCEPTED_SAMPLES = TRUE),
-  n AS (SELECT CLINICIAN_ID cid, COUNT(*) r, SUM(IFF(CREATED_AT >= DATEADD(day, -90, SYSDATE()), 1, 0)) r90
-    FROM STAGING.STG_NOTES WHERE STATUS IN ('shared', 'approved') GROUP BY 1)
+  n AS (SELECT nt.CLINICIAN_ID cid, COUNT(*) r, SUM(IFF(nt.CREATED_AT >= DATEADD(day, -90, SYSDATE()), 1, 0)) r90,
+      SUM(IFF(sk.pid IS NOT NULL, 1, 0)) skr,
+      SUM(IFF(sk.pid IS NOT NULL AND nt.CREATED_AT >= DATEADD(day, -90, SYSDATE()), 1, 0)) skr90
+    FROM STAGING.STG_NOTES nt LEFT JOIN sk ON sk.pid = nt.HEALTH_BRAND_PRODUCT_ID
+    WHERE nt.STATUS IN ('shared', 'approved') GROUP BY 1)
 SELECT d.t T, COUNT(*) CLINICIANS, COUNT(s.cid) SAMPLES, COUNT(n.cid) REVIEWERS, COALESCE(SUM(n.r), 0) REVIEWS,
   SUM(IFF(s.cid IS NOT NULL AND n.cid IS NOT NULL, 1, 0)) SAMPLE_REVIEWERS,
-  COALESCE(SUM(n.r90), 0) REVIEWS90, SUM(IFF(n.r90 > 0, 1, 0)) ACTIVE90
+  COALESCE(SUM(n.r90), 0) REVIEWS90, SUM(IFF(n.r90 > 0, 1, 0)) ACTIVE90,
+  COALESCE(SUM(n.skr), 0) SK_REVIEWS, COALESCE(SUM(n.skr90), 0) SK_REVIEWS90,
+  SUM(IFF(n.r = 1, 1, 0)) B1, SUM(IFF(n.r BETWEEN 2 AND 5, 1, 0)) B2_5,
+  SUM(IFF(n.r BETWEEN 6 AND 20, 1, 0)) B6_20, SUM(IFF(n.r > 20, 1, 0)) B21
 FROM d LEFT JOIN s ON s.cid = d.cid LEFT JOIN n ON n.cid = d.cid GROUP BY d.t`,
 };
-const SKN_DERM_KEYS = ['clinicians', 'samples', 'reviewers', 'reviews', 'sampleReviewers', 'reviews90', 'active90'];
+const SKN_DERM_KEYS = ['clinicians', 'samples', 'reviewers', 'reviews', 'sampleReviewers', 'reviews90', 'active90',
+  'skReviews', 'skReviews90', 'b1', 'b2_5', 'b6_20', 'b21'];
+const SKN_DERM_COLS = { clinicians: 'CLINICIANS', samples: 'SAMPLES', reviewers: 'REVIEWERS', reviews: 'REVIEWS',
+  sampleReviewers: 'SAMPLE_REVIEWERS', reviews90: 'REVIEWS90', active90: 'ACTIVE90', skReviews: 'SK_REVIEWS',
+  skReviews90: 'SK_REVIEWS90', b1: 'B1', b2_5: 'B2_5', b6_20: 'B6_20', b21: 'B21' };
+// Writer groups for "who writes skincare reviews": dermatologist or not x the
+// three main titles; every other title folds into "other".
+const SKN_MAIN_TYPES = ['MD/DO', 'Nurse Practitioner', 'Physician Assistant'];
 // Pure shaping, so it is testable without Metabase. todayKey = ET 'YYYY-MM-DD'.
 function buildSkincareApp(r, todayKey) {
   const num = (v) => { const n = Number(v); return isFinite(n) ? n : 0; };
@@ -3767,36 +3818,60 @@ function buildSkincareApp(r, todayKey) {
   for (const x of r.derm || []) {
     const g = clinicianTypeGroup(String(x.T || 'Not set'));
     const o = byType[g] || (byType[g] = zero());
-    const v = { clinicians: x.CLINICIANS, samples: x.SAMPLES, reviewers: x.REVIEWERS, reviews: x.REVIEWS,
-                sampleReviewers: x.SAMPLE_REVIEWERS, reviews90: x.REVIEWS90, active90: x.ACTIVE90 };
-    for (const k of SKN_DERM_KEYS) { o[k] += num(v[k]); total[k] += num(v[k]); }
+    for (const k of SKN_DERM_KEYS) { const v = num(x[SKN_DERM_COLS[k]]); o[k] += v; total[k] += v; }
   }
+  // Who writes skincare reviews.
+  const wr = {};
+  for (const x of r.writers || []) {
+    const g = clinicianTypeGroup(String(x.T || 'Not set'));
+    const key = (num(x.DERM) ? 'Dermatologist' : 'Other specialty') + ' \u00b7 ' + (SKN_MAIN_TYPES.includes(g) ? g : 'other title');
+    const o = wr[key] || (wr[key] = { group: key, derm: !!num(x.DERM), type: SKN_MAIN_TYPES.includes(g) ? g : 'Other', writers: 0, reviews: 0, reviews90: 0, writers90: 0 });
+    o.writers += num(x.WRITERS); o.reviews += num(x.REVIEWS); o.reviews90 += num(x.REVIEWS90); o.writers90 += num(x.WRITERS90);
+  }
+  const writers = Object.values(wr).sort((a, b) => (b.derm - a.derm) || (SKN_MAIN_TYPES.concat('Other').indexOf(a.type) - SKN_MAIN_TYPES.concat('Other').indexOf(b.type)));
+  // Subscriptions of skincare brands (latest subscription per brand).
+  const subs = {}; let subsTotal = 0;
+  for (const x of r.brands || []) { subs[String(x.S || 'none')] = { n: num(x.N), current: num(x.CUR) }; subsTotal += num(x.N); }
+  const age = (k) => (r.ages || []).find(x => x.K === k) || {};
+  const ages = { openOrders: num(age('open').N), openMedianDays: age('open').DAYS == null ? null : num(age('open').DAYS),
+    owedOver90: num(age('open').OWED90), fulfilledOrders: num(age('fulfil').N),
+    fulfilMedianDays: age('fulfil').DAYS == null ? null : num(age('fulfil').DAYS) };
   // Demand by ET month, back to the first skincare order; empty months are 0.
   const tot = (r.demand || []).find(x => x.K === 'total') || {};
   const byM = {};
-  const mo = (m) => byM[m] || (byM[m] = { m, ordered: 0, orders: 0, brands: 0, reviews: 0 });
+  const mo = (m) => byM[m] || (byM[m] = { m, ordered: 0, orders: 0, brands: 0, reviews: 0, allOrdered: 0 });
   for (const x of r.demand || []) {
     if (!x.M) continue;
     if (x.K === 'month') Object.assign(mo(x.M), { ordered: num(x.ORDERED), orders: num(x.ORDERS), brands: num(x.BRANDS) });
     if (x.K === 'reviewed') mo(x.M).reviews = num(x.REVIEWS);
+    if (x.K === 'allmonth') mo(x.M).allOrdered = num(x.ORDERED);
   }
   const cur = String(todayKey || '').slice(0, 7);
   const step = (m, k) => { let [y, n] = m.split('-').map(Number); n += k; while (n < 1) { n += 12; y--; } while (n > 12) { n -= 12; y++; } return y + '-' + String(n).padStart(2, '0'); };
-  const keys = Object.keys(byM).filter(m => m <= cur).sort();
+  // The series starts at the first SKINCARE order (all-product and review-only
+  // months before it would start the chart years early).
+  const keys = Object.keys(byM).filter(m => m <= cur && byM[m].ordered > 0).sort();
   const months = [];
-  if (keys.length) for (let m = keys[0]; m <= cur; m = step(m, 1)) months.push(byM[m] || { m, ordered: 0, orders: 0, brands: 0, reviews: 0 });
+  if (keys.length) for (let m = keys[0]; m <= cur; m = step(m, 1)) months.push(byM[m] || { m, ordered: 0, orders: 0, brands: 0, reviews: 0, allOrdered: 0 });
   // New demand: the average of the last 6 COMPLETE months (the current one is partial).
-  const last6 = []; for (let k = 6; k >= 1; k--) { const m = step(cur, -k); last6.push((byM[m] || {}).ordered || 0); }
-  const avgNewPerMonth = cur ? Math.round(last6.reduce((a, b) => a + b, 0) / 6 * 10) / 10 : 0;
+  const last6 = [], all6 = [], wr6 = [];
+  for (let k = 6; k >= 1; k--) { const x = byM[step(cur, -k)] || {}; last6.push(x.ordered || 0); all6.push(x.allOrdered || 0); wr6.push(x.reviews || 0); }
+  const sum = (a) => a.reduce((p, q) => p + q, 0);
+  const avgNewPerMonth = cur ? Math.round(sum(last6) / 6 * 10) / 10 : 0;
+  // Skincare's share of ALL reviews ordered over the same 6 months.
+  const share6 = sum(all6) > 0 ? Math.round(sum(last6) / sum(all6) * 1000) / 10 : null;
   return {
     derm: { total, byType },
     demand: {
       brands: num(tot.BRANDS), orders: num(tot.ORDERS), ordered: num(tot.ORDERED),
       delivered: num(tot.DELIVERED), outstanding: num(tot.OUTSTANDING),
       months, avgNewPerMonth, avgWindow: cur ? [step(cur, -6), step(cur, -1)] : null,
-      topBrands: (r.backlog || []).map(x => ({ name: String(x.NAME || ''), ordered: num(x.ORDERED), delivered: num(x.DELIVERED), outstanding: num(x.OUTSTANDING) })),
+      share6, allOrdered6: sum(all6), avgWritten6: cur ? Math.round(sum(wr6) / 6 * 10) / 10 : 0,
+      topBrands: (r.backlog || []).map(x => ({ name: String(x.NAME || ''), ordered: num(x.ORDERED), delivered: num(x.DELIVERED), outstanding: num(x.OUTSTANDING), oldestDays: x.OLDEST == null ? null : num(x.OLDEST) })),
+      ages,
     },
-    skincareBrandsInApp: num(((r.brands || [])[0] || {}).N),
+    writers,
+    subs, skincareBrandsInApp: subsTotal,
   };
 }
 async function fetchSkincareApp(env) {
