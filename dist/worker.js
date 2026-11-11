@@ -3604,6 +3604,96 @@ function buildSkincareDerm(deals, contactsByDeal) {
   return { allTime: _dermSteps(people), people: people.length };
 }
 
+// ── Metabase: app data via its Snowflake copy ───────────────────────────────
+// The read-only API key lives in the METABASE_API_KEY secret (Alex stores it
+// with `wrangler secret put`; it is never logged or returned). Native SQL runs
+// against MB_DB, the Snowflake database that mirrors the app's Postgres nightly
+// (~4:30am ET), so app numbers are up to a day behind. Its HubSpot copy stopped
+// syncing 2026-10-25: HubSpot data still comes from HubSpot directly.
+const METABASE_URL = 'https://frontrowmd.metabaseapp.com';
+const MB_DB = 67;
+// /api/dataset returns at most this many rows. A query that hits it is cut short,
+// so mbQuery throws rather than hand back a silent undercount: aggregate in SQL.
+const MB_ROW_CAP = 2000;
+// App tables the dashboard will read, keyed by name without the dbt prefix
+// (STG_ / FCT_ / INT_ / DIM_), with what each one feeds.
+const MB_NEEDED_TABLES = {
+  NOTES: 'reviews submitted (shared / approved)',
+  REVIEW_ORDERS: 'reviews ordered by brand',
+  REVIEW_ORDER_ITEMS: 'reviews ordered / delivered counts',
+  CLINICIANS: 'clinician provider count, HubSpot link',
+  PROVIDER_PROFILES: 'clinician specialty breakdown',
+  BRANDS: 'active brands, churned brands',
+  SUBSCRIPTIONS: 'active brand count, current MRR',
+  PILOTS: 'pilot fees, pilot segmentation',
+  PILOT_PROGRESS: 'pilot status',
+  HEALTH_CONCERNS: 'brand health concern names',
+  HEALTH_BRAND_PRODUCTS_CONCERNS: 'brand health concern (skincare flag)',
+  SAMPLE_BOXES: 'samples shipped',
+  HEALTH_PRODUCT_CATEGORIES: 'skincare flag (topical products)',
+  HEALTH_BRAND_PRODUCTS_PRODUCT_CATEGORIES: 'skincare flag (topical products)',
+  PRODUCT_SUBTYPES: 'skincare flag (personal-care products)',
+  HEALTH_BRAND_PRODUCTS_PRODUCT_SUBTYPES: 'skincare flag (personal-care products)',
+};
+const mbBaseName = (n) => String(n || '').toUpperCase().replace(/^(STG|FCT|INT|DIM)_/, '');
+async function mbFetch(env, path, init) {
+  const key = env && env.METABASE_API_KEY;
+  if (!key) throw new Error('METABASE_API_KEY is not set');
+  SUBREQ.n++;
+  const r = await fetch(METABASE_URL + path, Object.assign({}, init || {}, {
+    headers: Object.assign({ 'x-api-key': key, 'Content-Type': 'application/json' }, (init && init.headers) || {}),
+  }));
+  if (!r.ok) {
+    const t = await r.text().catch(() => '');
+    throw new Error(`Metabase ${path.split('?')[0]} ${r.status}${t ? ': ' + t.slice(0, 200) : ''}`);
+  }
+  return r.json();
+}
+// Native SQL on MB_DB → array of row objects keyed by column name. A failed
+// query comes back 202 with status 'failed', so the body is checked, not just
+// the HTTP status.
+async function mbQuery(env, sql) {
+  const d = await mbFetch(env, '/api/dataset', {
+    method: 'POST',
+    body: JSON.stringify({ database: MB_DB, type: 'native', native: { query: sql } }),
+  });
+  if (!d || d.status === 'failed' || d.error) throw new Error('Metabase query failed: ' + String((d && d.error) || 'no result').slice(0, 300));
+  const cols = ((d.data && d.data.cols) || []).map(c => c.name);
+  const rows = (d.data && d.data.rows) || [];
+  if (rows.length >= MB_ROW_CAP) throw new Error(`Metabase query hit the ${MB_ROW_CAP}-row cap; aggregate it in SQL`);
+  return rows.map(r => { const o = {}; cols.forEach((c, i) => { o[c] = r[i]; }); return o; });
+}
+// Connection check: does the key work, is it NOT an admin key, can it see the
+// Snowflake database, which needed tables are there, and does a query run.
+// Returns names and counts only -- no key, no personal data.
+async function metabaseCheck(env) {
+  const out = { ok: false, url: METABASE_URL, database: MB_DB, errors: [] };
+  try {
+    const u = await mbFetch(env, '/api/user/current');
+    out.keyIsAdmin = !!u.is_superuser;
+    if (out.keyIsAdmin) out.errors.push('The key belongs to an ADMIN group: ask for a key in a view-only group instead.');
+  } catch (e) { out.errors.push(e.message); return out; }
+  let tables = [];
+  try {
+    const db = await mbFetch(env, `/api/database/${MB_DB}?include=tables`);
+    out.databaseName = db.name; out.engine = db.engine;
+    tables = (db.tables || []).filter(t => t.active !== false);
+    out.tableCount = tables.length;
+  } catch (e) { out.errors.push(e.message); return out; }
+  const have = {};
+  for (const t of tables) { const b = mbBaseName(t.name); if (!have[b]) have[b] = (t.schema ? t.schema + '.' : '') + t.name; }
+  out.present = {}; out.missing = {};
+  for (const [b, use] of Object.entries(MB_NEEDED_TABLES)) { if (have[b]) out.present[b] = have[b]; else out.missing[b] = use; }
+  if (out.present.NOTES) {
+    try {
+      const rows = await mbQuery(env, `SELECT COUNT(*) AS N FROM ${out.present.NOTES}`);
+      out.probe = { table: out.present.NOTES, rows: Number((rows[0] || {}).N ?? (rows[0] || {}).n) };
+    } catch (e) { out.errors.push(e.message); }
+  }
+  out.ok = !out.keyIsAdmin && !!out.probe && out.errors.length === 0;
+  return out;
+}
+
 async function processSkincareRequest(body, env) {
   const token = env.HUBSPOT_TOKEN;
   // No time frame: the Skincare page is all time (Alex, 2026-11-10).
@@ -10898,6 +10988,13 @@ export default {
 
     // POST /api/skincare → Skincare Dashboard (Phase 1: HubSpot only). Live per
     // load, like the Pilot page; a few HubSpot calls, so no KV cache.
+    // POST /api/metabase-check → is the Metabase key working (signed-in only).
+    if (request.method === 'POST' && url.pathname === '/api/metabase-check') {
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
+      try { return jr(await metabaseCheck(env)); }
+      catch (err) { console.error('Metabase check error:', err); return jr({ error: 'Internal error', detail: err.message }, 500); }
+    }
+
     if (request.method === 'POST' && url.pathname === '/api/skincare') {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
