@@ -6,7 +6,7 @@ let pass=0,fail=0;
 const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify(w);console.log((ok?'PASS ':'FAIL ')+n+'  got='+JSON.stringify(g)+(ok?'':' want='+JSON.stringify(w)));ok?pass++:fail++;};
 const W={console:{log(){},warn(){},error(){}}};vm.createContext(W);
 vm.runInContext(src.slice(0,src.indexOf('\nexport default'))
-  +'\nObject.assign(globalThis,{isSkincareCategory,buildSkincareBrandWindow,buildSkincareDerm,buildClinicianComposition,clinicianReached,CLS,CLINICIAN_PIPELINE_ID,buildSkincareApp,SKN_MB_SQL});',W);
+  +'\nObject.assign(globalThis,{isSkincareCategory,buildSkincareBrandWindow,buildSkincareDerm,buildClinicianComposition,clinicianReached,CLS,CLINICIAN_PIPELINE_ID,buildSkincareApp,SKN_MB_SQL,sknMbSql,sknSkCte,SKN_CATEGORIES,SKN_CATEGORY_ORDER});',W);
 
 // ── 1. Which deals are skincare ─────────────────────────────────────────────
 // Multi-checkbox values arrive as 'A;B;C'; today's field is plain text.
@@ -200,7 +200,30 @@ ck('Signed counts Churned Onboarding too, like the Brand Dashboard',
      [/JOIN sk ON sk\.pid = n\.HEALTH_BRAND_PRODUCT_ID/.test(Q.writers),/STATUS IN \('shared', 'approved'\)/.test(Q.writers),/COALESCE\(NULLIF\(TRIM\(c\.TITLE\)/.test(Q.writers)],[true,true,true]);
   ck('SQL: derm skincare-only counts ride the any-product ones (LEFT JOIN, so no review is dropped)',/LEFT JOIN sk ON sk\.pid = nt\.HEALTH_BRAND_PRODUCT_ID/.test(Q.derm),true);
   ck('SQL: open-order age counts only confirmed orders still owed',/WHERE st = 'confirmed' AND seg <> 'stopped' GROUP BY oid HAVING SUM\(owed\) > 0/.test(Q.ages),true);
-  ck('a Metabase failure blanks only the app sections',/fetchSkincareApp\(env\)\.catch\(e => \{[^}]*return \{ error: e\.message \}/.test(src),true);
+  ck('a Metabase failure blanks only the app sections',/fetchSkincareApp\(env, cat\)\.catch\(e => \{[^}]*return \{ error: e\.message \}/.test(src),true);
+
+  // ── Brand categories (2026-11-11: All and Skin & haircare) ──
+  const C=W.SKN_CATEGORIES, QA=W.sknMbSql(C.all), QS=W.sknMbSql(C.skin);
+  ck('categories offered: All and Skin & haircare',[W.SKN_CATEGORY_ORDER,C.skin.concern,C.all.concern],[['all','skin'],'Skin & haircare',null]);
+  ck('Skin & haircare builds exactly the skincare queries',JSON.stringify(QS)===JSON.stringify(W.SKN_MB_SQL),true);
+  ck('All = every product, no dermatologist query, no placeholder left',
+     [/^WITH sk AS \(SELECT p\.ID pid FROM STAGING\.STG_PRODUCTS p\)/.test(QA.demand),'derm' in QA,Object.values(QA).concat(Object.values(QS)).some(q=>q.indexOf('__SK__')>=0)],[true,false,false]);
+  let threwCat=false;try{W.sknSkCte({concern:"x'; DROP"});}catch(e){threwCat=true;}
+  ck('a concern with SQL characters is refused (concerns are server constants anyway)',threwCat,true);
+  const pr=fn(src,'processSkincareRequest');
+  ck('the request names a category KEY; only own keys count, anything else is Skin & haircare',
+     /Object\.prototype\.hasOwnProperty\.call\(SKN_CATEGORIES, ck\) \? SKN_CATEGORIES\[ck\] : SKN_CATEGORIES\.skin/.test(pr),true);
+  ck('the dermatologist HubSpot read runs only for the Dermatology category',/cat\.specialty === 'Dermatology' \? fetchDermClinicians\(token\) : Promise\.resolve\(null\)/.test(pr),true);
+  ck('All counts HubSpot deals with any Brand Product Category',/cat\.concern \? isSkincareCategory : \(v\) => String\(v \|\| ''\)\.trim\(\) !== ''/.test(pr)&&/buildSkincareBrandWindow\(brandDeals, null, null, match\)/.test(pr),true);
+  const bw=W.buildSkincareBrandWindow([{properties:{brand_product_category:'Gut health',dealstage:'closedwon',createdate:'2026-11-01T12:00:00Z',hs_v2_date_entered_appointmentscheduled:'2026-11-01T12:00:00Z',hs_v2_date_entered_closedwon:'2026-11-05T12:00:00Z',closedate:'2026-11-05T12:00:00Z'}}],null,null,v=>String(v||'').trim()!=='');
+  ck('  a non-skincare tagged deal counts under All',[bw.scheduled,bw.signed],[1,1]);
+  const ws=JSON.parse(JSON.stringify(W.buildSkincareApp({writers:[
+    {DERM:0,T:'MD',SP:'Family Medicine',WRITERS:3,REVIEWS:10,REVIEWS90:5,WRITERS90:2,ONORDER90:4},
+    {DERM:0,T:'NP',SP:'Family medicine',WRITERS:2,REVIEWS:6,REVIEWS90:4,WRITERS90:1,ONORDER90:3},
+    {DERM:0,T:'MD',SP:'OB/GYN',WRITERS:1,REVIEWS:2,REVIEWS90:1,WRITERS90:1,ONORDER90:1},
+    {DERM:1,T:'MD',SP:'Dermatology',WRITERS:1,REVIEWS:9,REVIEWS90:7,WRITERS90:1,ONORDER90:6}]},'2026-11-11')));
+  ck('by specialty: spellings merge case-insensitively, Clinician-page names win, biggest first',
+     ws.writersBySpecialty.map(x=>x.group+':'+x.reviews90+'/'+x.writers),['Family Medicine:9/5','Dermatology:7/1','Obstetrics and Gynecology:1/1']);
 }
 const rs=fn(cli,'renderSkincare');
 ck('client: no "Waiting on app data" placeholders remain',/Waiting on app data/.test(rs),false);
@@ -241,13 +264,19 @@ ck('the route is sign-in-guarded',/url\.pathname === '\/api\/skincare'\) \{[\s\S
 ck('a refused HubSpot search throws, never a quiet zero',
    (src.match(/throw new Error\('HubSpot refused the (skincare deal|dermatologist contact) search'\)/g)||[]).length,2);
 const nav=cli.slice(cli.indexOf('<span>Clinician Dashboard</span>'),cli.indexOf('id="dash-menu-parent"'));
-ck('the nav entry sits right after Clinician Dashboard',/switchDashSub\('skincare'\)[^\n]*<span>Skincare Dashboard<\/span>/.test(nav),true);
+ck('the nav entry sits right after Clinician Dashboard, named Brand Category Dashboard',/switchDashSub\('skincare'\)[^\n]*<span>Brand Category Dashboard<\/span>/.test(nav),true);
 ck('it has a page, a title and a highlight',
-   [cli.indexOf('<div class="pg" id="page-skincare"><div id="skincare-c"></div></div>')>=0,/var titleMap=\{[^}]*skincare:'Skincare Dashboard'/.test(cli),/skincare:"switchDashSub\('skincare'\)"/.test(fn(cli,'_navToken'))],[true,true,true]);
+   [cli.indexOf('<div class="pg" id="page-skincare"><div id="skincare-c"></div></div>')>=0,/var titleMap=\{[^}]*skincare:'Brand Category Dashboard'/.test(cli),/skincare:"switchDashSub\('skincare'\)"/.test(fn(cli,'_navToken'))],[true,true,true]);
 ck('no date pills: the filter bar says all time, with Refresh only',
    (b=>/if\(AP==='skincare'\)\{[^}]*All time[^}]*refreshData\(\)[^}]*return;\}/.test(b)&&!/AP==='skincare'[^}]*selW/.test(b))(fn(cli,'bldF')),true);
 ck('  and no window is sent or handled',[/skincare/.test(fn(cli,'_fetchForWindow')),/window:/.test(fn(cli,'fdSkincare')),/computeWindows/.test(fn(src,'processSkincareRequest'))],[false,false,false]);
-ck('renderPage and Refresh know it',[/else if\(AP==='skincare'\)renderSkincare\(\);/.test(cli),/else if\(AP==='skincare'\)\{S\.skincare\.data=null;await fdSkincare\(\);\}/.test(cli)],[true,true]);
+ck('renderPage and Refresh know it',[/else if\(AP==='skincare'\)renderSkincare\(\);/.test(cli),/else if\(AP==='skincare'\)\{S\.skincare\.data=null;S\.skincare\.byCat=\{\};await fdSkincare\(\);\}/.test(cli)],[true,true]);
+ck('the filter bar is the category dropdown, with all time and Refresh',(b=>/AP==='skincare'\)\{[^}]*_sknCatSelect\(\)\+[^}]*All time[^}]*refreshData\(\)/.test(b))(fn(cli,'bldF')),true);
+ck('the dropdown keys match the worker\'s categories',(cli.match(/const SKN_CATS=\[([^\]]*)\]/)||[])[1].match(/key:'(\w+)'/g).map(x=>x.slice(5,-1)),['all','skin']);
+ck('the request sends the chosen category; responses are kept per category',/const body=\{password:PW,category:cat\}/.test(fn(cli,'fdSkincare'))&&/S\.skincare\.byCat\[cat\]=d;/.test(fn(cli,'fdSkincare')),true);
+ck('switching to a cached category re-renders the whole page (Jump To, Updated)',/if\(S\.skincare\.data\)renderPage\(\);else fdSkincare\(\);/.test(cli),true);
+ck('switching category drops a load still running for the old one',/S\.skincare\._seq=\(S\.skincare\._seq\|\|0\)\+1;S\.skincare\._fetching=false;/.test(cli.slice(cli.indexOf('window.skincareSetCat'))),true);
+ck('All skips the dermatologist and engagement sections',/if\(!ALL\)\{[\s\S]*card\('derm'[\s\S]*card\('engage'[\s\S]*?\n  \}/.test(rs),true);
 ck('Jump To reads its headings',/skincare:'#skincare-c \.dsec-h'/.test(cli),true);
 
 // Review fixes on the client.

@@ -638,7 +638,7 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
            Everything behind it is intact; delete the display:none to restore. -->
       <div class="ni" onclick="switchDashSub('pilot')" data-page="pilot" data-sub="pilot" style="display:none"><span class="ic" style="font-size:12px">🧪</span><span>Pilot Dashboard</span></div>
       <div class="ni" onclick="clinicianNav()" data-page="clinician" data-sub="clinician"><span class="ic" style="font-size:12px">🩺</span><span>Clinician Dashboard</span></div>
-      <div class="ni" onclick="switchDashSub('skincare')" data-page="skincare" data-sub="skincare"><span class="ic" style="font-size:12px">🧴</span><span>Skincare Dashboard</span></div>
+      <div class="ni" onclick="switchDashSub('skincare')" data-page="skincare" data-sub="skincare"><span class="ic" style="font-size:12px">🧴</span><span>Brand Category Dashboard</span></div>
       <div class="ni grp" onclick="autoExpand();toggleDashMenu()" data-page="dashboard" id="dash-menu-parent" title="Additional Insights"><span class="ic">📊</span><span>Additional Insights</span><span id="dash-arrow" style="margin-left:auto;font-size:10px;transition:transform .2s">▶</span></div>
       <div id="dash-submenu" style="display:none;padding-left:24px">
         <div class="ni sub" onclick="switchDashSub('signup')" data-page="dashboard" data-sub="signup"><span class="ic" style="font-size:12px">📋</span><span>Sign-Up Rate</span></div>
@@ -937,7 +937,7 @@ const WP_BASELINE_SAVE_API=location.protocol==='file:'?'https://frontrowmd-dashb
 const SIGNUP_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/signup-cohorts':'/api/signup-cohorts';
 const SPECIAL1_API=location.protocol==='file:'?'https://frontrowmd-dashboard-api.alex-5b6.workers.dev/api/special1-cohorts':'/api/special1-cohorts';
 let PW='';
-const S={exec:{win:'mtd',data:null,mode:'brand',adChannel:'meta'},dashboard:{win:'mtd',data:null,sub:'exec'},skincare:{data:null,typeF:''},irfan:{win:'mtd',data:null},strategy:{data:null,win:'lastMonth'},calculator:{win:'mtd',data:null},signup:{win:null,data:null},clinician:{win:'mtd',data:null},analyzer:{win:'mtd',data:null,tab:'overview',sub:'overview'},demoQuality:{win:'mtd',data:null},webinarPerf:{win:'mtd',data:null},pilot:{data:null,fStatus:null,fStage:null},csession:{step:1},content:{data:null,sub:'cs-intel'},outbound:{data:null}};let AP='exec';
+const S={exec:{win:'mtd',data:null,mode:'brand',adChannel:'meta'},dashboard:{win:'mtd',data:null,sub:'exec'},skincare:{data:null,typeF:'',byCat:{}},irfan:{win:'mtd',data:null},strategy:{data:null,win:'lastMonth'},calculator:{win:'mtd',data:null},signup:{win:null,data:null},clinician:{win:'mtd',data:null},analyzer:{win:'mtd',data:null,tab:'overview',sub:'overview'},demoQuality:{win:'mtd',data:null},webinarPerf:{win:'mtd',data:null},pilot:{data:null,fStatus:null,fStage:null},csession:{step:1},content:{data:null,sub:'cs-intel'},outbound:{data:null}};let AP='exec';
 const f$=v=>v==null?'—':'$'+Math.round(v).toLocaleString();
 const fN=v=>v==null?'—':Math.round(v).toLocaleString();
 const fP=(v,d=1)=>v==null?'—':v.toFixed(d)+'%';
@@ -953,7 +953,7 @@ function _staleAge(sec){
 // % No-Show exclude these (matching True CPD/CPQD + the worker). Lowercase
 // substring so it works on cloned tier strings or live values.
 const isSmallBrandWT=wt=>{const s=(wt||'').toLowerCase();return s.indexOf('pre-launch')>=0||s.indexOf('0-10k')>=0||s.indexOf('very small')>=0;};
-const T={exec:'Executive Dashboard',dashboard:'Brand Dashboard',pilot:'Pilot Dashboard',skincare:'Skincare Dashboard',irfan:'Irfan Dashboard',resources:'Resources',calculator:'ARR Calculator',signup:'Sign-Up Rate',csession:'Creative Session',demoQuality:'Demo Quality',webinarPerf:'Webinar Performance',content:'Social Media Content',outbound:'Outbound Sequences'};
+const T={exec:'Executive Dashboard',dashboard:'Brand Dashboard',pilot:'Pilot Dashboard',skincare:'Brand Category Dashboard',irfan:'Irfan Dashboard',resources:'Resources',calculator:'ARR Calculator',signup:'Sign-Up Rate',csession:'Creative Session',demoQuality:'Demo Quality',webinarPerf:'Webinar Performance',content:'Social Media Content',outbound:'Outbound Sequences'};
 // Window presets, in render order. All Time was removed 2026-10-08: it was the
 // slowest window on every page by a wide margin and nobody was reading it.
 // Custom stays LAST in this list and is also rendered last — see bldF, which
@@ -1218,7 +1218,7 @@ async function doLogin(){
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){doLogin();});else setTimeout(doLogin,0);
 
 // Filters
-function bldF(){const s=S[AP];var aiBtn=AI_PANEL_PAGES.indexOf(AP)>=0?'<button id="ai-panel-btn" onclick="toggleAIPanel()" class="fb" style="border:1.5px solid #B8860B;background:'+(_aiPanelOpen?'#B8860B':'#FFF8E1')+';color:'+(_aiPanelOpen?'#fff':'#8B6914')+';font-weight:700" onmouseover="this.style.background=\'#B8860B\';this.style.color=\'#fff\'" onmouseout="if(!_aiPanelOpen){this.style.background=\'#FFF8E1\';this.style.color=\'#8B6914\';}">✦ AI Analysis</button>':'';if(AP==='signup'){document.getElementById('filters').innerHTML='<span style="font-size:13px;color:var(--grey)">Fixed cohorts — independent of time filters</span>'+aiBtn+'<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>';return;}if(AP==='skincare'){const _f=document.getElementById('filters');_f.style.display='';_f.innerHTML='<span style="font-size:13px;color:var(--grey)">All time \u2014 no date filter</span><button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>';return;}if(AP==='pilot'){const _f=document.getElementById('filters');_f.style.display='';_f.innerHTML='<span style="font-size:13px;color:var(--grey)">Every pilot waitlist deal — no date filter</span><button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>';return;}if(AP==='strategy'||AP==='csession'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='content'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='outbound'){document.getElementById('filters').innerHTML=aiBtn;document.getElementById('filters').style.display=aiBtn?'':'none';return;}else{document.getElementById('filters').style.display='';}let h='';const _wPill=w=>{const _aw=(w.k==='custom')?(s.win==='custom'&&!s.quarterKey):(s.win===w.k);return `<button class="fb${_aw?' active':''}" data-w="${w.k}" onclick="selW('${w.k}')">${w.l}</button>`;};/* Fixed presets, then the completed quarters, then Custom. The quarters are presets too, so Custom sitting before them split the presets in two and put the escape hatch in the middle of the row. */for(const w of W){if(w.k!=='custom')h+=_wPill(w);}for(const q of _completedQuarters())h+=`<button class="fb${(s.win==='custom'&&s.quarterKey===q.from+'_'+q.to)?' active':''}" data-q="${q.from}_${q.to}" onclick="selQ('${q.from}','${q.to}')">${q.l}</button>`;{const _cw=W.filter(w=>w.k==='custom')[0];if(_cw)h+=_wPill(_cw);}h+=`<div class="cr${(s.win==='custom'&&!s.quarterKey)?' vis':''}" id="cr"><input type="date" id="cf"><span style="color:var(--grey)">→</span><input type="date" id="ct"><label class="cr-cmp-lbl"><input type="checkbox" id="cc" onchange="document.getElementById('crVs').classList.toggle('vis',this.checked)">Compare</label><span class="cr-vs" id="crVs"><span class="cr-vs-prefix">vs</span><input type="date" id="cvf"><span style="color:var(--grey)">→</span><input type="date" id="cvt"></span><button onclick="goC()">Go</button></div>`;h+=aiBtn;h+=`<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>`;document.getElementById('filters').innerHTML=h;}
+function bldF(){const s=S[AP];var aiBtn=AI_PANEL_PAGES.indexOf(AP)>=0?'<button id="ai-panel-btn" onclick="toggleAIPanel()" class="fb" style="border:1.5px solid #B8860B;background:'+(_aiPanelOpen?'#B8860B':'#FFF8E1')+';color:'+(_aiPanelOpen?'#fff':'#8B6914')+';font-weight:700" onmouseover="this.style.background=\'#B8860B\';this.style.color=\'#fff\'" onmouseout="if(!_aiPanelOpen){this.style.background=\'#FFF8E1\';this.style.color=\'#8B6914\';}">✦ AI Analysis</button>':'';if(AP==='signup'){document.getElementById('filters').innerHTML='<span style="font-size:13px;color:var(--grey)">Fixed cohorts — independent of time filters</span>'+aiBtn+'<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>';return;}if(AP==='skincare'){const _f=document.getElementById('filters');_f.style.display='';_f.innerHTML=_sknCatSelect()+'<span style="font-size:12px;color:var(--grey);margin-left:10px">All time</span><button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>';return;}if(AP==='pilot'){const _f=document.getElementById('filters');_f.style.display='';_f.innerHTML='<span style="font-size:13px;color:var(--grey)">Every pilot waitlist deal — no date filter</span><button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>';return;}if(AP==='strategy'||AP==='csession'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='content'){document.getElementById('filters').innerHTML='';document.getElementById('filters').style.display='none';return;}if(AP==='outbound'){document.getElementById('filters').innerHTML=aiBtn;document.getElementById('filters').style.display=aiBtn?'':'none';return;}else{document.getElementById('filters').style.display='';}let h='';const _wPill=w=>{const _aw=(w.k==='custom')?(s.win==='custom'&&!s.quarterKey):(s.win===w.k);return `<button class="fb${_aw?' active':''}" data-w="${w.k}" onclick="selW('${w.k}')">${w.l}</button>`;};/* Fixed presets, then the completed quarters, then Custom. The quarters are presets too, so Custom sitting before them split the presets in two and put the escape hatch in the middle of the row. */for(const w of W){if(w.k!=='custom')h+=_wPill(w);}for(const q of _completedQuarters())h+=`<button class="fb${(s.win==='custom'&&s.quarterKey===q.from+'_'+q.to)?' active':''}" data-q="${q.from}_${q.to}" onclick="selQ('${q.from}','${q.to}')">${q.l}</button>`;{const _cw=W.filter(w=>w.k==='custom')[0];if(_cw)h+=_wPill(_cw);}h+=`<div class="cr${(s.win==='custom'&&!s.quarterKey)?' vis':''}" id="cr"><input type="date" id="cf"><span style="color:var(--grey)">→</span><input type="date" id="ct"><label class="cr-cmp-lbl"><input type="checkbox" id="cc" onchange="document.getElementById('crVs').classList.toggle('vis',this.checked)">Compare</label><span class="cr-vs" id="crVs"><span class="cr-vs-prefix">vs</span><input type="date" id="cvf"><span style="color:var(--grey)">→</span><input type="date" id="cvt"></span><button onclick="goC()">Go</button></div>`;h+=aiBtn;h+=`<button class="rfb" id="rfb" onclick="refreshData()">↻ Refresh</button>`;document.getElementById('filters').innerHTML=h;}
 // ONE routing table for "the window changed, refetch it". selW, selQ and goC
 // each carried their own copy and they had DRIFTED: only selW grew the
 // AP==='exec' branch, so the Executive page's Custom range and its quarter
@@ -1849,17 +1849,18 @@ async function fdSkincare(){
   document.getElementById('page-skincare').classList.add('active');
   if(typeof _syncNav==='function')_syncNav();
   if(S.skincare._prog)S.skincare._prog.stop();
-  const _prog=S.skincare._prog=_loadProgress('skincare-c',['Connecting to HubSpot and Metabase\u2026','Fetching skincare-tagged deals\u2026','Fetching dermatologist clinicians\u2026','Reading review orders and reviews from the app\u2026','Rendering dashboard\u2026'],700);
-  if(el)el.innerHTML=_loadBannerHTML('Loading Skincare Dashboard',_prog);
+  const _prog=S.skincare._prog=_loadProgress('skincare-c',['Connecting to HubSpot and Metabase\u2026','Fetching category-tagged deals\u2026','Fetching clinicians\u2026','Reading review orders and reviews from the app\u2026','Rendering dashboard\u2026'],700);
+  if(el)el.innerHTML=_loadBannerHTML('Loading Brand Category Dashboard \u00b7 '+_sknEsc(_sknCatLabel(_sknCat())),_prog);
   try{
-    const body={password:PW};
+    const cat=_sknCat();
+    const body={password:PW,category:cat};
     const r=await fetch(SKINCARE_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
     if(mySeq!==S.skincare._seq){_prog.stop();return;}
     if(!r.ok||d.error){_prog.stop();if(el)el.innerHTML='<div style="padding:60px;text-align:center;color:var(--red);font-size:13px">Failed to load: '+_sknEsc(d.detail||d.error||('HTTP '+r.status))+'</div>';return;}
     if(AP==='skincare')await _prog.done(); else _prog.stop();
     if(mySeq!==S.skincare._seq)return;
-    S.skincare.data=d;
+    S.skincare.byCat[cat]=d;S.skincare.data=d;
     if(AP==='skincare')renderPage();
   }catch(e){
     if(mySeq!==S.skincare._seq)return;
@@ -1868,6 +1869,35 @@ async function fdSkincare(){
   }finally{if(mySeq===S.skincare._seq)S.skincare._fetching=false;}
 }
 window.skincareSetType=function(t){S.skincare.typeF=t||'';renderSkincare();};
+// Brand category (Alex, 2026-11-11: All and Skin & haircare for now). The list
+// mirrors the worker's SKN_CATEGORIES; the server checks the key. The choice
+// is remembered per browser, and each category's response is kept for the
+// session so switching back is instant (Refresh drops them).
+const SKN_CATS=[{key:'all',label:'All categories'},{key:'skin',label:'Skin & haircare'}];
+function _sknCatLabel(k){const c=SKN_CATS.find(x=>x.key===k);return c?c.label:k;}
+// Read lazily (no top-level side effects): the remembered choice, else Skin & haircare.
+function _sknCat(){
+  if(!S.skincare.cat){let v=null;try{v=localStorage.getItem('skn_cat');}catch(e){}S.skincare.cat=SKN_CATS.some(c=>c.key===v)?v:'skin';}
+  return S.skincare.cat;
+}
+function _sknCatSelect(){
+  return '<label style="display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--grey)">Brand category'
+    +'<select id="skn-cat" onchange="skincareSetCat(this.value)" style="font-family:var(--font-h);font-size:12px;font-weight:700;color:var(--navy);padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--white);cursor:pointer">'
+    +SKN_CATS.map(c=>'<option value="'+c.key+'"'+(c.key===_sknCat()?' selected':'')+'>'+_sknEsc(c.label)+'</option>').join('')+'</select></label>';
+}
+window.skincareSetCat=function(k){
+  if(!SKN_CATS.some(c=>c.key===k)||k===_sknCat())return;
+  S.skincare.cat=k;try{localStorage.setItem('skn_cat',k);}catch(e){}
+  S.skincare.typeF='';
+  // A load still running for the previous category must not land on this one:
+  // bump the sequence so its response is dropped, and stop its progress banner.
+  S.skincare._seq=(S.skincare._seq||0)+1;S.skincare._fetching=false;
+  if(S.skincare._prog)S.skincare._prog.stop();
+  S.skincare.data=S.skincare.byCat[k]||null;
+  // renderPage, not renderSkincare: it also rebuilds the Jump To bar (the two
+  // categories have different sections) and the Updated time.
+  if(S.skincare.data)renderPage();else fdSkincare();
+};
 function _sknPct(n,d){return d>0?(n/d*100).toFixed(1)+'%':'\u2014';}
 // Titles shown as their own pill/row; every other title folds into Other.
 const SKN_MAIN_TYPES=['MD/DO','Nurse Practitioner','Physician Assistant'];
@@ -1889,8 +1919,9 @@ function _sknFoldBy(by){
 }
 // Reviews ordered by month (columns) with reviews written (line), one axis:
 // both are counts of reviews. Native SVG <title> gives each month a tooltip.
-function _sknMonthChart(months){
-  if(!months.length)return '<div style="padding:16px;color:var(--grey);font-size:12px">No skincare orders yet</div>';
+function _sknMonthChart(months,cw){
+  cw=cw==null?'skincare ':cw;
+  if(!months.length)return '<div style="padding:16px;color:var(--grey);font-size:12px">No '+cw+'orders yet</div>';
   const W=640,H=220,L=40,R=10,T=14,B=28,pw=W-L-R,ph=H-T-B;
   const mx=Math.max(1,...months.map(x=>Math.max(x.ordered,x.reviews)));
   const raw=mx/4,mag=Math.pow(10,Math.floor(Math.log10(raw))),tk=[1,2,5,10].map(k=>k*mag).find(k=>k>=raw)||10*mag,nice=Math.max(4,tk*4);
@@ -1919,9 +1950,9 @@ function _sknMonthChart(months){
   g+=hits;
   const key=(c,l,line)=>'<span style="display:inline-flex;align-items:center;gap:6px;margin-right:16px">'
     +(line?'<span style="width:16px;height:2px;background:'+c+';position:relative"><span style="position:absolute;left:5px;top:-3px;width:6px;height:6px;border-radius:50%;background:'+c+'"></span></span>':'<span style="width:10px;height:10px;border-radius:2px;background:'+c+'"></span>')+l+'</span>';
-  return '<div style="font-size:11px;color:var(--navy);margin:0 0 6px">'+key('var(--navy)','Reviews ordered (skincare)')+key('var(--teal)','Reviews written on skincare products (any clinician, ordered or not)',1)+'</div>'
+  return '<div style="font-size:11px;color:var(--navy);margin:0 0 6px">'+key('var(--navy)','Reviews ordered'+(cw?' ('+cw.trim()+')':''))+key('var(--teal)','Reviews written on '+cw+'products (any clinician, ordered or not)',1)+'</div>'
     +'<div class="skn-mc" style="position:relative" onmouseleave="_sknTipOff(this)">'
-    +'<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block" role="img" aria-label="Skincare reviews ordered and written by month">'+g+'</svg>'
+    +'<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block" role="img" aria-label="Reviews ordered and written by month">'+g+'</svg>'
     +'<div class="skn-tip" style="position:absolute;top:0;left:0;display:none;pointer-events:none;z-index:5;background:var(--navy);color:#fff;font-size:11px;line-height:1.6;padding:8px 10px;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.18);white-space:nowrap"></div></div>';
 }
 // Month-chart hover: shows at once (a native SVG <title> waits ~1s), follows
@@ -1990,8 +2021,13 @@ function renderSkincare(){
   const allPace=Math.round(WR.reduce((a,x)=>a+(x.onOrder90||0),0)/3);
   const gap=Math.round(pace-nw);
   const RED='#DC2626', GREEN='#059669';
+  // ALL = every brand and product; no specialist, so the dermatologist
+  // sections are skipped and capacity is every clinician's pace.
+  const ALL=(d.category||{}).key==='all', cw=ALL?'':'skincare ';
 
-  let h='<div style="font-size:12px;color:var(--grey);margin:0 0 14px 2px">Skincare = skincare, hair care and clean beauty / cosmetics \u00b7 all time \u00b7 app data via Metabase, refreshed nightly</div>';
+  let h='<div style="font-size:12px;color:var(--grey);margin:0 0 14px 2px">'
+    +(ALL?'Every brand and product \u00b7 all time \u00b7 app data via Metabase, refreshed nightly \u00b7 the dermatologist sections appear when Skin &amp; haircare is selected'
+         :'Skin &amp; haircare = skincare, hair care and clean beauty / cosmetics \u00b7 all time \u00b7 app data via Metabase, refreshed nightly')+'</div>';
 
   // ── 1. Capacity vs demand ──
   // The headline is what MD/DO dermatologists ACTUALLY write (skincare reviews,
@@ -1999,6 +2035,20 @@ function renderSkincare(){
   // month, Alex 2026-11-11) stays, as the secondary line.
   let capBody;
   if(appErr)capBody=appFail('capacity');
+  else if(ALL){
+    // No specialist: the question is whether clinicians as a whole keep up.
+    const aw=Dm.avgWindow||[];
+    const allNet=Math.round(allPace-nw), clearAll=owed<=0?'0':(allNet>0?(owed/allNet).toFixed(1):'Never');
+    capBody=grid(4,
+        _kmTile('Actual Pace',fN(allPace),'reviews / month written on an order by any clinician, last 90 days \u00b7 '+fN(Math.round(wr90/3))+' / month counting reviews not on an order','')
+       +_kmTile('New Demand / Month',fN(nw),'avg reviews ordered'+(aw.length?', '+_sknEsc(aw[0])+' \u2192 '+_sknEsc(aw[1]):''),'')
+       +_kmTile('Monthly Gap','<span style="color:'+(allNet<0?RED:GREEN)+'">'+(allNet>=0?'+':'\u2212')+fN(Math.abs(allNet))+'</span>',allNet<0?'backlog grows by about this much a month at the actual pace':'left over each month after new demand','')
+       +_kmTile('Months to Clear','<span style="color:'+(clearAll==='Never'?RED:'inherit')+'">'+clearAll+'</span>',fN(owed)+' outstanding'+(allNet>0?' \u00f7 monthly gap':', and the pace does not cover new demand'),''))
+      +'<div style="margin-top:16px">'+sub('Reviews per month, on one scale','Both measured')
+      +_sknBars([
+          {l:'New demand',note:'reviews ordered, 6-month avg',v:nw,c:'var(--navy)',bold:1},
+          {l:'All clinicians\u2019 pace',note:'reviews written on an order, last 90 days',v:allPace,c:allNet<0?RED:GREEN,bold:1}])+'</div>';
+  }
   else{
     const capNet=Math.round(cap-nw);
     const clearCap=owed<=0?'0':(capNet>0?(owed/capNet).toFixed(1):'\u221e');
@@ -2020,7 +2070,7 @@ function renderSkincare(){
       +note('At all clinicians\u2019 pace ('+fN(allPace)+' / month) the backlog '+(allNet>0?'clears in '+clearAll+' months':'does not clear')+'. At theoretical capacity ('+fN(cap)+' / month) the surplus would be '+(capNet>=0?'+':'\u2212')+fN(Math.abs(capNet))+' and the backlog would clear in '+clearCap+' months. That needs every MD/DO dermatologist writing 2 a month; '
         +fN(mdA.reviewers||0)+' of '+fN(md)+' ('+everPct+'%) have ever written a review, and '+fN(mdA.active90||0)+' wrote one in the last 90 days.');
   }
-  h+=card('capacity','Capacity vs Demand','Can MD/DO dermatologists keep up with skincare review demand? Not affected by the clinician type filter below.',capBody);
+  h+=card('capacity','Capacity vs Demand',ALL?'Can clinicians keep up with review demand?':'Can MD/DO dermatologists keep up with skincare review demand? Not affected by the clinician type filter below.',capBody);
 
   // ── 2. Review demand ──
   let demandBody;
@@ -2033,13 +2083,13 @@ function renderSkincare(){
         _kmTile('Reviews Ordered',fN(Dm.ordered),fN(Dm.orders)+' live orders \u00b7 confirmed or completed','')
        +_kmTile('Reviews Delivered',fN(Dm.delivered),_sknPct(Dm.delivered||0,Dm.ordered||0)+' of ordered','')
        +_kmTile('Outstanding',fN(Dm.outstanding),'still owed on open orders'+(((Dm.bySeg||{}).stopped||{}).owed?' \u00b7 excludes '+fN(Dm.bySeg.stopped.owed)+' owed to brands that stopped':''),'')
-       +_kmTile('Brands Ordering',fN(Dm.brands),'skincare brands with a live order',''))
-      +'<div style="margin-top:12px">'+grid(3,
-        _kmTile('Share of All Demand',Dm.share6==null?'\u2014':Dm.share6.toFixed(1)+'%','of all reviews ordered'+(aw.length?', '+_sknEsc(aw[0])+' \u2192 '+_sknEsc(aw[1]):'')+' \u00b7 '+fN(Dm.allOrdered6||0)+' on every product','')
+       +_kmTile('Brands Ordering',fN(Dm.brands),cw+'brands with a live order',''))
+      +'<div style="margin-top:12px">'+grid(ALL?2:3,
+        (ALL?'':_kmTile('Share of All Demand',Dm.share6==null?'\u2014':Dm.share6.toFixed(1)+'%','of all reviews ordered'+(aw.length?', '+_sknEsc(aw[0])+' \u2192 '+_sknEsc(aw[1]):'')+' \u00b7 '+fN(Dm.allOrdered6||0)+' on every product',''))
        +_kmTile('Open Order Age',Ag.openMedianDays==null?'\u2014':fN(Ag.openMedianDays)+' days','median, '+fN(Ag.openOrders||0)+' orders with reviews still owed \u00b7 '+fN(Ag.owedOver90||0)+' owed on orders over 90 days old','')
        +_kmTile('Time to Fulfil',Ag.fulfilMedianDays==null?'\u2014':fN(Ag.fulfilMedianDays)+' days','median, confirmation \u2192 last review \u00b7 '+fN(Ag.fulfilledOrders||0)+' completed orders',''))+'</div>'
       +'<div style="display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:20px;margin-top:18px">'
-      +'<div>'+sub('By month','Ordered = reviews on orders confirmed that month \u00b7 hover a month for its numbers')+_sknMonthChart(months)
+      +'<div>'+sub('By month','Ordered = reviews on orders confirmed that month \u00b7 hover a month for its numbers')+_sknMonthChart(months,cw)
         +'<details style="margin-top:8px"><summary style="font-size:11px;color:var(--grey);cursor:pointer">Show as a table</summary>'
         +tbl(th('Month',1)+th('Ordered')+th('Brands')+th('Written'),
           months.slice().reverse().map(x=>tr(td(_sknEsc(x.m),1)+td(fN(x.ordered))+td(fN(x.brands))+td(fN(x.reviews)))).join(''))+'</details>'
@@ -2048,20 +2098,32 @@ function renderSkincare(){
           SKN_SEG_ORDER.map(k=>{const v=(Dm.bySeg||{})[k]||{owed:0,brands:0,orders:0},st=k==='stopped';
             return tr(td(SKN_SEG[k].label+'<div style="font-size:10px;color:var(--grey);font-weight:400">'+SKN_SEG[k].note+'</div>',1)
               +td(fN(v.brands))+td(fN(v.orders))+td(st?'<span style="color:var(--grey);text-decoration:line-through">'+fN(v.owed)+'</span>':fN(v.owed),0,!st));}).join(''))+'</div>'+'</div>'
-      +'<div>'+sub('Largest backlogs','Skincare brands with the most reviews still owed \u00b7 Oldest = days since their oldest open order')
+      +'<div>'+sub('Largest backlogs',(ALL?'Brands':'Skincare brands')+' with the most reviews still owed \u00b7 Oldest = days since their oldest open order')
         +tbl(th('Brand',1)+th('Status',1)+th('Ordered')+th('Delivered')+th('Outstanding')+th('Oldest'),
           tb.map(x=>tr(td(_sknEsc(x.name),1)+'<td style="padding:8px 6px;font-size:11px;color:'+(x.seg==='lapsed'?'#B45309':'var(--grey)')+'">'+_sknEsc((SKN_SEG[x.seg]||{}).short||x.seg)+'</td>'
             +td(fN(x.ordered))+td(fN(x.delivered))+td(fN(x.outstanding),0,1,_sknHeat(tbOut,x.outstanding,'239,68,68'))
             +td(x.oldestDays==null?'\u2014':fN(x.oldestDays)+'d',0,0,_sknHeat(tbAge,x.oldestDays||0,'239,68,68')))).join('')
           ||'<tr><td colspan="6" style="padding:10px 6px;color:var(--grey)">Nothing outstanding</td></tr>')
 +'</div></div>'
-      +note('Delivered = the higher of the app\u2019s delivered count and the shared or approved reviews linked to the order line, capped at the quantity ordered (the app\u2019s count is often not updated). Outstanding counts only open orders and leaves out brands that stopped, so it is not ordered \u2212 delivered ('+fN((Dm.ordered||0)-(Dm.delivered||0))+'): a completed order\u2019s shortfall was closed, not owed. Written counts every shared or approved review on a skincare product, including ones not on an order.');
+      +note('Delivered = the higher of the app\u2019s delivered count and the shared or approved reviews linked to the order line, capped at the quantity ordered (the app\u2019s count is often not updated). Outstanding counts only open orders and leaves out brands that stopped, so it is not ordered \u2212 delivered ('+fN((Dm.ordered||0)-(Dm.delivered||0))+'): a completed order\u2019s shortfall was closed, not owed. Written counts every shared or approved review on a '+cw+'product, including ones not on an order.');
   }
-  h+=card('demand','Review Demand','Reviews ordered on products tagged Skin &amp; haircare \u00b7 superseded, cancelled and draft orders excluded',demandBody);
+  h+=card('demand','Review Demand',(ALL?'Reviews ordered on every product':'Reviews ordered on products tagged Skin &amp; haircare')+' \u00b7 superseded, cancelled and draft orders excluded',demandBody);
 
   // ── 3. Who writes skincare reviews ──
   let whoBody;
-  if(appErr)whoBody=appFail('skincare reviewers');
+  if(appErr)whoBody=appFail(cw+'reviewers');
+  else if(ALL){
+    // By specialty: the 8 largest over the last 90 days, the rest as one row.
+    const SP=A.writersBySpecialty||[], top=SP.filter(x=>x.reviews90>0).slice(0,8), rest=SP.filter(x=>top.indexOf(x)<0);
+    const sum=(xs,k)=>xs.reduce((a,x)=>a+(x[k]||0),0);
+    const rows=top.concat(rest.length&&sum(rest,'reviews90')?[{group:'Other specialties ('+rest.length+')',reviews90:sum(rest,'reviews90'),writers90:sum(rest,'writers90'),reviews:sum(rest,'reviews'),writers:sum(rest,'writers'),_rest:1}]:[]);
+    const tot=sum(SP,'reviews');
+    whoBody=(wr90&&top[0]?'<div style="font-size:13px;color:var(--navy);margin:0 0 14px 2px;line-height:1.5"><b>'+_sknEsc(top[0].group)+' wrote '+fN(top[0].reviews90)+' of '+fN(wr90)+' reviews ('+_sknPct(top[0].reviews90,wr90)+')</b> in the last 90 days, the most of any specialty.</div>':'')
+      +_sknBars(rows.map(x=>({l:_sknEsc(x.group),note:fN(x.writers90)+' clinicians writing in the last 90 days \u00b7 '+fN(x.reviews)+' reviews all time',v:x.reviews90,
+          c:x._rest?'var(--teal-30)':'var(--teal)',tip:x.group+': '+x.reviews90+' reviews in the last 90 days by '+x.writers90+' clinicians; '+x.reviews+' all time by '+x.writers})),
+        r=>fN(r.v)+' <span style="font-weight:400;color:var(--grey)">\u00b7 '+_sknPct(r.v,wr90)+'</span>')
+      +note('Shared or approved reviews on every product, last 90 days, by the writer\u2019s specialty (spellings merged). '+fN(tot)+' reviews all time.');
+  }
   else{
     const tot=WR.reduce((a,x)=>a+(x.reviews||0),0);
     const mdW=WR.find(x=>x.derm&&x.type===SKN_TYPE_FIRST)||{};
@@ -2073,9 +2135,10 @@ function renderSkincare(){
         r=>fN(r.v)+' <span style="font-weight:400;color:var(--grey)">\u00b7 '+_sknPct(r.v,wr90)+'</span>')
       +note('Shared or approved reviews on skincare products, last 90 days, by the writer\u2019s specialty and title. '+fN(tot)+' skincare reviews all time.');
   }
-  h+=card('writers','Who Writes Skincare Reviews','Every clinician, not only dermatologists',whoBody);
+  h+=card('writers',ALL?'Who Writes Reviews':'Who Writes Skincare Reviews',ALL?'By the writer\u2019s specialty':'Every clinician, not only dermatologists',whoBody);
 
-  // ── 4. Dermatologists ──
+  // ── 4. Dermatologists (and 5. Engagement): Skin & haircare only ──
+  if(!ALL){
   // Inquiries and sign ups are HubSpot steps; samples and reviews come from the
   // app (Accepted Samples = yes; reviews shared or approved, ANY product). The
   // sources are not joined person by person, so they sit in separate groups.
@@ -2131,22 +2194,25 @@ function renderSkincare(){
     +note((ap.reviewers>ap.sampleReviewers?fN(ap.reviewers-ap.sampleReviewers)+' dermatologists reviewed without an accepted-samples record (they predate sample commitments), so they count in the average but not the reviewing rate.':''));
   }
   h+=card('engage','Engagement','Of the dermatologists in the app, how many review and how much'+(tf?' \u00b7 <b>'+_sknEsc(tf)+'</b>':''),engageBody);
+  }
 
   // ── 6. Skincare brands ──
   // HubSpot deals need the Brand Product Category tag (booking-form field, not
   // live yet); the app side counts brands with a skincare product by their
   // latest subscription. App 'active' is stale (no cancel sync), so the current
   // billing period count rides alongside it.
-  const tagNote=(B.skincareTagged||0)===0
+  const tagNote=ALL
+    ?'HubSpot: deals with any Brand Product Category set'+((B.skincareTagged||0)===0?' \u2014 none yet. These fill in once the demo booking form asks for it.':' ('+fN(B.skincareTagged)+', first '+_sknEsc(B.firstTagged||'')+').')
+    :(B.skincareTagged||0)===0
     ?'HubSpot: no deals are tagged <b>Skin &amp; haircare</b> in Brand Product Category yet. These fill in once the demo booking form asks for it; deals booked before then are not tagged.'
     :'HubSpot: '+fN(B.skincareTagged)+' deals tagged Skin &amp; haircare (first '+_sknEsc(B.firstTagged||'')+'). Deals booked before the booking form asked for a category are not tagged.';
   const SB=A.subs||{}, sn=k=>(SB[k]||{}).n||0;
-  h+=card('brands','Skincare Brands','Brands with a product tagged Skin &amp; haircare',
-    (appErr?appFail('skincare brands'):groupLbl('In the app')+grid(4,
+  h+=card('brands',ALL?'All Brands':'Skincare Brands',ALL?'Every live brand in the app':'Brands with a product tagged Skin &amp; haircare',
+    (appErr?appFail(cw+'brands'):groupLbl('In the app')+grid(4,
        _kmTile('Signed',fN(sn('active')),'latest subscription active \u00b7 '+fN((SB.active||{}).current||0)+' with a current billing period','')
       +_kmTile('Pilots',fN(sn('pilot')),'on a pilot plan','')
       +_kmTile('Paused',fN(sn('paused')),'subscription paused','')
-      +_kmTile('All Skincare Brands',fN(A.skincareBrandsInApp||0),fN(sn('none'))+' with no subscription','')))
+      +_kmTile(ALL?'All Brands':'All Skincare Brands',fN(A.skincareBrandsInApp||0),fN(sn('none'))+' with no subscription','')))
     +'<div style="margin-top:14px">'+groupLbl('HubSpot sales pipeline')+grid(3,
       _kmTile('Demos Scheduled',fN(bc.scheduled||0),'entered Appointment Scheduled','','','','',1)
      +_kmTile('Demos Completed',fN(bc.completed||0),'entered Demo Happened','','','','',1)
@@ -2746,7 +2812,7 @@ function renderWebinarPerf(){
   el.innerHTML=h;
 }
 
-async function refreshData(){const btn=document.getElementById('rfb');if(btn){btn.classList.add('loading');btn.textContent='↻ Refreshing...';}if(AP==='clinician'){S.clinician.data=null;S.clinician.funnelAT=null;S.clinician.funnelATErr=null;S.clinician.funnelATFresh=true;if(S.clinician.funnelAllTime)_clnFetchFunnelAT();await fdClinician(S.clinician.win||'mtd');}else if(AP==='signup'){await fdSignup();}else if(AP==='csession'){S.analyzer.data=null;await fdAnalyzer(S.analyzer.win||S.dashboard?.win||'mtd');}else if(AP==='webinarPerf'){S.webinarPerf.data=null;await fdWebinarPerf(S.webinarPerf.win||'mtd');}else if(AP==='pilot'){S.pilot.data=null;await fdPilot();}else if(AP==='skincare'){S.skincare.data=null;await fdSkincare();}else{
+async function refreshData(){const btn=document.getElementById('rfb');if(btn){btn.classList.add('loading');btn.textContent='↻ Refreshing...';}if(AP==='clinician'){S.clinician.data=null;S.clinician.funnelAT=null;S.clinician.funnelATErr=null;S.clinician.funnelATFresh=true;if(S.clinician.funnelAllTime)_clnFetchFunnelAT();await fdClinician(S.clinician.win||'mtd');}else if(AP==='signup'){await fdSignup();}else if(AP==='csession'){S.analyzer.data=null;await fdAnalyzer(S.analyzer.win||S.dashboard?.win||'mtd');}else if(AP==='webinarPerf'){S.webinarPerf.data=null;await fdWebinarPerf(S.webinarPerf.win||'mtd');}else if(AP==='pilot'){S.pilot.data=null;await fdPilot();}else if(AP==='skincare'){S.skincare.data=null;S.skincare.byCat={};await fdSkincare();}else{
   // Bust the shared analyzer cache + analyzer payload so the Meta
   // Campaigns/Ad Sets/Creatives tables (Status + which assets are listed)
   // re-fetch from Windsor on Refresh. Without this, _renderIrfanMetaTablesLoader
@@ -12895,7 +12961,7 @@ function switchDashSub(sub){
   var apMap={exec:'exec',overview:'dashboard',pilot:'pilot',skincare:'skincare',clinician:'clinician',irfan:'irfan',signup:'signup',calculator:'calculator',strategy:'strategy',demoQuality:'demoQuality',outbound:'outbound',webinarPerf:'webinarPerf'};
   AP=apMap[sub]||'dashboard';
   // Update titles
-  var titleMap={exec:'Executive Dashboard',overview:'Brand Dashboard',pilot:'Pilot Dashboard',skincare:'Skincare Dashboard',clinician:'Clinician Dashboard',irfan:'Irfan Dashboard',signup:'Sign-Up Rate',calculator:'ARR Calculator',strategy:'Monthly Review',demoQuality:'Demo Quality',outbound:'Outbound Sequences',webinarPerf:'Webinar Performance'};
+  var titleMap={exec:'Executive Dashboard',overview:'Brand Dashboard',pilot:'Pilot Dashboard',skincare:'Brand Category Dashboard',clinician:'Clinician Dashboard',irfan:'Irfan Dashboard',signup:'Sign-Up Rate',calculator:'ARR Calculator',strategy:'Monthly Review',demoQuality:'Demo Quality',outbound:'Outbound Sequences',webinarPerf:'Webinar Performance'};
   document.getElementById('ptitle').textContent=titleMap[sub]||'Brand Dashboard';
   // Highlight nav items
   // highlighting handled centrally by _syncNav() on render

@@ -3543,12 +3543,14 @@ async function fetchDermClinicians(token) {
 // demo completed in the window it happened. Signed is closedate in the window on a
 // deal that is closed won now or churned since (the Brand Dashboard's basis).
 // No from/to = all time (the page has no time frame): any dated step counts.
-function buildSkincareBrandWindow(deals, from, to) {
+// match = which Brand Product Category values count (default: Skin & haircare).
+function buildSkincareBrandWindow(deals, from, to, match) {
+  const isCat = match || isSkincareCategory;
   const inW = (v) => { const k = _clnDayKey(v); return !!k && (!from || k >= from) && (!to || k <= to); };
   let scheduled = 0, completed = 0, signed = 0;
   for (const d of deals) {
     const p = d.properties || {};
-    if (!isSkincareCategory(p.brand_product_category)) continue;
+    if (!isCat(p.brand_product_category)) continue;
     const st = (p.dealstage || '').trim();
     // A demo deal is created INTO Appointment Scheduled, and some carry no stamp
     // for the stage they were created in, so createdate stands in -- but only
@@ -3699,10 +3701,26 @@ async function metabaseCheck(env) {
 // concern. The topical / personal-care half of the "Either one" rule needs the
 // product category / subtype tables, which are not in the Snowflake sync yet.
 // App timestamps are UTC (TIMESTAMP_NTZ); months are bucketed in Eastern.
-const SKN_MB_SK = `sk AS (SELECT DISTINCT c.HEALTH_BRAND_PRODUCT_ID pid
+// Brand categories the page offers (Alex, 2026-11-11: All and Skin & haircare
+// for now). The request names a KEY; the concern text is the server's own, so
+// nothing from the request reaches the SQL. specialty = the matching clinician
+// specialty, which drives the specialist sections (none for All).
+const SKN_CATEGORIES = {
+  skin: { key: 'skin', label: 'Skin & haircare', concern: SKINCARE_CONCERN, specialty: 'Dermatology' },
+  all: { key: 'all', label: 'All categories', concern: null, specialty: null },
+};
+const SKN_CATEGORY_ORDER = ['all', 'skin'];
+// The category's products. Queries below are written against this CTE through
+// the __SK__ placeholder; sknMbSql fills it per category.
+function sknSkCte(cat) {
+  if (!cat.concern) return `sk AS (SELECT p.ID pid FROM STAGING.STG_PRODUCTS p)`;
+  if (!/^[A-Za-z &]+$/.test(cat.concern)) throw new Error('bad category concern');
+  return `sk AS (SELECT DISTINCT c.HEALTH_BRAND_PRODUCT_ID pid
   FROM STAGING.STG_HEALTH_BRAND_PRODUCTS_CONCERNS c
   JOIN STAGING.STG_HEALTH_CONCERNS h ON h.ID = c.HEALTH_CONCERN_ID
-  WHERE h.NAME = '${SKINCARE_CONCERN}')`;
+  WHERE h.NAME = '${cat.concern}')`;
+}
+const SKN_MB_SK = '__SK__';
 const SKN_MB_ET_MONTH = (col) => `TO_CHAR(CONVERT_TIMEZONE('UTC', 'America/New_York', ${col}), 'YYYY-MM')`;
 // Review-order items for skincare products, on LIVE orders only. "updated" is an
 // order superseded by a newer one (counting both double-counts it); cancelled and
@@ -3761,7 +3779,7 @@ const SKN_MB_BRANDS = `skb AS (SELECT DISTINCT p.HEALTH_BRAND_ID bid FROM sk
   JOIN STAGING.STG_PRODUCTS p ON p.ID = sk.pid
   JOIN STAGING.STG_BRANDS b ON b.ID = p.HEALTH_BRAND_ID
   WHERE b.DISCARDED_AT IS NULL AND COALESCE(b.DEMO, FALSE) = FALSE AND p.DISCARDED_AT IS NULL)`;
-const SKN_MB_SQL = {
+const SKN_MB_SQL_T = {
   // Totals, orders by month, and reviews written on skincare products by month.
   // 'allmonth' = reviews ordered on EVERY product, for the skincare share.
   // 'seg' = what is still owed, by brand state; OUTSTANDING leaves out stopped brands.
@@ -3820,9 +3838,10 @@ LEFT JOIN STAGING.STG_SUBSCRIPTIONS s ON s.ID = l.SUBSCRIPTION_ID GROUP BY 1`,
     LEFT JOIN fl ON fl.nid = n.ID
     WHERE n.STATUS IN ('shared', 'approved') GROUP BY 1)
 SELECT IFF(TRIM(pp.SPECIALTY) ILIKE 'dermatology', 1, 0) DERM, ${SKN_MB_TITLE} T,
+  COALESCE(NULLIF(TRIM(pp.SPECIALTY), ''), 'Not set') SP,
   COUNT(*) WRITERS, SUM(w.r) REVIEWS, SUM(w.r90) REVIEWS90, SUM(IFF(w.r90 > 0, 1, 0)) WRITERS90, SUM(w.o90) ONORDER90
 FROM w LEFT JOIN STAGING.STG_CLINICIANS c ON c.ID = w.cid
-LEFT JOIN STAGING.STG_PROVIDER_PROFILES pp ON pp.ID = c.PROVIDER_PROFILE_ID GROUP BY 1, 2`,
+LEFT JOIN STAGING.STG_PROVIDER_PROFILES pp ON pp.ID = c.PROVIDER_PROFILE_ID GROUP BY 1, 2, 3`,
   // Dermatologists in the app, by raw title (grouped in JS like the Clinician
   // pages). The title is the CLINICIAN's own, falling back to the provider
   // profile's: a profile is often a shared practice account (an MD under an NP
@@ -3848,6 +3867,17 @@ SELECT d.t T, COUNT(*) CLINICIANS, COUNT(s.cid) SAMPLES, COUNT(n.cid) REVIEWERS,
   SUM(IFF(n.r BETWEEN 6 AND 20, 1, 0)) B6_20, SUM(IFF(n.r > 20, 1, 0)) B21
 FROM d LEFT JOIN s ON s.cid = d.cid LEFT JOIN n ON n.cid = d.cid GROUP BY d.t`,
 };
+// The queries for one category. The dermatologist query runs only for a
+// category with a specialist (All has none).
+function sknMbSql(cat) {
+  const sk = sknSkCte(cat), out = {};
+  for (const k of Object.keys(SKN_MB_SQL_T)) {
+    if (k === 'derm' && cat.specialty !== 'Dermatology') continue;
+    out[k] = SKN_MB_SQL_T[k].split(SKN_MB_SK).join(sk);
+  }
+  return out;
+}
+const SKN_MB_SQL = sknMbSql(SKN_CATEGORIES.skin);
 const SKN_DERM_KEYS = ['clinicians', 'samples', 'reviewers', 'reviews', 'sampleReviewers', 'reviews90', 'active90',
   'skReviews', 'skReviews90', 'b1', 'b2_5', 'b6_20', 'b21'];
 const SKN_DERM_COLS = { clinicians: 'CLINICIANS', samples: 'SAMPLES', reviewers: 'REVIEWERS', reviews: 'REVIEWS',
@@ -3875,6 +3905,19 @@ function buildSkincareApp(r, todayKey) {
     const o = wr[key] || (wr[key] = { group: key, derm: !!num(x.DERM), type: SKN_MAIN_TYPES.includes(g) ? g : 'Other', writers: 0, reviews: 0, reviews90: 0, writers90: 0, onOrder90: 0 });
     o.writers += num(x.WRITERS); o.reviews += num(x.REVIEWS); o.reviews90 += num(x.REVIEWS90); o.writers90 += num(x.WRITERS90); o.onOrder90 += num(x.ONORDER90);
   }
+  // By specialty, spellings merged case-insensitively ("Family medicine" and
+  // "Family Medicine"), named by the Clinician pages' groups where they have one.
+  const bs = {};
+  for (const x of r.writers || []) {
+    const raw = String(x.SP || 'Not set').trim() || 'Not set';
+    const g = Object.keys(CLINICIAN_SPECIALTY_GROUPS).find(k => CLINICIAN_SPECIALTY_GROUPS[k].some(v => v.toLowerCase() === raw.toLowerCase()));
+    const key = (g || raw).toLowerCase();
+    const o = bs[key] || (bs[key] = { group: g || raw, writers: 0, reviews: 0, reviews90: 0, writers90: 0, onOrder90: 0, _n: {} });
+    if (!g) { o._n[raw] = (o._n[raw] || 0) + num(x.WRITERS); o.group = Object.keys(o._n).sort((a, b) => o._n[b] - o._n[a] || (a < b ? -1 : 1))[0]; }
+    o.writers += num(x.WRITERS); o.reviews += num(x.REVIEWS); o.reviews90 += num(x.REVIEWS90); o.writers90 += num(x.WRITERS90); o.onOrder90 += num(x.ONORDER90);
+  }
+  const writersBySpecialty = Object.values(bs).map(o => { delete o._n; return o; })
+    .sort((a, b) => b.reviews90 - a.reviews90 || b.reviews - a.reviews || (a.group < b.group ? -1 : 1));
   const writers = Object.values(wr).sort((a, b) => (b.derm - a.derm) || (SKN_MAIN_TYPES.concat('Other').indexOf(a.type) - SKN_MAIN_TYPES.concat('Other').indexOf(b.type)));
   // Subscriptions of skincare brands (latest subscription per brand).
   const subs = {}; let subsTotal = 0;
@@ -3920,33 +3963,46 @@ function buildSkincareApp(r, todayKey) {
       topBrands: (r.backlog || []).map(x => ({ name: String(x.NAME || ''), ordered: num(x.ORDERED), delivered: num(x.DELIVERED), outstanding: num(x.OUTSTANDING), oldestDays: x.OLDEST == null ? null : num(x.OLDEST), seg: String(x.SEG || '') })),
       ages, bySeg,
     },
-    writers,
+    writers, writersBySpecialty,
     subs, skincareBrandsInApp: subsTotal,
   };
 }
-async function fetchSkincareApp(env) {
-  const names = Object.keys(SKN_MB_SQL);
-  const res = await Promise.all(names.map(k => mbQuery(env, SKN_MB_SQL[k])));
+async function fetchSkincareApp(env, cat) {
+  const Q = sknMbSql(cat || SKN_CATEGORIES.skin);
+  const names = Object.keys(Q);
+  const res = await Promise.all(names.map(k => mbQuery(env, Q[k])));
   const r = {}; names.forEach((k, i) => { r[k] = res[i]; });
   return buildSkincareApp(r, etDayKeyOf(new Date().toISOString()));
 }
 
 async function processSkincareRequest(body, env) {
   const token = env.HUBSPOT_TOKEN;
-  // No time frame: the Skincare page is all time (Alex, 2026-11-10).
+  // The Brand Category page (was Skincare). The request names a category KEY;
+  // anything unknown falls back to Skin & haircare.
+  // Own keys only: 'constructor', 'toString' etc. would otherwise match.
+  const ck = String((body || {}).category || '');
+  const cat = Object.prototype.hasOwnProperty.call(SKN_CATEGORIES, ck) ? SKN_CATEGORIES[ck] : SKN_CATEGORIES.skin;
+  // HubSpot deals count when their Brand Product Category holds this concern;
+  // for All, when it holds any value at all.
+  const match = cat.concern ? isSkincareCategory : (v) => String(v || '').trim() !== '';
+  // No time frame: the page is all time (Alex, 2026-11-10).
   // App data rides alongside: a Metabase failure blanks only the app sections.
-  const appP = fetchSkincareApp(env).catch(e => { console.error('Skincare app data:', e); return { error: e.message }; });
-  const [brandDeals, derm, app] = await Promise.all([fetchSkincareBrandDeals(token), fetchDermClinicians(token), appP]);
-  const tagged = brandDeals.filter(d => isSkincareCategory((d.properties || {}).brand_product_category));
+  const appP = fetchSkincareApp(env, cat).catch(e => { console.error('Skincare app data:', e); return { error: e.message }; });
+  // The dermatologist HubSpot read only matters to a category with that specialist.
+  const dermP = cat.specialty === 'Dermatology' ? fetchDermClinicians(token) : Promise.resolve(null);
+  const [brandDeals, derm, app] = await Promise.all([fetchSkincareBrandDeals(token), dermP, appP]);
+  const tagged = brandDeals.filter(d => match((d.properties || {}).brand_product_category));
   const firstTagged = tagged.map(d => _clnDayKey((d.properties || {}).createdate)).filter(Boolean).sort()[0] || null;
   return {
     allTime: true,
+    category: { key: cat.key, label: cat.label, specialty: cat.specialty },
+    categories: SKN_CATEGORY_ORDER.map(k => ({ key: k, label: SKN_CATEGORIES[k].label })),
     brands: {
-      current: buildSkincareBrandWindow(brandDeals, null, null),
+      current: buildSkincareBrandWindow(brandDeals, null, null, match),
       // How much of HubSpot carries the category yet, so a zero can say why.
       categorised: brandDeals.length, skincareTagged: tagged.length, firstTagged,
     },
-    derm: buildSkincareDerm(derm.deals, derm.contactsByDeal),
+    derm: derm ? buildSkincareDerm(derm.deals, derm.contactsByDeal) : null,
     // App data (Metabase's nightly Snowflake copy, up to a day behind).
     app,
     meta: { generatedAt: new Date().toISOString() },
