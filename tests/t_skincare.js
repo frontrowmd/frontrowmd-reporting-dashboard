@@ -153,12 +153,20 @@ ck('Signed counts Churned Onboarding too, like the Brand Dashboard',
   ck('SQL: months bucketed in Eastern from UTC',/CONVERT_TIMEZONE\('UTC', 'America\/New_York'/.test(Q.demand),true);
   ck('SQL: skincare = the Skin & haircare concern',/h\.NAME = 'Skin & haircare'/.test(Q.demand),true);
   ck('SQL: dermatologists by provider specialty',/TRIM\(pp\.SPECIALTY\) ILIKE 'dermatology'/.test(Q.derm),true);
+  // Review fixes (2026-11-11).
+  ck('SQL: type is the clinician\'s own title, then the profile\'s (shared practice profiles)',
+     /COALESCE\(NULLIF\(TRIM\(c\.TITLE\), ''\), NULLIF\(TRIM\(pp\.TITLE\), ''\), 'Not set'\)/.test(Q.derm),true);
+  ck('SQL: discarded and demo brands are out of demand, backlog and outstanding',
+     /ob\.DISCARDED_AT IS NULL AND COALESCE\(ob\.DEMO, FALSE\) = FALSE/.test(Q.demand)&&/ob\.DISCARDED_AT IS NULL/.test(Q.backlog),true);
+  ck('SQL: the app brand count needs a live (not discarded) skincare product',/AND p\.DISCARDED_AT IS NULL/.test(Q.brands),true);
   ck('a Metabase failure blanks only the app sections',/fetchSkincareApp\(env\)\.catch\(e => \{[^}]*return \{ error: e\.message \}/.test(src),true);
 }
 const rs=fn(cli,'renderSkincare');
 ck('client: no "Waiting on app data" placeholders remain',/Waiting on app data/.test(rs),false);
 ck('client: an app error shows in each app section',/appFail\('review demand'\)/.test(rs)&&/appFail\('engagement'\)/.test(rs)&&/appFail\('capacity'\)/.test(rs),true);
 ck('client: capacity = every MD/DO dermatologist x 2',/md=\(\(adBy\[SKN_TYPE_FIRST\]\)\|\|\{\}\)\.clinicians\|\|0, cap=md\*2/.test(rs),true);
+ck('client: Reviews Submitted shows reviews, with the reviewer count beneath',/_kmTile\('Reviews Submitted',appV\('reviews'\),appErr\?'app data unavailable':'shared or approved, by '\+fN\(ap\.reviewers/.test(rs),true);
+ck('client: the surplus is rounded once, so its sign and months-to-clear agree',/net=Math\.round\(cap-nw\)/.test(rs),true);
 ck('client: brand names are escaped',/td\(_sknEsc\(x\.name\),1\)/.test(rs),true);
 
 // ── 4. Route + wiring ───────────────────────────────────────────────────────

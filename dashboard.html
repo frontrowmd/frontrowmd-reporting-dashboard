@@ -1960,7 +1960,7 @@ function renderSkincare(){
        _kmTile('Inquiries',fN(hs.inquiries||0),'dermatologists in HubSpot','')
       +_kmTile('Sign Ups',fN(hs.signUps||0),'completed credentials \u00b7 HubSpot','')
       +_kmTile('Samples Shipped',appV('samples'),'accepted samples \u00b7 app','')
-      +_kmTile('Reviews Submitted',appV('reviewers'),appErr?'app data unavailable':fN(ap.reviews||0)+' reviews, shared or approved \u00b7 app',''))
+      +_kmTile('Reviews Submitted',appV('reviews'),appErr?'app data unavailable':'shared or approved, by '+fN(ap.reviewers||0)+' dermatologists \u00b7 app',''))
     +'<div style="margin-top:16px">'+sub('By clinician type','Inquired and signed up from HubSpot; in the app, samples and reviews from the app. Counted separately, not matched person by person.')+dermTbl+'</div>'
     +(appErr?'<div style="margin-top:10px">'+appFail('dermatologist samples and reviews')+'</div>':''));
 
@@ -1983,7 +1983,9 @@ function renderSkincare(){
   let capBody;
   if(appErr)capBody=appFail('capacity');
   else{
-    const md=((adBy[SKN_TYPE_FIRST])||{}).clinicians||0, cap=md*2, nw=Dm.avgNewPerMonth||0, owed=Dm.outstanding||0, net=cap-nw;
+    // net is rounded ONCE so the sign, the surplus shown and the months-to-clear
+    // test all agree (an unrounded 0.4 showed "+0" beside a 1,600-month clear).
+    const md=((adBy[SKN_TYPE_FIRST])||{}).clinicians||0, cap=md*2, nw=Dm.avgNewPerMonth||0, owed=Dm.outstanding||0, net=Math.round(cap-nw);
     const pace=Math.round(((adBy[SKN_TYPE_FIRST]||{}).reviews90||0)/3);
     const clear=owed<=0?'0':(net>0?(owed/net).toFixed(1):'\u221e');
     const aw=Dm.avgWindow||[];

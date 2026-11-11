@@ -3707,7 +3707,9 @@ const SKN_MB_ET_MONTH = (col) => `TO_CHAR(CONVERT_TIMEZONE('UTC', 'America/New_Y
 // Review-order items for skincare products, on LIVE orders only. "updated" is an
 // order superseded by a newer one (counting both double-counts it); cancelled and
 // draft never ran. Only a still-open (confirmed) order has an outstanding count:
-// a completed order's shortfall was closed out, not owed.
+// a completed order's shortfall was closed out, not owed. Discarded and demo
+// brands are out, the same rule as the brand count (a deleted brand's open
+// order is not a backlog anyone will work).
 const SKN_MB_ITEMS = `it AS (SELECT o.ID oid, o.STATUS st, o.HEALTH_BRAND_ID bid,
     ${SKN_MB_ET_MONTH('COALESCE(o.CONFIRMED_AT, o.CREATED_AT)')} m,
     COALESCE(i.QUANTITY, 0) q, COALESCE(i.DELIVERED_COUNT, 0) d,
@@ -3715,7 +3717,9 @@ const SKN_MB_ITEMS = `it AS (SELECT o.ID oid, o.STATUS st, o.HEALTH_BRAND_ID bid
   FROM STAGING.STG_REVIEW_ORDER_ITEMS i
   JOIN STAGING.STG_REVIEW_ORDERS o ON o.ID = i.REVIEW_ORDER_ID
   JOIN sk ON sk.pid = i.HEALTH_BRAND_PRODUCT_ID
-  WHERE o.STATUS IN ('confirmed', 'completed'))`;
+  JOIN STAGING.STG_BRANDS ob ON ob.ID = o.HEALTH_BRAND_ID
+  WHERE o.STATUS IN ('confirmed', 'completed')
+    AND ob.DISCARDED_AT IS NULL AND COALESCE(ob.DEMO, FALSE) = FALSE)`;
 const SKN_MB_SQL = {
   // Totals, orders by month, and reviews written on skincare products by month.
   demand: `WITH ${SKN_MB_SK}, ${SKN_MB_ITEMS}
@@ -3729,16 +3733,20 @@ UNION ALL SELECT 'reviewed', ${SKN_MB_ET_MONTH('n.CREATED_AT')}, NULL, NULL, NUL
 SELECT b.NAME NAME, SUM(it.q) ORDERED, SUM(it.d) DELIVERED, SUM(it.owed) OUTSTANDING
 FROM it JOIN STAGING.STG_BRANDS b ON b.ID = it.bid
 GROUP BY b.ID, b.NAME HAVING SUM(it.owed) > 0 ORDER BY OUTSTANDING DESC, NAME LIMIT 10`,
-  // Brands in the app with at least one skincare product (not discarded, not demo).
+  // Brands in the app with at least one live skincare product (brand and product
+  // not discarded, brand not demo).
   brands: `WITH ${SKN_MB_SK}
 SELECT COUNT(DISTINCT p.HEALTH_BRAND_ID) N FROM sk
 JOIN STAGING.STG_PRODUCTS p ON p.ID = sk.pid
 JOIN STAGING.STG_BRANDS b ON b.ID = p.HEALTH_BRAND_ID
-WHERE b.DISCARDED_AT IS NULL AND COALESCE(b.DEMO, FALSE) = FALSE`,
+WHERE b.DISCARDED_AT IS NULL AND COALESCE(b.DEMO, FALSE) = FALSE AND p.DISCARDED_AT IS NULL`,
   // Dermatologists in the app, by raw title (grouped in JS like the Clinician
-  // pages). Samples shipped = a review-group commitment with Accepted Samples =
+  // pages). The title is the CLINICIAN's own, falling back to the provider
+  // profile's: a profile is often a shared practice account (an MD under an NP
+  // or blank-titled profile), and the profile title dropped 21 MD/DOs from
+  // capacity. Samples shipped = a review-group commitment with Accepted Samples =
   // yes (Alex, 2026-11-11). Reviews = notes shared or approved, any product.
-  derm: `WITH d AS (SELECT c.ID cid, COALESCE(NULLIF(TRIM(pp.TITLE), ''), 'Not set') t
+  derm: `WITH d AS (SELECT c.ID cid, COALESCE(NULLIF(TRIM(c.TITLE), ''), NULLIF(TRIM(pp.TITLE), ''), 'Not set') t
     FROM STAGING.STG_CLINICIANS c JOIN STAGING.STG_PROVIDER_PROFILES pp ON pp.ID = c.PROVIDER_PROFILE_ID
     WHERE TRIM(pp.SPECIALTY) ILIKE 'dermatology'),
   s AS (SELECT DISTINCT CLINICIAN_ID cid FROM STAGING.STG_REVIEW_GROUP_COMMITMENTS WHERE ACCEPTED_SAMPLES = TRUE),
