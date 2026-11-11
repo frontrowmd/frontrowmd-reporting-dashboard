@@ -3694,10 +3694,116 @@ async function metabaseCheck(env) {
   return out;
 }
 
+// ── Skincare Phase 2: app data via Metabase ──────────────────────────────────
+// Skincare in the app = a product tagged with the "Skin & haircare" health
+// concern. The topical / personal-care half of the "Either one" rule needs the
+// product category / subtype tables, which are not in the Snowflake sync yet.
+// App timestamps are UTC (TIMESTAMP_NTZ); months are bucketed in Eastern.
+const SKN_MB_SK = `sk AS (SELECT DISTINCT c.HEALTH_BRAND_PRODUCT_ID pid
+  FROM STAGING.STG_HEALTH_BRAND_PRODUCTS_CONCERNS c
+  JOIN STAGING.STG_HEALTH_CONCERNS h ON h.ID = c.HEALTH_CONCERN_ID
+  WHERE h.NAME = '${SKINCARE_CONCERN}')`;
+const SKN_MB_ET_MONTH = (col) => `TO_CHAR(CONVERT_TIMEZONE('UTC', 'America/New_York', ${col}), 'YYYY-MM')`;
+// Review-order items for skincare products, on LIVE orders only. "updated" is an
+// order superseded by a newer one (counting both double-counts it); cancelled and
+// draft never ran. Only a still-open (confirmed) order has an outstanding count:
+// a completed order's shortfall was closed out, not owed.
+const SKN_MB_ITEMS = `it AS (SELECT o.ID oid, o.STATUS st, o.HEALTH_BRAND_ID bid,
+    ${SKN_MB_ET_MONTH('COALESCE(o.CONFIRMED_AT, o.CREATED_AT)')} m,
+    COALESCE(i.QUANTITY, 0) q, COALESCE(i.DELIVERED_COUNT, 0) d,
+    IFF(o.STATUS = 'confirmed', GREATEST(COALESCE(i.QUANTITY, 0) - COALESCE(i.DELIVERED_COUNT, 0), 0), 0) owed
+  FROM STAGING.STG_REVIEW_ORDER_ITEMS i
+  JOIN STAGING.STG_REVIEW_ORDERS o ON o.ID = i.REVIEW_ORDER_ID
+  JOIN sk ON sk.pid = i.HEALTH_BRAND_PRODUCT_ID
+  WHERE o.STATUS IN ('confirmed', 'completed'))`;
+const SKN_MB_SQL = {
+  // Totals, orders by month, and reviews written on skincare products by month.
+  demand: `WITH ${SKN_MB_SK}, ${SKN_MB_ITEMS}
+SELECT 'total' K, NULL M, COUNT(DISTINCT bid) BRANDS, COUNT(DISTINCT oid) ORDERS, SUM(q) ORDERED, SUM(d) DELIVERED, SUM(owed) OUTSTANDING, NULL REVIEWS FROM it
+UNION ALL SELECT 'month', m, COUNT(DISTINCT bid), COUNT(DISTINCT oid), SUM(q), NULL, NULL, NULL FROM it GROUP BY m
+UNION ALL SELECT 'reviewed', ${SKN_MB_ET_MONTH('n.CREATED_AT')}, NULL, NULL, NULL, NULL, NULL, COUNT(*)
+  FROM STAGING.STG_NOTES n JOIN sk ON sk.pid = n.HEALTH_BRAND_PRODUCT_ID
+  WHERE n.STATUS IN ('shared', 'approved') GROUP BY 2`,
+  // The brands with the most reviews still owed.
+  backlog: `WITH ${SKN_MB_SK}, ${SKN_MB_ITEMS}
+SELECT b.NAME NAME, SUM(it.q) ORDERED, SUM(it.d) DELIVERED, SUM(it.owed) OUTSTANDING
+FROM it JOIN STAGING.STG_BRANDS b ON b.ID = it.bid
+GROUP BY b.ID, b.NAME HAVING SUM(it.owed) > 0 ORDER BY OUTSTANDING DESC, NAME LIMIT 10`,
+  // Brands in the app with at least one skincare product (not discarded, not demo).
+  brands: `WITH ${SKN_MB_SK}
+SELECT COUNT(DISTINCT p.HEALTH_BRAND_ID) N FROM sk
+JOIN STAGING.STG_PRODUCTS p ON p.ID = sk.pid
+JOIN STAGING.STG_BRANDS b ON b.ID = p.HEALTH_BRAND_ID
+WHERE b.DISCARDED_AT IS NULL AND COALESCE(b.DEMO, FALSE) = FALSE`,
+  // Dermatologists in the app, by raw title (grouped in JS like the Clinician
+  // pages). Samples shipped = a review-group commitment with Accepted Samples =
+  // yes (Alex, 2026-11-11). Reviews = notes shared or approved, any product.
+  derm: `WITH d AS (SELECT c.ID cid, COALESCE(NULLIF(TRIM(pp.TITLE), ''), 'Not set') t
+    FROM STAGING.STG_CLINICIANS c JOIN STAGING.STG_PROVIDER_PROFILES pp ON pp.ID = c.PROVIDER_PROFILE_ID
+    WHERE TRIM(pp.SPECIALTY) ILIKE 'dermatology'),
+  s AS (SELECT DISTINCT CLINICIAN_ID cid FROM STAGING.STG_REVIEW_GROUP_COMMITMENTS WHERE ACCEPTED_SAMPLES = TRUE),
+  n AS (SELECT CLINICIAN_ID cid, COUNT(*) r, SUM(IFF(CREATED_AT >= DATEADD(day, -90, SYSDATE()), 1, 0)) r90
+    FROM STAGING.STG_NOTES WHERE STATUS IN ('shared', 'approved') GROUP BY 1)
+SELECT d.t T, COUNT(*) CLINICIANS, COUNT(s.cid) SAMPLES, COUNT(n.cid) REVIEWERS, COALESCE(SUM(n.r), 0) REVIEWS,
+  SUM(IFF(s.cid IS NOT NULL AND n.cid IS NOT NULL, 1, 0)) SAMPLE_REVIEWERS,
+  COALESCE(SUM(n.r90), 0) REVIEWS90, SUM(IFF(n.r90 > 0, 1, 0)) ACTIVE90
+FROM d LEFT JOIN s ON s.cid = d.cid LEFT JOIN n ON n.cid = d.cid GROUP BY d.t`,
+};
+const SKN_DERM_KEYS = ['clinicians', 'samples', 'reviewers', 'reviews', 'sampleReviewers', 'reviews90', 'active90'];
+// Pure shaping, so it is testable without Metabase. todayKey = ET 'YYYY-MM-DD'.
+function buildSkincareApp(r, todayKey) {
+  const num = (v) => { const n = Number(v); return isFinite(n) ? n : 0; };
+  // Dermatologists: MD + DO = MD/DO, NP = Nurse Practitioner, ... as HubSpot's.
+  const zero = () => { const o = {}; SKN_DERM_KEYS.forEach(k => { o[k] = 0; }); return o; };
+  const total = zero(), byType = {};
+  for (const x of r.derm || []) {
+    const g = clinicianTypeGroup(String(x.T || 'Not set'));
+    const o = byType[g] || (byType[g] = zero());
+    const v = { clinicians: x.CLINICIANS, samples: x.SAMPLES, reviewers: x.REVIEWERS, reviews: x.REVIEWS,
+                sampleReviewers: x.SAMPLE_REVIEWERS, reviews90: x.REVIEWS90, active90: x.ACTIVE90 };
+    for (const k of SKN_DERM_KEYS) { o[k] += num(v[k]); total[k] += num(v[k]); }
+  }
+  // Demand by ET month, back to the first skincare order; empty months are 0.
+  const tot = (r.demand || []).find(x => x.K === 'total') || {};
+  const byM = {};
+  const mo = (m) => byM[m] || (byM[m] = { m, ordered: 0, orders: 0, brands: 0, reviews: 0 });
+  for (const x of r.demand || []) {
+    if (!x.M) continue;
+    if (x.K === 'month') Object.assign(mo(x.M), { ordered: num(x.ORDERED), orders: num(x.ORDERS), brands: num(x.BRANDS) });
+    if (x.K === 'reviewed') mo(x.M).reviews = num(x.REVIEWS);
+  }
+  const cur = String(todayKey || '').slice(0, 7);
+  const step = (m, k) => { let [y, n] = m.split('-').map(Number); n += k; while (n < 1) { n += 12; y--; } while (n > 12) { n -= 12; y++; } return y + '-' + String(n).padStart(2, '0'); };
+  const keys = Object.keys(byM).filter(m => m <= cur).sort();
+  const months = [];
+  if (keys.length) for (let m = keys[0]; m <= cur; m = step(m, 1)) months.push(byM[m] || { m, ordered: 0, orders: 0, brands: 0, reviews: 0 });
+  // New demand: the average of the last 6 COMPLETE months (the current one is partial).
+  const last6 = []; for (let k = 6; k >= 1; k--) { const m = step(cur, -k); last6.push((byM[m] || {}).ordered || 0); }
+  const avgNewPerMonth = cur ? Math.round(last6.reduce((a, b) => a + b, 0) / 6 * 10) / 10 : 0;
+  return {
+    derm: { total, byType },
+    demand: {
+      brands: num(tot.BRANDS), orders: num(tot.ORDERS), ordered: num(tot.ORDERED),
+      delivered: num(tot.DELIVERED), outstanding: num(tot.OUTSTANDING),
+      months, avgNewPerMonth, avgWindow: cur ? [step(cur, -6), step(cur, -1)] : null,
+      topBrands: (r.backlog || []).map(x => ({ name: String(x.NAME || ''), ordered: num(x.ORDERED), delivered: num(x.DELIVERED), outstanding: num(x.OUTSTANDING) })),
+    },
+    skincareBrandsInApp: num(((r.brands || [])[0] || {}).N),
+  };
+}
+async function fetchSkincareApp(env) {
+  const names = Object.keys(SKN_MB_SQL);
+  const res = await Promise.all(names.map(k => mbQuery(env, SKN_MB_SQL[k])));
+  const r = {}; names.forEach((k, i) => { r[k] = res[i]; });
+  return buildSkincareApp(r, etDayKeyOf(new Date().toISOString()));
+}
+
 async function processSkincareRequest(body, env) {
   const token = env.HUBSPOT_TOKEN;
   // No time frame: the Skincare page is all time (Alex, 2026-11-10).
-  const [brandDeals, derm] = await Promise.all([fetchSkincareBrandDeals(token), fetchDermClinicians(token)]);
+  // App data rides alongside: a Metabase failure blanks only the app sections.
+  const appP = fetchSkincareApp(env).catch(e => { console.error('Skincare app data:', e); return { error: e.message }; });
+  const [brandDeals, derm, app] = await Promise.all([fetchSkincareBrandDeals(token), fetchDermClinicians(token), appP]);
   const tagged = brandDeals.filter(d => isSkincareCategory((d.properties || {}).brand_product_category));
   const firstTagged = tagged.map(d => _clnDayKey((d.properties || {}).createdate)).filter(Boolean).sort()[0] || null;
   return {
@@ -3708,8 +3814,8 @@ async function processSkincareRequest(body, env) {
       categorised: brandDeals.length, skincareTagged: tagged.length, firstTagged,
     },
     derm: buildSkincareDerm(derm.deals, derm.contactsByDeal),
-    // Sections that wait on the app's tables (Metabase key).
-    pending: ['reviewDemand', 'engagement', 'capacity'],
+    // App data (Metabase's nightly Snowflake copy, up to a day behind).
+    app,
     meta: { generatedAt: new Date().toISOString() },
   };
 }

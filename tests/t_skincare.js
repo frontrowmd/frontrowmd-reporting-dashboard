@@ -6,7 +6,7 @@ let pass=0,fail=0;
 const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify(w);console.log((ok?'PASS ':'FAIL ')+n+'  got='+JSON.stringify(g)+(ok?'':' want='+JSON.stringify(w)));ok?pass++:fail++;};
 const W={console:{log(){},warn(){},error(){}}};vm.createContext(W);
 vm.runInContext(src.slice(0,src.indexOf('\nexport default'))
-  +'\nObject.assign(globalThis,{isSkincareCategory,buildSkincareBrandWindow,buildSkincareDerm,buildClinicianComposition,clinicianReached,CLS,CLINICIAN_PIPELINE_ID});',W);
+  +'\nObject.assign(globalThis,{isSkincareCategory,buildSkincareBrandWindow,buildSkincareDerm,buildClinicianComposition,clinicianReached,CLS,CLINICIAN_PIPELINE_ID,buildSkincareApp,SKN_MB_SQL});',W);
 
 // ── 1. Which deals are skincare ─────────────────────────────────────────────
 // Multi-checkbox values arrive as 'A;B;C'; today's field is plain text.
@@ -119,6 +119,47 @@ ck('Signed counts Churned Onboarding too, like the Brand Dashboard',
   ck('a failed contact read throws rather than showing zero dermatologists',threw,true);
   finish();
 })();
+
+// ── 3c. Phase 2: app data via Metabase (2026-11-11) ─────────────────────────
+{
+  const app=JSON.parse(JSON.stringify(W.buildSkincareApp({
+    derm:[{T:'MD',CLINICIANS:80,SAMPLES:11,REVIEWERS:4,REVIEWS:62,SAMPLE_REVIEWERS:3,REVIEWS90:21,ACTIVE90:4},
+          {T:'DO',CLINICIANS:16,SAMPLES:1,REVIEWERS:1,REVIEWS:2,SAMPLE_REVIEWERS:1,REVIEWS90:2,ACTIVE90:1},
+          {T:'NP',CLINICIANS:54,SAMPLES:5,REVIEWERS:3,REVIEWS:9,SAMPLE_REVIEWERS:3,REVIEWS90:9,ACTIVE90:3},
+          {T:'Not set',CLINICIANS:53,SAMPLES:28,REVIEWERS:30,REVIEWS:418,SAMPLE_REVIEWERS:19,REVIEWS90:55,ACTIVE90:10}],
+    demand:[{K:'total',BRANDS:200,ORDERS:217,ORDERED:1216,DELIVERED:544,OUTSTANDING:641},
+            {K:'month',M:'2026-04',ORDERED:600,ORDERS:9,BRANDS:9},   // 7 months back: outside the average
+            {K:'month',M:'2026-05',ORDERED:60,ORDERS:6,BRANDS:5},{K:'month',M:'2026-09',ORDERED:120,ORDERS:12,BRANDS:10},
+            {K:'month',M:'2026-11',ORDERED:999,ORDERS:20,BRANDS:18},  // the current month: partial, outside it
+            {K:'reviewed',M:'2026-06',REVIEWS:40},{K:'reviewed',M:'2026-12',REVIEWS:5}],  // a future month is dropped
+    backlog:[{NAME:'Brand A',ORDERED:30,DELIVERED:0,OUTSTANDING:30}],
+    brands:[{N:359}]},'2026-11-11')));
+  ck('app: MD and DO group to MD/DO, as on the Clinician pages',Object.keys(app.derm.byType).sort(),['MD/DO','Not set','Nurse Practitioner']);
+  ck('  MD/DO = MD + DO',app.derm.byType['MD/DO'],{clinicians:96,samples:12,reviewers:5,reviews:64,sampleReviewers:4,reviews90:23,active90:5});
+  ck('  totals add every type',[app.derm.total.clinicians,app.derm.total.samples,app.derm.total.reviewers,app.derm.total.reviews],[203,45,38,491]);
+  ck('demand totals pass through',[app.demand.ordered,app.demand.delivered,app.demand.outstanding,app.demand.brands,app.demand.orders],[1216,544,641,200,217]);
+  ck('months run unbroken from the first to the current, gaps as zero',app.demand.months.map(x=>x.m+':'+x.ordered+'/'+x.reviews),
+     ['2026-04:600/0','2026-05:60/0','2026-06:0/40','2026-07:0/0','2026-08:0/0','2026-09:120/0','2026-10:0/0','2026-11:999/0']);
+  ck('new demand = the last 6 COMPLETE months (May-Oct), zeros included',[app.demand.avgNewPerMonth,app.demand.avgWindow],[30,['2026-05','2026-10']]);
+  ck('  a year boundary steps right',W.buildSkincareApp({demand:[{K:'month',M:'2025-12',ORDERED:6}]},'2026-02-03').demand.avgWindow.join(','),'2025-08,2026-01');
+  ck('backlog brands and app brand count',[app.demand.topBrands[0].name,app.skincareBrandsInApp],['Brand A',359]);
+  ck('empty Metabase results are zeros, not a crash',(a=>[a.demand.ordered,a.demand.months.length,a.derm.total.clinicians])(W.buildSkincareApp({},'2026-11-11')),[0,0,0]);
+  // The SQL carries the agreed definitions.
+  const Q=W.SKN_MB_SQL;
+  ck('SQL: only live orders (superseded "updated", cancelled, draft excluded)',/WHERE o\.STATUS IN \('confirmed', 'completed'\)/.test(Q.demand),true);
+  ck('SQL: outstanding counts only still-open (confirmed) orders',/IFF\(o\.STATUS = 'confirmed', GREATEST\(/.test(Q.demand),true);
+  ck('SQL: samples shipped = Accepted Samples is yes (Alex)',/ACCEPTED_SAMPLES = TRUE/.test(Q.derm),true);
+  ck('SQL: reviews = shared or approved notes',[/STATUS IN \('shared', 'approved'\)/.test(Q.derm),/STATUS IN \('shared', 'approved'\)/.test(Q.demand)],[true,true]);
+  ck('SQL: months bucketed in Eastern from UTC',/CONVERT_TIMEZONE\('UTC', 'America\/New_York'/.test(Q.demand),true);
+  ck('SQL: skincare = the Skin & haircare concern',/h\.NAME = 'Skin & haircare'/.test(Q.demand),true);
+  ck('SQL: dermatologists by provider specialty',/TRIM\(pp\.SPECIALTY\) ILIKE 'dermatology'/.test(Q.derm),true);
+  ck('a Metabase failure blanks only the app sections',/fetchSkincareApp\(env\)\.catch\(e => \{[^}]*return \{ error: e\.message \}/.test(src),true);
+}
+const rs=fn(cli,'renderSkincare');
+ck('client: no "Waiting on app data" placeholders remain',/Waiting on app data/.test(rs),false);
+ck('client: an app error shows in each app section',/appFail\('review demand'\)/.test(rs)&&/appFail\('engagement'\)/.test(rs)&&/appFail\('capacity'\)/.test(rs),true);
+ck('client: capacity = every MD/DO dermatologist x 2',/md=\(\(adBy\[SKN_TYPE_FIRST\]\)\|\|\{\}\)\.clinicians\|\|0, cap=md\*2/.test(rs),true);
+ck('client: brand names are escaped',/td\(_sknEsc\(x\.name\),1\)/.test(rs),true);
 
 // ── 4. Route + wiring ───────────────────────────────────────────────────────
 ck('the route is sign-in-guarded',/url\.pathname === '\/api\/skincare'\) \{[\s\S]{0,200}!\(await authed\(\)\)/.test(src),true);

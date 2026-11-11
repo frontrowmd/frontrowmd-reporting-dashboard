@@ -1876,9 +1876,6 @@ function renderSkincare(){
   const card=(id,title,sub,body)=>'<div class="sec sec-card dsec" style="margin-bottom:16px">'
     +'<div class="dsec-h dsec-in" id="dsec-skn-'+id+'" data-nav="'+_sknEsc(title)+'">'+title+'</div>'
     +(sub?'<div class="irf-card-sub" style="margin-left:15px;margin-bottom:12px">'+sub+'</div>':'')+body+'</div>';
-  const pending=(what,src)=>'<div style="border:1.5px dashed var(--border);border-radius:10px;padding:18px 20px;background:var(--lighter);color:var(--grey);font-size:12px;line-height:1.6">'
-    +'<div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--navy);margin-bottom:4px">Waiting on app data</div>'
-    +what+'<div style="margin-top:6px;font-size:11px">Source: '+src+' \u00b7 needs the read-only Metabase key</div></div>';
   const grid=(n,inner)=>'<div style="display:grid;grid-template-columns:repeat('+n+',minmax(0,1fr));gap:12px">'+inner+'</div>';
   const B=d.brands||{}, bc=B.current||{};
   let h='<div style="font-size:12px;color:var(--grey);margin:0 0 14px 2px">Skincare = skincare, hair care and clean beauty / cosmetics \u00b7 all time</div>';
@@ -1892,67 +1889,112 @@ function renderSkincare(){
       _kmTile('Demos Scheduled',fN(bc.scheduled||0),'entered Appointment Scheduled','')
      +_kmTile('Demos Completed',fN(bc.completed||0),'entered Demo Happened','')
      +_kmTile('Signed',fN(bc.signed||0),'closed won (incl. since churned)',''))
-    +'<div style="margin-top:10px;font-size:11px;color:var(--grey)">'+tagNote+'</div>');
+    +'<div style="margin-top:10px;font-size:11px;color:var(--grey)">'+tagNote
+    +((d.app&&!d.app.error)?' In the app, '+fN(d.app.skincareBrandsInApp)+' brands have a product tagged Skin &amp; haircare.':'')+'</div>');
 
-  // ── 2. Review demand (app data) ──
-  h+=card('demand','Review Demand','Reviews ordered by skincare brands',
-    pending('Reviews ordered, delivered and outstanding by skincare brands, by month, with the brands carrying the largest backlog.',
-      'app review orders (review_orders / review_order_items)'));
+  // ── App data (Metabase) ──
+  // Phase 2 reads the app through Metabase's nightly Snowflake copy. A Metabase
+  // failure blanks only these sections; the HubSpot ones above still render.
+  const A=d.app||{}, appErr=A.error||(!d.app?'No app data in the response':null);
+  const appFail=(what)=>'<div style="border:1.5px solid var(--red);border-radius:10px;padding:16px 20px;color:var(--red);font-size:12px;line-height:1.6">'
+    +'Could not load '+what+' from Metabase: '+_sknEsc(appErr||'')+'</div>';
+  const srcApp='<span style="font-size:10px;color:var(--grey)">App data via Metabase \u00b7 refreshed nightly</span>';
+  const th=(l,left)=>'<th style="text-align:'+(left?'left':'right')+';padding:8px 6px;font-size:10px;color:var(--grey);text-transform:uppercase">'+l+'</th>';
+  const td=(v,left,bold)=>'<td style="padding:8px 6px;'+(left?'color:var(--navy);font-weight:600':'text-align:right;font-variant-numeric:tabular-nums')+(bold?';font-weight:700':'')+'">'+v+'</td>';
+  const tbl=(head,rows)=>'<table class="irf-meta-table" style="width:100%;font-size:12px;border-collapse:collapse"><thead><tr style="border-bottom:1.5px solid var(--border)">'+head+'</tr></thead><tbody>'+rows+'</tbody></table>';
+  const tr=(cells,hl)=>'<tr style="border-bottom:1px solid var(--border)'+(hl?';background:var(--teal-8)':'')+'">'+cells+'</tr>';
+  const sub=(t,n)=>'<div style="font-family:var(--font-h);font-size:13.5px;font-weight:700;color:var(--navy);margin-bottom:2px">'+t+'</div><div style="font-size:10px;color:var(--grey);margin-bottom:8px">'+n+'</div>';
+  const Dm=A.demand||{}, AD=A.derm||{}, adT=AD.total||{}, adBy=AD.byType||{};
 
-  // ── 3. Dermatologist funnel ──
+  // ── 2. Review demand ──
+  let demandBody;
+  if(appErr)demandBody=appFail('review demand');
+  else{
+    const months=(Dm.months||[]).slice(-12).reverse();
+    demandBody=grid(4,
+        _kmTile('Reviews Ordered',fN(Dm.ordered),fN(Dm.orders)+' live orders \u00b7 confirmed or completed','')
+       +_kmTile('Reviews Delivered',fN(Dm.delivered),_sknPct(Dm.delivered||0,Dm.ordered||0)+' of ordered','')
+       +_kmTile('Outstanding',fN(Dm.outstanding),'still owed on open orders','')
+       +_kmTile('Brands Ordering',fN(Dm.brands),'skincare brands with a live order',''))
+      +'<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;margin-top:16px">'
+      +'<div>'+sub('By month \u00b7 last 12','Ordered = reviews on orders confirmed that month \u00b7 Written = shared or approved reviews on skincare products that month, ordered or not')
+        +tbl(th('Month',1)+th('Ordered')+th('Orders')+th('Brands')+th('Written'),
+          months.map(x=>tr(td(_sknEsc(x.m),1)+td(fN(x.ordered))+td(fN(x.orders))+td(fN(x.brands))+td(fN(x.reviews)))).join('')
+          ||'<tr><td colspan="5" style="padding:10px 6px;color:var(--grey)">No skincare orders yet</td></tr>')+'</div>'
+      +'<div>'+sub('Largest backlogs','Skincare brands with the most reviews still owed on open orders')
+        +tbl(th('Brand',1)+th('Ordered')+th('Delivered')+th('Outstanding'),
+          (Dm.topBrands||[]).map(x=>tr(td(_sknEsc(x.name),1)+td(fN(x.ordered))+td(fN(x.delivered))+td(fN(x.outstanding),0,1))).join('')
+          ||'<tr><td colspan="4" style="padding:10px 6px;color:var(--grey)">Nothing outstanding</td></tr>')+'</div></div>'
+      +'<div style="margin-top:10px">'+srcApp+'</div>';
+  }
+  h+=card('demand','Review Demand','Reviews ordered on products tagged Skin &amp; haircare \u00b7 superseded, cancelled and draft orders excluded',demandBody);
+
+  // ── 3. Dermatologists ──
+  // Inquiries and sign ups are HubSpot steps; samples and reviews come from the
+  // app (Accepted Samples = yes; reviews shared or approved). The two sources
+  // are not joined person by person -- most app dermatologists who reviewed
+  // predate the HubSpot link -- so the table shows them side by side.
   const D=d.derm||{}, all=D.allTime||{};
-  const types=Object.keys((all.byType)||{}).sort(function(a,b){
-    return (b===SKN_TYPE_FIRST)-(a===SKN_TYPE_FIRST)||(a==='Not set')-(b==='Not set')||((all.byType[b].inquiries||0)-(all.byType[a].inquiries||0));
+  const tset={};Object.keys(all.byType||{}).forEach(t=>tset[t]=1);Object.keys(adBy).forEach(t=>tset[t]=1);
+  const tsize=t=>((all.byType||{})[t]||{}).inquiries||((adBy[t]||{}).clinicians)||0;
+  const types=Object.keys(tset).sort(function(a,b){
+    return (b===SKN_TYPE_FIRST)-(a===SKN_TYPE_FIRST)||(a==='Not set')-(b==='Not set')||(tsize(b)-tsize(a));
   });
   const tf=(S.skincare.typeF&&types.indexOf(S.skincare.typeF)>=0)?S.skincare.typeF:'';
   const pill=(k,l)=>{const on=tf===k;return '<button onclick="skincareSetType(\''+_sknEsc(k).replace(/'/g,"\\'")+'\')" style="font-family:var(--font-h);font-size:11px;font-weight:700;padding:6px 14px;border:none;background:'+(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+';cursor:pointer">'+_sknEsc(l)+'</button>';};
   const typeBar='<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap;margin:0 0 14px">'
     +pill('','All types')+types.map(t=>pill(t,t)).join('')+'</div>';
-  const st=(o)=>tf?((o.byType||{})[tf]||{inquiries:0,signUps:0,samples:0,reviews:0}):o;
-  const co=st(all);
-  const steps=[['Inquired','inquiries'],['Signed up','signUps'],['Samples shipped','samples'],['Review submitted','reviews']];
-  const fRow=(o,lbl,k,i)=>{const v=o[k]||0,prev=i>0?(o[steps[i-1][1]]||0):null;
-    return '<tr style="border-bottom:1px solid var(--border)"><td style="padding:8px 6px;color:var(--navy);font-weight:600">'+lbl+'</td>'
-      +'<td style="padding:8px 6px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700">'+fN(v)+'</td>'
-      +'<td style="padding:8px 6px;text-align:right;color:var(--grey);font-variant-numeric:tabular-nums">'+(i>0?_sknPct(v,prev):'\u2014')+'</td>'
-      +'<td style="padding:8px 6px;text-align:right;color:var(--grey);font-variant-numeric:tabular-nums">'+(i>0?_sknPct(v,o.inquiries||0):'100%')+'</td></tr>';};
-  const fTbl=(o)=>'<table class="irf-meta-table" style="width:100%;font-size:12px;border-collapse:collapse"><thead><tr style="border-bottom:1.5px solid var(--border)">'
-    +'<th style="text-align:left;padding:8px 6px;font-size:10px;color:var(--grey);text-transform:uppercase">Step</th><th style="text-align:right;padding:8px 6px;font-size:10px;color:var(--grey);text-transform:uppercase">Dermatologists</th>'
-    +'<th style="text-align:right;padding:8px 6px;font-size:10px;color:var(--grey);text-transform:uppercase">From prior</th><th style="text-align:right;padding:8px 6px;font-size:10px;color:var(--grey);text-transform:uppercase">Of inquired</th></tr></thead><tbody>'
-    +steps.map((x,i)=>fRow(o,x[0],x[1],i)).join('')+'</tbody></table>';
-  const typeTbl=(o)=>'<table class="irf-meta-table" style="width:100%;font-size:12px;border-collapse:collapse"><thead><tr style="border-bottom:1.5px solid var(--border)">'
-    +'<th style="text-align:left;padding:8px 6px;font-size:10px;color:var(--grey);text-transform:uppercase">Clinician type</th>'
-    +steps.map(x=>'<th style="text-align:right;padding:8px 6px;font-size:10px;color:var(--grey);text-transform:uppercase">'+x[0]+'</th>').join('')+'</tr></thead><tbody>'
-    +types.map(t=>{const r=(o.byType||{})[t]||{};return '<tr style="border-bottom:1px solid var(--border)'+(t===tf?';background:var(--teal-8)':'')+'"><td style="padding:8px 6px;color:var(--navy);font-weight:600">'+_sknEsc(t)+'</td>'
-      +steps.map(x=>'<td style="padding:8px 6px;text-align:right;font-variant-numeric:tabular-nums">'+fN(r[x[1]]||0)+'</td>').join('')+'</tr>';}).join('')
-    +'<tr style="background:var(--lighter);font-weight:700"><td style="padding:9px 6px">Total</td>'+steps.map(x=>'<td style="padding:9px 6px;text-align:right;font-variant-numeric:tabular-nums">'+fN(o[x[1]]||0)+'</td>').join('')+'</tr></tbody></table>';
-  h+=card('derm','Dermatologist Clinicians','Clinicians with specialty Dermatology \u00b7 HubSpot keeps only a deal\u2019s current stage, so a step counts as reached when the deal entered it or sits at or beyond it'
+  const hs=tf?((all.byType||{})[tf]||{}):all;
+  const ap=tf?(adBy[tf]||{}):adT;
+  const appV=(k)=>appErr?'\u2014':fN(ap[k]||0);
+  const dermTbl=tbl(th('Clinician type',1)+th('Inquired')+th('Signed up')+th('In the app')+th('Samples shipped')+th('Reviewing')+th('Reviews'),
+    types.map(t=>{const h1=(all.byType||{})[t]||{},a1=adBy[t]||{};
+      return tr(td(_sknEsc(t),1)+td(fN(h1.inquiries||0))+td(fN(h1.signUps||0))
+        +td(appErr?'\u2014':fN(a1.clinicians||0))+td(appErr?'\u2014':fN(a1.samples||0))+td(appErr?'\u2014':fN(a1.reviewers||0))+td(appErr?'\u2014':fN(a1.reviews||0)),t===tf);}).join('')
+    +'<tr style="background:var(--lighter);font-weight:700">'+td('Total',1)+td(fN(all.inquiries||0))+td(fN(all.signUps||0))
+      +td(appErr?'\u2014':fN(adT.clinicians||0))+td(appErr?'\u2014':fN(adT.samples||0))+td(appErr?'\u2014':fN(adT.reviewers||0))+td(appErr?'\u2014':fN(adT.reviews||0))+'</tr>');
+  h+=card('derm','Dermatologist Clinicians','Clinicians with specialty Dermatology \u00b7 all time'
     +(tf?' \u00b7 filtered to <b>'+_sknEsc(tf)+'</b>':''),
     typeBar
     +grid(4,
-       _kmTile('Inquiries',fN(co.inquiries||0),'dermatologists in HubSpot','')
-      +_kmTile('Sign Ups',fN(co.signUps||0),'completed credentials','')
-      +_kmTile('Samples Shipped',fN(co.samples||0),'reached Sample Shipped','')
-      +_kmTile('Reviews Submitted',fN(co.reviews||0),'reached Review Submitted',''))
-    +'<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:16px;margin-top:16px">'
-    +'<div><div style="font-family:var(--font-h);font-size:13.5px;font-weight:700;color:var(--navy);margin-bottom:2px">Funnel \u00b7 all time</div>'
-    +'<div style="font-size:10px;color:var(--grey);margin-bottom:8px">How far each dermatologist has got \u2014 every step is a subset of the one above</div>'+fTbl(co)+'</div>'
-    +'<div><div style="font-family:var(--font-h);font-size:13.5px;font-weight:700;color:var(--navy);margin-bottom:2px">By clinician type \u00b7 all time</div>'
-    +'<div style="font-size:10px;color:var(--grey);margin-bottom:8px">Every dermatologist in HubSpot, furthest step reached</div>'+typeTbl(all)+'</div></div>');
+       _kmTile('Inquiries',fN(hs.inquiries||0),'dermatologists in HubSpot','')
+      +_kmTile('Sign Ups',fN(hs.signUps||0),'completed credentials \u00b7 HubSpot','')
+      +_kmTile('Samples Shipped',appV('samples'),'accepted samples \u00b7 app','')
+      +_kmTile('Reviews Submitted',appV('reviewers'),appErr?'app data unavailable':fN(ap.reviews||0)+' reviews, shared or approved \u00b7 app',''))
+    +'<div style="margin-top:16px">'+sub('By clinician type','Inquired and signed up from HubSpot; in the app, samples and reviews from the app. Counted separately, not matched person by person.')+dermTbl+'</div>'
+    +(appErr?'<div style="margin-top:10px">'+appFail('dermatologist samples and reviews')+'</div>':''));
 
   // ── 4. Engagement ──
-  const a=st(all);
-  h+=card('engage','Engagement','Of the dermatologists who have reached Samples Shipped, how many are submitting reviews',
-    grid(2,
-      _kmTile('Reviewing Rate',_sknPct(a.reviews||0,a.samples||0),fN(a.reviews||0)+' \u00f7 '+fN(a.samples||0)+' reached Sample Shipped \u00b7 HubSpot stages','')
-     +'<div>'+pending('Average reviews per dermatologist who submits reviews (shared or approved reviews, any product).','app reviews (notes)')+'</div>'));
+  let engageBody;
+  if(appErr)engageBody=appFail('engagement');
+  else engageBody=grid(3,
+      _kmTile('Reviewing Rate',_sknPct(ap.sampleReviewers||0,ap.samples||0),fN(ap.sampleReviewers||0)+' of '+fN(ap.samples||0)+' who accepted samples have reviewed','')
+     +_kmTile('Avg Reviews per Reviewer',(ap.reviewers?(ap.reviews/ap.reviewers).toFixed(1):'\u2014'),fN(ap.reviews||0)+' reviews \u00f7 '+fN(ap.reviewers||0)+' dermatologists who reviewed','')
+     +_kmTile('Active Last 90 Days',fN(ap.active90||0),fN(ap.reviews90||0)+' reviews in the last 90 days',''))
+    +'<div style="margin-top:10px;font-size:11px;color:var(--grey)">'
+    +(ap.reviewers>ap.sampleReviewers?fN(ap.reviewers-ap.sampleReviewers)+' dermatologists reviewed without an accepted-samples record (they predate sample commitments), so they count in the average but not the rate. ':'')
+    +srcApp+'</div>';
+  h+=card('engage','Engagement','Of the dermatologists who accepted samples, how many submit reviews, and how many each'+(tf?' \u00b7 <b>'+_sknEsc(tf)+'</b>':''),engageBody);
 
   // ── 5. Capacity vs demand ──
-  const mdS=(((all.byType||{})[SKN_TYPE_FIRST])||{}).samples||0;
-  h+=card('capacity','Capacity vs Demand','Can MD/DO dermatologists keep up with skincare review demand, at 2 reviews each per month?',
-    grid(2,
-      _kmTile('Monthly Capacity',fN(mdS*2),fN(mdS)+' MD/DO dermatologists past Sample Shipped \u00d7 2 reviews / month','')
-     +'<div>'+pending('Outstanding skincare reviews (ordered \u2212 delivered) plus the average new orders per month, against this capacity: monthly surplus or gap, and months to clear the backlog.','app review orders + reviews')+'</div>'));
+  // Capacity = EVERY MD/DO dermatologist in the app x 2 reviews a month (Alex,
+  // 2026-11-11: no activity filter). Demand = the average new skincare reviews
+  // ordered over the last 6 complete months, plus the backlog to clear.
+  let capBody;
+  if(appErr)capBody=appFail('capacity');
+  else{
+    const md=((adBy[SKN_TYPE_FIRST])||{}).clinicians||0, cap=md*2, nw=Dm.avgNewPerMonth||0, owed=Dm.outstanding||0, net=cap-nw;
+    const pace=Math.round(((adBy[SKN_TYPE_FIRST]||{}).reviews90||0)/3);
+    const clear=owed<=0?'0':(net>0?(owed/net).toFixed(1):'\u221e');
+    const aw=Dm.avgWindow||[];
+    capBody=grid(4,
+        _kmTile('Monthly Capacity',fN(cap),fN(md)+' MD/DO dermatologists \u00d7 2 reviews / month','')
+       +_kmTile('New Demand / Month',fN(nw),'avg skincare reviews ordered'+(aw.length?', '+_sknEsc(aw[0])+' \u2192 '+_sknEsc(aw[1]):''),'')
+       +_kmTile('Monthly Surplus',(net>=0?'+':'\u2212')+fN(Math.abs(net)),net>=0?'capacity left after new demand':'short of new demand every month','')
+       +_kmTile('Months to Clear',clear,fN(owed)+' reviews outstanding'+(net>0?' \u00f7 monthly surplus':' \u00b7 no surplus to clear it'),''))
+    +'<div style="margin-top:10px;font-size:11px;color:var(--grey)">Actual pace: MD/DO dermatologists wrote '+fN(pace)+' reviews a month over the last 90 days, against a capacity of '+fN(cap)+'. '+srcApp+'</div>';
+  }
+  h+=card('capacity','Capacity vs Demand','Can MD/DO dermatologists keep up with skincare review demand, at 2 reviews each per month?',capBody);
 
   el.innerHTML=h;
 }
