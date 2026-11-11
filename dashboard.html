@@ -41,7 +41,7 @@ html,body{height:100%}body{font-family:var(--font-b);font-size:15px;color:var(--
    chart renders as a solid block. ONE rule for every band class: the third
    chart was added with its own class and no rule, and that is exactly how this
    bug arrives. t_bdtrendui asserts every band class in the markup is listed. */
-.clnwk-band,.cpdw-band,.dshwk-band{fill:transparent}
+.clnwk-band,.cpdw-band,.dshwk-band,.skn-band{fill:transparent}
 .clnwk-band:hover,.cpdw-band:hover,.dshwk-band:hover{fill:rgba(74,135,168,.10)}
 .sidebar.collapsed{width:64px;min-width:64px}
 .sidebar.collapsed .slogo{display:none}
@@ -1900,22 +1900,50 @@ function _sknMonthChart(months){
   for(let i=0;i<=4;i++){const v=nice*i/4;g+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y(v)+'" y2="'+y(v)+'" stroke="var(--border)" stroke-width="1"/>'
     +'<text x="'+(L-6)+'" y="'+(y(v)+3)+'" text-anchor="end" font-size="10" fill="var(--grey)">'+fN(v)+'</text>';}
   const cur=months[months.length-1].m;
+  let hits='';
   months.forEach((x,i)=>{
     const cx=L+bw*i+bw/2, w=Math.max(4,bw*0.55), top=y(x.ordered);
     const part=x.m===cur?' (month to date)':'';
-    g+='<g><title>'+_sknEsc(x.m)+part+'\nOrdered: '+fN(x.ordered)+' reviews \u00b7 '+fN(x.brands)+' brands\nWritten: '+fN(x.reviews)+' reviews</title>'
-      +'<rect x="'+(L+bw*i)+'" y="'+T+'" width="'+bw+'" height="'+ph+'" fill="transparent"/>'
+    const q=x.m.split('-');
+    const tip='<div style="font-weight:700;margin-bottom:4px">'+MON[+q[1]-1]+' '+q[0]+(part?' <span style="font-weight:400;opacity:.7">month to date</span>':'')+'</div>'
+      +'<div><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#fff;opacity:.9;margin-right:6px"></span>Ordered <b>'+fN(x.ordered)+'</b> \u00b7 '+fN(x.brands)+' brands</div>'
+      +'<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--teal);margin-right:6px"></span>Written <b>'+fN(x.reviews)+'</b></div>';
+    hits+='<rect class="skn-hit" data-i="'+i+'" data-tip="'+_sknEsc(tip)+'" x="'+(L+bw*i)+'" y="'+T+'" width="'+bw+'" height="'+ph+'" fill="transparent" style="cursor:default" onmouseenter="_sknTip(this,event)" onmousemove="_sknTip(this,event)"/>';
+    g+='<g><rect class="skn-band" x="'+(L+bw*i)+'" y="'+T+'" width="'+bw+'" height="'+ph+'"/>'
       +(x.ordered>0?(()=>{const hh=T+ph-top,rr=Math.min(4,hh,w/2);return '<path d="M'+(cx-w/2)+','+(T+ph)+' V'+(top+rr)+' q0,-'+rr+' '+rr+',-'+rr+' h'+(w-2*rr)+' q'+rr+',0 '+rr+','+rr+' V'+(T+ph)+' Z" fill="var(--navy)"'+(part?' fill-opacity=".45"':'')+'/>';})():'')
       +'<text x="'+cx+'" y="'+(H-10)+'" text-anchor="middle" font-size="10" fill="var(--grey)">'+lbl(x.m)+'</text></g>';
   });
   const pts=months.map((x,i)=>(L+bw*i+bw/2)+','+y(x.reviews));
   g+='<polyline points="'+pts.join(' ')+'" fill="none" stroke="var(--teal)" stroke-width="2" pointer-events="none"/>';
   months.forEach((x,i)=>{g+='<circle cx="'+(L+bw*i+bw/2)+'" cy="'+y(x.reviews)+'" r="4" fill="var(--teal)" stroke="var(--white)" stroke-width="2" pointer-events="none"/>';});
+  g+=hits;
   const key=(c,l,line)=>'<span style="display:inline-flex;align-items:center;gap:6px;margin-right:16px">'
     +(line?'<span style="width:16px;height:2px;background:'+c+';position:relative"><span style="position:absolute;left:5px;top:-3px;width:6px;height:6px;border-radius:50%;background:'+c+'"></span></span>':'<span style="width:10px;height:10px;border-radius:2px;background:'+c+'"></span>')+l+'</span>';
   return '<div style="font-size:11px;color:var(--navy);margin:0 0 6px">'+key('var(--navy)','Reviews ordered (skincare)')+key('var(--teal)','Reviews written on skincare products (any clinician, ordered or not)',1)+'</div>'
-    +'<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block" role="img" aria-label="Skincare reviews ordered and written by month">'+g+'</svg>';
+    +'<div class="skn-mc" style="position:relative" onmouseleave="_sknTipOff(this)">'
+    +'<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block" role="img" aria-label="Skincare reviews ordered and written by month">'+g+'</svg>'
+    +'<div class="skn-tip" style="position:absolute;top:0;left:0;display:none;pointer-events:none;z-index:5;background:var(--navy);color:#fff;font-size:11px;line-height:1.6;padding:8px 10px;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.18);white-space:nowrap"></div></div>';
 }
+// Month-chart hover: shows at once (a native SVG <title> waits ~1s), follows
+// the pointer, flips left near the right edge and shades the hovered month.
+window._sknTip=function(el,ev){
+  const wrap=el.closest('.skn-mc');if(!wrap)return;
+  const tip=wrap.querySelector('.skn-tip'),r=wrap.getBoundingClientRect(),i=el.getAttribute('data-i');
+  // The band's class makes it transparent; the hovered one is shaded inline.
+  wrap.querySelectorAll('.skn-band').forEach((b,k)=>{b.style.fill=String(k)===i?'rgba(114,164,191,.14)':'';});
+  if(tip.getAttribute('data-i')!==i){tip.innerHTML=el.getAttribute('data-tip');tip.setAttribute('data-i',i);}
+  tip.style.display='block';
+  // Pointer and wrapper rects are in screen px; the page is zoomed (UI_ZOOM),
+  // so the tooltip's own size is scaled to screen px and the final offsets go
+  // back through _uz() into CSS px.
+  const x=ev.clientX-r.left,yy=ev.clientY-r.top,tw=tip.offsetWidth*UI_ZOOM,th=tip.offsetHeight*UI_ZOOM;
+  tip.style.left=_uz(Math.max(0,(x+14+tw>r.width?x-14-tw:x+14)))+'px';
+  tip.style.top=_uz(Math.max(0,yy-th-10))+'px';
+};
+window._sknTipOff=function(wrap){
+  const tip=wrap.querySelector('.skn-tip');if(tip){tip.style.display='none';tip.removeAttribute('data-i');}
+  wrap.querySelectorAll('.skn-band').forEach(b=>{b.style.fill='';});
+};
 // One-hue cell shading: darker = larger. rgb is 'r,g,b'. (_irfanHeat runs
 // red -> green, which painted the smallest review counts red.)
 function _sknHeat(vals,v,rgb){
@@ -2055,8 +2083,11 @@ function renderSkincare(){
   const types=SKN_MAIN_TYPES.concat('Other').filter(t=>hsBy[t]||adBy[t]);
   const tf=(S.skincare.typeF&&types.indexOf(S.skincare.typeF)>=0)?S.skincare.typeF:'';
   const pill=(k,l)=>{const on=tf===k;return '<button onclick="skincareSetType(\''+_sknEsc(k).replace(/'/g,"\\'")+'\')" style="font-family:var(--font-h);font-size:11px;font-weight:700;padding:6px 14px;border:none;background:'+(on?'var(--navy)':'transparent')+';color:'+(on?'#fff':'var(--grey)')+';cursor:pointer">'+_sknEsc(l)+'</button>';};
-  const typeBar='<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 14px"><div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap">'
-    +pill('','All types')+types.map(t=>pill(t,t)).join('')+'</div><span style="font-size:10px;color:var(--grey)">Filters these tiles and Engagement; the table always shows every type</span></div>';
+  // One filter, shown in both sections it drives (Dermatologist tiles and
+  // Engagement): clicking either sets the same S.skincare.typeF.
+  const typeBarFor=note=>'<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 14px"><div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap">'
+    +pill('','All types')+types.map(t=>pill(t,t)).join('')+'</div><span style="font-size:10px;color:var(--grey)">'+note+'</span></div>';
+  const typeBar=typeBarFor('Filters these tiles and Engagement below; the table always shows every type');
   const hs=tf?(hsBy[tf]||{}):all;
   const ap=tf?(adBy[tf]||{}):adT;
   const appV=(k)=>appErr?'\u2014':fN(ap[k]||0);
@@ -2090,7 +2121,7 @@ function renderSkincare(){
   if(appErr)engageBody=appFail('engagement');
   else{
     const buckets=[['1 review',ap.b1],['2\u20135 reviews',ap.b2_5],['6\u201320 reviews',ap.b6_20],['More than 20',ap.b21]];
-    engageBody=grid(4,
+    engageBody=typeBarFor('Same filter as Dermatologist Clinicians above')+grid(4,
       _kmTile('Ever Reviewed',_sknPct(ap.reviewers||0,ap.clinicians||0),fN(ap.reviewers||0)+' of '+fN(ap.clinicians||0)+' dermatologists have written a review','')
      +_kmTile('Reviewing Rate',_sknPct(ap.sampleReviewers||0,ap.samples||0),fN(ap.sampleReviewers||0)+' of '+fN(ap.samples||0)+' who accepted samples have reviewed','')
      +_kmTile('Avg Reviews per Reviewer',(ap.reviewers?(ap.reviews/ap.reviewers).toFixed(1):'\u2014'),fN(ap.reviews||0)+' reviews \u00f7 '+fN(ap.reviewers||0)+' who reviewed','')

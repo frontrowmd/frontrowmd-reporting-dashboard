@@ -214,6 +214,7 @@ ck('client: gap and surplus are rounded once, so sign and months-to-clear agree'
 ck('client: Capacity leads the page',rs.indexOf("card('capacity'")>=0&&rs.indexOf("card('capacity'")<rs.indexOf("card('demand'")&&rs.indexOf("card('demand'")<rs.indexOf("card('writers'")&&rs.indexOf("card('engage'")<rs.indexOf("card('brands'"),true);
 ck('client: Reviews Submitted shows reviews, with the skincare count beneath',/_kmTile\('Reviews Submitted',appV\('reviews'\),appErr\?'app data unavailable':'shared or approved, any product \\u00b7 '\+fN\(ap\.skReviews/.test(rs),true);
 ck('client: Capacity does not follow the type filter',/const mdA=adBy\[SKN_TYPE_FIRST\]/.test(rs)&&!/const mdA=[^;]*\bap\b/.test(rs),true);
+ck('client: Engagement carries the clinician type filter too (same state)',/engageBody=typeBarFor\(/.test(rs)&&/const typeBar=typeBarFor\(/.test(rs),true);
 ck('client: brand names are escaped',/td\(_sknEsc\(x\.name\),1\)/.test(rs),true);
 // Type folding: MD/DO, NP and PA keep their own rows; every other title is Other.
 {
@@ -228,6 +229,10 @@ ck('client: brand names are escaped',/td\(_sknEsc\(x\.name\),1\)/.test(rs),true)
   // corner's start (V) must not dip below the baseline.
   const bars=[...big.matchAll(/<path d="M[\d.]+,([\d.]+) V([\d.]+) q0,-([\d.]+)/g)].map(m=>({h:+m[1]-Math.min(+m[2],+m[2]-+m[3]),v:+m[2],base:+m[1]}));
   ck('client: a 1-review bar on a 200 scale is under 1px tall, not a 4px minimum',bars[1].h>0&&bars[1].h<1&&bars[1].v<=bars[1].base,true);
+  const mc=C3.f([{m:'2026-10',ordered:3,reviews:1,brands:1},{m:'2026-11',ordered:2,reviews:0,brands:1}]);
+  ck('client: month chart hover is instant (HTML tooltip on hit columns, no delayed native <title>)',
+     [/<title>/.test(mc),(mc.match(/class="skn-hit"/g)||[]).length,/onmouseenter="_sknTip\(this,event\)"/.test(mc),/class="skn-tip"/.test(mc),/typeof window\._sknTip|window\._sknTip=function/.test(cli)],[false,2,true,true,true]);
+  ck('client: the hit columns sit on top of the bars and line',mc.lastIndexOf('<circle')<mc.indexOf('class="skn-hit"'),true);
   ck('client: minor titles fold into Other, numbers summed',JSON.parse(JSON.stringify(C2.f({'MD/DO':{reviews:5},RDN:{reviews:1,clinicians:2},'Not set':{reviews:2,clinicians:8}}))),{'MD/DO':{reviews:5},Other:{reviews:3,clinicians:10}});
 }
 
