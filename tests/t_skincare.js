@@ -134,10 +134,11 @@ ck('Signed counts Churned Onboarding too, like the Brand Dashboard',
             {K:'reviewed',M:'2026-06',REVIEWS:40},{K:'reviewed',M:'2026-12',REVIEWS:5},  // a future month is dropped
             {K:'reviewed',M:'2026-01',REVIEWS:7},  // reviews before the first skincare ORDER do not start the series
             {K:'allmonth',M:'2026-05',ORDERED:300},{K:'allmonth',M:'2026-09',ORDERED:600},{K:'allmonth',M:'2026-11',ORDERED:5000},
-            {K:'allmonth',M:'2025-01',ORDERED:10}],
-    backlog:[{NAME:'Brand A',ORDERED:30,DELIVERED:0,OUTSTANDING:30,OLDEST:412}],
+            {K:'allmonth',M:'2025-01',ORDERED:10},
+            {K:'seg',M:'paying',BRANDS:19,ORDERS:20,OUTSTANDING:50},{K:'seg',M:'stopped',BRANDS:2,ORDERS:2,OUTSTANDING:6}],
+    backlog:[{NAME:'Brand A',ORDERED:30,DELIVERED:0,OUTSTANDING:30,OLDEST:412,SEG:'lapsed'}],
     ages:[{K:'open',N:136,DAYS:127,OWED90:349},{K:'fulfil',N:64,DAYS:82.5,OWED90:null}],
-    writers:[{DERM:1,T:'MD',WRITERS:12,REVIEWS:153,REVIEWS90:26,WRITERS90:6},{DERM:1,T:'DO',WRITERS:1,REVIEWS:2,REVIEWS90:2,WRITERS90:1},
+    writers:[{DERM:1,T:'MD',WRITERS:12,REVIEWS:153,REVIEWS90:26,WRITERS90:6,ONORDER90:20},{DERM:1,T:'DO',WRITERS:1,REVIEWS:2,REVIEWS90:2,WRITERS90:1,ONORDER90:2},
              {DERM:1,T:'RN',WRITERS:1,REVIEWS:1,REVIEWS90:0,WRITERS90:0},{DERM:0,T:'NP',WRITERS:66,REVIEWS:186,REVIEWS90:135,WRITERS90:53},
              {DERM:0,T:'RDN',WRITERS:2,REVIEWS:3,REVIEWS90:1,WRITERS90:1}],
     brands:[{S:'active',N:192,CUR:62},{S:'pilot',N:28,CUR:0},{S:'none',N:93,CUR:0},{S:'paused',N:14,CUR:1}]},'2026-11-11')));
@@ -153,6 +154,8 @@ ck('Signed counts Churned Onboarding too, like the Brand Dashboard',
   ck('backlog brands, their oldest open order, and the app brand count (every subscription state)',[app.demand.topBrands[0].name,app.demand.topBrands[0].oldestDays,app.skincareBrandsInApp],['Brand A',412,327]);
   ck('skincare brands by latest subscription, with the current-billing-period count',app.subs,{active:{n:192,current:62},pilot:{n:28,current:0},none:{n:93,current:0},paused:{n:14,current:1}});
   ck('skincare share of ALL reviews ordered, same 6 complete months',[app.demand.share6,app.demand.allOrdered6],[20,900]);
+  ck('owed by brand state passes through',app.demand.bySeg,{paying:{owed:50,brands:19,orders:20},stopped:{owed:6,brands:2,orders:2}});
+  ck('who writes carries the on-order count; backlog rows carry their state',[app.writers[0].onOrder90,app.demand.topBrands[0].seg],[22,'lapsed']);
   ck('backlog age and time to fulfil pass through',app.demand.ages,{openOrders:136,openMedianDays:127,owedOver90:349,fulfilledOrders:64,fulfilMedianDays:82.5});
   ck('who writes: dermatologist or not x MD/DO / NP / PA / other title, dermatologists first',
      app.writers.map(w=>w.group+':'+w.reviews90+'/'+w.writers),
@@ -161,7 +164,22 @@ ck('Signed counts Churned Onboarding too, like the Brand Dashboard',
   // The SQL carries the agreed definitions.
   const Q=W.SKN_MB_SQL;
   ck('SQL: only live orders (superseded "updated", cancelled, draft excluded)',/WHERE o\.STATUS IN \('confirmed', 'completed'\)/.test(Q.demand),true);
-  ck('SQL: outstanding counts only still-open (confirmed) orders',/IFF\(o\.STATUS = 'confirmed', GREATEST\(/.test(Q.demand),true);
+  ck('SQL: outstanding counts only still-open (confirmed) orders',/IFF\(o\.STATUS = 'confirmed', COALESCE\(i\.QUANTITY, 0\) - LEAST\(/.test(Q.demand),true);
+  // 2026-11-11: DELIVERED_COUNT is stale (open orders: 152 vs 488 linked reviews).
+  ck('SQL: delivered = max(app count, linked shared/approved reviews), capped at quantity',
+     [/LEAST\(COALESCE\(i\.QUANTITY, 0\), GREATEST\(COALESCE\(i\.DELIVERED_COUNT, 0\), COALESCE\(lk\.n, 0\)\)\)/.test(Q.demand),
+      /lk AS \(SELECT REVIEW_ORDER_ITEM_ID iid, COUNT\(\*\) n FROM STAGING\.STG_NOTES\s+WHERE REVIEW_ORDER_ITEM_ID IS NOT NULL AND STATUS IN \('shared', 'approved'\)/.test(Q.demand)],[true,true]);
+  ck('SQL: brand state from the latest subscription; lapsed = active with no billing in 35 days',
+     [/INT_BRAND_LATEST_SUBSCRIPTION l ON l\.BRAND_ID = o\.HEALTH_BRAND_ID/.test(Q.demand),
+      /WHEN l\.SUBSCRIPTION_STATUS = 'active' AND COALESCE\(s\.CURRENT_PERIOD_ENDS_AT, SYSDATE\(\)\) >= DATEADD\(day, -35, SYSDATE\(\)\) THEN 'paying'\s+WHEN l\.SUBSCRIPTION_STATUS = 'active' THEN 'lapsed'/.test(Q.demand),
+      /ELSE 'stopped' END/.test(Q.demand)],[true,true,true]);
+  ck('SQL: stopped brands are out of Outstanding, the backlog and the open-order age (lapsed stay in)',
+     [/SUM\(IFF\(seg <> 'stopped', owed, 0\)\) OUTSTANDING/.test(Q.demand),/WHERE it\.seg <> 'stopped'/.test(Q.backlog),/st = 'confirmed' AND seg <> 'stopped'/.test(Q.ages)],[true,true,true]);
+  ck('SQL: owed by brand state, every state including stopped',/SELECT 'seg', seg, [^\n]*SUM\(owed\)[^\n]*GROUP BY seg/.test(Q.demand),true);
+  ck('SQL: on-order pace counts only reviews that fill a live order line, up to its quantity',
+     [/o\.STATUS IN \('confirmed', 'completed'\)\s+AND ob\.DISCARDED_AT IS NULL AND COALESCE\(ob\.DEMO, FALSE\) = FALSE\) n WHERE n\.k <= n\.q/.test(Q.writers),
+      /ROW_NUMBER\(\) OVER \(PARTITION BY n\.REVIEW_ORDER_ITEM_ID ORDER BY n\.CREATED_AT, n\.ID\) k/.test(Q.writers),
+      /AND fl\.nid IS NOT NULL, 1, 0\)\) o90/.test(Q.writers),/SUM\(w\.o90\) ONORDER90/.test(Q.writers)],[true,true,true,true]);
   ck('SQL: samples shipped = Accepted Samples is yes (Alex)',/ACCEPTED_SAMPLES = TRUE/.test(Q.derm),true);
   ck('SQL: reviews = shared or approved notes',[/STATUS IN \('shared', 'approved'\)/.test(Q.derm),/STATUS IN \('shared', 'approved'\)/.test(Q.demand)],[true,true]);
   ck('SQL: months bucketed in Eastern from UTC',/CONVERT_TIMEZONE\('UTC', 'America\/New_York'/.test(Q.demand),true);
@@ -175,20 +193,23 @@ ck('Signed counts Churned Onboarding too, like the Brand Dashboard',
   ck('SQL: the app brand count needs a live (not discarded) skincare product',/AND p\.DISCARDED_AT IS NULL/.test(Q.brands),true);
   // Page rework (2026-11-11).
   ck('SQL: brands by their LATEST subscription; current = period ending within 35 days or later',
-     [/INT_BRAND_LATEST_SUBSCRIPTION/.test(Q.brands),/CURRENT_PERIOD_ENDS_AT >= DATEADD\(day, -35, SYSDATE\(\)\)/.test(Q.brands)],[true,true]);
+     [/INT_BRAND_LATEST_SUBSCRIPTION/.test(Q.brands),/COALESCE\(s\.CURRENT_PERIOD_ENDS_AT, SYSDATE\(\)\) >= DATEADD\(day, -35, SYSDATE\(\)\)/.test(Q.brands)],[true,true]);
   ck('SQL: the all-product share uses the same order rule, without the skincare join',
      (m=>!!m&&!/JOIN sk ON/.test(m[0])&&/o\.STATUS IN \('confirmed', 'completed'\)/.test(m[0])&&/ob\.DISCARDED_AT IS NULL/.test(m[0]))(Q.demand.match(/ia AS \([\s\S]*?\)\nSELECT/)),true);
   ck('SQL: who writes = skincare notes, shared or approved, by specialty and the clinician\'s own title first',
      [/JOIN sk ON sk\.pid = n\.HEALTH_BRAND_PRODUCT_ID/.test(Q.writers),/STATUS IN \('shared', 'approved'\)/.test(Q.writers),/COALESCE\(NULLIF\(TRIM\(c\.TITLE\)/.test(Q.writers)],[true,true,true]);
   ck('SQL: derm skincare-only counts ride the any-product ones (LEFT JOIN, so no review is dropped)',/LEFT JOIN sk ON sk\.pid = nt\.HEALTH_BRAND_PRODUCT_ID/.test(Q.derm),true);
-  ck('SQL: open-order age counts only confirmed orders still owed',/WHERE st = 'confirmed' GROUP BY oid HAVING SUM\(owed\) > 0/.test(Q.ages),true);
+  ck('SQL: open-order age counts only confirmed orders still owed',/WHERE st = 'confirmed' AND seg <> 'stopped' GROUP BY oid HAVING SUM\(owed\) > 0/.test(Q.ages),true);
   ck('a Metabase failure blanks only the app sections',/fetchSkincareApp\(env\)\.catch\(e => \{[^}]*return \{ error: e\.message \}/.test(src),true);
 }
 const rs=fn(cli,'renderSkincare');
 ck('client: no "Waiting on app data" placeholders remain',/Waiting on app data/.test(rs),false);
 ck('client: an app error shows in each app section',/appFail\('review demand'\)/.test(rs)&&/appFail\('engagement'\)/.test(rs)&&/appFail\('capacity'\)/.test(rs),true);
 ck('client: capacity = every MD/DO dermatologist x 2',/md=mdA\.clinicians\|\|0, cap=md\*2/.test(rs),true);
-ck('client: the headline pace is MD/DO dermatologists\' SKINCARE reviews over 90 days, a month',/pace=Math\.round\(\(mdA\.skReviews90\|\|0\)\/3\)/.test(rs),true);
+ck('client: the headline pace is MD/DO dermatologists\' skincare reviews ON AN ORDER over 90 days, a month',
+   /const mdW=WR\.find\(x=>x\.derm&&x\.type===SKN_TYPE_FIRST\)/.test(rs)&&/pace=Math\.round\(\(mdW\.onOrder90\|\|0\)\/3\)/.test(rs),true);
+ck('client: all clinicians\' pace is also reviews on an order',/allPace=Math\.round\(WR\.reduce\(\(a,x\)=>a\+\(x\.onOrder90\|\|0\),0\)\/3\)/.test(rs),true);
+ck('client: the brand-status table lists every state, stopped struck out',/SKN_SEG_ORDER\.map\(/.test(rs)&&/text-decoration:line-through/.test(rs),true);
 ck('client: gap and surplus are rounded once, so sign and months-to-clear agree',[/gap=Math\.round\(pace-nw\)/.test(rs),/capNet=Math\.round\(cap-nw\)/.test(rs)],[true,true]);
 ck('client: Capacity leads the page',rs.indexOf("card('capacity'")>=0&&rs.indexOf("card('capacity'")<rs.indexOf("card('demand'")&&rs.indexOf("card('demand'")<rs.indexOf("card('writers'")&&rs.indexOf("card('engage'")<rs.indexOf("card('brands'"),true);
 ck('client: Reviews Submitted shows reviews, with the skincare count beneath',/_kmTile\('Reviews Submitted',appV\('reviews'\),appErr\?'app data unavailable':'shared or approved, any product \\u00b7 '\+fN\(ap\.skReviews/.test(rs),true);

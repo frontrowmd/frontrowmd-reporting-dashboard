@@ -3708,21 +3708,51 @@ const SKN_MB_ET_MONTH = (col) => `TO_CHAR(CONVERT_TIMEZONE('UTC', 'America/New_Y
 // order superseded by a newer one (counting both double-counts it); cancelled and
 // draft never ran. Only a still-open (confirmed) order has an outstanding count:
 // a completed order's shortfall was closed out, not owed. Discarded and demo
-// brands are out, the same rule as the brand count (a deleted brand's open
-// order is not a backlog anyone will work).
-// skOnly=false is the same rule over EVERY product (the skincare share).
-const SKN_MB_ITEMS_OF = (name, skOnly) => `${name} AS (SELECT o.ID oid, o.STATUS st, o.HEALTH_BRAND_ID bid,
+// brands are out, the same rule as the brand count.
+//
+// DELIVERED: the item's DELIVERED_COUNT is stale -- on open orders it summed to
+// 152 while 488 shared reviews were linked to those items (Solawave: 30 ordered,
+// count 0, 35 linked reviews). So delivered = the HIGHER of that count and the
+// shared/approved reviews linked to the item, capped at the quantity ordered
+// (older completed orders have the count but not always the links).
+//
+// SEG: the brand's state from its LATEST subscription. paying = active with a
+// billing period ending in the last 35 days or later, or with NO period end (all
+// such subs are new, manually priced brands -- not lapsed ones); lapsed = still 'active'
+// in the app but billing lapsed (often a brand that stopped -- the app does not
+// sync cancels); stopped = paused / cancelled / expired / failed / none. A
+// stopped brand's open order is not owed: it is out of Outstanding and the
+// backlog, and shown on its own (Alex, 2026-11-11).
+const SKN_MB_SEG = `CASE WHEN l.SUBSCRIPTION_STATUS = 'active' AND COALESCE(s.CURRENT_PERIOD_ENDS_AT, SYSDATE()) >= DATEADD(day, -35, SYSDATE()) THEN 'paying'
+      WHEN l.SUBSCRIPTION_STATUS = 'active' THEN 'lapsed'
+      WHEN l.SUBSCRIPTION_STATUS = 'pilot' THEN 'pilot'
+      WHEN l.SUBSCRIPTION_STATUS IN ('future', 'pending_activation') THEN 'future'
+      ELSE 'stopped' END`;
+const SKN_MB_DEL = `LEAST(COALESCE(i.QUANTITY, 0), GREATEST(COALESCE(i.DELIVERED_COUNT, 0), COALESCE(lk.n, 0)))`;
+const SKN_MB_ITEMS = `lk AS (SELECT REVIEW_ORDER_ITEM_ID iid, COUNT(*) n FROM STAGING.STG_NOTES
+    WHERE REVIEW_ORDER_ITEM_ID IS NOT NULL AND STATUS IN ('shared', 'approved') GROUP BY 1),
+  it AS (SELECT o.ID oid, o.STATUS st, o.HEALTH_BRAND_ID bid,
     COALESCE(o.CONFIRMED_AT, o.CREATED_AT) t,
     ${SKN_MB_ET_MONTH('COALESCE(o.CONFIRMED_AT, o.CREATED_AT)')} m,
-    COALESCE(i.QUANTITY, 0) q, COALESCE(i.DELIVERED_COUNT, 0) d,
-    IFF(o.STATUS = 'confirmed', GREATEST(COALESCE(i.QUANTITY, 0) - COALESCE(i.DELIVERED_COUNT, 0), 0), 0) owed
+    COALESCE(i.QUANTITY, 0) q, ${SKN_MB_DEL} d,
+    IFF(o.STATUS = 'confirmed', COALESCE(i.QUANTITY, 0) - ${SKN_MB_DEL}, 0) owed,
+    ${SKN_MB_SEG} seg
   FROM STAGING.STG_REVIEW_ORDER_ITEMS i
   JOIN STAGING.STG_REVIEW_ORDERS o ON o.ID = i.REVIEW_ORDER_ID
-  ${skOnly ? 'JOIN sk ON sk.pid = i.HEALTH_BRAND_PRODUCT_ID' : ''}
+  JOIN sk ON sk.pid = i.HEALTH_BRAND_PRODUCT_ID
+  JOIN STAGING.STG_BRANDS ob ON ob.ID = o.HEALTH_BRAND_ID
+  LEFT JOIN lk ON lk.iid = i.ID
+  LEFT JOIN INTERMEDIATE.INT_BRAND_LATEST_SUBSCRIPTION l ON l.BRAND_ID = o.HEALTH_BRAND_ID
+  LEFT JOIN STAGING.STG_SUBSCRIPTIONS s ON s.ID = l.SUBSCRIPTION_ID
+  WHERE o.STATUS IN ('confirmed', 'completed')
+    AND ob.DISCARDED_AT IS NULL AND COALESCE(ob.DEMO, FALSE) = FALSE)`;
+// Reviews ordered on EVERY product, same order rule, for the skincare share.
+const SKN_MB_ITEMS_ALL = `ia AS (SELECT ${SKN_MB_ET_MONTH('COALESCE(o.CONFIRMED_AT, o.CREATED_AT)')} m, COALESCE(i.QUANTITY, 0) q
+  FROM STAGING.STG_REVIEW_ORDER_ITEMS i
+  JOIN STAGING.STG_REVIEW_ORDERS o ON o.ID = i.REVIEW_ORDER_ID
   JOIN STAGING.STG_BRANDS ob ON ob.ID = o.HEALTH_BRAND_ID
   WHERE o.STATUS IN ('confirmed', 'completed')
     AND ob.DISCARDED_AT IS NULL AND COALESCE(ob.DEMO, FALSE) = FALSE)`;
-const SKN_MB_ITEMS = SKN_MB_ITEMS_OF('it', true);
 // The clinician's own title first, the provider profile's as fallback (a
 // profile is often a shared practice account).
 const SKN_MB_TITLE = `COALESCE(NULLIF(TRIM(c.TITLE), ''), NULLIF(TRIM(pp.TITLE), ''), 'Not set')`;
@@ -3734,8 +3764,11 @@ const SKN_MB_BRANDS = `skb AS (SELECT DISTINCT p.HEALTH_BRAND_ID bid FROM sk
 const SKN_MB_SQL = {
   // Totals, orders by month, and reviews written on skincare products by month.
   // 'allmonth' = reviews ordered on EVERY product, for the skincare share.
-  demand: `WITH ${SKN_MB_SK}, ${SKN_MB_ITEMS}, ${SKN_MB_ITEMS_OF('ia', false)}
-SELECT 'total' K, NULL M, COUNT(DISTINCT bid) BRANDS, COUNT(DISTINCT oid) ORDERS, SUM(q) ORDERED, SUM(d) DELIVERED, SUM(owed) OUTSTANDING, NULL REVIEWS FROM it
+  // 'seg' = what is still owed, by brand state; OUTSTANDING leaves out stopped brands.
+  demand: `WITH ${SKN_MB_SK}, ${SKN_MB_ITEMS}, ${SKN_MB_ITEMS_ALL}
+SELECT 'total' K, NULL M, COUNT(DISTINCT bid) BRANDS, COUNT(DISTINCT oid) ORDERS, SUM(q) ORDERED, SUM(d) DELIVERED,
+  SUM(IFF(seg <> 'stopped', owed, 0)) OUTSTANDING, NULL REVIEWS FROM it
+UNION ALL SELECT 'seg', seg, COUNT(DISTINCT IFF(owed > 0, bid, NULL)), COUNT(DISTINCT IFF(owed > 0, oid, NULL)), NULL, NULL, SUM(owed), NULL FROM it GROUP BY seg
 UNION ALL SELECT 'month', m, COUNT(DISTINCT bid), COUNT(DISTINCT oid), SUM(q), NULL, NULL, NULL FROM it GROUP BY m
 UNION ALL SELECT 'allmonth', m, NULL, NULL, SUM(q), NULL, NULL, NULL FROM ia GROUP BY m
 UNION ALL SELECT 'reviewed', ${SKN_MB_ET_MONTH('n.CREATED_AT')}, NULL, NULL, NULL, NULL, NULL, COUNT(*)
@@ -3744,14 +3777,14 @@ UNION ALL SELECT 'reviewed', ${SKN_MB_ET_MONTH('n.CREATED_AT')}, NULL, NULL, NUL
   // The brands with the most reviews still owed.
   backlog: `WITH ${SKN_MB_SK}, ${SKN_MB_ITEMS}
 SELECT b.NAME NAME, SUM(it.q) ORDERED, SUM(it.d) DELIVERED, SUM(it.owed) OUTSTANDING,
-  DATEDIFF(day, MIN(IFF(it.owed > 0, it.t, NULL)), SYSDATE()) OLDEST
-FROM it JOIN STAGING.STG_BRANDS b ON b.ID = it.bid
+  DATEDIFF(day, MIN(IFF(it.owed > 0, it.t, NULL)), SYSDATE()) OLDEST, MAX(it.seg) SEG
+FROM it JOIN STAGING.STG_BRANDS b ON b.ID = it.bid WHERE it.seg <> 'stopped'
 GROUP BY b.ID, b.NAME HAVING SUM(it.owed) > 0 ORDER BY OUTSTANDING DESC, NAME LIMIT 10`,
   // How old the open backlog is, and how long a completed order took. Orders
   // have no completion timestamp (COMPLETION_EMAIL_SENT_AT is never set), so
   // "fulfilled" = the order's last shared/approved review.
   ages: `WITH ${SKN_MB_SK}, ${SKN_MB_ITEMS},
-  op AS (SELECT oid, MIN(t) t, SUM(owed) ow FROM it WHERE st = 'confirmed' GROUP BY oid HAVING SUM(owed) > 0),
+  op AS (SELECT oid, MIN(t) t, SUM(owed) ow FROM it WHERE st = 'confirmed' AND seg <> 'stopped' GROUP BY oid HAVING SUM(owed) > 0),
   cp AS (SELECT oid, MIN(t) t FROM it WHERE st = 'completed' GROUP BY oid),
   ln AS (SELECT i.REVIEW_ORDER_ID oid, MAX(n.CREATED_AT) ln FROM STAGING.STG_NOTES n
     JOIN STAGING.STG_REVIEW_ORDER_ITEMS i ON i.ID = n.REVIEW_ORDER_ITEM_ID
@@ -3763,17 +3796,31 @@ UNION ALL SELECT 'fulfil', COUNT(*), MEDIAN(DATEDIFF(day, cp.t, ln.ln)), NULL FR
   // so CUR counts those with a billing period ending in the last 35 days or later.
   brands: `WITH ${SKN_MB_SK}, ${SKN_MB_BRANDS}
 SELECT COALESCE(l.SUBSCRIPTION_STATUS, 'none') S, COUNT(*) N,
-  SUM(IFF(s.CURRENT_PERIOD_ENDS_AT >= DATEADD(day, -35, SYSDATE()), 1, 0)) CUR
+  SUM(IFF(COALESCE(s.CURRENT_PERIOD_ENDS_AT, SYSDATE()) >= DATEADD(day, -35, SYSDATE()), 1, 0)) CUR
 FROM skb LEFT JOIN INTERMEDIATE.INT_BRAND_LATEST_SUBSCRIPTION l ON l.BRAND_ID = skb.bid
 LEFT JOIN STAGING.STG_SUBSCRIPTIONS s ON s.ID = l.SUBSCRIPTION_ID GROUP BY 1`,
   // Who writes skincare reviews: every clinician with a shared/approved review
-  // on a skincare product, by dermatologist or not and by title.
+  // on a skincare product, by dermatologist or not and by title. o90 = the
+  // last-90-day reviews that FILL an order line on the same basis as demand and
+  // delivered: a live (confirmed/completed) order of a non-discarded, non-demo
+  // brand, and only up to the line's quantity (reviews ranked by date; an extra
+  // review beyond the quantity pays nothing down).
   writers: `WITH ${SKN_MB_SK},
-  w AS (SELECT n.CLINICIAN_ID cid, COUNT(*) r, SUM(IFF(n.CREATED_AT >= DATEADD(day, -90, SYSDATE()), 1, 0)) r90
+  fl AS (SELECT n.ID nid FROM (SELECT n.ID, n.REVIEW_ORDER_ITEM_ID iid, COALESCE(i.QUANTITY, 0) q,
+        ROW_NUMBER() OVER (PARTITION BY n.REVIEW_ORDER_ITEM_ID ORDER BY n.CREATED_AT, n.ID) k
+      FROM STAGING.STG_NOTES n
+      JOIN STAGING.STG_REVIEW_ORDER_ITEMS i ON i.ID = n.REVIEW_ORDER_ITEM_ID
+      JOIN STAGING.STG_REVIEW_ORDERS o ON o.ID = i.REVIEW_ORDER_ID
+      JOIN STAGING.STG_BRANDS ob ON ob.ID = o.HEALTH_BRAND_ID
+      WHERE n.STATUS IN ('shared', 'approved') AND o.STATUS IN ('confirmed', 'completed')
+        AND ob.DISCARDED_AT IS NULL AND COALESCE(ob.DEMO, FALSE) = FALSE) n WHERE n.k <= n.q),
+  w AS (SELECT n.CLINICIAN_ID cid, COUNT(*) r, SUM(IFF(n.CREATED_AT >= DATEADD(day, -90, SYSDATE()), 1, 0)) r90,
+      SUM(IFF(n.CREATED_AT >= DATEADD(day, -90, SYSDATE()) AND fl.nid IS NOT NULL, 1, 0)) o90
     FROM STAGING.STG_NOTES n JOIN sk ON sk.pid = n.HEALTH_BRAND_PRODUCT_ID
+    LEFT JOIN fl ON fl.nid = n.ID
     WHERE n.STATUS IN ('shared', 'approved') GROUP BY 1)
 SELECT IFF(TRIM(pp.SPECIALTY) ILIKE 'dermatology', 1, 0) DERM, ${SKN_MB_TITLE} T,
-  COUNT(*) WRITERS, SUM(w.r) REVIEWS, SUM(w.r90) REVIEWS90, SUM(IFF(w.r90 > 0, 1, 0)) WRITERS90
+  COUNT(*) WRITERS, SUM(w.r) REVIEWS, SUM(w.r90) REVIEWS90, SUM(IFF(w.r90 > 0, 1, 0)) WRITERS90, SUM(w.o90) ONORDER90
 FROM w LEFT JOIN STAGING.STG_CLINICIANS c ON c.ID = w.cid
 LEFT JOIN STAGING.STG_PROVIDER_PROFILES pp ON pp.ID = c.PROVIDER_PROFILE_ID GROUP BY 1, 2`,
   // Dermatologists in the app, by raw title (grouped in JS like the Clinician
@@ -3825,8 +3872,8 @@ function buildSkincareApp(r, todayKey) {
   for (const x of r.writers || []) {
     const g = clinicianTypeGroup(String(x.T || 'Not set'));
     const key = (num(x.DERM) ? 'Dermatologist' : 'Other specialty') + ' \u00b7 ' + (SKN_MAIN_TYPES.includes(g) ? g : 'other title');
-    const o = wr[key] || (wr[key] = { group: key, derm: !!num(x.DERM), type: SKN_MAIN_TYPES.includes(g) ? g : 'Other', writers: 0, reviews: 0, reviews90: 0, writers90: 0 });
-    o.writers += num(x.WRITERS); o.reviews += num(x.REVIEWS); o.reviews90 += num(x.REVIEWS90); o.writers90 += num(x.WRITERS90);
+    const o = wr[key] || (wr[key] = { group: key, derm: !!num(x.DERM), type: SKN_MAIN_TYPES.includes(g) ? g : 'Other', writers: 0, reviews: 0, reviews90: 0, writers90: 0, onOrder90: 0 });
+    o.writers += num(x.WRITERS); o.reviews += num(x.REVIEWS); o.reviews90 += num(x.REVIEWS90); o.writers90 += num(x.WRITERS90); o.onOrder90 += num(x.ONORDER90);
   }
   const writers = Object.values(wr).sort((a, b) => (b.derm - a.derm) || (SKN_MAIN_TYPES.concat('Other').indexOf(a.type) - SKN_MAIN_TYPES.concat('Other').indexOf(b.type)));
   // Subscriptions of skincare brands (latest subscription per brand).
@@ -3846,6 +3893,9 @@ function buildSkincareApp(r, todayKey) {
     if (x.K === 'reviewed') mo(x.M).reviews = num(x.REVIEWS);
     if (x.K === 'allmonth') mo(x.M).allOrdered = num(x.ORDERED);
   }
+  // Still owed by brand state (stopped is excluded from OUTSTANDING).
+  const bySeg = {};
+  for (const x of r.demand || []) if (x.K === 'seg' && x.M) bySeg[x.M] = { owed: num(x.OUTSTANDING), brands: num(x.BRANDS), orders: num(x.ORDERS) };
   const cur = String(todayKey || '').slice(0, 7);
   const step = (m, k) => { let [y, n] = m.split('-').map(Number); n += k; while (n < 1) { n += 12; y--; } while (n > 12) { n -= 12; y++; } return y + '-' + String(n).padStart(2, '0'); };
   // The series starts at the first SKINCARE order (all-product and review-only
@@ -3867,8 +3917,8 @@ function buildSkincareApp(r, todayKey) {
       delivered: num(tot.DELIVERED), outstanding: num(tot.OUTSTANDING),
       months, avgNewPerMonth, avgWindow: cur ? [step(cur, -6), step(cur, -1)] : null,
       share6, allOrdered6: sum(all6), avgWritten6: cur ? Math.round(sum(wr6) / 6 * 10) / 10 : 0,
-      topBrands: (r.backlog || []).map(x => ({ name: String(x.NAME || ''), ordered: num(x.ORDERED), delivered: num(x.DELIVERED), outstanding: num(x.OUTSTANDING), oldestDays: x.OLDEST == null ? null : num(x.OLDEST) })),
-      ages,
+      topBrands: (r.backlog || []).map(x => ({ name: String(x.NAME || ''), ordered: num(x.ORDERED), delivered: num(x.DELIVERED), outstanding: num(x.OUTSTANDING), oldestDays: x.OLDEST == null ? null : num(x.OLDEST), seg: String(x.SEG || '') })),
+      ages, bySeg,
     },
     writers,
     subs, skincareBrandsInApp: subsTotal,

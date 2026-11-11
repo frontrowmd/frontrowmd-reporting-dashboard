@@ -1871,6 +1871,14 @@ window.skincareSetType=function(t){S.skincare.typeF=t||'';renderSkincare();};
 function _sknPct(n,d){return d>0?(n/d*100).toFixed(1)+'%':'\u2014';}
 // Titles shown as their own pill/row; every other title folds into Other.
 const SKN_MAIN_TYPES=['MD/DO','Nurse Practitioner','Physician Assistant'];
+// Brand state from the latest app subscription (worker SKN_MB_SEG). Stopped
+// brands are out of Outstanding; lapsed ones stay in, shown on their own row.
+const SKN_SEG={paying:{label:'Paying',short:'Paying',note:'active, billing current'},
+  lapsed:{label:'Billing lapsed',short:'Billing lapsed',note:'marked active in the app, no billing in 35+ days \u00b7 may have stopped'},
+  pilot:{label:'Pilot',short:'Pilot',note:'on a pilot plan'},
+  future:{label:'Starting',short:'Starting',note:'subscription starts later or awaits activation'},
+  stopped:{label:'Stopped (not counted)',short:'Stopped',note:'paused, cancelled, expired, failed or no subscription'}};
+const SKN_SEG_ORDER=['paying','lapsed','pilot','future','stopped'];
 function _sknFold(t){return SKN_MAIN_TYPES.indexOf(t)>=0?t:'Other';}
 // Sum objects of counts by folded type: {raw type: {k: n}} -> {folded: {k: n}}.
 function _sknFoldBy(by){
@@ -1945,8 +1953,13 @@ function renderSkincare(){
   const WR=A.writers||[];
   // The capacity figures, shared by the summary and the Capacity section.
   const mdA=adBy[SKN_TYPE_FIRST]||{}, md=mdA.clinicians||0, cap=md*2, nw=Dm.avgNewPerMonth||0, owed=Dm.outstanding||0;
-  const pace=Math.round((mdA.skReviews90||0)/3), paceAny=Math.round((mdA.reviews90||0)/3);
-  const wr90=WR.reduce((a,x)=>a+(x.reviews90||0),0), allPace=Math.round(wr90/3);
+  // Pace = skincare reviews written AGAINST AN ORDER in the last 90 days, a
+  // month: like for like with demand (reviews ordered). Reviews not on an order
+  // do not pay the backlog down.
+  const mdW=WR.find(x=>x.derm&&x.type===SKN_TYPE_FIRST)||{};
+  const wr90=WR.reduce((a,x)=>a+(x.reviews90||0),0);
+  const pace=Math.round((mdW.onOrder90||0)/3), paceAll=Math.round((mdW.reviews90||0)/3);
+  const allPace=Math.round(WR.reduce((a,x)=>a+(x.onOrder90||0),0)/3);
   const gap=Math.round(pace-nw);
   const RED='#DC2626', GREEN='#059669';
 
@@ -1962,20 +1975,21 @@ function renderSkincare(){
     const capNet=Math.round(cap-nw);
     const clearCap=owed<=0?'0':(capNet>0?(owed/capNet).toFixed(1):'\u221e');
     const clearPace=owed<=0?'0':(gap>0?(owed/gap).toFixed(1):'Never');
+    const allNet=Math.round(allPace-nw), clearAll=owed<=0?'0':(allNet>0?(owed/allNet).toFixed(1):'never');
     const aw=Dm.avgWindow||[];
     const everPct=md?Math.round((mdA.reviewers||0)/md*100):0;
     capBody=grid(4,
-        _kmTile('Actual Pace',fN(pace),'skincare reviews / month by MD/DO dermatologists, last 90 days, ordered or not \u00b7 '+fN(paceAny)+' / month on any product','')
+        _kmTile('Actual Pace',fN(pace),'skincare reviews / month written on an order by MD/DO dermatologists, last 90 days \u00b7 '+fN(paceAll)+' / month counting reviews not on an order','')
        +_kmTile('New Demand / Month',fN(nw),'avg skincare reviews ordered'+(aw.length?', '+_sknEsc(aw[0])+' \u2192 '+_sknEsc(aw[1]):''),'')
        +_kmTile('Monthly Gap','<span style="color:'+(gap<0?RED:GREEN)+'">'+(gap>=0?'+':'\u2212')+fN(Math.abs(gap))+'</span>',gap<0?'backlog grows by about this much a month at the actual pace':'left over each month after new demand','')
-       +_kmTile('Months to Clear','<span style="color:'+(clearPace==='Never'?RED:'inherit')+'">'+clearPace+'</span>',fN(owed)+' outstanding'+(gap>0?' \u00f7 monthly gap':' \u00b7 the actual pace does not cover new demand'),''))
+       +_kmTile('Months to Clear','<span style="color:'+(clearPace==='Never'?RED:'inherit')+'">'+clearPace+'</span>','at the MD/DO pace \u00b7 '+fN(owed)+' outstanding'+(gap>0?' \u00f7 monthly gap':', and the pace does not cover new demand'),''))
       +'<div style="margin-top:16px">'+sub('Reviews per month, on one scale','Capacity is theoretical; the other three are measured')
       +_sknBars([
           {l:'Theoretical capacity',note:fN(md)+' MD/DO dermatologists \u00d7 2',v:cap,c:'var(--teal-30)'},
           {l:'New demand',note:'skincare reviews ordered, 6-month avg',v:nw,c:'var(--navy)',bold:1},
-          {l:'All clinicians\u2019 pace',note:'skincare reviews written, any clinician, last 90 days \u00b7 includes reviews not on an order',v:allPace,c:'var(--teal)'},
-          {l:'MD/DO dermatologist pace',note:'skincare reviews written, last 90 days \u00b7 includes reviews not on an order',v:pace,c:gap<0?RED:GREEN,bold:1}])+'</div>'
-      +note('At theoretical capacity ('+fN(cap)+' / month) the surplus would be '+(capNet>=0?'+':'\u2212')+fN(Math.abs(capNet))+' and the backlog would clear in '+clearCap+' months. That needs every MD/DO dermatologist writing 2 a month; '
+          {l:'All clinicians\u2019 pace',note:'skincare reviews written on an order, any clinician, last 90 days',v:allPace,c:'var(--teal)'},
+          {l:'MD/DO dermatologist pace',note:'skincare reviews written on an order, last 90 days',v:pace,c:gap<0?RED:GREEN,bold:1}])+'</div>'
+      +note('At all clinicians\u2019 pace ('+fN(allPace)+' / month) the backlog '+(allNet>0?'clears in '+clearAll+' months':'does not clear')+'. At theoretical capacity ('+fN(cap)+' / month) the surplus would be '+(capNet>=0?'+':'\u2212')+fN(Math.abs(capNet))+' and the backlog would clear in '+clearCap+' months. That needs every MD/DO dermatologist writing 2 a month; '
         +fN(mdA.reviewers||0)+' of '+fN(md)+' ('+everPct+'%) have ever written a review, and '+fN(mdA.active90||0)+' wrote one in the last 90 days.');
   }
   h+=card('capacity','Capacity vs Demand','Can MD/DO dermatologists keep up with skincare review demand? Not affected by the clinician type filter below.',capBody);
@@ -1990,23 +2004,30 @@ function renderSkincare(){
     demandBody=grid(4,
         _kmTile('Reviews Ordered',fN(Dm.ordered),fN(Dm.orders)+' live orders \u00b7 confirmed or completed','')
        +_kmTile('Reviews Delivered',fN(Dm.delivered),_sknPct(Dm.delivered||0,Dm.ordered||0)+' of ordered','')
-       +_kmTile('Outstanding',fN(Dm.outstanding),'still owed on open orders','')
+       +_kmTile('Outstanding',fN(Dm.outstanding),'still owed on open orders'+(((Dm.bySeg||{}).stopped||{}).owed?' \u00b7 excludes '+fN(Dm.bySeg.stopped.owed)+' owed to brands that stopped':''),'')
        +_kmTile('Brands Ordering',fN(Dm.brands),'skincare brands with a live order',''))
       +'<div style="margin-top:12px">'+grid(3,
         _kmTile('Share of All Demand',Dm.share6==null?'\u2014':Dm.share6.toFixed(1)+'%','of all reviews ordered'+(aw.length?', '+_sknEsc(aw[0])+' \u2192 '+_sknEsc(aw[1]):'')+' \u00b7 '+fN(Dm.allOrdered6||0)+' on every product','')
-       +_kmTile('Open Order Age',Ag.openMedianDays==null?'\u2014':fN(Ag.openMedianDays)+' days','median, '+fN(Ag.openOrders||0)+' open orders \u00b7 '+fN(Ag.owedOver90||0)+' reviews owed on orders over 90 days old','')
+       +_kmTile('Open Order Age',Ag.openMedianDays==null?'\u2014':fN(Ag.openMedianDays)+' days','median, '+fN(Ag.openOrders||0)+' orders with reviews still owed \u00b7 '+fN(Ag.owedOver90||0)+' owed on orders over 90 days old','')
        +_kmTile('Time to Fulfil',Ag.fulfilMedianDays==null?'\u2014':fN(Ag.fulfilMedianDays)+' days','median, confirmation \u2192 last review \u00b7 '+fN(Ag.fulfilledOrders||0)+' completed orders',''))+'</div>'
       +'<div style="display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:20px;margin-top:18px">'
       +'<div>'+sub('By month','Ordered = reviews on orders confirmed that month \u00b7 hover a month for its numbers')+_sknMonthChart(months)
         +'<details style="margin-top:8px"><summary style="font-size:11px;color:var(--grey);cursor:pointer">Show as a table</summary>'
         +tbl(th('Month',1)+th('Ordered')+th('Brands')+th('Written'),
-          months.slice().reverse().map(x=>tr(td(_sknEsc(x.m),1)+td(fN(x.ordered))+td(fN(x.brands))+td(fN(x.reviews)))).join(''))+'</details></div>'
+          months.slice().reverse().map(x=>tr(td(_sknEsc(x.m),1)+td(fN(x.ordered))+td(fN(x.brands))+td(fN(x.reviews)))).join(''))+'</details>'
+        +'<div style="margin-top:18px">'+sub('Still owed, by brand status','From each brand\u2019s latest app subscription')
+        +tbl(th('Brand status',1)+th('Brands')+th('Orders')+th('Owed'),
+          SKN_SEG_ORDER.map(k=>{const v=(Dm.bySeg||{})[k]||{owed:0,brands:0,orders:0},st=k==='stopped';
+            return tr(td(SKN_SEG[k].label+'<div style="font-size:10px;color:var(--grey);font-weight:400">'+SKN_SEG[k].note+'</div>',1)
+              +td(fN(v.brands))+td(fN(v.orders))+td(st?'<span style="color:var(--grey);text-decoration:line-through">'+fN(v.owed)+'</span>':fN(v.owed),0,!st));}).join(''))+'</div>'+'</div>'
       +'<div>'+sub('Largest backlogs','Skincare brands with the most reviews still owed \u00b7 Oldest = days since their oldest open order')
-        +tbl(th('Brand',1)+th('Ordered')+th('Delivered')+th('Outstanding')+th('Oldest'),
-          tb.map(x=>tr(td(_sknEsc(x.name),1)+td(fN(x.ordered))+td(fN(x.delivered))+td(fN(x.outstanding),0,1,_sknHeat(tbOut,x.outstanding,'239,68,68'))
+        +tbl(th('Brand',1)+th('Status',1)+th('Ordered')+th('Delivered')+th('Outstanding')+th('Oldest'),
+          tb.map(x=>tr(td(_sknEsc(x.name),1)+'<td style="padding:8px 6px;font-size:11px;color:'+(x.seg==='lapsed'?'#B45309':'var(--grey)')+'">'+_sknEsc((SKN_SEG[x.seg]||{}).short||x.seg)+'</td>'
+            +td(fN(x.ordered))+td(fN(x.delivered))+td(fN(x.outstanding),0,1,_sknHeat(tbOut,x.outstanding,'239,68,68'))
             +td(x.oldestDays==null?'\u2014':fN(x.oldestDays)+'d',0,0,_sknHeat(tbAge,x.oldestDays||0,'239,68,68')))).join('')
-          ||'<tr><td colspan="5" style="padding:10px 6px;color:var(--grey)">Nothing outstanding</td></tr>')+'</div></div>'
-      +note('Outstanding counts only open orders, and a delivery beyond one product\u2019s quantity does not pay down another, so it is not simply ordered \u2212 delivered ('+fN((Dm.ordered||0)-(Dm.delivered||0))+'). Written counts every shared or approved review on a skincare product, including ones not on an order.');
+          ||'<tr><td colspan="6" style="padding:10px 6px;color:var(--grey)">Nothing outstanding</td></tr>')
++'</div></div>'
+      +note('Delivered = the higher of the app\u2019s delivered count and the shared or approved reviews linked to the order line, capped at the quantity ordered (the app\u2019s count is often not updated). Outstanding counts only open orders and leaves out brands that stopped, so it is not ordered \u2212 delivered ('+fN((Dm.ordered||0)-(Dm.delivered||0))+'): a completed order\u2019s shortfall was closed, not owed. Written counts every shared or approved review on a skincare product, including ones not on an order.');
   }
   h+=card('demand','Review Demand','Reviews ordered on products tagged Skin &amp; haircare \u00b7 superseded, cancelled and draft orders excluded',demandBody);
 
