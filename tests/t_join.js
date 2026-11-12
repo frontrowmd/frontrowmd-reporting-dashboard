@@ -56,7 +56,7 @@ function topKeys(s){
 const clinEmit=topKeys(blockAt(src,src.indexOf('return jr({\n          period: cur,')));
 // `...funnelPage` is buildClinicianFunnel's return, spread in. Resolve it rather
 // than treating the spread as a wildcard that excuses everything.
-const funnelEmit=topKeys(blockAt(src,src.indexOf('  return {\n    all: seg(() => true,')));
+const funnelEmit=topKeys(blockAt(src,src.indexOf('  return {\n    byTS, tsOpts,\n    all: seg(() => true,')));
 ck('clinician payload spreads the funnel', clinEmit.has('...funnelPage'), true);
 ck('funnel contributes its segments', ['all','byFlow','rows','stageOrder','flowMeta'].every(k=>funnelEmit.has(k)), true);
 const emitted=new Set([...clinEmit].filter(k=>!k.startsWith('...')).concat([...funnelEmit]));

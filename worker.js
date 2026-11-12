@@ -894,7 +894,7 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v58';   // v58: Derm = dermatologists from the Derm campaign; trend buckets carry spendDerm / dermCamp*.
+const API_CACHE_VER = 'v59';   // v59: clinician funnel byTS / tsOpts + composition.byTypeSpec (Type x Specialty filters). v58: Derm = dermatologists from the Derm campaign.
                                // v57: clinician spend + contacts split core / LAL / Derm (Key Metrics row 2).
                                // v56: Acquisition Specialty pie merges duplicate specialty names.
                                // v55: Acquisition Type pie groups MD/DO, NP, PA, RDN spellings.
@@ -5482,6 +5482,10 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
     o.utmMedium[um] = (o.utmMedium[um] || 0) + 1;
     o.utmCampaign[uc] = (o.utmCampaign[uc] || 0) + 1;
   };
+  // Exact Clinician Type x Specialty pair counts for both populations, for the
+  // funnel card's filters (the capped per-specialty mixes above fold small
+  // types into Other, which a filter cannot use).
+  const tsInq = {}, tsSub = {};
   const byCred = {}, byPhoto = {};
   let verifContacts = 0;   // contacts CREATED in the window (verification scope)
   let contacts = 0, bookedCall = 0;
@@ -5522,6 +5526,7 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
     const sp = clinicianSpecialtyGroup((cp.clinician_specialty || '').trim() || 'Not set');
     if (created) {
       contacts++;
+      tsInq[t + '|' + sp] = (tsInq[t + '|' + sp] || 0) + 1;
       if (isDermCampaignDermatologist(_seg, sp)) inqDerm++;
       xBump(xInq, sp, t, us, um, uc);
       byType[t] = (byType[t] || 0) + 1;
@@ -5538,6 +5543,7 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
     }
     if (signedUp) {
       subContacts++;
+      tsSub[t + '|' + sp] = (tsSub[t + '|' + sp] || 0) + 1;
       if (_seg === 'lal') subLal++;
       if (isDermCampaignDermatologist(_seg, sp)) subDerm++;
       xBump(xSub, sp, t, us, um, uc);
@@ -5626,6 +5632,9 @@ function buildClinicianComposition(deals, contactsByDeal, from, to) {
   };
   return {
     contacts, verifContacts,
+    // 'type|spec' -> contacts, inquiries (inq) and sign ups (sub): the funnel
+    // card's Clinician Type / Specialty filters sum these.
+    byTypeSpec: { inq: tsInq, sub: tsSub },
     bySpecialty: xOut(xInq),
     // Inquiries attributed to a Dermatology campaign (Cost per Derm Inquiry).
     dermInquiries: inqDerm,
@@ -5728,7 +5737,7 @@ function clinicianReached(p) {
   if (cur && CLINICIAN_STAGES.some(st => st.id === cur)) reachedIds.add(cur);
   return { flow, seqIds, reachedIds };
 }
-function buildClinicianFunnel(deals, contactsByDeal, meetingStarts) {
+function buildClinicianFunnel(deals, contactsByDeal, meetingStarts, opts) {
   const _ms = (v) => { if (!v) return NaN; return /^\d+$/.test(String(v)) ? parseInt(v) : new Date(v).getTime(); };
   // A deal "reached" a stage if HubSpot stamped its entered-date; fall back to
   // the current stage's position so deals predating stage tracking still count.
@@ -5785,6 +5794,10 @@ function buildClinicianFunnel(deals, contactsByDeal, meetingStarts) {
       att: (p.clinician_attendance_status || '').trim(),
       qual: (p.clinician_qualification_outcome || '').trim(),
       type: (cp.clinician_type || '').trim(),
+      // Grouped Clinician Type and Specialty, the funnel card's two filters
+      // (2026-11-12). Same grouping and 'Not set' fallback as Acquisition.
+      tg: clinicianTypeGroup((cp.clinician_type || '').trim() || 'Not set'),
+      sg: clinicianSpecialtyGroup((cp.clinician_specialty || '').trim() || 'Not set'),
       // Velocity endpoints. hs_v2_date_entered_* is HubSpot's stage-entry stamp;
       // fall back to the meeting date / createdate for deals that predate stage
       // tracking, otherwise velocity silently reports nothing.
@@ -6108,7 +6121,25 @@ function buildClinicianFunnel(deals, contactsByDeal, meetingStarts) {
       ? _fcNew.rate - _fcOld.rate : null,
   };
   console.log(`Clinician flows: ${Object.keys(flowCounts).map(k => k + '=' + flowCounts[k]).join(' ')}`);
+  // The funnel card's Clinician Type x Specialty filters (2026-11-12): one
+  // combined-flow segment per type, per specialty, and per type+specialty pair
+  // that has any deals, keyed 'type|spec' with '*' for "all". Only when the
+  // caller asks (opts.splits): the per-window trend passes do not need them.
+  // The option lists ride along, largest first, 'Not set' last.
+  let byTS = null, tsOpts = null;
+  if (opts && opts.splits) {
+    const tally = (k) => { const o = {}; for (const r of rows) o[r[k]] = (o[r[k]] || 0) + 1; return o; };
+    const order = (o) => Object.keys(o).sort((a, b) => (a === 'Not set') - (b === 'Not set') || o[b] - o[a] || (a < b ? -1 : 1));
+    const tC = tally('tg'), sC = tally('sg');
+    tsOpts = { types: order(tC).map(k => ({ k, n: tC[k] })), specs: order(sC).map(k => ({ k, n: sC[k] })) };
+    byTS = {};
+    for (const t of Object.keys(tC)) byTS[t + '|*'] = seg(r => r.tg === t, 'both');
+    for (const sp of Object.keys(sC)) byTS['*|' + sp] = seg(r => r.sg === sp, 'both');
+    const pairs = new Set(rows.map(r => r.tg + '|' + r.sg));
+    for (const k of pairs) { const [t, sp] = k.split('|'); byTS[k] = seg(r => r.tg === t && r.sg === sp, 'both'); }
+  }
   return {
+    byTS, tsOpts,
     all: seg(() => true, 'both'),
     mddo: seg(r => isMD(r.type), 'both'),
     nonmddo: seg(r => !isMD(r.type), 'both'),
@@ -7432,6 +7463,70 @@ async function processSignupRequest(env) {
   return { signUpRate, _meta: { generatedAt: new Date().toISOString() } };
 }
 
+// Revenue Outcome's pilot side (Alex, 2026-11-12): the pilots SIGNED in each
+// window, read from the app (the BD Tracker's Grafana definitions, so the two
+// agree). A pilot is signed when its fee is paid (pilot_fee_paid_at, Eastern
+// day), whatever its status since (rolled over, canceled after paying...).
+//  * Signed Pilot Brands = distinct brands with a pilot fee paid in the window
+//  * Initiation Fees     = SUM(pilot_fee_total - refunded) over those pilots
+//  * Post-Pilot MRR      = their post-pilot price (rollover, else a repeating
+//                          override, else the deposit month's default)
+// Brands named demo/test are left out, as on the app's Grafana board. Live via
+// Grafana when GRAFANA_TOKEN is set, else the nightly Metabase copy. Window
+// dates are validated as YYYY-MM-DD before they reach the SQL (custom windows
+// come from the request body).
+const RO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+function roPilotSql(wins, pg) {
+  const keys = Object.keys(wins).filter(k => wins[k] && RO_DAY.test(wins[k].from) && RO_DAY.test(wins[k].to));
+  if (!keys.length) return null;
+  const day = pg ? `((v.pilot_fee_paid_at AT TIME ZONE 'UTC') AT TIME ZONE 'America/New_York')::date`
+                 : `TO_DATE(CONVERT_TIMEZONE('UTC', 'America/New_York', v.PILOT_FEE_PAID_AT))`;
+  const post = pg
+    ? `COALESCE(NULLIF(p.rollover_price_in_cents, 0), CASE WHEN p.next_price_override_repeats THEN NULLIF(p.next_price_override_in_cents, 0) END, NULLIF(p.deposit_month_default_in_cents, 0), 0)`
+    : `COALESCE(NULLIF(p.ROLLOVER_PRICE_IN_CENTS, 0), IFF(p.NEXT_PRICE_OVERRIDE_REPEATS, NULLIF(p.NEXT_PRICE_OVERRIDE_IN_CENTS, 0), NULL), NULLIF(p.DEPOSIT_MONTH_DEFAULT_IN_CENTS, 0), 0)`;
+  const fee = pg ? `v.pilot_fee_total_in_cents - COALESCE(v.refunded_in_cents, 0)` : `v.PILOT_FEE_TOTAL_IN_CENTS - COALESCE(v.REFUNDED_IN_CENTS, 0)`;
+  const brand = pg ? 'v.health_brand_id' : 'v.HEALTH_BRAND_ID';
+  const cols = keys.map(k => {
+    const inW = `${day} BETWEEN '${wins[k].from}' AND '${wins[k].to}'`;
+    return pg
+      ? `count(DISTINCT ${brand}) FILTER (WHERE ${inW}) AS "${k}_n", COALESCE(sum(${fee}) FILTER (WHERE ${inW}), 0) AS "${k}_fee", COALESCE(sum(${post}) FILTER (WHERE ${inW}), 0) AS "${k}_post"`
+      : `COUNT(DISTINCT IFF(${inW}, ${brand}, NULL)) AS "${k}_n", COALESCE(SUM(IFF(${inW}, ${fee}, NULL)), 0) AS "${k}_fee", COALESCE(SUM(IFF(${inW}, ${post}, NULL)), 0) AS "${k}_post"`;
+  }).join(',\n  ');
+  return pg
+    ? `SELECT ${cols}\nFROM pilot_progress v LEFT JOIN pilots p ON p.id = v.pilot_id\nWHERE v.brand_name !~* '(demo|test)' AND v.pilot_fee_paid_at IS NOT NULL`
+    : `SELECT ${cols}\nFROM MARTS.FCT_PILOT_PROGRESS v LEFT JOIN STAGING.STG_PILOTS p ON p.ID = v.PILOT_ID\nWHERE NOT REGEXP_LIKE(v.BRAND_NAME, '.*(demo|test).*', 'is') AND v.PILOT_FEE_PAID_AT IS NOT NULL`;
+}
+// One aggregate row → {current, prior, priorMonth}: {n, fees, post} in dollars, or null.
+function roPilotOf(row, wins) {
+  const r = row || {};
+  const out = {};
+  for (const k of Object.keys(wins)) {
+    if (!wins[k] || r[k + '_n'] == null) { out[k] = null; continue; }
+    out[k] = { n: Number(r[k + '_n']) || 0, fees: (Number(r[k + '_fee']) || 0) / 100, post: (Number(r[k + '_post']) || 0) / 100 };
+  }
+  return out;
+}
+async function fetchRoPilots(env, wins) {
+  let liveError = '';
+  if (env && env.GRAFANA_TOKEN) {
+    try {
+      const q = roPilotSql(wins, true);
+      if (!q) return null;
+      const rows = await grafanaQuery(env, q);
+      return Object.assign(roPilotOf(rows[0], wins), { source: 'live' });
+    } catch (e) {
+      liveError = String((e && e.message) || e).split(env.GRAFANA_TOKEN).join('[token]').slice(0, 200);
+      console.error('Revenue Outcome pilots: Grafana failed, using the nightly copy:', liveError);
+    }
+  }
+  const q = roPilotSql(wins, false);
+  if (!q) return null;
+  const rows = await mbQuery(env, q);
+  const o = Object.assign(roPilotOf(rows[0], wins), { source: 'nightly' });
+  if (liveError) o.liveError = liveError;
+  return o;
+}
+
 // Dedicated, UNCACHED Revenue Outcome endpoint. Computes current / prior /
 // last-month closed-won MRR + count LIVE in its own invocation (fresh
 // subrequest budget) — so the Revenue Outcome card's vs-prior / vs-LM deltas
@@ -7441,6 +7536,9 @@ async function processSignupRequest(env) {
 async function processRevenueOutcome(env, windowType, customFrom, customTo, vsFrom, vsTo) {
   const hsToken = env.HUBSPOT_TOKEN;
   const { current, prior, priorMonth } = computeWindows(windowType, customFrom, customTo, vsFrom, vsTo);
+  // The pilot side never takes the brand side down with it: a failure is {error}.
+  const pilotsP = fetchRoPilots(env, { current, prior, priorMonth })
+    .catch(e => ({ error: 'Pilot figures unavailable', detail: String((e && e.message) || e).slice(0, 200) }));
   const [cCW, pCW, pmCW] = await Promise.all([
     fetchClosedWonDeals(hsToken, current.from, current.to),
     prior ? fetchClosedWonDeals(hsToken, prior.from, prior.to) : Promise.resolve(null),
@@ -7462,6 +7560,7 @@ async function processRevenueOutcome(env, windowType, customFrom, customTo, vsFr
   };
   return {
     current: tot(cCW), prior: tot(pCW), priorMonth: tot(pmCW),
+    pilots: await pilotsP,
     period: current, priorPeriod: prior, priorMonthPeriod: priorMonth,
     generatedAt: new Date().toISOString(),
   };
@@ -11476,7 +11575,7 @@ export default {
         // Same same-day disambiguation as /api/clinician, or this endpoint would
         // report a different Form-vs-Demo split than the main page for one range.
         const _amb = deals.filter(d => clinicianFormVsDemo(d.properties || {}) === 'Same Day').map(d => d.id);
-        const funnel = buildClinicianFunnel(deals, contactsByDeal, await fetchClinicianMeetingStarts(token, _amb));
+        const funnel = buildClinicianFunnel(deals, contactsByDeal, await fetchClinicianMeetingStarts(token, _amb), { splits: true });
         // Top-of-funnel + spend for THIS range, so all nine stages describe one span.
         const topFunnel = await fetchClinicianTopFunnel(env.WINDSOR_API_KEY, from, to);
         let clnSpend = null;
@@ -11536,7 +11635,7 @@ export default {
         const meetingStarts = await fetchClinicianMeetingStarts(token, _ambiguous);
         // Funnel + table are history-scoped; everything else follows the page.
         const funnel = buildClinicianFunnel(dealsHist, contactsByDeal, meetingStarts);
-        const funnelPage = buildClinicianFunnel(dealsPage, contactsByDeal, meetingStarts);
+        const funnelPage = buildClinicianFunnel(dealsPage, contactsByDeal, meetingStarts, { splits: true });
         const daily = buildClinicianDaily(dealsPage, contactsByDeal, cur.from, cur.to);
         // `deals`, the whole fetched superset, NOT dealsPage. Sign Up is dated by
         // Clinician Credentials Complete, and a clinician whose deal was created

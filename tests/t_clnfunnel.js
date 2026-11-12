@@ -11,7 +11,9 @@ ck('the Clinician Type pills are gone',/segPill\(/.test(cli),false);
 ck('and its setter with them',/clinicianSetSeg/.test(cli),false);
 // segData feeds the bars, every stat and the deal count — the KEY must survive.
 ck('seg is pinned rather than deleted',/const seg='all';/.test(RC),true);
-ck('so segData still resolves',/const segData=flowSrc\[seg\]\|\|flowSrc\.all\|\|fd\.all\|\|\{\};/.test(RC),true);
+ck('so segData still resolves',/const segData=_tsOn\?\(fd\.byTS\[_tsKey\]\|\|_tsEmpty\(\)\):\(flowSrc\[seg\]\|\|flowSrc\.all\|\|fd\.all\|\|\{\}\);/.test(RC),true);
+ck('  and a Type/Specialty selection reads the worker\u2019s byTS segment, keyed type|spec with * for all',
+   /const _tsKey=\(_fT\|\|_fS\)\?\(\(_fT\|\|'\*'\)\+'\|'\+\(_fS\|\|'\*'\)\):'';/.test(RC),true);
 
 // --- 2. workflow defaults to Virtual, All removed -----------------------
 // Superseded: the toggle is gone entirely, so flow is pinned rather than defaulted.
@@ -229,7 +231,8 @@ ck('conversion is from the PRIOR stage',
    &&/const conv=\(_sr&&_sr\.fromPrevPct!==undefined\)\s*\? _sr\.fromPrevPct\s*: \(\(_prev!=null&&_prev>0&&reached!=null\)\?\(reached\/_prev\)\*100:null\);/.test(RC),true);
 ck('cost divides spend by that stage',/const cost=\(_spend!=null&&reached!=null&&reached>0\)/.test(RC),true);
 // A missing stage must be a dash, never a 0 — a zero asserts something false.
-ck('a stage with no data is null, not zero',/reached=_topF\[dfn\.key\]!=null\?_topF\[dfn\.key\]:null;/.test(RC),true);
+ck('a stage with no data is null, not zero',/reached=_tsOn\?null:\(_topF\[dfn\.key\]!=null\?_topF\[dfn\.key\]:null\);/.test(RC),true);
+ck('  and a filtered funnel blanks the ad stages and the cost, never shows them unfiltered',/const _spend=_tsOn\?null:/.test(RC),true);
 ck('and renders as a dash',/const _n=\(v\)=>v==null\?'\\u2014':fN\(v\);/.test(RC),true);
 ck('ad stages have no "here now"',/let reached=null,here=null;/.test(RC),true);
 // Ever-reached is nested; "here now" is not.

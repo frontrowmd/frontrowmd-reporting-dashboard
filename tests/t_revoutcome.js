@@ -6,6 +6,7 @@ const {load,fn,decl}=require('./slice.js');const vm=require('vm');
 const cli=load(process.env.DASH_SRC||'dashboard.html');
 const src=load(process.env.WORKER_SRC||'worker.js');
 let pass=0,fail=0;
+const J=x=>JSON.parse(JSON.stringify(x));
 const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify(w);console.log((ok?'PASS ':'FAIL ')+n+'  got='+JSON.stringify(g)+(ok?'':' want='+JSON.stringify(w)));ok?pass++:fail++;};
 
 // ── 1. The worker's pilot split ────────────────────────────────────────────
@@ -36,92 +37,88 @@ ck('the closed-won fetch asks HubSpot for the pilot field',
      {mrr:3500,count:2,pilotMrr:1500,pilotCount:1});
 }
 
-// ── 2. The card: All / Excluding Pilot / Pilot Only ─────────────────────────
-const mkCtx=(store)=>{
-  const C={console,Math,JSON,Number,String,Object,Array,
-    localStorage:{getItem:k=>(k in store?store[k]:null),setItem:(k,v)=>{store[k]=String(v);}},
-    document:{getElementById:()=>null}};
+// ── 2. The card: two sides (2026-11-12) — brands excl. pilots | pilots ──────
+const mkCtx=()=>{
+  const C={console,Math,JSON,Number,String,Object,Array,document:{getElementById:()=>null}};
   vm.createContext(C);
   vm.runInContext([
     'var AP="dashboard";var S={dashboard:{win:"mtd",data:null},irfan:{},exec:{}};',
     "const f$=v=>v==null?'—':'$'+Math.round(v).toLocaleString();",
     "const fN=v=>v==null?'—':Math.round(v).toLocaleString();",
     'function _execMode(){return "brand";}',
-    'var _revOutcome=null;',
-    'var window=globalThis;',
-    decl(cli,'var RO_PILOT_MODES=','];'),
-    decl(cli,'var _roPilotMode=','})();'),
-    fn(cli,'_roRerender'),
-    decl(cli,'window.roSetPilotMode=function','\n};'),
+    'var _revOutcome=null,_roFail=null;',
+    fn(cli,'_roKey'),fn(cli,'_roPageKey'),
     fn(cli,'_buildRevenueOutcomeCard'),
-    'Object.assign(globalThis,{_buildRevenueOutcomeCard,S,setMode:window.roSetPilotMode,setRO:v=>{_revOutcome=v;},mode:()=>_roPilotMode});',
+    'Object.assign(globalThis,{_buildRevenueOutcomeCard,_roKey,S,setRO:v=>{_revOutcome=v;},setFail:v=>{_roFail=v;}});',
   ].join('\n'),C);
   return C;
 };
 const text=h=>h.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
-const LIVE={win:'mtd',
+const PIL={source:'live',current:{n:4,fees:16000,post:12000},prior:{n:2,fees:8000,post:6000},priorMonth:{n:5,fees:20000,post:15000}};
+const LIVE={win:'mtd',key:'mtd',
   current:{mrr:30000,count:12,pilotMrr:6000,pilotCount:3},
   prior:{mrr:20000,count:9,pilotMrr:0,pilotCount:0},
-  priorMonth:{mrr:25000,count:10,pilotMrr:2500,pilotCount:1}};
+  priorMonth:{mrr:25000,count:10,pilotMrr:2500,pilotCount:1},pilots:PIL};
 const d0={signedChurnedByCloseCount:2};
-const pressed=h=>((/aria-pressed="true"[^>]*>([^<]+)</.exec(h))||[])[1];
 {
-  const C=mkCtx({});C.setRO(LIVE);
+  const C=mkCtx();C.setRO(LIVE);
   const h=C._buildRevenueOutcomeCard(d0), t=text(h);
-  ck('ROAS is gone from the card',[/ROAS/.test(h),/Churn-Adjusted/i.test(h)],[false,false]);
-  ck('the toggle offers exactly All / Excluding Pilot / Pilot Only',
-     [...h.matchAll(/onclick="roSetPilotMode\('(\w+)'\)"[^>]*>([^<]+)</g)].map(m=>[m[1],m[2]]),
-     [['all','All'],['excl','Excluding Pilot'],['only','Pilot Only']]);
-  ck('Excluding Pilot is the default, and shown as the live choice',[C.mode(),pressed(h)],['excl','Excluding Pilot']);
-  // excl: 30,000 - 6,000 = 24,000 MRR; 12 - 3 + 2 churned add-back = 11 brands.
-  ck('Excluding Pilot: every figure loses the pilots',
-     [/\$288,000/.test(t),/MRR \$24,000/.test(t),/Signed Brands 11/.test(t)],[true,true,true]);
-  // LM non-pilot 22,500 -> Signed ARR +1,500 x 12 = +$18,000. Had LM kept its
-  // pilot it would be 25,000 and the delta -$12,000.
-  ck('  and compares against windows without THEIR pilots',[/vs LM[^v]*\+\$18,000/.test(t),/-\$12,000/.test(t)],[true,false]);
+  ck('ROAS and the pilot toggle are gone',[/ROAS/.test(h),/roSetPilotMode|aria-pressed/.test(h)],[false,false]);
+  // Side 1 excludes pilots: 30,000 - 6,000 = 24,000 MRR; 12 - 3 + 2 churned add-back = 11 brands.
+  ck('side 1: Signed ARR, MRR, ACV, Signed Brands, all excluding pilots',
+     [/Brands excluding pilots/.test(t),/\$288,000/.test(t),/MRR \$24,000/.test(t),/Signed Brands 11/.test(t),/ACV \$2,182/.test(t)],[true,true,true,true,true]);
+  ck('  compared against windows without THEIR pilots',[/vs LM[^v]*\+\$18,000/.test(t)],[true]);
+  ck('side 2: Initiation Fees, Post-Pilot MRR, Pilot Avg ACV, Signed Pilot Brands',
+     [/Initiation Fees net of refunds \$16,000/.test(t),/Post-Pilot MRR \$12,000/.test(t),/Pilot Avg ACV \$3,000/.test(t),/Signed Pilot Brands 4/.test(t)],[true,true,true,true]);
+  ck('  with their own prior and LM deltas',[/Initiation Fees[^$]*\$16,000 vs prior \S+ \+\$8,000/.test(t),/vs LM \S+ -\$4,000/.test(t)],[true,true]);
+  ck('  and the order of the sides: brands first',t.indexOf('Signed ARR')<t.indexOf('Initiation Fees'),true);
+  ck('  labelled live when the app read was live',/fee paid in the window · app, live/.test(t),true);
 }
 {
-  const store={};const C=mkCtx(store);C.setRO(LIVE);
-  C.setMode('all');
+  const C=mkCtx();C.setRO(Object.assign({},LIVE,{pilots:Object.assign({},PIL,{source:'nightly'})}));
+  ck('  and as of last night when it was not',/app, as of last night/.test(text(C._buildRevenueOutcomeCard(d0))),true);
+  C.setRO(Object.assign({},LIVE,{pilots:{error:'Pilot figures unavailable'}}));
   const t=text(C._buildRevenueOutcomeCard(d0));
-  ck('All: the full totals',[/\$360,000/.test(t),/MRR \$30,000/.test(t),/Signed Brands 14/.test(t)],[true,true,true]);
-  ck('  remembered for this browser, across a reload',[store.roPilotMode,mkCtx(store).mode()],['all','all']);
+  ck('a pilot failure leaves side 1 standing and says so on side 2',[/\$288,000/.test(t),/Pilot figures unavailable/.test(t)],[true,true]);
 }
-{
-  const C=mkCtx({});C.setRO(LIVE);C.setMode('only');
-  const h=C._buildRevenueOutcomeCard(d0),t=text(h);
-  // only: 6,000 MRR, 3 brands -- the churned add-back is NOT credited to pilots.
-  ck('Pilot Only: just the pilots',[/\$72,000/.test(t),/MRR \$6,000/.test(t),/Signed Brands 3/.test(t),/ACV \$2,000/.test(t)],[true,true,true,true]);
-  ck('  with the churned add-back left out, not credited to pilots',/Signed Brands 5/.test(t),false);
-  // Prior had 0 pilots, LM had 2,500: +6,000 and +3,500 MRR -> x12 for ARR.
-  ck('  compared against prior and LM pilots',
-     [/vs prior[^v]*\+\$72,000/.test(t),/vs LM[^v]*\+\$42,000/.test(t)],[true,true]);
-  ck('  and marked as the live choice',pressed(h),'Pilot Only');
-}
-{
-  const C=mkCtx({});C.setMode('bogus');
-  ck('an unknown mode is ignored',C.mode(),'excl');
-  const C2=mkCtx({roIncludePilots:'1'});
-  ck('a tick saved by the preview checkbox carries over as All',C2.mode(),'all');
-}
-{ // Before the live numbers land: the cached /api/data figures, same rules.
-  const C=mkCtx({});
+{ // Before the live numbers land: the cached /api/data figures; side 2 waits.
+  const C=mkCtx();
   const d={signedChurnedByCloseCount:0,mrrArr:{
     mrr:{value:30000,sameTimePrior:{value:20000},lastMonth:{value:25000}},
     dealCount:{value:12,sameTimePrior:{value:9},lastMonth:{value:10}},
     pilot:{cur:{mrr:6000,count:3},prior:{mrr:0,count:0},lm:{mrr:2500,count:1}}}};
-  ck('the cached figures follow the toggle too, so the first paint is right',
-     [/\$288,000/.test(text(C._buildRevenueOutcomeCard(d))),(C.setMode('only'),/\$72,000/.test(text(C._buildRevenueOutcomeCard(d))))],[true,true]);
+  const t=text(C._buildRevenueOutcomeCard(d));
+  ck('first paint: side 1 already excludes pilots, side 2 says it is loading',[/\$288,000/.test(t),/Loading pilot figures/.test(t)],[true,true]);
 }
-{ // An older payload with no split: All is all it can show, and it says so.
-  const C=mkCtx({});C.setMode('only');
-  const d={signedChurnedByCloseCount:0,mrrArr:{mrr:{value:30000},dealCount:{value:12}}};
-  const h=C._buildRevenueOutcomeCard(d),t=text(h);
-  ck('with no pilot split it shows All, disabled, and says why',
-     [/\$360,000/.test(t),/<button disabled/.test(h),/pilot split loading/.test(t),pressed(h)],[true,true,true,'All']);
+{ // An older payload with no split: side 1 can only show the total, and says so.
+  const C=mkCtx();
+  const t=text(C._buildRevenueOutcomeCard({signedChurnedByCloseCount:0,mrrArr:{mrr:{value:30000},dealCount:{value:12}}}));
+  ck('with no pilot split side 1 shows the total and says why',[/\$360,000/.test(t),/pilot split loading/.test(t)],[true,true]);
 }
-ck('the live fetch and the toggle re-render through one function',
-   /_revOutcome=\{win:win,current:d\.current,prior:d\.prior,priorMonth:d\.priorMonth\};\s*_roRerender\(\);/.test(cli),true);
+{ // Review fixes (2026-11-12)
+  const C=mkCtx();
+  ck('a failed live fetch says so on the Pilots side instead of loading forever',
+     (C.setFail('mtd'),/Pilot figures unavailable/.test(text(C._buildRevenueOutcomeCard(d0)))),true);
+  const C2=mkCtx();C2.S.dashboard.win='custom';C2.S.dashboard.cFrom='2026-09-01';C2.S.dashboard.cTo='2026-09-30';
+  C2.setRO(Object.assign({},LIVE,{win:'custom',key:C2._roKey('custom','2026-08-01','2026-08-31')}));
+  ck('a custom range never shows another custom range\u2019s live figures',/Loading pilot figures/.test(text(C2._buildRevenueOutcomeCard(d0))),true);
+  C2.setRO(Object.assign({},LIVE,{win:'custom',key:C2._roKey('custom','2026-09-01','2026-09-30')}));
+  ck('  and does show its own',/Signed Pilot Brands 4/.test(text(C2._buildRevenueOutcomeCard(d0))),true);
+}
+ck('the Executive page Brand mode fetches the live card too',/\|\|\(AP==='exec'&&_execMode\(\)==='brand'\)\)&&typeof fdRevenueOutcome==='function'/.test(cli),true);
+ck('the live fetch keeps the pilot side and re-renders through one function',
+   /_revOutcome=\{win:win,key:key,current:d\.current,prior:d\.prior,priorMonth:d\.priorMonth,pilots:d\.pilots\|\|null\};\s*_roRerender\(\);/.test(cli),true);
+// The worker's windowed pilot query.
+{
+  const W2={console:{log(){},warn(){},error(){}}};vm.createContext(W2);
+  vm.runInContext(src.slice(0,src.indexOf('\nexport default'))+'\nObject.assign(globalThis,{roPilotSql,roPilotOf});',W2);
+  const wins={current:{from:'2026-11-01',to:'2026-11-12'},prior:null,priorMonth:{from:'2026-10-01',to:'2026-10-31'}};
+  const pg=W2.roPilotSql(wins,true),sf=W2.roPilotSql(wins,false);
+  ck('pilot SQL: one column set per window present, Eastern fee-paid day',[/"current_n"/.test(pg),/"prior_n"/.test(pg),/"priorMonth_fee"/.test(pg),/AT TIME ZONE 'America\/New_York'\)::date BETWEEN '2026-11-01' AND '2026-11-12'/.test(pg)],[true,false,true,true]);
+  ck('  demo/test brands left out on both paths, distinct brands counted',[/brand_name !~\* '\(demo\|test\)'/.test(pg),/REGEXP_LIKE\(v\.BRAND_NAME/.test(sf),/count\(DISTINCT v\.health_brand_id\)/.test(pg)],[true,true,true]);
+  ck('  a window whose dates are not YYYY-MM-DD never reaches the SQL',W2.roPilotSql({current:{from:"2026-11-01' OR 1=1 --",to:'2026-11-12'}},true),null);
+  ck('the row maps to dollars per window',J(W2.roPilotOf({current_n:'3',current_fee:'150000',current_post:'90000'},{current:{},prior:null})),{current:{n:3,fees:1500,post:900},prior:null});
+}
 
 // ── 3. Executive Dashboard: the Brand goal band is off, the Clinician one stays ─
 ck('the Brand goal is switched off on the Executive Dashboard',/const EXEC_SHOW_BRAND_GOAL=false;/.test(cli),true);

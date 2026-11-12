@@ -202,8 +202,8 @@ ck('  a HubSpot-sourced churn and a same-row restart keep their own sign',[co(cb
 ck('Never Implemented: a Never Imp type, or no type and never live; Board Defined wins',
   [C._baIsNeverImpl({never_implemented_churn:'Yes - Ghosted'}),C._baIsNeverImpl({never_implemented_churn:'',_brand:{everLive:false}}),
    C._baIsNeverImpl({never_implemented_churn:'Board Defined Churn',_brand:{everLive:false}}),C._baIsNeverImpl({never_implemented_churn:'',_brand:{everLive:true}})],[true,true,false,false]);
-ck('  the C3 switch defaults to Included and drops NI churns from the grid when Excluded',
-  /var _bdRetNI='incl';/.test(bd)&&/var _rwCh=\(_bdRetNI==='excl'\)\?_apCh\.filter\(function\(dd\)\{return !_baIsNeverImpl\(dd\);\}\):_apCh;/.test(bd),true);
+ck('  the C3 switch defaults to Excluded, which drops NI churns from the grid',
+  /var _bdRetNI='excl';/.test(bd)&&/var _rwCh=\(_bdRetNI==='excl'\)\?_apCh\.filter\(function\(dd\)\{return !_baIsNeverImpl\(dd\);\}\):_apCh;/.test(bd),true);
 ck('test accounts are an explicit list',/var BD_APP_TEST_BRANDS=\['FrontrowMD Demo Account','Vincent'\];/.test(bd),true);
 
 // 10. Review fixes (2026-11-11)
@@ -456,7 +456,7 @@ function pageToggleTests(){
   ck('both reads start together, and Refresh repeats both',/function doLogin\(\)\{\n  bdFetchApp\(\);/.test(bd)&&/bdFetchApp\(\);    \/\/ and the app brand book, in parallel/.test(bd),true);
   // Summary row order and Future ARR (Alex, 2026-11-11).
   ck('row 1: Active Brands, Current ARR, Current MRR, Avg ACV, Future ARR, Future MRR',[...bd.matchAll(/_kt\('bd-dark(?: bd-fut)?','([^']+)'/g)].map(m=>m[1]),['Active Brands','Current ARR','Current MRR','Avg ACV','Future ARR','Future MRR']);
-  ck('row 2: six cards, Awaiting Deposit right after Pilot Brands, Pilot Avg ACV last',[...bd.matchAll(/_kp\('([^']+)'/g)].map(m=>m[1]),['Pilot Brands','Awaiting Deposit','Pilot Live','Initiation Fees','Post-Pilot MRR','Pilot Avg ACV']);
+  ck('row 2: six cards, Awaiting Deposit after Pilot Brands, Pilot Avg ACV left of Initiation Fees',[...bd.matchAll(/_kp\('([^']+)'/g)].map(m=>m[1]),['Pilot Brands','Awaiting Deposit','Pilot Live','Pilot Avg ACV','Initiation Fees','Post-Pilot MRR']);
   ck('  Pilot Avg ACV = Post-Pilot MRR ÷ Pilot Brands',/_kp\('Pilot Avg ACV',_ps\.n\?f\$\(_ps\.post\/_ps\.n\)/.test(bd),true);
   ck('Future ARR and MRR carry the lighter projection style',(bd.match(/_kt\('bd-dark bd-fut','Future (ARR|MRR)'/g)||[]).length,2);
   ck('Future ARR = Future MRR x 12, Future MRR = app MRR + the counted pilots’ post-pilot price',

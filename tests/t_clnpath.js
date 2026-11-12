@@ -170,6 +170,26 @@ const LD=(stage,stamps,wf)=>{const d=D(stage,stamps,wf);d.properties.createdate=
      f.slice(1).every(x=>x.fromPrevPct==null||(x.fromPrevPct>=0&&x.fromPrevPct<=100)),true);
 }
 
+{ // Clinician Funnel Type x Specialty filters (2026-11-12): byTS segments, on request only.
+  const deals=[D(ST['Call Scheduled'],[ST['Credentials Submitted'],ST['Call Scheduled']]),
+               D(ST['Credentials Submitted'],[ST['Credentials Submitted']]),
+               D(ST['Credentials Submitted'],[ST['Credentials Submitted']])];
+  const cbd={};
+  cbd[deals[0].id]={__cid:'c1',clinician_type:'MD',clinician_specialty:'Dermatology'};
+  cbd[deals[1].id]={__cid:'c2',clinician_type:'Nurse Practitioner',clinician_specialty:'Dermatology'};
+  cbd[deals[2].id]={__cid:'c3',clinician_type:'NP',clinician_specialty:'PCP / family medicine'};
+  const plain=W.buildClinicianFunnel(deals,cbd,{});
+  ck('no splits unless asked (the per-window trend passes skip them)',[plain.byTS,plain.tsOpts],[null,null]);
+  const f=W.buildClinicianFunnel(deals,cbd,{},{splits:true});
+  const reachedCS=k=>{const s=f.byTS[k];return s?s.funnel.find(x=>x.label==='Call Scheduled').reachedCount:null;};
+  ck('types and specialties are grouped (MD -> MD/DO, NP -> Nurse Practitioner, PCP -> Family Medicine), largest first',
+     [f.tsOpts.types.map(o=>[o.k,o.n]),f.tsOpts.specs.map(o=>[o.k,o.n])],
+     [[['Nurse Practitioner',2],['MD/DO',1]],[['Dermatology',2],['Family Medicine',1]]]);
+  ck('a segment per type, per specialty and per pair that exists',
+     Object.keys(f.byTS).sort(),['*|Dermatology','*|Family Medicine','MD/DO|*','MD/DO|Dermatology','Nurse Practitioner|*','Nurse Practitioner|Dermatology','Nurse Practitioner|Family Medicine']);
+  ck('  each one counting only its deals',[f.byTS['*|Dermatology'].total,f.byTS['Nurse Practitioner|*'].total,reachedCS('MD/DO|Dermatology'),reachedCS('Nurse Practitioner|Dermatology')],[2,2,1,0]);
+}
+
 // ── 3. The invariants, over a mixed cohort ─────────────────────────────────
 {
   const deals=[], ids=HS_PATH.map(x=>x[0]);

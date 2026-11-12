@@ -614,6 +614,8 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
 .fpill{padding:4px 12px;border-radius:50px;border:1.5px solid rgba(23,44,69,.12);background:transparent;color:var(--navy);font-size:10px;font-weight:500;cursor:pointer;font-family:var(--font-b);transition:all .12s;white-space:nowrap}
 .fpill.active{border-color:var(--navy);background:var(--navy);color:#fff;font-weight:700}
 .float-tip{display:none;position:absolute;background:#172C45;color:#fff;padding:8px 12px;border-radius:8px;font-size:12px;pointer-events:none;z-index:10;box-shadow:0 4px 12px rgba(0,0,0,.15);white-space:nowrap}
+/* Revenue Outcome's two sides stack below ~700px; the divider then has nothing to divide. */
+@media(max-width:760px){.ro-div{display:none}}
 </style>
 </head>
 <body>
@@ -968,23 +970,18 @@ function getChurnRate(){return _churnPct/100;}
 // Live Revenue Outcome data from the dedicated /api/revenue-outcome endpoint
 // (always-accurate current/prior/LM closed-won). _roSeq guards out-of-order
 // responses so a stale window's result can't clobber the current one.
-var _revOutcome=null,_roSeq=0;
-// Pilot scope (2026-10-28): All / Excluding Pilot / Pilot Only. A pilot brand
-// is a signed deal with Pilot Waitlist Status filled in. Default is Excluding
-// Pilot. One setting for every copy of the card (Brand, Irfan, Executive),
-// remembered per browser. It briefly shipped in preview as an "Include Pilot
-// Brands" checkbox, so a stored tick from that reads as All.
-var RO_PILOT_MODES=[{k:'all',l:'All'},{k:'excl',l:'Excluding Pilot'},{k:'only',l:'Pilot Only'}];
-var _roPilotMode=(function(){
-  try{
-    var m=localStorage.getItem('roPilotMode');
-    if(m==='all'||m==='excl'||m==='only')return m;
-    if(localStorage.getItem('roIncludePilots')==='1')return 'all';
-  }catch(e){}
-  return 'excl';
-})();
+var _revOutcome=null,_roSeq=0,_roFail=null;
+// What a live result answers for: the window, and for a custom one its dates
+// too, so range B never shows range A's figures while B loads (or if it fails).
+function _roKey(win,f,t,vf,vt){return win==='custom'?[win,f||'',t||'',vf||'',vt||''].join('|'):String(win||'mtd');}
+function _roPageKey(){var st=(typeof AP!=='undefined'&&S[AP])?S[AP]:{};return _roKey(st.win||'mtd',st.cFrom,st.cTo,st.cVsFrom,st.cVsTo);}
+// Pilot side (2026-11-12): the card has two sides instead of a pilot toggle.
+// Side 1 is the brand book EXCLUDING pilots (HubSpot, a pilot = a signed deal
+// with Pilot Waitlist Status filled in); side 2 is the pilots signed in the
+// window, from the app (/api/revenue-outcome's `pilots`, the BD Tracker's
+// Grafana definitions).
 // Re-render whichever Revenue Outcome card is on screen. Shared by the live
-// fetch below and the pilot checkbox, so the two cannot drift.
+// fetch below, so every copy of the card shows the same figures.
 function _roRerender(){
   if(AP==='dashboard'&&S.dashboard&&S.dashboard.data){var de=document.getElementById('t-revenue');if(de)de.innerHTML=_buildRevenueOutcomeCard(S.dashboard.data);}
   if(AP==='irfan'&&S.irfan&&S.irfan.data){var ie=document.getElementById('irfan-revoutcome');if(ie)ie.innerHTML=_buildRevenueOutcomeCard(S.irfan.data);}
@@ -993,12 +990,6 @@ function _roRerender(){
   // ones — the same card showing two different figures depending on the page.
   if(AP==='exec'&&_execMode()==='brand'&&S.exec&&S.exec.data){var xe=document.getElementById('t-revenue-exec');if(xe)xe.innerHTML=_buildRevenueOutcomeCard(S.exec.data);}
 }
-window.roSetPilotMode=function(m){
-  if(m!=='all'&&m!=='excl'&&m!=='only')return;
-  _roPilotMode=m;
-  try{localStorage.setItem('roPilotMode',m);}catch(e){}
-  _roRerender();
-};
 // Webinar no-show by brand size (2026-10-29), behind a toggle on the Webinar
 // no-show rate card. Asked to answer "are pre-launch brands driving the
 // no-shows?", so it covers EVERY registrant, pre-launch included -- the same
@@ -1045,7 +1036,7 @@ function _buildRevenueOutcomeCard(d){
   // when it's loaded for this page's current window; otherwise fall back to the
   // (cached) /api/data mrrArr so the card still renders immediately.
   var _win=((typeof AP!=='undefined'&&S[AP])?S[AP].win:null)||'mtd';
-  var _ro=(_revOutcome&&_revOutcome.win===_win)?_revOutcome:null;
+  var _ro=(_revOutcome&&_revOutcome.key===_roPageKey())?_revOutcome:null;
   var mrr=_ro?((_ro.current&&_ro.current.mrr)||0):((d.mrrArr&&d.mrrArr.mrr&&d.mrrArr.mrr.value)||0);
   var dealCount=_ro?((_ro.current&&_ro.current.count)||0):((d.mrrArr&&d.mrrArr.dealCount&&d.mrrArr.dealCount.value)||0);
   var pMRR=_ro?(_ro.prior?_ro.prior.mrr:null):((d.mrrArr&&d.mrrArr.mrr&&d.mrrArr.mrr.sameTimePrior)?d.mrrArr.mrr.sameTimePrior.value:null);
@@ -1059,10 +1050,10 @@ function _buildRevenueOutcomeCard(d){
     ? {cur:_ro.current,prior:_ro.prior,lm:_ro.priorMonth,live:true}
     : ((d.mrrArr&&d.mrrArr.pilot)?{cur:d.mrrArr.pilot.cur,prior:d.mrrArr.pilot.prior,lm:d.mrrArr.pilot.lm}:null);
   var _pv=function(w,k){var o=_pil&&_pil[w];if(!o)return null;var v=_pil.live?o['pilot'+k]:o[k.toLowerCase()];return (typeof v==='number')?v:null;};
-  // An older payload has no pilot split at all. Then the card can only show
-  // All, and it says so rather than labelling a total it cannot split.
+  // Side 1 always EXCLUDES pilots. An older payload has no pilot split at all;
+  // then side 1 can only show the total, and says so.
   var _pilotKnown=_pv('cur','Mrr')!=null;
-  var _mode=_pilotKnown?_roPilotMode:'all';
+  var _mode=_pilotKnown?'excl':'all';
   // Each window becomes its non-pilot remainder (excl) or its pilot share (only),
   // so the prior and LM comparisons always set like against like. A window whose
   // split is missing becomes null and its delta a dash, never a mixed figure.
@@ -1079,9 +1070,8 @@ function _buildRevenueOutcomeCard(d){
   // add-back is only available for the current window, so prior/LM deltas
   // compare against closed-won only (the add-back is a handful of deals).
   // The churned add-back is not split by pilot. Pilot brands are brand new (the
-  // first signed Oct 22 2026), so it is non-pilot by construction and is left
-  // out of Pilot Only rather than credited to it.
-  var _churnAdd=(_mode==='only')?0:((d&&d.signedChurnedByCloseCount)||0);
+  // first signed Oct 22 2026), so it is non-pilot by construction.
+  var _churnAdd=(d&&d.signedChurnedByCloseCount)||0;
   var signedBrands=dealCount+_churnAdd;
   var signedARR=mrr*12;            // headline
   var acv=signedBrands>0?mrr/signedBrands:null;  // per Signed Brand (incl. churned by closedate)
@@ -1104,35 +1094,53 @@ function _buildRevenueOutcomeCard(d){
       +'</div>'
     +'</div>';
   }
-  // This card used to carry a white "Snapshot" section header on the All Time
-  // tab, where Daily Activity was hidden and the card expanded to fill the row.
-  // The Snapshot section no longer exists on either tab, so the borrowed header
-  // went with it; Revenue Outcome lives inside Key Metrics now and that section
-  // supplies its own heading.
+  // Side 2: the pilots signed in each window (fee paid), from the app. Only the
+  // live endpoint carries them; until it lands the side says it is loading.
+  var _pp=_ro&&_ro.pilots, _ppOk=!!(_pp&&!_pp.error&&_pp.current);
+  var _ppErr=!!(_pp&&_pp.error)||(!_ro&&_roFail===_roPageKey());
+  var _pw=function(w){var o=_ppOk&&_pp[w];return o||null;};
+  var pc=_pw('current'),pp=_pw('prior'),pl=_pw('priorMonth');
+  var _pAcv=function(o){return (o&&o.n>0)?o.post/o.n:null;};
+  var _pf=function(o,k){return o?o[k]:null;};
+  var sideLbl=function(t,sub){return '<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:10px">'
+    +'<span style="font-family:var(--font-h);font-size:10.5px;font-weight:700;color:rgba(255,255,255,.85);text-transform:uppercase;letter-spacing:.09em">'+t+'</span>'
+    +'<span style="font-size:10px;color:rgba(255,255,255,.45)">'+sub+'</span></div>';};
+  var headline=function(lbl,note,val,cur,p2,lm){
+    return '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:3px"><span style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.05em">'+lbl+'</span><span style="font-size:10.5px;color:rgba(255,255,255,.45)">'+note+'</span></div>'
+      +'<div style="font-family:var(--font-h);font-size:34px;font-weight:700;color:#fff;line-height:1.05;margin-bottom:8px;font-variant-numeric:tabular-nums">'+val+'</div>'
+      +hdRow('vs prior',cur,p2,'$')+hdRow('vs LM',cur,lm,'$');
+  };
+  var side1='<div style="flex:1 1 300px;min-width:260px">'
+      +sideLbl('Brands',_pilotKnown?'excluding pilots':'<span style="color:#FCA5A5">pilot split loading — includes pilots</span>')
+      +headline('Signed ARR','MRR × 12',f$(signedARR),signedARR,pSignedARR,pmSignedARR)
+      +'<div style="margin-top:8px">'
+      +metricRow('MRR',f$(mrr),mrr,pMRR,pmMRR,'$')
+      +metricRow('ACV',acv!=null?f$(acv):'—',acv,pACV,pmACV,'$')
+      +metricRow('Signed Brands',fN(signedBrands),signedBrands,pDeal,pmDeal,'#')
+      +'</div></div>';
+  var side2;
+  if(!_ppOk){
+    side2='<div style="flex:1 1 300px;min-width:260px">'+sideLbl('Pilots','signed in the window · app')
+      +'<div style="font-size:12px;color:'+(_ppErr?'#FCA5A5':'rgba(255,255,255,.55)')+';padding:12px 0">'
+      +(_ppErr?'Pilot figures unavailable. Refresh to retry.':'Loading pilot figures…')+'</div></div>';
+  }else{
+    var _src=_pp.source==='live'?'live':'as of last night';
+    side2='<div style="flex:1 1 300px;min-width:260px">'
+      +sideLbl('Pilots','fee paid in the window · app, '+_src)
+      +headline('Initiation Fees','net of refunds',f$(pc.fees),pc.fees,_pf(pp,'fees'),_pf(pl,'fees'))
+      +'<div style="margin-top:8px">'
+      +metricRow('Post-Pilot MRR',f$(pc.post),pc.post,_pf(pp,'post'),_pf(pl,'post'),'$')
+      +metricRow('Pilot Avg ACV',_pAcv(pc)!=null?f$(_pAcv(pc)):'—',_pAcv(pc),_pAcv(pp),_pAcv(pl),'$')
+      +metricRow('Signed Pilot Brands',fN(pc.n),pc.n,_pf(pp,'n'),_pf(pl,'n'),'#')
+      +'</div></div>';
+  }
+  // Two sides, divided by a hairline; they stack on a narrow screen.
   return '<div style="background:linear-gradient(135deg,#020F18 0%,#172C45 58%,#1D4053 100%);border:1px solid var(--mid-navy);border-radius:14px;padding:20px 24px;box-shadow:inset 3px 0 0 var(--teal),0 6px 20px rgba(2,15,24,.18);color:#fff;height:100%">'
-    +'<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">'
-      +'<span style="font-family:var(--font-h);font-size:10.5px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.1em">Revenue Outcome</span>'
-      // Pilot scope: three pills on the dark card. Disabled until the payload
-      // carries a pilot split; the note says why rather than leaving dead pills.
-      +'<span style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap" title="Pilot brands are signed deals with Pilot Waitlist Status filled in in HubSpot">'
-        +(_pilotKnown?'':'<span style="font-size:10.5px;color:#FCA5A5">pilot split loading</span>')
-        +'<span role="group" aria-label="Pilot brands" style="display:inline-flex;border:1px solid rgba(114,164,191,.35);border-radius:50px;overflow:hidden;opacity:'+(_pilotKnown?'1':'.5')+'">'
-        +RO_PILOT_MODES.map(function(o){var on=(o.k===_mode);
-          return '<button'+(_pilotKnown?'':' disabled')+' onclick="roSetPilotMode(\''+o.k+'\')" aria-pressed="'+on+'" style="font-family:var(--font-h);font-size:10.5px;font-weight:700;letter-spacing:.02em;padding:4px 11px;border:none;cursor:'+(_pilotKnown?'pointer':'default')+';'
-            +'background:'+(on?'var(--teal)':'transparent')+';color:'+(on?'#020F18':'rgba(255,255,255,.72)')+'">'+o.l+'</button>';}).join('')
-        +'</span></span></div>'
-    +'<div style="display:flex;flex-wrap:wrap;gap:18px 36px;align-items:flex-start">'
-      +'<div style="flex:1 1 190px;min-width:180px">'
-        +'<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:3px"><span style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.05em">Signed ARR</span><span style="font-size:10.5px;color:rgba(255,255,255,.45)">MRR × 12</span></div>'
-        +'<div style="font-family:var(--font-h);font-size:40px;font-weight:700;color:#fff;line-height:1.05;margin-bottom:10px;font-variant-numeric:tabular-nums">'+f$(signedARR)+'</div>'
-        +hdRow('vs prior',signedARR,pSignedARR,'$')
-        +hdRow('vs LM',signedARR,pmSignedARR,'$')
-      +'</div>'
-      +'<div style="flex:1.6 1 300px;min-width:260px">'
-        +metricRow('MRR',f$(mrr),mrr,pMRR,pmMRR,'$')
-        +metricRow('ACV',acv!=null?f$(acv):'—',acv,pACV,pmACV,'$')
-        +metricRow('Signed Brands',fN(signedBrands),signedBrands,pDeal,pmDeal,'#')
-      +'</div>'
+    +'<div style="margin-bottom:14px"><span style="font-family:var(--font-h);font-size:10.5px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.1em">Revenue Outcome</span></div>'
+    +'<div class="ro-sides" style="display:flex;flex-wrap:wrap;gap:22px 0;align-items:stretch">'
+      +side1
+      +'<div class="ro-div" style="width:1px;background:rgba(114,164,191,.22);margin:0 28px;align-self:stretch"></div>'
+      +side2
     +'</div>'
   +'</div>';
 }
@@ -1140,15 +1148,18 @@ function _buildRevenueOutcomeCard(d){
 // closed-won) and re-render whichever Revenue Outcome card is on screen. Fire-
 // and-forget after each /api/data load. _roSeq drops out-of-order responses.
 async function fdRevenueOutcome(win,from,to,vsFrom,vsTo){
-  var my=++_roSeq;
+  var my=++_roSeq,key=_roKey(win,from,to,vsFrom,vsTo);
+  // A failed fetch is remembered for its window, so the Pilots side can say it
+  // failed instead of loading forever (side 1 keeps the cached figures).
+  var fail=function(){if(my===_roSeq){_roFail=key;_roRerender();}};
   try{
     var b={password:PW,window:win};if(from)b.from=from;if(to)b.to=to;if(vsFrom)b.vsFrom=vsFrom;if(vsTo)b.vsTo=vsTo;
     var r=await fetch(API.replace('/api/data','/api/revenue-outcome'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
-    if(!r.ok)return;var d=await r.json();if(!d||d.error)return;
+    if(!r.ok){fail();return;}var d=await r.json();if(!d||d.error){fail();return;}
     if(my!==_roSeq)return; // a newer window/refresh superseded this fetch
-    _revOutcome={win:win,current:d.current,prior:d.prior,priorMonth:d.priorMonth};
+    _revOutcome={win:win,key:key,current:d.current,prior:d.prior,priorMonth:d.priorMonth,pilots:d.pilots||null};
     _roRerender();
-  }catch(e){console.error('fdRevenueOutcome',e);}
+  }catch(e){console.error('fdRevenueOutcome',e);fail();}
 }
 function churnBg(v){return `linear-gradient(90deg,var(--teal) ${v*10}%,var(--teal-30) ${v*10}%)`;}
 function syncSliders(){
@@ -1553,7 +1564,9 @@ async function fd(w,from,to,vsFrom,vsTo,fresh){
   if((AP==='irfan'||AP==='dashboard')&&!S.irfan.special1Data&&typeof fdSpecial1==='function'){fdSpecial1();}
   // Live Revenue Outcome (dedicated uncached endpoint) — fire-and-forget after
   // each successful load; re-renders the card with accurate prior/LM deltas.
-  if(mySeq===_fdSeq&&(AP==='irfan'||AP==='dashboard')&&typeof fdRevenueOutcome==='function'){
+  // The Executive page's Brand mode carries the same card (#t-revenue-exec), so
+  // it fetches too: without this its Pilots side never loaded there.
+  if(mySeq===_fdSeq&&(AP==='irfan'||AP==='dashboard'||(AP==='exec'&&_execMode()==='brand'))&&typeof fdRevenueOutcome==='function'){
     var _row=S[AP].win||'mtd';
     if(_row==='custom')fdRevenueOutcome('custom',S[AP].cFrom,S[AP].cTo,S[AP].cVsFrom,S[AP].cVsTo);
     else fdRevenueOutcome(_row);
@@ -6423,6 +6436,9 @@ window.clinicianSetUtm=function(dim){S.clinician.utmDim=dim;_clnAcqRerender();};
 window.clinicianSetAcq=function(mode){S.clinician.acqMode=mode;_clnAcqRerender();};
 // Acquisition Specialty filter: '' = all specialties.
 window.clinicianSetAcqSpec=function(v){S.clinician.acqSpec=v||'';_clnAcqRerender();};
+// Clinician Funnel filters (2026-11-12): Clinician Type and Specialty, '' = all.
+// Kept on S.clinician, so they survive a re-render and reset on a reload.
+window.clinicianSetFunnelTS=function(k,v){if(k==='type')S.clinician.fType=v||'';else if(k==='spec')S.clinician.fSpec=v||'';renderPage();};
 // Pie chart for the Clinician Composition cards. Percentages sit on the slices,
 // a legend runs underneath, and each slice carries an instant hover (dbcTip)
 // reading "count (pct) - name".
@@ -7350,7 +7366,16 @@ function renderClinician(){
   // Everything else on the page keeps reading `d` (the page window).
   const fd=_clnFunnelData(d);
   const flowSrc=(flow!=='both'&&fd.byFlow&&fd.byFlow[flow])?fd.byFlow[flow]:fd;
-  const segData=flowSrc[seg]||flowSrc.all||fd.all||{};
+  // Clinician Type / Specialty filters (2026-11-12). The worker ships one segment
+  // per type, per specialty and per pair that has deals (byTS, 'type|spec', '*'
+  // = all). A selection with no deals is an empty segment, not the unfiltered one.
+  const _fT=S.clinician.fType||'',_fS=S.clinician.fSpec||'';
+  const _tsKey=(_fT||_fS)?((_fT||'*')+'|'+(_fS||'*')):'';
+  const _tsOn=!!(_tsKey&&fd.byTS);
+  // A selection with no deals: the full stage list at zero (a 0, not the dash
+  // that means "no data came back").
+  const _tsEmpty=()=>({funnel:(((fd.all||{}).funnel)||[]).map(r=>Object.assign({},r,{count:0,reachedCount:0,fromPrevPct:null,fromPrevNum:0,fromPrevDen:0,convToNext:null})),stats:{},total:0});
+  const segData=_tsOn?(fd.byTS[_tsKey]||_tsEmpty()):(flowSrc[seg]||flowSrc.all||fd.all||{});
   const fn=(segData.funnel)||[];
   const pctS=v=>v==null?'\u2014':v.toFixed(1)+'%';
   // Scale the TRACK by ever-reached so the funnel actually tapers. Scaling by
@@ -7361,8 +7386,13 @@ function renderClinician(){
   // what makes both of those actually affect the funnel.
   const _defs=Array.isArray(d.funnelStages)?d.funnelStages:[];
   const _topF=(fd&&fd.topFunnel)||d.topFunnel||{};
-  const _spend=(fd&&fd.clnSpend!=null)?fd.clnSpend:(d.clnSpend!=null?d.clnSpend:null);
+  // Ad spend cannot be split by who the clinician turned out to be, so a
+  // filtered funnel carries no cost per stage.
+  const _spend=_tsOn?null:((fd&&fd.clnSpend!=null)?fd.clnSpend:(d.clnSpend!=null?d.clnSpend:null));
   const _byId={};for(const r of fn)_byId[r.id]=r;
+  // Inquiries / sign ups for the selection: exact type x specialty pair counts.
+  const _tsSum=function(o){if(!o)return null;let n=0;for(const k in o){const p=k.split('|');
+    if((!_fT||p[0]===_fT)&&(!_fS||p[1]===_fS))n+=o[k];}return n;};
   let _prev=null,_prevDef=null;
   const rows9=_defs.length?_defs.map(dfn=>{
     let reached=null,here=null;
@@ -7378,11 +7408,16 @@ function renderClinician(){
       // Key Metrics is the authority for these. The FUNNEL's composition, so an
       // All Time funnel counts all-time inquiries rather than the page window's.
       const _cm=fd.composition||d.composition||{};
-      reached=dfn.acq==='submission'
+      if(_tsOn){
+        const _bt=_cm.byTypeSpec||null;
+        reached=_bt?_tsSum(dfn.acq==='submission'?_bt.sub:_bt.inq):null;
+      }else reached=dfn.acq==='submission'
         ? ((_cm.submission&&_cm.submission.contacts)||0)
         : (_cm.contacts||0);
     }else{
-      reached=_topF[dfn.key]!=null?_topF[dfn.key]:null;
+      // Ad and site stages (impressions, clicks, CTA) know nothing about the
+      // clinician, so a filtered funnel leaves them blank rather than unfiltered.
+      reached=_tsOn?null:(_topF[dfn.key]!=null?_topF[dfn.key]:null);
     }
     // Stage to stage, the worker's cohort conversion: of the deals that reached
     // the prior stage, the share that reached this one. Legacy deals count only
@@ -7547,7 +7582,25 @@ function renderClinician(){
     +'<span style="opacity:.7;font-weight:600">'+fN((segData&&segData.total)||0)+'</span></span>'
     +'<span style="font-size:10.5px;color:var(--grey)">one pipeline path for every workflow \u00b7 Inquiries counts contacts, every stage after it counts deals</span>'
     +_clnFunnelTimeToggle()+'</div>';
-  const segBar=flowBar;   // Clinician Type pill row removed
+  // The two filters. Options come from the worker (largest first, Not set last).
+  const _tsO=fd.tsOpts||null;
+  const _tsSel=function(k,lbl,cur,opts){
+    const on=!!cur;
+    return '<label style="display:inline-flex;align-items:center;gap:7px;font-family:var(--font-h);font-size:11px;font-weight:700;color:'+(on?'var(--navy)':'var(--grey)')+'">'+lbl
+      +'<select aria-label="'+lbl+'" onchange="clinicianSetFunnelTS(\''+k+'\',this.value)" style="font-family:var(--font-h);font-size:11px;font-weight:700;max-width:220px;padding:4px 6px;border-radius:6px;cursor:pointer;border:1px solid '+(on?'var(--navy)':'var(--border)')+';background:'+(on?'var(--navy)':'var(--white)')+';color:'+(on?'#fff':'var(--navy)')+'">'
+      +'<option value=""'+(on?'':' selected')+'>All</option>'
+      // A value kept from another window that has no deals here stays listed
+      // (and selected) at 0, so the box never reads All while a filter is on.
+      +((on&&!opts.some(function(o){return o.k===cur;}))?'<option value="'+_sknEsc(cur)+'" selected>'+_sknEsc(cur)+' (0)</option>':'')
+      +opts.map(function(o){return '<option value="'+_sknEsc(o.k)+'"'+(o.k===cur?' selected':'')+'>'+_sknEsc(o.k)+' ('+fN(o.n)+')</option>';}).join('')
+      +'</select></label>';
+  };
+  const tsBar=_tsO?('<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:-4px 0 14px">'
+      +_tsSel('type','Clinician Type',_fT,_tsO.types||[])
+      +_tsSel('spec','Clinician Specialty',_fS,_tsO.specs||[])
+      +(_tsOn?'<span style="font-size:10.5px;color:var(--grey)">Impressions, clicks and CTA clicks cannot be split by clinician, so they and the cost per stage are blank while a filter is on; the Kick Off Calls strip stays unfiltered. Option counts are deals.</span>':'')
+      +'</div>'):'';
+  const segBar=flowBar+tsBar;
   // ── Stats panel: PATH-SCOPED CARDS ──────────────────────────────────────────
   // Rebuilt from a flat 13-row list. The organising axis is SCOPE, because scope
   // was the actual bug: six demo-only rates and two virtual-only rates were all

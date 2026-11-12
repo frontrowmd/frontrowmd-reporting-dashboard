@@ -547,11 +547,12 @@ function bdSetRetMode(m){if(_bdRetMode===m)return;_bdRetMode=m;renderBD();}
 // the ramp as well would cancel out and paint high churn green.
 var _bdRetMetric='ret';
 function bdSetRetMetric(m){if(_bdRetMetric===m)return;_bdRetMetric=m;renderBD();}
-// C3's Never Implemented switch (Alex, 2026-11-12). 'incl' (default) counts a
-// brand that signed and never launched as a churn; 'excl' takes those brands out
-// of their cohorts entirely, numerator and denominator alike (_baIsNeverImpl).
-var _bdRetNI='incl';
-function bdSetRetNI(m){m=(m==='excl')?'excl':'incl';if(_bdRetNI===m)return;_bdRetNI=m;renderBD();}
+// C3's Never Implemented switch (Alex, 2026-11-12). 'excl' (the default, Alex
+// 2026-11-12) takes brands that signed and never launched out of their cohorts
+// entirely, numerator and denominator alike (_baIsNeverImpl); 'incl' counts
+// them as churns.
+var _bdRetNI='excl';
+function bdSetRetNI(m){m=(m==='incl')?'incl':'excl';if(_bdRetNI===m)return;_bdRetNI=m;renderBD();}
 // C3's churn-attribute filters. 'all' is no filter; '' is the real, selectable
 // value "not recorded", which is why these cannot default to '' — blank is a
 // legitimate cut here, not an absence of one. prod is a multi-select and an
@@ -1682,16 +1683,16 @@ function renderBD(){
       };
       // Row 2 (Alex, 2026-11-12): six smaller cards, matching the app's Grafana
       // "Pilot Brands" board, in this order: Pilot Brands, Awaiting Deposit,
-      // Pilot Live, Initiation Fees, Post-Pilot MRR, Pilot Avg ACV.
+      // Pilot Live, Pilot Avg ACV, Initiation Fees, Post-Pilot MRR.
       h+='<div class="bd-kpi-row r6">';
       h+=_kp('Pilot Brands',_ps.n.toLocaleString(),_ps.waiting.toLocaleString()+' waiting to start','Deposit paid, collecting data or live',
         'Pilots whose status is deposit_paid ('+_ps.deposit_paid+'), collecting_data ('+_ps.collecting_data+') or live ('+_ps.live+'). Brands named demo/test are left out, as on the app’s Grafana board.');
       h+=_kp('Awaiting Deposit',_ps.awaiting.toLocaleString(),'','Pilot sign-ups with no deposit yet · not counted');
       h+=_kp('Pilot Live',_ps.live.toLocaleString(),'','Pilots running now','Pilot status live: the pilot period has started.');
-      h+=_kp('Initiation Fees',f$(_ps.netFees),'','Net of refunds, incl. activation & analysis','Every pilot fee paid (any status, canceled ones included), less refunds: the app’s “Pilot fees (net)”.');
-      h+=_kp('Post-Pilot MRR',f$(_ps.post),'','What the pilots bill monthly if they all roll over','Each counted pilot’s rollover price, else a repeating price override, else the deposit month’s default.');
       // Same basis as Avg ACV above (a monthly figure per brand), over the pilots.
       h+=_kp('Pilot Avg ACV',_ps.n?f$(_ps.post/_ps.n):'\u2014','','Post-Pilot MRR ÷ Pilot Brands','What an average pilot brand bills monthly after it rolls over: Post-Pilot MRR divided by the '+_ps.n+' counted pilots.');
+      h+=_kp('Initiation Fees',f$(_ps.netFees),'','Net of refunds, incl. activation & analysis','Every pilot fee paid (any status, canceled ones included), less refunds: the app’s “Pilot fees (net)”.');
+      h+=_kp('Post-Pilot MRR',f$(_ps.post),'','What the pilots bill monthly if they all roll over','Each counted pilot’s rollover price, else a repeating price override, else the deposit month’s default.');
       h+='</div>';
     }
   }
@@ -3376,7 +3377,7 @@ function renderBD(){
     +'removes the brand from M, the same end-of-month convention the Snapshot chart uses. '
     +'Cohort = signing month: the Close Date of the brand\u2019s own HubSpot deal (the one nearest the app\u2019s created date, within '+BD_COHORT_HS_MONTHS+' months), else the app brand\u2019s created date; a pre-June HubSpot churn keeps the earlier of the brand\u2019s and the deal\u2019s dates, and a brand that came back on the same row is signed at its restart. '
     +(_bdRetNI==='excl'?'<strong style="color:var(--navy)">Never Implemented excluded:</strong> '+_rwNIOut.length+' brand'+(_rwNIOut.length===1?'':'s')+' that signed and never launched (a Never Imp churn type, or no type and no live app subscription) are left out of their cohorts entirely. '
-      :'Never Implemented brands (signed, never launched) count as churn; switch them off above to see retention among brands that launched. ')
+      :'Never Implemented brands (signed, never launched) are included and count as churn. ')
     +'On HubSpot alone it would be the earlier of Close Date and Entered Closed-Won — the latter alone has been '
     +'bulk-rewritten and would pile well over a hundred deals into a phantom Feb 2025 row. Rows start at '+_rwLbl(RW_FROM)
     +'; the 2024 book is a CRM import rather than organic signing and nearly a third of its churns carry no date. '
