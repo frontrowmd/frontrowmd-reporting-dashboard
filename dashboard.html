@@ -1036,7 +1036,11 @@ function _buildRevenueOutcomeCard(d){
   // when it's loaded for this page's current window; otherwise fall back to the
   // (cached) /api/data mrrArr so the card still renders immediately.
   var _win=((typeof AP!=='undefined'&&S[AP])?S[AP].win:null)||'mtd';
-  var _ro=(_revOutcome&&_revOutcome.key===_roPageKey())?_revOutcome:null;
+  // _roAll answers for this window; _ro is its BRAND side, used only when the
+  // worker's HubSpot reads succeeded (current present). Otherwise side 1 keeps
+  // the cached /api/data figures and only the pilot side reads the live result.
+  var _roAll=(_revOutcome&&_revOutcome.key===_roPageKey())?_revOutcome:null;
+  var _ro=(_roAll&&_roAll.current)?_roAll:null;
   var mrr=_ro?((_ro.current&&_ro.current.mrr)||0):((d.mrrArr&&d.mrrArr.mrr&&d.mrrArr.mrr.value)||0);
   var dealCount=_ro?((_ro.current&&_ro.current.count)||0):((d.mrrArr&&d.mrrArr.dealCount&&d.mrrArr.dealCount.value)||0);
   var pMRR=_ro?(_ro.prior?_ro.prior.mrr:null):((d.mrrArr&&d.mrrArr.mrr&&d.mrrArr.mrr.sameTimePrior)?d.mrrArr.mrr.sameTimePrior.value:null);
@@ -1096,12 +1100,13 @@ function _buildRevenueOutcomeCard(d){
   }
   // Side 2: the pilots signed in each window (fee paid), from the app. Only the
   // live endpoint carries them; until it lands the side says it is loading.
-  var _pp=_ro&&_ro.pilots, _ppOk=!!(_pp&&!_pp.error&&_pp.current);
-  var _ppErr=!!(_pp&&_pp.error)||(!_ro&&_roFail===_roPageKey());
+  var _pp=_roAll&&_roAll.pilots, _ppOk=!!(_pp&&!_pp.error&&_pp.current);
+  var _ppErr=!!(_pp&&_pp.error)||(!_roAll&&_roFail===_roPageKey());
   var _pw=function(w){var o=_ppOk&&_pp[w];return o||null;};
   var pc=_pw('current'),pp=_pw('prior'),pl=_pw('priorMonth');
   var _pAcv=function(o){return (o&&o.n>0)?o.post/o.n:null;};
   var _pf=function(o,k){return o?o[k]:null;};
+  var _pa=function(o){return o?o.post*12:null;};
   var sideLbl=function(t,sub){return '<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:10px">'
     +'<span style="font-family:var(--font-h);font-size:10.5px;font-weight:700;color:rgba(255,255,255,.85);text-transform:uppercase;letter-spacing:.09em">'+t+'</span>'
     +'<span style="font-size:10px;color:rgba(255,255,255,.45)">'+sub+'</span></div>';};
@@ -1127,7 +1132,12 @@ function _buildRevenueOutcomeCard(d){
     var _src=_pp.source==='live'?'live':'as of last night';
     side2='<div style="flex:1 1 300px;min-width:260px">'
       +sideLbl('Pilots','fee paid in the window · app, '+_src)
-      +headline('Initiation Fees','net of refunds',f$(pc.fees),pc.fees,_pf(pp,'fees'),_pf(pl,'fees'))
+      // Post-Pilot ARR leads, with Initiation Fees beside it on the same row
+      // (Alex, 2026-11-12); each keeps its own vs prior / vs LM.
+      +'<div style="display:flex;flex-wrap:wrap;gap:12px 28px;align-items:flex-start">'
+        +'<div style="flex:1 1 150px;min-width:140px">'+headline('Post-Pilot ARR','MRR \u00d7 12',f$(pc.post*12),pc.post*12,_pa(pp),_pa(pl))+'</div>'
+        +'<div style="flex:1 1 150px;min-width:140px">'+headline('Initiation Fees','net of refunds',f$(pc.fees),pc.fees,_pf(pp,'fees'),_pf(pl,'fees'))+'</div>'
+      +'</div>'
       +'<div style="margin-top:8px">'
       +metricRow('Post-Pilot MRR',f$(pc.post),pc.post,_pf(pp,'post'),_pf(pl,'post'),'$')
       +metricRow('Pilot Avg ACV',_pAcv(pc)!=null?f$(_pAcv(pc)):'—',_pAcv(pc),_pAcv(pp),_pAcv(pl),'$')

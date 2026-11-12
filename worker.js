@@ -7546,6 +7546,12 @@ async function processRevenueOutcome(env, windowType, customFrom, customTo, vsFr
   // The pilot side never takes the brand side down with it: a failure is {error}.
   const pilotsP = fetchRoPilots(env, { current, prior, priorMonth })
     .catch(e => ({ error: 'Pilot figures unavailable', detail: String((e && e.message) || e).slice(0, 200) }));
+  // hsSearch hands back whatever it had (often nothing) when HubSpot refuses a
+  // page, so a refused read looked like a month with no deals and put $0 on the
+  // card (seen 2026-11-12). Any HubSpot error during these reads drops the brand
+  // side (current/prior/priorMonth null, hsError set); the client then keeps the
+  // cached /api/data figures for it. The pilot side does not depend on HubSpot.
+  const _hsErr0 = HS_ERR.n;
   const [cCW, pCW, pmCW] = await Promise.all([
     fetchClosedWonDeals(hsToken, current.from, current.to),
     prior ? fetchClosedWonDeals(hsToken, prior.from, prior.to) : Promise.resolve(null),
@@ -7565,8 +7571,11 @@ async function processRevenueOutcome(env, windowType, customFrom, customTo, vsFr
     }
     return { mrr: m, count: a.length, pilotMrr: pm, pilotCount: pc };
   };
+  const hsFailed = HS_ERR.n > _hsErr0;
+  if (hsFailed) console.error('revenue-outcome: HubSpot refused a closed-won read; brand side left to the cached figures');
   return {
-    current: tot(cCW), prior: tot(pCW), priorMonth: tot(pmCW),
+    current: hsFailed ? null : tot(cCW), prior: hsFailed ? null : tot(pCW), priorMonth: hsFailed ? null : tot(pmCW),
+    hsError: hsFailed || undefined,
     pilots: await pilotsP,
     period: current, priorPeriod: prior, priorMonthPeriod: priorMonth,
     generatedAt: new Date().toISOString(),

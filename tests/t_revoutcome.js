@@ -70,6 +70,8 @@ const d0={signedChurnedByCloseCount:2};
   ck('  compared against windows without THEIR pilots',[/vs LM[^v]*\+\$18,000/.test(t)],[true]);
   ck('side 2: Initiation Fees, Post-Pilot MRR, Pilot Avg ACV, Signed Pilot Brands',
      [/Initiation Fees net of refunds \$16,000/.test(t),/Post-Pilot MRR \$12,000/.test(t),/Pilot Avg ACV \$3,000/.test(t),/Signed Pilot Brands 4/.test(t)],[true,true,true,true]);
+  ck('side 2 leads with Post-Pilot ARR (post x 12), Initiation Fees beside it on the same row',
+     [/Post-Pilot ARR MRR × 12 \$144,000/.test(t),t.indexOf('Post-Pilot ARR')<t.indexOf('Initiation Fees')&&t.indexOf('Initiation Fees')<t.indexOf('Post-Pilot MRR')],[true,true]);
   ck('  with their own prior and LM deltas',[/Initiation Fees[^$]*\$16,000 vs prior \S+ \+\$8,000/.test(t),/vs LM \S+ -\$4,000/.test(t)],[true,true]);
   ck('  and the order of the sides: brands first',t.indexOf('Signed ARR')<t.indexOf('Initiation Fees'),true);
   ck('  labelled live when the app read was live',/fee paid in the window · app, live/.test(t),true);
@@ -107,6 +109,15 @@ const d0={signedChurnedByCloseCount:2};
 }
 ck('the card asks for its own live figures once per window, whatever page drew it',
    /function _brandKeyMetricsAfter\(d,sfx\)\{[\s\S]*?_roEnsure\(\);\s*\}/.test(cli)&&/if\(\(_revOutcome&&_revOutcome\.key===k\)\|\|_roAsked===k\)return;/.test(cli),true);
+{ // A refused HubSpot read (worker sends current:null, hsError) never puts $0 on side 1.
+  const C=mkCtx();
+  C.setRO(Object.assign({},LIVE,{current:null,prior:null,priorMonth:null,hsError:true}));
+  const d={signedChurnedByCloseCount:0,mrrArr:{mrr:{value:30000},dealCount:{value:12},pilot:{cur:{mrr:6000,count:3},prior:{mrr:0,count:0},lm:{mrr:0,count:0}}}};
+  const t=text(C._buildRevenueOutcomeCard(d));
+  ck('a failed HubSpot read keeps the cached brand side and the live pilot side',[/\$288,000/.test(t),/Signed Pilot Brands 4/.test(t)],[true,true]);
+}
+ck('the worker drops the brand side when HubSpot refused a read during it',
+   /const hsFailed = HS_ERR\.n > _hsErr0;/.test(src)&&/current: hsFailed \? null : tot\(cCW\)/.test(src),true);
 ck('the Executive page Brand mode fetches the live card too',/\|\|\(AP==='exec'&&_execMode\(\)==='brand'\)\)&&typeof fdRevenueOutcome==='function'/.test(cli),true);
 ck('the live fetch keeps the pilot side and re-renders through one function',
    /_revOutcome=\{win:win,key:key,current:d\.current,prior:d\.prior,priorMonth:d\.priorMonth,pilots:d\.pilots\|\|null\};\s*_roRerender\(\);/.test(cli),true);
