@@ -3192,7 +3192,9 @@ function renderBD(){
   var _rwCoOf=function(dd){return _baCohortMonth(dd,_baJ,_rwSignOf(dd));};
   // The Never Implemented switch narrows the churn set before anything else
   // reads it, so the grid, the filter counts and the bands all agree.
-  var _rwNIOut=_apCh.filter(_baIsNeverImpl);
+  // Counted over the plotted window only (the same signing rule and floor as the
+  // grid), so the footnote's number is the brands that actually leave THIS grid.
+  var _rwNIOut=_apCh.filter(function(dd){var sg=_rwCoOf(dd);return _baIsNeverImpl(dd)&&sg&&sg>=RW_FROM&&sg<=_cmKey;});
   var _rwCh=(_bdRetNI==='excl')?_apCh.filter(function(dd){return !_baIsNeverImpl(dd);}):_apCh;
   var _rwBook=_apSurv.filter(_rwKept).map(function(dd){
     return {sign:_rwCoOf(dd),churn:'',churned:false,pc:!!dd.pausechurn_date};
