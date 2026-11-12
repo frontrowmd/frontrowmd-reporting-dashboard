@@ -225,13 +225,12 @@ const FCTX=(()=>{const c={console};vm.createContext(c);
     decl(bd,'var BD_PROD_GROUP={','};'),
     decl(bd,'var BD_PROD_ORDER=','];'),
     fn(bd,'_chProdsOf'), fn(bd,'_rwTypeOf'),
-    decl(bd,"var RW_PROD_NONE='","';"),
     decl(bd,'var BD_WT_GROUPS=','];'), fn(bd,'_baWebTierGroup'), fn(bd,'_baWebTierOf'),
     "var _baJ={byBrand:{}};",
-    "var _bdRetF={type:'all',seg:'all',wt:'all',ab:'all',prod:[]};",
+    "var _bdRetF={type:'all',seg:'all',wt:'all',ab:'all'};",
     decl(bd,'var _rwFilters=[','  ];'),
-    fn(bd,'_rwProdMatch'), fn(bd,'_rwKept'),
-    'Object.assign(globalThis,{_rwTypeOf,_chProdsOf,_rwKept,_rwProdMatch,_bdRetF,_rwFilters,BD_PROD_ORDER,RW_PROD_NONE,_baWebTierGroup,_baWebTierOf,_baJ});',
+    fn(bd,'_rwKept'),
+    'Object.assign(globalThis,{_rwTypeOf,_chProdsOf,_rwKept,_bdRetF,_rwFilters,BD_PROD_ORDER,_baWebTierGroup,_baWebTierOf,_baJ});',
   ].join('\n'),c); return c;})();
 ck('the filter predicates loaded',
    [typeof FCTX._rwKept,FCTX._rwFilters.length],['function',4]);
@@ -277,100 +276,31 @@ ck('the segment options are the whole company_segment enum',
    FCTX._rwFilters.find(f=>f.k==='seg').opts.map(o=>o[0]),
    ['VIP','Strategic','Enterprise','Mid-Market','']);
 
-// Products multi-select matches ANY, and is immune to HubSpot's unstable
-// ordering of multi-select values because it compares a SET, never a string.
-const KEEP=(f,dd)=>{Object.assign(FCTX._bdRetF,{type:'all',seg:'all',wt:'all',ab:'all',prod:[]},f);
+// The Implemented Products multi-select was removed (Alex, 2026-11-12).
+const KEEP=(f,dd)=>{Object.assign(FCTX._bdRetF,{type:'all',seg:'all',wt:'all',ab:'all'},f);
   return FCTX._rwKept(dd);};
-ck('Badge and Banner group to one product',
-   [FCTX._chProdsOf({implemented_products:'Badge;Banner;Reviews'}),
-    FCTX._chProdsOf({implemented_products:'Banner;Badge;Reviews'})],
-   [['Badge/Banner','Reviews'],['Badge/Banner','Reviews']]);
-ck('  so a reordered multi-select still matches',
-   [KEEP({prod:['Badge/Banner']},{implemented_products:'Banner;Badge;Reviews'}),
-    KEEP({prod:['Reviews']},{implemented_products:'Banner;Badge;Reviews'})],[true,true]);
-ck('  an empty product selection filters nothing',
+ck('the Implemented Products filter is gone from the Retention Waterfall',
+   [/RW_PROD_NONE|bdToggleRetFProd|bdClearRetFProd|_rwProdMatch/.test(bd),
+    /prod:\[\]/.test(bd),/Implemented Products'\s*\+'<span/.test(SEC),
+    Object.keys(FCTX._bdRetF)],[false,false,false,['type','seg','wt','ab']]);
+ck('  so products on a deal no longer narrow the grid',
    KEEP({},{implemented_products:''}),true);
-// INTERSECTION, not union: two selected products means the brand implemented
-// BOTH. Adding a product can only ever narrow the set.
-ck('  a multi-selection is the intersection of the choices',
-   [KEEP({prod:['Badge/Banner','CAI']},{implemented_products:'Badge;CAI'}),
-    KEEP({prod:['Badge/Banner','CAI']},{implemented_products:'Badge;Reviews'}),
-    KEEP({prod:['CAI','CAS']},{implemented_products:'Badge;CAI'})],
-   [true,false,false]);
-ck('  so adding a product never widens the set',
-   (()=>{const dd={implemented_products:'Badge;Banner;Reviews'};
-     return [KEEP({prod:['Badge/Banner']},dd),
-             KEEP({prod:['Badge/Banner','Reviews']},dd),
-             KEEP({prod:['Badge/Banner','Reviews','CAI']},dd)];})(),
-   [true,true,false]);
-// "Not recorded" is its own question — a brand either implemented something or
-// did not — so it cannot intersect with a product. The two sides clear each
-// other in the toggle rather than letting the grid reach a guaranteed-empty state.
-ck('the not-recorded option selects brands with no products',
-   [KEEP({prod:[FCTX.RW_PROD_NONE]},{implemented_products:''}),
-    KEEP({prod:[FCTX.RW_PROD_NONE]},{implemented_products:'Badge'})],[true,false]);
-ck('  and it wins over any product left alongside it',
-   KEEP({prod:[FCTX.RW_PROD_NONE,'Badge/Banner']},{implemented_products:''}),true);
-ck('  so survivors, whose field is blank, pass it',
-   KEEP({prod:[FCTX.RW_PROD_NONE]},{}),true);
-ck('  which no real product selection does',
-   KEEP({prod:['Badge/Banner']},{}),false);
-// Exercised, not just regex-matched: the toggle is module-scope and calls
-// renderBD, so it slices out cleanly with that stubbed. A browser click-through
-// is not in the suite, and this is the behaviour that browser check verified.
 const TOG=(()=>{const c={console};vm.createContext(c);
   vm.runInContext([
-    decl(bd,"var RW_PROD_NONE='","';"),
     decl(bd,'var _bdRetF=','};')+';',
     'var renders=0; function renderBD(){renders++;}',
-    fn(bd,'bdToggleRetFProd'), fn(bd,'bdClearRetFProd'), fn(bd,'_bdRetFActive'),
-    'Object.assign(globalThis,{bdToggleRetFProd,bdClearRetFProd,_bdRetFActive,_bdRetF});',
+    fn(bd,'_bdRetFActive'),
+    'Object.assign(globalThis,{_bdRetFActive,_bdRetF});',
   ].join('\n'),c); return c;})();
-const seq=(...clicks)=>{TOG._bdRetF.prod.length=0;
-  clicks.forEach(v=>v===null?TOG.bdClearRetFProd():TOG.bdToggleRetFProd(v));
-  return TOG._bdRetF.prod.slice();};
-const NONE=TOG.RW_PROD_NONE||'__none';
-ck('clicking a product selects it',seq('Badge/Banner'),['Badge/Banner']);
-ck('  clicking it again de-selects it',seq('Badge/Banner','Badge/Banner'),[]);
-ck('  two products accumulate',seq('Badge/Banner','Reviews'),['Badge/Banner','Reviews']);
-ck('not-recorded clears any products already chosen',
-   seq('Badge/Banner','Reviews',NONE),[NONE]);
-ck('  and choosing a product afterwards clears not-recorded',
-   seq(NONE,'Reviews'),['Reviews']);
-ck('  neither can ever sit beside the other, whatever the order',
-   [seq(NONE,'CAI','Reviews'),seq('CAI',NONE,'Reviews'),seq('CAI','Reviews',NONE,'CAS')],
-   [['CAI','Reviews'],['Reviews'],['CAS']]);
-ck('  de-selecting not-recorded empties the selection',seq(NONE,NONE),[]);
-ck('Clear empties whatever was chosen',
-   [seq('Badge/Banner','Reviews',null),seq(NONE,null)],[[],[]]);
-ck('an empty product selection is not an active filter',
-   (()=>{seq('Badge/Banner',null);return TOG._bdRetFActive();})(),false);
-ck('  while any product selection is',
-   (()=>{seq('Badge/Banner');return TOG._bdRetFActive();})(),true);
+ck('no selection is not an active filter',TOG._bdRetFActive(),false);
 // The confirmed review finding, pinned as behaviour: a survivor is blank on the
 // churn-review fields, so their Not-recorded option keeps every one.
 ck('a Not-recorded churn-review option keeps survivors',
    [KEEP({type:''},{companySegment:'Mid-Market'}),
-    KEEP({ab:''},{companySegment:'Mid-Market'}),
-    KEEP({prod:[NONE]},{companySegment:'Mid-Market'})],[true,true,true]);
+    KEEP({ab:''},{companySegment:'Mid-Market'})],[true,true]);
 ck('  where a NAMED value on the same field keeps none of them',
    [KEEP({type:'board'},{companySegment:'Mid-Market'}),
-    KEEP({ab:'Yes'},{companySegment:'Mid-Market'}),
-    KEEP({prod:['Badge/Banner']},{companySegment:'Mid-Market'})],[false,false,false]);
-ck('the toggle keeps not-recorded and products mutually exclusive',
-   /else if\(v===RW_PROD_NONE\)\{_bdRetF\.prod=\[v\];\}/.test(bd)
-   &&/_bdRetF\.prod\.filter\(function\(x\)\{return x!==RW_PROD_NONE;\}\)\.concat\(\[v\]\)/.test(bd),true);
-ck('  and the sentinel cannot collide with a real product name',
-   FCTX.BD_PROD_ORDER.indexOf(FCTX.RW_PROD_NONE),-1);
-ck('the not-recorded chip is rendered, with its count',
-   /fpMulti\(_bdRetF\.prod\.indexOf\(RW_PROD_NONE\)>=0,'Not recorded'\+_rwCnt\(_noProd,_noProdChn\)/.test(SEC),true);
-ck('  and its tooltip says a blank is an unfilled review, not an empty brand',
-   /a review that never recorded any, not a brand that implemented nothing/.test(SEC),true);
-ck('  and every selected product must be present, in any stored order',
-   [KEEP({prod:['Badge/Banner','Reviews']},{implemented_products:'Reviews;Banner'}),
-    KEEP({prod:['Badge/Banner','Reviews']},{implemented_products:'Banner'})],[true,false]);
-ck('  and a deal with none recorded fails any product selection',
-   KEEP({prod:['Badge/Banner']},{implemented_products:''}),false);
+    KEEP({ab:'Yes'},{companySegment:'Mid-Market'})],[false,false]);
 
 // Single-selects, including blank-as-a-value.
 ck('a churn-type selection keeps only that group',
@@ -393,8 +323,6 @@ ck('  set smaller than the label they trail',
 ck('  taken over BOTH populations, not churns alone',
    /surv\.forEach\(function\(dd\)\{var v=f\.of\(dd\);cnt\[v\]=/.test(SEC)
    &&/churns\.forEach\(function\(dd\)\{var v=f\.of\(dd\);cnt\[v\]=\(cnt\[v\]\|\|0\)\+1;chn\[v\]=/.test(SEC),true);
-ck('  including the product chips',
-   /fpMulti\(_bdRetF\.prod\.indexOf\(pz\)>=0,pz\+_rwCnt\(pc\[pz\]\|\|0,pchn\[pz\]\|\|0\)/.test(SEC),true);
 ck('and All carries no count',
    /fp\(_bdRetF\[f\.k\]==='all','All',/.test(SEC)&&!/'All \('\+/.test(SEC),true);
 ck('an A/B value of Unknown is distinct from blank',
@@ -431,12 +359,8 @@ ck('  the band counts survivors and churns separately',
 ck('  and names the time-to-churn case when no survivor is left',
    /_rwKeptSurv===0/.test(SEC)
    &&/Every brand here has churned/.test(SEC)&&/each curve ends at 0%/.test(SEC),true);
-// The survivors-remain branch must not credit ONE field for it: the
-// Not-recorded product option keeps survivors too, since their
-// implemented_products is blank, so naming only Company Segment reads as false
-// whenever that is the filter in play.
 // A survivor is blank on EVERY churn-review field, so any "Not recorded" option
-// keeps them — not just the products one. The branch must not make an
+// keeps them. The branch must not make an
 // exhaustive claim it cannot keep; naming the two mechanisms is what is true.
 ck('  the survivors-remain branch names the mechanism, not a closed list',
    /Survivors are in this cut/.test(SEC)
@@ -475,13 +399,11 @@ ck('the filters render below the toggles, one per row',
      const rows=SEC.indexOf('hChurn+=_rwFilterRows(_rwWinSurvArr,_rwWinChurns);');
      const grid=SEC.indexOf('var W=_rw.maxK;');
      return leg>0&&rows>leg&&grid>rows;})(),true);
-ck('the products row is labelled as an intersection, not a union',
-   /font-style:italic">all of<\/span>/.test(SEC)&&!/">any of<\/span>/.test(SEC),true);
-ck('  five of them: four single-selects from the loop plus products',
-   FCTX._rwFilters.length+1,5);
+ck('four filter rows, all single-selects from the loop (no products row)',
+   [FCTX._rwFilters.length,/all of<\/span>/.test(SEC)],[4,false]);
 ck('  each row labelled on the same fixed gutter',
    (()=>{const m=SEC.match(/flex:0 0 118px/g)||[];
-     return m.length===2&&/_rwFilters\.forEach\(function\(f\)\{/.test(SEC);})(),true);
+     return m.length===1&&/_rwFilters\.forEach\(function\(f\)\{/.test(SEC);})(),true);
 
 // ── 7b. The Retention / Churn metric toggle ──────────────────────────────
 ck('the metric toggle exists and defaults to Retention',

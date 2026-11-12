@@ -555,26 +555,12 @@ var _bdRetNI='excl';
 function bdSetRetNI(m){m=(m==='incl')?'incl':'excl';if(_bdRetNI===m)return;_bdRetNI=m;renderBD();}
 // C3's churn-attribute filters. 'all' is no filter; '' is the real, selectable
 // value "not recorded", which is why these cannot default to '' — blank is a
-// legitimate cut here, not an absence of one. prod is a multi-select and an
-// empty array means no filter.
-// Sentinel for "no products recorded" in the product multi-select. It cannot
-// intersect with a real product — a brand either implemented one or did not —
-// so the two sides clear each other below rather than letting the grid reach a
-// state that is guaranteed to match nothing.
-var RW_PROD_NONE='__none';
-var _bdRetF={type:'all',seg:'all',ab:'all',wt:'all',prod:[]};
+// legitimate cut here, not an absence of one. (The Implemented Products
+// multi-select was removed, Alex 2026-11-12.)
+var _bdRetF={type:'all',seg:'all',ab:'all',wt:'all'};
 function bdSetRetF(k,v){if(_bdRetF[k]===v)return;_bdRetF[k]=v;renderBD();}
-function bdToggleRetFProd(v){
-  var i=_bdRetF.prod.indexOf(v);
-  if(i>=0){_bdRetF.prod.splice(i,1);}
-  else if(v===RW_PROD_NONE){_bdRetF.prod=[v];}
-  else{_bdRetF.prod=_bdRetF.prod.filter(function(x){return x!==RW_PROD_NONE;}).concat([v]);}
-  renderBD();
-}
-function bdClearRetFProd(){if(!_bdRetF.prod.length)return;_bdRetF.prod=[];renderBD();}
 function _bdRetFActive(){
-  return _bdRetF.type!=='all'||_bdRetF.seg!=='all'||_bdRetF.ab!=='all'||_bdRetF.wt!=='all'
-    ||_bdRetF.prod.length>0;
+  return _bdRetF.type!=='all'||_bdRetF.seg!=='all'||_bdRetF.ab!=='all'||_bdRetF.wt!=='all';
 }
 // Churn Type is grouped before testing, so Delinquent Payment counts as Board
 // Defined here exactly as it does in the By Type chart.
@@ -3091,11 +3077,12 @@ function renderBD(){
   // churns alike. The cohort IS the filtered set, so the Signed column moves
   // with the filters and nothing is quietly recategorised as retained.
   //
-  // The five fields are not alike, and the difference decides what you get:
+  // The four fields are not alike, and the difference decides what you get:
   // Company Segment lives on the COMPANY record, so both populations carry it
   // and filtering by it is a genuine retention cut — VIP brands against
-  // Mid-Market ones. The other three are written at the CHURN REVIEW, so only 3
-  // of 780 closed-won deals carry any of them; selecting a NAMED value on those
+  // Mid-Market ones; Web Tier at Churn falls back to the signed tier for live
+  // brands, so it is one too. Churn Type and A/B Test are written at the CHURN
+  // REVIEW, so almost no closed-won deal carries them; selecting a NAMED value on those
   // leaves a cohort made entirely of brands that churned, and the grid becomes
   // a time-to-churn view whose every curve ends at 0%. Their "Not recorded"
   // option does the opposite — a survivor is blank on all of them, so it keeps
@@ -3105,7 +3092,7 @@ function renderBD(){
   // screen rather than letting a reader assume the first.
   //
   // The coverage is thin and that is the hazard: of 317 churns, 159 have no
-  // Churn Type, 213 no A/B Test and 199 no Implemented Products. Each filter
+  // Churn Type and 213 no A/B Test. Each filter
   // therefore carries an explicit
   // "Not recorded" option rather than folding blanks into a named value, and
   // every option prints the number of churns behind it.
@@ -3136,24 +3123,12 @@ function renderBD(){
      opts:BD_WT_GROUPS.map(function(g){return [g[0],g[1],'Churned: web traffic tier at churn, else the signed tier. Live: the signed tier (HubSpot deal, else the app\u2019s billed tier).'];})
           .concat([['','Not recorded','No tier on the churn, the deal or the app subscription']])},
   ];
-  // Products is the odd one out: a deal can hold several, so it multi-selects.
-  // Selecting two means the INTERSECTION — a brand had to implement BOTH to
-  // match — so adding a product can only ever narrow the set, never widen it.
-  // An empty selection means no filter.
-  var _rwProdMatch=function(dd){
-    if(!_bdRetF.prod.length)return true;
-    var has=_chProdsOf(dd);
-    // "Not recorded" is its own question, not a product to intersect with.
-    if(_bdRetF.prod.indexOf(RW_PROD_NONE)>=0)return has.length===0;
-    for(var i=0;i<_bdRetF.prod.length;i++)if(has.indexOf(_bdRetF.prod[i])<0)return false;
-    return true;
-  };
   var _rwKept=function(dd){
     for(var i=0;i<_rwFilters.length;i++){
       var f=_rwFilters[i],sel=_bdRetF[f.k];
       if(sel!=='all'&&f.of(dd)!==sel)return false;
     }
-    return _rwProdMatch(dd);
+    return true;
   };
   // Rendered AFTER the book is built so each option can print the number of
   // churns behind it — with coverage this thin, an option list without counts
@@ -3188,32 +3163,6 @@ function renderBD(){
       });
       h+='</span></div>';
     });
-    // Products: multi-select, matching the intersection.
-    var pc={},pchn={},_noProd=0,_noProdChn=0;
-    surv.forEach(function(dd){
-      var ps=_chProdsOf(dd); if(!ps.length){_noProd++;return;}
-      ps.forEach(function(pz){pc[pz]=(pc[pz]||0)+1;});});
-    churns.forEach(function(dd){
-      var ps=_chProdsOf(dd); if(!ps.length){_noProd++;_noProdChn++;return;}
-      ps.forEach(function(pz){pc[pz]=(pc[pz]||0)+1;pchn[pz]=(pchn[pz]||0)+1;});});
-    h+='<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">'
-      +'<span style="flex:0 0 118px;font-size:9.5px;font-weight:700;color:var(--grey);'
-      +'text-transform:uppercase;letter-spacing:.04em;line-height:1.5">Implemented Products'
-      +'<span style="display:block;font-weight:600;text-transform:none;letter-spacing:0;font-size:9px;font-style:italic">all of</span></span>'
-      +'<span style="display:inline-flex;gap:5px;flex-wrap:wrap">';
-    BD_PROD_ORDER.forEach(function(pz){
-      h+='<span title="'+BD_PROD_FULL[pz]+'">'
-        +fpMulti(_bdRetF.prod.indexOf(pz)>=0,pz+_rwCnt(pc[pz]||0,pchn[pz]||0),
-                 "bdToggleRetFProd('"+pz+"')")+'</span>';
-    });
-    h+='<span title="No Implemented Products on the deal. This field is written at the CHURN REVIEW, '
-      +'so a blank is a review that never recorded any, not a brand that implemented nothing \u2014 and all but '
-      +'one surviving brand is blank too, which makes this the one product choice that keeps them.">'
-      +fpMulti(_bdRetF.prod.indexOf(RW_PROD_NONE)>=0,'Not recorded'+_rwCnt(_noProd,_noProdChn),
-               "bdToggleRetFProd('"+RW_PROD_NONE+"')")+'</span>'
-      +(_bdRetF.prod.length?('<span style="font-size:9.5px;align-self:center">'
-        +fp(false,'Clear','bdClearRetFProd()')+'</span>'):'')
-      +'</span></div>';
     return h+'</div>';
   };
   // The book is stage-partitioned, not brand_status-partitioned. brand_status
