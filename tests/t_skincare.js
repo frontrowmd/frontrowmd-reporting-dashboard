@@ -232,13 +232,17 @@ ck('client: capacity = every MD/DO dermatologist x 2',/md=mdA\.clinicians\|\|0, 
 ck('client: the headline pace is MD/DO dermatologists\' skincare reviews ON AN ORDER over 90 days, a month',
    /const mdW=WR\.find\(x=>x\.derm&&x\.type===SKN_TYPE_FIRST\)/.test(rs)&&/pace=Math\.round\(\(mdW\.onOrder90\|\|0\)\/3\)/.test(rs),true);
 ck('client: all clinicians\' pace is also reviews on an order',/allPace=Math\.round\(WR\.reduce\(\(a,x\)=>a\+\(x\.onOrder90\|\|0\),0\)\/3\)/.test(rs),true);
-ck('client: the brand-status table lists every state, stopped struck out',/SKN_SEG_ORDER\.map\(/.test(rs)&&/text-decoration:line-through/.test(rs),true);
+ck('client: the brand-status table and largest-backlogs list are gone (2026-11-12)',[/Still owed, by brand status/.test(rs),/Largest backlogs/.test(rs)],[false,false]);
 ck('client: gap and surplus are rounded once, so sign and months-to-clear agree',[/gap=Math\.round\(pace-nw\)/.test(rs),/capNet=Math\.round\(cap-nw\)/.test(rs)],[true,true]);
-ck('client: Capacity leads the page',rs.indexOf("card('capacity'")>=0&&rs.indexOf("card('capacity'")<rs.indexOf("card('demand'")&&rs.indexOf("card('demand'")<rs.indexOf("card('writers'")&&rs.indexOf("card('engage'")<rs.indexOf("card('brands'"),true);
-ck('client: Reviews Submitted shows reviews, with the skincare count beneath',/_kmTile\('Reviews Submitted',appV\('reviews'\),appErr\?'app data unavailable':'shared or approved, any product \\u00b7 '\+fN\(ap\.skReviews/.test(rs),true);
+ck('client: an answer strip leads, then the sections in the order of the questions',/h\+=strip\+secBrands\+secDem\+secDerm\+secEng\+secCap\+secWho;/.test(rs),true);
+ck('client: pacing gives both answers, on paper and in practice',/verdict\(capNet>=0,'On paper'/.test(rs)&&/verdict\(gap>=0,'In practice'/.test(rs)&&!/'Actual Pace'/.test(rs),true);
+ck('client: HubSpot brand steps show a dash until tagged deals exist; Signed uses the app until then',
+   /const hsOn=\(B\.skincareTagged\|\|0\)>0/.test(rs)&&/lt\('Signed',hsOn\?fN\(bc\.signed\|\|0\):\(appErr\?dash:fN\(sn\('active'\)\)\)/.test(rs),true);
+ck('client: Engagement leads with the reviewing-after-samples rate',rs.indexOf("lt('Reviewing After Samples'")>=0&&rs.indexOf("lt('Reviewing After Samples'")<rs.indexOf("lt('Ever Reviewed'"),true);
+ck('client: Reviews Submitted shows reviews, with the skincare count beneath',/lt\('Reviews Submitted',appV\('reviews'\),appErr\?'app data unavailable':'shared or approved, any product \\u00b7 '\+fN\(ap\.skReviews/.test(rs),true);
 ck('client: Capacity does not follow the type filter',/const mdA=adBy\[SKN_TYPE_FIRST\]/.test(rs)&&!/const mdA=[^;]*\bap\b/.test(rs),true);
 ck('client: Engagement carries the clinician type filter too (same state)',/engageBody=typeBarFor\(/.test(rs)&&/const typeBar=typeBarFor\(/.test(rs),true);
-ck('client: brand names are escaped',/td\(_sknEsc\(x\.name\),1\)/.test(rs),true);
+ck('client: option and group labels are escaped',/l:_sknEsc\(x\.group\)/.test(rs),true);
 // Type folding: MD/DO, NP and PA keep their own rows; every other title is Other.
 {
   const C2={};vm.createContext(C2);vm.runInContext(fn(cli,'_sknFold').replace(/^/,"const SKN_MAIN_TYPES=['MD/DO','Nurse Practitioner','Physician Assistant'];\n")+'\n'+fn(cli,'_sknFoldBy')+'\nglobalThis.f=_sknFoldBy;',C2);
