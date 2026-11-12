@@ -439,10 +439,12 @@ function pageToggleTests(){
   ck('  and shows a band, not numbers, while _ba is missing',/if\(!_baSum\)\{h\+=_baBand\(/.test(bd)&&/if\(!_ba\)hRecon\+=_baBand\(/.test(bd)&&/if\(!_ba\)hChurn=hChurn\.substring\(0,_hChurnAppAt\)/.test(bd),true);
   ck('both reads start together, and Refresh repeats both',/function doLogin\(\)\{\n  bdFetchApp\(\);/.test(bd)&&/bdFetchApp\(\);    \/\/ and the app brand book, in parallel/.test(bd),true);
   // Summary row order and Future ARR (Alex, 2026-11-11).
-  ck('row 1: Active Brands, Current ARR, Current MRR, Avg ACV, Future ARR, Future MRR',[...bd.matchAll(/_kt\('bd-dark','([^']+)'/g)].map(m=>m[1]),['Active Brands','Current ARR','Current MRR','Avg ACV','Future ARR','Future MRR']);
-  ck('row 2: five cards, Pilot Live right after Pilot Brands',[...bd.matchAll(/_kp\('([^']+)'/g)].map(m=>m[1]),['Pilot Brands','Pilot Live','Initiation Fees','Post-Pilot MRR','Awaiting Deposit']);
+  ck('row 1: Active Brands, Current ARR, Current MRR, Avg ACV, Future ARR, Future MRR',[...bd.matchAll(/_kt\('bd-dark(?: bd-fut)?','([^']+)'/g)].map(m=>m[1]),['Active Brands','Current ARR','Current MRR','Avg ACV','Future ARR','Future MRR']);
+  ck('row 2: six cards, Awaiting Deposit right after Pilot Brands, Pilot Avg ACV last',[...bd.matchAll(/_kp\('([^']+)'/g)].map(m=>m[1]),['Pilot Brands','Awaiting Deposit','Pilot Live','Initiation Fees','Post-Pilot MRR','Pilot Avg ACV']);
+  ck('  Pilot Avg ACV = Post-Pilot MRR ÷ Pilot Brands',/_kp\('Pilot Avg ACV',_ps\.n\?f\$\(_ps\.post\/_ps\.n\)/.test(bd),true);
+  ck('Future ARR and MRR carry the lighter projection style',(bd.match(/_kt\('bd-dark bd-fut','Future (ARR|MRR)'/g)||[]).length,2);
   ck('Future ARR = Future MRR x 12, Future MRR = app MRR + the counted pilots’ post-pilot price',
-    /var _fut=_ps\?_s\.mrr\+_ps\.post:null;/.test(bd)&&/_kt\('bd-dark','Future ARR',_ps\?f\$\(_fut\*12\)/.test(bd),true);
+    /var _fut=_ps\?_s\.mrr\+_ps\.post:null;/.test(bd)&&/_kt\('bd-dark bd-fut','Future ARR',_ps\?f\$\(_fut\*12\)/.test(bd),true);
   await pilotTests();
   await appBookTests();
   pageToggleTests();

@@ -124,6 +124,9 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
 .tile.bd-dark .tval{color:#fff}
 .tile.bd-dark .tdef{color:rgba(255,255,255,.55)}
 .tile.bd-dark .bd-tsub{color:rgba(255,255,255,.82)}
+/* Future ARR / MRR: projections, not today's book. A lighter navy and a thin
+   outline set them apart from the four current-book tiles beside them. */
+.tile.bd-dark.bd-fut{background:linear-gradient(135deg,#2C4C6E,#40698A);border:1px solid rgba(255,255,255,.22);border-left:3px solid var(--teal)}
 /* Row 2, the pilots: light navy, so it reads as the same family one step down. */
 .tile.bd-lnavy{background:#E6EDF5;border:1px solid #C9D7E6;border-left:3px solid var(--navy);display:flex;flex-direction:column;justify-content:flex-start}
 .tile.bd-lnavy .tlbl{color:#3B5674}
@@ -133,7 +136,13 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
 .bd-tsub{font-size:11px;font-weight:600;margin-top:3px;font-variant-numeric:tabular-nums}
 .bd-kpi-row{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:14px;align-items:stretch}
 .bd-kpi-row.r4{grid-template-columns:repeat(4,minmax(0,1fr));margin-top:12px}
-.bd-kpi-row.r5{grid-template-columns:repeat(5,minmax(0,1fr));margin-top:12px}
+.bd-kpi-row.r6{margin-top:12px;gap:12px}
+/* The pilot row is secondary to the book above it: smaller cards. */
+.bd-kpi-row.r6>.tile{padding:10px 12px;border-radius:10px}
+.bd-kpi-row.r6 .tlbl{font-size:9.5px}
+.tile.bd-lnavy.bd-sm .tval{font-size:19px}
+.bd-kpi-row.r6 .tdef,.bd-kpi-row.r6 .bd-tsub{font-size:10px}
+.bd-kpi-row.r6 .bd-pil-src{font-size:8.5px;padding-top:5px}
 /* Where a pilot card's number came from: live through Grafana, or last night's Metabase copy. */
 .bd-pil-src{margin-top:auto;padding-top:7px;font-size:9px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#5B6F86}
 .bd-pil-src::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;background:#94A3B8;margin-right:5px;vertical-align:1px}
@@ -141,13 +150,11 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
 /* Tiles align to the TOP (above), so a value sits at the same height whether or
    not its tile has a sub-line. Six dark tiles: 8-digit dollar values need a
    smaller size until the row has room (1101-1500px); 601-1100px is 3 + 3 for
-   the dark row and 3 + 2 for the five pilots, so neither ends on a blank slot. */
-.bd-kpi-row:not(.r4):not(.r5)>.tile{padding-left:16px;padding-right:12px}
-@media(max-width:1500px) and (min-width:1101px){.bd-kpi-row:not(.r4):not(.r5) .tval{font-size:24px}.bd-kpi-row:not(.r4):not(.r5) .bd-tsub{font-size:10.5px}}
-@media(max-width:1100px){.bd-kpi-row{grid-template-columns:repeat(3,minmax(0,1fr))}.bd-kpi-row.r4{grid-template-columns:repeat(2,minmax(0,1fr))}
-  /* Five pilot cards at 601-1100px: 3 + 2 on a 6-track grid (spans 2,2,2 then 3,3), so no lone blank slot. */
-  .bd-kpi-row.r5{grid-template-columns:repeat(6,minmax(0,1fr))}.bd-kpi-row.r5>.tile{grid-column:span 2}.bd-kpi-row.r5>.tile:nth-child(n+4){grid-column:span 3}}
-@media(max-width:600px){.bd-kpi-row,.bd-kpi-row.r4,.bd-kpi-row.r5{grid-template-columns:minmax(0,1fr)}.bd-kpi-row.r5>.tile,.bd-kpi-row.r5>.tile:nth-child(n+4){grid-column:auto}}
+   the dark row and the six pilots alike, so neither ends on a blank slot. */
+.bd-kpi-row:not(.r4):not(.r6)>.tile{padding-left:16px;padding-right:12px}
+@media(max-width:1500px) and (min-width:1101px){.bd-kpi-row:not(.r4):not(.r6) .tval{font-size:24px}.bd-kpi-row:not(.r4):not(.r6) .bd-tsub{font-size:10.5px}}
+@media(max-width:1100px){.bd-kpi-row{grid-template-columns:repeat(3,minmax(0,1fr))}.bd-kpi-row.r4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.bd-kpi-row,.bd-kpi-row.r4{grid-template-columns:minmax(0,1fr)}}
 /* App-data band: shown wherever a number needs /api/bd-app and it is loading or
    failed. A failed read must never render as zero brands or $0 MRR. */
 .bd-app-band{display:flex;align-items:center;gap:10px;border-radius:10px;padding:11px 15px;margin:0 0 14px;font-size:12px;line-height:1.45}
@@ -1616,14 +1623,14 @@ function renderBD(){
     // the worker has a Grafana token, else last night's Metabase copy.
     var _ps=(_ba.pilotStats&&!_ba.pilotStats.error&&_ba.pilotStats.n!=null)?_ba.pilotStats:null;
     var _fut=_ps?_s.mrr+_ps.post:null;
-    h+=_kt('bd-dark','Future ARR',_ps?f$(_fut*12):'\u2014','','Future MRR × 12','Future MRR × 12: the book if every current pilot rolls over at its post-pilot price.');
-    h+=_kt('bd-dark','Future MRR',_ps?f$(_fut):'\u2014',_ps?'MRR + '+_ps.n+' pilots’ post-pilot price':'pilot figures unavailable','If every current pilot rolls over',
+    h+=_kt('bd-dark bd-fut','Future ARR',_ps?f$(_fut*12):'\u2014','','Future MRR × 12','Future MRR × 12: the book if every current pilot rolls over at its post-pilot price.');
+    h+=_kt('bd-dark bd-fut','Future MRR',_ps?f$(_fut):'\u2014',_ps?'MRR + '+_ps.n+' pilots’ post-pilot price':'pilot figures unavailable','If every current pilot rolls over',
       'Current MRR plus each current pilot’s post-pilot price: the rollover price once set, else a repeating price override, else the deposit month’s default.');
     h+='</div>';
     if(!_ps){
       h+='<div class="bd-app-band err" role="alert" style="margin-top:12px"><strong>Pilot figures unavailable.</strong> <span>'
         +_bdEsc((_ba.pilotStats&&(_ba.pilotStats.detail||_ba.pilotStats.error))||'The pilot stats did not come back')
-        +' — Pilot Brands, Pilot Live, Initiation Fees, Post-Pilot MRR and Awaiting Deposit are not shown rather than shown as zero. Refresh to retry.</span></div>';
+        +' — the pilot cards are not shown rather than shown as zero. Refresh to retry.</span></div>';
     }else{
       // Every pilot card says where its number came from: live (Grafana) or
       // last night's copy (Metabase).
@@ -1631,18 +1638,21 @@ function renderBD(){
       var _psSrc='<div class="bd-pil-src'+(_psLive?' live':'')+'" title="'+(_psLive?'Queried live from the app database through Grafana on this load.':'Grafana was not reachable from the dashboard, so this is the Metabase copy of the app, refreshed nightly (~4:30am ET).')+'">'
         +(_psLive?'Live \u00b7 app':'As of last night')+'</div>';
       var _kp=function(lbl,val,sub,def,tip){
-        return '<div class="tile bd-lnavy"'+(tip?' title="'+tip+'"':'')+'><div class="tlbl">'+lbl+'</div><div class="tval">'+val+'</div>'
+        return '<div class="tile bd-lnavy bd-sm"'+(tip?' title="'+tip+'"':'')+'><div class="tlbl">'+lbl+'</div><div class="tval">'+val+'</div>'
           +(sub?'<div class="bd-tsub">'+sub+'</div>':'')+'<div class="tdef">'+def+'</div>'+_psSrc+'</div>';
       };
-      // Row 2 (Alex, 2026-11-11): five cards, matching the app's Grafana
-      // "Pilot Brands" board. Pilot Live sits right after Pilot Brands.
-      h+='<div class="bd-kpi-row r5">';
+      // Row 2 (Alex, 2026-11-12): six smaller cards, matching the app's Grafana
+      // "Pilot Brands" board, in this order: Pilot Brands, Awaiting Deposit,
+      // Pilot Live, Initiation Fees, Post-Pilot MRR, Pilot Avg ACV.
+      h+='<div class="bd-kpi-row r6">';
       h+=_kp('Pilot Brands',_ps.n.toLocaleString(),_ps.waiting.toLocaleString()+' waiting to start','Deposit paid, collecting data or live',
         'Pilots whose status is deposit_paid ('+_ps.deposit_paid+'), collecting_data ('+_ps.collecting_data+') or live ('+_ps.live+'). Brands named demo/test are left out, as on the app’s Grafana board.');
+      h+=_kp('Awaiting Deposit',_ps.awaiting.toLocaleString(),'','Pilot sign-ups with no deposit yet · not counted');
       h+=_kp('Pilot Live',_ps.live.toLocaleString(),'','Pilots running now','Pilot status live: the pilot period has started.');
       h+=_kp('Initiation Fees',f$(_ps.netFees),'','Net of refunds, incl. activation & analysis','Every pilot fee paid (any status, canceled ones included), less refunds: the app’s “Pilot fees (net)”.');
       h+=_kp('Post-Pilot MRR',f$(_ps.post),'','What the pilots bill monthly if they all roll over','Each counted pilot’s rollover price, else a repeating price override, else the deposit month’s default.');
-      h+=_kp('Awaiting Deposit',_ps.awaiting.toLocaleString(),'','Pilot sign-ups with no deposit yet · not counted');
+      // Same basis as Avg ACV above (a monthly figure per brand), over the pilots.
+      h+=_kp('Pilot Avg ACV',_ps.n?f$(_ps.post/_ps.n):'\u2014','','Post-Pilot MRR ÷ Pilot Brands','What an average pilot brand bills monthly after it rolls over: Post-Pilot MRR divided by the '+_ps.n+' counted pilots.');
       h+='</div>';
     }
   }
