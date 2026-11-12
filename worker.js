@@ -3788,6 +3788,40 @@ WHERE a.COMPANY_ID IN (SELECT HUBSPOT_COMPANY_ID FROM STAGING.STG_BRANDS WHERE H
   AND MOD(a.COMPANY_ID, ${BDAPP_ASSOC_PAGES}) = ${k}
 GROUP BY 1`;
 }
+// The same brand book read LIVE from the app's Postgres through Grafana (used
+// when the GRAFANA_TOKEN secret is set). Column for column the Snowflake query
+// above: same fields, same '|'/'~' packing, same order, Eastern days, aliases
+// quoted so they come back upper-case like Snowflake's. One query, no paging
+// (Grafana's SQL row limit is far above the ~1,800 brands). App timestamps are
+// UTC "timestamp without time zone". The HubSpot associations (bdAppAssocSql)
+// are not in the app database and still come from Metabase.
+const _pgEt = (col) => `to_char((${col} AT TIME ZONE 'UTC') AT TIME ZONE 'America/New_York', 'YYYY-MM-DD')`;
+const _pgS = (expr) => `COALESCE((${expr})::text, '')`;
+const BDAPP_SQL_PG = `WITH sb AS (
+  SELECT s.health_brand_id bid,
+    string_agg(concat_ws('|', ${_pgS('s.id')}, ${_pgS('s.status')}, ${_pgS("to_char(s.start_date, 'YYYY-MM-DD')")},
+      ${_pgS(_pgEt('s.current_period_ends_at'))}, ${_pgS(_pgEt('s.updated_at'))},
+      ${_pgS('s.manual_price_in_cents')}, ${_pgS('s.monthly_price_in_cents')}, ${_pgS('s.display_price_with_usage_in_cents')},
+      ${_pgS('p.monthly_price_in_cents')}, ${_pgS("regexp_replace(p.name, '[|~]', ' ', 'g')")}, ${_pgS('p.kind')}, ${_pgS(_pgEt('s.created_at'))}), '~'
+      ORDER BY s.created_at, s.id) "SUBS"
+  FROM subscriptions s LEFT JOIN plans p ON p.id = s.plan_id GROUP BY 1),
+pl AS (
+  SELECT s.health_brand_id bid,
+    string_agg(concat_ws('|', ${_pgS('pi.id')}, ${_pgS('pi.status')}, ${_pgS(_pgEt('pi.deposit_paid_at'))}, ${_pgS('pi.deposit_total_in_cents')},
+      ${_pgS('pi.rollover_price_in_cents')}, ${_pgS('pi.next_price_override_in_cents')}, CASE WHEN pi.next_price_override_repeats THEN '1' ELSE '0' END,
+      ${_pgS('pi.deposit_month_default_in_cents')}), '~' ORDER BY pi.created_at, pi.id) "PILOTS"
+  FROM pilots pi JOIN subscriptions s ON s.id = pi.subscription_id GROUP BY 1),
+nt AS (
+  SELECT p.health_brand_id bid, ${_pgEt('max(n.created_at)')} "LR",
+    count(*) FILTER (WHERE n.created_at >= (now() AT TIME ZONE 'UTC') - interval '45 days') "R45"
+  FROM notes n JOIN health_brand_products p ON p.id = n.health_brand_product_id
+  WHERE n.status IN ('shared', 'approved') GROUP BY 1)
+SELECT b.id "ID", b.name "NM", b.hubspot_company_id::text "HC", ${_pgEt('b.created_at')} "CR", ${_pgEt('b.discarded_at')} "DI",
+  nt."LR", COALESCE(nt."R45", 0) "R45", sb."SUBS", pl."PILOTS"
+FROM health_brands b
+LEFT JOIN sb ON sb.bid = b.id LEFT JOIN pl ON pl.bid = b.id LEFT JOIN nt ON nt.bid = b.id
+WHERE COALESCE(b.demo, FALSE) = FALSE
+ORDER BY b.id`;
 const _bdNum = (v) => { const n = Number(v); return v === '' || v == null || !isFinite(n) ? null : n; };
 const _bdSplit = (s) => (s ? String(s).split('~').filter(Boolean).map(x => x.split('|')) : []);
 function bdAppParseSubs(s) {
@@ -4050,16 +4084,33 @@ async function fetchBdApp(env) {
   // The pilot row's stats ride along. Their failure must not take the brand
   // book down with it (or the reverse): it comes back as {error} on its own.
   const pilotP = fetchBdPilotStats(env).catch(e => ({ error: 'Pilot stats unavailable', detail: String((e && e.message) || e).slice(0, 200) }));
-  const [pages, assoc] = await Promise.all([
-    Promise.all(Array.from({ length: BDAPP_PAGES }, (_, k) => mbQuery(env, bdAppSql(k)))),
-    Promise.all(Array.from({ length: BDAPP_ASSOC_PAGES }, (_, k) => mbQuery(env, bdAppAssocSql(k)))),
-  ]);
-  const rows = [].concat(...pages);
+  const assocP = Promise.all(Array.from({ length: BDAPP_ASSOC_PAGES }, (_, k) => mbQuery(env, bdAppAssocSql(k))));
+  // Brands: live from the app's Postgres through Grafana when the token is set;
+  // on any Grafana failure (or no rows), last night's Metabase copy instead.
+  let rows = null, live = false, liveError = '';
+  if (env && env.GRAFANA_TOKEN) {
+    try {
+      rows = await grafanaQuery(env, BDAPP_SQL_PG);
+      if (!rows.length) throw new Error('Grafana returned no app brands');
+      live = true;
+    } catch (e) {
+      rows = null;
+      liveError = String((e && e.message) || e).split(env.GRAFANA_TOKEN).join('[token]').slice(0, 200);
+      console.error('BD app book: Grafana failed, using the nightly copy:', liveError);
+    }
+  }
+  if (!rows) {
+    const pages = await Promise.all(Array.from({ length: BDAPP_PAGES }, (_, k) => mbQuery(env, bdAppSql(k))));
+    rows = [].concat(...pages);
+  }
+  const assoc = await assocP;
   // Zero rows is a broken read, not an empty book: there are ~1,800 brands.
   if (!rows.length) throw new Error('Metabase returned no app brands');
   const pilotStats = await pilotP;
-  return { brands: bdAppBuild(rows, today, [].concat(...assoc)), pilotStats,
-    meta: { generatedAt: new Date().toISOString(), today, source: 'Metabase · Snowflake copy of the app (nightly)', rows: rows.length } };
+  const meta = { generatedAt: new Date().toISOString(), today, live,
+    source: live ? 'Live · app database via Grafana' : 'Metabase · Snowflake copy of the app (nightly)', rows: rows.length };
+  if (liveError) meta.liveError = liveError;
+  return { brands: bdAppBuild(rows, today, [].concat(...assoc)), pilotStats, meta };
 }
 
 // ── Skincare Phase 2: app data via Metabase ──────────────────────────────────

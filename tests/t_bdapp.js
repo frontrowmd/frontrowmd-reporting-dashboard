@@ -13,7 +13,7 @@ const J=(x)=>JSON.parse(JSON.stringify(x));
 const W={console:{log(){},warn(){},error(){}}};vm.createContext(W);
 vm.runInContext(src.slice(0,src.indexOf('\nexport default'))
   +'\nObject.assign(globalThis,{bdAppPrice,bdAppTermMonths,bdAppChooseSub,bdAppPilotPost,bdAppBrand,bdAppBuild,bdAppSql,bdAppAssocSql,fetchBdApp,MB_NEEDED_TABLES,BDAPP_BULK_DAYS,BDAPP_BACKFILL_DAYS,'
-  +'fetchBdPilotStats,bdPilotStatsOf,grafanaFrameRows,GRAFANA_URL,GRAFANA_APP_DS,BD_PILOT_SQL_PG,BD_PILOT_SQL_SF});',W);
+  +'fetchBdPilotStats,bdPilotStatsOf,grafanaFrameRows,GRAFANA_URL,GRAFANA_APP_DS,BD_PILOT_SQL_PG,BD_PILOT_SQL_SF,BDAPP_SQL_PG,BDAPP_PAGES});',W);
 const P=(o)=>W.bdAppPrice(Object.assign({man:null,mp:null,disp:null,planp:null,planName:'Hero',planKind:'usage'},o)).monthly;
 
 // 1. Price normalisation
@@ -264,6 +264,44 @@ ck('  a live brand with only a backfilled row after its churn survives from that
 ck('/api/bd-app is guarded like /api/bd',/url\.pathname === '\/api\/bd-app'\) \{\s*try \{ await request\.json\(\); \} catch \{ return jr\(\{ error: 'Invalid JSON' \}, 400\); \}\s*if \(!\(await authed\(\)\)\) return jr\(\{ error: 'Unauthorized' \}, 401\);/.test(src),true);
 ck('  and turns a failure into {error} with a 502',/catch \(err\) \{ console\.error\('BD app endpoint error:', err\); return jr\(\{ error: 'App data unavailable'/.test(src),true);
 
+
+// 12. The brand book live through Grafana (2026-11-12), else Metabase.
+async function appBookTests(){
+  const TOKEN='glsa_FAKE_token_456';
+  const okResp=(j)=>({ok:true,status:200,json:async()=>j,text:async()=>''});
+  const cols=['ID','NM','HC','CR','DI','LR','R45','SUBS','PILOTS'];
+  const brandVals=[[7],['Livebrand'],['c7'],['2025-01-01'],[null],['2026-11-01'],[2],['70|active|2025-01-01|2026-12-01|2026-10-01||150000|||Core|usage|2025-01-01'],[null]];
+  const gBrand={results:{A:{frames:[{schema:{fields:cols.map(n=>({name:n}))},data:{values:brandVals}}]}}};
+  const gPilot={results:{A:{frames:[{schema:{fields:['deposit_paid','collecting_data','live','awaiting','net_fee_cents','post_cents'].map(n=>({name:n}))},data:{values:[[1],[2],[3],[4],[500],[600]]}}]}}};
+  const mbBrand={status:'completed',data:{cols:cols.map(n=>({name:n})),rows:[[8,'Nightbrand','c8','2025-01-01',null,'',0,'80|active|2025-01-01|2026-12-01|2026-10-01||100000|||Core|usage|2025-01-01',null]]}};
+  const mbAssoc={status:'completed',data:{cols:[{name:'HC'},{name:'DEALS'}],rows:[['c7','d1,d2']]}};
+  const mbPilot={status:'completed',data:{cols:['DEPOSIT_PAID','COLLECTING_DATA','LIVE','AWAITING','NET_FEE_CENTS','POST_CENTS'].map(n=>({name:n})),rows:[[1,1,1,1,100,100]]}};
+  let mbPages=0;
+  const mb=(i)=>{const q=JSON.parse(i.body).native?JSON.parse(i.body).native.query:String(i.body);
+    if(/STG_BRANDS b\n/.test(q))mbPages++;
+    return okResp(/STG_HUBSPOT_DEAL_COMPANIES/.test(q)?mbAssoc:/FCT_PILOT_PROGRESS/.test(q)?mbPilot:mbBrand);};
+  let calls=[];mbPages=0;
+  W.fetch=async(u,i)=>{calls.push(u);if(/grafana/.test(u)){const q=JSON.parse(i.body).queries[0].rawSql;return okResp(q===W.BDAPP_SQL_PG?gBrand:gPilot);}return mb(i);};
+  const lv=await W.fetchBdApp({GRAFANA_TOKEN:TOKEN,METABASE_API_KEY:'k'});
+  ck('token set: brands come live from Grafana, labelled live',[lv.meta.live,lv.brands.map(b=>b.name),lv.brands[0].monthly,lv.meta.rows],[true,['Livebrand'],1500,1]);
+  ck('  the HubSpot associations still come from Metabase',[lv.brands[0].hsDeals,calls.some(u=>/metabase/i.test(u))],[['d1','d2'],true]);
+  ck('  and the Metabase brand pages are not read',mbPages,0);
+  mbPages=0;
+  W.fetch=async(u,i)=>{if(/grafana/.test(u))return {ok:false,status:500,body:{cancel(){}},bodyUsed:false,json:async()=>({}),text:async()=>''};return mb(i);};
+  const fb=await W.fetchBdApp({GRAFANA_TOKEN:TOKEN,METABASE_API_KEY:'k'});
+  ck('  (the fallback reads all '+W.BDAPP_PAGES+' Metabase pages)',mbPages,4);
+  ck('Grafana down: the nightly Metabase book, labelled so, reason kept, no token',[fb.meta.live,fb.brands.map(b=>b.name).slice(0,1),/500/.test(fb.meta.liveError),JSON.stringify(fb).indexOf(TOKEN)],[false,['Nightbrand'],true,-1]);
+  W.fetch=async(u,i)=>{if(/grafana/.test(u)){const q=JSON.parse(i.body).queries[0].rawSql;
+    return okResp(q===W.BDAPP_SQL_PG?{results:{A:{frames:[{schema:{fields:cols.map(n=>({name:n}))},data:{values:cols.map(()=>[])}}]}}}:gPilot);}return mb(i);};
+  const em=await W.fetchBdApp({GRAFANA_TOKEN:TOKEN,METABASE_API_KEY:'k'});
+  ck('  zero live rows is a broken read: falls back too, never an empty book',[em.meta.live,em.brands.length>0],[false,true]);
+  calls=[];W.fetch=async(u,i)=>{calls.push(u);return mb(i);};
+  const nt=await W.fetchBdApp({METABASE_API_KEY:'k'});
+  ck('no token: Metabase only, never Grafana',[nt.meta.live,calls.every(u=>!/grafana/.test(u))],[false,true]);
+  const q=W.BDAPP_SQL_PG;
+  ck('the live SQL returns the Snowflake column names, upper-case',cols.every(c=>q.indexOf('"'+c+'"')>=0),true);
+  ck('  same packing and Eastern days as the nightly query',[/regexp_replace\(p\.name, '\[\|~\]', ' ', 'g'\)/.test(q),/AT TIME ZONE 'UTC'\) AT TIME ZONE 'America\/New_York'/.test(q),/COALESCE\(b\.demo, FALSE\) = FALSE/.test(q)],[true,true,true]);
+}
 // 11. Pilot stats (Alex, 2026-11-11): the app's Grafana "Pilot Brands" board.
 async function pilotTests(){
   const TOKEN='glsa_FAKE_token_123';
@@ -406,6 +444,7 @@ function pageToggleTests(){
   ck('Future ARR = Future MRR x 12, Future MRR = app MRR + the counted pilots’ post-pilot price',
     /var _fut=_ps\?_s\.mrr\+_ps\.post:null;/.test(bd)&&/_kt\('bd-dark','Future ARR',_ps\?f\$\(_fut\*12\)/.test(bd),true);
   await pilotTests();
+  await appBookTests();
   pageToggleTests();
   ck('no pilot pill reads selected while the filter is unavailable',/var _pilOpt=function\(k,lbl\)\{var on=!!_pilIds&&_bdPilotMode===k;/.test(bd),true);
   console.log('\n'+pass+' passed, '+fail+' failed');process.exit(fail?1:0);

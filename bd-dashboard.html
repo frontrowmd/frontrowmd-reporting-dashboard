@@ -1579,8 +1579,8 @@ function renderBD(){
   var _ba=(BD.app&&!BD.app.error&&BD.app.brands)?BD.app:null;
   var _baBand=function(what){
     if(BD.app&&BD.app.error)return '<div class="bd-app-band err" role="alert"><strong>App data unavailable.</strong> <span>'
-      +String(BD.app.error).replace(/</g,'&lt;')+' — '+what+' come'+(/s$/.test(what)?'':'s')+' from the app (Metabase), so '+(/s$/.test(what)?'they are':'it is')+' not shown rather than shown as zero. Refresh to retry.</span></div>';
-    return '<div class="bd-app-band load" role="status"><span class="sp" style="width:13px;height:13px;border-width:2px"></span> Loading app data from Metabase… '+what+' appear'+(/s$/.test(what)?'':'s')+' when it arrives.</div>';
+      +String(BD.app.error).replace(/</g,'&lt;')+' — '+what+' come'+(/s$/.test(what)?'':'s')+' from the app, so '+(/s$/.test(what)?'they are':'it is')+' not shown rather than shown as zero. Refresh to retry.</span></div>';
+    return '<div class="bd-app-band load" role="status"><span class="sp" style="width:13px;height:13px;border-width:2px"></span> Loading app data… '+what+' appear'+(/s$/.test(what)?'':'s')+' when it arrives.</div>';
   };
   var _baJ=_ba?_baJoin(deals,_ba.brands):{byBrand:{},byDeal:{}};
   var _baSum=_ba?_baSummary(_ba.brands):null;
@@ -1594,7 +1594,7 @@ function renderBD(){
   // button. bdCalc() writes to #bd-calc-result by id, so its markup must never
   // come back into this grid (two copies = the visible one never moves).
   h+='<section class="bd-sec" id="bd-sec-summary">';
-  h+='<div class="bd-sec-head"><span class="bd-sec-n">01</span><span class="bd-sec-t">All Time Summary</span><span class="bd-sec-s"><span class="bd-src">App</span>Brands and MRR from the app (Metabase, refreshed nightly, so up to a day behind); the pilot row matches the app’s Grafana Pilot Brands board, and each card says whether it is live. Pilots are counted on their own row, not in Active Brands or MRR. Not affected by the filters below.</span></div>';
+  h+='<div class="bd-sec-head"><span class="bd-sec-n">01</span><span class="bd-sec-t">All Time Summary</span><span class="bd-sec-s"><span class="bd-src">App</span>Brands and MRR from the app ('+((_ba&&_ba.meta&&_ba.meta.live)?'live from the app database':'Metabase, refreshed nightly, so up to a day behind')+'); the pilot row matches the app’s Grafana Pilot Brands board, and each card says whether it is live. Pilots are counted on their own row, not in Active Brands or MRR. Not affected by the filters below.</span></div>';
   if(!_baSum){h+=_baBand('Active Brands, MRR and the pilot figures');}
   else{
     var _s=_baSum,_p=_s.pilots;
