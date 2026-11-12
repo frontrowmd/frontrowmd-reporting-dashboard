@@ -31,7 +31,7 @@ const SEC=(()=>{const i=bd.indexOf('// ── iii. Retention waterfall');
   if(i<0||j<0)throw new Error('cannot locate section iii between its own comment markers');
   return bd.slice(i,j);})();
 ck('the section is locatable, and the slice stops before the next one',
-   SEC.length>5000&&SEC.length<34000&&!/bd-sec-churntype/.test(SEC)
+   SEC.length>5000&&SEC.length<38000&&!/bd-sec-churntype/.test(SEC)
    &&/hChurn\+='<\/div><\/section>';/.test(SEC),true);
 
 // Runs the SHIPPED _rwCellVal under a chosen metric/unit pair. Hoisted because
@@ -395,7 +395,7 @@ ck('an A/B value of Unknown is distinct from blank',
 // the SAME predicate, so Signed counts only the brands on screen and nothing
 // is recategorised as retained to keep a denominator intact.
 ck('both populations go through the same predicate',
-   /_apCh\.filter\(_rwKept\)\.map\(function\(dd\)\{/.test(SEC)
+   /_rwCh\.filter\(_rwKept\)\.map\(function\(dd\)\{/.test(SEC)
    &&/var _rwBook=_apSurv\.filter\(_rwKept\)\.map\(/.test(SEC),true);
 ck('  with no retained-instead fallback left behind',
    /filteredOut:true/.test(SEC),false);
@@ -450,7 +450,7 @@ ck('  reporting how many brands survive the filter, both populations',
 // The option counts must be taken over the SAME window the grid plots, or an
 // option can claim churns the grid never had.
 ck('option counts come from the plotted window, on the grid\u2019s own rules',
-   /_rwWinChurns=_apCh\.filter/.test(SEC)&&/sg>=RW_FROM&&sg<=_cmKey&&_rwDiff\(sg,cm\)>=0/.test(SEC),true);
+   /_rwWinChurns=_rwCh\.filter/.test(SEC)&&/sg>=RW_FROM&&sg<=_cmKey&&_rwDiff\(sg,cm\)>=0/.test(SEC),true);
 ck('every option prints its counts, through the one helper',
    /o\[1\]\+_rwCnt\(cnt\[o\[0\]\]\|\|0,chn\[o\[0\]\]\|\|0\)/.test(SEC),true);
 // One filter per row, under the toggles.

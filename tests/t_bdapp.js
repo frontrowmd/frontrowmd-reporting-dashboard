@@ -76,7 +76,7 @@ ck('the tables the BD Tracker reads are known to the connection check',['BRANDS'
 
 // ── Page side ──
 const C={console};vm.createContext(C);
-vm.runInContext([decl(bd,'var BD_STAGE_LABELS=','};'),decl(bd,'var BD_CHURN_STAGE=',';'),fn(bd,'_bdMonthOfG'),
+vm.runInContext([decl(bd,'var BD_STAGE_LABELS=','};'),decl(bd,'var BD_CHURN_STAGE=',';'),decl(bd,'var BD_CHURN_BOARD=',';'),decl(bd,'var BD_CHURN_TYPE_GROUP=','};'),fn(bd,'_bdMonthOfG'),
   'function f$(v){return "$"+Math.round(v);}',
   bd.slice(bd.indexOf('var BD_APP_CHURN_FROM='),bd.indexOf('\nfunction bdSetChurnTypeGrain'))].join('\n'),C);
 const ab=(id,o)=>Object.assign({id,name:'Brand '+id,hubspotCompanyId:'',createdAt:'2025-06-01',signDate:'2025-06-01',discardedAt:'',state:'active',active:true,
@@ -188,6 +188,22 @@ const SM=J(C._baRecon(sd,sb,C._baJoin(sd,sb)));
 ck('  a brand two units reach is counted once, under the unit named after it; the other deal shows with app MRR 0',SM.t5.map(r=>[r.name,r.hsMrr,r.appMrr,r.dealId]),[['Mother',3000,0,'307'],['Sister',1200,1000,'308']]);
 ck('  price sources read in words',SM.t5.find(r=>r.name==='Sister').why,'plan list price only');
 ck('  the tolerance is $100',/var BD_REC_PRICE_TOL=100;/.test(bd),true);
+// C3 cohort month (2026-11-12): HubSpot close month of the brand's own deal, nearest the app month within 3.
+const cb=[ab(80,{name:'Lag',hubspotCompanyId:'k80',createdAt:'2026-06-03',signDate:'2026-06-03'}),
+  ab(81,{name:'Resign',hubspotCompanyId:'k81',createdAt:'2026-09-01',signDate:'2026-09-01'}),
+  ab(82,{name:'NoDeal',hubspotCompanyId:'k82',createdAt:'2026-04-10',signDate:'2026-04-10'})];
+const cdl=[deal(800,{companyId:'k80',closedate:'2026-05-28T04:00:00Z'}),
+  deal(810,{companyId:'k81',dealstage:'3453925110',brand_status:'Churned',closedate:'2025-02-01T05:00:00Z'}),deal(811,{companyId:'k81',closedate:'2026-08-20T04:00:00Z'})];
+const cj=C._baJoin(cdl,cb),co=(b,fb,o)=>C._baCohortMonth(Object.assign({_brand:b},o||{}),cj,fb);
+ck('cohort: the HubSpot close month replaces the app month a month later',co(cb[0],'2026-06'),'2026-05');
+ck('  a re-signed brand takes its nearest deal, not the original signing',co(cb[1],'2026-09'),'2026-08');
+ck('  no HubSpot deal: the app month stands',co(cb[2],'2026-04'),'2026-04');
+ck('  a HubSpot-sourced churn and a same-row restart keep their own sign',[co(cb[0],'2026-06',{_src:'hubspot'}),co(cb[0],'2026-06',{_restart:'2026-06-03'})],['2026-06','2026-06']);
+ck('Never Implemented: a Never Imp type, or no type and never live; Board Defined wins',
+  [C._baIsNeverImpl({never_implemented_churn:'Yes - Ghosted'}),C._baIsNeverImpl({never_implemented_churn:'',_brand:{everLive:false}}),
+   C._baIsNeverImpl({never_implemented_churn:'Board Defined Churn',_brand:{everLive:false}}),C._baIsNeverImpl({never_implemented_churn:'',_brand:{everLive:true}})],[true,true,false,false]);
+ck('  the C3 switch defaults to Included and drops NI churns from the grid when Excluded',
+  /var _bdRetNI='incl';/.test(bd)&&/var _rwCh=\(_bdRetNI==='excl'\)\?_apCh\.filter\(function\(dd\)\{return !_baIsNeverImpl\(dd\);\}\):_apCh;/.test(bd),true);
 ck('test accounts are an explicit list',/var BD_APP_TEST_BRANDS=\['FrontrowMD Demo Account','Vincent'\];/.test(bd),true);
 
 // 10. Review fixes (2026-11-11)

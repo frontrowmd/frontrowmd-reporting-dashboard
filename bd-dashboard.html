@@ -547,6 +547,11 @@ function bdSetRetMode(m){if(_bdRetMode===m)return;_bdRetMode=m;renderBD();}
 // the ramp as well would cancel out and paint high churn green.
 var _bdRetMetric='ret';
 function bdSetRetMetric(m){if(_bdRetMetric===m)return;_bdRetMetric=m;renderBD();}
+// C3's Never Implemented switch (Alex, 2026-11-12). 'incl' (default) counts a
+// brand that signed and never launched as a churn; 'excl' takes those brands out
+// of their cohorts entirely, numerator and denominator alike (_baIsNeverImpl).
+var _bdRetNI='incl';
+function bdSetRetNI(m){m=(m==='excl')?'excl':'incl';if(_bdRetNI===m)return;_bdRetNI=m;renderBD();}
 // C3's churn-attribute filters. 'all' is no filter; '' is the real, selectable
 // value "not recorded", which is why these cannot default to '' — blank is a
 // legitimate cut here, not an absence of one. prod is a multi-select and an
@@ -880,6 +885,40 @@ function _baSurvivors(brands,join,events){
     o.never_implemented_churn='';o.churn_reason='';o.ab_test='';o.implemented_products='';o.pausechurn_date='';
     return o;
   });
+}
+// C3's cohort month (Alex, 2026-11-12): the HubSpot CLOSE month of the brand's
+// own deal, the app's created month only as the fallback. The app creates the
+// brand row when onboarding starts, about a month after the close for one brand
+// in four, which piled May's signings into a 178-brand June row. The deal used
+// is the brand's closed-won or churned deal whose close month sits NEAREST the
+// app month and within BD_COHORT_HS_MONTHS of it (the earlier on a tie), so a
+// brand that re-signed on a new row takes its re-signing deal, not the original.
+// Close date only: entered_closedwon is bulk-rewritten (bd-signing-date).
+// Left alone: HubSpot-sourced churn events (already signed on HubSpot dates) and
+// a survivor that came back on the same row (_restart: signed at the restart).
+var BD_COHORT_HS_MONTHS=3;
+function _baCohortMonth(dd,join,fallback){
+  var b=dd&&dd._brand;
+  if(!fallback||!b||dd._src==='hubspot'||dd._restart||!join)return fallback;
+  var fy=+fallback.substring(0,4),fm=+fallback.substring(5,7),best='',bd=99;
+  (join.byBrand[b.id]||[]).forEach(function(d){
+    if(!(d.dealstage==='closedwon'||_baIsChurnDeal(d)))return;
+    var m=_bdMonthOfG(d.closedate);if(!m)return;
+    var df=Math.abs((+m.substring(0,4)-fy)*12+(+m.substring(5,7)-fm));
+    if(df>BD_COHORT_HS_MONTHS)return;
+    if(df<bd||(df===bd&&m<best)){best=m;bd=df;}
+  });
+  return best||fallback;
+}
+// A churn that is a brand which signed and never launched: its HubSpot Churn
+// Type is one of the three Never Imp reasons, or it has none and the app brand
+// never had a live subscription (everLive). An explicit Board Defined /
+// Delinquent type wins over the app signal.
+function _baIsNeverImpl(dd){
+  if(!dd)return false;
+  var g=BD_CHURN_TYPE_GROUP[(dd.never_implemented_churn||'').trim()];
+  if(g)return g!==BD_CHURN_BOARD;
+  return !!(dd._brand&&!dd._brand.everLive);
 }
 // Section 02 on the app basis, same shape as the HubSpot version it replaces.
 //  cur  = today's Active Brands (non-pilot) by signing month: {added, addedMRR}.
@@ -3149,13 +3188,19 @@ function renderBD(){
   // pausechurn_date; they stay retained here because the field is
   // "Pause/Churn Date" and every other section on this tab also keys churn on
   // the STAGE. Counted in the footnote so the choice is visible.
+  // Cohort month: the brand's HubSpot close month (_baCohortMonth), else _rwSignOf.
+  var _rwCoOf=function(dd){return _baCohortMonth(dd,_baJ,_rwSignOf(dd));};
+  // The Never Implemented switch narrows the churn set before anything else
+  // reads it, so the grid, the filter counts and the bands all agree.
+  var _rwNIOut=_apCh.filter(_baIsNeverImpl);
+  var _rwCh=(_bdRetNI==='excl')?_apCh.filter(function(dd){return !_baIsNeverImpl(dd);}):_apCh;
   var _rwBook=_apSurv.filter(_rwKept).map(function(dd){
-    return {sign:_rwSignOf(dd),churn:'',churned:false,pc:!!dd.pausechurn_date};
+    return {sign:_rwCoOf(dd),churn:'',churned:false,pc:!!dd.pausechurn_date};
   // Both populations go through the SAME predicate, so the cohort is exactly
   // the filtered set and the Signed column counts only the brands on screen.
   // Nothing is recategorised as retained to keep a denominator intact.
-  }).concat(_apCh.filter(_rwKept).map(function(dd){
-    return {sign:_rwSignOf(dd),churn:_bdMonthOf(dd.pausechurn_date),churned:true};
+  }).concat(_rwCh.filter(_rwKept).map(function(dd){
+    return {sign:_rwCoOf(dd),churn:_bdMonthOf(dd.pausechurn_date),churned:true};
   }));
   // Scoped to the window for the same reason the exclusion tallies are — the
   // footnote calls these deals the grid is counting as retained.
@@ -3166,8 +3211,8 @@ function renderBD(){
   // count below is taken over. Derived with the SAME signing rule and the SAME
   // window as the grid, so an option's count cannot disagree with the grid it
   // filters. Dated churns only: an undated one has no cohort to be counted in.
-  var _rwWinChurns=_apCh.filter(function(dd){
-    var sg=_rwSignOf(dd),cm=_bdMonthOf(dd.pausechurn_date);
+  var _rwWinChurns=_rwCh.filter(function(dd){
+    var sg=_rwCoOf(dd),cm=_bdMonthOf(dd.pausechurn_date);
     return sg&&cm&&sg>=RW_FROM&&sg<=_cmKey&&_rwDiff(sg,cm)>=0;
   });
   var _rwKeptChurns=_rwWinChurns.filter(_rwKept).length;
@@ -3179,7 +3224,7 @@ function renderBD(){
   // Detected from the data rather than hard-coded per field, so it stays right
   // whichever of those two a filter lands on.
   var _rwWinSurvArr=_apSurv.filter(function(dd){
-    var sg=_rwSignOf(dd);return sg&&sg>=RW_FROM&&sg<=_cmKey;});
+    var sg=_rwCoOf(dd);return sg&&sg>=RW_FROM&&sg<=_cmKey;});
   var _rwWinSurv=_rwWinSurvArr.length;
   var _rwKeptSurv=_rwWinSurvArr.filter(_rwKept).length;
   var _rwPct=function(p){return (p*100).toFixed(0)+'%';};
@@ -3231,6 +3276,11 @@ function renderBD(){
     +'<span style="display:inline-flex;align-items:center;background:rgba(23,44,69,.07);border:1.5px solid rgba(23,44,69,.16);border-radius:50px;padding:3px;gap:3px;flex-shrink:0">'
     +_chGrainPill(_bdRetMetric,'ret','Retention','bdSetRetMetric')
     +_chGrainPill(_bdRetMetric,'churn','Churn','bdSetRetMetric')+'</span>'
+    // Never Implemented: brands that signed and never launched.
+    +'<span title="Brands that signed and never launched: a Never Imp churn type in HubSpot, or no type and no live app subscription. Excluded takes them out of their cohorts entirely." style="display:inline-flex;align-items:center;background:rgba(23,44,69,.07);border:1.5px solid rgba(23,44,69,.16);border-radius:50px;padding:3px;gap:3px;flex-shrink:0">'
+    +'<span style="font-family:var(--font-h);font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;padding:0 4px 0 8px">Never Implemented</span>'
+    +_chGrainPill(_bdRetNI,'incl','Included','bdSetRetNI')
+    +_chGrainPill(_bdRetNI,'excl','Excluded','bdSetRetNI')+'</span>'
     // The ramp itself never flips — only the numbers that label its ends do,
     // because churn runs the opposite way along the same scale.
     +'<span style="font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em">'
@@ -3322,7 +3372,9 @@ function renderBD(){
   hChurn+='<div style="font-size:10px;color:var(--grey);margin-top:14px;font-style:italic;line-height:1.6">'   // full card width (Alex, 2026-11-11): no max-width
     +'Columns are whole calendar months of tenure, Month 1 being the signing month itself; a churn dated in month M '
     +'removes the brand from M, the same end-of-month convention the Snapshot chart uses. '
-    +'Cohort = signing month: the app brand\u2019s created date, which every row here carries as both its Close Date and Entered Closed-Won (for a pre-June HubSpot churn, the earlier of those and the deal\u2019s own). '
+    +'Cohort = signing month: the Close Date of the brand\u2019s own HubSpot deal (the one nearest the app\u2019s created date, within '+BD_COHORT_HS_MONTHS+' months), else the app brand\u2019s created date; a pre-June HubSpot churn keeps the earlier of the brand\u2019s and the deal\u2019s dates, and a brand that came back on the same row is signed at its restart. '
+    +(_bdRetNI==='excl'?'<strong style="color:var(--navy)">Never Implemented excluded:</strong> '+_rwNIOut.length+' brand'+(_rwNIOut.length===1?'':'s')+' that signed and never launched (a Never Imp churn type, or no type and no live app subscription) are left out of their cohorts entirely. '
+      :'Never Implemented brands (signed, never launched) count as churn; switch them off above to see retention among brands that launched. ')
     +'On HubSpot alone it would be the earlier of Close Date and Entered Closed-Won — the latter alone has been '
     +'bulk-rewritten and would pile well over a hundred deals into a phantom Feb 2025 row. Rows start at '+_rwLbl(RW_FROM)
     +'; the 2024 book is a CRM import rather than organic signing and nearly a third of its churns carry no date. '
