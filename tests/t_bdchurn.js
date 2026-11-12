@@ -38,6 +38,9 @@ ck('  and names the window in words',
    /Every figure on this page counts churns dated 1 January 2026 onward/.test(bd),true);
 ck('  with the kept count over the whole set',
    /\+_chDeals26\.length\+'<\/strong> of '\+_chDeals\.length\+' churned deals\. '/.test(bd),true);
+ck('  C1-C3 counted on the app basis they read, C4-C10 on HubSpot’s deals',
+   /var _bnEv=_ba\?_baCh\.events:\[\],_bnEv26=_bnEv\.filter\(_chIn2026\)\.length,_bnUnd=_ba\?_baCh\.undated:0;/.test(bd)
+   &&/'C4(\u2013|\\u2013)C10 still read HubSpot(\u2019|\\u2019)s churned deals: '/.test(bd),true);
 // What is excluded has to be named, or the band is a claim with no accounting.
 ck('  the pre-2026 churns are counted',
    /var _chPre26=_chDeals\.length-_chDeals26\.length-_chNoDate;/.test(bd),true);
@@ -194,8 +197,8 @@ ck('the scroll-spy is generic over sections',/var secs=document\.querySelectorAl
 // It counts deals needed to hit a monthly SIGNING goal, which says nothing
 // about churn. Hidden, not removed — the Tracker still needs it and the dialog
 // it opens lives in the static DOM.
-ck('the goal button is hidden on the Churn tab',
-   /var gb=document\.getElementById\('bd-goal-btn'\);if\(gb\)gb\.style\.display=\(t==='churn'\)\?'none':'';/.test(bd),true);
+ck('the goal button is hidden on every tab but the Tracker',
+   /var gb=document\.getElementById\('bd-goal-btn'\);if\(gb\)gb\.style\.display=\(t==='tracker'\)\?'':'none';/.test(bd),true);
 ck('  and its dialog is left in place for the Tracker',
    /id="bd-goal-btn"/.test(bd)&&/function bdGoalOpen\(/.test(bd),true);
 
@@ -204,12 +207,14 @@ ck('  and its dialog is left in place for the Tracker',
 // above the builder and is part of this section's logic.
 const C2=(()=>{const i=bd.indexOf('var _chNITypes=');return bd.slice(i,bd.indexOf('</section>',i));})();
 ck('C2 is locatable',C2.length>800,true);
-ck('it draws two series, Board Defined first',
-   [...C2.matchAll(/\{n:'([^']+)'/g)].map(m=>m[1]),['Board Defined','Never Implemented']);
+// A third line since the app basis (2026-11-11): app churns with no HubSpot
+// churn deal carry no type, and on neither line they read as a drop.
+ck('it draws three series, Board Defined first',
+   [...C2.matchAll(/\{n:'([^']+)'/g)].map(m=>m[1]),['Board Defined','Never Implemented','No churn type']);
 // Only the SERIES widths — the chart's own opts carry a w: too.
 ck('the primary line is thicker than the secondary',
    (()=>{const w=[...C2.matchAll(/\{n:'[^']+',c:[^,]+,w:([\d.]+)/g)].map(m=>+m[1]);
-         return w.length===2&&w[0]>w[1];})(),true);
+         return w.length===3&&w[0]>w[1]&&w[0]>w[2];})(),true);
 ck('  and the secondary is dashed, so they read as primary and supporting',
    /\{n:'Never Implemented'[^}]*dash:true/.test(C2),true);
 ck('Never Implemented combines all three NI reasons',

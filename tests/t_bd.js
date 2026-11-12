@@ -118,7 +118,7 @@ ck('and no colour is reused', new Set(segHexes).size, segHexes.length);
 // anchored section, and it is the assertion most worth keeping.
 ck('the tab state exists', /var _bdTab='tracker';/.test(bd), true);
 ck('only one tab is written to the DOM',
-   /el\.innerHTML=\(_bdTab==='churn'\)\?hChurn:h;/.test(bd), true);
+   /el\.innerHTML=\(_bdTab==='churn'\)\?hChurn:\(_bdTab==='recon'\)\?hRecon:h;/.test(bd), true);
 ck('and each tab builds only its own deals table',
    [/h\+=\(_bdTab==='tracker'\)\?_bdDealsTable\(sorted\):'';/.test(bd),
     /\(_bdTab==='churn'\)\?_bdDealsTable\(_chSorted\):''/.test(bd)], [true,true]);
@@ -266,7 +266,9 @@ ck('and a quarter opens on the month before its first',
 // Counted once, at the top of the page, and reused — not recounted per section.
 ck('undated churns are excluded and counted',
    /var _chNoDate=_chDeals\.filter\(function\(dd\)\{return !_bdMonthOf\(dd\.pausechurn_date\);\}\)\.length;/.test(bd), true);
-ck('  and C2 reuses that one count',/_chUndated=_chNoDate;/.test(bd), true);
+// C2 is on the app basis since 2026-11-11: its undated count is _baChurn's
+// (HubSpot churn deals with no date that the app did not date either).
+ck('  and C2 reads the app-basis undated count',/_chUndated=_baCh\.undated;/.test(bd), true);
 
 // ── Traffic bands. RUN the real function: the 0-is-missing rule and the
 // boundaries are logic, not text.

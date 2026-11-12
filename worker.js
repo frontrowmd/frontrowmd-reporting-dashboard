@@ -3629,6 +3629,8 @@ const MB_NEEDED_TABLES = {
   SUBSCRIPTIONS: 'active brand count, current MRR',
   PILOTS: 'pilot fees, pilot segmentation',
   PILOT_PROGRESS: 'pilot status',
+  PLANS: 'BD Tracker: plan names (term length), list prices, pilot plans',
+  PRODUCTS: 'BD Tracker: reviews per brand (notes join through products)',
   HEALTH_CONCERNS: 'brand health concern names',
   HEALTH_BRAND_PRODUCTS_CONCERNS: 'brand health concern (skincare flag)',
   SAMPLE_BOXES: 'samples shipped',
@@ -3694,6 +3696,265 @@ async function metabaseCheck(env) {
   }
   out.ok = !out.keyIsAdmin && !!out.probe && out.errors.length === 0;
   return out;
+}
+
+// ── BD Tracker: the app brand book via Metabase (/api/bd-app) ────────────────
+// Alex's decision (2026-11-11): the APP owns brand count, MRR, Future MRR,
+// churn count and churn date on the BD Tracker; HubSpot keeps everything else.
+// This returns ONE ROW PER NON-DEMO APP BRAND (discarded ones included, they
+// carry the churn signal) with the subscription the rules below choose, its
+// normalised monthly price, the brand's pilot, review activity and the app end
+// date. The page joins it to the /api/bd deals itself (the HubSpot join, the
+// churn events, the snapshot series and the reconciliation lists are all
+// client-side, in bd-dashboard.html's _ba* helpers), because the join needs the
+// deals and /api/bd already spends its subrequest budget on them.
+//
+// Dates come back as EASTERN calendar days (YYYY-MM-DD), the portal's zone (see
+// dashboard-timezone). The Snowflake copy is ~1 day behind (nightly ~4:30am ET).
+//
+// A Metabase failure THROWS: the route turns it into {error}, and the page shows
+// an error band. It must never come back as an empty book, which would render
+// as zero brands and zero MRR.
+const BDAPP_PAGES = 4;                 // MOD(id, 4): ~470 brands a page, far under the 2000-row cap
+const BDAPP_LIVE = ['active', 'paused', 'future'];
+const BDAPP_TERMINAL = ['expired', 'canceled', 'failed'];
+const BDAPP_PILOT_CURRENT = ['deposit_paid', 'collecting_data', 'live'];
+// Days on which the app rewrote many rows at once, so the row's own timestamp
+// is a batch date, not the day the brand ended. 2026-10-14 restamped 600+
+// subscriptions (484 active, 49 pending, 46 paused, 44 future, plus the failed
+// ones); the other three are brand-discard cleanups (69, 31 and 12 brands in a
+// day). On these days the end date falls back to the end of the subscription's
+// last real billing period, when that is EARLIER (a later one cannot be the end).
+const BDAPP_BULK_DAYS = {
+  '2026-10-14': 'subscription status bulk stamp',
+  '2026-08-28': 'brand discard batch',
+  '2026-07-16': 'brand discard batch',
+  '2026-06-23': 'brand discard batch',
+};
+// Days on which subscription rows were CREATED in bulk by a backfill, so a
+// row's created_at says when the backfill ran, not when the brand (re)started.
+// 2026-07-22: 471 rows created between 09:37 and 09:51 ET, 409 of them with a
+// start_date more than a week earlier (back to 2025-10-31). A row created on a
+// backfill day is never read as a restart (the page's _baRestartAfter).
+const BDAPP_BACKFILL_DAYS = {
+  '2026-07-22': 'subscription backfill',
+};
+const _bdEt = (col) => `TO_CHAR(CONVERT_TIMEZONE('UTC', 'America/New_York', ${col}), 'YYYY-MM-DD')`;
+const _bdS = (expr) => `COALESCE((${expr})::VARCHAR, '')`;
+// One page of the brand book. Subscriptions and pilots ride along as a '~'-list
+// of '|'-fields, oldest first, so the page stays one row per brand; the plan
+// name is scrubbed of both separators.
+function bdAppSql(page) {
+  const k = Number(page) | 0;
+  return `WITH sb AS (
+  SELECT s.HEALTH_BRAND_ID bid,
+    LISTAGG(CONCAT_WS('|', ${_bdS('s.ID')}, ${_bdS('s.STATUS')}, ${_bdS("TO_CHAR(s.START_DATE, 'YYYY-MM-DD')")},
+      ${_bdS(_bdEt('s.CURRENT_PERIOD_ENDS_AT'))}, ${_bdS(_bdEt('s.UPDATED_AT'))},
+      ${_bdS('s.MANUAL_PRICE_IN_CENTS')}, ${_bdS('s.MONTHLY_PRICE_IN_CENTS')}, ${_bdS('s.DISPLAY_PRICE_WITH_USAGE_IN_CENTS')},
+      ${_bdS('p.MONTHLY_PRICE_IN_CENTS')}, ${_bdS("REGEXP_REPLACE(p.NAME, '[|~]', ' ')")}, ${_bdS('p.KIND')}, ${_bdS(_bdEt('s.CREATED_AT'))}), '~')
+      WITHIN GROUP (ORDER BY s.CREATED_AT, s.ID) SUBS
+  FROM STAGING.STG_SUBSCRIPTIONS s LEFT JOIN STAGING.STG_PLANS p ON p.ID = s.PLAN_ID
+  WHERE MOD(s.HEALTH_BRAND_ID, ${BDAPP_PAGES}) = ${k} GROUP BY 1),
+pl AS (
+  SELECT s.HEALTH_BRAND_ID bid,
+    LISTAGG(CONCAT_WS('|', ${_bdS('pi.ID')}, ${_bdS('pi.STATUS')}, ${_bdS(_bdEt('pi.DEPOSIT_PAID_AT'))}, ${_bdS('pi.DEPOSIT_TOTAL_IN_CENTS')},
+      ${_bdS('pi.ROLLOVER_PRICE_IN_CENTS')}, ${_bdS('pi.NEXT_PRICE_OVERRIDE_IN_CENTS')}, IFF(pi.NEXT_PRICE_OVERRIDE_REPEATS, '1', '0'),
+      ${_bdS('pi.DEPOSIT_MONTH_DEFAULT_IN_CENTS')}), '~') WITHIN GROUP (ORDER BY pi.CREATED_AT, pi.ID) PILOTS
+  FROM STAGING.STG_PILOTS pi JOIN STAGING.STG_SUBSCRIPTIONS s ON s.ID = pi.SUBSCRIPTION_ID
+  WHERE MOD(s.HEALTH_BRAND_ID, ${BDAPP_PAGES}) = ${k} GROUP BY 1),
+nt AS (
+  SELECT p.HEALTH_BRAND_ID bid, ${_bdEt('MAX(n.CREATED_AT)')} LR,
+    COUNT_IF(n.CREATED_AT >= DATEADD(day, -45, SYSDATE())) R45
+  FROM STAGING.STG_NOTES n JOIN STAGING.STG_PRODUCTS p ON p.ID = n.HEALTH_BRAND_PRODUCT_ID
+  WHERE n.STATUS IN ('shared', 'approved') AND MOD(p.HEALTH_BRAND_ID, ${BDAPP_PAGES}) = ${k} GROUP BY 1)
+SELECT b.ID, b.NAME NM, b.HUBSPOT_COMPANY_ID::VARCHAR HC, ${_bdEt('b.CREATED_AT')} CR, ${_bdEt('b.DISCARDED_AT')} DI,
+  nt.LR, COALESCE(nt.R45, 0) R45, sb.SUBS, pl.PILOTS
+FROM STAGING.STG_BRANDS b
+LEFT JOIN sb ON sb.bid = b.ID LEFT JOIN pl ON pl.bid = b.ID LEFT JOIN nt ON nt.bid = b.ID
+WHERE COALESCE(b.DEMO, FALSE) = FALSE AND MOD(b.ID, ${BDAPP_PAGES}) = ${k}
+ORDER BY b.ID`;
+}
+// Every HubSpot deal associated with a company an app brand points at, from
+// the warehouse copy of HubSpot's deal-company associations. /api/bd carries
+// only each deal's PRIMARY company, and a deal often sits on a duplicate
+// company with the brand's company as a secondary association, so without
+// this the join misses brands HubSpot does know about. Paged by company id.
+const BDAPP_ASSOC_PAGES = 2;
+function bdAppAssocSql(page) {
+  const k = Number(page) | 0;
+  return `SELECT a.COMPANY_ID::VARCHAR HC, LISTAGG(DISTINCT a.DEAL_ID::VARCHAR, ',') DEALS
+FROM STAGING.STG_HUBSPOT_DEAL_COMPANIES a
+WHERE a.COMPANY_ID IN (SELECT HUBSPOT_COMPANY_ID FROM STAGING.STG_BRANDS WHERE HUBSPOT_COMPANY_ID IS NOT NULL AND COALESCE(DEMO, FALSE) = FALSE)
+  AND MOD(a.COMPANY_ID, ${BDAPP_ASSOC_PAGES}) = ${k}
+GROUP BY 1`;
+}
+const _bdNum = (v) => { const n = Number(v); return v === '' || v == null || !isFinite(n) ? null : n; };
+const _bdSplit = (s) => (s ? String(s).split('~').filter(Boolean).map(x => x.split('|')) : []);
+function bdAppParseSubs(s) {
+  return _bdSplit(s).map(f => ({
+    id: _bdNum(f[0]), status: f[1] || '', startDate: f[2] || '', periodEnd: f[3] || '', updatedAt: f[4] || '',
+    man: _bdNum(f[5]), mp: _bdNum(f[6]), disp: _bdNum(f[7]), planp: _bdNum(f[8]),
+    planName: f[9] || '', planKind: f[10] || '', createdAt: f[11] || '',
+  }));
+}
+function bdAppParsePilots(s) {
+  return _bdSplit(s).map(f => ({
+    id: _bdNum(f[0]), status: f[1] || '', depositPaidAt: f[2] || '', depositTotal: _bdNum(f[3]),
+    rollover: _bdNum(f[4]), override: _bdNum(f[5]), overrideRepeats: f[6] === '1', monthDefault: _bdNum(f[7]),
+  }));
+}
+// Term length a plan's NAME declares: "6-Month FrontrowMD Subscription",
+// "Hero (6 Months)" → 6; "(Annual)" → 12; anything else is a monthly plan.
+function bdAppTermMonths(planName) {
+  const s = String(planName || '');
+  const m = /(\d+)[- ]Month/i.exec(s);
+  if (m) return parseInt(m[1], 10) || 1;
+  return /Annual/i.test(s) ? 12 : 1;
+}
+// Normalised monthly price of one subscription, in DOLLARS. Mirrors the
+// reviewed brand lists' build.py exactly:
+//  1. Pilot-plan subscriptions (plans.kind = 'pilot') have NO MRR: what a pilot
+//     pays is its deposit, counted on the pilot row.
+//  2. The price is the first non-empty of manual_price_in_cents,
+//     monthly_price_in_cents, display_price_with_usage_in_cents and the plan's
+//     monthly_price_in_cents, in that order (a 0 counts as empty, as in build.py).
+//  3. A value under 10,000 cents ($100) is dollars typed into a cents field
+//     ("1500" meaning $1,500): it is multiplied by 100.
+//  4. A plan whose name declares an N-month term (N-Month, "(6 Months)",
+//     "(Annual)") stores the TERM TOTAL: when the value is $3,000 or more it is
+//     divided by N. Below $3,000 it is already monthly and is kept.
+// `note` records which rules fired, for the reconciliation tables.
+function bdAppPrice(sub) {
+  if (!sub) return { monthly: null, note: '' };
+  if (sub.planKind === 'pilot') return { monthly: null, note: 'pilot plan: no MRR' };
+  let src = '', raw = null;
+  for (const k of ['man', 'mp', 'disp', 'planp']) { if (sub[k]) { src = k; raw = sub[k]; break; } }
+  if (raw == null) return { monthly: null, note: 'no price' };
+  const notes = [src];
+  let c = raw;
+  if (c > 0 && c < 10000) { c *= 100; notes.push('x100 (dollars in a cents field)'); }
+  const t = bdAppTermMonths(sub.planName);
+  if (t > 1) {
+    if (c >= 300000) { c = c / t; notes.push('term total / ' + t); }
+    else notes.push(t + '-month plan, value already monthly');
+  }
+  return { monthly: Math.round(c) / 100, note: notes.join('; ') };
+}
+// The subscription that speaks for a brand. Brands collect several rows
+// (renewals, upgrades, restarts) and the newest is not always the live one:
+//  1. If any row is active or paused with current_period_ends_at on or after
+//     today, or is 'future' (signed, starting later), the LATEST such row wins.
+//     Digestive Advantage, Zafira and Neuriva have an active 6-month row hidden
+//     behind a newer expired one.
+//  2. Otherwise the latest row by created_at, EXCEPT that a pending_activation
+//     row never beats an older terminal (expired / canceled / failed) one: Auric
+//     has an old canceled row behind a never-activated sign-up, and is ended,
+//     not "about to start".
+// `subs` must be ordered oldest first (the SQL does this).
+function bdAppChooseSub(subs, today) {
+  if (!subs || !subs.length) return null;
+  const live = subs.filter(s => ((s.status === 'active' || s.status === 'paused') && s.periodEnd && s.periodEnd >= today) || s.status === 'future');
+  if (live.length) return live[live.length - 1];
+  const latest = subs[subs.length - 1];
+  if (latest.status === 'pending_activation') {
+    const term = subs.filter(s => BDAPP_TERMINAL.includes(s.status));
+    if (term.length) return term[term.length - 1];
+  }
+  return latest;
+}
+// Post-pilot monthly price, in dollars: the rollover price once set, else the
+// next-price override when it repeats (a one-off override is not a run rate),
+// else the deposit month's default list price.
+function bdAppPilotPost(p) {
+  if (!p) return { price: null, src: '' };
+  if (p.rollover) return { price: p.rollover / 100, src: 'rollover price' };
+  if (p.override && p.overrideRepeats) return { price: p.override / 100, src: 'repeating override' };
+  if (p.monthDefault) return { price: p.monthDefault / 100, src: 'deposit-month default' };
+  return { price: null, src: '' };
+}
+// One brand row → the book entry the page reads. `today` is an Eastern
+// YYYY-MM-DD.
+function bdAppBrand(r, today) {
+  const subs = bdAppParseSubs(r.SUBS);
+  const pilots = bdAppParsePilots(r.PILOTS);
+  const sub = bdAppChooseSub(subs, today);
+  const pr = bdAppPrice(sub);
+  const curPilots = pilots.filter(p => BDAPP_PILOT_CURRENT.includes(p.status));
+  const pil = curPilots.length ? curPilots[curPilots.length - 1] : (pilots.length ? pilots[pilots.length - 1] : null);
+  const post = bdAppPilotPost(pil);
+  const disc = r.DI || '';
+  const isPilotSub = !!sub && (sub.planKind === 'pilot' || sub.status === 'pilot');
+  let state;
+  if (disc) state = 'discarded';
+  else if (pil && BDAPP_PILOT_CURRENT.includes(pil.status)) state = 'pilot';
+  else if (!sub) state = (pil && pil.status === 'awaiting_submit') ? 'pending' : 'nosub';
+  else if (isPilotSub) state = (pil && (pil.status === 'canceled' || pil.status === 'opted_out')) ? 'ended' : 'pending';
+  else if (sub.status === 'active') state = 'active';
+  else if (sub.status === 'paused') state = 'paused';
+  else if (sub.status === 'future') state = 'starting';
+  else if (sub.status === 'pending_activation') state = 'pending';
+  else if (BDAPP_TERMINAL.includes(sub.status)) state = 'ended';
+  else state = 'other';
+  // App end date: the discard, else the chosen row turning terminal, dated by
+  // that row's updated_at. On a bulk day, the last real period end if earlier.
+  let endDate = '', endSrc = '';
+  if (disc) { endDate = disc; endSrc = 'brand discarded'; }
+  else if (state === 'ended' && sub) { endDate = sub.updatedAt; endSrc = 'subscription ' + (isPilotSub ? 'pilot ' + (pil ? pil.status : '') : sub.status); }
+  if (endDate && BDAPP_BULK_DAYS[endDate] && sub && sub.periodEnd && sub.periodEnd < endDate) {
+    endSrc += ' (' + endDate + ' is a ' + BDAPP_BULK_DAYS[endDate] + ': last period end used)';
+    endDate = sub.periodEnd;
+  }
+  // A brand with NO subscription discarded on a bulk day has no real end date:
+  // the batch day is when the cleanup ran, and there is no period end to fall
+  // back on. The page dates it from its HubSpot churn deal, or counts it as an
+  // undated churn (Aug 2026 discard batch: 22 such brands).
+  const endOnBulkDay = !!(endDate && BDAPP_BULK_DAYS[endDate] && !subs.length);
+  const nonPilot = subs.filter(s => s.planKind !== 'pilot' && s.status !== 'pilot');
+  const starts = subs.map(s => s.startDate).filter(Boolean).sort();
+  return {
+    id: _bdNum(r.ID), name: String(r.NM || '').trim(), hubspotCompanyId: r.HC ? String(r.HC) : '',
+    createdAt: r.CR || '', discardedAt: disc, firstStart: starts[0] || '',
+    // Signing date = brand created_at. Subscription start_dates were BACKFILLED:
+    // no subscription row is older than 2026-03, the 513 rows created in July
+    // 2026 carry start dates from 2025-10-31 on (the then-current billing
+    // period), while brand rows go back to 2022. So the "earlier of created_at
+    // and first start_date" rule reduces to created_at, and is not used.
+    signDate: r.CR || '',
+    state, active: state === 'active' || state === 'paused' || state === 'starting',
+    sub: sub ? { id: sub.id, status: sub.status, startDate: sub.startDate, periodEnd: sub.periodEnd, updatedAt: sub.updatedAt,
+      createdAt: sub.createdAt, planName: sub.planName, planKind: sub.planKind, pilotPlan: isPilotSub } : null,
+    subCount: subs.length, monthly: pr.monthly, priceNote: pr.note,
+    // Ever live = some non-pilot row that billed (active / paused / future /
+    // expired / canceled). A brand whose rows are only failed or pending never
+    // was a paying brand, so its end is not a churn.
+    everLive: nonPilot.some(s => ['active', 'paused', 'future', 'expired', 'canceled'].includes(s.status)),
+    lastSubCreated: subs.length ? subs[subs.length - 1].createdAt : '',
+    // Every non-pilot subscription row, oldest first: start date, status, and
+    // whether a backfill created it (bf). The page reads restarts from this.
+    subHist: nonPilot.map(s => ({ start: s.startDate, created: s.createdAt, status: s.status, bf: !!BDAPP_BACKFILL_DAYS[s.createdAt] })),
+    pilot: pil ? { status: pil.status, depositPaidAt: pil.depositPaidAt, depositTotal: pil.depositTotal != null ? pil.depositTotal / 100 : null,
+      postPrice: post.price, postSrc: post.src, current: BDAPP_PILOT_CURRENT.includes(pil.status) } : null,
+    lastReviewAt: r.LR || '', reviews45: Number(r.R45) || 0,
+    endDate, endSrc, endOnBulkDay,
+  };
+}
+// `assoc` = [{HC, DEALS:'id,id'}]: each brand gets the deal ids associated
+// with its HubSpot company (hsDeals), for the page's join.
+function bdAppBuild(rows, today, assoc) {
+  const byHc = {};
+  for (const a of assoc || []) if (a.HC) byHc[String(a.HC)] = String(a.DEALS || '').split(',').filter(Boolean);
+  return (rows || []).map(r => Object.assign(bdAppBrand(r, today), { hsDeals: (r.HC && byHc[String(r.HC)]) || [] }));
+}
+async function fetchBdApp(env) {
+  const today = etDayKeyOf(new Date().toISOString());
+  const [pages, assoc] = await Promise.all([
+    Promise.all(Array.from({ length: BDAPP_PAGES }, (_, k) => mbQuery(env, bdAppSql(k)))),
+    Promise.all(Array.from({ length: BDAPP_ASSOC_PAGES }, (_, k) => mbQuery(env, bdAppAssocSql(k)))),
+  ]);
+  const rows = [].concat(...pages);
+  // Zero rows is a broken read, not an empty book: there are ~1,800 brands.
+  if (!rows.length) throw new Error('Metabase returned no app brands');
+  return { brands: bdAppBuild(rows, today, [].concat(...assoc)), meta: { generatedAt: new Date().toISOString(), today, source: 'Metabase · Snowflake copy of the app (nightly)', rows: rows.length } };
 }
 
 // ── Skincare Phase 2: app data via Metabase ──────────────────────────────────
@@ -12023,6 +12284,18 @@ export default {
         const result = await fetchBDData(env, body.fresh === true);
         return jr(result);
       } catch(err) { console.error('BD API error:', err); return jr({ error: 'Internal error', detail: err.message }, 500); }
+    }
+
+    // POST /api/bd-app → the app brand book from Metabase, for the BD Tracker's
+    // brand count, MRR, Future MRR, churn and Reconciliation tab. Same guard as
+    // /api/bd. A Metabase failure comes back as {error} with a 502, never as an
+    // empty book, so the page can say the app data is missing instead of
+    // drawing zeros.
+    if (request.method === 'POST' && url.pathname === '/api/bd-app') {
+      try { await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
+      try { return jr(await fetchBdApp(env)); }
+      catch (err) { console.error('BD app endpoint error:', err); return jr({ error: 'App data unavailable', detail: String(err && err.message || err).slice(0, 300) }, 502); }
     }
 
     // POST /api/bd/lookup-companies → fetch company names for a list of IDs.

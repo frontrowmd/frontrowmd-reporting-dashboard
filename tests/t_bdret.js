@@ -31,7 +31,7 @@ const SEC=(()=>{const i=bd.indexOf('// ── iii. Retention waterfall');
   if(i<0||j<0)throw new Error('cannot locate section iii between its own comment markers');
   return bd.slice(i,j);})();
 ck('the section is locatable, and the slice stops before the next one',
-   SEC.length>5000&&SEC.length<32000&&!/bd-sec-churntype/.test(SEC)
+   SEC.length>5000&&SEC.length<34000&&!/bd-sec-churntype/.test(SEC)
    &&/hChurn\+='<\/div><\/section>';/.test(SEC),true);
 
 // Runs the SHIPPED _rwCellVal under a chosen metric/unit pair. Hoisted because
@@ -395,8 +395,8 @@ ck('an A/B value of Unknown is distinct from blank',
 // the SAME predicate, so Signed counts only the brands on screen and nothing
 // is recategorised as retained to keep a denominator intact.
 ck('both populations go through the same predicate',
-   /_chDeals\.filter\(_rwKept\)\.map\(function\(dd\)\{/.test(SEC)
-   &&/var _rwBook=closedWonDeals\.filter\(_rwKept\)\.map\(/.test(SEC),true);
+   /_apCh\.filter\(_rwKept\)\.map\(function\(dd\)\{/.test(SEC)
+   &&/var _rwBook=_apSurv\.filter\(_rwKept\)\.map\(/.test(SEC),true);
 ck('  with no retained-instead fallback left behind',
    /filteredOut:true/.test(SEC),false);
 ck('  so the cohort size falls with the filter',
@@ -434,7 +434,7 @@ ck('  and the field tallies match the four filters that remain',
    /Three of these four fields are written at the churn review/.test(SEC)
    &&!/Four of these five fields/.test(SEC)&&!/the other four are/.test(SEC),true);
 ck('  with both survivor tallies taken over the plotted window',
-   /_rwWinSurvArr=closedWonDeals\.filter\(function\(dd\)\{/.test(SEC)
+   /_rwWinSurvArr=_apSurv\.filter\(function\(dd\)\{/.test(SEC)
    &&/sg&&sg>=RW_FROM&&sg<=_cmKey;\}\);/.test(SEC)
    &&/_rwKeptSurv=_rwWinSurvArr\.filter\(_rwKept\)\.length;/.test(SEC),true);
 ck('  and the band says so where the filters are, not only in the footnote',
@@ -450,7 +450,7 @@ ck('  reporting how many brands survive the filter, both populations',
 // The option counts must be taken over the SAME window the grid plots, or an
 // option can claim churns the grid never had.
 ck('option counts come from the plotted window, on the grid\u2019s own rules',
-   /_rwWinChurns=_chDeals\.filter/.test(SEC)&&/sg>=RW_FROM&&sg<=_cmKey&&_rwDiff\(sg,cm\)>=0/.test(SEC),true);
+   /_rwWinChurns=_apCh\.filter/.test(SEC)&&/sg>=RW_FROM&&sg<=_cmKey&&_rwDiff\(sg,cm\)>=0/.test(SEC),true);
 ck('every option prints its counts, through the one helper',
    /o\[1\]\+_rwCnt\(cnt\[o\[0\]\]\|\|0,chn\[o\[0\]\]\|\|0\)/.test(SEC),true);
 // One filter per row, under the toggles.
@@ -574,8 +574,8 @@ ck('  as are the negatives',/_rw\.excluded\.negative\?/.test(SEC),true);
 ck('  and the closed-won deals carrying a churn date',/_rwCwPc\?/.test(SEC),true);
 ck('the signing-date choice is stated where a reader can see it',
    /earlier of Close Date and Entered Closed-Won/.test(SEC),true);
-ck('the unit is admitted to be the deal, not the brand',
-   /re-signed belongs to both its cohorts/.test(SEC),true);
+ck('the unit is stated, and a re-signed brand is in both cohorts',
+   /re-signed on a new row belongs to both its cohorts/.test(SEC),true);
 ck('the scale prints its own anchor',/neutral at/.test(SEC),true);
 ck('the subtitle does not contradict the Month-1 convention',
    /Month 1 being the signing month itself/.test(SEC)&&!/still live N months on/.test(SEC),true);
@@ -588,7 +588,7 @@ ck('  the softened wording is what ships',
 ck('the dangling "more" is conditional on the fragment before it',
    /_rw\.excluded\.negative\+\(_rw\.excluded\.undated\?' more':''\)/.test(SEC),true);
 ck('the unit names the record, not the table row',
-   /The unit counted is the signed deal, not the brand/.test(SEC)&&!/One row is one signed deal/.test(SEC),true);
+   /The unit counted is the app brand row/.test(SEC)&&!/One row is one signed deal/.test(SEC),true);
 // Every conditional fragment in the footnote is built by concatenating ternaries,
 // so each one has to read grammatically at n=1 as well as n>1.
 ck('the undated fragment agrees in number',
