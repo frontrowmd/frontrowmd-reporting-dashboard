@@ -641,6 +641,8 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
       <div class="ni" onclick="switchDashSub('pilot')" data-page="pilot" data-sub="pilot" style="display:none"><span class="ic" style="font-size:12px">🧪</span><span>Pilot Dashboard</span></div>
       <div class="ni" onclick="clinicianNav()" data-page="clinician" data-sub="clinician"><span class="ic" style="font-size:12px">🩺</span><span>Clinician Dashboard</span></div>
       <div class="ni" onclick="switchDashSub('skincare')" data-page="skincare" data-sub="skincare"><span class="ic" style="font-size:12px">🧴</span><span>Brand Category Dashboard</span></div>
+      <!-- BD Tracker moved out of Resources to sit after Brand Category (Alex, 2026-11-12). It opens /bd in a new tab, so data-page "bd" matches no in-page page and the row never takes the active highlight. -->
+      <div class="ni" onclick="window.open('/bd','_blank')" data-page="bd" data-sub="bd-dash"><span class="ic" style="font-size:12px">💼</span><span>BD Tracker</span><span style="margin-left:auto;font-size:9px;opacity:.5">↗</span></div>
       <div class="ni grp" onclick="autoExpand();toggleDashMenu()" data-page="dashboard" id="dash-menu-parent" title="Additional Insights"><span class="ic">📊</span><span>Additional Insights</span><span id="dash-arrow" style="margin-left:auto;font-size:10px;transition:transform .2s">▶</span></div>
       <div id="dash-submenu" style="display:none;padding-left:24px">
         <div class="ni sub" onclick="switchDashSub('signup')" data-page="dashboard" data-sub="signup"><span class="ic" style="font-size:12px">📋</span><span>Sign-Up Rate</span></div>
@@ -658,7 +660,6 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
       </div>
       <div class="ni grp" onclick="autoExpand();toggleResMenu()" data-page="resources" id="res-menu-parent" title="Resources"><span class="ic">📚</span><span>Resources</span><span id="res-arrow" style="margin-left:auto;font-size:10px;transition:transform .2s">▼</span></div>
       <div id="res-submenu" style="display:none;padding-left:24px">
-        <div class="ni sub" onclick="window.open('/bd','_blank')" data-page="resources" data-sub="bd-dash"><span class="ic" style="font-size:12px">💼</span><span>BD Tracker</span><span style="margin-left:auto;font-size:9px;opacity:.5">↗</span></div>
         <div class="ni sub" onclick="switchRes('changelog')" data-page="resources" data-sub="changelog"><span class="ic" style="font-size:12px">🪵</span><span>Change Log</span></div>
         <div class="ni sub" onclick="window.open('/sales','_blank')" data-page="resources" data-sub="sales-dash"><span class="ic" style="font-size:12px">📋</span><span>Sales Dashboard</span><span style="margin-left:auto;font-size:9px;opacity:.5">↗</span></div>
         <div class="ni sub" onclick="switchToCalculator()" data-page="resources" data-sub="calculator"><span class="ic" style="font-size:12px">🧮</span><span>ARR Calculator</span></div>

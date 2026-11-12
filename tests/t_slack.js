@@ -1103,11 +1103,16 @@ ck('  and _clgFetch has a single caller, so nothing can bypass the queue',
      const all=(dash.match(/_clgFetch\(/g)||[]).length;
      return [defs,all-defs];})(),[1,1]);
 
-ck('the menu row sits directly under BD Tracker',
-   (()=>{const bd=dash.indexOf('data-sub="bd-dash"');
+// BD Tracker moved to the main nav after Brand Category (2026-11-12), so the
+// Change Log now leads the Resources submenu.
+ck('the menu row leads the Resources submenu, BD Tracker now in the main nav',
+   (()=>{const rs=dash.indexOf('id="res-submenu"');
+     const bd=dash.indexOf('data-sub="bd-dash"');
+     const sk=dash.indexOf('data-sub="skincare"');
      const cl=dash.indexOf('data-sub="changelog"');
      const sl=dash.indexOf('data-sub="sales-dash"');
-     return bd>0&&cl>bd&&cl<sl;})(),true);
+     const first=dash.indexOf('data-sub="',rs);
+     return sk>0&&bd>sk&&bd<rs&&first===cl&&cl<sl;})(),true);
 ck('  and is wired to the in-page renderer, not a new tab',
    /onclick="switchRes\('changelog'\)" data-page="resources" data-sub="changelog"/.test(dash),true);
 ck('  with a title of its own',/'changelog':'Change Log'/.test(dash),true);
