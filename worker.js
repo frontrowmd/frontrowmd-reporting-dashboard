@@ -894,7 +894,7 @@ function mapUtmToChannel(src, med) {
 // /api/data response-cache version. Bump on any payload-shape change so a new
 // deploy can't serve the previous build's cached payload. v7: Reddit + OpenAI
 // channels added, PENDING_CHANNELS emptied.
-const API_CACHE_VER = 'v59';   // v59: clinician funnel byTS / tsOpts + composition.byTypeSpec (Type x Specialty filters). v58: Derm = dermatologists from the Derm campaign.
+const API_CACHE_VER = 'v60';   // v60: Revenue Outcome pilot share by the app's pilot rule (markAppPilots). v59: clinician funnel byTS / tsOpts + composition.byTypeSpec (Type x Specialty filters). v58: Derm = dermatologists from the Derm campaign.
                                // v57: clinician spend + contacts split core / LAL / Derm (Key Metrics row 2).
                                // v56: Acquisition Specialty pie merges duplicate specialty names.
                                // v55: Acquisition Type pie groups MD/DO, NP, PA, RDN spellings.
@@ -1620,7 +1620,116 @@ function wFrom(dateStr) { return dateStr < WINDSOR_EPOCH ? WINDSOR_EPOCH : dateS
 // verified against the live HubSpot property 2026-10-28 (12 closed-won deals,
 // all closed Oct 22-28 2026).
 function isPilotBrand(deal) {
+  // The APP decides when markAppPilots has run on this deal (Alex, 2026-11-12:
+  // HubSpot's Pilot Waitlist Status missed 16 of November's 34 pilots). The
+  // HubSpot field is the fallback only when the app could not be read.
+  if (deal && typeof deal._appPilot === 'boolean') return deal._appPilot;
   return !!String((deal && deal.properties && deal.properties.pilot_waitlist_status) || '').trim();
+}
+// ── App-based pilot deals (Revenue Outcome, 2026-11-12) ──────────────────────
+// A closed-won deal is a PILOT deal when its brand has an app pilot whose fee
+// was PAID and that has not rolled over -- the same rule as the BD Tracker's
+// Excluding Pilots / Pilots Only toggle (worker bdAppBrand pilotPaid, page
+// _baPilotDealIds). The brand is found the way the BD Tracker joins: any HubSpot
+// company the deal is associated with is the brand's hubspot_company_id, else
+// the deal's name equals the brand's (same normalisation as _baNorm). Demo
+// brands are left out. Live via Grafana when GRAFANA_TOKEN is set, else the
+// nightly Metabase copy.
+const APP_PILOT_SQL_PG = `SELECT DISTINCT hb.id AS "ID", hb.hubspot_company_id::text AS "HC", hb.name AS "NM"
+FROM pilots p JOIN subscriptions s ON s.id = p.subscription_id JOIN health_brands hb ON hb.id = s.health_brand_id
+WHERE p.deposit_paid_at IS NOT NULL AND p.status <> 'rolled_over' AND COALESCE(hb.demo, FALSE) = FALSE`;
+const APP_PILOT_SQL_SF = `SELECT DISTINCT hb.ID AS ID, hb.HUBSPOT_COMPANY_ID::VARCHAR AS HC, hb.NAME AS NM
+FROM STAGING.STG_PILOTS p JOIN STAGING.STG_SUBSCRIPTIONS s ON s.ID = p.SUBSCRIPTION_ID JOIN STAGING.STG_BRANDS hb ON hb.ID = s.HEALTH_BRAND_ID
+WHERE p.DEPOSIT_PAID_AT IS NOT NULL AND p.STATUS <> 'rolled_over' AND COALESCE(hb.DEMO, FALSE) = FALSE`;
+const APP_PILOT_TEST_BRANDS = ['FrontrowMD Demo Account', 'Vincent'];   // = BD_APP_TEST_BRANDS
+function appPilotNorm(v) {
+  let t = String(v || '');
+  try { t = t.normalize('NFKD'); } catch (e) {}
+  t = t.replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/&/g, ' and ');
+  t = t.replace(/\.(com|co|io|net|us)$/, '').replace(/\(restart\)|-\s*new deal\b/g, '').replace(/[^a-z0-9 ]+/g, ' ');
+  const k = t.split(/\s+/).filter(Boolean);
+  while (k.length && ['inc', 'llc', 'co', 'corp', 'ltd', 'incorporated', 'company'].indexOf(k[k.length - 1]) >= 0) k.pop();
+  return k.join('');
+}
+// The BD Tracker's hand-reviewed joins (BD_APP_JOIN_CO / BD_APP_JOIN_DEAL in
+// bd-dashboard.html: HubSpot company or deal id -> app brand ids), read out of
+// the bundled page so there is ONE copy. A deal is joined through them exactly
+// as _baJoin does: its own id first, else any of its companies.
+let _APP_JOINS = null;
+function appJoinTables() {
+  if (_APP_JOINS) return _APP_JOINS;
+  const read = (name) => {
+    const out = {};
+    try {
+      const m = new RegExp('var ' + name + '=\\{([\\s\\S]*?)\\n\\};').exec(typeof BD_HTML === 'string' ? BD_HTML : '');
+      if (m) for (const x of m[1].matchAll(/'(\d+)':\[([\d,\s]+)\]/g)) out[x[1]] = x[2].split(',').map(v => v.trim()).filter(Boolean);
+    } catch (e) {}
+    return out;
+  };
+  _APP_JOINS = { co: read('BD_APP_JOIN_CO'), deal: read('BD_APP_JOIN_DEAL') };
+  return _APP_JOINS;
+}
+async function fetchAppPilotKeys(env) {
+  let rows = null;
+  if (env && env.GRAFANA_TOKEN) {
+    try { rows = await grafanaQuery(env, APP_PILOT_SQL_PG); }
+    catch (e) { console.error('App pilots: Grafana failed, using the nightly copy:', String((e && e.message) || e).split(env.GRAFANA_TOKEN).join('[token]').slice(0, 200)); }
+  }
+  if (!rows) rows = await mbQuery(env, APP_PILOT_SQL_SF);
+  const hc = new Set(), nm = new Set(), ids = new Set();
+  for (const r of rows || []) {
+    if (APP_PILOT_TEST_BRANDS.indexOf(String(r.NM || '').trim()) >= 0) continue;
+    if (r.ID != null) ids.add(String(r.ID));
+    if (r.HC) hc.add(String(r.HC));
+    const n = appPilotNorm(r.NM); if (n) nm.add(n);
+  }
+  return { hc, nm, ids };
+}
+// Deal id -> associated company ids (HubSpot v4 batch read, 100 a call).
+async function fetchDealCompanyIds(token, ids) {
+  const out = {};
+  for (let i = 0; i < ids.length; i += 100) {
+    const batch = ids.slice(i, i + 100);
+    SUBREQ.n++; SUBREQ.hubspot++;
+    const r = await fetch('https://api.hubapi.com/crm/v4/associations/deals/companies/batch/read', {
+      method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inputs: batch.map(id => ({ id: String(id) })) }),
+    });
+    if (!r.ok) { const t = await r.text(); throw new Error('deal-company associations ' + r.status + ': ' + t.slice(0, 120)); }
+    const j = await r.json();
+    for (const x of (j.results || [])) {
+      const id = x.from && x.from.id; if (!id) continue;
+      out[String(id)] = (x.to || []).map(t => String(t.toObjectId != null ? t.toObjectId : t.id));
+    }
+  }
+  return out;
+}
+// Marks every deal in the given lists with _appPilot (true/false). On any
+// failure the deals stay unmarked, so isPilotBrand falls back to HubSpot's
+// field, and the reason is returned (never thrown: revenue must still render).
+async function markAppPilots(env, token, lists) {
+  const deals = [].concat(...lists.filter(Boolean));
+  if (!deals.length) return { ok: true, n: 0 };
+  try {
+    const [keys, comps] = await Promise.all([
+      fetchAppPilotKeys(env),
+      fetchDealCompanyIds(token, Array.from(new Set(deals.map(d => String(d.id))))),
+    ]);
+    let n = 0;
+    for (const d of deals) {
+      const cs = comps[String(d.id)] || [];
+      // Hand-reviewed join first (it overrides the company, as in _baJoin).
+      const jt = appJoinTables();
+      const rv = jt.deal[String(d.id)] || cs.map(c => jt.co[c]).find(Boolean);
+      const pil = rv ? rv.some(id => keys.ids.has(String(id)))
+        : (cs.some(c => keys.hc.has(c)) || keys.nm.has(appPilotNorm(d.properties && d.properties.dealname)));
+      d._appPilot = pil; if (pil) n++;
+    }
+    return { ok: true, n };
+  } catch (e) {
+    console.error('markAppPilots failed, falling back to Pilot Waitlist Status:', (e && e.message) || e);
+    return { ok: false, error: String((e && e.message) || e).slice(0, 160) };
+  }
 }
 function filterActiveBrands(deals) {
   return deals.filter(d => {
@@ -1885,8 +1994,9 @@ async function fetchClosedWonDeals(token, from, to) {
       { propertyName: 'closedate', operator: 'LTE', value: String(toMsET(to, true)) },
     ],
   }], ['amount','closedate','hs_createdate','utm_source','utm_medium','utm_campaign','utm_content','hubspot_owner_id','brand_status','average_monthly_web_traffic__cloned_','average_monthly_web_traffic',
-        // Pilot brands: the Revenue Outcome card's "Include Pilot Brands" box.
-        'pilot_waitlist_status'],
+        // Pilot brands: Revenue Outcome. The app decides (markAppPilots, which
+        // also matches on dealname); this field is the fallback.
+        'pilot_waitlist_status', 'dealname'],
      200, [{ propertyName: 'hs_createdate', direction: 'ASCENDING' }], pagesForWindow(from, to));
 }
 
@@ -7572,10 +7682,13 @@ async function processRevenueOutcome(env, windowType, customFrom, customTo, vsFr
     return { mrr: m, count: a.length, pilotMrr: pm, pilotCount: pc };
   };
   const hsFailed = HS_ERR.n > _hsErr0;
+  const pilotRule = hsFailed ? null : await markAppPilots(env, hsToken, [cCW, pCW, pmCW]);
   if (hsFailed) console.error('revenue-outcome: HubSpot refused a closed-won read; brand side left to the cached figures');
   return {
     current: hsFailed ? null : tot(cCW), prior: hsFailed ? null : tot(pCW), priorMonth: hsFailed ? null : tot(pmCW),
     hsError: hsFailed || undefined,
+    // 'app' when markAppPilots classified the deals, else 'hubspot' (the field).
+    pilotRule: pilotRule ? (pilotRule.ok ? 'app' : 'hubspot') : undefined,
     pilots: await pilotsP,
     period: current, priorPeriod: prior, priorMonthPeriod: priorMonth,
     generatedAt: new Date().toISOString(),
@@ -7986,6 +8099,9 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
   }
 
   // ── Build period data (filter out Paused/Churned deals via deal-level brand_status on ALL windows) ──
+  // Pilot deals by the app's rule before the closed-won totals are taken (the
+  // Revenue Outcome card's first paint reads their pilot share).
+  await markAppPilots(env, hsToken, [cCW, pCW, pmCW]);
   const currentData = buildPeriodData(current, cW, cLI, cG, cSch, filterActiveBrands(cPipe), filterActiveBrands(cCW));
   const priorData = prior ? buildPeriodData(prior, pW, pLI, pG, pSch, filterActiveBrands(pPipe), filterActiveBrands(pCW)) : null;
   const priorMonthData = priorMonth ? buildPeriodData(priorMonth, pmW, pmLI, pmG, pmSch, filterActiveBrands(pmPipe), filterActiveBrands(pmCW)) : null;

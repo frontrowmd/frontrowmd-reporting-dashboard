@@ -25,7 +25,7 @@ ck('  and one with it blank is not',[W.isPilotBrand(D(1,'')),W.isPilotBrand(D(1,
      [r.mrr,r.count,r.pilotMrr,r.pilotCount],[9000,4,4000,2]);
 }
 ck('the closed-won fetch asks HubSpot for the pilot field',
-   /fetchClosedWonDeals[\s\S]{0,900}?'pilot_waitlist_status'\]/.test(src),true);
+   /fetchClosedWonDeals[\s\S]{0,1000}?'pilot_waitlist_status', 'dealname'\]/.test(src),true);
 {
   // The live endpoint's per-window totals, sliced out and run on stub deals.
   const body=fn(src,'processRevenueOutcome');
@@ -35,6 +35,32 @@ ck('the closed-won fetch asks HubSpot for the pilot field',
   ck('the live totals do too, over the same active-brand filter',
      T.tot([D(2000),D(1500,'Needs More Time'),D(9999,'Not Interested','churned')]),
      {mrr:3500,count:2,pilotMrr:1500,pilotCount:1});
+}
+
+// ── 1b. App-based pilot deals (2026-11-12) ─────────────────────────────────
+{
+  const fs=require('fs');
+  const W3={console:{log(){},warn(){},error(){}},BD_HTML:fs.readFileSync(require('path').join(__dirname,'..','bd-dashboard.html'),'utf8')};vm.createContext(W3);
+  vm.runInContext(src.slice(0,src.indexOf('\nexport default'))+'\nObject.assign(globalThis,{markAppPilots,isPilotBrand,appPilotNorm,appJoinTables});',W3);
+  const ok=(j)=>({ok:true,status:200,json:async()=>j,text:async()=>''});
+  // App: pilot brands 10 (company c10), 11 (no company, name "Glow Co"), 1948 (HEVA, joined by the hand table).
+  const mb={status:'completed',data:{cols:[{name:'ID'},{name:'HC'},{name:'NM'}],rows:[[10,'c10','Alpha'],[11,null,'Glow Co'],[1948,null,'HEVA'],[99,null,'Vincent']]}};
+  const assoc={results:[{from:{id:'1'},to:[{toObjectId:'c10'}]},{from:{id:'2'},to:[]},{from:{id:'3'},to:[{toObjectId:'c99'}]},{from:{id:'4'},to:[{toObjectId:'338391695050'}]},{from:{id:'5'},to:[]}]};
+  W3.fetch=async(u)=>/associations/.test(u)?ok(assoc):ok(mb);
+  const D=(id,name,field)=>({id:String(id),properties:{dealname:name,amount:'1000',pilot_waitlist_status:field||''}});
+  const ds=[D(1,'Alpha deal'),D(2,'Glow - New Deal'),D(3,'Regular Brand','Not Interested'),D(4,'My HEVA LLC'),D(5,'Vincent')];
+  globalThis.__appPilotTests=(async()=>{
+    const r=await W3.markAppPilots({METABASE_API_KEY:'k'},'tok',[ds]);
+    ck('app rule: by associated company, by deal name, and by the BD hand-matched join',
+       [r.ok,ds.map(d=>W3.isPilotBrand(d))],[true,[true,true,false,true,false]]);
+    ck('  a HubSpot Pilot Waitlist Status no longer makes a non-pilot a pilot; test brands never count',
+       [W3.isPilotBrand(ds[2]),W3.isPilotBrand(ds[4])],[false,false]);
+    W3.fetch=async()=>({ok:false,status:500,text:async()=>'boom',json:async()=>({})});
+    const ds2=[D(6,'X','Needs More Time'),D(7,'Y')];
+    const r2=await W3.markAppPilots({METABASE_API_KEY:'k'},'tok',[ds2]);
+    ck('  if the app or HubSpot cannot be read, the deals fall back to the HubSpot field',[r2.ok,ds2.map(d=>W3.isPilotBrand(d))],[false,[true,false]]);
+    ck('the hand-matched joins are read from the bundled BD page (one copy)',[Object.keys(W3.appJoinTables().co).length>10,W3.appJoinTables().deal['322993300178']],[true,['1335','1336','1337','1338']]);
+  })();
 }
 
 // ── 2. The card: two sides (2026-11-12) — brands excl. pilots | pilots ──────
@@ -140,5 +166,6 @@ ck('  and only for the Brand mode there',
 ck('  while the Brand Dashboard keeps its own',
    /const _goal=_goalTrackerHTML\(\{cur:_gm\?_gm\.regular:null,goal:GOAL_BRAND_REGULAR_DEMOS,/.test(cli),true);
 
+Promise.resolve(globalThis.__appPilotTests).then(()=>{
 console.log('\n'+pass+' passed, '+fail+' failed');
-process.exit(fail?1:0);
+process.exit(fail?1:0);});

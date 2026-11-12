@@ -976,8 +976,9 @@ var _revOutcome=null,_roSeq=0,_roFail=null;
 function _roKey(win,f,t,vf,vt){return win==='custom'?[win,f||'',t||'',vf||'',vt||''].join('|'):String(win||'mtd');}
 function _roPageKey(){var st=(typeof AP!=='undefined'&&S[AP])?S[AP]:{};return _roKey(st.win||'mtd',st.cFrom,st.cTo,st.cVsFrom,st.cVsTo);}
 // Pilot side (2026-11-12): the card has two sides instead of a pilot toggle.
-// Side 1 is the brand book EXCLUDING pilots (HubSpot, a pilot = a signed deal
-// with Pilot Waitlist Status filled in); side 2 is the pilots signed in the
+// Side 1 is the brand book EXCLUDING pilots (HubSpot deals; a pilot deal is
+// one whose brand has a paid, not-rolled-over app pilot -- worker
+// markAppPilots, the BD Tracker's rule); side 2 is the pilots signed in the
 // window, from the app (/api/revenue-outcome's `pilots`, the BD Tracker's
 // Grafana definitions).
 // Re-render whichever Revenue Outcome card is on screen. Shared by the live
