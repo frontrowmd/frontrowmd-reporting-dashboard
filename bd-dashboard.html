@@ -338,12 +338,13 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
     <a class="bd-nav-i" href="#bd-sec-churnseg" data-sec="bd-sec-churnseg" onclick="bdNavGo(event,'bd-sec-churnseg')">Segment</a>
     <a class="bd-nav-i" href="#bd-sec-churndeals" data-sec="bd-sec-churndeals" onclick="bdNavGo(event,'bd-sec-churndeals')">Churned Deals</a>
     </span>
-    <!-- The Reconciliation tab's anchors: its four HubSpot-vs-app lists, each with its row count (renderBD fills #bd-rec-nN). -->
+    <!-- The Reconciliation tab's anchors: its five HubSpot-vs-app lists, each with its row count (renderBD fills #bd-rec-nN). -->
     <span id="bd-nav-recon" style="display:none"><span class="bd-navdiv"></span>
     <a class="bd-nav-i" href="#bd-sec-rec1" data-sec="bd-sec-rec1" onclick="bdNavGo(event,'bd-sec-rec1')">HubSpot Only<span class="bd-rec-n" id="bd-rec-n1"></span></a>
     <a class="bd-nav-i" href="#bd-sec-rec2" data-sec="bd-sec-rec2" onclick="bdNavGo(event,'bd-sec-rec2')">App Only<span class="bd-rec-n" id="bd-rec-n2"></span></a>
     <a class="bd-nav-i" href="#bd-sec-rec3" data-sec="bd-sec-rec3" onclick="bdNavGo(event,'bd-sec-rec3')">Churned, Still Live<span class="bd-rec-n" id="bd-rec-n3"></span></a>
     <a class="bd-nav-i" href="#bd-sec-rec4" data-sec="bd-sec-rec4" onclick="bdNavGo(event,'bd-sec-rec4')">Active, Ended in App<span class="bd-rec-n" id="bd-rec-n4"></span></a>
+    <a class="bd-nav-i" href="#bd-sec-rec5" data-sec="bd-sec-rec5" onclick="bdNavGo(event,'bd-sec-rec5')">Price Mismatch<span class="bd-rec-n" id="bd-rec-n5"></span></a>
     </span>
     <div style="flex:1"></div>
     <button class="bd-goal-btn" id="bd-goal-btn" onclick="bdGoalOpen()" aria-haspopup="dialog" aria-expanded="false">
@@ -930,7 +931,7 @@ function _baSeries(brands,events,nowKey){
   }
   return {cur:cur,snap:snap,months:months};
 }
-// The four Reconciliation lists. Unit = brand: an app brand for 2 and 3; for 1
+// The five Reconciliation lists. Unit = brand: an app brand for 2 and 3; for 1
 // and 4, where the app may have no brand at all, the HubSpot company (or the
 // deal, when it has no company).
 //  1. Active in HubSpot (closedwon Signed/Paying), not live in the app: no app
@@ -940,8 +941,17 @@ function _baSeries(brands,events,nowKey){
 //  3. Churned in HubSpot (a churn deal and no active deal), live in the app.
 //  4. Active in HubSpot, ended in the app (discarded, or the chosen
 //     subscription expired / canceled / failed, or the pilot canceled).
+//  5. Active on BOTH sides, but the MRR differs by BD_REC_PRICE_TOL or more,
+//     or the app has no price. HubSpot MRR = every active deal of the unit (a
+//     duplicate active deal doubles it); app MRR = every active (non-pilot)
+//     brand of the unit. A unit whose live brand is a pilot is left out: its
+//     HubSpot amount is the initiation fee, not a monthly price.
 // A unit's app state is its best brand: live, then pending, ended, no
 // subscription, discarded.
+var BD_REC_PRICE_TOL=100;
+// Where the app price came from (worker bdAppPrice's note), in words.
+var BD_REC_PRICE_SRC={man:'manual price',mp:'subscription price',disp:'display price incl. usage',planp:'plan list price only'};
+function _baPriceNote(n){return String(n||'').split('; ').map(function(x){return BD_REC_PRICE_SRC[x]||x;}).join('; ');}
 var BD_BA_RANK={live:0,pending:1,ended:2,nosub:3,discarded:4,none:5};
 function _baAppStateOf(b){
   if(!b)return 'none';
@@ -986,7 +996,17 @@ function _baRecon(deals,brands,join){
       appIds:rv.map(function(x){return x.id;}).join(', ')};
     return r;
   };
-  var t1=[],t4=[],t2=[],t3=[];
+  var t1=[],t4=[],t2=[],t3=[],t5=[];
+  // R5 counts each active app brand under ONE unit. A brand two units reach
+  // (a company holding several brands, a deal on a sister company) goes to the
+  // unit a reviewed join names it in, else the one whose active deal or company
+  // is named after it, else the first.
+  var own={};
+  order.forEach(function(k){var u=units[k];if(!u.deals.some(_baIsActiveDeal))return;
+    var names=u.deals.filter(_baIsActiveDeal).map(function(d){return _baNorm(d.dealname);}).concat(u.deals.map(function(d){return _baNorm(d.companyName);}));
+    u.brands.forEach(function(b){if(!b.active)return;
+      var sc=(k.charAt(0)==='b'&&k.substring(1).split('-').indexOf(String(b.id))>=0)?2:(names.indexOf(_baNorm(b.name))>=0?1:0);
+      if(!own[b.id]||sc>own[b.id].sc)own[b.id]={k:k,sc:sc};});});
   order.forEach(function(k){
     var u=units[k];if(!u.deals.some(_baIsActiveDeal))return;
     var ad=u.deals.filter(_baIsActiveDeal)[0],an=_baNorm(ad.dealname),best=null,bs='none';
@@ -996,6 +1016,28 @@ function _baRecon(deals,brands,join){
     var nm=((best&&best.name)||ad.dealname||u.deals[0].companyName||'').replace(/\s*-\s*new deal\s*$/i,'').trim();
     if(bs==='none'||bs==='nosub'||bs==='pending')t1.push(row(nm,u.deals,best,{brands:u.brands}));
     else if(bs==='ended'||bs==='discarded')t4.push(row(nm,u.deals,best,{brands:u.brands}));
+    else if(bs==='live'){
+      var act=u.brands.filter(function(b){return b.active&&!b.discardedAt&&!_baIsTest(b);});
+      var live=act.filter(function(b){return own[b.id]&&own[b.id].k===k;});
+      if(!act.length)return;   // live only as a pilot
+      if(!live.length){        // its app brand is another unit's: this deal is a second HubSpot record for it
+        var rx=row((ad.dealname||u.deals[0].companyName||nm).replace(/\s*-\s*new deal\s*$/i,'').trim(),u.deals,null,{brands:act});rx.appStatus=_baAppLabel(act[0]);rx.appMrr=0;rx.appMrrPilot=false;rx.diff=rx.hsMrr;
+        rx.why='app brand '+act.map(function(b){return b.name;}).join(', ')+' is counted under another HubSpot deal (duplicate or sister record)';
+        if(Math.abs(rx.diff)>=BD_REC_PRICE_TOL)t5.push(rx);
+        return;
+      }
+      var r5=row(nm,u.deals,best,{brands:live}),priced=live.filter(function(b){return b.monthly!=null;});
+      r5.appMrr=priced.length?Math.round(priced.reduce(function(s,b){return s+b.monthly;},0)*100)/100:null;
+      r5.appMrrPilot=false;
+      r5.diff=Math.round((r5.hsMrr-(r5.appMrr||0))*100)/100;
+      var why=[],nAct=u.deals.filter(_baIsActiveDeal).length;
+      if(nAct>1)why.push(nAct+' active HubSpot deals');
+      if(live.length>1)why.push(live.length+' app brands');
+      live.forEach(function(b){var pn=_baPriceNote(b.priceNote)||(b.monthly==null?'no app price':'');
+        if(pn)why.push((live.length>1?b.name+': ':'')+pn);});
+      r5.why=why.join('; ');
+      if(r5.appMrr==null||priced.length<live.length||Math.abs(r5.diff)>=BD_REC_PRICE_TOL)t5.push(r5);
+    }
   });
   brands.forEach(function(b){
     if(_baIsTest(b)||_baAppStateOf(b)!=='live')return;
@@ -1010,7 +1052,8 @@ function _baRecon(deals,brands,join){
   });
   var byMrr=function(key){return function(a,b){return ((b[key]||0)-(a[key]||0))||(a.name<b.name?-1:1);};};
   t1.sort(byMrr('hsMrr'));t4.sort(byMrr('hsMrr'));t2.sort(byMrr('appMrr'));t3.sort(byMrr('appMrr'));
-  return {t1:t1,t2:t2,t3:t3,t4:t4};
+  t5.sort(function(a,b){return (Math.abs(b.diff)-Math.abs(a.diff))||(a.name<b.name?-1:1);});
+  return {t1:t1,t2:t2,t3:t3,t4:t4,t5:t5};
 }
 // Reconciliation tables: per-table sort, MRR descending by default.
 var _bdRecSort={};
@@ -1020,7 +1063,9 @@ function _bdEsc(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</
 // the header total and the default sort use.
 function _bdRecTable(t,num,title,fix,rows,mk,extraCol){
   var srt=_bdRecSort[t]||{k:mk,d:-1};
-  var val=function(r,k){var v=r[k];return v==null?'':v;};
+  var extras=extraCol?(Array.isArray(extraCol[0])?extraCol:[extraCol]):[];
+  // The difference sorts by size, either sign: a $5K gap matters as much as a -$5K one.
+  var val=function(r,k){var v=r[k];if(k==='diff'&&typeof v==='number')return Math.abs(v);return v==null?'':v;};
   var sorted=rows.slice().sort(function(a,b){var x=val(a,srt.k),y=val(b,srt.k);
     if(typeof x==='number'||typeof y==='number'){x=+x||0;y=+y||0;}else{x=String(x).toLowerCase();y=String(y).toLowerCase();}
     return (x<y?-1:x>y?1:0)*srt.d||(a.name<b.name?-1:1);});
@@ -1028,7 +1073,7 @@ function _bdRecTable(t,num,title,fix,rows,mk,extraCol){
   // Links and the app brand id sit right after Brand: they are what the tab is
   // for, and the last columns are the first to go off-screen on a narrow window.
   var cols=[['name','Brand',''],['','Links',''],['appIds','App brand id',''],['hsStatus','HubSpot status · stage',''],['hsMrr','HubSpot MRR','num']];
-  if(extraCol)cols.push(extraCol);
+  cols=cols.concat(extras);
   cols=cols.concat([['appStatus','App status',''],['appMrr','App MRR','num'],['lastReview','Last review',''],['reviews45','Reviews 45d','num']]);
   var th=cols.map(function(c){
     var ar=srt.k===c[0]?(srt.d>0?' \u25b4':' \u25be'):'';
@@ -1041,12 +1086,14 @@ function _bdRecTable(t,num,title,fix,rows,mk,extraCol){
     var tds='<td class="nm" title="'+_bdEsc(r.name)+'">'+_bdEsc(r.name)+'</td><td class="lks">'+(lk||dash)+'</td>'
       +'<td class="ids" title="'+_bdEsc(r.appIds)+'">'+(_bdEsc(r.appIds)||dash)+'</td>'
       +'<td class="wr">'+_bdEsc(r.hsStatus||'no deal')+'</td><td class="num">'+(r.hsMrr?f$(r.hsMrr):dash)+'</td>';
-    if(extraCol)tds+='<td>'+(_bdEsc(r[extraCol[0]])||dash)+'</td>';
+    extras.forEach(function(c){var v=r[c[0]];
+      tds+=c[2]==='num'?'<td class="num">'+(v==null||v===''?dash:(v>0?'+':v<0?'\u2212':'')+f$(Math.abs(v)))+'</td>'
+        :'<td class="wr">'+(_bdEsc(v)||dash)+'</td>';});
     tds+='<td class="wr">'+_bdEsc(r.appStatus)+'</td><td class="num">'+money(r.appMrr,r.appMrrPilot)+'</td><td>'+(r.lastReview||dash)+'</td>'
       +'<td class="num">'+(r.reviews45||dash)+'</td>';
     return '<tr>'+tds+'</tr>';}).join('');
   return '<section class="bd-sec" id="bd-sec-rec'+num+'"><div class="bd-sec-head"><span class="bd-sec-n">R'+num+'</span><span class="bd-sec-t">'+title+'</span>'
-    +'<span class="bd-sec-s"></span><span class="bd-rec-tot">'+rows.length+' brand'+(rows.length===1?'':'s')+' \u00b7 '+f$(tot)+' '+(mk==='hsMrr'?'HubSpot':'app')+' MRR</span></div>'
+    +'<span class="bd-sec-s"></span><span class="bd-rec-tot">'+rows.length+' brand'+(rows.length===1?'':'s')+' \u00b7 '+(mk==='diff'?(tot<0?'\u2212':'+')+f$(Math.abs(tot))+' net (HubSpot \u2212 app MRR)':f$(tot)+' '+(mk==='hsMrr'?'HubSpot':'app')+' MRR')+'</span></div>'
     +'<p class="bd-rec-fix">'+fix+'</p>'
     +'<div class="bd-rec">'+(rows.length?'<table><thead><tr>'+th+'</tr></thead><tbody>'+body+'</tbody></table>'
       :'<div style="padding:18px;text-align:center;color:var(--grey);font-size:12px">Nothing to fix \u2014 HubSpot and the app agree.</div>')+'</div></section>';
@@ -3899,7 +3946,7 @@ function renderBD(){
   // Brands where HubSpot and the app disagree, each a fix to make in one or the
   // other. Recomputed from the two payloads on every render (_baRecon).
   var hRecon='';
-  var _bdRecCounts=null;   // the four tables' row counts, for the nav anchors
+  var _bdRecCounts=null;   // the five tables' row counts, for the nav anchors
   if(_bdTab==='recon'){
     hRecon+='<div class="bd-app-band load" style="background:var(--navy);color:rgba(255,255,255,.85);border:none"><span style="font-family:var(--font-h);font-size:14px;font-weight:700;color:#fff;white-space:nowrap">HubSpot vs the app</span>'
       +'<span>One row per brand. App brand ids are plain text (there is no app admin link yet).</span></div>';
@@ -3909,7 +3956,7 @@ function renderBD(){
     if(!_ba)hRecon+=_baBand('the reconciliation lists');
     else{
       var _rc=_baRecon(deals,_ba.brands,_baJ);
-      _bdRecCounts=[_rc.t1.length,_rc.t2.length,_rc.t3.length,_rc.t4.length];
+      _bdRecCounts=[_rc.t1.length,_rc.t2.length,_rc.t3.length,_rc.t4.length,_rc.t5.length];
       hRecon+=_bdRecTable('t1',1,'Active in HubSpot, not live in the app',
         'Closed-won Signed/Paying in HubSpot, but the app has no brand, a brand with no subscription, or a sign-up never activated. <strong>Fix:</strong> set the brand up and activate it in the app, or, if it never launched or has left, move the HubSpot deal to Churned.',_rc.t1,'hsMrr');
       hRecon+=_bdRecTable('t2',2,'Live in the app, not active in HubSpot',
@@ -3918,6 +3965,8 @@ function renderBD(){
         'HubSpot has a churn deal and no active one, but the app still bills the brand. <strong>Fix:</strong> if it came back, open a new closed-won deal in HubSpot; if it left, end its app subscription.',_rc.t3,'appMrr',['hsChurn','HubSpot churn date','']);
       hRecon+=_bdRecTable('t4',4,'Active in HubSpot, ended in the app',
         'Closed-won Signed/Paying in HubSpot, but the app brand is discarded or its subscription expired, was canceled or failed (or the pilot was canceled). <strong>Fix:</strong> if the brand left, move the deal to Churned with a Pause/Churn Date; if it is still a client, restore it in the app.',_rc.t4,'hsMrr');
+      hRecon+=_bdRecTable('t5',5,'Active on both sides, MRR differs',
+        'Closed-won Signed/Paying in HubSpot AND active, paused or starting in the app, but HubSpot MRR (all the brand\u2019s active deals) and app MRR (its app subscription price, per month) are $'+BD_REC_PRICE_TOL+' or more apart, or the app has no price. Live pilots are left out. Sorted by the size of the gap. <strong>Fix:</strong> correct the HubSpot deal amount (a rolled-over pilot often still carries its initiation fee; a duplicate active deal doubles the brand) or the app subscription price, whichever is wrong.',_rc.t5,'diff',[['diff','Difference','num'],['why','Why it may differ','']]);
     }
   }
   // The Tracker's sections and the Churn and Reconciliation tabs' are built into separate buffers
@@ -3925,7 +3974,7 @@ function renderBD(){
   // each calls _bdDealsTable() only on the tab that is showing.
   // Post-render: charts + calc + attribution hover
   el.innerHTML=(_bdTab==='churn')?hChurn:(_bdTab==='recon')?hRecon:h;
-  [1,2,3,4].forEach(function(i){var c=document.getElementById('bd-rec-n'+i);if(c)c.textContent=_bdRecCounts?'('+_bdRecCounts[i-1]+')':'';});document.getElementById('fts').textContent='Updated: '+d.meta.generatedAt.split('T')[0];
+  [1,2,3,4,5].forEach(function(i){var c=document.getElementById('bd-rec-n'+i);if(c)c.textContent=_bdRecCounts?'('+_bdRecCounts[i-1]+')':'';});document.getElementById('fts').textContent='Updated: '+d.meta.generatedAt.split('T')[0];
   BD._acv=acv;          // keeps the dialog's ACV placeholder honest
   bdBindSpy();          // sections were just replaced — re-observe them
   bdBindStack();        // stacked-column hover, on whichever tab just rendered

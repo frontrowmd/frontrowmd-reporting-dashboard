@@ -162,6 +162,32 @@ ck('(4) HubSpot active, ended in the app',R.t4.map(r=>[r.name,r.appStatus]),[['E
 ck('a brand both sides call active is in none of them',['t1','t2','t3','t4'].some(t=>nm(t).indexOf('Both')>=0),false);
 ck('each row links the deal and the company',[R.t4[0].dealId,R.t4[0].companyId],['203','r23']);
 ck('the links use the HubSpot record URLs of the All Deals table',/var BD_HS_URL='https:\/\/app\.hubspot\.com\/contacts\/46815331\/record\/';/.test(bd)&&/BD_HS_URL\+'0-3\/'/.test(bd)&&/BD_HS_URL\+'0-2\/'/.test(bd),true);
+// R5. Price mismatch: active on both sides, MRR apart by BD_REC_PRICE_TOL or more, or no app price.
+const pb=[
+  ab(60,{name:'Same',hubspotCompanyId:'p60',monthly:1000}),
+  ab(61,{name:'Close',hubspotCompanyId:'p61',monthly:1050}),
+  ab(62,{name:'StaleFee',hubspotCompanyId:'p62',monthly:4000}),
+  ab(63,{name:'NoPrice',hubspotCompanyId:'p63',monthly:null,priceNote:'no price'}),
+  ab(64,{name:'Dup',hubspotCompanyId:'p64',monthly:1000}),
+  ab(65,{name:'LivePilot',hubspotCompanyId:'p65',state:'pilot',active:false,monthly:null,pilot:{status:'live',postPrice:3000}}),
+];
+const pd=[
+  deal(300,{companyId:'p60',amount:1000}),deal(301,{companyId:'p61',amount:1000}),deal(302,{companyId:'p62',amount:9000}),
+  deal(303,{companyId:'p63',amount:2500}),deal(304,{companyId:'p64',amount:1000}),deal(305,{companyId:'p64',amount:1000}),
+  deal(306,{companyId:'p65',amount:12000}),
+];
+const PM=J(C._baRecon(pd,pb,C._baJoin(pd,pb)));
+ck('(5) price mismatch: biggest gap first; within $100 and live pilots left out',PM.t5.map(r=>[r.name,r.hsMrr,r.appMrr,r.diff]),
+  [['StaleFee',9000,4000,5000],['NoPrice',2500,null,2500],['Dup',2000,1000,1000]]);
+ck('  the reason column names duplicate deals and a missing price',[PM.t5.find(r=>r.name==='Dup').why,PM.t5.find(r=>r.name==='NoPrice').why],['2 active HubSpot deals','no price']);
+ck('  a brand in R5 is in none of R1-R4',['t1','t2','t3','t4'].some(t=>PM[t].length),false);
+// One app brand reached by two units (by company and by name) counts once, under the unit named after it.
+const sb=[ab(70,{name:'Sister',hubspotCompanyId:'p70',monthly:1000,priceNote:'planp'})];
+const sd=[deal(307,{companyId:'p70',dealname:'Mother',companyName:'Mother',amount:3000}),deal(308,{companyId:'p71',dealname:'Sister',companyName:'Sister Co',amount:1200})];
+const SM=J(C._baRecon(sd,sb,C._baJoin(sd,sb)));
+ck('  a brand two units reach is counted once, under the unit named after it; the other deal shows with app MRR 0',SM.t5.map(r=>[r.name,r.hsMrr,r.appMrr,r.dealId]),[['Mother',3000,0,'307'],['Sister',1200,1000,'308']]);
+ck('  price sources read in words',SM.t5.find(r=>r.name==='Sister').why,'plan list price only');
+ck('  the tolerance is $100',/var BD_REC_PRICE_TOL=100;/.test(bd),true);
 ck('test accounts are an explicit list',/var BD_APP_TEST_BRANDS=\['FrontrowMD Demo Account','Vincent'\];/.test(bd),true);
 
 // 10. Review fixes (2026-11-11)
@@ -349,9 +375,9 @@ function pageToggleTests(){
   const err=T.run(D,{error:'Metabase 503'});
   ck('app read failed: the same, saying it did not load',[err.chartDeals.length,/did not load/.test(err.h)],[3,true]);
   // Reconciliation tab: a count on each nav anchor, and the freshness line.
-  ck('each Reconciliation anchor has a count slot',[1,2,3,4].every(i=>new RegExp('bd-sec-rec'+i+"'\\)\">[^<]+<span class=\"bd-rec-n\" id=\"bd-rec-n"+i+'"></span></a>').test(bd)),true);
-  ck('  filled as "(N)" from the four tables after each render, blank without app data',
-    /_bdRecCounts=\[_rc\.t1\.length,_rc\.t2\.length,_rc\.t3\.length,_rc\.t4\.length\];/.test(bd)&&/c\.textContent=_bdRecCounts\?'\('\+_bdRecCounts\[i-1\]\+'\)':'';/.test(bd),true);
+  ck('each Reconciliation anchor has a count slot',[1,2,3,4,5].every(i=>new RegExp('bd-sec-rec'+i+"'\\)\">[^<]+<span class=\"bd-rec-n\" id=\"bd-rec-n"+i+'"></span></a>').test(bd)),true);
+  ck('  filled as "(N)" from the five tables after each render, blank without app data',
+    /_bdRecCounts=\[_rc\.t1\.length,_rc\.t2\.length,_rc\.t3\.length,_rc\.t4\.length,_rc\.t5\.length\];/.test(bd)&&/c\.textContent=_bdRecCounts\?'\('\+_bdRecCounts\[i-1\]\+'\)':'';/.test(bd),true);
   ck('  and the tab opens with a Data freshness line',/<strong style="color:var\(--navy\)">Data freshness:<\/strong> HubSpot is live on every load; app data is /.test(bd),true);
   ck('C1/C2 keep the APP snapshot book, apart from section 02\u2019s',[ex.app['2026-10'].b,!!ex.snap['2026-10']&&ex.snap['2026-10'].b!==9],[9,true]);
 }
