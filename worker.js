@@ -3751,7 +3751,8 @@ function bdAppSql(page) {
     LISTAGG(CONCAT_WS('|', ${_bdS('s.ID')}, ${_bdS('s.STATUS')}, ${_bdS("TO_CHAR(s.START_DATE, 'YYYY-MM-DD')")},
       ${_bdS(_bdEt('s.CURRENT_PERIOD_ENDS_AT'))}, ${_bdS(_bdEt('s.UPDATED_AT'))},
       ${_bdS('s.MANUAL_PRICE_IN_CENTS')}, ${_bdS('s.MONTHLY_PRICE_IN_CENTS')}, ${_bdS('s.DISPLAY_PRICE_WITH_USAGE_IN_CENTS')},
-      ${_bdS('p.MONTHLY_PRICE_IN_CENTS')}, ${_bdS("REGEXP_REPLACE(p.NAME, '[|~]', ' ')")}, ${_bdS('p.KIND')}, ${_bdS(_bdEt('s.CREATED_AT'))}), '~')
+      ${_bdS('p.MONTHLY_PRICE_IN_CENTS')}, ${_bdS("REGEXP_REPLACE(p.NAME, '[|~]', ' ')")}, ${_bdS('p.KIND')}, ${_bdS(_bdEt('s.CREATED_AT'))},
+      ${_bdS('s.INITIAL_WEB_TRAFFIC_TIER')}), '~')
       WITHIN GROUP (ORDER BY s.CREATED_AT, s.ID) SUBS
   FROM STAGING.STG_SUBSCRIPTIONS s LEFT JOIN STAGING.STG_PLANS p ON p.ID = s.PLAN_ID
   WHERE MOD(s.HEALTH_BRAND_ID, ${BDAPP_PAGES}) = ${k} GROUP BY 1),
@@ -3802,7 +3803,8 @@ const BDAPP_SQL_PG = `WITH sb AS (
     string_agg(concat_ws('|', ${_pgS('s.id')}, ${_pgS('s.status')}, ${_pgS("to_char(s.start_date, 'YYYY-MM-DD')")},
       ${_pgS(_pgEt('s.current_period_ends_at'))}, ${_pgS(_pgEt('s.updated_at'))},
       ${_pgS('s.manual_price_in_cents')}, ${_pgS('s.monthly_price_in_cents')}, ${_pgS('s.display_price_with_usage_in_cents')},
-      ${_pgS('p.monthly_price_in_cents')}, ${_pgS("regexp_replace(p.name, '[|~]', ' ', 'g')")}, ${_pgS('p.kind')}, ${_pgS(_pgEt('s.created_at'))}), '~'
+      ${_pgS('p.monthly_price_in_cents')}, ${_pgS("regexp_replace(p.name, '[|~]', ' ', 'g')")}, ${_pgS('p.kind')}, ${_pgS(_pgEt('s.created_at'))},
+      ${_pgS('s.initial_web_traffic_tier')}), '~'
       ORDER BY s.created_at, s.id) "SUBS"
   FROM subscriptions s LEFT JOIN plans p ON p.id = s.plan_id GROUP BY 1),
 pl AS (
@@ -3829,6 +3831,8 @@ function bdAppParseSubs(s) {
     id: _bdNum(f[0]), status: f[1] || '', startDate: f[2] || '', periodEnd: f[3] || '', updatedAt: f[4] || '',
     man: _bdNum(f[5]), mp: _bdNum(f[6]), disp: _bdNum(f[7]), planp: _bdNum(f[8]),
     planName: f[9] || '', planKind: f[10] || '', createdAt: f[11] || '',
+    // The web traffic tier billed at signing (C3's Web Tier at Churn fallback).
+    webTier: f[12] || '',
   }));
 }
 function bdAppParsePilots(s) {
@@ -3973,6 +3977,9 @@ function bdAppBrand(r, today) {
     // A rolled-over pilot is a paying customer, so its brand goes back to the
     // main book (Alex, 2026-11-11). Section 02's pilot toggle reads this.
     pilotPaid: pilots.some(p => !!p.depositPaidAt && p.status !== 'rolled_over'),
+    // Web traffic tier billed at signing: the earliest subscription that has one
+    // (subs are oldest first). '' when none does.
+    webTier: (subs.find(x => x.webTier) || {}).webTier || '',
     lastReviewAt: r.LR || '', reviews45: Number(r.R45) || 0,
     endDate, endSrc, endOnBulkDay,
   };

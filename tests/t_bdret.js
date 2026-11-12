@@ -226,13 +226,29 @@ const FCTX=(()=>{const c={console};vm.createContext(c);
     decl(bd,'var BD_PROD_ORDER=','];'),
     fn(bd,'_chProdsOf'), fn(bd,'_rwTypeOf'),
     decl(bd,"var RW_PROD_NONE='","';"),
+    decl(bd,'var BD_WT_GROUPS=','];'), fn(bd,'_baWebTierGroup'), fn(bd,'_baWebTierOf'),
+    "var _baJ={byBrand:{}};",
     "var _bdRetF={type:'all',seg:'all',wt:'all',ab:'all',prod:[]};",
     decl(bd,'var _rwFilters=[','  ];'),
     fn(bd,'_rwProdMatch'), fn(bd,'_rwKept'),
-    'Object.assign(globalThis,{_rwTypeOf,_chProdsOf,_rwKept,_rwProdMatch,_bdRetF,_rwFilters,BD_PROD_ORDER,RW_PROD_NONE});',
+    'Object.assign(globalThis,{_rwTypeOf,_chProdsOf,_rwKept,_rwProdMatch,_bdRetF,_rwFilters,BD_PROD_ORDER,RW_PROD_NONE,_baWebTierGroup,_baWebTierOf,_baJ});',
   ].join('\n'),c); return c;})();
 ck('the filter predicates loaded',
-   [typeof FCTX._rwKept,FCTX._rwFilters.length],['function',3]);
+   [typeof FCTX._rwKept,FCTX._rwFilters.length],['function',4]);
+// Web Tier at Churn (2026-11-12): three spellings of the same bands, five groups.
+ck('Web Tier at Churn reads all three spellings into five groups',
+   ['0 - 10k','200 -500k','500k+','25 - 50k','0-10K monthly web visitors','100-200K monthly web visitors','Pre-launch / just launching','Very Small','N/A','10K-25K','50K-100K','',null].map(FCTX._baWebTierGroup),
+   ['0-10','200+','200+','10-50','0-10','50-200','pre','0-10','','10-50','50-200','','']);
+ck('  churned: Tier at Churn first; live: the signed tier; then other deals; then the app\u2019s billed tier',
+   [FCTX._baWebTierOf({pausechurn_date:'2026-08-01T05:00:00Z',monthly_web_traffic__reported_at_time_of_churn:'0 - 10k',average_monthly_web_traffic__cloned_:'500K+ monthly web visitors'},null),
+    FCTX._baWebTierOf({pausechurn_date:'',monthly_web_traffic__reported_at_time_of_churn:'0 - 10k',average_monthly_web_traffic__cloned_:'500K+ monthly web visitors'},null),
+    FCTX._baWebTierOf({_brand:{id:1}},{byBrand:{1:[{average_monthly_web_traffic__cloned_:'N/A'},{average_monthly_web_traffic__cloned_:'25-50K monthly web visitors'}]}}),
+    FCTX._baWebTierOf({_brand:{id:2,webTier:'100K-200K'}},{byBrand:{}}),
+    FCTX._baWebTierOf({_brand:{id:3,webTier:''}},{byBrand:{}})],
+   ['0-10','200+','10-50','50-200','']);
+ck('  and live brands are kept by a named tier (a retention cut, not time-to-churn)',
+   (FCTX._bdRetF.wt='200+',[FCTX._rwKept({average_monthly_web_traffic__cloned_:'500K+ monthly web visitors'}),FCTX._rwKept({average_monthly_web_traffic__cloned_:'0-10K monthly web visitors'})]),[true,false]);
+FCTX._bdRetF.wt='all';
 
 // Churn Type: Board Defined folds in Delinquent Payment, as everywhere else here.
 ck('every stored churn type maps to a group',
@@ -250,11 +266,11 @@ ck('the section does not call the churn-type helper declared below it',
 // largest bucket in four of the five fields.
 ck('each filter carries an explicit not-recorded option',
    FCTX._rwFilters.map(f=>f.opts.some(o=>o[0]===''&&/Not recorded/.test(o[1]))),
-   [true,true,true]);
+   [true,true,true,true]);
 ck('  and the filter keys are the ones the state object holds',
-   FCTX._rwFilters.map(f=>f.k),['type','seg','ab']);
-ck('  with the removed Web Traffic filter gone from state and rows alike',
-   /_bdRetF\.wt|monthly_web_traffic__reported_at_time_of_churn|RW_WT_OPTS/.test(SEC),false);
+   FCTX._rwFilters.map(f=>f.k),['type','seg','ab','wt']);
+ck('  with the old churn-only Web Traffic option list gone (Web Tier at Churn replaces it)',
+   /RW_WT_OPTS/.test(SEC),false);
 // Verified against the live COMPANY enum on 2026-10-21: these four and nothing
 // else, so the list is complete rather than merely plausible.
 ck('the segment options are the whole company_segment enum',
@@ -305,7 +321,7 @@ ck('  which no real product selection does',
 const TOG=(()=>{const c={console};vm.createContext(c);
   vm.runInContext([
     decl(bd,"var RW_PROD_NONE='","';"),
-    "var _bdRetF={type:'all',seg:'all',ab:'all',prod:[]};",
+    decl(bd,'var _bdRetF=','};')+';',
     'var renders=0; function renderBD(){renders++;}',
     fn(bd,'bdToggleRetFProd'), fn(bd,'bdClearRetFProd'), fn(bd,'_bdRetFActive'),
     'Object.assign(globalThis,{bdToggleRetFProd,bdClearRetFProd,_bdRetFActive,_bdRetF});',
@@ -461,8 +477,8 @@ ck('the filters render below the toggles, one per row',
      return leg>0&&rows>leg&&grid>rows;})(),true);
 ck('the products row is labelled as an intersection, not a union',
    /font-style:italic">all of<\/span>/.test(SEC)&&!/">any of<\/span>/.test(SEC),true);
-ck('  four of them: three single-selects from the loop plus products',
-   FCTX._rwFilters.length+1,4);
+ck('  five of them: four single-selects from the loop plus products',
+   FCTX._rwFilters.length+1,5);
 ck('  each row labelled on the same fixed gutter',
    (()=>{const m=SEC.match(/flex:0 0 118px/g)||[];
      return m.length===2&&/_rwFilters\.forEach\(function\(f\)\{/.test(SEC);})(),true);

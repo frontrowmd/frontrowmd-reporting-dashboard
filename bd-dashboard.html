@@ -562,7 +562,7 @@ function bdSetRetNI(m){m=(m==='incl')?'incl':'excl';if(_bdRetNI===m)return;_bdRe
 // so the two sides clear each other below rather than letting the grid reach a
 // state that is guaranteed to match nothing.
 var RW_PROD_NONE='__none';
-var _bdRetF={type:'all',seg:'all',ab:'all',prod:[]};
+var _bdRetF={type:'all',seg:'all',ab:'all',wt:'all',prod:[]};
 function bdSetRetF(k,v){if(_bdRetF[k]===v)return;_bdRetF[k]=v;renderBD();}
 function bdToggleRetFProd(v){
   var i=_bdRetF.prod.indexOf(v);
@@ -573,7 +573,7 @@ function bdToggleRetFProd(v){
 }
 function bdClearRetFProd(){if(!_bdRetF.prod.length)return;_bdRetF.prod=[];renderBD();}
 function _bdRetFActive(){
-  return _bdRetF.type!=='all'||_bdRetF.seg!=='all'||_bdRetF.ab!=='all'
+  return _bdRetF.type!=='all'||_bdRetF.seg!=='all'||_bdRetF.ab!=='all'||_bdRetF.wt!=='all'
     ||_bdRetF.prod.length>0;
 }
 // Churn Type is grouped before testing, so Delinquent Payment counts as Board
@@ -920,6 +920,37 @@ function _baIsNeverImpl(dd){
   var g=BD_CHURN_TYPE_GROUP[(dd.never_implemented_churn||'').trim()];
   if(g)return g!==BD_CHURN_BOARD;
   return !!(dd._brand&&!dd._brand.everLive);
+}
+// C3's Web Tier at Churn filter (Alex, 2026-11-12). Three tier fields spell the
+// same bands three ways -- HubSpot's churn-time field ('0 - 10k', '200 -500k'),
+// the deal's signed tier ('0-10K monthly web visitors', 'Pre-launch / just
+// launching', 'Very Small', 'N/A') and the app's billed tier ('10K-25K') -- so
+// each is squeezed (lower case, no spaces) and read into one of five groups.
+// Seven bands in eleven monthly cohorts would leave 2-5 brands a cell, so the
+// bands pair up. '' = not recorded (N/A included).
+var BD_WT_GROUPS=[['pre','Pre-launch'],['0-10','0\u201310K'],['10-50','10\u201350K'],['50-200','50\u2013200K'],['200+','200K+']];
+function _baWebTierGroup(v){
+  var t=String(v==null?'':v).toLowerCase().replace(/\s+/g,'');
+  if(!t||t==='n/a')return '';
+  if(/^pre-?launch/.test(t))return 'pre';
+  if(t==='verysmall'||/^0-10k/.test(t))return '0-10';
+  if(/^(10k?-25k|25k?-50k)/.test(t))return '10-50';
+  if(/^(50k?-100k|100k?-200k)/.test(t))return '50-200';
+  if(/^(200k?-500k|500k\+)/.test(t))return '200+';
+  return '';
+}
+// A brand's tier for that filter. Churned: its Tier at Churn first. Then the
+// deal's signed tier, then any of the brand's HubSpot deals', then the app's
+// billed tier. A live brand has no churn tier, so it reads its signed tier.
+function _baWebTierOf(dd,join){
+  if(!dd)return '';
+  var g=dd.pausechurn_date?_baWebTierGroup(dd.monthly_web_traffic__reported_at_time_of_churn):'';
+  if(!g)g=_baWebTierGroup(dd.average_monthly_web_traffic__cloned_);
+  var b=dd._brand;
+  if(!g&&b&&join){var ds=join.byBrand[b.id]||[];
+    for(var i=0;i<ds.length&&!g;i++)g=_baWebTierGroup(ds[i].average_monthly_web_traffic__cloned_);}
+  if(!g&&b)g=_baWebTierGroup(b.webTier);
+  return g;
 }
 // Section 02 on the app basis, same shape as the HubSpot version it replaces.
 //  cur  = today's Active Brands (non-pilot) by signing month: {added, addedMRR}.
@@ -3099,6 +3130,11 @@ function renderBD(){
      opts:[['Yes','Yes','A/B Test is Yes'],['No','No','A/B Test is No'],
            ['Unknown','Unknown','A/B Test is the stored value Unknown'],
            ['','Not recorded','A/B Test is blank on the deal']]},
+    // Unlike the review fields above, live brands carry this one too (their
+    // signed tier), so a named tier is still a retention cut.
+    {k:'wt',l:'Web Tier at Churn',of:function(dd){return _baWebTierOf(dd,_baJ);},
+     opts:BD_WT_GROUPS.map(function(g){return [g[0],g[1],'Churned: web traffic tier at churn, else the signed tier. Live: the signed tier (HubSpot deal, else the app\u2019s billed tier).'];})
+          .concat([['','Not recorded','No tier on the churn, the deal or the app subscription']])},
   ];
   // Products is the odd one out: a deal can hold several, so it multi-selects.
   // Selecting two means the INTERSECTION — a brand had to implement BOTH to
