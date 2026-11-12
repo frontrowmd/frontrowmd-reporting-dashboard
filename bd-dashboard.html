@@ -133,19 +133,28 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
 .bd-tsub{font-size:11px;font-weight:600;margin-top:3px;font-variant-numeric:tabular-nums}
 .bd-kpi-row{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:14px;align-items:stretch}
 .bd-kpi-row.r4{grid-template-columns:repeat(4,minmax(0,1fr));margin-top:12px}
+.bd-kpi-row.r5{grid-template-columns:repeat(5,minmax(0,1fr));margin-top:12px}
+/* Where a pilot card's number came from: live through Grafana, or last night's Metabase copy. */
+.bd-pil-src{margin-top:auto;padding-top:7px;font-size:9px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#5B6F86}
+.bd-pil-src::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;background:#94A3B8;margin-right:5px;vertical-align:1px}
+.bd-pil-src.live{color:#15803D}.bd-pil-src.live::before{background:#16A34A}
 /* Tiles align to the TOP (above), so a value sits at the same height whether or
    not its tile has a sub-line. Six dark tiles: 8-digit dollar values need a
    smaller size until the row has room (1101-1500px); 601-1100px is 3 + 3 for
-   the dark row and 2 + 2 for the pilots, so neither ends on a blank slot. */
-.bd-kpi-row:not(.r4)>.tile{padding-left:16px;padding-right:12px}
-@media(max-width:1500px) and (min-width:1101px){.bd-kpi-row:not(.r4) .tval{font-size:24px}.bd-kpi-row:not(.r4) .bd-tsub{font-size:10.5px}}
-@media(max-width:1100px){.bd-kpi-row{grid-template-columns:repeat(3,minmax(0,1fr))}.bd-kpi-row.r4{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:600px){.bd-kpi-row,.bd-kpi-row.r4{grid-template-columns:minmax(0,1fr)}}
+   the dark row and 3 + 2 for the five pilots, so neither ends on a blank slot. */
+.bd-kpi-row:not(.r4):not(.r5)>.tile{padding-left:16px;padding-right:12px}
+@media(max-width:1500px) and (min-width:1101px){.bd-kpi-row:not(.r4):not(.r5) .tval{font-size:24px}.bd-kpi-row:not(.r4):not(.r5) .bd-tsub{font-size:10.5px}}
+@media(max-width:1100px){.bd-kpi-row{grid-template-columns:repeat(3,minmax(0,1fr))}.bd-kpi-row.r4{grid-template-columns:repeat(2,minmax(0,1fr))}
+  /* Five pilot cards at 601-1100px: 3 + 2 on a 6-track grid (spans 2,2,2 then 3,3), so no lone blank slot. */
+  .bd-kpi-row.r5{grid-template-columns:repeat(6,minmax(0,1fr))}.bd-kpi-row.r5>.tile{grid-column:span 2}.bd-kpi-row.r5>.tile:nth-child(n+4){grid-column:span 3}}
+@media(max-width:600px){.bd-kpi-row,.bd-kpi-row.r4,.bd-kpi-row.r5{grid-template-columns:minmax(0,1fr)}.bd-kpi-row.r5>.tile,.bd-kpi-row.r5>.tile:nth-child(n+4){grid-column:auto}}
 /* App-data band: shown wherever a number needs /api/bd-app and it is loading or
    failed. A failed read must never render as zero brands or $0 MRR. */
 .bd-app-band{display:flex;align-items:center;gap:10px;border-radius:10px;padding:11px 15px;margin:0 0 14px;font-size:12px;line-height:1.45}
 .bd-app-band.err{background:#FEF2F2;border:1px solid #FCA5A5;color:#991B1B}
 .bd-app-band.load{background:var(--teal-8);border:1px solid var(--border);color:var(--grey)}
+/* Section 02, when the pilot toggle cannot be applied (no app read): small, not a band. */
+.bd-pil-note{display:flex;align-items:center;gap:7px;font-size:11px;color:#92400E;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:6px 11px;margin:0 0 12px}
 .bd-src{display:inline-block;font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:2px 8px;border-radius:50px;background:rgba(23,44,69,.07);color:var(--navy);margin-right:6px;vertical-align:1px}
 /* Reconciliation tables */
 .bd-rec{background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px 16px;overflow-x:auto}
@@ -165,6 +174,10 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
 .bd-rec .lk span{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:4px;background:rgba(114,164,191,.1);font-size:9px}
 .bd-rec-fix{font-size:11.5px;color:var(--grey);margin:0 0 10px;line-height:1.5}
 .bd-rec-tot{font-size:11px;color:var(--grey);font-weight:600;white-space:nowrap}
+.bd-rec-n{font-variant-numeric:tabular-nums;opacity:.7;margin-left:3px}
+.bd-rec-n:empty{display:none}
+/* The counts widen the four anchors: tighter padding keeps them on the bar at ~900px. */
+@media(max-width:1000px){#bd-nav-recon .bd-nav-i{padding:6px 8px}}
 
 @media (prefers-reduced-motion:reduce){
   .pill[onclick],.bd-nav-i,.tile,.bd-goal-btn,.bd-in{transition:none}
@@ -325,12 +338,12 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
     <a class="bd-nav-i" href="#bd-sec-churnseg" data-sec="bd-sec-churnseg" onclick="bdNavGo(event,'bd-sec-churnseg')">Segment</a>
     <a class="bd-nav-i" href="#bd-sec-churndeals" data-sec="bd-sec-churndeals" onclick="bdNavGo(event,'bd-sec-churndeals')">Churned Deals</a>
     </span>
-    <!-- The Reconciliation tab's anchors: its four HubSpot-vs-app lists. -->
+    <!-- The Reconciliation tab's anchors: its four HubSpot-vs-app lists, each with its row count (renderBD fills #bd-rec-nN). -->
     <span id="bd-nav-recon" style="display:none"><span class="bd-navdiv"></span>
-    <a class="bd-nav-i" href="#bd-sec-rec1" data-sec="bd-sec-rec1" onclick="bdNavGo(event,'bd-sec-rec1')">HubSpot Only</a>
-    <a class="bd-nav-i" href="#bd-sec-rec2" data-sec="bd-sec-rec2" onclick="bdNavGo(event,'bd-sec-rec2')">App Only</a>
-    <a class="bd-nav-i" href="#bd-sec-rec3" data-sec="bd-sec-rec3" onclick="bdNavGo(event,'bd-sec-rec3')">Churned, Still Live</a>
-    <a class="bd-nav-i" href="#bd-sec-rec4" data-sec="bd-sec-rec4" onclick="bdNavGo(event,'bd-sec-rec4')">Active, Ended in App</a>
+    <a class="bd-nav-i" href="#bd-sec-rec1" data-sec="bd-sec-rec1" onclick="bdNavGo(event,'bd-sec-rec1')">HubSpot Only<span class="bd-rec-n" id="bd-rec-n1"></span></a>
+    <a class="bd-nav-i" href="#bd-sec-rec2" data-sec="bd-sec-rec2" onclick="bdNavGo(event,'bd-sec-rec2')">App Only<span class="bd-rec-n" id="bd-rec-n2"></span></a>
+    <a class="bd-nav-i" href="#bd-sec-rec3" data-sec="bd-sec-rec3" onclick="bdNavGo(event,'bd-sec-rec3')">Churned, Still Live<span class="bd-rec-n" id="bd-rec-n3"></span></a>
+    <a class="bd-nav-i" href="#bd-sec-rec4" data-sec="bd-sec-rec4" onclick="bdNavGo(event,'bd-sec-rec4')">Active, Ended in App<span class="bd-rec-n" id="bd-rec-n4"></span></a>
     </span>
     <div style="flex:1"></div>
     <button class="bd-goal-btn" id="bd-goal-btn" onclick="bdGoalOpen()" aria-haspopup="dialog" aria-expanded="false">
@@ -867,6 +880,27 @@ function _baSurvivors(brands,join,events){
 //         add-back), exactly the HubSpot Snapshot's construction
 //         (bd-snapshot-calc). A brand that restarted on the same row is in the
 //         base from its signing month; its old churn is not added back again.
+// Section 02's pilot toggle (Alex, 2026-11-11). 'exclude' (the default) or 'only'.
+var _bdPilotMode='exclude';
+function bdSetPilotMode(m){_bdPilotMode=(m==='only')?'only':'exclude';renderBD();}
+// HubSpot deal ids that are PILOT deals, for section 02's toggle. The rule: a
+// deal is a pilot deal when any app brand it joins to (_baJoin: company id,
+// then exact name, plus the hand-matched BD_APP_JOIN_CO / BD_APP_JOIN_DEAL
+// tables) has an app pilot whose fee was PAID (worker bdAppBrand pilotPaid:
+// any pilot with a deposit_paid_at that has not rolled over). deposit_paid,
+// collecting_data, live, opted_out, and canceled after paying (DTC Brands)
+// count. A ROLLED-OVER pilot does not: the brand is a paying customer and
+// rejoins the main book (Alex, 2026-11-11). Neither does a sign-up still
+// awaiting its deposit, or a pilot canceled before paying. Internal test accounts never
+// make a deal a pilot deal.
+function _baPilotDealIds(deals,join){
+  var out={};
+  deals.forEach(function(dd){
+    var j=join.byDeal[dd.id];
+    if(j&&j.brands.some(function(b){return b.pilotPaid&&!_baIsTest(b);}))out[dd.id]=true;
+  });
+  return out;
+}
 function _baSeries(brands,events,nowKey){
   var cur={},inact=[],first=null;
   brands.forEach(function(b){
@@ -1513,7 +1547,7 @@ function renderBD(){
   // button. bdCalc() writes to #bd-calc-result by id, so its markup must never
   // come back into this grid (two copies = the visible one never moves).
   h+='<section class="bd-sec" id="bd-sec-summary">';
-  h+='<div class="bd-sec-head"><span class="bd-sec-n">01</span><span class="bd-sec-t">All Time Summary</span><span class="bd-sec-s"><span class="bd-src">App</span>Brands, MRR and pilots from the app (Metabase, refreshed nightly, so up to a day behind). Pilots are counted on their own row, not in Active Brands or MRR. Not affected by the filters below.</span></div>';
+  h+='<div class="bd-sec-head"><span class="bd-sec-n">01</span><span class="bd-sec-t">All Time Summary</span><span class="bd-sec-s"><span class="bd-src">App</span>Brands and MRR from the app (Metabase, refreshed nightly, so up to a day behind); the pilot row matches the app’s Grafana Pilot Brands board, and each card says whether it is live. Pilots are counted on their own row, not in Active Brands or MRR. Not affected by the filters below.</span></div>';
   if(!_baSum){h+=_baBand('Active Brands, MRR and the pilot figures');}
   else{
     var _s=_baSum,_p=_s.pilots;
@@ -1530,40 +1564,110 @@ function renderBD(){
     h+=_kt('bd-dark','Current MRR',f$(_s.mrr),'','App price, normalised'+(_s.noPrice?' · '+_s.noPrice+' with no price':''),
       'Each active brand’s subscription price: cents typed as dollars ×100, multi-month term totals ÷ term. Pilot plans carry no MRR.');
     h+=_kt('bd-dark','Avg ACV',f$(_s.acv),'','Current MRR ÷ Active Brands');
-    h+=_kt('bd-dark','Future ARR',f$(_s.futureMrr*12),'','Future MRR × 12','Future MRR × 12: the book if every current pilot rolls over at its post-pilot price.');
-    h+=_kt('bd-dark','Future MRR',f$(_s.futureMrr),'MRR + '+_p.n+' pilots’ post-pilot price','If every current pilot rolls over',
+    // The pilot row and Future MRR read the worker's pilotStats: the app's own
+    // Grafana "Pilot Brands" definitions (worker fetchBdPilotStats), live when
+    // the worker has a Grafana token, else last night's Metabase copy.
+    var _ps=(_ba.pilotStats&&!_ba.pilotStats.error&&_ba.pilotStats.n!=null)?_ba.pilotStats:null;
+    var _fut=_ps?_s.mrr+_ps.post:null;
+    h+=_kt('bd-dark','Future ARR',_ps?f$(_fut*12):'\u2014','','Future MRR × 12','Future MRR × 12: the book if every current pilot rolls over at its post-pilot price.');
+    h+=_kt('bd-dark','Future MRR',_ps?f$(_fut):'\u2014',_ps?'MRR + '+_ps.n+' pilots’ post-pilot price':'pilot figures unavailable','If every current pilot rolls over',
       'Current MRR plus each current pilot’s post-pilot price: the rollover price once set, else a repeating price override, else the deposit month’s default.');
     h+='</div>';
-    h+='<div class="bd-kpi-row r4">';
-    h+=_kt('bd-lnavy','Pilot Brands',_p.n.toLocaleString(),_p.deposit_paid+' deposit paid · '+_p.collecting_data+' collecting data · '+_p.live+' live','Current pilots in the app');
-    h+=_kt('bd-lnavy','Initiation Fees',f$(_p.upfront),'','Full upfront deposits incl. activation & analysis','Sum of each current pilot’s deposit invoice total (the full upfront charge, not only the fee month).');
-    h+=_kt('bd-lnavy','Post-Pilot MRR',f$(_p.post),'','What the pilots bill monthly if they all roll over');
-    h+=_kt('bd-lnavy','Awaiting Deposit',_s.awaiting.toLocaleString(),'','Pilot sign-ups with no deposit yet · not counted');
-    h+='</div>';
+    if(!_ps){
+      h+='<div class="bd-app-band err" role="alert" style="margin-top:12px"><strong>Pilot figures unavailable.</strong> <span>'
+        +_bdEsc((_ba.pilotStats&&(_ba.pilotStats.detail||_ba.pilotStats.error))||'The pilot stats did not come back')
+        +' — Pilot Brands, Pilot Live, Initiation Fees, Post-Pilot MRR and Awaiting Deposit are not shown rather than shown as zero. Refresh to retry.</span></div>';
+    }else{
+      // Every pilot card says where its number came from: live (Grafana) or
+      // last night's copy (Metabase).
+      var _psLive=_ps.source==='live';
+      var _psSrc='<div class="bd-pil-src'+(_psLive?' live':'')+'" title="'+(_psLive?'Queried live from the app database through Grafana on this load.':'Grafana was not reachable from the dashboard, so this is the Metabase copy of the app, refreshed nightly (~4:30am ET).')+'">'
+        +(_psLive?'Live \u00b7 app':'As of last night')+'</div>';
+      var _kp=function(lbl,val,sub,def,tip){
+        return '<div class="tile bd-lnavy"'+(tip?' title="'+tip+'"':'')+'><div class="tlbl">'+lbl+'</div><div class="tval">'+val+'</div>'
+          +(sub?'<div class="bd-tsub">'+sub+'</div>':'')+'<div class="tdef">'+def+'</div>'+_psSrc+'</div>';
+      };
+      // Row 2 (Alex, 2026-11-11): five cards, matching the app's Grafana
+      // "Pilot Brands" board. Pilot Live sits right after Pilot Brands.
+      h+='<div class="bd-kpi-row r5">';
+      h+=_kp('Pilot Brands',_ps.n.toLocaleString(),_ps.waiting.toLocaleString()+' waiting to start','Deposit paid, collecting data or live',
+        'Pilots whose status is deposit_paid ('+_ps.deposit_paid+'), collecting_data ('+_ps.collecting_data+') or live ('+_ps.live+'). Brands named demo/test are left out, as on the app’s Grafana board.');
+      h+=_kp('Pilot Live',_ps.live.toLocaleString(),'','Pilots running now','Pilot status live: the pilot period has started.');
+      h+=_kp('Initiation Fees',f$(_ps.netFees),'','Net of refunds, incl. activation & analysis','Every pilot fee paid (any status, canceled ones included), less refunds: the app’s “Pilot fees (net)”.');
+      h+=_kp('Post-Pilot MRR',f$(_ps.post),'','What the pilots bill monthly if they all roll over','Each counted pilot’s rollover price, else a repeating price override, else the deposit month’s default.');
+      h+=_kp('Awaiting Deposit',_ps.awaiting.toLocaleString(),'','Pilot sign-ups with no deposit yet · not counted');
+      h+='</div>';
+    }
   }
   h+='</section>';
   // Kept for the goal dialog: it reads Signed ARR, which is now the app's.
   BD._signedArr=_baSum?_baSum.arr:null;
-  // ── Section 02 series, on the app basis (_baSeries) ──
-  // Current = today's Active Brands (non-pilot) cumulated by SIGNING month
-  // (brand created_at; the subscription start dates were backfilled, see
-  // worker.js bdAppBrand). Snapshot = the book active at each month-end: the
-  // current line's own running total + every churned brand signed by then whose
-  // churn came later (bd-snapshot-calc's construction, on app brands and the
-  // app/HubSpot churn dates of _baChurn).
-  var _chartMonthMap=_baSer.cur;
+  // The APP snapshot book (_baSeries): the opening book C1 and C2 divide by.
+  // Section 02 went back to HubSpot (below), so this is kept under its own
+  // name and never mixed with the HubSpot series the charts draw.
+  var _snByMonthApp=_baSer.snap;
+  // ── Section 02 on HubSpot (Alex, 2026-11-11: reverted from the app basis) ──
+  // The pre-21a7a76 logic, unchanged, run over the deals the PILOT TOGGLE
+  // keeps. A deal is a pilot deal when its brand (via _baJoin) has any app
+  // pilot whose fee was paid (_baPilotDealIds). With no app read (loading or
+  // failed) the toggle cannot be applied, so the charts show every deal with
+  // a "pilot filter unavailable" note, rather than blanking the section.
+  var _pilIds=_ba?_baPilotDealIds(deals,_baJ):null;
+  var _pilKeep=function(dd){if(!_pilIds)return true;var p=!!_pilIds[dd.id];return _bdPilotMode==='only'?p:!p;};
+  // Charts - build monthly cumulative from active (Paying+Signed) deals only
+  var chartDeals=closedWonDeals.filter(function(dd){return (dd.brand_status==='Paying'||dd.brand_status==='Signed')&&_pilKeep(dd);});
+  var _chartMonthMap={};chartDeals.forEach(function(dd){var cd=dd.closedate;if(!cd)return;var m=cd.substring(0,7);if(!_chartMonthMap[m])_chartMonthMap[m]={added:0,addedMRR:0};_chartMonthMap[m].added++;_chartMonthMap[m].addedMRR+=dd.amount;});
   var _chartMonths=Object.keys(_chartMonthMap).sort();
   var _cumB=[],_cumA=[],_cumL=[],_cumTip=[];var rB=0,rA=0;var mN=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   for(var mi=0;mi<_chartMonths.length;mi++){var md=_chartMonthMap[_chartMonths[mi]];rB+=md.added;rA+=md.addedMRR*12;_cumB.push(rB);_cumA.push(rA);var p=_chartMonths[mi].split('-');_cumL.push(mN[parseInt(p[1])-1]+' '+p[0].substring(2));_cumTip.push(_bdMonthEndMDY(parseInt(p[0],10),parseInt(p[1],10)));}
+  // Snapshot series — "what WAS active at each month-end". Definition (validated
+  // against HubSpot: Jun 2026 = 735 brands / $15,326,664, before the pilot toggle):
+  //   snapshot(M) = the current active book signed by month-end M
+  //               + brands that were still active at M but have SINCE
+  //                 paused/churned (pause/churn date AFTER month M).
+  // The base is the SAME survivor population as the current line (Paying/Signed,
+  // cumulated by closedate), so month-over-month it equals the live Active
+  // Brands number. The add-back is any Paused/Churned/Never-Implemented deal
+  // that was signed by M and whose pause/churn date is after M. Undated churns
+  // can't be placed in time, so they're excluded. Both halves go through the
+  // same pilot toggle (_pilKeep). See bd-snapshot-calc.
   // One date parser for the page: C1 needs it from module scope, so it lives
   // there as _bdMonthOfG and this stays as the in-render alias it always was.
   function _bdMonthOf(v){return _bdMonthOfG(v);}
-  var _cumBSnap=[],_cumASnap=[],_cumLSnap=[],_cumTipSnap=[];var _snByMonth=_baSer.snap;
-  _baSer.months.forEach(function(k){
-    var q=k.split('-'),y=+q[0],mo=+q[1];
-    _cumBSnap.push(_snByMonth[k].b);_cumASnap.push(_snByMonth[k].a);
-    _cumLSnap.push(mN[mo-1]+' '+String(y).slice(-2));_cumTipSnap.push(_bdMonthEndMDY(y,mo));
+  var _INACT_STATES=['Paused','Churned','Never Implemented - Churned'];
+  // Base = the CURRENT Active Brands line itself (_chartMonthMap). Reusing it
+  // guarantees the snapshot base equals the current line month-for-month.
+  // Recomputing it separately drifted: a signing-date fallback pulled in ~17
+  // blank-closedate survivors the current line drops, overcounting.
+  var _snFirst=_chartMonths.length?_chartMonths[0]:null;
+  // Add-back pool: [signMonth s, churnMonth c, MRR m]; month M adds back s <= M < c.
+  var _snInact=[];
+  deals.forEach(function(dd){
+    if(_INACT_STATES.indexOf(dd.brand_status)<0)return;
+    if(!dd.pausechurn_date)return;
+    if(!_pilKeep(dd))return;
+    var _cm=_bdMonthOf(dd.pausechurn_date);if(!_cm)return;
+    var _sm=_bdMonthOf(dd.entered_closedwon)||_bdMonthOf(dd.createdate)||_bdMonthOf(dd.closedate)||_cm;
+    if(_sm>_cm)_sm=_cm;
+    if(!_snFirst||_sm<_snFirst)_snFirst=_sm;
+    _snInact.push({s:_sm,c:_cm,m:dd.amount});
   });
+  var _cumBSnap=[],_cumASnap=[],_cumLSnap=[],_cumTipSnap=[];var _snByMonth={};
+  if(_snFirst){
+    var _sfp=_snFirst.split('-');var _scur=new Date(parseInt(_sfp[0],10),parseInt(_sfp[1],10)-1,1);
+    var _snow=new Date();var _send=new Date(_snow.getFullYear(),_snow.getMonth(),1);
+    var _baseB=0,_baseA=0,_sGuard=0;
+    while(_scur.getTime()<=_send.getTime()&&_sGuard++<600){
+      var _smk=_scur.getFullYear()+'-'+('0'+(_scur.getMonth()+1)).slice(-2);
+      var _bm=_chartMonthMap[_smk];_baseB+=_bm?_bm.added:0;_baseA+=_bm?_bm.addedMRR:0;
+      var _addB=0,_addA=0;
+      for(var _ii=0;_ii<_snInact.length;_ii++){var _r=_snInact[_ii];if(_r.s<=_smk&&_r.c>_smk){_addB++;_addA+=_r.m;}}
+      var _tb=_baseB+_addB,_ta=(_baseA+_addA)*12;
+      _snByMonth[_smk]={b:_tb,a:_ta};
+      _cumBSnap.push(_tb);_cumASnap.push(_ta);_cumLSnap.push(mN[_scur.getMonth()]+' '+String(_scur.getFullYear()).slice(-2));_cumTipSnap.push(_bdMonthEndMDY(_scur.getFullYear(),_scur.getMonth()+1));
+      _scur.setMonth(_scur.getMonth()+1);
+    }
+  }
   // Resolve the active view for the two cumulative charts.
   var _brL=_bdChartMode==='snapshot'?_cumLSnap:_cumL;
   // These two series are MONTHLY, so the hover names the month's LAST day and says
@@ -1577,14 +1681,22 @@ function renderBD(){
     +'<span style="cursor:pointer;font-size:12px;padding:5px 16px;border-radius:50px;font-weight:700;font-family:var(--font-b);transition:all .12s ease;'+(_bdChartMode==='current'?'background:var(--navy);color:#fff;box-shadow:0 1px 3px rgba(2,15,24,.28)':'color:var(--navy)')+'" onclick="_bdChartMode=\'current\';renderBD()">Current</span>'
     +'<span style="cursor:pointer;font-size:12px;padding:5px 16px;border-radius:50px;font-weight:700;font-family:var(--font-b);transition:all .12s ease;'+(_bdChartMode==='snapshot'?'background:var(--teal);color:#fff;box-shadow:0 1px 3px rgba(2,15,24,.28)':'color:var(--navy)')+'" onclick="_bdChartMode=\'snapshot\';renderBD()">Snapshot</span>'
     +'</span>';
+  // The pilot toggle, styled like the Current/Snapshot control. Greyed out and
+  // inert while the app read is missing (the charts are then unfiltered).
+  // No pill is selected while the filter is unavailable: the charts are unfiltered then.
+  var _pilOpt=function(k,lbl){var on=!!_pilIds&&_bdPilotMode===k;
+    return '<span role="radio" aria-checked="'+on+'"'+(_pilIds?' tabindex="0" onclick="bdSetPilotMode(\''+k+'\')"':'')
+      +' style="cursor:'+(_pilIds?'pointer':'default')+';font-size:12px;padding:5px 16px;border-radius:50px;font-weight:700;font-family:var(--font-b);white-space:nowrap;transition:all .12s ease;'
+      +(on?'background:var(--navy);color:#fff;box-shadow:0 1px 3px rgba(2,15,24,.28)':'color:var(--navy)')+'">'+lbl+'</span>';};
+  var _pilSeg='<span role="radiogroup" aria-label="Pilot brands" id="bd-pilot-seg" title="Pilot deal = its brand has an app pilot whose fee was paid and that has not rolled over (waiting, live, opted out or canceled). Rolled-over brands are paying customers and count in the main book." style="display:inline-flex;align-items:center;background:rgba(23,44,69,.07);border:1.5px solid rgba(23,44,69,.16);border-radius:50px;padding:3px;gap:3px;flex-shrink:0;box-shadow:inset 0 1px 2px rgba(2,15,24,.06)'+(_pilIds?'':';opacity:.45')+'">'
+    +_pilOpt('exclude','Excluding Pilots')+_pilOpt('only','Pilots Only')+'</span>';
   // ARR by week — total new ARR (MRR×12) signed each week, keyed by the Monday
   // of the week the deal closed. Same population as Signed ARR (Paying+Signed
-  // closed-won). Gap weeks are filled with 0 so the time axis stays uniform;
-  // rendered full-width in blue to distinguish from the green cumulative chart.
+  // closed-won, through the pilot toggle). Gap weeks are filled with 0 so the
+  // time axis stays uniform; rendered full-width in blue.
   function _bdMonday(ds){var p=(ds||'').substring(0,10).split('-');if(p.length<3)return null;var dt=new Date(parseInt(p[0],10),parseInt(p[1],10)-1,parseInt(p[2],10));if(isNaN(dt.getTime()))return null;var dow=dt.getDay();dt.setDate(dt.getDate()+(dow===0?-6:1-dow));return dt;}
   function _bdWkKey(dt){return dt.getFullYear()+'-'+('0'+(dt.getMonth()+1)).slice(-2)+'-'+('0'+dt.getDate()).slice(-2);}
-  // New ARR by SIGNING week of today's Active Brands (app price x 12).
-  var _wkMap={};if(_ba)_ba.brands.forEach(function(b){if(!b.active||_baIsTest(b)||!b.signDate)return;var mo=_bdMonday(b.signDate);if(!mo)return;var k=_bdWkKey(mo);_wkMap[k]=(_wkMap[k]||0)+(b.monthly||0)*12;});
+  var _wkMap={};chartDeals.forEach(function(dd){if(!dd.closedate)return;var mo=_bdMonday(dd.closedate);if(!mo)return;var k=_bdWkKey(mo);_wkMap[k]=(_wkMap[k]||0)+dd.amount*12;});
   var _wkKeys=Object.keys(_wkMap).sort();var _wkL=[],_wkTip=[],_wkV=[],_wkTotal=0;
   if(_wkKeys.length){
     var _wfp=_wkKeys[0].split('-'),_wlp=_wkKeys[_wkKeys.length-1].split('-');
@@ -1608,31 +1720,29 @@ function renderBD(){
   var _snapMode=_bdChartMode==='snapshot';
   var _snapChartOpts=_snapMode?{dashed:true,hatch:true}:{};
   var _snCM=_snByMonth[_cmKey]||{b:0,a:0},_snLM=_snByMonth[_lmKey]||{b:0,a:0};
-  // Current mode counts APP BRANDS (created that month, live today), not
-  // HubSpot deals, so the cards say brands; the gold "Current Month Signed
-  // Deals" filter further down stays on HubSpot deals by Close Date.
-  var _miBrCurL=_snapMode?'Active — This Month':'New Brands — This Month',_miBrCurV=_snapMode?_snCM.b:_cmDeals;
-  var _miBrLmL=_snapMode?'Active — Last Month':'New Brands — Last Month',_miBrLmV=_snapMode?_snLM.b:_lmDeals;
-  var _miBrTip=_snapMode?'App brands active at that month-end, plus brands that have churned since (the Snapshot line).'
-    :'App brands created in the app that month that are live today (active, paused or starting). Pilots excluded. App basis: these are brands, not HubSpot deals \u2014 the gold Current Month Signed Deals filter below counts HubSpot deals by Close Date.';
+  var _miBrCurL=_snapMode?'Active — This Month':'Current Month Signed Deals',_miBrCurV=_snapMode?_snCM.b:_cmDeals;
+  var _miBrLmL=_snapMode?'Active — Last Month':'Last Month Signed Deals',_miBrLmV=_snapMode?_snLM.b:_lmDeals;
   var _miArCurL=_snapMode?'Active ARR — This Month':'Current Month ARR',_miArCurV=_snapMode?f$(_snCM.a):f$(_cmARR);
   var _miArLmL=_snapMode?'Active ARR — Last Month':'Last Month ARR',_miArLmV=_snapMode?f$(_snLM.a):f$(_lmARR);
   // Compact mini stat card for chart headers. col = accent (chart) color for the
   // "current month" card; pass null for the neutral "last month" card.
-  var _miniStat=function(label,val,col,tip){
+  var _miniStat=function(label,val,col){
     var box=col?('background:#fff;border:1.5px solid '+col+';'):'background:rgba(23,44,69,.04);border:1px solid rgba(23,44,69,.12);';
-    return '<div'+(tip?' title="'+tip+'"':'')+' style="'+box+'border-radius:8px;padding:4px 11px;text-align:right;line-height:1.18"><div style="font-size:7.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap">'+label+'</div><div style="font-size:15px;font-weight:700;color:'+(col||'var(--navy)')+';font-family:var(--font-h)">'+val+'</div></div>';
+    return '<div style="'+box+'border-radius:8px;padding:4px 11px;text-align:right;line-height:1.18"><div style="font-size:7.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap">'+label+'</div><div style="font-size:15px;font-weight:700;color:'+(col||'var(--navy)')+';font-family:var(--font-h)">'+val+'</div></div>';
   };
   // ═════ SECTION 2 — All Brands and ARR ═════
+  var _pilDesc=!_pilIds?'All deals':_bdPilotMode==='only'?'Pilot brands only':'Pilot brands excluded';
   h+='<section class="bd-sec" id="bd-sec-arr">';
   h+='<div class="bd-sec-head"><span class="bd-sec-n">02</span>'
     +'<span class="bd-sec-t">All Brands and ARR</span>'
-    +'<span class="bd-sec-s"><span class="bd-src">App</span>Growth over time \u2014 app brands by the month they signed up in the app, cumulative ARR at app prices, and new ARR signed per week. Pilots excluded. Snapshot adds back brands that have since churned (app end date from June 2026, HubSpot Pause/Churn Date before).</span></div>';
-  if(!_ba)h+=_baBand('the brand and ARR charts');
-  var _h02At=h.length;   // no app read: everything after the band is dropped, so no empty $0 charts
+    +'<span class="bd-sec-s"><span class="bd-src">HubSpot</span>Growth over time — brand count, cumulative ARR, and new ARR signed per week, from HubSpot closed-won deals. '+_pilDesc+'.</span>'
+    +'<span style="margin-left:auto">'+_pilSeg+'</span></div>';
+  if(!_pilIds)h+='<div class="bd-pil-note" role="status">'+(BD.app&&BD.app.error?'':'<span class="sp" style="width:11px;height:11px;border-width:2px"></span> ')
+    +'<strong>pilot filter unavailable</strong> — '+(BD.app&&BD.app.error?'the app data did not load, so':'the app data is still loading, so')
+    +' these charts show every HubSpot deal, pilots included.</div>';
   h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;min-width:0">';
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;position:relative;min-width:0;overflow:hidden;display:flex;flex-direction:column" class="chart-wrap">';
-  h+='<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px;flex-wrap:wrap"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">Active Brands <span style="font-size:11px;color:var(--grey);font-family:var(--font-b);font-weight:400">'+_brBtot+' total</span></div><div style="display:flex;gap:8px;align-items:center;flex-shrink:0">'+_cmSeg+_miniStat(_miBrCurL,_miBrCurV,'#172C45',_miBrTip)+_miniStat(_miBrLmL,_miBrLmV,null,_miBrTip)+'</div></div>';
+  h+='<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px;flex-wrap:wrap"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">Active Brands <span style="font-size:11px;color:var(--grey);font-family:var(--font-b);font-weight:400">'+_brBtot+' total</span></div><div style="display:flex;gap:8px;align-items:center;flex-shrink:0">'+_cmSeg+_miniStat(_miBrCurL,_miBrCurV,'#172C45')+_miniStat(_miBrLmL,_miBrLmV,null)+'</div></div>';
   h+=buildSVGChart(_brL,_brB,'#172C45',' brands',false,'',Object.assign({},_snapChartOpts,{tipLabels:_brTip,tipNote:'month ending'}))+'<div id="bd-brands-tip" class="float-tip"></div></div>';
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;position:relative;min-width:0;overflow:hidden;display:flex;flex-direction:column" class="chart-wrap">';
   h+='<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px;flex-wrap:wrap"><div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">Signed ARR <span style="font-size:11px;color:var(--grey);font-family:var(--font-b);font-weight:400">'+f$(_brAtot)+'</span></div><div style="display:flex;gap:8px;align-items:center;flex-shrink:0">'+_cmSeg+_miniStat(_miArCurL,_miArCurV,'#16A34A')+_miniStat(_miArLmL,_miArLmV,null)+'</div></div>';
@@ -1649,7 +1759,6 @@ function renderBD(){
   h+='</div>';
   h+=buildSVGChart(_wkL,_wkV,'#2563EB','',true,'',{w:1400,tipLabels:_wkTip,tipNote:'week beginning',aspect:true});
   h+='<div id="bd-arrweek-tip" class="float-tip"></div></div>';
-  if(!_ba)h=h.substring(0,_h02At);
   h+='</section>';
   // Shared Filtered
   // Precompute lowered search query once per render so the per-row filter
@@ -2404,7 +2513,7 @@ function renderBD(){
   // ── C1-C3 read the APP basis (Alex, 2026-11-11) ──────────────────────────
   // Churn events are _baChurn's: app end dates from BD_APP_CHURN_FROM
   // (2026-06-01), HubSpot churn deals before it, one per brand per churn. The
-  // opening book is the app Snapshot (_snByMonth, section 02). Each event is
+  // opening book is the app Snapshot (_snByMonthApp, _baSeries; section 02 itself is HubSpot again). Each event is
   // deal-shaped and carries its joined HubSpot churn deal's churn type, reason,
   // segment, A/B and products, so every filter below still works; an app churn
   // with no HubSpot deal reads as "Not recorded". Each section keeps its own
@@ -2443,7 +2552,7 @@ function renderBD(){
   // START of the period. A share of the whole book would make each quarter look
   // smaller simply for being shorter.
   var _kmPrevMonth=function(m){var q=m.split('-'),y=+q[0],mo=+q[1]-1;if(mo<1){y--;mo=12;}return y+'-'+('0'+mo).slice(-2);};
-  var _kmOpenAt=function(m){var pv=_snByMonth[_kmPrevMonth(m)];return pv?pv.b:0;};
+  var _kmOpenAt=function(m){var pv=_snByMonthApp[_kmPrevMonth(m)];return pv?pv.b:0;};
   // The rate is the MEAN OF THE MONTHLY RATES: each month's churns over that
   // month's own opening book, averaged across the months in the period. It is
   // NOT a pooled churns ÷ book — every month carries equal weight, so the
@@ -2552,7 +2661,7 @@ function renderBD(){
 
   // ── ii. Churn rate over time, split by churn type ──
   // Numerator: churns DATED into the period, of that type. Denominator: the
-  // Snapshot's active brand count at the START of the period. _snByMonth is
+  // Snapshot's active brand count at the START of the period. _snByMonthApp is
   // month-END by construction, so the previous key is the opening book.
   //
   // Built AFTER the period helpers below in source order would be cleaner, but
@@ -2562,7 +2671,7 @@ function renderBD(){
   var _chUndated=0;
   _chUndated=_baCh.undated;
   var _chPrev=function(m){var q=m.split('-'),y=+q[0],mo=+q[1]-1;if(mo<1){y--;mo=12;}return y+'-'+('0'+mo).slice(-2);};
-  var _chOpen=function(m){var p=_snByMonth[_chPrev(m)];return p?p.b:0;};
+  var _chOpen=function(m){var p=_snByMonthApp[_chPrev(m)];return p?p.b:0;};
   // ── Period bucketing, shared by the two toggled charts ──
   var _chPeriodOf=function(v,grain){
     var m=_bdMonthOf(v); if(!m)return '';
@@ -3153,7 +3262,7 @@ function renderBD(){
     t+='</tbody></table></div>';
     hChurn+=t;
   })();
-  hChurn+='<div style="font-size:10px;color:var(--grey);margin-top:14px;font-style:italic;line-height:1.6;max-width:1180px">'
+  hChurn+='<div style="font-size:10px;color:var(--grey);margin-top:14px;font-style:italic;line-height:1.6">'   // full card width (Alex, 2026-11-11): no max-width
     +'Columns are whole calendar months of tenure, Month 1 being the signing month itself; a churn dated in month M '
     +'removes the brand from M, the same end-of-month convention the Snapshot chart uses. '
     +'Cohort = signing month: the app brand\u2019s created date, which every row here carries as both its Close Date and Entered Closed-Won (for a pre-June HubSpot churn, the earlier of those and the deal\u2019s own). '
@@ -3790,13 +3899,17 @@ function renderBD(){
   // Brands where HubSpot and the app disagree, each a fix to make in one or the
   // other. Recomputed from the two payloads on every render (_baRecon).
   var hRecon='';
+  var _bdRecCounts=null;   // the four tables' row counts, for the nav anchors
   if(_bdTab==='recon'){
     hRecon+='<div class="bd-app-band load" style="background:var(--navy);color:rgba(255,255,255,.85);border:none"><span style="font-family:var(--font-h);font-size:14px;font-weight:700;color:#fff;white-space:nowrap">HubSpot vs the app</span>'
-      +'<span>One row per brand. HubSpot is live; the app is the nightly Metabase copy, so a deposit or activation from today shows up tomorrow. '
-      +'App brand ids are plain text (there is no app admin link yet).</span></div>';
+      +'<span>One row per brand. App brand ids are plain text (there is no app admin link yet).</span></div>';
+    // Data freshness, said once: the two sides of every table are not equally fresh.
+    var _recSrc=(_ba&&_ba.meta&&_ba.meta.live)?'live from the app database':'Metabase\u2019s nightly copy of the app (~4:30am ET), so a deposit or activation from today shows up tomorrow';
+    hRecon+='<p class="bd-rec-fix" id="bd-rec-fresh"><strong style="color:var(--navy)">Data freshness:</strong> HubSpot is live on every load; app data is '+_recSrc+'.</p>';
     if(!_ba)hRecon+=_baBand('the reconciliation lists');
     else{
       var _rc=_baRecon(deals,_ba.brands,_baJ);
+      _bdRecCounts=[_rc.t1.length,_rc.t2.length,_rc.t3.length,_rc.t4.length];
       hRecon+=_bdRecTable('t1',1,'Active in HubSpot, not live in the app',
         'Closed-won Signed/Paying in HubSpot, but the app has no brand, a brand with no subscription, or a sign-up never activated. <strong>Fix:</strong> set the brand up and activate it in the app, or, if it never launched or has left, move the HubSpot deal to Churned.',_rc.t1,'hsMrr');
       hRecon+=_bdRecTable('t2',2,'Live in the app, not active in HubSpot',
@@ -3811,7 +3924,8 @@ function renderBD(){
   // and only one is written. The deals TABLE is the expensive part of either, so
   // each calls _bdDealsTable() only on the tab that is showing.
   // Post-render: charts + calc + attribution hover
-  el.innerHTML=(_bdTab==='churn')?hChurn:(_bdTab==='recon')?hRecon:h;document.getElementById('fts').textContent='Updated: '+d.meta.generatedAt.split('T')[0];
+  el.innerHTML=(_bdTab==='churn')?hChurn:(_bdTab==='recon')?hRecon:h;
+  [1,2,3,4].forEach(function(i){var c=document.getElementById('bd-rec-n'+i);if(c)c.textContent=_bdRecCounts?'('+_bdRecCounts[i-1]+')':'';});document.getElementById('fts').textContent='Updated: '+d.meta.generatedAt.split('T')[0];
   BD._acv=acv;          // keeps the dialog's ACV placeholder honest
   bdBindSpy();          // sections were just replaced — re-observe them
   bdBindStack();        // stacked-column hover, on whichever tab just rendered

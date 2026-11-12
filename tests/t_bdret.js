@@ -637,12 +637,12 @@ ck('  while the tenure columns are left unsized so they stretch',
    /join\('<col>'\)/.test(bd)&&!/join\('<col style="width:/.test(bd),true);
 ck('  with a cap so they do not stretch to absurdity',
    ctx.RW_W_CELL_MAX>ctx.RW_W_CELL&&ctx.RW_W_CELL_MAX<=140,true);
-// The grid fills the section; only the prose is capped. A grid at 2000px is
-// fine, a 2000px line of 10px italic text is not.
+// The grid fills the section. The footnote USED to be capped at 1180px; Alex
+// asked for it full width (2026-11-11), so it now spans the card too.
 ck('  and the grid is no longer capped, so it fills the section',
    /max-width:'\+\(RW_W_LBL\+RW_W_N\+RW_W_CELL_MAX/.test(SEC),false);
-ck('  while the footnote keeps a readable measure of its own',
-   /font-style:italic;line-height:1\.6;max-width:\d+px/.test(SEC),true);
+ck('  and so is the footnote below it (full card width, Alex 2026-11-11)',
+   [/font-style:italic;line-height:1\.6"/.test(SEC),/font-style:italic;line-height:1\.6;max-width:\d+px/.test(SEC)],[true,false]);
 ck('  and the table itself is full-width',/\.rwtbl\{[^}]*width:100%/.test(bd),true);
 ck('  leaving no hard-coded pixel widths in the colgroup',
    /<col style="width:(78|58|42)px">/.test(bd),false);

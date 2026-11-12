@@ -257,10 +257,11 @@ ck('the hover is re-bound on every render', /bdBindStack\(\);/.test(bd), true);
   ck('and Other is none of them', reasonPal.map(h=>h.toLowerCase()).indexOf(otherC.toLowerCase()), -1);
 }
 
-// ── Opening book: _snByMonth is month-END, so "start of month" is the
+// ── Opening book: _snByMonthApp (the app snapshot, kept apart from section 02's
+// HubSpot _snByMonth since 2026-11-11) is month-END, so "start of month" is the
 // PREVIOUS key. Off by one here and every rate is wrong by a month.
 ck('the monthly denominator is the previous month’s close',
-   /var _chOpen=function\(m\)\{var p=_snByMonth\[_chPrev\(m\)\];return p\?p\.b:0;\};/.test(bd), true);
+   /var _chOpen=function\(m\)\{var p=_snByMonthApp\[_chPrev\(m\)\];return p\?p\.b:0;\};/.test(bd), true);
 ck('and a quarter opens on the month before its first',
    /return _chOpen\(a\[0\]\+'-'\+\('0'\+\(\(\+a\[1\]-1\)\*3\+1\)\)\.slice\(-2\)\);/.test(bd), true);
 // Counted once, at the top of the page, and reused — not recounted per section.

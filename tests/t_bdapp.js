@@ -12,7 +12,8 @@ const J=(x)=>JSON.parse(JSON.stringify(x));
 // ── Worker side ──
 const W={console:{log(){},warn(){},error(){}}};vm.createContext(W);
 vm.runInContext(src.slice(0,src.indexOf('\nexport default'))
-  +'\nObject.assign(globalThis,{bdAppPrice,bdAppTermMonths,bdAppChooseSub,bdAppPilotPost,bdAppBrand,bdAppBuild,bdAppSql,bdAppAssocSql,fetchBdApp,MB_NEEDED_TABLES,BDAPP_BULK_DAYS,BDAPP_BACKFILL_DAYS});',W);
+  +'\nObject.assign(globalThis,{bdAppPrice,bdAppTermMonths,bdAppChooseSub,bdAppPilotPost,bdAppBrand,bdAppBuild,bdAppSql,bdAppAssocSql,fetchBdApp,MB_NEEDED_TABLES,BDAPP_BULK_DAYS,BDAPP_BACKFILL_DAYS,'
+  +'fetchBdPilotStats,bdPilotStatsOf,grafanaFrameRows,GRAFANA_URL,GRAFANA_APP_DS,BD_PILOT_SQL_PG,BD_PILOT_SQL_SF});',W);
 const P=(o)=>W.bdAppPrice(Object.assign({man:null,mp:null,disp:null,planp:null,planName:'Hero',planKind:'usage'},o)).monthly;
 
 // 1. Price normalisation
@@ -237,6 +238,124 @@ ck('  a live brand with only a backfilled row after its churn survives from that
 ck('/api/bd-app is guarded like /api/bd',/url\.pathname === '\/api\/bd-app'\) \{\s*try \{ await request\.json\(\); \} catch \{ return jr\(\{ error: 'Invalid JSON' \}, 400\); \}\s*if \(!\(await authed\(\)\)\) return jr\(\{ error: 'Unauthorized' \}, 401\);/.test(src),true);
 ck('  and turns a failure into {error} with a 502',/catch \(err\) \{ console\.error\('BD app endpoint error:', err\); return jr\(\{ error: 'App data unavailable'/.test(src),true);
 
+// 11. Pilot stats (Alex, 2026-11-11): the app's Grafana "Pilot Brands" board.
+async function pilotTests(){
+  const TOKEN='glsa_FAKE_token_123';
+  const okResp=(j)=>({ok:true,status:200,json:async()=>j,text:async()=>''});
+  // Grafana's columnar frame for the aggregate row (live values of 2026-11-11).
+  const frame={results:{A:{frames:[{schema:{fields:[{name:'deposit_paid'},{name:'collecting_data'},{name:'live'},{name:'awaiting'},{name:'net_fee_cents'},{name:'post_cents'}]},
+    data:{values:[[24],[53],[6],[55],[33260600],[25965000]]}}]}}};
+  const mbRow={status:'completed',data:{cols:['DEPOSIT_PAID','COLLECTING_DATA','LIVE','AWAITING','NET_FEE_CENTS','POST_CENTS'].map(n=>({name:n})),rows:[[25,49,4,53,31123900,24415000]]}};
+  let calls=[];
+  W.fetch=async(u,i)=>{calls.push({u,i});return /grafana/.test(u)?okResp(frame):okResp(mbRow);};
+  const live=await W.fetchBdPilotStats({GRAFANA_TOKEN:TOKEN,METABASE_API_KEY:'k'});
+  const g=calls[0],body=JSON.parse(g.i.body);
+  ck('token set: one call, to Grafana\u2019s /api/ds/query, POST',[calls.length,g.u,g.i.method],[1,'https://grafana.app.thefrontrowhealth.com/api/ds/query','POST']);
+  ck('  with the bearer token and the app datasource uid',[g.i.headers.Authorization,body.queries[0].datasource.uid],['Bearer '+TOKEN,'ed1e5e96-111d-4ed9-878b-c4a9be763751']);
+  ck('  and the request shape Grafana takes',[body.queries.length,body.queries[0].refId,body.queries[0].format,body.from,body.to,body.queries[0].rawSql===W.BD_PILOT_SQL_PG],[1,'A','table','now-1h','now',true]);
+  ck('the frame parses: 83 pilots = 77 waiting + 6 live',[live.source,live.n,live.waiting,live.live,live.deposit_paid,live.collecting_data],['live',83,77,6,24,53]);
+  ck('  net fees $332,606, awaiting 55, post-pilot $259,650',[live.netFees,live.awaiting,live.post],[332606,55,259650]);
+  ck('the token is nowhere in the result',JSON.stringify(live).indexOf(TOKEN),-1);
+  ck('grafanaFrameRows turns columns into rows',J(W.grafanaFrameRows({results:{A:{frames:[{schema:{fields:[{name:'a'},{name:'b'}]},data:{values:[[1,2],['x','y']]}}]}}})),[{a:1,b:'x'},{a:2,b:'y'}]);
+  let fe='';try{W.grafanaFrameRows({results:{A:{error:'db error'}}});}catch(e){fe=e.message;}
+  ck('  a query error in the frame throws',/db error/.test(fe),true);
+  // Grafana down: falls back to the Metabase copy, labelled nightly.
+  calls=[];let drained=0;
+  W.fetch=async(u,i)=>{calls.push({u,i});return /grafana/.test(u)?{ok:false,status:503,body:{cancel(){drained++;}},bodyUsed:false,json:async()=>({}),text:async()=>''}:okResp(mbRow);};
+  const fb=await W.fetchBdPilotStats({GRAFANA_TOKEN:TOKEN,METABASE_API_KEY:'k'});
+  ck('a Grafana failure falls back to Metabase, source nightly',[calls.length,/metabase/.test(calls[1].u),fb.source,fb.n,fb.netFees],[2,true,'nightly',78,311239]);
+  ck('  the failed body is drained, the reason kept, and no token in it',[drained,/503/.test(fb.liveError),JSON.stringify(fb).indexOf(TOKEN)],[1,true,-1]);
+  W.fetch=async(u,i)=>{if(/grafana/.test(u))throw new Error('connect failed for '+TOKEN);return okResp(mbRow);};
+  const fb2=await W.fetchBdPilotStats({GRAFANA_TOKEN:TOKEN,METABASE_API_KEY:'k'});
+  ck('  an error that echoes the token is scrubbed before it is kept',[fb2.source,JSON.stringify(fb2).indexOf(TOKEN),/\[token\]/.test(fb2.liveError)],['nightly',-1,true]);
+  calls=[];W.fetch=async(u,i)=>{calls.push(u);return okResp(mbRow);};
+  const nt=await W.fetchBdPilotStats({METABASE_API_KEY:'k'});
+  ck('no token: straight to Metabase, nightly, never Grafana',[calls.every(u=>!/grafana/.test(u)),nt.source,nt.liveError],[true,'nightly',undefined]);
+  ck('the Metabase query reads the same view\u2019s copy',/MARTS\.FCT_PILOT_PROGRESS/.test(W.BD_PILOT_SQL_SF)&&/STAGING\.STG_PILOTS/.test(W.BD_PILOT_SQL_SF),true);
+  // Definitions, the same on both paths.
+  const both=[W.BD_PILOT_SQL_PG,W.BD_PILOT_SQL_SF];
+  ck('demo/test brand names are left out on both paths',[/brand_name !~\* '\(demo\|test\)'/.test(both[0]),/REGEXP_LIKE\(v\.BRAND_NAME, '\.\*\(demo\|test\)\.\*', 'is'\)/.test(both[1])],[true,true]);
+  ck('fees: paid fee less refunds over ALL statuses (no status filter on that sum)',
+    [/sum\(v\.pilot_fee_total_in_cents - COALESCE\(v\.refunded_in_cents, 0\)\) FILTER \(WHERE v\.pilot_fee_paid_at IS NOT NULL\)/.test(both[0]),
+     /IFF\(v\.PILOT_FEE_PAID_AT IS NOT NULL, v\.PILOT_FEE_TOTAL_IN_CENTS - COALESCE\(v\.REFUNDED_IN_CENTS, 0\), NULL\)/.test(both[1])],[true,true]);
+  ck('post-pilot price: rollover, else a repeating override, else the deposit-month default, over the counted pilots',
+    both.every(q=>/ROLLOVER_PRICE_IN_CENTS, 0\)/i.test(q)&&/NEXT_PRICE_OVERRIDE_REPEATS/i.test(q)&&/DEPOSIT_MONTH_DEFAULT_IN_CENTS, 0\)/i.test(q)&&/'deposit_paid','collecting_data','live'/.test(q)),true);
+  ck('awaiting = awaiting_submit',both.every(q=>/= 'awaiting_submit'/i.test(q)),true);
+  ck('the stats map keys of either case',J(W.bdPilotStatsOf({DEPOSIT_PAID:1,COLLECTING_DATA:2,LIVE:3,AWAITING:4,NET_FEE_CENTS:150,POST_CENTS:250},'nightly')).n,6);
+  let me='';try{W.bdPilotStatsOf({},'live');}catch(e){me=e.message;}
+  ck('  a missing column is an error, not a zero',/no deposit_paid/.test(me),true);
+  ck('URL and datasource are constants, the token is an optional env secret',
+    [W.GRAFANA_URL,W.GRAFANA_APP_DS,/if \(env && env\.GRAFANA_TOKEN\)/.test(src)],['https://grafana.app.thefrontrowhealth.com','ed1e5e96-111d-4ed9-878b-c4a9be763751',true]);
+  ck('the token is never logged',/console\.[a-z]+\([^)]*GRAFANA_TOKEN/.test(src),false);
+  // The pilot stats ride on /api/bd-app without taking the book down.
+  W.fetch=async(u,i)=>{const q=JSON.parse(i.body).native.query;
+    if(/FCT_PILOT_PROGRESS/.test(q))return okResp({status:'failed',error:'pilot view missing'});
+    return okResp(/STG_HUBSPOT_DEAL_COMPANIES/.test(q)?{status:'completed',data:{cols:[{name:'HC'},{name:'DEALS'}],rows:[]}}
+      :{status:'completed',data:{cols:[{name:'ID'},{name:'NM'},{name:'CR'}],rows:[[1,'x','2026-01-01']]}});};
+  const bk=await W.fetchBdApp({METABASE_API_KEY:'k'});
+  ck('a pilot-stats failure leaves the brand book intact and says so',[bk.brands.length,bk.pilotStats.error],[4,'Pilot stats unavailable']);
+  ck('the page shows a band, not zeros, when the pilot stats are missing',/if\(!_ps\)\{\s*h\+='<div class="bd-app-band err"/.test(bd),true);
+  ck('each pilot card prints its source',/_psLive\?'Live \\u00b7 app':'As of last night'/.test(bd)&&/\+_psSrc\+'<\/div>'/.test(bd),true);
+  // Worker: the brand's pilotPaid flag the toggle reads.
+  const PB=W.bdAppBuild([
+    row(60,{PILOTS:'601|canceled|2026-09-01|300000|||0|250000'}),        // canceled AFTER paying (DTC Brands)
+    row(61,{PILOTS:'611|canceled|||||0|250000'}),                         // canceled before paying
+    row(62,{PILOTS:'621|rolled_over|2026-05-01|300000|400000||0|250000'}),
+    row(63,{PILOTS:'631|awaiting_submit|||||0|150000'}),
+  ],'2026-11-11',[]);
+  ck('pilotPaid: a paid pilot that has not rolled over; a rolled-over brand rejoins the main book',PB.map(b=>b.pilotPaid),[true,false,false,false]);
+}
+
+// 12. Section 02 on HubSpot with the pilot toggle: run the shipped block.
+function pageToggleTests(){
+  const a=bd.indexOf('  // Kept for the goal dialog');
+  const b=bd.indexOf("h+='</section>';",bd.indexOf("id=\"bd-sec-arr\""))+"h+='</section>';".length;
+  const block=bd.slice(a,b);
+  const T={console};vm.createContext(T);
+  vm.runInContext([fn(bd,'_bdMonthOfG'),fn(bd,'_bdMDY'),fn(bd,'_bdMonthEndMDY'),fn(bd,'_baPilotDealIds'),fn(bd,'_baIsTest'),
+    decl(bd,'var BD_APP_TEST_BRANDS=',';'),decl(bd,"var _bdPilotMode=",';'),
+    'function f$(v){return "$"+Math.round(v);}','function buildSVGChart(l,v){return "<svg data-n=\\""+v.length+"\\"></svg>";}',
+    'var _bdChartMode="current";',
+    'function run(deals,app){var BD={app:app};var _ba=(app&&!app.error)?app:null;var _baSum=null;var _baSer={snap:{"2026-10":{b:9,a:9}}};'
+      +'var closedWonDeals=deals.filter(function(dd){return dd.dealstage==="closedwon";});var h="";'
+      +'var _baJ={byDeal:{}};if(_ba)deals.forEach(function(dd){_baJ.byDeal[dd.id]={brands:(_ba.map[dd.id]||[])};});'
+      +block+'\nreturn {chartDeals:chartDeals.map(function(d){return d.id;}),snap:_snByMonth,app:_snByMonthApp,wk:_wkTotal,h:h,cur:_chartMonthMap};}'].join('\n'),T);
+  ck('the toggle defaults to Excluding Pilots',T._bdPilotMode,'exclude');
+  const pb={id:1,name:'P',pilotPaid:true},nb={id:2,name:'N',pilotPaid:false},tb={id:3,name:'Vincent',pilotPaid:true};
+  const D=[
+    deal(1,{closedate:'2026-09-03T04:00:00Z',amount:1000}),               // pilot brand
+    deal(2,{closedate:'2026-09-10T04:00:00Z',amount:2000}),               // regular brand
+    deal(3,{closedate:'2026-10-02T04:00:00Z',amount:500,brand_status:'Paying'}), // test account with a paid pilot: never a pilot deal
+    deal(4,{dealstage:'3453925110',brand_status:'Churned',entered_closedwon:'2026-08-01T04:00:00Z',pausechurn_date:'2026-10-15T04:00:00Z',amount:700}), // churned pilot
+    deal(5,{brand_status:'Paused',closedate:'2026-08-01T04:00:00Z',amount:9}),  // Paused: never in the current line
+  ];
+  const app={brands:[pb,nb,tb],map:{'1':[pb],'2':[nb],'3':[tb],'4':[pb],'5':[nb]}};
+  const ex=T.run(D,app);
+  ck('Excluding Pilots: the HubSpot Paying/Signed deals that are not pilot deals',ex.chartDeals,['2','3']);
+  ck('  the HubSpot series is back: months by closedate, amount x 12',[ex.cur['2026-09'].added,ex.cur['2026-09'].addedMRR,ex.cur['2026-10'].added],[1,2000,1]);
+  ck('  and its snapshot add-back skips the churned pilot too',ex.snap['2026-09'].b,1);
+  ck('  ARR by Week follows the toggle',ex.wk,(2000+500)*12);
+  ck('  mini cards carry the original labels',/Current Month Signed Deals/.test(ex.h)&&/Last Month Signed Deals/.test(ex.h)&&!/New Brands/.test(ex.h),true);
+  ck('  the section says HubSpot',/<span class="bd-src">HubSpot<\/span>/.test(ex.h),true);
+  T._bdPilotMode='only';
+  const on=T.run(D,app);
+  ck('Pilots Only: just the pilot deals',on.chartDeals,['1']);
+  ck('  and the snapshot adds back the churned pilot while it was live',[on.snap['2026-09'].b,on.snap['2026-10'].b],[2,1]);
+  ck('  the toggle shows Pilots Only selected',/aria-checked="true"[^>]*>Pilots Only/.test(on.h),true);
+  T._bdPilotMode='exclude';
+  const none=T.run(D,null);
+  ck('no app data yet: every HubSpot deal, unfiltered, never blank',none.chartDeals,['1','2','3']);
+  ck('  with the small "pilot filter unavailable" note and an inert toggle',/pilot filter unavailable/.test(none.h)&&/still loading/.test(none.h)&&!/onclick="bdSetPilotMode/.test(none.h),true);
+  const err=T.run(D,{error:'Metabase 503'});
+  ck('app read failed: the same, saying it did not load',[err.chartDeals.length,/did not load/.test(err.h)],[3,true]);
+  // Reconciliation tab: a count on each nav anchor, and the freshness line.
+  ck('each Reconciliation anchor has a count slot',[1,2,3,4].every(i=>new RegExp('bd-sec-rec'+i+"'\\)\">[^<]+<span class=\"bd-rec-n\" id=\"bd-rec-n"+i+'"></span></a>').test(bd)),true);
+  ck('  filled as "(N)" from the four tables after each render, blank without app data',
+    /_bdRecCounts=\[_rc\.t1\.length,_rc\.t2\.length,_rc\.t3\.length,_rc\.t4\.length\];/.test(bd)&&/c\.textContent=_bdRecCounts\?'\('\+_bdRecCounts\[i-1\]\+'\)':'';/.test(bd),true);
+  ck('  and the tab opens with a Data freshness line',/<strong style="color:var\(--navy\)">Data freshness:<\/strong> HubSpot is live on every load; app data is /.test(bd),true);
+  ck('C1/C2 keep the APP snapshot book, apart from section 02\u2019s',[ex.app['2026-10'].b,!!ex.snap['2026-10']&&ex.snap['2026-10'].b!==9],[9,true]);
+}
+
 // 9. A Metabase failure is an error, never zeros
 (async()=>{
   const env={METABASE_API_KEY:'k'};
@@ -253,11 +372,15 @@ ck('  and turns a failure into {error} with a 502',/catch \(err\) \{ console\.er
   const ok=await W.fetchBdApp(env);
   ck('a good read returns every page\u2019s brands',ok.brands.length,4);
   ck('the page keeps an error as an error',/BD\.app=\(d&&!d\.error&&d\.brands&&d\.brands\.length\)\?d:\{error:/.test(bd),true);
-  ck('  and shows a band, not numbers, while _ba is missing',/if\(!_baSum\)\{h\+=_baBand\(/.test(bd)&&/if\(!_ba\)h\+=_baBand\('the brand and ARR charts'\)/.test(bd)&&/if\(!_ba\)hRecon\+=_baBand\(/.test(bd)&&/if\(!_ba\)hChurn=hChurn\.substring\(0,_hChurnAppAt\)/.test(bd),true);
+  ck('  and shows a band, not numbers, while _ba is missing',/if\(!_baSum\)\{h\+=_baBand\(/.test(bd)&&/if\(!_ba\)hRecon\+=_baBand\(/.test(bd)&&/if\(!_ba\)hChurn=hChurn\.substring\(0,_hChurnAppAt\)/.test(bd),true);
   ck('both reads start together, and Refresh repeats both',/function doLogin\(\)\{\n  bdFetchApp\(\);/.test(bd)&&/bdFetchApp\(\);    \/\/ and the app brand book, in parallel/.test(bd),true);
   // Summary row order and Future ARR (Alex, 2026-11-11).
   ck('row 1: Active Brands, Current ARR, Current MRR, Avg ACV, Future ARR, Future MRR',[...bd.matchAll(/_kt\('bd-dark','([^']+)'/g)].map(m=>m[1]),['Active Brands','Current ARR','Current MRR','Avg ACV','Future ARR','Future MRR']);
-  ck('row 2: Pilot Brands, Initiation Fees, Post-Pilot MRR, Awaiting Deposit',[...bd.matchAll(/_kt\('bd-lnavy','([^']+)'/g)].map(m=>m[1]),['Pilot Brands','Initiation Fees','Post-Pilot MRR','Awaiting Deposit']);
-  ck('Future ARR = Future MRR x 12',/_kt\('bd-dark','Future ARR',f\$\(_s\.futureMrr\*12\)/.test(bd),true);
+  ck('row 2: five cards, Pilot Live right after Pilot Brands',[...bd.matchAll(/_kp\('([^']+)'/g)].map(m=>m[1]),['Pilot Brands','Pilot Live','Initiation Fees','Post-Pilot MRR','Awaiting Deposit']);
+  ck('Future ARR = Future MRR x 12, Future MRR = app MRR + the counted pilots’ post-pilot price',
+    /var _fut=_ps\?_s\.mrr\+_ps\.post:null;/.test(bd)&&/_kt\('bd-dark','Future ARR',_ps\?f\$\(_fut\*12\)/.test(bd),true);
+  await pilotTests();
+  pageToggleTests();
+  ck('no pilot pill reads selected while the filter is unavailable',/var _pilOpt=function\(k,lbl\)\{var on=!!_pilIds&&_bdPilotMode===k;/.test(bd),true);
   console.log('\n'+pass+' passed, '+fail+' failed');process.exit(fail?1:0);
 })();

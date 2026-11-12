@@ -3934,6 +3934,11 @@ function bdAppBrand(r, today) {
     subHist: nonPilot.map(s => ({ start: s.startDate, created: s.createdAt, status: s.status, bf: !!BDAPP_BACKFILL_DAYS[s.createdAt] })),
     pilot: pil ? { status: pil.status, depositPaidAt: pil.depositPaidAt, depositTotal: pil.depositTotal != null ? pil.depositTotal / 100 : null,
       postPrice: post.price, postSrc: post.src, current: BDAPP_PILOT_CURRENT.includes(pil.status) } : null,
+    // Any pilot of this brand whose fee was PAID and that has NOT rolled over
+    // (deposit_paid, collecting_data, live, opted_out, or canceled after paying).
+    // A rolled-over pilot is a paying customer, so its brand goes back to the
+    // main book (Alex, 2026-11-11). Section 02's pilot toggle reads this.
+    pilotPaid: pilots.some(p => !!p.depositPaidAt && p.status !== 'rolled_over'),
     lastReviewAt: r.LR || '', reviews45: Number(r.R45) || 0,
     endDate, endSrc, endOnBulkDay,
   };
@@ -3945,8 +3950,106 @@ function bdAppBuild(rows, today, assoc) {
   for (const a of assoc || []) if (a.HC) byHc[String(a.HC)] = String(a.DEALS || '').split(',').filter(Boolean);
   return (rows || []).map(r => Object.assign(bdAppBrand(r, today), { hsDeals: (r.HC && byHc[String(r.HC)]) || [] }));
 }
+// ── BD Tracker: pilot stats, matching the app's Grafana "Pilot Brands" board ──
+// Alex, 2026-11-11: the pilot row must equal the app's own Grafana dashboard
+// (uid pilot-brands-production). That board reads the Postgres view
+// pilot_progress and leaves out brands whose name matches ~* '(demo|test)'.
+// Definitions, kept identical on both paths below:
+//  * Pilot Brands     = pilot_status IN (deposit_paid, collecting_data, live),
+//                       split as Grafana does: "Waiting to start" (deposit_paid
+//                       + collecting_data) and "Pilot Live" (live).
+//  * Initiation Fees  = SUM(pilot_fee_total - refunded) over pilots whose fee was
+//                       paid, ALL statuses (Grafana's "Pilot fees (net)"). A NULL
+//                       refund reads as 0 (Grafana's panel would drop that fee;
+//                       none is NULL today, so the totals agree).
+//  * Awaiting Deposit = pilot_status 'awaiting_submit'.
+//  * Post-Pilot MRR   = over the counted pilots: the rollover price, else a
+//                       REPEATING next-price override, else the deposit month's
+//                       default (bdAppPilotPost's rule; a 0 counts as unset).
+// Source: LIVE through Grafana's query API when the GRAFANA_TOKEN secret is set
+// (a service-account token; optional, never logged or returned), else the
+// Metabase/Snowflake copy of the same view (MARTS.FCT_PILOT_PROGRESS + STG_PILOTS),
+// which is last night's. A Grafana failure falls back to Metabase. The payload
+// says which ('live' / 'nightly') and the page prints it on the cards.
+const GRAFANA_URL = 'https://grafana.app.thefrontrowhealth.com';
+const GRAFANA_APP_DS = 'ed1e5e96-111d-4ed9-878b-c4a9be763751';   // the app's production Postgres
+const BD_PILOT_CURRENT_SQL = `'deposit_paid','collecting_data','live'`;
+const BD_PILOT_SQL_PG = `SELECT
+  count(*) FILTER (WHERE v.pilot_status = 'deposit_paid') AS deposit_paid,
+  count(*) FILTER (WHERE v.pilot_status = 'collecting_data') AS collecting_data,
+  count(*) FILTER (WHERE v.pilot_status = 'live') AS live,
+  count(*) FILTER (WHERE v.pilot_status = 'awaiting_submit') AS awaiting,
+  COALESCE(sum(v.pilot_fee_total_in_cents - COALESCE(v.refunded_in_cents, 0)) FILTER (WHERE v.pilot_fee_paid_at IS NOT NULL), 0) AS net_fee_cents,
+  COALESCE(sum(COALESCE(NULLIF(p.rollover_price_in_cents, 0),
+    CASE WHEN p.next_price_override_repeats THEN NULLIF(p.next_price_override_in_cents, 0) END,
+    NULLIF(p.deposit_month_default_in_cents, 0), 0)) FILTER (WHERE v.pilot_status IN (${BD_PILOT_CURRENT_SQL})), 0) AS post_cents
+FROM pilot_progress v LEFT JOIN pilots p ON p.id = v.pilot_id
+WHERE v.brand_name !~* '(demo|test)'`;
+const BD_PILOT_SQL_SF = `SELECT
+  COUNT_IF(v.PILOT_STATUS = 'deposit_paid') AS DEPOSIT_PAID,
+  COUNT_IF(v.PILOT_STATUS = 'collecting_data') AS COLLECTING_DATA,
+  COUNT_IF(v.PILOT_STATUS = 'live') AS LIVE,
+  COUNT_IF(v.PILOT_STATUS = 'awaiting_submit') AS AWAITING,
+  COALESCE(SUM(IFF(v.PILOT_FEE_PAID_AT IS NOT NULL, v.PILOT_FEE_TOTAL_IN_CENTS - COALESCE(v.REFUNDED_IN_CENTS, 0), NULL)), 0) AS NET_FEE_CENTS,
+  COALESCE(SUM(IFF(v.PILOT_STATUS IN (${BD_PILOT_CURRENT_SQL}),
+    COALESCE(NULLIF(p.ROLLOVER_PRICE_IN_CENTS, 0), IFF(p.NEXT_PRICE_OVERRIDE_REPEATS, NULLIF(p.NEXT_PRICE_OVERRIDE_IN_CENTS, 0), NULL),
+      NULLIF(p.DEPOSIT_MONTH_DEFAULT_IN_CENTS, 0), 0), NULL)), 0) AS POST_CENTS
+FROM MARTS.FCT_PILOT_PROGRESS v LEFT JOIN STAGING.STG_PILOTS p ON p.ID = v.PILOT_ID
+WHERE NOT REGEXP_LIKE(v.BRAND_NAME, '.*(demo|test).*', 'is')`;
+// One aggregate row (any key case) → the stats the page reads.
+function bdPilotStatsOf(row, source) {
+  const r = {}; for (const k of Object.keys(row || {})) r[k.toLowerCase()] = row[k];
+  const n = (k) => { const v = Number(r[k]); if (!isFinite(v)) throw new Error('pilot stats: no ' + k); return v; };
+  const dp = n('deposit_paid'), cd = n('collecting_data'), lv = n('live');
+  return { source, deposit_paid: dp, collecting_data: cd, live: lv, waiting: dp + cd, n: dp + cd + lv,
+    awaiting: n('awaiting'), netFees: n('net_fee_cents') / 100, post: n('post_cents') / 100, asOf: new Date().toISOString() };
+}
+// Grafana /api/ds/query → frames[0] as row objects (schema.fields + columnar data.values).
+function grafanaFrameRows(j) {
+  const res = j && j.results && j.results.A;
+  if (!res) throw new Error('Grafana: no result A');
+  if (res.error) throw new Error('Grafana query error: ' + String(res.error).slice(0, 200));
+  const fr = (res.frames || [])[0];
+  const fields = ((fr && fr.schema && fr.schema.fields) || []).map(f => f.name);
+  const vals = (fr && fr.data && fr.data.values) || [];
+  if (!fields.length) throw new Error('Grafana: empty frame');
+  const len = Math.max(0, ...vals.map(c => (c || []).length));
+  const out = [];
+  for (let i = 0; i < len; i++) { const o = {}; fields.forEach((f, c) => { o[f] = (vals[c] || [])[i]; }); out.push(o); }
+  return out;
+}
+async function grafanaQuery(env, rawSql) {
+  SUBREQ.n++;
+  const r = await fetch(GRAFANA_URL + '/api/ds/query', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + env.GRAFANA_TOKEN, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ queries: [{ refId: 'A', datasource: { uid: GRAFANA_APP_DS }, rawSql, format: 'table' }], from: 'now-1h', to: 'now' }),
+  });
+  // The status only: a body could echo the request, and the token must never leave.
+  if (!r.ok) { azDrain(r); throw new Error('Grafana /api/ds/query ' + r.status); }
+  return grafanaFrameRows(await r.json());
+}
+async function fetchBdPilotStats(env) {
+  let liveError = '';
+  if (env && env.GRAFANA_TOKEN) {
+    try {
+      const rows = await grafanaQuery(env, BD_PILOT_SQL_PG);
+      return bdPilotStatsOf(rows[0], 'live');
+    } catch (e) {
+      liveError = String((e && e.message) || e).split(env.GRAFANA_TOKEN).join('[token]').slice(0, 200);
+      console.error('BD pilot stats: Grafana failed, using the nightly copy:', liveError);
+    }
+  }
+  const rows = await mbQuery(env, BD_PILOT_SQL_SF);
+  const s = bdPilotStatsOf(rows[0], 'nightly');
+  if (liveError) s.liveError = liveError;
+  return s;
+}
 async function fetchBdApp(env) {
   const today = etDayKeyOf(new Date().toISOString());
+  // The pilot row's stats ride along. Their failure must not take the brand
+  // book down with it (or the reverse): it comes back as {error} on its own.
+  const pilotP = fetchBdPilotStats(env).catch(e => ({ error: 'Pilot stats unavailable', detail: String((e && e.message) || e).slice(0, 200) }));
   const [pages, assoc] = await Promise.all([
     Promise.all(Array.from({ length: BDAPP_PAGES }, (_, k) => mbQuery(env, bdAppSql(k)))),
     Promise.all(Array.from({ length: BDAPP_ASSOC_PAGES }, (_, k) => mbQuery(env, bdAppAssocSql(k)))),
@@ -3954,7 +4057,9 @@ async function fetchBdApp(env) {
   const rows = [].concat(...pages);
   // Zero rows is a broken read, not an empty book: there are ~1,800 brands.
   if (!rows.length) throw new Error('Metabase returned no app brands');
-  return { brands: bdAppBuild(rows, today, [].concat(...assoc)), meta: { generatedAt: new Date().toISOString(), today, source: 'Metabase · Snowflake copy of the app (nightly)', rows: rows.length } };
+  const pilotStats = await pilotP;
+  return { brands: bdAppBuild(rows, today, [].concat(...assoc)), pilotStats,
+    meta: { generatedAt: new Date().toISOString(), today, source: 'Metabase · Snowflake copy of the app (nightly)', rows: rows.length } };
 }
 
 // ── Skincare Phase 2: app data via Metabase ──────────────────────────────────

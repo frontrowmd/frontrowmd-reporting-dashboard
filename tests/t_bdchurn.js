@@ -120,9 +120,9 @@ ck('  and the dropped count variable went too',/_cCount/.test(bd),false);
 // months in the period. Not a pooled churns ÷ book: every month weighs the
 // same, so the figure reads as "the rate in a typical month".
 ck('C1 takes the book at the period start',
-   /_kmOpenAt=function\(m\)\{var pv=_snByMonth\[_kmPrevMonth\(m\)\];return pv\?pv\.b:0;\}/.test(bd),true);
+   /_kmOpenAt=function\(m\)\{var pv=_snByMonthApp\[_kmPrevMonth\(m\)\];return pv\?pv\.b:0;\}/.test(bd),true);
 ck('  which is what C2 does',
-   /_chOpen=function\(m\)\{var p=_snByMonth\[_chPrev\(m\)\];return p\?p\.b:0;\}/.test(bd),true);
+   /_chOpen=function\(m\)\{var p=_snByMonthApp\[_chPrev\(m\)\];return p\?p\.b:0;\}/.test(bd),true);
 ck('churns are tallied per month',
    /_kmByMonth\[m\]=\(_kmByMonth\[m\]\|\|0\)\+1/.test(bd),true);
 ck('  from the scoped set, so the toggle moves the numerator',
