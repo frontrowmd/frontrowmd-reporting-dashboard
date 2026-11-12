@@ -105,6 +105,8 @@ const d0={signedChurnedByCloseCount:2};
   C2.setRO(Object.assign({},LIVE,{win:'custom',key:C2._roKey('custom','2026-09-01','2026-09-30')}));
   ck('  and does show its own',/Signed Pilot Brands 4/.test(text(C2._buildRevenueOutcomeCard(d0))),true);
 }
+ck('the card asks for its own live figures once per window, whatever page drew it',
+   /function _brandKeyMetricsAfter\(d,sfx\)\{[\s\S]*?_roEnsure\(\);\s*\}/.test(cli)&&/if\(\(_revOutcome&&_revOutcome\.key===k\)\|\|_roAsked===k\)return;/.test(cli),true);
 ck('the Executive page Brand mode fetches the live card too',/\|\|\(AP==='exec'&&_execMode\(\)==='brand'\)\)&&typeof fdRevenueOutcome==='function'/.test(cli),true);
 ck('the live fetch keeps the pilot side and re-renders through one function',
    /_revOutcome=\{win:win,key:key,current:d\.current,prior:d\.prior,priorMonth:d\.priorMonth,pilots:d\.pilots\|\|null\};\s*_roRerender\(\);/.test(cli),true);

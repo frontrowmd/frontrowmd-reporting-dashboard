@@ -1568,6 +1568,7 @@ async function fd(w,from,to,vsFrom,vsTo,fresh){
   // it fetches too: without this its Pilots side never loaded there.
   if(mySeq===_fdSeq&&(AP==='irfan'||AP==='dashboard'||(AP==='exec'&&_execMode()==='brand'))&&typeof fdRevenueOutcome==='function'){
     var _row=S[AP].win||'mtd';
+    _roAsked=_roPageKey();
     if(_row==='custom')fdRevenueOutcome('custom',S[AP].cFrom,S[AP].cTo,S[AP].cVsFrom,S[AP].cVsTo);
     else fdRevenueOutcome(_row);
   }
@@ -12723,6 +12724,20 @@ function _brandKeyMetricsHTML(d,opt){
 function _brandKeyMetricsAfter(d,sfx){
   const e=document.getElementById('t-revenue'+(sfx||''));
   if(e)e.innerHTML=_buildRevenueOutcomeCard(d);
+  // Whatever path drew the card (the Executive page's cached render skips fd's
+  // fetch), make sure the live figures for THIS window are on their way: once
+  // per window key, so a re-render never loops.
+  _roEnsure();
+}
+var _roAsked='';
+function _roEnsure(){
+  if(typeof fdRevenueOutcome!=='function'||typeof AP==='undefined'||!S[AP])return;
+  var k=_roPageKey();
+  if((_revOutcome&&_revOutcome.key===k)||_roAsked===k)return;
+  _roAsked=k;
+  var st=S[AP];
+  if((st.win||'mtd')==='custom')fdRevenueOutcome('custom',st.cFrom,st.cTo,st.cVsFrom,st.cVsTo);
+  else fdRevenueOutcome(st.win||'mtd');
 }
 
 // ── Key Metrics (Clinician) ─────────────────────────────────────────────────
