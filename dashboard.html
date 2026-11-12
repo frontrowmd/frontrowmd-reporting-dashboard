@@ -1924,6 +1924,14 @@ window.skincareSetCat=function(k){
   // categories have different sections) and the Updated time.
   if(S.skincare.data)renderPage();else fdSkincare();
 };
+// Reviewing After Samples (Alex, 2026-11-12): EVERY dermatologist who has
+// reviewed, over everyone who got samples. Reviewers with no accepted-samples
+// record predate sample commitments; they had product, so they join the
+// denominator too -- otherwise the numerator would hold people the
+// denominator does not.
+function _sknGotSamples(o){return (o.samples||0)+Math.max(0,(o.reviewers||0)-(o.sampleReviewers||0));}
+function _sknSampleCalc(o){const x=Math.max(0,(o.reviewers||0)-(o.sampleReviewers||0));
+  return fN(o.reviewers||0)+' of '+fN(_sknGotSamples(o))+' dermatologists who got samples have reviewed'+(x?' \u00b7 '+fN(o.samples||0)+' with a samples record + '+fN(x)+' from before samples were recorded':'');}
 function _sknPct(n,d){return d>0?(n/d*100).toFixed(1)+'%':'\u2014';}
 // Titles shown as their own pill/row; every other title folds into Other.
 const SKN_MAIN_TYPES=['MD/DO','Nurse Practitioner','Physician Assistant'];
@@ -1948,7 +1956,9 @@ function _sknFoldBy(by){
 function _sknMonthChart(months,cw){
   cw=cw==null?'skincare ':cw;
   if(!months.length)return '<div style="padding:16px;color:var(--grey);font-size:12px">No '+cw+'orders yet</div>';
-  const W=640,H=220,L=40,R=10,T=14,B=28,pw=W-L-R,ph=H-T-B;
+  // Wide and short: the chart spans the card, and its height stays near 230px
+  // (Alex, 2026-11-12: at full width the old 640x220 box scaled to ~600px tall).
+  const W=1000,H=230,L=40,R=10,T=14,B=28,pw=W-L-R,ph=H-T-B;
   const mx=Math.max(1,...months.map(x=>Math.max(x.ordered,x.reviews)));
   const raw=mx/4,mag=Math.pow(10,Math.floor(Math.log10(raw))),tk=[1,2,5,10].map(k=>k*mag).find(k=>k>=raw)||10*mag,nice=Math.max(4,tk*4);
   const y=v=>T+ph-(v/nice)*ph, bw=pw/months.length, MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -1977,7 +1987,7 @@ function _sknMonthChart(months,cw){
   const key=(c,l,line)=>'<span style="display:inline-flex;align-items:center;gap:6px;margin-right:16px">'
     +(line?'<span style="width:16px;height:2px;background:'+c+';position:relative"><span style="position:absolute;left:5px;top:-3px;width:6px;height:6px;border-radius:50%;background:'+c+'"></span></span>':'<span style="width:10px;height:10px;border-radius:2px;background:'+c+'"></span>')+l+'</span>';
   return '<div style="font-size:11px;color:var(--navy);margin:0 0 6px">'+key('var(--navy)','Reviews ordered'+(cw?' ('+cw.trim()+')':''))+key('var(--teal)','Reviews written on '+cw+'products (any clinician, ordered or not)',1)+'</div>'
-    +'<div class="skn-mc" style="position:relative" onmouseleave="_sknTipOff(this)">'
+    +'<div class="skn-mc" style="position:relative;max-width:1100px" onmouseleave="_sknTipOff(this)">'
     +'<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block" role="img" aria-label="Reviews ordered and written by month">'+g+'</svg>'
     +'<div class="skn-tip" style="position:absolute;top:0;left:0;display:none;pointer-events:none;z-index:5;background:var(--navy);color:#fff;font-size:11px;line-height:1.6;padding:8px 10px;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.18);white-space:nowrap"></div></div>';
 }
@@ -2010,7 +2020,11 @@ function _sknHeat(vals,v,rgb){
 // Horizontal bars on one shared axis. rows: {l, v, c, note, bold}.
 function _sknBars(rows,fmt){
   const mx=Math.max(1,...rows.map(r=>r.v||0));
-  return rows.map(r=>'<div style="display:grid;grid-template-columns:minmax(150px,34%) 1fr;gap:10px;align-items:center;margin:0 0 8px">'
+  // The label column is as wide as its longest label or note, not a third of
+  // the card (which left a wide gap before short labels' bars).
+  const txt=v=>String(v||'').replace(/<[^>]*>/g,'').replace(/&[a-z#0-9]+;/gi,'x');
+  const lw=Math.round(Math.min(300,Math.max(90,...rows.map(r=>Math.max(txt(r.l).length*6.6,txt(r.note).length*5.4)))+12));
+  return rows.map(r=>'<div style="display:grid;grid-template-columns:'+lw+'px minmax(0,1fr);gap:10px;align-items:center;margin:0 0 8px">'
     +'<div style="font-size:12px;color:var(--navy);'+(r.bold?'font-weight:700':'')+'">'+r.l+(r.note?'<div style="font-size:10px;color:var(--grey);font-weight:400">'+r.note+'</div>':'')+'</div>'
     +'<div style="display:flex;align-items:center;gap:8px" title="'+_sknEsc(r.tip||'')+'"><div style="height:14px;border-radius:0 4px 4px 0;background:'+r.c+';width:'+Math.max(r.v>0?0.6:0,(r.v||0)/mx*82).toFixed(1)+'%"></div>'
     +'<span style="font-size:12px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;white-space:nowrap">'+(fmt?fmt(r):fN(r.v||0))+'</span></div></div>').join('');
@@ -2211,13 +2225,13 @@ function renderSkincare(){
     const buckets=[['1 review',ap.b1],['2\u20135 reviews',ap.b2_5],['6\u201320 reviews',ap.b6_20],['More than 20',ap.b21]];
     // The asked-for rate leads (2026-11-12): of those who got samples, how many review.
     engageBody=typeBarFor('Same filter as Dermatologist Clinicians above')+grid(4,
-      lt('Reviewing After Samples',_sknPct(ap.sampleReviewers||0,ap.samples||0),fN(ap.sampleReviewers||0)+' of '+fN(ap.samples||0)+' who accepted samples have reviewed')
+      lt('Reviewing After Samples',_sknPct(ap.reviewers||0,_sknGotSamples(ap)),_sknSampleCalc(ap))
      +lt('Avg Reviews per Reviewer',(ap.reviewers?(ap.reviews/ap.reviewers).toFixed(1):'\u2014'),fN(ap.reviews||0)+' reviews \u00f7 '+fN(ap.reviewers||0)+' who reviewed')
      +lt('Ever Reviewed',_sknPct(ap.reviewers||0,ap.clinicians||0),fN(ap.reviewers||0)+' of '+fN(ap.clinicians||0)+' dermatologists in the app')
      +lt('Active Last 90 Days',fN(ap.active90||0),fN(ap.reviews90||0)+' reviews in the last 90 days \u00b7 '+fN(ap.skReviews90||0)+' on skincare'))
     +'<div style="margin-top:16px;max-width:640px">'+sub('How many reviews each reviewer has written','Dermatologists who have reviewed, by their all-time review count (any product)')
     +_sknBars(buckets.map(b=>({l:b[0],v:b[1]||0,c:'var(--teal)'})),r=>fN(r.v)+' <span style="font-weight:400;color:var(--grey)">'+(r.v===1?'dermatologist':'dermatologists')+'</span>')+'</div>'
-    +note((ap.reviewers>ap.sampleReviewers?fN(ap.reviewers-ap.sampleReviewers)+' dermatologists reviewed without an accepted-samples record (they predate sample commitments), so they count in the average but not the reviewing rate.':''));
+    +note((ap.reviewers>ap.sampleReviewers?fN(ap.reviewers-ap.sampleReviewers)+' dermatologists reviewed without an accepted-samples record (they predate sample commitments). They count as having had samples, so every reviewer is in the reviewing rate.':''));
   }
   secEng=card('engage','Engagement','Of the dermatologists in the app, how many review and how much'+(tf?' \u00b7 <b>'+_sknEsc(tf)+'</b>':''),engageBody);
   }
@@ -2245,7 +2259,9 @@ function renderSkincare(){
     +(appErr?'<div style="margin-top:14px">'+appFail(cw+'brands')+'</div>':'<div style="margin-top:14px">'+groupLbl('In the app')+grid(3,
        lt('Pilots',fN(sn('pilot')),'on a pilot plan')
       +lt('Paused',fN(sn('paused')),'subscription paused')
-      +lt(ALL?'All Brands':'All Skincare Brands',fN(A.skincareBrandsInApp||0),fN(sn('none'))+' with no subscription'))+'</div>')
+      // Active only (Alex, 2026-11-12): signed, pilot, paused or starting.
+      +lt(ALL?'All Active Brands':'All Active Skincare Brands',fN(sn('active')+sn('pilot')+sn('paused')+sn('future')),
+          fN(sn('active'))+' signed \u00b7 '+fN(sn('pilot'))+' pilots \u00b7 '+fN(sn('paused'))+' paused \u00b7 '+fN(sn('future'))+' starting'))+'</div>')
     +note(tagNote+' App \u201cactive\u201d is not kept up to date when a brand stops paying, so Signed overstates paying brands; the current-billing-period count is the conservative figure.'));
 
   // ── The answers (2026-11-12): one tile per question the page was built to
@@ -2267,7 +2283,7 @@ function renderSkincare(){
         +_kmTile('Dermatologists',fN(all2.inquiries||0)+' \u2192 '+fN(all2.signUps||0)+' \u2192 '+(appErr?dash:fN(adT.samples||0)),
           'inquired \u2192 signed up \u2192 samples shipped'+(appErr?'':' \u00b7 '+fN(adT.reviews||0)+' reviews'),''))
         +'<div style="margin-top:12px">'+grid(3,
-          _kmTile('Reviewing After Samples',appErr?dash:_sknPct(adT.sampleReviewers||0,adT.samples||0),appErr?'':fN(adT.sampleReviewers||0)+' of '+fN(adT.samples||0)+' dermatologists who got samples','')
+          _kmTile('Reviewing After Samples',appErr?dash:_sknPct(adT.reviewers||0,_sknGotSamples(adT)),appErr?'':_sknSampleCalc(adT),'')
          +_kmTile('Reviews per Reviewer',appErr||!adT.reviewers?dash:(adT.reviews/adT.reviewers).toFixed(1),appErr?'':fN(adT.reviews||0)+' reviews from '+fN(adT.reviewers||0)+' dermatologists','')
          +_kmTile('MD/DO Derms Keeping Up?',appErr?dash:'<span style="color:'+(cap>=nw?'#6EE7B7':'#FCA5A5')+'">'+(cap>=nw?'Yes':'No')+'</span> \u00b7 <span style="color:'+(gap>=0?'#6EE7B7':'#FCA5A5')+'">'+(gap>=0?'Yes':'No')+'</span>',
            appErr?'':'on paper: '+fN(cap)+' possible vs '+fN(nw)+' ordered a month \u00b7 in practice: they write '+fN(pace)+' a month',''))+'</div>';
