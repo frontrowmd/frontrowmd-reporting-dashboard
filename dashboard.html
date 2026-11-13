@@ -1993,15 +1993,20 @@ function _sknMonthChart(months,cw,pxW){
     +'<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block" role="img" aria-label="Reviews ordered and written by month">'+g+'</svg>'
     +'<div class="skn-tip" style="position:absolute;top:0;left:0;display:none;pointer-events:none;z-index:5;background:var(--navy);color:#fff;font-size:11px;line-height:1.6;padding:8px 10px;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.18);white-space:nowrap"></div></div>';
 }
-// Redraw the page on a real width change so the month chart keeps filling it.
-if(typeof window!=='undefined'&&window.addEventListener)window.addEventListener('resize',function(){
-  clearTimeout(window._sknRsz);
-  window._sknRsz=setTimeout(function(){
-    if(typeof AP==='undefined'||AP!=='skincare'||!S.skincare.data)return;
-    const el=document.getElementById('skincare-c');if(!el)return;
-    if(Math.abs((el.clientWidth-44)-(S.skincare._chartW||0))>24)renderSkincare();
-  },200);
-});
+// Redraw on a real width change of the page's own container, so the month
+// chart keeps filling it -- including when the app shell becomes visible after
+// the page drew while hidden (the sign-in screen), which no window resize marks.
+function _sknWatchWidth(el){
+  if(!el||el._sknRO||typeof ResizeObserver==='undefined')return;
+  el._sknRO=new ResizeObserver(function(){
+    clearTimeout(window._sknRsz);
+    window._sknRsz=setTimeout(function(){
+      if(typeof AP==='undefined'||AP!=='skincare'||!S.skincare.data||!el.clientWidth)return;
+      if(Math.abs((el.clientWidth-44)-(S.skincare._chartW||0))>24)renderSkincare();
+    },150);
+  });
+  el._sknRO.observe(el);
+}
 // Month-chart hover: shows at once (a native SVG <title> waits ~1s), follows
 // the pointer, flips left near the right edge and shades the hovered month.
 window._sknTip=function(el,ev){
@@ -2045,7 +2050,9 @@ function renderSkincare(){
   const el=document.getElementById('skincare-c'); if(!el)return;
   // The month chart is drawn at the card's inner width (card padding ~44px).
   const _sknChartW=Math.max(480,(el.clientWidth||1000)-44);
-  S.skincare._chartW=_sknChartW;
+  // Hidden (clientWidth 0): remember 0, so the first real width redraws it.
+  S.skincare._chartW=el.clientWidth?_sknChartW:0;
+  _sknWatchWidth(el);
   const d=S.skincare.data;
   if(!d){if(!S.skincare._fetching)fdSkincare();return;}
   const card=(id,title,sub,body)=>'<div class="sec sec-card dsec" style="margin-bottom:16px">'
