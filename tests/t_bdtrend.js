@@ -73,8 +73,8 @@ ck('  it does NOT split clinician out',
 
 // ── 3. Signed is gone from the series entirely ────────────────────────────
 ck('no bucket carries a signed count',t.day.every(p=>!('signed' in p)),true);
-ck('the builder takes contacts + ad rows only',
-   /function buildBrandTrend\(schContacts, windsorRows, from, to\)/.test(src),true);
+ck('the builder takes contacts, ad rows and the signed deals (Sign Ups, 2026-11-13)',
+   /function buildBrandTrend\(schContacts, windsorRows, from, to, signedDeals\)/.test(src),true);
 
 // ── 4. Null vs zero ───────────────────────────────────────────────────────
 const d3=byDay['2026-10-03'];
@@ -112,7 +112,7 @@ ck('  and the empty one is still a point',
 ck('a bucket carries exactly the fields the card reads',
    Object.keys(wk).sort(),
    ['clicks','cpdPaid','cpdPre','cpdReg','ctr','cvrPaid','cvrPre','cvrReg',
-    'impressions','paid','prelaunch','prelaunchPaid','regular','regular10k','spend','wk']);
+    'impressions','paid','prelaunch','prelaunchPaid','regular','regular10k','signups','spend','wk']);
 ck('week CTR pools the period totals',wk.ctr,(wk.clicks/wk.impressions)*100);
 ck('  which is NOT the mean of the daily CTRs',
    Math.abs(wk.ctr-((d1.ctr+d2.ctr)/2))>1e-9,true);
@@ -168,10 +168,10 @@ ck('an empty Windsor result is never cached',
    /brand trend: no Windsor rows — not caching/.test(src),true);
 // Signed went, and with it the only reason the trend touched deals at all.
 const _TRB=src.slice(src.indexOf('currentData.trendRange = _btWin'),src.indexOf('currentData.trendRange = _btWin')+1800);
-ck('the trend no longer fetches churned-by-close',/fetchChurnedByCloseDate/.test(_TRB),false);
-ck('  nor slices closed-won',/allTimeClosedWon/.test(_TRB),false);
-ck('  so it is one HubSpot search, not three',
-   (_TRB.match(/await fetch[A-Z]\w+\(hsToken/g)||[]).length,1);
+ck('Sign Ups: the trend fetches closed-won and churned-by-close over its own window',/fetchClosedWonDeals\(hsToken, _btWin\.from, _btWin\.to\)/.test(_TRB)&&/fetchChurnedByCloseDate\(hsToken, _btWin\.from, _btWin\.to\)/.test(_TRB),true);
+ck('  never the page\u2019s all-time closed-won',/allTimeClosedWon/.test(_TRB),false);
+ck('  and the scheduled-contacts search runs first, on its own',
+   (_TRB.match(/await fetchScheduledContacts\(hsToken/g)||[]).length,1);
 // Revved again to _v3 on 2026-10-09: the HubSpot outage let a zero-demo series
 // be cached under _v2, and refusing to WRITE one does not remove one already
 // written — kvCachedFetch serves an expired entry as stale when a rebuild

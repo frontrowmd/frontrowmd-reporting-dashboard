@@ -34,7 +34,7 @@ ck('it is a percentage',NP.unit,'%');
 ck('it is named as the Key Metrics tile names it',NP.l,'Non-Paid · Last Click');
 // It differs per cohort now, so the card must say WHICH cohort it describes.
 ck('it varies with the population',NP.pop,true);
-ck('  and is hidden only where it is meaningless',NP.hiddenOn,['paid']);
+ck('  and is hidden only where it is meaningless',NP.hiddenOn,['paid','signups']);
 ck('its colour is not already taken',
    ctx.DSH_TR_METRICS.filter(m=>m.c===NP.c).length,1);
 // The CARD carries its own copies of both flags, and they drive the label
@@ -42,7 +42,7 @@ ck('its colour is not already taken',
 // reads "Non-Paid · Last Click" over pre-launch demos with nothing saying so.
 const NPC=ctx.DSH_TR_CARDS.find(c=>c.k==='nonpaid');
 ck('the card varies with the population too',NPC.pop,true);
-ck('  and is hidden on the same population',NPC.hiddenOn,['paid']);
+ck('  and is hidden on the same population',NPC.hiddenOn,['paid','signups']);
 ck('  so card and measure agree',[NPC.pop,NPC.hiddenOn],[NP.pop,NP.hiddenOn]);
 
 // ── 2. The value, over any cohort ─────────────────────────────────────────

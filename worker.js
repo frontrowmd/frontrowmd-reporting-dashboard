@@ -5046,13 +5046,16 @@ function clnTrendWindow(today) {
 // Windsor reports and re-zoning it would invent precision. The two conventions
 // can disagree within a few hours of a day boundary. Same asymmetry
 // buildClinicianTrend carries — named here rather than left to be rediscovered.
-function buildBrandTrend(schContacts, windsorRows, from, to) {
+// signedDeals (2026-11-13): the Sign Ups population -- every closed-won deal
+// (pilots included) plus every churned deal, by its close date. That is the
+// Marketing Funnel's Signed Brands, counted per period.
+function buildBrandTrend(schContacts, windsorRows, from, to, signedDeals) {
   const B = {};
   const bump = (dayKey, field, n) => {
     if (!dayKey) return null;
     if (from && dayKey < from) return null;
     if (to && dayKey > to) return null;
-    if (!B[dayKey]) B[dayKey] = { spend: 0, impressions: 0, clicks: 0, regular: 0, paid: 0, prelaunch: 0, prelaunchPaid: 0, regular10k: 0 };
+    if (!B[dayKey]) B[dayKey] = { spend: 0, impressions: 0, clicks: 0, regular: 0, paid: 0, prelaunch: 0, prelaunchPaid: 0, regular10k: 0, signups: 0 };
     B[dayKey][field] += (n == null ? 1 : n);
     return B[dayKey];
   };
@@ -5108,6 +5111,15 @@ function buildBrandTrend(schContacts, windsorRows, from, to) {
     if (is0to10KTier(wt)) bump(k, 'regular10k');
   }
 
+  // Sign Ups: one per deal, on its close date's Eastern day.
+  const seenD = new Set();
+  for (const d of (signedDeals || [])) {
+    const p = (d && d.properties) || {};
+    if (!p.closedate) continue;
+    if (d.id) { if (seenD.has(String(d.id))) continue; seenD.add(String(d.id)); }
+    bump(etDayKeyOf(p.closedate), 'signups');
+  }
+
   const div = (n, dd) => (dd > 0 ? n / dd : null);
   // A COST with no spend is undefined, not zero — a real 0 plots on the floor of
   // the cost axis and reads as the most efficient period in the window.
@@ -5133,7 +5145,7 @@ function buildBrandTrend(schContacts, windsorRows, from, to) {
   };
   const roll = (keyOf) => {
     const g = {};
-    const touch = (k) => { if (k && !g[k]) g[k] = { spend: 0, impressions: 0, clicks: 0, regular: 0, paid: 0, prelaunch: 0, prelaunchPaid: 0, regular10k: 0 }; };
+    const touch = (k) => { if (k && !g[k]) g[k] = { spend: 0, impressions: 0, clicks: 0, regular: 0, paid: 0, prelaunch: 0, prelaunchPaid: 0, regular10k: 0, signups: 0 }; };
     for (const day of allDays) touch(keyOf(day));
     for (const day of Object.keys(B)) {
       const k = keyOf(day); if (!k) continue;
@@ -5141,7 +5153,7 @@ function buildBrandTrend(schContacts, windsorRows, from, to) {
       const b = B[day], o = g[k];
       o.spend += b.spend; o.impressions += b.impressions; o.clicks += b.clicks;
       o.regular += b.regular; o.paid += b.paid; o.prelaunch += b.prelaunch; o.prelaunchPaid += b.prelaunchPaid;
-      o.regular10k += b.regular10k;
+      o.regular10k += b.regular10k; o.signups += b.signups;
     }
     return Object.keys(g).sort().map(k => {
       const w = g[k];
@@ -5150,7 +5162,7 @@ function buildBrandTrend(schContacts, windsorRows, from, to) {
         spend: Math.round(w.spend * 100) / 100,
         impressions: w.impressions, clicks: w.clicks,
         regular: w.regular, paid: w.paid, prelaunch: w.prelaunch, prelaunchPaid: w.prelaunchPaid,
-        regular10k: w.regular10k,
+        regular10k: w.regular10k, signups: w.signups,
         // EVERY population precomputed so the client can show any of them
         // without a second request. Rates are percentages computed on the
         // period's OWN totals, never averaged from daily rates — a
@@ -8183,7 +8195,7 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
     const _btWin = clnTrendWindow(fmt(yd));
     currentData.trendRange = _btWin;
     try {
-      currentData.trend = await kvCachedFetch(env, `brand_trend_${_btWin.from}_${_btWin.to}_v7`, 1800,
+      currentData.trend = await kvCachedFetch(env, `brand_trend_${_btWin.from}_${_btWin.to}_v8`, 1800,
         async () => {
           // HubSpot FIRST, and only then the ad fetch. Kicked off the other way
           // round, the trend's own Windsor chunker can spend the subrequest
@@ -8193,6 +8205,13 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
           // reproducible on every rebuild, so ordering is load-bearing here.
           const _hsErr0 = HS_ERR.n;
           const _sch = await fetchScheduledContacts(hsToken, _btWin.from, _btWin.to);
+          // Sign Ups: closed won (active brands, as Signed Brands counts them)
+          // plus churned since, by close date, over the same window.
+          const [_cw, _ch] = await Promise.all([
+            fetchClosedWonDeals(hsToken, _btWin.from, _btWin.to),
+            fetchChurnedByCloseDate(hsToken, _btWin.from, _btWin.to),
+          ]);
+          const _signed = filterActiveBrands(_cw || []).concat(_ch || []);
           const _hsRefused = (HS_ERR.n > _hsErr0) || SUBREQ.exhausted;
           const _w = await fetchWindsorAds(apiKey, wFrom(_btWin.from), _btWin.to);
           // Never cache a series with no ad rows at all — that is a failed
@@ -8208,7 +8227,7 @@ async function processRequest(windowType, customFrom, customTo, env, vsFrom, vsT
             throw new Error('brand trend: HubSpot refused — not caching');
           }
           if (!_sch.length) console.warn('brand trend: 0 contacts with no HubSpot error — caching a real zero');
-          const t = buildBrandTrend(_sch, _w, _btWin.from, _btWin.to);
+          const t = buildBrandTrend(_sch, _w, _btWin.from, _btWin.to, _signed);
           console.log(`brand trend: ${_sch.length} contacts, ${_w.length} ad rows -> ${t.day.length}d/${t.week.length}w/${t.month.length}m`);
           return t;
         }, null);

@@ -5354,6 +5354,10 @@ const DSH_TR_POPS=[
   // "Pre-launch / just launching" traffic tier, which the series used to drop
   // entirely. regular + prelaunch is every demo; paid is inside regular.
   {k:'prelaunch',l:'Pre-Launch Demos',w:'pre-launch demos',short:'pre-launch demos'},
+  // Sign Ups (2026-11-13): every closed-won deal, pilots included, plus those
+  // churned since, dated by when each closed -- the Marketing Funnel's Signed
+  // Brands per period. Not a cohort of the demos above.
+  {k:'signups',l:'Sign Ups',w:'sign ups',short:'sign ups'},
 ];
 // `pop:false` marks a measure that does NOT move with the population toggle —
 // CTR is clicks over impressions, which is a property of the ads, not of which
@@ -5369,7 +5373,7 @@ const DSH_TR_METRICS=[
   // pop:true because it genuinely differs per cohort now, so the card has to say
   // which one it is describing. hiddenOn paid: there every contact is paid by
   // construction, so the answer is a tautological 0%.
-  {k:'nonpaid',  l:'Non-Paid · Last Click', unit:'%', c:'#B45309', pop:true, hiddenOn:['paid']},
+  {k:'nonpaid',  l:'Non-Paid · Last Click', unit:'%', c:'#B45309', pop:true, hiddenOn:['paid','signups']},
   {k:'cvr',      l:'CVR',      unit:'%', c:'#0E7C66', pop:true},
   {k:'ctr',      l:'CTR',      unit:'%', c:'#1D4ED8', pop:false},
   // 0-10K brands as a share of REGULAR demos (2026-10-29), the Pre-Launch %
@@ -5390,7 +5394,7 @@ const DSH_TR_METRICS=[
 const DSH_TR_CARDS=[
   {k:'count', metric:'count', unit:'#', pop:true},
   {k:'cost',  metric:'cost',  unit:'$', pop:true},
-  {k:'nonpaid', metric:'nonpaid', unit:'%', pop:true, hiddenOn:['paid']},
+  {k:'nonpaid', metric:'nonpaid', unit:'%', pop:true, hiddenOn:['paid','signups']},
   {k:'cvr',   metric:'cvr',   unit:'%', pop:true},
   {k:'ctr',   metric:'ctr',   unit:'%', pop:false},
   {k:'k10share', metric:'k10share', unit:'%', pop:false},
@@ -5448,7 +5452,7 @@ function _dshTrParts(p,pop){
     spend:p.spend||0, clicks:p.clicks||0, impressions:p.impressions||0,
     // Explicit three-way: an unknown population must fall back to regular
     // rather than silently resolving to it through a two-branch ternary.
-    pop:((pop==='paid')?p.paid:(pop==='prelaunch')?p.prelaunch:p.regular)||0,
+    pop:((pop==='paid')?p.paid:(pop==='prelaunch')?p.prelaunch:(pop==='signups')?p.signups:p.regular)||0,
     // Non-Paid needs the selected cohort's own total AND its own paid count.
     // Resolved here, where the population is known, so _dshTrValue stays
     // population-agnostic and a rolling window remains a sum of components
@@ -5530,9 +5534,13 @@ function _dashTrendCard(d,sfx){
   var seg=function(inner){
     return '<div style="display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;flex-wrap:wrap">'+inner+'</div>';
   };
-  var toggles='<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin:12px 0 4px 15px">'
+  // Row 1: grain and population. Row 2: the measure (Alex, 2026-11-13), so the
+  // measure pills no longer wrap in beside the population ones.
+  var toggles='<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin:12px 0 0 15px">'
     +seg(DSH_TR_GRAINS.map(function(x){return pill(g.k===x.k,x.l,"toggleDshTrendGrain('"+x.k+"','"+sfx+"')",x.note);}).join(''))
     +seg(DSH_TR_POPS.map(function(x){return pill(pdef.k===x.k,x.l,"toggleDshTrendPop('"+x.k+"','"+sfx+"')",'');}).join(''))
+    +'</div>'
+    +'<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin:10px 0 4px 15px">'
     +seg(_dshTrShown(DSH_TR_METRICS).map(function(x){return pill(mdef.k===x.k,x.l,"toggleDshTrendMetric('"+x.k+"','"+sfx+"')",'');}).join(''))
     +'</div>';
 

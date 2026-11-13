@@ -37,9 +37,10 @@ const BR=src.slice(_i0,_i1);
 ck('  and does not swallow the Clinician one',/CLN_TR_CARDS=|_clnTrendCard/.test(BR),false);
 
 // ── 1. The population toggle the user asked for ───────────────────────────
-ck('three populations: Regular, Paid and Pre-Launch demos',
-   ctx.DSH_TR_POPS.map(p=>p.l),['Regular Demos','Paid Demos','Pre-Launch Demos']);
-ck('  keyed regular/paid/prelaunch',ctx.DSH_TR_POPS.map(p=>p.k),['regular','paid','prelaunch']);
+ck('four populations: Regular, Paid and Pre-Launch demos, and Sign Ups',
+   ctx.DSH_TR_POPS.map(p=>p.l),['Regular Demos','Paid Demos','Pre-Launch Demos','Sign Ups']);
+ck('  keyed regular/paid/prelaunch/signups',ctx.DSH_TR_POPS.map(p=>p.k),['regular','paid','prelaunch','signups']);
+ck('  Sign Ups resolves the signups count',ctx._dshTrParts({signups:7,regular:40},'signups').pop,7);
 ck('the Clinician labels are NOT carried over',/Full Submission/.test(JSON.stringify(ctx.DSH_TR_POPS)),false);
 const P={spend:1000,clicks:500,impressions:20000,regular:40,paid:10,signed:4};
 ck('regular resolves the regular count',ctx._dshTrParts(P,'regular').pop,40);
@@ -68,8 +69,8 @@ ck('Ad Spend has a card but is not a selectable measure',
 ck('CTR and the 0-10K share are the pop-invariant measures',
    ctx.DSH_TR_METRICS.filter(m=>!m.pop).map(m=>m.k),['ctr','k10share']);
 // Hidden where it has no meaning, rather than restricted to one population.
-ck('  and Non-Paid is hidden only on Paid Demos',
-   ctx.DSH_TR_METRICS.filter(m=>m.hiddenOn).map(m=>[m.k,m.hiddenOn]),[['nonpaid',['paid']]]);
+ck('  and Non-Paid is hidden on Paid Demos and Sign Ups (no paid split for signed deals)',
+   ctx.DSH_TR_METRICS.filter(m=>m.hiddenOn).map(m=>[m.k,m.hiddenOn]),[['nonpaid',['paid','signups']]]);
 // Signed is gone from EVERY list, not just the pills. A card for a measure
 // that cannot be selected is the half-removal this guards against.
 ck('Signed is absent from the metric pills',
