@@ -3575,8 +3575,13 @@ function pilotDateKey(v) {
 // a multi-checkbox value as 'A;B;C', so this splits on ';' and also accepts the
 // plain text the field holds today.
 const SKINCARE_CONCERN = 'Skin & haircare';
+// The booking form's options (2026-11-13) are 'Vitamins & Supplements',
+// 'Skin & Haircare / Clean Beauty', 'Medical Devices' and 'Other' -- so the
+// skincare option is matched by its leading 'Skin & haircare', any case, with or
+// without the '/ Clean Beauty' tail (an exact match on the app's concern name
+// counted none of them).
 function isSkincareCategory(v) {
-  return String(v || '').split(';').some(x => x.trim().toLowerCase() === SKINCARE_CONCERN.toLowerCase());
+  return String(v || '').split(';').some(x => /^skin\s*&\s*hair\s*care\b/i.test(x.trim()));
 }
 const SKINCARE_DEAL_PROPS = ['dealname', 'dealstage', 'pipeline', 'createdate', 'closedate', 'brand_product_category',
   'hs_v2_date_entered_appointmentscheduled', 'hs_v2_date_entered_1084214349', 'hs_v2_date_entered_closedwon',

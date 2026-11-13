@@ -12,6 +12,8 @@ vm.runInContext(src.slice(0,src.indexOf('\nexport default'))
 // Multi-checkbox values arrive as 'A;B;C'; today's field is plain text.
 ck('a multi-checkbox value containing Skin & haircare',W.isSkincareCategory('General wellness;Skin & haircare'),true);
 ck('  the plain text, any case and spacing',W.isSkincareCategory('  skin & haircare '),true);
+ck('  the booking form\u2019s actual option, and not the other three',
+   ['Skin & Haircare / Clean Beauty','Vitamins & Supplements','Medical Devices','Other'].map(W.isSkincareCategory),[true,false,false,false]);
 ck('  not a near miss or another concern',[W.isSkincareCategory('Skin'),W.isSkincareCategory('Gut health'),W.isSkincareCategory('')],[false,false,false]);
 
 // ── 2. Brand pipeline: dated by when each step was ENTERED ──────────────────
