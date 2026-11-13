@@ -4216,7 +4216,32 @@ async function fetchBdPilotStats(env) {
 async function fetchBdAppAssocLive(env, companyIds) {
   const token = env && env.HUBSPOT_TOKEN;
   if (!token) throw new Error('no HubSpot token');
-  const ids = Array.from(new Set(companyIds.filter(Boolean).map(String)));
+  const ids0 = Array.from(new Set(companyIds.filter(Boolean).map(String)));
+  // MERGED companies (2026-11-13): a brand can point at a company id HubSpot has
+  // since merged into another record (URO -> "O Positiv", merged 2026-11-12).
+  // The old id still opens the merged record, but holds no associations, so
+  // the brand read as having no deal. Resolve every id to the record it now
+  // lives on first (a batch read by an old id returns the surviving record,
+  // whose hs_merged_object_ids lists the ids folded into it), read the deals
+  // of the CANONICAL ids, and key them back to the id each brand stores.
+  const canon = {};
+  for (let i = 0; i < ids0.length; i += 100) {
+    const batch = ids0.slice(i, i + 100);
+    SUBREQ.n++; SUBREQ.hubspot++;
+    const r = await fetch('https://api.hubapi.com/crm/v3/objects/companies/batch/read', {
+      method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ properties: ['hs_merged_object_ids'], inputs: batch.map(id => ({ id })) }),
+    });
+    // 207 = some ids not found (deleted): the rest still came back.
+    if (!r.ok && r.status !== 207) { azDrain(r); throw new Error('company batch read ' + r.status); }
+    const j = await r.json();
+    for (const c of (j.results || [])) {
+      const cur = String(c.id);
+      canon[cur] = cur;
+      String((c.properties || {}).hs_merged_object_ids || '').split(';').map(x => x.trim()).filter(Boolean).forEach(old => { canon[old] = cur; });
+    }
+  }
+  const ids = Array.from(new Set(ids0.map(id => canon[id] || id)));
   const out = {};
   const batches = [];
   for (let i = 0; i < ids.length; i += 500) batches.push(ids.slice(i, i + 500));
@@ -4238,7 +4263,11 @@ async function fetchBdAppAssocLive(env, companyIds) {
     }
     throw new Error('company-deal associations rate-limited');
   }));
-  return Object.keys(out).map(hc => ({ HC: hc, DEALS: out[hc].join(',') }));
+  // Keyed by the id each BRAND stores (old or current), so bdAppBuild's lookup
+  // by b.hubspotCompanyId finds the deals of the record it was merged into.
+  const merged = ids0.filter(id => canon[id] && canon[id] !== id).length;
+  if (merged) console.log(`BD app associations: ${merged} brand company ids point at merged HubSpot records — read via the surviving record`);
+  return ids0.filter(id => out[canon[id] || id]).map(id => ({ HC: id, DEALS: out[canon[id] || id].join(','), CANON: canon[id] || id }));
 }
 async function fetchBdApp(env) {
   const today = etDayKeyOf(new Date().toISOString());

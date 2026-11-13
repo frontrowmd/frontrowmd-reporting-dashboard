@@ -321,6 +321,7 @@ async function appBookTests(){
   // Company -> deal links are live from HubSpot when a token is set (2026-11-13).
   calls=[];
   W.fetch=async(u,i)=>{calls.push(u);if(/grafana/.test(u)){const q=JSON.parse(i.body).queries[0].rawSql;return okResp(q===W.BDAPP_SQL_PG?gBrand:gPilot);}
+    if(/companies\/batch\/read/.test(u))return okResp({results:[{id:'c7',properties:{hs_merged_object_ids:''}}]});
     if(/companies\/deals\/batch\/read/.test(u))return okResp({results:[{from:{id:'c7'},to:[{toObjectId:'d9'}]}]});return mb(i);};
   const la=await W.fetchBdApp({GRAFANA_TOKEN:TOKEN,HUBSPOT_TOKEN:'h',METABASE_API_KEY:'k'});
   ck('company-deal links come live from HubSpot, not the nightly copy',[la.meta.assocLive,la.brands[0].hsDeals,calls.some(u=>/companies\/deals\/batch\/read/.test(u))],[true,['d9'],true]);
@@ -328,6 +329,13 @@ async function appBookTests(){
     if(/companies\/deals\/batch\/read/.test(u))return {ok:false,status:500,body:{cancel(){}},bodyUsed:false,text:async()=>'',json:async()=>({})};return mb(i);};
   const lb=await W.fetchBdApp({GRAFANA_TOKEN:TOKEN,HUBSPOT_TOKEN:'h',METABASE_API_KEY:'k'});
   ck('  a HubSpot failure falls back to the nightly copy',[lb.meta.assocLive,lb.brands[0].hsDeals],[false,['d1','d2']]);
+  // A brand pointing at a MERGED company reads the deals of the surviving record (URO, 2026-11-13).
+  W.fetch=async(u,i)=>{if(/grafana/.test(u)){const q=JSON.parse(i.body).queries[0].rawSql;return okResp(q===W.BDAPP_SQL_PG?gBrand:gPilot);}
+    if(/companies\/batch\/read/.test(u))return okResp({results:[{id:'new7',properties:{hs_merged_object_ids:'c7;old2'}}]});
+    if(/companies\/deals\/batch\/read/.test(u)){const ins=JSON.parse(i.body).inputs.map(x=>x.id);return okResp({results:ins.indexOf('new7')>=0?[{from:{id:'new7'},to:[{toObjectId:'d42'}]}]:[]});}
+    return mb(i);};
+  const lm=await W.fetchBdApp({GRAFANA_TOKEN:TOKEN,HUBSPOT_TOKEN:'h',METABASE_API_KEY:'k'});
+  ck('  a brand on a merged-away company id gets the surviving record\u2019s deals',[lm.meta.assocLive,lm.brands[0].hsDeals],[true,['d42']]);
   const q=W.BDAPP_SQL_PG;
   ck('the live SQL returns the Snowflake column names, upper-case',cols.every(c=>q.indexOf('"'+c+'"')>=0),true);
   ck('  same packing and Eastern days as the nightly query',[/regexp_replace\(p\.name, '\[\|~\]', ' ', 'g'\)/.test(q),/AT TIME ZONE 'UTC'\) AT TIME ZONE 'America\/New_York'/.test(q),/COALESCE\(b\.demo, FALSE\) = FALSE/.test(q)],[true,true,true]);
