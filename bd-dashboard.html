@@ -4008,7 +4008,8 @@ function renderBD(){
       +'<span>One row per brand. App brand ids are plain text (there is no app admin link yet).</span></div>';
     // Data freshness, said once: the two sides of every table are not equally fresh.
     var _recSrc=(_ba&&_ba.meta&&_ba.meta.live)?'live from the app database':'Metabase\u2019s nightly copy of the app (~4:30am ET), so a deposit or activation from today shows up tomorrow';
-    hRecon+='<p class="bd-rec-fix" id="bd-rec-fresh"><strong style="color:var(--navy)">Data freshness:</strong> HubSpot is live on every load; app data is '+_recSrc+'.</p>';
+    var _recAssoc=(_ba&&_ba.meta&&_ba.meta.assocLive)?'live':'from the warehouse\u2019s nightly copy';
+    hRecon+='<p class="bd-rec-fix" id="bd-rec-fresh"><strong style="color:var(--navy)">Data freshness:</strong> HubSpot deals and their company links are live on every load (company links to app brands: '+_recAssoc+'); app data is '+_recSrc+'. A fix in either system clears its row on the next Refresh.</p>';
     if(!_ba)hRecon+=_baBand('the reconciliation lists');
     else{
       var _rc=_baRecon(deals,_ba.brands,_baJ);

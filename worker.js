@@ -4208,12 +4208,45 @@ async function fetchBdPilotStats(env) {
   if (liveError) s.liveError = liveError;
   return s;
 }
+// Company -> deal ids, LIVE from HubSpot (2026-11-13), for every HubSpot
+// company an app brand points at: the same rows bdAppAssocSql reads from the
+// warehouse's nightly copy, so a deal re-pointed in HubSpot joins its brand on
+// the next load. 500 companies per batch-read call. Throws on any refusal so
+// the caller can fall back to the nightly copy rather than a partial set.
+async function fetchBdAppAssocLive(env, companyIds) {
+  const token = env && env.HUBSPOT_TOKEN;
+  if (!token) throw new Error('no HubSpot token');
+  const ids = Array.from(new Set(companyIds.filter(Boolean).map(String)));
+  const out = {};
+  const batches = [];
+  for (let i = 0; i < ids.length; i += 500) batches.push(ids.slice(i, i + 500));
+  await Promise.all(batches.map(async (batch) => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      SUBREQ.n++; SUBREQ.hubspot++;
+      const r = await fetch('https://api.hubapi.com/crm/v4/associations/companies/deals/batch/read', {
+        method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inputs: batch.map(id => ({ id })) }),
+      });
+      if (r.status === 429) { await sleep(1000 * (attempt + 1)); continue; }
+      if (!r.ok) { azDrain(r); throw new Error('company-deal associations ' + r.status); }
+      const j = await r.json();
+      for (const x of (j.results || [])) {
+        const hc = x.from && String(x.from.id); if (!hc) continue;
+        out[hc] = (x.to || []).map(t => String(t.toObjectId != null ? t.toObjectId : t.id)).filter(Boolean);
+      }
+      return;
+    }
+    throw new Error('company-deal associations rate-limited');
+  }));
+  return Object.keys(out).map(hc => ({ HC: hc, DEALS: out[hc].join(',') }));
+}
 async function fetchBdApp(env) {
   const today = etDayKeyOf(new Date().toISOString());
   // The pilot row's stats ride along. Their failure must not take the brand
   // book down with it (or the reverse): it comes back as {error} on its own.
   const pilotP = fetchBdPilotStats(env).catch(e => ({ error: 'Pilot stats unavailable', detail: String((e && e.message) || e).slice(0, 200) }));
-  const assocP = Promise.all(Array.from({ length: BDAPP_ASSOC_PAGES }, (_, k) => mbQuery(env, bdAppAssocSql(k))));
+  const assocNightly = () => Promise.all(Array.from({ length: BDAPP_ASSOC_PAGES }, (_, k) => mbQuery(env, bdAppAssocSql(k))))
+    .then(pages => [].concat(...pages));
   // Brands: live from the app's Postgres through Grafana when the token is set;
   // on any Grafana failure (or no rows), last night's Metabase copy instead.
   let rows = null, live = false, liveError = '';
@@ -4232,14 +4265,18 @@ async function fetchBdApp(env) {
     const pages = await Promise.all(Array.from({ length: BDAPP_PAGES }, (_, k) => mbQuery(env, bdAppSql(k))));
     rows = [].concat(...pages);
   }
-  const assoc = await assocP;
   // Zero rows is a broken read, not an empty book: there are ~1,800 brands.
   if (!rows.length) throw new Error('Metabase returned no app brands');
+  // Associations: live from HubSpot for the brands' own companies, else the
+  // warehouse's nightly copy.
+  let assoc, assocLive = false;
+  try { assoc = await fetchBdAppAssocLive(env, rows.map(r => r.HC)); assocLive = true; }
+  catch (e) { console.error('BD app associations: HubSpot failed, using the nightly copy:', (e && e.message) || e); assoc = await assocNightly(); }
   const pilotStats = await pilotP;
-  const meta = { generatedAt: new Date().toISOString(), today, live,
+  const meta = { generatedAt: new Date().toISOString(), today, live, assocLive,
     source: live ? 'Live · app database via Grafana' : 'Metabase · Snowflake copy of the app (nightly)', rows: rows.length };
   if (liveError) meta.liveError = liveError;
-  return { brands: bdAppBuild(rows, today, [].concat(...assoc)), pilotStats, meta };
+  return { brands: bdAppBuild(rows, today, assoc), pilotStats, meta };
 }
 
 // ── Skincare Phase 2: app data via Metabase ──────────────────────────────────
@@ -10306,7 +10343,7 @@ async function fetchBDData(env, fresh) {
   // Load cached associations from KV so we don't re-fetch deals that we've
   // already mapped to a company. Same pattern as the companies cache.
   // Cache value per deal:
-  //   "12345"   → company ID string (stable; never re-checked)
+  //   "12345"   → company ID string (the fallback when a live batch fails)
   //   {t: ts}   → tried at time ts and found no company; re-check after TTL
   //               (so deals that have a company added later in HubSpot
   //                eventually pick it up without a full cache wipe)
@@ -10340,114 +10377,82 @@ async function fetchBDData(env, fresh) {
   }
   const cachedAssocCount = Object.keys(companyAssociations).length;
   const missingDealIds = dealIds.filter(id => !_assocStillValid(assocCache[id]));
-  // Cap per-load association fetching to stay within Cloudflare's
-  // subrequest budget (deal search + owner + assoc + company-cache-read
-  // already use ~25-30 subrequests). 12 batches = 1200 deals per load.
-  // Subsequent loads will catch up on remaining missing deals.
-  const MAX_ASSOC_BATCHES = 12;
-  const idsToFetch = missingDealIds.slice(0, MAX_ASSOC_BATCHES * 100);
-  // ── Re-verify already-resolved associations on an explicit refresh ────────
-  // A resolved entry is a bare company-id string and _assocStillValid() calls
-  // those valid forever, so a deal re-pointed at a different company in HubSpot
-  // kept its ORIGINAL company on this page indefinitely — the Refresh button
-  // re-pulled deals and company owner fields but never the association itself.
-  // Refresh now spends whatever budget the missing deals didn't use on
-  // re-checking resolved ones, walking a cursor through the set so repeated
-  // clicks sweep everything instead of re-checking the same first 1200.
-  // Nothing is cleared up front: the batch loop only overwrites on a positive
-  // result, and its not-returned branch is already guarded by
-  // _assocStillValid(), so a HubSpot hiccup can't blank a company that is
-  // currently showing.
-  let reverifyFrom = 0, reverifyCount = 0;
-  if (fresh && idsToFetch.length < MAX_ASSOC_BATCHES * 100) {
-    const resolvedIds = dealIds.filter(id => typeof assocCache[id] === 'string');
-    if (resolvedIds.length) {
-      if (env.CONTENT_STORE) {
-        try {
-          kvOp();
-          const rawCur = await env.CONTENT_STORE.get('bd_assoc_reverify_cursor');
-          const n = rawCur == null ? 0 : parseInt(rawCur, 10);
-          if (Number.isFinite(n) && n >= 0) reverifyFrom = n % resolvedIds.length;
-        } catch(e) { /* cursor is an optimisation — start from 0 */ }
-      }
-      const room = (MAX_ASSOC_BATCHES * 100) - idsToFetch.length;
-      // Wrap around the end so the tail of the list isn't starved.
-      const slice = resolvedIds.slice(reverifyFrom, reverifyFrom + room);
-      if (slice.length < room) slice.push(...resolvedIds.slice(0, room - slice.length));
-      idsToFetch.push(...slice);
-      reverifyCount = slice.length;
-      if (env.CONTENT_STORE) {
-        try {
-          kvOp();
-          await env.CONTENT_STORE.put('bd_assoc_reverify_cursor',
-            String((reverifyFrom + reverifyCount) % resolvedIds.length));
-        } catch(e) { /* best-effort */ }
-      }
-    }
-  }
+  // LIVE every load (Alex, 2026-11-13): every deal's company association is
+  // re-read from HubSpot on each load, so a deal moved to another company shows
+  // up on the next load. The KV copy stays only as the FALLBACK for a batch that
+  // fails, so a HubSpot hiccup cannot blank a company that is showing. 500 deals
+  // per batch-read call (HubSpot allows 1,000), up to 6 calls in flight.
+  const ASSOC_BATCH = 500, ASSOC_CONC = 6;
+  const idsToFetch = dealIds.slice();
+  const reverifyCount = 0;
   let assocMatched = 0, assocBatches = 0, assocFailures = 0, assocNoCompany = 0;
-  for (let i = 0; i < idsToFetch.length; i += 100) {
-    const batch = idsToFetch.slice(i, i + 100);
+  const _assocBatch = async (batch, i) => {
     assocBatches++;
-    try {
-      const assocRes = await fetch('https://api.hubapi.com/crm/v4/associations/deals/companies/batch/read', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${hsToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inputs: batch.map(id => ({ id: String(id) })) }),
-      });
-      if (!assocRes.ok) {
-        const txt = await assocRes.text();
-        console.error(`BD assoc batch ${i} HTTP ${assocRes.status}: ${txt.slice(0,200)}`);
-        assocFailures++;
-        continue;
-      }
-      const assocData = await assocRes.json();
-      const returnedIds = new Set();
-      for (const r of (assocData.results || [])) {
-        const dealId = r.from?.id;
-        if (!dealId) continue;
-        returnedIds.add(dealId);
-        const to = r.to || [];
-        if (!to.length) {
-          // No associated company at this time → store timestamped no-company
-          // marker so we'll re-check after TTL (HubSpot user may add a company
-          // later, e.g. for newly-created deals or fixed data).
-          assocCache[dealId] = { t: nowMs };
-          assocNoCompany++;
-          continue;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        SUBREQ.n++; SUBREQ.hubspot++;
+        const assocRes = await fetch('https://api.hubapi.com/crm/v4/associations/deals/companies/batch/read', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${hsToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ inputs: batch.map(id => ({ id: String(id) })) }),
+        });
+        if (assocRes.status === 429) { await sleep(1000 * (attempt + 1)); continue; }
+        if (!assocRes.ok) {
+          const txt = await assocRes.text();
+          console.error(`BD assoc batch ${i} HTTP ${assocRes.status}: ${txt.slice(0,200)}`);
+          assocFailures++;
+          return;
         }
-        // Prefer the PRIMARY company association (typeId 5 / label "Primary")
-        let primaryId = null, firstId = null;
-        for (const t of to) {
-          const cId = t.toObjectId ?? t.id ?? t.companyId ?? null;
-          if (cId == null) continue;
-          if (firstId == null) firstId = cId;
-          const types = t.associationTypes || t.types || [];
-          if (types.some(at => at.typeId === 5 || /primary/i.test(at.label || ''))) {
-            primaryId = cId; break;
+        const assocData = await assocRes.json();
+        const returnedIds = new Set();
+        for (const r of (assocData.results || [])) {
+          const dealId = r.from?.id;
+          if (!dealId) continue;
+          returnedIds.add(dealId);
+          const to = r.to || [];
+          // Prefer the PRIMARY company association (typeId 5 / label "Primary")
+          let primaryId = null, firstId = null;
+          for (const t of to) {
+            const cId = t.toObjectId ?? t.id ?? t.companyId ?? null;
+            if (cId == null) continue;
+            if (firstId == null) firstId = cId;
+            const types = t.associationTypes || t.types || [];
+            if (types.some(at => at.typeId === 5 || /primary/i.test(at.label || ''))) {
+              primaryId = cId; break;
+            }
+          }
+          const companyId = primaryId ?? firstId;
+          if (companyId != null) {
+            const cidStr = String(companyId);
+            companyAssociations[dealId] = cidStr;
+            assocCache[dealId] = cidStr;
+            assocMatched++;
+          } else {
+            // Live answer: no company now. Drop any cached one.
+            delete companyAssociations[dealId];
+            assocCache[dealId] = { t: nowMs };
+            assocNoCompany++;
           }
         }
-        const companyId = primaryId ?? firstId;
-        if (companyId != null) {
-          const cidStr = String(companyId);
-          companyAssociations[dealId] = cidStr;
-          assocCache[dealId] = cidStr;
-          assocMatched++;
-        } else {
-          assocCache[dealId] = { t: nowMs };
-          assocNoCompany++;
+        // A deal HubSpot did not return has no association (or is archived).
+        for (const id of batch) {
+          if (!returnedIds.has(String(id)) && !returnedIds.has(id)) {
+            delete companyAssociations[id];
+            assocCache[id] = { t: nowMs };
+            assocNoCompany++;
+          }
         }
-      }
-      // Any deal in this batch NOT in returnedIds means HubSpot's batch read
-      // didn't include it (typically: archived/deleted deal, or no
-      // associations at all). Mark with timestamp so it re-checks after TTL.
-      for (const id of batch) {
-        if (!returnedIds.has(id) && !_assocStillValid(assocCache[id])) {
-          assocCache[id] = { t: nowMs };
-          assocNoCompany++;
-        }
-      }
-    } catch(e) { console.error('BD assoc batch error:', e); assocFailures++; }
+        return;
+      } catch(e) { if (attempt === 2) { console.error('BD assoc batch error:', e); assocFailures++; } else await sleep(500 * (attempt + 1)); }
+    }
+    assocFailures++;
+  };
+  {
+    const batches = [];
+    for (let i = 0; i < idsToFetch.length; i += ASSOC_BATCH) batches.push([idsToFetch.slice(i, i + ASSOC_BATCH), i]);
+    for (let k = 0; k < batches.length; k += ASSOC_CONC) {
+      await Promise.all(batches.slice(k, k + ASSOC_CONC).map(([bt, i]) => _assocBatch(bt, i)));
+    }
   }
   // Persist updated association cache
   if (env.CONTENT_STORE && idsToFetch.length > 0) {
@@ -10456,9 +10461,7 @@ async function fetchBDData(env, fresh) {
       await env.CONTENT_STORE.put('bd_assoc_cache_v1', JSON.stringify(assocCache));
     } catch(e) { console.warn('BD assoc cache save failed:', e.message); }
   }
-  const assocDeferred = Math.max(0, missingDealIds.length - (idsToFetch.length - reverifyCount));
-  if (reverifyCount) console.log(`BD assoc re-verify: ${reverifyCount} resolved associations re-checked from cursor ${reverifyFrom} (fresh=true)`);
-  console.log(`BD associations: ${cachedAssocCount} cache hits · ${assocMatched} newly matched · ${assocNoCompany} no-company · ${assocDeferred} deferred to next load (${assocBatches} batches, ${assocFailures} failures, ${dealIds.length} total deals)`);
+  console.log(`BD associations (live): ${assocMatched} with a company · ${assocNoCompany} none · ${assocBatches} batches, ${assocFailures} failed (those keep the cached company) · ${dealIds.length} deals`);
 
   // Company names are loaded ONLY from KV cache in this endpoint — no live
   // HubSpot fetches here. Deal search + associations already eat most of

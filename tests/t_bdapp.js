@@ -161,6 +161,8 @@ ck('(3) churned in HubSpot, live in the app',R.t3.map(r=>[r.name,r.hsChurn]),[['
 ck('(4) HubSpot active, ended in the app',R.t4.map(r=>[r.name,r.appStatus]),[['Ended','canceled']]);
 ck('a brand both sides call active is in none of them',['t1','t2','t3','t4'].some(t=>nm(t).indexOf('Both')>=0),false);
 ck('each row links the deal and the company',[R.t4[0].dealId,R.t4[0].companyId],['203','r23']);
+ck('BD deal associations are read live every load, cache only as fallback',
+   /const idsToFetch = dealIds\.slice\(\);/.test(src)&&!/MAX_ASSOC_BATCHES/.test(src),true);
 ck('the links use the HubSpot record URLs of the All Deals table',/var BD_HS_URL='https:\/\/app\.hubspot\.com\/contacts\/46815331\/record\/';/.test(bd)&&/BD_HS_URL\+'0-3\/'/.test(bd)&&/BD_HS_URL\+'0-2\/'/.test(bd),true);
 // R5. Price mismatch: active on both sides, MRR apart by BD_REC_PRICE_TOL or more, or no app price.
 const pb=[
@@ -316,6 +318,16 @@ async function appBookTests(){
   calls=[];W.fetch=async(u,i)=>{calls.push(u);return mb(i);};
   const nt=await W.fetchBdApp({METABASE_API_KEY:'k'});
   ck('no token: Metabase only, never Grafana',[nt.meta.live,calls.every(u=>!/grafana/.test(u))],[false,true]);
+  // Company -> deal links are live from HubSpot when a token is set (2026-11-13).
+  calls=[];
+  W.fetch=async(u,i)=>{calls.push(u);if(/grafana/.test(u)){const q=JSON.parse(i.body).queries[0].rawSql;return okResp(q===W.BDAPP_SQL_PG?gBrand:gPilot);}
+    if(/companies\/deals\/batch\/read/.test(u))return okResp({results:[{from:{id:'c7'},to:[{toObjectId:'d9'}]}]});return mb(i);};
+  const la=await W.fetchBdApp({GRAFANA_TOKEN:TOKEN,HUBSPOT_TOKEN:'h',METABASE_API_KEY:'k'});
+  ck('company-deal links come live from HubSpot, not the nightly copy',[la.meta.assocLive,la.brands[0].hsDeals,calls.some(u=>/companies\/deals\/batch\/read/.test(u))],[true,['d9'],true]);
+  W.fetch=async(u,i)=>{if(/grafana/.test(u)){const q=JSON.parse(i.body).queries[0].rawSql;return okResp(q===W.BDAPP_SQL_PG?gBrand:gPilot);}
+    if(/companies\/deals\/batch\/read/.test(u))return {ok:false,status:500,body:{cancel(){}},bodyUsed:false,text:async()=>'',json:async()=>({})};return mb(i);};
+  const lb=await W.fetchBdApp({GRAFANA_TOKEN:TOKEN,HUBSPOT_TOKEN:'h',METABASE_API_KEY:'k'});
+  ck('  a HubSpot failure falls back to the nightly copy',[lb.meta.assocLive,lb.brands[0].hsDeals],[false,['d1','d2']]);
   const q=W.BDAPP_SQL_PG;
   ck('the live SQL returns the Snowflake column names, upper-case',cols.every(c=>q.indexOf('"'+c+'"')>=0),true);
   ck('  same packing and Eastern days as the nightly query',[/regexp_replace\(p\.name, '\[\|~\]', ' ', 'g'\)/.test(q),/AT TIME ZONE 'UTC'\) AT TIME ZONE 'America\/New_York'/.test(q),/COALESCE\(b\.demo, FALSE\) = FALSE/.test(q)],[true,true,true]);
@@ -434,7 +446,7 @@ function pageToggleTests(){
   ck('each Reconciliation anchor has a count slot',[1,2,3,4,5].every(i=>new RegExp('bd-sec-rec'+i+"'\\)\">[^<]+<span class=\"bd-rec-n\" id=\"bd-rec-n"+i+'"></span></a>').test(bd)),true);
   ck('  filled as "(N)" from the five tables after each render, blank without app data',
     /_bdRecCounts=\[_rc\.t1\.length,_rc\.t2\.length,_rc\.t3\.length,_rc\.t4\.length,_rc\.t5\.length\];/.test(bd)&&/c\.textContent=_bdRecCounts\?'\('\+_bdRecCounts\[i-1\]\+'\)':'';/.test(bd),true);
-  ck('  and the tab opens with a Data freshness line',/<strong style="color:var\(--navy\)">Data freshness:<\/strong> HubSpot is live on every load; app data is /.test(bd),true);
+  ck('  and the tab opens with a Data freshness line',/<strong style="color:var\(--navy\)">Data freshness:<\/strong> HubSpot deals and their company links are live on every load/.test(bd),true);
   ck('C1/C2 keep the APP snapshot book, apart from section 02\u2019s',[ex.app['2026-10'].b,!!ex.snap['2026-10']&&ex.snap['2026-10'].b!==9],[9,true]);
 }
 
