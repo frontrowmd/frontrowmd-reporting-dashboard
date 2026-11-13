@@ -204,6 +204,8 @@ ck('Never Implemented: a Never Imp type, or no type and never live; Board Define
    C._baIsNeverImpl({never_implemented_churn:'Board Defined Churn',_brand:{everLive:false}}),C._baIsNeverImpl({never_implemented_churn:'',_brand:{everLive:true}})],[true,true,false,false]);
 ck('  the C3 switch defaults to Excluded, which drops NI churns from the grid',
   /var _bdRetNI='excl';/.test(bd)&&/var _rwCh=\(_bdRetNI==='excl'\)\?_apCh\.filter\(function\(dd\)\{return !_baIsNeverImpl\(dd\);\}\):_apCh;/.test(bd),true);
+ck('reconciliation rows carry the linked deal\u2019s create and close dates',[PM.t5[0].createDate!==undefined,typeof PM.t5[0].closeDate],[true,'string']);
+ck('  and HubSpot MRR sits right next to App MRR',/\['hsMrr','HubSpot MRR','num'\],\['appMrr','App MRR','num'\]\]/.test(bd),true);
 ck('test accounts are an explicit list',/var BD_APP_TEST_BRANDS=\['FrontrowMD Demo Account','Vincent'\];/.test(bd),true);
 
 // 10. Review fixes (2026-11-11)

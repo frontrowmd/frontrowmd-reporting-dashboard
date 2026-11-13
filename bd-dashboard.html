@@ -1053,6 +1053,8 @@ function _baRecon(deals,brands,join){
   var row=function(name,ds,b,extra){
     var o=dealOut(ds),rv=(extra&&extra.brands)||(b?[b]:[]);
     var r={name:name,dealId:o.deal?o.deal.id:'',companyId:(o.deal&&o.deal.companyId)||(b&&b.hubspotCompanyId)||'',
+      // The linked deal's own dates (Alex, 2026-11-13), Eastern day; blank with no deal.
+      createDate:o.deal?_baDay(o.deal.createdate):'',closeDate:o.deal?_baDay(o.deal.closedate):'',
       hsStatus:o.hsStatus,hsMrr:o.hsMrr,appStatus:_baAppLabel(b),
       appMrr:b?(b.state==='pilot'?(b.pilot&&b.pilot.postPrice):b.monthly):null,appMrrPilot:!!(b&&b.state==='pilot'),
       lastReview:rv.reduce(function(m,x){return x.lastReviewAt>m?x.lastReviewAt:m;},''),
@@ -1136,9 +1138,12 @@ function _bdRecTable(t,num,title,fix,rows,mk,extraCol){
   var tot=rows.reduce(function(s2,r){return s2+(+r[mk]||0);},0);
   // Links and the app brand id sit right after Brand: they are what the tab is
   // for, and the last columns are the first to go off-screen on a narrow window.
-  var cols=[['name','Brand',''],['','Links',''],['appIds','App brand id',''],['hsStatus','HubSpot status · stage',''],['hsMrr','HubSpot MRR','num']];
+  // HubSpot MRR and App MRR sit side by side (Alex, 2026-11-13) so they compare
+  // at a glance; the two statuses sit together just before them.
+  var cols=[['name','Brand',''],['','Links',''],['appIds','App brand id',''],['hsStatus','HubSpot status · stage',''],['appStatus','App status',''],
+    ['hsMrr','HubSpot MRR','num'],['appMrr','App MRR','num']];
   cols=cols.concat(extras);
-  cols=cols.concat([['appStatus','App status',''],['appMrr','App MRR','num'],['lastReview','Last review',''],['reviews45','Reviews 45d','num']]);
+  cols=cols.concat([['createDate','Create date',''],['closeDate','Close date',''],['lastReview','Last review',''],['reviews45','Reviews 45d','num']]);
   var th=cols.map(function(c){
     var ar=srt.k===c[0]?(srt.d>0?' \u25b4':' \u25be'):'';
     return '<th class="'+c[2]+'"'+(c[0]?' onclick="bdRecSort(\''+t+'\',\''+c[0]+'\')"':'')+'>'+c[1]+ar+'</th>';}).join('');
@@ -1149,12 +1154,13 @@ function _bdRecTable(t,num,title,fix,rows,mk,extraCol){
       +(r.companyId?'<a class="lk" href="'+BD_HS_URL+'0-2/'+encodeURIComponent(r.companyId)+'" target="_blank" rel="noopener">Company <span>\u2197</span></a>':'');
     var tds='<td class="nm" title="'+_bdEsc(r.name)+'">'+_bdEsc(r.name)+'</td><td class="lks">'+(lk||dash)+'</td>'
       +'<td class="ids" title="'+_bdEsc(r.appIds)+'">'+(_bdEsc(r.appIds)||dash)+'</td>'
-      +'<td class="wr">'+_bdEsc(r.hsStatus||'no deal')+'</td><td class="num">'+(r.hsMrr?f$(r.hsMrr):dash)+'</td>';
+      +'<td class="wr">'+_bdEsc(r.hsStatus||'no deal')+'</td><td class="wr">'+_bdEsc(r.appStatus)+'</td>'
+      +'<td class="num">'+(r.hsMrr?f$(r.hsMrr):dash)+'</td><td class="num">'+money(r.appMrr,r.appMrrPilot)+'</td>';
     extras.forEach(function(c){var v=r[c[0]];
       tds+=c[2]==='num'?'<td class="num">'+(v==null||v===''?dash:(v>0?'+':v<0?'\u2212':'')+f$(Math.abs(v)))+'</td>'
         :'<td class="wr">'+(_bdEsc(v)||dash)+'</td>';});
-    tds+='<td class="wr">'+_bdEsc(r.appStatus)+'</td><td class="num">'+money(r.appMrr,r.appMrrPilot)+'</td><td>'+(r.lastReview||dash)+'</td>'
-      +'<td class="num">'+(r.reviews45||dash)+'</td>';
+    tds+='<td style="white-space:nowrap">'+(r.createDate||dash)+'</td><td style="white-space:nowrap">'+(r.closeDate||dash)+'</td>'
+      +'<td>'+(r.lastReview||dash)+'</td><td class="num">'+(r.reviews45||dash)+'</td>';
     return '<tr>'+tds+'</tr>';}).join('');
   return '<section class="bd-sec" id="bd-sec-rec'+num+'"><div class="bd-sec-head"><span class="bd-sec-n">R'+num+'</span><span class="bd-sec-t">'+title+'</span>'
     +'<span class="bd-sec-s"></span><span class="bd-rec-tot">'+rows.length+' brand'+(rows.length===1?'':'s')+' \u00b7 '+(mk==='diff'?(tot<0?'\u2212':'+')+f$(Math.abs(tot))+' net (HubSpot \u2212 app MRR)':f$(tot)+' '+(mk==='hsMrr'?'HubSpot':'app')+' MRR')+'</span></div>'
