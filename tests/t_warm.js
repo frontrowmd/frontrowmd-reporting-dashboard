@@ -172,7 +172,22 @@ ck('with a readable age',/function _staleAge\(sec\)\{/.test(cli),true);
 // The banner must ride the same element the filter bar is written into, or it
 // renders on one page and not the other two.
 ck('the banner reaches every page that shows the tables',
-   /filterTargets\.forEach\(el=>el\.innerHTML=_staleNote\+_metaFilterBar/.test(cli),true);
+   /filterTargets\.forEach\(el=>el\.innerHTML=_staleNote\+_unNote\+_metaFilterBar/.test(cli),true);
+// 2026-11-13: Reddit and ChatGPT were removed from Windsor. A refused connector
+// (400/401/403/404) is UNAVAILABLE, never a soft failure, so it cannot block the
+// other channels from caching -- and the page names it.
+{
+  const W2={console:{log(){},warn(){},error(){}}};require('vm').createContext(W2);
+  require('vm').runInContext(src.slice(0,src.indexOf('\nexport default'))+'\nObject.assign(globalThis,{azWindsorFetch,SUBREQ,subreqReset});',W2);
+  W2.fetch=async()=>({ok:false,status:400,body:{cancel(){}},bodyUsed:false,text:async()=>'',json:async()=>({})});
+  W2.subreqReset();
+  globalThis.__unav=(async()=>{
+    const rows=await W2.azWindsorFetch('k','reddit','2026-11-01','2026-11-10','date,spend');
+    ck('a refused connector returns no rows, no soft failure, one call, and is named',[rows.length,W2.SUBREQ.softFail,W2.SUBREQ.windsor,W2.SUBREQ.unavail.reddit],[0,0,1,400]);
+  })();
+}
+ck('the payload names unavailable connectors and the tables say so',
+   /result\.unavailableConnectors = Object\.assign\(\{\}, SUBREQ\.unavail\)/.test(src)&&/not connected in Windsor/.test(cli),true);
 
 // --- expensive windows must never rebuild on the request path -------------
 // Observed: the Clinician Ad Tables on MTD reported "no response after 75s —
@@ -215,5 +230,6 @@ ck('the background rebuild will not cache a degraded payload',
 ck('and it uses the long retention like every other writer',
    (src.match(/expirationTtl: AZ_CACHE_RETAIN_SEC/g)||[]).length,3);
 
+Promise.resolve(globalThis.__unav).then(()=>{
 console.log(pass+' passed, '+fail+' failed');
-process.exit(fail?1:0);
+process.exit(fail?1:0);});

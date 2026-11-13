@@ -1231,6 +1231,12 @@ async function fetchGA4(apiKey, from, to) {
 // pool breaker: a fetch that burned its retries, or a count that came back null.
 // Without it a degraded payload looks healthy and gets cached.
 const SUBREQ = { n: 0, windsor: 0, hubspot: 0, kv: 0, exhausted: false, windsorDropped: 0, softFail: 0, creCapped: 0,
+  // Connectors Windsor REFUSED outright this run (400/401/403/404: not
+  // connected, account removed, field not on the connector), by connector.
+  // Not soft failures: retrying cannot help, and counting them let ONE
+  // disconnected connector (Reddit and ChatGPT, removed from Windsor
+  // 2026-11-12) block every channel's ad data from caching for a day.
+  unavail: {},
   // Attempts RESERVED, incremented synchronously the moment a chunk is admitted.
   // SUBREQ.windsor only counts attempts already STARTED, and ~20 chunkers admit
   // their waves synchronously before any of those increments land, so budgeting
@@ -1356,7 +1362,7 @@ function hsErrReset() { HS_ERR.n = 0; HS_ERR.statuses = {}; HS_ERR.sample = ''; 
 function subreqReset() {
   SUBREQ.n = 0; SUBREQ.windsor = 0; SUBREQ.hubspot = 0; SUBREQ.kv = 0;
   SUBREQ.exhausted = false; SUBREQ.windsorDropped = 0; SUBREQ.softFail = 0; SUBREQ.windsorPlanned = 0;
-  SUBREQ.creCapped = 0;
+  SUBREQ.creCapped = 0; SUBREQ.unavail = {};
   hsErrReset();
 }
 function isSubreqLimit(e) {
@@ -1374,6 +1380,7 @@ function subreqSummary() {
   return `subrequests ~${SUBREQ.n} (windsor ${SUBREQ.windsor}/${SUBREQ.windsorPlanned} planned, hubspot ${SUBREQ.hubspot}, kv ${SUBREQ.kv})`
     + (SUBREQ.softFail ? `, soft failures: ${SUBREQ.softFail}` : '')
     + (SUBREQ.creCapped ? `, creative fetches capped: ${SUBREQ.creCapped}` : '')
+    + (Object.keys(SUBREQ.unavail || {}).length ? `, unavailable connectors: ${Object.entries(SUBREQ.unavail).map(([k, v]) => k + ' ' + v).join(', ')}` : '')
     + (SUBREQ.windsorDropped ? `, windsor chunks dropped at budget: ${SUBREQ.windsorDropped}` : '')
     + (SUBREQ.exhausted ? ' — POOL EXHAUSTED' : '');
 }
@@ -8538,6 +8545,15 @@ async function azWindsorFetch(apiKey, connector, from, to, fields, _chunked) {
     try {
       SUBREQ.n++; SUBREQ.windsor++;
       const r = await fetch(url);
+      // A refusal (not a rate limit or a server error) is permanent for this
+      // run: no retry, no soft failure -- the connector is simply unavailable,
+      // recorded so the payload can say so, and the other channels still cache.
+      if ([400, 401, 403, 404].indexOf(r.status) >= 0) {
+        azDrain(r);
+        if (!SUBREQ.unavail[connector]) console.error(`Az Windsor ${connector}: ${r.status} — treated as unavailable (not connected in Windsor?)`);
+        SUBREQ.unavail[connector] = r.status;
+        return [];
+      }
       if (!r.ok) { azDrain(r); throw new Error(`Windsor ${connector} ${r.status}`); }
       const j = await r.json();
       const rows = j.data || [];
@@ -12099,6 +12115,9 @@ export default {
         // bounds how long any missed degradation can persist.
         const _azOk = !SUBREQ.exhausted && !SUBREQ.windsorDropped
                       && SUBREQ.softFail <= AZ_CRON_SOFTFAIL_TOLERANCE;
+        // Connectors Windsor refused (not connected): named on the payload so the
+        // page can say why a channel is empty instead of implying no spend.
+        if (result && Object.keys(SUBREQ.unavail || {}).length) result.unavailableConnectors = Object.assign({}, SUBREQ.unavail);
         if (!_azOk) console.warn(`NOT caching analyzer payload (${_azWin}) — ${subreqSummary()}`);
         else if (SUBREQ.softFail) console.warn(`caching analyzer payload (${_azWin}) WITH ${SUBREQ.softFail} soft failure(s) — ${subreqSummary()}`);
         // A degraded run can come back MISSING WHOLE CHANNELS, and the dashboard

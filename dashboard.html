@@ -9279,7 +9279,15 @@ function _renderIrfanMetaTables(d, channel){
       +'<strong>Showing the last complete ad data</strong> \u2014 '+_staleAge(d._staleAgeSec)
       +'. The live rebuild for this window did not finish, so these figures are not current.</div>'
     :'';
-  filterTargets.forEach(el=>el.innerHTML=_staleNote+_metaFilterBar((el.id||'x').split('-')[0]));
+  // Channels whose Windsor connector refused (not connected): said once, so an
+  // empty Reddit or ChatGPT table reads as "not connected", not "no spend".
+  const _UN_LBL={reddit:'Reddit',openai_ads:'ChatGPT',linkedin:'LinkedIn',tiktok:'TikTok',google_ads:'Google',facebook:'Meta'};
+  const _un=Object.keys((d&&d.unavailableConnectors)||{}).filter(k=>k!=='linkedin').map(k=>_UN_LBL[k]||k);
+  const _unNote=_un.length
+    ?'<div style="margin:0 0 10px;padding:8px 12px;background:rgba(114,164,191,.10);border:1px solid rgba(114,164,191,.35);border-radius:7px;font-size:11px;color:var(--navy);line-height:1.45">'
+      +'<strong>'+_un.join(' and ')+'</strong> '+(_un.length===1?'is':'are')+' not connected in Windsor, so '+(_un.length===1?'its tables are':'their tables are')+' empty. The other channels are current.</div>'
+    :'';
+  filterTargets.forEach(el=>el.innerHTML=_staleNote+_unNote+_metaFilterBar((el.id||'x').split('-')[0]));
   campTargets.forEach(el=>el.innerHTML=campH);
   creTargets.forEach(el=>el.innerHTML=creH);
   audTargets.forEach(el=>el.innerHTML=audH);
