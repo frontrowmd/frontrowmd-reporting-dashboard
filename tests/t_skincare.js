@@ -245,7 +245,7 @@ ck('client: Engagement carries the clinician type filter too (same state)',/enga
 ck('client: Reviewing After Samples counts every reviewer over everyone who got samples',
    /lt\('Reviewing After Samples',_sknPct\(ap\.reviewers\|\|0,_sknGotSamples\(ap\)\)/.test(rs)&&/function _sknGotSamples\(o\)\{return \(o\.samples\|\|0\)\+Math\.max\(0,\(o\.reviewers\|\|0\)-\(o\.sampleReviewers\|\|0\)\);\}/.test(cli),true);
 ck('client: All Active Skincare Brands counts signed, pilot, paused and starting only',/fN\(sn\('active'\)\+sn\('pilot'\)\+sn\('paused'\)\+sn\('future'\)\)/.test(rs),true);
-ck('client: the month chart is wide and short, capped in width',/const W=1000,H=230,/.test(cli)&&/class="skn-mc" style="position:relative;max-width:1100px"/.test(cli),true);
+ck('client: the month chart fills the card at a fixed height, redrawn on resize',/const W=Math\.max\(480,Math\.round\(pxW\|\|1000\)\),H=230,/.test(cli)&&/_sknMonthChart\(months,cw,_sknChartW\)/.test(cli)&&/class="skn-mc" style="position:relative"/.test(cli),true);
 ck('client: bar labels get a column sized to them, not a third of the card',/grid-template-columns:'\+lw\+'px minmax\(0,1fr\)/.test(cli),true);
 ck('client: option and group labels are escaped',/l:_sknEsc\(x\.group\)/.test(rs),true);
 // Type folding: MD/DO, NP and PA keep their own rows; every other title is Other.

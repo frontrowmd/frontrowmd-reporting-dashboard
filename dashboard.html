@@ -1953,12 +1953,14 @@ function _sknFoldBy(by){
 }
 // Reviews ordered by month (columns) with reviews written (line), one axis:
 // both are counts of reviews. Native SVG <title> gives each month a tooltip.
-function _sknMonthChart(months,cw){
+function _sknMonthChart(months,cw,pxW){
   cw=cw==null?'skincare ':cw;
   if(!months.length)return '<div style="padding:16px;color:var(--grey);font-size:12px">No '+cw+'orders yet</div>';
-  // Wide and short: the chart spans the card, and its height stays near 230px
-  // (Alex, 2026-11-12: at full width the old 640x220 box scaled to ~600px tall).
-  const W=1000,H=230,L=40,R=10,T=14,B=28,pw=W-L-R,ph=H-T-B;
+  // Fills the card's width at a fixed ~230px height (Alex, 2026-11-13): the
+  // viewBox is drawn at the container's own pixel width (pxW, measured by
+  // renderSkincare and re-measured on resize), so the SVG renders 1:1 instead
+  // of scaling a fixed box up (too tall) or capping it (too narrow).
+  const W=Math.max(480,Math.round(pxW||1000)),H=230,L=40,R=10,T=14,B=28,pw=W-L-R,ph=H-T-B;
   const mx=Math.max(1,...months.map(x=>Math.max(x.ordered,x.reviews)));
   const raw=mx/4,mag=Math.pow(10,Math.floor(Math.log10(raw))),tk=[1,2,5,10].map(k=>k*mag).find(k=>k>=raw)||10*mag,nice=Math.max(4,tk*4);
   const y=v=>T+ph-(v/nice)*ph, bw=pw/months.length, MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -1987,10 +1989,19 @@ function _sknMonthChart(months,cw){
   const key=(c,l,line)=>'<span style="display:inline-flex;align-items:center;gap:6px;margin-right:16px">'
     +(line?'<span style="width:16px;height:2px;background:'+c+';position:relative"><span style="position:absolute;left:5px;top:-3px;width:6px;height:6px;border-radius:50%;background:'+c+'"></span></span>':'<span style="width:10px;height:10px;border-radius:2px;background:'+c+'"></span>')+l+'</span>';
   return '<div style="font-size:11px;color:var(--navy);margin:0 0 6px">'+key('var(--navy)','Reviews ordered'+(cw?' ('+cw.trim()+')':''))+key('var(--teal)','Reviews written on '+cw+'products (any clinician, ordered or not)',1)+'</div>'
-    +'<div class="skn-mc" style="position:relative;max-width:1100px" onmouseleave="_sknTipOff(this)">'
+    +'<div class="skn-mc" style="position:relative" onmouseleave="_sknTipOff(this)">'
     +'<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block" role="img" aria-label="Reviews ordered and written by month">'+g+'</svg>'
     +'<div class="skn-tip" style="position:absolute;top:0;left:0;display:none;pointer-events:none;z-index:5;background:var(--navy);color:#fff;font-size:11px;line-height:1.6;padding:8px 10px;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.18);white-space:nowrap"></div></div>';
 }
+// Redraw the page on a real width change so the month chart keeps filling it.
+if(typeof window!=='undefined'&&window.addEventListener)window.addEventListener('resize',function(){
+  clearTimeout(window._sknRsz);
+  window._sknRsz=setTimeout(function(){
+    if(typeof AP==='undefined'||AP!=='skincare'||!S.skincare.data)return;
+    const el=document.getElementById('skincare-c');if(!el)return;
+    if(Math.abs((el.clientWidth-44)-(S.skincare._chartW||0))>24)renderSkincare();
+  },200);
+});
 // Month-chart hover: shows at once (a native SVG <title> waits ~1s), follows
 // the pointer, flips left near the right edge and shades the hovered month.
 window._sknTip=function(el,ev){
@@ -2023,14 +2034,18 @@ function _sknBars(rows,fmt){
   // The label column is as wide as its longest label or note, not a third of
   // the card (which left a wide gap before short labels' bars).
   const txt=v=>String(v||'').replace(/<[^>]*>/g,'').replace(/&[a-z#0-9]+;/gi,'x');
-  const lw=Math.round(Math.min(300,Math.max(90,...rows.map(r=>Math.max(txt(r.l).length*6.6,txt(r.note).length*5.4)))+12));
-  return rows.map(r=>'<div style="display:grid;grid-template-columns:'+lw+'px minmax(0,1fr);gap:10px;align-items:center;margin:0 0 8px">'
-    +'<div style="font-size:12px;color:var(--navy);'+(r.bold?'font-weight:700':'')+'">'+r.l+(r.note?'<div style="font-size:10px;color:var(--grey);font-weight:400">'+r.note+'</div>':'')+'</div>'
-    +'<div style="display:flex;align-items:center;gap:8px" title="'+_sknEsc(r.tip||'')+'"><div style="height:14px;border-radius:0 4px 4px 0;background:'+r.c+';width:'+Math.max(r.v>0?0.6:0,(r.v||0)/mx*82).toFixed(1)+'%"></div>'
-    +'<span style="font-size:12px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;white-space:nowrap">'+(fmt?fmt(r):fN(r.v||0))+'</span></div></div>').join('');
+  const lw=Math.round(Math.min(340,Math.max(100,...rows.map(r=>Math.max(txt(r.l).length*7.6,txt(r.note).length*6.3)))+14));
+  return rows.map(r=>'<div style="display:grid;grid-template-columns:'+lw+'px minmax(0,1fr);gap:12px;align-items:center;margin:0 0 10px">'
+    // 13.5px labels and 11.5px notes (Alex, 2026-11-13: 12/10 was hard to read).
+    +'<div style="font-size:13.5px;color:var(--navy);line-height:1.35;'+(r.bold?'font-weight:700':'font-weight:600')+'">'+r.l+(r.note?'<div style="font-size:11.5px;color:var(--grey);font-weight:400">'+r.note+'</div>':'')+'</div>'
+    +'<div style="display:flex;align-items:center;gap:8px" title="'+_sknEsc(r.tip||'')+'"><div style="height:16px;border-radius:0 4px 4px 0;background:'+r.c+';width:'+Math.max(r.v>0?0.6:0,(r.v||0)/mx*82).toFixed(1)+'%"></div>'
+    +'<span style="font-size:13.5px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;white-space:nowrap">'+(fmt?fmt(r):fN(r.v||0))+'</span></div></div>').join('');
 }
 function renderSkincare(){
   const el=document.getElementById('skincare-c'); if(!el)return;
+  // The month chart is drawn at the card's inner width (card padding ~44px).
+  const _sknChartW=Math.max(480,(el.clientWidth||1000)-44);
+  S.skincare._chartW=_sknChartW;
   const d=S.skincare.data;
   if(!d){if(!S.skincare._fetching)fdSkincare();return;}
   const card=(id,title,sub,body)=>'<div class="sec sec-card dsec" style="margin-bottom:16px">'
@@ -2139,7 +2154,7 @@ function renderSkincare(){
           Ag.openMedianDays==null?'':'open orders are <b>'+fN(Ag.openMedianDays)+' days</b> old (median)'+(Ag.owedOver90?', '+fN(Ag.owedOver90)+' owed on orders over 90 days old':''),
           Ag.fulfilMedianDays==null?'':'an order takes <b>'+fN(Ag.fulfilMedianDays)+' days</b> to fulfil (median, '+fN(Ag.fulfilledOrders||0)+' completed)'].filter(Boolean).join(' \u00b7 ')
       +'</div>'
-      +'<div style="margin-top:18px">'+sub('By month','Ordered = reviews on orders confirmed that month \u00b7 hover a month for its numbers')+_sknMonthChart(months,cw)
+      +'<div style="margin-top:18px">'+sub('By month','Ordered = reviews on orders confirmed that month \u00b7 hover a month for its numbers')+_sknMonthChart(months,cw,_sknChartW)
         +'<details style="margin-top:8px"><summary style="font-size:11px;color:var(--grey);cursor:pointer">Show as a table</summary>'
         +tbl(th('Month',1)+th('Ordered')+th('Brands')+th('Written'),
           months.slice().reverse().map(x=>tr(td(_sknEsc(x.m),1)+td(fN(x.ordered))+td(fN(x.brands))+td(fN(x.reviews)))).join(''))+'</details></div>'
