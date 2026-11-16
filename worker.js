@@ -3882,8 +3882,10 @@ pl AS (
   SELECT s.HEALTH_BRAND_ID bid,
     LISTAGG(CONCAT_WS('|', ${_bdS('pi.ID')}, ${_bdS('pi.STATUS')}, ${_bdS(_bdEt('pi.DEPOSIT_PAID_AT'))}, ${_bdS('pi.DEPOSIT_TOTAL_IN_CENTS')},
       ${_bdS('pi.ROLLOVER_PRICE_IN_CENTS')}, ${_bdS('pi.NEXT_PRICE_OVERRIDE_IN_CENTS')}, IFF(pi.NEXT_PRICE_OVERRIDE_REPEATS, '1', '0'),
-      ${_bdS('pi.DEPOSIT_MONTH_DEFAULT_IN_CENTS')}), '~') WITHIN GROUP (ORDER BY pi.CREATED_AT, pi.ID) PILOTS
+      ${_bdS('pi.DEPOSIT_MONTH_DEFAULT_IN_CENTS')}, ${_bdS('pp.MONTHLY_PRICE_IN_CENTS')}, IFF(s.EXTERNAL_SUBSCRIPTION_ID IS NULL, '1', '0')), '~')
+      WITHIN GROUP (ORDER BY pi.CREATED_AT, pi.ID) PILOTS
   FROM STAGING.STG_PILOTS pi JOIN STAGING.STG_SUBSCRIPTIONS s ON s.ID = pi.SUBSCRIPTION_ID
+  LEFT JOIN STAGING.STG_PILOT_PRICES pp ON pp.PACKAGE = pi.PACKAGE AND pp.TIER = pi.STARTING_TIER
   WHERE MOD(s.HEALTH_BRAND_ID, ${BDAPP_PAGES}) = ${k} GROUP BY 1),
 nt AS (
   SELECT p.HEALTH_BRAND_ID bid, ${_bdEt('MAX(n.CREATED_AT)')} LR,
@@ -3891,7 +3893,7 @@ nt AS (
   FROM STAGING.STG_NOTES n JOIN STAGING.STG_PRODUCTS p ON p.ID = n.HEALTH_BRAND_PRODUCT_ID
   WHERE n.STATUS IN ('shared', 'approved') AND MOD(p.HEALTH_BRAND_ID, ${BDAPP_PAGES}) = ${k} GROUP BY 1)
 SELECT b.ID, b.NAME NM, b.HUBSPOT_COMPANY_ID::VARCHAR HC, ${_bdEt('b.CREATED_AT')} CR, ${_bdEt('b.DISCARDED_AT')} DI,
-  nt.LR, COALESCE(nt.R45, 0) R45, sb.SUBS, pl.PILOTS
+  nt.LR, COALESCE(nt.R45, 0) R45, sb.SUBS, pl.PILOTS, b.EXTERNAL_ACCOUNT_ID RA
 FROM STAGING.STG_BRANDS b
 LEFT JOIN sb ON sb.bid = b.ID LEFT JOIN pl ON pl.bid = b.ID LEFT JOIN nt ON nt.bid = b.ID
 WHERE COALESCE(b.DEMO, FALSE) = FALSE AND MOD(b.ID, ${BDAPP_PAGES}) = ${k}
@@ -3933,15 +3935,17 @@ pl AS (
   SELECT s.health_brand_id bid,
     string_agg(concat_ws('|', ${_pgS('pi.id')}, ${_pgS('pi.status')}, ${_pgS(_pgEt('pi.deposit_paid_at'))}, ${_pgS('pi.deposit_total_in_cents')},
       ${_pgS('pi.rollover_price_in_cents')}, ${_pgS('pi.next_price_override_in_cents')}, CASE WHEN pi.next_price_override_repeats THEN '1' ELSE '0' END,
-      ${_pgS('pi.deposit_month_default_in_cents')}), '~' ORDER BY pi.created_at, pi.id) "PILOTS"
-  FROM pilots pi JOIN subscriptions s ON s.id = pi.subscription_id GROUP BY 1),
+      ${_pgS('pi.deposit_month_default_in_cents')}, ${_pgS('pp.monthly_price_in_cents')}, CASE WHEN s.external_subscription_id IS NULL THEN '1' ELSE '0' END), '~'
+      ORDER BY pi.created_at, pi.id) "PILOTS"
+  FROM pilots pi JOIN subscriptions s ON s.id = pi.subscription_id
+  LEFT JOIN pilot_prices pp ON pp.package = pi.package AND pp.tier = pi.starting_tier GROUP BY 1),
 nt AS (
   SELECT p.health_brand_id bid, ${_pgEt('max(n.created_at)')} "LR",
     count(*) FILTER (WHERE n.created_at >= (now() AT TIME ZONE 'UTC') - interval '45 days') "R45"
   FROM notes n JOIN health_brand_products p ON p.id = n.health_brand_product_id
   WHERE n.status IN ('shared', 'approved') GROUP BY 1)
 SELECT b.id "ID", b.name "NM", b.hubspot_company_id::text "HC", ${_pgEt('b.created_at')} "CR", ${_pgEt('b.discarded_at')} "DI",
-  nt."LR", COALESCE(nt."R45", 0) "R45", sb."SUBS", pl."PILOTS"
+  nt."LR", COALESCE(nt."R45", 0) "R45", sb."SUBS", pl."PILOTS", b.external_account_id "RA"
 FROM health_brands b
 LEFT JOIN sb ON sb.bid = b.id LEFT JOIN pl ON pl.bid = b.id LEFT JOIN nt ON nt.bid = b.id
 WHERE COALESCE(b.demo, FALSE) = FALSE
@@ -3965,6 +3969,11 @@ function bdAppParsePilots(s) {
   return _bdSplit(s).map(f => ({
     id: _bdNum(f[0]), status: f[1] || '', depositPaidAt: f[2] || '', depositTotal: _bdNum(f[3]),
     rollover: _bdNum(f[4]), override: _bdNum(f[5]), overrideRepeats: f[6] === '1', monthDefault: _bdNum(f[7]),
+    // The pilot price list's monthly price for the pilot's package and
+    // starting tier, and whether the pilot's subscription is app-only (no
+    // Recurly subscription): what the Brand MRR report's "Expected MRR once
+    // billing starts" and "Plan status" read.
+    listPrice: _bdNum(f[8]), appOnly: f[9] === '1',
   }));
 }
 // Term length a plan's NAME declares: "6-Month FrontrowMD Subscription",
@@ -4035,6 +4044,27 @@ function bdAppPilotPost(p) {
   if (p.override && p.overrideRepeats) return { price: p.override / 100, src: 'repeating override' };
   if (p.monthDefault) return { price: p.monthDefault / 100, src: 'deposit-month default' };
   return { price: null, src: '' };
+}
+// The Brand MRR report's (Metabase #529) app-side "Plan status" for a brand
+// whose plan is a pilot, and its "Expected MRR once billing starts"
+// (Alex, 2026-11-16: the pilot row's Initiation Fees and Post-Pilot MRR are
+// those brands' Net add-on revenue and Expected MRR). Same rules as the
+// report: only pilots on an app-only subscription (no Recurly subscription);
+// an unpaid, paid or live pilot ranks above an app sign-up waiting to
+// activate, which ranks above an ended pilot; Expected MRR = each open
+// pilot's price override, else the pilot price list for its package and
+// starting tier. Recurly can still override this (fetchBdApp).
+const BDAPP_PILOT_PLAN_LABEL = { awaiting_submit: 'Pilot \u2013 fee not paid', deposit_paid: 'Pilot \u2013 collecting data',
+  collecting_data: 'Pilot \u2013 collecting data', live: 'Pilot \u2013 live', opted_out: 'Pilot ended', canceled: 'Pilot ended' };
+const BDAPP_PILOT_OPEN = ['awaiting_submit', 'deposit_paid', 'collecting_data', 'live'];
+function bdAppPilotPlan(subs, pilots) {
+  const own = pilots.filter(p => p.appOnly && BDAPP_PILOT_PLAN_LABEL[p.status]);
+  const open = own.filter(p => BDAPP_PILOT_OPEN.includes(p.status));
+  const onboarding = subs.some(x => x.status === 'pending_activation' && !x.extSubId && x.planKind !== 'pilot');
+  const pick = open.length ? open[open.length - 1] : (onboarding ? null : own[own.length - 1]);
+  if (!pick) return null;
+  const exp = open.reduce((t, p) => t + ((p.override != null ? p.override : p.listPrice) || 0), 0) / 100;
+  return { status: BDAPP_PILOT_PLAN_LABEL[pick.status], expected: open.length ? Math.round(exp * 100) / 100 : null };
 }
 // One brand row → the book entry the page reads. `today` is an Eastern
 // YYYY-MM-DD.
@@ -4109,6 +4139,10 @@ function bdAppBrand(r, today) {
     // Every Recurly subscription id the brand's app rows carry (fetchBdApp
     // replaces this with the brand's Recurly MRR when Recurly is connected).
     recurlySubIds: subs.map(x => x.extSubId).filter(Boolean),
+    // Recurly account id (health_brands.external_account_id), for the pilot
+    // brands' add-on charges; stripped before the payload goes out.
+    recurlyAccount: r.RA ? String(r.RA) : '',
+    pilotPlan: bdAppPilotPlan(subs, pilots),
     lastReviewAt: r.LR || '', reviews45: Number(r.R45) || 0,
     endDate, endSrc, endOnBulkDay,
   };
@@ -4287,10 +4321,6 @@ const RECURLY_ACCEPT = 'application/vnd.recurly.v2021-02-25+json';
 const RECURLY_MAX_PAGES = 60;          // 200 per page: 12,000 subscriptions
 const RECURLY_KV = 'bd_recurly_v1';   // last good read, served when Recurly fails
 const RECURLY_DAYS_PER_MONTH = 30.4375;
-// Invoice line origins that are recurring revenue: the plan, fixed add-ons
-// (ClinicianAI) and usage add-ons (web traffic bills as 'usage_add_on', in
-// arrears). One-off 'debit' charges, credits and trials are not MRR.
-const RECURLY_MRR_ORIGINS = ['plan', 'add_on', 'usage_add_on'];
 const _rcScrub = (env, m) => String(m || '').split((env && env.RECURLY_API_KEY) || '\u0000').join('[key]').slice(0, 200);
 async function recurlyGet(env, host, pathOrUrl) {
   const url = /^https?:/.test(pathOrUrl) ? pathOrUrl : host + pathOrUrl;
@@ -4333,46 +4363,53 @@ function recurlyPlanMonths(plan) {
   const n = Number(plan.interval_length) || 1;
   return plan.interval_unit === 'days' ? n / RECURLY_DAYS_PER_MONTH : n;
 }
-// One subscription → its billed monthly recurring revenue.
+// One subscription → its MRR = Recurly plan $/mo + Recurly web traffic $/mo
+// (Alex, 2026-11-16). ClinicianAI and every other add-on or one-off charge is
+// NOT MRR.
 // Basis, best first:
-//  'invoice'  the latest invoice's plan and add-on charges for this
-//             subscription, after coupon discounts, before tax, each line
-//             divided by the months its service period covers. This is the
-//             one that carries usage-billed web traffic and coupons, which
-//             the subscription record does not.
-//  'price'    no usable invoice: the subscription's own price, plan plus
-//             fixed add-ons, per month (no usage, no coupons).
+//  'invoice'  the subscription's latest invoice: its plan line, plus its web
+//             traffic (the 'web-traffic' usage add-on, billed a month in
+//             arrears; in a brand's first paid month a one-off "Web Traffic
+//             Plan – first month (…)" charge instead), after coupon
+//             discounts, before tax, each line divided by the months its
+//             service period covers.
+//  'price'    no usable invoice: the plan's list price per month (no
+//             traffic, no coupons).
 // Trials, paused, future, expired and failed subscriptions bill nothing: MRR
 // 0, with the basis naming the state. A canceled subscription still bills
 // until its period ends, so it counts, flagged 'canceled'.
+const RECURLY_TRAFFIC_ADDON = 'web-traffic';
+const _rcIsTraffic = (l) => (l.origin === 'usage_add_on' || l.origin === 'add_on') ? l.add_on_code === RECURLY_TRAFFIC_ADDON
+  : (l.origin === 'debit' && /^\s*web traffic/i.test(String(l.description || '')));
 function recurlySubMrr(sub, plan, inv, nowIso) {
   const months = recurlyPlanMonths(plan);
-  const fixed = (sub.add_ons || []).filter(a => !a.add_on || a.add_on.add_on_type !== 'usage')
-    .reduce((s, a) => s + _rcMoney(a.unit_amount) * (Number(a.quantity) || 0), 0);
   const planAmt = _rcMoney(sub.unit_amount) * (sub.quantity == null ? 1 : Number(sub.quantity) || 0);
-  const price = Math.round((planAmt + fixed) / months * 100) / 100;
+  const price = Math.round(planAmt / months * 100) / 100;
   const st = sub.state || '';
   const base = { id: sub.id, state: st, price, months: Math.round(months * 100) / 100 };
   if (st !== 'active' && st !== 'canceled') return Object.assign(base, { mrr: 0, basis: st || 'unknown' });
   if (sub.trial_ends_at && Date.parse(sub.trial_ends_at) > Date.parse(nowIso)) return Object.assign(base, { mrr: 0, basis: 'trial' });
-  const lines = inv && Array.isArray(inv.line_items) ? inv.line_items.filter(l => l && l.subscription_id === sub.id
-    && l.type === 'charge' && RECURLY_MRR_ORIGINS.includes(l.origin)) : [];
+  const solo = !!inv && (!Array.isArray(inv.subscription_ids) || inv.subscription_ids.length <= 1);
+  const lines = inv && Array.isArray(inv.line_items) ? inv.line_items.filter(l => l && l.type === 'charge'
+    && (l.subscription_id === sub.id || (!l.subscription_id && solo))
+    && ((l.origin === 'plan' && l.subscription_id === sub.id) || _rcIsTraffic(l))) : [];
+  const can = st === 'canceled' ? ' · canceled' : '';
   if (lines.length) {
-    let mrr = 0, planBilled = false, traffic = 0;
+    let planMo = 0, traffic = 0, planBilled = false;
     lines.forEach(l => {
       const days = _rcDays(l.start_date, l.end_date);
       const m = days ? Math.max(1, Math.round(days / RECURLY_DAYS_PER_MONTH)) : (l.origin === 'plan' ? Math.max(1, Math.round(months)) : 1);
       const v = (_rcMoney(l.subtotal) - _rcMoney(l.discount)) / m;
-      mrr += v;
-      if (l.origin === 'plan') planBilled = true; else traffic += v;
+      if (l.origin === 'plan') { planMo += v; planBilled = true; } else traffic += v;
     });
-    // An invoice with add-on lines only (a usage bill on its own): the plan
-    // part comes from the subscription price.
-    if (!planBilled) mrr += planAmt / months;
-    return Object.assign(base, { mrr: Math.round(mrr * 100) / 100, addOns: Math.round(traffic * 100) / 100,
-      basis: (planBilled ? 'invoice' : 'invoice+price') + (st === 'canceled' ? ' · canceled' : ''), invoice: inv.number || inv.id || '' });
+    // A traffic-only invoice (a usage bill on its own): the plan part comes
+    // from the plan's list price.
+    if (!planBilled) planMo = price;
+    planMo = Math.round(planMo * 100) / 100; traffic = Math.round(traffic * 100) / 100;
+    return Object.assign(base, { mrr: Math.round((planMo + traffic) * 100) / 100, planMo, traffic,
+      basis: (planBilled ? 'invoice' : 'invoice+price') + can, invoice: inv.number || inv.id || '' });
   }
-  return Object.assign(base, { mrr: price, basis: 'price' + (st === 'canceled' ? ' · canceled' : '') });
+  return Object.assign(base, { mrr: price, planMo: price, traffic: 0, basis: 'price' + can });
 }
 // Every Recurly subscription with its monthly MRR, plus what the page needs
 // to say where the numbers came from. ~15 sequential subscription pages, the
@@ -4427,13 +4464,14 @@ async function fetchRecurlyBook(env) {
   });
   const states = {};
   subs.forEach(s => { states[s.state] = (states[s.state] || 0) + 1; });
-  return { subs: out, uuids, meta: { asOf: nowIso, region: host.indexOf('.eu.') > 0 ? 'EU' : 'US', subscriptions: subs.length, plans: plans.length,
+  return { subs: out, uuids, host, meta: { asOf: nowIso, region: host.indexOf('.eu.') > 0 ? 'EU' : 'US', subscriptions: subs.length, plans: plans.length,
     invoices: Object.keys(invById).length, invoicesFailed: invFailed, states, basis, addOnTypes, lineOrigins } };
 }
 // Recurly MRR onto each app brand, joined by the Recurly subscription ids the
 // brand's app rows carry. A brand with ids none of which Recurly knows gets
 // recurly.missing; a brand with no ids gets no recurly field at all. Billing
 // subscriptions no app brand points at are summed into meta.unmatched.
+const RECURLY_IDLE_ORDER = ['trial', 'future', 'paused', 'failed', 'expired'];
 function recurlyAttach(brands, book) {
   const used = {};
   brands.forEach(b => {
@@ -4446,12 +4484,88 @@ function recurlyAttach(brands, book) {
     const mrr = Math.round(found.reduce((s, m) => s + m.mrr, 0) * 100) / 100;
     const billing = found.filter(m => m.state === 'active' || m.state === 'canceled');
     b.recurly = { mrr, n: found.length,
-      basis: [...new Set((billing.length ? billing : found).map(m => m.basis))].join(', '),
-      subs: found.map(m => ({ id: m.id, state: m.state, mrr: m.mrr, basis: m.basis, plan: m.plan, price: m.price, addOns: m.addOns })) };
+      // Nothing billing: the one state that says most about what is next
+      // (an ended subscription beside one starting later reads "starts later").
+      basis: billing.length ? [...new Set(billing.map(m => m.basis))].join(', ')
+        : (RECURLY_IDLE_ORDER.find(k => found.some(m => m.basis === k)) || found[0].basis),
+      planMo: Math.round(billing.reduce((t, m) => t + (m.planMo || 0), 0) * 100) / 100,
+      traffic: Math.round(billing.reduce((t, m) => t + (m.traffic || 0), 0) * 100) / 100,
+      subs: found.map(m => ({ id: m.id, state: m.state, mrr: m.mrr, basis: m.basis, plan: m.plan, price: m.price, planMo: m.planMo, traffic: m.traffic })) };
   });
   const un = Object.values(book.subs).filter(m => !used[m.id] && m.mrr > 0);
   return { count: un.length, mrr: Math.round(un.reduce((s, m) => s + m.mrr, 0) * 100) / 100,
     top: un.sort((a, b) => b.mrr - a.mrr).slice(0, 25).map(m => ({ id: m.id, account: m.account, accountCode: m.accountCode, mrr: m.mrr, plan: m.plan, basis: m.basis })) };
+}
+// Net add-on revenue from one Recurly account's line items, the Brand MRR
+// report's way: every invoiced charge that is not the plan or web traffic
+// (pilot initiation fee, clinician reviews, clinician analyses, ClinicianAI,
+// other one-time charges), after discounts, before tax, plus the refunds and
+// credits issued against them. General account credits (origin credit /
+// carryforward / prepayment) are not tied to an add-on and are left out, as
+// are pending (not yet invoiced) lines. Write-offs are not netted (the report
+// had none on pilot brands).
+function recurlyAddOnNet(lines) {
+  const out = { net: 0, pilotFee: 0, reviews: 0, analyses: 0, clinicianAi: 0, other: 0, refunds: 0 };
+  (lines || []).forEach(l => {
+    if (!l || l.state === 'pending') return;
+    if (['plan', 'plan_trial', 'usage_add_on_trial', 'add_on_trial'].includes(l.origin) || _rcIsTraffic(l)) return;
+    if (l.type === 'credit') {
+      if (['credit', 'carryforward', 'prepayment'].includes(l.origin)) return;
+      const v = _rcMoney(l.subtotal) - _rcMoney(l.discount);
+      out.refunds += v; out.net += v; return;
+    }
+    if (l.type !== 'charge') return;
+    const v = _rcMoney(l.subtotal) - _rcMoney(l.discount), d = String(l.description || '');
+    const k = /pilot initiation fee/i.test(d) ? 'pilotFee' : /clinician\s*analys/i.test(d) ? 'analyses'
+      : /clinician\s*reviews?/i.test(d) ? 'reviews' : (/clinician-ai/.test(l.add_on_code || '') || /clinicianai/i.test(d)) ? 'clinicianAi' : 'other';
+    out[k] += v; out.net += v;
+  });
+  Object.keys(out).forEach(k => { out[k] = Math.round(out[k] * 100) / 100; });
+  return out;
+}
+// Every line item of the given Recurly accounts, 8 accounts at a time.
+async function recurlyAccountLines(env, host, accountIds) {
+  const res = {}, failed = [];
+  let i = 0;
+  const worker = async () => {
+    while (i < accountIds.length) {
+      const id = accountIds[i++];
+      try { res[id] = await recurlyList(env, host, '/accounts/' + encodeURIComponent(id) + '/line_items?limit=200&sort=created_at&order=asc', 20); }
+      catch (e) { failed.push(id); console.error('Recurly account lines failed:', _rcScrub(env, e.message)); }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(8, accountIds.length) }, worker));
+  return { res, failed };
+}
+// The pilot row's two Recurly-backed figures: brands whose Plan status is a
+// pilot (app pilot, and no billing / trial / starting / paused Recurly
+// subscription, which would make Recurly's status the plan status) → their
+// Expected MRR and their Net add-on revenue.
+async function bdPilotPlanStats(env, brands, rc) {
+  const live = ['active', 'canceled', 'future', 'paused'];
+  const pop = brands.filter(b => b.pilotPlan && !b.discardedAt
+    && !(b.recurly && (b.recurly.subs || []).some(m => live.includes(m.state))));
+  const byStatus = {};
+  pop.forEach(b => { const x = byStatus[b.pilotPlan.status] || (byStatus[b.pilotPlan.status] = { n: 0, expected: 0, expectedN: 0, net: 0 });
+    x.n++; if (b.pilotPlan.expected != null) { x.expected += b.pilotPlan.expected; x.expectedN++; } });
+  const out = { brands: pop.length, expected: Math.round(pop.reduce((t, b) => t + (b.pilotPlan.expected || 0), 0) * 100) / 100,
+    expectedBrands: pop.filter(b => b.pilotPlan.expected != null).length, byStatus, net: null };
+  if (!rc || !rc.host) { out.netError = (rc && rc.error) || 'Recurly unavailable'; return out; }
+  const accts = [...new Set(pop.map(b => b.recurlyAccount).filter(Boolean))];
+  const { res, failed } = await recurlyAccountLines(env, rc.host, accts);
+  const parts = { pilotFee: 0, reviews: 0, analyses: 0, clinicianAi: 0, other: 0, refunds: 0 };
+  let net = 0;
+  pop.forEach(b => {
+    const a = b.recurlyAccount && res[b.recurlyAccount] ? recurlyAddOnNet(res[b.recurlyAccount]) : null;
+    if (!a) return;
+    b.pilotPlan.net = a.net; net += a.net; byStatus[b.pilotPlan.status].net += a.net;
+    Object.keys(parts).forEach(k => { parts[k] += a[k]; });
+  });
+  Object.values(byStatus).forEach(x => { x.net = Math.round(x.net * 100) / 100; x.expected = Math.round(x.expected * 100) / 100; });
+  Object.keys(parts).forEach(k => { parts[k] = Math.round(parts[k] * 100) / 100; });
+  Object.assign(out, { net: Math.round(net * 100) / 100, netParts: parts, accounts: accts.length, accountsFailed: failed.length,
+    noAccount: pop.filter(b => !b.recurlyAccount).length });
+  return out;
 }
 // Live Recurly read; on failure the last good read from KV, flagged stale.
 // Never throws: the brand book must load without Recurly.
@@ -4578,6 +4692,10 @@ async function fetchBdApp(env) {
   const rc = await recurlyP;
   if (rc && rc.subs) meta.recurly = Object.assign({ ok: true }, rc.meta, { unmatched: recurlyAttach(brands, rc) });
   else { brands.forEach(b => { delete b.recurlySubIds; }); meta.recurly = { ok: false, error: (rc && rc.error) || 'unavailable' }; }
+  // The pilot row's Initiation Fees and Post-Pilot MRR (Alex, 2026-11-16).
+  try { meta.pilotPlan = await bdPilotPlanStats(env, brands, rc && rc.subs ? rc : null); }
+  catch (e) { meta.pilotPlan = { error: _rcScrub(env, (e && e.message) || e) }; }
+  brands.forEach(b => { delete b.recurlyAccount; });
   return { brands, pilotStats, meta };
 }
 

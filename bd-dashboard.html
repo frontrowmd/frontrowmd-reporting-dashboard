@@ -1050,7 +1050,8 @@ function _baRecurlyOnto(r,rv){
   r.recurlyMrr=rc.length?Math.round(rc.reduce(function(s,x){return s+x.recurly.mrr;},0)*100)/100:null;
   r.recurlyBasis=rc.length?_baRecurlyBasis(rc.map(function(x){return x.recurly.basis;}).join(', ')):'';
   r.recurlyTip=rc.map(function(x){return (rc.length>1?x.name+': ':'')+(x.recurly.subs||[]).map(function(m){
-      return m.plan+' \u00b7 '+m.state+' \u00b7 $'+Math.round(m.mrr)+'/mo ('+(String(m.basis).indexOf('invoice')===0?'latest invoice'+(m.addOns?', incl. $'+Math.round(m.addOns)+' add-ons/usage':''):m.basis)+')';}).join('; ');}).join(' | ')
+      return m.plan+' \u00b7 '+m.state+' \u00b7 $'+Math.round(m.mrr)+'/mo'+(m.mrr?' = plan $'+Math.round(m.planMo||0)+' + web traffic $'+Math.round(m.traffic||0):'')
+        +' ('+(String(m.basis).indexOf('invoice')===0?'latest invoice':m.basis==='price'?'list price, no invoice':m.basis)+')';}).join('; ');}).join(' | ')
     +(miss?(rc.length?' | ':'')+miss+' brand'+(miss>1?'s':'')+' with a Recurly id Recurly does not know':'');
 }
 function _baRecon(deals,brands,join){
@@ -1707,10 +1708,16 @@ function renderBD(){
     // Grafana "Pilot Brands" definitions (worker fetchBdPilotStats), live when
     // the worker has a Grafana token, else last night's Metabase copy.
     var _ps=(_ba.pilotStats&&!_ba.pilotStats.error&&_ba.pilotStats.n!=null)?_ba.pilotStats:null;
-    var _fut=_ps?_s.mrr+_ps.post:null;
+    // Initiation Fees and Post-Pilot MRR (Alex, 2026-11-16) follow the Brand MRR
+    // report: over brands whose Plan status is a pilot (fee not paid, collecting
+    // data, live, ended), Net add-on revenue (Recurly, live) and Expected MRR
+    // once billing starts (app pilot price). Worker bdPilotPlanStats.
+    var _pp=(_ba.meta&&_ba.meta.pilotPlan&&!_ba.meta.pilotPlan.error)?_ba.meta.pilotPlan:null;
+    var _post=_pp?_pp.expected:(_ps?_ps.post:null),_postN=_pp?_pp.expectedBrands:(_ps?_ps.n:0);
+    var _fut=_ps&&_post!=null?_s.mrr+_post:null;
     h+=_kt('bd-dark bd-fut','Future ARR',_ps?f$(_fut*12):'\u2014','','Future MRR × 12','Future MRR × 12: the book if every current pilot rolls over at its post-pilot price.');
-    h+=_kt('bd-dark bd-fut','Future MRR',_ps?f$(_fut):'\u2014',_ps?'MRR + '+_ps.n+' pilots’ post-pilot price':'pilot figures unavailable','If every current pilot rolls over',
-      'Current MRR plus each current pilot’s post-pilot price: the rollover price once set, else a repeating price override, else the deposit month’s default.');
+    h+=_kt('bd-dark bd-fut','Future MRR',_ps?f$(_fut):'\u2014',_ps?'MRR + '+_postN+' pilots’ post-pilot price':'pilot figures unavailable','If every current pilot rolls over',
+      'Current MRR plus Post-Pilot MRR: each open pilot’s expected MRR once billing starts (price override, else the pilot price for its package and tier), fee-not-paid pilots included.');
     h+='</div>';
     if(!_ps){
       h+='<div class="bd-app-band err" role="alert" style="margin-top:12px"><strong>Pilot figures unavailable.</strong> <span>'
@@ -1722,10 +1729,14 @@ function renderBD(){
       var _psLive=_ps.source==='live';
       var _psSrc='<div class="bd-pil-src'+(_psLive?' live':'')+'" title="'+(_psLive?'Queried live from the app database through Grafana on this load.':'Grafana was not reachable from the dashboard, so this is the Metabase copy of the app, refreshed nightly (~4:30am ET).')+'">'
         +(_psLive?'Live \u00b7 app':'As of last night')+'</div>';
-      var _kp=function(lbl,val,sub,def,tip){
+      var _kp=function(lbl,val,sub,def,tip,src){
         return '<div class="tile bd-lnavy bd-sm"'+(tip?' title="'+tip+'"':'')+'><div class="tlbl">'+lbl+'</div><div class="tval">'+val+'</div>'
-          +(sub?'<div class="bd-tsub">'+sub+'</div>':'')+'<div class="tdef">'+def+'</div>'+_psSrc+'</div>';
+          +(sub?'<div class="bd-tsub">'+sub+'</div>':'')+'<div class="tdef">'+def+'</div>'+(src||_psSrc)+'</div>';
       };
+      // By plan status, for the two report-based cards' hover.
+      var _ppBy=function(k){return _pp?Object.keys(_pp.byStatus).sort().map(function(st){var x=_pp.byStatus[st];return st+': '+x.n+' brands, '+f$(x[k]||0);}).join(' · '):'';};
+      var _rcOk=!!(_pp&&_pp.net!=null);
+      var _ppSrc=function(withRc){return '<div class="bd-pil-src live" title="Pilot status and price live from the app database'+(withRc?'; add-on charges live from Recurly':'')+'.">Live \u00b7 app'+(withRc?' + Recurly':'')+'</div>';};
       // Row 2 (Alex, 2026-11-12): six smaller cards, matching the app's Grafana
       // "Pilot Brands" board, in this order: Pilot Brands, Awaiting Deposit,
       // Pilot Live, Pilot Avg ACV, Initiation Fees, Post-Pilot MRR.
@@ -1735,9 +1746,15 @@ function renderBD(){
       h+=_kp('Awaiting Deposit',_ps.awaiting.toLocaleString(),'','Pilot sign-ups with no deposit yet · not counted');
       h+=_kp('Pilot Live',_ps.live.toLocaleString(),'','Pilots running now','Pilot status live: the pilot period has started.');
       // Same basis as Avg ACV above (a monthly figure per brand), over the pilots.
-      h+=_kp('Pilot Avg ACV',_ps.n?f$(_ps.post/_ps.n):'\u2014','','Post-Pilot MRR ÷ Pilot Brands','What an average pilot brand bills monthly after it rolls over: Post-Pilot MRR divided by the '+_ps.n+' counted pilots.');
-      h+=_kp('Initiation Fees',f$(_ps.netFees),'','Net of refunds, incl. activation & analysis','Every pilot fee paid (any status, canceled ones included), less refunds: the app’s “Pilot fees (net)”.');
-      h+=_kp('Post-Pilot MRR',f$(_ps.post),'','What the pilots bill monthly if they all roll over','Each counted pilot’s rollover price, else a repeating price override, else the deposit month’s default.');
+      h+=_kp('Pilot Avg ACV',_postN?f$(_post/_postN):'\u2014','','Post-Pilot MRR ÷ its '+_postN+' pilots','What an average pilot brand bills monthly once billing starts: Post-Pilot MRR divided by the '+_postN+' pilots it counts.',_pp?_ppSrc(false):'');
+      h+=_kp('Initiation Fees',_rcOk?f$(_pp.net):f$(_ps.netFees),_rcOk?'':'Recurly unavailable \u00b7 app pilot fees shown',
+        _rcOk?'Net add-on revenue, brands on a pilot plan':'Net of refunds, incl. activation & analysis',
+        _rcOk?'Net add-on revenue (Brand MRR report definition) of the '+_pp.brands+' brands whose plan status is a pilot: every Recurly charge that is not the plan or web traffic, after discounts, before tax, less refunds and credits on them. Pilot initiation fees '+f$(_pp.netParts.pilotFee)+', clinician analyses '+f$(_pp.netParts.analyses)+', clinician reviews '+f$(_pp.netParts.reviews)+', ClinicianAI '+f$(_pp.netParts.clinicianAi)+', other '+f$(_pp.netParts.other)+', refunds '+f$(_pp.netParts.refunds)+'. By status \u2014 '+_ppBy('net')+(_pp.accountsFailed?' \u00b7 '+_pp.accountsFailed+' Recurly accounts could not be read':'')
+          :'Every pilot fee paid (any status, canceled ones included), less refunds: the app’s “Pilot fees (net)”. Recurly could not be read'+(_pp&&_pp.netError?' ('+_bdEsc(_pp.netError)+')':'')+'.',
+        _rcOk?_ppSrc(true):'');
+      h+=_kp('Post-Pilot MRR',_post!=null?f$(_post):'\u2014','','Expected MRR once billing starts, '+_postN+' pilots',
+        _pp?'Expected MRR once billing starts (Brand MRR report definition) of brands whose plan status is an open pilot (fee not paid, collecting data or live): the pilot’s price override, else the pilot price for its package and starting tier. By status \u2014 '+_ppBy('expected')
+          :'Each counted pilot’s rollover price, else a repeating price override, else the deposit month’s default.',_pp?_ppSrc(false):'');
       h+='</div>';
     }
   }
@@ -4030,12 +4047,12 @@ function renderBD(){
       +'<span>One row per brand. App brand ids are plain text (there is no app admin link yet).</span></div>';
     // Data freshness, said once: the two sides of every table are not equally fresh.
     var _recSrc=(_ba&&_ba.meta&&_ba.meta.live)?'live from the app database':'Metabase\u2019s nightly copy of the app (~4:30am ET), so a deposit or activation from today shows up tomorrow';
-    // Recurly MRR: what the brand's Recurly subscriptions bill per month, from
-    // each one's latest invoice (plan + add-ons and usage, after coupons,
-    // before tax), else its list price. Matched by the app's Recurly ids.
+    // Recurly MRR = Recurly plan $/mo + web traffic $/mo (Alex, 2026-11-16), from
+    // each subscription's latest invoice, else its plan list price. Matched by
+    // the app's Recurly ids.
     var _rcm=_ba&&_ba.meta&&_ba.meta.recurly;
     var _recRc=!_rcm?'Recurly MRR loads with the app data'
-      :_rcm.ok?('Recurly MRR is '+(_rcm.stale?'from the last good read ('+_baDay(_rcm.asOf)+'; Recurly failed just now)':'live')+': each brand\u2019s latest Recurly invoice (plan, add-ons and usage, after coupons, before tax) per month, or its list price where there is none'
+      :_rcm.ok?('Recurly MRR is '+(_rcm.stale?'from the last good read ('+_baDay(_rcm.asOf)+'; Recurly failed just now)':'live')+': Recurly plan $/mo + web traffic $/mo from each brand\u2019s latest Recurly invoice (after coupons, before tax; ClinicianAI and one-off charges are not MRR), or the plan\u2019s list price where there is no invoice'
         +(_rcm.unmatched&&_rcm.unmatched.count?' \u00b7 '+_rcm.unmatched.count+' billing Recurly subscriptions ('+f$(_rcm.unmatched.mrr)+'/mo) match no app brand':''))
       :'Recurly MRR is unavailable ('+_bdEsc(_rcm.error)+')';
     var _recAssoc=(_ba&&_ba.meta&&_ba.meta.assocLive)?'live':'from the warehouse\u2019s nightly copy';
