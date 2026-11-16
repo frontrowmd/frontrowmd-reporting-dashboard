@@ -4287,6 +4287,10 @@ const RECURLY_ACCEPT = 'application/vnd.recurly.v2021-02-25+json';
 const RECURLY_MAX_PAGES = 60;          // 200 per page: 12,000 subscriptions
 const RECURLY_KV = 'bd_recurly_v1';   // last good read, served when Recurly fails
 const RECURLY_DAYS_PER_MONTH = 30.4375;
+// Invoice line origins that are recurring revenue: the plan, fixed add-ons
+// (ClinicianAI) and usage add-ons (web traffic bills as 'usage_add_on', in
+// arrears). One-off 'debit' charges, credits and trials are not MRR.
+const RECURLY_MRR_ORIGINS = ['plan', 'add_on', 'usage_add_on'];
 const _rcScrub = (env, m) => String(m || '').split((env && env.RECURLY_API_KEY) || '\u0000').join('[key]').slice(0, 200);
 async function recurlyGet(env, host, pathOrUrl) {
   const url = /^https?:/.test(pathOrUrl) ? pathOrUrl : host + pathOrUrl;
@@ -4352,7 +4356,7 @@ function recurlySubMrr(sub, plan, inv, nowIso) {
   if (st !== 'active' && st !== 'canceled') return Object.assign(base, { mrr: 0, basis: st || 'unknown' });
   if (sub.trial_ends_at && Date.parse(sub.trial_ends_at) > Date.parse(nowIso)) return Object.assign(base, { mrr: 0, basis: 'trial' });
   const lines = inv && Array.isArray(inv.line_items) ? inv.line_items.filter(l => l && l.subscription_id === sub.id
-    && l.type === 'charge' && (l.origin === 'plan' || l.origin === 'add_on')) : [];
+    && l.type === 'charge' && RECURLY_MRR_ORIGINS.includes(l.origin)) : [];
   if (lines.length) {
     let mrr = 0, planBilled = false, traffic = 0;
     lines.forEach(l => {
@@ -4511,8 +4515,8 @@ async function recurlyCheck(env) {
     lines.forEach(l => {
       const v = _rcMoney(l.amount);
       inc(byOrigin, (l.type || '') + ':' + (l.origin || ''), v);
-      if (l.origin === 'add_on') inc(addOnLines, l.add_on_code || '?', v);
-      if (l.origin === 'one_time' || l.origin === 'setup_fee')
+      if (l.origin === 'add_on' || l.origin === 'usage_add_on') inc(addOnLines, (l.add_on_code || '?') + ' · ' + l.type, v);
+      if (l.origin === 'one_time' || l.origin === 'setup_fee' || l.origin === 'debit')
         inc(oneTime, (l.origin + ' · ' + String(l.description || l.product_code || '').replace(/\s+/g, ' ').trim()).slice(0, 80), v);
     });
     const top = (o, n) => Object.fromEntries(Object.entries(o).sort((a, b) => (b[1].n || b[1]) - (a[1].n || a[1])).slice(0, n || 40));

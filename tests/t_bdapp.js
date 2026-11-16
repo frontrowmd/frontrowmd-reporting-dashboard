@@ -369,7 +369,9 @@ async function recurlyTests(){
   ck('  a 6-month plan divides by 6; a 365-day plan by ~12',[M({unit_amount:9000},{interval_unit:'months',interval_length:6}).mrr,M({unit_amount:12000},{interval_unit:'days',interval_length:365}).mrr],[1500,1000.68]);
   const inv={id:'i1',number:'1001',line_items:[
     {subscription_id:'s1',type:'charge',origin:'plan',subtotal:1500,discount:150,start_date:'2026-11-01T00:00:00Z',end_date:'2026-12-01T00:00:00Z'},
-    {subscription_id:'s1',type:'charge',origin:'add_on',subtotal:500,discount:0,start_date:'2026-10-01T00:00:00Z',end_date:'2026-11-01T00:00:00Z'},
+    {subscription_id:'s1',type:'charge',origin:'usage_add_on',add_on_code:'web-traffic',subtotal:300,discount:0,start_date:'2026-10-01T00:00:00Z',end_date:'2026-11-01T00:00:00Z'},
+    {subscription_id:'s1',type:'charge',origin:'add_on',subtotal:200,discount:0,start_date:'2026-10-01T00:00:00Z',end_date:'2026-11-01T00:00:00Z'},
+    {subscription_id:'s1',type:'charge',origin:'debit',subtotal:5000,discount:0},
     {subscription_id:'s1',type:'charge',origin:'one_time',subtotal:999,discount:0},
     {subscription_id:'s1',type:'credit',origin:'plan',subtotal:-300,discount:0},
     {subscription_id:'s2',type:'charge',origin:'plan',subtotal:7000,discount:0,start_date:'2026-11-01T00:00:00Z',end_date:'2026-12-01T00:00:00Z'}]};
@@ -392,7 +394,7 @@ async function recurlyTests(){
     if(/\/subscriptions\?/.test(u))return okResp(subsP1);
     if(/\/plans\?/.test(u))return okResp({has_more:false,data:[{id:'p1',interval_unit:'months',interval_length:1}]});
     if(/\/invoices\?ids=/.test(u))return okResp({has_more:false,data:[inv]});
-    if(/\/line_items\?/.test(u))return okResp({has_more:false,data:[{type:'charge',origin:'one_time',description:'Pilot fee',amount:2500},{type:'charge',origin:'add_on',add_on_code:'traffic',amount:500}]});
+    if(/\/line_items\?/.test(u))return okResp({has_more:false,data:[{type:'charge',origin:'one_time',description:'Pilot fee',amount:2500},{type:'charge',origin:'usage_add_on',add_on_code:'traffic',amount:500}]});
     return bad(500);};
   W.fetch=rcFetch(true);
   const bk=J(await W.fetchRecurlyBook({RECURLY_API_KEY:KEY}));
@@ -425,7 +427,7 @@ async function recurlyTests(){
   W.fetch=rcFetch(true);
   const chk=J(await W.recurlyCheck({RECURLY_API_KEY:KEY}));
   ck('  it runs, never echoing the key or an email',[chk.ok,chk.region,chk.subscriptions,JSON.stringify(chk).indexOf(KEY),JSON.stringify(chk).indexOf('x@y.z')],[true,'US',3,-1,-1]);
-  ck('  one-time charges grouped by description, add-on lines by code',[chk.lineItems90d.oneTime['one_time \u00b7 Pilot fee'],chk.lineItems90d.addOnLines.traffic],[{n:1,amount:2500},{n:1,amount:500}]);
+  ck('  one-time charges grouped by description, add-on lines by code',[chk.lineItems90d.oneTime['one_time \u00b7 Pilot fee'],chk.lineItems90d.addOnLines['traffic \u00b7 charge']],[{n:1,amount:2500},{n:1,amount:500}]);
   ck('  no secret: not connected, no Recurly call',J(await W.fetchRecurlyLive({})),{error:'not connected'});
   // The app side carries the Recurly id.
   ck('both app queries pack external_subscription_id as the 14th field',[/s\.initial_web_traffic_tier'\)\}, \$\{_pgS\("regexp_replace\(s\.external_subscription_id/.test(src),/_bdS\('s\.INITIAL_WEB_TRAFFIC_TIER'\)\}, \$\{_bdS\('s\.EXTERNAL_SUBSCRIPTION_ID'\)\}/.test(src)],[true,true]);
