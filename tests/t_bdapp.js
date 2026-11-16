@@ -13,7 +13,9 @@ const J=(x)=>JSON.parse(JSON.stringify(x));
 const W={console:{log(){},warn(){},error(){}}};vm.createContext(W);
 vm.runInContext(src.slice(0,src.indexOf('\nexport default'))
   +'\nObject.assign(globalThis,{bdAppPrice,bdAppTermMonths,bdAppChooseSub,bdAppPilotPost,bdAppBrand,bdAppBuild,bdAppSql,bdAppAssocSql,fetchBdApp,MB_NEEDED_TABLES,BDAPP_BULK_DAYS,BDAPP_BACKFILL_DAYS,'
-  +'fetchBdPilotStats,bdPilotStatsOf,grafanaFrameRows,GRAFANA_URL,GRAFANA_APP_DS,BD_PILOT_SQL_PG,BD_PILOT_SQL_SF,BDAPP_SQL_PG,BDAPP_PAGES});',W);
+  +'fetchBdPilotStats,bdPilotStatsOf,grafanaFrameRows,GRAFANA_URL,GRAFANA_APP_DS,BD_PILOT_SQL_PG,BD_PILOT_SQL_SF,BDAPP_SQL_PG,BDAPP_PAGES,'
+  +'recurlySubMrr,recurlyAttach,fetchRecurlyBook,fetchRecurlyLive,recurlyPlanMonths,RECURLY_KV,bdAppParseSubs,recurlyCheck});',W);
+W.btoa=(x)=>Buffer.from(String(x)).toString('base64');W.setTimeout=setTimeout;
 const P=(o)=>W.bdAppPrice(Object.assign({man:null,mp:null,disp:null,planp:null,planName:'Hero',planKind:'usage'},o)).monthly;
 
 // 1. Price normalisation
@@ -207,7 +209,22 @@ ck('Never Implemented: a Never Imp type, or no type and never live; Board Define
 ck('  the C3 switch defaults to Excluded, which drops NI churns from the grid',
   /var _bdRetNI='excl';/.test(bd)&&/var _rwCh=\(_bdRetNI==='excl'\)\?_apCh\.filter\(function\(dd\)\{return !_baIsNeverImpl\(dd\);\}\):_apCh;/.test(bd),true);
 ck('reconciliation rows carry the linked deal\u2019s create and close dates',[PM.t5[0].createDate!==undefined,typeof PM.t5[0].closeDate],[true,'string']);
-ck('  and HubSpot MRR sits right next to App MRR',/\['hsMrr','HubSpot MRR','num'\],\['appMrr','App MRR','num'\]\]/.test(bd),true);
+ck('  and HubSpot MRR, App MRR and Recurly MRR sit side by side',/\['hsMrr','HubSpot MRR','num'\],\['appMrr','App MRR','num'\],\['recurlyMrr','Recurly MRR','num'\]\]/.test(bd),true);
+// Recurly MRR on the page (2026-11-16): the sum over the row's brands Recurly knows.
+{
+  const rcB=[ab(90,{name:'Billed',hubspotCompanyId:'r90',recurly:{mrr:1850,basis:'invoice',subs:[{plan:'Core',state:'active',mrr:1850,basis:'invoice',addOns:500}]}}),
+    ab(91,{name:'Listed',hubspotCompanyId:'r91',monthly:2000,recurly:{mrr:2000,basis:'price',subs:[{plan:'Pro',state:'active',mrr:2000,basis:'price'}]}}),
+    ab(92,{name:'Unknown',hubspotCompanyId:'r92',recurly:{mrr:null,missing:1}}),
+    ab(93,{name:'NoId',hubspotCompanyId:'r93'})];
+  const rcR=J(C._baRecon([],rcB,C._baJoin([],rcB)));
+  const g=(n)=>rcR.t2.filter(r=>r.name===n)[0];
+  ck('Recurly MRR: invoice figures plain, list prices labelled, unknown or no id a dash',
+    [[g('Billed').recurlyMrr,g('Billed').recurlyBasis],[g('Listed').recurlyMrr,g('Listed').recurlyBasis],g('Unknown').recurlyMrr,g('NoId').recurlyMrr],[[1850,''],[2000,'list price'],null,null]);
+  ck('  the hover names the plan, state and add-on/usage share',g('Billed').recurlyTip,'Core \u00b7 active \u00b7 $1850/mo (latest invoice, incl. $500 add-ons/usage)');
+  ck('  an id Recurly does not know says so on hover',/1 brand with a Recurly id Recurly does not know/.test(g('Unknown').recurlyTip),true);
+  ck('  basis words: trial, paused, canceling; invoice says nothing',[C._baRecurlyBasis('trial'),C._baRecurlyBasis('invoice \u00b7 canceled, paused'),C._baRecurlyBasis('invoice')],['trial','canceling, paused','']);
+  ck('the freshness note says where Recurly MRR comes from, and when it is stale or down',/Recurly MRR is '\+\(_rcm\.stale\?/.test(bd)&&/'Recurly MRR is unavailable \('/.test(bd),true);
+}
 ck('test accounts are an explicit list',/var BD_APP_TEST_BRANDS=\['FrontrowMD Demo Account','Vincent'\];/.test(bd),true);
 
 // 10. Review fixes (2026-11-11)
@@ -339,6 +356,80 @@ async function appBookTests(){
   const q=W.BDAPP_SQL_PG;
   ck('the live SQL returns the Snowflake column names, upper-case',cols.every(c=>q.indexOf('"'+c+'"')>=0),true);
   ck('  same packing and Eastern days as the nightly query',[/regexp_replace\(p\.name, '\[\|~\]', ' ', 'g'\)/.test(q),/AT TIME ZONE 'UTC'\) AT TIME ZONE 'America\/New_York'/.test(q),/COALESCE\(b\.demo, FALSE\) = FALSE/.test(q)],[true,true,true]);
+}
+// 13. Recurly MRR (2026-11-16): Recurly's billed monthly amount per brand,
+// joined by the app's subscriptions.external_subscription_id.
+async function recurlyTests(){
+  const KEY='rk_FAKE_recurly_789',NOW='2026-11-16T12:00:00Z';
+  const okResp=(j)=>({ok:true,status:200,json:async()=>j,text:async()=>''});
+  const bad=(st)=>({ok:false,status:st,body:{cancel(){}},bodyUsed:false,json:async()=>({}),text:async()=>''});
+  const M=(sub,plan,inv)=>J(W.recurlySubMrr(Object.assign({id:'s1',state:'active',unit_amount:1500,quantity:1,add_ons:[]},sub),plan||{interval_unit:'months',interval_length:1},inv||null,NOW));
+  ck('list price: plan + fixed add-ons per month, usage add-ons left out',
+    (({mrr,basis})=>[mrr,basis])(M({add_ons:[{unit_amount:200,quantity:2,add_on:{add_on_type:'fixed'}},{unit_amount:9,quantity:1,add_on:{add_on_type:'usage'}}]})),[1900,'price']);
+  ck('  a 6-month plan divides by 6; a 365-day plan by ~12',[M({unit_amount:9000},{interval_unit:'months',interval_length:6}).mrr,M({unit_amount:12000},{interval_unit:'days',interval_length:365}).mrr],[1500,1000.68]);
+  const inv={id:'i1',number:'1001',line_items:[
+    {subscription_id:'s1',type:'charge',origin:'plan',subtotal:1500,discount:150,start_date:'2026-11-01T00:00:00Z',end_date:'2026-12-01T00:00:00Z'},
+    {subscription_id:'s1',type:'charge',origin:'add_on',subtotal:500,discount:0,start_date:'2026-10-01T00:00:00Z',end_date:'2026-11-01T00:00:00Z'},
+    {subscription_id:'s1',type:'charge',origin:'one_time',subtotal:999,discount:0},
+    {subscription_id:'s1',type:'credit',origin:'plan',subtotal:-300,discount:0},
+    {subscription_id:'s2',type:'charge',origin:'plan',subtotal:7000,discount:0,start_date:'2026-11-01T00:00:00Z',end_date:'2026-12-01T00:00:00Z'}]};
+  const mi=M({},null,inv);
+  ck('invoice basis: this subscription’s plan + add-on/usage charges after coupons; one-offs, credits and other subscriptions left out',[mi.mrr,mi.addOns,mi.basis,mi.invoice],[1850,500,'invoice','1001']);
+  ck('  a 6-month invoice line counts per month',M({},null,{line_items:[{subscription_id:'s1',type:'charge',origin:'plan',subtotal:9000,discount:0,start_date:'2026-11-01T00:00:00Z',end_date:'2027-05-01T00:00:00Z'}]}).mrr,1500);
+  ck('  a usage-only invoice adds the plan from the subscription price',(({mrr,basis})=>[mrr,basis])(M({},null,{line_items:[{subscription_id:'s1',type:'charge',origin:'add_on',subtotal:400,discount:0,start_date:'2026-10-01T00:00:00Z',end_date:'2026-11-01T00:00:00Z'}]})),[1900,'invoice+price']);
+  ck('trial, paused, future, expired and failed bill nothing',['active','paused','future','expired','failed'].map((st,k)=>(({mrr,basis})=>mrr+':'+basis)(M(k?{state:st}:{trial_ends_at:'2026-12-01T00:00:00Z'},null,inv))),['0:trial','0:paused','0:future','0:expired','0:failed']);
+  ck('  canceled still bills to its period end, flagged',(({mrr,basis})=>[mrr,basis])(M({state:'canceled'},null,inv)),[1850,'invoice · canceled']);
+  // The fetch: US first, EU on 401/403/404; cursor paging; invoices by id.
+  const subsP1={has_more:true,next:'/subscriptions?cursor=abc&limit=200',data:[
+    {id:'s1',uuid:'u0000000000000000000000000000001',state:'active',unit_amount:1500,quantity:1,plan:{id:'p1',code:'core',name:'Core'},account:{code:'7',company:'Livebrand',email:'x@y.z',first_name:'A',last_name:'B'},active_invoice_id:'i1',add_ons:[]}]};
+  const subsP2={has_more:false,next:null,data:[
+    {id:'s2',state:'active',unit_amount:7000,quantity:1,plan:{id:'p1',code:'core',name:'Core'},account:{code:'99',company:'Orphan Co'},active_invoice_id:'i1',add_ons:[]},
+    {id:'s3',state:'expired',unit_amount:500,quantity:1,plan:{id:'p1'},account:{code:'8'},add_ons:[]}]};
+  let calls=[];
+  const rcFetch=(eu)=>async(u,i)=>{calls.push({u,i});
+    if(!eu&&/\/\/v3\.recurly\.com/.test(u))return bad(404);
+    if(/\/subscriptions\?cursor=abc/.test(u))return okResp(subsP2);
+    if(/\/subscriptions\?/.test(u))return okResp(subsP1);
+    if(/\/plans\?/.test(u))return okResp({has_more:false,data:[{id:'p1',interval_unit:'months',interval_length:1}]});
+    if(/\/invoices\?ids=/.test(u))return okResp({has_more:false,data:[inv]});
+    if(/\/line_items\?/.test(u))return okResp({has_more:false,data:[{type:'charge',origin:'one_time',description:'Pilot fee',amount:2500},{type:'charge',origin:'add_on',add_on_code:'traffic',amount:500}]});
+    return bad(500);};
+  W.fetch=rcFetch(true);
+  const bk=J(await W.fetchRecurlyBook({RECURLY_API_KEY:KEY}));
+  ck('reads every page, then plans, then the latest invoices by id',[calls.map(c=>c.u.replace(/^https:\/\/[^/]+/,'')),bk.meta.subscriptions,bk.meta.region],
+    [['/subscriptions?limit=200&sort=created_at&order=asc','/subscriptions?cursor=abc&limit=200','/plans?limit=200&sort=created_at&order=asc','/invoices?ids=i1'],3,'US']);
+  ck('  GET only, Basic auth with the key as username, the versioned Accept header',
+    [calls.every(c=>c.i.method==='GET'),calls[0].i.headers.Authorization==='Basic '+Buffer.from(KEY+':').toString('base64'),calls[0].i.headers.Accept],[true,true,'application/vnd.recurly.v2021-02-25+json']);
+  ck('  per subscription: MRR, basis, plan and the account’s company, never a person’s name or email',
+    [bk.subs.s1.mrr,bk.subs.s2.mrr,bk.subs.s3.mrr,bk.subs.s1.account,JSON.stringify(bk).indexOf('x@y.z'),JSON.stringify(bk).indexOf('first_name')],[1850,7000,0,'Livebrand',-1,-1]);
+  calls=[];W.fetch=rcFetch(false);
+  const eu=J(await W.fetchRecurlyBook({RECURLY_API_KEY:KEY}));
+  ck('an EU site: the US host 404s, the EU host answers',[eu.meta.region,calls[0].u.indexOf('https://v3.recurly.com/'),calls[1].u.indexOf('https://v3.eu.recurly.com/')],['EU',0,0]);
+  // Joined to app brands.
+  const br=[{id:7,name:'Livebrand',recurlySubIds:['s1']},{id:8,name:'Old',recurlySubIds:['s3']},{id:9,name:'Gone',recurlySubIds:['zz']},{id:10,name:'AppOnly',recurlySubIds:[]},{id:11,name:'ByUuid',recurlySubIds:['u0000000000000000000000000000001']}];
+  const un=J(W.recurlyAttach(br,bk));
+  const rb=J(br);
+  ck('brands get their subscriptions’ MRR; unknown ids are flagged; app-only brands get nothing',[rb[0].recurly.mrr,rb[0].recurly.basis,rb[1].recurly.mrr,rb[2].recurly,rb[3].recurly,rb.every(b=>!b.recurlySubIds),rb[4].recurly.mrr],[1850,'invoice',0,{mrr:null,missing:1},undefined,true,1850]);
+  ck('  billing subscriptions no app brand points at are summed as unmatched',[un.count,un.mrr,un.top[0].account],[1,7000,'Orphan Co']);
+  // The live read never throws, never leaks the key, and falls back to KV.
+  const kv={};const store={get:async(k)=>kv[k]||null,put:async(k,v)=>{kv[k]=v;}};
+  W.fetch=rcFetch(true);
+  const lv=await W.fetchRecurlyLive({RECURLY_API_KEY:KEY,CONTENT_STORE:store});
+  ck('a good read is kept in KV for a later failure',[!!lv.subs,!!kv[W.RECURLY_KV]],[true,true]);
+  W.fetch=async()=>{throw new Error('boom '+KEY);};
+  const st=await W.fetchRecurlyLive({RECURLY_API_KEY:KEY,CONTENT_STORE:store});
+  ck('  Recurly down: the last good read, flagged stale, key scrubbed',[st.meta.stale,/boom \[key\]/.test(st.meta.error),JSON.stringify(st).indexOf(KEY)],[true,true,-1]);
+  const none=await W.fetchRecurlyLive({RECURLY_API_KEY:KEY});
+  ck('  no KV either: {error}, still no key',[!!none.error,JSON.stringify(none).indexOf(KEY)],[true,-1]);
+  ck('the site check is behind sign-in and reports counts only',[/url\.pathname === '\/api\/recurly-check'\) \{\n      if \(!\(await authed\(\)\)\)/.test(src),J(await W.recurlyCheck({})).ok],[true,false]);
+  W.fetch=rcFetch(true);
+  const chk=J(await W.recurlyCheck({RECURLY_API_KEY:KEY}));
+  ck('  it runs, never echoing the key or an email',[chk.ok,chk.region,chk.subscriptions,JSON.stringify(chk).indexOf(KEY),JSON.stringify(chk).indexOf('x@y.z')],[true,'US',3,-1,-1]);
+  ck('  one-time charges grouped by description, add-on lines by code',[chk.lineItems90d.oneTime['one_time \u00b7 Pilot fee'],chk.lineItems90d.addOnLines.traffic],[{n:1,amount:2500},{n:1,amount:500}]);
+  ck('  no secret: not connected, no Recurly call',J(await W.fetchRecurlyLive({})),{error:'not connected'});
+  // The app side carries the Recurly id.
+  ck('both app queries pack external_subscription_id as the 14th field',[/s\.initial_web_traffic_tier'\)\}, \$\{_pgS\("regexp_replace\(s\.external_subscription_id/.test(src),/_bdS\('s\.INITIAL_WEB_TRAFFIC_TIER'\)\}, \$\{_bdS\('s\.EXTERNAL_SUBSCRIPTION_ID'\)\}/.test(src)],[true,true]);
+  ck('  and the parser reads it',J(W.bdAppParseSubs('1|active||||||||P|usage||t1|abc123xyz'))[0].extSubId,'abc123xyz');
 }
 // 11. Pilot stats (Alex, 2026-11-11): the app's Grafana "Pilot Brands" board.
 async function pilotTests(){
@@ -485,6 +576,7 @@ function pageToggleTests(){
     /var _fut=_ps\?_s\.mrr\+_ps\.post:null;/.test(bd)&&/_kt\('bd-dark bd-fut','Future ARR',_ps\?f\$\(_fut\*12\)/.test(bd),true);
   await pilotTests();
   await appBookTests();
+  await recurlyTests();
   pageToggleTests();
   ck('no pilot pill reads selected while the filter is unavailable',/var _pilOpt=function\(k,lbl\)\{var on=!!_pilIds&&_bdPilotMode===k;/.test(bd),true);
   console.log('\n'+pass+' passed, '+fail+' failed');process.exit(fail?1:0);

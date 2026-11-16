@@ -1035,6 +1035,24 @@ function _baAppLabel(b){
   if(b.state==='ended')return b.sub?(b.sub.pilotPlan?'pilot canceled':b.sub.status):'ended';
   return b.state;
 }
+// Recurly MRR for a row: the sum over its app brands that Recurly knows.
+// null (a dash) when none of them carries a Recurly subscription id, or
+// Recurly could not be read. recurlyBasis is the one word shown beside the
+// amount: blank for an invoice-based figure, else why it is not one.
+var BD_RC_BASIS={price:'list price','invoice+price':'',trial:'trial',paused:'paused',future:'starts later',expired:'ended',failed:'failed',canceled:'canceling'};
+function _baRecurlyBasis(bs){
+  var w=[];String(bs||'').split(', ').forEach(function(x){x.split(' \u00b7 ').forEach(function(y){var t=BD_RC_BASIS[y];if(t&&w.indexOf(t)<0)w.push(t);});});
+  return w.join(', ');
+}
+function _baRecurlyOnto(r,rv){
+  var rc=rv.filter(function(x){return x.recurly&&x.recurly.mrr!=null;});
+  var miss=rv.filter(function(x){return x.recurly&&x.recurly.mrr==null;}).length;
+  r.recurlyMrr=rc.length?Math.round(rc.reduce(function(s,x){return s+x.recurly.mrr;},0)*100)/100:null;
+  r.recurlyBasis=rc.length?_baRecurlyBasis(rc.map(function(x){return x.recurly.basis;}).join(', ')):'';
+  r.recurlyTip=rc.map(function(x){return (rc.length>1?x.name+': ':'')+(x.recurly.subs||[]).map(function(m){
+      return m.plan+' \u00b7 '+m.state+' \u00b7 $'+Math.round(m.mrr)+'/mo ('+(String(m.basis).indexOf('invoice')===0?'latest invoice'+(m.addOns?', incl. $'+Math.round(m.addOns)+' add-ons/usage':''):m.basis)+')';}).join('; ');}).join(' | ')
+    +(miss?(rc.length?' | ':'')+miss+' brand'+(miss>1?'s':'')+' with a Recurly id Recurly does not know':'');
+}
 function _baRecon(deals,brands,join){
   var units={},order=[];
   deals.forEach(function(dd){
@@ -1060,6 +1078,7 @@ function _baRecon(deals,brands,join){
       lastReview:rv.reduce(function(m,x){return x.lastReviewAt>m?x.lastReviewAt:m;},''),
       reviews45:rv.reduce(function(s,x){return s+(x.reviews45||0);},0),
       appIds:rv.map(function(x){return x.id;}).join(', ')};
+    _baRecurlyOnto(r,rv);
     return r;
   };
   var t1=[],t4=[],t2=[],t3=[],t5=[];
@@ -1088,6 +1107,7 @@ function _baRecon(deals,brands,join){
       if(!act.length)return;   // live only as a pilot
       if(!live.length){        // its app brand is another unit's: this deal is a second HubSpot record for it
         var rx=row((ad.dealname||u.deals[0].companyName||nm).replace(/\s*-\s*new deal\s*$/i,'').trim(),u.deals,null,{brands:act});rx.appStatus=_baAppLabel(act[0]);rx.appMrr=0;rx.appMrrPilot=false;rx.diff=rx.hsMrr;
+        rx.recurlyMrr=rx.recurlyMrr==null?null:0;rx.recurlyBasis='';rx.recurlyTip='counted under another HubSpot deal';
         rx.why='app brand '+act.map(function(b){return b.name;}).join(', ')+' is counted under another HubSpot deal (duplicate or sister record)';
         if(Math.abs(rx.diff)>=BD_REC_PRICE_TOL)t5.push(rx);
         return;
@@ -1141,7 +1161,7 @@ function _bdRecTable(t,num,title,fix,rows,mk,extraCol){
   // HubSpot MRR and App MRR sit side by side (Alex, 2026-11-13) so they compare
   // at a glance; the two statuses sit together just before them.
   var cols=[['name','Brand',''],['','Links',''],['appIds','App brand id',''],['hsStatus','HubSpot status · stage',''],['appStatus','App status',''],
-    ['hsMrr','HubSpot MRR','num'],['appMrr','App MRR','num']];
+    ['hsMrr','HubSpot MRR','num'],['appMrr','App MRR','num'],['recurlyMrr','Recurly MRR','num']];
   cols=cols.concat(extras);
   cols=cols.concat([['createDate','Create date',''],['closeDate','Close date',''],['lastReview','Last review',''],['reviews45','Reviews 45d','num']]);
   var th=cols.map(function(c){
@@ -1155,7 +1175,9 @@ function _bdRecTable(t,num,title,fix,rows,mk,extraCol){
     var tds='<td class="nm" title="'+_bdEsc(r.name)+'">'+_bdEsc(r.name)+'</td><td class="lks">'+(lk||dash)+'</td>'
       +'<td class="ids" title="'+_bdEsc(r.appIds)+'">'+(_bdEsc(r.appIds)||dash)+'</td>'
       +'<td class="wr">'+_bdEsc(r.hsStatus||'no deal')+'</td><td class="wr">'+_bdEsc(r.appStatus)+'</td>'
-      +'<td class="num">'+(r.hsMrr?f$(r.hsMrr):dash)+'</td><td class="num">'+money(r.appMrr,r.appMrrPilot)+'</td>';
+      +'<td class="num">'+(r.hsMrr?f$(r.hsMrr):dash)+'</td><td class="num">'+money(r.appMrr,r.appMrrPilot)+'</td>'
+      +'<td class="num" title="'+_bdEsc(r.recurlyTip||'')+'">'+(r.recurlyMrr==null?dash:f$(r.recurlyMrr)
+        +(r.recurlyBasis?' <span style="color:var(--grey);font-size:9.5px">'+_bdEsc(r.recurlyBasis)+'</span>':''))+'</td>';
     extras.forEach(function(c){var v=r[c[0]];
       tds+=c[2]==='num'?'<td class="num">'+(v==null||v===''?dash:(v>0?'+':v<0?'\u2212':'')+f$(Math.abs(v)))+'</td>'
         :'<td class="wr">'+(_bdEsc(v)||dash)+'</td>';});
@@ -4008,8 +4030,16 @@ function renderBD(){
       +'<span>One row per brand. App brand ids are plain text (there is no app admin link yet).</span></div>';
     // Data freshness, said once: the two sides of every table are not equally fresh.
     var _recSrc=(_ba&&_ba.meta&&_ba.meta.live)?'live from the app database':'Metabase\u2019s nightly copy of the app (~4:30am ET), so a deposit or activation from today shows up tomorrow';
+    // Recurly MRR: what the brand's Recurly subscriptions bill per month, from
+    // each one's latest invoice (plan + add-ons and usage, after coupons,
+    // before tax), else its list price. Matched by the app's Recurly ids.
+    var _rcm=_ba&&_ba.meta&&_ba.meta.recurly;
+    var _recRc=!_rcm?'Recurly MRR loads with the app data'
+      :_rcm.ok?('Recurly MRR is '+(_rcm.stale?'from the last good read ('+_baDay(_rcm.asOf)+'; Recurly failed just now)':'live')+': each brand\u2019s latest Recurly invoice (plan, add-ons and usage, after coupons, before tax) per month, or its list price where there is none'
+        +(_rcm.unmatched&&_rcm.unmatched.count?' \u00b7 '+_rcm.unmatched.count+' billing Recurly subscriptions ('+f$(_rcm.unmatched.mrr)+'/mo) match no app brand':''))
+      :'Recurly MRR is unavailable ('+_bdEsc(_rcm.error)+')';
     var _recAssoc=(_ba&&_ba.meta&&_ba.meta.assocLive)?'live':'from the warehouse\u2019s nightly copy';
-    hRecon+='<p class="bd-rec-fix" id="bd-rec-fresh"><strong style="color:var(--navy)">Data freshness:</strong> HubSpot deals and their company links are live on every load (company links to app brands: '+_recAssoc+'); app data is '+_recSrc+'. A fix in either system clears its row on the next Refresh.</p>';
+    hRecon+='<p class="bd-rec-fix" id="bd-rec-fresh"><strong style="color:var(--navy)">Data freshness:</strong> HubSpot deals and their company links are live on every load (company links to app brands: '+_recAssoc+'); app data is '+_recSrc+'; '+_recRc+'. A fix in either system clears its row on the next Refresh.</p>';
     if(!_ba)hRecon+=_baBand('the reconciliation lists');
     else{
       var _rc=_baRecon(deals,_ba.brands,_baJ);

@@ -3874,7 +3874,7 @@ function bdAppSql(page) {
       ${_bdS(_bdEt('s.CURRENT_PERIOD_ENDS_AT'))}, ${_bdS(_bdEt('s.UPDATED_AT'))},
       ${_bdS('s.MANUAL_PRICE_IN_CENTS')}, ${_bdS('s.MONTHLY_PRICE_IN_CENTS')}, ${_bdS('s.DISPLAY_PRICE_WITH_USAGE_IN_CENTS')},
       ${_bdS('p.MONTHLY_PRICE_IN_CENTS')}, ${_bdS("REGEXP_REPLACE(p.NAME, '[|~]', ' ')")}, ${_bdS('p.KIND')}, ${_bdS(_bdEt('s.CREATED_AT'))},
-      ${_bdS('s.INITIAL_WEB_TRAFFIC_TIER')}), '~')
+      ${_bdS('s.INITIAL_WEB_TRAFFIC_TIER')}, ${_bdS('s.EXTERNAL_SUBSCRIPTION_ID')}), '~')
       WITHIN GROUP (ORDER BY s.CREATED_AT, s.ID) SUBS
   FROM STAGING.STG_SUBSCRIPTIONS s LEFT JOIN STAGING.STG_PLANS p ON p.ID = s.PLAN_ID
   WHERE MOD(s.HEALTH_BRAND_ID, ${BDAPP_PAGES}) = ${k} GROUP BY 1),
@@ -3926,7 +3926,7 @@ const BDAPP_SQL_PG = `WITH sb AS (
       ${_pgS(_pgEt('s.current_period_ends_at'))}, ${_pgS(_pgEt('s.updated_at'))},
       ${_pgS('s.manual_price_in_cents')}, ${_pgS('s.monthly_price_in_cents')}, ${_pgS('s.display_price_with_usage_in_cents')},
       ${_pgS('p.monthly_price_in_cents')}, ${_pgS("regexp_replace(p.name, '[|~]', ' ', 'g')")}, ${_pgS('p.kind')}, ${_pgS(_pgEt('s.created_at'))},
-      ${_pgS('s.initial_web_traffic_tier')}), '~'
+      ${_pgS('s.initial_web_traffic_tier')}, ${_pgS("regexp_replace(s.external_subscription_id, '[|~]', ' ', 'g')")}), '~'
       ORDER BY s.created_at, s.id) "SUBS"
   FROM subscriptions s LEFT JOIN plans p ON p.id = s.plan_id GROUP BY 1),
 pl AS (
@@ -3955,6 +3955,10 @@ function bdAppParseSubs(s) {
     planName: f[9] || '', planKind: f[10] || '', createdAt: f[11] || '',
     // The web traffic tier billed at signing (C3's Web Tier at Churn fallback).
     webTier: f[12] || '',
+    // The Recurly subscription id (subscriptions.external_subscription_id):
+    // what the Recurly MRR column joins on. '' for app-only rows (pilots
+    // before rollover, sign-ups never activated).
+    extSubId: f[13] || '',
   }));
 }
 function bdAppParsePilots(s) {
@@ -4102,6 +4106,9 @@ function bdAppBrand(r, today) {
     // Web traffic tier billed at signing: the earliest subscription that has one
     // (subs are oldest first). '' when none does.
     webTier: (subs.find(x => x.webTier) || {}).webTier || '',
+    // Every Recurly subscription id the brand's app rows carry (fetchBdApp
+    // replaces this with the brand's Recurly MRR when Recurly is connected).
+    recurlySubIds: subs.map(x => x.extSubId).filter(Boolean),
     lastReviewAt: r.LR || '', reviews45: Number(r.R45) || 0,
     endDate, endSrc, endOnBulkDay,
   };
@@ -4269,8 +4276,266 @@ async function fetchBdAppAssocLive(env, companyIds) {
   if (merged) console.log(`BD app associations: ${merged} brand company ids point at merged HubSpot records — read via the surviving record`);
   return ids0.filter(id => out[canon[id] || id]).map(id => ({ HC: id, DEALS: out[canon[id] || id].join(','), CANON: canon[id] || id }));
 }
+// ═════ RECURLY (billing) ═════
+// Read-only: the worker only ever GETs from Recurly (API v2021-02-25). The key
+// is the secret RECURLY_API_KEY, sent as the Basic-auth username with an empty
+// password; it never appears in a log line, an error or a payload.
+// US sites answer on v3.recurly.com, EU-hosted ones on v3.eu.recurly.com: the
+// first list call tries US, then EU on a 401/403/404.
+const RECURLY_HOSTS = ['https://v3.recurly.com', 'https://v3.eu.recurly.com'];
+const RECURLY_ACCEPT = 'application/vnd.recurly.v2021-02-25+json';
+const RECURLY_MAX_PAGES = 60;          // 200 per page: 12,000 subscriptions
+const RECURLY_KV = 'bd_recurly_v1';   // last good read, served when Recurly fails
+const RECURLY_DAYS_PER_MONTH = 30.4375;
+const _rcScrub = (env, m) => String(m || '').split((env && env.RECURLY_API_KEY) || '\u0000').join('[key]').slice(0, 200);
+async function recurlyGet(env, host, pathOrUrl) {
+  const url = /^https?:/.test(pathOrUrl) ? pathOrUrl : host + pathOrUrl;
+  // Only follow `next` links on the host we started on.
+  if (url.indexOf(host + '/') !== 0) throw new Error('Recurly link left ' + host);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    SUBREQ.n++;
+    const r = await fetch(url, { method: 'GET', headers: {
+      Authorization: 'Basic ' + btoa(env.RECURLY_API_KEY + ':'), Accept: RECURLY_ACCEPT } });
+    if (r.status === 429 && attempt < 2) { azDrain(r); await sleep(1500 * (attempt + 1)); continue; }
+    if (!r.ok) {
+      azDrain(r);
+      const e = new Error('Recurly ' + url.slice(host.length).split('?')[0] + ' ' + r.status);
+      e.status = r.status; throw e;
+    }
+    return r.json();
+  }
+  throw new Error('Recurly rate limit');
+}
+// Every page of a list endpoint (cursor pagination: follow `next` until
+// has_more is false). Pages are sequential by design: each cursor comes from
+// the page before it.
+async function recurlyList(env, host, path, maxPages) {
+  const out = [];
+  let next = path, pages = 0;
+  while (next && pages < (maxPages || RECURLY_MAX_PAGES)) {
+    const j = await recurlyGet(env, host, next);
+    pages++;
+    (j && Array.isArray(j.data) ? j.data : []).forEach(x => out.push(x));
+    next = j && j.has_more && j.next ? j.next : null;
+  }
+  if (next) throw new Error('Recurly ' + path.split('?')[0] + ': more than ' + pages + ' pages');
+  return out;
+}
+const _rcMoney = (v) => { const n = Number(v); return isFinite(n) ? n : 0; };
+const _rcDays = (a, b) => { const x = Date.parse(a), y = Date.parse(b); return isFinite(x) && isFinite(y) && y > x ? (y - x) / 86400000 : null; };
+// A plan's billing interval in months (Recurly units are months or days).
+function recurlyPlanMonths(plan) {
+  if (!plan) return 1;
+  const n = Number(plan.interval_length) || 1;
+  return plan.interval_unit === 'days' ? n / RECURLY_DAYS_PER_MONTH : n;
+}
+// One subscription → its billed monthly recurring revenue.
+// Basis, best first:
+//  'invoice'  the latest invoice's plan and add-on charges for this
+//             subscription, after coupon discounts, before tax, each line
+//             divided by the months its service period covers. This is the
+//             one that carries usage-billed web traffic and coupons, which
+//             the subscription record does not.
+//  'price'    no usable invoice: the subscription's own price, plan plus
+//             fixed add-ons, per month (no usage, no coupons).
+// Trials, paused, future, expired and failed subscriptions bill nothing: MRR
+// 0, with the basis naming the state. A canceled subscription still bills
+// until its period ends, so it counts, flagged 'canceled'.
+function recurlySubMrr(sub, plan, inv, nowIso) {
+  const months = recurlyPlanMonths(plan);
+  const fixed = (sub.add_ons || []).filter(a => !a.add_on || a.add_on.add_on_type !== 'usage')
+    .reduce((s, a) => s + _rcMoney(a.unit_amount) * (Number(a.quantity) || 0), 0);
+  const planAmt = _rcMoney(sub.unit_amount) * (sub.quantity == null ? 1 : Number(sub.quantity) || 0);
+  const price = Math.round((planAmt + fixed) / months * 100) / 100;
+  const st = sub.state || '';
+  const base = { id: sub.id, state: st, price, months: Math.round(months * 100) / 100 };
+  if (st !== 'active' && st !== 'canceled') return Object.assign(base, { mrr: 0, basis: st || 'unknown' });
+  if (sub.trial_ends_at && Date.parse(sub.trial_ends_at) > Date.parse(nowIso)) return Object.assign(base, { mrr: 0, basis: 'trial' });
+  const lines = inv && Array.isArray(inv.line_items) ? inv.line_items.filter(l => l && l.subscription_id === sub.id
+    && l.type === 'charge' && (l.origin === 'plan' || l.origin === 'add_on')) : [];
+  if (lines.length) {
+    let mrr = 0, planBilled = false, traffic = 0;
+    lines.forEach(l => {
+      const days = _rcDays(l.start_date, l.end_date);
+      const m = days ? Math.max(1, Math.round(days / RECURLY_DAYS_PER_MONTH)) : (l.origin === 'plan' ? Math.max(1, Math.round(months)) : 1);
+      const v = (_rcMoney(l.subtotal) - _rcMoney(l.discount)) / m;
+      mrr += v;
+      if (l.origin === 'plan') planBilled = true; else traffic += v;
+    });
+    // An invoice with add-on lines only (a usage bill on its own): the plan
+    // part comes from the subscription price.
+    if (!planBilled) mrr += planAmt / months;
+    return Object.assign(base, { mrr: Math.round(mrr * 100) / 100, addOns: Math.round(traffic * 100) / 100,
+      basis: (planBilled ? 'invoice' : 'invoice+price') + (st === 'canceled' ? ' · canceled' : ''), invoice: inv.number || inv.id || '' });
+  }
+  return Object.assign(base, { mrr: price, basis: 'price' + (st === 'canceled' ? ' · canceled' : '') });
+}
+// Every Recurly subscription with its monthly MRR, plus what the page needs
+// to say where the numbers came from. ~15 sequential subscription pages, the
+// plan list, and one invoice page per 200 billing subscriptions.
+async function fetchRecurlyBook(env) {
+  const nowIso = new Date().toISOString();
+  let host = null, subs = null, firstErr = null;
+  for (const h of RECURLY_HOSTS) {
+    try { subs = await recurlyList(env, h, '/subscriptions?limit=200&sort=created_at&order=asc'); host = h; break; }
+    catch (e) { firstErr = firstErr || e; if (![401, 403, 404].includes(e.status)) throw e; }
+  }
+  if (!host) throw firstErr || new Error('Recurly unreachable');
+  const plans = await recurlyList(env, host, '/plans?limit=200&sort=created_at&order=asc');
+  const planById = {};
+  plans.forEach(p => { planById[p.id] = p; });
+  // The latest invoice of every subscription that bills now, 200 ids a call.
+  const invIds = [...new Set(subs.filter(s => (s.state === 'active' || s.state === 'canceled') && s.active_invoice_id)
+    .map(s => s.active_invoice_id))];
+  const invById = {};
+  let invFailed = 0;
+  for (let i = 0; i < invIds.length; i += 800) {
+    await Promise.all([0, 200, 400, 600].map(async off => {
+      const ids = invIds.slice(i + off, i + off + 200);
+      if (!ids.length) return;
+      try {
+        const j = await recurlyGet(env, host, '/invoices?ids=' + ids.map(encodeURIComponent).join(','));
+        (j && j.data || []).forEach(v => { invById[v.id] = v; });
+      } catch (e) { invFailed += ids.length; console.error('Recurly invoices page failed:', _rcScrub(env, e.message)); }
+    }));
+  }
+  const out = {}, uuids = {};
+  const basis = {}, addOnTypes = {}, lineOrigins = {};
+  subs.forEach(s => {
+    const plan = s.plan ? planById[s.plan.id] : null;
+    const inv = s.active_invoice_id ? invById[s.active_invoice_id] : null;
+    const m = recurlySubMrr(s, plan, inv, nowIso);
+    m.plan = (s.plan && (s.plan.name || s.plan.code)) || '';
+    // The account's company name only (a brand name); never a person's name or email.
+    m.account = (s.account && (s.account.company || s.account.code)) || '';
+    m.accountCode = (s.account && s.account.code) || '';
+    out[s.id] = m;
+    // The app stores Recurly's 12-character id, and on the odd row the
+    // 32-character uuid: both find the subscription.
+    if (s.uuid) uuids[s.uuid] = s.id;
+    const bk = m.basis.split(' · ')[0];
+    basis[bk] = (basis[bk] || 0) + 1;
+    (s.add_ons || []).forEach(a => { const ao = a.add_on || {}, k = (ao.code || '?');
+      const t = addOnTypes[k] || (addOnTypes[k] = { type: ao.add_on_type || '', usage: ao.usage_type || '', n: 0 }); t.n++; });
+    if (inv && (s.state === 'active' || s.state === 'canceled'))
+      (inv.line_items || []).filter(l => l.subscription_id === s.id).forEach(l => {
+        const k = (l.type || '') + ':' + (l.origin || ''); lineOrigins[k] = (lineOrigins[k] || 0) + 1; });
+  });
+  const states = {};
+  subs.forEach(s => { states[s.state] = (states[s.state] || 0) + 1; });
+  return { subs: out, uuids, meta: { asOf: nowIso, region: host.indexOf('.eu.') > 0 ? 'EU' : 'US', subscriptions: subs.length, plans: plans.length,
+    invoices: Object.keys(invById).length, invoicesFailed: invFailed, states, basis, addOnTypes, lineOrigins } };
+}
+// Recurly MRR onto each app brand, joined by the Recurly subscription ids the
+// brand's app rows carry. A brand with ids none of which Recurly knows gets
+// recurly.missing; a brand with no ids gets no recurly field at all. Billing
+// subscriptions no app brand points at are summed into meta.unmatched.
+function recurlyAttach(brands, book) {
+  const used = {};
+  brands.forEach(b => {
+    const ids = b.recurlySubIds || [];
+    delete b.recurlySubIds;
+    if (!ids.length) return;
+    const found = [...new Set(ids.map(id => book.subs[id] || book.subs[(book.uuids || {})[id]]).filter(Boolean))];
+    found.forEach(m => { used[m.id] = true; });
+    if (!found.length) { b.recurly = { mrr: null, missing: ids.length }; return; }
+    const mrr = Math.round(found.reduce((s, m) => s + m.mrr, 0) * 100) / 100;
+    const billing = found.filter(m => m.state === 'active' || m.state === 'canceled');
+    b.recurly = { mrr, n: found.length,
+      basis: [...new Set((billing.length ? billing : found).map(m => m.basis))].join(', '),
+      subs: found.map(m => ({ id: m.id, state: m.state, mrr: m.mrr, basis: m.basis, plan: m.plan, price: m.price, addOns: m.addOns })) };
+  });
+  const un = Object.values(book.subs).filter(m => !used[m.id] && m.mrr > 0);
+  return { count: un.length, mrr: Math.round(un.reduce((s, m) => s + m.mrr, 0) * 100) / 100,
+    top: un.sort((a, b) => b.mrr - a.mrr).slice(0, 25).map(m => ({ id: m.id, account: m.account, accountCode: m.accountCode, mrr: m.mrr, plan: m.plan, basis: m.basis })) };
+}
+// Live Recurly read; on failure the last good read from KV, flagged stale.
+// Never throws: the brand book must load without Recurly.
+async function fetchRecurlyLive(env) {
+  if (!env || !env.RECURLY_API_KEY) return { error: 'not connected' };
+  try {
+    const book = await fetchRecurlyBook(env);
+    if (env.CONTENT_STORE) { try { kvOp(); await env.CONTENT_STORE.put(RECURLY_KV, JSON.stringify(book), { expirationTtl: 7 * 86400 }); } catch (_) { /* best effort */ } }
+    return book;
+  } catch (e) {
+    const msg = _rcScrub(env, (e && e.message) || e);
+    console.error('Recurly read failed:', msg);
+    if (env.CONTENT_STORE) {
+      try { kvOp(); const raw = await env.CONTENT_STORE.get(RECURLY_KV);
+        if (raw) { const book = JSON.parse(raw); book.meta.stale = true; book.meta.error = msg; return book; } } catch (_) { /* fall through */ }
+    }
+    return { error: msg };
+  }
+}
+
+// One-off look at how this Recurly site is set up, before more is built on it
+// (POST /api/recurly-check). Summary counts only: no person's name or email,
+// no card data. Answers: do account codes equal app brand ids; which add-ons
+// and charge codes exist (is web traffic an add-on, and usage or fixed); are
+// pilot fees charged here (one-time charges of the last 90 days by
+// description); which plans exist; do invoices carry their line items.
+async function recurlyCheck(env) {
+  if (!env || !env.RECURLY_API_KEY) return { ok: false, error: 'RECURLY_API_KEY is not set' };
+  const t0 = Date.now();
+  try {
+    let host = null, subs = null, firstErr = null;
+    for (const h of RECURLY_HOSTS) {
+      try { subs = await recurlyList(env, h, '/subscriptions?limit=200&sort=created_at&order=asc'); host = h; break; }
+      catch (e) { firstErr = firstErr || e; if (![401, 403, 404].includes(e.status)) throw e; }
+    }
+    if (!host) throw firstErr || new Error('Recurly unreachable');
+    const plans = await recurlyList(env, host, '/plans?limit=200&sort=created_at&order=asc');
+    const since = new Date(Date.now() - 90 * 86400000).toISOString();
+    let lines = [], linesCapped = false;
+    try { lines = await recurlyList(env, host, '/line_items?limit=200&sort=created_at&order=asc&begin_time=' + encodeURIComponent(since), 80); }
+    catch (e) { if (/more than/.test(e.message)) linesCapped = true; else throw e; }
+    const inc = (o, k, v) => { const x = o[k] || (o[k] = { n: 0, amount: 0 }); x.n++; x.amount = Math.round((x.amount + (v || 0)) * 100) / 100; };
+    const states = {}, subPlans = {}, subAddOns = {};
+    subs.forEach(s => {
+      states[s.state] = (states[s.state] || 0) + 1;
+      const pk = (s.plan && (s.plan.code + ' · ' + (s.plan.name || ''))) || '?';
+      const sp = subPlans[pk] || (subPlans[pk] = {}); sp[s.state] = (sp[s.state] || 0) + 1;
+      (s.add_ons || []).forEach(a => { const ao = a.add_on || {}; const k = (ao.code || '?') + ' · ' + (ao.name || '') + ' · ' + (ao.add_on_type || '') + (ao.usage_type ? '/' + ao.usage_type : '');
+        subAddOns[k] = (subAddOns[k] || 0) + 1; });
+    });
+    // Account codes vs app brand ids (live app ids through Grafana when connected).
+    const codes = [...new Set(subs.map(s => s.account && s.account.code).filter(Boolean))];
+    let codeMatch = null;
+    if (env.GRAFANA_TOKEN) {
+      try { const ids = new Set((await grafanaQuery(env, 'SELECT id::text "ID" FROM health_brands')).map(r => String(r.ID)));
+        codeMatch = { accounts: codes.length, equalBrandId: codes.filter(c => ids.has(String(c))).length,
+          numeric: codes.filter(c => /^\d+$/.test(c)).length, sampleShapes: [...new Set(codes.slice(0, 400).map(c => c.replace(/[a-z]/g, 'a').replace(/[A-Z]/g, 'A').replace(/\d/g, '9')))].slice(0, 8) }; }
+      catch (e) { codeMatch = { error: String(e.message || e).split(env.GRAFANA_TOKEN).join('[token]').slice(0, 150) }; }
+    }
+    const byOrigin = {}, addOnLines = {}, oneTime = {};
+    lines.forEach(l => {
+      const v = _rcMoney(l.amount);
+      inc(byOrigin, (l.type || '') + ':' + (l.origin || ''), v);
+      if (l.origin === 'add_on') inc(addOnLines, l.add_on_code || '?', v);
+      if (l.origin === 'one_time' || l.origin === 'setup_fee')
+        inc(oneTime, (l.origin + ' · ' + String(l.description || l.product_code || '').replace(/\s+/g, ' ').trim()).slice(0, 80), v);
+    });
+    const top = (o, n) => Object.fromEntries(Object.entries(o).sort((a, b) => (b[1].n || b[1]) - (a[1].n || a[1])).slice(0, n || 40));
+    // Does an invoice fetched by id carry its line items?
+    let invoiceShape = null;
+    const ai = subs.find(s => s.state === 'active' && s.active_invoice_id);
+    if (ai) { const j = await recurlyGet(env, host, '/invoices?ids=' + encodeURIComponent(ai.active_invoice_id));
+      const v = (j.data || [])[0] || {};
+      invoiceShape = { found: !!v.id, origin: v.origin || '', state: v.state || '', lineItems: Array.isArray(v.line_items) ? v.line_items.length : (v.line_items && v.line_items.data ? 'object with data[' + v.line_items.data.length + ']' : typeof v.line_items),
+        hasMoreLineItems: v.has_more_line_items }; }
+    return { ok: true, region: host.indexOf('.eu.') > 0 ? 'EU' : 'US', ms: Date.now() - t0, subrequests: SUBREQ.n,
+      subscriptions: subs.length, states, accounts: codes.length, codeMatch,
+      plans: plans.map(p => ({ code: p.code, name: p.name, state: p.state, every: (p.interval_length || 1) + ' ' + (p.interval_unit || 'months'),
+        price: ((p.currencies || [])[0] || {}).unit_amount, subs: subPlans[p.code + ' · ' + (p.name || '')] || null })),
+      subAddOns: top(subAddOns, 60), lineItems90d: { n: lines.length, capped: linesCapped, byOrigin, addOnLines: top(addOnLines), oneTime: top(oneTime, 60) },
+      invoiceShape };
+  } catch (e) { return { ok: false, error: _rcScrub(env, (e && e.message) || e), ms: Date.now() - t0 }; }
+}
+
 async function fetchBdApp(env) {
   const today = etDayKeyOf(new Date().toISOString());
+  // Recurly runs alongside the brand book and never takes it down.
+  const recurlyP = fetchRecurlyLive(env);
   // The pilot row's stats ride along. Their failure must not take the brand
   // book down with it (or the reverse): it comes back as {error} on its own.
   const pilotP = fetchBdPilotStats(env).catch(e => ({ error: 'Pilot stats unavailable', detail: String((e && e.message) || e).slice(0, 200) }));
@@ -4305,7 +4570,11 @@ async function fetchBdApp(env) {
   const meta = { generatedAt: new Date().toISOString(), today, live, assocLive,
     source: live ? 'Live · app database via Grafana' : 'Metabase · Snowflake copy of the app (nightly)', rows: rows.length };
   if (liveError) meta.liveError = liveError;
-  return { brands: bdAppBuild(rows, today, assoc), pilotStats, meta };
+  const brands = bdAppBuild(rows, today, assoc);
+  const rc = await recurlyP;
+  if (rc && rc.subs) meta.recurly = Object.assign({ ok: true }, rc.meta, { unmatched: recurlyAttach(brands, rc) });
+  else { brands.forEach(b => { delete b.recurlySubIds; }); meta.recurly = { ok: false, error: (rc && rc.error) || 'unavailable' }; }
+  return { brands, pilotStats, meta };
 }
 
 // ── Skincare Phase 2: app data via Metabase ──────────────────────────────────
@@ -12004,6 +12273,11 @@ export default {
     // POST /api/skincare → Skincare Dashboard (Phase 1: HubSpot only). Live per
     // load, like the Pilot page; a few HubSpot calls, so no KV cache.
     // POST /api/metabase-check → is the Metabase key working (signed-in only).
+    // Recurly site check (read-only, summary counts): POST {} from a signed-in tab.
+    if (request.method === 'POST' && url.pathname === '/api/recurly-check') {
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
+      return jr(await recurlyCheck(env));
+    }
     if (request.method === 'POST' && url.pathname === '/api/metabase-check') {
       if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       try { return jr(await metabaseCheck(env)); }
