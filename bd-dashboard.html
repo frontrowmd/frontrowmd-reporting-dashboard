@@ -162,6 +162,34 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
 .bd-app-band.load{background:var(--teal-8);border:1px solid var(--border);color:var(--grey)}
 /* Section 02, when the pilot toggle cannot be applied (no app read): small, not a band. */
 .bd-pil-note{display:flex;align-items:center;gap:7px;font-size:11px;color:#92400E;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:6px 11px;margin:0 0 12px}
+/* Billing Status card (section 01). */
+.bd-bs{position:relative;margin-top:14px;background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px 18px}
+.bd-bs-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.bd-bs-t{font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)}
+.bd-bs-s{font-size:11.5px;color:var(--grey)}
+.bd-bs-body{display:grid;grid-template-columns:200px minmax(0,760px);gap:28px;align-items:center}
+.bd-bs-donut{position:relative;width:200px;height:200px}
+.bd-bs-donut svg{width:200px;height:200px;display:block;overflow:visible}
+.bd-bs-sl{cursor:pointer;transition:opacity .15s,transform .15s;transform-origin:100px 100px;stroke:#fff;stroke-width:2}
+circle.bd-bs-sl{stroke-width:28}
+.bd-bs.hov .bd-bs-sl{opacity:.28}.bd-bs.hov .bd-bs-sl.on{opacity:1;transform:scale(1.045)}
+.bd-bs-ctr{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;text-align:center;padding:0 52px}
+.bd-bs-cn{font-family:var(--font-h);font-size:26px;font-weight:700;color:var(--navy);line-height:1.05;font-variant-numeric:tabular-nums}
+.bd-bs-cl{font-size:10px;color:var(--grey);text-transform:uppercase;letter-spacing:.05em;margin-top:3px;line-height:1.25}
+.bd-bs-row{display:grid;grid-template-columns:10px minmax(220px,2.2fr) minmax(70px,1fr) 52px 44px 150px;gap:12px;align-items:center;padding:7px 8px;border-radius:8px;cursor:default;transition:background .12s}
+.bd-bs-row.on{background:rgba(23,44,69,.05)}
+.bd-bs-hd{cursor:auto;padding-top:0;padding-bottom:4px;font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em}
+.bd-bs-hd:hover{background:none}
+.bd-bs-dot{width:10px;height:10px;border-radius:3px}
+.bd-bs-nm{font-size:12.5px;font-weight:700;color:var(--navy);line-height:1.3}
+.bd-bs-det{font-size:10.5px;font-weight:400;color:var(--grey);margin-top:1px}
+.bd-bs-bar{height:6px;background:rgba(23,44,69,.06);border-radius:3px;overflow:hidden}
+.bd-bs-bar span{display:block;height:100%;border-radius:3px}
+.bd-bs-n{font-size:13px;font-weight:700;color:var(--navy);text-align:right;font-variant-numeric:tabular-nums}
+.bd-bs-p{font-size:11px;color:var(--grey);text-align:right;font-variant-numeric:tabular-nums}
+.bd-bs-m{font-size:11px;color:var(--navy);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.bd-bs-tip{position:absolute;display:none;pointer-events:none;z-index:6;background:var(--navy);color:#fff;font-size:11px;line-height:1.55;padding:8px 11px;border-radius:8px;box-shadow:0 6px 18px rgba(2,15,24,.22);min-width:180px}
+@media (max-width:820px){.bd-bs-body{grid-template-columns:1fr;justify-items:center}.bd-bs-leg{width:100%}.bd-bs-row{grid-template-columns:10px minmax(0,1fr) 46px 40px;}.bd-bs-bar,.bd-bs-m{display:none}}
 /* Data-source chips (Alex, 2026-11-16): every Tracker card in sections 01 and
    02 names where its number comes from, one colour per source. */
 .bd-chips{margin-top:auto;padding-top:7px;display:flex;flex-wrap:wrap;gap:4px}
@@ -784,9 +812,21 @@ function _baStatusOf(b){
   if(b.state==='ended')return {s:'Ended',d:'App subscription ended'};
   return {s:'No plan',d:'No plan'};
 }
+// Each brand's monthly dollars for its status: what Recurly bills (Billing),
+// the plan list price it will bill or resumes at (trial, starting, paused),
+// an open pilot's expected MRR, an onboarding sign-up's expected MRR.
+function _baStatusMrr(b,x){
+  if(x.s==='Billing')return (b.recurly&&b.recurly.mrr)||0;
+  if(x.d==='Pilot')return (b.pilotPlan&&b.pilotPlan.expected)||0;
+  if(x.d==='Onboarding')return b.onboardingExpected||0;
+  if(x.d==='In trial'||x.d==='Starting later'||x.s==='Paused')return (b.recurly&&b.recurly.idlePrice)||0;
+  return 0;
+}
 function _baStatusMix(brands){
-  var m={};BD_STATUS_ORDER.forEach(function(k){m[k]={n:0,d:{}};});
-  brands.forEach(function(b){if(_baIsTest(b)||b.discardedAt)return;var x=_baStatusOf(b),o=m[x.s];o.n++;o.d[x.d]=(o.d[x.d]||0)+1;});
+  var m={};BD_STATUS_ORDER.forEach(function(k){m[k]={n:0,mrr:0,d:{},dm:{}};});
+  brands.forEach(function(b){if(_baIsTest(b)||b.discardedAt)return;var x=_baStatusOf(b),o=m[x.s],v=_baStatusMrr(b,x);
+    o.n++;o.d[x.d]=(o.d[x.d]||0)+1;o.mrr+=v;o.dm[x.d]=(o.dm[x.d]||0)+v;});
+  BD_STATUS_ORDER.forEach(function(k){m[k].mrr=Math.round(m[k].mrr);});
   return m;
 }
 function _baSummaryRc(brands,meta){
@@ -1259,33 +1299,63 @@ function _bdChip(k,sm,live){
     hubspot:['HubSpot','HubSpot deals, read live on every load'],recurly:['Recurly','Recurly billing, read live on every load']}[k];
   return '<span class="bd-chip '+k+(sm?' sm':'')+(k==='app'&&!live?' nightly':'')+'" title="Source: '+t[1]+'">'+t[0]+(k==='app'&&!live?' \u00b7 nightly':'')+'</span>';
 }
-// Donut + legend for the Brand Status mix. Slices in BD_STATUS_ORDER, each
-// with its sub-groups; No plan takes the reserved absence grey.
+// Billing Status card (Alex, 2026-11-16): donut + legend. Hovering a slice
+// or a legend row highlights both, puts that status in the donut's centre and
+// shows its detail in a tooltip. Slices in BD_STATUS_ORDER; No plan takes the
+// reserved absence grey.
+var BD_STATUS_MONEY={'Billing':'billed','Not billing yet':'expected','Paused':'at resume','Ended':'','No plan':''};
 function _bdStatusPie(mix,appLive,rcOk){
   var tot=BD_STATUS_ORDER.reduce(function(t,k){return t+mix[k].n;},0);if(!tot)return '';
-  var R=62,r=40,cx=80,cy=80,a0=-Math.PI/2,paths='';
+  var R=86,r=58,cx=100,cy=100,a0=-Math.PI/2,paths='',GAP=0.012;
   var pt=function(rad,a){return (cx+rad*Math.cos(a)).toFixed(2)+','+(cy+rad*Math.sin(a)).toFixed(2);};
+  var pct=function(n){var p=n/tot*100;return (p<1&&p>0?p.toFixed(1):Math.round(p))+'%';};
+  var money=function(k){var o=mix[k];return o.mrr&&BD_STATUS_MONEY[k]?f$(o.mrr)+'/mo '+BD_STATUS_MONEY[k]:'';};
+  var tipOf=function(k){var o=mix[k];
+    var rows=Object.keys(o.d).filter(function(x){return x!==k;}).sort(function(a,b){return o.d[b]-o.d[a];})
+      .map(function(x){return '<div style="display:flex;justify-content:space-between;gap:14px"><span style="opacity:.8">'+x+'</span><b>'+o.d[x].toLocaleString()+(o.dm[x]?' · '+f$(o.dm[x]):'')+'</b></div>';}).join('');
+    return '<div style="font-weight:700;margin-bottom:3px"><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:'+BD_STATUS_COL[k]+';margin-right:6px"></span>'+k+'</div>'
+      +'<div>'+o.n.toLocaleString()+' brands · '+pct(o.n)+(money(k)?' · '+money(k):'')+'</div>'+(rows?'<div style="margin-top:5px;padding-top:5px;border-top:1px solid rgba(255,255,255,.2)">'+rows+'</div>':'');};
+  var ev=function(k){return ' data-k="'+k+'" data-tip="'+_bdEsc(tipOf(k))+'" onmouseenter="bdBsHover(this,event)" onmousemove="bdBsHover(this,event)" onmouseleave="bdBsOut(this)"';};
   BD_STATUS_ORDER.forEach(function(k){var n=mix[k].n;if(!n)return;
-    var a1=a0+n/tot*2*Math.PI,big=(a1-a0)>Math.PI?1:0,col=BD_STATUS_COL[k];
-    var tip=k+': '+n.toLocaleString()+' brands ('+(n/tot*100).toFixed(1)+'%)';
-    paths+=(n===tot)?'<circle cx="'+cx+'" cy="'+cy+'" r="'+((R+r)/2)+'" fill="none" stroke="'+col+'" stroke-width="'+(R-r)+'"><title>'+tip+'</title></circle>'
-      :'<path d="M'+pt(R,a0)+' A'+R+','+R+' 0 '+big+' 1 '+pt(R,a1)+' L'+pt(r,a1)+' A'+r+','+r+' 0 '+big+' 0 '+pt(r,a0)+' Z" fill="'+col+'" stroke="#fff" stroke-width="1.5"><title>'+tip+'</title></path>';
-    a0=a1;});
+    var span=n/tot*2*Math.PI,g=n===tot?0:Math.min(GAP,span/4),s0=a0+g/2,s1=a0+span-g/2,big=(s1-s0)>Math.PI?1:0,col=BD_STATUS_COL[k];
+    paths+=(n===tot)?'<circle class="bd-bs-sl" cx="'+cx+'" cy="'+cy+'" r="'+((R+r)/2)+'" fill="none" stroke="'+col+'" stroke-width="'+(R-r)+'"'+ev(k)+'/>'
+      :'<path class="bd-bs-sl" d="M'+pt(R,s0)+' A'+R+','+R+' 0 '+big+' 1 '+pt(R,s1)+' L'+pt(r,s1)+' A'+r+','+r+' 0 '+big+' 0 '+pt(r,s0)+' Z" fill="'+col+'"'+ev(k)+'/>';
+    a0+=span;});
   var leg=BD_STATUS_ORDER.map(function(k){var o=mix[k];
-    var det=Object.keys(o.d).filter(function(x){return x!==k;}).sort(function(a,b){return o.d[b]-o.d[a];}).map(function(x){return x+' '+o.d[x];}).join(' \u00b7 ');
-    return '<div style="display:grid;grid-template-columns:12px 1fr auto auto;gap:4px 10px;align-items:baseline;padding:5px 0;border-bottom:1px solid var(--border)">'
-      +'<span style="width:10px;height:10px;border-radius:3px;background:'+BD_STATUS_COL[k]+';align-self:center"></span>'
-      +'<span style="font-size:12px;font-weight:700;color:var(--navy)">'+k+(det?'<div style="font-size:10.5px;font-weight:400;color:var(--grey)">'+det+'</div>':'')+'</span>'
-      +'<span style="font-size:13px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;text-align:right">'+o.n.toLocaleString()+'</span>'
-      +'<span style="font-size:11px;color:var(--grey);font-variant-numeric:tabular-nums;text-align:right;min-width:42px">'+(o.n/tot*100).toFixed(1)+'%</span></div>';}).join('');
-  return '<div class="bd-status-card" style="margin-top:14px;background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px 18px;display:grid;grid-template-columns:170px minmax(0,1fr);gap:18px;align-items:center"'
-    +' title="Every app brand (internal test accounts and brands deleted in the app left out) by its Status, as the Brand MRR report defines it: Recurly first \u2014 billing (canceled-but-billing included), paused, or not billing yet (in a trial or starting later); then the app \u2014 an open pilot or an app sign-up waiting to activate is not billing yet, an ended pilot or app subscription is ended; anything else has no plan.">'
-    +'<div style="text-align:center"><svg viewBox="0 0 160 160" style="width:160px;height:160px;display:block" role="img" aria-label="Brand status breakdown">'+paths
-    +'<text x="80" y="78" text-anchor="middle" font-size="22" font-weight="700" fill="var(--navy)" font-family="var(--font-h)">'+tot.toLocaleString()+'</text>'
-    +'<text x="80" y="95" text-anchor="middle" font-size="9.5" fill="var(--grey)" letter-spacing=".05em">BRANDS</text></svg></div>'
-    +'<div><div style="display:flex;align-items:center;gap:10px;margin-bottom:4px"><span style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">Brand Status</span>'
-    +'<span style="font-size:11px;color:var(--grey)">all app brands, as the Brand MRR report counts them'+(rcOk?'':' \u00b7 Recurly unavailable: app statuses only')+'</span></div>'
-    +leg+_bdChips(rcOk?['recurly','app']:['app'],appLive)+'</div></div>';
+    var det=Object.keys(o.d).filter(function(x){return x!==k;}).sort(function(a,b){return o.d[b]-o.d[a];}).map(function(x){return x+' '+o.d[x].toLocaleString();}).join(' · ');
+    return '<div class="bd-bs-row"'+ev(k)+'><span class="bd-bs-dot" style="background:'+BD_STATUS_COL[k]+'"></span>'
+      +'<div class="bd-bs-nm">'+k+(det?'<div class="bd-bs-det">'+det+'</div>':'')+'</div>'
+      +'<div class="bd-bs-bar"><span style="width:'+(o.n/tot*100).toFixed(1)+'%;background:'+BD_STATUS_COL[k]+'"></span></div>'
+      +'<div class="bd-bs-n">'+o.n.toLocaleString()+'</div><div class="bd-bs-p">'+pct(o.n)+'</div>'
+      +'<div class="bd-bs-m">'+(money(k)||'<span style="color:#CBD5E1">—</span>')+'</div></div>';}).join('');
+  return '<div class="bd-bs" data-tot="'+tot+'">'
+    +'<div class="bd-bs-head"><span class="bd-bs-t">Billing Status</span><span class="bd-bs-s">Every app brand by what Recurly bills today, then the app’s pilots and sign-ups'+(rcOk?'':' · Recurly unavailable: app statuses only')+'</span>'
+    +'<span style="margin-left:auto">'+_bdChips(rcOk?['recurly','app']:['app'],appLive).replace('class="bd-chips"','class="bd-chips" style="padding-top:0"')+'</span></div>'
+    +'<div class="bd-bs-body"><div class="bd-bs-donut"><svg viewBox="0 0 200 200" role="img" aria-label="Billing status breakdown">'+paths+'</svg>'
+    +'<div class="bd-bs-ctr"><div class="bd-bs-cn">'+tot.toLocaleString()+'</div><div class="bd-bs-cl">brands</div></div></div>'
+    +'<div class="bd-bs-leg"><div class="bd-bs-row bd-bs-hd"><span></span><div>Status</div><div>Share</div><div style="text-align:right">Brands</div><div></div><div style="text-align:right">Monthly $</div></div>'+leg+'</div></div>'
+    +'<div class="bd-bs-tip"></div></div>';
+}
+// Hover: highlight the status in the donut and the legend, show it in the
+// centre, and float its detail next to the pointer.
+function bdBsHover(el,e){
+  var card=el.closest('.bd-bs');if(!card)return;var k=el.getAttribute('data-k');
+  card.classList.add('hov');
+  card.querySelectorAll('[data-k]').forEach(function(x){x.classList.toggle('on',x.getAttribute('data-k')===k);});
+  var row=card.querySelector('.bd-bs-row[data-k="'+k+'"]'),cn=card.querySelector('.bd-bs-cn'),cl=card.querySelector('.bd-bs-cl');
+  if(row){cn.textContent=row.querySelector('.bd-bs-n').textContent;cl.textContent=k+' · '+row.querySelector('.bd-bs-p').textContent;}
+  var tip=card.querySelector('.bd-bs-tip');tip.innerHTML=el.getAttribute('data-tip');tip.style.display='block';
+  var rc=card.getBoundingClientRect(),x=e.clientX-rc.left+14,y=e.clientY-rc.top+14;
+  if(x+tip.offsetWidth>rc.width-8)x=e.clientX-rc.left-tip.offsetWidth-14;
+  // No room below the pointer inside the card: put it above.
+  if(y+tip.offsetHeight>rc.height-8)y=e.clientY-rc.top-tip.offsetHeight-14;
+  tip.style.left=Math.max(8,x)+'px';tip.style.top=Math.max(8,y)+'px';
+}
+function bdBsOut(el){
+  var card=el.closest('.bd-bs');if(!card)return;card.classList.remove('hov');
+  card.querySelectorAll('[data-k]').forEach(function(x){x.classList.remove('on');});
+  card.querySelector('.bd-bs-cn').textContent=Number(card.getAttribute('data-tot')).toLocaleString();card.querySelector('.bd-bs-cl').textContent='brands';
+  card.querySelector('.bd-bs-tip').style.display='none';
 }
 function _bdChips(ks,live){return '<div class="bd-chips">'+ks.map(function(k){return _bdChip(k,false,live);}).join('')+'</div>';}
 function _bdEsc(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -1928,7 +1998,7 @@ function renderBD(){
       h+='</div>';
     }
   }
-  // Brand Status breakdown (Alex, 2026-11-16): every app brand by the Brand
+  // Billing Status breakdown (Alex, 2026-11-16): every app brand by the Brand
   // MRR report's Status, live (Recurly, then the app).
   if(_ba)h+=_bdStatusPie(_baStatusMix(_ba.brands),_appLive,!!(_ba.meta&&_ba.meta.recurly&&_ba.meta.recurly.ok));
   h+='</section>';
