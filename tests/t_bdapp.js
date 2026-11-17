@@ -663,6 +663,9 @@ function pageToggleTests(){
     {id:6,name:'Vincent',recurly:{mrr:1,subs:[{billFrom:'2026-01-01',mrr:9999}]}}],sm.concat([{k:'2026-04',end:'2026-04-30'}]));
   ck('Billed: base = brands live in Recurly at month-end (billing, trial, starting, paused; not ended), as section 01 counts; pilots on top until live; test accounts out',
     [bil.base,bil.pil,bil.baseA,bil.pilA],[[2,3,2,3],[1,2,2,1],[1700*12,2200*12,1700*12,3700*12],[1500*12,4500*12,4500*12,3000*12]]);
+  const bv=T._bdS2Billed([rcb(7,[{billFrom:'2026-01-05',billTo:'',pausedAt:'',mrr:1500,price:1500},{liveFrom:'2026-03-01',billFrom:'',billTo:'',pausedAt:'',mrr:0,price:900}])],sm);
+  ck('  a billing brand with a second subscription starting later counts only what it bills (as section 01)',bv.baseA,[1500*12,1500*12,1500*12]);
+  ck('  a subscription billing $0 (100% coupon) counts $0, not its list price',[T._bdRcVal({basis:'invoice',mrr:0,price:1999}),T._bdRcVal({basis:'expired',mrr:0,price:1999})],[0,1999]);
   ck('  each mode starts at its earliest month with data',[T._bdS2FromBilled([rcb(1,[{billFrom:'2025-09-03'}]),rcb(2,[],{pilotHist:[{from:'2025-11-01'}]})]),
     T._bdS2FromSigned([deal(1,{closedate:'2024-03-05T05:00:00Z'}),deal(2,{brand_status:'Churned',dealstage:'3453925110',entered_closedwon:'2023-07-01T05:00:00Z',pausechurn_date:'2024-01-10T05:00:00Z'})])],['2025-09','2023-07']);
   ck('  weekly: new billed ARR by first bill week, new pilots by deposit week',[bil.wk['2026-01-05'],bil.wk['2026-01-12'],bil.wk['2026-03-16']],[{b:1000*12,p:0},{b:0,p:1500*12},{b:2000*12,p:0}]);

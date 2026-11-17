@@ -162,6 +162,17 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
 .bd-app-band.load{background:var(--teal-8);border:1px solid var(--border);color:var(--grey)}
 /* Section 02, when the pilot toggle cannot be applied (no app read): small, not a band. */
 .bd-pil-note{display:flex;align-items:center;gap:7px;font-size:11px;color:#92400E;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:6px 11px;margin:0 0 12px}
+/* Pilot cards grouped (Alex, 2026-11-16): a tinted panel drawn BEHIND the
+   pilot row (a pseudo-element outside the grid) and a label above it, so the
+   cards keep exactly the positions and widths of the cards above them. */
+.bd-pil-grp{position:relative;margin-top:40px;margin-bottom:12px}
+.bd-pil-grp::before{content:'';position:absolute;left:-10px;right:-10px;top:-31px;bottom:-10px;background:linear-gradient(180deg,rgba(124,147,184,.13),rgba(124,147,184,.06));border:1px solid rgba(124,147,184,.30);border-radius:16px;pointer-events:none}
+.bd-pil-grp>*{position:relative}
+.bd-pil-grp>.bd-kpi-row{margin-top:0}
+.bd-pil-grp-h{position:absolute;top:-24px;left:2px;display:flex;align-items:baseline;gap:7px;white-space:nowrap}
+.bd-pil-grp-h b{font-family:var(--font-h);font-size:12.5px;color:var(--navy)}
+.bd-pil-grp-h span{font-size:11px;color:var(--grey)}
+.bd-pil-grp+.bd-bs{margin-top:26px}
 /* Billing Status card (section 01). */
 .bd-bs{position:relative;margin-top:14px;background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px 18px}
 .bd-bs-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:12px}
@@ -1338,7 +1349,9 @@ function _bdS2FromSigned(deals){
 }
 // What a subscription is worth per month: what Recurly bills now, else its
 // plan list price (an ended or paused one's last price).
-function _bdRcVal(m){return m.mrr>0?m.mrr:(m.price||0);}
+// A billing subscription is worth what Recurly bills, even $0 (a 100% coupon), as
+// in section 01.
+function _bdRcVal(m){return /^(invoice|price)/.test(m.basis||'')?(m.mrr||0):m.mrr>0?m.mrr:(m.price||0);}
 // BILLED mode. Base = brands live in Recurly at each month-end (billing, in a
 // trial, starting later or paused: section 01's Active Brands), valued like
 // section 01's MRR: today's Recurly MRR when billing, else the plan's list
@@ -1354,7 +1367,10 @@ function _bdS2Billed(brands,months){
     var nb=0,na=0,np=0,npa=0;
     bs.forEach(function(b){
       var subs=(b.recurly&&b.recurly.subs)||[],on=subs.filter(function(m){return _bdRcLiveOn(m,mo.end);});
-      if(on.length){nb++;na+=on.reduce(function(t,m){return t+_bdRcVal(m);},0);return;}
+      // Valued as section 01 does: a brand that bills counts only what it
+      // bills; one that does not, the list price of its live subscriptions.
+      var bill=on.filter(function(m){return _bdRcBillsOn(m,mo.end);});
+      if(on.length){nb++;na+=(bill.length?bill:on).reduce(function(t,m){return t+_bdRcVal(m);},0);return;}
       var p=(b.pilotHist||[]).filter(function(x){return x.from<=mo.end&&(!x.to||x.to>mo.end);});
       if(p.length){np++;npa+=p[p.length-1].price||0;}
     });
@@ -2149,6 +2165,7 @@ function renderBD(){
       // Row 2 (Alex, 2026-11-12): six smaller cards, matching the app's Grafana
       // "Pilot Brands" board, in this order: Pilot Brands, Awaiting Deposit,
       // Pilot Live, Pilot Avg ACV, Initiation Fees, Post-Pilot MRR.
+      h+='<div class="bd-pil-grp" role="group" aria-label="Pilots"><div class="bd-pil-grp-h"><b>Pilots</b><span>\u00b7 not in the book above until they roll over</span></div>';
       h+='<div class="bd-kpi-row r6">';
       h+=_kp('Pilot Brands',_ps.n.toLocaleString(),_ps.waiting.toLocaleString()+' waiting to start','Deposit paid, collecting data or live',
         'Pilots whose status is deposit_paid ('+_ps.deposit_paid+'), collecting_data ('+_ps.collecting_data+') or live ('+_ps.live+'). Brands named demo/test are left out, as on the app’s Grafana board.');
@@ -2164,7 +2181,7 @@ function renderBD(){
       h+=_kp('Post-Pilot MRR',_post!=null?f$(_post):'\u2014','','Expected MRR once billing starts, '+_postN+' pilots',
         _pp?'Expected MRR once billing starts (Brand MRR report definition) of brands whose plan status is a pilot that has paid its fee (collecting data or live): the pilot’s price override, else the pilot price for its package and starting tier. Awaiting-deposit pilots are left out. By status \u2014 '+_ppBy('expected')
           :'Each counted pilot’s rollover price, else a repeating price override, else the deposit month’s default.',_pp?_ppSrc(false):'');
-      h+='</div>';
+      h+='</div></div>';   // the pilot row, then its group
     }
   }
   // Billing Status breakdown (Alex, 2026-11-16): every app brand by the Brand
