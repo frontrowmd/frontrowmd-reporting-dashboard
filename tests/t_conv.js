@@ -12,7 +12,7 @@ const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify(w);console.log((o
 
 const prefix=src.slice(0,src.indexOf('\nexport default'));
 const ctx={console};vm.createContext(ctx);
-vm.runInContext(prefix+'\nObject.assign(globalThis,{metaTargetCount,metaTargetEvent,metaEventCount,metaOptTarget,metaTargetField,clinicianConvCount,chDemoCount,_foldAudRows,metaDemos,CLINICIAN_CONV_FIELDS,META_CC_ALIAS});',ctx);
+vm.runInContext(prefix+'\nObject.assign(globalThis,{metaTargetCount,metaTargetEvent,metaEventCount,metaOptTarget,metaTargetField,clinicianConvCount,chDemoCount,_foldAudRows,azAdsetKey,metaDemos,CLINICIAN_CONV_FIELDS,META_CC_ALIAS});',ctx);
 ck('the real resolver loaded',typeof ctx.metaTargetCount,'function');
 
 const PIX='"pixel_id": "3681546762144757", ';
@@ -115,15 +115,17 @@ ck('garbage stays blank',ctx.metaOptTarget('not json'),'');
 const cfg={nameField:'adset_name',demoField:ctx.CLINICIAN_CONV_FIELDS,onlyClinician:true,
   statusField:'adset_effective_status',statusFallback:'adset_status'};
 const map={};ctx._foldAudRows('clinician',cfg,rows,map);
-// _foldAudRows keys by ad-set NAME alone, and "TOF - Clinicians - Job Titles"
-// exists in all three clinician campaigns — so the Ad Sets table shows ONE row
-// for the five live ad sets. Pre-existing behaviour, asserted so it stays visible.
-ck('same-named ad sets merge across campaigns',Object.keys(map).length,2);
-ck('  and the merged row keeps only the first campaign it saw',map['TOF - Clinicians - Job Titles'].campaign,CAPI);
-ck('the Clinician-targeted ad set is labelled, not blank',map['TOF - Clinicians - Job Titles - Clinician'].optTarget,'Clinician');
-ck('the virtualclinicians ad set too',map['TOF - Clinicians - Job Titles'].optTarget,'virtualclinicians');
-ck('ad-set demos follow the target: 11 + 2',map['TOF - Clinicians - Job Titles - Clinician'].demos,13);
-ck('and the two same-named virtualclinicians ad sets sum 16 + 3 + 0',map['TOF - Clinicians - Job Titles'].demos,19);
+// An ad set is campaign + name (azAdsetKey). "TOF - Clinicians - Job Titles"
+// exists in all three clinician campaigns; until 2026-11-17 they merged into one
+// row under the first campaign seen, hiding the other two. Now five rows.
+const JT='TOF - Clinicians - Job Titles', JTC='TOF - Clinicians - Job Titles - Clinician';
+const A=(c,n)=>map[ctx.azAdsetKey(c,n)];
+ck('same-named ad sets stay separate per campaign',Object.keys(map).length,5);
+ck('  each row carries its own campaign',[A(CAPI,JT).campaign,A(LAL,JT).campaign,A(NOSMP,JT).campaign],[CAPI,LAL,NOSMP]);
+ck('the Clinician-targeted ad set is labelled, not blank',A(CAPI,JTC).optTarget,'Clinician');
+ck('the virtualclinicians ad set too',A(CAPI,JT).optTarget,'virtualclinicians');
+ck('ad-set demos follow the target: 11 and 2',[A(CAPI,JTC).demos,A(LAL,JTC).demos],[11,2]);
+ck('the three virtualclinicians ad sets: 16, 3 and 0',[A(CAPI,JT).demos,A(LAL,JT).demos,A(NOSMP,JT).demos],[16,3,0]);
 ck('ad-set demos sum to the campaign blend',Object.values(map).reduce((a,x)=>a+x.demos,0),grand);
 
 // ── 8. chDemoCount routes clinician through the target-aware path ──────────

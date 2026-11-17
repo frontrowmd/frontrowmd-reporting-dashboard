@@ -1307,7 +1307,7 @@ const AZ_CRON_SOFTFAIL_TOLERANCE = 5;
 // a2: ad rows now carry the `conversions` array, and Meta/Clinician demos are
 // counted from each ad set's own target — a cached a1 payload holds the old
 // per-campaign conversion and CPD figures, so it must not be served.
-const AZ_DATA_VER = 'a3';   // a3: Eastern day boundaries
+const AZ_DATA_VER = 'a4';   // a4: ad sets keyed by campaign + name (a3: Eastern day boundaries)
 // Cloudflare caps CONCURRENT in-flight fetches, and a Response whose body is
 // never read never completes — so it holds its slot indefinitely. Past the cap
 // the runtime cancels the OLDEST in-flight response to break the deadlock,
@@ -9526,7 +9526,7 @@ function _foldCreRows(ch, cfg, rows, map, campCreMap, adsetCreMap, placementMap,
       // name (e.g. LinkedIn, which has no ad-set concept).
       const adsetName = (row.adset_name || row.ad_group_name || '').trim();
       if (adsetName) {
-        const adsetKey = adsetName.toLowerCase();
+        const adsetKey = azAdsetKey(campName, adsetName);  // campaign-scoped, see azAdsetKey
         if (!adsetCreMap[adsetKey]) adsetCreMap[adsetKey] = {};
         if (!adsetCreMap[adsetKey][name]) adsetCreMap[adsetKey][name] = { name, spend:0, clicks:0, impressions:0, demos:0, freqVals:[], thumbnail: tm[name] || null, videoP25:0, _dates:[], _adsetName: adsetName, campaignName: campName, status:null, _statusDate:'' };
         rollupStatus(adsetCreMap[adsetKey][name], _rowStatus, _rowDate);
@@ -9775,7 +9775,7 @@ async function fetchAzCreatives(apiKey, from, to) {
       }).sort((a,b)=>b.spend-a.spend);
     }
     // Finalize per-ad-set creatives (same shape as campCreFinal, keyed by
-    // lowercased ad-set name). Used by the Ad Sets table dropdown.
+    // azAdsetKey(campaign, ad set)). Used by the Ad Sets table dropdown.
     const adsetCreFinal = {};
     for (const [ak, cres] of Object.entries(adsetCreMap)) {
       adsetCreFinal[ak] = Object.values(cres).map(c => {
@@ -9878,6 +9878,17 @@ async function fetchCreativeFatigue(apiKey) {
 // ── Audience / Ad Group level fetch ──
 // The per-row audience fold, lifted out of fetchAzAudiences unchanged so it can
 // run per CHUNK. Mutates `map` and keeps no reference to `rows`.
+// One ad set = campaign + ad-set name. Keyed by name alone, two ad sets that
+// share a name in different campaigns (e.g. "TOF - Clinicians - Job Titles -
+// Clinician" in both Clinician Targeting - CAPI and its 2% Lookalikes twin)
+// folded into ONE row under whichever campaign came first: the other ad set
+// vanished from every Ad Sets table and its spend was booked to the wrong
+// campaign. The page builds the same key (_azAdsetKey) to find each ad set's
+// creatives in creativeByAdset.
+function azAdsetKey(campaign, adset) {
+  return String(campaign || '').trim().toLowerCase() + '::' + String(adset || '').trim().toLowerCase();
+}
+
 function _foldAudRows(ch, cfg, rows, map) {
   for (const row of rows) {
       const name = (row[cfg.nameField] || '').trim();
@@ -9889,26 +9900,27 @@ function _foldAudRows(ch, cfg, rows, map) {
       if (ch === 'meta' && isClinicianCampaign(campName)) continue;
       // Google: filter out YouTube campaigns
       if (ch === 'google' && /\byt\b|youtube/i.test(campName)) continue;
-      if (!map[name]) map[name] = { name, campaign: '', spend: 0, clicks: 0, impressions: 0, demos: 0, status: null, _statusDate: '', optTarget: '' };
+      const _ak = azAdsetKey(campName, name);
+      if (!map[_ak]) map[_ak] = { name, campaign: campName, spend: 0, clicks: 0, impressions: 0, demos: 0, status: null, _statusDate: '', optTarget: '' };
+      const _a = map[_ak];
       // Real optimization target from the platform (both facebook-connector
       // channels). Same for every row of an ad set, so first non-empty wins.
       // Gating this to 'meta' left the Clinician Ad Sets table with a blank
       // Optimization Target column — which is precisely what hid the fact that
       // clinician ad sets optimize for several different conversions.
-      if (isMetaConnectorCh(ch) && !map[name].optTarget) {
+      if (isMetaConnectorCh(ch) && !_a.optTarget) {
         const _ot = metaOptTarget(row.adset_promoted_object);
-        if (_ot) map[name].optTarget = _ot;
+        if (_ot) _a.optTarget = _ot;
       }
       // Authoritative ad-set status (effective_status → PAUSED when the ad set /
       // its campaign is OFF). This is the source of truth for the row's status,
       // instead of guessing "active if any creative is active" (which read each
       // ad's own toggle and so showed paused ad sets as Active).
-      if (cfg.statusField) rollupStatus(map[name], (row[cfg.statusField] || row[cfg.statusFallback] || '').toUpperCase(), row.date);
-      map[name].spend += parseFloat(row.spend) || 0;
-      map[name].clicks += parseInt(row.clicks) || 0;
-      map[name].impressions += parseInt(row.impressions) || 0;
-      map[name].demos += chDemoCount(ch, cfg, row);
-      if (!map[name].campaign && campName) map[name].campaign = campName;
+      if (cfg.statusField) rollupStatus(_a, (row[cfg.statusField] || row[cfg.statusFallback] || '').toUpperCase(), row.date);
+      _a.spend += parseFloat(row.spend) || 0;
+      _a.clicks += parseInt(row.clicks) || 0;
+      _a.impressions += parseInt(row.impressions) || 0;
+      _a.demos += chDemoCount(ch, cfg, row);
     }
 }
 
