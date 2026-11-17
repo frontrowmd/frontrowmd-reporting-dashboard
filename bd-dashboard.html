@@ -1362,10 +1362,16 @@ function _bdRcVal(m){return /^(invoice|price)/.test(m.basis||'')?(m.mrr||0):m.mr
 // Recurly; new pilots by deposit week.
 function _bdS2Billed(brands,months){
   var from=months.length?months[0].k:BD_S2_FROM;
-  var base=[],pil=[],baseA=[],pilA=[];
+  var base=[],pil=[],baseA=[],pilA=[],onbA=[];
   var bs=brands.filter(function(b){return !_baIsTest(b);});
+  // Onboarding (Alex, 2026-11-16): app sign-ups waiting to activate today
+  // (Status Not billing yet / Onboarding, as section 01's Future MRR counts
+  // them), from their sign-up at their expected MRR. Only today's are known:
+  // a sign-up that has since activated is in the base from then.
+  var onb=bs.filter(function(b){return !b.discardedAt&&b.onboardingExpected&&b.onboardingFrom&&_baStatusOf(b).d==='Onboarding';});
   months.forEach(function(mo){
-    var nb=0,na=0,np=0,npa=0;
+    var nb=0,na=0,np=0,npa=0,noa=0;
+    onb.forEach(function(b){if(b.onboardingFrom<=mo.end)noa+=b.onboardingExpected;});
     bs.forEach(function(b){
       var subs=(b.recurly&&b.recurly.subs)||[],on=subs.filter(function(m){return _bdRcLiveOn(m,mo.end);});
       // Valued as section 01 does: a brand that bills counts only what it
@@ -1375,7 +1381,7 @@ function _bdS2Billed(brands,months){
       var p=(b.pilotHist||[]).filter(function(x){return x.from<=mo.end&&(!x.to||x.to>mo.end);});
       if(p.length){np++;npa+=p[p.length-1].price||0;}
     });
-    base.push(nb);pil.push(np);baseA.push(na*12);pilA.push(npa*12);
+    base.push(nb);pil.push(np);baseA.push(na*12);pilA.push(npa*12);onbA.push(noa*12);
   });
   var wk={},lf=function(m){return m.liveFrom||m.billFrom||'';},firstLive=function(b){return ((b.recurly&&b.recurly.subs)||[]).map(lf).filter(Boolean).sort()[0]||'';};
   bs.forEach(function(b){
@@ -1384,7 +1390,7 @@ function _bdS2Billed(brands,months){
       (wk[k]=wk[k]||{b:0,p:0}).b+=v*12;}
     (b.pilotHist||[]).forEach(function(x){if(x.from.slice(0,7)>=from){var k=_bdS2Week(x.from);(wk[k]=wk[k]||{b:0,p:0}).p+=(x.price||0)*12;}});
   });
-  return {base:base,pil:pil,baseA:baseA,pilA:pilA,wk:wk};
+  return {base:base,pil:pil,baseA:baseA,pilA:pilA,onbA:onbA,wk:wk};
 }
 // SIGNED mode: the month-end snapshot as section 02 always counted it (closed-
 // won Paying/Signed deals by close date, plus deals that have since paused or
@@ -1435,10 +1441,18 @@ function _bdS2Weeks(wk,today,from){
 }
 // Stacked line chart: the base (Current) as a shaded area, the Pilot layer as
 // a lighter shaded band on top. Hover names the point and splits it.
+// Stacked line chart: the base as a shaded area, then each further layer
+// (Pilot, and Onboarding when given) as a lighter shaded band on top. Hover
+// names the point and splits it.
 function _bdS2Chart(o){
   var W=o.w||700,H=o.h||250,L=56,R=26,T=14,B=30,pw=W-L-R,ph=H-T-B,n=o.labels.length;
   if(!n)return '<div style="height:200px;display:flex;align-items:center;justify-content:center;color:var(--grey);font-size:12px">No data</div>';
-  var tot=o.base.map(function(v,i){return v+(o.pil[i]||0);});
+  var lay=[{v:o.base,c:o.col,l:o.bLbl,op:.22,w:2.2,d:''},{v:o.pil,c:o.pcol,l:o.pLbl,op:.38,w:1.6,d:'4 3'}];
+  if(o.onb)lay.push({v:o.onb,c:o.ocol,l:o.oLbl,op:.4,w:1.4,d:'2 3'});
+  // Running tops: cum[k][i] = sum of layers 0..k at point i.
+  var cum=[],run=o.labels.map(function(){return 0;});
+  lay.forEach(function(ly){run=run.map(function(t,i){return t+(ly.v[i]||0);});cum.push(run.slice());});
+  var tot=cum[cum.length-1];
   var mx=Math.max.apply(null,tot.concat([1])),raw=mx/4,mag=Math.pow(10,Math.floor(Math.log10(raw))),tk=[1,2,2.5,5,10].map(function(k){return k*mag;}).filter(function(k){return k>=raw;})[0]||10*mag,top=tk*4;
   var x=function(i){return n===1?L+pw/2:L+i*pw/(n-1);},y=function(v){return T+ph-v/top*ph;};
   var fmt=function(v){return o.money?(v>=1e6?'$'+(v/1e6).toFixed(v>=1e7?0:1)+'M':v>=1e3?'$'+Math.round(v/1e3)+'K':'$'+Math.round(v)):Math.round(v).toLocaleString();};
@@ -1450,22 +1464,22 @@ function _bdS2Chart(o){
   var step=Math.max(1,Math.ceil(o.labels.filter(function(l,i){return i===0||l!==o.labels[i-1];}).length/(o.maxTicks||12))),seen=0;
   o.labels.forEach(function(l,i){if(i>0&&l===o.labels[i-1])return;if(seen++%step)return;
     g+='<text x="'+x(i)+'" y="'+(H-10)+'" text-anchor="'+(x(i)>W-R-20?'end':i===0?'start':'middle')+'" font-size="10" fill="#6B7C93">'+l+'</text>';});
-  var line=function(vals){return vals.map(function(v,i){return x(i).toFixed(1)+','+y(v).toFixed(1);}).join(' ');};
-  var bTop=line(o.base),tTop=line(tot);
-  var bArea='M'+x(0)+','+y(0)+' L'+bTop.split(' ').join(' L')+' L'+x(n-1)+','+y(0)+' Z';
-  var pArea='M'+tTop.split(' ').join(' L')+' L'+o.base.map(function(v,i){return x(n-1-i).toFixed(1)+','+y(o.base[n-1-i]).toFixed(1);}).join(' L')+' Z';
-  g+='<path d="'+bArea+'" fill="'+o.col+'" fill-opacity=".22"/><path d="'+pArea+'" fill="'+o.pcol+'" fill-opacity=".38"/>'
-    +'<polyline points="'+tTop+'" fill="none" stroke="'+o.pcol+'" stroke-width="1.6" stroke-dasharray="4 3" stroke-linejoin="round"/>'
-    +'<polyline points="'+bTop+'" fill="none" stroke="'+o.col+'" stroke-width="2.2" stroke-linejoin="round"/>';
+  var pts=function(vals){return vals.map(function(v,i){return x(i).toFixed(1)+','+y(v).toFixed(1);});};
+  var areas='',lines='';
+  lay.forEach(function(ly,k){
+    var upper=pts(cum[k]),lower=k?pts(cum[k-1]).reverse():[x(n-1).toFixed(1)+','+y(0).toFixed(1),x(0).toFixed(1)+','+y(0).toFixed(1)];
+    areas+='<path d="M'+upper.concat(lower).join(' L')+' Z" fill="'+ly.c+'" fill-opacity="'+ly.op+'"/>';
+    lines='<polyline points="'+upper.join(' ')+'" fill="none" stroke="'+ly.c+'" stroke-width="'+ly.w+'"'+(ly.d?' stroke-dasharray="'+ly.d+'"':'')+' stroke-linejoin="round"/>'+lines;
+  });
+  g+=areas+lines;
   var hits='',bw=n===1?pw:pw/(n-1),ex=function(v){return o.money?f$(v):Math.round(v).toLocaleString();};
   o.labels.forEach(function(l,i){
     var tip='<div style="font-weight:700;margin-bottom:3px">'+(o.tips?o.tips[i]:l)+'</div>'
-      +'<div><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:'+o.col+';margin-right:6px"></span>'+o.bLbl+' <b>'+ex(o.base[i])+'</b></div>'
-      +'<div><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:'+o.pcol+';margin-right:6px"></span>'+o.pLbl+' <b>'+ex(o.pil[i]||0)+'</b></div>'
+      +lay.map(function(ly){return '<div><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:'+ly.c+';margin-right:6px"></span>'+ly.l+' <b>'+ex(ly.v[i]||0)+'</b></div>';}).join('')
       +'<div style="margin-top:3px;padding-top:3px;border-top:1px solid rgba(255,255,255,.2)">Total <b>'+ex(tot[i])+'</b></div>';
     hits+='<rect x="'+(x(i)-bw/2)+'" y="'+T+'" width="'+bw+'" height="'+ph+'" fill="transparent" data-i="'+i+'" data-cx="'+x(i)+'" data-tip="'+_bdEsc(tip)+'" onmouseenter="bdStackTip(this,event)" onmousemove="bdStackTip(this,event)"/>';});
-  var key=function(c,l,dash){return '<span style="display:inline-flex;align-items:center;gap:6px;margin-right:14px"><span style="width:14px;height:10px;border-radius:2px;background:'+c+';opacity:'+(dash?'.55':'.75')+';border-top:2px '+(dash?'dashed':'solid')+' '+c+'"></span>'+l+'</span>';};
-  return '<div style="font-size:11px;color:var(--navy);margin:0 0 6px">'+key(o.col,o.bLbl)+key(o.pcol,o.pLbl,1)+'</div>'
+  var key=function(ly,k){return '<span style="display:inline-flex;align-items:center;gap:6px;margin-right:14px"><span style="width:14px;height:10px;border-radius:2px;background:'+ly.c+';opacity:'+(k?'.55':'.75')+';border-top:2px '+(ly.d?'dashed':'solid')+' '+ly.c+'"></span>'+ly.l+'</span>';};
+  return '<div style="font-size:11px;color:var(--navy);margin:0 0 6px">'+lay.map(key).join('')+'</div>'
     +'<div class="bd-stk" style="position:relative" onmouseleave="bdStackOff(this)"><svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block" role="img" aria-label="'+_bdEsc(o.aria||'')+'">'+g
     +'<line class="bd-stk-x" x1="0" x2="0" y1="'+T+'" y2="'+(T+ph)+'" stroke="#94A3B8" stroke-width="1" stroke-dasharray="3 3" style="display:none"/>'+hits+'</svg>'
     +'<div class="bd-stk-tip" style="position:absolute;display:none;pointer-events:none;z-index:6;background:var(--navy);color:#fff;font-size:11px;line-height:1.55;padding:8px 11px;border-radius:8px;box-shadow:0 6px 18px rgba(2,15,24,.22);white-space:nowrap"></div></div>';
@@ -2351,7 +2365,7 @@ function renderBD(){
   h+='<div class="bd-sec-head"><span class="bd-sec-n">02</span>'
     +'<span class="bd-sec-t">All Brands and ARR</span>'
     +'<span style="margin-left:auto;display:inline-flex;gap:10px;align-items:center;flex-wrap:wrap">'+_s2Chips.replace('class="bd-chips"','class="bd-chips" style="padding-top:0"')+_s2Seg+'</span></div>'
-    +'<p class="bd-s2-desc" style="margin:-4px 0 14px;font-size:12px;line-height:1.5;color:var(--grey);max-width:980px">'+(_s2Billed?'Brands live in Recurly at each month-end \u2014 billing, in a trial, starting later or paused, as section 01 counts them \u2014 and their ARR (Recurly plan + web traffic when billing, else the plan\u2019s list price; ended brands at their last price), with brands in a paid pilot stacked on top at their post-pilot price. New ARR per week by the week a brand joined Recurly.'
+    +'<p class="bd-s2-desc" style="margin:-4px 0 14px;font-size:12px;line-height:1.5;color:var(--grey);max-width:980px">'+(_s2Billed?'Brands live in Recurly at each month-end \u2014 billing, in a trial, starting later or paused, as section 01 counts them \u2014 and their ARR (Recurly plan + web traffic when billing, else the plan\u2019s list price; ended brands at their last price), with brands in a paid pilot stacked on top at their post-pilot price, and on the ARR chart app sign-ups waiting to activate at their expected MRR \u2014 so this month\u2019s ARR is section 01\u2019s Future ARR. New ARR per week by the week a brand joined Recurly.'
       :'The book signed in HubSpot as of each month-end, as the snapshot has always counted it, with pilot deals stacked on top. Valued once per brand at its Recurly MRR (pilots at their post-pilot price; HubSpot amount when neither is known). New ARR signed per week by close date.')+' From '+mN[+_s2From.slice(5,7)-1]+' '+_s2From.slice(0,4)+', the earliest month with data.</p>';
   if(!_s2){
     h+=(!_ba?_baBand('the section 02 charts'):'<div class="bd-app-band err" role="alert"><strong>Recurly unavailable.</strong> <span>Billed Active Brands is read from Recurly, which did not load'+(_ba.meta&&_ba.meta.recurly&&_ba.meta.recurly.error?' ('+_bdEsc(_ba.meta.recurly.error)+')':'')+'. Switch to Signed Brands Snapshot, or Refresh to retry.</span></div>');
@@ -2363,13 +2377,16 @@ function renderBD(){
       +'<div style="display:flex;gap:8px;align-items:center;flex-shrink:0">'+mini+'</div></div>'+chart+'</div>';};
     var _cb=_s2v(_s2.base,_s2Last),_cp=_s2v(_s2.pil,_s2Last),_lb=_s2v(_s2.base,_s2Last-1),_lp=_s2v(_s2.pil,_s2Last-1);
     var _ca=_s2v(_s2.baseA,_s2Last),_cpa=_s2v(_s2.pilA,_s2Last),_la=_s2v(_s2.baseA,_s2Last-1),_lpa=_s2v(_s2.pilA,_s2Last-1);
+    // Billed mode stacks Onboarding on the ARR too, so this month = Future ARR.
+    var _hasOnb=!!_s2.onbA,_coa=_hasOnb?_s2v(_s2.onbA,_s2Last):0,_loa=_hasOnb?_s2v(_s2.onbA,_s2Last-1):0;
     h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;min-width:0">';
     h+=_chartCard('Active Brands',(_cb+_cp).toLocaleString()+' now',
       _s2Mini('This Month',(_cb+_cp).toLocaleString(),_cp+' pilot','#172C45')+_s2Mini('Last Month',(_lb+_lp).toLocaleString(),_lp+' pilot',null),
       _bdS2Chart({labels:_s2L,tips:_s2Tip,base:_s2.base,pil:_s2.pil,col:'#172C45',pcol:'#7C93B8',bLbl:_bLbl+' brands',pLbl:'Pilot brands',aria:'Active brands by month, '+_bLbl.toLowerCase()+' and pilot'}));
-    h+=_chartCard(_bLbl+' ARR',f$(_ca+_cpa)+' now',
-      _s2Mini('This Month',f$(_ca+_cpa),f$(_cpa)+' pilot','#16A34A')+_s2Mini('Last Month',f$(_la+_lpa),f$(_lpa)+' pilot',null),
-      _bdS2Chart({labels:_s2L,tips:_s2Tip,base:_s2.baseA,pil:_s2.pilA,col:'#16A34A',pcol:'#86C79A',money:true,bLbl:_bLbl+' ARR',pLbl:'Pilot ARR (post-pilot price)',aria:'ARR by month, '+_bLbl.toLowerCase()+' and pilot'}));
+    h+=_chartCard(_bLbl+' ARR',f$(_ca+_cpa+_coa)+' now'+(_hasOnb?' \u00b7 section 01\u2019s Future ARR':''),
+      _s2Mini('This Month',f$(_ca+_cpa+_coa),f$(_cpa)+' pilot'+(_hasOnb?' \u00b7 '+f$(_coa)+' onb.':''),'#16A34A')+_s2Mini('Last Month',f$(_la+_lpa+_loa),f$(_lpa)+' pilot'+(_hasOnb?' \u00b7 '+f$(_loa)+' onb.':''),null),
+      _bdS2Chart({labels:_s2L,tips:_s2Tip,base:_s2.baseA,pil:_s2.pilA,onb:_hasOnb?_s2.onbA:null,col:'#16A34A',pcol:'#86C79A',ocol:'#D4A72C',money:true,
+        bLbl:_bLbl+' ARR',pLbl:'Pilot ARR (post-pilot price)',oLbl:'Onboarding ARR (expected)',aria:'ARR by month, '+_bLbl.toLowerCase()+', pilot and onboarding'}));
     h+='</div>';
     // New ARR per week, stacked the same way.
     var _s2W=_bdS2Weeks(_s2.wk,_s2Today,_s2From),_s2WT=_s2W.reduce(function(t,w){return t+w.b+w.p;},0);

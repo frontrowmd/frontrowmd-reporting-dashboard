@@ -617,7 +617,7 @@ function pageToggleTests(){
   const block=bd.slice(a,b);
   const T={console};vm.createContext(T);
   vm.runInContext([fn(bd,'_bdMonthOfG'),fn(bd,'_bdMDY'),fn(bd,'_bdMonthEndMDY'),fn(bd,'_baPilotDealIds'),fn(bd,'_baIsTest'),fn(bd,'_bdChip'),fn(bd,'_bdChips'),fn(bd,'_bdEsc'),fn(bd,'_baToday'),
-    fn(bd,'_bdS2Months'),fn(bd,'_bdRcBillsOn'),fn(bd,'_bdRcLiveOn'),fn(bd,'_bdS2FromBilled'),fn(bd,'_bdS2FromSigned'),fn(bd,'_bdRcVal'),fn(bd,'_bdS2Billed'),fn(bd,'_bdS2Signed'),fn(bd,'_bdS2Week'),fn(bd,'_bdS2Weeks'),fn(bd,'_bdS2Chart'),
+    fn(bd,'_bdS2Months'),fn(bd,'_baRcClass'),fn(bd,'_baStatusOf'),fn(bd,'_bdRcBillsOn'),fn(bd,'_bdRcLiveOn'),fn(bd,'_bdS2FromBilled'),fn(bd,'_bdS2FromSigned'),fn(bd,'_bdRcVal'),fn(bd,'_bdS2Billed'),fn(bd,'_bdS2Signed'),fn(bd,'_bdS2Week'),fn(bd,'_bdS2Weeks'),fn(bd,'_bdS2Chart'),
     decl(bd,"var _bdS2Mode=",';'),decl(bd,"var BD_S2_FROM=",';'),
     decl(bd,'var BD_APP_TEST_BRANDS=',';'),decl(bd,"var _bdPilotMode=",';'),
     'function f$(v){return "$"+Math.round(v);}','function buildSVGChart(l,v){return "<svg data-n=\\""+v.length+"\\"></svg>";}',
@@ -666,6 +666,11 @@ function pageToggleTests(){
   const bv=T._bdS2Billed([rcb(7,[{billFrom:'2026-01-05',billTo:'',pausedAt:'',mrr:1500,price:1500},{liveFrom:'2026-03-01',billFrom:'',billTo:'',pausedAt:'',mrr:0,price:900}])],sm);
   ck('  a billing brand with a second subscription starting later counts only what it bills (as section 01)',bv.baseA,[1500*12,1500*12,1500*12]);
   ck('  a subscription billing $0 (100% coupon) counts $0, not its list price',[T._bdRcVal({basis:'invoice',mrr:0,price:1999}),T._bdRcVal({basis:'expired',mrr:0,price:1999})],[0,1999]);
+  const ob2=T._bdS2Billed([{id:30,name:'Onb',state:'pending',onboarding:true,onboardingFrom:'2026-02-10',onboardingExpected:2000},
+    {id:31,name:'OnbDel',state:'pending',onboarding:true,onboardingFrom:'2026-01-05',onboardingExpected:900,discardedAt:'2026-03-01'},
+    rcb(32,[{billFrom:'2026-01-05',mrr:1000,basis:'invoice'}],{onboarding:true,onboardingFrom:'2026-01-01',onboardingExpected:500})],sm);
+  ck('  Billed ARR stacks Onboarding (sign-ups waiting to activate) from sign-up at expected MRR; not when live in Recurly or deleted',ob2.onbA,[0,2000*12,2000*12]);
+  ck('  and its chart draws a third band',(T._bdS2Chart({labels:['a','b'],base:[1,2],pil:[1,1],onb:[1,1],col:'#000',pcol:'#999',ocol:'#d4a',bLbl:'B',pLbl:'P',oLbl:'O'}).match(/<path /g)||[]).length,3);
   ck('  each mode starts at its earliest month with data',[T._bdS2FromBilled([rcb(1,[{billFrom:'2025-09-03'}]),rcb(2,[],{pilotHist:[{from:'2025-11-01'}]})]),
     T._bdS2FromSigned([deal(1,{closedate:'2024-03-05T05:00:00Z'}),deal(2,{brand_status:'Churned',dealstage:'3453925110',entered_closedwon:'2023-07-01T05:00:00Z',pausechurn_date:'2024-01-10T05:00:00Z'})])],['2025-09','2023-07']);
   ck('  weekly: new billed ARR by first bill week, new pilots by deposit week',[bil.wk['2026-01-05'],bil.wk['2026-01-12'],bil.wk['2026-03-16']],[{b:1000*12,p:0},{b:0,p:1500*12},{b:2000*12,p:0}]);

@@ -4159,6 +4159,9 @@ function bdAppBrand(r, today) {
     // Its "Expected MRR once billing starts", the report's way: each such
     // subscription's display price; a custom plan's is a term total, divided
     // by the term its name declares. Future MRR adds it (Alex, 2026-11-16).
+    // When it signed up (its earliest such app row, Eastern day): section 02's
+    // Onboarding layer runs from here.
+    onboardingFrom: (subs.filter(x => x.status === 'pending_activation' && !x.extSubId && x.planKind !== 'pilot').map(x => x.createdAt).filter(Boolean).sort()[0]) || '',
     onboardingExpected: Math.round(subs.filter(x => x.status === 'pending_activation' && !x.extSubId && x.planKind !== 'pilot')
       .reduce((t, x) => t + ((x.disp || 0) / 100) / (x.planKind === 'custom' ? bdAppTermMonths(x.planName) : 1), 0) * 100) / 100,
     lastReviewAt: r.LR || '', reviews45: Number(r.R45) || 0,
