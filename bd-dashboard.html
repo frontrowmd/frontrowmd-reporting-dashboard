@@ -162,6 +162,18 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
 .bd-app-band.load{background:var(--teal-8);border:1px solid var(--border);color:var(--grey)}
 /* Section 02, when the pilot toggle cannot be applied (no app read): small, not a band. */
 .bd-pil-note{display:flex;align-items:center;gap:7px;font-size:11px;color:#92400E;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:6px 11px;margin:0 0 12px}
+/* Data-source chips (Alex, 2026-11-16): every Tracker card in sections 01 and
+   02 names where its number comes from, one colour per source. */
+.bd-chips{margin-top:auto;padding-top:7px;display:flex;flex-wrap:wrap;gap:4px}
+.bd-chip{display:inline-flex;align-items:center;gap:4px;font-size:8.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;line-height:1;padding:3px 7px 3px 6px;border-radius:50px;border:1px solid;white-space:nowrap;cursor:help}
+.bd-chip::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+.bd-chip.app{color:#0F766E;background:#E7F7F4;border-color:#9ED9CF}
+.bd-chip.hubspot{color:#C2410C;background:#FFF1E8;border-color:#FBC5A3}
+.bd-chip.recurly{color:#6D28D9;background:#F3EEFF;border-color:#CDB8FA}
+.bd-chip.nightly{border-style:dashed;opacity:.85}
+.bd-chip.sm{font-size:7.5px;padding:2px 5px 2px 4px}
+.bd-chip.sm::before{width:5px;height:5px}
+.bd-kpi-row.r6 .bd-chips{padding-top:5px}
 .bd-src{display:inline-block;font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:2px 8px;border-radius:50px;background:rgba(23,44,69,.07);color:var(--navy);margin-right:6px;vertical-align:1px}
 /* Reconciliation tables */
 .bd-rec{background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px 16px;overflow-x:auto}
@@ -1054,7 +1066,9 @@ function _baRecurlyOnto(r,rv){
         +' ('+(String(m.basis).indexOf('invoice')===0?'latest invoice':m.basis==='price'?'list price, no invoice':m.basis)+')';}).join('; ');}).join(' | ')
     +(miss?(rc.length?' | ':'')+miss+' brand'+(miss>1?'s':'')+' with a Recurly id Recurly does not know':'');
 }
-function _baRecon(deals,brands,join){
+// R5 compares HubSpot MRR with RECURLY MRR (Alex, 2026-11-16) whenever Recurly
+// was read (useRc); with Recurly down it falls back to the app price, as before.
+function _baRecon(deals,brands,join,useRc){
   var units={},order=[];
   deals.forEach(function(dd){
     // A reviewed deal belongs to its brands' unit, not its company's.
@@ -1109,6 +1123,7 @@ function _baRecon(deals,brands,join){
       if(!live.length){        // its app brand is another unit's: this deal is a second HubSpot record for it
         var rx=row((ad.dealname||u.deals[0].companyName||nm).replace(/\s*-\s*new deal\s*$/i,'').trim(),u.deals,null,{brands:act});rx.appStatus=_baAppLabel(act[0]);rx.appMrr=0;rx.appMrrPilot=false;rx.diff=rx.hsMrr;
         rx.recurlyMrr=rx.recurlyMrr==null?null:0;rx.recurlyBasis='';rx.recurlyTip='counted under another HubSpot deal';
+        if(useRc)rx.diff=rx.hsMrr;
         rx.why='app brand '+act.map(function(b){return b.name;}).join(', ')+' is counted under another HubSpot deal (duplicate or sister record)';
         if(Math.abs(rx.diff)>=BD_REC_PRICE_TOL)t5.push(rx);
         return;
@@ -1116,14 +1131,27 @@ function _baRecon(deals,brands,join){
       var r5=row(nm,u.deals,best,{brands:live}),priced=live.filter(function(b){return b.monthly!=null;});
       r5.appMrr=priced.length?Math.round(priced.reduce(function(s,b){return s+b.monthly;},0)*100)/100:null;
       r5.appMrrPilot=false;
-      r5.diff=Math.round((r5.hsMrr-(r5.appMrr||0))*100)/100;
       var why=[],nAct=u.deals.filter(_baIsActiveDeal).length;
       if(nAct>1)why.push(nAct+' active HubSpot deals');
       if(live.length>1)why.push(live.length+' app brands');
-      live.forEach(function(b){var pn=_baPriceNote(b.priceNote)||(b.monthly==null?'no app price':'');
-        if(pn)why.push((live.length>1?b.name+': ':'')+pn);});
-      r5.why=why.join('; ');
-      if(r5.appMrr==null||priced.length<live.length||Math.abs(r5.diff)>=BD_REC_PRICE_TOL)t5.push(r5);
+      if(useRc){
+        // HubSpot vs Recurly: what Recurly says, in its own words.
+        var rcd=live.filter(function(b){return b.recurly&&b.recurly.mrr!=null;});
+        r5.diff=Math.round((r5.hsMrr-(r5.recurlyMrr||0))*100)/100;
+        live.forEach(function(b){var rc=b.recurly,pre=live.length>1?b.name+': ':'';
+          if(!rc)why.push(pre+'no Recurly subscription id in the app');
+          else if(rc.mrr==null)why.push(pre+'Recurly does not know its subscription id');
+          else{var w=_baRecurlyBasis(rc.basis);if(w)why.push(pre+'Recurly: '+w);
+            else if(rc.traffic)why.push(pre+'Recurly plan $'+Math.round(rc.planMo||0)+' + web traffic $'+Math.round(rc.traffic));}});
+        r5.why=why.join('; ');
+        if(r5.recurlyMrr==null||rcd.length<live.length||Math.abs(r5.diff)>=BD_REC_PRICE_TOL)t5.push(r5);
+      }else{
+        r5.diff=Math.round((r5.hsMrr-(r5.appMrr||0))*100)/100;
+        live.forEach(function(b){var pn=_baPriceNote(b.priceNote)||(b.monthly==null?'no app price':'');
+          if(pn)why.push((live.length>1?b.name+': ':'')+pn);});
+        r5.why=why.join('; ');
+        if(r5.appMrr==null||priced.length<live.length||Math.abs(r5.diff)>=BD_REC_PRICE_TOL)t5.push(r5);
+      }
     }
   });
   brands.forEach(function(b){
@@ -1145,9 +1173,17 @@ function _baRecon(deals,brands,join){
 // Reconciliation tables: per-table sort, MRR descending by default.
 var _bdRecSort={};
 function bdRecSort(t,k){var c=_bdRecSort[t];_bdRecSort[t]=(c&&c.k===k)?{k:k,d:-c.d}:{k:k,d:(k==='name'||k==='hsStatus'||k==='appStatus')?1:-1};renderBD();}
+// A card's data-source chip: app (live, or the nightly copy), HubSpot or Recurly.
+function _bdChip(k,sm,live){
+  var t={app:['App',(live?'Live from the app database':'Metabase copy of the app database, refreshed nightly (~4:30am ET)')],
+    hubspot:['HubSpot','HubSpot deals, read live on every load'],recurly:['Recurly','Recurly billing, read live on every load']}[k];
+  return '<span class="bd-chip '+k+(sm?' sm':'')+(k==='app'&&!live?' nightly':'')+'" title="Source: '+t[1]+'">'+t[0]+(k==='app'&&!live?' \u00b7 nightly':'')+'</span>';
+}
+function _bdChips(ks,live){return '<div class="bd-chips">'+ks.map(function(k){return _bdChip(k,false,live);}).join('')+'</div>';}
 function _bdEsc(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 // One Reconciliation table. `t` keys the sort state; `mk` is the MRR column
 // the header total and the default sort use.
+var _bdRecVs='app';   // what R5's Difference compares HubSpot with: 'Recurly' or 'app'
 function _bdRecTable(t,num,title,fix,rows,mk,extraCol){
   var srt=_bdRecSort[t]||{k:mk,d:-1};
   var extras=extraCol?(Array.isArray(extraCol[0])?extraCol:[extraCol]):[];
@@ -1186,7 +1222,7 @@ function _bdRecTable(t,num,title,fix,rows,mk,extraCol){
       +'<td>'+(r.lastReview||dash)+'</td><td class="num">'+(r.reviews45||dash)+'</td>';
     return '<tr>'+tds+'</tr>';}).join('');
   return '<section class="bd-sec" id="bd-sec-rec'+num+'"><div class="bd-sec-head"><span class="bd-sec-n">R'+num+'</span><span class="bd-sec-t">'+title+'</span>'
-    +'<span class="bd-sec-s"></span><span class="bd-rec-tot">'+rows.length+' brand'+(rows.length===1?'':'s')+' \u00b7 '+(mk==='diff'?(tot<0?'\u2212':'+')+f$(Math.abs(tot))+' net (HubSpot \u2212 app MRR)':f$(tot)+' '+(mk==='hsMrr'?'HubSpot':'app')+' MRR')+'</span></div>'
+    +'<span class="bd-sec-s"></span><span class="bd-rec-tot">'+rows.length+' brand'+(rows.length===1?'':'s')+' \u00b7 '+(mk==='diff'?(tot<0?'\u2212':'+')+f$(Math.abs(tot))+' net (HubSpot \u2212 '+(_bdRecVs||'app')+' MRR)':f$(tot)+' '+(mk==='hsMrr'?'HubSpot':'app')+' MRR')+'</span></div>'
     +'<p class="bd-rec-fix">'+fix+'</p>'
     +'<div class="bd-rec">'+(rows.length?'<table><thead><tr>'+th+'</tr></thead><tbody>'+body+'</tbody></table>'
       :'<div style="padding:18px;text-align:center;color:var(--grey);font-size:12px">Nothing to fix \u2014 HubSpot and the app agree.</div>')+'</div></section>';
@@ -1680,6 +1716,10 @@ function renderBD(){
   var _baCh=_ba?_baChurn(deals,_ba.brands,_baJ):{events:[],undated:0};
   var _bdNowKey=(function(n){return n.getFullYear()+'-'+('0'+(n.getMonth()+1)).slice(-2);})(new Date());
   var _baSer=_ba?_baSeries(_ba.brands,_baCh.events,_bdNowKey):{cur:{},snap:{},months:[]};
+  // Source chips. App is live (Grafana) or last night's Metabase copy; HubSpot
+  // and Recurly are read live on every load.
+  var _appLive=!!(_ba&&_ba.meta&&_ba.meta.live);
+  var _chip=_bdChip,_chips=_bdChips;
   // ═════ SECTION 1 — All Time Summary ═════
   // Row 1, dark: the app book. Row 2, light navy: the pilots, which row 1
   // leaves out (a pilot pays a deposit, not a monthly price).
@@ -1691,9 +1731,9 @@ function renderBD(){
   if(!_baSum){h+=_baBand('Active Brands, MRR and the pilot figures');}
   else{
     var _s=_baSum,_p=_s.pilots;
-    var _kt=function(cls,lbl,val,sub,def,tip){
+    var _kt=function(cls,lbl,val,sub,def,tip,src){
       return '<div class="tile '+cls+'"'+(tip?' title="'+tip+'"':'')+'><div class="tlbl">'+lbl+'</div><div class="tval">'+val+'</div>'
-        +(sub?'<div class="bd-tsub">'+sub+'</div>':'')+'<div class="tdef">'+def+'</div></div>';
+        +(sub?'<div class="bd-tsub">'+sub+'</div>':'')+'<div class="tdef">'+def+'</div>'+(src||_chips(['app'],_appLive))+'</div>';
     };
     h+='<div class="bd-kpi-row">';
     h+=_kt('bd-dark','Active Brands',_s.total.toLocaleString(),_s.active+' active · '+_s.paused+' paused · '+_s.starting+' starting',
@@ -1717,7 +1757,7 @@ function renderBD(){
     var _fut=_ps&&_post!=null?_s.mrr+_post:null;
     h+=_kt('bd-dark bd-fut','Future ARR',_ps?f$(_fut*12):'\u2014','','Future MRR × 12','Future MRR × 12: the book if every current pilot rolls over at its post-pilot price.');
     h+=_kt('bd-dark bd-fut','Future MRR',_ps?f$(_fut):'\u2014',_ps?'MRR + '+_postN+' pilots’ post-pilot price':'pilot figures unavailable','If every current pilot rolls over',
-      'Current MRR plus Post-Pilot MRR: each open pilot’s expected MRR once billing starts (price override, else the pilot price for its package and tier), fee-not-paid pilots included.');
+      'Current MRR plus Post-Pilot MRR: each paid pilot’s expected MRR once billing starts (price override, else the pilot price for its package and tier); awaiting-deposit pilots are left out.');
     h+='</div>';
     if(!_ps){
       h+='<div class="bd-app-band err" role="alert" style="margin-top:12px"><strong>Pilot figures unavailable.</strong> <span>'
@@ -1727,8 +1767,7 @@ function renderBD(){
       // Every pilot card says where its number came from: live (Grafana) or
       // last night's copy (Metabase).
       var _psLive=_ps.source==='live';
-      var _psSrc='<div class="bd-pil-src'+(_psLive?' live':'')+'" title="'+(_psLive?'Queried live from the app database through Grafana on this load.':'Grafana was not reachable from the dashboard, so this is the Metabase copy of the app, refreshed nightly (~4:30am ET).')+'">'
-        +(_psLive?'Live \u00b7 app':'As of last night')+'</div>';
+      var _psSrc=_chips(['app'],_psLive);
       var _kp=function(lbl,val,sub,def,tip,src){
         return '<div class="tile bd-lnavy bd-sm"'+(tip?' title="'+tip+'"':'')+'><div class="tlbl">'+lbl+'</div><div class="tval">'+val+'</div>'
           +(sub?'<div class="bd-tsub">'+sub+'</div>':'')+'<div class="tdef">'+def+'</div>'+(src||_psSrc)+'</div>';
@@ -1736,7 +1775,7 @@ function renderBD(){
       // By plan status, for the two report-based cards' hover.
       var _ppBy=function(k){return _pp?Object.keys(_pp.byStatus).sort().map(function(st){var x=_pp.byStatus[st];return st+': '+x.n+' brands, '+f$(x[k]||0);}).join(' · '):'';};
       var _rcOk=!!(_pp&&_pp.net!=null);
-      var _ppSrc=function(withRc){return '<div class="bd-pil-src live" title="Pilot status and price live from the app database'+(withRc?'; add-on charges live from Recurly':'')+'.">Live \u00b7 app'+(withRc?' + Recurly':'')+'</div>';};
+      var _ppSrc=function(withRc){return _chips(withRc?['recurly','app']:['app'],_appLive);};
       // Row 2 (Alex, 2026-11-12): six smaller cards, matching the app's Grafana
       // "Pilot Brands" board, in this order: Pilot Brands, Awaiting Deposit,
       // Pilot Live, Pilot Avg ACV, Initiation Fees, Post-Pilot MRR.
@@ -1751,9 +1790,9 @@ function renderBD(){
         _rcOk?'Net add-on revenue, brands on a pilot plan':'Net of refunds, incl. activation & analysis',
         _rcOk?'Net add-on revenue (Brand MRR report definition) of the '+_pp.brands+' brands whose plan status is a pilot: every Recurly charge that is not the plan or web traffic, after discounts, before tax, less refunds and credits on them. Pilot initiation fees '+f$(_pp.netParts.pilotFee)+', clinician analyses '+f$(_pp.netParts.analyses)+', clinician reviews '+f$(_pp.netParts.reviews)+', ClinicianAI '+f$(_pp.netParts.clinicianAi)+', other '+f$(_pp.netParts.other)+', refunds '+f$(_pp.netParts.refunds)+'. By status \u2014 '+_ppBy('net')+(_pp.accountsFailed?' \u00b7 '+_pp.accountsFailed+' Recurly accounts could not be read':'')
           :'Every pilot fee paid (any status, canceled ones included), less refunds: the app’s “Pilot fees (net)”. Recurly could not be read'+(_pp&&_pp.netError?' ('+_bdEsc(_pp.netError)+')':'')+'.',
-        _rcOk?_ppSrc(true):'');
+        _rcOk?_ppSrc(true):_psSrc);
       h+=_kp('Post-Pilot MRR',_post!=null?f$(_post):'\u2014','','Expected MRR once billing starts, '+_postN+' pilots',
-        _pp?'Expected MRR once billing starts (Brand MRR report definition) of brands whose plan status is an open pilot (fee not paid, collecting data or live): the pilot’s price override, else the pilot price for its package and starting tier. By status \u2014 '+_ppBy('expected')
+        _pp?'Expected MRR once billing starts (Brand MRR report definition) of brands whose plan status is a pilot that has paid its fee (collecting data or live): the pilot’s price override, else the pilot price for its package and starting tier. Awaiting-deposit pilots are left out. By status \u2014 '+_ppBy('expected')
           :'Each counted pilot’s rollover price, else a repeating price override, else the deposit month’s default.',_pp?_ppSrc(false):'');
       h+='</div>';
     }
@@ -1887,7 +1926,8 @@ function renderBD(){
   // "current month" card; pass null for the neutral "last month" card.
   var _miniStat=function(label,val,col){
     var box=col?('background:#fff;border:1.5px solid '+col+';'):'background:rgba(23,44,69,.04);border:1px solid rgba(23,44,69,.12);';
-    return '<div style="'+box+'border-radius:8px;padding:4px 11px;text-align:right;line-height:1.18"><div style="font-size:7.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap">'+label+'</div><div style="font-size:15px;font-weight:700;color:'+(col||'var(--navy)')+';font-family:var(--font-h)">'+val+'</div></div>';
+    return '<div style="'+box+'border-radius:8px;padding:4px 11px;text-align:right;line-height:1.18"><div style="font-size:7.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap">'+label+'</div><div style="font-size:15px;font-weight:700;color:'+(col||'var(--navy)')+';font-family:var(--font-h)">'+val+'</div>'
+      +'<div style="margin-top:3px">'+_bdChip('hubspot',true)+'</div></div>';
   };
   // ═════ SECTION 2 — All Brands and ARR ═════
   var _pilDesc=!_pilIds?'All deals':_bdPilotMode==='only'?'Pilot brands only':'Pilot brands excluded';
@@ -4059,7 +4099,9 @@ function renderBD(){
     hRecon+='<p class="bd-rec-fix" id="bd-rec-fresh"><strong style="color:var(--navy)">Data freshness:</strong> HubSpot deals and their company links are live on every load (company links to app brands: '+_recAssoc+'); app data is '+_recSrc+'; '+_recRc+'. A fix in either system clears its row on the next Refresh.</p>';
     if(!_ba)hRecon+=_baBand('the reconciliation lists');
     else{
-      var _rc=_baRecon(deals,_ba.brands,_baJ);
+      var _r5Rc=!!(_ba.meta&&_ba.meta.recurly&&_ba.meta.recurly.ok);
+      _bdRecVs=_r5Rc?'Recurly':'app';
+      var _rc=_baRecon(deals,_ba.brands,_baJ,_r5Rc);
       _bdRecCounts=[_rc.t1.length,_rc.t2.length,_rc.t3.length,_rc.t4.length,_rc.t5.length];
       hRecon+=_bdRecTable('t1',1,'Active in HubSpot, not live in the app',
         'Closed-won Signed/Paying in HubSpot, but the app has no brand, a brand with no subscription, or a sign-up never activated. <strong>Fix:</strong> set the brand up and activate it in the app, or, if it never launched or has left, move the HubSpot deal to Churned.',_rc.t1,'hsMrr');
@@ -4069,8 +4111,10 @@ function renderBD(){
         'HubSpot has a churn deal and no active one, but the app still bills the brand. <strong>Fix:</strong> if it came back, open a new closed-won deal in HubSpot; if it left, end its app subscription.',_rc.t3,'appMrr',['hsChurn','HubSpot churn date','']);
       hRecon+=_bdRecTable('t4',4,'Active in HubSpot, ended in the app',
         'Closed-won Signed/Paying in HubSpot, but the app brand is discarded or its subscription expired, was canceled or failed (or the pilot was canceled). <strong>Fix:</strong> if the brand left, move the deal to Churned with a Pause/Churn Date; if it is still a client, restore it in the app.',_rc.t4,'hsMrr');
-      hRecon+=_bdRecTable('t5',5,'Active on both sides, MRR differs',
-        'Closed-won Signed/Paying in HubSpot AND active, paused or starting in the app, but HubSpot MRR (all the brand\u2019s active deals) and app MRR (its app subscription price, per month) are $'+BD_REC_PRICE_TOL+' or more apart, or the app has no price. Live pilots are left out. Sorted by the size of the gap. <strong>Fix:</strong> correct the HubSpot deal amount (a rolled-over pilot often still carries its initiation fee; a duplicate active deal doubles the brand) or the app subscription price, whichever is wrong.',_rc.t5,'diff',[['diff','Difference','num'],['why','Why it may differ','']]);
+      hRecon+=_bdRecTable('t5',5,'Active on both sides, MRR differs',_r5Rc
+        ?'Closed-won Signed/Paying in HubSpot AND active, paused or starting in the app, but HubSpot MRR (all the brand\u2019s active deals) and Recurly MRR (Recurly plan $/mo + web traffic $/mo) are $'+BD_REC_PRICE_TOL+' or more apart, or Recurly has no figure for the brand. App MRR is shown for reference. Live pilots are left out. Sorted by the size of the gap. <strong>Fix:</strong> correct the HubSpot deal amount (a rolled-over pilot often still carries its initiation fee; a duplicate active deal doubles the brand), or the Recurly subscription if Recurly is wrong.'
+        :'Closed-won Signed/Paying in HubSpot AND active, paused or starting in the app, but HubSpot MRR (all the brand\u2019s active deals) and app MRR (its app subscription price, per month) are $'+BD_REC_PRICE_TOL+' or more apart, or the app has no price. <strong>Recurly could not be read, so this compares with the app price.</strong> Live pilots are left out. Sorted by the size of the gap. <strong>Fix:</strong> correct the HubSpot deal amount or the app subscription price, whichever is wrong.',
+        _rc.t5,'diff',[['diff',_r5Rc?'HubSpot \u2212 Recurly':'Difference','num'],['why','Why it may differ','']]);
     }
   }
   // The Tracker's sections and the Churn and Reconciliation tabs' are built into separate buffers

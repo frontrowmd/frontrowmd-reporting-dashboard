@@ -4499,20 +4499,28 @@ function recurlyAttach(brands, book) {
 // Net add-on revenue from one Recurly account's line items, the Brand MRR
 // report's way: every invoiced charge that is not the plan or web traffic
 // (pilot initiation fee, clinician reviews, clinician analyses, ClinicianAI,
-// other one-time charges), after discounts, before tax, plus the refunds and
-// credits issued against them. General account credits (origin credit /
-// carryforward / prepayment) are not tied to an add-on and are left out, as
-// are pending (not yet invoiced) lines. Write-offs are not netted (the report
-// had none on pilot brands).
+// other one-time charges), after discounts, before tax, less the REFUNDS of
+// those charges. A credit line counts as a refund only when Recurly marks it
+// one (refund: true, or it points back at the refunded line's invoice) and it
+// is not the credit being applied or carried forward: DTC Brands US LLC's one
+// $3,299 refund (app pilot_refunds, 2026-11-05) read -$6,598 when every credit
+// line counted. Refunds never exceed the charges they refund. General account
+// credits (origin credit / carryforward / prepayment) and pending (not yet
+// invoiced) lines are left out. Write-offs are not netted (the report had
+// none on pilot brands).
+const RECURLY_CREDIT_SKIP = ['applied_credit', 'carryforward'];
 function recurlyAddOnNet(lines) {
   const out = { net: 0, pilotFee: 0, reviews: 0, analyses: 0, clinicianAi: 0, other: 0, refunds: 0 };
+  const seen = {};
   (lines || []).forEach(l => {
     if (!l || l.state === 'pending') return;
+    if (l.id) { if (seen[l.id]) return; seen[l.id] = true; }
     if (['plan', 'plan_trial', 'usage_add_on_trial', 'add_on_trial'].includes(l.origin) || _rcIsTraffic(l)) return;
     if (l.type === 'credit') {
       if (['credit', 'carryforward', 'prepayment'].includes(l.origin)) return;
-      const v = _rcMoney(l.subtotal) - _rcMoney(l.discount);
-      out.refunds += v; out.net += v; return;
+      if (RECURLY_CREDIT_SKIP.includes(l.legacy_category)) return;
+      if (!(l.refund === true || l.original_line_item_invoice_id)) return;
+      out.refunds += _rcMoney(l.subtotal) - _rcMoney(l.discount); return;
     }
     if (l.type !== 'charge') return;
     const v = _rcMoney(l.subtotal) - _rcMoney(l.discount), d = String(l.description || '');
@@ -4520,6 +4528,9 @@ function recurlyAddOnNet(lines) {
       : /clinician\s*reviews?/i.test(d) ? 'reviews' : (/clinician-ai/.test(l.add_on_code || '') || /clinicianai/i.test(d)) ? 'clinicianAi' : 'other';
     out[k] += v; out.net += v;
   });
+  const charged = out.net;
+  out.refunds = Math.max(out.refunds, -Math.max(0, charged));
+  out.net = charged + out.refunds;
   Object.keys(out).forEach(k => { out[k] = Math.round(out[k] * 100) / 100; });
   return out;
 }
@@ -4548,8 +4559,11 @@ async function bdPilotPlanStats(env, brands, rc) {
   const byStatus = {};
   pop.forEach(b => { const x = byStatus[b.pilotPlan.status] || (byStatus[b.pilotPlan.status] = { n: 0, expected: 0, expectedN: 0, net: 0 });
     x.n++; if (b.pilotPlan.expected != null) { x.expected += b.pilotPlan.expected; x.expectedN++; } });
-  const out = { brands: pop.length, expected: Math.round(pop.reduce((t, b) => t + (b.pilotPlan.expected || 0), 0) * 100) / 100,
-    expectedBrands: pop.filter(b => b.pilotPlan.expected != null).length, byStatus, net: null };
+  // Post-Pilot MRR leaves out pilots whose fee is not paid yet (Alex,
+  // 2026-11-16); byStatus still shows their Expected MRR, for reference.
+  const paid = pop.filter(b => b.pilotPlan.expected != null && b.pilotPlan.status !== BDAPP_PILOT_PLAN_LABEL.awaiting_submit);
+  const out = { brands: pop.length, expected: Math.round(paid.reduce((t, b) => t + b.pilotPlan.expected, 0) * 100) / 100,
+    expectedBrands: paid.length, byStatus, net: null };
   if (!rc || !rc.host) { out.netError = (rc && rc.error) || 'Recurly unavailable'; return out; }
   const accts = [...new Set(pop.map(b => b.recurlyAccount).filter(Boolean))];
   const { res, failed } = await recurlyAccountLines(env, rc.host, accts);
@@ -4592,8 +4606,28 @@ async function fetchRecurlyLive(env) {
 // and charge codes exist (is web traffic an add-on, and usage or fixed); are
 // pilot fees charged here (one-time charges of the last 90 days by
 // description); which plans exist; do invoices carry their line items.
-async function recurlyCheck(env) {
+// With {brandId}: that one brand's Recurly account line items instead
+// (amounts, types, origins, states, refund links; descriptions cut short; no
+// person data), to check how a figure such as net add-on revenue adds up.
+async function recurlyBrandLines(env, brandId) {
+  const id = Number(brandId);
+  if (!Number.isInteger(id) || id <= 0) return { ok: false, error: 'brandId must be a positive integer' };
+  if (!env.GRAFANA_TOKEN) return { ok: false, error: 'needs the live app database (GRAFANA_TOKEN)' };
+  const rows = await grafanaQuery(env, 'SELECT external_account_id "RA" FROM health_brands WHERE id = ' + id);
+  const acct = rows[0] && rows[0].RA;
+  if (!acct) return { ok: false, error: 'brand ' + id + ' has no Recurly account id' };
+  const host = RECURLY_HOSTS[0];
+  const lines = await recurlyList(env, host, '/accounts/' + encodeURIComponent(acct) + '/line_items?limit=200&sort=created_at&order=asc', 20);
+  return { ok: true, brandId: id, lines: lines.length, keys: lines[0] ? Object.keys(lines[0]).sort() : [],
+    items: lines.map(l => ({ id: l.id, type: l.type, origin: l.origin, state: l.state, refund: l.refund, refunded_quantity: l.refunded_quantity,
+      legacy_category: l.legacy_category, credit_reason_code: l.credit_reason_code, original_line_item_invoice_id: l.original_line_item_invoice_id,
+      previous_line_item_id: l.previous_line_item_id, invoice_id: l.invoice_id, invoice_number: l.invoice_number, subscription_id: l.subscription_id,
+      add_on_code: l.add_on_code, quantity: l.quantity, unit_amount: l.unit_amount, subtotal: l.subtotal, discount: l.discount, amount: l.amount,
+      description: String(l.description || '').slice(0, 60), created_at: l.created_at })) };
+}
+async function recurlyCheck(env, brandId) {
   if (!env || !env.RECURLY_API_KEY) return { ok: false, error: 'RECURLY_API_KEY is not set' };
+  if (brandId != null) { try { return await recurlyBrandLines(env, brandId); } catch (e) { return { ok: false, error: _rcScrub(env, (e && e.message) || e) }; } }
   const t0 = Date.now();
   try {
     let host = null, subs = null, firstErr = null;
@@ -12397,8 +12431,9 @@ export default {
     // POST /api/metabase-check → is the Metabase key working (signed-in only).
     // Recurly site check (read-only, summary counts): POST {} from a signed-in tab.
     if (request.method === 'POST' && url.pathname === '/api/recurly-check') {
+      let body = {}; try { body = await request.json(); } catch { body = {}; }
       if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
-      return jr(await recurlyCheck(env));
+      return jr(await recurlyCheck(env, body && body.brandId != null ? body.brandId : null));
     }
     if (request.method === 'POST' && url.pathname === '/api/metabase-check') {
       if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
