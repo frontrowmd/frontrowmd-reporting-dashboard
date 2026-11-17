@@ -1462,14 +1462,19 @@ function _bdS2Chart(o){
   var cum=[],run=o.labels.map(function(){return 0;});
   lay.forEach(function(ly){run=run.map(function(t,i){return t+(ly.v[i]||0);});cum.push(run.slice());});
   var tot=cum[cum.length-1];
-  var mx=Math.max.apply(null,tot.concat([1])),raw=mx/4,mag=Math.pow(10,Math.floor(Math.log10(raw))),tk=[1,2,2.5,5,10].map(function(k){return k*mag;}).filter(function(k){return k>=raw;})[0]||10*mag,top=tk*4;
+  // Y scale (Alex, 2026-11-17): the smallest round step that covers the peak
+  // in at most 6 gridlines, so the line fills the chart ($20.1M tops at $25M,
+  // not $40M).
+  var mx=Math.max.apply(null,tot.concat([1])),mag=Math.max(1,Math.pow(10,Math.floor(Math.log10(mx/5)))),tk=10*mag,nt=Math.ceil(mx/tk);
+  [1,2,2.5,5,10].some(function(k){var st=k*mag,c=Math.ceil(mx/st);if(c<=6){tk=st;nt=Math.max(c,1);return true;}return false;});
+  var top=tk*nt;
   var x=function(i){return n===1?L+pw/2:L+i*pw/(n-1);},y=function(v){return T+ph-v/top*ph;};
-  var fmt=function(v){return o.money?(v>=1e6?'$'+(v/1e6).toFixed(v>=1e7?0:1)+'M':v>=1e3?'$'+Math.round(v/1e3)+'K':'$'+Math.round(v)):Math.round(v).toLocaleString();};
+  var fmt=function(v){return o.money?(v>=1e6?'$'+(v/1e6).toFixed(v>=1e7?0:2).replace(/(\.\d*?)0+$/,'$1').replace(/\.$/,'')+'M':v>=1e3?'$'+Math.round(v/1e3)+'K':'$'+Math.round(v)):Math.round(v).toLocaleString();};
   // Axis labels are HTML laid over the chart (Alex, 2026-11-16: "each month
   // should be labeled clearly"): the SVG scales with its card, which shrank
   // in-SVG text to ~5px; HTML keeps them a fixed, readable size.
   var g='',pc=function(v,of){return (v/of*100).toFixed(3)+'%';},yAx='';
-  for(var i=0;i<=4;i++){var gv=top*i/4;g+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y(gv)+'" y2="'+y(gv)+'" stroke="rgba(114,164,191,.18)" stroke-width="1"/>';
+  for(var i=0;i<=nt;i++){var gv=tk*i;g+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y(gv)+'" y2="'+y(gv)+'" stroke="rgba(114,164,191,.18)" stroke-width="1"/>';
     yAx+='<span class="bd-ax-y" style="top:'+pc(y(gv),H)+';right:'+pc(W-L+7,W)+'">'+fmt(gv)+'</span>';}
   // X axis: EVERY month labelled, once (a weekly series at its first week),
   // with the year on a row beneath. Months sit vertically when they are close
@@ -2408,8 +2413,8 @@ function renderBD(){
     var _con=_hasOnb?_s2v(_s2.onbN,_s2Last):0,_lon=_hasOnb?_s2v(_s2.onbN,_s2Last-1):0;
     h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;min-width:0">';
     h+=_chartCard('Active Brands',(_cb+_cp+_con).toLocaleString()+' now',
-      _s2Mini('This Month',(_cb+_cp+_con).toLocaleString(),_cp+' pilot'+(_hasOnb?' \u00b7 '+_con+' onb.':''),'#172C45')+_s2Mini('Last Month',(_lb+_lp+_lon).toLocaleString(),_lp+' pilot'+(_hasOnb?' \u00b7 '+_lon+' onb.':''),null),
-      _bdS2Chart({labels:_s2L,tips:_s2Tip,base:_s2.base,pil:_s2.pil,onb:_hasOnb?_s2.onbN:null,col:'#172C45',pcol:'#7C93B8',ocol:'#D4A72C',bLbl:_bLbl+' brands',pLbl:'Pilot brands',oLbl:'Onboarding brands',aria:'Active brands by month, '+_bLbl.toLowerCase()+', pilot and onboarding'}));
+      _s2Mini('This Month',(_cb+_cp+_con).toLocaleString(),_cp+' pilot'+(_hasOnb?' \u00b7 '+_con+' onb.':''),'#3B82F6')+_s2Mini('Last Month',(_lb+_lp+_lon).toLocaleString(),_lp+' pilot'+(_hasOnb?' \u00b7 '+_lon+' onb.':''),null),
+      _bdS2Chart({labels:_s2L,tips:_s2Tip,base:_s2.base,pil:_s2.pil,onb:_hasOnb?_s2.onbN:null,col:'#3B82F6',pcol:'#7C93B8',ocol:'#D4A72C',bLbl:_bLbl+' brands',pLbl:'Pilot brands',oLbl:'Onboarding brands',aria:'Active brands by month, '+_bLbl.toLowerCase()+', pilot and onboarding'}));
     h+=_chartCard(_bLbl+' ARR',f$(_ca+_cpa+_coa)+' now'+(_hasOnb?' \u00b7 section 01\u2019s Future ARR':''),
       _s2Mini('This Month',f$(_ca+_cpa+_coa),f$(_cpa)+' pilot'+(_hasOnb?' \u00b7 '+f$(_coa)+' onb.':''),'#16A34A')+_s2Mini('Last Month',f$(_la+_lpa+_loa),f$(_lpa)+' pilot'+(_hasOnb?' \u00b7 '+f$(_loa)+' onb.':''),null),
       _bdS2Chart({labels:_s2L,tips:_s2Tip,base:_s2.baseA,pil:_s2.pilA,onb:_hasOnb?_s2.onbA:null,col:'#16A34A',pcol:'#86C79A',ocol:'#D4A72C',money:true,
