@@ -174,6 +174,15 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
 .bd-pil-grp-h b{font-family:var(--font-h);font-size:12.5px;color:var(--navy)}
 .bd-pil-grp-h span{font-size:11px;color:var(--grey)}
 .bd-pil-grp+.bd-bs{margin-top:26px}
+/* Section 02 chart axes: HTML labels over the scaling SVG, fixed size. */
+.bd-ax-y{position:absolute;transform:translateY(-50%);font-size:10.5px;color:#6B7C93;font-variant-numeric:tabular-nums;white-space:nowrap;pointer-events:none}
+.bd-ax-x{position:relative;height:18px;margin-top:3px}
+.bd-ax-x.v{height:30px}
+.bd-ax-m{position:absolute;top:2px;transform:translateX(-50%);font-size:10.5px;color:#4B5F7E;white-space:nowrap;line-height:1}
+.bd-ax-m.v{transform:translateX(-50%) rotate(180deg);writing-mode:vertical-rl;top:0;font-size:10px}
+.bd-ax-yrs{position:relative;height:16px;margin-top:2px;border-top:1px solid rgba(23,44,69,.10)}
+.bd-ax-yr{position:absolute;top:0;height:16px;line-height:15px;text-align:center;font-size:10px;font-weight:700;color:var(--navy);border-left:1px solid rgba(23,44,69,.14);letter-spacing:.03em}
+.bd-ax-yr:first-child{border-left:none}
 /* Billing Status card (section 01). */
 .bd-bs{position:relative;margin-top:14px;background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px 18px}
 .bd-bs-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:12px}
@@ -1445,7 +1454,7 @@ function _bdS2Weeks(wk,today,from){
 // (Pilot, and Onboarding when given) as a lighter shaded band on top. Hover
 // names the point and splits it.
 function _bdS2Chart(o){
-  var W=o.w||700,H=o.h||250,L=56,R=26,T=14,B=30,pw=W-L-R,ph=H-T-B,n=o.labels.length;
+  var W=o.w||700,H=o.h||250,L=56,R=26,T=10,B=6,pw=W-L-R,ph=H-T-B,n=o.labels.length;
   if(!n)return '<div style="height:200px;display:flex;align-items:center;justify-content:center;color:var(--grey);font-size:12px">No data</div>';
   var lay=[{v:o.base,c:o.col,l:o.bLbl,op:.22,w:2.2,d:''},{v:o.pil,c:o.pcol,l:o.pLbl,op:.38,w:1.6,d:'4 3'}];
   if(o.onb)lay.push({v:o.onb,c:o.ocol,l:o.oLbl,op:.4,w:1.4,d:'2 3'});
@@ -1456,14 +1465,21 @@ function _bdS2Chart(o){
   var mx=Math.max.apply(null,tot.concat([1])),raw=mx/4,mag=Math.pow(10,Math.floor(Math.log10(raw))),tk=[1,2,2.5,5,10].map(function(k){return k*mag;}).filter(function(k){return k>=raw;})[0]||10*mag,top=tk*4;
   var x=function(i){return n===1?L+pw/2:L+i*pw/(n-1);},y=function(v){return T+ph-v/top*ph;};
   var fmt=function(v){return o.money?(v>=1e6?'$'+(v/1e6).toFixed(v>=1e7?0:1)+'M':v>=1e3?'$'+Math.round(v/1e3)+'K':'$'+Math.round(v)):Math.round(v).toLocaleString();};
-  var g='';
-  for(var i=0;i<=4;i++){var gv=top*i/4;g+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y(gv)+'" y2="'+y(gv)+'" stroke="rgba(114,164,191,.18)" stroke-width="1"/><text x="'+(L-7)+'" y="'+(y(gv)+3.5)+'" text-anchor="end" font-size="10" fill="#6B7C93">'+fmt(gv)+'</text>';}
-  // Axis labels: one per distinct label (a weekly series labels each month
-  // once, at its first week), thinned to maxTicks; the last one never runs
-  // off the right edge.
-  var step=Math.max(1,Math.ceil(o.labels.filter(function(l,i){return i===0||l!==o.labels[i-1];}).length/(o.maxTicks||12))),seen=0;
-  o.labels.forEach(function(l,i){if(i>0&&l===o.labels[i-1])return;if(seen++%step)return;
-    g+='<text x="'+x(i)+'" y="'+(H-10)+'" text-anchor="'+(x(i)>W-R-20?'end':i===0?'start':'middle')+'" font-size="10" fill="#6B7C93">'+l+'</text>';});
+  // Axis labels are HTML laid over the chart (Alex, 2026-11-16: "each month
+  // should be labeled clearly"): the SVG scales with its card, which shrank
+  // in-SVG text to ~5px; HTML keeps them a fixed, readable size.
+  var g='',pc=function(v,of){return (v/of*100).toFixed(3)+'%';},yAx='';
+  for(var i=0;i<=4;i++){var gv=top*i/4;g+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y(gv)+'" y2="'+y(gv)+'" stroke="rgba(114,164,191,.18)" stroke-width="1"/>';
+    yAx+='<span class="bd-ax-y" style="top:'+pc(y(gv),H)+';right:'+pc(W-L+7,W)+'">'+fmt(gv)+'</span>';}
+  // X axis: EVERY month labelled, once (a weekly series at its first week),
+  // with the year on a row beneath. Months sit vertically when they are close
+  // together (more than o.flat months across this width), else flat.
+  var mos=[];o.labels.forEach(function(l,i){if(i>0&&l===o.labels[i-1])return;var q=String(l).split(' ');mos.push({i:i,m:q[0],y:q[1]?'20'+q[1]:''});});
+  var vert=mos.length>(o.flat||14),xAx='',yrs='';
+  mos.forEach(function(mo){xAx+='<span class="bd-ax-m'+(vert?' v':'')+'" style="left:'+pc(x(mo.i),W)+'">'+mo.m+'</span>';});
+  mos.forEach(function(mo,k){if(k>0&&mos[k-1].y===mo.y)return;var last=mos.filter(function(z){return z.y===mo.y;}).pop();
+    var a=k===0?L:x(mo.i)-(k?(x(mo.i)-x(mos[k-1].i))/2:0),b=last===mos[mos.length-1]?W-R:(x(last.i)+x(mos[mos.indexOf(last)+1].i))/2;
+    yrs+='<span class="bd-ax-yr" style="left:'+pc(a,W)+';width:'+pc(b-a,W)+'">'+mo.y+'</span>';});
   var pts=function(vals){return vals.map(function(v,i){return x(i).toFixed(1)+','+y(v).toFixed(1);});};
   var areas='',lines='';
   lay.forEach(function(ly,k){
@@ -1480,8 +1496,9 @@ function _bdS2Chart(o){
     hits+='<rect x="'+(x(i)-bw/2)+'" y="'+T+'" width="'+bw+'" height="'+ph+'" fill="transparent" data-i="'+i+'" data-cx="'+x(i)+'" data-tip="'+_bdEsc(tip)+'" onmouseenter="bdStackTip(this,event)" onmousemove="bdStackTip(this,event)"/>';});
   var key=function(ly,k){return '<span style="display:inline-flex;align-items:center;gap:6px;margin-right:14px"><span style="width:14px;height:10px;border-radius:2px;background:'+ly.c+';opacity:'+(k?'.55':'.75')+';border-top:2px '+(ly.d?'dashed':'solid')+' '+ly.c+'"></span>'+ly.l+'</span>';};
   return '<div style="font-size:11px;color:var(--navy);margin:0 0 6px">'+lay.map(key).join('')+'</div>'
-    +'<div class="bd-stk" style="position:relative" onmouseleave="bdStackOff(this)"><svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block" role="img" aria-label="'+_bdEsc(o.aria||'')+'">'+g
-    +'<line class="bd-stk-x" x1="0" x2="0" y1="'+T+'" y2="'+(T+ph)+'" stroke="#94A3B8" stroke-width="1" stroke-dasharray="3 3" style="display:none"/>'+hits+'</svg>'
+    +'<div class="bd-stk" style="position:relative" onmouseleave="bdStackOff(this)"><div style="position:relative"><svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block" role="img" aria-label="'+_bdEsc(o.aria||'')+'">'+g
+    +'<line class="bd-stk-x" x1="0" x2="0" y1="'+T+'" y2="'+(T+ph)+'" stroke="#94A3B8" stroke-width="1" stroke-dasharray="3 3" style="display:none"/>'+hits+'</svg>'+yAx+'</div>'
+    +'<div class="bd-ax-x'+(vert?' v':'')+'">'+xAx+'</div><div class="bd-ax-yrs">'+yrs+'</div>'
     +'<div class="bd-stk-tip" style="position:absolute;display:none;pointer-events:none;z-index:6;background:var(--navy);color:#fff;font-size:11px;line-height:1.55;padding:8px 11px;border-radius:8px;box-shadow:0 6px 18px rgba(2,15,24,.22);white-space:nowrap"></div></div>';
 }
 function bdStackTip(el,e){
@@ -2397,7 +2414,7 @@ function renderBD(){
     h+='<div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">ARR by Week <span style="font-size:11px;color:var(--grey);font-family:var(--font-b);font-weight:400">'+(_s2Billed?'new ARR per week (brands joining Recurly), new pilots by deposit week':'new ARR signed per week (HubSpot close date)')+' · '+f$(_s2WT)+' since '+mN[+_s2From.slice(5,7)-1]+' '+_s2From.slice(0,4)+'</span></div>';
     h+='<div style="display:flex;gap:8px;flex-shrink:0">'+_s2Mini('Current Month ARR',f$(_wkMon(_s2M[_s2Last].k)),'','#2563EB')+_s2Mini('Last Month ARR',f$(_lmK?_wkMon(_lmK):0),'',null)+'</div>';
     h+='</div>';
-    h+=_bdS2Chart({w:1400,h:260,maxTicks:23,labels:_s2W.map(function(w){return mN[+w.k.slice(5,7)-1]+' '+w.k.slice(2,4);}),
+    h+=_bdS2Chart({w:1400,h:260,flat:26,labels:_s2W.map(function(w){return mN[+w.k.slice(5,7)-1]+' '+w.k.slice(2,4);}),
       tips:_s2W.map(function(w){return 'Week of '+_bdMDY(new Date(+w.k.slice(0,4),+w.k.slice(5,7)-1,+w.k.slice(8,10)));}),
       base:_s2W.map(function(w){return w.b;}),pil:_s2W.map(function(w){return w.p;}),col:'#2563EB',pcol:'#93B4F5',money:true,
       bLbl:'New '+_bLbl.toLowerCase()+' ARR',pLbl:'New pilot ARR',aria:'New ARR by week'});
