@@ -1371,7 +1371,7 @@ function _bdRcVal(m){return /^(invoice|price)/.test(m.basis||'')?(m.mrr||0):m.mr
 // Recurly; new pilots by deposit week.
 function _bdS2Billed(brands,months){
   var from=months.length?months[0].k:BD_S2_FROM;
-  var base=[],pil=[],baseA=[],pilA=[],onbA=[];
+  var base=[],pil=[],baseA=[],pilA=[],onbA=[],onbN=[];
   var bs=brands.filter(function(b){return !_baIsTest(b);});
   // Onboarding (Alex, 2026-11-16): app sign-ups waiting to activate today
   // (Status Not billing yet / Onboarding, as section 01's Future MRR counts
@@ -1379,8 +1379,8 @@ function _bdS2Billed(brands,months){
   // a sign-up that has since activated is in the base from then.
   var onb=bs.filter(function(b){return !b.discardedAt&&b.onboardingExpected&&b.onboardingFrom&&_baStatusOf(b).d==='Onboarding';});
   months.forEach(function(mo){
-    var nb=0,na=0,np=0,npa=0,noa=0;
-    onb.forEach(function(b){if(b.onboardingFrom<=mo.end)noa+=b.onboardingExpected;});
+    var nb=0,na=0,np=0,npa=0,noa=0,non=0;
+    onb.forEach(function(b){if(b.onboardingFrom<=mo.end){noa+=b.onboardingExpected;non++;}});
     bs.forEach(function(b){
       var subs=(b.recurly&&b.recurly.subs)||[],on=subs.filter(function(m){return _bdRcLiveOn(m,mo.end);});
       // Valued as section 01 does: a brand that bills counts only what it
@@ -1390,7 +1390,7 @@ function _bdS2Billed(brands,months){
       var p=(b.pilotHist||[]).filter(function(x){return x.from<=mo.end&&(!x.to||x.to>mo.end);});
       if(p.length){np++;npa+=p[p.length-1].price||0;}
     });
-    base.push(nb);pil.push(np);baseA.push(na*12);pilA.push(npa*12);onbA.push(noa*12);
+    base.push(nb);pil.push(np);baseA.push(na*12);pilA.push(npa*12);onbA.push(noa*12);onbN.push(non);
   });
   var wk={},lf=function(m){return m.liveFrom||m.billFrom||'';},firstLive=function(b){return ((b.recurly&&b.recurly.subs)||[]).map(lf).filter(Boolean).sort()[0]||'';};
   bs.forEach(function(b){
@@ -1399,7 +1399,7 @@ function _bdS2Billed(brands,months){
       (wk[k]=wk[k]||{b:0,p:0}).b+=v*12;}
     (b.pilotHist||[]).forEach(function(x){if(x.from.slice(0,7)>=from){var k=_bdS2Week(x.from);(wk[k]=wk[k]||{b:0,p:0}).p+=(x.price||0)*12;}});
   });
-  return {base:base,pil:pil,baseA:baseA,pilA:pilA,onbA:onbA,wk:wk};
+  return {base:base,pil:pil,baseA:baseA,pilA:pilA,onbA:onbA,onbN:onbN,wk:wk};
 }
 // SIGNED mode: the month-end snapshot as section 02 always counted it (closed-
 // won Paying/Signed deals by close date, plus deals that have since paused or
@@ -2363,6 +2363,14 @@ function renderBD(){
   var _s2From=!_ba?BD_S2_FROM:_s2Billed?_bdS2FromBilled(_ba.brands):_bdS2FromSigned(deals);
   var _s2M=_bdS2Months(_s2Today,_s2From);
   var _s2=!_ba?null:_s2Billed?(_s2Ok?_bdS2Billed(_ba.brands,_s2M):null):_bdS2Signed(deals,_baJ,_pilIds||{},_s2M);
+  // This month is section 01's own cards (Alex, 2026-11-17), not a recount:
+  // pilots = Post-Pilot MRR's brands at its total, onboarding = Future MRR's
+  // onboarding part. The month-ends before stay the per-brand history.
+  if(_s2&&_s2Billed&&_s2M.length&&typeof _post!=='undefined'){
+    var _pi=_s2M.length-1;
+    if(_post!=null){_s2.pil[_pi]=_postN||0;_s2.pilA[_pi]=_post*12;}
+    if(_onb){_s2.onbN[_pi]=_onb.n;_s2.onbA[_pi]=_onb.mrr*12;}
+  }
   var _s2L=_s2M.map(function(m){return mN[+m.k.slice(5,7)-1]+' '+m.k.slice(2,4);});
   var _s2Tip=_s2M.map(function(m){return (m.end===_s2Today?'Today, ':'Month ending ')+_bdMDY(new Date(+m.end.slice(0,4),+m.end.slice(5,7)-1,+m.end.slice(8,10)));});
   var _s2Opt=function(k,lbl,tip){var on=_bdS2Mode===k||(k==='billed'&&_s2Billed);
@@ -2382,7 +2390,7 @@ function renderBD(){
   h+='<div class="bd-sec-head"><span class="bd-sec-n">02</span>'
     +'<span class="bd-sec-t">All Brands and ARR</span>'
     +'<span style="margin-left:auto;display:inline-flex;gap:10px;align-items:center;flex-wrap:wrap">'+_s2Chips.replace('class="bd-chips"','class="bd-chips" style="padding-top:0"')+_s2Seg+'</span></div>'
-    +'<p class="bd-s2-desc" style="margin:-4px 0 14px;font-size:12px;line-height:1.5;color:var(--grey);max-width:980px">'+(_s2Billed?'Brands live in Recurly at each month-end \u2014 billing, in a trial, starting later or paused, as section 01 counts them \u2014 and their ARR (Recurly plan + web traffic when billing, else the plan\u2019s list price; ended brands at their last price), with brands in a paid pilot stacked on top at their post-pilot price, and on the ARR chart app sign-ups waiting to activate at their expected MRR \u2014 so this month\u2019s ARR is section 01\u2019s Future ARR. New ARR per week by the week a brand joined Recurly.'
+    +'<p class="bd-s2-desc" style="margin:-4px 0 14px;font-size:12px;line-height:1.5;color:var(--grey);max-width:980px">'+(_s2Billed?'Brands live in Recurly at each month-end \u2014 billing, in a trial, starting later or paused, as section 01 counts them \u2014 and their ARR (Recurly plan + web traffic when billing, else the plan\u2019s list price; ended brands at their last price), with brands in a paid pilot stacked on top at their post-pilot price, then app sign-ups waiting to activate at their expected MRR \u2014 so this month is section 01: Active Brands + Pilot Brands + onboarding, and Future ARR. New ARR per week by the week a brand joined Recurly.'
       :'The book signed in HubSpot as of each month-end, as the snapshot has always counted it, with pilot deals stacked on top. Valued once per brand at its Recurly MRR (pilots at their post-pilot price; HubSpot amount when neither is known). New ARR signed per week by close date.')+' From '+mN[+_s2From.slice(5,7)-1]+' '+_s2From.slice(0,4)+', the earliest month with data.</p>';
   if(!_s2){
     h+=(!_ba?_baBand('the section 02 charts'):'<div class="bd-app-band err" role="alert"><strong>Recurly unavailable.</strong> <span>Billed Active Brands is read from Recurly, which did not load'+(_ba.meta&&_ba.meta.recurly&&_ba.meta.recurly.error?' ('+_bdEsc(_ba.meta.recurly.error)+')':'')+'. Switch to Signed Brands Snapshot, or Refresh to retry.</span></div>');
@@ -2396,10 +2404,12 @@ function renderBD(){
     var _ca=_s2v(_s2.baseA,_s2Last),_cpa=_s2v(_s2.pilA,_s2Last),_la=_s2v(_s2.baseA,_s2Last-1),_lpa=_s2v(_s2.pilA,_s2Last-1);
     // Billed mode stacks Onboarding on the ARR too, so this month = Future ARR.
     var _hasOnb=!!_s2.onbA,_coa=_hasOnb?_s2v(_s2.onbA,_s2Last):0,_loa=_hasOnb?_s2v(_s2.onbA,_s2Last-1):0;
+    // And Onboarding brands on the count (Alex, 2026-11-17), so both charts stack alike.
+    var _con=_hasOnb?_s2v(_s2.onbN,_s2Last):0,_lon=_hasOnb?_s2v(_s2.onbN,_s2Last-1):0;
     h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;min-width:0">';
-    h+=_chartCard('Active Brands',(_cb+_cp).toLocaleString()+' now',
-      _s2Mini('This Month',(_cb+_cp).toLocaleString(),_cp+' pilot','#172C45')+_s2Mini('Last Month',(_lb+_lp).toLocaleString(),_lp+' pilot',null),
-      _bdS2Chart({labels:_s2L,tips:_s2Tip,base:_s2.base,pil:_s2.pil,col:'#172C45',pcol:'#7C93B8',bLbl:_bLbl+' brands',pLbl:'Pilot brands',aria:'Active brands by month, '+_bLbl.toLowerCase()+' and pilot'}));
+    h+=_chartCard('Active Brands',(_cb+_cp+_con).toLocaleString()+' now',
+      _s2Mini('This Month',(_cb+_cp+_con).toLocaleString(),_cp+' pilot'+(_hasOnb?' \u00b7 '+_con+' onb.':''),'#172C45')+_s2Mini('Last Month',(_lb+_lp+_lon).toLocaleString(),_lp+' pilot'+(_hasOnb?' \u00b7 '+_lon+' onb.':''),null),
+      _bdS2Chart({labels:_s2L,tips:_s2Tip,base:_s2.base,pil:_s2.pil,onb:_hasOnb?_s2.onbN:null,col:'#172C45',pcol:'#7C93B8',ocol:'#D4A72C',bLbl:_bLbl+' brands',pLbl:'Pilot brands',oLbl:'Onboarding brands',aria:'Active brands by month, '+_bLbl.toLowerCase()+', pilot and onboarding'}));
     h+=_chartCard(_bLbl+' ARR',f$(_ca+_cpa+_coa)+' now'+(_hasOnb?' \u00b7 section 01\u2019s Future ARR':''),
       _s2Mini('This Month',f$(_ca+_cpa+_coa),f$(_cpa)+' pilot'+(_hasOnb?' \u00b7 '+f$(_coa)+' onb.':''),'#16A34A')+_s2Mini('Last Month',f$(_la+_lpa+_loa),f$(_lpa)+' pilot'+(_hasOnb?' \u00b7 '+f$(_loa)+' onb.':''),null),
       _bdS2Chart({labels:_s2L,tips:_s2Tip,base:_s2.baseA,pil:_s2.pilA,onb:_hasOnb?_s2.onbA:null,col:'#16A34A',pcol:'#86C79A',ocol:'#D4A72C',money:true,

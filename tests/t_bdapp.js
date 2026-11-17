@@ -670,6 +670,8 @@ function pageToggleTests(){
     {id:31,name:'OnbDel',state:'pending',onboarding:true,onboardingFrom:'2026-01-05',onboardingExpected:900,discardedAt:'2026-03-01'},
     rcb(32,[{billFrom:'2026-01-05',mrr:1000,basis:'invoice'}],{onboarding:true,onboardingFrom:'2026-01-01',onboardingExpected:500})],sm);
   ck('  Billed ARR stacks Onboarding (sign-ups waiting to activate) from sign-up at expected MRR; not when live in Recurly or deleted',ob2.onbA,[0,2000*12,2000*12]);
+  ck('  Active Brands stacks the same Onboarding brands as a count',ob2.onbN,[0,1,1]);
+  ck('  this month in Billed mode is section 01\'s pilot and onboarding cards, not a recount',/_s2\.pil\[_pi\]=_postN\|\|0;_s2\.pilA\[_pi\]=_post\*12;/.test(bd)&&/_s2\.onbN\[_pi\]=_onb\.n;_s2\.onbA\[_pi\]=_onb\.mrr\*12;/.test(bd)&&/onb:_hasOnb\?_s2\.onbN:null/.test(bd),true);
   ck('  and its chart draws a third band',(T._bdS2Chart({labels:['a','b'],base:[1,2],pil:[1,1],onb:[1,1],col:'#000',pcol:'#999',ocol:'#d4a',bLbl:'B',pLbl:'P',oLbl:'O'}).match(/<path /g)||[]).length,3);
   ck('  each mode starts at its earliest month with data',[T._bdS2FromBilled([rcb(1,[{billFrom:'2025-09-03'}]),rcb(2,[],{pilotHist:[{from:'2025-11-01'}]})]),
     T._bdS2FromSigned([deal(1,{closedate:'2024-03-05T05:00:00Z'}),deal(2,{brand_status:'Churned',dealstage:'3453925110',entered_closedwon:'2023-07-01T05:00:00Z',pausechurn_date:'2024-01-10T05:00:00Z'})])],['2025-09','2023-07']);
