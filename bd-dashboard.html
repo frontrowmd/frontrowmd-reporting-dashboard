@@ -755,14 +755,47 @@ function _baSummary(brands){
 // billing brands at Recurly plan $/mo + web traffic $/mo, the other three at
 // the plan's list price per month they will bill (no traffic until their
 // first invoice). Avg ACV = MRR ÷ Active Brands. null when Recurly was not read.
+// What a brand's Recurly subscriptions do today: 'billing' (any bills,
+// canceled-but-billing included), else 'trial', 'starting', 'paused', or
+// 'ended' (only expired/failed ones); null when Recurly has no subscription
+// for it. Billing is decided by basis: a trial is Recurly state 'active'.
+function _baRcClass(b){
+  if(!b.recurly||b.recurly.mrr==null)return null;
+  var subs=b.recurly.subs||[],has=function(k){return subs.some(function(m){return m.basis===k;});};
+  if(subs.some(function(m){return /^(invoice|price)/.test(m.basis);}))return 'billing';
+  return has('trial')?'trial':has('future')?'starting':has('paused')?'paused':subs.length?'ended':null;
+}
+// The Brand MRR report's Status for one brand, live: Recurly first (billing,
+// paused, not billing yet = trial or starting), then the app (an open pilot or
+// an app sign-up waiting to activate = not billing yet; an ended pilot or an
+// ended app subscription = ended), else no plan. `detail` names the sub-group.
+var BD_STATUS_ORDER=['Billing','Not billing yet','Paused','Ended','No plan'];
+var BD_STATUS_COL={'Billing':'#16A34A','Not billing yet':'#2563EB','Paused':'#D97706','Ended':'#DC2626','No plan':'#9AA7B4'};
+function _baStatusOf(b){
+  var rc=_baRcClass(b),pp=b.pilotPlan;
+  if(rc==='billing')return {s:'Billing',d:'Billing'};
+  if(rc==='paused')return {s:'Paused',d:'Paused'};
+  if(rc==='trial')return {s:'Not billing yet',d:'In trial'};
+  if(rc==='starting')return {s:'Not billing yet',d:'Starting later'};
+  if(pp&&pp.status!=='Pilot ended')return {s:'Not billing yet',d:'Pilot'};
+  if(b.onboarding)return {s:'Not billing yet',d:'Onboarding'};
+  if(rc==='ended')return {s:'Ended',d:'Recurly subscription ended'};
+  if(pp)return {s:'Ended',d:'Pilot ended'};
+  if(b.state==='ended')return {s:'Ended',d:'App subscription ended'};
+  return {s:'No plan',d:'No plan'};
+}
+function _baStatusMix(brands){
+  var m={};BD_STATUS_ORDER.forEach(function(k){m[k]={n:0,d:{}};});
+  brands.forEach(function(b){if(_baIsTest(b)||b.discardedAt)return;var x=_baStatusOf(b),o=m[x.s];o.n++;o.d[x.d]=(o.d[x.d]||0)+1;});
+  return m;
+}
 function _baSummaryRc(brands,meta){
   if(!(meta&&meta.recurly&&meta.recurly.ok))return null;
   var s={billing:0,trial:0,starting:0,paused:0,total:0,mrr:0,billedMrr:0,canceling:0,idlePrice:0,idle_trial:0,idle_starting:0,idle_paused:0};
   brands.forEach(function(b){
-    if(_baIsTest(b)||!b.recurly||b.recurly.mrr==null)return;
-    var subs=b.recurly.subs||[],bill=subs.some(function(m){return /^(invoice|price)/.test(m.basis);});
-    var k=bill?'billing':subs.some(function(m){return m.basis==='trial';})?'trial':subs.some(function(m){return m.basis==='future';})?'starting':subs.some(function(m){return m.basis==='paused';})?'paused':null;
-    if(!k)return;
+    if(_baIsTest(b))return;
+    var k=_baRcClass(b),subs=(b.recurly&&b.recurly.subs)||[],bill=k==='billing';
+    if(!k||k==='ended')return;
     s[k]++;s.total++;
     if(bill){s.billedMrr+=b.recurly.mrr;if(subs.every(function(m){return !/^(invoice|price)/.test(m.basis)||/canceled/.test(m.basis);}))s.canceling++;}
     else{s.idlePrice+=b.recurly.idlePrice||0;s['idle_'+k]+=b.recurly.idlePrice||0;}
@@ -1078,7 +1111,9 @@ function _baAppLabel(b){
 // null (a dash) when none of them carries a Recurly subscription id, or
 // Recurly could not be read. recurlyBasis is the one word shown beside the
 // amount: blank for an invoice-based figure, else why it is not one.
-var BD_RC_IDLE=['trial','future','paused'];   // Recurly states that will bill but do not yet
+var BD_RC_IDLE=['trial','future','paused'];
+// Today, Eastern (the worker's), else this browser's day.
+function _baToday(){try{if(BD&&BD.app&&BD.app.meta&&BD.app.meta.today)return BD.app.meta.today;}catch(e){}var n=new Date();return n.getFullYear()+'-'+('0'+(n.getMonth()+1)).slice(-2)+'-'+('0'+n.getDate()).slice(-2);}   // Recurly states that will bill but do not yet
 var BD_RC_BASIS={price:'list price','invoice+price':'',trial:'trial',paused:'paused',future:'starts later',expired:'ended',failed:'failed',canceled:'canceling'};
 function _baRecurlyBasis(bs){
   var w=[];String(bs||'').split(', ').forEach(function(x){x.split(' \u00b7 ').forEach(function(y){var t=BD_RC_BASIS[y];if(t&&w.indexOf(t)<0)w.push(t);});});
@@ -1173,6 +1208,10 @@ function _baRecon(deals,brands,join,useRc){
         if(idle){
           r5.rcState=_baRecurlyBasis(live.map(function(b){return b.recurly.basis;}).join(', '));
           r5.rcStarts=live.map(function(b){return b.recurly.starts;}).filter(Boolean).sort()[0]||'';
+          // A start (or resume) day already behind us: Recurly never started
+          // billing. Flagged and sorted first: it needs a look in Recurly.
+          r5.rcOverdue=!!(r5.rcStarts&&r5.rcStarts<_baToday());
+          if(r5.rcOverdue)r5.rcState='\u26a0 '+(r5.rcState==='starts later'?'start':'resume')+' date passed \u2014 check Recurly';
           r5.rcPrice=Math.round(live.reduce(function(t,b){return t+(b.recurly.idlePrice||0);},0)*100)/100;
           r5.rcPriceTxt=f$(r5.rcPrice)+'/mo';
           r5.rcGap=Math.round((r5.hsMrr-r5.rcPrice)*100)/100;
@@ -1208,7 +1247,7 @@ function _baRecon(deals,brands,join,useRc){
   var byMrr=function(key){return function(a,b){return ((b[key]||0)-(a[key]||0))||(a.name<b.name?-1:1);};};
   t1.sort(byMrr('hsMrr'));t4.sort(byMrr('hsMrr'));t2.sort(byMrr('appMrr'));t3.sort(byMrr('appMrr'));
   t5.sort(function(a,b){return (Math.abs(b.diff)-Math.abs(a.diff))||(a.name<b.name?-1:1);});
-  t6.sort(byMrr('hsMrr'));
+  t6.sort(function(a,b){return (b.rcOverdue-a.rcOverdue)||((b.hsMrr||0)-(a.hsMrr||0))||(a.name<b.name?-1:1);});
   return {t1:t1,t2:t2,t3:t3,t4:t4,t5:t5,t6:t6};
 }
 // Reconciliation tables: per-table sort, MRR descending by default.
@@ -1219,6 +1258,34 @@ function _bdChip(k,sm,live){
   var t={app:['App',(live?'Live from the app database':'Metabase copy of the app database, refreshed nightly (~4:30am ET)')],
     hubspot:['HubSpot','HubSpot deals, read live on every load'],recurly:['Recurly','Recurly billing, read live on every load']}[k];
   return '<span class="bd-chip '+k+(sm?' sm':'')+(k==='app'&&!live?' nightly':'')+'" title="Source: '+t[1]+'">'+t[0]+(k==='app'&&!live?' \u00b7 nightly':'')+'</span>';
+}
+// Donut + legend for the Brand Status mix. Slices in BD_STATUS_ORDER, each
+// with its sub-groups; No plan takes the reserved absence grey.
+function _bdStatusPie(mix,appLive,rcOk){
+  var tot=BD_STATUS_ORDER.reduce(function(t,k){return t+mix[k].n;},0);if(!tot)return '';
+  var R=62,r=40,cx=80,cy=80,a0=-Math.PI/2,paths='';
+  var pt=function(rad,a){return (cx+rad*Math.cos(a)).toFixed(2)+','+(cy+rad*Math.sin(a)).toFixed(2);};
+  BD_STATUS_ORDER.forEach(function(k){var n=mix[k].n;if(!n)return;
+    var a1=a0+n/tot*2*Math.PI,big=(a1-a0)>Math.PI?1:0,col=BD_STATUS_COL[k];
+    var tip=k+': '+n.toLocaleString()+' brands ('+(n/tot*100).toFixed(1)+'%)';
+    paths+=(n===tot)?'<circle cx="'+cx+'" cy="'+cy+'" r="'+((R+r)/2)+'" fill="none" stroke="'+col+'" stroke-width="'+(R-r)+'"><title>'+tip+'</title></circle>'
+      :'<path d="M'+pt(R,a0)+' A'+R+','+R+' 0 '+big+' 1 '+pt(R,a1)+' L'+pt(r,a1)+' A'+r+','+r+' 0 '+big+' 0 '+pt(r,a0)+' Z" fill="'+col+'" stroke="#fff" stroke-width="1.5"><title>'+tip+'</title></path>';
+    a0=a1;});
+  var leg=BD_STATUS_ORDER.map(function(k){var o=mix[k];
+    var det=Object.keys(o.d).filter(function(x){return x!==k;}).sort(function(a,b){return o.d[b]-o.d[a];}).map(function(x){return x+' '+o.d[x];}).join(' \u00b7 ');
+    return '<div style="display:grid;grid-template-columns:12px 1fr auto auto;gap:4px 10px;align-items:baseline;padding:5px 0;border-bottom:1px solid var(--border)">'
+      +'<span style="width:10px;height:10px;border-radius:3px;background:'+BD_STATUS_COL[k]+';align-self:center"></span>'
+      +'<span style="font-size:12px;font-weight:700;color:var(--navy)">'+k+(det?'<div style="font-size:10.5px;font-weight:400;color:var(--grey)">'+det+'</div>':'')+'</span>'
+      +'<span style="font-size:13px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;text-align:right">'+o.n.toLocaleString()+'</span>'
+      +'<span style="font-size:11px;color:var(--grey);font-variant-numeric:tabular-nums;text-align:right;min-width:42px">'+(o.n/tot*100).toFixed(1)+'%</span></div>';}).join('');
+  return '<div class="bd-status-card" style="margin-top:14px;background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px 18px;display:grid;grid-template-columns:170px minmax(0,1fr);gap:18px;align-items:center"'
+    +' title="Every app brand (internal test accounts and brands deleted in the app left out) by its Status, as the Brand MRR report defines it: Recurly first \u2014 billing (canceled-but-billing included), paused, or not billing yet (in a trial or starting later); then the app \u2014 an open pilot or an app sign-up waiting to activate is not billing yet, an ended pilot or app subscription is ended; anything else has no plan.">'
+    +'<div style="text-align:center"><svg viewBox="0 0 160 160" style="width:160px;height:160px;display:block" role="img" aria-label="Brand status breakdown">'+paths
+    +'<text x="80" y="78" text-anchor="middle" font-size="22" font-weight="700" fill="var(--navy)" font-family="var(--font-h)">'+tot.toLocaleString()+'</text>'
+    +'<text x="80" y="95" text-anchor="middle" font-size="9.5" fill="var(--grey)" letter-spacing=".05em">BRANDS</text></svg></div>'
+    +'<div><div style="display:flex;align-items:center;gap:10px;margin-bottom:4px"><span style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">Brand Status</span>'
+    +'<span style="font-size:11px;color:var(--grey)">all app brands, as the Brand MRR report counts them'+(rcOk?'':' \u00b7 Recurly unavailable: app statuses only')+'</span></div>'
+    +leg+_bdChips(rcOk?['recurly','app']:['app'],appLive)+'</div></div>';
 }
 function _bdChips(ks,live){return '<div class="bd-chips">'+ks.map(function(k){return _bdChip(k,false,live);}).join('')+'</div>';}
 function _bdEsc(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -1811,11 +1878,17 @@ function renderBD(){
     // once billing starts (app pilot price). Worker bdPilotPlanStats.
     var _pp=(_ba.meta&&_ba.meta.pilotPlan&&!_ba.meta.pilotPlan.error)?_ba.meta.pilotPlan:null;
     var _post=_pp?_pp.expected:(_ps?_ps.post:null),_postN=_pp?_pp.expectedBrands:(_ps?_ps.n:0);
-    var _fut=_ps&&_post!=null?_mrr+_post:null;
+    // Plus the Onboarding part of Expected MRR (Alex, 2026-11-16): app sign-ups
+    // waiting to activate, whose Status is Not billing yet / Onboarding.
+    var _onb={n:0,mrr:0};
+    _ba.brands.forEach(function(b){if(_baIsTest(b)||b.discardedAt)return;var x=_baStatusOf(b);
+      if(x.d==='Onboarding'&&b.onboardingExpected){_onb.n++;_onb.mrr+=b.onboardingExpected;}});
+    _onb.mrr=Math.round(_onb.mrr*100)/100;
+    var _fut=_ps&&_post!=null?_mrr+_post+_onb.mrr:null;
     var _futSrc=_r?_chips(['recurly','app'],_appLive):'';
-    h+=_kt('bd-dark bd-fut','Future ARR',_ps?f$(_fut*12):'\u2014','','Future MRR × 12','Future MRR × 12: the book if every current pilot rolls over at its post-pilot price.',_futSrc);
-    h+=_kt('bd-dark bd-fut','Future MRR',_ps?f$(_fut):'\u2014',_ps?'MRR + '+_postN+' pilots’ post-pilot price':'pilot figures unavailable','If every current pilot rolls over',
-      'Current MRR plus Post-Pilot MRR: each paid pilot’s expected MRR once billing starts (price override, else the pilot price for its package and tier); awaiting-deposit pilots are left out.',_futSrc);
+    h+=_kt('bd-dark bd-fut','Future ARR',_ps?f$(_fut*12):'\u2014','','Future MRR × 12','Future MRR × 12: the book if every paid pilot rolls over at its post-pilot price and every onboarding sign-up starts billing.',_futSrc);
+    h+=_kt('bd-dark bd-fut','Future MRR',_ps?f$(_fut):'\u2014',_ps?'MRR + '+_postN+' pilots + '+_onb.n+' onboarding':'pilot figures unavailable','If pilots roll over and sign-ups activate',
+      'Current MRR ('+f$(_mrr)+') + Post-Pilot MRR ('+f$(_post||0)+': each paid pilot\u2019s expected MRR once billing starts \u2014 price override, else the pilot price for its package and tier; awaiting-deposit pilots left out) + Onboarding ('+f$(_onb.mrr)+': the expected MRR of '+_onb.n+' app sign-ups waiting to activate \u2014 the subscription\u2019s display price, a custom multi-month plan\u2019s divided by its term).',_futSrc);
     h+='</div>';
     if(!_ps){
       h+='<div class="bd-app-band err" role="alert" style="margin-top:12px"><strong>Pilot figures unavailable.</strong> <span>'
@@ -1855,6 +1928,9 @@ function renderBD(){
       h+='</div>';
     }
   }
+  // Brand Status breakdown (Alex, 2026-11-16): every app brand by the Brand
+  // MRR report's Status, live (Recurly, then the app).
+  if(_ba)h+=_bdStatusPie(_baStatusMix(_ba.brands),_appLive,!!(_ba.meta&&_ba.meta.recurly&&_ba.meta.recurly.ok));
   h+='</section>';
   // Kept for the goal dialog: it reads Signed ARR, which is now the app's.
   // The goal dialog's current ARR: section 01's (Recurly when it was read).
@@ -2343,7 +2419,21 @@ function renderBD(){
     +_avgCol('Close From Created',sfAvgDays)
     +'</div>'
     +'<div class="tdef" style="margin-top:6px;text-align:center;font-size:9px">'+sfToDemoCount+' to demo \u00b7 '+sfDemoDaysCount+' from demo \u00b7 '+sfDaysCount+' from created (CW)</div></div>';
-  h+='<div class="tile '+(sfStatusFilled&&sfPaused/sfStatusFilled>.15?'warn':'hero')+' sub" style="flex:1;min-width:132px"><div class="tlbl">% Paused</div><div class="tval">'+(sfStatusFilled?(sfPaused/sfStatusFilled*100).toFixed(1):0)+'%</div><div class="tdef">'+sfPaused+' \u00f7 '+sfStatusFilled+' brands w/ status \u00b7 '+f$(sfPausedMRR)+' MRR</div></div>';
+  // % Paused from RECURLY (Alex, 2026-11-16): HubSpot's brand_status is not
+  // updated on a pause. The filtered deals' app brands, each counted once:
+  // paused in Recurly ÷ live in Recurly (billing, trial, starting or paused);
+  // MRR at the paused plans' list price. HubSpot's field when Recurly is down.
+  var _pzRc=!!(_ba&&_ba.meta&&_ba.meta.recurly&&_ba.meta.recurly.ok);
+  if(_pzRc){
+    var _pzSeen={},_pzLive=0,_pz=0,_pzMrr=0;
+    sharedFiltered.forEach(function(dd){((_baJ.byDeal[dd.id]||{}).brands||[]).forEach(function(b){
+      if(_pzSeen[b.id]||_baIsTest(b))return;_pzSeen[b.id]=1;
+      var k=_baRcClass(b);if(!k||k==='ended')return;_pzLive++;
+      if(k==='paused'){_pz++;_pzMrr+=b.recurly.idlePrice||0;}});});
+    h+='<div class="tile '+(_pzLive&&_pz/_pzLive>.15?'warn':'hero')+' sub" style="flex:1;min-width:132px" title="Brands behind the filtered deals, each once: paused in Recurly \u00f7 live in Recurly (billing, in a trial, starting or paused). HubSpot\u2019s Brand Status says '+sfPaused+' of '+sfStatusFilled+' deals.'
+      +'"><div class="tlbl">% Paused</div><div class="tval">'+(_pzLive?(_pz/_pzLive*100).toFixed(1):0)+'%</div><div class="tdef">'+_pz+' \u00f7 '+_pzLive+' brands live in Recurly \u00b7 '+f$(_pzMrr)+' MRR</div>'+_bdChips(['recurly'])+'</div>';
+  }else
+  h+='<div class="tile '+(sfStatusFilled&&sfPaused/sfStatusFilled>.15?'warn':'hero')+' sub" style="flex:1;min-width:132px"><div class="tlbl">% Paused</div><div class="tval">'+(sfStatusFilled?(sfPaused/sfStatusFilled*100).toFixed(1):0)+'%</div><div class="tdef">'+sfPaused+' \u00f7 '+sfStatusFilled+' brands w/ status \u00b7 '+f$(sfPausedMRR)+' MRR</div>'+_bdChips(['hubspot'])+'</div>';
   h+='<div class="tile '+(sfStatusFilled&&sfChurned/sfStatusFilled>.2?'warn':'hero')+' sub" style="flex:1;min-width:132px"><div class="tlbl">% Churned</div><div class="tval">'+(sfStatusFilled?(sfChurned/sfStatusFilled*100).toFixed(1):0)+'%</div><div class="tdef">Churned dealstage '+sfChurned+' \u00f7 '+sfStatusFilled+' brands w/ status \u00b7 '+f$(sfChurnedMRR)+' MRR</div></div>';
   h+='</div>';
   // Table
@@ -4175,7 +4265,7 @@ function renderBD(){
         :'Closed-won Signed/Paying in HubSpot AND active, paused or starting in the app, but HubSpot MRR (all the brand\u2019s active deals) and app MRR (its app subscription price, per month) are $'+BD_REC_PRICE_TOL+' or more apart, or the app has no price. <strong>Recurly could not be read, so this compares with the app price.</strong> Live pilots are left out. Sorted by the size of the gap. <strong>Fix:</strong> correct the HubSpot deal amount or the app subscription price, whichever is wrong.',
         _rc.t5,'diff',[['diff',_r5Rc?'HubSpot \u2212 Recurly':'Difference','num'],['why','Why it may differ','']]);
       if(_r5Rc)hRecon+=_bdRecTable('t6',6,'Active on both sides, not billing yet in Recurly',
-        'Closed-won Signed/Paying in HubSpot AND active in the app, but Recurly does not bill the brand yet: its subscription is in a trial, starts later, or is paused. A timing gap rather than a price mismatch, so it is kept out of R5. Shows Recurly\u2019s state, the day billing starts or resumes, and the plan\u2019s list price per month then (web traffic is billed from the first invoice). <strong>Fix:</strong> usually nothing \u2014 check that the start date is right and that HubSpot MRR matches the price once billing starts.',
+        'Closed-won Signed/Paying in HubSpot AND active in the app, but Recurly does not bill the brand yet: its subscription is in a trial, starts later, or is paused. A timing gap rather than a price mismatch, so it is kept out of R5. Shows Recurly\u2019s state, the day billing starts or resumes, and the plan\u2019s list price per month then (web traffic is billed from the first invoice). Rows whose start or resume date has already passed are flagged \u26a0 and listed first: Recurly never started billing them. <strong>Fix:</strong> for a \u26a0 row, activate (or correct) the subscription in Recurly; otherwise usually nothing \u2014 check that HubSpot MRR matches the price once billing starts.',
         _rc.t6,'hsMrr',[['rcState','Recurly state',''],['rcStarts','Billing starts / resumes',''],['rcPriceTxt','Recurly price once billing',''],['rcGap','HubSpot \u2212 that price','num']]);
     }
   }

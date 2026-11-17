@@ -251,6 +251,23 @@ ck('  and HubSpot MRR, App MRR and Recurly MRR sit side by side',/\['hsMrr','Hub
     [SR.total,SR.billing,SR.trial,SR.starting,SR.paused,SR.billedMrr,SR.idlePrice,SR.mrr,SR.arr,SR.acv,SR.canceling,[SR.idle_trial,SR.idle_starting,SR.idle_paused]],
     [5,2,1,1,1,3500,2400,5900,70800,1180,1,[900,800,700]]);
   ck('  null when Recurly was not read (the cards fall back to the app, labelled)',C._baSummaryRc(sb,{recurly:{ok:false}}),null);
+  const st=(o)=>C._baStatusOf(Object.assign({state:'nosub'},o)),RB=(b)=>({mrr:0,subs:[{basis:b}]});
+  ck('Status: Recurly first, then the app pilot / onboarding, then ended, else no plan',
+    [st({recurly:{mrr:9,subs:[{basis:'invoice'}]}}),st({recurly:RB('paused')}),st({recurly:RB('trial')}),st({recurly:RB('future')}),
+     st({pilotPlan:{status:'Pilot \u2013 live'},recurly:RB('expired')}),st({onboarding:true}),st({recurly:RB('expired')}),st({pilotPlan:{status:'Pilot ended'}}),st({state:'ended'}),st({})].map(x=>x.s+'/'+x.d),
+    ['Billing/Billing','Paused/Paused','Not billing yet/In trial','Not billing yet/Starting later','Not billing yet/Pilot','Not billing yet/Onboarding',
+     'Ended/Recurly subscription ended','Ended/Pilot ended','Ended/App subscription ended','No plan/No plan']);
+  const mix=J(C._baStatusMix([ab(1,{recurly:{mrr:9,subs:[{basis:'invoice'}]}}),ab(2,{state:'nosub',onboarding:true}),ab(3,{name:'Vincent'}),ab(4,{discardedAt:'2026-01-01'})]));
+  ck('  the mix leaves out test accounts and brands deleted in the app',[mix.Billing.n,mix['Not billing yet'].n,mix['Not billing yet'].d],[1,1,{Onboarding:1}]);
+  ck('  the pie: one slice per status in a fixed order, No plan in the absence grey',/var BD_STATUS_ORDER=\['Billing','Not billing yet','Paused','Ended','No plan'\];/.test(bd)&&/'No plan':'#9AA7B4'/.test(bd)&&/if\(_ba\)h\+=_bdStatusPie\(_baStatusMix\(_ba\.brands\)/.test(bd),true);
+  ck('  and renders a slice per non-empty status',(C._bdStatusPie(mix,true,true).match(/<path /g)||[]).length,2);
+  // R6: a start date already passed is flagged and listed first.
+  const r6o=[ab(121,{name:'Stuck',hubspotCompanyId:'z1',monthly:1000,recurly:{mrr:0,basis:'future',idlePrice:1000,starts:'2020-01-01',subs:[{basis:'future'}]}}),
+    ab(122,{name:'Big',hubspotCompanyId:'z2',monthly:9000,recurly:{mrr:0,basis:'future',idlePrice:9000,starts:'2099-01-01',subs:[{basis:'future'}]}})];
+  const r6od=[deal(1210,{companyId:'z1',amount:1000}),deal(1220,{companyId:'z2',amount:9000})];
+  const R6o=J(C._baRecon(r6od,r6o,C._baJoin(r6od,r6o),true)).t6;
+  ck('R6: a start date already passed is flagged and sorted first',R6o.map(r=>[r.name,r.rcOverdue,r.rcState]),[['Stuck',true,'\u26a0 start date passed \u2014 check Recurly'],['Big',false,'starts later']]);
+  ck('% Paused reads Recurly (brands once each), HubSpot only when Recurly is down',/var _k=_baRcClass|var k=_baRcClass\(b\);if\(!k\|\|k==='ended'\)return;_pzLive\+\+;/.test(bd)&&/_bdChips\(\['hubspot'\]\)/.test(bd),true);
   ck('  the goal dialog takes section 01\u2019s ARR',/BD\._signedArr=_r\?_r\.arr:\(_baSum\?_baSum\.arr:null\);/.test(bd),true);
   ck('  the header says what it nets',/net \(HubSpot \\u2212 '\+\(_bdRecVs\|\|'app'\)\+' MRR\)/.test(bd)&&/_bdRecVs=_r5Rc\?'Recurly':'app';/.test(bd),true);
   ck('the freshness note says where Recurly MRR comes from, and when it is stale or down',/Recurly MRR is '\+\(_rcm\.stale\?/.test(bd)&&/'Recurly MRR is unavailable \('/.test(bd),true);
@@ -514,6 +531,8 @@ async function recurlyTests(){
   ck('  only the population\u2019s Recurly accounts are read, by account id',calls.map(u=>u.replace(/^https:\/\/[^/]+/,'').split('?')[0]).sort(),['/accounts/acc1/line_items','/accounts/acc4/line_items']);
   const pn=J(await W.bdPilotPlanStats({},pbr.slice(0,2),null));
   ck('  Recurly down: Expected MRR still counts, net is null with the reason',[pn.expected,pn.net,pn.netError],[2500,null,'Recurly unavailable']);
+  const ob=W.bdAppBrand({ID:5,NM:'Onb',SUBS:'1|pending_activation||||||1200000||6-Month X|custom|2026-11-01||~2|pending_activation||||||100000||Pro|usage|2026-11-01||~3|pending_activation||||||99900||Pro|usage|2026-11-01||rcid123'},'2026-11-16');
+  ck('onboarding: app-only sign-ups waiting to activate; expected = display price, a custom plan\u2019s ÷ its term; a Recurly-linked row is not onboarding',[ob.onboarding,ob.onboardingExpected],[true,3000]);
   // The app side carries the Recurly id.
   ck('both app queries pack external_subscription_id as the 14th field',[/s\.initial_web_traffic_tier'\)\}, \$\{_pgS\("regexp_replace\(s\.external_subscription_id/.test(src),/_bdS\('s\.INITIAL_WEB_TRAFFIC_TIER'\)\}, \$\{_bdS\('s\.EXTERNAL_SUBSCRIPTION_ID'\)\}/.test(src)],[true,true]);
   ck('  and the parser reads it',J(W.bdAppParseSubs('1|active||||||||P|usage||t1|abc123xyz'))[0].extSubId,'abc123xyz');
@@ -665,7 +684,7 @@ function pageToggleTests(){
     /var _post=_pp\?_pp\.expected:\(_ps\?_ps\.post:null\)/.test(bd)&&/_kp\('Initiation Fees',_rcOk\?f\$\(_pp\.net\):f\$\(_ps\.netFees\)/.test(bd),true);
   ck('Future ARR and MRR carry the lighter projection style',(bd.match(/_kt\('bd-dark bd-fut','Future (ARR|MRR)'/g)||[]).length,2);
   ck('Future ARR = Future MRR x 12, Future MRR = app MRR + the counted pilots’ post-pilot price',
-    /var _fut=_ps&&_post!=null\?_mrr\+_post:null;/.test(bd)&&/_mrr=_r\?_r\.mrr:_s\.mrr/.test(bd)&&/_kt\('bd-dark bd-fut','Future ARR',_ps\?f\$\(_fut\*12\)/.test(bd),true);
+    /var _fut=_ps&&_post!=null\?_mrr\+_post\+_onb\.mrr:null;/.test(bd)&&/if\(x\.d==='Onboarding'&&b\.onboardingExpected\)/.test(bd)&&/_mrr=_r\?_r\.mrr:_s\.mrr/.test(bd)&&/_kt\('bd-dark bd-fut','Future ARR',_ps\?f\$\(_fut\*12\)/.test(bd),true);
   await pilotTests();
   await appBookTests();
   await recurlyTests();

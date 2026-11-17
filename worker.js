@@ -4143,6 +4143,14 @@ function bdAppBrand(r, today) {
     // brands' add-on charges; stripped before the payload goes out.
     recurlyAccount: r.RA ? String(r.RA) : '',
     pilotPlan: bdAppPilotPlan(subs, pilots),
+    // An app sign-up waiting to activate (app-only, not a pilot): the Brand MRR
+    // report's "Onboarding" status. The page's status pie reads it.
+    onboarding: subs.some(x => x.status === 'pending_activation' && !x.extSubId && x.planKind !== 'pilot'),
+    // Its "Expected MRR once billing starts", the report's way: each such
+    // subscription's display price; a custom plan's is a term total, divided
+    // by the term its name declares. Future MRR adds it (Alex, 2026-11-16).
+    onboardingExpected: Math.round(subs.filter(x => x.status === 'pending_activation' && !x.extSubId && x.planKind !== 'pilot')
+      .reduce((t, x) => t + ((x.disp || 0) / 100) / (x.planKind === 'custom' ? bdAppTermMonths(x.planName) : 1), 0) * 100) / 100,
     lastReviewAt: r.LR || '', reviews45: Number(r.R45) || 0,
     endDate, endSrc, endOnBulkDay,
   };
