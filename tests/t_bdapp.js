@@ -14,7 +14,7 @@ const W={console:{log(){},warn(){},error(){}}};vm.createContext(W);
 vm.runInContext(src.slice(0,src.indexOf('\nexport default'))
   +'\nObject.assign(globalThis,{bdAppPrice,bdAppTermMonths,bdAppChooseSub,bdAppPilotPost,bdAppBrand,bdAppBuild,bdAppSql,bdAppAssocSql,fetchBdApp,MB_NEEDED_TABLES,BDAPP_BULK_DAYS,BDAPP_BACKFILL_DAYS,'
   +'fetchBdPilotStats,bdPilotStatsOf,grafanaFrameRows,GRAFANA_URL,GRAFANA_APP_DS,BD_PILOT_SQL_PG,BD_PILOT_SQL_SF,BDAPP_SQL_PG,BDAPP_PAGES,'
-  +'recurlySubMrr,recurlyAttach,fetchRecurlyBook,fetchRecurlyLive,recurlyPlanMonths,RECURLY_KV,bdAppParseSubs,recurlyCheck,bdAppPilotPlan,recurlyAddOnNet,bdPilotPlanStats});',W);
+  +'recurlySubMrr,recurlyAttach,fetchRecurlyBook,fetchRecurlyLive,recurlyPlanMonths,RECURLY_KV,bdAppParseSubs,recurlyCheck,bdAppPilotPlan,recurlyAddOnNet,bdPilotPlanStats,recurlySubWindow});',W);
 W.btoa=(x)=>Buffer.from(String(x)).toString('base64');W.setTimeout=setTimeout;
 const P=(o)=>W.bdAppPrice(Object.assign({man:null,mp:null,disp:null,planp:null,planName:'Hero',planKind:'usage'},o)).monthly;
 
@@ -434,6 +434,8 @@ async function recurlyTests(){
   ck('  a 6-month invoice line counts per month',M({},null,{line_items:[{subscription_id:'s1',type:'charge',origin:'plan',subtotal:9000,discount:0,start_date:'2026-11-01T00:00:00Z',end_date:'2027-05-01T00:00:00Z'}]}).mrr,1500);
   ck('  a traffic-only invoice adds the plan from its list price',(({mrr,basis})=>[mrr,basis])(M({},null,{line_items:[{subscription_id:'s1',type:'charge',origin:'usage_add_on',add_on_code:'web-traffic',subtotal:400,discount:0,start_date:'2026-10-01T00:00:00Z',end_date:'2026-11-01T00:00:00Z'}]})),[1900,'invoice+price']);
   ck('trial, paused, future, expired and failed bill nothing',['active','paused','future','expired','failed'].map((st,k)=>(({mrr,basis})=>mrr+':'+basis)(M(k?{state:st}:{trial_ends_at:'2026-12-01T00:00:00Z'},null,inv))),['0:trial','0:paused','0:future','0:expired','0:failed']);
+  ck('a future subscription joins the live book when created (its activated_at is the future start)',
+    J(W.recurlySubWindow({state:'future',created_at:'2026-11-01T15:00:00Z',activated_at:'2026-12-03T15:00:00Z'})).liveFrom,'2026-11-01');
   ck('  each not-billing state says when billing starts or resumes (Eastern day)',[M({trial_ends_at:'2026-12-01T15:00:00Z'}).starts,M({state:'future',current_period_started_at:'2027-01-05T15:00:00Z'}).starts,M({state:'paused',resume_at:'2026-12-20T15:00:00Z'}).starts],['2026-12-01','2027-01-05','2026-12-20']);
   const ib=[{id:20,recurlySubIds:['t1','e1']}];
   W.recurlyAttach(ib,{subs:{t1:{id:'t1',state:'active',mrr:0,basis:'trial',price:900,starts:'2026-12-01'},e1:{id:'e1',state:'expired',mrr:0,basis:'expired',price:500}}});

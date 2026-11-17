@@ -4407,7 +4407,9 @@ function recurlySubWindow(sub) {
   const st = sub.state || '';
   // liveFrom: when it joined the live book (activation; a subscription that
   // starts later, its creation), the same book section 01 counts.
-  return { liveFrom: day(sub.activated_at || sub.created_at), billFrom: st === 'future' ? '' : day(sub.trial_ends_at || sub.activated_at),
+  // A future subscription's activated_at is its (future) START date, so it
+  // joins from its creation: section 01 counts it as starting today.
+  return { liveFrom: day(st === 'future' ? (sub.created_at || sub.activated_at) : (sub.activated_at || sub.created_at)), billFrom: st === 'future' ? '' : day(sub.trial_ends_at || sub.activated_at),
     billTo: ['expired', 'failed', 'canceled'].includes(st) ? day(sub.expires_at) : '',
     pausedAt: st === 'paused' ? day(sub.paused_at) : '' };
 }
