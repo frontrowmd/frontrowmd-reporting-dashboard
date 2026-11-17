@@ -364,6 +364,7 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
     <a class="bd-nav-i" href="#bd-sec-rec3" data-sec="bd-sec-rec3" onclick="bdNavGo(event,'bd-sec-rec3')">Churned, Still Live<span class="bd-rec-n" id="bd-rec-n3"></span></a>
     <a class="bd-nav-i" href="#bd-sec-rec4" data-sec="bd-sec-rec4" onclick="bdNavGo(event,'bd-sec-rec4')">Active, Ended in App<span class="bd-rec-n" id="bd-rec-n4"></span></a>
     <a class="bd-nav-i" href="#bd-sec-rec5" data-sec="bd-sec-rec5" onclick="bdNavGo(event,'bd-sec-rec5')">Price Mismatch<span class="bd-rec-n" id="bd-rec-n5"></span></a>
+    <a class="bd-nav-i" href="#bd-sec-rec6" data-sec="bd-sec-rec6" onclick="bdNavGo(event,'bd-sec-rec6')">Not Billing Yet<span class="bd-rec-n" id="bd-rec-n6"></span></a>
     </span>
     <div style="flex:1"></div>
     <button class="bd-goal-btn" id="bd-goal-btn" onclick="bdGoalOpen()" aria-haspopup="dialog" aria-expanded="false">
@@ -746,6 +747,32 @@ function _baSummary(brands){
   s.arr=s.mrr*12;s.acv=s.total?s.mrr/s.total:0;s.futureMrr=s.mrr+s.pilots.post;
   return s;
 }
+// Section 01 on RECURLY (Alex, 2026-11-16): app brands (internal test
+// accounts left out) by what their Recurly subscriptions do today. A brand is
+// billing if any subscription bills (active, or canceled but billing to its
+// period end), else in a trial, else starting later, else paused; Active
+// Brands is all four. Current MRR counts all four too (Alex, 2026-11-16):
+// billing brands at Recurly plan $/mo + web traffic $/mo, the other three at
+// the plan's list price per month they will bill (no traffic until their
+// first invoice). Avg ACV = MRR ÷ Active Brands. null when Recurly was not read.
+function _baSummaryRc(brands,meta){
+  if(!(meta&&meta.recurly&&meta.recurly.ok))return null;
+  var s={billing:0,trial:0,starting:0,paused:0,total:0,mrr:0,billedMrr:0,canceling:0,idlePrice:0,idle_trial:0,idle_starting:0,idle_paused:0};
+  brands.forEach(function(b){
+    if(_baIsTest(b)||!b.recurly||b.recurly.mrr==null)return;
+    var subs=b.recurly.subs||[],bill=subs.some(function(m){return /^(invoice|price)/.test(m.basis);});
+    var k=bill?'billing':subs.some(function(m){return m.basis==='trial';})?'trial':subs.some(function(m){return m.basis==='future';})?'starting':subs.some(function(m){return m.basis==='paused';})?'paused':null;
+    if(!k)return;
+    s[k]++;s.total++;
+    if(bill){s.billedMrr+=b.recurly.mrr;if(subs.every(function(m){return !/^(invoice|price)/.test(m.basis)||/canceled/.test(m.basis);}))s.canceling++;}
+    else{s.idlePrice+=b.recurly.idlePrice||0;s['idle_'+k]+=b.recurly.idlePrice||0;}
+  });
+  ['billedMrr','idlePrice','idle_trial','idle_starting','idle_paused'].forEach(function(k){s[k]=Math.round(s[k]*100)/100;});
+  s.mrr=Math.round((s.billedMrr+s.idlePrice)*100)/100;
+  s.arr=s.mrr*12;s.acv=s.total?s.mrr/s.total:0;
+  s.unmatched=(meta.recurly.unmatched||{});s.stale=!!meta.recurly.stale;
+  return s;
+}
 // Restart of brand row b after `day` (a churn date), as YYYY-MM-DD, or ''.
 // Signals the July 2026 subscription backfill could not fake:
 //  * the brand row itself was created after the churn (a new row, which is
@@ -1051,6 +1078,7 @@ function _baAppLabel(b){
 // null (a dash) when none of them carries a Recurly subscription id, or
 // Recurly could not be read. recurlyBasis is the one word shown beside the
 // amount: blank for an invoice-based figure, else why it is not one.
+var BD_RC_IDLE=['trial','future','paused'];   // Recurly states that will bill but do not yet
 var BD_RC_BASIS={price:'list price','invoice+price':'',trial:'trial',paused:'paused',future:'starts later',expired:'ended',failed:'failed',canceled:'canceling'};
 function _baRecurlyBasis(bs){
   var w=[];String(bs||'').split(', ').forEach(function(x){x.split(' \u00b7 ').forEach(function(y){var t=BD_RC_BASIS[y];if(t&&w.indexOf(t)<0)w.push(t);});});
@@ -1096,7 +1124,7 @@ function _baRecon(deals,brands,join,useRc){
     _baRecurlyOnto(r,rv);
     return r;
   };
-  var t1=[],t4=[],t2=[],t3=[],t5=[];
+  var t1=[],t4=[],t2=[],t3=[],t5=[],t6=[];
   // R5 counts each active app brand under ONE unit. A brand two units reach
   // (a company holding several brands, a deal on a sister company) goes to the
   // unit a reviewed join names it in, else the one whose active deal or company
@@ -1138,6 +1166,18 @@ function _baRecon(deals,brands,join,useRc){
         // HubSpot vs Recurly: what Recurly says, in its own words.
         var rcd=live.filter(function(b){return b.recurly&&b.recurly.mrr!=null;});
         r5.diff=Math.round((r5.hsMrr-(r5.recurlyMrr||0))*100)/100;
+        // Every brand of the unit known to Recurly but NOT billing yet (trial,
+        // starting later, paused): a timing gap, not a price mismatch. Its own
+        // table, R6 (Alex, 2026-11-16), with what Recurly will bill and when.
+        var idle=rcd.length===live.length&&live.every(function(b){return b.recurly.idlePrice!=null&&BD_RC_IDLE.indexOf(b.recurly.basis)>=0;});
+        if(idle){
+          r5.rcState=_baRecurlyBasis(live.map(function(b){return b.recurly.basis;}).join(', '));
+          r5.rcStarts=live.map(function(b){return b.recurly.starts;}).filter(Boolean).sort()[0]||'';
+          r5.rcPrice=Math.round(live.reduce(function(t,b){return t+(b.recurly.idlePrice||0);},0)*100)/100;
+          r5.rcPriceTxt=f$(r5.rcPrice)+'/mo';
+          r5.rcGap=Math.round((r5.hsMrr-r5.rcPrice)*100)/100;
+          t6.push(r5);return;
+        }
         live.forEach(function(b){var rc=b.recurly,pre=live.length>1?b.name+': ':'';
           if(!rc)why.push(pre+'no Recurly subscription id in the app');
           else if(rc.mrr==null)why.push(pre+'Recurly does not know its subscription id');
@@ -1168,7 +1208,8 @@ function _baRecon(deals,brands,join,useRc){
   var byMrr=function(key){return function(a,b){return ((b[key]||0)-(a[key]||0))||(a.name<b.name?-1:1);};};
   t1.sort(byMrr('hsMrr'));t4.sort(byMrr('hsMrr'));t2.sort(byMrr('appMrr'));t3.sort(byMrr('appMrr'));
   t5.sort(function(a,b){return (Math.abs(b.diff)-Math.abs(a.diff))||(a.name<b.name?-1:1);});
-  return {t1:t1,t2:t2,t3:t3,t4:t4,t5:t5};
+  t6.sort(byMrr('hsMrr'));
+  return {t1:t1,t2:t2,t3:t3,t4:t4,t5:t5,t6:t6};
 }
 // Reconciliation tables: per-table sort, MRR descending by default.
 var _bdRecSort={};
@@ -1736,14 +1777,30 @@ function renderBD(){
         +(sub?'<div class="bd-tsub">'+sub+'</div>':'')+'<div class="tdef">'+def+'</div>'+(src||_chips(['app'],_appLive))+'</div>';
     };
     h+='<div class="bd-kpi-row">';
-    h+=_kt('bd-dark','Active Brands',_s.total.toLocaleString(),_s.active+' active · '+_s.paused+' paused · '+_s.starting+' starting',
-      'App brands live today, pilots excluded','Non-demo, non-discarded app brands whose subscription is active, paused or future (starting). Internal test accounts and pilots are left out.');
     // Row order set by Alex (2026-11-11): Active Brands, Current ARR, Current
-    // MRR, Avg ACV, Future ARR, Future MRR.
-    h+=_kt('bd-dark','Current ARR',f$(_s.arr),'','Current MRR × 12');
-    h+=_kt('bd-dark','Current MRR',f$(_s.mrr),'','App price, normalised'+(_s.noPrice?' · '+_s.noPrice+' with no price':''),
-      'Each active brand’s subscription price: cents typed as dollars ×100, multi-month term totals ÷ term. Pilot plans carry no MRR.');
-    h+=_kt('bd-dark','Avg ACV',f$(_s.acv),'','Current MRR ÷ Active Brands');
+    // MRR, Avg ACV, Future ARR, Future MRR. The first four come from Recurly
+    // (Alex, 2026-11-16) whenever it was read; else the app, labelled so.
+    var _r=_baSummaryRc(_ba.brands,_ba.meta);
+    var _rcSrc=_chips(['recurly']),_mrr=_r?_r.mrr:_s.mrr;
+    if(_r){
+      var _rcTip=(_r.stale?' Recurly could not be read just now: this is its last good read.':'')
+        +(_r.unmatched.count?' '+_r.unmatched.count+' billing Recurly subscriptions ('+f$(_r.unmatched.mrr)+'/mo) match no app brand and are not counted.':'');
+      h+=_kt('bd-dark','Active Brands',_r.total.toLocaleString(),_r.billing+' billing · '+_r.trial+' trial · '+_r.starting+' starting · '+_r.paused+' paused',
+        'Brands with a live Recurly subscription','App brands (internal test accounts left out) whose Recurly subscription bills, is in a trial, starts later or is paused. Pilots are not Recurly subscriptions until they roll over, so they are not counted.'
+          +(_r.canceling?' '+_r.canceling+' billing brands have canceled and bill until their period ends.':'')+_rcTip,_rcSrc);
+      h+=_kt('bd-dark','Current ARR',f$(_r.arr),'','Current MRR × 12','',_rcSrc);
+      h+=_kt('bd-dark','Current MRR',f$(_r.mrr),f$(_r.billedMrr)+' billing · '+f$(_r.idlePrice)+' trial, starting & paused','Recurly plan + web traffic, all '+_r.total+' active brands',
+        'Billing brands ('+_r.billing+'): Recurly plan $/mo + web traffic $/mo from each one\u2019s latest Recurly invoice (after coupons, before tax; multi-month plans per month), else the plan\u2019s list price = '+f$(_r.billedMrr)+'. Brands not billing yet, at the plan\u2019s list price per month they will bill (web traffic is added from their first invoice): trial '+_r.trial+' = '+f$(_r.idle_trial)+', starting '+_r.starting+' = '+f$(_r.idle_starting)+', paused '+_r.paused+' = '+f$(_r.idle_paused)+'. ClinicianAI and one-off charges are not MRR.'+_rcTip,_rcSrc);
+      h+=_kt('bd-dark','Avg ACV',f$(_r.acv),'','Current MRR ÷ Active Brands','',_rcSrc);
+    }else{
+      var _whyApp='Recurly could not be read'+(_ba.meta&&_ba.meta.recurly&&_ba.meta.recurly.error?' ('+_bdEsc(_ba.meta.recurly.error)+')':'')+', so this is the app price.';
+      h+=_kt('bd-dark','Active Brands',_s.total.toLocaleString(),_s.active+' active · '+_s.paused+' paused · '+_s.starting+' starting',
+        'App brands live today, pilots excluded','Non-demo, non-discarded app brands whose subscription is active, paused or future (starting). Internal test accounts and pilots are left out. '+_whyApp);
+      h+=_kt('bd-dark','Current ARR',f$(_s.arr),'','Current MRR × 12',_whyApp);
+      h+=_kt('bd-dark','Current MRR',f$(_s.mrr),'Recurly unavailable \u00b7 app price','App price, normalised'+(_s.noPrice?' · '+_s.noPrice+' with no price':''),
+        'Each active brand’s subscription price: cents typed as dollars ×100, multi-month term totals ÷ term. Pilot plans carry no MRR. '+_whyApp);
+      h+=_kt('bd-dark','Avg ACV',f$(_s.acv),'','Current MRR ÷ Active Brands',_whyApp);
+    }
     // The pilot row and Future MRR read the worker's pilotStats: the app's own
     // Grafana "Pilot Brands" definitions (worker fetchBdPilotStats), live when
     // the worker has a Grafana token, else last night's Metabase copy.
@@ -1754,10 +1811,11 @@ function renderBD(){
     // once billing starts (app pilot price). Worker bdPilotPlanStats.
     var _pp=(_ba.meta&&_ba.meta.pilotPlan&&!_ba.meta.pilotPlan.error)?_ba.meta.pilotPlan:null;
     var _post=_pp?_pp.expected:(_ps?_ps.post:null),_postN=_pp?_pp.expectedBrands:(_ps?_ps.n:0);
-    var _fut=_ps&&_post!=null?_s.mrr+_post:null;
-    h+=_kt('bd-dark bd-fut','Future ARR',_ps?f$(_fut*12):'\u2014','','Future MRR × 12','Future MRR × 12: the book if every current pilot rolls over at its post-pilot price.');
+    var _fut=_ps&&_post!=null?_mrr+_post:null;
+    var _futSrc=_r?_chips(['recurly','app'],_appLive):'';
+    h+=_kt('bd-dark bd-fut','Future ARR',_ps?f$(_fut*12):'\u2014','','Future MRR × 12','Future MRR × 12: the book if every current pilot rolls over at its post-pilot price.',_futSrc);
     h+=_kt('bd-dark bd-fut','Future MRR',_ps?f$(_fut):'\u2014',_ps?'MRR + '+_postN+' pilots’ post-pilot price':'pilot figures unavailable','If every current pilot rolls over',
-      'Current MRR plus Post-Pilot MRR: each paid pilot’s expected MRR once billing starts (price override, else the pilot price for its package and tier); awaiting-deposit pilots are left out.');
+      'Current MRR plus Post-Pilot MRR: each paid pilot’s expected MRR once billing starts (price override, else the pilot price for its package and tier); awaiting-deposit pilots are left out.',_futSrc);
     h+='</div>';
     if(!_ps){
       h+='<div class="bd-app-band err" role="alert" style="margin-top:12px"><strong>Pilot figures unavailable.</strong> <span>'
@@ -1799,7 +1857,8 @@ function renderBD(){
   }
   h+='</section>';
   // Kept for the goal dialog: it reads Signed ARR, which is now the app's.
-  BD._signedArr=_baSum?_baSum.arr:null;
+  // The goal dialog's current ARR: section 01's (Recurly when it was read).
+  BD._signedArr=_r?_r.arr:(_baSum?_baSum.arr:null);
   // The APP snapshot book (_baSeries): the opening book C1 and C2 divide by.
   // Section 02 went back to HubSpot (below), so this is kept under its own
   // name and never mixed with the HubSpot series the charts draw.
@@ -4102,7 +4161,7 @@ function renderBD(){
       var _r5Rc=!!(_ba.meta&&_ba.meta.recurly&&_ba.meta.recurly.ok);
       _bdRecVs=_r5Rc?'Recurly':'app';
       var _rc=_baRecon(deals,_ba.brands,_baJ,_r5Rc);
-      _bdRecCounts=[_rc.t1.length,_rc.t2.length,_rc.t3.length,_rc.t4.length,_rc.t5.length];
+      _bdRecCounts=[_rc.t1.length,_rc.t2.length,_rc.t3.length,_rc.t4.length,_rc.t5.length,_rc.t6.length];
       hRecon+=_bdRecTable('t1',1,'Active in HubSpot, not live in the app',
         'Closed-won Signed/Paying in HubSpot, but the app has no brand, a brand with no subscription, or a sign-up never activated. <strong>Fix:</strong> set the brand up and activate it in the app, or, if it never launched or has left, move the HubSpot deal to Churned.',_rc.t1,'hsMrr');
       hRecon+=_bdRecTable('t2',2,'Live in the app, not active in HubSpot',
@@ -4112,9 +4171,12 @@ function renderBD(){
       hRecon+=_bdRecTable('t4',4,'Active in HubSpot, ended in the app',
         'Closed-won Signed/Paying in HubSpot, but the app brand is discarded or its subscription expired, was canceled or failed (or the pilot was canceled). <strong>Fix:</strong> if the brand left, move the deal to Churned with a Pause/Churn Date; if it is still a client, restore it in the app.',_rc.t4,'hsMrr');
       hRecon+=_bdRecTable('t5',5,'Active on both sides, MRR differs',_r5Rc
-        ?'Closed-won Signed/Paying in HubSpot AND active, paused or starting in the app, but HubSpot MRR (all the brand\u2019s active deals) and Recurly MRR (Recurly plan $/mo + web traffic $/mo) are $'+BD_REC_PRICE_TOL+' or more apart, or Recurly has no figure for the brand. App MRR is shown for reference. Live pilots are left out. Sorted by the size of the gap. <strong>Fix:</strong> correct the HubSpot deal amount (a rolled-over pilot often still carries its initiation fee; a duplicate active deal doubles the brand), or the Recurly subscription if Recurly is wrong.'
+        ?'Closed-won Signed/Paying in HubSpot AND active, paused or starting in the app, but HubSpot MRR (all the brand\u2019s active deals) and Recurly MRR (Recurly plan $/mo + web traffic $/mo) are $'+BD_REC_PRICE_TOL+' or more apart, or Recurly has no figure for the brand. Brands Recurly does not bill yet (trial, starting later, paused) are in R6 instead. App MRR is shown for reference. Live pilots are left out. Sorted by the size of the gap. <strong>Fix:</strong> correct the HubSpot deal amount (a rolled-over pilot often still carries its initiation fee; a duplicate active deal doubles the brand), or the Recurly subscription if Recurly is wrong.'
         :'Closed-won Signed/Paying in HubSpot AND active, paused or starting in the app, but HubSpot MRR (all the brand\u2019s active deals) and app MRR (its app subscription price, per month) are $'+BD_REC_PRICE_TOL+' or more apart, or the app has no price. <strong>Recurly could not be read, so this compares with the app price.</strong> Live pilots are left out. Sorted by the size of the gap. <strong>Fix:</strong> correct the HubSpot deal amount or the app subscription price, whichever is wrong.',
         _rc.t5,'diff',[['diff',_r5Rc?'HubSpot \u2212 Recurly':'Difference','num'],['why','Why it may differ','']]);
+      if(_r5Rc)hRecon+=_bdRecTable('t6',6,'Active on both sides, not billing yet in Recurly',
+        'Closed-won Signed/Paying in HubSpot AND active in the app, but Recurly does not bill the brand yet: its subscription is in a trial, starts later, or is paused. A timing gap rather than a price mismatch, so it is kept out of R5. Shows Recurly\u2019s state, the day billing starts or resumes, and the plan\u2019s list price per month then (web traffic is billed from the first invoice). <strong>Fix:</strong> usually nothing \u2014 check that the start date is right and that HubSpot MRR matches the price once billing starts.',
+        _rc.t6,'hsMrr',[['rcState','Recurly state',''],['rcStarts','Billing starts / resumes',''],['rcPriceTxt','Recurly price once billing',''],['rcGap','HubSpot \u2212 that price','num']]);
     }
   }
   // The Tracker's sections and the Churn and Reconciliation tabs' are built into separate buffers
@@ -4122,7 +4184,7 @@ function renderBD(){
   // each calls _bdDealsTable() only on the tab that is showing.
   // Post-render: charts + calc + attribution hover
   el.innerHTML=(_bdTab==='churn')?hChurn:(_bdTab==='recon')?hRecon:h;
-  [1,2,3,4,5].forEach(function(i){var c=document.getElementById('bd-rec-n'+i);if(c)c.textContent=_bdRecCounts?'('+_bdRecCounts[i-1]+')':'';});document.getElementById('fts').textContent='Updated: '+d.meta.generatedAt.split('T')[0];
+  [1,2,3,4,5,6].forEach(function(i){var c=document.getElementById('bd-rec-n'+i);if(c)c.textContent=_bdRecCounts?'('+_bdRecCounts[i-1]+')':'';});document.getElementById('fts').textContent='Updated: '+d.meta.generatedAt.split('T')[0];
   BD._acv=acv;          // keeps the dialog's ACV placeholder honest
   bdBindSpy();          // sections were just replaced — re-observe them
   bdBindStack();        // stacked-column hover, on whichever tab just rendered

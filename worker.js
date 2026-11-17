@@ -4387,8 +4387,13 @@ function recurlySubMrr(sub, plan, inv, nowIso) {
   const price = Math.round(planAmt / months * 100) / 100;
   const st = sub.state || '';
   const base = { id: sub.id, state: st, price, months: Math.round(months * 100) / 100 };
+  // When a subscription that is not billing yet starts (or resumes) billing,
+  // Eastern day: a trial's end, a future subscription's start, a pause's resume.
+  const day = (v) => (v ? etDayKeyOf(v) : '');
+  if (st === 'future') return Object.assign(base, { mrr: 0, basis: 'future', starts: day(sub.current_period_started_at || sub.activated_at || sub.created_at) });
+  if (st === 'paused') return Object.assign(base, { mrr: 0, basis: 'paused', starts: day(sub.resume_at || sub.current_period_ends_at) });
   if (st !== 'active' && st !== 'canceled') return Object.assign(base, { mrr: 0, basis: st || 'unknown' });
-  if (sub.trial_ends_at && Date.parse(sub.trial_ends_at) > Date.parse(nowIso)) return Object.assign(base, { mrr: 0, basis: 'trial' });
+  if (sub.trial_ends_at && Date.parse(sub.trial_ends_at) > Date.parse(nowIso)) return Object.assign(base, { mrr: 0, basis: 'trial', starts: day(sub.trial_ends_at) });
   const solo = !!inv && (!Array.isArray(inv.subscription_ids) || inv.subscription_ids.length <= 1);
   const lines = inv && Array.isArray(inv.line_items) ? inv.line_items.filter(l => l && l.type === 'charge'
     && (l.subscription_id === sub.id || (!l.subscription_id && solo))
@@ -4472,6 +4477,7 @@ async function fetchRecurlyBook(env) {
 // recurly.missing; a brand with no ids gets no recurly field at all. Billing
 // subscriptions no app brand points at are summed into meta.unmatched.
 const RECURLY_IDLE_ORDER = ['trial', 'future', 'paused', 'failed', 'expired'];
+const RECURLY_WILL_BILL = ['trial', 'future', 'paused'];
 function recurlyAttach(brands, book) {
   const used = {};
   brands.forEach(b => {
@@ -4482,7 +4488,8 @@ function recurlyAttach(brands, book) {
     found.forEach(m => { used[m.id] = true; });
     if (!found.length) { b.recurly = { mrr: null, missing: ids.length }; return; }
     const mrr = Math.round(found.reduce((s, m) => s + m.mrr, 0) * 100) / 100;
-    const billing = found.filter(m => m.state === 'active' || m.state === 'canceled');
+    // Billing = priced from an invoice or list price; a trial is state 'active' but bills nothing.
+    const billing = found.filter(m => /^(invoice|price)/.test(m.basis));
     b.recurly = { mrr, n: found.length,
       // Nothing billing: the one state that says most about what is next
       // (an ended subscription beside one starting later reads "starts later").
@@ -4490,7 +4497,11 @@ function recurlyAttach(brands, book) {
         : (RECURLY_IDLE_ORDER.find(k => found.some(m => m.basis === k)) || found[0].basis),
       planMo: Math.round(billing.reduce((t, m) => t + (m.planMo || 0), 0) * 100) / 100,
       traffic: Math.round(billing.reduce((t, m) => t + (m.traffic || 0), 0) * 100) / 100,
-      subs: found.map(m => ({ id: m.id, state: m.state, mrr: m.mrr, basis: m.basis, plan: m.plan, price: m.price, planMo: m.planMo, traffic: m.traffic })) };
+      // Not billing: the subscriptions that will bill, their list price per
+      // month and the earliest day one starts or resumes (R6, section 01).
+      idlePrice: billing.length ? null : Math.round(found.filter(m => RECURLY_WILL_BILL.includes(m.basis)).reduce((t, m) => t + (m.price || 0), 0) * 100) / 100,
+      starts: billing.length ? '' : (found.map(m => RECURLY_WILL_BILL.includes(m.basis) && m.starts).filter(Boolean).sort()[0] || ''),
+      subs: found.map(m => ({ id: m.id, state: m.state, mrr: m.mrr, basis: m.basis, plan: m.plan, price: m.price, planMo: m.planMo, traffic: m.traffic, starts: m.starts })) };
   });
   const un = Object.values(book.subs).filter(m => !used[m.id] && m.mrr > 0);
   return { count: un.length, mrr: Math.round(un.reduce((s, m) => s + m.mrr, 0) * 100) / 100,

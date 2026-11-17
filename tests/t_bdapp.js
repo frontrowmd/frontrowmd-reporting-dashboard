@@ -233,6 +233,25 @@ ck('  and HubSpot MRR, App MRR and Recurly MRR sit side by side',/\['hsMrr','Hub
   ck('R5 with Recurly: HubSpot vs Recurly MRR; a brand with no Recurly figure is listed too',rcOn.map(r=>[r.name,r.diff,r.why]),
     [['NoRc',3000,'no Recurly subscription id in the app'],['RcGap',1500,'Recurly plan $1000 + web traffic $500']]);
   ck('  Recurly down: back to HubSpot vs the app price',rcOff.map(r=>[r.name,r.diff]),[['AppGap',2000]]);
+  // R6: known to Recurly but not billing yet (2026-11-16).
+  const r6b=[ab(101,{name:'Trialing',hubspotCompanyId:'w1',monthly:3000,recurly:{mrr:0,basis:'trial',idlePrice:2500,starts:'2026-12-01',subs:[{basis:'trial'}]}}),
+    ab(102,{name:'Later',hubspotCompanyId:'w2',monthly:3000,recurly:{mrr:0,basis:'future',idlePrice:3000,starts:'2027-01-05',subs:[{basis:'future'}]}}),
+    ab(103,{name:'Gone',hubspotCompanyId:'w3',monthly:3000,recurly:{mrr:0,basis:'expired',idlePrice:0,starts:'',subs:[{basis:'expired'}]}})];
+  const r6d=[deal(1010,{companyId:'w1',amount:3000}),deal(1020,{companyId:'w2',amount:3000}),deal(1030,{companyId:'w3',amount:3000})];
+  const R6=J(C._baRecon(r6d,r6b,C._baJoin(r6d,r6b),true));
+  ck('R6: trial / starting later / paused go to their own table with state, start day, price and gap; an ended subscription stays in R5',
+    [R6.t6.map(r=>[r.name,r.rcState,r.rcStarts,r.rcPrice,r.rcGap]),R6.t5.map(r=>r.name)],[[['Later','starts later','2027-01-05',3000,0],['Trialing','trial','2026-12-01',2500,500]],['Gone']]);
+  ck('  Recurly down: no R6, those brands are R5 rows against the app price as before',J(C._baRecon(r6d,r6b,C._baJoin(r6d,r6b),false)).t6.length,0);
+  const sb=[ab(111,{recurly:{mrr:1500,subs:[{basis:'invoice'}]}}),ab(112,{recurly:{mrr:2000,subs:[{basis:'invoice \u00b7 canceled'}]}}),
+    ab(113,{recurly:{mrr:0,idlePrice:900,subs:[{basis:'trial'}]}}),ab(114,{recurly:{mrr:0,idlePrice:800,subs:[{basis:'future'}]}}),
+    ab(115,{recurly:{mrr:0,idlePrice:700,subs:[{basis:'paused'}]}}),ab(116,{recurly:{mrr:0,subs:[{basis:'expired'}]}}),
+    ab(117,{name:'Vincent',recurly:{mrr:9999,subs:[{basis:'invoice'}]}}),ab(118,{recurly:{mrr:null,missing:1}}),ab(119,{})];
+  const SR=J(C._baSummaryRc(sb,{recurly:{ok:true,unmatched:{count:2,mrr:4400}}}));
+  ck('section 01 on Recurly: billing/trial/starting/paused brands, all four in MRR (the last three at list price); ACV over all; test accounts out',
+    [SR.total,SR.billing,SR.trial,SR.starting,SR.paused,SR.billedMrr,SR.idlePrice,SR.mrr,SR.arr,SR.acv,SR.canceling,[SR.idle_trial,SR.idle_starting,SR.idle_paused]],
+    [5,2,1,1,1,3500,2400,5900,70800,1180,1,[900,800,700]]);
+  ck('  null when Recurly was not read (the cards fall back to the app, labelled)',C._baSummaryRc(sb,{recurly:{ok:false}}),null);
+  ck('  the goal dialog takes section 01\u2019s ARR',/BD\._signedArr=_r\?_r\.arr:\(_baSum\?_baSum\.arr:null\);/.test(bd),true);
   ck('  the header says what it nets',/net \(HubSpot \\u2212 '\+\(_bdRecVs\|\|'app'\)\+' MRR\)/.test(bd)&&/_bdRecVs=_r5Rc\?'Recurly':'app';/.test(bd),true);
   ck('the freshness note says where Recurly MRR comes from, and when it is stale or down',/Recurly MRR is '\+\(_rcm\.stale\?/.test(bd)&&/'Recurly MRR is unavailable \('/.test(bd),true);
 }
@@ -398,6 +417,10 @@ async function recurlyTests(){
   ck('  a 6-month invoice line counts per month',M({},null,{line_items:[{subscription_id:'s1',type:'charge',origin:'plan',subtotal:9000,discount:0,start_date:'2026-11-01T00:00:00Z',end_date:'2027-05-01T00:00:00Z'}]}).mrr,1500);
   ck('  a traffic-only invoice adds the plan from its list price',(({mrr,basis})=>[mrr,basis])(M({},null,{line_items:[{subscription_id:'s1',type:'charge',origin:'usage_add_on',add_on_code:'web-traffic',subtotal:400,discount:0,start_date:'2026-10-01T00:00:00Z',end_date:'2026-11-01T00:00:00Z'}]})),[1900,'invoice+price']);
   ck('trial, paused, future, expired and failed bill nothing',['active','paused','future','expired','failed'].map((st,k)=>(({mrr,basis})=>mrr+':'+basis)(M(k?{state:st}:{trial_ends_at:'2026-12-01T00:00:00Z'},null,inv))),['0:trial','0:paused','0:future','0:expired','0:failed']);
+  ck('  each not-billing state says when billing starts or resumes (Eastern day)',[M({trial_ends_at:'2026-12-01T15:00:00Z'}).starts,M({state:'future',current_period_started_at:'2027-01-05T15:00:00Z'}).starts,M({state:'paused',resume_at:'2026-12-20T15:00:00Z'}).starts],['2026-12-01','2027-01-05','2026-12-20']);
+  const ib=[{id:20,recurlySubIds:['t1','e1']}];
+  W.recurlyAttach(ib,{subs:{t1:{id:'t1',state:'active',mrr:0,basis:'trial',price:900,starts:'2026-12-01'},e1:{id:'e1',state:'expired',mrr:0,basis:'expired',price:500}}});
+  ck('  a brand not billing carries the price it will bill and its start day (ended subscriptions left out)',[ib[0].recurly.basis,ib[0].recurly.idlePrice,ib[0].recurly.starts],['trial',900,'2026-12-01']);
   ck('  canceled still bills to its period end, flagged',(({mrr,basis})=>[mrr,basis])(M({state:'canceled'},null,inv)),[1650,'invoice · canceled']);
   // The fetch: US first, EU on 401/403/404; cursor paging; invoices by id.
   const subsP1={has_more:true,next:'/subscriptions?cursor=abc&limit=200',data:[
@@ -609,9 +632,9 @@ function pageToggleTests(){
   const err=T.run(D,{error:'Metabase 503'});
   ck('app read failed: the same, saying it did not load',[err.chartDeals.length,/did not load/.test(err.h)],[3,true]);
   // Reconciliation tab: a count on each nav anchor, and the freshness line.
-  ck('each Reconciliation anchor has a count slot',[1,2,3,4,5].every(i=>new RegExp('bd-sec-rec'+i+"'\\)\">[^<]+<span class=\"bd-rec-n\" id=\"bd-rec-n"+i+'"></span></a>').test(bd)),true);
-  ck('  filled as "(N)" from the five tables after each render, blank without app data',
-    /_bdRecCounts=\[_rc\.t1\.length,_rc\.t2\.length,_rc\.t3\.length,_rc\.t4\.length,_rc\.t5\.length\];/.test(bd)&&/c\.textContent=_bdRecCounts\?'\('\+_bdRecCounts\[i-1\]\+'\)':'';/.test(bd),true);
+  ck('each Reconciliation anchor has a count slot',[1,2,3,4,5,6].every(i=>new RegExp('bd-sec-rec'+i+"'\\)\">[^<]+<span class=\"bd-rec-n\" id=\"bd-rec-n"+i+'"></span></a>').test(bd)),true);
+  ck('  filled as "(N)" from the six tables after each render, blank without app data',
+    /_bdRecCounts=\[_rc\.t1\.length,_rc\.t2\.length,_rc\.t3\.length,_rc\.t4\.length,_rc\.t5\.length,_rc\.t6\.length\];/.test(bd)&&/\[1,2,3,4,5,6\]\.forEach/.test(bd)&&/c\.textContent=_bdRecCounts\?'\('\+_bdRecCounts\[i-1\]\+'\)':'';/.test(bd),true);
   ck('  and the tab opens with a Data freshness line',/<strong style="color:var\(--navy\)">Data freshness:<\/strong> HubSpot deals and their company links are live on every load/.test(bd),true);
   ck('C1/C2 keep the APP snapshot book, apart from section 02\u2019s',[ex.app['2026-10'].b,!!ex.snap['2026-10']&&ex.snap['2026-10'].b!==9],[9,true]);
 }
@@ -635,14 +658,14 @@ function pageToggleTests(){
   ck('  and shows a band, not numbers, while _ba is missing',/if\(!_baSum\)\{h\+=_baBand\(/.test(bd)&&/if\(!_ba\)hRecon\+=_baBand\(/.test(bd)&&/if\(!_ba\)hChurn=hChurn\.substring\(0,_hChurnAppAt\)/.test(bd),true);
   ck('both reads start together, and Refresh repeats both',/function doLogin\(\)\{\n  bdFetchApp\(\);/.test(bd)&&/bdFetchApp\(\);    \/\/ and the app brand book, in parallel/.test(bd),true);
   // Summary row order and Future ARR (Alex, 2026-11-11).
-  ck('row 1: Active Brands, Current ARR, Current MRR, Avg ACV, Future ARR, Future MRR',[...bd.matchAll(/_kt\('bd-dark(?: bd-fut)?','([^']+)'/g)].map(m=>m[1]),['Active Brands','Current ARR','Current MRR','Avg ACV','Future ARR','Future MRR']);
+  ck('row 1: Active Brands, Current ARR, Current MRR, Avg ACV, Future ARR, Future MRR',[...new Set([...bd.matchAll(/_kt\('bd-dark(?: bd-fut)?','([^']+)'/g)].map(m=>m[1]))],['Active Brands','Current ARR','Current MRR','Avg ACV','Future ARR','Future MRR']);
   ck('row 2: six cards, Awaiting Deposit after Pilot Brands, Pilot Avg ACV left of Initiation Fees',[...bd.matchAll(/_kp\('([^']+)'/g)].map(m=>m[1]),['Pilot Brands','Awaiting Deposit','Pilot Live','Pilot Avg ACV','Initiation Fees','Post-Pilot MRR']);
   ck('  Pilot Avg ACV = Post-Pilot MRR ÷ the pilots it counts',/_kp\('Pilot Avg ACV',_postN\?f\$\(_post\/_postN\)/.test(bd),true);
   ck('Initiation Fees = Net add-on revenue and Post-Pilot MRR = Expected MRR of pilot-plan brands, app fees if Recurly fails',
     /var _post=_pp\?_pp\.expected:\(_ps\?_ps\.post:null\)/.test(bd)&&/_kp\('Initiation Fees',_rcOk\?f\$\(_pp\.net\):f\$\(_ps\.netFees\)/.test(bd),true);
   ck('Future ARR and MRR carry the lighter projection style',(bd.match(/_kt\('bd-dark bd-fut','Future (ARR|MRR)'/g)||[]).length,2);
   ck('Future ARR = Future MRR x 12, Future MRR = app MRR + the counted pilots’ post-pilot price',
-    /var _fut=_ps&&_post!=null\?_s\.mrr\+_post:null;/.test(bd)&&/_kt\('bd-dark bd-fut','Future ARR',_ps\?f\$\(_fut\*12\)/.test(bd),true);
+    /var _fut=_ps&&_post!=null\?_mrr\+_post:null;/.test(bd)&&/_mrr=_r\?_r\.mrr:_s\.mrr/.test(bd)&&/_kt\('bd-dark bd-fut','Future ARR',_ps\?f\$\(_fut\*12\)/.test(bd),true);
   await pilotTests();
   await appBookTests();
   await recurlyTests();
