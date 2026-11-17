@@ -8143,66 +8143,138 @@ async function processSignupRequest(env) {
 }
 
 // Revenue Outcome's pilot side (Alex, 2026-11-12): the pilots SIGNED in each
-// window, read from the app (the BD Tracker's Grafana definitions, so the two
-// agree). A pilot is signed when its fee is paid (pilot_fee_paid_at, Eastern
-// day), whatever its status since (rolled over, canceled after paying...).
-//  * Signed Pilot Brands = distinct brands with a pilot fee paid in the window
-//  * Initiation Fees     = SUM(pilot_fee_total - refunded) over those pilots
-//  * Post-Pilot MRR      = their post-pilot price (rollover, else a repeating
-//                          override, else the deposit month's default)
+// window, read from the app. A pilot is signed when its fee is paid
+// (pilot_fee_paid_at, Eastern day). Since 2026-11-17 it uses the BD Tracker's
+// pilot-row sources (Alex: "match BD Tracker sources"):
+//  * Signed Pilot Brands = distinct brands with a pilot fee paid in the window,
+//                          leaving out ROLLED-OVER pilots: those brands are
+//                          paying customers, back in the brand book (the BD
+//                          Tracker's rule, and markAppPilots's), so the brand
+//                          side already counts their deal -- counting them
+//                          here too would double them in the combined total
+//  * Post-Pilot MRR      = the BD Tracker's Expected MRR: each OPEN pilot's
+//                          price override, else the pilot price list for its
+//                          package and starting tier; an ended pilot (opted
+//                          out, canceled) adds nothing
+//  * Initiation Fees     = Recurly net add-on revenue (recurlyAddOnNet, the
+//                          BD Tracker's) of those brands' Recurly accounts,
+//                          from lines dated on or after the window's first
+//                          day (later refunds net in). A brand whose account
+//                          is missing or failed falls back to the app's
+//                          pilot_fee_total - refunded, and the count is shown.
 // Brands named demo/test are left out, as on the app's Grafana board. Live via
 // Grafana when GRAFANA_TOKEN is set, else the nightly Metabase copy. Window
 // dates are validated as YYYY-MM-DD before they reach the SQL (custom windows
 // come from the request body).
 const RO_DAY = /^\d{4}-\d{2}-\d{2}$/;
-function roPilotSql(wins, pg) {
-  const keys = Object.keys(wins).filter(k => wins[k] && RO_DAY.test(wins[k].from) && RO_DAY.test(wins[k].to));
-  if (!keys.length) return null;
-  const day = pg ? `((v.pilot_fee_paid_at AT TIME ZONE 'UTC') AT TIME ZONE 'America/New_York')::date`
-                 : `TO_DATE(CONVERT_TIMEZONE('UTC', 'America/New_York', v.PILOT_FEE_PAID_AT))`;
-  const post = pg
-    ? `COALESCE(NULLIF(p.rollover_price_in_cents, 0), CASE WHEN p.next_price_override_repeats THEN NULLIF(p.next_price_override_in_cents, 0) END, NULLIF(p.deposit_month_default_in_cents, 0), 0)`
-    : `COALESCE(NULLIF(p.ROLLOVER_PRICE_IN_CENTS, 0), IFF(p.NEXT_PRICE_OVERRIDE_REPEATS, NULLIF(p.NEXT_PRICE_OVERRIDE_IN_CENTS, 0), NULL), NULLIF(p.DEPOSIT_MONTH_DEFAULT_IN_CENTS, 0), 0)`;
-  const fee = pg ? `v.pilot_fee_total_in_cents - COALESCE(v.refunded_in_cents, 0)` : `v.PILOT_FEE_TOTAL_IN_CENTS - COALESCE(v.REFUNDED_IN_CENTS, 0)`;
-  const brand = pg ? 'v.health_brand_id' : 'v.HEALTH_BRAND_ID';
-  const cols = keys.map(k => {
-    const inW = `${day} BETWEEN '${wins[k].from}' AND '${wins[k].to}'`;
-    return pg
-      ? `count(DISTINCT ${brand}) FILTER (WHERE ${inW}) AS "${k}_n", COALESCE(sum(${fee}) FILTER (WHERE ${inW}), 0) AS "${k}_fee", COALESCE(sum(${post}) FILTER (WHERE ${inW}), 0) AS "${k}_post"`
-      : `COUNT(DISTINCT IFF(${inW}, ${brand}, NULL)) AS "${k}_n", COALESCE(SUM(IFF(${inW}, ${fee}, NULL)), 0) AS "${k}_fee", COALESCE(SUM(IFF(${inW}, ${post}, NULL)), 0) AS "${k}_post"`;
-  }).join(',\n  ');
-  return pg
-    ? `SELECT ${cols}\nFROM pilot_progress v LEFT JOIN pilots p ON p.id = v.pilot_id\nWHERE v.brand_name !~* '(demo|test)' AND v.pilot_fee_paid_at IS NOT NULL`
-    : `SELECT ${cols}\nFROM MARTS.FCT_PILOT_PROGRESS v LEFT JOIN STAGING.STG_PILOTS p ON p.ID = v.PILOT_ID\nWHERE NOT REGEXP_LIKE(v.BRAND_NAME, '.*(demo|test).*', 'is') AND v.PILOT_FEE_PAID_AT IS NOT NULL`;
+const RO_PILOT_OPEN = ['awaiting_submit', 'deposit_paid', 'collecting_data', 'live'];   // = BDAPP_PILOT_OPEN
+function roPilotWins(wins) {
+  return Object.keys(wins).filter(k => wins[k] && RO_DAY.test(wins[k].from) && RO_DAY.test(wins[k].to));
 }
-// One aggregate row → {current, prior, priorMonth}: {n, fees, post} in dollars, or null.
-function roPilotOf(row, wins) {
-  const r = row || {};
-  const out = {};
+// One row per signed pilot whose fee day falls in ANY of the windows.
+function roPilotSql(wins, pg) {
+  const keys = roPilotWins(wins);
+  if (!keys.length) return null;
+  const lo = keys.map(k => wins[k].from).sort()[0], hi = keys.map(k => wins[k].to).sort().pop();
+  const open = RO_PILOT_OPEN.map(x => `'${x}'`).join(', ');
+  return pg
+    ? `SELECT v.health_brand_id "BID", to_char((v.pilot_fee_paid_at AT TIME ZONE 'UTC') AT TIME ZONE 'America/New_York', 'YYYY-MM-DD') "DAY",
+  v.pilot_fee_total_in_cents - COALESCE(v.refunded_in_cents, 0) "FEE",
+  CASE WHEN p.status IN (${open}) THEN COALESCE(p.next_price_override_in_cents, pp.monthly_price_in_cents, 0) ELSE 0 END "POST",
+  hb.external_account_id "RA"
+FROM pilot_progress v LEFT JOIN pilots p ON p.id = v.pilot_id
+LEFT JOIN pilot_prices pp ON pp.package = p.package AND pp.tier = p.starting_tier
+LEFT JOIN health_brands hb ON hb.id = v.health_brand_id
+WHERE v.brand_name !~* '(demo|test)' AND v.pilot_fee_paid_at IS NOT NULL AND COALESCE(p.status, '') <> 'rolled_over'
+  AND ((v.pilot_fee_paid_at AT TIME ZONE 'UTC') AT TIME ZONE 'America/New_York')::date BETWEEN '${lo}' AND '${hi}'`
+    : `SELECT v.HEALTH_BRAND_ID BID, TO_CHAR(CONVERT_TIMEZONE('UTC', 'America/New_York', v.PILOT_FEE_PAID_AT), 'YYYY-MM-DD') DAY,
+  v.PILOT_FEE_TOTAL_IN_CENTS - COALESCE(v.REFUNDED_IN_CENTS, 0) FEE,
+  IFF(p.STATUS IN (${open}), COALESCE(p.NEXT_PRICE_OVERRIDE_IN_CENTS, pp.MONTHLY_PRICE_IN_CENTS, 0), 0) POST,
+  hb.EXTERNAL_ACCOUNT_ID RA
+FROM MARTS.FCT_PILOT_PROGRESS v LEFT JOIN STAGING.STG_PILOTS p ON p.ID = v.PILOT_ID
+LEFT JOIN STAGING.STG_PILOT_PRICES pp ON pp.PACKAGE = p.PACKAGE AND pp.TIER = p.STARTING_TIER
+LEFT JOIN STAGING.STG_BRANDS hb ON hb.ID = v.HEALTH_BRAND_ID
+WHERE NOT REGEXP_LIKE(v.BRAND_NAME, '.*(demo|test).*', 'is') AND v.PILOT_FEE_PAID_AT IS NOT NULL AND COALESCE(p.STATUS, '') <> 'rolled_over'
+  AND TO_DATE(CONVERT_TIMEZONE('UTC', 'America/New_York', v.PILOT_FEE_PAID_AT)) BETWEEN '${lo}' AND '${hi}'`;
+}
+// Pilot rows → {current, prior, priorMonth}: {n, fees, post, feesFallback} in
+// dollars, or null for a window not asked for. netOf(window, brandRow) is the
+// brand's Recurly net add-on revenue for that window, or null when it has none
+// (then the app fee is used and counted in feesFallback).
+function roPilotOf(rows, wins, netOf) {
+  const out = {}, ok = roPilotWins(wins);
   for (const k of Object.keys(wins)) {
-    if (!wins[k] || r[k + '_n'] == null) { out[k] = null; continue; }
-    out[k] = { n: Number(r[k + '_n']) || 0, fees: (Number(r[k + '_fee']) || 0) / 100, post: (Number(r[k + '_post']) || 0) / 100 };
+    if (ok.indexOf(k) < 0) { out[k] = null; continue; }
+    const w = wins[k], seen = {};
+    let post = 0, appFee = {}, n = 0;
+    (rows || []).forEach(r => {
+      if (!(r.DAY >= w.from && r.DAY <= w.to)) return;
+      const b = String(r.BID);
+      if (!seen[b]) { seen[b] = r; n++; appFee[b] = 0; }
+      post += Number(r.POST) || 0; appFee[b] += Number(r.FEE) || 0;
+    });
+    let fees = 0, fb = 0;
+    Object.keys(seen).forEach(b => {
+      const net = netOf ? netOf(k, seen[b]) : null;
+      if (net == null) { fees += appFee[b] / 100; fb++; } else fees += net;
+    });
+    out[k] = { n, fees: Math.round(fees * 100) / 100, post: post / 100, feesFallback: fb };
   }
   return out;
 }
+// Recurly net add-on revenue per window for the brands in those windows: one
+// line-item read per account (from the earliest window start it is needed
+// for), then each window counts the lines dated on/after its own first day.
+async function roPilotFees(env, rows, wins) {
+  if (!env || !env.RECURLY_API_KEY) return null;
+  const keys = roPilotWins(wins), since = {};
+  (rows || []).forEach(r => {
+    if (!r.RA) return;
+    keys.forEach(k => { if (r.DAY >= wins[k].from && r.DAY <= wins[k].to && (!since[r.RA] || wins[k].from < since[r.RA])) since[r.RA] = wins[k].from; });
+  });
+  const accts = Object.keys(since), lines = {};
+  let i = 0;
+  const host = RECURLY_HOSTS[0];
+  const worker = async () => {
+    while (i < accts.length) {
+      const a = accts[i++];
+      // A day early in UTC: the Eastern filter below does the exact cut.
+      const t = new Date(Date.parse(since[a] + 'T00:00:00Z') - 86400000).toISOString();
+      try { lines[a] = await recurlyList(env, host, '/accounts/' + encodeURIComponent(a) + '/line_items?limit=200&sort=created_at&order=asc&begin_time=' + encodeURIComponent(t), 20); }
+      catch (e) { console.error('Revenue Outcome pilot fees: Recurly account read failed:', _rcScrub(env, e.message)); }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(8, accts.length) }, worker));
+  return (k, r) => {
+    const ls = r.RA && lines[r.RA];
+    if (!ls) return null;
+    return recurlyAddOnNet(ls.filter(l => (etDayKeyOf(l.created_at) || '') >= wins[k].from)).net;
+  };
+}
 async function fetchRoPilots(env, wins) {
-  let liveError = '';
+  let liveError = '', rows = null, source = 'live';
   if (env && env.GRAFANA_TOKEN) {
     try {
       const q = roPilotSql(wins, true);
       if (!q) return null;
-      const rows = await grafanaQuery(env, q);
-      return Object.assign(roPilotOf(rows[0], wins), { source: 'live' });
+      rows = await grafanaQuery(env, q);
     } catch (e) {
       liveError = String((e && e.message) || e).split(env.GRAFANA_TOKEN).join('[token]').slice(0, 200);
       console.error('Revenue Outcome pilots: Grafana failed, using the nightly copy:', liveError);
     }
   }
-  const q = roPilotSql(wins, false);
-  if (!q) return null;
-  const rows = await mbQuery(env, q);
-  const o = Object.assign(roPilotOf(rows[0], wins), { source: 'nightly' });
+  if (!rows) {
+    const q = roPilotSql(wins, false);
+    if (!q) return null;
+    rows = await mbQuery(env, q);
+    source = 'nightly';
+  }
+  let netOf = null, feesError = '';
+  try { netOf = await roPilotFees(env, rows, wins); }
+  catch (e) { feesError = _rcScrub(env, (e && e.message) || e); console.error('Revenue Outcome pilot fees: Recurly failed:', feesError); }
+  const o = Object.assign(roPilotOf(rows, wins, netOf), { source, feesSource: netOf ? 'recurly' : 'app' });
   if (liveError) o.liveError = liveError;
+  if (feesError) o.feesError = feesError;
   return o;
 }
 

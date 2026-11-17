@@ -1132,18 +1132,46 @@ function _buildRevenueOutcomeCard(d){
       +(_ppErr?'Pilot figures unavailable. Refresh to retry.':'Loading pilot figures…')+'</div></div>';
   }else{
     var _src=_pp.source==='live'?'live':'as of last night';
+    // Fees are Recurly net add-on revenue (the BD Tracker's Initiation Fees,
+    // 2026-11-17); a brand Recurly could not answer for uses the app's fee.
+    var _rcF=_pp.feesSource==='recurly',_fb=(pc&&pc.feesFallback)||0;
     side2='<div style="flex:1 1 300px;min-width:260px">'
-      +sideLbl('Pilots','fee paid in the window · app, '+_src)
+      +sideLbl('Pilots','fee paid in the window · app, '+_src+' · fees from '+(_rcF?'Recurly':'the app'))
       // Post-Pilot ARR leads, with Initiation Fees beside it on the same row
       // (Alex, 2026-11-12); each keeps its own vs prior / vs LM.
       +'<div style="display:flex;flex-wrap:wrap;gap:12px 28px;align-items:flex-start">'
         +'<div style="flex:1 1 150px;min-width:140px">'+headline('Post-Pilot ARR','MRR \u00d7 12',f$(pc.post*12),pc.post*12,_pa(pp),_pa(pl))+'</div>'
-        +'<div style="flex:1 1 150px;min-width:140px">'+headline('Initiation Fees','net of refunds',f$(pc.fees),pc.fees,_pf(pp,'fees'),_pf(pl,'fees'))+'</div>'
+        +'<div style="flex:1 1 150px;min-width:140px">'+headline('Initiation Fees',_rcF?('net add-ons'+(_fb?' \u00b7 '+_fb+' from app':'')):'net of refunds',f$(pc.fees),pc.fees,_pf(pp,'fees'),_pf(pl,'fees'))+'</div>'
       +'</div>'
       +'<div style="margin-top:8px">'
       +metricRow('Post-Pilot MRR',f$(pc.post),pc.post,_pf(pp,'post'),_pf(pl,'post'),'$')
       +metricRow('Pilot Avg ACV',_pAcv(pc)!=null?f$(_pAcv(pc)):'—',_pAcv(pc),_pAcv(pp),_pAcv(pl),'$')
       +metricRow('Signed Pilot Brands',fN(pc.n),pc.n,_pf(pp,'n'),_pf(pl,'n'),'#')
+      +'</div></div>';
+  }
+  // Combined total (Alex, 2026-11-17): Brands + Pilots for the window. Signed
+  // ARR and MRR add the pilots' post-pilot run rate (Initiation Fees are one-
+  // off, so they stay out); Signed Brands adds the signed pilot brands. Shown
+  // only when both sides are split cleanly, so no window is counted twice.
+  // A side's missing prior/LM makes that total's delta a dash.
+  var total='';
+  if(_pilotKnown&&_ppOk){
+    var _add=function(a,b){return (a==null||b==null)?null:a+b;};
+    var tMRR=mrr+pc.post,tpMRR=_add(pMRR,_pf(pp,'post')),tlMRR=_add(pmMRR,_pf(pl,'post'));
+    var tB=signedBrands+pc.n,tpB=_add(pDeal,_pf(pp,'n')),tlB=_add(pmDeal,_pf(pl,'n'));
+    var cell=function(lbl,val,cur,p2,lm,fmt,big){
+      return '<div style="flex:1 1 180px;min-width:170px">'
+        +'<div style="font-family:var(--font-h);font-size:9.5px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.07em">'+lbl+'</div>'
+        +'<div style="font-family:var(--font-h);font-size:'+(big?24:18)+'px;font-weight:700;color:#fff;line-height:1.15;margin:2px 0 3px;font-variant-numeric:tabular-nums">'+val+'</div>'
+        +'<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:10.5px"><span><span style="font-size:8px;color:rgba(255,255,255,.38);text-transform:uppercase;letter-spacing:.05em;margin-right:5px">prior</span>'+dk(cur,p2,fmt,10.5)+'</span>'
+        +'<span><span style="font-size:8px;color:rgba(255,255,255,.38);text-transform:uppercase;letter-spacing:.05em;margin-right:5px">LM</span>'+dk(cur,lm,fmt,10.5)+'</span></div></div>';
+    };
+    total='<div class="ro-total" style="margin-top:18px;padding-top:14px;border-top:1px solid rgba(114,164,191,.28)">'
+      +sideLbl('Total','brands + pilots · ARR and MRR use post-pilot MRR; initiation fees left out')
+      +'<div style="display:flex;flex-wrap:wrap;gap:12px 28px">'
+        +cell('Total Signed ARR',f$(tMRR*12),tMRR*12,tpMRR!=null?tpMRR*12:null,tlMRR!=null?tlMRR*12:null,'$',true)
+        +cell('Total MRR',f$(tMRR),tMRR,tpMRR,tlMRR,'$')
+        +cell('Total Signed Brands',fN(tB),tB,tpB,tlB,'#')
       +'</div></div>';
   }
   // Two sides, divided by a hairline; they stack on a narrow screen.
@@ -1154,6 +1182,7 @@ function _buildRevenueOutcomeCard(d){
       +'<div class="ro-div" style="width:1px;background:rgba(114,164,191,.22);margin:0 28px;align-self:stretch"></div>'
       +side2
     +'</div>'
+    +total
   +'</div>';
 }
 // Fetch the dedicated, UNCACHED Revenue Outcome data (live current/prior/LM

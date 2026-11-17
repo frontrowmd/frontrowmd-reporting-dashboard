@@ -109,6 +109,17 @@ const d0={signedChurnedByCloseCount:2};
   const t=text(C._buildRevenueOutcomeCard(d0));
   ck('a pilot failure leaves side 1 standing and says so on side 2',[/\$288,000/.test(t),/Pilot figures unavailable/.test(t)],[true,true]);
 }
+{ // Combined total and the Recurly fee source (2026-11-17)
+  const C=mkCtx();C.setRO(LIVE);
+  const t=text(C._buildRevenueOutcomeCard(d0));
+  ck('a Brands + Pilots total sits after both sides',[t.indexOf('Total Signed ARR')>t.indexOf('Signed Pilot Brands'),/Total Signed ARR \$432,000 prior \S+ \+\$120,000 \S+ LM \S+ -\$18,000/.test(t)],[true,true]);
+  ck('  Total MRR and Total Signed Brands add the pilot side',[/Total MRR \$36,000/.test(t),/Total Signed Brands 15 prior \S+ \+4/.test(t)],[true,true]);
+  const C2=mkCtx();C2.setRO(Object.assign({},LIVE,{pilots:Object.assign({},PIL,{feesSource:'recurly',current:Object.assign({},PIL.current,{feesFallback:2})})}));
+  const t2=text(C2._buildRevenueOutcomeCard(d0));
+  ck('  fees are labelled Recurly net add-ons, with the app fallbacks counted',[/fees from Recurly/.test(t2),/Initiation Fees net add-ons · 2 from app/.test(t2)],[true,true]);
+  C2.setRO(Object.assign({},LIVE,{pilots:{error:'x'}}));
+  ck('  no total while the pilot side is missing',/Total Signed ARR/.test(text(C2._buildRevenueOutcomeCard(d0))),false);
+}
 { // Before the live numbers land: the cached /api/data figures; side 2 waits.
   const C=mkCtx();
   const d={signedChurnedByCloseCount:0,mrrArr:{
@@ -153,10 +164,16 @@ ck('the live fetch keeps the pilot side and re-renders through one function',
   vm.runInContext(src.slice(0,src.indexOf('\nexport default'))+'\nObject.assign(globalThis,{roPilotSql,roPilotOf});',W2);
   const wins={current:{from:'2026-11-01',to:'2026-11-12'},prior:null,priorMonth:{from:'2026-10-01',to:'2026-10-31'}};
   const pg=W2.roPilotSql(wins,true),sf=W2.roPilotSql(wins,false);
-  ck('pilot SQL: one column set per window present, Eastern fee-paid day',[/"current_n"/.test(pg),/"prior_n"/.test(pg),/"priorMonth_fee"/.test(pg),/AT TIME ZONE 'America\/New_York'\)::date BETWEEN '2026-11-01' AND '2026-11-12'/.test(pg)],[true,false,true,true]);
-  ck('  demo/test brands left out on both paths, distinct brands counted',[/brand_name !~\* '\(demo\|test\)'/.test(pg),/REGEXP_LIKE\(v\.BRAND_NAME/.test(sf),/count\(DISTINCT v\.health_brand_id\)/.test(pg)],[true,true,true]);
+  ck('pilot SQL: one row per pilot over the span of the windows, Eastern fee-paid day',[/"BID"/.test(pg),/"RA"/.test(pg),/AT TIME ZONE 'America\/New_York'\)::date BETWEEN '2026-10-01' AND '2026-11-12'/.test(pg),/BETWEEN '2026-10-01' AND '2026-11-12'/.test(sf)],[true,true,true,true]);
+  ck('  demo/test brands and rolled-over pilots left out on both paths',[/brand_name !~\* '\(demo\|test\)'/.test(pg),/REGEXP_LIKE\(v\.BRAND_NAME/.test(sf),/<> 'rolled_over'/.test(pg),/<> 'rolled_over'/.test(sf)],[true,true,true,true]);
+  ck('  post-pilot MRR is the BD Tracker Expected MRR (override, else price list; open pilots only)',[/COALESCE\(p\.next_price_override_in_cents, pp\.monthly_price_in_cents, 0\)/.test(pg),/pilot_prices pp ON pp\.package = p\.package AND pp\.tier = p\.starting_tier/.test(pg),/STG_PILOT_PRICES/.test(sf)],[true,true,true]);
   ck('  a window whose dates are not YYYY-MM-DD never reaches the SQL',W2.roPilotSql({current:{from:"2026-11-01' OR 1=1 --",to:'2026-11-12'}},true),null);
-  ck('the row maps to dollars per window',J(W2.roPilotOf({current_n:'3',current_fee:'150000',current_post:'90000'},{current:{},prior:null})),{current:{n:3,fees:1500,post:900},prior:null});
+  const rows=[{BID:1,DAY:'2026-11-03',FEE:'150000',POST:'90000',RA:'a1'},{BID:1,DAY:'2026-11-04',FEE:'0',POST:'10000',RA:'a1'},
+    {BID:2,DAY:'2026-11-10',FEE:'200000',POST:'50000',RA:''},{BID:3,DAY:'2026-10-20',FEE:'300000',POST:'0',RA:'a3'}];
+  ck('rows map to dollars per window, distinct brands, app fees without Recurly',J(W2.roPilotOf(rows,wins,null)),
+    {current:{n:2,fees:3500,post:1500,feesFallback:2},prior:null,priorMonth:{n:1,fees:3000,post:0,feesFallback:1}});
+  ck('  Recurly net add-ons replace the app fee per brand; a brand with none falls back',
+    J(W2.roPilotOf(rows,wins,(k,r)=>r.RA?1234.5:null).current),{n:2,fees:3234.5,post:1500,feesFallback:1});
 }
 
 // ── 3. Executive Dashboard: the Brand goal band is off, the Clinician one stays ─
