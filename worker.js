@@ -3882,7 +3882,8 @@ pl AS (
   SELECT s.HEALTH_BRAND_ID bid,
     LISTAGG(CONCAT_WS('|', ${_bdS('pi.ID')}, ${_bdS('pi.STATUS')}, ${_bdS(_bdEt('pi.DEPOSIT_PAID_AT'))}, ${_bdS('pi.DEPOSIT_TOTAL_IN_CENTS')},
       ${_bdS('pi.ROLLOVER_PRICE_IN_CENTS')}, ${_bdS('pi.NEXT_PRICE_OVERRIDE_IN_CENTS')}, IFF(pi.NEXT_PRICE_OVERRIDE_REPEATS, '1', '0'),
-      ${_bdS('pi.DEPOSIT_MONTH_DEFAULT_IN_CENTS')}, ${_bdS('pp.MONTHLY_PRICE_IN_CENTS')}, IFF(s.EXTERNAL_SUBSCRIPTION_ID IS NULL, '1', '0')), '~')
+      ${_bdS('pi.DEPOSIT_MONTH_DEFAULT_IN_CENTS')}, ${_bdS('pp.MONTHLY_PRICE_IN_CENTS')}, IFF(s.EXTERNAL_SUBSCRIPTION_ID IS NULL, '1', '0'),
+      ${_bdS(_bdEt('COALESCE(pi.ROLLED_OVER_AT, pi.OPTED_OUT_AT, pi.CANCELED_AT)'))}), '~')
       WITHIN GROUP (ORDER BY pi.CREATED_AT, pi.ID) PILOTS
   FROM STAGING.STG_PILOTS pi JOIN STAGING.STG_SUBSCRIPTIONS s ON s.ID = pi.SUBSCRIPTION_ID
   LEFT JOIN STAGING.STG_PILOT_PRICES pp ON pp.PACKAGE = pi.PACKAGE AND pp.TIER = pi.STARTING_TIER
@@ -3935,7 +3936,8 @@ pl AS (
   SELECT s.health_brand_id bid,
     string_agg(concat_ws('|', ${_pgS('pi.id')}, ${_pgS('pi.status')}, ${_pgS(_pgEt('pi.deposit_paid_at'))}, ${_pgS('pi.deposit_total_in_cents')},
       ${_pgS('pi.rollover_price_in_cents')}, ${_pgS('pi.next_price_override_in_cents')}, CASE WHEN pi.next_price_override_repeats THEN '1' ELSE '0' END,
-      ${_pgS('pi.deposit_month_default_in_cents')}, ${_pgS('pp.monthly_price_in_cents')}, CASE WHEN s.external_subscription_id IS NULL THEN '1' ELSE '0' END), '~'
+      ${_pgS('pi.deposit_month_default_in_cents')}, ${_pgS('pp.monthly_price_in_cents')}, CASE WHEN s.external_subscription_id IS NULL THEN '1' ELSE '0' END,
+      ${_pgS(_pgEt('COALESCE(pi.rolled_over_at, pi.opted_out_at, pi.canceled_at)'))}), '~'
       ORDER BY pi.created_at, pi.id) "PILOTS"
   FROM pilots pi JOIN subscriptions s ON s.id = pi.subscription_id
   LEFT JOIN pilot_prices pp ON pp.package = pi.package AND pp.tier = pi.starting_tier GROUP BY 1),
@@ -3974,6 +3976,9 @@ function bdAppParsePilots(s) {
     // Recurly subscription): what the Brand MRR report's "Expected MRR once
     // billing starts" and "Plan status" read.
     listPrice: _bdNum(f[8]), appOnly: f[9] === '1',
+    // When the pilot stopped being a pilot (rolled over, opted out or
+    // canceled), Eastern day; '' while it runs.
+    endedAt: f[10] || '',
   }));
 }
 // Term length a plan's NAME declares: "6-Month FrontrowMD Subscription",
@@ -4145,6 +4150,11 @@ function bdAppBrand(r, today) {
     pilotPlan: bdAppPilotPlan(subs, pilots),
     // An app sign-up waiting to activate (app-only, not a pilot): the Brand MRR
     // report's "Onboarding" status. The page's status pie reads it.
+    // Every pilot whose fee was paid: from the deposit to its end (rollover,
+    // opt-out, cancel; '' = running) at its post-pilot price (override, else
+    // the price list). Section 02's pilot layer (Alex, 2026-11-16).
+    pilotHist: pilots.filter(p => p.depositPaidAt).map(p => ({ from: p.depositPaidAt, to: p.endedAt || '',
+      price: Math.round(((p.override != null ? p.override : p.listPrice) || 0)) / 100, status: p.status })),
     onboarding: subs.some(x => x.status === 'pending_activation' && !x.extSubId && x.planKind !== 'pilot'),
     // Its "Expected MRR once billing starts", the report's way: each such
     // subscription's display price; a custom plan's is a term total, divided
@@ -4389,6 +4399,16 @@ function recurlyPlanMonths(plan) {
 const RECURLY_TRAFFIC_ADDON = 'web-traffic';
 const _rcIsTraffic = (l) => (l.origin === 'usage_add_on' || l.origin === 'add_on') ? l.add_on_code === RECURLY_TRAFFIC_ADDON
   : (l.origin === 'debit' && /^\s*web traffic/i.test(String(l.description || '')));
+// When a subscription billed: from its first bill (a trial's end, else its
+// activation) to its end (expires_at), and the day it paused if it is paused.
+// Eastern days; '' when unknown. A future subscription has not billed yet.
+function recurlySubWindow(sub) {
+  const day = (v) => (v ? etDayKeyOf(v) : '') || '';
+  const st = sub.state || '';
+  return { billFrom: st === 'future' ? '' : day(sub.trial_ends_at || sub.activated_at),
+    billTo: ['expired', 'failed', 'canceled'].includes(st) ? day(sub.expires_at) : '',
+    pausedAt: st === 'paused' ? day(sub.paused_at) : '' };
+}
 function recurlySubMrr(sub, plan, inv, nowIso) {
   const months = recurlyPlanMonths(plan);
   const planAmt = _rcMoney(sub.unit_amount) * (sub.quantity == null ? 1 : Number(sub.quantity) || 0);
@@ -4458,7 +4478,7 @@ async function fetchRecurlyBook(env) {
   subs.forEach(s => {
     const plan = s.plan ? planById[s.plan.id] : null;
     const inv = s.active_invoice_id ? invById[s.active_invoice_id] : null;
-    const m = recurlySubMrr(s, plan, inv, nowIso);
+ const m = Object.assign(recurlySubMrr(s, plan, inv, nowIso), recurlySubWindow(s));
     m.plan = (s.plan && (s.plan.name || s.plan.code)) || '';
     // The account's company name only (a brand name); never a person's name or email.
     m.account = (s.account && (s.account.company || s.account.code)) || '';
@@ -4509,7 +4529,8 @@ function recurlyAttach(brands, book) {
       // month and the earliest day one starts or resumes (R6, section 01).
       idlePrice: billing.length ? null : Math.round(found.filter(m => RECURLY_WILL_BILL.includes(m.basis)).reduce((t, m) => t + (m.price || 0), 0) * 100) / 100,
       starts: billing.length ? '' : (found.map(m => RECURLY_WILL_BILL.includes(m.basis) && m.starts).filter(Boolean).sort()[0] || ''),
-      subs: found.map(m => ({ id: m.id, state: m.state, mrr: m.mrr, basis: m.basis, plan: m.plan, price: m.price, planMo: m.planMo, traffic: m.traffic, starts: m.starts })) };
+      subs: found.map(m => ({ id: m.id, state: m.state, mrr: m.mrr, basis: m.basis, plan: m.plan, price: m.price, planMo: m.planMo, traffic: m.traffic, starts: m.starts,
+        billFrom: m.billFrom, billTo: m.billTo, pausedAt: m.pausedAt })) };
   });
   const un = Object.values(book.subs).filter(m => !used[m.id] && m.mrr > 0);
   return { count: un.length, mrr: Math.round(un.reduce((s, m) => s + m.mrr, 0) * 100) / 100,

@@ -614,11 +614,13 @@ function pageToggleTests(){
   const b=bd.indexOf("h+='</section>';",bd.indexOf("id=\"bd-sec-arr\""))+"h+='</section>';".length;
   const block=bd.slice(a,b);
   const T={console};vm.createContext(T);
-  vm.runInContext([fn(bd,'_bdMonthOfG'),fn(bd,'_bdMDY'),fn(bd,'_bdMonthEndMDY'),fn(bd,'_baPilotDealIds'),fn(bd,'_baIsTest'),fn(bd,'_bdChip'),
+  vm.runInContext([fn(bd,'_bdMonthOfG'),fn(bd,'_bdMDY'),fn(bd,'_bdMonthEndMDY'),fn(bd,'_baPilotDealIds'),fn(bd,'_baIsTest'),fn(bd,'_bdChip'),fn(bd,'_bdChips'),fn(bd,'_bdEsc'),fn(bd,'_baToday'),
+    fn(bd,'_bdS2Months'),fn(bd,'_bdRcBillsOn'),fn(bd,'_bdRcVal'),fn(bd,'_bdS2Billed'),fn(bd,'_bdS2Signed'),fn(bd,'_bdS2Week'),fn(bd,'_bdS2Weeks'),fn(bd,'_bdS2Chart'),
+    decl(bd,"var _bdS2Mode=",';'),decl(bd,"var BD_S2_FROM=",';'),
     decl(bd,'var BD_APP_TEST_BRANDS=',';'),decl(bd,"var _bdPilotMode=",';'),
     'function f$(v){return "$"+Math.round(v);}','function buildSVGChart(l,v){return "<svg data-n=\\""+v.length+"\\"></svg>";}',
     'var _bdChartMode="current";',
-    'function run(deals,app){var BD={app:app};var _ba=(app&&!app.error)?app:null;var _baSum=null;var _baSer={snap:{"2026-10":{b:9,a:9}}};'
+    'var BD={};function run(deals,app){BD={app:app};var _appLive=true;var _baBand=function(w){return "<band>"+w+"</band>";};var _ba=(app&&!app.error)?app:null;var _baSum=null;var _baSer={snap:{"2026-10":{b:9,a:9}}};'
       +'var closedWonDeals=deals.filter(function(dd){return dd.dealstage==="closedwon";});var h="";'
       +'var _baJ={byDeal:{}};if(_ba)deals.forEach(function(dd){_baJ.byDeal[dd.id]={brands:(_ba.map[dd.id]||[])};});'
       +block+'\nreturn {chartDeals:chartDeals.map(function(d){return d.id;}),snap:_snByMonth,app:_snByMonthApp,wk:_wkTotal,h:h,cur:_chartMonthMap};}'].join('\n'),T);
@@ -637,19 +639,35 @@ function pageToggleTests(){
   ck('  the HubSpot series is back: months by closedate, amount x 12',[ex.cur['2026-09'].added,ex.cur['2026-09'].addedMRR,ex.cur['2026-10'].added],[1,2000,1]);
   ck('  and its snapshot add-back skips the churned pilot too',ex.snap['2026-09'].b,1);
   ck('  ARR by Week follows the toggle',ex.wk,(2000+500)*12);
-  ck('  mini cards carry the original labels',/Current Month Signed Deals/.test(ex.h)&&/Last Month Signed Deals/.test(ex.h)&&!/New Brands/.test(ex.h),true);
-  ck('  the section says HubSpot',/<span class="bd-src">HubSpot<\/span>/.test(ex.h),true);
-  T._bdPilotMode='only';
-  const on=T.run(D,app);
-  ck('Pilots Only: just the pilot deals',on.chartDeals,['1']);
-  ck('  and the snapshot adds back the churned pilot while it was live',[on.snap['2026-09'].b,on.snap['2026-10'].b],[2,1]);
-  ck('  the toggle shows Pilots Only selected',/aria-checked="true"[^>]*>Pilots Only/.test(on.h),true);
-  T._bdPilotMode='exclude';
+  // Section 02 stacked (2026-11-16): one Billed / Signed toggle, Pilot on top, from 2026.
+  ck('section 02: one toggle, Billed Active Brands (default) / Signed Brands Snapshot; no Current/Snapshot or pilot toggles drawn',
+    [/aria-checked="true"[^>]*>Billed Active Brands/.test(ex.h),/Signed Brands Snapshot/.test(ex.h),/bdSetPilotMode|_bdChartMode=/.test(ex.h)],[true,true,false]);
+  ck('  Billed needs Recurly: without it a band says so instead of zeros',/Recurly unavailable/.test(ex.h),true);
+  T._bdS2Mode='signed';
+  const sg=T.run(D,app);
+  ck('  Signed draws stacked charts (base + pilot bands) with HubSpot, Recurly and app chips',[(sg.h.match(/class="bd-stk"/g)||[]).length,/bd-chip hubspot/.test(sg.h)],[3,true]);
+  T._bdS2Mode='billed';
   const none=T.run(D,null);
-  ck('no app data yet: every HubSpot deal, unfiltered, never blank',none.chartDeals,['1','2','3']);
-  ck('  with the small "pilot filter unavailable" note and an inert toggle',/pilot filter unavailable/.test(none.h)&&/still loading/.test(none.h)&&!/onclick="bdSetPilotMode/.test(none.h),true);
-  const err=T.run(D,{error:'Metabase 503'});
-  ck('app read failed: the same, saying it did not load',[err.chartDeals.length,/did not load/.test(err.h)],[3,true]);
+  ck('no app data yet: the section shows the loading band, never zeros',/<band>the section 02 charts<\/band>/.test(none.h),true);
+  const sm=T._bdS2Months('2026-03-17');
+  ck('months run from Jan 2026 to this month, which ends today',sm,[{k:'2026-01',end:'2026-01-31'},{k:'2026-02',end:'2026-02-28'},{k:'2026-03',end:'2026-03-17'}]);
+  const rcb=(id,subs,o)=>Object.assign({id,name:'B'+id,recurly:{mrr:1,subs}},o||{});
+  const bil=T._bdS2Billed([
+    rcb(1,[{billFrom:'2026-01-10',billTo:'',pausedAt:'',mrr:1000,price:900}]),
+    rcb(2,[{billFrom:'2026-02-05',billTo:'2026-03-01',pausedAt:'',mrr:0,price:500}]),
+    rcb(3,[{billFrom:'2026-03-20',billTo:'',pausedAt:'',mrr:2000,price:2000}],{pilotHist:[{from:'2026-01-15',to:'2026-03-20',price:1500}]}),
+    rcb(4,[],{pilotHist:[{from:'2026-02-10',to:'',price:3000}]}),
+    rcb(5,[{billFrom:'2026-01-02',billTo:'',pausedAt:'2026-02-15',mrr:0,price:700}]),
+    {id:6,name:'Vincent',recurly:{mrr:1,subs:[{billFrom:'2026-01-01',mrr:9999}]}}],sm.concat([{k:'2026-04',end:'2026-04-30'}]));
+  ck('Billed: base = brands billing at month-end (first bill on, not ended, not paused); pilots on top until they bill; test accounts out',
+    [bil.base,bil.pil,bil.baseA,bil.pilA],[[2,2,1,2],[1,2,2,1],[1700*12,1500*12,1000*12,3000*12],[1500*12,4500*12,4500*12,3000*12]]);
+  ck('  weekly: new billed ARR by first bill week, new pilots by deposit week',[bil.wk['2026-01-05'],bil.wk['2026-01-12'],bil.wk['2026-03-16']],[{b:1000*12,p:0},{b:0,p:1500*12},{b:2000*12,p:0}]);
+  const sgn=T._bdS2Signed([deal(11,{closedate:'2026-01-20T05:00:00Z',amount:800}),deal(12,{closedate:'2026-02-03T05:00:00Z',amount:900}),
+      deal(13,{brand_status:'Churned',dealstage:'3453925110',entered_closedwon:'2026-01-05T05:00:00Z',pausechurn_date:'2026-02-20T05:00:00Z',amount:400})],
+    {byDeal:{'11':{brands:[{id:'a',recurly:{subs:[{mrr:1200}]}}]},'12':{brands:[{id:'p',pilotPlan:{expected:2500}}]}}},{'12':true},sm);
+  ck('Signed: the snapshot split base / pilot, valued once per brand (Recurly, else post-pilot, else HubSpot)',[sgn.base,sgn.pil,sgn.baseA,sgn.pilA],[[2,1,1],[0,1,1],[(1200+400)*12,1200*12,1200*12],[0,2500*12,2500*12]]);
+  ck('the stacked chart draws two shaded bands, two lines and a hover per point',(()=>{const c=T._bdS2Chart({labels:['a','b'],base:[1,2],pil:[1,1],col:'#000',pcol:'#999',bLbl:'B',pLbl:'P'});
+    return [(c.match(/<path /g)||[]).length,(c.match(/<polyline /g)||[]).length,(c.match(/onmouseenter="bdStackTip/g)||[]).length];})(),[2,2,2]);
   // Reconciliation tab: a count on each nav anchor, and the freshness line.
   ck('each Reconciliation anchor has a count slot',[1,2,3,4,5,6].every(i=>new RegExp('bd-sec-rec'+i+"'\\)\">[^<]+<span class=\"bd-rec-n\" id=\"bd-rec-n"+i+'"></span></a>').test(bd)),true);
   ck('  filled as "(N)" from the six tables after each render, blank without app data',
