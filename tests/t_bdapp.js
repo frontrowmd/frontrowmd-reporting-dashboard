@@ -718,7 +718,14 @@ function pageToggleTests(){
     /var _post=_pp\?_pp\.expected:\(_ps\?_ps\.post:null\)/.test(bd)&&/_kp\('Initiation Fees',_rcOk\?f\$\(_pp\.net\):f\$\(_ps\.netFees\)/.test(bd),true);
   ck('Future ARR and MRR carry the lighter projection style',(bd.match(/_kt\('bd-dark bd-fut','Future (ARR|MRR)'/g)||[]).length,2);
   ck('Future ARR = Future MRR x 12, Future MRR = app MRR + the counted pilots’ post-pilot price',
-    /var _fut=_ps&&_post!=null\?_mrr\+_post\+_onb\.mrr:null;/.test(bd)&&/if\(x\.d==='Onboarding'&&b\.onboardingExpected\)/.test(bd)&&/_mrr=_r\?_r\.mrr:_s\.mrr/.test(bd)&&/_kt\('bd-dark bd-fut','Future ARR',_ps\?f\$\(_fut\*12\)/.test(bd),true);
+    /var _fut=_ps&&_post!=null\?_mrr\+_post\+_onb\.mrr:null;/.test(bd)&&/if\(x\.d==='Onboarding'\)\{_onb\.n\+\+;_onb\.mrr\+=b\.onboardingExpected\|\|0;\}/.test(bd)&&/_mrr=_r\?_r\.mrr:_s\.mrr/.test(bd)&&/_kt\('bd-dark bd-fut','Future ARR',_ps\?f\$\(_fut\*12\)/.test(bd),true);
+  // Onboarding counts every sign-up, $0 ones too, so Future MRR and section 02
+  // match the Billing Status card (Alex, 2026-11-17: 48, not 47).
+  ck('no onboarding count requires an expected MRR',/onboardingExpected&&/.test(bd),false);
+  ck('  section 02 history counts $0 sign-ups too',/var onb=bs\.filter\(function\(b\)\{return !b\.discardedAt&&b\.onboardingFrom&&_baStatusOf\(b\)\.d==='Onboarding';\}\);/.test(bd)&&/noa\+=b\.onboardingExpected\|\|0;non\+\+;/.test(bd),true);
+  // Section 02 mini cards spell out their total (Alex, 2026-11-17).
+  ck('mini cards show base + pilot + onb.',/var _s2Calc=function\(b,p,o,f\)\{return f\(b\)\+' '\+_bLbl\+' \+ '\+f\(p\)\+' pilot'\+\(_hasOnb\?' \+ '\+f\(o\)\+' onb\.':''\);\};/.test(bd),true);
+  ck('  all four mini cards use it',(bd.match(/_s2Mini\('(?:This|Last) Month',[^;]*?_s2Calc\(/g)||[]).length,4);
   await pilotTests();
   await appBookTests();
   await recurlyTests();

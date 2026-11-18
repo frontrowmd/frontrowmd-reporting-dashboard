@@ -1376,10 +1376,12 @@ function _bdS2Billed(brands,months){
   // (Status Not billing yet / Onboarding, as section 01's Future MRR counts
   // them), from their sign-up at their expected MRR. Only today's are known:
   // a sign-up that has since activated is in the base from then.
-  var onb=bs.filter(function(b){return !b.discardedAt&&b.onboardingExpected&&b.onboardingFrom&&_baStatusOf(b).d==='Onboarding';});
+  // Every Onboarding brand counts, $0 sign-ups too (Alex, 2026-11-17: the
+  // Billing Status card's 48 is right, not Future MRR's 47).
+  var onb=bs.filter(function(b){return !b.discardedAt&&b.onboardingFrom&&_baStatusOf(b).d==='Onboarding';});
   months.forEach(function(mo){
     var nb=0,na=0,np=0,npa=0,noa=0,non=0;
-    onb.forEach(function(b){if(b.onboardingFrom<=mo.end){noa+=b.onboardingExpected;non++;}});
+    onb.forEach(function(b){if(b.onboardingFrom<=mo.end){noa+=b.onboardingExpected||0;non++;}});
     bs.forEach(function(b){
       var subs=(b.recurly&&b.recurly.subs)||[],on=subs.filter(function(m){return _bdRcLiveOn(m,mo.end);});
       // Valued as section 01 does: a brand that bills counts only what it
@@ -2173,7 +2175,7 @@ function renderBD(){
     // waiting to activate, whose Status is Not billing yet / Onboarding.
     var _onb={n:0,mrr:0};
     _ba.brands.forEach(function(b){if(_baIsTest(b)||b.discardedAt)return;var x=_baStatusOf(b);
-      if(x.d==='Onboarding'&&b.onboardingExpected){_onb.n++;_onb.mrr+=b.onboardingExpected;}});
+      if(x.d==='Onboarding'){_onb.n++;_onb.mrr+=b.onboardingExpected||0;}});
     _onb.mrr=Math.round(_onb.mrr*100)/100;
     var _fut=_ps&&_post!=null?_mrr+_post+_onb.mrr:null;
     var _futSrc=_r?_chips(['recurly','app'],_appLive):'';
@@ -2407,12 +2409,16 @@ function renderBD(){
     var _hasOnb=!!_s2.onbA,_coa=_hasOnb?_s2v(_s2.onbA,_s2Last):0,_loa=_hasOnb?_s2v(_s2.onbA,_s2Last-1):0;
     // And Onboarding brands on the count (Alex, 2026-11-17), so both charts stack alike.
     var _con=_hasOnb?_s2v(_s2.onbN,_s2Last):0,_lon=_hasOnb?_s2v(_s2.onbN,_s2Last-1):0;
+    // Each mini card spells out its total (Alex, 2026-11-17): base + pilot
+    // (+ onboarding), every part named, so the parts visibly add to the number.
+    var _nf=function(v){return v.toLocaleString();};
+    var _s2Calc=function(b,p,o,f){return f(b)+' '+_bLbl+' + '+f(p)+' pilot'+(_hasOnb?' + '+f(o)+' onb.':'');};
     h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;min-width:0">';
     h+=_chartCard('Active Brands',(_cb+_cp+_con).toLocaleString()+' now',
-      _s2Mini('This Month',(_cb+_cp+_con).toLocaleString(),_cp+' pilot'+(_hasOnb?' \u00b7 '+_con+' onb.':''),'#3B82F6')+_s2Mini('Last Month',(_lb+_lp+_lon).toLocaleString(),_lp+' pilot'+(_hasOnb?' \u00b7 '+_lon+' onb.':''),null),
+      _s2Mini('This Month',(_cb+_cp+_con).toLocaleString(),_s2Calc(_cb,_cp,_con,_nf),'#3B82F6')+_s2Mini('Last Month',(_lb+_lp+_lon).toLocaleString(),_s2Calc(_lb,_lp,_lon,_nf),null),
       _bdS2Chart({labels:_s2L,tips:_s2Tip,base:_s2.base,pil:_s2.pil,onb:_hasOnb?_s2.onbN:null,col:'#3B82F6',pcol:'#7C93B8',ocol:'#D4A72C',bLbl:_bLbl+' brands',pLbl:'Pilot brands',oLbl:'Onboarding brands',aria:'Active brands by month, '+_bLbl.toLowerCase()+', pilot and onboarding'}));
     h+=_chartCard(_bLbl+' ARR',f$(_ca+_cpa+_coa)+' now'+(_hasOnb?' \u00b7 section 01\u2019s Future ARR':''),
-      _s2Mini('This Month',f$(_ca+_cpa+_coa),f$(_cpa)+' pilot'+(_hasOnb?' \u00b7 '+f$(_coa)+' onb.':''),'#16A34A')+_s2Mini('Last Month',f$(_la+_lpa+_loa),f$(_lpa)+' pilot'+(_hasOnb?' \u00b7 '+f$(_loa)+' onb.':''),null),
+      _s2Mini('This Month',f$(_ca+_cpa+_coa),_s2Calc(_ca,_cpa,_coa,f$),'#16A34A')+_s2Mini('Last Month',f$(_la+_lpa+_loa),_s2Calc(_la,_lpa,_loa,f$),null),
       _bdS2Chart({labels:_s2L,tips:_s2Tip,base:_s2.baseA,pil:_s2.pilA,onb:_hasOnb?_s2.onbA:null,col:'#16A34A',pcol:'#86C79A',ocol:'#D4A72C',money:true,
         bLbl:_bLbl+' ARR',pLbl:'Pilot ARR (post-pilot price)',oLbl:'Onboarding ARR (expected)',aria:'ARR by month, '+_bLbl.toLowerCase()+', pilot and onboarding'}));
     h+='</div>';
