@@ -95,6 +95,8 @@ ck('the goal dialog keeps the all-time ARR',ctx.BD._signedArr,goal);
 {const g=sgn(t);
  ck('October: the Signed Brands row appears, Revenue Outcome\'s total',[g['Signed Brands'],g['Signed MRR'],g['Signed ARR'],g['Initiation Fees'],g['Avg ACV']],['4','$7,500','$90,000','$4,800','$1,875']);
  ck('  brands = October non-pilot closed-won deals (Eastern close date), at deal amount; pilots at post-pilot MRR',/3 brands \+ 1 pilot/.test(g._seg)&&/\$4,500 signed \+ \$3,000 pilot/.test(g._seg),true);
+ ck('  every card prints its calculation',[/3 brands \+ 1 pilot = 4/,/\$7,500 \u00d7 12/,/\$4,500 signed \+ \$3,000 pilot/,/Net add-ons of 1 pilot/,/\$7,500 \u00f7 4/].map(r=>r.test(g._seg)),[true,true,true,true,true]);
+ ck('  in its own teal cards and panel',/class="bd-pil-grp bd-sgn-grp"/.test(g._seg)||/bd-sgn-grp/.test(t._sec),true);
  ck('  it sits after the pilot row',t._sec.indexOf('aria-label="Signed Brands"')>t._sec.indexOf('aria-label="Pilots"'),true);}
 ck('October: the Current MRR hover splits the cohort by Recurly state',/In this range: 3 brands billing in Recurly, 0 in a trial, starting later or paused, and 1 with no live Recurly subscription yet/.test(t._sec),true);
 

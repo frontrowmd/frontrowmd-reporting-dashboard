@@ -140,8 +140,18 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
 .bd-kpi-row.r6{margin-top:12px;gap:14px}
 /* The Signed Brands row (in a date range only): five small cards. */
 .bd-kpi-row.r6.r5{grid-template-columns:repeat(5,minmax(0,1fr))}
-.tile.bd-dark.bd-sm .tval{font-size:19px}
-.bd-sgn-grp::before{background:linear-gradient(180deg,rgba(23,44,69,.10),rgba(23,44,69,.04));border-color:rgba(23,44,69,.22)}
+/* Signed Brands row (Alex, 2026-11-19): its own deep-teal panel and cards so
+   it reads apart from the book above and the pilots. Vertical margins between
+   the two group panels COLLAPSE (max(12, 40) = 40, of which the panels' own
+   ::before overhang eats 41), so the panels touched; 68px leaves a clear gap. */
+.bd-pil-grp.bd-sgn-grp{margin-top:68px}
+.bd-pil-grp.bd-sgn-grp::before{background:linear-gradient(180deg,rgba(45,165,150,.16),rgba(45,165,150,.06));border-color:rgba(15,118,110,.32)}
+.bd-pil-grp.bd-sgn-grp .bd-pil-grp-h b{color:#0F5F58}
+.tile.bd-sgn{background:linear-gradient(135deg,#0B3A3E,#11605F);border:none;border-left:3px solid #5FC3B4;color:#fff;display:flex;flex-direction:column;justify-content:flex-start;box-shadow:0 2px 8px rgba(11,58,62,.18)}
+.tile.bd-sgn .tlbl{color:#9FE3D6}
+.tile.bd-sgn .tval{color:#fff;font-size:19px}
+.tile.bd-sgn .tdef{color:rgba(255,255,255,.6)}
+.tile.bd-sgn .bd-tsub{color:rgba(255,255,255,.88)}
 /* The pilot row is secondary to the book above it: smaller cards. */
 .bd-kpi-row.r6>.tile{padding:10px 12px;border-radius:10px}
 .bd-kpi-row.r6 .tlbl{font-size:9.5px}
@@ -2427,19 +2437,20 @@ function renderBD(){
       var _sgN=_sg.n+_sgP,_sgM=_sg.mrr+_sgPm;
       var _sgFee=_pp&&_pp.net!=null?_pp.net:(_ps?_ps.netFees:null);
       var _ks=function(lbl,val,sub,def,tip,src){
-        return '<div class="tile bd-dark bd-sm"'+(tip?' title="'+tip+'"':'')+'><div class="tlbl">'+lbl+'</div><div class="tval">'+val+'</div>'
+        return '<div class="tile bd-sgn"'+(tip?' title="'+tip+'"':'')+'><div class="tlbl">'+lbl+'</div><div class="tval">'+val+'</div>'
           +(sub?'<div class="bd-tsub">'+sub+'</div>':'')+'<div class="tdef">'+def+'</div>'+src+'</div>';
       };
       var _sgSrc=_chips(['hubspot','app'],_appLive),_brW=_sg.n===1?' brand':' brands',_plW=_sgP===1?' pilot':' pilots';
       h+='<div class="bd-pil-grp bd-sgn-grp" role="group" aria-label="Signed Brands"><div class="bd-pil-grp-h"><b>Signed Brands</b><span>\u00b7 signed in the range, brands + pilots \u00b7 the Brand Dashboard\u2019s Revenue Outcome total</span></div>';
       h+='<div class="bd-kpi-row r6 r5">';
-      h+=_ks('Signed Brands',_sgN.toLocaleString(),_sg.n+_brW+' + '+_sgP+_plW,'Brands + pilots signed in the range',
+      // Every card prints its calculation with the range's own numbers.
+      h+=_ks('Signed Brands',_sgN.toLocaleString(),_sg.n+_brW+' + '+_sgP+_plW+' = '+_sgN.toLocaleString(),'Non-pilot HubSpot deals + pilots with a fee paid',
         'Brands: closed-won HubSpot deals whose close date (Eastern) is in the range and that are not pilot deals (the brand has no paid, not rolled-over pilot), as Revenue Outcome counts them. Pilots: brands whose pilot fee was paid in the range.',_sgSrc);
-      h+=_ks('Signed ARR',f$(_sgM*12),'','Signed MRR \u00d7 12','',_sgSrc);
-      h+=_ks('Signed MRR',f$(_sgM),f$(_sg.mrr)+' signed + '+f$(_sgPm)+' pilot','Deal amounts + Post-Pilot MRR',
+      h+=_ks('Signed ARR',f$(_sgM*12),f$(_sgM)+' \u00d7 12','Signed MRR \u00d7 12','',_sgSrc);
+      h+=_ks('Signed MRR',f$(_sgM),f$(_sg.mrr)+' signed + '+f$(_sgPm)+' pilot','HubSpot deal amounts + Post-Pilot MRR',
         'Brands at their HubSpot deal amount ('+f$(_sg.mrr)+') + pilots at Post-Pilot MRR ('+f$(_sgPm)+': each pilot\u2019s expected MRR once billing starts). Revenue Outcome\u2019s Total MRR.',_sgSrc);
-      h+=_ks('Initiation Fees',_sgFee!=null?f$(_sgFee):'\u2014','','Pilots signed in the range','The same figure as the Initiation Fees pilot card above: net add-on revenue of the range\u2019s pilot brands. Left out of Signed MRR, as Revenue Outcome does.',_pp&&_pp.net!=null?_chips(['recurly','app'],_appLive):_chips(['app'],_appLive));
-      h+=_ks('Avg ACV',_sgN?f$(_sgM/_sgN):'\u2014','','Signed MRR \u00f7 Signed Brands','',_sgSrc);
+      h+=_ks('Initiation Fees',_sgFee!=null?f$(_sgFee):'\u2014',_sgFee!=null?'Net add-ons of '+_sgP+_plW+(_pp&&_pp.net!=null?'':' (app deposits; Recurly unavailable)'):'','Pilots signed in the range \u00b7 not in Signed MRR','The same figure as the Initiation Fees pilot card above: net add-on revenue of the range\u2019s pilot brands. Left out of Signed MRR, as Revenue Outcome does.',_pp&&_pp.net!=null?_chips(['recurly','app'],_appLive):_chips(['app'],_appLive));
+      h+=_ks('Avg ACV',_sgN?f$(_sgM/_sgN):'\u2014',_sgN?f$(_sgM)+' \u00f7 '+_sgN.toLocaleString():'','Signed MRR \u00f7 Signed Brands','',_sgSrc);
       h+='</div></div>';
     }
   }
