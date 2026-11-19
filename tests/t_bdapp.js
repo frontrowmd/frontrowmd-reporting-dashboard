@@ -268,7 +268,7 @@ ck('  and HubSpot MRR, App MRR and Recurly MRR sit side by side',/\['hsMrr','Hub
   const R6o=J(C._baRecon(r6od,r6o,C._baJoin(r6od,r6o),true)).t6;
   ck('R6: a start date already passed is flagged and sorted first',R6o.map(r=>[r.name,r.rcOverdue,r.rcState]),[['Stuck',true,'\u26a0 start date passed \u2014 check Recurly'],['Big',false,'starts later']]);
   ck('% Paused reads Recurly (brands once each), HubSpot only when Recurly is down',/var _k=_baRcClass|var k=_baRcClass\(b\);if\(!k\|\|k==='ended'\)return;_pzLive\+\+;/.test(bd)&&/_bdChips\(\['hubspot'\]\)/.test(bd),true);
-  ck('  the goal dialog takes section 01\u2019s ARR',/BD\._signedArr=_r\?_r\.arr:\(_baSum\?_baSum\.arr:null\);/.test(bd),true);
+  ck('  the goal dialog takes section 01\u2019s ALL-TIME ARR, whatever its date filter',/BD\._signedArr=_rAll\?_rAll\.arr:\(_baSum\?_baSum\.arr:null\);/.test(bd)&&/var _rAll=_ba\?_baSummaryRc\(_ba\.brands,_ba\.meta\):null;/.test(bd),true);
   ck('  the header says what it nets',/net \(HubSpot \\u2212 '\+\(_bdRecVs\|\|'app'\)\+' MRR\)/.test(bd)&&/_bdRecVs=_r5Rc\?'Recurly':'app';/.test(bd),true);
   ck('the freshness note says where Recurly MRR comes from, and when it is stale or down',/Recurly MRR is '\+\(_rcm\.stale\?/.test(bd)&&/'Recurly MRR is unavailable \('/.test(bd),true);
 }
@@ -623,7 +623,7 @@ function pageToggleTests(){
     'function f$(v){return "$"+Math.round(v);}','function buildSVGChart(l,v){return "<svg data-n=\\""+v.length+"\\"></svg>";}',
     'var _bdChartMode="current";',
     'function _bdStatusPie(){return "<div class=\\"bd-bs\\"></div>";}function _baStatusMix(){return {};}',
-    'var BD={};function run(deals,app){BD={app:app};var _appLive=true;var _baBand=function(w){return "<band>"+w+"</band>";};var _ba=(app&&!app.error)?app:null;var _baSum=null;var _baSer={snap:{"2026-10":{b:9,a:9}}};'
+    'var BD={};function run(deals,app){BD={app:app};var _appLive=true;var _baBand=function(w){return "<band>"+w+"</band>";};var _ba=(app&&!app.error)?app:null;var _baSum=null;var _rAll=null;var _s2Cur=null;var _baSer={snap:{"2026-10":{b:9,a:9}}};'
       +'var closedWonDeals=deals.filter(function(dd){return dd.dealstage==="closedwon";});var h="";'
       +'var _baJ={byDeal:{}};if(_ba)deals.forEach(function(dd){_baJ.byDeal[dd.id]={brands:(_ba.map[dd.id]||[])};});'
       +block+'\nreturn {chartDeals:chartDeals.map(function(d){return d.id;}),snap:_snByMonth,app:_snByMonthApp,wk:_wkTotal,h:h,cur:_chartMonthMap};}'].join('\n'),T);
@@ -673,7 +673,7 @@ function pageToggleTests(){
     rcb(32,[{billFrom:'2026-01-05',mrr:1000,basis:'invoice'}],{onboarding:true,onboardingFrom:'2026-01-01',onboardingExpected:500})],sm);
   ck('  Billed ARR stacks Onboarding (sign-ups waiting to activate) from sign-up at expected MRR; not when live in Recurly or deleted',ob2.onbA,[0,2000*12,2000*12]);
   ck('  Active Brands stacks the same Onboarding brands as a count',ob2.onbN,[0,1,1]);
-  ck('  this month in Billed mode is section 01\'s pilot and onboarding cards, not a recount',/_s2\.pil\[_pi\]=_postN\|\|0;_s2\.pilA\[_pi\]=_post\*12;/.test(bd)&&/_s2\.onbN\[_pi\]=_onb\.n;_s2\.onbA\[_pi\]=_onb\.mrr\*12;/.test(bd)&&/onb:_hasOnb\?_s2\.onbN:null/.test(bd),true);
+  ck('  this month in Billed mode is section 01\'s pilot and onboarding cards, not a recount',/_s2\.pil\[_pi\]=_s2Cur\.postN\|\|0;_s2\.pilA\[_pi\]=_s2Cur\.post\*12;/.test(bd)&&/_s2\.onbN\[_pi\]=_s2Cur\.onb\.n;_s2\.onbA\[_pi\]=_s2Cur\.onb\.mrr\*12;/.test(bd)&&/onb:_hasOnb\?_s2\.onbN:null/.test(bd),true);
   ck('  and its chart draws a third band',(T._bdS2Chart({labels:['a','b'],base:[1,2],pil:[1,1],onb:[1,1],col:'#000',pcol:'#999',ocol:'#d4a',bLbl:'B',pLbl:'P',oLbl:'O'}).match(/<path /g)||[]).length,3);
   ck('  each mode starts at its earliest month with data',[T._bdS2FromBilled([rcb(1,[{billFrom:'2025-09-03'}]),rcb(2,[],{pilotHist:[{from:'2025-11-01'}]})]),
     T._bdS2FromSigned([deal(1,{closedate:'2024-03-05T05:00:00Z'}),deal(2,{brand_status:'Churned',dealstage:'3453925110',entered_closedwon:'2023-07-01T05:00:00Z',pausechurn_date:'2024-01-10T05:00:00Z'})])],['2025-09','2023-07']);
@@ -718,7 +718,7 @@ function pageToggleTests(){
     /var _post=_pp\?_pp\.expected:\(_ps\?_ps\.post:null\)/.test(bd)&&/_kp\('Initiation Fees',_rcOk\?f\$\(_pp\.net\):f\$\(_ps\.netFees\)/.test(bd),true);
   ck('Future ARR and MRR carry the lighter projection style',(bd.match(/_kt\('bd-dark bd-fut','Future (ARR|MRR)'/g)||[]).length,2);
   ck('Future ARR = Future MRR x 12, Future MRR = app MRR + the counted pilots’ post-pilot price',
-    /var _fut=_ps&&_post!=null\?_mrr\+_post\+_onb\.mrr:null;/.test(bd)&&/if\(x\.d==='Onboarding'\)\{_onb\.n\+\+;_onb\.mrr\+=b\.onboardingExpected\|\|0;\}/.test(bd)&&/_mrr=_r\?_r\.mrr:_s\.mrr/.test(bd)&&/_kt\('bd-dark bd-fut','Future ARR',_ps\?f\$\(_fut\*12\)/.test(bd),true);
+    /var _fut=_ps&&_post!=null\?_mrr\+_post\+_onb\.mrr:null;/.test(bd)&&/if\(_baStatusOf\(b\)\.d==='Onboarding'\)\{o\.n\+\+;o\.mrr\+=b\.onboardingExpected\|\|0;\}/.test(bd)&&/_mrr=_r\?_r\.mrr:_s\.mrr/.test(bd)&&/_kt\('bd-dark bd-fut','Future ARR',_ps\?f\$\(_fut\*12\)/.test(bd),true);
   // Onboarding counts every sign-up, $0 ones too, so Future MRR and section 02
   // match the Billing Status card (Alex, 2026-11-17: 48, not 47).
   ck('no onboarding count requires an expected MRR',/onboardingExpected&&/.test(bd),false);

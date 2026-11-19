@@ -222,6 +222,17 @@ circle.bd-bs-sl{stroke-width:28}
 .bd-chip.sm{font-size:7.5px;padding:2px 5px 2px 4px}
 .bd-chip.sm::before{width:5px;height:5px}
 .bd-kpi-row.r6 .bd-chips{padding-top:5px}
+.bd-sum-bar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:-2px 0 14px}
+.bd-sum-lbl{font-family:var(--font-h);font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;margin-right:2px}
+.bd-sum-p{font-family:var(--font-b);font-size:11px;font-weight:600;padding:4px 12px;border-radius:99px;border:none;cursor:pointer;background:rgba(23,44,69,.06);color:var(--navy)}
+.bd-sum-p.on{background:var(--navy);color:#fff}
+.bd-sum-sep{width:1px;height:18px;background:var(--border);margin:0 3px}
+.bd-sum-bar input[type=date]{font-family:var(--font-b);font-size:11px;padding:4px 7px;border:1px solid var(--border);border-radius:6px;color:var(--navy);background:#fff}
+.bd-sum-bar input[type=date].on{border-color:var(--teal)}
+.bd-sum-go{font-family:var(--font-h);font-size:11px;font-weight:700;padding:5px 13px;border:none;border-radius:99px;background:var(--navy);color:#fff;cursor:pointer}
+.bd-sum-rs{font-family:var(--font-h);font-size:11px;font-weight:600;padding:5px 11px;border:1px solid var(--border);border-radius:99px;background:#fff;color:var(--navy);cursor:pointer}
+.bd-sum-rs:disabled{color:var(--grey);opacity:.5;cursor:default}
+.bd-sum-note{font-size:10.5px;color:var(--grey);flex-basis:100%}
 .bd-src{display:inline-block;font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:2px 8px;border-radius:50px;background:rgba(23,44,69,.07);color:var(--navy);margin-right:6px;vertical-align:1px}
 /* Reconciliation tables */
 .bd-rec{background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px 16px;overflow-x:auto}
@@ -561,6 +572,121 @@ function bdSetChurnRange(){
   _bdChurnFrom=f.value||''; _bdChurnTo=t.value||''; renderBD();
 }
 function bdClearChurnRange(){_bdChurnFrom='';_bdChurnTo='';renderBD();}
+// ── Section 01 date filter (Alex, 2026-11-19) ────────────────────────────────
+// A COHORT filter: every card in the All Time Summary keeps its definition and
+// is computed over the brands whose signing date (b.signDate = the app brand's
+// created_at, Eastern day; see the worker's bdAppBrand) falls in the range, as
+// they stand TODAY. "Last Month" = the brands signed last month: how many are
+// still active, their MRR now, how many are pilots. Reset = the all-time book,
+// exactly the unfiltered numbers. It touches section 01 only; the goal dialog
+// keeps reading the all-time ARR.
+var _bdSumFrom='',_bdSumTo='',_bdSumKey='';
+var BD_SUM_PRESETS=[['mtd','MTD'],['lastMonth','Last Month'],['thisQuarter','This Quarter'],['lastQuarter','Last Quarter'],['last7','Last 7 Days'],['last90','Last 90 Days']];
+// Today as an Eastern YYYY-MM-DD: every date boundary on the dashboard is the
+// portal's zone, and signDate is an Eastern day.
+function _bdEtToday(now){
+  var p={};new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'})
+    .formatToParts(now||new Date()).forEach(function(x){p[x.type]=x.value;});
+  return p.year+'-'+p.month+'-'+p.day;
+}
+// Calendar arithmetic on YYYY-MM-DD keys, in UTC so no local DST shifts a day.
+function _bdKeyOf(d){return d.toISOString().slice(0,10);}
+function _bdDayAdd(k,n){var p=k.split('-');return _bdKeyOf(new Date(Date.UTC(+p[0],+p[1]-1,+p[2]+n)));}
+function _bdMonthStart(y,m){return _bdKeyOf(new Date(Date.UTC(y,m,1)));}           // m 0-based, may overflow
+function _bdMonthEnd(y,m){return _bdKeyOf(new Date(Date.UTC(y,m+1,0)));}
+// {from,to} for a preset, inclusive, ending today for the running ones.
+function _bdSumPresetRange(key,today){
+  var p=today.split('-'),y=+p[0],m=+p[1]-1,q=Math.floor(m/3)*3;
+  switch(key){
+    case 'mtd':return {from:_bdMonthStart(y,m),to:today};
+    case 'lastMonth':return {from:_bdMonthStart(y,m-1),to:_bdMonthEnd(y,m-1)};
+    case 'thisQuarter':return {from:_bdMonthStart(y,q),to:today};
+    case 'lastQuarter':return {from:_bdMonthStart(y,q-3),to:_bdMonthEnd(y,q-1)};
+    case 'last7':return {from:_bdDayAdd(today,-6),to:today};
+    case 'last90':return {from:_bdDayAdd(today,-89),to:today};
+  }
+  return {from:'',to:''};
+}
+function bdSumPreset(key){var r=_bdSumPresetRange(key,_bdEtToday());_bdSumFrom=r.from;_bdSumTo=r.to;_bdSumKey=r.from?key:'';renderBD();}
+function bdSumApplyCustom(){
+  var f=document.getElementById('bd-sum-from'),t=document.getElementById('bd-sum-to');
+  var a=(f&&f.value)||'',b=(t&&t.value)||'';
+  if(a&&b&&b<a){alert('End date is before the start date.');return;}
+  _bdSumFrom=a;_bdSumTo=b;_bdSumKey=(a||b)?'custom':'';renderBD();
+}
+function bdSumReset(){_bdSumFrom='';_bdSumTo='';_bdSumKey='';renderBD();}
+function _bdSumRanged(){return !!(_bdSumFrom||_bdSumTo);}
+// In the cohort: a signing date inside the range. A brand with no date cannot
+// be placed, so it is out of every range (and in the all-time book).
+function _bdSumIn(b){
+  var d=String((b&&b.signDate)||'').slice(0,10);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d))return false;
+  return !(_bdSumFrom&&d<_bdSumFrom)&&!(_bdSumTo&&d>_bdSumTo);
+}
+// The pilot row's counts over a set of brands, one pilot per brand (b.pilot:
+// its current pilot, else its latest), with the Grafana board's rule of leaving
+// out names matching demo/test. pilot_progress holds one pilot per brand per
+// status (checked 2026-11-19), so over every brand this is the board's count.
+// netFees here is the gross deposit (no refunds per brand): only shown when
+// Recurly could not be read.
+var BD_PILOT_COUNTED=['deposit_paid','collecting_data','live'];
+// The Onboarding part of Future MRR over a set of brands: app sign-ups waiting
+// to activate (Status Not billing yet / Onboarding), at their expected MRR.
+function _bdOnbOf(brands){
+  var o={n:0,mrr:0};
+  brands.forEach(function(b){if(_baIsTest(b)||b.discardedAt)return;
+    if(_baStatusOf(b).d==='Onboarding'){o.n++;o.mrr+=b.onboardingExpected||0;}});
+  o.mrr=Math.round(o.mrr*100)/100;return o;
+}
+function _baPilotStatsOf(brands){
+  var s={source:'cohort',deposit_paid:0,collecting_data:0,live:0,awaiting:0,netFees:0,post:0};
+  brands.forEach(function(b){
+    var p=b.pilot;if(!p||/(demo|test)/i.test(String(b.name||'')))return;
+    if(p.status==='awaiting_submit')s.awaiting++;
+    else if(BD_PILOT_COUNTED.indexOf(p.status)>=0){s[p.status]++;s.post+=p.postPrice||0;}
+    if(p.depositPaidAt)s.netFees+=p.depositTotal||0;
+  });
+  s.waiting=s.deposit_paid+s.collecting_data;s.n=s.waiting+s.live;
+  s.post=Math.round(s.post*100)/100;s.netFees=Math.round(s.netFees*100)/100;
+  return s;
+}
+// The worker's bdPilotPlanStats, over a set of brands: brands whose plan status
+// is a pilot (no live Recurly subscription) → Expected MRR of those whose fee is
+// paid, and their net add-on revenue (b.pilotPlan.net, set by the worker when
+// Recurly was read). netParts is not per brand, so it is not rebuilt.
+var BD_PILOT_FEE_UNPAID='Pilot \u2013 fee not paid';
+function _baPilotPlanOf(brands,netOk){
+  var live=['active','canceled','future','paused'];
+  var pop=brands.filter(function(b){return b.pilotPlan&&!b.discardedAt
+    &&!(b.recurly&&(b.recurly.subs||[]).some(function(m){return live.indexOf(m.state)>=0;}));});
+  var by={},exp=0,expN=0,net=0;
+  pop.forEach(function(b){var pp=b.pilotPlan,x=by[pp.status]||(by[pp.status]={n:0,expected:0,expectedN:0,net:0});
+    x.n++;if(pp.expected!=null){x.expected+=pp.expected;x.expectedN++;}
+    if(pp.expected!=null&&pp.status!==BD_PILOT_FEE_UNPAID){exp+=pp.expected;expN++;}
+    if(pp.net!=null){x.net+=pp.net;net+=pp.net;}});
+  Object.keys(by).forEach(function(k){by[k].net=Math.round(by[k].net*100)/100;by[k].expected=Math.round(by[k].expected*100)/100;});
+  return {brands:pop.length,expected:Math.round(exp*100)/100,expectedBrands:expN,byStatus:by,net:netOk?Math.round(net*100)/100:null,cohort:true};
+}
+// The filter bar: presets, a custom range, Reset. Styled like the Churn tab's.
+function _bdSumBar(nIn,nAll){
+  var on=_bdSumRanged();
+  var pill=function(k,l){var a=_bdSumKey===k;
+    return '<button type="button" class="bd-sum-p'+(a?' on':'')+'" aria-pressed="'+a+'" onclick="bdSumPreset(\''+k+'\')">'+l+'</button>';};
+  var h='<div class="bd-sum-bar" role="group" aria-label="Signing date filter">'
+    +'<span class="bd-sum-lbl">Signed</span>'+BD_SUM_PRESETS.map(function(p){return pill(p[0],p[1]);}).join('')
+    +'<span class="bd-sum-sep"></span>'
+    +'<input type="date" id="bd-sum-from" aria-label="Signed from" value="'+_bdSumFrom+'"'+(_bdSumKey==='custom'&&_bdSumFrom?' class="on"':'')+'>'
+    +'<span style="color:var(--grey);font-size:11px">\u2192</span>'
+    +'<input type="date" id="bd-sum-to" aria-label="Signed to" value="'+_bdSumTo+'"'+(_bdSumKey==='custom'&&_bdSumTo?' class="on"':'')+'>'
+    +'<button type="button" class="bd-sum-go" onclick="bdSumApplyCustom()">Apply</button>'
+    +'<button type="button" class="bd-sum-rs"'+(on?'':' disabled')+' onclick="bdSumReset()">Reset</button>';
+  if(on){
+    var fmt=function(k){return k?_bdMDY(new Date(+k.slice(0,4),+k.slice(5,7)-1,+k.slice(8,10))):'';};
+    h+='<span class="bd-sum-note">Brands signed '+(_bdSumFrom&&_bdSumTo?fmt(_bdSumFrom)+' \u2013 '+fmt(_bdSumTo):_bdSumFrom?'on or after '+fmt(_bdSumFrom):'on or before '+fmt(_bdSumTo))
+      +' \u00b7 '+nIn.toLocaleString()+' of '+nAll.toLocaleString()+' brands, as they stand today</span>';
+  }else h+='<span class="bd-sum-note">All time \u00b7 pick a range to see only the brands signed in it</span>';
+  return h+'</div>';
+}
 function bdSetTab(t){
   if(_bdTab===t)return;
   _bdTab=t;
@@ -2129,9 +2255,20 @@ function renderBD(){
   // come back into this grid (two copies = the visible one never moves).
   h+='<section class="bd-sec" id="bd-sec-summary">';
   h+='<div class="bd-sec-head"><span class="bd-sec-n">01</span><span class="bd-sec-t">All Time Summary</span><span class="bd-sec-s"><span class="bd-src">App</span>Brands and MRR from the app ('+((_ba&&_ba.meta&&_ba.meta.live)?'live from the app database':'Metabase, refreshed nightly, so up to a day behind')+'); the pilot row matches the app’s Grafana Pilot Brands board, and each card says whether it is live. Pilots are counted on their own row, not in Active Brands or MRR. Not affected by the filters below.</span></div>';
+  // A running preset (MTD, Last 7 Days, ...) is re-anchored on today at every
+  // render, so a tab left open past midnight and refreshed in place does not
+  // keep yesterday's range under a highlighted "Last 7 Days".
+  if(_bdSumKey&&_bdSumKey!=='custom'){var _rr=_bdSumPresetRange(_bdSumKey,_bdEtToday());_bdSumFrom=_rr.from;_bdSumTo=_rr.to;}
+  var _sumOn=_bdSumRanged();
+  var _s2Cur=null;
+  // The cohort (all brands when no range is set): see _bdSumIn.
+  var _sb=_ba?(_sumOn?_ba.brands.filter(_bdSumIn):_ba.brands):null;
+  if(_ba)h+=_bdSumBar(_sb.filter(function(b){return !_baIsTest(b);}).length,_ba.brands.filter(function(b){return !_baIsTest(b);}).length);
+  // All-time Recurly book, for the goal dialog whatever the range.
+  var _rAll=_ba?_baSummaryRc(_ba.brands,_ba.meta):null;
   if(!_baSum){h+=_baBand('Active Brands, MRR and the pilot figures');}
   else{
-    var _s=_baSum,_p=_s.pilots;
+    var _s=_sumOn?_baSummary(_sb):_baSum,_p=_s.pilots;
     var _kt=function(cls,lbl,val,sub,def,tip,src){
       return '<div class="tile '+cls+'"'+(tip?' title="'+tip+'"':'')+'><div class="tlbl">'+lbl+'</div><div class="tval">'+val+'</div>'
         +(sub?'<div class="bd-tsub">'+sub+'</div>':'')+'<div class="tdef">'+def+'</div>'+(src||_chips(['app'],_appLive))+'</div>';
@@ -2140,11 +2277,11 @@ function renderBD(){
     // Row order set by Alex (2026-11-11): Active Brands, Current ARR, Current
     // MRR, Avg ACV, Future ARR, Future MRR. The first four come from Recurly
     // (Alex, 2026-11-16) whenever it was read; else the app, labelled so.
-    var _r=_baSummaryRc(_ba.brands,_ba.meta);
+    var _r=_sumOn?_baSummaryRc(_sb,_ba.meta):_rAll;
     var _rcSrc=_chips(['recurly']),_mrr=_r?_r.mrr:_s.mrr;
     if(_r){
       var _rcTip=(_r.stale?' Recurly could not be read just now: this is its last good read.':'')
-        +(_r.unmatched.count?' '+_r.unmatched.count+' billing Recurly subscriptions ('+f$(_r.unmatched.mrr)+'/mo) match no app brand and are not counted.':'');
+        +(!_sumOn&&_r.unmatched.count?' '+_r.unmatched.count+' billing Recurly subscriptions ('+f$(_r.unmatched.mrr)+'/mo) match no app brand and are not counted.':'');
       h+=_kt('bd-dark','Active Brands',_r.total.toLocaleString(),_r.billing+' billing · '+_r.trial+' trial · '+_r.starting+' starting · '+_r.paused+' paused',
         'Brands with a live Recurly subscription','App brands (internal test accounts left out) whose Recurly subscription bills, is in a trial, starts later or is paused. Pilots are not Recurly subscriptions until they roll over, so they are not counted.'
           +(_r.canceling?' '+_r.canceling+' billing brands have canceled and bill until their period ends.':'')+_rcTip,_rcSrc);
@@ -2165,18 +2302,25 @@ function renderBD(){
     // Grafana "Pilot Brands" definitions (worker fetchBdPilotStats), live when
     // the worker has a Grafana token, else last night's Metabase copy.
     var _ps=(_ba.pilotStats&&!_ba.pilotStats.error&&_ba.pilotStats.n!=null)?_ba.pilotStats:null;
+    // In a range the pilot counts are rebuilt per brand over the cohort. They
+    // come from the BRAND BOOK's rows, which is fetched (and may fall back to
+    // the nightly copy) on its own, so the chip follows the book, not the board.
+    var _psAllT=_ps;
+    if(_ps&&_sumOn)_ps=Object.assign(_baPilotStatsOf(_sb),{source:_appLive?'live':'nightly'});
     // Initiation Fees and Post-Pilot MRR (Alex, 2026-11-16) follow the Brand MRR
     // report: over brands whose Plan status is a pilot (fee not paid, collecting
     // data, live, ended), Net add-on revenue (Recurly, live) and Expected MRR
     // once billing starts (app pilot price). Worker bdPilotPlanStats.
     var _pp=(_ba.meta&&_ba.meta.pilotPlan&&!_ba.meta.pilotPlan.error)?_ba.meta.pilotPlan:null;
+    // Section 02's current month reads section 01's pilot and onboarding totals
+    // (below), and section 02 is NOT filtered: keep the all-time ones for it.
+    var _ppAllT=_pp;
+    _s2Cur={post:_ppAllT?_ppAllT.expected:(_psAllT?_psAllT.post:null),postN:_ppAllT?_ppAllT.expectedBrands:(_psAllT?_psAllT.n:0),onb:_bdOnbOf(_ba.brands)};
+    if(_pp&&_sumOn)_pp=_baPilotPlanOf(_sb,_pp.net!=null);
     var _post=_pp?_pp.expected:(_ps?_ps.post:null),_postN=_pp?_pp.expectedBrands:(_ps?_ps.n:0);
     // Plus the Onboarding part of Expected MRR (Alex, 2026-11-16): app sign-ups
     // waiting to activate, whose Status is Not billing yet / Onboarding.
-    var _onb={n:0,mrr:0};
-    _ba.brands.forEach(function(b){if(_baIsTest(b)||b.discardedAt)return;var x=_baStatusOf(b);
-      if(x.d==='Onboarding'){_onb.n++;_onb.mrr+=b.onboardingExpected||0;}});
-    _onb.mrr=Math.round(_onb.mrr*100)/100;
+    var _onb=_bdOnbOf(_sb);
     var _fut=_ps&&_post!=null?_mrr+_post+_onb.mrr:null;
     var _futSrc=_r?_chips(['recurly','app'],_appLive):'';
     h+=_kt('bd-dark bd-fut','Future ARR',_ps?f$(_fut*12):'\u2014','','Future MRR × 12','Future MRR × 12: the book if every paid pilot rolls over at its post-pilot price and every onboarding sign-up starts billing.',_futSrc);
@@ -2211,9 +2355,10 @@ function renderBD(){
       h+=_kp('Pilot Live',_ps.live.toLocaleString(),'','Pilots running now','Pilot status live: the pilot period has started.');
       // Same basis as Avg ACV above (a monthly figure per brand), over the pilots.
       h+=_kp('Pilot Avg ACV',_postN?f$(_post/_postN):'\u2014','','Post-Pilot MRR ÷ its '+_postN+' pilots','What an average pilot brand bills monthly once billing starts: Post-Pilot MRR divided by the '+_postN+' pilots it counts.',_pp?_ppSrc(false):'');
-      h+=_kp('Initiation Fees',_rcOk?f$(_pp.net):f$(_ps.netFees),_rcOk?'':'Recurly unavailable \u00b7 app pilot fees shown',
+      h+=_kp('Initiation Fees',_rcOk?f$(_pp.net):f$(_ps.netFees),_rcOk?'':(_sumOn?'Recurly unavailable \u00b7 gross pilot deposits shown':'Recurly unavailable \u00b7 app pilot fees shown'),
         _rcOk?'Net add-on revenue, brands on a pilot plan':'Net of refunds, incl. activation & analysis',
-        _rcOk?'Net add-on revenue (Brand MRR report definition) of the '+_pp.brands+' brands whose plan status is a pilot: every Recurly charge that is not the plan or web traffic, after discounts, before tax, less refunds and credits on them. Pilot initiation fees '+f$(_pp.netParts.pilotFee)+', clinician analyses '+f$(_pp.netParts.analyses)+', clinician reviews '+f$(_pp.netParts.reviews)+', ClinicianAI '+f$(_pp.netParts.clinicianAi)+', other '+f$(_pp.netParts.other)+', refunds '+f$(_pp.netParts.refunds)+'. By status \u2014 '+_ppBy('net')+(_pp.accountsFailed?' \u00b7 '+_pp.accountsFailed+' Recurly accounts could not be read':'')
+        _rcOk&&_pp.cohort?'Net add-on revenue (Brand MRR report definition) of the '+_pp.brands+' brands in this range whose plan status is a pilot: every Recurly charge that is not the plan or web traffic, after discounts, before tax, less refunds and credits on them. By status \u2014 '+_ppBy('net')
+          :_rcOk?'Net add-on revenue (Brand MRR report definition) of the '+_pp.brands+' brands whose plan status is a pilot: every Recurly charge that is not the plan or web traffic, after discounts, before tax, less refunds and credits on them. Pilot initiation fees '+f$(_pp.netParts.pilotFee)+', clinician analyses '+f$(_pp.netParts.analyses)+', clinician reviews '+f$(_pp.netParts.reviews)+', ClinicianAI '+f$(_pp.netParts.clinicianAi)+', other '+f$(_pp.netParts.other)+', refunds '+f$(_pp.netParts.refunds)+'. By status \u2014 '+_ppBy('net')+(_pp.accountsFailed?' \u00b7 '+_pp.accountsFailed+' Recurly accounts could not be read':'')
           :'Every pilot fee paid (any status, canceled ones included), less refunds: the app’s “Pilot fees (net)”. Recurly could not be read'+(_pp&&_pp.netError?' ('+_bdEsc(_pp.netError)+')':'')+'.',
         _rcOk?_ppSrc(true):_psSrc);
       h+=_kp('Post-Pilot MRR',_post!=null?f$(_post):'\u2014','','Expected MRR once billing starts, '+_postN+' pilots',
@@ -2225,7 +2370,7 @@ function renderBD(){
   h+='</section>';
   // Kept for the goal dialog: it reads Signed ARR, which is now the app's.
   // The goal dialog's current ARR: section 01's (Recurly when it was read).
-  BD._signedArr=_r?_r.arr:(_baSum?_baSum.arr:null);
+  BD._signedArr=_rAll?_rAll.arr:(_baSum?_baSum.arr:null);
   // The APP snapshot book (_baSeries): the opening book C1 and C2 divide by.
   // Section 02 went back to HubSpot (below), so this is kept under its own
   // name and never mixed with the HubSpot series the charts draw.
@@ -2369,10 +2514,11 @@ function renderBD(){
   // This month is section 01's own cards (Alex, 2026-11-17), not a recount:
   // pilots = Post-Pilot MRR's brands at its total, onboarding = Future MRR's
   // onboarding part. The month-ends before stay the per-brand history.
-  if(_s2&&_s2Billed&&_s2M.length&&typeof _post!=='undefined'){
+  // The ALL-TIME figures (_s2Cur), whatever section 01's date filter shows.
+  if(_s2&&_s2Billed&&_s2M.length&&_s2Cur){
     var _pi=_s2M.length-1;
-    if(_post!=null){_s2.pil[_pi]=_postN||0;_s2.pilA[_pi]=_post*12;}
-    if(_onb){_s2.onbN[_pi]=_onb.n;_s2.onbA[_pi]=_onb.mrr*12;}
+    if(_s2Cur.post!=null){_s2.pil[_pi]=_s2Cur.postN||0;_s2.pilA[_pi]=_s2Cur.post*12;}
+    if(_s2Cur.onb){_s2.onbN[_pi]=_s2Cur.onb.n;_s2.onbA[_pi]=_s2Cur.onb.mrr*12;}
   }
   var _s2L=_s2M.map(function(m){return mN[+m.k.slice(5,7)-1]+' '+m.k.slice(2,4);});
   var _s2Tip=_s2M.map(function(m){return (m.end===_s2Today?'Today, ':'Month ending ')+_bdMDY(new Date(+m.end.slice(0,4),+m.end.slice(5,7)-1,+m.end.slice(8,10)));});
