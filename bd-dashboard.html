@@ -574,9 +574,10 @@ function bdSetChurnRange(){
 function bdClearChurnRange(){_bdChurnFrom='';_bdChurnTo='';renderBD();}
 // ── Section 01 date filter (Alex, 2026-11-19) ────────────────────────────────
 // A COHORT filter: every card in the All Time Summary keeps its definition and
-// is computed over the brands whose signing date (b.signDate = the app brand's
-// created_at, Eastern day; see the worker's bdAppBrand) falls in the range, as
-// they stand TODAY. "Last Month" = the brands signed last month: how many are
+// is computed over the brands that SIGNED in the range, as they stand TODAY.
+// Signed = the Brand Dashboard's Revenue Outcome rule (Alex, 2026-11-19, after
+// the first cut used the app's created_at and disagreed with it: 90 vs 73 for
+// November): see _bdSignDays. "Last Month" = the brands signed last month: how many are
 // still active, their MRR now, how many are pilots. Reset = the all-time book,
 // exactly the unfiltered numbers. It touches section 01 only; the goal dialog
 // keeps reading the all-time ARR.
@@ -616,12 +617,37 @@ function bdSumApplyCustom(){
 }
 function bdSumReset(){_bdSumFrom='';_bdSumTo='';_bdSumKey='';renderBD();}
 function _bdSumRanged(){return !!(_bdSumFrom||_bdSumTo);}
-// In the cohort: a signing date inside the range. A brand with no date cannot
-// be placed, so it is out of every range (and in the all-time book).
-function _bdSumIn(b){
-  var d=String((b&&b.signDate)||'').slice(0,10);
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(d))return false;
-  return !(_bdSumFrom&&d<_bdSumFrom)&&!(_bdSumTo&&d>_bdSumTo);
+// An ISO timestamp (HubSpot closedate) as its Eastern day; a bare day as is.
+function _bdEtDayOf(v){
+  var s=String(v||'');if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s;
+  var d=new Date(s);return isNaN(d.getTime())?'':_bdEtToday(d);
+}
+// When a brand signed, the way Revenue Outcome counts it ({days, how}):
+//  * a PILOT brand (b.pilotPaid: a pilot whose fee was paid and that has not
+//    rolled over -- markAppPilots's rule) signed when each such fee was paid
+//    (Revenue Outcome's pilot side: fee paid in the window);
+//  * any other brand signed on the Eastern close date of each of its CLOSED-WON
+//    HubSpot deals (Revenue Outcome's brand side; a rolled-over pilot's brand
+//    is a paying brand and lands here);
+//  * an app-only sign-up (no HubSpot deal, no pilot at all) on the day its app
+//    row was created, the only date it has;
+//  * a brand whose only pilot is unpaid, and no deal, has not signed: no days.
+// A brand is in a range when ANY of its days is.
+function _bdSignDays(b,bdeals){
+  var d=function(x){return /^\d{4}-\d{2}-\d{2}$/.test(x||'')?x:'';};
+  if(b.pilotPaid)return {how:'pilot',days:(b.pilotHist||[]).filter(function(p){return p.status!=='rolled_over';})
+    .map(function(p){return d(String(p.from||'').slice(0,10));}).filter(Boolean)};
+  var hs=(bdeals||[]).filter(function(x){return x.dealstage==='closedwon'&&x.closedate;})
+    .map(function(x){return _bdEtDayOf(x.closedate);}).filter(Boolean);
+  if(hs.length)return {how:'hubspot',days:hs};
+  if(!(bdeals||[]).length&&!b.pilot){var c=d(String(b.signDate||'').slice(0,10));if(c)return {how:'app',days:[c]};}
+  return {how:'',days:[]};
+}
+function _bdSumDayIn(x){return !(_bdSumFrom&&x<_bdSumFrom)&&!(_bdSumTo&&x>_bdSumTo);}
+// In the cohort: any signing day inside the range. join = _baJoin's result.
+function _bdSumIn(b,join){
+  var sd=_bdSignDays(b,join&&join.byBrand?join.byBrand[b.id]:null);
+  return sd.days.some(_bdSumDayIn)?sd.how:'';
 }
 // The pilot row's counts over a set of brands, one pilot per brand (b.pilot:
 // its current pilot, else its latest), with the Grafana board's rule of leaving
@@ -668,7 +694,7 @@ function _baPilotPlanOf(brands,netOk){
   return {brands:pop.length,expected:Math.round(exp*100)/100,expectedBrands:expN,byStatus:by,net:netOk?Math.round(net*100)/100:null,cohort:true};
 }
 // The filter bar: presets, a custom range, Reset. Styled like the Churn tab's.
-function _bdSumBar(nIn,nAll){
+function _bdSumBar(nIn,nAll,how){
   var on=_bdSumRanged();
   var pill=function(k,l){var a=_bdSumKey===k;
     return '<button type="button" class="bd-sum-p'+(a?' on':'')+'" aria-pressed="'+a+'" onclick="bdSumPreset(\''+k+'\')">'+l+'</button>';};
@@ -683,7 +709,9 @@ function _bdSumBar(nIn,nAll){
   if(on){
     var fmt=function(k){return k?_bdMDY(new Date(+k.slice(0,4),+k.slice(5,7)-1,+k.slice(8,10))):'';};
     h+='<span class="bd-sum-note">Brands signed '+(_bdSumFrom&&_bdSumTo?fmt(_bdSumFrom)+' \u2013 '+fmt(_bdSumTo):_bdSumFrom?'on or after '+fmt(_bdSumFrom):'on or before '+fmt(_bdSumTo))
-      +' \u00b7 '+nIn.toLocaleString()+' of '+nAll.toLocaleString()+' brands, as they stand today</span>';
+      +' \u00b7 '+nIn.toLocaleString()+' brands, as they stand today'
+      +(how?' ('+how.hubspot+' by HubSpot close date, '+how.pilot+' pilots by fee paid'+(how.app?', '+how.app+' app-only sign-ups by app date':'')+')':'')
+      +' \u00b7 the Brand Dashboard\u2019s Revenue Outcome rule</span>';
   }else h+='<span class="bd-sum-note">All time \u00b7 pick a range to see only the brands signed in it</span>';
   return h+'</div>';
 }
@@ -2262,8 +2290,9 @@ function renderBD(){
   var _sumOn=_bdSumRanged();
   var _s2Cur=null;
   // The cohort (all brands when no range is set): see _bdSumIn.
-  var _sb=_ba?(_sumOn?_ba.brands.filter(_bdSumIn):_ba.brands):null;
-  if(_ba)h+=_bdSumBar(_sb.filter(function(b){return !_baIsTest(b);}).length,_ba.brands.filter(function(b){return !_baIsTest(b);}).length);
+  var _sbHow={hubspot:0,pilot:0,app:0};
+  var _sb=_ba?(_sumOn?_ba.brands.filter(function(b){if(_baIsTest(b))return false;var k=_bdSumIn(b,_baJ);if(k)_sbHow[k]++;return !!k;}):_ba.brands):null;
+  if(_ba)h+=_bdSumBar(_sb.filter(function(b){return !_baIsTest(b);}).length,_ba.brands.filter(function(b){return !_baIsTest(b);}).length,_sbHow);
   // All-time Recurly book, for the goal dialog whatever the range.
   var _rAll=_ba?_baSummaryRc(_ba.brands,_ba.meta):null;
   if(!_baSum){h+=_baBand('Active Brands, MRR and the pilot figures');}

@@ -30,24 +30,40 @@ ck('March 31 → Last Month is all of February',R('lastMonth','2028-03-31'),['20
 ck('DST week: Last 7 Days stays 7 days',R('last7','2026-11-03'),['2026-10-28','2026-11-03']);
 ck('Eastern today: 03:00 UTC is still yesterday in New York',ctx._bdEtToday(new Date('2026-11-20T03:00:00Z')),'2026-11-19');
 
-// ── The cohort rule ────────────────────────────────────────────────────────
+// ── The cohort rule: Revenue Outcome's signing dates (2026-11-19) ─────────
 ctx._bdSumFrom='2026-10-01';ctx._bdSumTo='2026-10-31';
-ck('a brand signed inside is in',ctx._bdSumIn({signDate:'2026-10-31'}),true);
-ck('the day after is out',ctx._bdSumIn({signDate:'2026-11-01'}),false);
-ck('no signing date is out of every range',ctx._bdSumIn({signDate:''}),false);
+const D=(dealstage,closedate)=>({dealstage,closedate});
+const sd=(b,deals)=>{const r=ctx._bdSignDays(b,deals);return [r.how,r.days];};
+ck('a paying brand signs on its closed-won deal\'s close date, not its app date',sd({signDate:'2025-03-02'},[D('closedwon','2026-10-10T16:00:00Z')]),['hubspot',['2026-10-10']]);
+ck('  read as an Eastern day (9pm ET on Oct 31 is Oct 31)',sd({signDate:'2026-10-15'},[D('closedwon','2026-11-01T01:00:00Z')]),['hubspot',['2026-10-31']]);
+ck('  a churned-stage deal is not a signing (Revenue Outcome counts closed-won)',sd({signDate:'2026-10-15'},[D('3453925110','2026-10-10T16:00:00Z')]),['',[]]);
+ck('a pilot brand signs when its fee was paid, not when its deal closed',sd({pilotPaid:true,pilotHist:[{from:'2026-10-20',status:'live'}]},[D('closedwon','2026-11-05T16:00:00Z')]),['pilot',['2026-10-20']]);
+ck('  a rolled-over pilot is a paying brand: its deal date counts',sd({pilotPaid:false,pilot:{status:'rolled_over'},pilotHist:[{from:'2026-06-01',status:'rolled_over'}]},[D('closedwon','2026-10-12T16:00:00Z')]),['hubspot',['2026-10-12']]);
+ck('an app-only sign-up (no deal, no pilot) falls back to its app date',sd({signDate:'2026-10-03',pilot:null},[]),['app',['2026-10-03']]);
+ck('an unpaid pilot sign-up with no deal has not signed',sd({signDate:'2026-10-25',pilot:{status:'awaiting_submit'},pilotPaid:false},[]),['',[]]);
+ck('a brand with a deal that is not closed-won has not signed (no app-date fallback)',sd({signDate:'2026-10-03',pilot:null},[D('appointmentscheduled','')]),['',[]]);
+ck('in the range when ANY signing day is',ctx._bdSumIn({pilotPaid:true,pilotHist:[{from:'2025-01-01',status:'opted_out'},{from:'2026-10-02',status:'live'}]},null),'pilot');
+ck('  out when none is',ctx._bdSumIn({pilotPaid:true,pilotHist:[{from:'2026-11-02',status:'live'}]},null),'');
 ctx._bdSumFrom='';ctx._bdSumTo='';
 
 // ── Section 01, rendered ───────────────────────────────────────────────────
-const B=(name,sign,mrr,extra)=>Object.assign({id:name,name,signDate:sign,createdAt:sign,state:'active',active:true,monthly:mrr,discardedAt:'',
-  recurly:{mrr,subs:[{state:'active',basis:'invoice',mrr}],idlePrice:0},pilot:null,pilotPlan:null,onboarding:false,onboardingExpected:0,subHist:[],pilotHist:[],hsDeals:[]},extra||{});
-const PL=(name,sign,status,label,post,net)=>B(name,sign,0,{state:'pilot',active:false,recurly:{mrr:null},
-  pilot:{status,postPrice:post,depositPaidAt:status==='awaiting_submit'?'':sign,depositTotal:5000},pilotPlan:{status:label,expected:post,net}});
-const brands=[B('Old Co','2025-03-02',1000),B('Oct Co','2026-10-15',2000),B('Nov Co','2026-11-10',500),
-  B('Onb Oct','2026-10-03',0,{state:'pending',active:false,recurly:{mrr:null},onboarding:true,onboardingExpected:700}),
-  PL('Pilot Oct','2026-10-20','live','Pilot – live',3000,4800),
-  PL('Pilot Old','2025-01-05','collecting_data','Pilot – collecting data',1000,5000),
-  PL('Pilot Wait Oct','2026-10-25','awaiting_submit','Pilot – fee not paid',900,0)];
-ctx.BD.data={deals:[],ownerMap:{},meta:{generatedAt:new Date().toISOString()}};
+const B=(name,sign,mrr,extra)=>Object.assign({id:name,name,signDate:sign,createdAt:sign,state:'active',active:true,monthly:mrr,discardedAt:'',hubspotCompanyId:'',
+  recurly:{mrr,subs:[{state:'active',basis:'invoice',mrr}],idlePrice:0},pilot:null,pilotPlan:null,pilotPaid:false,onboarding:false,onboardingExpected:0,subHist:[],pilotHist:[],hsDeals:[]},extra||{});
+const PL=(name,sign,status,label,post,net,paid,extra)=>B(name,sign,0,Object.assign({state:'pilot',active:false,recurly:{mrr:null},pilotPaid:!!paid,
+  pilotHist:paid?[{from:paid,status}]:[],
+  pilot:{status,postPrice:post,depositPaidAt:paid||'',depositTotal:5000},pilotPlan:{status:label,expected:post,net}},extra||{}));
+const brands=[
+  B('Old Co','2025-03-02',1000,{hubspotCompanyId:'tc1'}),          // app row 2025, HubSpot signed Oct 10
+  B('Oct Co','2026-10-15',2000,{hubspotCompanyId:'tc2'}),          // closed 9pm ET Oct 31
+  B('Nov Co','2026-10-28',500,{hubspotCompanyId:'tc3'}),           // app row Oct, HubSpot signed Nov 10
+  B('Rolled','2026-05-01',1500,{hubspotCompanyId:'tc4',pilot:{status:'rolled_over'},pilotHist:[{from:'2026-06-01',status:'rolled_over'}]}),
+  B('Onb Oct','2026-10-03',0,{state:'pending',active:false,recurly:{mrr:null},onboarding:true,onboardingExpected:700}),   // app-only
+  PL('Pilot Oct','2026-09-01','live','Pilot \u2013 live',3000,4800,'2026-10-20',{hubspotCompanyId:'tc5'}),   // fee Oct, deal Nov
+  PL('Pilot Old','2025-01-05','collecting_data','Pilot \u2013 collecting data',1000,5000,'2025-01-06'),
+  PL('Pilot Wait Oct','2026-10-25','awaiting_submit','Pilot \u2013 fee not paid',900,0,'')];
+const deal=(id,co,closedate)=>({id,dealname:'deal '+id,companyId:co,companyName:'',dealstage:'closedwon',closedate,brand_status:'Signed',amount:0});
+ctx.BD.data={deals:[deal('d1','tc1','2026-10-10T16:00:00Z'),deal('d2','tc2','2026-11-01T01:00:00Z'),deal('d3','tc3','2026-11-10T16:00:00Z'),
+  deal('d4','tc4','2026-10-12T16:00:00Z'),deal('d5','tc5','2026-11-05T16:00:00Z')],ownerMap:{},meta:{generatedAt:new Date().toISOString()}};
 ctx.BD.app={brands,pilotStats:{source:'live',deposit_paid:0,collecting_data:1,live:1,waiting:1,n:2,awaiting:1,netFees:10000,post:4000},
   meta:{live:true,recurly:{ok:true,unmatched:{count:2,mrr:300}},pilotPlan:{brands:3,expected:4000,expectedBrands:2,byStatus:{},net:9800,
     netParts:{pilotFee:9800,reviews:0,analyses:0,clinicianAi:0,other:0,refunds:0}}}};
@@ -55,27 +71,32 @@ const tiles=()=>{const h=els['bd-content'].innerHTML,i=h.indexOf('id="bd-sec-sum
   const o={};for(const m of sec.matchAll(/<div class="tlbl">([^<]+)<\/div><div class="tval">([^<]+)</g))o[m[1]]=m[2];o._sec=sec;return o;};
 const render=()=>{try{ctx.renderBD();}catch(e){/* later sections need more stub data; section 01 is written first */}return tiles();};
 let t=render();
-ck('all time: the server totals are shown untouched',[t['Active Brands'],t['Current MRR'],t['Pilot Brands'],t['Awaiting Deposit'],t['Initiation Fees'],t['Post-Pilot MRR']],['3','$3,500','2','1','$9,800','$4,000']);
-ck('all time: Future MRR = MRR + post-pilot + onboarding',t['Future MRR'],'$8,200');
+ck('all time: the server totals are shown untouched',[t['Active Brands'],t['Current MRR'],t['Pilot Brands'],t['Awaiting Deposit'],t['Initiation Fees'],t['Post-Pilot MRR']],['4','$5,000','2','1','$9,800','$4,000']);
+ck('all time: Future MRR = MRR + post-pilot + onboarding',t['Future MRR'],'$9,700');
 ck('all time: Reset is disabled',/class="bd-sum-rs" disabled/.test(t._sec),true);
 ck('the bar offers all six presets',['MTD','Last Month','This Quarter','Last Quarter','Last 7 Days','Last 90 Days'].every(l=>t._sec.includes('>'+l+'</button>')),true);
 const goal=ctx.BD._signedArr;
 
 ctx._bdSumFrom='2026-10-01';ctx._bdSumTo='2026-10-31';ctx._bdSumKey='lastMonth';
 t=render();
-ck('October: only the October brand is active',[t['Active Brands'],t['Current MRR'],t['Current ARR'],t['Avg ACV']],['1','$2,000','$24,000','$2,000']);
-ck('October: pilots signed in October, per brand',[t['Pilot Brands'],t['Pilot Live'],t['Awaiting Deposit']],['1','1','1']);
-ck('October: their fees and post-pilot MRR (fee-unpaid pilot left out)',[t['Initiation Fees'],t['Post-Pilot MRR']],['$4,800','$3,000']);
-ck('October: Future MRR = 2,000 + 3,000 + 700 onboarding',t['Future MRR'],'$5,700');
+ck('October: the brands HubSpot closed in October, whatever their app date',[t['Active Brands'],t['Current MRR'],t['Current ARR'],t['Avg ACV']],['3','$4,500','$54,000','$1,500']);
+ck('October: the pilot whose fee was paid in October (its deal closed in November)',[t['Pilot Brands'],t['Pilot Live'],t['Awaiting Deposit']],['1','1','0']);
+ck('October: its fee and post-pilot MRR',[t['Initiation Fees'],t['Post-Pilot MRR']],['$4,800','$3,000']);
+ck('October: Future MRR = 4,500 + 3,000 + 700 (the app-only onboarding sign-up)',t['Future MRR'],'$8,200');
 ck('October: the active preset is highlighted',/class="bd-sum-p on" aria-pressed="true" onclick="bdSumPreset\('lastMonth'\)"/.test(t._sec),true);
-ck('October: the note says what is shown',/Brands signed 10\/01\/2026 – 10\/31\/2026 · 4 of 7 brands/.test(t._sec),true);
+ck('October: the note counts the cohort by how each signed',/Brands signed 10\/01\/2026 \u2013 10\/31\/2026 \u00b7 5 brands, as they stand today \(3 by HubSpot close date, 1 pilots by fee paid, 1 app-only sign-ups by app date\)/.test(t._sec),true);
 ck('October: unmatched Recurly subscriptions are not mentioned (they have no signing date)',/match no app brand/.test(t._sec),false);
 ck('the goal dialog keeps the all-time ARR',ctx.BD._signedArr,goal);
 
+ctx._bdSumFrom='2026-11-01';ctx._bdSumTo='2026-11-30';ctx._bdSumKey='custom';
+t=render();
+ck('November: only the brand HubSpot closed in November (Oct app row); the pilot deal that closed in Nov is not a November pilot',
+  [t['Active Brands'],t['Current MRR'],t['Pilot Brands']],['1','$500','0']);
+
 ctx._bdSumFrom='2024-01-01';ctx._bdSumTo='2026-12-31';ctx._bdSumKey='custom';
 t=render();
-ck('a range covering every signing date reproduces the brand cards',[t['Active Brands'],t['Current MRR'],t['Future MRR']],['3','$3,500','$8,200']);
-ck('  and the pilot counts (per brand = the board, one pilot per brand)',[t['Pilot Brands'],t['Awaiting Deposit'],t['Pilot Live']],['2','1','1']);
+ck('a range covering every signing date reproduces the brand cards',[t['Active Brands'],t['Current MRR'],t['Future MRR']],['4','$5,000','$9,700']);
+ck('  and the paid pilot counts; an unpaid sign-up never signed, so it is in no range',[t['Pilot Brands'],t['Pilot Live'],t['Awaiting Deposit']],['2','1','0']);
 
 // Review fixes (2026-11-19).
 // Section 02's current month reads the ALL-TIME pilot/onboarding totals.
@@ -98,7 +119,7 @@ ck('a stale running preset is re-anchored on today',[ctx._bdSumFrom,ctx._bdSumTo
 ctx._bdSumKey='custom';ctx._bdSumFrom='2000-01-01';ctx._bdSumTo='2000-01-07';render();
 ck('  a custom range is left alone',[ctx._bdSumFrom,ctx._bdSumTo],['2000-01-01','2000-01-07']);
 ctx.bdSumReset();t=render();
-ck('Reset returns to the all-time numbers',[t['Active Brands'],t['Pilot Brands'],t['Initiation Fees']],['3','2','$9,800']);
+ck('Reset returns to the all-time numbers',[t['Active Brands'],t['Pilot Brands'],t['Initiation Fees']],['4','2','$9,800']);
 ck('Reset clears the range',[ctx._bdSumFrom,ctx._bdSumTo,ctx._bdSumKey],['','','']);
 
 ctx.document.getElementById('bd-sum-from').value='2026-11-05';ctx.document.getElementById('bd-sum-to').value='2026-11-01';
