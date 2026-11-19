@@ -138,6 +138,10 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
 .bd-kpi-row.r4{grid-template-columns:repeat(4,minmax(0,1fr));margin-top:12px}
 /* Same gap as the row above, so the pilot cards line up with it exactly. */
 .bd-kpi-row.r6{margin-top:12px;gap:14px}
+/* The Signed Brands row (in a date range only): five small cards. */
+.bd-kpi-row.r6.r5{grid-template-columns:repeat(5,minmax(0,1fr))}
+.tile.bd-dark.bd-sm .tval{font-size:19px}
+.bd-sgn-grp::before{background:linear-gradient(180deg,rgba(23,44,69,.10),rgba(23,44,69,.04));border-color:rgba(23,44,69,.22)}
 /* The pilot row is secondary to the book above it: smaller cards. */
 .bd-kpi-row.r6>.tile{padding:10px 12px;border-radius:10px}
 .bd-kpi-row.r6 .tlbl{font-size:9.5px}
@@ -156,6 +160,8 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
 @media(max-width:1500px) and (min-width:1101px){.bd-kpi-row:not(.r4):not(.r6) .tval{font-size:24px}.bd-kpi-row:not(.r4):not(.r6) .bd-tsub{font-size:10.5px}}
 @media(max-width:1100px){.bd-kpi-row{grid-template-columns:repeat(3,minmax(0,1fr))}.bd-kpi-row.r4{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.bd-kpi-row,.bd-kpi-row.r4{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:1100px){.bd-kpi-row.r6.r5{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:600px){.bd-kpi-row.r6.r5{grid-template-columns:minmax(0,1fr)}}
 /* App-data band: shown wherever a number needs /api/bd-app and it is loading or
    failed. A failed read must never render as zero brands or $0 MRR. */
 .bd-app-band{display:flex;align-items:center;gap:10px;border-radius:10px;padding:11px 15px;margin:0 0 14px;font-size:12px;line-height:1.45}
@@ -2308,6 +2314,16 @@ function renderBD(){
     // (Alex, 2026-11-16) whenever it was read; else the app, labelled so.
     var _r=_sumOn?_baSummaryRc(_sb,_ba.meta):_rAll;
     var _rcSrc=_chips(['recurly']),_mrr=_r?_r.mrr:_s.mrr;
+    // In a range: the cohort's non-pilot brands by what Recurly does with them,
+    // so the gap to Revenue Outcome's MRR (HubSpot deal amounts) explains itself.
+    var _rcGap='';
+    if(_sumOn&&_r){
+      var _gx={billing:0,idle:0,none:0};
+      _sb.forEach(function(b){if(_baIsTest(b)||b.pilotPaid)return;var k=_baRcClass(b);
+        if(k==='billing')_gx.billing++;else if(k&&k!=='ended')_gx.idle++;else _gx.none++;});
+      _rcGap=' In this range: '+_gx.billing+' brand'+(_gx.billing===1?'':'s')+' billing in Recurly, '+_gx.idle+' in a trial, starting later or paused, and '
+        +_gx.none+' with no live Recurly subscription yet, which add $0 here. Revenue Outcome\u2019s MRR (and the Signed Brands row below) uses the HubSpot deal amounts instead, so it reads higher until those brands bill.';
+    }
     if(_r){
       var _rcTip=(_r.stale?' Recurly could not be read just now: this is its last good read.':'')
         +(!_sumOn&&_r.unmatched.count?' '+_r.unmatched.count+' billing Recurly subscriptions ('+f$(_r.unmatched.mrr)+'/mo) match no app brand and are not counted.':'');
@@ -2316,7 +2332,7 @@ function renderBD(){
           +(_r.canceling?' '+_r.canceling+' billing brands have canceled and bill until their period ends.':'')+_rcTip,_rcSrc);
       h+=_kt('bd-dark','Current ARR',f$(_r.arr),'','Current MRR × 12','',_rcSrc);
       h+=_kt('bd-dark','Current MRR',f$(_r.mrr),f$(_r.billedMrr)+' billing · '+f$(_r.idlePrice)+' trial, starting & paused','Recurly plan + web traffic, all '+_r.total+' active brands',
-        'Billing brands ('+_r.billing+'): Recurly plan $/mo + web traffic $/mo from each one\u2019s latest Recurly invoice (after coupons, before tax; multi-month plans per month), else the plan\u2019s list price = '+f$(_r.billedMrr)+'. Brands not billing yet, at the plan\u2019s list price per month they will bill (web traffic is added from their first invoice): trial '+_r.trial+' = '+f$(_r.idle_trial)+', starting '+_r.starting+' = '+f$(_r.idle_starting)+', paused '+_r.paused+' = '+f$(_r.idle_paused)+'. ClinicianAI and one-off charges are not MRR.'+_rcTip,_rcSrc);
+        _rcGap+(_rcGap?' ':'')+'Billing brands ('+_r.billing+'): Recurly plan $/mo + web traffic $/mo from each one\u2019s latest Recurly invoice (after coupons, before tax; multi-month plans per month), else the plan\u2019s list price = '+f$(_r.billedMrr)+'. Brands not billing yet, at the plan\u2019s list price per month they will bill (web traffic is added from their first invoice): trial '+_r.trial+' = '+f$(_r.idle_trial)+', starting '+_r.starting+' = '+f$(_r.idle_starting)+', paused '+_r.paused+' = '+f$(_r.idle_paused)+'. ClinicianAI and one-off charges are not MRR.'+_rcTip,_rcSrc);
       h+=_kt('bd-dark','Avg ACV',f$(_r.acv),'','Current MRR ÷ Active Brands','',_rcSrc);
     }else{
       var _whyApp='Recurly could not be read'+(_ba.meta&&_ba.meta.recurly&&_ba.meta.recurly.error?' ('+_bdEsc(_ba.meta.recurly.error)+')':'')+', so this is the app price.';
@@ -2394,6 +2410,37 @@ function renderBD(){
         _pp?'Expected MRR once billing starts (Brand MRR report definition) of brands whose plan status is a pilot that has paid its fee (collecting data or live): the pilot’s price override, else the pilot price for its package and starting tier. Awaiting-deposit pilots are left out. By status \u2014 '+_ppBy('expected')
           :'Each counted pilot’s rollover price, else a repeating price override, else the deposit month’s default.',_pp?_ppSrc(false):'');
       h+='</div></div>';   // the pilot row, then its group
+    }
+    // ── Signed Brands row (Alex, 2026-11-19): only in a date range ──────────
+    // The Brand Dashboard's Revenue Outcome TOTAL for the range, so the two
+    // pages tie out: the non-pilot side is Revenue Outcome's brand side (closed-
+    // won HubSpot deals closed in the range that are not pilot deals, at their
+    // deal amount), the pilot side is this cohort's pilots (fee paid in the
+    // range) at Post-Pilot MRR. Initiation fees as the pilot card.
+    if(_sumOn){
+      var _pilD=_baPilotDealIds(deals,_baJ);
+      var _sg={n:0,mrr:0};
+      deals.forEach(function(dd){if(dd.dealstage!=='closedwon'||!dd.closedate||_pilD[dd.id])return;
+        var day=_bdEtDayOf(dd.closedate);if(!day||!_bdSumDayIn(day))return;_sg.n++;_sg.mrr+=Number(dd.amount)||0;});
+      _sg.mrr=Math.round(_sg.mrr*100)/100;
+      var _sgP=_sbHow.pilot,_sgPm=_post!=null?_post:0;
+      var _sgN=_sg.n+_sgP,_sgM=_sg.mrr+_sgPm;
+      var _sgFee=_pp&&_pp.net!=null?_pp.net:(_ps?_ps.netFees:null);
+      var _ks=function(lbl,val,sub,def,tip,src){
+        return '<div class="tile bd-dark bd-sm"'+(tip?' title="'+tip+'"':'')+'><div class="tlbl">'+lbl+'</div><div class="tval">'+val+'</div>'
+          +(sub?'<div class="bd-tsub">'+sub+'</div>':'')+'<div class="tdef">'+def+'</div>'+src+'</div>';
+      };
+      var _sgSrc=_chips(['hubspot','app'],_appLive),_brW=_sg.n===1?' brand':' brands',_plW=_sgP===1?' pilot':' pilots';
+      h+='<div class="bd-pil-grp bd-sgn-grp" role="group" aria-label="Signed Brands"><div class="bd-pil-grp-h"><b>Signed Brands</b><span>\u00b7 signed in the range, brands + pilots \u00b7 the Brand Dashboard\u2019s Revenue Outcome total</span></div>';
+      h+='<div class="bd-kpi-row r6 r5">';
+      h+=_ks('Signed Brands',_sgN.toLocaleString(),_sg.n+_brW+' + '+_sgP+_plW,'Brands + pilots signed in the range',
+        'Brands: closed-won HubSpot deals whose close date (Eastern) is in the range and that are not pilot deals (the brand has no paid, not rolled-over pilot), as Revenue Outcome counts them. Pilots: brands whose pilot fee was paid in the range.',_sgSrc);
+      h+=_ks('Signed ARR',f$(_sgM*12),'','Signed MRR \u00d7 12','',_sgSrc);
+      h+=_ks('Signed MRR',f$(_sgM),f$(_sg.mrr)+' signed + '+f$(_sgPm)+' pilot','Deal amounts + Post-Pilot MRR',
+        'Brands at their HubSpot deal amount ('+f$(_sg.mrr)+') + pilots at Post-Pilot MRR ('+f$(_sgPm)+': each pilot\u2019s expected MRR once billing starts). Revenue Outcome\u2019s Total MRR.',_sgSrc);
+      h+=_ks('Initiation Fees',_sgFee!=null?f$(_sgFee):'\u2014','','Pilots signed in the range','The same figure as the Initiation Fees pilot card above: net add-on revenue of the range\u2019s pilot brands. Left out of Signed MRR, as Revenue Outcome does.',_pp&&_pp.net!=null?_chips(['recurly','app'],_appLive):_chips(['app'],_appLive));
+      h+=_ks('Avg ACV',_sgN?f$(_sgM/_sgN):'\u2014','','Signed MRR \u00f7 Signed Brands','',_sgSrc);
+      h+='</div></div>';
     }
   }
   h+='</section>';
