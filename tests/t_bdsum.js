@@ -98,6 +98,9 @@ ck('the goal dialog keeps the all-time ARR',ctx.BD._signedArr,goal);
  ck('  every card prints its calculation',[/3 brands \+ 1 pilot = 4/,/\$7,500 \u00d7 12/,/\$4,500 signed \+ \$3,000 pilot/,/Net add-ons of 1 pilot/,/\$7,500 \u00f7 4/].map(r=>r.test(g._seg)),[true,true,true,true,true]);
  ck('  in its own teal cards and panel',/class="bd-pil-grp bd-sgn-grp"/.test(g._seg)||/bd-sgn-grp/.test(t._sec),true);
  ck('  it sits after the pilot row',t._sec.indexOf('aria-label="Signed Brands"')>t._sec.indexOf('aria-label="Pilots"'),true);}
+{const tip=lbl=>{const m=t._sec.match(new RegExp('<div class="tile [^"]*" title="([^"]*)"><div class="tlbl">'+lbl+'<'));return m?m[1]:'';};
+ ck('October: every top-row card carries the range note',['Active Brands','Current ARR','Current MRR','Avg ACV','Future ARR','Future MRR'].map(l=>/^In this range: 3 brands billing in Recurly, 0 in a trial, starting later or paused, and 1 with no live Recurly subscription yet/.test(tip(l))),[true,true,true,true,true,true]);
+ ck('  with a tail that fits the card',[/not counted here until they have one/.test(tip('Active Brands')),/add \$0 here\./.test(tip('Avg ACV')),/onboarding sign-ups add their expected MRR/.test(tip('Future MRR'))],[true,true,true]);}
 ck('October: the Current MRR hover splits the cohort by Recurly state',/In this range: 3 brands billing in Recurly, 0 in a trial, starting later or paused, and 1 with no live Recurly subscription yet/.test(t._sec),true);
 
 ctx._bdSumFrom='2026-11-01';ctx._bdSumTo='2026-11-30';ctx._bdSumKey='custom';

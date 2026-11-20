@@ -39,22 +39,32 @@ ctx.BD.app={brands,pilotStats:{source:'live',deposit_paid:0,collecting_data:0,li
 ctx._bdTab='churn';
 const render=()=>{try{ctx.renderBD();}catch(e){}const h=els['bd-content'].innerHTML;const i=h.indexOf('class="bd-c2nt"');return i<0?'':h.slice(i,h.indexOf('</details>',i));};
 let t=render();
-const rows=x=>[...x.matchAll(/<tr><td>([^<]+)<\/td><td><b>([^<]+)<\/b>/g)].map(m=>m[1]+' '+m[2]);
+// Rows: [brand, line badge, app id, churn date].
+const rows=x=>[...x.matchAll(/<tr><td><b>([^<]+)<\/b>(?:<span class="bd-c2nt-id">[^<]*<\/span>)?<span class="bd-c2nt-ty (\w+)">[^<]*<\/span><\/td><td[^>]*>(?:<span[^>]*>)?([^<]*)/g)].map(m=>m[1]+'|'+m[2]+'|'+m[3]);
+const hdr=x=>[...x.matchAll(/<th[^>]*>([^<]+)<\/th>/g)].map(m=>m[1]);
 ck('the drill-down renders under C2',t.length>0,true);
-ck('it lists exactly the no-type churns, newest first, Board Defined left out',rows(t),['Oct 26 Blank Type Oct','Oct 26 No Deal Oct','Sep 26 No Deal Sep','Mar 26 Old HubSpot Churn']);
-ck('the summary counts them',/4 churns from 2026 onward/.test(t),true);
-ck('the period picker shows each period with its count',/>Oct 26 \(2\)<\/option>/.test(t)&&/>Sep 26 \(1\)<\/option>/.test(t)&&/>All periods \(4\)</.test(t),true);
+ck('columns: Brand, App ID, Links, Churn date, Why no type, Fix',hdr(t),['Brand','App ID','Links','Churn date','Why no type','Fix']);
+ck('all types by default: every churn on the chart, newest first',rows(t),['Blank Type Oct|none|3','Board Oct|board|4','No Deal Oct|none|2','No Deal Sep|none|5','Old HubSpot Churn|none|\u2014']);
+ck('the summary counts each line',/5 from 2026 onward: 1 Board Defined, 0 Never Implemented, <span class="bd-c2nt-nt">4 no churn type<\/span>/.test(t),true);
+ck('the type picker lists the three lines with counts',/>All types \(5\)</.test(t)&&/value="board"[^>]*>Board Defined \(1\)</.test(t)&&/value="ni"[^>]*>Never Implemented \(0\)</.test(t)&&/value="none"[^>]*>No churn type \(4\)</.test(t),true);
+ck('a typed churn has no "why" or fix',/Board Oct[\s\S]*?\u2014 has a type/.test(t),true);
 ck('why: no churn deal vs a churn deal with a blank type',
   [/No Deal Oct[\s\S]*?No HubSpot churn deal within 90 days/.test(t),/Blank Type Oct[\s\S]*?HubSpot churn deal has no Churn Type/.test(t)],[true,true]);
 ck('a borrowed deal name is shown under the brand',/Blank Type Oct<\/b><span class="bd-c2nt-id">HubSpot deal: Deal d3/.test(t),true);
-ck('a churn deal links to HubSpot; a brand with none says so',/0-3\/d3"/.test(t)&&/No Deal Sep[\s\S]*?no HubSpot record/.test(t),true);
-// The table and the amber line come from one predicate.
-const src=html;
-ck('the amber line and the table share _chNoType',/else if\(_chNoType\(dd\)\)nU\[k\]/.test(src)&&/!_chNoType\(dd\)\)return;/.test(src),true);
-// Picking a period narrows the rows and keeps the drill-down open.
+ck('links: deal + company when there is a churn deal; "no HubSpot record" when nothing',/0-3\/d3"[^>]*>Deal \u2197<\/a> \u00b7 <a href="[^"]*0-2\/c3"/.test(t)&&/No Deal Sep[\s\S]*?no HubSpot record/.test(t),true);
+ck('the lines and the table share the same tests',/else if\(_chNoType\(dd\)\)nU\[k\]/.test(html)&&/var _chLineOf=function\(dd\)\{return _bdIsBoardChurn\(dd\)\?'board':_chIsNI\(dd\)\?'ni':_chNoType\(dd\)\?'none':'';\};/.test(html),true);
+ctx.bdC2NtTypeSet('none');t=render();
+ck('No churn type: only the amber line\'s churns',rows(t).map(r=>r.split('|')[0]),['Blank Type Oct','No Deal Oct','No Deal Sep','Old HubSpot Churn']);
+ck('  and the period counts follow the type',/>All periods \(4\)</.test(t)&&/>Oct 26 \(2\)<\/option>/.test(t),true);
 ctx.bdC2NtPeriod('2026-10');t=render();
-ck('a period narrows the table to that point of the line',rows(t),['Oct 26 Blank Type Oct','Oct 26 No Deal Oct']);
+ck('type + period = one point of one line',rows(t).map(r=>r.split('|')[0]),['Blank Type Oct','No Deal Oct']);
 ck('  and stays open after the re-render',/class="bd-c2nt" open/.test(t),true);
+ctx.bdC2NtTypeSet('board');t=render();
+ck('Board Defined in October',rows(t).map(r=>r.split('|')[0]),['Board Oct']);
+ctx.bdC2NtTypeSet('ni');t=render();
+ck('an empty pick says so rather than showing nothing',/No churns of this type in this period/.test(t),true);
+ctx.bdC2NtTypeSet('bogus');
+ck('an unknown type falls back to all',ctx._bdC2NtType,'');
 ctx.bdSetChurnRateGrain('quarter');t=render();
-ck('switching to quarterly regroups and clears the period pick',[rows(t)[0],/>Q4 '26 \(2\)<\/option>/.test(t),ctx._bdC2NtPer],["Q4 '26 Blank Type Oct",true,'']);
+ck('switching to quarterly regroups and clears the period pick',[/>Q4 '26 \(3\)<\/option>/.test(t),ctx._bdC2NtPer],[true,'']);
 console.log(`\n${pass} passed, ${fail} failed`);process.exit(fail?1:0);

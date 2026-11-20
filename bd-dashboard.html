@@ -240,7 +240,7 @@ circle.bd-bs-sl{stroke-width:28}
 .bd-kpi-row.r6 .bd-chips{padding-top:5px}
 .bd-c2nt{margin-top:12px;border-top:1px solid var(--border);padding-top:10px}
 .bd-c2nt>summary{cursor:pointer;font-size:12px;color:var(--navy);list-style:revert}
-.bd-c2nt>summary b{color:#B45309}
+.bd-c2nt>summary b{color:var(--navy)}
 .bd-c2nt-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:10px 0 8px;font-size:11px;color:var(--grey)}
 .bd-c2nt-bar select{font-family:var(--font-b);font-size:11px;padding:4px 7px;border:1px solid var(--border);border-radius:6px;color:var(--navy);background:#fff;margin-left:4px}
 .bd-c2nt-t{width:100%;border-collapse:collapse;font-size:11.5px;min-width:900px}
@@ -248,6 +248,11 @@ circle.bd-bs-sl{stroke-width:28}
 .bd-c2nt-t td{padding:7px 9px;border-bottom:1px solid var(--border);vertical-align:top;color:var(--navy)}
 .bd-c2nt-t a{color:#0F766E;text-decoration:none;font-weight:600}
 .bd-c2nt-id{display:block;font-size:9.5px;color:var(--grey)}
+.bd-c2nt>summary .bd-c2nt-nt{color:#B45309;font-weight:700}
+.bd-c2nt-bar label{display:inline-flex;align-items:center;gap:2px;color:var(--navy);font-weight:600}
+.bd-c2nt-ty{display:table;margin-top:4px;font-size:9px;font-weight:700;letter-spacing:.03em;padding:1px 7px;border-radius:99px;background:#F1F5F9;color:#475569}
+.bd-c2nt-ty.board{background:#FDECEC;color:#B91C1C}
+.bd-c2nt-ty.none{background:#FEF3E2;color:#B45309}
 .bd-sum-bar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:-2px 0 14px}
 .bd-sum-lbl{font-family:var(--font-h);font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.06em;margin-right:2px}
 .bd-sum-p{font-family:var(--font-b);font-size:11px;font-weight:600;padding:4px 12px;border-radius:99px;border:none;cursor:pointer;background:rgba(23,44,69,.06);color:var(--navy)}
@@ -778,9 +783,11 @@ var _bdChurnRateGrain='month';
 function bdSetChurnRateGrain(g){if(_bdChurnRateGrain===g)return;_bdChurnRateGrain=g;_bdC2NtPer='';renderBD();}
 // C2's "No churn type" drill-down (Alex, 2026-11-20): open/closed and the
 // period picked, kept across re-renders ('' = every period).
-var _bdC2NtOpen=false,_bdC2NtPer='';
+// Churn type picked ('' = all three lines; 'board' | 'ni' | 'none').
+var _bdC2NtOpen=false,_bdC2NtPer='',_bdC2NtType='';
 function bdC2NtToggle(el){_bdC2NtOpen=!!(el&&el.open);}
 function bdC2NtPeriod(v){_bdC2NtPer=v||'';_bdC2NtOpen=true;renderBD();}
+function bdC2NtTypeSet(v){_bdC2NtType=(v==='board'||v==='ni'||v==='none')?v:'';_bdC2NtOpen=true;renderBD();}
 // C5's month rail. '' is All. The value is a two-char month number ('07'), not
 // a full '2026-07' key: the tab is already floored to 2026 in one place, and
 // carrying a year here would be a second source of truth for the same scope.
@@ -2341,24 +2348,30 @@ function renderBD(){
     var _rcSrc=_chips(['recurly']),_mrr=_r?_r.mrr:_s.mrr;
     // In a range: the cohort's non-pilot brands by what Recurly does with them,
     // so the gap to Revenue Outcome's MRR (HubSpot deal amounts) explains itself.
-    var _rcGap='';
+    // Every top-row card gets the same split in its hover (Alex, 2026-11-20),
+    // with a tail that says what it means for THAT card. '' outside a range.
+    var _rcGap='',_rcGapN='',_rcGapF='';
     if(_sumOn&&_r){
       var _gx={billing:0,idle:0,none:0};
       _sb.forEach(function(b){if(_baIsTest(b)||b.pilotPaid)return;var k=_baRcClass(b);
         if(k==='billing')_gx.billing++;else if(k&&k!=='ended')_gx.idle++;else _gx.none++;});
-      _rcGap=' In this range: '+_gx.billing+' brand'+(_gx.billing===1?'':'s')+' billing in Recurly, '+_gx.idle+' in a trial, starting later or paused, and '
-        +_gx.none+' with no live Recurly subscription yet, which add $0 here. Revenue Outcome\u2019s MRR (and the Signed Brands row below) uses the HubSpot deal amounts instead, so it reads higher until those brands bill.';
+      var _rcSplit='In this range: '+_gx.billing+' brand'+(_gx.billing===1?'':'s')+' billing in Recurly, '+_gx.idle+' in a trial, starting later or paused, and '
+        +_gx.none+' with no live Recurly subscription yet';
+      _rcGap=_rcSplit+', which add $0 here. Revenue Outcome\u2019s MRR (and the Signed Brands row below) uses the HubSpot deal amounts instead, so it reads higher until those brands bill.';
+      _rcGapN=_rcSplit+', which are not counted here until they have one. Revenue Outcome\u2019s Signed Brands (and the Signed Brands row below) counts every brand that signed in the range.';
+      _rcGapF=_rcSplit+', which add $0 here (onboarding sign-ups add their expected MRR). Revenue Outcome\u2019s Total MRR (and the Signed Brands row below) uses the HubSpot deal amounts instead.';
     }
+    var _tipPre=function(note,rest){return note?note+(rest?' '+rest:''):rest;};
     if(_r){
       var _rcTip=(_r.stale?' Recurly could not be read just now: this is its last good read.':'')
         +(!_sumOn&&_r.unmatched.count?' '+_r.unmatched.count+' billing Recurly subscriptions ('+f$(_r.unmatched.mrr)+'/mo) match no app brand and are not counted.':'');
       h+=_kt('bd-dark','Active Brands',_r.total.toLocaleString(),_r.billing+' billing · '+_r.trial+' trial · '+_r.starting+' starting · '+_r.paused+' paused',
-        'Brands with a live Recurly subscription','App brands (internal test accounts left out) whose Recurly subscription bills, is in a trial, starts later or is paused. Pilots are not Recurly subscriptions until they roll over, so they are not counted.'
-          +(_r.canceling?' '+_r.canceling+' billing brands have canceled and bill until their period ends.':'')+_rcTip,_rcSrc);
-      h+=_kt('bd-dark','Current ARR',f$(_r.arr),'','Current MRR × 12','',_rcSrc);
+        'Brands with a live Recurly subscription',_tipPre(_rcGapN,'App brands (internal test accounts left out) whose Recurly subscription bills, is in a trial, starts later or is paused. Pilots are not Recurly subscriptions until they roll over, so they are not counted.'
+          +(_r.canceling?' '+_r.canceling+' billing brands have canceled and bill until their period ends.':'')+_rcTip),_rcSrc);
+      h+=_kt('bd-dark','Current ARR',f$(_r.arr),'','Current MRR × 12',_tipPre(_rcGap,''),_rcSrc);
       h+=_kt('bd-dark','Current MRR',f$(_r.mrr),f$(_r.billedMrr)+' billing · '+f$(_r.idlePrice)+' trial, starting & paused','Recurly plan + web traffic, all '+_r.total+' active brands',
-        _rcGap+(_rcGap?' ':'')+'Billing brands ('+_r.billing+'): Recurly plan $/mo + web traffic $/mo from each one\u2019s latest Recurly invoice (after coupons, before tax; multi-month plans per month), else the plan\u2019s list price = '+f$(_r.billedMrr)+'. Brands not billing yet, at the plan\u2019s list price per month they will bill (web traffic is added from their first invoice): trial '+_r.trial+' = '+f$(_r.idle_trial)+', starting '+_r.starting+' = '+f$(_r.idle_starting)+', paused '+_r.paused+' = '+f$(_r.idle_paused)+'. ClinicianAI and one-off charges are not MRR.'+_rcTip,_rcSrc);
-      h+=_kt('bd-dark','Avg ACV',f$(_r.acv),'','Current MRR ÷ Active Brands','',_rcSrc);
+        _tipPre(_rcGap,'')+(_rcGap?' ':'')+'Billing brands ('+_r.billing+'): Recurly plan $/mo + web traffic $/mo from each one\u2019s latest Recurly invoice (after coupons, before tax; multi-month plans per month), else the plan\u2019s list price = '+f$(_r.billedMrr)+'. Brands not billing yet, at the plan\u2019s list price per month they will bill (web traffic is added from their first invoice): trial '+_r.trial+' = '+f$(_r.idle_trial)+', starting '+_r.starting+' = '+f$(_r.idle_starting)+', paused '+_r.paused+' = '+f$(_r.idle_paused)+'. ClinicianAI and one-off charges are not MRR.'+_rcTip,_rcSrc);
+      h+=_kt('bd-dark','Avg ACV',f$(_r.acv),'','Current MRR ÷ Active Brands',_tipPre(_rcGap,''),_rcSrc);
     }else{
       var _whyApp='Recurly could not be read'+(_ba.meta&&_ba.meta.recurly&&_ba.meta.recurly.error?' ('+_bdEsc(_ba.meta.recurly.error)+')':'')+', so this is the app price.';
       h+=_kt('bd-dark','Active Brands',_s.total.toLocaleString(),_s.active+' active · '+_s.paused+' paused · '+_s.starting+' starting',
@@ -2393,9 +2406,9 @@ function renderBD(){
     var _onb=_bdOnbOf(_sb);
     var _fut=_ps&&_post!=null?_mrr+_post+_onb.mrr:null;
     var _futSrc=_r?_chips(['recurly','app'],_appLive):'';
-    h+=_kt('bd-dark bd-fut','Future ARR',_ps?f$(_fut*12):'\u2014','','Future MRR × 12','Future MRR × 12: the book if every paid pilot rolls over at its post-pilot price and every onboarding sign-up starts billing.',_futSrc);
+    h+=_kt('bd-dark bd-fut','Future ARR',_ps?f$(_fut*12):'\u2014','','Future MRR × 12',_tipPre(_rcGapF,'Future MRR × 12: the book if every paid pilot rolls over at its post-pilot price and every onboarding sign-up starts billing.'),_futSrc);
     h+=_kt('bd-dark bd-fut','Future MRR',_ps?f$(_fut):'\u2014',_ps?'MRR + '+_postN+' pilots + '+_onb.n+' onboarding':'pilot figures unavailable','If pilots roll over and sign-ups activate',
-      'Current MRR ('+f$(_mrr)+') + Post-Pilot MRR ('+f$(_post||0)+': each paid pilot\u2019s expected MRR once billing starts \u2014 price override, else the pilot price for its package and tier; awaiting-deposit pilots left out) + Onboarding ('+f$(_onb.mrr)+': the expected MRR of '+_onb.n+' app sign-ups waiting to activate \u2014 the subscription\u2019s display price, a custom multi-month plan\u2019s divided by its term).',_futSrc);
+      _tipPre(_rcGapF,'')+(_rcGapF?' ':'')+'Current MRR ('+f$(_mrr)+') + Post-Pilot MRR ('+f$(_post||0)+': each paid pilot\u2019s expected MRR once billing starts \u2014 price override, else the pilot price for its package and tier; awaiting-deposit pilots left out) + Onboarding ('+f$(_onb.mrr)+': the expected MRR of '+_onb.n+' app sign-ups waiting to activate \u2014 the subscription\u2019s display price, a custom multi-month plan\u2019s divided by its term).',_futSrc);
     h+='</div>';
     if(!_ps){
       h+='<div class="bd-app-band err" role="alert" style="margin-top:12px"><strong>Pilot figures unavailable.</strong> <span>'
@@ -3716,40 +3729,57 @@ function renderBD(){
   };
   // Every churn behind the "No churn type" line, by period, with why it has
   // no type and where to fix it. Same events, same period keys, same floor.
+  // Every churn behind the chart's three lines (Alex, 2026-11-20: first the
+  // No churn type line only, then all three as a filter). Same events, same
+  // period keys, same floor, same three tests as the lines, so a type and a
+  // period picked here are exactly one point of one line.
+  var BD_C2_TYPES=[['board','Board Defined'],['ni','Never Implemented'],['none','No churn type']];
+  var _chLineOf=function(dd){return _bdIsBoardChurn(dd)?'board':_chIsNI(dd)?'ni':_chNoType(dd)?'none':'';};
   var _chNoTypeTable=function(grain){
     var rows=[];
     _apCh26.forEach(function(dd){
-      var k=_chPeriodOf(dd.pausechurn_date,grain);if(!k||k<BD_CHURN_DETAIL_FROM||!_chNoType(dd))return;
-      var b=dd._brand,hasDeal=!!(dd.id&&_baIsChurnDeal(dd));
+      var k=_chPeriodOf(dd.pausechurn_date,grain);if(!k||k<BD_CHURN_DETAIL_FROM)return;
+      var line=_chLineOf(dd);if(!line)return;          // a type on neither line is on no line of the chart either
+      var b=dd._brand,hasDeal=!!(dd.id&&_baIsChurnDeal(dd)),none=line==='none';
       // The app brand's name leads (an app churn borrows its HubSpot deal's
       // fields, deal name included); the deal name follows when it differs.
       var bn=(b&&b.name)||dd.dealname||'(unnamed)',dn=hasDeal&&dd.dealname&&dd.dealname!==bn?dd.dealname:'';
-      rows.push({k:k,name:bn,dealName:dn,day:_baDay(dd.pausechurn_date),
-        src:dd._src==='app'?(dd._dateFrom==='hubspot'?'HubSpot Pause/Churn Date (app end was a bulk day)':'App end date'):'HubSpot Pause/Churn Date',
-        why:hasDeal?'HubSpot churn deal has no Churn Type':(dd._src==='app'?'No HubSpot churn deal within '+BD_APP_META_DAYS+' days of the app end date':'No Churn Type on the deal'),
-        fix:hasDeal?'Set Churn Type on the deal':'Create or move a churn deal for this brand, or set Churn Type on its existing one',
-        mrr:dd._mrr||0,deal:hasDeal?dd.id:'',co:dd.companyId||(b&&b.hubspotCompanyId)||'',app:b?b.id:''});
+      rows.push({k:k,line:line,type:(dd.never_implemented_churn||'').trim(),name:bn,dealName:dn,day:_baDay(dd.pausechurn_date),
+        why:!none?'':hasDeal?'HubSpot churn deal has no Churn Type':(dd._src==='app'?'No HubSpot churn deal within '+BD_APP_META_DAYS+' days of the app end date':'No Churn Type on the deal'),
+        fix:!none?'':hasDeal?'Set Churn Type on the deal':'Create or move a churn deal for this brand, or set Churn Type on its existing one',
+        deal:hasDeal?dd.id:'',co:dd.companyId||(b&&b.hubspotCompanyId)||'',app:b?b.id:''});
     });
     if(!rows.length)return '';
-    var per={};rows.forEach(function(r){per[r.k]=(per[r.k]||0)+1;});
+    var ty=_bdC2NtType,inTy=function(r){return !ty||r.line===ty;};
+    var per={};rows.filter(inTy).forEach(function(r){per[r.k]=(per[r.k]||0)+1;});
     var keys=Object.keys(per).sort().reverse();
     var sel=_bdC2NtPer&&per[_bdC2NtPer]?_bdC2NtPer:'';
-    var shown=rows.filter(function(r){return !sel||r.k===sel;}).sort(function(a,b){return a.day<b.day?1:a.day>b.day?-1:(a.name<b.name?-1:1);});
-    var esc=_bdEsc;
+    var inPer=function(r){return !sel||r.k===sel;};
+    var byTy={board:0,ni:0,none:0};rows.filter(inPer).forEach(function(r){byTy[r.line]++;});
+    var shown=rows.filter(function(r){return inTy(r)&&inPer(r);}).sort(function(a,b){return a.day<b.day?1:a.day>b.day?-1:(a.name<b.name?-1:1);});
+    var esc=_bdEsc,nAllTy=rows.filter(inTy).length,nAllPer=rows.filter(inPer).length;
+    var tyLbl={};BD_C2_TYPES.forEach(function(t){tyLbl[t[0]]=t[1];});
+    var tot={board:0,ni:0,none:0};rows.forEach(function(r){tot[r.line]++;});
     var h='<details class="bd-c2nt"'+(_bdC2NtOpen?' open':'')+' ontoggle="bdC2NtToggle(this)">'
-      +'<summary><b>No churn type</b> \u00b7 '+rows.length+' churn'+(rows.length===1?'':'s')+' from 2026 onward behind the amber line \u2014 show which</summary>'
-      +'<div class="bd-c2nt-bar"><label>Period <select onchange="bdC2NtPeriod(this.value)"><option value="">All periods ('+rows.length+')</option>'
+      +'<summary><b>Churns behind the chart</b> \u00b7 '+rows.length+' from 2026 onward: '+tot.board+' Board Defined, '+tot.ni+' Never Implemented, <span class="bd-c2nt-nt">'+tot.none+' no churn type</span> \u2014 show which</summary>'
+      +'<div class="bd-c2nt-bar"><label>Churn type <select onchange="bdC2NtTypeSet(this.value)"><option value="">All types ('+nAllPer+')</option>'
+      +BD_C2_TYPES.map(function(t){return '<option value="'+t[0]+'"'+(t[0]===ty?' selected':'')+'>'+t[1]+' ('+byTy[t[0]]+')</option>';}).join('')
+      +'</select></label><label>Period <select onchange="bdC2NtPeriod(this.value)"><option value="">All periods ('+nAllTy+')</option>'
       +keys.map(function(k){return '<option value="'+k+'"'+(k===sel?' selected':'')+'>'+_chPeriodLbl(k)+' ('+per[k]+')</option>';}).join('')
-      +'</select></label><span>Each row is one point of the line: its count \u00f7 the opening book gives the rate the chart shows for that period.</span></div>'
-      +'<div style="overflow-x:auto"><table class="bd-c2nt-t"><thead><tr><th>Period</th><th>Brand</th><th>Churn date</th><th>Dated by</th><th>Why no type</th><th>Fix</th><th style="text-align:right">MRR</th><th>Links</th></tr></thead><tbody>';
+      +'</select></label><span>A type and a period together are one point of one line: its count \u00f7 the opening book is the rate the chart shows.</span></div>'
+      +'<div style="overflow-x:auto"><table class="bd-c2nt-t"><thead><tr><th>Brand</th><th>App ID</th><th>Links</th><th>Churn date</th><th>Why no type</th><th>Fix</th></tr></thead><tbody>';
     shown.forEach(function(r){
       var dy=r.day?_bdMDY(new Date(+r.day.slice(0,4),+r.day.slice(5,7)-1,+r.day.slice(8,10))):'\u2014';
       var links=(r.deal?'<a href="'+BD_HS_URL+'0-3/'+r.deal+'" target="_blank" rel="noopener">Deal \u2197</a>':'')
         +(r.co?(r.deal?' \u00b7 ':'')+'<a href="'+BD_HS_URL+'0-2/'+encodeURIComponent(r.co)+'" target="_blank" rel="noopener">Company \u2197</a>':'')
         +(!r.deal&&!r.co?'<span style="color:var(--grey)">no HubSpot record</span>':'');
-      h+='<tr><td>'+_chPeriodLbl(r.k)+'</td><td><b>'+esc(r.name)+'</b>'+(r.dealName?'<span class="bd-c2nt-id">HubSpot deal: '+esc(r.dealName)+'</span>':'')+(r.app?'<span class="bd-c2nt-id">app #'+esc(String(r.app))+'</span>':'')+'</td><td>'+dy+'</td><td>'+r.src+'</td><td>'+r.why+'</td><td>'+r.fix+'</td>'
-        +'<td style="text-align:right;font-variant-numeric:tabular-nums">'+f$(r.mrr)+'</td><td style="white-space:nowrap">'+links+'</td></tr>';
+      var badge='<span class="bd-c2nt-ty '+r.line+'">'+tyLbl[r.line]+(r.type&&r.line!=='none'&&r.type.toLowerCase().indexOf(tyLbl[r.line].toLowerCase())<0?' \u00b7 '+esc(r.type):'')+'</span>';
+      h+='<tr><td><b>'+esc(r.name)+'</b>'+(r.dealName?'<span class="bd-c2nt-id">HubSpot deal: '+esc(r.dealName)+'</span>':'')+badge+'</td>'
+        +'<td style="font-variant-numeric:tabular-nums">'+(r.app?esc(String(r.app)):'<span style="color:var(--grey)">\u2014</span>')+'</td>'
+        +'<td style="white-space:nowrap">'+links+'</td><td style="white-space:nowrap">'+dy+'</td>'
+        +'<td>'+(r.why||'<span style="color:var(--grey)">\u2014 has a type</span>')+'</td><td>'+(r.fix||'<span style="color:var(--grey)">\u2014</span>')+'</td></tr>';
     });
+    if(!shown.length)h+='<tr><td colspan="6" style="text-align:center;color:var(--grey)">No churns of this type in this period</td></tr>';
     return h+'</tbody></table></div></details>';
   };
   hChurn+='<section class="bd-sec" id="bd-sec-churnrate">';
