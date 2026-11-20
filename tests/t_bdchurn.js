@@ -233,7 +233,7 @@ ck('C2 has its own Monthly⁄Quarterly toggle',
    /_chGrainSeg\(_bdChurnRateGrain,'bdSetChurnRateGrain'\)/.test(bd),true);
 ck('  defaulting to monthly',/var _bdChurnRateGrain='month';/.test(bd),true);
 ck('  and re-rendering on change',
-   /function bdSetChurnRateGrain\(g\)\{if\(_bdChurnRateGrain===g\)return;_bdChurnRateGrain=g;renderBD\(\);\}/.test(bd),true);
+   /function bdSetChurnRateGrain\(g\)\{if\(_bdChurnRateGrain===g\)return;_bdChurnRateGrain=g;_bdC2NtPer='';renderBD\(\);\}/.test(bd),true);
 
 // The old chart thinned X labels by floor(n/14), which is why months vanished.
 const RC=(()=>{const i=bd.indexOf('function bdRateLineChart(');return bd.slice(i,bd.indexOf('\nfunction ',i+10));})();
