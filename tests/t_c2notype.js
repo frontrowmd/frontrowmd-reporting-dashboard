@@ -26,11 +26,15 @@ const deal=(id,co,extra)=>Object.assign({id,dealname:'Deal '+id,companyId:co,com
   entered_closedwon:'',brand_status:'Churned',amount:500,pausechurn_date:'',never_implemented_churn:'',churn_reason:''},extra||{});
 const boardType=Object.keys(ctx.BD_CHURN_TYPE_GROUP).find(k=>ctx.BD_CHURN_TYPE_GROUP[k]===ctx.BD_CHURN_BOARD);
 const brands=[B(1,'Live Co',{hubspotCompanyId:'c1'}),
-  gone(2,'No Deal Oct','2026-10-05'),                                   // app churn, no HubSpot churn deal -> no type
+  gone(2,'No Deal Oct','2026-10-05',{hubspotCompanyId:'c2'}),           // app churn; HubSpot deal still Closed Won / Signed -> no type
   gone(3,'Blank Type Oct','2026-10-20',{hubspotCompanyId:'c3'}),        // app churn, churn deal with blank type -> no type
   gone(4,'Board Oct','2026-10-12',{hubspotCompanyId:'c4'}),             // app churn, Board Defined -> NOT in the table
-  gone(5,'No Deal Sep','2026-09-03')];                                  // another period
+  gone(5,'No Deal Sep','2026-09-03'),                                   // no HubSpot deal at all
+  gone(7,'Typed Won Sep','2026-09-20',{hubspotCompanyId:'c7'}),
+  gone(8,"Lane's 6/3 Test",'2026-07-15'),gone(9,'Example Brand Name','2026-06-23')];   // test accounts: never churns        // Closed Won deal with Churn Type filled (DTC Brands case)                                  // another period
 const deals=[deal('d3','c3',{pausechurn_date:'2026-10-18T04:00:00Z'}),
+  deal('w2','c2',{dealstage:'closedwon',brand_status:'Signed',dealname:'No Deal Oct',closedate:'2026-01-10T05:00:00Z'}),
+  deal('w7','c7',{dealstage:'closedwon',brand_status:'Signed',dealname:'Typed Won Sep',never_implemented_churn:'Yes - Rejected Product(s)',pausechurn_date:'2026-09-25'}),
   deal('d4','c4',{pausechurn_date:'2026-10-12T04:00:00Z',never_implemented_churn:boardType}),
   deal('d6','c9',{pausechurn_date:'2026-03-10T04:00:00Z',dealname:'Old HubSpot Churn'})];   // before June: HubSpot's own event, blank type
 ctx.BD.data={deals,ownerMap:{},meta:{generatedAt:new Date().toISOString()}};
@@ -43,19 +47,25 @@ let t=render();
 const rows=x=>[...x.matchAll(/<tr><td><b>([^<]+)<\/b>(?:<span class="bd-c2nt-id">[^<]*<\/span>)?<span class="bd-c2nt-ty (\w+)">[^<]*<\/span><\/td><td[^>]*>(?:<span[^>]*>)?([^<]*)/g)].map(m=>m[1]+'|'+m[2]+'|'+m[3]);
 const hdr=x=>[...x.matchAll(/<th[^>]*>([^<]+)<\/th>/g)].map(m=>m[1]);
 ck('the drill-down renders under C2',t.length>0,true);
+ck('test accounts never appear as churns',/Lane's 6\/3 Test|Example Brand Name/.test(t),false);
 ck('columns: Brand, App ID, Links, Churn date, Why no type, Fix',hdr(t),['Brand','App ID','Links','Churn date','Why no type','Fix']);
-ck('all types by default: every churn on the chart, newest first',rows(t),['Blank Type Oct|none|3','Board Oct|board|4','No Deal Oct|none|2','No Deal Sep|none|5','Old HubSpot Churn|none|\u2014']);
-ck('the summary counts each line',/5 from 2026 onward: 1 Board Defined, 0 Never Implemented, <span class="bd-c2nt-nt">4 no churn type<\/span>/.test(t),true);
-ck('the type picker lists the three lines with counts',/>All types \(5\)</.test(t)&&/value="board"[^>]*>Board Defined \(1\)</.test(t)&&/value="ni"[^>]*>Never Implemented \(0\)</.test(t)&&/value="none"[^>]*>No churn type \(4\)</.test(t),true);
+ck('all types by default: every churn on the chart, newest first',rows(t),['Blank Type Oct|none|3','Board Oct|board|4','No Deal Oct|none|2','Typed Won Sep|none|7','No Deal Sep|none|5','Old HubSpot Churn|none|\u2014']);
+ck('the summary counts each line',/6 from 2026 onward: 1 Board Defined, 0 Never Implemented, <span class="bd-c2nt-nt">5 no churn type<\/span>/.test(t),true);
+ck('the type picker lists the three lines with counts',/>All types \(6\)</.test(t)&&/value="board"[^>]*>Board Defined \(1\)</.test(t)&&/value="ni"[^>]*>Never Implemented \(0\)</.test(t)&&/value="none"[^>]*>No churn type \(5\)</.test(t),true);
 ck('a typed churn has no "why" or fix',/Board Oct[\s\S]*?\u2014 has a type/.test(t),true);
-ck('why: no churn deal vs a churn deal with a blank type',
-  [/No Deal Oct[\s\S]*?No HubSpot churn deal within 90 days/.test(t),/Blank Type Oct[\s\S]*?HubSpot churn deal has no Churn Type/.test(t)],[true,true]);
+const rowOf=n=>{const i=t.indexOf('<b>'+n+'</b>');return i<0?'':t.slice(i,t.indexOf('</tr>',i));};
+ck('why: a churn deal with a blank type',/HubSpot churn deal has no Churn Type/.test(rowOf('Blank Type Oct'))&&/Set Churn Type on the deal/.test(rowOf('Blank Type Oct')),true);
+ck('why: the brand\'s deal is still Closed Won / Signed, and it links to that deal',
+  /HubSpot deal is still Closed Won \u00b7 Signed, but the app ended the brand/.test(rowOf('No Deal Oct'))&&/0-3\/w2"/.test(rowOf('No Deal Oct')),true);
+ck('why: Churn Type filled but the deal never moved to a churn stage',
+  /HubSpot deal has Churn Type \u201cYes - Rejected Product\(s\)\u201d but is still Closed Won \u00b7 Signed, not a churn stage/.test(rowOf('Typed Won Sep'))&&/Move the deal to Churned; its Churn Type will then count/.test(rowOf('Typed Won Sep')),true);
+ck('why: no HubSpot deal joined at all',/No HubSpot deal is joined to this brand/.test(rowOf('No Deal Sep'))&&/no HubSpot record/.test(rowOf('No Deal Sep')),true);
 ck('a borrowed deal name is shown under the brand',/Blank Type Oct<\/b><span class="bd-c2nt-id">HubSpot deal: Deal d3/.test(t),true);
 ck('links: deal + company when there is a churn deal; "no HubSpot record" when nothing',/0-3\/d3"[^>]*>Deal \u2197<\/a> \u00b7 <a href="[^"]*0-2\/c3"/.test(t)&&/No Deal Sep[\s\S]*?no HubSpot record/.test(t),true);
 ck('the lines and the table share the same tests',/else if\(_chNoType\(dd\)\)nU\[k\]/.test(html)&&/var _chLineOf=function\(dd\)\{return _bdIsBoardChurn\(dd\)\?'board':_chIsNI\(dd\)\?'ni':_chNoType\(dd\)\?'none':'';\};/.test(html),true);
 ctx.bdC2NtTypeSet('none');t=render();
-ck('No churn type: only the amber line\'s churns',rows(t).map(r=>r.split('|')[0]),['Blank Type Oct','No Deal Oct','No Deal Sep','Old HubSpot Churn']);
-ck('  and the period counts follow the type',/>All periods \(4\)</.test(t)&&/>Oct 26 \(2\)<\/option>/.test(t),true);
+ck('No churn type: only the amber line\'s churns',rows(t).map(r=>r.split('|')[0]),['Blank Type Oct','No Deal Oct','Typed Won Sep','No Deal Sep','Old HubSpot Churn']);
+ck('  and the period counts follow the type',/>All periods \(5\)</.test(t)&&/>Oct 26 \(2\)<\/option>/.test(t),true);
 ctx.bdC2NtPeriod('2026-10');t=render();
 ck('type + period = one point of one line',rows(t).map(r=>r.split('|')[0]),['Blank Type Oct','No Deal Oct']);
 ck('  and stays open after the re-render',/class="bd-c2nt" open/.test(t),true);

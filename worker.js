@@ -1648,7 +1648,7 @@ WHERE p.deposit_paid_at IS NOT NULL AND p.status <> 'rolled_over' AND COALESCE(h
 const APP_PILOT_SQL_SF = `SELECT DISTINCT hb.ID AS ID, hb.HUBSPOT_COMPANY_ID::VARCHAR AS HC, hb.NAME AS NM
 FROM STAGING.STG_PILOTS p JOIN STAGING.STG_SUBSCRIPTIONS s ON s.ID = p.SUBSCRIPTION_ID JOIN STAGING.STG_BRANDS hb ON hb.ID = s.HEALTH_BRAND_ID
 WHERE p.DEPOSIT_PAID_AT IS NOT NULL AND p.STATUS <> 'rolled_over' AND COALESCE(hb.DEMO, FALSE) = FALSE`;
-const APP_PILOT_TEST_BRANDS = ['FrontrowMD Demo Account', 'Vincent'];   // = BD_APP_TEST_BRANDS
+const APP_PILOT_TEST_BRANDS = ['FrontrowMD Demo Account', 'Vincent', "Lane's 6/3 Test", 'Example Brand Name'];   // = BD_APP_TEST_BRANDS
 function appPilotNorm(v) {
   let t = String(v || '');
   try { t = t.normalize('NFKD'); } catch (e) {}

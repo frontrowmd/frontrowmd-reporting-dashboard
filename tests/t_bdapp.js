@@ -272,7 +272,8 @@ ck('  and HubSpot MRR, App MRR and Recurly MRR sit side by side',/\['hsMrr','Hub
   ck('  the header says what it nets',/net \(HubSpot \\u2212 '\+\(_bdRecVs\|\|'app'\)\+' MRR\)/.test(bd)&&/_bdRecVs=_r5Rc\?'Recurly':'app';/.test(bd),true);
   ck('the freshness note says where Recurly MRR comes from, and when it is stale or down',/Recurly MRR is '\+\(_rcm\.stale\?/.test(bd)&&/'Recurly MRR is unavailable \('/.test(bd),true);
 }
-ck('test accounts are an explicit list',/var BD_APP_TEST_BRANDS=\['FrontrowMD Demo Account','Vincent'\];/.test(bd),true);
+ck('test accounts are an explicit list',/var BD_APP_TEST_BRANDS=\['FrontrowMD Demo Account','Vincent',"Lane's 6\/3 Test",'Example Brand Name'\];/.test(bd),true);
+ck('  and the worker copy matches it',/const APP_PILOT_TEST_BRANDS = \['FrontrowMD Demo Account', 'Vincent', "Lane's 6\/3 Test", 'Example Brand Name'\];/.test(src),true);
 
 // 10. Review fixes (2026-11-11)
 // Worker: the restart signals and the bulk-day flag the page reads.

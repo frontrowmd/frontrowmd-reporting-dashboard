@@ -860,7 +860,9 @@ var BD_APP_CHURN_FROM='2026-06-01';
 // Internal demo / test accounts that are live in the app. Left out of the app
 // book (Active Brands, MRR) and of Reconciliation table 2, so they never show
 // up as a brand HubSpot is "missing". Exact names, matched case-sensitively.
-var BD_APP_TEST_BRANDS=['FrontrowMD Demo Account','Vincent'];
+// + two test rows found in C2's No churn type list (Alex, 2026-11-20); both
+// are discarded in the app. Straight apostrophe, as the app stores it.
+var BD_APP_TEST_BRANDS=['FrontrowMD Demo Account','Vincent',"Lane's 6/3 Test",'Example Brand Name'];
 var BD_HS_URL='https://app.hubspot.com/contacts/46815331/record/';
 // Pairs matched BY HAND in the brand-by-brand review of 2026-11-11 (the lists
 // Alex signed off), where no automatic rule can link HubSpot to the app:
@@ -3743,11 +3745,34 @@ function renderBD(){
       var b=dd._brand,hasDeal=!!(dd.id&&_baIsChurnDeal(dd)),none=line==='none';
       // The app brand's name leads (an app churn borrows its HubSpot deal's
       // fields, deal name included); the deal name follows when it differs.
-      var bn=(b&&b.name)||dd.dealname||'(unnamed)',dn=hasDeal&&dd.dealname&&dd.dealname!==bn?dd.dealname:'';
+      var why='',fix='',deal=hasDeal?dd.id:'',dealOf=null;
+      if(none&&hasDeal){why='HubSpot churn deal has no Churn Type';fix='Set Churn Type on the deal';}
+      else if(none&&dd._src!=='app'){why='No Churn Type on the deal';fix='Set Churn Type on the deal';}
+      else if(none){
+        // An app churn with no churn-stage deal. Say what HubSpot DOES hold for
+        // the brand (Alex, 2026-11-20: most were still Closed Won / Signed, so
+        // "no churn deal" read as a mapping problem when it was a stage one).
+        var bds=(b&&_baJ.byBrand[b.id]||[]).filter(function(x){return !_baIsChurnDeal(x);});
+        var withF=bds.filter(function(x){return (x.never_implemented_churn||'').trim()||_baDay(x.pausechurn_date);})[0];
+        var won=bds.filter(function(x){return x.dealstage==='closedwon';}).sort(function(x,y){return _baDay(y.closedate)<_baDay(x.closedate)?-1:1;})[0];
+        dealOf=withF||won||bds.slice().sort(function(x,y){return _baDay(y.createdate)<_baDay(x.createdate)?-1:1;})[0]||null;
+        var stg=dealOf?((BD_STAGE_LABELS[dealOf.dealstage]||dealOf.dealstage||'')+(dealOf.brand_status?' \u00b7 '+dealOf.brand_status:'')):'';
+        if(withF){
+          var ct=(withF.never_implemented_churn||'').trim();
+          why='HubSpot deal has '+(ct?'Churn Type \u201c'+_bdEsc(ct)+'\u201d':'a Pause/Churn Date')+' but is still '+stg+', not a churn stage';
+          fix='Move the deal to Churned'+(ct?'; its Churn Type will then count':' and set Churn Type');
+        }else if(dealOf){
+          why='HubSpot deal is still '+stg+', but the app ended the brand';
+          fix='If it churned: move the deal to Churned and set Churn Type. If it is still live: fix its app subscription';
+        }else{
+          why='No HubSpot deal is joined to this brand';
+          fix='Associate the brand\u2019s deal with its HubSpot company, or add a reviewed match';
+        }
+        if(dealOf)deal=dealOf.id;
+      }
+      var bn=(b&&b.name)||dd.dealname||'(unnamed)',dnSrc=hasDeal?dd.dealname:(dealOf&&dealOf.dealname),dn=dnSrc&&dnSrc!==bn?dnSrc:'';
       rows.push({k:k,line:line,type:(dd.never_implemented_churn||'').trim(),name:bn,dealName:dn,day:_baDay(dd.pausechurn_date),
-        why:!none?'':hasDeal?'HubSpot churn deal has no Churn Type':(dd._src==='app'?'No HubSpot churn deal within '+BD_APP_META_DAYS+' days of the app end date':'No Churn Type on the deal'),
-        fix:!none?'':hasDeal?'Set Churn Type on the deal':'Create or move a churn deal for this brand, or set Churn Type on its existing one',
-        deal:hasDeal?dd.id:'',co:dd.companyId||(b&&b.hubspotCompanyId)||'',app:b?b.id:''});
+        why:why,fix:fix,deal:deal,co:dd.companyId||(b&&b.hubspotCompanyId)||'',app:b?b.id:''});
     });
     if(!rows.length)return '';
     var ty=_bdC2NtType,inTy=function(r){return !ty||r.line===ty;};
