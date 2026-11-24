@@ -29,17 +29,23 @@ const TAGS={hide_pilot_initiation_fee:{type:'boolean',name:'hide_pilot_initiatio
   products_ever_live:{type:'number',name:'products_ever_live'}};
 const CARD={id:3565,database_id:67,dataset_query:{database:67,type:'native',native:{query:'select 1 -- card sql',"template-tags":TAGS}}};
 let dsRows=rows;
+const CATCOLS=['CATEGORY','AMOUNT','MULTI_MONTH','INVOICES','BRANDS','MONTH'];
+const CATROWS=[['plan',3000,1000,3,3,'2026-10'],['pilot_initiation_fee',2500,0,1,1,'2026-10'],['review',300,0,2,1,'2026-10'],['credits',-200,0,1,1,'2026-10']];
 W.fetch=async(url,init)=>{calls.push({url,init});
   if(url.endsWith('/api/card/3565'))return ok(CARD);
-  if(url.endsWith('/api/dataset'))return ok({status:'completed',data:{cols:COLS.map(name=>({name})),rows:dsRows}});
+  if(url.endsWith('/api/dataset')){if(/with base as/.test(JSON.parse(init.body).native.query))return ok({status:'completed',data:{cols:CATCOLS.map(name=>({name})),rows:CATROWS}});
+    return ok({status:'completed',data:{cols:COLS.map(name=>({name})),rows:dsRows}});}
   if(url.endsWith('/api/dataset/json'))return ok(dsRows.map(r=>{const o={};COLS.forEach((c,i)=>o[c]=r[i]);return o;}));
   return {ok:false,status:404,text:async()=>''};};
 const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,put:async(k,v)=>{kv[k]=v;}};
 (async()=>{
   const env={METABASE_API_KEY:'k',CONTENT_STORE:KV};
   const d=JSON.parse(JSON.stringify(await W.fetchBdWaterfall(env,false)));
-  ck('the worker reads the saved card, then runs its SQL',calls.map(c=>c.url.replace(W.METABASE_URL,'')),['/api/card/3565','/api/dataset']);
-  const sent=JSON.parse(calls[1].init.body);
+  const dsCalls=calls.filter(c=>c.url.endsWith('/api/dataset')).map(c=>JSON.parse(c.init.body));
+  ck('the worker reads the saved card, runs its SQL, and the category query',[calls.filter(c=>c.url.endsWith('/api/card/3565')).length,dsCalls.length],[1,2]);
+  const sent=dsCalls.find(q=>!/with base as/.test(q.native.query));
+  const cq=dsCalls.find(q=>/with base as/.test(q.native.query));
+  ck('  the category query covers last complete month, Recurly charges and credits, test accounts out',[/dateadd\(month, -1, date_trunc\('month', current_date\)\)/.test(cq.native.query),/'1475', '1433'/.test(cq.native.query),/i\.number <> '5291'/.test(cq.native.query)],[true,true,true]);
   ck('  the card\u2019s own SQL, on its database',[sent.native.query,sent.database,sent.type],['select 1 -- card sql',67,'native']);
   ck('  Hide Pilot Initiation Fee is OFF (its saved default is on), basis All invoiced',[sent.native['template-tags'].hide_pilot_initiation_fee.default,sent.native['template-tags'].basis.default],[[false],['All invoiced']]);
   ck('  every other filter has its saved default cleared, so its clause drops out',['package','churn_type','products_ever_live'].map(k=>[sent.native['template-tags'][k].default,sent.native['template-tags'][k].required]),[[null,false],[null,false],[null,false]].map(x=>[undefined,false]));
@@ -54,7 +60,8 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
   calls=[];const again=await W.fetchBdWaterfall(env,false);
   ck('  a second load reads the cache, no Metabase run',[calls.length,again.cached],[0,true]);
   calls=[];await W.fetchBdWaterfall(env,true);
-  ck('  Refresh (fresh) runs the card again',calls.length,2);
+  ck('  Refresh (fresh) runs the card again',calls.length,3);
+  ck('the categories ride along in the payload',[d.categories.month,d.categories.cats.map(c=>c.cat),d.categories.cats[0].multi],['2026-10',['plan','pilot_initiation_fee','review','credits'],1000]);
   let err='';try{W.bdWfShape(['BRAND_KEY','BRAND_NAME'],[]);}catch(e){err=e.message;}
   ck('a card missing a needed column is an error, never an empty tab',/missing column/.test(err),true);
   // Past the 2,000-row cap the export endpoint is used.
@@ -64,8 +71,10 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
   W.fetch=async(url,init)=>{calls.push({url,init});if(url.endsWith('/api/card/3565'))return ok(CARD);if(url.endsWith('/api/dataset'))return ok({status:'completed',data:{cols:COLS.map(name=>({name})),rows:big}});
     if(url.endsWith('/api/dataset/json'))return ok(more.map(r=>{const o={};COLS.forEach((c,i)=>o[c]=r[i]);return o;}));return {ok:false,status:404,text:async()=>''};};
   calls=[];const d2=await W.fetchBdWaterfall(env,true);
-  ck('at the row cap it switches to the uncapped dataset export (no card column settings)',[calls.map(c=>c.url.replace(W.METABASE_URL,'')),d2.brands.length],[['/api/card/3565','/api/dataset','/api/dataset/json'],W.MB_ROW_CAP+1]);
-  ck('  the export is sent form-encoded, unformatted, with the same query',[calls[2].init.headers['Content-Type'],/&format_rows=false$/.test(calls[2].init.body),JSON.parse(decodeURIComponent(calls[2].init.body.slice(6).replace(/&format_rows=false$/,''))).native.query],['application/x-www-form-urlencoded',true,'select 1 -- card sql']);
+  const cardCalls=calls.filter(c=>!(c.init&&typeof c.init.body==='string'&&/with base as/.test(c.init.body)));
+  ck('at the row cap it switches to the uncapped dataset export (no card column settings)',[cardCalls.map(c=>c.url.replace(W.METABASE_URL,'')),d2.brands.length],[['/api/card/3565','/api/dataset','/api/dataset/json'],W.MB_ROW_CAP+1]);
+  const xc=cardCalls[2];
+  ck('  the export is sent form-encoded, unformatted, with the same query',[xc.init.headers['Content-Type'],/&format_rows=false$/.test(xc.init.body),JSON.parse(decodeURIComponent(xc.init.body.slice(6).replace(/&format_rows=false$/,''))).native.query],['application/x-www-form-urlencoded',true,'select 1 -- card sql']);
   W.fetch=async(url,init)=>{if(url.endsWith('/api/card/3565'))return ok(CARD);if(url.endsWith('/api/dataset'))return ok({status:'completed',data:{cols:COLS.map(name=>({name})),rows:big}});
     if(url.endsWith('/api/dataset/json'))return ok(more.map(r=>{const o={};COLS.slice(0,-1).forEach((c,i)=>o[c]=r[i]);return o;}));return {ok:false,status:404,text:async()=>''};};
   let e2='';try{await W.fetchBdWaterfall(env,true);}catch(e){e2=e.message;}
@@ -88,7 +97,7 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
     innerWidth:1400,innerHeight:900,scrollY:0,history:{replaceState(){}}};
   P.window=P;P.self=P;vm.createContext(P);
   for(const s of scripts){try{vm.runInContext(s,P);}catch(e){console.log('script load error:',e.message);}}
-  ck('the tab button and its nav anchors exist',/data-tab="waterfall"[^>]*>Churn Waterfall</.test(html)&&/id="bd-nav-wf"/.test(html)&&/data-sec="bd-sec-wf1"/.test(html)&&/data-sec="bd-sec-wf2"/.test(html),true);
+  ck('the tab button and its nav anchors exist',/data-tab="waterfall"[^>]*>Billing</.test(html)&&/id="bd-nav-wf"/.test(html)&&/data-sec="bd-sec-wf1"/.test(html)&&/data-sec="bd-sec-wf2"/.test(html),true);
   P.BD.data={deals:[],ownerMap:{},meta:{generatedAt:new Date().toISOString()}};
   pageFetches=[];P.bdSetTab('waterfall');
   ck('opening the tab asks the worker once',pageFetches,['/api/bd-waterfall']);
@@ -109,7 +118,12 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
   ck('months before the first invoice are blank',(rowOf('Pilot Co').match(/class="m pre"/g)||[]).length,2);
   ck('the pilot’s first invoice (its fee) starts its row',/<td class="m">5,000<\/td>/.test(rowOf('Pilot Co')),true);
   ck('the tooltip keeps Metabase’s own churn month',/Churn month used: Aug 26 \(last month invoiced\) · Metabase’s churn month: Oct 26/.test(rowOf('Gone Co')),true);
-  ck('month totals: brands invoiced and dollars',/<tr class="tot"><td class="bd-wf-b">Brands invoiced<\/td><td colspan="5"><\/td><td class="m">2<\/td><td class="m">4<\/td><td class="m">3<\/td><td class="m">1<\/td><\/tr>/.test(h),true);
+  ck('month totals: brands invoiced and dollars',/<tr class="tot"><td class="bd-wf-b">Brands invoiced<\/td><td colspan="6"><\/td><td class="m">2<\/td><td class="m">4<\/td><td class="m">3<\/td><td class="m">1<\/td><\/tr>/.test(h),true);
+  ck('Never Implemented is excluded from W2 by default (Alex, 2026-11-24)',P._bdWfNI,'excl');
+  ck('W1 columns: Months Until Churn (first to last invoice) and Invoiced Months',/<th[^>]*>Months Until Churn<\/th><th[^>]*>Invoiced Months<\/th>/.test(h)&&/Gone Co[\s\S]*?<td>Aug 26<\/td><td class="m">1<\/td><td class="m">2<\/td>/.test(rowOf('Gone Co')),true);
+  ck('  blank while active',/<td><\/td><td class="m"><\/td><td class="m">4<\/td>/.test(rowOf('Stay Co')),true);
+  ck('the colour scale is gentler: 75% is light green, 60% light red',[P.BD_WF_GREEN.indexOf(P._bdWfFill(0.75))>=0,P.BD_WF_RED.indexOf(P._bdWfFill(0.60))>=0,P._bdWfFill(0.60)===P.BD_WF_RED[0]],[true,true,true]);
+  P.bdWfSet('ni','incl');h=R();
   // W2
   const grid=h.slice(h.indexOf('id="bd-sec-wf2"'));
   const cohort=m=>{const i=grid.indexOf('<td class="rw-c">'+m+'</td>');if(i<0)return null;const r=grid.slice(i,grid.indexOf('</tr>',i));return [...r.matchAll(/<td(?: class="rw-n")?(?: title="[^"]*")?(?: style="[^"]*")?>([^<]*)<\/td>/g)].map(x=>x[1]).filter(x=>x!=='');};
@@ -163,8 +177,22 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
   P.bdWfSetFlagF('unpaid');hf=R();
   ck('the Abnormalities filter narrows the table to that rule',[...hf.matchAll(/<td class="bd-wf-b"[^>]*>(?:<span class="bd-wf-flag[^>]*>[^<]*<\/span>)?([^<]+)<span/g)].map(m=>m[1]),['Stay Co']);
   P.bdWfSetFlagF('');
+  // Billing Summary (Alex, 2026-11-24): renamed; last month's card on row 2 beside the category pie.
+  P.BD.wf=d;h=R();
+  ck('section W is Billing Summary, and its nav anchor too',/<span class="bd-sec-t">Billing Summary<\/span>/.test(h)&&/'bd-sec-wf0'\)">Billing Summary<\/a>/.test(html),true);
+  ck('row 1 has no invoiced card; row 2 has it beside the pie',[/<div class="bd-wf-kpis">(?:(?!bd-wf-row2)[\s\S])*Invoiced in/.test(h),/<div class="bd-wf-row2"><div class="bd-wf-kpi bd-wf-inv"[^>]*><div class="bd-wf-kpi-l">Invoiced in Oct 26<\/div>/.test(h)],[false,true]);
+  ck('the pie: plan split into monthly and prepaid, credits not a slice, one-offs typed',[/data-k="Plan \(monthly\)"/.test(h),/data-k="Plan \(prepaid multi-month\)"/.test(h),/data-k="Pilot initiation fees"/.test(h),/data-k="credits"/i.test(h),/before \$200 of credits and refunds/.test(h)],[true,true,true,false,true]);
+  ck('  its centre is the Recurly total',/<div class="bd-bs-cn" title="\$5,800">\$5,800<\/div>/.test(h),true);
+  ck('  a recurring estimate that would be negative is not shown',/recurring<div>/.test(h),false);
+  P.BD.wf=Object.assign({},d,{categories:{month:'2026-10',cats:[{cat:'plan',amount:900,multi:0,invoices:1,brands:1},{cat:'pilot_initiation_fee',amount:400,multi:0,invoices:1,brands:1}]}});h=R();
+  ck('  the recurring estimate takes the one-offs off the card total',/\u2248 \$600<\/span> recurring<div>after \$400 of one-off charges/.test(h),true);
+  P.BD.wf=d;
+  P.bdWfSetF('ty','Board Defined');h=R();
+  ck('  filtered: the recurring estimate is hidden (the pie covers every brand)',/recurring<div>/.test(h),false);P.bdWfReset();
+  P.BD.wf=Object.assign({},d,{categories:{error:'boom'}});h=R();
+  ck('  a failed category query leaves the tab working, with a note',/The category breakdown did not load \(boom\)/.test(h)&&/id="bd-sec-wf2"/.test(h),true);
   P.BD.wf={error:'Metabase /api/card/3565/query 403: You don\'t have permissions to do that.'};h=R();
-  ck('a Metabase failure is an error band, never an empty grid',/Churn Waterfall unavailable/.test(h)&&/collection must be visible/.test(h)&&!/bd-sec-wf2/.test(h),true);
+  ck('a Metabase failure is an error band, never an empty grid',/Billing data unavailable/.test(h)&&/collection must be visible/.test(h)&&!/bd-sec-wf2/.test(h),true);
   ck('W2\u2019s first column matches .rwtbl\u2019s sticky offset',[P.BD_WF_W_LBL,+((html.match(/\.rwtbl \.rw-n\{[^}]*left:(\d+)px/)||[])[1])],[78,78]);
   ck('Refresh re-runs the card once the tab has been opened',/if\(BD\.wf\)bdWfFetch\(true\);/.test(html),true);
   console.log('\n'+pass+' passed, '+fail+' failed');process.exit(fail?1:0);

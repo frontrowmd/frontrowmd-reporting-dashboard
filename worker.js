@@ -3920,6 +3920,39 @@ async function bdWfRunCard(env) {
   if (shaped.months.length !== want) throw new Error('Metabase export returned ' + shaped.months.length + ' month columns, the query ' + want);
   return shaped;
 }
+// Billing tab pie (Alex, 2026-11-24): last complete month's Recurly charges by
+// line category (int_recurly_line_items.category), as invoiced — before the
+// card spreads multi-month plans and takes credits off, and without bill.com,
+// whose invoices carry no category. The multi-month part of each category is
+// returned so the page can say how much of it the card spreads. Test accounts
+// as the card excludes them (keep in step with card 3565's inv_all list).
+const BD_WF_TEST_KEYS = ['rxlziytlif4qv', 'rxokqgqoyd19v', 'rxpytyohbbitw', 'rxorzn9oy9to7', 'rzgenyplvvna0', '1185', '1475', '1433', '1641'];
+const BD_WF_CAT_SQL = `
+with base as (
+  select il.category, i.id as invoice_id, ab.brand_key, i.type,
+    l.amount + coalesce(l.tax, 0) as amount, round(il.service_months) as months, il.type as line_type
+  from analytics_production.intermediate.int_recurly_line_items il
+  join analytics_production.staging.stg_recurly_line_items l on l.id = il.line_item_id
+  join analytics_production.staging.stg_recurly_invoices i on i.id = il.invoice_id
+  join analytics_production.intermediate.int_recurly_account_brand ab on ab.recurly_account_id = i.account_id
+  where i.state <> 'voided' and i.number <> '5291'
+    and date_trunc('month', i.created_at) = dateadd(month, -1, date_trunc('month', current_date))
+    and ab.brand_key not in (${BD_WF_TEST_KEYS.map(k => "'" + k + "'").join(', ')})
+)
+select iff(type = 'credit', 'credits', category) as category,
+  round(sum(amount), 2) as amount,
+  round(sum(iff(months >= 2, amount, 0)), 2) as multi_month,
+  count(distinct invoice_id) as invoices, count(distinct brand_key) as brands,
+  to_char(dateadd(month, -1, date_trunc('month', current_date)), 'YYYY-MM') as month
+from base
+where type = 'credit' or line_type = 'charge'
+group by 1
+order by 2 desc`;
+async function bdWfCategories(env) {
+  const rows = await mbQuery(env, BD_WF_CAT_SQL);
+  const n = (v) => Math.round((Number(v) || 0) * 100) / 100;
+  return { month: rows.length ? String(rows[0].MONTH || '') : '', cats: rows.map(r => ({ cat: String(r.CATEGORY || 'other'), amount: n(r.AMOUNT), multi: n(r.MULTI_MONTH), invoices: Number(r.INVOICES) || 0, brands: Number(r.BRANDS) || 0 })) };
+}
 async function fetchBdWaterfall(env, fresh) {
   if (!fresh && env.CONTENT_STORE) {
     try {
@@ -3928,7 +3961,9 @@ async function fetchBdWaterfall(env, fresh) {
     } catch (_) { /* a cache miss is fine */ }
   }
   const t0 = Date.now();
-  const data = await bdWfRunCard(env);
+  // The pie's query runs alongside; its failure leaves the rest of the tab working.
+  const [data, cats] = await Promise.all([bdWfRunCard(env), bdWfCategories(env).catch(e => ({ error: String(e && e.message || e).slice(0, 300) }))]);
+  data.categories = cats;
   data.meta = { card: BD_WF_CARD, url: METABASE_URL + '/question/' + BD_WF_CARD, asOf: new Date().toISOString(), ms: Date.now() - t0 };
   if (env.CONTENT_STORE) {
     try { const blob = JSON.stringify({ t: Date.now(), data }); if (blob.length < 20 * 1024 * 1024) await env.CONTENT_STORE.put(BD_WF_KV, blob, { expirationTtl: BD_WF_TTL_SEC * 6 }); } catch (_) { /* best effort */ }

@@ -618,7 +618,7 @@ function pageToggleTests(){
   const block=bd.slice(a,b);
   const T={console};vm.createContext(T);
   vm.runInContext([fn(bd,'_bdMonthOfG'),fn(bd,'_bdMDY'),fn(bd,'_bdMonthEndMDY'),fn(bd,'_baPilotDealIds'),fn(bd,'_baIsTest'),fn(bd,'_bdChip'),fn(bd,'_bdChips'),fn(bd,'_bdEsc'),fn(bd,'_baToday'),
-    fn(bd,'_bdS2Months'),fn(bd,'_baRcClass'),fn(bd,'_baStatusOf'),fn(bd,'_bdRcBillsOn'),fn(bd,'_bdRcLiveOn'),fn(bd,'_bdS2FromBilled'),fn(bd,'_bdS2FromSigned'),fn(bd,'_bdRcVal'),fn(bd,'_bdS2Billed'),fn(bd,'_bdS2Signed'),fn(bd,'_bdS2Week'),fn(bd,'_bdS2Weeks'),fn(bd,'_bdS2Chg'),fn(bd,'_bdS2Chart'),
+    fn(bd,'_bdS2Months'),fn(bd,'_baRcClass'),fn(bd,'_baStatusOf'),fn(bd,'_bdRcBillsOn'),fn(bd,'_bdRcLiveOn'),fn(bd,'_bdS2FromBilled'),fn(bd,'_bdS2FromSigned'),fn(bd,'_bdRcVal'),fn(bd,'_bdS2Billed'),fn(bd,'_bdS2Signed'),fn(bd,'_bdS2Week'),fn(bd,'_bdS2Weeks'),fn(bd,'_bdS2Chg'),fn(bd,'_bdS2Chart'),fn(bd,'_bdS2WhoBilled'),fn(bd,'_bdS2Table'),decl(bd,'var _bdS2T=',';'),decl(bd,'var BD_WF_MN=',';'),decl(bd,'var BD_HS_URL=',';'),decl(bd,'var BD_PILOT_FEE_UNPAID=',';'),
     decl(bd,"var _bdS2Mode=",';'),decl(bd,"var BD_S2_FROM=",';'),
     decl(bd,'var BD_APP_TEST_BRANDS=',';'),decl(bd,"var _bdPilotMode=",';'),
     'function f$(v){return "$"+Math.round(v);}','function buildSVGChart(l,v){return "<svg data-n=\\""+v.length+"\\"></svg>";}',
@@ -666,6 +666,23 @@ function pageToggleTests(){
     {id:6,name:'Vincent',recurly:{mrr:1,subs:[{billFrom:'2026-01-01',mrr:9999}]}}],sm.concat([{k:'2026-04',end:'2026-04-30'}]));
   ck('Billed: base = brands live in Recurly at month-end (billing, trial, starting, paused; not ended), as section 01 counts; pilots on top until live; test accounts out',
     [bil.base,bil.pil,bil.baseA,bil.pilA],[[2,3,2,3],[1,2,2,1],[1700*12,2200*12,1700*12,3700*12],[1500*12,4500*12,4500*12,3000*12]]);
+  // Brand lists under the charts (Alex, 2026-11-24): each month's rows add up to the chart's point.
+  {const BS=[rcb(1,[{billFrom:'2026-01-10',billTo:'',pausedAt:'',mrr:1000,price:900}]),
+    rcb(2,[{billFrom:'2026-02-05',billTo:'2026-03-01',pausedAt:'',mrr:0,price:500}]),
+    rcb(3,[{billFrom:'2026-03-20',billTo:'',pausedAt:'',mrr:2000,price:2000}],{pilotHist:[{from:'2026-01-15',to:'2026-03-20',price:1500}]}),
+    rcb(4,[],{pilotHist:[{from:'2026-02-10',to:'',price:3000}]}),
+    rcb(5,[{billFrom:'2026-01-02',billTo:'',pausedAt:'2026-02-15',mrr:0,price:700}]),
+    {id:6,name:'Vincent',recurly:{mrr:1,subs:[{billFrom:'2026-01-01',mrr:9999}]}}],MS=sm.concat([{k:'2026-04',end:'2026-04-30'}]);
+   const ok=MS.every((mo,i)=>{const w=T._bdS2WhoBilled(BS,mo,false,null),b=w.filter(r=>r.ly==='base'),p=w.filter(r=>r.ly==='pil');
+     return b.length===bil.base[i]&&p.length===bil.pil[i]&&Math.round(b.reduce((t,r)=>t+r.mrr,0)*12)===bil.baseA[i]&&Math.round(p.reduce((t,r)=>t+r.mrr,0)*12)===bil.pilA[i];});
+   ck('  the brand list for every month ties to the chart, brand count and ARR, base and pilot',ok,true);
+   const w=T._bdS2WhoBilled(BS,MS[1],false,null);
+   ck('  each row names the brand, its layer, status and since',w.map(r=>[r.name,r.ly,r.st,r.since]),[['B1','base','Billing','2026-01-10'],['B2','base','Billing','2026-02-05'],['B3','pil','In a paid pilot','2026-01-15'],['B4','pil','In a paid pilot','2026-02-10'],['B5','base','Paused','2026-01-02']]);
+   const ob=T._bdS2WhoBilled([{id:30,name:'Onb',state:'pending',onboarding:true,onboardingFrom:'2026-02-10',onboardingExpected:2000}],MS[2],false,null);
+   ck('  onboarding sign-ups are listed as their own layer',ob.map(r=>[r.name,r.ly,r.mrr]),[['Onb','onb',2000]]);
+   T._bdS2T={n:{open:true,m:'2026-02',ly:''},a:{open:false,m:'',ly:''}};
+   const tb=T._bdS2Table('n',{months:MS,today:'2026-04-30',who:(mo,cur)=>T._bdS2WhoBilled(BS,mo,cur,null),bLbl:'Recurly',money:false,pt:i=>bil.base[i]+bil.pil[i]});
+   ck('  the table opens on the picked month and says it matches the chart',/Brands behind this chart · Feb 2026: <b>5<\/b> brands/.test(tb)&&/✔ the chart’s Feb 2026 point/.test(tb)&&/<option value="2026-02" selected>/.test(tb),true);}
   const bv=T._bdS2Billed([rcb(7,[{billFrom:'2026-01-05',billTo:'',pausedAt:'',mrr:1500,price:1500},{liveFrom:'2026-03-01',billFrom:'',billTo:'',pausedAt:'',mrr:0,price:900}])],sm);
   ck('  a billing brand with a second subscription starting later counts only what it bills (as section 01)',bv.baseA,[1500*12,1500*12,1500*12]);
   ck('  a subscription billing $0 (100% coupon) counts $0, not its list price',[T._bdRcVal({basis:'invoice',mrr:0,price:1999}),T._bdRcVal({basis:'expired',mrr:0,price:1999})],[0,1999]);
