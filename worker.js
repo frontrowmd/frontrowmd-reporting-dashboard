@@ -3820,6 +3820,122 @@ async function metabaseCheck(env) {
   return out;
 }
 
+// ── BD Tracker: Churn Waterfall tab (/api/bd-waterfall) ─────────────────────
+// Alex, 2026-11-24: a live copy of the Metabase "Churn Waterfall" question
+// (card 3565), which joins the HubSpot deals to app brands, Recurly invoices and
+// bill.com invoices (one row per brand, the amount invoiced each complete
+// month). The worker RUNS THE SAVED CARD by id rather than carrying its SQL: the
+// card holds the bill.com invoice block and the hand-reviewed deal map, which
+// the data team keeps editing, so one copy of the logic lives in Metabase.
+// Unfiltered (see bdWfUnfilteredTags): the page filters and builds both views itself. Cached in KV for BD_WF_TTL_SEC (the
+// card reads Snowflake copies refreshed a few times a day; a run takes a while);
+// Refresh skips the cache.
+const BD_WF_CARD = 3565;
+const BD_WF_KV = 'bd_waterfall_v1';
+const BD_WF_TTL_SEC = 1800;
+// The card's month columns are named "'2024-01'" (quotes included) by its PIVOT.
+const BD_WF_MONTH_RE = /^'?(\d{4}-\d{2})'?$/;
+function bdWfMonth(v) {
+  const m = String(v == null ? '' : v).match(/^(\d{4}-\d{2})/);
+  return m ? m[1] : '';
+}
+// Column-name-keyed rows → the compact payload the page reads. Keyed by NAME,
+// never position, so a column the data team adds to the card is ignored rather
+// than shifting every field.
+function bdWfShape(colNames, rows) {
+  const ix = {}; colNames.forEach((c, i) => { ix[String(c).toUpperCase()] = i; });
+  const need = ['BRAND_KEY', 'BRAND_NAME', 'CHURN_STATUS', 'FIRST_MONTH', 'LAST_INVOICED_MONTH'];
+  const miss = need.filter(c => ix[c] === undefined);
+  if (miss.length) throw new Error('Churn Waterfall card is missing column(s) ' + miss.join(', '));
+  const months = [], mIx = [];
+  colNames.forEach((c, i) => { const m = String(c).match(BD_WF_MONTH_RE); if (m) { months.push(m[1]); mIx.push(i); } });
+  if (!months.length) throw new Error('Churn Waterfall card returned no month columns');
+  const g = (r, c) => { const i = ix[c]; return i === undefined ? null : r[i]; };
+  const str = (v) => (v == null ? '' : String(v).trim());
+  const num = (v) => { if (v == null || v === '') return null; const n = Number(String(v).replace(/,/g, '')); return isFinite(n) ? n : null; };
+  const brands = rows.map(r => ({
+    k: str(g(r, 'BRAND_KEY')), n: str(g(r, 'BRAND_NAME')), src: str(g(r, 'SOURCE')), grp: str(g(r, 'GROUP_NAME')),
+    st: str(g(r, 'CHURN_STATUS')), stage: str(g(r, 'HUBSPOT_STAGE')),
+    hsCh: bdWfMonth(g(r, 'CHURN_MONTH')), chSrc: str(g(r, 'CHURN_SOURCE')),
+    li: bdWfMonth(g(r, 'LAST_INVOICED_MONTH')), mi: num(g(r, 'MONTHS_INVOICED')) || 0,
+    impl: str(g(r, 'EVER_IMPLEMENTED_WIDGET')) === 'Yes', paid: str(g(r, 'EVER_PAID_INVOICE')) === 'Yes',
+    ty: str(g(r, 'CHURN_TYPE')), seg: str(g(r, 'COMPANY_SEGMENT')), ab: str(g(r, 'AB_TEST')),
+    wt: str(g(r, 'WEB_TIER_AT_CHURN')), wts: str(g(r, 'WEB_TIER_SOURCE')),
+    ss: str(g(r, 'SELF_SELECTED_TRAFFIC')), it: str(g(r, 'IMPLIED_TRAFFIC')), v30: num(g(r, 'IMPLIED_VIEWS_30D')),
+    pe: num(g(r, 'PRODUCTS_EVER_LIVE_COUNT')), pc: num(g(r, 'PRODUCTS_LIVE_AT_CHURN_COUNT')),
+    pkg: str(g(r, 'PACKAGE')), pil: str(g(r, 'PILOT_STATUS')), fm: bdWfMonth(g(r, 'FIRST_MONTH')),
+    a: mIx.map(i => { const v = num(r[i]); return v == null ? null : Math.round(v * 100) / 100; }),
+  })).filter(b => b.k && b.fm);
+  return { months, brands };
+}
+// The card's own filters all carry saved defaults, and Metabase applies a
+// default whenever a run leaves that filter out — Hide Pilot Initiation Fee
+// defaults to ON, which drops every pilot with no plan bill yet (47 brands on
+// 2026-11-24), and each list filter defaults to the values that existed when it
+// was saved, so a new package or segment would drop out unseen. So the worker
+// reads the card's SQL and filter definitions (live, so edits in Metabase still
+// flow through), clears every default, sets Hide Pilot Initiation Fee to off and
+// basis to All invoiced, and runs that as an ad-hoc query. Every optional
+// filter then has no value and its [[...]] clause drops out of the SQL.
+function bdWfUnfilteredTags(tags) {
+  const out = {};
+  for (const [k, t] of Object.entries(tags || {})) {
+    const c = Object.assign({}, t);
+    delete c.default; c.required = false;
+    if (k === 'hide_pilot_initiation_fee') { c.default = [false]; c.required = true; }
+    if (k === 'basis') { c.default = ['All invoiced']; c.required = true; }
+    out[k] = c;
+  }
+  return out;
+}
+function bdWfNative(card) {
+  const dq = (card && card.dataset_query) || {};
+  // Legacy shape {native:{query,'template-tags'}} or MBQL 5 {stages:[{native,'template-tags'}]}.
+  const st = Array.isArray(dq.stages) && dq.stages[0] ? dq.stages[0] : null;
+  const query = (dq.native && dq.native.query) || (st && typeof st.native === 'string' ? st.native : '') || '';
+  const tags = (dq.native && dq.native['template-tags']) || (st && st['template-tags']) || {};
+  if (!query) throw new Error('Metabase question ' + BD_WF_CARD + ' is not a native SQL question any more');
+  return { database: (card && card.database_id) || dq.database || MB_DB, query, tags };
+}
+async function bdWfRunCard(env) {
+  const card = await mbFetch(env, `/api/card/${BD_WF_CARD}`);
+  const n = bdWfNative(card);
+  const q = { database: n.database, type: 'native', native: { query: n.query, 'template-tags': bdWfUnfilteredTags(n.tags) } };
+  const d = await mbFetch(env, '/api/dataset', { method: 'POST', body: JSON.stringify(q) });
+  if (!d || d.status === 'failed' || d.error) throw new Error('Metabase question ' + BD_WF_CARD + ' failed: ' + String((d && d.error) || 'no result').slice(0, 300));
+  const cols = ((d.data && d.data.cols) || []).map(c => c.name);
+  const rows = (d.data && d.data.rows) || [];
+  if (rows.length < MB_ROW_CAP) return bdWfShape(cols, rows);
+  // /api/dataset stops at 2,000 rows; its JSON export does not, and (unlike a
+  // card export) applies no saved column settings. One row per brand, so this
+  // starts to matter only past 2,000 brands.
+  const x = await mbFetch(env, '/api/dataset/json', {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'query=' + encodeURIComponent(JSON.stringify(q)) + '&format_rows=false',
+  });
+  if (!Array.isArray(x) || x.length <= rows.length) throw new Error('Metabase question ' + BD_WF_CARD + ' passed ' + MB_ROW_CAP + ' rows and its export did not return more');
+  const xCols = Object.keys(x[0]);
+  const shaped = bdWfShape(xCols, x.map(o => xCols.map(c => o[c])));
+  const want = cols.filter(c => BD_WF_MONTH_RE.test(String(c))).length;
+  if (shaped.months.length !== want) throw new Error('Metabase export returned ' + shaped.months.length + ' month columns, the query ' + want);
+  return shaped;
+}
+async function fetchBdWaterfall(env, fresh) {
+  if (!fresh && env.CONTENT_STORE) {
+    try {
+      const hit = await env.CONTENT_STORE.get(BD_WF_KV, 'json');
+      if (hit && hit.t && Date.now() - hit.t < BD_WF_TTL_SEC * 1000 && hit.data) return Object.assign({}, hit.data, { cached: true });
+    } catch (_) { /* a cache miss is fine */ }
+  }
+  const t0 = Date.now();
+  const data = await bdWfRunCard(env);
+  data.meta = { card: BD_WF_CARD, url: METABASE_URL + '/question/' + BD_WF_CARD, asOf: new Date().toISOString(), ms: Date.now() - t0 };
+  if (env.CONTENT_STORE) {
+    try { const blob = JSON.stringify({ t: Date.now(), data }); if (blob.length < 20 * 1024 * 1024) await env.CONTENT_STORE.put(BD_WF_KV, blob, { expirationTtl: BD_WF_TTL_SEC * 6 }); } catch (_) { /* best effort */ }
+  }
+  return data;
+}
+
 // ── BD Tracker: the app brand book via Metabase (/api/bd-app) ────────────────
 // Alex's decision (2026-11-11): the APP owns brand count, MRR, Future MRR,
 // churn count and churn date on the BD Tracker; HubSpot keeps everything else.
@@ -13315,6 +13431,16 @@ export default {
     // /api/bd. A Metabase failure comes back as {error} with a 502, never as an
     // empty book, so the page can say the app data is missing instead of
     // drawing zeros.
+    // POST /api/bd-waterfall → the Metabase Churn Waterfall question, live
+    // (BD Tracker's Churn Waterfall tab). {fresh:true} skips the 30-min cache.
+    if (request.method === 'POST' && url.pathname === '/api/bd-waterfall') {
+      let body;
+      try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
+      try { return jr(await fetchBdWaterfall(env, body && body.fresh === true)); }
+      catch (err) { console.error('BD waterfall endpoint error:', err); return jr({ error: 'Churn Waterfall unavailable', detail: String(err && err.message || err).slice(0, 300) }, 502); }
+    }
+
     if (request.method === 'POST' && url.pathname === '/api/bd-app') {
       try { await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
       if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);

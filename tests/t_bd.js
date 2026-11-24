@@ -118,7 +118,7 @@ ck('and no colour is reused', new Set(segHexes).size, segHexes.length);
 // anchored section, and it is the assertion most worth keeping.
 ck('the tab state exists', /var _bdTab='tracker';/.test(bd), true);
 ck('only one tab is written to the DOM',
-   /el\.innerHTML=\(_bdTab==='churn'\)\?hChurn:\(_bdTab==='recon'\)\?hRecon:h;/.test(bd), true);
+   /el\.innerHTML=\(_bdTab==='churn'\)\?hChurn:\(_bdTab==='recon'\)\?hRecon:\(_bdTab==='waterfall'\)\?_bdWfRender\(\):h;/.test(bd), true);
 ck('and each tab builds only its own deals table',
    [/h\+=\(_bdTab==='tracker'\)\?_bdDealsTable\(sorted\):'';/.test(bd),
     /\(_bdTab==='churn'\)\?_bdDealsTable\(_chSorted\):''/.test(bd)], [true,true]);

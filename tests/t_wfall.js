@@ -1,0 +1,171 @@
+// BD Tracker Churn Waterfall tab (2026-11-24): the worker runs Metabase card
+// 3565 and shapes it; the page shows every brand (W1) and a C3-style cohort
+// grid (W2). Alex's rules: pilots count from their first invoice; a churned
+// brand's churn date is the last month it was invoiced.
+const fs=require('fs'),vm=require('vm');
+const {load}=require('./slice.js');
+let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify(w);console.log((ok?'PASS ':'FAIL ')+n+'  got='+JSON.stringify(g)+(ok?'':' want='+JSON.stringify(w)));ok?pass++:fail++;};
+
+// ── 1. Worker: run the card, shape it, cache it ─────────────────────────────
+const src=load(process.env.WORKER_SRC||'worker.js');
+const W={console:{log(){},warn(){},error(){}},Date,JSON,Math};vm.createContext(W);
+vm.runInContext(src.slice(0,src.indexOf('\nexport default'))+'\nObject.assign(globalThis,{bdWfShape,bdWfNative,fetchBdWaterfall,BD_WF_CARD,BD_WF_KV,METABASE_URL,MB_ROW_CAP});',W);
+const COLS=['BRAND_KEY','BRAND_NAME','SOURCE','GROUP_NAME','CHURN_STATUS','HUBSPOT_STAGE','CHURN_MONTH','LAST_INVOICED_MONTH','CHURN_SOURCE','MONTHS_UNTIL_CHURN','MONTHS_INVOICED',
+  'EVER_IMPLEMENTED_WIDGET','EVER_PAID_INVOICE','CHURN_TYPE','COMPANY_SEGMENT','AB_TEST','WEB_TIER_AT_CHURN','WEB_TIER_SOURCE','SELF_SELECTED_TRAFFIC','IMPLIED_TRAFFIC','IMPLIED_VIEWS_30D',
+  'PRODUCTS_EVER_LIVE_COUNT','PRODUCTS_LIVE_AT_CHURN_COUNT','PACKAGE','PILOT_STATUS','FIRST_MONTH',"'2026-07'","'2026-08'","'2026-09'","'2026-10'"];
+const row=(k,n,st,hsCh,li,fm,a,x)=>{x=x||{};return [k,n,'Recurly',null,st,st==='Active'?'Closed Won':'Churned',hsCh,li,hsCh?'HubSpot deal':null,null,x.mi||1,x.impl||'Yes','Yes',x.ty||'Not recorded','VIP','Not recorded','0-10K','Implied traffic','Not selected','0-10K',100,
+  x.pe==null?1:x.pe,0,'Pro',x.pil||'No pilot',fm+'-01T00:00:00-04:00'].concat(a);};
+const rows=[row('1','Stay Co','Active',null,'2026-10','2026-07',[1000,1000,1000,1000],{mi:4}),
+  row('2','Gone Co','Churned','2026-10','2026-08','2026-07',[500,500,0,null],{mi:2,ty:'Board Defined'}),
+  row('3','Pilot Co','Active',null,'2026-09','2026-09',[null,null,5000,0],{pil:'Pilot (not converted)'}),
+  row('4','Never Co','Churned','2026-09','2026-08','2026-08',[null,300,null,null],{impl:'No'}),
+  row('5','Paused Co','Paused','2026-10','2026-09','2026-08',[null,'1,200',1200,0],{mi:2})];
+const ok=(j)=>({ok:true,status:200,json:async()=>j,text:async()=>JSON.stringify(j)});
+let calls=[];
+// The card as GET /api/card/3565 returns it: native SQL plus filters that all carry saved defaults.
+const TAGS={hide_pilot_initiation_fee:{type:'boolean',name:'hide_pilot_initiation_fee',default:[true],required:true},
+  basis:{type:'text',name:'basis',default:['All invoiced'],required:true},
+  package:{type:'text',name:'package',default:['Pro','Hero']},churn_type:{type:'text',name:'churn_type',default:['Board Defined'],required:false},
+  products_ever_live:{type:'number',name:'products_ever_live'}};
+const CARD={id:3565,database_id:67,dataset_query:{database:67,type:'native',native:{query:'select 1 -- card sql',"template-tags":TAGS}}};
+let dsRows=rows;
+W.fetch=async(url,init)=>{calls.push({url,init});
+  if(url.endsWith('/api/card/3565'))return ok(CARD);
+  if(url.endsWith('/api/dataset'))return ok({status:'completed',data:{cols:COLS.map(name=>({name})),rows:dsRows}});
+  if(url.endsWith('/api/dataset/json'))return ok(dsRows.map(r=>{const o={};COLS.forEach((c,i)=>o[c]=r[i]);return o;}));
+  return {ok:false,status:404,text:async()=>''};};
+const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,put:async(k,v)=>{kv[k]=v;}};
+(async()=>{
+  const env={METABASE_API_KEY:'k',CONTENT_STORE:KV};
+  const d=JSON.parse(JSON.stringify(await W.fetchBdWaterfall(env,false)));
+  ck('the worker reads the saved card, then runs its SQL',calls.map(c=>c.url.replace(W.METABASE_URL,'')),['/api/card/3565','/api/dataset']);
+  const sent=JSON.parse(calls[1].init.body);
+  ck('  the card\u2019s own SQL, on its database',[sent.native.query,sent.database,sent.type],['select 1 -- card sql',67,'native']);
+  ck('  Hide Pilot Initiation Fee is OFF (its saved default is on), basis All invoiced',[sent.native['template-tags'].hide_pilot_initiation_fee.default,sent.native['template-tags'].basis.default],[[false],['All invoiced']]);
+  ck('  every other filter has its saved default cleared, so its clause drops out',['package','churn_type','products_ever_live'].map(k=>[sent.native['template-tags'][k].default,sent.native['template-tags'][k].required]),[[null,false],[null,false],[null,false]].map(x=>[undefined,false]));
+  ck('  no parameters are sent (nothing for Metabase to fill from a default)',sent.parameters,undefined);
+  ck('an MBQL 5 card shape is read too',W.bdWfNative({database_id:67,dataset_query:{stages:[{native:'select 2','template-tags':{a:{}}}]}}).query,'select 2');
+  ck('the quoted month columns become the month list',d.months,['2026-07','2026-08','2026-09','2026-10']);
+  ck('FIRST_MONTH (a timestamp) becomes YYYY-MM',d.brands.map(b=>b.fm),['2026-07','2026-07','2026-09','2026-08','2026-08']);
+  ck('amounts stay null where the card is empty, and "1,200" is a number',[d.brands[1].a,d.brands[4].a],[[500,500,0,null],[null,1200,1200,0]]);
+  ck('fields by name: status, churn months, pilot, implemented',[d.brands[1].st,d.brands[1].hsCh,d.brands[1].li,d.brands[2].pil,d.brands[3].impl],['Churned','2026-10','2026-08','Pilot (not converted)',false]);
+  ck('meta names the card and its Metabase link',[d.meta.card,d.meta.url],[3565,'https://frontrowmd.metabaseapp.com/question/3565']);
+  ck('the result is cached in KV',!!kv[W.BD_WF_KV],true);
+  calls=[];const again=await W.fetchBdWaterfall(env,false);
+  ck('  a second load reads the cache, no Metabase run',[calls.length,again.cached],[0,true]);
+  calls=[];await W.fetchBdWaterfall(env,true);
+  ck('  Refresh (fresh) runs the card again',calls.length,2);
+  let err='';try{W.bdWfShape(['BRAND_KEY','BRAND_NAME'],[]);}catch(e){err=e.message;}
+  ck('a card missing a needed column is an error, never an empty tab',/missing column/.test(err),true);
+  // Past the 2,000-row cap the export endpoint is used.
+  const big=Array.from({length:W.MB_ROW_CAP},(_,i)=>row(String(i+10),'B'+i,'Active',null,'2026-10','2026-07',[1,1,1,1]));
+  const exp=big.map(r=>{const o={};COLS.forEach((c,i)=>o[c]=r[i]);return o;});
+  const more=big.concat([row('9999','Extra','Active',null,'2026-10','2026-07',[1,1,1,1])]);
+  W.fetch=async(url,init)=>{calls.push({url,init});if(url.endsWith('/api/card/3565'))return ok(CARD);if(url.endsWith('/api/dataset'))return ok({status:'completed',data:{cols:COLS.map(name=>({name})),rows:big}});
+    if(url.endsWith('/api/dataset/json'))return ok(more.map(r=>{const o={};COLS.forEach((c,i)=>o[c]=r[i]);return o;}));return {ok:false,status:404,text:async()=>''};};
+  calls=[];const d2=await W.fetchBdWaterfall(env,true);
+  ck('at the row cap it switches to the uncapped dataset export (no card column settings)',[calls.map(c=>c.url.replace(W.METABASE_URL,'')),d2.brands.length],[['/api/card/3565','/api/dataset','/api/dataset/json'],W.MB_ROW_CAP+1]);
+  ck('  the export is sent form-encoded, unformatted, with the same query',[calls[2].init.headers['Content-Type'],/&format_rows=false$/.test(calls[2].init.body),JSON.parse(decodeURIComponent(calls[2].init.body.slice(6).replace(/&format_rows=false$/,''))).native.query],['application/x-www-form-urlencoded',true,'select 1 -- card sql']);
+  W.fetch=async(url,init)=>{if(url.endsWith('/api/card/3565'))return ok(CARD);if(url.endsWith('/api/dataset'))return ok({status:'completed',data:{cols:COLS.map(name=>({name})),rows:big}});
+    if(url.endsWith('/api/dataset/json'))return ok(more.map(r=>{const o={};COLS.slice(0,-1).forEach((c,i)=>o[c]=r[i]);return o;}));return {ok:false,status:404,text:async()=>''};};
+  let e2='';try{await W.fetchBdWaterfall(env,true);}catch(e){e2=e.message;}
+  ck('  an export missing a month column is an error, not a shorter grid',/month columns/.test(e2),true);
+  const wsrc=fs.readFileSync('worker.js','utf8');
+  ck('the route is signed-in only',/url\.pathname === '\/api\/bd-waterfall'\) \{[\s\S]{0,200}if \(!\(await authed\(\)\)\) return jr\(\{ error: 'Unauthorized' \}, 401\);/.test(wsrc),true);
+
+  // ── 2. The page ────────────────────────────────────────────────────────────
+  const html=fs.readFileSync('bd-dashboard.html','utf8');
+  const scripts=[...html.matchAll(/<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>/g)].map(m=>m[1]);
+  const els={};
+  const mk=id=>els[id]||(els[id]={id,style:{},innerHTML:'',textContent:'',value:'',dataset:{},children:[],addEventListener(){},removeEventListener(){},appendChild(){},setAttribute(){},getAttribute(){return null},querySelector(){return null},querySelectorAll(){return []},classList:{add(){},remove(){},toggle(){},contains(){return false}},getBoundingClientRect(){return{top:0,left:0,width:0,height:0}},scrollIntoView(){},focus(){}});
+  const document={readyState:'complete',getElementById:mk,querySelector:()=>mk('q'),querySelectorAll:()=>[],addEventListener(){},removeEventListener(){},createElement:()=>mk('c'+Math.random()),body:mk('body'),documentElement:mk('html'),head:mk('head')};
+  let pageFetches=[];
+  const P={console:{log(){},warn(){},error(){}},document,location:{protocol:'https:',hash:'',search:'',href:''},navigator:{userAgent:''},Intl,Date,Math,JSON,
+    fetch:(u,o)=>{pageFetches.push(u);return new Promise(()=>{});},setTimeout:()=>0,clearTimeout(){},setInterval:()=>0,clearInterval(){},requestAnimationFrame:()=>0,
+    localStorage:{getItem(){return null},setItem(){}},sessionStorage:{getItem(){return null},setItem(){}},alert(){},getComputedStyle:()=>({}),scrollTo(){},
+    addEventListener(){},removeEventListener(){},matchMedia:()=>({matches:false,addEventListener(){}}),Chart:function(){return{destroy(){},update(){}}},
+    ResizeObserver:function(){return{observe(){},disconnect(){}}},IntersectionObserver:function(){return{observe(){},disconnect(){}}},
+    innerWidth:1400,innerHeight:900,scrollY:0,history:{replaceState(){}}};
+  P.window=P;P.self=P;vm.createContext(P);
+  for(const s of scripts){try{vm.runInContext(s,P);}catch(e){console.log('script load error:',e.message);}}
+  ck('the tab button and its nav anchors exist',/data-tab="waterfall"[^>]*>Churn Waterfall</.test(html)&&/id="bd-nav-wf"/.test(html)&&/data-sec="bd-sec-wf1"/.test(html)&&/data-sec="bd-sec-wf2"/.test(html),true);
+  P.BD.data={deals:[],ownerMap:{},meta:{generatedAt:new Date().toISOString()}};
+  pageFetches=[];P.bdSetTab('waterfall');
+  ck('opening the tab asks the worker once',pageFetches,['/api/bd-waterfall']);
+  ck('  and shows a loading band meanwhile',/Running the Metabase Churn Waterfall question/.test(els['bd-content'].innerHTML),true);
+  P.BD.wf=d;
+  const R=()=>{P.renderBD();return els['bd-content'].innerHTML;};
+  let h=R();
+  // Rules
+  const by=k=>P.BD.wf.brands.find(b=>b.k===k);
+  ck('churn date = the last month invoiced, not HubSpot’s',[P._bdWfChurnMonth(by('2')),P._bdWfChurnMonth(by('5')),P._bdWfChurnMonth(by('1'))],['2026-08','2026-09','']);
+  ck('Paused counts as churned; Active does not',[P._bdWfChurned(by('5')),P._bdWfChurned(by('1')),P._bdWfChurned(by('3'))],[true,false,false]);
+  ck('Never Implemented: a never-live churn with no type; Board Defined wins',[P._bdWfIsNI(by('4')),P._bdWfIsNI(by('2')),P._bdWfIsNI(by('1'))],[true,false,false]);
+  // W1
+  ck('W1 lists every brand, first-invoice order',[...h.matchAll(/<td class="bd-wf-b" title="[^"]*">([^<]+)<span/g)].map(m=>m[1]),['Gone Co','Stay Co','Never Co','Paused Co','Pilot Co']);
+  const rowOf=n=>{let i=h.indexOf('">'+n+'<span class="bd-wf-k">');if(i<0)return '';i=h.lastIndexOf('<tr>',i);return h.slice(i,h.indexOf('</tr>',i));};
+  ck('the churn month cell is the last invoiced one, outlined',/<td class="m chm zero" title="Churn month: the last month invoiced">0<\/td>/.test(rowOf('Gone Co'))===false&&/<td class="m chm" title="Churn month: the last month invoiced">500<\/td>/.test(rowOf('Gone Co')),true);
+  ck('  and the months after it are blank',(rowOf('Gone Co').match(/class="m post"/g)||[]).length,2);
+  ck('months before the first invoice are blank',(rowOf('Pilot Co').match(/class="m pre"/g)||[]).length,2);
+  ck('the pilot’s first invoice (its fee) starts its row',/<td class="m">5,000<\/td>/.test(rowOf('Pilot Co')),true);
+  ck('the tooltip keeps Metabase’s own churn month',/Churn month used: Aug 26 \(last month invoiced\) · Metabase’s churn month: Oct 26/.test(rowOf('Gone Co')),true);
+  ck('month totals: brands invoiced and dollars',/<tr class="tot"><td class="bd-wf-b">Brands invoiced<\/td><td colspan="5"><\/td><td class="m">2<\/td><td class="m">4<\/td><td class="m">3<\/td><td class="m">1<\/td><\/tr>/.test(h),true);
+  // W2
+  const grid=h.slice(h.indexOf('id="bd-sec-wf2"'));
+  const cohort=m=>{const i=grid.indexOf('<td class="rw-c">'+m+'</td>');if(i<0)return null;const r=grid.slice(i,grid.indexOf('</tr>',i));return [...r.matchAll(/<td(?: class="rw-n")?(?: title="[^"]*")?(?: style="[^"]*")?>([^<]*)<\/td>/g)].map(x=>x[1]).filter(x=>x!=='');};
+  // Jul 26 cohort: Stay (active) + Gone (last invoiced Aug = month 2). Retained M1, M2; lost from M3.
+  ck('W2 Jul cohort: retained through the last invoiced month, lost after',cohort('Jul 26'),['2','100%','100%','50.0%','50.0%']);
+  // Aug cohort: Never Co (last inv Aug = M1) + Paused Co (last inv Sep = M2).
+  ck('  Aug cohort: Month 1 is always 100%',cohort('Aug 26'),['2','100%','50.0%','0%']);
+  ck('  Sep cohort: the pilot, active',cohort('Sep 26'),['1','100%','100%']);
+  P.bdWfSet('ni','excl');h=R();const g2=h.slice(h.indexOf('id="bd-sec-wf2"'));
+  ck('Never Implemented: Excluded drops never-live churns from their cohort',/<td class="rw-c">Aug 26<\/td><td class="rw-n">1<\/td>/.test(g2),true);
+  ck('  and the footnote counts it',/1 Never Implemented churn is left out/.test(h),true);
+  P.bdWfSet('from','2027');h=R();
+  ck('  a "from" year past the data draws the last cohort, never throws',[/<td class="rw-c">Oct 26<\/td>/.test(h),/0 Never Implemented churns are left out/.test(h)],[true,true]);
+  P.bdWfSet('from','all');
+  P.bdWfSet('ni','incl');
+  P.bdWfSet('pil','excl');h=R();
+  ck('Pilots: Excluded drops pilots with no plan bill yet, from both views',[/Pilot Co<span/.test(h),/<td class="rw-c">Sep 26<\/td><td class="rw-n">·<\/td>/.test(h)],[false,true]);
+  P.bdWfSet('pil','incl');
+  P.bdWfSetF('ty','Board Defined');h=R();
+  ck('a filter narrows both views',[...h.matchAll(/<td class="bd-wf-b" title="[^"]*">([^<]+)<span/g)].map(m=>m[1]).concat([/<td class="rw-c">Jul 26<\/td><td class="rw-n">1<\/td>/.test(h)]),['Gone Co',true]);
+  ck('  and its dropdown counts each value given the other filters',/<option value="Board Defined" selected>Board Defined \(1\)<\/option>/.test(h)&&/<option value="Not recorded">Not recorded \(4\)<\/option>/.test(h),true);
+  P.bdWfReset();
+  P.bdWfSet('metric','churn');P.bdWfSet('mode','n');h=R();
+  ck('Churn + Brands shows lost brands as a count',cohort.call(null,'Jul 26')!==null&&/<td class="rw-c">Jul 26<\/td><td class="rw-n">2<\/td><td[^>]*>0<\/td><td[^>]*>0<\/td><td[^>]*>−1<\/td>/.test(h),true);
+  P.bdWfSet('metric','ret');P.bdWfSet('mode','pct');
+  // ── Abnormalities ──
+  const M=['2026-01','2026-02','2026-03','2026-04','2026-05','2026-06','2026-07','2026-08','2026-09','2026-10'];
+  const BR=(o)=>Object.assign({k:'x',n:'X',src:'Recurly',st:'Active',stage:'Closed Won',hsCh:'',chSrc:'',li:'2026-10',mi:10,impl:true,paid:true,ty:'Not recorded',pe:1,pc:1,pkg:'Pro',pil:'No pilot',fm:'2026-01',a:M.map(()=>1000)},o);
+  const ids=b=>P._bdWfFlagsOf(b,M).map(f=>f.id);
+  ck('a healthy brand has no flags',ids(BR({})),[]);
+  ck('active but nothing invoiced for 2+ months',ids(BR({li:'2026-08',a:[1000,1000,1000,1000,1000,1000,1000,1000,0,0]})),['active-not-billed']);
+  ck('  1 month is not enough (invoice timing)',ids(BR({li:'2026-09',a:M.map((m,i)=>i<9?1000:0)})),[]);
+  ck('invoiced after HubSpot’s churn month',ids(BR({st:'Churned',stage:'Churned',hsCh:'2026-08',li:'2026-10'})).includes('billed-after-churn'),true);
+  ck('never paid, past payment terms; a 1-month active brand is not flagged',[ids(BR({paid:false,mi:3})).includes('unpaid'),ids(BR({paid:false,mi:1})).includes('unpaid')],[true,false]);
+  ck('a 4+ month gap, then billing again',ids(BR({a:[1000,1000,0,0,0,0,1000,1000,1000,1000]})),['long-gap']);
+  ck('a 2-month gap with no catch-up; a catch-up invoice is shown as a spike instead',[ids(BR({a:[1000,1000,1000,0,0,1000,1000,1000,1000,1000]})),ids(BR({a:[1000,1000,1000,0,0,3000,1000,1000,1000,1000]}))],[['skipped'],['spike']]);
+  ck('a month about double its neighbours',ids(BR({a:[1000,1000,1000,1000,2000,1000,1000,1000,1000,1000]})),['double']);
+  ck('a one-month spike far above the usual',ids(BR({a:[500,500,500,500,4000,500,500,500,500,500]})),['spike']);
+  ck('HubSpot churn 4+ months after the last invoice',ids(BR({st:'Churned',stage:'Churned',li:'2026-03',hsCh:'2026-08',a:[1000,1000,1000,0,0,0,0,0,null,null]})),['churn-lag']);
+  ck('active but HubSpot off-pipeline',ids(BR({stage:'No Show',st:'Active (inferred)'})),['status-conflict']);
+  ck('churn type contradicts the widget',ids(BR({st:'Churned',stage:'Churned',ty:'Never Implemented',impl:true,li:'2026-10'})),['type-widget']);
+  ck('paying 4+ months, never live',ids(BR({impl:false,mi:5,pe:0,pc:0})),['never-live']);
+  ck('widget went dark on a 3+ product brand',ids(BR({pe:4,pc:0})),['gone-dark']);
+  ck('flags come high severity first, each with the months it points at',(()=>{const f=P._bdWfFlagsOf(BR({a:[1000,1000,0,0,0,0,1000,1000,1000,0],li:'2026-09',paid:false,mi:7}),M);return [f.map(x=>x.sev),f.find(x=>x.id==='long-gap').cells];})(),[['high','high'],[2,3,4,5]]);
+  // Rendered: flagged rows carry a hover card index and a badge, and stay well-formed.
+  P.BD.wf.brands.find(b=>b.k==='1').paid=false;P.BD.wf._flagged=false;P.BD.wf.brands.forEach(b=>delete b._fl);
+  let hf=R();
+  ck('a flagged row gets a badge and a hover card',/<tr class="fl-high" data-ti="\d+"><td class="bd-wf-b"><span class="bd-wf-flag high">⚠<\/span>Stay Co/.test(hf)&&P._bdWfTips.some(t=>/Invoiced, never paid/.test(t)&&/Stay Co/.test(t)),true);
+  ck('every opened attribute quote is closed in W1',[...hf.slice(hf.indexOf('class="bd-wf-t"')).matchAll(/<td[^>]*>/g)].filter(m=>(m[0].match(/"/g)||[]).length%2).length,0);
+  ck('the hover card lives outside the re-rendered content',/<div class="main" id="bd-content"><\/div>\s*<!--[^>]*-->\s*<div id="bd-wf-tip"/.test(html),true);
+  P.bdWfSetFlagF('unpaid');hf=R();
+  ck('the Abnormalities filter narrows the table to that rule',[...hf.matchAll(/<td class="bd-wf-b"[^>]*>(?:<span class="bd-wf-flag[^>]*>[^<]*<\/span>)?([^<]+)<span/g)].map(m=>m[1]),['Stay Co']);
+  P.bdWfSetFlagF('');
+  P.BD.wf={error:'Metabase /api/card/3565/query 403: You don\'t have permissions to do that.'};h=R();
+  ck('a Metabase failure is an error band, never an empty grid',/Churn Waterfall unavailable/.test(h)&&/collection must be visible/.test(h)&&!/bd-sec-wf2/.test(h),true);
+  ck('W2\u2019s first column matches .rwtbl\u2019s sticky offset',[P.BD_WF_W_LBL,+((html.match(/\.rwtbl \.rw-n\{[^}]*left:(\d+)px/)||[])[1])],[78,78]);
+  ck('Refresh re-runs the card once the tab has been opened',/if\(BD\.wf\)bdWfFetch\(true\);/.test(html),true);
+  console.log('\n'+pass+' passed, '+fail+' failed');process.exit(fail?1:0);
+})().catch(e=>{console.error(e);process.exit(1);});

@@ -337,6 +337,60 @@ circle.bd-bs-sl{stroke-width:28}
    column, so nothing is lost and nothing can overlap anything. */
 .stbl.stbl-matrix thead tr th:first-child{position:static;top:auto;left:auto;z-index:auto;box-shadow:none}
 .stbl.stbl-matrix tbody td:first-child{position:static;left:auto;z-index:auto;box-shadow:none}
+/* Churn Waterfall tab (Metabase card 3565) */
+.bd-wf-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:0 0 12px}
+.bd-wf-kpi{background:var(--white);border:1px solid var(--border);border-radius:10px;padding:10px 14px}
+.bd-wf-kpi-l{font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em}
+.bd-wf-kpi-v{font-family:var(--font-h);font-size:20px;font-weight:700;color:var(--navy);margin-top:2px}
+.bd-wf-kpi-s{font-size:10px;color:var(--grey);margin-top:1px}
+.bd-wf-bar{display:flex;align-items:center;gap:10px 14px;flex-wrap:wrap;font-size:11px;color:var(--grey);margin:0 0 4px}
+.bd-wf-bar label{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.bd-wf-bar select{font-family:var(--font-b);font-size:11px;padding:4px 7px;border:1px solid var(--border);border-radius:6px;color:var(--navy);background:#fff;text-transform:none;letter-spacing:0;font-weight:500;max-width:210px}
+.bd-wf-bar select.on{border-color:var(--navy);background:rgba(23,44,69,.06);font-weight:700}
+.bd-wf-bar input[type=search]{font-family:var(--font-b);font-size:12px;padding:6px 10px;border:1px solid var(--border);border-radius:50px;min-width:240px;color:var(--navy)}
+.bd-wf-btn{font-family:var(--font-b);font-size:11px;font-weight:700;padding:5px 14px;border-radius:50px;border:1.5px solid rgba(23,44,69,.2);background:#fff;color:var(--navy);cursor:pointer}
+.bd-wf-btn:hover{background:rgba(23,44,69,.06)}
+.bd-wf-scroll{overflow:auto;max-height:72vh;border:1px solid var(--border);border-radius:8px}
+.bd-wf-t{border-collapse:separate;border-spacing:0;font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.bd-wf-t th{position:sticky;top:0;z-index:3;background:#F1F7FA;font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--grey);padding:7px 8px;border-bottom:1.5px solid var(--border);text-align:left}
+.bd-wf-t tr.tot td{position:sticky;z-index:3;background:#F7FAFC;font-weight:700;color:var(--navy);border-bottom:1px solid var(--border)}
+.bd-wf-t tr.tot:nth-child(3) td{border-bottom:1.5px solid rgba(23,44,69,.16)}
+.bd-wf-t td{padding:5px 8px;border-bottom:1px solid rgba(23,44,69,.05);color:var(--navy);background:var(--white)}
+.bd-wf-t .m{text-align:right;min-width:52px}
+.bd-wf-t .bd-wf-b{position:sticky;left:0;z-index:2;min-width:190px;max-width:230px;overflow:hidden;text-overflow:ellipsis;font-weight:600;box-shadow:1px 0 0 rgba(23,44,69,.12)}
+.bd-wf-t th.bd-wf-b,.bd-wf-t tr.tot td.bd-wf-b{z-index:4}
+.bd-wf-t tbody tr:hover td{background:#F9FBFC}
+.bd-wf-k{display:block;font-size:9.5px;font-weight:400;color:var(--grey)}
+.bd-wf-t td.pre{background:#FAFBFC}
+.bd-wf-t td.post{background:repeating-linear-gradient(135deg,#FAFBFC 0 4px,#F1F4F7 4px 6px)}
+.bd-wf-t td.zero{color:#9AA7B4}
+.bd-wf-t td.neg{color:#B91C1C}
+.bd-wf-t td.late{color:#92400E;background:#FFFBEB}
+.bd-wf-t td.chm{box-shadow:inset 0 0 0 1.5px #DC2626;font-weight:700}
+.bd-wf-chips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 12px}
+.bd-wf-chips-l{font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;margin-right:4px}
+.bd-wf-chip{cursor:pointer;font-size:11px;font-weight:600;padding:3px 10px;border-radius:50px;border:1px solid;background:#fff}
+.bd-wf-chip b{margin-left:3px}
+.bd-wf-chip.high{color:#991B1B;border-color:#FCA5A5}.bd-wf-chip.med{color:#92400E;border-color:#FCD34D}.bd-wf-chip.low{color:#1E40AF;border-color:#93C5FD}
+.bd-wf-chip.on.high{background:#DC2626;color:#fff;border-color:#DC2626}.bd-wf-chip.on.med{background:#D97706;color:#fff;border-color:#D97706}.bd-wf-chip.on.low{background:#2563EB;color:#fff;border-color:#2563EB}
+.bd-wf-flag{display:inline-block;font-size:9.5px;font-weight:700;padding:0 5px;border-radius:50px;margin-right:5px;vertical-align:1px;color:#fff}
+.bd-wf-flag.high{background:#DC2626}.bd-wf-flag.med{background:#D97706}.bd-wf-flag.low{background:#2563EB}
+.bd-wf-t tr.fl-high td.bd-wf-b{box-shadow:inset 3px 0 0 #DC2626,1px 0 0 rgba(23,44,69,.12)}
+.bd-wf-t tr.fl-med td.bd-wf-b{box-shadow:inset 3px 0 0 #D97706,1px 0 0 rgba(23,44,69,.12)}
+.bd-wf-t tr.fl-low td.bd-wf-b{box-shadow:inset 3px 0 0 #2563EB,1px 0 0 rgba(23,44,69,.12)}
+.bd-wf-t tr.fl-high td{background-color:#FFF8F8}.bd-wf-t tr.fl-med td{background-color:#FFFCF5}.bd-wf-t tr.fl-low td{background-color:#F8FAFF}
+.bd-wf-t tr[data-ti]{cursor:help}
+.bd-wf-t td.fl{outline:1.5px dashed #D97706;outline-offset:-3px}
+.rwtbl tr[data-ti] .rw-c{cursor:help}
+.bd-wf-tip{position:fixed;display:none;z-index:60;max-width:420px;background:var(--navy);color:#fff;font-size:11.5px;line-height:1.5;padding:10px 13px;border-radius:9px;box-shadow:0 8px 24px rgba(2,15,24,.28);pointer-events:none}
+.bd-wf-tip-h{font-family:var(--font-h);font-weight:700;font-size:13px}
+.bd-wf-tip-s{font-size:10.5px;color:rgba(255,255,255,.65);margin-bottom:6px}
+.bd-wf-tip-i{border-top:1px solid rgba(255,255,255,.15);padding-top:6px;margin-top:6px}
+.bd-wf-tip-i div{color:rgba(255,255,255,.85);margin-top:2px}
+.bd-wf-sev{display:inline-block;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:1px 6px;border-radius:50px;margin-right:6px}
+.bd-wf-sev.high{background:#DC2626}.bd-wf-sev.med{background:#D97706}.bd-wf-sev.low{background:#2563EB}
+.rwtbl.bd-wf-rw td{font-size:11px;padding:7px 2px}
+.bd-wf-st{display:inline-block;font-size:9.5px;font-weight:700;padding:2px 8px;border-radius:50px}
 .rwtbl{border-collapse:separate;border-spacing:0;font-size:12.5px;font-variant-numeric:tabular-nums;table-layout:fixed;width:100%}
 .rwtbl th,.rwtbl td{padding:8px 4px;text-align:center;white-space:nowrap;border-bottom:1px solid rgba(23,44,69,.04);border-left:2px solid rgba(255,255,255,.95)}
 .rwtbl thead th{font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.03em;border-bottom:1.5px solid rgba(23,44,69,.16);padding-bottom:7px;vertical-align:bottom}
@@ -426,6 +480,7 @@ circle.bd-bs-sl{stroke-width:28}
       <button class="bd-tab on" data-tab="tracker" role="tab" aria-selected="true" onclick="bdSetTab('tracker')">Tracker</button>
       <button class="bd-tab" data-tab="churn" role="tab" aria-selected="false" onclick="bdSetTab('churn')">Churn</button>
       <button class="bd-tab" data-tab="recon" role="tab" aria-selected="false" onclick="bdSetTab('recon')">Reconciliation</button>
+      <button class="bd-tab" data-tab="waterfall" role="tab" aria-selected="false" onclick="bdSetTab('waterfall')">Churn Waterfall</button>
     </span>
     <span id="bd-nav-anchors" style="display:contents"><span class="bd-navdiv"></span>
     <a class="bd-nav-i" href="#bd-sec-summary" data-sec="bd-sec-summary" onclick="bdNavGo(event,'bd-sec-summary')">All Time Summary</a>
@@ -456,12 +511,20 @@ circle.bd-bs-sl{stroke-width:28}
     <a class="bd-nav-i" href="#bd-sec-rec5" data-sec="bd-sec-rec5" onclick="bdNavGo(event,'bd-sec-rec5')">Price Mismatch<span class="bd-rec-n" id="bd-rec-n5"></span></a>
     <a class="bd-nav-i" href="#bd-sec-rec6" data-sec="bd-sec-rec6" onclick="bdNavGo(event,'bd-sec-rec6')">Not Billing Yet<span class="bd-rec-n" id="bd-rec-n6"></span></a>
     </span>
+    <!-- The Churn Waterfall tab's anchors (Metabase card 3565). -->
+    <span id="bd-nav-wf" style="display:none"><span class="bd-navdiv"></span>
+    <a class="bd-nav-i" href="#bd-sec-wf0" data-sec="bd-sec-wf0" onclick="bdNavGo(event,'bd-sec-wf0')">Filters</a>
+    <a class="bd-nav-i" href="#bd-sec-wf1" data-sec="bd-sec-wf1" onclick="bdNavGo(event,'bd-sec-wf1')">All Brands</a>
+    <a class="bd-nav-i" href="#bd-sec-wf2" data-sec="bd-sec-wf2" onclick="bdNavGo(event,'bd-sec-wf2')">Retention Waterfall</a>
+    </span>
     <div style="flex:1"></div>
     <button class="bd-goal-btn" id="bd-goal-btn" onclick="bdGoalOpen()" aria-haspopup="dialog" aria-expanded="false">
       Deals to Hit Monthly Goal <span class="bd-goal-badge" id="bd-goal-badge"></span>
     </button>
   </nav>
   <div class="main" id="bd-content"></div>
+  <!-- Churn Waterfall hover card: static, so a re-render never strands it. -->
+  <div id="bd-wf-tip" class="bd-wf-tip" role="tooltip"></div>
 </div>
 <!-- Goal dialog. Static DOM on purpose: renderBD() rewrites all of #bd-content on
      every filter click, which would wipe an open dialog and its inputs mid-typing.
@@ -760,6 +823,9 @@ function bdSetTab(t){
   var an=document.getElementById('bd-nav-anchors');if(an)an.style.display=(t==='tracker')?'contents':'none';
   var cn=document.getElementById('bd-nav-churn');if(cn)cn.style.display=(t==='churn')?'contents':'none';
   var rn=document.getElementById('bd-nav-recon');if(rn)rn.style.display=(t==='recon')?'contents':'none';
+  var wn=document.getElementById('bd-nav-wf');if(wn)wn.style.display=(t==='waterfall')?'contents':'none';
+  // The waterfall is a slow Metabase run: asked for the first time the tab opens.
+  if(t==='waterfall'&&!BD.wf)bdWfFetch(false);
   // The goal calculator is a Tracker thing: it counts deals needed to hit a
   // monthly signing goal, which says nothing about churn. Hidden rather than
   // removed, because the Tracker tab still needs it and the dialog it opens
@@ -767,6 +833,504 @@ function bdSetTab(t){
   var gb=document.getElementById('bd-goal-btn');if(gb)gb.style.display=(t==='tracker')?'':'none';
   window.scrollTo(0,0);
   renderBD();
+}
+// ═════ CHURN WATERFALL TAB (Alex, 2026-11-24) ═════
+// A live copy of the Metabase "Churn Waterfall" question (card 3565, via
+// /api/bd-waterfall): one row per brand, the amount invoiced in Recurly and
+// bill.com each complete month. Two views of the same rows: W1 lists every
+// brand month by month, as Metabase does; W2 is the same brands as a cohort
+// grid in C3's format. Alex's rules:
+//  - Pilot brands count from their first invoice (the Pilot Initiation Fee),
+//    which is the card's own rule; Pilots: Excluded drops pilots with no plan
+//    bill yet (the card's "Hide Pilot Initiation Fee").
+//  - A churned brand's churn date is the LAST MONTH IT WAS INVOICED (above $0),
+//    not HubSpot's Pause/Churn Date (the card's CHURN_MONTH, kept for the
+//    tooltip). Churned = the card's status: HubSpot Churned, Paused, or
+//    inferred from Recurly/the app; everything else is active.
+//  - W2: a brand counts as retained through its churn month (it paid that
+//    month) and as lost from the month after. Month 1 = the first invoice.
+// BD.wf: null (never asked), {loading:true}, {error}, or the payload.
+var _bdWfF={ty:'',seg:'',ab:'',wt:'',ss:'',it:'',pkg:'',st:'',impl:'',paid:'',pe:'',pc:''};
+var _bdWfPil='incl',_bdWfNI='incl',_bdWfMode='pct',_bdWfMetric='ret',_bdWfFrom='all';
+var _bdWfQ='',_bdWfSort='first',_bdWfShow=100,_bdWfQT=null;
+var BD_WF_PAGE=100;
+// W2 reuses C3's .rwtbl, whose sticky .rw-n offset (78px) must equal the first column's width.
+var BD_WF_W_LBL=78,BD_WF_W_N=58,BD_WF_W_CELL=50;   // 34+ tenure columns: a cell must fit "85.7%" at 11px
+var BD_WF_NEUTRAL=0.90,BD_WF_LOW=0.55,BD_WF_BLEND_MIN=30,BD_WF_BLEND_MIN_COHORTS=2;
+var BD_WF_GREEN=['#E3F4E9','#C7E9D4','#A6DCBA','#81CD9D','#57BD7D'];
+var BD_WF_RED=['#FBE7E7','#F7CFCF','#F3B5B5','#EF9999','#E97878'];
+var BD_WF_MN=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function bdWfFetch(fresh){
+  if(typeof BD==='undefined')return;
+  var seq=BD._wfSeq=(BD._wfSeq||0)+1;
+  BD.wf={loading:true};
+  return fetch('/api/bd-waterfall',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fresh:!!fresh})}).then(function(r){
+    return r.json().catch(function(){return {};}).then(function(d){if(!r.ok&&!(d&&d.error))d={error:'HTTP '+r.status};return d;});
+  }).then(function(d){
+    if(seq!==BD._wfSeq)return;
+    BD.wf=(d&&!d.error&&d.brands&&d.months)?d:{error:(d&&(d.detail||d.error))||'No brands came back'};
+    if(_bdTab==='waterfall')renderBD();
+  }).catch(function(e){
+    if(seq!==BD._wfSeq)return;
+    BD.wf={error:String((e&&e.message)||e||'Network error')};
+    if(_bdTab==='waterfall')renderBD();
+  });
+}
+function bdWfSetF(k,v){if(!(k in _bdWfF)||_bdWfF[k]===v)return;_bdWfF[k]=v;_bdWfShow=BD_WF_PAGE;renderBD();}
+function bdWfReset(){Object.keys(_bdWfF).forEach(function(k){_bdWfF[k]='';});_bdWfPil='incl';_bdWfFlagF='';_bdWfQ='';_bdWfShow=BD_WF_PAGE;renderBD();}
+function bdWfSet(which,v){
+  if(which==='pil')_bdWfPil=(v==='excl')?'excl':'incl';
+  else if(which==='ni')_bdWfNI=(v==='excl')?'excl':'incl';
+  else if(which==='mode')_bdWfMode=(v==='n')?'n':'pct';
+  else if(which==='metric')_bdWfMetric=(v==='churn')?'churn':'ret';
+  else if(which==='from')_bdWfFrom=/^\d{4}$/.test(v)?v:'all';
+  else if(which==='sort')_bdWfSort=['first','name','churn','total','last','flags'].indexOf(v)>=0?v:'first';
+  else if(which==='more')_bdWfShow=(v==='all')?1e9:_bdWfShow+BD_WF_PAGE;
+  renderBD();
+}
+// Search re-renders after a pause, then puts the caret back in the box.
+function bdWfSearch(el){
+  var v=el.value;if(_bdWfQT)clearTimeout(_bdWfQT);
+  _bdWfQT=setTimeout(function(){_bdWfQ=v;_bdWfShow=BD_WF_PAGE;renderBD();
+    var b=document.getElementById('bd-wf-q');if(b){b.focus();try{b.setSelectionRange(b.value.length,b.value.length);}catch(_){}}},220);
+}
+function _bdWfDiff(a,b){if(!a||!b)return null;return (+b.slice(0,4)-+a.slice(0,4))*12+(+b.slice(5,7)-+a.slice(5,7));}
+function _bdWfAdd(m,n){var y=+m.slice(0,4),mo=+m.slice(5,7)-1+n;y+=Math.floor(mo/12);mo=((mo%12)+12)%12;return y+'-'+('0'+(mo+1)).slice(-2);}
+function _bdWfLbl(m){return m?BD_WF_MN[+m.slice(5,7)-1]+' '+m.slice(2,4):'';}
+// Active = the card's Active and Active (inferred); every other status churned.
+function _bdWfChurned(b){return !/^active/i.test(b.st||'');}
+// The churn date rule: the last month invoiced above $0, never before the first.
+function _bdWfChurnMonth(b){
+  if(!_bdWfChurned(b))return '';
+  var m=b.li||b.fm;
+  return (b.fm&&m<b.fm)?b.fm:m;
+}
+function _bdWfIsPilotOnly(b){return /not converted/i.test(b.pil||'');}
+// C3's Never Implemented rule: a Never Implemented churn type, or no churn type
+// and the widget never went live. A Board Defined (or Delinquent) type wins.
+function _bdWfIsNI(b){
+  if(!_bdWfChurned(b))return false;
+  if(b.ty==='Never Implemented')return true;
+  if(b.ty==='Board Defined'||b.ty==='Delinquent Payment')return false;
+  return !b.impl;
+}
+var BD_WF_FILTERS=[
+  {k:'st',l:'Status',of:function(b){return b.st||'Not recorded';}},
+  {k:'ty',l:'Churn Type',of:function(b){return b.ty||'Not recorded';}},
+  {k:'seg',l:'Company Segment',of:function(b){return b.seg||'Not recorded';}},
+  {k:'ab',l:'A/B Test',of:function(b){return b.ab||'Not recorded';}},
+  {k:'wt',l:'Web Tier at Churn',of:function(b){return b.wt||'Not recorded';}},
+  {k:'ss',l:'Self-selected Traffic',of:function(b){return b.ss||'Not selected';}},
+  {k:'it',l:'Implied Traffic',of:function(b){return b.it||'No traffic data';}},
+  {k:'pkg',l:'Package',of:function(b){return b.pkg||'Not recorded';}},
+  {k:'impl',l:'Ever Implemented',of:function(b){return b.impl?'Yes':'No';}},
+  {k:'paid',l:'Ever Paid',of:function(b){return b.paid?'Yes':'No';}}
+];
+// Filters, search and the pilot switch. skip names one filter to leave out, so
+// each dropdown can count what picking each of its values would give.
+function _bdWfFilter(brands,skip,noSearch){
+  var q=noSearch?'':(_bdWfQ||'').trim().toLowerCase();
+  return brands.filter(function(b){
+    if(_bdWfPil==='excl'&&_bdWfIsPilotOnly(b))return false;
+    for(var i=0;i<BD_WF_FILTERS.length;i++){var f=BD_WF_FILTERS[i];if(f.k===skip||!_bdWfF[f.k])continue;if(f.of(b)!==_bdWfF[f.k])return false;}
+    // Products: "at least N"; a brand with no count (before event data) drops out, as in Metabase.
+    if(skip!=='pe'&&_bdWfF.pe&&!(b.pe!=null&&b.pe>=+_bdWfF.pe))return false;
+    if(skip!=='pc'&&_bdWfF.pc&&!(b.pc!=null&&b.pc>=+_bdWfF.pc))return false;
+    if(skip!=='flag'&&_bdWfFlagF){var fl=b._fl||[];
+      if(_bdWfFlagF==='any'?!fl.length:_bdWfFlagF==='none'?fl.length:!fl.some(function(f){return f.id===_bdWfFlagF;}))return false;}
+    if(q&&((b.n||'')+' '+(b.k||'')+' '+(b.grp||'')).toLowerCase().indexOf(q)<0)return false;
+    return true;
+  });
+}
+function _bdWfTotal(b){var t=0;(b.a||[]).forEach(function(v){if(v!=null)t+=v;});return Math.round(t*100)/100;}
+function _bdWfSorted(list){
+  var by={
+    first:function(a,b){return a.fm<b.fm?-1:a.fm>b.fm?1:(a.n||'').localeCompare(b.n||'');},
+    name:function(a,b){return (a.n||'').localeCompare(b.n||'');},
+    churn:function(a,b){var x=_bdWfChurnMonth(a),y=_bdWfChurnMonth(b);if(x!==y){if(!x)return 1;if(!y)return -1;return x<y?1:-1;}return (a.n||'').localeCompare(b.n||'');},
+    last:function(a,b){var x=a.li||'',y=b.li||'';if(x!==y){if(!x)return 1;if(!y)return -1;return x<y?1:-1;}return (a.n||'').localeCompare(b.n||'');},
+    total:function(a,b){return _bdWfTotal(b)-_bdWfTotal(a)||(a.n||'').localeCompare(b.n||'');},
+    flags:function(a,b){var x=(a._fl||[]).reduce(function(t,f){return t+Math.pow(10,BD_WF_FLAG_SEV[f.sev]);},0),y=(b._fl||[]).reduce(function(t,f){return t+Math.pow(10,BD_WF_FLAG_SEV[f.sev]);},0);return y-x||(a.n||'').localeCompare(b.n||'');}
+  }[_bdWfSort]||null;
+  return list.slice().sort(by||function(){return 0;});
+}
+function _bdWfFill(pct){
+  if(pct===null||pct===undefined)return '';
+  if(pct>=0.999)return BD_WF_GREEN[4];
+  if(pct>BD_WF_NEUTRAL)return BD_WF_GREEN[Math.min(4,Math.floor(((pct-BD_WF_NEUTRAL)/(1-BD_WF_NEUTRAL))*5))];
+  if(pct<BD_WF_NEUTRAL)return BD_WF_RED[Math.min(4,Math.floor(Math.min(1,(BD_WF_NEUTRAL-pct)/(BD_WF_NEUTRAL-BD_WF_LOW))*4.999))];
+  return '';
+}
+// The cohort grid: rows = first-invoice month, Month k = k-th month from it,
+// alive = still active, or churned (last invoiced) no earlier than that month.
+function _bdWfCohorts(list,from,now){
+  var byM={};
+  list.forEach(function(b){if(b.fm&&b.fm>=from&&b.fm<=now)(byM[b.fm]=byM[b.fm]||[]).push(b);});
+  var cohorts=[],m=from,guard=0;
+  while(m<=now&&guard++<400){
+    var pool=byM[m]||[],maxK=_bdWfDiff(m,now)+1,cells=[];
+    for(var k=1;k<=maxK;k++){
+      var alive=0;
+      pool.forEach(function(b){var c=_bdWfChurnMonth(b);if(!c||_bdWfDiff(b.fm,c)>=k-1)alive++;});
+      cells.push({k:k,alive:alive,lost:pool.length-alive,pct:pool.length?alive/pool.length:null});
+    }
+    cohorts.push({m:m,n:pool.length,cells:cells});
+    m=_bdWfAdd(m,1);
+  }
+  var blend=[],wide=_bdWfDiff(from,now)+1;
+  for(var k=1;k<=wide;k++){
+    var a=0,d=0,c=0;
+    cohorts.forEach(function(co){if(co.cells.length>=k&&co.n){a+=co.cells[k-1].alive;d+=co.n;c++;}});
+    blend.push({k:k,alive:a,n:d,cohorts:c,pct:d?a/d:null});
+  }
+  return {cohorts:cohorts,maxK:wide,blend:blend};
+}
+function _bdWfPill(cur,v,label,which,tip){
+  var on=cur===v;
+  return '<span role="radio" aria-checked="'+on+'" tabindex="0"'+(tip?' title="'+_bdEsc(tip)+'"':'')+' onclick="bdWfSet(\''+which+'\',\''+v+'\')" style="cursor:pointer;padding:4px 13px;border-radius:50px;font-size:11px;font-weight:700;font-family:var(--font-h);'
+    +(on?'background:var(--navy);color:#fff;':'background:transparent;color:var(--grey);')+'">'+label+'</span>';
+}
+function _bdWfSeg(label,inner){return '<span style="display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em">'+label
+  +'<span style="display:inline-flex;background:rgba(23,44,69,.06);border-radius:50px;padding:2px;gap:2px;text-transform:none;letter-spacing:0">'+inner+'</span></span>';}
+function _bdWfAmt(v){var r=Math.round(v);return (r<0?'−':'')+Math.abs(r).toLocaleString();}
+function _bdWfStatusBadge(b){
+  var st=b.st||'',c=/^active/i.test(st)?['#DCFCE7','#166534']:/pause/i.test(st)?['#FEF3C7','#92400E']:['#FEE2E2','#991B1B'];
+  return '<span class="bd-wf-st" style="background:'+c[0]+';color:'+c[1]+'">'+_bdEsc(st||'—')+'</span>';
+}
+function _bdWfBrandTip(b){
+  var c=_bdWfChurnMonth(b);
+  return [b.n+' (brand '+b.k+')'+(b.grp?' · billed with '+b.grp:''),
+    'Billed in: '+(b.src||'—')+' · HubSpot stage: '+(b.stage||'—'),
+    'First invoice: '+_bdWfLbl(b.fm)+' · last invoiced: '+(_bdWfLbl(b.li)||'never above $0'),
+    c?('Churn month used: '+_bdWfLbl(c)+' (last month invoiced)'+(b.hsCh&&b.hsCh!==c?' · Metabase’s churn month: '+_bdWfLbl(b.hsCh)+' ('+(b.chSrc||'')+')':'')):'Not churned',
+    'Churn type: '+(b.ty||'—')+' · segment: '+(b.seg||'—')+' · package: '+(b.pkg||'—'),
+    'Pilot: '+(b.pil||'—')+' · ever implemented: '+(b.impl?'Yes':'No')+' · ever paid: '+(b.paid?'Yes':'No'),
+    'Web tier at churn: '+(b.wt||'—')+(b.wts?' ('+b.wts+')':'')+' · implied traffic: '+(b.it||'—')
+  ].join('\n');
+}
+// ── Abnormalities (Alex, 2026-11-24) ────────────────────────────────────────
+// Each brand row is checked against the rules below, worked out from the
+// 2026-11-24 export (975 brands) and kept only where a skeptical re-run showed
+// they flag real outliers rather than a large share of healthy brands. Counts in
+// the comments are from that export. They run live on whatever Metabase returns,
+// so a fixed brand drops its flag on the next Refresh. Each flag is a POSSIBLE
+// problem: the hover card says what it cannot tell apart.
+// A flag: {id, sev:'high'|'med'|'low', title, why, cells:[month indexes]}.
+var BD_WF_FLAG_SEV={high:3,med:2,low:1};
+var BD_WF_FLAGS=[
+  {id:'active-not-billed',sev:'high',title:'Active but not invoiced'},
+  {id:'billed-after-churn',sev:'high',title:'Invoiced after HubSpot churn'},
+  {id:'unpaid',sev:'high',title:'Invoiced, never paid'},
+  {id:'long-gap',sev:'high',title:'Long gap, then billed again'},
+  {id:'double',sev:'med',title:'Possible double billing'},
+  {id:'skipped',sev:'med',title:'Skipped 2–3 billing months'},
+  {id:'churn-lag',sev:'med',title:'HubSpot churn long after billing'},
+  {id:'status-conflict',sev:'med',title:'Active but HubSpot disagrees'},
+  {id:'type-widget',sev:'med',title:'Churn type contradicts widget'},
+  {id:'never-live',sev:'med',title:'Paying 4+ months, never live'},
+  {id:'spike',sev:'low',title:'One-month billing spike'},
+  {id:'gone-dark',sev:'low',title:'Widget went dark'}
+];
+var _bdWfFlagF='';   // '' all, 'any', 'none', or a flag id
+function bdWfSetFlagF(v){_bdWfFlagF=v||'';_bdWfShow=BD_WF_PAGE;renderBD();}
+function _bdWfMed(xs){if(!xs.length)return null;var s=xs.slice().sort(function(a,b){return a-b;}),h=s.length>>1;return s.length%2?s[h]:(s[h-1]+s[h])/2;}
+function _bdWf$(v){return '$'+Math.round(v).toLocaleString();}
+// months: the payload's month list (YYYY-MM, ascending); now = its last one.
+function _bdWfFlagsOf(b,months){
+  var now=months[months.length-1],out=[],T={};BD_WF_FLAGS.forEach(function(f){T[f.id]=f;});
+  var add=function(id,why,cells){out.push({id:id,sev:T[id].sev,title:T[id].title,why:why,cells:cells||[]});};
+  var a=b.a||[],L=_bdWfLbl,active=!_bdWfChurned(b);
+  var billed=[];a.forEach(function(v,i){if(v!=null&&v>=0.01)billed.push(i);});
+  // 1. Active, but the last 2+ complete months billed nothing (31).
+  if(active&&b.li){var k=_bdWfDiff(b.li,now);
+    if(k>=2){var c=[];for(var i=months.indexOf(b.li)+1;i<months.length;i++)if(i>0)c.push(i);
+      add('active-not-billed',(b.st||'Active')+' (HubSpot: '+(b.stage||'—')+'), but nothing has been invoiced for the last '+k+' months; the last invoice was in '+L(b.li)+'. It may have churned or paused without HubSpot being updated, or invoices stopped going out. The waterfall still counts it as active, so retention is overstated. Can’t tell apart: a prepaid deal billed outside Recurly/bill.com, a comped brand, or a late quarterly invoice (likeliest at 2 months).',c);}}
+  // 2. HubSpot's churn month before the last invoice (5).
+  if(b.hsCh&&b.li&&b.hsCh<b.li){var post=0,pc=[];months.forEach(function(m,i){if(m>b.hsCh&&a[i]!=null&&a[i]>=0.01){post+=a[i];pc.push(i);}});
+    add('billed-after-churn','HubSpot says it churned in '+L(b.hsCh)+', but '+_bdWf$(post)+' was invoiced after that, through '+L(b.li)+'. Either the HubSpot date is wrong or billing continued after the cancellation — check for a refund or dispute. Can’t tell apart: a return on the same brand without a new deal, or a late true-up.',pc);}
+  // 3. Never paid an invoice, past normal payment terms (9).
+  if(!b.paid&&b.mi>=1&&(b.mi>=3||!active))
+    add('unpaid','Invoiced in '+b.mi+' month'+(b.mi===1?'':'s')+' ('+L(b.fm)+' to '+(L(b.li)||L(b.fm))+', '+(b.src||'—')+') but has never paid an invoice: the revenue shown is billed, not collected. A collections risk. Can’t tell apart: a payment made outside Recurly/bill.com (a wire) that was never marked paid.');
+  // 4/6. Gaps between billed months.
+  var longG=null,skips=[];
+  for(var j=1;j<billed.length;j++){
+    var p=billed[j-1],q=billed[j],g=q-p-1;if(g<1)continue;
+    if(g>=4){if(!longG||g>longG.g)longG={g:g,p:p,q:q};}
+    else if(g>=2&&j>=2){
+      var prior=billed.slice(Math.max(0,j-3),j).map(function(i){return a[i];}),ref=_bdWfMed(prior);
+      if(ref!=null&&!(a[q]>=(g+0.6)*ref&&a[q]-ref>=300))skips.push({g:g,p:p,q:q,ref:ref});
+    }
+  }
+  if(longG){var lc=[];for(var i2=longG.p+1;i2<longG.q;i2++)lc.push(i2);
+    add('long-gap','Nothing invoiced for '+longG.g+' months in a row ('+L(months[longG.p+1])+' to '+L(months[longG.q-1])+'), then billing restarted in '+L(months[longG.q])+'. Either it churned and came back (which should count as a churn and a new win) or invoices were missed for months. The waterfall never shows it as churned, so its tenure is overstated.',lc);}
+  if(skips.length){var s0=skips[skips.length-1],sc=[];skips.forEach(function(s){for(var i3=s.p+1;i3<s.q;i3++)sc.push(i3);});
+    add('skipped','Nothing invoiced in '+L(months[s0.p+1])+(s0.g>1?' to '+L(months[s0.q-1]):'')+' ('+s0.g+' months) between normal months of about '+_bdWf$(s0.ref)+', with no catch-up invoice after: roughly '+_bdWf$(s0.g*s0.ref)+' looks unbilled'+(skips.length>1?' ('+skips.length+' such gaps in all)':'')+'. Can’t tell apart: free months in the contract, a quarterly invoice, or an unrecorded pause.',sc);}
+  // 5. A month about double its neighbours (34) / 11. a one-month spike (27).
+  var dbl=[],spk=[],medAll=_bdWfMed(billed.map(function(i){return a[i];}));
+  billed.forEach(function(i,pos){
+    var nb=billed.slice(Math.max(0,pos-2),pos).concat(billed.slice(pos+1,pos+3)).map(function(x){return a[x];});
+    if(nb.length>=3){var m=_bdWfMed(nb);if(m>=200&&a[i]>=1.8*m&&a[i]<=2.25*m){dbl.push({i:i,m:m});return;}}
+    if(billed.length>=4&&medAll!=null&&a[i]>=3*medAll&&a[i]-medAll>=1000){
+      var l=i>0?a[i-1]:null,r=i<a.length-1?a[i+1]:null;
+      if((l==null||l<0.7*a[i])&&(r==null||r<0.7*a[i]))spk.push(i);
+    }
+  });
+  if(dbl.length){var d0=dbl[0];
+    add('double',L(months[d0.i])+' was invoiced '+_bdWf$(a[d0.i])+', about '+(a[d0.i]/d0.m).toFixed(1)+'× the '+_bdWf$(d0.m)+'/mo around it — close to an exact double'+(dbl.length>1?' ('+dbl.length+' such months)':'')+'. '
+      +(/bill\.com/i.test(b.src||'')&&/recurly/i.test(b.src||'')?'It is billed by both bill.com and Recurly: check whether both invoiced that month.':'Check for a duplicate subscription or an invoice billed twice.')+' Can’t tell apart: a one-off charge priced like the plan, or one month back-billed.',dbl.map(function(x){return x.i;}));}
+  if(spk.length)add('spike',L(months[spk[0]])+' was invoiced '+_bdWf$(a[spk[0]])+', '+(a[spk[0]]/medAll).toFixed(1)+'× this brand’s usual '+_bdWf$(medAll)+'/mo, with normal months either side'+(spk.length>1?' ('+spk.length+' such months)':'')+'. Probably a one-off charge (reviews, setup, add-on), a late back-bill, or a multi-month prepay that was never spread — if the last, the waterfall overstates that month.',spk);
+  var neg=[];a.forEach(function(v,i){if(v!=null&&v<=-0.01)neg.push(i);});
+  if(neg.length)add('spike','Net negative in '+L(months[neg[0]])+' ('+_bdWf$(a[neg[0]])+'): refunds or credits exceeded the charges that month.',neg);
+  // 7. HubSpot's churn date 4+ months after the last invoice (26).
+  if(b.hsCh&&b.li&&_bdWfDiff(b.li,b.hsCh)>=4)
+    add('churn-lag','Billing stopped in '+L(b.li)+', but '+(b.chSrc||'HubSpot')+' records the churn in '+L(b.hsCh)+', '+_bdWfDiff(b.li,b.hsCh)+' months later, with nothing invoiced in between. This tab dates the churn at '+L(b.li)+'. Either the HubSpot date is a late clean-up, or the brand was still under contract and those months went unbilled.');
+  // 8. Counted active, but HubSpot is off-pipeline or carries a churn type (6).
+  if(active&&((b.stage&&b.stage!=='Closed Won')||(b.ty&&b.ty!=='Not recorded')))
+    add('status-conflict','Counted as '+(b.st||'Active')+', but HubSpot shows stage “'+(b.stage||'—')+'”'+(b.ty&&b.ty!=='Not recorded'?' and churn type “'+b.ty+'”':'')+'. The deal may be in the wrong stage, linked to the wrong brand, or a past churn was never cleared after a restart.');
+  // 9. Churn type vs the widget data (10).
+  if((b.ty==='Never Implemented'&&b.impl)||(b.ty==='Board Defined'&&!b.impl))
+    add('type-widget','Churn type is “'+b.ty+'”, but the app says the widget '+(b.impl?'went live'+(b.pe!=null?' on '+b.pe+' product'+(b.pe===1?'':'s'):''):'never went live')+' (10+ viewers in a day). Either the churn type or the widget data is wrong, which puts the brand in the wrong churn bucket.');
+  // 10. Paying 4+ months, widget never live (12).
+  if(active&&!b.impl&&b.mi>=4)
+    add('never-live','Billed for '+b.mi+' months since '+L(b.fm)+(b.pkg&&b.pkg!=='Not recorded'?' ('+b.pkg+')':'')+', but no widget has ever reached 10 viewers in a day. A high risk for a Never Implemented churn. Can’t tell apart: a widget only on low-traffic pages.');
+  // 12. Still billing, was live on 3+ products, none live last month (8).
+  if(b.st==='Active'&&b.li&&_bdWfDiff(b.li,now)<=1&&b.impl&&b.pc===0&&b.pe!=null&&b.pe>=3)
+    add('gone-dark','Still billed (last '+L(b.li)+') and once live on '+b.pe+' products, but no product reached 10 viewers last month. The widget may have been removed in a site redesign — a churn-risk signal. Can’t tell apart: a seasonal traffic dip or a tracking break.');
+  out.sort(function(x,y){return BD_WF_FLAG_SEV[y.sev]-BD_WF_FLAG_SEV[x.sev];});
+  return out;
+}
+// Flags are worked out once per payload (they depend on the row and the month
+// list only, never on the filters).
+function _bdWfFlagsAll(wf){
+  if(wf._flagged)return;
+  wf.brands.forEach(function(b){b._fl=_bdWfFlagsOf(b,wf.months);});
+  try{Object.defineProperty(wf,'_flagged',{value:true,enumerable:false,writable:true,configurable:true});}catch(_){wf._flagged=true;}
+}
+function _bdWfTopSev(b){return (b._fl&&b._fl.length)?b._fl[0].sev:'';}
+// The hover card: one per flagged row (W1) or cohort (W2), by index into
+// _bdWfTips, rebuilt on every render.
+var _bdWfTips=[];
+function _bdWfCard(title,sub,items){
+  return '<div class="bd-wf-tip-h">'+_bdEsc(title)+'</div>'+(sub?'<div class="bd-wf-tip-s">'+_bdEsc(sub)+'</div>':'')
+    +items.map(function(f){return '<div class="bd-wf-tip-i"><span class="bd-wf-sev '+f.sev+'">'+(f.sev==='high'?'High':f.sev==='med'?'Medium':'Low')+'</span><b>'+_bdEsc(f.title)+'</b><div>'+_bdEsc(f.why)+'</div></div>';}).join('');
+}
+function bdWfTip(e){
+  var tip=document.getElementById('bd-wf-tip');if(!tip)return;
+  var tr=e.target&&e.target.closest?e.target.closest('tr[data-ti]'):null;
+  if(!tr){tip.style.display='none';return;}
+  var html=_bdWfTips[+tr.getAttribute('data-ti')];if(!html){tip.style.display='none';return;}
+  if(tip._ti!==tr.getAttribute('data-ti')){tip.innerHTML=html;tip._ti=tr.getAttribute('data-ti');}
+  tip.style.display='block';
+  var w=tip.offsetWidth,h=tip.offsetHeight,x=e.clientX+16,y=e.clientY+14;
+  if(x+w>window.innerWidth-8)x=Math.max(8,e.clientX-w-16);
+  if(y+h>window.innerHeight-8)y=Math.max(8,e.clientY-h-14);
+  tip.style.left=x+'px';tip.style.top=y+'px';
+}
+function bdWfTipOff(){var tip=document.getElementById('bd-wf-tip');if(tip){tip.style.display='none';tip._ti=null;}}
+function bdWfCsv(){
+  var wf=BD&&BD.wf;if(!wf||!wf.brands)return;
+  _bdWfFlagsAll(wf);
+  var list=_bdWfSorted(_bdWfFilter(wf.brands)),q=function(v){v=v==null?'':String(v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
+  var rows=[['Brand key','Brand','Status','HubSpot stage','First invoice','Churn month (last invoiced)','Metabase churn month','Months invoiced','Total invoiced','Churn type','Segment','Package','Pilot','Possible abnormalities'].concat(wf.months)];
+  list.forEach(function(b){rows.push([b.k,b.n,b.st,b.stage,b.fm,_bdWfChurnMonth(b),b.hsCh,b.mi,_bdWfTotal(b),b.ty,b.seg,b.pkg,b.pil,(b._fl||[]).map(function(f){return f.title;}).join('; ')].concat(b.a.map(function(v){return v==null?'':v;})));});
+  var blob=new Blob([rows.map(function(r){return r.map(q).join(',');}).join('\n')],{type:'text/csv'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download='churn-waterfall.csv';document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(function(){URL.revokeObjectURL(url);},200);
+}
+// The two total rows stick under the header row at its MEASURED height: a
+// hard-coded offset leaves a gap (or an overlap) wherever the font renders a
+// pixel taller or shorter.
+function bdWfStick(){
+  var t=document.querySelector&&document.querySelector('.bd-wf-t');if(!t||!t.tHead)return;
+  var rows=t.tHead.rows,top=0;
+  for(var i=0;i<rows.length;i++){
+    if(i>0)for(var j=0;j<rows[i].cells.length;j++)rows[i].cells[j].style.top=top+'px';
+    top+=rows[i].offsetHeight;
+  }
+}
+function _bdWfRender(){
+  var wf=(typeof BD!=='undefined')?BD.wf:null,h='';
+  var head=function(n,id,title,sub){return '<section class="bd-sec" id="'+id+'"><div class="bd-sec-head"><span class="bd-sec-n">'+n+'</span><span class="bd-sec-t">'+title+'</span><span class="bd-sec-s">'+sub+'</span></div>';};
+  if(!wf||wf.loading){
+    return head('W','bd-sec-wf0','Churn Waterfall','')+'<div class="bd-app-band load" role="status"><span class="sp" style="width:13px;height:13px;border-width:2px"></span> Running the Metabase Churn Waterfall question… this can take a minute.</div></section>';
+  }
+  if(wf.error){
+    return head('W','bd-sec-wf0','Churn Waterfall','')+'<div class="bd-app-band err" role="alert"><strong>Churn Waterfall unavailable.</strong> <span>'+_bdEsc(wf.error)
+      +(/40[13]/.test(wf.error)?' — the dashboard’s Metabase key may not be allowed to open this question; its collection must be visible to the key’s group.':'')+' Refresh to retry.</span></div></section>';
+  }
+  var months=wf.months,now=months[months.length-1],all=wf.brands;
+  _bdWfFlagsAll(wf);_bdWfTips=[];
+  var list=_bdWfFilter(all),nLM=months.length-1;
+  // ── Filter bar + headline counts (shared by W1 and W2) ──
+  h+=head('W','bd-sec-wf0','Churn Waterfall','<span class="bd-src">Metabase</span>Recurly + bill.com invoices joined to HubSpot deals and app brands. '
+    +'Complete months through '+_bdWfLbl(now)+' · '+(wf.cached?'cached ':'run ')+_bdEsc(String((wf.meta&&wf.meta.asOf)||'').replace('T',' ').slice(0,16))+' UTC'
+    +(wf.meta&&wf.meta.url?' · <a href="'+_bdEsc(wf.meta.url)+'" target="_blank" rel="noopener" style="color:#0F766E;font-weight:600">Open in Metabase</a>':''));
+  var nAct=0,nCh=0,nPa=0,nPil=0,lastInv=0,stale=0;
+  list.forEach(function(b){
+    if(_bdWfChurned(b)){if(/pause/i.test(b.st))nPa++;else nCh++;}else{nAct++;if(!b.li||_bdWfDiff(b.li,now)>=2)stale++;}
+    if(b.pil&&!/no pilot/i.test(b.pil))nPil++;
+    var v=b.a[nLM];if(v!=null)lastInv+=v;
+  });
+  var kpi=function(l,v,s){return '<div class="bd-wf-kpi"><div class="bd-wf-kpi-l">'+l+'</div><div class="bd-wf-kpi-v">'+v+'</div>'+(s?'<div class="bd-wf-kpi-s">'+s+'</div>':'')+'</div>';};
+  h+='<div class="bd-wf-kpis">'+kpi('Brands',list.length.toLocaleString(),list.length!==all.length?'of '+all.length.toLocaleString()+' (filtered)':'every brand ever invoiced')
+    +kpi('Active',nAct.toLocaleString(),stale?stale+' not invoiced in 2+ months':'')+kpi('Churned',nCh.toLocaleString(),'dated by last invoice')
+    +kpi('Paused',nPa.toLocaleString(),'counted as churned')+kpi('Pilot brands',nPil.toLocaleString(),'from their initiation-fee invoice')
+    +kpi('Invoiced in '+_bdWfLbl(now),f$(lastInv),'')
+    +kpi('Possible abnormalities',list.filter(function(b){return b._fl&&b._fl.length;}).length.toLocaleString(),'brands flagged \u00b7 hover a row')+'</div>';
+  // One chip per rule: how many brands it flags under the other filters; a click filters to them.
+  var flPool=_bdWfFilter(all,'flag',true),flCnt={},flAny=0;
+  flPool.forEach(function(b){var seen={};(b._fl||[]).forEach(function(f){if(!seen[f.id]){seen[f.id]=1;flCnt[f.id]=(flCnt[f.id]||0)+1;}});if(b._fl&&b._fl.length)flAny++;});
+  h+='<div class="bd-wf-chips"><span class="bd-wf-chips-l">Possible abnormalities</span>'
+    +BD_WF_FLAGS.filter(function(f){return flCnt[f.id];}).map(function(f){var on=_bdWfFlagF===f.id;
+      return '<span class="bd-wf-chip '+f.sev+(on?' on':'')+'" role="button" tabindex="0" onclick="bdWfSetFlagF(\''+(on?'':f.id)+'\')">'+_bdEsc(f.title)+' <b>'+flCnt[f.id]+'</b></span>';}).join('')
+    +(flAny?'':'<span style="font-size:11px;color:var(--grey)">none under these filters</span>')+'</div>';
+  // Dropdowns: each option counts the brands it would leave, given the other filters.
+  var bar='<div class="bd-wf-bar">';
+  BD_WF_FILTERS.forEach(function(f){
+    var pool=_bdWfFilter(all,f.k,true),cnt={};
+    pool.forEach(function(b){var v=f.of(b);cnt[v]=(cnt[v]||0)+1;});
+    var vals=Object.keys(cnt);if(_bdWfF[f.k]&&!(_bdWfF[f.k] in cnt))vals.push(_bdWfF[f.k]);
+    vals.sort(function(a,b){var na=/^(not |no )/i.test(a),nb=/^(not |no )/i.test(b);if(na!==nb)return na?1:-1;return a.localeCompare(b,undefined,{numeric:true});});
+    bar+='<label>'+f.l+'<select onchange="bdWfSetF(\''+f.k+'\',this.value)"'+(_bdWfF[f.k]?' class="on"':'')+'><option value="">All ('+pool.length+')</option>'
+      +vals.map(function(v){return '<option value="'+_bdEsc(v)+'"'+(_bdWfF[f.k]===v?' selected':'')+'>'+_bdEsc(v)+' ('+(cnt[v]||0)+')</option>';}).join('')+'</select></label>';
+  });
+  bar+='<label>Abnormalities<select onchange="bdWfSetFlagF(this.value)"'+(_bdWfFlagF?' class="on"':'')+'><option value="">All ('+flPool.length+')</option>'
+    +'<option value="any"'+(_bdWfFlagF==='any'?' selected':'')+'>Any abnormality ('+flAny+')</option>'
+    +'<option value="none"'+(_bdWfFlagF==='none'?' selected':'')+'>None ('+(flPool.length-flAny)+')</option>'
+    +BD_WF_FLAGS.map(function(f){return '<option value="'+f.id+'"'+(_bdWfFlagF===f.id?' selected':'')+'>'+_bdEsc(f.title)+' ('+(flCnt[f.id]||0)+')</option>';}).join('')+'</select></label>';
+  [['pe','Products Ever Live'],['pc','Products Live at Churn']].forEach(function(p){
+    bar+='<label>'+p[1]+'<select onchange="bdWfSetF(\''+p[0]+'\',this.value)"'+(_bdWfF[p[0]]?' class="on"':'')+'><option value="">All</option>'
+      +['1','2','3','5','10'].map(function(n){return '<option value="'+n+'"'+(_bdWfF[p[0]]===n?' selected':'')+'>at least '+n+'</option>';}).join('')+'</select></label>';
+  });
+  var anyF=Object.keys(_bdWfF).some(function(k){return !!_bdWfF[k];})||_bdWfPil!=='incl'||!!_bdWfQ||!!_bdWfFlagF;
+  bar+=_bdWfSeg('Pilots',_bdWfPill(_bdWfPil,'incl','Included','pil','Pilot brands count from their Pilot Initiation Fee invoice')
+    +_bdWfPill(_bdWfPil,'excl','Excluded','pil','Leave out pilot brands with no plan bill yet (Metabase’s Hide Pilot Initiation Fee)'));
+  if(anyF)bar+='<button class="bd-wf-btn" onclick="bdWfReset()">Reset filters</button>';
+  bar+='</div>';
+  h+=bar+'</section>';
+  // ── W1: every brand, month by month ──
+  var sorted=_bdWfSorted(list),shown=sorted.slice(0,_bdWfShow);
+  h+=head('W1','bd-sec-wf1','All Brands','One row per brand, the amount invoiced each month (Recurly + bill.com, after credits and refunds; a multi-month plan spread over the months it covers). '
+    +'Blank before the first invoice and after the churn month; the churn month (the last month invoiced) is outlined in red.');
+  h+='<div class="tile" style="padding:14px 16px 12px"><div class="bd-wf-bar" style="margin:0 0 10px">'
+    +'<input id="bd-wf-q" type="search" placeholder="Search brand, key or group" value="'+_bdEsc(_bdWfQ)+'" oninput="bdWfSearch(this)">'
+    +'<label>Sort<select onchange="bdWfSet(\'sort\',this.value)">'+[['first','First invoice'],['name','Brand name'],['churn','Churn month (newest)'],['last','Last invoiced (newest)'],['total','Total invoiced'],['flags','Abnormalities first']]
+      .map(function(o){return '<option value="'+o[0]+'"'+(_bdWfSort===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')+'</select></label>'
+    +'<span style="font-size:11px;color:var(--grey)">'+sorted.length.toLocaleString()+' brand'+(sorted.length===1?'':'s')+'</span>'
+    +'<button class="bd-wf-btn" style="margin-left:auto" onclick="bdWfCsv()">Download CSV</button></div>';
+  var tot=months.map(function(){return 0;}),cntM=months.map(function(){return 0;});
+  sorted.forEach(function(b){b.a.forEach(function(v,i){if(v!=null){tot[i]+=v;if(v>=0.01)cntM[i]++;}});});
+  var t='<div class="bd-wf-scroll"><table class="bd-wf-t" onmousemove="bdWfTip(event)" onmouseleave="bdWfTipOff()"><thead><tr><th class="bd-wf-b">Brand</th><th>Status</th><th>First invoice</th><th title="The last month the brand was invoiced above $0 — blank while active">Churn month</th><th title="Complete months invoiced above $0">Months</th><th>Total</th>'
+    +months.map(function(m){return '<th class="m">'+_bdWfLbl(m)+'</th>';}).join('')+'</tr>'
+    +'<tr class="tot"><td class="bd-wf-b">Brands invoiced</td><td colspan="5"></td>'+cntM.map(function(c){return '<td class="m">'+(c?c.toLocaleString():'')+'</td>';}).join('')+'</tr>'
+    +'<tr class="tot"><td class="bd-wf-b">Invoiced ($)</td><td colspan="5" style="text-align:right">'+f$(tot.reduce(function(a,b){return a+b;},0))+'</td>'+tot.map(function(v){return '<td class="m">'+(Math.abs(v)>=0.5?_bdWfAmt(v):'')+'</td>';}).join('')+'</tr></thead><tbody>';
+  shown.forEach(function(b){
+    var c=_bdWfChurnMonth(b);
+    var fl=b._fl||[],flCells={};
+    fl.forEach(function(f){f.cells.forEach(function(i){(flCells[i]=flCells[i]||[]).push(f.title);});});
+    var ti='';
+    if(fl.length){ti=' data-ti="'+_bdWfTips.length+'"';
+      _bdWfTips.push(_bdWfCard(b.n||('Brand '+b.k),(b.st||'')+' \u00b7 first invoiced '+_bdWfLbl(b.fm)+' \u00b7 last invoiced '+(_bdWfLbl(b.li)||'\u2014')+' \u00b7 '+(b.src||'')+' \u00b7 brand '+b.k,fl));}
+    t+='<tr'+(fl.length?' class="fl-'+fl[0].sev+'"':'')+ti+'><td class="bd-wf-b"'+(fl.length?'':' title="'+_bdEsc(_bdWfBrandTip(b))+'"')+'>'
+      +(fl.length?'<span class="bd-wf-flag '+fl[0].sev+'">\u26a0'+(fl.length>1?' '+fl.length:'')+'</span>':'')
+      +_bdEsc(b.n||('Brand '+b.k))+'<span class="bd-wf-k">'+_bdEsc(b.k)+(b.grp?' \u00b7 '+_bdEsc(b.grp):'')+'</span></td>'
+      +'<td>'+_bdWfStatusBadge(b)+'</td><td>'+_bdWfLbl(b.fm)+'</td><td>'+(c?_bdWfLbl(c):'')+'</td><td class="m">'+(b.mi||0)+'</td><td class="m">'+_bdWfAmt(_bdWfTotal(b))+'</td>';
+    months.forEach(function(m,i){
+      var v=b.a[i],cls='m';
+      // ' fl" title="…"' closes the class attribute and carries its own closing quote.
+      var flT=flCells[i]?' fl" title="'+_bdEsc(flCells[i].join(' \u00b7 '))+'"':'';
+      if(m<b.fm){t+='<td class="m pre"></td>';return;}
+      var after=c&&m>c;
+      if(after&&(v==null||Math.abs(v)<0.01)){t+='<td class="m post'+(flT||'"')+'></td>';return;}
+      if(m===c)cls+=' chm';
+      if(after)cls+=' late';
+      if(v==null||Math.abs(v)<0.01)cls+=' zero';else if(v<0)cls+=' neg';
+      t+='<td class="'+cls+(flT||'"'+(m===c?' title="Churn month: the last month invoiced"':after?' title="Billed after the churn month"':''))+'>'+(v==null?'':Math.abs(v)<0.01?'0':_bdWfAmt(v))+'</td>';
+    });
+    t+='</tr>';
+  });
+  t+='</tbody></table></div>';
+  h+=t;
+  if(sorted.length>shown.length)h+='<div style="display:flex;gap:8px;justify-content:center;margin-top:10px"><button class="bd-wf-btn" onclick="bdWfSet(\'more\',\'\')">Show '+Math.min(BD_WF_PAGE,sorted.length-shown.length)+' more</button><button class="bd-wf-btn" onclick="bdWfSet(\'more\',\'all\')">Show all '+sorted.length.toLocaleString()+'</button></div>';
+  h+='</div></section>';
+  // ── W2: the same brands as C3's cohort grid ──
+  var gl=_bdWfNI==='excl'?list.filter(function(b){return !_bdWfIsNI(b);}):list;
+  var first=months[0];gl.forEach(function(b){if(b.fm&&b.fm<first)first=b.fm;});
+  var from=_bdWfFrom==='all'?first:(_bdWfFrom+'-01'>first?_bdWfFrom+'-01':first);
+  if(from>now)from=now;   // a picked year past the data would make the grid width negative
+  // Counted inside the plotted window only, as C3 does (a book-wide count overstated it).
+  var niOut=_bdWfNI==='excl'?list.filter(function(b){return _bdWfIsNI(b)&&b.fm&&b.fm>=from&&b.fm<=now;}).length:0;
+  var rw=_bdWfCohorts(gl,from,now),churnView=_bdWfMetric==='churn';
+  var pct=function(p){return p===null?'':(Math.round(p*1000)/10).toFixed(p>=0.999||p<=0.001?0:1)+'%';};
+  var cellVal=function(alive,lost,p){if(_bdWfMode==='n')return churnView?(lost?'−'+lost:'0'):String(alive);return churnView?pct(1-p):pct(p);};
+  var years=[];months.forEach(function(m){var y=m.slice(0,4);if(years.indexOf(y)<0)years.push(y);});
+  h+=head('W2','bd-sec-wf2','Retention Waterfall','Share of each first-invoice month’s brands '+(churnView?'that had churned by':'still active in')
+    +' each month since, Month 1 being the first invoice itself. A churned brand counts through its last invoiced month and is lost from the month after. Read DOWN a column to compare cohorts at the same age.');
+  h+='<div class="tile" style="padding:16px 18px 12px"><div class="bd-wf-bar" style="margin:0 0 12px">'
+    +_bdWfSeg('Show',_bdWfPill(_bdWfMode,'pct','%','mode')+_bdWfPill(_bdWfMode,'n','Brands','mode'))
+    +_bdWfSeg('Metric',_bdWfPill(_bdWfMetric,'ret','Retention','metric')+_bdWfPill(_bdWfMetric,'churn','Churn','metric'))
+    +_bdWfSeg('Never Implemented',_bdWfPill(_bdWfNI,'incl','Included','ni','Churned brands that never launched stay in their cohorts')
+      +_bdWfPill(_bdWfNI,'excl','Excluded','ni','Leave out churned brands with a Never Implemented churn type, or no churn type and a widget that never went live'))
+    +_bdWfSeg('Cohorts from',_bdWfPill(_bdWfFrom,'all','All','from')+years.map(function(y){return _bdWfPill(_bdWfFrom,y,y,'from');}).join(''))
+    +'<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--grey);margin-left:auto">≤'+(churnView?pct(1-BD_WF_LOW):pct(BD_WF_LOW))
+    +BD_WF_RED.slice().reverse().concat(['#FFFFFF']).concat(BD_WF_GREEN).map(function(c){return '<span style="width:14px;height:10px;background:'+c+';border:1px solid rgba(23,44,69,.08)"></span>';}).join('')
+    +(churnView?pct(1-BD_WF_NEUTRAL):pct(BD_WF_NEUTRAL))+' neutral</span></div>';
+  var W=rw.maxK,minW=BD_WF_W_LBL+BD_WF_W_N+BD_WF_W_CELL*W;
+  // Cohort rows whose retention a flagged brand distorts: active brands not
+  // invoiced lately keep the row high; a long gap hides a churn and a return.
+  var coFl={};
+  gl.forEach(function(b){(b._fl||[]).forEach(function(f){if(f.id==='active-not-billed'||f.id==='long-gap'||f.id==='status-conflict'){var c=coFl[b.fm]=coFl[b.fm]||{};(c[f.id]=c[f.id]||[]).push(b.n||b.k);}});});
+  var g='<div style="overflow-x:auto" onmousemove="bdWfTip(event)" onmouseleave="bdWfTipOff()"><table class="rwtbl bd-wf-rw" style="width:100%;min-width:'+minW+'px"><colgroup><col style="width:'+BD_WF_W_LBL+'px"><col style="width:'+BD_WF_W_N+'px">'+new Array(W+1).join('<col>')+'</colgroup>'
+    +'<thead><tr><th class="rw-c" style="text-align:left">Cohort</th><th class="rw-n" title="Brands whose first invoice was in this month — the denominator for the row">Brands</th>';
+  for(var k=1;k<=W;k++)g+='<th>'+k+'</th>';
+  g+='</tr></thead><tbody>';
+  rw.cohorts.forEach(function(co){
+    var cf=coFl[co.m],ci='',items=[];
+    if(cf&&co.n){
+      var nm=function(xs){return xs.slice(0,5).join(', ')+(xs.length>5?' and '+(xs.length-5)+' more':'');};
+      if(cf['active-not-billed'])items.push({sev:'high',title:cf['active-not-billed'].length+' active brand'+(cf['active-not-billed'].length===1?'':'s')+' not invoiced in 2+ months',why:'Counted as retained in every month although billing stopped ('+nm(cf['active-not-billed'])+'). If they really churned, this row\u2019s later months are overstated.'});
+      if(cf['long-gap'])items.push({sev:'high',title:cf['long-gap'].length+' brand'+(cf['long-gap'].length===1?'':'s')+' with a 4+ month billing gap',why:'Billing stopped for months and then restarted ('+nm(cf['long-gap'])+'). Each counts as retained throughout; a churn and a return would lower this row in the gap months.'});
+      if(cf['status-conflict'])items.push({sev:'med',title:cf['status-conflict'].length+' brand'+(cf['status-conflict'].length===1?'':'s')+' active here, but not in HubSpot',why:'HubSpot shows a different stage or a churn type ('+nm(cf['status-conflict'])+').'});
+      // Only where it could move the row: affected brands are 5%+ of the cohort
+      // (high at 10%+). One stale brand in a 60-brand cohort shifts no cell much.
+      var aff={};Object.keys(cf).forEach(function(k){cf[k].forEach(function(n){aff[n]=1;});});
+      var share=Object.keys(aff).length/co.n;
+      if(share<0.05)items=[];
+      else{items.forEach(function(it){if(it.sev==='high'&&share<0.10)it.sev='med';});
+        items.sort(function(x,y){return BD_WF_FLAG_SEV[y.sev]-BD_WF_FLAG_SEV[x.sev];});
+        ci=' data-ti="'+_bdWfTips.length+'"';_bdWfTips.push(_bdWfCard(_bdWfLbl(co.m)+' cohort',co.n+' brands \u00b7 '+Object.keys(aff).length+' ('+Math.round(share*100)+'%) may be miscounted',items));}
+    }
+    g+='<tr'+ci+(items.length?' class="fl-'+items[0].sev+'"':'')+'><td class="rw-c">'+(items.length?'<span class="bd-wf-flag '+items[0].sev+'">\u26a0</span>':'')+_bdWfLbl(co.m)+'</td><td class="rw-n">'+(co.n||'\u00b7')+'</td>';
+    for(var k=1;k<=W;k++){
+      var c=co.cells[k-1];
+      if(!c||!co.n){g+='<td></td>';continue;}
+      var f=_bdWfFill(c.pct);
+      g+='<td title="'+_bdEsc(_bdWfLbl(co.m)+' cohort · Month '+c.k+' ('+_bdWfLbl(_bdWfAdd(co.m,c.k-1))+'): '+c.alive+' of '+co.n+' still active ('+pct(c.pct)+') · '+c.lost+' churned')+'" style="'+(f?'background:'+f+';':'')
+        +'color:var(--navy);font-weight:'+(c.pct>=0.999||c.pct<=BD_WF_LOW?'700':'600')+'">'+cellVal(c.alive,c.lost,c.pct)+'</td>';
+    }
+    g+='</tr>';
+  });
+  if(rw.blend.length){
+    var bt='border-top:1.5px solid rgba(23,44,69,.14);';
+    g+='<tr><td class="rw-c" style="'+bt+'font-style:italic">All cohorts</td><td class="rw-n" style="'+bt+'">'+rw.blend[0].n+'</td>';
+    rw.blend.forEach(function(b){
+      var thin=(b.pct===null||b.n<BD_WF_BLEND_MIN||b.cohorts<BD_WF_BLEND_MIN_COHORTS),f=thin?'':_bdWfFill(b.pct);
+      g+='<td style="'+bt+(f?'background:'+f+';':'')+'color:var(--navy);font-weight:700" title="'+_bdEsc('Month '+b.k+' — '+(b.pct===null?'no cohort has reached this month yet'
+        :b.alive+' of '+b.n+' across the '+b.cohorts+(b.cohorts===1?' cohort that has':' cohorts that have')+' reached it ('+pct(b.pct)+')'+(thin?' — too few to blend, so not shown':'')))+'">'
+        +(thin?'':cellVal(b.alive,b.n-b.alive,b.pct))+'</td>';
+    });
+    g+='</tr>';
+  }
+  g+='</tbody></table></div>';
+  h+=g;
+  h+='<div style="font-size:10px;color:var(--grey);margin-top:14px;font-style:italic;line-height:1.6">'
+    +'<strong style="color:var(--navy)">How it is counted.</strong> Rows are the month of each brand’s first invoice above $0, in Recurly or bill.com; pilot brands start at their Pilot Initiation Fee invoice'
+    +(_bdWfPil==='excl'?' (pilots with no plan bill yet are excluded by the Pilots switch above)':'')+'. '
+    +'A brand is churned when Metabase marks it Churned or Paused (HubSpot’s stage, else an ended Recurly subscription or a discarded app brand), and its churn date is the last month it was invoiced — not HubSpot’s Pause/Churn Date, which the brand’s tooltip in W1 still shows. '
+    +'Active brands count as retained in every month, even when an invoice is missing'+(stale?' ('+stale+' active brand'+(stale===1?' has':'s have')+' not been invoiced in the last two complete months)':'')+'. '
+    +(_bdWfNI==='excl'?niOut+' Never Implemented churn'+(niOut===1?' is':'s are')+' left out. ':'')
+    +'Complete months only, through '+_bdWfLbl(now)+': brands first invoiced this month appear next month. The All cohorts row blends every cohort that has reached each month, with its own denominator; under '
+    +BD_WF_BLEND_MIN+' brands or '+BD_WF_BLEND_MIN_COHORTS+' cohorts it is left blank. Filters above narrow both W1 and this grid.</div></div></section>';
+  return h;
 }
 // C1's Board Defined / All switch. Board Defined is the default: it is the cut
 // the board actually reviews, and the one C5 and C7 are built on. 'All' widens
@@ -1648,6 +2212,11 @@ function _bdS2Weeks(wk,today,from){
 // Stacked line chart: the base as a shaded area, then each further layer
 // (Pilot, and Onboarding when given) as a lighter shaded band on top. Hover
 // names the point and splits it.
+// "+12 (+4.1%)" / "−$40,000 (−1.2%)": a total's change from the month before.
+function _bdS2Chg(cur,prev,ex){
+  var d=cur-prev,sg=d>0?'+':d<0?'\u2212':'\u00b1';
+  return sg+ex(Math.abs(d))+(prev>0?' ('+sg+(Math.abs(d)/prev*100).toFixed(1)+'%)':'');
+}
 function _bdS2Chart(o){
   var W=o.w||700,H=o.h||250,L=56,R=26,T=10,B=6,pw=W-L-R,ph=H-T-B,n=o.labels.length;
   if(!n)return '<div style="height:200px;display:flex;align-items:center;justify-content:center;color:var(--grey);font-size:12px">No data</div>';
@@ -1692,7 +2261,9 @@ function _bdS2Chart(o){
   o.labels.forEach(function(l,i){
     var tip='<div style="font-weight:700;margin-bottom:3px">'+(o.tips?o.tips[i]:l)+'</div>'
       +lay.map(function(ly){return '<div><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:'+ly.c+';margin-right:6px"></span>'+ly.l+' <b>'+ex(ly.v[i]||0)+'</b></div>';}).join('')
-      +'<div style="margin-top:3px;padding-top:3px;border-top:1px solid rgba(255,255,255,.2)">Total <b>'+ex(tot[i])+'</b></div>';
+      +'<div style="margin-top:3px;padding-top:3px;border-top:1px solid rgba(255,255,255,.2)">Total <b>'+ex(tot[i])+'</b></div>'
+      // Month-over-month change of the total (Alex, 2026-11-20).
+      +(o.chg&&i>0?'<div>Change vs '+_bdEsc(String(o.labels[i-1]))+' <b style="color:'+(tot[i]-tot[i-1]>0?'#86EFAC':tot[i]-tot[i-1]<0?'#FCA5A5':'#fff')+'">'+_bdS2Chg(tot[i],tot[i-1],ex)+'</b></div>':'');
     hits+='<rect x="'+(x(i)-bw/2)+'" y="'+T+'" width="'+bw+'" height="'+ph+'" fill="transparent" data-i="'+i+'" data-cx="'+x(i)+'" data-tip="'+_bdEsc(tip)+'" onmouseenter="bdStackTip(this,event)" onmousemove="bdStackTip(this,event)"/>';});
   var key=function(ly,k){return '<span style="display:inline-flex;align-items:center;gap:6px;margin-right:14px"><span style="width:14px;height:10px;border-radius:2px;background:'+ly.c+';opacity:'+(k?'.55':'.75')+';border-top:2px '+(ly.d?'dashed':'solid')+' '+ly.c+'"></span>'+ly.l+'</span>';};
   return '<div style="font-size:11px;color:var(--navy);margin:0 0 6px">'+lay.map(key).join('')+'</div>'
@@ -2107,6 +2678,7 @@ function bdRefresh(){
   _bdStartSkeleton();
   BD._fresh=true;  // force a re-fetch of company owner fields (Acct Mgr / SE Rep / Ops Rep)
   bdFetchApp();    // and the app brand book, in parallel
+  if(BD.wf)bdWfFetch(true);   // and the Churn Waterfall, past its cache, once it has been opened
   fetch('/api/bd',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:BD.pw,fresh:true})}).then(function(r){return r.json();}).then(function(d){
     if(!d.error){BD.data=d;_bdStopSkeleton();setTimeout(function(){renderBD();bdLookupMissingCompanies();},120);}
     else{_bdStopSkeleton();}
@@ -2648,10 +3220,11 @@ function renderBD(){
   var _s2Chips=_s2Billed?_bdChips(['recurly','app'],_appLive):_bdChips(['hubspot','recurly','app'],_appLive);
   var _s2Last=_s2?_s2M.length-1:-1;
   var _s2v=function(arr,i){return _s2&&i>=0?arr[i]||0:0;};
-  var _s2Mini=function(label,val,sub,col){
+  var _s2Mini=function(label,val,sub,col,chg){
     var box=col?('background:#fff;border:1.5px solid '+col+';'):'background:rgba(23,44,69,.04);border:1px solid rgba(23,44,69,.12);';
     return '<div style="'+box+'border-radius:8px;padding:4px 11px;text-align:right;line-height:1.18"><div style="font-size:7.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap">'+label+'</div><div style="font-size:15px;font-weight:700;color:'+(col||'var(--navy)')+';font-family:var(--font-h)">'+val+'</div>'
-      +(sub?'<div style="font-size:9px;color:var(--grey);white-space:nowrap">'+sub+'</div>':'')+'</div>';};
+      +(sub?'<div style="font-size:9px;color:var(--grey);white-space:nowrap">'+sub+'</div>':'')
+      +(chg?'<div style="font-size:9.5px;font-weight:700;white-space:nowrap;color:'+chg.c+'">'+chg.t+'</div>':'')+'</div>';};
   h+='<section class="bd-sec" id="bd-sec-arr">';
   h+='<div class="bd-sec-head"><span class="bd-sec-n">02</span>'
     +'<span class="bd-sec-t">All Brands and ARR</span>'
@@ -2675,14 +3248,18 @@ function renderBD(){
     // Each mini card spells out its total (Alex, 2026-11-17): base + pilot
     // (+ onboarding), every part named, so the parts visibly add to the number.
     var _nf=function(v){return v.toLocaleString();};
+    // Each month card also shows the total's change from the month before (Alex, 2026-11-20).
+    var _s2Tot=function(i,b,p,o){return i<0?null:_s2v(b,i)+_s2v(p,i)+(_hasOnb?_s2v(o,i):0);};
+    var _s2ChgOf=function(i,b,p,o,f){var c=_s2Tot(i,b,p,o),pv=_s2Tot(i-1,b,p,o);if(c==null||pv==null)return null;
+      return {t:_bdS2Chg(c,pv,f)+' vs '+_s2L[i-1],c:c>pv?'#16A34A':c<pv?'#DC2626':'var(--grey)'};};
     var _s2Calc=function(b,p,o,f){return f(b)+' '+_bLbl+' + '+f(p)+' pilot'+(_hasOnb?' + '+f(o)+' onb.':'');};
     h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;min-width:0">';
     h+=_chartCard('Active Brands',(_cb+_cp+_con).toLocaleString()+' now',
-      _s2Mini('This Month',(_cb+_cp+_con).toLocaleString(),_s2Calc(_cb,_cp,_con,_nf),'#3B82F6')+_s2Mini('Last Month',(_lb+_lp+_lon).toLocaleString(),_s2Calc(_lb,_lp,_lon,_nf),null),
-      _bdS2Chart({labels:_s2L,tips:_s2Tip,base:_s2.base,pil:_s2.pil,onb:_hasOnb?_s2.onbN:null,col:'#3B82F6',pcol:'#7C93B8',ocol:'#D4A72C',bLbl:_bLbl+' brands',pLbl:'Pilot brands',oLbl:'Onboarding brands',aria:'Active brands by month, '+_bLbl.toLowerCase()+', pilot and onboarding'}));
+      _s2Mini('This Month',(_cb+_cp+_con).toLocaleString(),_s2Calc(_cb,_cp,_con,_nf),'#3B82F6',_s2ChgOf(_s2Last,_s2.base,_s2.pil,_s2.onbN,_nf))+_s2Mini('Last Month',(_lb+_lp+_lon).toLocaleString(),_s2Calc(_lb,_lp,_lon,_nf),null,_s2ChgOf(_s2Last-1,_s2.base,_s2.pil,_s2.onbN,_nf)),
+      _bdS2Chart({labels:_s2L,tips:_s2Tip,chg:true,base:_s2.base,pil:_s2.pil,onb:_hasOnb?_s2.onbN:null,col:'#3B82F6',pcol:'#7C93B8',ocol:'#D4A72C',bLbl:_bLbl+' brands',pLbl:'Pilot brands',oLbl:'Onboarding brands',aria:'Active brands by month, '+_bLbl.toLowerCase()+', pilot and onboarding'}));
     h+=_chartCard(_bLbl+' ARR',f$(_ca+_cpa+_coa)+' now'+(_hasOnb?' \u00b7 section 01\u2019s Future ARR':''),
-      _s2Mini('This Month',f$(_ca+_cpa+_coa),_s2Calc(_ca,_cpa,_coa,f$),'#16A34A')+_s2Mini('Last Month',f$(_la+_lpa+_loa),_s2Calc(_la,_lpa,_loa,f$),null),
-      _bdS2Chart({labels:_s2L,tips:_s2Tip,base:_s2.baseA,pil:_s2.pilA,onb:_hasOnb?_s2.onbA:null,col:'#16A34A',pcol:'#86C79A',ocol:'#D4A72C',money:true,
+      _s2Mini('This Month',f$(_ca+_cpa+_coa),_s2Calc(_ca,_cpa,_coa,f$),'#16A34A',_s2ChgOf(_s2Last,_s2.baseA,_s2.pilA,_s2.onbA,f$))+_s2Mini('Last Month',f$(_la+_lpa+_loa),_s2Calc(_la,_lpa,_loa,f$),null,_s2ChgOf(_s2Last-1,_s2.baseA,_s2.pilA,_s2.onbA,f$)),
+      _bdS2Chart({labels:_s2L,tips:_s2Tip,chg:true,base:_s2.baseA,pil:_s2.pilA,onb:_hasOnb?_s2.onbA:null,col:'#16A34A',pcol:'#86C79A',ocol:'#D4A72C',money:true,
         bLbl:_bLbl+' ARR',pLbl:'Pilot ARR (post-pilot price)',oLbl:'Onboarding ARR (expected)',aria:'ARR by month, '+_bLbl.toLowerCase()+', pilot and onboarding'}));
     h+='</div>';
     // New ARR per week, stacked the same way.
@@ -4967,9 +5544,10 @@ function renderBD(){
   // and only one is written. The deals TABLE is the expensive part of either, so
   // each calls _bdDealsTable() only on the tab that is showing.
   // Post-render: charts + calc + attribution hover
-  el.innerHTML=(_bdTab==='churn')?hChurn:(_bdTab==='recon')?hRecon:h;
+  el.innerHTML=(_bdTab==='churn')?hChurn:(_bdTab==='recon')?hRecon:(_bdTab==='waterfall')?_bdWfRender():h;
   [1,2,3,4,5,6].forEach(function(i){var c=document.getElementById('bd-rec-n'+i);if(c)c.textContent=_bdRecCounts?'('+_bdRecCounts[i-1]+')':'';});document.getElementById('fts').textContent='Updated: '+d.meta.generatedAt.split('T')[0];
   BD._acv=acv;          // keeps the dialog's ACV placeholder honest
+  bdWfStick();          // W1's sticky total rows sit under its measured header
   bdBindSpy();          // sections were just replaced — re-observe them
   bdBindStack();        // stacked-column hover, on whichever tab just rendered
   bdBindRateBands();    // C2's line-chart bands — emitted with data, inert without this

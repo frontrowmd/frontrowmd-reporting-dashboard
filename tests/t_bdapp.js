@@ -618,7 +618,7 @@ function pageToggleTests(){
   const block=bd.slice(a,b);
   const T={console};vm.createContext(T);
   vm.runInContext([fn(bd,'_bdMonthOfG'),fn(bd,'_bdMDY'),fn(bd,'_bdMonthEndMDY'),fn(bd,'_baPilotDealIds'),fn(bd,'_baIsTest'),fn(bd,'_bdChip'),fn(bd,'_bdChips'),fn(bd,'_bdEsc'),fn(bd,'_baToday'),
-    fn(bd,'_bdS2Months'),fn(bd,'_baRcClass'),fn(bd,'_baStatusOf'),fn(bd,'_bdRcBillsOn'),fn(bd,'_bdRcLiveOn'),fn(bd,'_bdS2FromBilled'),fn(bd,'_bdS2FromSigned'),fn(bd,'_bdRcVal'),fn(bd,'_bdS2Billed'),fn(bd,'_bdS2Signed'),fn(bd,'_bdS2Week'),fn(bd,'_bdS2Weeks'),fn(bd,'_bdS2Chart'),
+    fn(bd,'_bdS2Months'),fn(bd,'_baRcClass'),fn(bd,'_baStatusOf'),fn(bd,'_bdRcBillsOn'),fn(bd,'_bdRcLiveOn'),fn(bd,'_bdS2FromBilled'),fn(bd,'_bdS2FromSigned'),fn(bd,'_bdRcVal'),fn(bd,'_bdS2Billed'),fn(bd,'_bdS2Signed'),fn(bd,'_bdS2Week'),fn(bd,'_bdS2Weeks'),fn(bd,'_bdS2Chg'),fn(bd,'_bdS2Chart'),
     decl(bd,"var _bdS2Mode=",';'),decl(bd,"var BD_S2_FROM=",';'),
     decl(bd,'var BD_APP_TEST_BRANDS=',';'),decl(bd,"var _bdPilotMode=",';'),
     'function f$(v){return "$"+Math.round(v);}','function buildSVGChart(l,v){return "<svg data-n=\\""+v.length+"\\"></svg>";}',
@@ -685,6 +685,14 @@ function pageToggleTests(){
   ck('Signed: the snapshot split base / pilot, valued once per brand (Recurly, else post-pilot, else HubSpot)',[sgn.base,sgn.pil,sgn.baseA,sgn.pilA],[[2,1,1],[0,1,1],[(1200+400)*12,1200*12,1200*12],[0,2500*12,2500*12]]);
   ck('the stacked chart draws two shaded bands, two lines and a hover per point',(()=>{const c=T._bdS2Chart({labels:['a','b'],base:[1,2],pil:[1,1],col:'#000',pcol:'#999',bLbl:'B',pLbl:'P'});
     return [(c.match(/<path /g)||[]).length,(c.match(/<polyline /g)||[]).length,(c.match(/onmouseenter="bdStackTip/g)||[]).length];})(),[2,2,2]);
+  // Month-over-month change of the total (Alex, 2026-11-20).
+  const ex$=v=>'$'+Math.round(v).toLocaleString();
+  ck('_bdS2Chg: signed change and % of the month before',[T._bdS2Chg(110,100,String),T._bdS2Chg(90,100,ex$),T._bdS2Chg(5,5,String),T._bdS2Chg(3,0,String)],['+10 (+10.0%)','\u2212$10 (\u221210.0%)','\u00b10 (\u00b10.0%)','+3']);
+  ck('  the hover card shows it from the second month on, only when asked',(()=>{const o={labels:['Sep 26','Oct 26','Nov 26'],base:[10,12,9],pil:[1,1,1],col:'#000',pcol:'#999',bLbl:'B',pLbl:'P'};
+    const on=T._bdS2Chart(Object.assign({chg:true},o)),off=T._bdS2Chart(o);
+    return [(on.match(/Change vs /g)||[]).length,/Change vs Sep 26 &lt;b style=&quot;color:#86EFAC&quot;&gt;\+2 \(\+18\.2%\)/.test(on),/Change vs Oct 26 &lt;b style=&quot;color:#FCA5A5&quot;&gt;\u22123 \(\u221223\.1%\)/.test(on),(off.match(/Change vs /g)||[]).length];})(),[2,true,true,0]);
+  ck('  both monthly charts ask for it; the weekly one does not',(bd.match(/tips:_s2Tip,chg:true,/g)||[]).length,2);
+  ck('  all four month cards carry a change line',(bd.match(/_s2Mini\('(?:This|Last) Month',[^;]*?_s2ChgOf\(_s2Last(?:-1)?,/g)||[]).length,4);
   // Reconciliation tab: a count on each nav anchor, and the freshness line.
   ck('each Reconciliation anchor has a count slot',[1,2,3,4,5,6].every(i=>new RegExp('bd-sec-rec'+i+"'\\)\">[^<]+<span class=\"bd-rec-n\" id=\"bd-rec-n"+i+'"></span></a>').test(bd)),true);
   ck('  filled as "(N)" from the six tables after each render, blank without app data',
