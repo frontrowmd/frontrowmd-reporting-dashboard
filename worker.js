@@ -3831,7 +3831,7 @@ async function metabaseCheck(env) {
 // card reads Snowflake copies refreshed a few times a day; a run takes a while);
 // Refresh skips the cache.
 const BD_WF_CARD = 3565;
-const BD_WF_KV = 'bd_waterfall_v1';
+const BD_WF_KV = 'bd_waterfall_v2';   // v2: payload adds recurly.rs and widgets
 const BD_WF_TTL_SEC = 1800;
 // The card's month columns are named "'2024-01'" (quotes included) by its PIVOT.
 const BD_WF_MONTH_RE = /^'?(\d{4}-\d{2})'?$/;
@@ -3988,6 +3988,7 @@ sb as (
   select ab.brand_key,
     count(*) live_n,
     min(iff(s.state = 'paused', s.paused_at, null))::date paused_since,
+    min(iff(s.state = 'paused', s.current_period_ends_at, null))::date resumes,
     count_if(s.state in ('active', 'future')) running_n,
     min(iff(s.state in ('active', 'future'), s.current_period_ends_at, null))::date next_bill,
     count_if(s.state = 'future') future_n,
@@ -4000,7 +4001,7 @@ sb as (
 select coalesce(ib.brand_key, sb.brand_key) as brand_key,
   to_char(ib.last_good, 'YYYY-MM-DD') last_good, ib.cur_amt, to_char(ib.cur_day, 'YYYY-MM-DD') cur_day, ib.bad_n, to_char(ib.last_bad, 'YYYY-MM-DD') last_bad,
   ib.zero_n, to_char(ib.first_zero, 'YYYY-MM-DD') first_zero,
-  coalesce(sb.live_n, 0) live_n, to_char(sb.paused_since, 'YYYY-MM-DD') paused_since, coalesce(sb.running_n, 0) running_n,
+  coalesce(sb.live_n, 0) live_n, to_char(sb.paused_since, 'YYYY-MM-DD') paused_since, to_char(sb.resumes, 'YYYY-MM-DD') resumes, coalesce(sb.running_n, 0) running_n,
   to_char(sb.next_bill, 'YYYY-MM-DD') next_bill, coalesce(sb.future_n, 0) future_n, to_char(sb.trial_end, 'YYYY-MM-DD') trial_end,
   to_char(current_date, 'YYYY-MM-DD') today
 from ib full outer join sb on sb.brand_key = ib.brand_key`;
@@ -4010,8 +4011,34 @@ async function bdWfRecurly(env) {
   const by = {};
   rows.forEach(r => { const k = t(r.BRAND_KEY); if (!k) return;
     by[k] = { lg: t(r.LAST_GOOD), ca: Math.round(n(r.CUR_AMT) * 100) / 100, cd: t(r.CUR_DAY), bn: n(r.BAD_N), lb: t(r.LAST_BAD), zn: n(r.ZERO_N), fz: t(r.FIRST_ZERO),
-      ln: n(r.LIVE_N), ps: t(r.PAUSED_SINCE), rn: n(r.RUNNING_N), nb: t(r.NEXT_BILL), fn: n(r.FUTURE_N), te: t(r.TRIAL_END) }; });
+      ln: n(r.LIVE_N), ps: t(r.PAUSED_SINCE), rs: t(r.RESUMES), rn: n(r.RUNNING_N), nb: t(r.NEXT_BILL), fn: n(r.FUTURE_N), te: t(r.TRIAL_END) }; });
   return { today: rows.length ? t(rows[0].TODAY) : '', byKey: by };
+}
+// Billing tab product filters (Alex, 2026-11-24: "intersection multi-selects
+// of the actual product options", the app's widget types): per brand, each
+// widget type and the months it was live (10+ viewers in a day, the app's
+// go-live bar, as card 3565 counts products). gpt_s / gpt_m / gpt_lg fold into
+// gpt. One row per brand, the types and months packed as "t=YYYY-MM,...;...".
+const BD_WF_WIDGET_SQL = `
+with d as (
+  select brand_id::varchar as brand_key,
+    iff(usage_type like 'widget_view:gpt%', 'gpt', split_part(usage_type, ':', 2)) as t,
+    to_char(date_trunc('month', day), 'YYYY-MM') as m
+  from analytics_production.intermediate.int_daily_widget_usage
+  where usage_type like 'widget_view:%' and users >= 10
+  group by 1, 2, 3
+),
+bt as (select brand_key, t, listagg(m, ',') within group (order by m) as ms from d group by 1, 2)
+select brand_key, listagg(t || '=' || ms, ';') within group (order by t) as live,
+  (select to_char(date_trunc('month', min(day)), 'YYYY-MM') from analytics_production.intermediate.int_daily_widget_usage) as data_from
+from bt group by 1`;
+async function bdWfWidgets(env) {
+  const rows = await mbQuery(env, BD_WF_WIDGET_SQL);
+  const by = {};
+  rows.forEach(r => { const k = String(r.BRAND_KEY || ''); if (!k) return; const o = {};
+    String(r.LIVE || '').split(';').forEach(p => { const i = p.indexOf('='); if (i > 0) o[p.slice(0, i)] = p.slice(i + 1).split(',').filter(Boolean); });
+    by[k] = o; });
+  return { from: rows.length ? String(rows[0].DATA_FROM || '') : '', byKey: by };
 }
 async function fetchBdWaterfall(env, fresh) {
   if (!fresh && env.CONTENT_STORE) {
@@ -4023,9 +4050,10 @@ async function fetchBdWaterfall(env, fresh) {
   const t0 = Date.now();
   // The pie's query runs alongside; its failure leaves the rest of the tab working.
   const soft = (p) => p.catch(e => ({ error: String(e && e.message || e).slice(0, 300) }));
-  const [data, cats, rc] = await Promise.all([bdWfRunCard(env), soft(bdWfCategories(env)), soft(bdWfRecurly(env))]);
+  const [data, cats, rc, wg] = await Promise.all([bdWfRunCard(env), soft(bdWfCategories(env)), soft(bdWfRecurly(env)), soft(bdWfWidgets(env))]);
   data.categories = cats;
   data.recurly = rc;
+  data.widgets = wg;
   data.meta = { card: BD_WF_CARD, url: METABASE_URL + '/question/' + BD_WF_CARD, asOf: new Date().toISOString(), ms: Date.now() - t0 };
   if (env.CONTENT_STORE) {
     try { const blob = JSON.stringify({ t: Date.now(), data }); if (blob.length < 20 * 1024 * 1024) await env.CONTENT_STORE.put(BD_WF_KV, blob, { expirationTtl: BD_WF_TTL_SEC * 6 }); } catch (_) { /* best effort */ }

@@ -35,7 +35,8 @@ const CATCOLS=['CATEGORY','AMOUNT','MULTI_MONTH','INVOICES','BRANDS','MONTH','BR
 const CATROWS=[['plan',3000,1000,3,3,'2026-10',4],['pilot_initiation_fee',2500,0,1,1,'2026-10',4],['review',300,0,2,1,'2026-10',4],['credits',-200,0,1,1,'2026-10',4]];
 W.fetch=async(url,init)=>{calls.push({url,init});
   if(url.endsWith('/api/card/3565'))return ok(CARD);
-  if(url.endsWith('/api/dataset')){if(/with cm as/.test(JSON.parse(init.body).native.query))return ok({status:'completed',data:{cols:RCCOLS.map(name=>({name})),rows:RCROWS}});
+  if(url.endsWith('/api/dataset')){if(/with d as/.test(JSON.parse(init.body).native.query))return ok({status:'completed',data:{cols:[{name:'BRAND_KEY'},{name:'LIVE'},{name:'DATA_FROM'}],rows:[['1','quant=2026-07,2026-10;sticker=2026-08','2025-12'],['2','sticker=2026-08','2025-12']]}});
+    if(/with cm as/.test(JSON.parse(init.body).native.query))return ok({status:'completed',data:{cols:RCCOLS.map(name=>({name})),rows:RCROWS}});
     if(/with base as/.test(JSON.parse(init.body).native.query))return ok({status:'completed',data:{cols:CATCOLS.map(name=>({name})),rows:CATROWS}});
     return ok({status:'completed',data:{cols:COLS.map(name=>({name})),rows:dsRows}});}
   if(url.endsWith('/api/dataset/json'))return ok(dsRows.map(r=>{const o={};COLS.forEach((c,i)=>o[c]=r[i]);return o;}));
@@ -45,7 +46,7 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
   const env={METABASE_API_KEY:'k',CONTENT_STORE:KV};
   const d=JSON.parse(JSON.stringify(await W.fetchBdWaterfall(env,false)));
   const dsCalls=calls.filter(c=>c.url.endsWith('/api/dataset')).map(c=>JSON.parse(c.init.body));
-  ck('the worker reads the saved card, runs its SQL, the category query and the Recurly status query',[calls.filter(c=>c.url.endsWith('/api/card/3565')).length,dsCalls.length],[1,3]);
+  ck('the worker reads the saved card, runs its SQL, the category query and the Recurly status query',[calls.filter(c=>c.url.endsWith('/api/card/3565')).length,dsCalls.length],[1,4]);
   const sent=dsCalls.find(q=>/card sql/.test(q.native.query));
   const cq=dsCalls.find(q=>/with base as/.test(q.native.query));
   ck('  the category query covers last complete month, Recurly charges and credits, test accounts out',[/dateadd\(month, -1, date_trunc\('month', current_date\)\)/.test(cq.native.query),/'1475', '1433'/.test(cq.native.query),/i\.number <> '5291'/.test(cq.native.query)],[true,true,true]);
@@ -63,8 +64,9 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
   calls=[];const again=await W.fetchBdWaterfall(env,false);
   ck('  a second load reads the cache, no Metabase run',[calls.length,again.cached],[0,true]);
   calls=[];await W.fetchBdWaterfall(env,true);
-  ck('  Refresh (fresh) runs the card again',calls.length,4);
-  ck('the Recurly status rides along, keyed by brand',[d.recurly.today,d.recurly.byKey['1']],['2026-11-24',{lg:'2026-11-05',ca:1000,cd:'2026-11-05',bn:0,lb:'',zn:0,fz:'',ln:1,ps:'',rn:1,nb:'2026-12-05',fn:0,te:''}]);
+  ck('  Refresh (fresh) runs the card again',calls.length,5);
+  ck('the widget types ride along per brand, gpt variants folded',[d.widgets.from,d.widgets.byKey['1'],d.widgets.byKey['2']],['2025-12',{quant:['2026-07','2026-10'],sticker:['2026-08']},{sticker:['2026-08']}]);
+  ck('the Recurly status rides along, keyed by brand',[d.recurly.today,d.recurly.byKey['1']],['2026-11-24',{lg:'2026-11-05',ca:1000,cd:'2026-11-05',bn:0,lb:'',zn:0,fz:'',ln:1,ps:'',rs:'',rn:1,nb:'2026-12-05',fn:0,te:''}]);
   ck('the categories ride along in the payload',[d.categories.month,d.categories.cats.map(c=>c.cat),d.categories.cats[0].multi],['2026-10',['plan','pilot_initiation_fee','review','credits'],1000]);
   ck('  with the distinct brands billed',d.categories.brandsBilled,4);
   let err='';try{W.bdWfShape(['BRAND_KEY','BRAND_NAME'],[]);}catch(e){err=e.message;}
@@ -76,7 +78,7 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
   W.fetch=async(url,init)=>{calls.push({url,init});if(url.endsWith('/api/card/3565'))return ok(CARD);if(url.endsWith('/api/dataset'))return ok({status:'completed',data:{cols:COLS.map(name=>({name})),rows:big}});
     if(url.endsWith('/api/dataset/json'))return ok(more.map(r=>{const o={};COLS.forEach((c,i)=>o[c]=r[i]);return o;}));return {ok:false,status:404,text:async()=>''};};
   calls=[];const d2=await W.fetchBdWaterfall(env,true);
-  const cardCalls=calls.filter(c=>!(c.init&&typeof c.init.body==='string'&&/with (base|cm) as/.test(c.init.body)));
+  const cardCalls=calls.filter(c=>!(c.init&&typeof c.init.body==='string'&&/with (base|cm|d) as/.test(c.init.body)));
   ck('at the row cap it switches to the uncapped dataset export (no card column settings)',[cardCalls.map(c=>c.url.replace(W.METABASE_URL,'')),d2.brands.length],[['/api/card/3565','/api/dataset','/api/dataset/json'],W.MB_ROW_CAP+1]);
   const xc=cardCalls[2];
   ck('  the export is sent form-encoded, unformatted, with the same query',[xc.init.headers['Content-Type'],/&format_rows=false$/.test(xc.init.body),JSON.parse(decodeURIComponent(xc.init.body.slice(6).replace(/&format_rows=false$/,''))).native.query],['application/x-www-form-urlencoded',true,'select 1 -- card sql']);
@@ -171,7 +173,11 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
    ck('  nor when it bills $0 (a 100% discount)',/invoiced \$0 each month since 08\/28\/2026/.test((f({nb:'2026-11-28',zn:3,fz:'2026-08-28'})[0]||{}).why),true);
    ck('  paused in Recurly says so',/paused since 09\/30\/2026/.test((f({rn:0,ps:'2026-09-30'})[0]||{}).why),true);
    ck('  no live subscription says so',/no live subscription/.test((P._bdWfFlagsOf(stale,M,{today:'2026-11-24',byKey:{}}).find(z=>z.id==='active-not-billed')||{}).why),true);
-   ck('  a subscription starting next month says when',/only starts billing 12\/03\/2026/.test((f({fn:1,nb:'2026-12-03'})[0]||{}).why),true);
+   const fs=x=>P._bdWfFlagsOf(stale,M,rc(x));
+   ck('  paused with a resume date (Uplife, resumes Dec 5): not "not invoiced", a low "restarts later" flag instead',(()=>{const z=fs({rn:0,ps:'2026-09-05',rs:'2026-12-05'});return [z.some(q=>q.id==='active-not-billed'),z.filter(q=>q.id==='scheduled').map(q=>[q.sev,/paused in Recurly \(since 09\/05\/2026\) and resumes 12\/05\/2026/.test(q.why)])];})(),[false,[['low',true]]]);
+   ck('  a subscription that only starts next month is "restarts later" too',(()=>{const z=fs({fn:1,nb:'2026-12-03'});return [z.some(q=>q.id==='active-not-billed'),z.some(q=>q.id==='scheduled'&&/starts billing 12\/03\/2026/.test(q.why))];})(),[false,true]);
+   ck('  but not when its recent invoices failed (Elysium)',(()=>{const z=fs({fn:1,nb:'2026-12-01',bn:1,lb:'2026-10-02'});return [z.some(q=>q.id==='active-not-billed'),z.some(q=>q.id==='scheduled')];})(),[true,false]);
+   ck('  paused with no resume date stays flagged as paused',/paused since 09\/30\/2026/.test((f({rn:0,ps:'2026-09-30'})[0]||{}).why),true);
    ck('  Recurly status unavailable keeps the flag and says so',/could not be read/.test((P._bdWfFlagsOf(stale,M,{error:'x'}).find(z=>z.id==='active-not-billed')||{}).why),true);}
   ck('  1 month is not enough (invoice timing)',ids(BR({li:'2026-09',a:M.map((m,i)=>i<9?1000:0)})),[]);
   ck('invoiced after HubSpot’s churn month',ids(BR({st:'Churned',stage:'Churned',hsCh:'2026-08',li:'2026-10'})).includes('billed-after-churn'),true);
@@ -227,6 +233,25 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
    ck('  cohort filter: only that first-invoice month, and the cohort picker counts by month',[names(s2),/<option value="2026-02" selected>Feb 26 \(1\)<\/option>/.test(s2),/<option value="2026-01">Jan 26 \(1\)<\/option>/.test(s2)],[['Double Co'],true,true]);
    ck('  hovering a row opens its explanation card',P._bdWfTips.some(t=>/Double Co/.test(t)&&/Possible double billing/.test(t)),true);
    P._bdWfW2T={open:false,co:'',fl:''};P.BD.wf=prev;}
+  // Product multi-selects + deal link (Alex, 2026-11-24)
+  {const prev=P.BD.wf;
+   P.BD.wf=Object.assign({},d,{widgets:{from:'2025-12',byKey:{'1':{quant:['2026-07','2026-10'],sticker:['2026-08']},'2':{sticker:['2026-08']},'5':{quant:['2026-09']}}}});
+   P.BD.wf.brands.forEach(b=>delete b._fl);P.BD.wf._flagged=false;P.bdWfReset();
+   const names=x=>[...x.matchAll(/<td class="bd-wf-b"[^>]*>(?:<span class="bd-wf-flag[^>]*>[^<]*<\/span>)?([^<]+)<span/g)].map(m=>m[1]).sort();
+   let x=R();
+   ck('the two product filters are multi-selects of widget types, with counts',/<details class="bd-wf-ms"[^>]*><summary>Products Ever Live<b>All<\/b><\/summary>/.test(x)&&/onchange="bdWfProdToggle\('ever','quant'\)"> Quant<span>2<\/span>/.test(x)&&/onchange="bdWfProdToggle\('churn','sticker'\)"> Sticker<span>1<\/span>/.test(x),true);
+   P.bdWfProdToggle('ever','quant');x=R();
+   ck('  Ever Live: Quant keeps brands where Quant was ever live',names(x),['Paused Co','Stay Co']);
+   P.bdWfProdToggle('ever','sticker');x=R();
+   ck('  ticking Sticker too is an intersection (both live)',[names(x),/<summary>Products Ever Live<b>Quant \+ Sticker<\/b>/.test(x)],[['Stay Co'],true]);
+   P.bdWfReset();P.bdWfProdToggle('churn','quant');x=R();
+   ck('  Live at Churn: live in the churn month (Paused Co churned Sep: quant live Sep), or the last month if active (Stay Co: Oct)',names(x),['Paused Co','Stay Co']);
+   P.bdWfReset();
+   P._bdWfJoin={byBrand:{'1':[{id:'777',dealname:'Stay deal',dealstage:'closedwon',brand_status:'Paying',closedate:'2026-07-01'},{id:'778',dealstage:'appointmentscheduled',closedate:'2026-01-01'}]}};
+   x=P._bdWfRender();
+   ck('W1 rows link to the brand’s HubSpot deal (closed-won preferred)',/Stay Co<span class="bd-wf-k">1 <a class="bd-wf-dl" href="https:\/\/app\.hubspot\.com\/contacts\/46815331\/record\/0-3\/777"/.test(x),true);
+   ck('  a brand with no joined deal has no link',/Gone Co<span class="bd-wf-k">2<\/span>/.test(x),true);
+   P._bdWfJoin=null;P.BD.wf=prev;}
   P.BD.wf={error:'Metabase /api/card/3565/query 403: You don\'t have permissions to do that.'};h=R();
   ck('a Metabase failure is an error band, never an empty grid',/Billing data unavailable/.test(h)&&/collection must be visible/.test(h)&&!/bd-sec-wf2/.test(h),true);
   ck('W2\u2019s first column matches .rwtbl\u2019s sticky offset',[P.BD_WF_W_LBL,+((html.match(/\.rwtbl \.rw-n\{[^}]*left:(\d+)px/)||[])[1])],[78,78]);
