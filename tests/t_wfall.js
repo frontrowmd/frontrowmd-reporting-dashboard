@@ -141,7 +141,7 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
   ck('month totals: brands invoiced and dollars',/<tr class="tot"><td class="bd-wf-b">Brands invoiced<\/td><td colspan="8"><\/td><td class="m">2<\/td><td class="m">4<\/td><td class="m">3<\/td><td class="m">1<\/td><\/tr>/.test(h),true);
   ck('Never Implemented is excluded from W2 by default (Alex, 2026-11-24)',P._bdWfNI,'excl');
   const hdrs=x=>[...x.slice(x.indexOf('class="bd-wf-t"')).split('</tr>')[0].matchAll(/<th[^>]*>([^<]+)(?:<span class="bd-wf-arr">[^<]*<\/span>)?<\/th>/g)].map(m=>m[1]);
-  ck('W1 by default: Brand, the seven columns, a "+ more" toggle, then the months',hdrs(h).slice(0,10),['Brand','Churn Status','Company Segment','First Month','Last Invoiced','Churn Month','Invoiced Months','Total','+ 21 more','Jul 26']);
+  ck('W1 by default: Brand, the seven columns, a "+ more" toggle, then the months',hdrs(h).slice(0,10),['Brand','Churn Status','Company Segment','First Month','Last Invoiced','Churn Month','Invoiced Months','Total','+ 25 more','Jul 26']);
   ck('  Gone Co: churn month = last invoiced (Aug 26), 2 invoiced months',/<td>Aug 26<\/td><td>Aug 26<\/td><td class="m">2<\/td>/.test(rowOf('Gone Co')),true);
   P.bdWfSet('cols','all');h=R();
   ck('  expanded: Months Until Churn = first to last invoice, blank while active',[/<td class="m bd-wf-x">1<\/td>/.test(rowOf('Gone Co')),/<td class="m bd-wf-x"><\/td>/.test(rowOf('Stay Co'))],[true,true]);
@@ -281,7 +281,7 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
    ck('All Brands carries every card column, then the months',['HubSpot Stage','Source','Group','Last Invoiced','Metabase Churn Month','Churn Type','Company Segment','A/B Test','Ever Implemented','Ever Paid','Web Tier at Churn','Self-selected Traffic','Implied Traffic','Measured Traffic','Clinicians’ Choice','Clinician Reviews','Product Analysis','ClinicianAI','Products Ever Live','Products Live at Churn','Package','Pilot Status'].every(h=>x.indexOf('>'+h+'</th>')>0),true);
    ck('  and a filter for each categorical column',['Source','Group','Churn Status','HubSpot Stage','Churn Source','Web Tier Source','Measured Traffic','Pilot Status'].every(l=>x.indexOf('<label>'+l+'<select')>=0),true);
    P.bdWfSet('cols','default');x=R();
-   ck('  collapsed by default: only the seven, the extras behind "+ more"',[x.indexOf('>Measured Traffic</th>')<0,x.indexOf('>Company Segment</th>')>0,/>\+ 21 more<\/th>/.test(x)],[true,true,true]);
+   ck('  collapsed by default: only the seven, the extras behind "+ more"',[x.indexOf('>Measured Traffic</th>')<0,x.indexOf('>Company Segment</th>')>0,/>\+ 25 more<\/th>/.test(x)],[true,true,true]);
    P.bdWfReset();
    P._bdWfJoin={byBrand:{'1':[{id:'777',dealname:'Stay deal',dealstage:'closedwon',brand_status:'Paying',closedate:'2026-07-01'},{id:'778',dealstage:'appointmentscheduled',closedate:'2026-01-01'}]}};
    x=P._bdWfRender();
@@ -307,6 +307,19 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
   {const prev=P.BD.wf;P.BD.wf=Object.assign({},d,{stale:{error:'Metabase did not answer in time (Metabase /api/dataset 524)',asOf:'2026-11-24T19:22:00.000Z'}});
    const x=R();ck('a stale copy is shown with a note saying from when, and why',/Showing the last good copy, from 2026-11-24 19:22 UTC\.<\/strong> <span>Metabase did not answer in time \(Metabase \/api\/dataset 524\)\. Refresh to try again\./.test(x)&&/id="bd-sec-wf1"/.test(x),true);
    P.BD.wf=prev;}
+  // Recurly state (live) + Never Implemented excludes never-live brands (Alex, 2026-11-24)
+  {const prev=P.BD.wf,prevApp=P.BD.app;
+   ck('W2 Never Implemented now covers any brand never live, active too (Vitaliv)',[P._bdWfIsNI({st:'Active (inferred)',impl:false,ty:'Not recorded'}),P._bdWfIsNI({st:'Active',impl:true,ty:'Not recorded'}),P._bdWfIsNI({st:'Churned',impl:true,ty:'Never Implemented'}),P._bdWfIsNI({st:'Churned',impl:false,ty:'Board Defined'})],[true,false,true,true]);
+   const stale=BR({k:'s1',li:'2026-08',a:[1000,1000,1000,1000,1000,1000,1000,1000,0,0]});
+   P.BD.app={brands:[{id:'s1',recurly:{subs:[{state:'paused',pausedAt:'2026-09-25',resumeAt:'2026-12-25',pauseCycles:1}]}},{id:'s2',recurly:{subs:[{state:'expired'},{state:'active'}]}},{id:'s3',recurly:{subs:[]}}]};
+   const fl=P._bdWfFlagsOf(stale,M,{today:'2026-11-24',byKey:{s1:{ln:1,rn:0,ca:0,bn:0,zn:0,ps:'2026-09-25',rs:'2026-11-25'}}});
+   ck('Recurly state paused (The Plug Drink): out of "Active but not invoiced", into the low paused flag with Recurly’s dates',[fl.some(f=>f.id==='active-not-billed'),fl.filter(f=>f.id==='scheduled').map(f=>/Recurly state is paused \(since 09\/25\/2026\), resuming 12\/25\/2026 with 1 billing cycle left/.test(f.why))],[false,[true]]);
+   ck('  the brand’s Recurly state: the live subscription first',[P._bdWfRcState({k:'s1'}),P._bdWfRcState({k:'s2'}),P._bdWfRcState({k:'s3'}),P._bdWfRcState({k:'zz'})],['paused','active','No Recurly subscription','Not linked']);
+   P.BD.wf=Object.assign({},d);P.BD.wf.brands=d.brands.map(b=>Object.assign({},b));P.BD.wf.brands[0].k='s1';P.bdWfReset();P.bdWfSet('cols','all');
+   let x=R();
+   ck('  Recurly State, Paused At, Remaining Pause Cycles and Resume At are columns',['Recurly State','Paused At','Remaining Pause Cycles','Resume At'].every(h=>x.indexOf('>'+h+'</th>')>0)&&/<span class="bd-wf-rcs paused">paused<\/span><\/td><td class="bd-wf-x">2026-09-25<\/td><td class="m bd-wf-x">1<\/td><td class="bd-wf-x">2026-12-25<\/td>/.test(x),true);
+   ck('  and Recurly State is a filter',/<label>Recurly State<select[^>]*><option value="">All \(5\)<\/option>[\s\S]*?<option value="paused">paused \(1\)<\/option>/.test(x),true);
+   P.bdWfSet('cols','default');P.BD.wf=prev;P.BD.app=prevApp;}
   P.BD.wf={error:'Metabase /api/card/3565/query 403: You don\'t have permissions to do that.'};h=R();
   ck('a Metabase failure is an error band, never an empty grid',/Billing data unavailable/.test(h)&&/collection must be visible/.test(h)&&!/bd-sec-wf2/.test(h),true);
   ck('W2\u2019s first column matches .rwtbl\u2019s sticky offset',[P.BD_WF_W_LBL,+((html.match(/\.rwtbl \.rw-n\{[^}]*left:(\d+)px/)||[])[1])],[78,78]);

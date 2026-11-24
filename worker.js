@@ -4779,7 +4779,9 @@ function recurlySubWindow(sub) {
   // joins from its creation: section 01 counts it as starting today.
   return { liveFrom: day(st === 'future' ? (sub.created_at || sub.activated_at) : (sub.activated_at || sub.created_at)), billFrom: st === 'future' ? '' : day(sub.trial_ends_at || sub.activated_at),
     billTo: ['expired', 'failed', 'canceled'].includes(st) ? day(sub.expires_at) : '',
-    pausedAt: st === 'paused' ? day(sub.paused_at) : '' };
+    pausedAt: st === 'paused' ? day(sub.paused_at) : '',
+    // Recurly's own pause fields (Alex, 2026-11-24: the Billing tab shows them).
+    resumeAt: day(sub.resume_at), pauseCycles: sub.remaining_pause_cycles == null ? null : Number(sub.remaining_pause_cycles) };
 }
 function recurlySubMrr(sub, plan, inv, nowIso) {
   const months = recurlyPlanMonths(plan);
@@ -4902,7 +4904,7 @@ function recurlyAttach(brands, book) {
       idlePrice: billing.length ? null : Math.round(found.filter(m => RECURLY_WILL_BILL.includes(m.basis)).reduce((t, m) => t + (m.price || 0), 0) * 100) / 100,
       starts: billing.length ? '' : (found.map(m => RECURLY_WILL_BILL.includes(m.basis) && m.starts).filter(Boolean).sort()[0] || ''),
       subs: found.map(m => ({ id: m.id, state: m.state, mrr: m.mrr, basis: m.basis, plan: m.plan, price: m.price, planMo: m.planMo, traffic: m.traffic, starts: m.starts,
-        liveFrom: m.liveFrom, billFrom: m.billFrom, billTo: m.billTo, pausedAt: m.pausedAt })) };
+        liveFrom: m.liveFrom, billFrom: m.billFrom, billTo: m.billTo, pausedAt: m.pausedAt, resumeAt: m.resumeAt, pauseCycles: m.pauseCycles })) };
   });
   const un = Object.values(book.subs).filter(m => !used[m.id] && m.mrr > 0);
   return { count: un.length, mrr: Math.round(un.reduce((s, m) => s + m.mrr, 0) * 100) / 100,

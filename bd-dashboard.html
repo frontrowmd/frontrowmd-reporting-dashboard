@@ -389,6 +389,9 @@ circle.bd-bs-sl{stroke-width:28}
 .bd-wf-dl{font-size:9.5px;font-weight:700;color:#0F766E;text-decoration:none;margin-left:4px}
 .bd-wf-dl:hover{text-decoration:underline}
 .bd-wf-na{color:#CBD5E1}
+.bd-wf-rcs{display:inline-block;font-size:10px;font-weight:700;padding:1px 8px;border-radius:50px;background:#F1F5F9;color:#475569}
+.bd-wf-rcs.active{background:#DCFCE7;color:#166534}.bd-wf-rcs.paused{background:#FEF3C7;color:#92400E}.bd-wf-rcs.future{background:#DBEAFE;color:#1E40AF}
+.bd-wf-rcs.canceled,.bd-wf-rcs.expired,.bd-wf-rcs.failed{background:#FEE2E2;color:#991B1B}
 .bd-wf-t th.cur,.bd-wf-t td.cur{background:#FFFBEB;border-left:1.5px dashed #F59E0B}
 .bd-wf-t tr.tot td.cur{background:#FEF3C7}
 .bd-wf-new{display:inline-block;margin-left:6px;font-size:9px;font-weight:700;padding:0 6px;border-radius:50px;background:#DBEAFE;color:#1E40AF;vertical-align:1px}
@@ -906,7 +909,7 @@ function bdSetTab(t){
 //  - W2: a brand counts as retained through its churn month (it paid that
 //    month) and as lost from the month after. Month 1 = the first invoice.
 // BD.wf: null (never asked), {loading:true}, {error}, or the payload.
-var _bdWfF={src:'',grp:'',st:'',stage:'',chSrc:'',impl:'',paid:'',ty:'',seg:'',ab:'',wt:'',wts:'',ss:'',it:'',mt:'',pkg:'',pil:''};
+var _bdWfF={src:'',grp:'',st:'',stage:'',chSrc:'',impl:'',paid:'',ty:'',seg:'',ab:'',wt:'',wts:'',ss:'',it:'',mt:'',pkg:'',pil:'',rcs:''};
 var _bdWfCols='default';   // W1: 'default' (7 columns, the rest collapsed) or 'all' (Alex, 2026-11-24)
 var _bdWfSortDir=1;        // direction of a column sort ('c:<id>' / 'm:<month index>'), 1 = ascending
 // Products Ever Live / Live at Churn (Alex, 2026-11-24): intersection multi-
@@ -990,14 +993,30 @@ function _bdWfChurnMonth(b){
   return (b.fm&&m<b.fm)?b.fm:m;
 }
 function _bdWfIsPilotOnly(b){return /not converted/i.test(b.pil||'');}
-// C3's Never Implemented rule: a Never Implemented churn type, or no churn type
-// and the widget never went live. A Board Defined (or Delinquent) type wins.
+// Never Implemented, for W2's switch (Alex, 2026-11-24: "brands with No for
+// Ever Implemented are not included when Never Implemented is Excluded"):
+// any brand whose widget never went live (Ever Implemented = No), active or
+// churned, and any churn typed Never Implemented. (Vitaliv: active, never live.)
 function _bdWfIsNI(b){
-  if(!_bdWfChurned(b))return false;
-  if(b.ty==='Never Implemented')return true;
-  if(b.ty==='Board Defined'||b.ty==='Delinquent Payment')return false;
-  return !b.impl;
+  if(b.impl===false)return true;
+  return _bdWfChurned(b)&&b.ty==='Never Implemented';
 }
+// The brand's live Recurly subscription, read live through Recurly's API with
+// the app brand book (BD.app; worker recurlySubWindow): state, paused_at,
+// remaining_pause_cycles, resume_at. One subscription per brand: the live one
+// (active, paused, future), else the latest ended one. null when the brand key
+// is not an app brand with Recurly subscriptions (Recurly-only keys).
+var _bdWfRcIdx=null,_bdWfRcFor=null;
+var BD_WF_RC_ORDER=['active','paused','future','canceled','failed','expired'];
+function _bdWfRcInfo(b){
+  var app=(typeof BD!=='undefined'&&BD.app&&!BD.app.error&&BD.app.brands)?BD.app:null;if(!app)return null;
+  if(_bdWfRcFor!==app){_bdWfRcIdx={};app.brands.forEach(function(x){_bdWfRcIdx[String(x.id)]=x;});_bdWfRcFor=app;}
+  var x=_bdWfRcIdx[String(b.k)],subs=x&&x.recurly&&x.recurly.subs;
+  if(!subs||!subs.length)return x?{state:'',none:true}:null;
+  var pick=subs.slice().sort(function(p,q){var a=BD_WF_RC_ORDER.indexOf(p.state),c=BD_WF_RC_ORDER.indexOf(q.state);return (a<0?99:a)-(c<0?99:c);})[0];
+  return {state:pick.state||'',pausedAt:pick.pausedAt||'',resumeAt:pick.resumeAt||'',cycles:pick.pauseCycles==null?null:pick.pauseCycles,n:subs.length};
+}
+function _bdWfRcState(b){var r=_bdWfRcInfo(b);return !r?'Not linked':r.none||!r.state?'No Recurly subscription':r.state;}
 // One filter per categorical column of card 3565, in its column order (Alex,
 // 2026-11-24: "update the filters to match these column fields").
 var BD_WF_FILTERS=[
@@ -1017,7 +1036,8 @@ var BD_WF_FILTERS=[
   {k:'it',l:'Implied Traffic',of:function(b){return b.it||'No traffic data';}},
   {k:'mt',l:'Measured Traffic',of:function(b){return b.mt||'No traffic data';}},
   {k:'pkg',l:'Package',of:function(b){return b.pkg||'Not recorded';}},
-  {k:'pil',l:'Pilot Status',of:function(b){return b.pil||'No pilot';}}
+  {k:'pil',l:'Pilot Status',of:function(b){return b.pil||'No pilot';}},
+  {k:'rcs',l:'Recurly State',of:function(b){return _bdWfRcState(b);}}
 ];
 // Filters, search and the pilot switch. skip names one filter to leave out, so
 // each dropdown can count what picking each of its values would give.
@@ -1051,6 +1071,10 @@ function _bdWfColSpec(){
     {id:'cm',h:'Churn Month',def:1,t:'This tab’s churn date: the last month invoiced above $0 — blank while active',f:function(b,c){return c?_bdWfLbl(c):'';},sv:cm},
     {id:'mi',h:'Invoiced Months',def:1,m:1,t:'Complete months invoiced above $0',f:function(b){return b.mi||0;},sv:function(b){return b.mi||0;}},
     {id:'tot',h:'Total',def:1,m:1,f:function(b){return _bdWfAmt(_bdWfTotal(b));},sv:function(b){return _bdWfTotal(b);}},
+    {id:'rcs',h:'Recurly State',t:'state of the brand\u2019s Recurly subscription (live from Recurly): active, paused, future, canceled, expired',f:function(b){var st=_bdWfRcState(b);return '<span class="bd-wf-rcs '+_bdEsc(st.split(' ')[0].toLowerCase())+'">'+_bdEsc(st)+'</span>';},sv:function(b){return _bdWfRcState(b);}},
+    {id:'rpa',h:'Paused At',t:'paused_at',f:function(b){var r=_bdWfRcInfo(b);return r&&r.pausedAt?_bdEsc(r.pausedAt):'';},sv:function(b){var r=_bdWfRcInfo(b);return r&&r.pausedAt||null;}},
+    {id:'rpc',h:'Remaining Pause Cycles',m:1,t:'remaining_pause_cycles',f:function(b){var r=_bdWfRcInfo(b);return r&&r.cycles!=null&&r.state==='paused'?r.cycles:'';},sv:function(b){var r=_bdWfRcInfo(b);return r&&r.state==='paused'&&r.cycles!=null?r.cycles:null;}},
+    {id:'rra',h:'Resume At',t:'resume_at',f:function(b){var r=_bdWfRcInfo(b);return r&&r.resumeAt&&r.state==='paused'?_bdEsc(r.resumeAt):'';},sv:function(b){var r=_bdWfRcInfo(b);return r&&r.state==='paused'&&r.resumeAt||null;}},
     {id:'stage',h:'HubSpot Stage',f:function(b){return sm(b.stage||'No deal');},sv:function(b){return b.stage;}},
     {id:'src',h:'Source',f:function(b){return sm(b.src);},sv:function(b){return b.src;}},
     {id:'grp',h:'Group',f:function(b){return b.grp?_bdEsc(b.grp):'';},sv:function(b){return b.grp;}},
@@ -1193,7 +1217,7 @@ var BD_WF_FLAGS=[
   {id:'never-live',sev:'med',title:'Paying 4+ months, never live'},
   {id:'spike',sev:'low',title:'One-month billing spike'},
   {id:'gone-dark',sev:'low',title:'Widget went dark'},
-  {id:'scheduled',sev:'low',title:'Billing restarts later'},
+  {id:'scheduled',sev:'low',title:'Paused / restarts later'},
   {id:'credited-only',sev:'med',title:'Every invoice credited'},
   {id:'missing',sev:'med',title:'Not in the Metabase question'}
 ];
@@ -1219,11 +1243,18 @@ function _bdWfFlagsOf(b,months,rc){
       var D=function(d){return d?_bdMDY(new Date(+d.slice(0,4),+d.slice(5,7)-1,+d.slice(8,10))):'';};
       var me=r&&rc.today?(function(t){var y=+t.slice(0,4),m=+t.slice(5,7);return t.slice(0,8)+('0'+new Date(y,m,0).getDate()).slice(-2);})(rc.today):'';
       var clear=r&&(r.ca>0||(r.rn>0&&!r.ps&&r.nb&&me&&r.nb<=me&&!r.bn&&!r.zn));
+      // Recurly's own state is paused (live API; Alex, 2026-11-24): not "not
+      // invoiced" at all. Shown as the low "paused / restarts later" flag.
+      var live=_bdWfRcInfo(b);
+      if(!clear&&live&&live.state==='paused'){clear=true;
+        add('scheduled','Recurly state is paused'+(live.pausedAt?' (since '+D(live.pausedAt)+')':'')+(live.resumeAt?', resuming '+D(live.resumeAt):'')
+          +(live.cycles!=null?' with '+live.cycles+' billing cycle'+(live.cycles===1?'':'s')+' left in the pause':'')
+          +'; nothing invoiced for the last '+k+' complete months (last '+L(b.li)+'). Expected, so not counted as \u201cActive but not invoiced\u201d. Until it resumes it is counted as active in the waterfall, and HubSpot may want to say Paused.');}
       // A subscription scheduled to (re)start billing on a future date (Alex,
       // 2026-11-24: Uplife, paused, resumes Dec 5): not "not invoiced", but a
       // low flag of its own so it stays visible. Unless recent invoices failed.
       var badLate=r&&r.bn&&(!r.lg||r.lb>=r.lg)&&!(r.zn&&r.fz>r.lb);
-      var resume=r&&!clear&&!badLate&&!r.zn&&(r.ps&&r.rs&&rc.today&&r.rs>rc.today?{d:r.rs,paused:true}:(!r.ps&&r.fn&&r.nb&&rc.today&&r.nb>rc.today?{d:r.nb,paused:false}:null));
+      var resume=r&&!clear&&!badLate&&!(live&&live.state==='paused')&&!r.zn&&(r.ps&&r.rs&&rc.today&&r.rs>rc.today?{d:r.rs,paused:true}:(!r.ps&&r.fn&&r.nb&&rc.today&&r.nb>rc.today?{d:r.nb,paused:false}:null));
       if(resume){clear=true;
         add('scheduled',(resume.paused?'Billing is paused in Recurly (since '+D(r.ps)+') and resumes '+D(resume.d):'Its Recurly subscription starts billing '+D(resume.d))
           +'; nothing invoiced for the last '+k+' complete months (last '+L(b.li)+'). Expected, so not counted as \u201cActive but not invoiced\u201d. '
@@ -1328,7 +1359,10 @@ function _bdWfAugment(wf){
 }
 function _bdWfFlagsAll(wf){
   _bdWfAugment(wf);
-  if(wf._flagged)return;
+  // Flags read Recurly state from BD.app too: redo them when it arrives.
+  var appNow=(typeof BD!=='undefined'&&BD.app&&!BD.app.error)?BD.app:null;
+  if(wf._flagged&&wf._flagApp===appNow)return;
+  try{Object.defineProperty(wf,'_flagApp',{value:appNow,enumerable:false,writable:true,configurable:true});}catch(_){wf._flagApp=appNow;}
   wf.brands.forEach(function(b){b._fl=_bdWfFlagsOf(b,wf.months,wf.recurly);});
   try{Object.defineProperty(wf,'_flagged',{value:true,enumerable:false,writable:true,configurable:true});}catch(_){wf._flagged=true;}
 }
