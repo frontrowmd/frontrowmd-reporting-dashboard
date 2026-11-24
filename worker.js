@@ -3831,7 +3831,7 @@ async function metabaseCheck(env) {
 // card reads Snowflake copies refreshed a few times a day; a run takes a while);
 // Refresh skips the cache.
 const BD_WF_CARD = 3565;
-const BD_WF_KV = 'bd_waterfall_v3';   // v3: product kinds + measured traffic
+const BD_WF_KV = 'bd_waterfall_v4';   // v4: adds current (this month so far + brands the card leaves out)
 const BD_WF_TTL_SEC = 1800;
 // The card's month columns are named "'2024-01'" (quotes included) by its PIVOT.
 const BD_WF_MONTH_RE = /^'?(\d{4}-\d{2})'?$/;
@@ -4047,6 +4047,72 @@ async function bdWfWidgets(env) {
     by[k] = o; });
   return { from: rows.length ? String(rows[0].DATA_FROM || '') : '', byKey: by };
 }
+// Billing tab "<this month> so far" (Alex, 2026-11-24: "include november so
+// far, all brands should show"). Card 3565 has complete months only and leaves
+// out brands whose only invoices were fully credited. Per Recurly brand: this
+// month's net so far — charges invoiced this month, multi-month plan lines
+// spread as the card spreads them (amount / months, whichever invoice they are
+// on), less credits issued this month against this month or no invoice — and,
+// for brands the card does not list, a name, first charge months and whether a
+// subscription is live. Recurly only (bill.com invoices are a fixed list in the
+// card). Approximate until the month closes and the card takes it over.
+const BD_WF_CUR_SQL = `
+with cm as (select date_trunc('month', current_date)::date m),
+lines as (
+  select ab.brand_key, i.type, date_trunc('month', i.created_at)::date im, il.service_start, round(il.service_months) sm,
+    coalesce(il.is_fully_credited, false) fc, il.type lt, l.amount + coalesce(l.tax, 0) amt,
+    date_trunc('month', oi.created_at)::date oim
+  from analytics_production.intermediate.int_recurly_line_items il
+  join analytics_production.staging.stg_recurly_line_items l on l.id = il.line_item_id
+  join analytics_production.staging.stg_recurly_invoices i on i.id = il.invoice_id
+  join analytics_production.intermediate.int_recurly_account_brand ab on ab.recurly_account_id = i.account_id
+  left join analytics_production.staging.stg_recurly_invoices oi on oi.id = l.original_line_item_invoice_id
+  where i.state <> 'voided' and i.number <> '5291'
+    and ab.brand_key not in (${BD_WF_TEST_KEYS.map(k => "'" + k + "'").join(', ')})
+),
+cur as (
+  select brand_key, sum(case
+    when type = 'credit' and im = (select m from cm) and (oim is null or oim = (select m from cm)) then amt
+    when type <> 'credit' and lt = 'charge' and sm >= 2 and (select m from cm) >= date_trunc('month', service_start)
+      and (select m from cm) < dateadd(month, sm, date_trunc('month', service_start)) then amt / sm
+    when type <> 'credit' and lt = 'charge' and coalesce(sm, 0) < 2 and im = (select m from cm) then amt
+    else 0 end) cur_net
+  from lines group by 1
+),
+firsts as (
+  select brand_key,
+    to_char(min(iff(type <> 'credit' and lt = 'charge' and amt > 0 and not fc, im, null)), 'YYYY-MM') fg,
+    to_char(min(iff(type <> 'credit' and lt = 'charge' and amt > 0, im, null)), 'YYYY-MM') fa
+  from lines group by 1
+),
+subs as (
+  select ab.brand_key, count_if(s.state in ('active', 'future', 'paused')) live
+  from analytics_production.staging.stg_recurly_subscriptions s
+  join analytics_production.intermediate.int_recurly_account_brand ab on ab.recurly_account_id = s.account_id
+  group by 1
+),
+rnames as (
+  select ab.brand_key, max(coalesce(a.company, a.code)) nm
+  from analytics_production.intermediate.int_recurly_account_brand ab
+  join analytics_production.staging.stg_recurly_accounts a on a.id = ab.recurly_account_id
+  group by 1
+)
+select f.brand_key, coalesce(trim(b.name), rn.nm || ' (Recurly only)') as name, f.fg, f.fa,
+  round(coalesce(c.cur_net, 0), 2) as cur_net, coalesce(su.live, 0) as live, iff(b.discarded_at is not null, 1, 0) as discarded,
+  to_char((select m from cm), 'YYYY-MM') as month
+from firsts f
+left join cur c on c.brand_key = f.brand_key
+left join subs su on su.brand_key = f.brand_key
+left join analytics_production.staging.stg_brands b on b.id::varchar = f.brand_key
+left join rnames rn on rn.brand_key = f.brand_key
+where f.fa is not null`;
+async function bdWfCurrent(env) {
+  const rows = await mbQuery(env, BD_WF_CUR_SQL);
+  const by = {};
+  rows.forEach(r => { const k = String(r.BRAND_KEY || ''); if (!k) return;
+    by[k] = { v: Math.round((Number(r.CUR_NET) || 0) * 100) / 100, n: String(r.NAME || ''), fg: String(r.FG || ''), fa: String(r.FA || ''), live: Number(r.LIVE) || 0, disc: Number(r.DISCARDED) ? 1 : 0 }; });
+  return { m: rows.length ? String(rows[0].MONTH || '') : '', byKey: by };
+}
 async function fetchBdWaterfall(env, fresh) {
   if (!fresh && env.CONTENT_STORE) {
     try {
@@ -4057,7 +4123,8 @@ async function fetchBdWaterfall(env, fresh) {
   const t0 = Date.now();
   // The pie's query runs alongside; its failure leaves the rest of the tab working.
   const soft = (p) => p.catch(e => ({ error: String(e && e.message || e).slice(0, 300) }));
-  const [data, cats, rc, wg] = await Promise.all([bdWfRunCard(env), soft(bdWfCategories(env)), soft(bdWfRecurly(env)), soft(bdWfWidgets(env))]);
+  const [data, cats, rc, wg, cur] = await Promise.all([bdWfRunCard(env), soft(bdWfCategories(env)), soft(bdWfRecurly(env)), soft(bdWfWidgets(env)), soft(bdWfCurrent(env))]);
+  data.current = cur;
   data.categories = cats;
   data.recurly = rc;
   data.widgets = wg;

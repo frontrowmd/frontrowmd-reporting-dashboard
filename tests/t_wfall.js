@@ -29,6 +29,8 @@ const TAGS={hide_pilot_initiation_fee:{type:'boolean',name:'hide_pilot_initiatio
   products_ever_live:{type:'number',name:'products_ever_live'}};
 const CARD={id:3565,database_id:67,dataset_query:{database:67,type:'native',native:{query:'select 1 -- card sql',"template-tags":TAGS}}};
 let dsRows=rows;
+const CURROWS=[['1','Stay Co','2026-07','2026-07',1000,1,0,'2026-11'],['2','Gone Co','2026-07','2026-07',0,0,0,'2026-11'],
+  ['901','Fresh Pilot','2026-11','2026-11',3000,1,0,'2026-11'],['902','Refunded Co',null,'2026-03',0,0,0,'2026-11']];
 const RCCOLS=['BRAND_KEY','LAST_GOOD','CUR_AMT','CUR_DAY','BAD_N','LAST_BAD','ZERO_N','FIRST_ZERO','LIVE_N','PAUSED_SINCE','RUNNING_N','NEXT_BILL','FUTURE_N','TRIAL_END','TODAY'];
 const RCROWS=[['1','2026-11-05',1000,'2026-11-05',0,null,0,null,1,null,1,'2026-12-05',0,null,'2026-11-24']];
 const CATCOLS=['CATEGORY','AMOUNT','MULTI_MONTH','INVOICES','BRANDS','MONTH','BRANDS_BILLED'];
@@ -36,6 +38,7 @@ const CATROWS=[['plan',3000,1000,3,3,'2026-10',4],['pilot_initiation_fee',2500,0
 W.fetch=async(url,init)=>{calls.push({url,init});
   if(url.endsWith('/api/card/3565'))return ok(CARD);
   if(url.endsWith('/api/dataset')){if(/with d as/.test(JSON.parse(init.body).native.query))return ok({status:'completed',data:{cols:[{name:'BRAND_KEY'},{name:'LIVE'},{name:'DATA_FROM'}],rows:[['1','quant=2026-07,2026-10;sticker=2026-08','2025-12'],['2','sticker=2026-08','2025-12']]}});
+    if(/rnames as/.test(JSON.parse(init.body).native.query))return ok({status:'completed',data:{cols:['BRAND_KEY','NAME','FG','FA','CUR_NET','LIVE','DISCARDED','MONTH'].map(name=>({name})),rows:CURROWS}});
     if(/with cm as/.test(JSON.parse(init.body).native.query))return ok({status:'completed',data:{cols:RCCOLS.map(name=>({name})),rows:RCROWS}});
     if(/with base as/.test(JSON.parse(init.body).native.query))return ok({status:'completed',data:{cols:CATCOLS.map(name=>({name})),rows:CATROWS}});
     return ok({status:'completed',data:{cols:COLS.map(name=>({name})),rows:dsRows}});}
@@ -46,7 +49,7 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
   const env={METABASE_API_KEY:'k',CONTENT_STORE:KV};
   const d=JSON.parse(JSON.stringify(await W.fetchBdWaterfall(env,false)));
   const dsCalls=calls.filter(c=>c.url.endsWith('/api/dataset')).map(c=>JSON.parse(c.init.body));
-  ck('the worker reads the saved card, runs its SQL, the category query and the Recurly status query',[calls.filter(c=>c.url.endsWith('/api/card/3565')).length,dsCalls.length],[1,4]);
+  ck('the worker reads the saved card, runs its SQL, the category query and the Recurly status query',[calls.filter(c=>c.url.endsWith('/api/card/3565')).length,dsCalls.length],[1,5]);
   const sent=dsCalls.find(q=>/card sql/.test(q.native.query));
   const cq=dsCalls.find(q=>/with base as/.test(q.native.query));
   ck('  the category query covers last complete month, Recurly charges and credits, test accounts out',[/dateadd\(month, -1, date_trunc\('month', current_date\)\)/.test(cq.native.query),/'1475', '1433'/.test(cq.native.query),/i\.number <> '5291'/.test(cq.native.query)],[true,true,true]);
@@ -64,7 +67,8 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
   calls=[];const again=await W.fetchBdWaterfall(env,false);
   ck('  a second load reads the cache, no Metabase run',[calls.length,again.cached],[0,true]);
   calls=[];await W.fetchBdWaterfall(env,true);
-  ck('  Refresh (fresh) runs the card again',calls.length,5);
+  ck('  Refresh (fresh) runs the card again',calls.length,6);
+  ck('this month so far rides along per brand',[d.current.m,d.current.byKey['901'],d.current.byKey['902'].fg],['2026-11',{v:3000,n:'Fresh Pilot',fg:'2026-11',fa:'2026-11',live:1,disc:0},'']);
   ck('the widget types ride along per brand, gpt variants folded',[d.widgets.from,d.widgets.byKey['1'],d.widgets.byKey['2']],['2025-12',{quant:['2026-07','2026-10'],sticker:['2026-08']},{sticker:['2026-08']}]);
   ck('the Recurly status rides along, keyed by brand',[d.recurly.today,d.recurly.byKey['1']],['2026-11-24',{lg:'2026-11-05',ca:1000,cd:'2026-11-05',bn:0,lb:'',zn:0,fz:'',ln:1,ps:'',rs:'',rn:1,nb:'2026-12-05',fn:0,te:''}]);
   ck('the categories ride along in the payload',[d.categories.month,d.categories.cats.map(c=>c.cat),d.categories.cats[0].multi],['2026-10',['plan','pilot_initiation_fee','review','credits'],1000]);
@@ -78,7 +82,7 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
   W.fetch=async(url,init)=>{calls.push({url,init});if(url.endsWith('/api/card/3565'))return ok(CARD);if(url.endsWith('/api/dataset'))return ok({status:'completed',data:{cols:COLS.map(name=>({name})),rows:big}});
     if(url.endsWith('/api/dataset/json'))return ok(more.map(r=>{const o={};COLS.forEach((c,i)=>o[c]=r[i]);return o;}));return {ok:false,status:404,text:async()=>''};};
   calls=[];const d2=await W.fetchBdWaterfall(env,true);
-  const cardCalls=calls.filter(c=>!(c.init&&typeof c.init.body==='string'&&/with (base|cm|d) as/.test(c.init.body)));
+  const cardCalls=calls.filter(c=>!(c.init&&typeof c.init.body==='string'&&/with (base|cm|d) as|rnames as/.test(c.init.body)));
   ck('at the row cap it switches to the uncapped dataset export (no card column settings)',[cardCalls.map(c=>c.url.replace(W.METABASE_URL,'')),d2.brands.length],[['/api/card/3565','/api/dataset','/api/dataset/json'],W.MB_ROW_CAP+1]);
   const xc=cardCalls[2];
   ck('  the export is sent form-encoded, unformatted, with the same query',[xc.init.headers['Content-Type'],/&format_rows=false$/.test(xc.init.body),JSON.parse(decodeURIComponent(xc.init.body.slice(6).replace(/&format_rows=false$/,''))).native.query],['application/x-www-form-urlencoded',true,'select 1 -- card sql']);
@@ -89,6 +93,8 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
   const wsrc=fs.readFileSync('worker.js','utf8');
   ck('the route is signed-in only',/url\.pathname === '\/api\/bd-waterfall'\) \{[\s\S]{0,200}if \(!\(await authed\(\)\)\) return jr\(\{ error: 'Unauthorized' \}, 401\);/.test(wsrc),true);
 
+  // Older page tests run without this-month data; the block that tests it puts it back.
+  const dCur=d.current;delete d.current;
   // ── 2. The page ────────────────────────────────────────────────────────────
   const html=fs.readFileSync('bd-dashboard.html','utf8');
   const scripts=[...html.matchAll(/<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>/g)].map(m=>m[1]);
@@ -125,10 +131,25 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
   ck('months before the first invoice are blank',(rowOf('Pilot Co').match(/class="m pre"/g)||[]).length,2);
   ck('the pilot’s first invoice (its fee) starts its row',/<td class="m">5,000<\/td>/.test(rowOf('Pilot Co')),true);
   ck('the tooltip keeps Metabase’s own churn month',/Churn month used: Aug 26 \(last month invoiced\) · Metabase’s churn month: Oct 26/.test(rowOf('Gone Co')),true);
-  ck('month totals: brands invoiced and dollars',/<tr class="tot"><td class="bd-wf-b">Brands invoiced<\/td><td colspan="28"><\/td><td class="m">2<\/td><td class="m">4<\/td><td class="m">3<\/td><td class="m">1<\/td><\/tr>/.test(h),true);
+  ck('month totals: brands invoiced and dollars',/<tr class="tot"><td class="bd-wf-b">Brands invoiced<\/td><td colspan="8"><\/td><td class="m">2<\/td><td class="m">4<\/td><td class="m">3<\/td><td class="m">1<\/td><\/tr>/.test(h),true);
   ck('Never Implemented is excluded from W2 by default (Alex, 2026-11-24)',P._bdWfNI,'excl');
-  ck('W1 columns: Months Until Churn (first to last invoice) and Invoiced Months',/<th[^>]*>Months Until Churn<\/th><th[^>]*>Invoiced Months<\/th>/.test(h)&&/Gone Co[\s\S]*?<td>Aug 26<\/td><td class="m">1<\/td><td class="m">2<\/td>/.test(rowOf('Gone Co')),true);
-  ck('  blank while active',/<td><\/td><td class="m"><\/td><td class="m">4<\/td>/.test(rowOf('Stay Co')),true);
+  const hdrs=x=>[...x.slice(x.indexOf('class="bd-wf-t"')).split('</tr>')[0].matchAll(/<th[^>]*>([^<]+)(?:<span class="bd-wf-arr">[^<]*<\/span>)?<\/th>/g)].map(m=>m[1]);
+  ck('W1 by default: Brand, the seven columns, a "+ more" toggle, then the months',hdrs(h).slice(0,10),['Brand','Churn Status','Company Segment','First Month','Last Invoiced','Churn Month','Invoiced Months','Total','+ 21 more','Jul 26']);
+  ck('  Gone Co: churn month = last invoiced (Aug 26), 2 invoiced months',/<td>Aug 26<\/td><td>Aug 26<\/td><td class="m">2<\/td>/.test(rowOf('Gone Co')),true);
+  P.bdWfSet('cols','all');h=R();
+  ck('  expanded: Months Until Churn = first to last invoice, blank while active',[/<td class="m bd-wf-x">1<\/td>/.test(rowOf('Gone Co')),/<td class="m bd-wf-x"><\/td>/.test(rowOf('Stay Co'))],[true,true]);
+  P.bdWfSet('cols','default');h=R();
+  // Header sorting (Alex, 2026-11-24)
+  const order=x=>[...x.matchAll(/<td class="bd-wf-b"[^>]*>(?:<span class="bd-wf-flag[^>]*>[^<]*<\/span>)?([^<]+)<span/g)].map(m=>m[1]);
+  P.bdWfSortBy('c:tot');h=R();const byTot=order(h);
+  P.bdWfSortBy('c:tot');h=R();const byTotUp=order(h);
+  ck('clicking Total sorts largest first; a second click reverses it',[byTot[0],byTotUp[0],/class="bd-wf-s m on"[^>]*>Total<span class="bd-wf-arr">▲<\/span>/.test(h)],['Pilot Co','Never Co',true]);
+  P.bdWfSortBy('c:cm');h=R();
+  ck('  a text/month column sorts ascending with blanks last (active brands have no churn month)',order(h).slice(-2).sort(),['Pilot Co','Stay Co']);
+  P.bdWfSortBy('m:2');h=R();
+  ck('  a month column sorts by that month’s amount, largest first',order(h)[0],'Pilot Co');
+  ck('  the Sort dropdown names the column sort',/<option selected>Sep 26 ▼<\/option>/.test(h),true);
+  P.bdWfSet('sort','first');h=R();
   ck('the colour scale is gentler: 75% is light green, 60% light red',[P.BD_WF_GREEN.indexOf(P._bdWfFill(0.75))>=0,P.BD_WF_RED.indexOf(P._bdWfFill(0.60))>=0,P._bdWfFill(0.60)===P.BD_WF_RED[0]],[true,true,true]);
   P.bdWfSet('ni','incl');h=R();
   // W2
@@ -249,17 +270,33 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
    P.bdWfReset();P.bdWfProdToggle('churn','reviews');x=R();
    ck('  Live at Churn: live in the churn month (Paused Co: Sep), or the last month if active (Stay Co: Oct)',names(x),['Paused Co','Stay Co']);
    P.bdWfReset();x=R();
+   P.bdWfSet('cols','all');x=R();
    ck('All Brands carries every card column, then the months',['HubSpot Stage','Source','Group','Last Invoiced','Metabase Churn Month','Churn Type','Company Segment','A/B Test','Ever Implemented','Ever Paid','Web Tier at Churn','Self-selected Traffic','Implied Traffic','Measured Traffic','Clinicians’ Choice','Clinician Reviews','Product Analysis','ClinicianAI','Products Ever Live','Products Live at Churn','Package','Pilot Status'].every(h=>x.indexOf('>'+h+'</th>')>0),true);
    ck('  and a filter for each categorical column',['Source','Group','Churn Status','HubSpot Stage','Churn Source','Web Tier Source','Measured Traffic','Pilot Status'].every(l=>x.indexOf('<label>'+l+'<select')>=0),true);
-   P.bdWfSet('cols','billing');x=R();
-   ck('  Columns: Billing only keeps the billing columns',[x.indexOf('>Measured Traffic</th>')<0,x.indexOf('>Months Until Churn</th>')>0],[true,true]);
-   P.bdWfSet('cols','all');
+   P.bdWfSet('cols','default');x=R();
+   ck('  collapsed by default: only the seven, the extras behind "+ more"',[x.indexOf('>Measured Traffic</th>')<0,x.indexOf('>Company Segment</th>')>0,/>\+ 21 more<\/th>/.test(x)],[true,true,true]);
    P.bdWfReset();
    P._bdWfJoin={byBrand:{'1':[{id:'777',dealname:'Stay deal',dealstage:'closedwon',brand_status:'Paying',closedate:'2026-07-01'},{id:'778',dealstage:'appointmentscheduled',closedate:'2026-01-01'}]}};
    x=P._bdWfRender();
    ck('W1 rows link to the brand’s HubSpot deal (closed-won preferred)',/Stay Co<span class="bd-wf-k">1 <a class="bd-wf-dl" href="https:\/\/app\.hubspot\.com\/contacts\/46815331\/record\/0-3\/777"/.test(x),true);
    ck('  a brand with no joined deal has no link',/Gone Co<span class="bd-wf-k">2<\/span>/.test(x),true);
    P._bdWfJoin=null;P.BD.wf=prev;}
+  // This month so far + brands the card leaves out (Alex, 2026-11-24)
+  {const W=JSON.parse(JSON.stringify(Object.assign({},d,{current:dCur})));W.brands.forEach(b=>{delete b._fl;delete b.cur;});P.BD.wf=W;P.bdWfReset();P._bdWfNI='incl';
+   let x=R();const all=x;
+   ck('the card’s brands plus the ones it leaves out: 5 + 2 = 7',W.brands.length,7);
+   ck('  a brand first invoiced this month is added, marked new, active',(()=>{const b=W.brands.find(z=>z.k==='901');return [b.x,b.st,b.fm,b.cur];})(),['new','Active','2026-11',3000]);
+   ck('  a brand whose every invoice was credited is added and flagged',(()=>{const b=W.brands.find(z=>z.k==='902');return [b.x,b.fm,b.st,b._fl.map(f=>f.id)];})(),['credited','2026-03','Churned (inferred)',['credited-only']]);
+   ck('W1 has a "Nov 26 so far" column with its totals',/>Nov 26 so far<\/th>/.test(x)&&/<td class="m cur">2<\/td>/.test(x)&&/<td class="m cur">4,000<\/td>/.test(x),true);
+   const rowOf2=n=>{let i=x.indexOf('">'+n);if(i<0)return '';i=x.lastIndexOf('<tr',i);return x.slice(i,x.indexOf('</tr>',i));};
+   ck('  the new brand’s row: badge, blank months, this month’s amount',/New this month<\/span>/.test(rowOf2('Fresh Pilot'))&&/<td class="m cur">3,000<\/td>/.test(rowOf2('Fresh Pilot')),true);
+   ck('  the KPI counts the new brands',/every brand ever invoiced · 1 new in Nov 26/.test(x),true);
+   P.bdWfSortBy('m:cur');x=R();
+   ck('  sortable: largest this month first',[...x.matchAll(/<td class="bd-wf-b"[^>]*>(?:<span class="bd-wf-flag[^>]*>[^<]*<\/span>)?([^<]+)<span/g)].map(m=>m[1])[0],'Fresh Pilot');
+   P.bdWfSet('sort','first');x=R();
+   const g2=x.slice(x.indexOf('id="bd-sec-wf2"'));
+   ck('W2 leaves the added rows out (complete months only)',[!/<td class="rw-c">Mar 26<\/td>/.test(g2),!/<td class="rw-c">Nov 26<\/td>/.test(g2),/<td class="rw-c">Jul 26<\/td><td class="rw-n">2<\/td>/.test(g2)],[true,true,true]);
+   P._bdWfNI='excl';}
   P.BD.wf={error:'Metabase /api/card/3565/query 403: You don\'t have permissions to do that.'};h=R();
   ck('a Metabase failure is an error band, never an empty grid',/Billing data unavailable/.test(h)&&/collection must be visible/.test(h)&&!/bd-sec-wf2/.test(h),true);
   ck('W2\u2019s first column matches .rwtbl\u2019s sticky offset',[P.BD_WF_W_LBL,+((html.match(/\.rwtbl \.rw-n\{[^}]*left:(\d+)px/)||[])[1])],[78,78]);
