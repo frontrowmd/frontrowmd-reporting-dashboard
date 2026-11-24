@@ -3954,6 +3954,65 @@ async function bdWfCategories(env) {
   const n = (v) => Math.round((Number(v) || 0) * 100) / 100;
   return { month: rows.length ? String(rows[0].MONTH || '') : '', brandsBilled: rows.length ? Number(rows[0].BRANDS_BILLED) || 0 : 0, cats: rows.map(r => ({ cat: String(r.CATEGORY || 'other'), amount: n(r.AMOUNT), multi: n(r.MULTI_MONTH), invoices: Number(r.INVOICES) || 0, brands: Number(r.BRANDS) || 0 })) };
 }
+// Billing tab, "Active but not invoiced" (Alex, 2026-11-24): the card's
+// complete months net credits off and stop at last month, so a brand invoiced
+// THIS month (Happy Mammoth: Sep invoice credited, re-invoiced Nov 23) or due
+// to bill before month end looked unbilled. Per brand, live from the Recurly
+// copy: this month's good charges (paid / pending / processing / past due, not
+// fully credited), failed or credited charges and $0 invoices over the last
+// three months, and the live subscriptions' state, next bill and trial end.
+// Only brands with a live subscription or a recent invoice come back.
+const BD_WF_RC_SQL = `
+with cm as (select date_trunc('month', current_date)::date m),
+ch as (
+  select ab.brand_key, i.id, i.state, i.created_at::date d, il.is_fully_credited fc, l.amount + coalesce(l.tax, 0) amt
+  from analytics_production.intermediate.int_recurly_line_items il
+  join analytics_production.staging.stg_recurly_line_items l on l.id = il.line_item_id
+  join analytics_production.staging.stg_recurly_invoices i on i.id = il.invoice_id
+  join analytics_production.intermediate.int_recurly_account_brand ab on ab.recurly_account_id = i.account_id
+  where i.state <> 'voided' and i.type <> 'credit' and il.type = 'charge' and i.created_at >= dateadd(month, -3, (select m from cm))
+),
+inv as (select brand_key, id, state, d, sum(amt) amt, booland_agg(coalesce(fc, false)) all_fc from ch group by 1, 2, 3, 4),
+ib as (
+  select brand_key,
+    max(iff(amt > 0 and not all_fc and state in ('paid', 'pending', 'processing', 'past_due'), d, null)) last_good,
+    sum(iff(d >= (select m from cm) and amt > 0 and not all_fc and state in ('paid', 'pending', 'processing', 'past_due'), amt, 0)) cur_amt,
+    max(iff(d >= (select m from cm) and amt > 0 and not all_fc and state in ('paid', 'pending', 'processing', 'past_due'), d, null)) cur_day,
+    count_if(amt > 0 and (state = 'failed' or all_fc)) bad_n,
+    max(iff(amt > 0 and (state = 'failed' or all_fc), d, null)) last_bad,
+    count_if(amt = 0) zero_n,
+    min(iff(amt = 0, d, null)) first_zero
+  from inv group by 1
+),
+sb as (
+  select ab.brand_key,
+    count(*) live_n,
+    min(iff(s.state = 'paused', s.paused_at, null))::date paused_since,
+    count_if(s.state in ('active', 'future')) running_n,
+    min(iff(s.state in ('active', 'future'), s.current_period_ends_at, null))::date next_bill,
+    count_if(s.state = 'future') future_n,
+    max(iff(s.trial_ends_at > current_date, s.trial_ends_at, null))::date trial_end
+  from analytics_production.staging.stg_recurly_subscriptions s
+  join analytics_production.intermediate.int_recurly_account_brand ab on ab.recurly_account_id = s.account_id
+  where s.state in ('active', 'future', 'paused')
+  group by 1
+)
+select coalesce(ib.brand_key, sb.brand_key) as brand_key,
+  to_char(ib.last_good, 'YYYY-MM-DD') last_good, ib.cur_amt, to_char(ib.cur_day, 'YYYY-MM-DD') cur_day, ib.bad_n, to_char(ib.last_bad, 'YYYY-MM-DD') last_bad,
+  ib.zero_n, to_char(ib.first_zero, 'YYYY-MM-DD') first_zero,
+  coalesce(sb.live_n, 0) live_n, to_char(sb.paused_since, 'YYYY-MM-DD') paused_since, coalesce(sb.running_n, 0) running_n,
+  to_char(sb.next_bill, 'YYYY-MM-DD') next_bill, coalesce(sb.future_n, 0) future_n, to_char(sb.trial_end, 'YYYY-MM-DD') trial_end,
+  to_char(current_date, 'YYYY-MM-DD') today
+from ib full outer join sb on sb.brand_key = ib.brand_key`;
+async function bdWfRecurly(env) {
+  const rows = await mbQuery(env, BD_WF_RC_SQL);
+  const n = (v) => (v == null ? 0 : Number(v) || 0), t = (v) => (v == null ? '' : String(v));
+  const by = {};
+  rows.forEach(r => { const k = t(r.BRAND_KEY); if (!k) return;
+    by[k] = { lg: t(r.LAST_GOOD), ca: Math.round(n(r.CUR_AMT) * 100) / 100, cd: t(r.CUR_DAY), bn: n(r.BAD_N), lb: t(r.LAST_BAD), zn: n(r.ZERO_N), fz: t(r.FIRST_ZERO),
+      ln: n(r.LIVE_N), ps: t(r.PAUSED_SINCE), rn: n(r.RUNNING_N), nb: t(r.NEXT_BILL), fn: n(r.FUTURE_N), te: t(r.TRIAL_END) }; });
+  return { today: rows.length ? t(rows[0].TODAY) : '', byKey: by };
+}
 async function fetchBdWaterfall(env, fresh) {
   if (!fresh && env.CONTENT_STORE) {
     try {
@@ -3963,8 +4022,10 @@ async function fetchBdWaterfall(env, fresh) {
   }
   const t0 = Date.now();
   // The pie's query runs alongside; its failure leaves the rest of the tab working.
-  const [data, cats] = await Promise.all([bdWfRunCard(env), bdWfCategories(env).catch(e => ({ error: String(e && e.message || e).slice(0, 300) }))]);
+  const soft = (p) => p.catch(e => ({ error: String(e && e.message || e).slice(0, 300) }));
+  const [data, cats, rc] = await Promise.all([bdWfRunCard(env), soft(bdWfCategories(env)), soft(bdWfRecurly(env))]);
   data.categories = cats;
+  data.recurly = rc;
   data.meta = { card: BD_WF_CARD, url: METABASE_URL + '/question/' + BD_WF_CARD, asOf: new Date().toISOString(), ms: Date.now() - t0 };
   if (env.CONTENT_STORE) {
     try { const blob = JSON.stringify({ t: Date.now(), data }); if (blob.length < 20 * 1024 * 1024) await env.CONTENT_STORE.put(BD_WF_KV, blob, { expirationTtl: BD_WF_TTL_SEC * 6 }); } catch (_) { /* best effort */ }

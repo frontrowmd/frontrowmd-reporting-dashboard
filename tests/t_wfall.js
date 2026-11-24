@@ -29,11 +29,14 @@ const TAGS={hide_pilot_initiation_fee:{type:'boolean',name:'hide_pilot_initiatio
   products_ever_live:{type:'number',name:'products_ever_live'}};
 const CARD={id:3565,database_id:67,dataset_query:{database:67,type:'native',native:{query:'select 1 -- card sql',"template-tags":TAGS}}};
 let dsRows=rows;
+const RCCOLS=['BRAND_KEY','LAST_GOOD','CUR_AMT','CUR_DAY','BAD_N','LAST_BAD','ZERO_N','FIRST_ZERO','LIVE_N','PAUSED_SINCE','RUNNING_N','NEXT_BILL','FUTURE_N','TRIAL_END','TODAY'];
+const RCROWS=[['1','2026-11-05',1000,'2026-11-05',0,null,0,null,1,null,1,'2026-12-05',0,null,'2026-11-24']];
 const CATCOLS=['CATEGORY','AMOUNT','MULTI_MONTH','INVOICES','BRANDS','MONTH','BRANDS_BILLED'];
 const CATROWS=[['plan',3000,1000,3,3,'2026-10',4],['pilot_initiation_fee',2500,0,1,1,'2026-10',4],['review',300,0,2,1,'2026-10',4],['credits',-200,0,1,1,'2026-10',4]];
 W.fetch=async(url,init)=>{calls.push({url,init});
   if(url.endsWith('/api/card/3565'))return ok(CARD);
-  if(url.endsWith('/api/dataset')){if(/with base as/.test(JSON.parse(init.body).native.query))return ok({status:'completed',data:{cols:CATCOLS.map(name=>({name})),rows:CATROWS}});
+  if(url.endsWith('/api/dataset')){if(/with cm as/.test(JSON.parse(init.body).native.query))return ok({status:'completed',data:{cols:RCCOLS.map(name=>({name})),rows:RCROWS}});
+    if(/with base as/.test(JSON.parse(init.body).native.query))return ok({status:'completed',data:{cols:CATCOLS.map(name=>({name})),rows:CATROWS}});
     return ok({status:'completed',data:{cols:COLS.map(name=>({name})),rows:dsRows}});}
   if(url.endsWith('/api/dataset/json'))return ok(dsRows.map(r=>{const o={};COLS.forEach((c,i)=>o[c]=r[i]);return o;}));
   return {ok:false,status:404,text:async()=>''};};
@@ -42,8 +45,8 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
   const env={METABASE_API_KEY:'k',CONTENT_STORE:KV};
   const d=JSON.parse(JSON.stringify(await W.fetchBdWaterfall(env,false)));
   const dsCalls=calls.filter(c=>c.url.endsWith('/api/dataset')).map(c=>JSON.parse(c.init.body));
-  ck('the worker reads the saved card, runs its SQL, and the category query',[calls.filter(c=>c.url.endsWith('/api/card/3565')).length,dsCalls.length],[1,2]);
-  const sent=dsCalls.find(q=>!/with base as/.test(q.native.query));
+  ck('the worker reads the saved card, runs its SQL, the category query and the Recurly status query',[calls.filter(c=>c.url.endsWith('/api/card/3565')).length,dsCalls.length],[1,3]);
+  const sent=dsCalls.find(q=>/card sql/.test(q.native.query));
   const cq=dsCalls.find(q=>/with base as/.test(q.native.query));
   ck('  the category query covers last complete month, Recurly charges and credits, test accounts out',[/dateadd\(month, -1, date_trunc\('month', current_date\)\)/.test(cq.native.query),/'1475', '1433'/.test(cq.native.query),/i\.number <> '5291'/.test(cq.native.query)],[true,true,true]);
   ck('  the card\u2019s own SQL, on its database',[sent.native.query,sent.database,sent.type],['select 1 -- card sql',67,'native']);
@@ -60,7 +63,8 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
   calls=[];const again=await W.fetchBdWaterfall(env,false);
   ck('  a second load reads the cache, no Metabase run',[calls.length,again.cached],[0,true]);
   calls=[];await W.fetchBdWaterfall(env,true);
-  ck('  Refresh (fresh) runs the card again',calls.length,3);
+  ck('  Refresh (fresh) runs the card again',calls.length,4);
+  ck('the Recurly status rides along, keyed by brand',[d.recurly.today,d.recurly.byKey['1']],['2026-11-24',{lg:'2026-11-05',ca:1000,cd:'2026-11-05',bn:0,lb:'',zn:0,fz:'',ln:1,ps:'',rn:1,nb:'2026-12-05',fn:0,te:''}]);
   ck('the categories ride along in the payload',[d.categories.month,d.categories.cats.map(c=>c.cat),d.categories.cats[0].multi],['2026-10',['plan','pilot_initiation_fee','review','credits'],1000]);
   ck('  with the distinct brands billed',d.categories.brandsBilled,4);
   let err='';try{W.bdWfShape(['BRAND_KEY','BRAND_NAME'],[]);}catch(e){err=e.message;}
@@ -72,7 +76,7 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
   W.fetch=async(url,init)=>{calls.push({url,init});if(url.endsWith('/api/card/3565'))return ok(CARD);if(url.endsWith('/api/dataset'))return ok({status:'completed',data:{cols:COLS.map(name=>({name})),rows:big}});
     if(url.endsWith('/api/dataset/json'))return ok(more.map(r=>{const o={};COLS.forEach((c,i)=>o[c]=r[i]);return o;}));return {ok:false,status:404,text:async()=>''};};
   calls=[];const d2=await W.fetchBdWaterfall(env,true);
-  const cardCalls=calls.filter(c=>!(c.init&&typeof c.init.body==='string'&&/with base as/.test(c.init.body)));
+  const cardCalls=calls.filter(c=>!(c.init&&typeof c.init.body==='string'&&/with (base|cm) as/.test(c.init.body)));
   ck('at the row cap it switches to the uncapped dataset export (no card column settings)',[cardCalls.map(c=>c.url.replace(W.METABASE_URL,'')),d2.brands.length],[['/api/card/3565','/api/dataset','/api/dataset/json'],W.MB_ROW_CAP+1]);
   const xc=cardCalls[2];
   ck('  the export is sent form-encoded, unformatted, with the same query',[xc.init.headers['Content-Type'],/&format_rows=false$/.test(xc.init.body),JSON.parse(decodeURIComponent(xc.init.body.slice(6).replace(/&format_rows=false$/,''))).native.query],['application/x-www-form-urlencoded',true,'select 1 -- card sql']);
@@ -156,6 +160,19 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
   const ids=b=>P._bdWfFlagsOf(b,M).map(f=>f.id);
   ck('a healthy brand has no flags',ids(BR({})),[]);
   ck('active but nothing invoiced for 2+ months',ids(BR({li:'2026-08',a:[1000,1000,1000,1000,1000,1000,1000,1000,0,0]})),['active-not-billed']);
+  {const stale=BR({li:'2026-08',a:[1000,1000,1000,1000,1000,1000,1000,1000,0,0]});
+   const rc=x=>({today:'2026-11-24',byKey:x===undefined?{}:{x:Object.assign({ln:1,rn:1,ca:0,bn:0,zn:0,lg:'',lb:'',fz:'',ps:'',nb:'',fn:0,te:''},x)}});
+   const f=x=>P._bdWfFlagsOf(stale,M,rc(x)).filter(z=>z.id==='active-not-billed');
+   ck('Recurly check: invoiced this month clears the flag (Happy Mammoth: Sep credited, re-invoiced Nov 23)',f({ca:2500,cd:'2026-11-23',bn:1,lb:'2026-09-23',lg:'2026-11-23'}).length,0);
+   ck('  due to bill before month end, with clean history, clears it',f({nb:'2026-11-28'}).length,0);
+   ck('  but not when its recent invoices failed or were credited',/2 recent invoices failed or were credited \(latest 10\/29\/2026\); next attempt 11\/29\/2026/.test((f({nb:'2026-11-29',bn:2,lb:'2026-10-29'})[0]||{}).why),true);
+   ck('  one failed invoice reads in the singular',/1 recent invoice failed or was credited/.test((f({bn:1,lb:'2026-11-12'})[0]||{}).why),true);
+   ck('  $0 invoices after an old failed one explain it instead (Kimba)',/invoiced \$0 each month since 09\/04\/2026/.test((f({bn:1,lb:'2026-08-04',zn:3,fz:'2026-09-04',nb:'2026-12-04'})[0]||{}).why),true);
+   ck('  nor when it bills $0 (a 100% discount)',/invoiced \$0 each month since 08\/28\/2026/.test((f({nb:'2026-11-28',zn:3,fz:'2026-08-28'})[0]||{}).why),true);
+   ck('  paused in Recurly says so',/paused since 09\/30\/2026/.test((f({rn:0,ps:'2026-09-30'})[0]||{}).why),true);
+   ck('  no live subscription says so',/no live subscription/.test((P._bdWfFlagsOf(stale,M,{today:'2026-11-24',byKey:{}}).find(z=>z.id==='active-not-billed')||{}).why),true);
+   ck('  a subscription starting next month says when',/only starts billing 12\/03\/2026/.test((f({fn:1,nb:'2026-12-03'})[0]||{}).why),true);
+   ck('  Recurly status unavailable keeps the flag and says so',/could not be read/.test((P._bdWfFlagsOf(stale,M,{error:'x'}).find(z=>z.id==='active-not-billed')||{}).why),true);}
   ck('  1 month is not enough (invoice timing)',ids(BR({li:'2026-09',a:M.map((m,i)=>i<9?1000:0)})),[]);
   ck('invoiced after HubSpot’s churn month',ids(BR({st:'Churned',stage:'Churned',hsCh:'2026-08',li:'2026-10'})).includes('billed-after-churn'),true);
   ck('never paid, past payment terms; a 1-month active brand is not flagged',[ids(BR({paid:false,mi:3})).includes('unpaid'),ids(BR({paid:false,mi:1})).includes('unpaid')],[true,false]);

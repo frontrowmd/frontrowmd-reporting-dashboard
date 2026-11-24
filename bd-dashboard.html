@@ -1068,15 +1068,37 @@ function bdWfSetFlagF(v){_bdWfFlagF=v||'';_bdWfShow=BD_WF_PAGE;renderBD();}
 function _bdWfMed(xs){if(!xs.length)return null;var s=xs.slice().sort(function(a,b){return a-b;}),h=s.length>>1;return s.length%2?s[h]:(s[h-1]+s[h])/2;}
 function _bdWf$(v){return '$'+Math.round(v).toLocaleString();}
 // months: the payload's month list (YYYY-MM, ascending); now = its last one.
-function _bdWfFlagsOf(b,months){
+function _bdWfFlagsOf(b,months,rc){
   var now=months[months.length-1],out=[],T={};BD_WF_FLAGS.forEach(function(f){T[f.id]=f;});
   var add=function(id,why,cells){out.push({id:id,sev:T[id].sev,title:T[id].title,why:why,cells:cells||[]});};
   var a=b.a||[],L=_bdWfLbl,active=!_bdWfChurned(b);
   var billed=[];a.forEach(function(v,i){if(v!=null&&v>=0.01)billed.push(i);});
-  // 1. Active, but the last 2+ complete months billed nothing (31).
+  // 1. Active, but the last 2+ complete months billed nothing (31 on the
+  // export). Then checked against Recurly now (rc, worker bdWfRecurly; Alex,
+  // 2026-11-24): cleared if the brand was invoiced this month (a good charge:
+  // paid, pending, processing or past due, not fully credited) or is due to bill
+  // before month end with no failed, credited or $0 invoices lately (10 of the
+  // 31 on 2026-11-24, Happy Mammoth among them). Otherwise the flag says why.
   if(active&&b.li){var k=_bdWfDiff(b.li,now);
-    if(k>=2){var c=[];for(var i=months.indexOf(b.li)+1;i<months.length;i++)if(i>0)c.push(i);
-      add('active-not-billed',(b.st||'Active')+' (HubSpot: '+(b.stage||'—')+'), but nothing has been invoiced for the last '+k+' months; the last invoice was in '+L(b.li)+'. It may have churned or paused without HubSpot being updated, or invoices stopped going out. The waterfall still counts it as active, so retention is overstated. Can’t tell apart: a prepaid deal billed outside Recurly/bill.com, a comped brand, or a late quarterly invoice (likeliest at 2 months).',c);}}
+    if(k>=2){
+      var r=(rc&&!rc.error&&rc.byKey)?(rc.byKey[b.k]||{ln:0,rn:0,ca:0,bn:0,zn:0}):null;
+      var D=function(d){return d?_bdMDY(new Date(+d.slice(0,4),+d.slice(5,7)-1,+d.slice(8,10))):'';};
+      var me=r&&rc.today?(function(t){var y=+t.slice(0,4),m=+t.slice(5,7);return t.slice(0,8)+('0'+new Date(y,m,0).getDate()).slice(-2);})(rc.today):'';
+      var clear=r&&(r.ca>0||(r.rn>0&&!r.ps&&r.nb&&me&&r.nb<=me&&!r.bn&&!r.zn));
+      if(!clear){
+        var c=[];for(var i=months.indexOf(b.li)+1;i<months.length;i++)if(i>0)c.push(i);
+        var why=!r?'Recurly’s current status could not be read, so this month is not checked.'
+          :!r.ln?'Recurly now: no live subscription (none active, starting or paused).'
+          :(r.ps&&!r.rn)?'Recurly now: its subscription has been paused since '+D(r.ps)+' — HubSpot should probably say Paused.'
+          // A failed/credited charge explains it unless a good one or $0 invoices came after it.
+          :(r.bn&&(!r.lg||r.lb>=r.lg)&&!(r.zn&&r.fz>r.lb))?'Recurly now: '+r.bn+' recent invoice'+(r.bn===1?' failed or was':'s failed or were')+' credited (latest '+D(r.lb)+')'+(r.nb?'; next attempt '+D(r.nb):'')+'.'
+          :r.zn?'Recurly now: invoiced $0 each month since '+D(r.fz)+' (a 100% discount or free plan)'+(r.nb?'; next invoice '+D(r.nb):'')+'.'
+          :(r.fn&&r.nb&&me&&r.nb>me)?'Recurly now: its subscription only starts billing '+D(r.nb)+'.'
+          :r.te?'Recurly now: in a trial until '+D(r.te)+'.'
+          :'Recurly now: nothing invoiced this month'+(r.nb?'; next bill '+D(r.nb):'')+'.';
+        add('active-not-billed',(b.st||'Active')+' (HubSpot: '+(b.stage||'—')+'), but nothing has been invoiced for the last '+k+' complete months; the last invoice was in '+L(b.li)+'. '+why+' The waterfall still counts it as active, so retention is overstated.',c);
+      }
+    }}
   // 2. HubSpot's churn month before the last invoice (5).
   if(b.hsCh&&b.li&&b.hsCh<b.li){var post=0,pc=[];months.forEach(function(m,i){if(m>b.hsCh&&a[i]!=null&&a[i]>=0.01){post+=a[i];pc.push(i);}});
     add('billed-after-churn','HubSpot says it churned in '+L(b.hsCh)+', but '+_bdWf$(post)+' was invoiced after that, through '+L(b.li)+'. Either the HubSpot date is wrong or billing continued after the cancellation — check for a refund or dispute. Can’t tell apart: a return on the same brand without a new deal, or a late true-up.',pc);}
@@ -1135,7 +1157,7 @@ function _bdWfFlagsOf(b,months){
 // list only, never on the filters).
 function _bdWfFlagsAll(wf){
   if(wf._flagged)return;
-  wf.brands.forEach(function(b){b._fl=_bdWfFlagsOf(b,wf.months);});
+  wf.brands.forEach(function(b){b._fl=_bdWfFlagsOf(b,wf.months,wf.recurly);});
   try{Object.defineProperty(wf,'_flagged',{value:true,enumerable:false,writable:true,configurable:true});}catch(_){wf._flagged=true;}
 }
 function _bdWfTopSev(b){return (b._fl&&b._fl.length)?b._fl[0].sev:'';}
