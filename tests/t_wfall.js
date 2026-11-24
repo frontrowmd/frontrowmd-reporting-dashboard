@@ -9,7 +9,7 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
 // ── 1. Worker: run the card, shape it, cache it ─────────────────────────────
 const src=load(process.env.WORKER_SRC||'worker.js');
 const W={console:{log(){},warn(){},error(){}},Date,JSON,Math};vm.createContext(W);
-vm.runInContext(src.slice(0,src.indexOf('\nexport default'))+'\nObject.assign(globalThis,{bdWfShape,bdWfNative,fetchBdWaterfall,BD_WF_CARD,BD_WF_KV,METABASE_URL,MB_ROW_CAP});',W);
+vm.runInContext(src.slice(0,src.indexOf('\nexport default'))+'\nObject.assign(globalThis,{bdWfShape,bdWfNative,bdWfDefaultsNeutral,fetchBdWaterfall,BD_WF_CARD,BD_WF_KV,METABASE_URL,MB_ROW_CAP});',W);
 const COLS=['BRAND_KEY','BRAND_NAME','SOURCE','GROUP_NAME','CHURN_STATUS','HUBSPOT_STAGE','CHURN_MONTH','LAST_INVOICED_MONTH','CHURN_SOURCE','MONTHS_UNTIL_CHURN','MONTHS_INVOICED',
   'EVER_IMPLEMENTED_WIDGET','EVER_PAID_INVOICE','CHURN_TYPE','COMPANY_SEGMENT','AB_TEST','WEB_TIER_AT_CHURN','WEB_TIER_SOURCE','SELF_SELECTED_TRAFFIC','IMPLIED_TRAFFIC','IMPLIED_VIEWS_30D',
   'PRODUCTS_EVER_LIVE_COUNT','PRODUCTS_LIVE_AT_CHURN_COUNT','PACKAGE','PILOT_STATUS','FIRST_MONTH',"'2026-07'","'2026-08'","'2026-09'","'2026-10'"];
@@ -88,8 +88,15 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
   ck('  the export is sent form-encoded, unformatted, with the same query',[xc.init.headers['Content-Type'],/&format_rows=false$/.test(xc.init.body),JSON.parse(decodeURIComponent(xc.init.body.slice(6).replace(/&format_rows=false$/,''))).native.query],['application/x-www-form-urlencoded',true,'select 1 -- card sql']);
   W.fetch=async(url,init)=>{if(url.endsWith('/api/card/3565'))return ok(CARD);if(url.endsWith('/api/dataset'))return ok({status:'completed',data:{cols:COLS.map(name=>({name})),rows:big}});
     if(url.endsWith('/api/dataset/json'))return ok(more.map(r=>{const o={};COLS.slice(0,-1).forEach((c,i)=>o[c]=r[i]);return o;}));return {ok:false,status:404,text:async()=>''};};
-  let e2='';try{await W.fetchBdWaterfall(env,true);}catch(e){e2=e.message;}
-  ck('  an export missing a month column is an error, not a shorter grid',/month columns/.test(e2),true);
+  const r2=await W.fetchBdWaterfall(env,true);
+  ck('  an export missing a month column is an error (here: the last good copy is shown, saying why)',[!!r2.stale,/month columns/.test((r2.stale||{}).error)],[true,true]);
+  // Metabase timing out (Alex, 2026-11-24: "Metabase /api/dataset 524"): the last good copy, flagged stale.
+  W.fetch=async(url,init)=>{if(url.endsWith('/api/card/3565'))return ok(CARD);if(url.endsWith('/api/dataset')&&/card sql/.test(JSON.parse(init.body).native.query))return {ok:false,status:524,text:async()=>'error code: 524'};return {ok:false,status:404,text:async()=>''};};
+  const r3=await W.fetchBdWaterfall(env,true);
+  ck('a Metabase timeout serves the last good copy with a note and when it is from',[!!r3.brands,/did not answer in time/.test(r3.stale.error),!!r3.stale.asOf],[true,true,true]);
+  let e3='';try{await W.fetchBdWaterfall({METABASE_API_KEY:'k',CONTENT_STORE:{get:async()=>null,put:async()=>{}}},true);}catch(e){e3=e.message;}
+  ck('  with no saved copy at all it is still an error, never an empty tab',/524/.test(e3),true);
+  ck('the card is run by id when its own filters have no saved defaults (so a Metabase cache can answer)',[W.bdWfDefaultsNeutral(TAGS),W.bdWfDefaultsNeutral({basis:{default:['All invoiced']},hide_pilot_initiation_fee:{default:[false]},package:{}}),W.bdWfDefaultsNeutral({hide_pilot_initiation_fee:{default:[true]}})],[false,true,false]);
   const wsrc=fs.readFileSync('worker.js','utf8');
   ck('the route is signed-in only',/url\.pathname === '\/api\/bd-waterfall'\) \{[\s\S]{0,200}if \(!\(await authed\(\)\)\) return jr\(\{ error: 'Unauthorized' \}, 401\);/.test(wsrc),true);
 
@@ -150,7 +157,7 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
   ck('  a month column sorts by that month’s amount, largest first',order(h)[0],'Pilot Co');
   ck('  the Sort dropdown names the column sort',/<option selected>Sep 26 ▼<\/option>/.test(h),true);
   P.bdWfSet('sort','first');h=R();
-  ck('the colour scale is gentler: 75% is light green, 60% light red',[P.BD_WF_GREEN.indexOf(P._bdWfFill(0.75))>=0,P.BD_WF_RED.indexOf(P._bdWfFill(0.60))>=0,P._bdWfFill(0.60)===P.BD_WF_RED[0]],[true,true,true]);
+  ck('W2 colours run green to yellow to red (Alex, 2026-11-24)',[P._bdWfFill(1),P._bdWfFill(0.55),P._bdWfFill(0.30),P._bdWfFill(0.1),(()=>{const m=P._bdWfFill(0.75).match(/\d+/g).map(Number);return m[1]>m[0];})()],['rgb(111,199,147)','rgb(251,227,142)','rgb(244,163,163)','rgb(244,163,163)',true]);
   P.bdWfSet('ni','incl');h=R();
   // W2
   const grid=h.slice(h.indexOf('id="bd-sec-wf2"'));
@@ -297,6 +304,9 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
    const g2=x.slice(x.indexOf('id="bd-sec-wf2"'));
    ck('W2 leaves the added rows out (complete months only)',[!/<td class="rw-c">Mar 26<\/td>/.test(g2),!/<td class="rw-c">Nov 26<\/td>/.test(g2),/<td class="rw-c">Jul 26<\/td><td class="rw-n">2<\/td>/.test(g2)],[true,true,true]);
    P._bdWfNI='excl';}
+  {const prev=P.BD.wf;P.BD.wf=Object.assign({},d,{stale:{error:'Metabase did not answer in time (Metabase /api/dataset 524)',asOf:'2026-11-24T19:22:00.000Z'}});
+   const x=R();ck('a stale copy is shown with a note saying from when, and why',/Showing the last good copy, from 2026-11-24 19:22 UTC\.<\/strong> <span>Metabase did not answer in time \(Metabase \/api\/dataset 524\)\. Refresh to try again\./.test(x)&&/id="bd-sec-wf1"/.test(x),true);
+   P.BD.wf=prev;}
   P.BD.wf={error:'Metabase /api/card/3565/query 403: You don\'t have permissions to do that.'};h=R();
   ck('a Metabase failure is an error band, never an empty grid',/Billing data unavailable/.test(h)&&/collection must be visible/.test(h)&&!/bd-sec-wf2/.test(h),true);
   ck('W2\u2019s first column matches .rwtbl\u2019s sticky offset',[P.BD_WF_W_LBL,+((html.match(/\.rwtbl \.rw-n\{[^}]*left:(\d+)px/)||[])[1])],[78,78]);

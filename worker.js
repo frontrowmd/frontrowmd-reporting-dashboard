@@ -3900,9 +3900,29 @@ function bdWfNative(card) {
   if (!query) throw new Error('Metabase question ' + BD_WF_CARD + ' is not a native SQL question any more');
   return { database: (card && card.database_id) || dq.database || MB_DB, query, tags };
 }
+// True when running the saved card with no parameters gives the unfiltered
+// result we want: no filter carries a saved default, except basis All invoiced
+// and Hide Pilot Initiation Fee off. Then the card is run by id, so a cache the
+// data team sets on the question (Metabase caching) can answer at once.
+function bdWfDefaultsNeutral(tags) {
+  return Object.entries(tags || {}).every(([k, t]) => {
+    const d = t && t.default; const empty = d == null || (Array.isArray(d) && !d.length) || d === '';
+    if (empty) return true;
+    const v = Array.isArray(d) ? d : [d];
+    if (k === 'basis') return v.length === 1 && /^all invoiced$/i.test(String(v[0]));
+    if (k === 'hide_pilot_initiation_fee') return v.length === 1 && (v[0] === false || String(v[0]) === 'false');
+    return false;
+  });
+}
 async function bdWfRunCard(env) {
   const card = await mbFetch(env, `/api/card/${BD_WF_CARD}`);
   const n = bdWfNative(card);
+  if (bdWfDefaultsNeutral(n.tags)) {
+    const r = await mbFetch(env, `/api/card/${BD_WF_CARD}/query`, { method: 'POST', body: JSON.stringify({ parameters: [] }) });
+    if (!r || r.status === 'failed' || r.error) throw new Error('Metabase question ' + BD_WF_CARD + ' failed: ' + String((r && r.error) || 'no result').slice(0, 300));
+    const rcols = ((r.data && r.data.cols) || []).map(c => c.name), rrows = (r.data && r.data.rows) || [];
+    if (rrows.length < MB_ROW_CAP) return Object.assign(bdWfShape(rcols, rrows), { via: 'card' });
+  }
   const q = { database: n.database, type: 'native', native: { query: n.query, 'template-tags': bdWfUnfilteredTags(n.tags) } };
   const d = await mbFetch(env, '/api/dataset', { method: 'POST', body: JSON.stringify(q) });
   if (!d || d.status === 'failed' || d.error) throw new Error('Metabase question ' + BD_WF_CARD + ' failed: ' + String((d && d.error) || 'no result').slice(0, 300));
@@ -4113,6 +4133,19 @@ async function bdWfCurrent(env) {
     by[k] = { v: Math.round((Number(r.CUR_NET) || 0) * 100) / 100, n: String(r.NAME || ''), fg: String(r.FG || ''), fa: String(r.FA || ''), live: Number(r.LIVE) || 0, disc: Number(r.DISCARDED) ? 1 : 0 }; });
   return { m: rows.length ? String(rows[0].MONTH || '') : '', byKey: by };
 }
+// The last good payload, kept a week: when Metabase does not answer in time
+// (2026-11-24: card 3565 passed 100 s and Metabase's gateway returned 524) the
+// page shows this copy with a note instead of an error. Older cache keys are
+// read too, so the first failure after a key bump still has something to show.
+const BD_WF_LAST = 'bd_waterfall_last';
+const BD_WF_OLD_KEYS = ['bd_waterfall_v3', 'bd_waterfall_v2', 'bd_waterfall_v1'];
+async function bdWfLastGood(env) {
+  if (!env.CONTENT_STORE) return null;
+  for (const k of [BD_WF_LAST, BD_WF_KV].concat(BD_WF_OLD_KEYS)) {
+    try { const hit = await env.CONTENT_STORE.get(k, 'json'); if (hit && hit.data && hit.data.brands) return hit; } catch (_) { /* try the next */ }
+  }
+  return null;
+}
 async function fetchBdWaterfall(env, fresh) {
   if (!fresh && env.CONTENT_STORE) {
     try {
@@ -4121,16 +4154,33 @@ async function fetchBdWaterfall(env, fresh) {
     } catch (_) { /* a cache miss is fine */ }
   }
   const t0 = Date.now();
-  // The pie's query runs alongside; its failure leaves the rest of the tab working.
+  // The card first and on its own: it is the slow one, and the four small
+  // queries running beside it slowed it on the shared warehouse.
+  let data;
+  try { data = await bdWfRunCard(env); }
+  catch (e) {
+    const msg = String(e && e.message || e).slice(0, 300);
+    const last = await bdWfLastGood(env);
+    if (!last) throw e;
+    return Object.assign({}, last.data, { cached: true, stale: { error: /524|timed? ?out/i.test(msg) ? 'Metabase did not answer in time (' + msg + ')' : msg, asOf: new Date(last.t).toISOString() } });
+  }
+  // The rest alongside each other; a failure in one leaves the tab working.
   const soft = (p) => p.catch(e => ({ error: String(e && e.message || e).slice(0, 300) }));
-  const [data, cats, rc, wg, cur] = await Promise.all([bdWfRunCard(env), soft(bdWfCategories(env)), soft(bdWfRecurly(env)), soft(bdWfWidgets(env)), soft(bdWfCurrent(env))]);
+  const [cats, rc, wg, cur] = await Promise.all([soft(bdWfCategories(env)), soft(bdWfRecurly(env)), soft(bdWfWidgets(env)), soft(bdWfCurrent(env))]);
   data.current = cur;
   data.categories = cats;
   data.recurly = rc;
   data.widgets = wg;
-  data.meta = { card: BD_WF_CARD, url: METABASE_URL + '/question/' + BD_WF_CARD, asOf: new Date().toISOString(), ms: Date.now() - t0 };
+  data.meta = { card: BD_WF_CARD, url: METABASE_URL + '/question/' + BD_WF_CARD, asOf: new Date().toISOString(), ms: Date.now() - t0, via: data.via || '' };
+  delete data.via;
   if (env.CONTENT_STORE) {
-    try { const blob = JSON.stringify({ t: Date.now(), data }); if (blob.length < 20 * 1024 * 1024) await env.CONTENT_STORE.put(BD_WF_KV, blob, { expirationTtl: BD_WF_TTL_SEC * 6 }); } catch (_) { /* best effort */ }
+    try {
+      const blob = JSON.stringify({ t: Date.now(), data });
+      if (blob.length < 20 * 1024 * 1024) {
+        await env.CONTENT_STORE.put(BD_WF_KV, blob, { expirationTtl: BD_WF_TTL_SEC * 6 });
+        await env.CONTENT_STORE.put(BD_WF_LAST, blob, { expirationTtl: 7 * 86400 });
+      }
+    } catch (_) { /* best effort */ }
   }
   return data;
 }

@@ -942,8 +942,6 @@ var BD_WF_PAGE=100;
 var BD_WF_W_LBL=78,BD_WF_W_N=58,BD_WF_W_CELL=50;   // 34+ tenure columns: a cell must fit "85.7%" at 11px
 // Gentler than C3 (Alex, 2026-11-24): 70-80% reads light green; red only below 65%, darkest at 30%.
 var BD_WF_NEUTRAL=0.65,BD_WF_LOW=0.30,BD_WF_BLEND_MIN=30,BD_WF_BLEND_MIN_COHORTS=2;
-var BD_WF_GREEN=['#E3F4E9','#C7E9D4','#A6DCBA','#81CD9D','#57BD7D'];
-var BD_WF_RED=['#FBE7E7','#F7CFCF','#F3B5B5','#EF9999','#E97878'];
 var BD_WF_MN=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function bdWfFetch(fresh){
   if(typeof BD==='undefined')return;
@@ -1115,12 +1113,16 @@ function _bdWfSorted(list){
   }[_bdWfSort]||null;
   return list.slice().sort(by||function(){return 0;});
 }
+// Green to yellow to red (Alex, 2026-11-24), a continuous blend through
+// BD_WF_STOPS: red at 30% and below, yellow at 55%, light green at 85%, full
+// green at 100%. Light enough throughout for the navy cell text.
+var BD_WF_STOPS=[[0.30,[244,163,163]],[0.55,[251,227,142]],[0.85,[167,221,184]],[1.00,[111,199,147]]];
 function _bdWfFill(pct){
   if(pct===null||pct===undefined)return '';
-  if(pct>=0.999)return BD_WF_GREEN[4];
-  if(pct>BD_WF_NEUTRAL)return BD_WF_GREEN[Math.min(4,Math.floor(((pct-BD_WF_NEUTRAL)/(1-BD_WF_NEUTRAL))*5))];
-  if(pct<BD_WF_NEUTRAL)return BD_WF_RED[Math.min(4,Math.floor(Math.min(1,(BD_WF_NEUTRAL-pct)/(BD_WF_NEUTRAL-BD_WF_LOW))*4.999))];
-  return '';
+  var S=BD_WF_STOPS,p=Math.max(S[0][0],Math.min(1,pct));
+  for(var i=1;i<S.length;i++)if(p<=S[i][0]){var a=S[i-1],b=S[i],t=(p-a[0])/(b[0]-a[0]);
+    return 'rgb('+[0,1,2].map(function(j){return Math.round(a[1][j]+(b[1][j]-a[1][j])*t);}).join(',')+')';}
+  return 'rgb('+S[S.length-1][1].join(',')+')';
 }
 // The cohort grid: rows = first-invoice month, Month k = k-th month from it,
 // alive = still active, or churned (last invoiced) no earlier than that month.
@@ -1529,6 +1531,8 @@ function _bdWfRender(){
   h+=head('W','bd-sec-wf0','Billing Summary','<span class="bd-src">Metabase</span>Recurly + bill.com invoices joined to HubSpot deals and app brands. '
     +'Complete months through '+_bdWfLbl(now)+' · '+(wf.cached?'cached ':'run ')+_bdEsc(String((wf.meta&&wf.meta.asOf)||'').replace('T',' ').slice(0,16))+' UTC'
     +(wf.meta&&wf.meta.url?' · <a href="'+_bdEsc(wf.meta.url)+'" target="_blank" rel="noopener" style="color:#0F766E;font-weight:600">Open in Metabase</a>':''));
+  // Metabase failed this time (worker: the last good copy, wf.stale).
+  if(wf.stale)h+='<div class="bd-app-band err" role="status" style="background:#FFFBEB;border-color:#FCD34D;color:#92400E"><strong>Showing the last good copy, from '+_bdEsc(String(wf.stale.asOf||'').replace('T',' ').slice(0,16))+' UTC.</strong> <span>'+_bdEsc(wf.stale.error||'Metabase did not answer')+'. Refresh to try again.</span></div>';
   var nAct=0,nCh=0,nPa=0,nPil=0,lastInv=0,stale=0;
   list.forEach(function(b){
     if(_bdWfChurned(b)){if(/pause/i.test(b.st))nPa++;else nCh++;}else{nAct++;if(!b.li||_bdWfDiff(b.li,now)>=2)stale++;}
@@ -1665,9 +1669,9 @@ function _bdWfRender(){
     +_bdWfSeg('Never Implemented',_bdWfPill(_bdWfNI,'incl','Included','ni','Churned brands that never launched stay in their cohorts')
       +_bdWfPill(_bdWfNI,'excl','Excluded','ni','Leave out churned brands with a Never Implemented churn type, or no churn type and a widget that never went live'))
     +_bdWfSeg('Cohorts from',_bdWfPill(_bdWfFrom,'all','All','from')+years.map(function(y){return _bdWfPill(_bdWfFrom,y,y,'from');}).join(''))
-    +'<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--grey);margin-left:auto">≤'+(churnView?pct(1-BD_WF_LOW):pct(BD_WF_LOW))
-    +BD_WF_RED.slice().reverse().concat(['#FFFFFF']).concat(BD_WF_GREEN).map(function(c){return '<span style="width:14px;height:10px;background:'+c+';border:1px solid rgba(23,44,69,.08)"></span>';}).join('')
-    +(churnView?pct(1-BD_WF_NEUTRAL):pct(BD_WF_NEUTRAL))+' neutral</span></div>';
+    +'<span style="display:inline-flex;align-items:center;gap:6px;font-size:10px;color:var(--grey);margin-left:auto">'+(churnView?'\u226570%':'\u226430%')
+    +'<span style="width:150px;height:10px;border-radius:3px;border:1px solid rgba(23,44,69,.08);background:linear-gradient(90deg,'+(churnView?[1,0.85,0.55,0.30]:[0.30,0.55,0.85,1]).map(function(v){return _bdWfFill(v);}).join(',')+')"></span>'
+    +(churnView?'0%':'100%')+' <span style="opacity:.75">(yellow at '+(churnView?'45%':'55%')+')</span></span></div>';
   var W=rw.maxK,minW=BD_WF_W_LBL+BD_WF_W_N+BD_WF_W_CELL*W;
   // Cohort rows whose retention a flagged brand distorts: active brands not
   // invoiced lately keep the row high; a long gap hides a churn and a return.
