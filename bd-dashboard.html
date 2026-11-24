@@ -388,6 +388,7 @@ circle.bd-bs-sl{stroke-width:28}
 .bd-wf-t tbody tr:hover td{background:#F9FBFC}
 .bd-wf-dl{font-size:9.5px;font-weight:700;color:#0F766E;text-decoration:none;margin-left:4px}
 .bd-wf-dl:hover{text-decoration:underline}
+.bd-wf-na{color:#CBD5E1}
 .bd-wf-k{display:block;font-size:9.5px;font-weight:400;color:var(--grey)}
 .bd-wf-t td.pre{background:#FAFBFC}
 .bd-wf-t td.post{background:repeating-linear-gradient(135deg,#FAFBFC 0 4px,#F1F4F7 4px 6px)}
@@ -893,25 +894,33 @@ function bdSetTab(t){
 //  - W2: a brand counts as retained through its churn month (it paid that
 //    month) and as lost from the month after. Month 1 = the first invoice.
 // BD.wf: null (never asked), {loading:true}, {error}, or the payload.
-var _bdWfF={ty:'',seg:'',ab:'',wt:'',ss:'',it:'',pkg:'',st:'',impl:'',paid:''};
+var _bdWfF={src:'',grp:'',st:'',stage:'',chSrc:'',impl:'',paid:'',ty:'',seg:'',ab:'',wt:'',wts:'',ss:'',it:'',mt:'',pkg:'',pil:''};
+var _bdWfCols='all';   // W1 columns: 'all' or 'billing' (Alex, 2026-11-24: every card column)
 // Products Ever Live / Live at Churn (Alex, 2026-11-24): intersection multi-
-// selects of the app's widget types (wf.widgets, worker bdWfWidgets). A brand
-// matches when EVERY picked type was live (10+ viewers in a day): ever, or in
-// its churn month (the last full month for an active brand). Widget data starts
-// in wf.widgets.from, so a brand churned before then has no value and drops out
-// while a type is picked, as the Metabase filters treat it.
+// selects of the card's four products (BD_WF_PRODS). A brand matches when
+// EVERY ticked product was live: ever (the card's counts), or in its churn
+// month (wf.widgets, worker bdWfWidgets; last full month if active). Widget
+// data starts in Dec 2025, so a brand churned before then has no value and
+// drops out while a product is ticked, as the Metabase filters treat it.
 var _bdWfProd={ever:[],churn:[]},_bdWfMsOpen='';
-var BD_WF_WTYPES=[['sticker','Sticker'],['quant','Quant'],['qual','Qual'],['gpt','Clinician AI (gpt)'],['analysis','Analysis'],['brand','Brand']];
+// The card's four products (CC_PRODUCTS, REVIEWS_PRODUCTS, CA_PRODUCTS,
+// CAI_PRODUCTS), by their names. [key, name, payload field]
+var BD_WF_PRODS=[['cc','Clinicians\u2019 Choice','cc'],['reviews','Clinician Reviews','rv'],['ca','Product Analysis','ca'],['cai','ClinicianAI','cai']];
 function bdWfProdToggle(w,t){if(!_bdWfProd[w])return;var a=_bdWfProd[w],i=a.indexOf(t);if(i<0)a.push(t);else a.splice(i,1);_bdWfMsOpen=w;_bdWfShow=BD_WF_PAGE;renderBD();}
 function bdWfProdClear(w){if(!_bdWfProd[w])return;_bdWfProd[w]=[];_bdWfMsOpen=w;renderBD();}
 function bdWfMsToggle(w,el){if(el&&el.open)_bdWfMsOpen=w;else if(_bdWfMsOpen===w)_bdWfMsOpen='';}
-// The widget types live for brand b: 'ever' (any month) or 'churn' (its churn
-// month, else the last complete month); null when there is no data for it.
+// The products live for brand b. 'ever': the card's counts above 0 (live at
+// any time, or stamped live by the app); 'churn': live in its churn month (the
+// last complete month for an active brand), from wf.widgets. null = no data.
 function _bdWfTypesOf(b,w){
+  if(w==='ever'){
+    if(BD_WF_PRODS.every(function(p){return b[p[2]]==null;}))return null;
+    return BD_WF_PRODS.filter(function(p){return b[p[2]]>0;}).map(function(p){return p[0];});
+  }
   var wg=(typeof BD!=='undefined'&&BD.wf)?BD.wf.widgets:null;if(!wg||wg.error||!wg.byKey)return null;
   var o=wg.byKey[b.k]||{},ms=BD.wf.months||[],cm=_bdWfChurnMonth(b)||ms[ms.length-1]||'';
   if(wg.from&&cm&&cm<wg.from)return null;
-  return Object.keys(o).filter(function(t){return w==='ever'?o[t].length>0:o[t].indexOf(cm)>=0;});
+  return Object.keys(o).filter(function(t){return o[t].indexOf(cm)>=0;});
 }
 var _bdWfPil='incl',_bdWfNI='excl',_bdWfMode='pct',_bdWfMetric='ret',_bdWfFrom='all';
 var _bdWfQ='',_bdWfSort='first',_bdWfShow=100,_bdWfQT=null;
@@ -949,6 +958,7 @@ function bdWfSet(which,v){
   else if(which==='from')_bdWfFrom=/^\d{4}$/.test(v)?v:'all';
   else if(which==='sort')_bdWfSort=['first','name','churn','total','last','flags'].indexOf(v)>=0?v:'first';
   else if(which==='more')_bdWfShow=(v==='all')?1e9:_bdWfShow+BD_WF_PAGE;
+  else if(which==='cols')_bdWfCols=(v==='billing')?'billing':'all';
   renderBD();
 }
 // Search re-renders after a pause, then puts the caret back in the box.
@@ -977,17 +987,26 @@ function _bdWfIsNI(b){
   if(b.ty==='Board Defined'||b.ty==='Delinquent Payment')return false;
   return !b.impl;
 }
+// One filter per categorical column of card 3565, in its column order (Alex,
+// 2026-11-24: "update the filters to match these column fields").
 var BD_WF_FILTERS=[
-  {k:'st',l:'Status',of:function(b){return b.st||'Not recorded';}},
+  {k:'src',l:'Source',of:function(b){return b.src||'Not recorded';}},
+  {k:'grp',l:'Group',of:function(b){return b.grp||'No group';}},
+  {k:'st',l:'Churn Status',of:function(b){return b.st||'Not recorded';}},
+  {k:'stage',l:'HubSpot Stage',of:function(b){return b.stage||'No deal';}},
+  {k:'chSrc',l:'Churn Source',of:function(b){return b.chSrc||'Not churned';}},
+  {k:'impl',l:'Ever Implemented',of:function(b){return b.impl?'Yes':'No';}},
+  {k:'paid',l:'Ever Paid',of:function(b){return b.paid?'Yes':'No';}},
   {k:'ty',l:'Churn Type',of:function(b){return b.ty||'Not recorded';}},
   {k:'seg',l:'Company Segment',of:function(b){return b.seg||'Not recorded';}},
   {k:'ab',l:'A/B Test',of:function(b){return b.ab||'Not recorded';}},
   {k:'wt',l:'Web Tier at Churn',of:function(b){return b.wt||'Not recorded';}},
+  {k:'wts',l:'Web Tier Source',of:function(b){return b.wts||'None';}},
   {k:'ss',l:'Self-selected Traffic',of:function(b){return b.ss||'Not selected';}},
   {k:'it',l:'Implied Traffic',of:function(b){return b.it||'No traffic data';}},
+  {k:'mt',l:'Measured Traffic',of:function(b){return b.mt||'No traffic data';}},
   {k:'pkg',l:'Package',of:function(b){return b.pkg||'Not recorded';}},
-  {k:'impl',l:'Ever Implemented',of:function(b){return b.impl?'Yes':'No';}},
-  {k:'paid',l:'Ever Paid',of:function(b){return b.paid?'Yes':'No';}}
+  {k:'pil',l:'Pilot Status',of:function(b){return b.pil||'No pilot';}}
 ];
 // Filters, search and the pilot switch. skip names one filter to leave out, so
 // each dropdown can count what picking each of its values would give.
@@ -1237,8 +1256,13 @@ function bdWfCsv(){
   var wf=BD&&BD.wf;if(!wf||!wf.brands)return;
   _bdWfFlagsAll(wf);
   var list=_bdWfSorted(_bdWfFilter(wf.brands)),q=function(v){v=v==null?'':String(v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
-  var rows=[['Brand key','Brand','Status','HubSpot stage','First invoice','Churn month (last invoiced)','Metabase churn month','Months until churn','Invoiced months','Total invoiced','Churn type','Segment','Package','Pilot','Possible abnormalities'].concat(wf.months)];
-  list.forEach(function(b){rows.push([b.k,b.n,b.st,b.stage,b.fm,_bdWfChurnMonth(b),b.hsCh,(_bdWfChurnMonth(b)?_bdWfDiff(b.fm,_bdWfChurnMonth(b)):''),b.mi,_bdWfTotal(b),b.ty,b.seg,b.pkg,b.pil,(b._fl||[]).map(function(f){return f.title;}).join('; ')].concat(b.a.map(function(v){return v==null?'':v;})));});
+  var rows=[['Brand key','Brand','Source','Group','Churn status','HubSpot stage','First month','Last invoiced','Churn month (last invoiced)','Months until churn','Invoiced months','Total invoiced',
+    'Metabase churn month','Churn source','Metabase months until churn','Ever implemented','Ever paid','Churn type','Segment','A/B test','Web tier at churn','Web tier source',
+    'Self-selected traffic','Implied traffic','Implied views 30d','Measured traffic','Measured views 30d','Clinicians\u2019 Choice products','Clinician Reviews products','Product Analysis products','ClinicianAI products',
+    'Products ever live','Products live at churn','Package','Pilot status','Possible abnormalities'].concat(wf.months)];
+  list.forEach(function(b){var c=_bdWfChurnMonth(b);rows.push([b.k,b.n,b.src,b.grp,b.st,b.stage,b.fm,b.li,c,c?_bdWfDiff(b.fm,c):'',b.mi,_bdWfTotal(b),
+    b.hsCh,b.chSrc,b.mu,b.impl?'Yes':'No',b.paid?'Yes':'No',b.ty,b.seg,b.ab,b.wt,b.wts,b.ss,b.it,b.v30,b.mt,b.mv,b.cc,b.rv,b.ca,b.cai,b.pe,b.pc,b.pkg,b.pil,
+    (b._fl||[]).map(function(f){return f.title;}).join('; ')].concat(b.a.map(function(v){return v==null?'':v;})));});
   var blob=new Blob([rows.map(function(r){return r.map(q).join(',');}).join('\n')],{type:'text/csv'}),url=URL.createObjectURL(blob),a=document.createElement('a');
   a.href=url;a.download='churn-waterfall.csv';document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(function(){URL.revokeObjectURL(url);},200);
 }
@@ -1432,17 +1456,17 @@ function _bdWfRender(){
     +BD_WF_FLAGS.map(function(f){return '<option value="'+f.id+'"'+(_bdWfFlagF===f.id?' selected':'')+'>'+_bdEsc(f.title)+' ('+(flCnt[f.id]||0)+')</option>';}).join('')+'</select></label>';
   [['ever','Products Ever Live'],['churn','Products Live at Churn']].forEach(function(p){
     var w=p[0],sel=_bdWfProd[w],wg=wf.widgets;
-    if(!wg||wg.error){bar+='<label>'+p[1]+'<select disabled><option>Widget data unavailable</option></select></label>';return;}
+    if(w==='churn'&&(!wg||wg.error)){bar+='<label>'+p[1]+'<select disabled><option>Widget data unavailable</option></select></label>';return;}
     // Each option counts the brands that would match with it added to what is picked.
     var pool=_bdWfFilter(all,w,true).map(function(b){return _bdWfTypesOf(b,w);});
     var has=function(ts,need){return ts&&need.every(function(t){return ts.indexOf(t)>=0;});};
-    var lbl=sel.length?sel.map(function(t){return (BD_WF_WTYPES.filter(function(x){return x[0]===t;})[0]||[t,t])[1];}).join(' + '):'All';
+    var lbl=sel.length?sel.map(function(t){return (BD_WF_PRODS.filter(function(x){return x[0]===t;})[0]||[t,t])[1];}).join(' + '):'All';
     bar+='<details class="bd-wf-ms'+(sel.length?' on':'')+'"'+(_bdWfMsOpen===w?' open':'')+' ontoggle="bdWfMsToggle(\''+w+'\',this)"><summary>'+p[1]+'<b>'+_bdEsc(lbl)+'</b></summary><div class="bd-wf-ms-p">'
       +'<div class="bd-wf-ms-h">'+(w==='ever'?'Live at any time':'Live in the churn month (last full month if active)')+' \u00b7 brands must have <b>all</b> ticked</div>'
-      +BD_WF_WTYPES.map(function(x){var on=sel.indexOf(x[0])>=0,n=pool.filter(function(ts){return has(ts,on?sel:sel.concat([x[0]]));}).length;
+      +BD_WF_PRODS.map(function(x){var on=sel.indexOf(x[0])>=0,n=pool.filter(function(ts){return has(ts,on?sel:sel.concat([x[0]]));}).length;
         return '<label class="bd-wf-ms-o"><input type="checkbox"'+(on?' checked':'')+' onchange="bdWfProdToggle(\''+w+'\',\''+x[0]+'\')"> '+x[1]+'<span>'+n+'</span></label>';}).join('')
       +(sel.length?'<button class="bd-wf-btn" style="margin-top:6px" onclick="bdWfProdClear(\''+w+'\')">Clear</button>':'')
-      +'<div class="bd-wf-ms-n">Widget data from '+_bdWfLbl(wg.from)+'; brands churned before then drop out while a type is ticked.</div></div></details>';
+      +'<div class="bd-wf-ms-n">'+(w==='ever'?'From the card\u2019s product counts (a widget seen by 10+ people in a day, or marked live). ':'From daily widget views (10+ people in a day). ')+'Widget data starts '+_bdWfLbl((wg&&wg.from)||'2025-12')+'; brands churned before then drop out while a product is ticked.</div></div></details>';
   });
   var anyF=Object.keys(_bdWfF).some(function(k){return !!_bdWfF[k];})||_bdWfProd.ever.length||_bdWfProd.churn.length||_bdWfPil!=='incl'||!!_bdWfQ||!!_bdWfFlagF;
   bar+=_bdWfSeg('Pilots',_bdWfPill(_bdWfPil,'incl','Included','pil','Pilot brands count from their Pilot Initiation Fee invoice')
@@ -1458,14 +1482,51 @@ function _bdWfRender(){
     +'<input id="bd-wf-q" type="search" placeholder="Search brand, key or group" value="'+_bdEsc(_bdWfQ)+'" oninput="bdWfSearch(this)">'
     +'<label>Sort<select onchange="bdWfSet(\'sort\',this.value)">'+[['first','First invoice'],['name','Brand name'],['churn','Churn month (newest)'],['last','Last invoiced (newest)'],['total','Total invoiced'],['flags','Abnormalities first']]
       .map(function(o){return '<option value="'+o[0]+'"'+(_bdWfSort===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')+'</select></label>'
+    +_bdWfSeg('Columns',_bdWfPill(_bdWfCols,'all','All','cols','Every column of the Metabase question')+_bdWfPill(_bdWfCols,'billing','Billing only','cols','Status, first month, churn month, months and totals'))
     +'<span style="font-size:11px;color:var(--grey)">'+sorted.length.toLocaleString()+' brand'+(sorted.length===1?'':'s')+'</span>'
     +'<button class="bd-wf-btn" style="margin-left:auto" onclick="bdWfCsv()">Download CSV</button></div>';
   var tot=months.map(function(){return 0;}),cntM=months.map(function(){return 0;});
   sorted.forEach(function(b){b.a.forEach(function(v,i){if(v!=null){tot[i]+=v;if(v>=0.01)cntM[i]++;}});});
-  var t='<div class="bd-wf-scroll"><table class="bd-wf-t" onmousemove="bdWfTip(event)" onmouseleave="bdWfTipOff()"><thead><tr><th class="bd-wf-b">Brand</th><th>Status</th><th>First invoice</th><th title="The last month the brand was invoiced above $0 — blank while active">Churn month</th><th title="Months from the first invoice to the last one (the churn month) \u2014 blank while active">Months Until Churn</th><th title="Complete months invoiced above $0">Invoiced Months</th><th>Total</th>'
+  // Every column of card 3565 (Alex, 2026-11-24), then the months. 'billing'
+  // keeps only the billing columns. Churn Month is this tab's (the last month
+  // invoiced); Metabase's own churn month, source and months sit in one column.
+  var sm=function(a,b){return _bdEsc(a||'—')+(b?'<span class="bd-wf-k">'+_bdEsc(b)+'</span>':'');};
+  var num=function(v){return v==null?'<span class="bd-wf-na">—</span>':Number(v).toLocaleString();};
+  var COLS=[
+    {h:'Churn Status',bill:1,f:function(b){return _bdWfStatusBadge(b);}},
+    {h:'HubSpot Stage',f:function(b){return sm(b.stage||'No deal');}},
+    {h:'Source',f:function(b){return sm(b.src);}},
+    {h:'Group',f:function(b){return b.grp?_bdEsc(b.grp):'';}},
+    {h:'First Month',bill:1,f:function(b){return _bdWfLbl(b.fm);}},
+    {h:'Last Invoiced',f:function(b){return _bdWfLbl(b.li);}},
+    {h:'Churn Month',bill:1,t:'This tab’s churn date: the last month invoiced above $0 — blank while active',f:function(b,c){return c?_bdWfLbl(c):'';}},
+    {h:'Months Until Churn',bill:1,m:1,t:'Months from the first invoice to the last one (the churn month) — blank while active',f:function(b,c){return c?_bdWfDiff(b.fm,c):'';}},
+    {h:'Invoiced Months',bill:1,m:1,t:'Complete months invoiced above $0',f:function(b){return b.mi||0;}},
+    {h:'Total',bill:1,m:1,f:function(b){return _bdWfAmt(_bdWfTotal(b));}},
+    {h:'Metabase Churn Month',t:'CHURN_MONTH: the deal’s pause/churn date, else the company’s, the last Recurly subscription’s end, the app deletion, or the last month billed; with CHURN_SOURCE and MONTHS_UNTIL_CHURN',f:function(b){return b.hsCh?sm(_bdWfLbl(b.hsCh),(b.chSrc||'')+(b.mu!=null?' · '+b.mu+' mo':'')):'';}},
+    {h:'Churn Type',f:function(b){return sm(b.ty);}},
+    {h:'Company Segment',f:function(b){return sm(b.seg);}},
+    {h:'A/B Test',f:function(b){return sm(b.ab);}},
+    {h:'Ever Implemented',f:function(b){return b.impl?'Yes':'No';}},
+    {h:'Ever Paid',f:function(b){return b.paid?'Yes':'No';}},
+    {h:'Web Tier at Churn',t:'With WEB_TIER_SOURCE beneath',f:function(b){return sm(b.wt,b.wts);}},
+    {h:'Self-selected Traffic',f:function(b){return sm(b.ss);}},
+    {h:'Implied Traffic',t:'With IMPLIED_VIEWS_30D beneath',f:function(b){return sm(b.it,b.v30!=null?Number(b.v30).toLocaleString()+' views/30d':'');}},
+    {h:'Measured Traffic',t:'With MEASURED_VIEWS_30D beneath',f:function(b){return sm(b.mt,b.mv!=null?Number(b.mv).toLocaleString()+' views/30d':'');}},
+    {h:'Clinicians’ Choice',m:1,t:'CC_PRODUCTS: products that ever had a Clinicians’ Choice widget live (badge, banner, brand badge or popup)',f:function(b){return num(b.cc);}},
+    {h:'Clinician Reviews',m:1,t:'REVIEWS_PRODUCTS',f:function(b){return num(b.rv);}},
+    {h:'Product Analysis',m:1,t:'CA_PRODUCTS',f:function(b){return num(b.ca);}},
+    {h:'ClinicianAI',m:1,t:'CAI_PRODUCTS (any size)',f:function(b){return num(b.cai);}},
+    {h:'Products Ever Live',m:1,t:'PRODUCTS_EVER_LIVE_COUNT',f:function(b){return num(b.pe);}},
+    {h:'Products Live at Churn',m:1,t:'PRODUCTS_LIVE_AT_CHURN_COUNT (last complete month for active brands)',f:function(b){return num(b.pc);}},
+    {h:'Package',f:function(b){return sm(b.pkg);}},
+    {h:'Pilot Status',f:function(b){return sm(b.pil);}}
+  ].filter(function(col){return _bdWfCols==='all'||col.bill;});
+  var t='<div class="bd-wf-scroll"><table class="bd-wf-t" onmousemove="bdWfTip(event)" onmouseleave="bdWfTipOff()"><thead><tr><th class="bd-wf-b">Brand</th>'
+    +COLS.map(function(col){return '<th'+(col.m?' class="m"':'')+(col.t?' title="'+_bdEsc(col.t)+'"':'')+'>'+col.h+'</th>';}).join('')
     +months.map(function(m){return '<th class="m">'+_bdWfLbl(m)+'</th>';}).join('')+'</tr>'
-    +'<tr class="tot"><td class="bd-wf-b">Brands invoiced</td><td colspan="6"></td>'+cntM.map(function(c){return '<td class="m">'+(c?c.toLocaleString():'')+'</td>';}).join('')+'</tr>'
-    +'<tr class="tot"><td class="bd-wf-b">Invoiced ($)</td><td colspan="6" style="text-align:right">'+f$(tot.reduce(function(a,b){return a+b;},0))+'</td>'+tot.map(function(v){return '<td class="m">'+(Math.abs(v)>=0.5?_bdWfAmt(v):'')+'</td>';}).join('')+'</tr></thead><tbody>';
+    +'<tr class="tot"><td class="bd-wf-b">Brands invoiced</td><td colspan="'+COLS.length+'"></td>'+cntM.map(function(c){return '<td class="m">'+(c?c.toLocaleString():'')+'</td>';}).join('')+'</tr>'
+    +'<tr class="tot"><td class="bd-wf-b">Invoiced ($)</td><td colspan="'+COLS.length+'" style="text-align:right">'+f$(tot.reduce(function(a,b){return a+b;},0))+'</td>'+tot.map(function(v){return '<td class="m">'+(Math.abs(v)>=0.5?_bdWfAmt(v):'')+'</td>';}).join('')+'</tr></thead><tbody>';
   shown.forEach(function(b){
     var c=_bdWfChurnMonth(b);
     var fl=b._fl||[],flCells={};
@@ -1476,7 +1537,7 @@ function _bdWfRender(){
     t+='<tr'+(fl.length?' class="fl-'+fl[0].sev+'"':'')+ti+'><td class="bd-wf-b"'+(fl.length?'':' title="'+_bdEsc(_bdWfBrandTip(b))+'"')+'>'
       +(fl.length?'<span class="bd-wf-flag '+fl[0].sev+'">\u26a0'+(fl.length>1?' '+fl.length:'')+'</span>':'')
       +_bdEsc(b.n||('Brand '+b.k))+'<span class="bd-wf-k">'+_bdEsc(b.k)+(b.grp?' \u00b7 '+_bdEsc(b.grp):'')+_bdWfDealLink(b)+'</span></td>'
-      +'<td>'+_bdWfStatusBadge(b)+'</td><td>'+_bdWfLbl(b.fm)+'</td><td>'+(c?_bdWfLbl(c):'')+'</td><td class="m">'+(c?_bdWfDiff(b.fm,c):'')+'</td><td class="m">'+(b.mi||0)+'</td><td class="m">'+_bdWfAmt(_bdWfTotal(b))+'</td>';
+      +COLS.map(function(col){return '<td'+(col.m?' class="m"':'')+'>'+col.f(b,c)+'</td>';}).join('');
     months.forEach(function(m,i){
       var v=b.a[i],cls='m';
       // ' fl" title="…"' closes the class attribute and carries its own closing quote.

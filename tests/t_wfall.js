@@ -125,7 +125,7 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
   ck('months before the first invoice are blank',(rowOf('Pilot Co').match(/class="m pre"/g)||[]).length,2);
   ck('the pilot’s first invoice (its fee) starts its row',/<td class="m">5,000<\/td>/.test(rowOf('Pilot Co')),true);
   ck('the tooltip keeps Metabase’s own churn month',/Churn month used: Aug 26 \(last month invoiced\) · Metabase’s churn month: Oct 26/.test(rowOf('Gone Co')),true);
-  ck('month totals: brands invoiced and dollars',/<tr class="tot"><td class="bd-wf-b">Brands invoiced<\/td><td colspan="6"><\/td><td class="m">2<\/td><td class="m">4<\/td><td class="m">3<\/td><td class="m">1<\/td><\/tr>/.test(h),true);
+  ck('month totals: brands invoiced and dollars',/<tr class="tot"><td class="bd-wf-b">Brands invoiced<\/td><td colspan="28"><\/td><td class="m">2<\/td><td class="m">4<\/td><td class="m">3<\/td><td class="m">1<\/td><\/tr>/.test(h),true);
   ck('Never Implemented is excluded from W2 by default (Alex, 2026-11-24)',P._bdWfNI,'excl');
   ck('W1 columns: Months Until Churn (first to last invoice) and Invoiced Months',/<th[^>]*>Months Until Churn<\/th><th[^>]*>Invoiced Months<\/th>/.test(h)&&/Gone Co[\s\S]*?<td>Aug 26<\/td><td class="m">1<\/td><td class="m">2<\/td>/.test(rowOf('Gone Co')),true);
   ck('  blank while active',/<td><\/td><td class="m"><\/td><td class="m">4<\/td>/.test(rowOf('Stay Co')),true);
@@ -233,19 +233,27 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
    ck('  cohort filter: only that first-invoice month, and the cohort picker counts by month',[names(s2),/<option value="2026-02" selected>Feb 26 \(1\)<\/option>/.test(s2),/<option value="2026-01">Jan 26 \(1\)<\/option>/.test(s2)],[['Double Co'],true,true]);
    ck('  hovering a row opens its explanation card',P._bdWfTips.some(t=>/Double Co/.test(t)&&/Possible double billing/.test(t)),true);
    P._bdWfW2T={open:false,co:'',fl:''};P.BD.wf=prev;}
-  // Product multi-selects + deal link (Alex, 2026-11-24)
+  // Product multi-selects + deal link (Alex, 2026-11-24): the card's four products.
   {const prev=P.BD.wf;
-   P.BD.wf=Object.assign({},d,{widgets:{from:'2025-12',byKey:{'1':{quant:['2026-07','2026-10'],sticker:['2026-08']},'2':{sticker:['2026-08']},'5':{quant:['2026-09']}}}});
+   P.BD.wf=Object.assign({},d,{widgets:{from:'2025-12',byKey:{'1':{reviews:['2026-07','2026-10'],cc:['2026-08']},'2':{cc:['2026-08']},'5':{reviews:['2026-09']}}}});
+   const set=(k,o)=>Object.assign(P.BD.wf.brands.find(b=>b.k===k),o);
+   set('1',{cc:2,rv:1,ca:0,cai:0});set('2',{cc:1,rv:0,ca:0,cai:0});set('5',{cc:0,rv:3,ca:0,cai:0});set('3',{cc:0,rv:0,ca:0,cai:0});set('4',{cc:null,rv:null,ca:null,cai:null});
    P.BD.wf.brands.forEach(b=>delete b._fl);P.BD.wf._flagged=false;P.bdWfReset();
    const names=x=>[...x.matchAll(/<td class="bd-wf-b"[^>]*>(?:<span class="bd-wf-flag[^>]*>[^<]*<\/span>)?([^<]+)<span/g)].map(m=>m[1]).sort();
    let x=R();
-   ck('the two product filters are multi-selects of widget types, with counts',/<details class="bd-wf-ms"[^>]*><summary>Products Ever Live<b>All<\/b><\/summary>/.test(x)&&/onchange="bdWfProdToggle\('ever','quant'\)"> Quant<span>2<\/span>/.test(x)&&/onchange="bdWfProdToggle\('churn','sticker'\)"> Sticker<span>1<\/span>/.test(x),true);
-   P.bdWfProdToggle('ever','quant');x=R();
-   ck('  Ever Live: Quant keeps brands where Quant was ever live',names(x),['Paused Co','Stay Co']);
-   P.bdWfProdToggle('ever','sticker');x=R();
-   ck('  ticking Sticker too is an intersection (both live)',[names(x),/<summary>Products Ever Live<b>Quant \+ Sticker<\/b>/.test(x)],[['Stay Co'],true]);
-   P.bdWfReset();P.bdWfProdToggle('churn','quant');x=R();
-   ck('  Live at Churn: live in the churn month (Paused Co churned Sep: quant live Sep), or the last month if active (Stay Co: Oct)',names(x),['Paused Co','Stay Co']);
+   ck('the product filters list the card’s four products by name, with counts',/<summary>Products Ever Live<b>All<\/b><\/summary>/.test(x)&&/onchange="bdWfProdToggle\('ever','reviews'\)"> Clinician Reviews<span>2<\/span>/.test(x)&&/onchange="bdWfProdToggle\('ever','cc'\)"> Clinicians’ Choice<span>2<\/span>/.test(x)&&/onchange="bdWfProdToggle\('churn','cai'\)"> ClinicianAI<span>0<\/span>/.test(x),true);
+   P.bdWfProdToggle('ever','reviews');x=R();
+   ck('  Ever Live: Clinician Reviews keeps brands whose REVIEWS_PRODUCTS > 0',names(x),['Paused Co','Stay Co']);
+   P.bdWfProdToggle('ever','cc');x=R();
+   ck('  ticking Clinicians’ Choice too is an intersection (both)',[names(x),/<summary>Products Ever Live<b>Clinician Reviews \+ Clinicians’ Choice<\/b>/.test(x)],[['Stay Co'],true]);
+   P.bdWfReset();P.bdWfProdToggle('churn','reviews');x=R();
+   ck('  Live at Churn: live in the churn month (Paused Co: Sep), or the last month if active (Stay Co: Oct)',names(x),['Paused Co','Stay Co']);
+   P.bdWfReset();x=R();
+   ck('All Brands carries every card column, then the months',['HubSpot Stage','Source','Group','Last Invoiced','Metabase Churn Month','Churn Type','Company Segment','A/B Test','Ever Implemented','Ever Paid','Web Tier at Churn','Self-selected Traffic','Implied Traffic','Measured Traffic','Clinicians’ Choice','Clinician Reviews','Product Analysis','ClinicianAI','Products Ever Live','Products Live at Churn','Package','Pilot Status'].every(h=>x.indexOf('>'+h+'</th>')>0),true);
+   ck('  and a filter for each categorical column',['Source','Group','Churn Status','HubSpot Stage','Churn Source','Web Tier Source','Measured Traffic','Pilot Status'].every(l=>x.indexOf('<label>'+l+'<select')>=0),true);
+   P.bdWfSet('cols','billing');x=R();
+   ck('  Columns: Billing only keeps the billing columns',[x.indexOf('>Measured Traffic</th>')<0,x.indexOf('>Months Until Churn</th>')>0],[true,true]);
+   P.bdWfSet('cols','all');
    P.bdWfReset();
    P._bdWfJoin={byBrand:{'1':[{id:'777',dealname:'Stay deal',dealstage:'closedwon',brand_status:'Paying',closedate:'2026-07-01'},{id:'778',dealstage:'appointmentscheduled',closedate:'2026-01-01'}]}};
    x=P._bdWfRender();

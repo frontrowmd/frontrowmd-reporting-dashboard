@@ -3831,7 +3831,7 @@ async function metabaseCheck(env) {
 // card reads Snowflake copies refreshed a few times a day; a run takes a while);
 // Refresh skips the cache.
 const BD_WF_CARD = 3565;
-const BD_WF_KV = 'bd_waterfall_v2';   // v2: payload adds recurly.rs and widgets
+const BD_WF_KV = 'bd_waterfall_v3';   // v3: product kinds + measured traffic
 const BD_WF_TTL_SEC = 1800;
 // The card's month columns are named "'2024-01'" (quotes included) by its PIVOT.
 const BD_WF_MONTH_RE = /^'?(\d{4}-\d{2})'?$/;
@@ -3857,11 +3857,14 @@ function bdWfShape(colNames, rows) {
     k: str(g(r, 'BRAND_KEY')), n: str(g(r, 'BRAND_NAME')), src: str(g(r, 'SOURCE')), grp: str(g(r, 'GROUP_NAME')),
     st: str(g(r, 'CHURN_STATUS')), stage: str(g(r, 'HUBSPOT_STAGE')),
     hsCh: bdWfMonth(g(r, 'CHURN_MONTH')), chSrc: str(g(r, 'CHURN_SOURCE')),
-    li: bdWfMonth(g(r, 'LAST_INVOICED_MONTH')), mi: num(g(r, 'MONTHS_INVOICED')) || 0,
+    li: bdWfMonth(g(r, 'LAST_INVOICED_MONTH')), mi: num(g(r, 'MONTHS_INVOICED')) || 0, mu: num(g(r, 'MONTHS_UNTIL_CHURN')),
     impl: str(g(r, 'EVER_IMPLEMENTED_WIDGET')) === 'Yes', paid: str(g(r, 'EVER_PAID_INVOICE')) === 'Yes',
     ty: str(g(r, 'CHURN_TYPE')), seg: str(g(r, 'COMPANY_SEGMENT')), ab: str(g(r, 'AB_TEST')),
     wt: str(g(r, 'WEB_TIER_AT_CHURN')), wts: str(g(r, 'WEB_TIER_SOURCE')),
     ss: str(g(r, 'SELF_SELECTED_TRAFFIC')), it: str(g(r, 'IMPLIED_TRAFFIC')), v30: num(g(r, 'IMPLIED_VIEWS_30D')),
+    mt: str(g(r, 'MEASURED_TRAFFIC')), mv: num(g(r, 'MEASURED_VIEWS_30D')),
+    // Products ever live with each widget (card 3565, 2026-11-24): null before the event data.
+    cc: num(g(r, 'CC_PRODUCTS')), rv: num(g(r, 'REVIEWS_PRODUCTS')), ca: num(g(r, 'CA_PRODUCTS')), cai: num(g(r, 'CAI_PRODUCTS')),
     pe: num(g(r, 'PRODUCTS_EVER_LIVE_COUNT')), pc: num(g(r, 'PRODUCTS_LIVE_AT_CHURN_COUNT')),
     pkg: str(g(r, 'PACKAGE')), pil: str(g(r, 'PILOT_STATUS')), fm: bdWfMonth(g(r, 'FIRST_MONTH')),
     a: mIx.map(i => { const v = num(r[i]); return v == null ? null : Math.round(v * 100) / 100; }),
@@ -4014,19 +4017,23 @@ async function bdWfRecurly(env) {
       ln: n(r.LIVE_N), ps: t(r.PAUSED_SINCE), rs: t(r.RESUMES), rn: n(r.RUNNING_N), nb: t(r.NEXT_BILL), fn: n(r.FUTURE_N), te: t(r.TRIAL_END) }; });
   return { today: rows.length ? t(rows[0].TODAY) : '', byKey: by };
 }
-// Billing tab product filters (Alex, 2026-11-24: "intersection multi-selects
-// of the actual product options", the app's widget types): per brand, each
-// widget type and the months it was live (10+ viewers in a day, the app's
-// go-live bar, as card 3565 counts products). gpt_s / gpt_m / gpt_lg fold into
-// gpt. One row per brand, the types and months packed as "t=YYYY-MM,...;...".
+// Billing tab "Products Live at Churn" (Alex, 2026-11-24): per brand, each of
+// card 3565's four products (its CC/REVIEWS/CA/CAI_PRODUCTS widget groups:
+// cc = quant, sticker, brand, popup; reviews = qual; ca = analysis; cai =
+// gpt*) and the months it was live (10+ viewers in a day). The card itself only
+// gives ever-live counts. One row per brand, packed as "t=YYYY-MM,...;...".
 const BD_WF_WIDGET_SQL = `
 with d as (
   select brand_id::varchar as brand_key,
-    iff(usage_type like 'widget_view:gpt%', 'gpt', split_part(usage_type, ':', 2)) as t,
+    case when split_part(usage_type, ':', 2) in ('quant', 'sticker', 'brand', 'popup') then 'cc'
+      when split_part(usage_type, ':', 2) = 'qual' then 'reviews'
+      when split_part(usage_type, ':', 2) = 'analysis' then 'ca'
+      when usage_type like 'widget_view:gpt%' then 'cai' end as t,
     to_char(date_trunc('month', day), 'YYYY-MM') as m
   from analytics_production.intermediate.int_daily_widget_usage
   where usage_type like 'widget_view:%' and users >= 10
   group by 1, 2, 3
+  having t is not null
 ),
 bt as (select brand_key, t, listagg(m, ',') within group (order by m) as ms from d group by 1, 2)
 select brand_key, listagg(t || '=' || ms, ';') within group (order by t) as live,
