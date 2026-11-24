@@ -415,6 +415,11 @@ circle.bd-bs-sl{stroke-width:28}
 .bd-wf-tip-i div{color:rgba(255,255,255,.85);margin-top:2px}
 .bd-wf-sev{display:inline-block;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:1px 6px;border-radius:50px;margin-right:6px}
 .bd-wf-sev.high{background:#DC2626}.bd-wf-sev.med{background:#D97706}.bd-wf-sev.low{background:#2563EB}
+.bd-wf-w2f{margin-top:14px}
+.bd-wf-w2t tr[data-ti]{cursor:help}
+.bd-wf-w2t tr[data-ti]:hover td{background:#F9FBFC}
+.bd-wf-ftag{display:inline-block;font-size:10px;font-weight:600;padding:1px 8px;border-radius:50px;margin:0 4px 3px 0;border:1px solid;white-space:nowrap}
+.bd-wf-ftag.high{color:#991B1B;border-color:#FCA5A5;background:#FEF2F2}.bd-wf-ftag.med{color:#92400E;border-color:#FCD34D;background:#FFFBEB}.bd-wf-ftag.low{color:#1E40AF;border-color:#93C5FD;background:#EFF6FF}
 .rwtbl.bd-wf-rw td{font-size:11px;padding:7px 2px}
 .bd-wf-st{display:inline-block;font-size:9.5px;font-weight:700;padding:2px 8px;border-radius:50px}
 .rwtbl{border-collapse:separate;border-spacing:0;font-size:12.5px;font-variant-numeric:tabular-nums;table-layout:fixed;width:100%}
@@ -1245,6 +1250,52 @@ function _bdWfCatPie(mix,c){
     +'<div class="bd-wf-leg">'+grp('Recurring',mix.rec)+grp('One-off',mix.oneOff)+'</div></div>'
     +'<div class="bd-bs-tip"></div></div>';
 }
+// W2's flagged brands (Alex, 2026-11-24): the brands in the grid that carry
+// an abnormality flag, as a dropdown table, filtered by cohort month and flag
+// type. Same brands as the grid (its filters, Never Implemented switch and
+// cohort window); the three types that move retention numbers are marked.
+var _bdWfW2T={open:false,co:'',fl:''};
+var BD_WF_W2_DISTORT={'active-not-billed':'Kept as retained although billing stopped: the row’s later months read high.',
+  'long-gap':'Counted as retained through the gap: a churn and a return would lower the row there.',
+  'status-conflict':'Counted as active here although HubSpot disagrees.'};
+function bdWfW2Toggle(el){_bdWfW2T.open=!!(el&&el.open);}
+function bdWfW2Set(k,v){if(k!=='co'&&k!=='fl')return;_bdWfW2T[k]=v||'';_bdWfW2T.open=true;renderBD();}
+function _bdWfW2Flagged(gl,from,now){
+  var st=_bdWfW2T,inWin=gl.filter(function(b){return b.fm&&b.fm>=from&&b.fm<=now&&b._fl&&b._fl.length;});
+  var dist=function(b){return b._fl.some(function(f){return BD_WF_W2_DISTORT[f.id];});};
+  var flOk=function(b){return !st.fl?true:st.fl==='distort'?dist(b):b._fl.some(function(f){return f.id===st.fl;});};
+  var coOk=function(b){return !st.co||b.fm===st.co;};
+  // Each dropdown counts what its options would give under the other one.
+  var coCnt={},flCnt={},nDist=0;
+  inWin.forEach(function(b){
+    if(flOk(b))coCnt[b.fm]=(coCnt[b.fm]||0)+1;
+    if(coOk(b)){var seen={};b._fl.forEach(function(f){if(!seen[f.id]){seen[f.id]=1;flCnt[f.id]=(flCnt[f.id]||0)+1;}});if(dist(b))nDist++;}
+  });
+  var rows=inWin.filter(function(b){return coOk(b)&&flOk(b);});
+  rows.sort(function(a,b){return BD_WF_FLAG_SEV[b._fl[0].sev]-BD_WF_FLAG_SEV[a._fl[0].sev]||(a.fm<b.fm?-1:a.fm>b.fm?1:0)||String(a.n).localeCompare(String(b.n));});
+  var coAll=inWin.filter(flOk).length,flAll=inWin.filter(coOk).length;
+  var months=Object.keys(coCnt).concat(st.co&&!coCnt[st.co]?[st.co]:[]).sort().reverse();
+  var h='<details class="bd-c2nt bd-wf-w2f"'+(st.open?' open':'')+' ontoggle="bdWfW2Toggle(this)"><summary>Flagged brands in this grid · <b>'+inWin.length.toLocaleString()+'</b>'
+    +' of '+gl.filter(function(b){return b.fm&&b.fm>=from&&b.fm<=now;}).length.toLocaleString()+' brands carry a possible abnormality; <b>'+inWin.filter(dist).length.toLocaleString()+'</b> of them can move the retention numbers</summary>';
+  h+='<div class="bd-c2nt-bar"><label>Cohort<select onchange="bdWfW2Set(\'co\',this.value)"><option value="">All cohorts ('+coAll+')</option>'
+    +months.map(function(m){return '<option value="'+m+'"'+(st.co===m?' selected':'')+'>'+_bdWfLbl(m)+' ('+(coCnt[m]||0)+')</option>';}).join('')+'</select></label>'
+    +'<label>Flag<select onchange="bdWfW2Set(\'fl\',this.value)"><option value="">All flags ('+flAll+')</option>'
+    +'<option value="distort"'+(st.fl==='distort'?' selected':'')+'>Can move retention ('+nDist+')</option>'
+    +BD_WF_FLAGS.map(function(f){return '<option value="'+f.id+'"'+(st.fl===f.id?' selected':'')+'>'+_bdEsc(f.title)+(BD_WF_W2_DISTORT[f.id]?' ●':'')+' ('+(flCnt[f.id]||0)+')</option>';}).join('')+'</select></label>'
+    +'<span>'+rows.length.toLocaleString()+' brand'+(rows.length===1?'':'s')+' · ● = can move this grid’s numbers · hover a row for the full explanation</span></div>';
+  h+='<div style="max-height:420px;overflow:auto"><table class="bd-c2nt-t bd-wf-w2t" onmousemove="bdWfTip(event)" onmouseleave="bdWfTipOff()"><thead><tr><th>Brand</th><th>Cohort</th><th>Status</th><th>Churn month</th><th>Flags</th><th>Effect on this grid</th></tr></thead><tbody>';
+  rows.forEach(function(b){
+    var fl=st.fl&&st.fl!=='distort'?b._fl.filter(function(f){return f.id===st.fl;}).concat(b._fl.filter(function(f){return f.id!==st.fl;})):b._fl;
+    var eff=fl.filter(function(f){return BD_WF_W2_DISTORT[f.id];}).map(function(f){return BD_WF_W2_DISTORT[f.id];});
+    var ti=_bdWfTips.length;_bdWfTips.push(_bdWfCard(b.n||('Brand '+b.k),(b.st||'')+' · '+_bdWfLbl(b.fm)+' cohort · last invoiced '+(_bdWfLbl(b.li)||'—')+' · brand '+b.k,fl));
+    var c=_bdWfChurnMonth(b);
+    h+='<tr data-ti="'+ti+'"><td><b>'+_bdEsc(b.n||('Brand '+b.k))+'</b><span class="bd-c2nt-id">'+_bdEsc(b.k)+'</span></td><td>'+_bdWfLbl(b.fm)+'</td><td>'+_bdWfStatusBadge(b)+'</td><td>'+(c?_bdWfLbl(c):'—')+'</td>'
+      +'<td>'+fl.map(function(f){return '<span class="bd-wf-ftag '+f.sev+'">'+_bdEsc(f.title)+(BD_WF_W2_DISTORT[f.id]?' ●':'')+'</span>';}).join('')+'</td>'
+      +'<td>'+(eff.length?_bdEsc(eff.join(' ')):'<span style="color:var(--grey)">None on the numbers — a billing or data check</span>')+'</td></tr>';
+  });
+  if(!rows.length)h+='<tr><td colspan="6" style="color:var(--grey)">No flagged brands for this cohort and flag.</td></tr>';
+  return h+'</tbody></table></div></details>';
+}
 function bdWfStick(){
   var t=document.querySelector&&document.querySelector('.bd-wf-t');if(!t||!t.tHead)return;
   var rows=t.tHead.rows,top=0;
@@ -1430,6 +1481,7 @@ function _bdWfRender(){
   }
   g+='</tbody></table></div>';
   h+=g;
+  h+=_bdWfW2Flagged(gl,from,now);
   h+='<div style="font-size:10px;color:var(--grey);margin-top:14px;font-style:italic;line-height:1.6">'
     +'<strong style="color:var(--navy)">How it is counted.</strong> Rows are the month of each brand’s first invoice above $0, in Recurly or bill.com; pilot brands start at their Pilot Initiation Fee invoice'
     +(_bdWfPil==='excl'?' (pilots with no plan bill yet are excluded by the Pilots switch above)':'')+'. '

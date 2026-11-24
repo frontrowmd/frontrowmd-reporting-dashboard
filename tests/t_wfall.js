@@ -193,6 +193,23 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
   ck('  filtered: the card still covers every brand, and says so',/Not narrowed by the filters\./.test(h)&&/\$5,600<\/div>/.test(h),true);P.bdWfReset();
   P.BD.wf=Object.assign({},d,{categories:{error:'boom'}});h=R();
   ck('  a failed category query leaves the tab working, with a note',/The category breakdown did not load \(boom\)/.test(h)&&/id="bd-sec-wf2"/.test(h),true);
+  // W2 flagged brands (Alex, 2026-11-24)
+  {const prev=P.BD.wf;
+   P.BD.wf={months:M,meta:{},brands:[BR({k:'a1',n:'Stale Co',li:'2026-08',a:[1000,1000,1000,1000,1000,1000,1000,1000,0,0]}),
+     BR({k:'b1',n:'Double Co',fm:'2026-02',a:[null,1000,1000,1000,2000,1000,1000,1000,1000,1000]}),
+     BR({k:'c1',n:'Fine Co'})]};
+   P._bdWfW2T={open:true,co:'',fl:''};P.bdWfSet('from','all');
+   let w=R();const sec=w.slice(w.indexOf('class="bd-c2nt bd-wf-w2f"'));
+   const names=x=>[...x.matchAll(/<tr data-ti="\d+"><td><b>([^<]+)<\/b>/g)].map(m=>m[1]);
+   ck('W2 lists its flagged brands under the grid, high severity first',[/Flagged brands in this grid · <b>2<\/b> of 3 brands carry a possible abnormality; <b>1<\/b> of them can move the retention numbers/.test(sec),names(sec)],[true,['Stale Co','Double Co']]);
+   ck('  the flag picker counts each type and marks the ones that move the grid',/<option value="distort">Can move retention \(1\)<\/option>/.test(sec)&&/<option value="active-not-billed">Active but not invoiced ● \(1\)<\/option>/.test(sec)&&/<option value="double">Possible double billing \(1\)<\/option>/.test(sec),true);
+   ck('  each row says what it does to the grid, or that it does nothing',/Kept as retained although billing stopped/.test(sec)&&/None on the numbers/.test(sec),true);
+   P.bdWfW2Set('fl','distort');w=R();
+   ck('  flag filter: only brands that can move retention',names(w.slice(w.indexOf('bd-wf-w2f'))),['Stale Co']);
+   P.bdWfW2Set('fl','');P.bdWfW2Set('co','2026-02');w=R();const s2=w.slice(w.indexOf('bd-wf-w2f'));
+   ck('  cohort filter: only that first-invoice month, and the cohort picker counts by month',[names(s2),/<option value="2026-02" selected>Feb 26 \(1\)<\/option>/.test(s2),/<option value="2026-01">Jan 26 \(1\)<\/option>/.test(s2)],[['Double Co'],true,true]);
+   ck('  hovering a row opens its explanation card',P._bdWfTips.some(t=>/Double Co/.test(t)&&/Possible double billing/.test(t)),true);
+   P._bdWfW2T={open:false,co:'',fl:''};P.BD.wf=prev;}
   P.BD.wf={error:'Metabase /api/card/3565/query 403: You don\'t have permissions to do that.'};h=R();
   ck('a Metabase failure is an error band, never an empty grid',/Billing data unavailable/.test(h)&&/collection must be visible/.test(h)&&!/bd-sec-wf2/.test(h),true);
   ck('W2\u2019s first column matches .rwtbl\u2019s sticky offset',[P.BD_WF_W_LBL,+((html.match(/\.rwtbl \.rw-n\{[^}]*left:(\d+)px/)||[])[1])],[78,78]);
