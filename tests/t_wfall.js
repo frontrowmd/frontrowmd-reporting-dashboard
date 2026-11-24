@@ -29,8 +29,8 @@ const TAGS={hide_pilot_initiation_fee:{type:'boolean',name:'hide_pilot_initiatio
   products_ever_live:{type:'number',name:'products_ever_live'}};
 const CARD={id:3565,database_id:67,dataset_query:{database:67,type:'native',native:{query:'select 1 -- card sql',"template-tags":TAGS}}};
 let dsRows=rows;
-const CATCOLS=['CATEGORY','AMOUNT','MULTI_MONTH','INVOICES','BRANDS','MONTH'];
-const CATROWS=[['plan',3000,1000,3,3,'2026-10'],['pilot_initiation_fee',2500,0,1,1,'2026-10'],['review',300,0,2,1,'2026-10'],['credits',-200,0,1,1,'2026-10']];
+const CATCOLS=['CATEGORY','AMOUNT','MULTI_MONTH','INVOICES','BRANDS','MONTH','BRANDS_BILLED'];
+const CATROWS=[['plan',3000,1000,3,3,'2026-10',4],['pilot_initiation_fee',2500,0,1,1,'2026-10',4],['review',300,0,2,1,'2026-10',4],['credits',-200,0,1,1,'2026-10',4]];
 W.fetch=async(url,init)=>{calls.push({url,init});
   if(url.endsWith('/api/card/3565'))return ok(CARD);
   if(url.endsWith('/api/dataset')){if(/with base as/.test(JSON.parse(init.body).native.query))return ok({status:'completed',data:{cols:CATCOLS.map(name=>({name})),rows:CATROWS}});
@@ -62,6 +62,7 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
   calls=[];await W.fetchBdWaterfall(env,true);
   ck('  Refresh (fresh) runs the card again',calls.length,3);
   ck('the categories ride along in the payload',[d.categories.month,d.categories.cats.map(c=>c.cat),d.categories.cats[0].multi],['2026-10',['plan','pilot_initiation_fee','review','credits'],1000]);
+  ck('  with the distinct brands billed',d.categories.brandsBilled,4);
   let err='';try{W.bdWfShape(['BRAND_KEY','BRAND_NAME'],[]);}catch(e){err=e.message;}
   ck('a card missing a needed column is an error, never an empty tab',/missing column/.test(err),true);
   // Past the 2,000-row cap the export endpoint is used.
@@ -181,14 +182,15 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
   P.BD.wf=d;h=R();
   ck('section W is Billing Summary, and its nav anchor too',/<span class="bd-sec-t">Billing Summary<\/span>/.test(h)&&/'bd-sec-wf0'\)">Billing Summary<\/a>/.test(html),true);
   ck('row 1 has no invoiced card; row 2 has it beside the pie',[/<div class="bd-wf-kpis">(?:(?!bd-wf-row2)[\s\S])*Invoiced in/.test(h),/<div class="bd-wf-row2"><div class="bd-wf-kpi bd-wf-inv"[^>]*><div class="bd-wf-kpi-l">Invoiced in Oct 26<\/div>/.test(h)],[false,true]);
-  ck('the pie: plan split into monthly and prepaid, credits not a slice, one-offs typed',[/data-k="Plan \(monthly\)"/.test(h),/data-k="Plan \(prepaid multi-month\)"/.test(h),/data-k="Pilot initiation fees"/.test(h),/data-k="credits"/i.test(h),/before \$200 of credits and refunds/.test(h)],[true,true,true,false,true]);
-  ck('  its centre is the Recurly total',/<div class="bd-bs-cn" title="\$5,800">\$5,800<\/div>/.test(h),true);
-  ck('  a recurring estimate that would be negative is not shown',/recurring<div>/.test(h),false);
-  P.BD.wf=Object.assign({},d,{categories:{month:'2026-10',cats:[{cat:'plan',amount:900,multi:0,invoices:1,brands:1},{cat:'pilot_initiation_fee',amount:400,multi:0,invoices:1,brands:1}]}});h=R();
-  ck('  the recurring estimate takes the one-offs off the card total',/\u2248 \$600<\/span> recurring<div>after \$400 of one-off charges/.test(h),true);
-  P.BD.wf=d;
+  ck('the pie: plan split into monthly and prepaid, credits not a slice, one-offs typed',[/data-k="Plan \(monthly\)"/.test(h),/data-k="Plan \(prepaid multi-month\)"/.test(h),/data-k="Pilot initiation fees"/.test(h),/data-k="credits"/i.test(h),/before credits and refunds/.test(h)],[true,true,true,false,true]);
+  ck('the invoiced card: charges as invoiced, every brand, after credits ($5,800 - $200)',/Invoiced in Oct 26<\/div><div class="bd-wf-kpi-v">\$5,600<\/div>/.test(h)&&/after credits and refunds · 4 brands billed/.test(h),true);
+  ck('  with Recurring, One-off, Credits and Total lines',[/Recurring<em>incl\. \$1,000 prepaid multi-month<\/em><\/span><span class="bd-wf-inv-v">\$3,000<\/span>/.test(h),/One-off<em>[^<]*<\/em><\/span><span class="bd-wf-inv-v">\$2,800<\/span>/.test(h),/Credits &amp; refunds<\/span><span class="bd-wf-inv-v">−\$200<\/span>/.test(h),/Total<\/span><span class="bd-wf-inv-v">\$5,600<\/span>/.test(h)],[true,true,true,true]);
+  ck('  and it names the table column it differs from',/The All Brands table’s Oct 26 column \(\$1,000\)/.test(h),true);
+  ck('the pie’s centre rests on brands billed, not 0',/data-ctr="4" data-ctr-l="brands billed"/.test(h)&&/<div class="bd-bs-cn">4<\/div><div class="bd-bs-cl">brands billed<\/div>/.test(h),true);
+  ck('  and bdBsOut restores that resting centre',/card\.hasAttribute\('data-ctr'\)\?card\.getAttribute\('data-ctr'\)/.test(html),true);
+  ck('the legend is grouped under Recurring and One-off totals',/<div class="bd-wf-leg-g"><span>Recurring<\/span><b>\$3,000<\/b>/.test(h)&&/<div class="bd-wf-leg-g"><span>One-off<\/span><b>\$2,800<\/b>/.test(h),true);
   P.bdWfSetF('ty','Board Defined');h=R();
-  ck('  filtered: the recurring estimate is hidden (the pie covers every brand)',/recurring<div>/.test(h),false);P.bdWfReset();
+  ck('  filtered: the card still covers every brand, and says so',/Not narrowed by the filters\./.test(h)&&/\$5,600<\/div>/.test(h),true);P.bdWfReset();
   P.BD.wf=Object.assign({},d,{categories:{error:'boom'}});h=R();
   ck('  a failed category query leaves the tab working, with a note',/The category breakdown did not load \(boom\)/.test(h)&&/id="bd-sec-wf2"/.test(h),true);
   P.BD.wf={error:'Metabase /api/card/3565/query 403: You don\'t have permissions to do that.'};h=R();

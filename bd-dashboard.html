@@ -347,15 +347,28 @@ circle.bd-bs-sl{stroke-width:28}
 .bd-wf-kpi-l{font-size:10px;font-weight:700;color:rgba(255,255,255,.62);text-transform:uppercase;letter-spacing:.06em}
 .bd-wf-kpi-v{font-family:var(--font-h);font-size:28px;font-weight:700;color:#fff;margin-top:3px;line-height:1.1}
 .bd-wf-kpi-s{font-size:10.5px;color:rgba(255,255,255,.6);margin-top:3px}
-.bd-wf-row2{display:grid;grid-template-columns:minmax(240px,1fr) minmax(0,2.6fr);gap:12px;margin:0 0 14px;align-items:stretch}
-.bd-wf-inv{display:flex;flex-direction:column;justify-content:center;padding:20px 22px}
-.bd-wf-inv .bd-wf-kpi-v{font-size:36px}
-.bd-wf-inv-r{margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.14);font-size:11px;color:rgba(255,255,255,.7)}
-.bd-wf-inv-r span{font-family:var(--font-h);font-size:20px;font-weight:700;color:#86EFAC;margin-right:4px}
-.bd-wf-inv-r div{margin-top:3px;font-size:10.5px;color:rgba(255,255,255,.55)}
-.bd-wf-pie .bd-bs-body{grid-template-columns:200px minmax(0,1fr)}
-.bd-wf-pie-n{margin-top:10px;font-size:10px;color:var(--grey);font-style:italic;line-height:1.5}
-@media (max-width:900px){.bd-wf-row2{grid-template-columns:1fr}}
+.bd-wf-row2{display:grid;grid-template-columns:minmax(300px,380px) minmax(0,1fr);gap:12px;margin:0 0 14px;align-items:stretch}
+.bd-wf-inv{padding:18px 20px}
+.bd-wf-inv .bd-wf-kpi-v{font-size:34px}
+.bd-wf-inv-t{margin-top:14px;border-top:1px solid rgba(255,255,255,.14)}
+.bd-wf-inv-l{display:grid;grid-template-columns:1fr auto 38px;gap:10px;align-items:baseline;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.08)}
+.bd-wf-inv-k{font-size:12px;font-weight:700;color:#fff}
+.bd-wf-inv-k em{display:block;font-style:normal;font-weight:400;font-size:10px;color:rgba(255,255,255,.55);margin-top:1px}
+.bd-wf-inv-v{font-family:var(--font-h);font-size:16px;font-weight:700;color:#fff;font-variant-numeric:tabular-nums;text-align:right}
+.bd-wf-inv-p{font-size:10.5px;color:rgba(255,255,255,.55);text-align:right}
+.bd-wf-inv-l.rec .bd-wf-inv-k::before,.bd-wf-inv-l.one .bd-wf-inv-k::before,.bd-wf-inv-l.cr .bd-wf-inv-k::before{content:'';display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:7px;vertical-align:1px}
+.bd-wf-inv-l.rec .bd-wf-inv-k::before{background:#3B82F6}.bd-wf-inv-l.one .bd-wf-inv-k::before{background:#F59E0B}.bd-wf-inv-l.cr .bd-wf-inv-k::before{background:#F87171}
+.bd-wf-inv-l.cr .bd-wf-inv-v{color:#FCA5A5}
+.bd-wf-inv-l.tot{border-bottom:none}.bd-wf-inv-l.tot .bd-wf-inv-v{color:#86EFAC;font-size:18px}
+.bd-wf-inv-n{margin-top:10px;font-size:10px;line-height:1.5;color:rgba(255,255,255,.5)}
+.bd-wf-pie{margin-top:0;display:flex;flex-direction:column}
+.bd-wf-pie-b{display:grid;grid-template-columns:210px minmax(0,680px);gap:40px;align-items:center;justify-content:center;flex:1}
+.bd-wf-leg-g{display:grid;grid-template-columns:1fr auto 44px;gap:12px;align-items:baseline;padding:8px 8px 5px;margin-top:6px;border-bottom:1.5px solid rgba(23,44,69,.12);font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.05em}
+.bd-wf-leg-g:first-child{margin-top:0}
+.bd-wf-leg-g b{font-family:var(--font-h);font-size:14px;color:var(--navy);text-transform:none;letter-spacing:0;font-variant-numeric:tabular-nums}
+.bd-wf-leg-g i{font-style:normal;text-align:right;font-weight:600}
+.bd-wf-leg .bd-wf-leg-r{grid-template-columns:10px minmax(150px,1fr) minmax(60px,120px) 84px 44px;padding:5px 8px}
+@media (max-width:1100px){.bd-wf-row2{grid-template-columns:1fr}.bd-wf-pie-b{grid-template-columns:1fr;justify-items:center}}
 .bd-wf-bar{display:flex;align-items:center;gap:10px 14px;flex-wrap:wrap;font-size:11px;color:var(--grey);margin:0 0 4px}
 .bd-wf-bar label{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
 .bd-wf-bar select{font-family:var(--font-b);font-size:11px;padding:4px 7px;border:1px solid var(--border);border-radius:6px;color:var(--navy);background:#fff;text-transform:none;letter-spacing:0;font-weight:500;max-width:210px}
@@ -1178,45 +1191,58 @@ function _bdWfCatMix(cats){
   // Recurring first, then one-offs, each by size.
   rows.sort(function(a,b){return (a.type===b.type?0:a.type==='Recurring'?-1:1)||b.amt-a.amt;});
   var tot=rows.reduce(function(t,r){return t+r.amt;},0),oneOff=rows.filter(function(r){return r.type==='One-off';}).reduce(function(t,r){return t+r.amt;},0);
-  return {rows:rows,total:tot,oneOff:oneOff,credits:credits};
+  var px=rows.filter(function(r){return r.k==='plan_x';})[0];
+  return {rows:rows,total:tot,rec:Math.round((tot-oneOff)*100)/100,oneOff:Math.round(oneOff*100)/100,prepaid:px?px.amt:0,credits:Math.round(credits*100)/100};
 }
+// Row 2 (Alex, 2026-11-24, second pass): one panel. Left, last month's
+// charges as invoiced for every brand after credits and refunds, split into
+// Recurring and One-off with their totals; then the donut (brands billed in its
+// centre) and a legend grouped under the same two totals.
 function _bdWfInvRow(wf,lastInv,now,unfiltered){
-  var c=wf.categories,mix=(c&&!c.error&&c.cats&&c.cats.length)?_bdWfCatMix(c.cats):null,same=mix&&c.month===now;
-  var card='<div class="bd-wf-kpi bd-wf-inv" style="--acc:#16A34A"><div class="bd-wf-kpi-l">Invoiced in '+_bdWfLbl(now)+'</div><div class="bd-wf-kpi-v">'+f$(lastInv)+'</div>'
-    +'<div class="bd-wf-kpi-s">Recurly + bill.com, after credits and refunds; prepaid multi-month plans spread over the months they cover'+(unfiltered?'':' · filtered brands')+'.</div>';
-  // What recurs: the month less its one-off charges (only for every brand: the pie is not filtered).
-  if(same&&unfiltered&&lastInv-mix.oneOff>0)card+='<div class="bd-wf-inv-r"><span>≈ '+f$(lastInv-mix.oneOff)+'</span> recurring<div>after '+f$(mix.oneOff)+' of one-off charges (pilot fees, reviews, analyses, first-month web traffic). Compare with Current MRR on the Tracker tab.</div></div>';
-  card+='</div>';
-  var pie;
-  if(!c||c.error)pie='<div class="bd-bs" style="margin-top:0"><div class="bd-bs-head"><span class="bd-bs-t">Invoiced by category</span></div><div style="font-size:12px;color:var(--grey)">The category breakdown did not load'+(c&&c.error?' ('+_bdEsc(c.error)+')':'')+'. Refresh to retry.</div></div>';
-  else pie=_bdWfCatPie(mix,c.month);
-  return '<div class="bd-wf-row2">'+card+pie+'</div>';
+  var c=wf.categories,mix=(c&&!c.error&&c.cats&&c.cats.length)?_bdWfCatMix(c.cats):null;
+  var tableNote='The All Brands table’s '+_bdWfLbl(now)+' column ('+f$(lastInv)+(unfiltered?'':', filtered brands')+') spreads prepaid multi-month plans over the months they cover and includes bill.com, so it reads differently.';
+  if(!mix){
+    return '<div class="bd-wf-row2"><div class="bd-wf-kpi bd-wf-inv" style="--acc:#16A34A"><div class="bd-wf-kpi-l">Invoiced in '+_bdWfLbl(now)+'</div><div class="bd-wf-kpi-v">'+f$(lastInv)+'</div>'
+      +'<div class="bd-wf-kpi-s">The category breakdown did not load'+(c&&c.error?' ('+_bdEsc(c.error)+')':'')+', so this is the All Brands table’s column: Recurly + bill.com, multi-month plans spread. Refresh to retry.</div></div></div>';
+  }
+  var mo=_bdWfLbl(c.month||now),net=mix.total+mix.credits,pc=function(v){return mix.total?Math.round(v/mix.total*100)+'%':'';};
+  var line=function(cls,l,v,sub,p){return '<div class="bd-wf-inv-l '+cls+'"><span class="bd-wf-inv-k">'+l+(sub?'<em>'+sub+'</em>':'')+'</span><span class="bd-wf-inv-v">'+v+'</span><span class="bd-wf-inv-p">'+(p||'')+'</span></div>';};
+  var card='<div class="bd-wf-kpi bd-wf-inv" style="--acc:#16A34A"><div class="bd-wf-kpi-l">Invoiced in '+mo+'</div><div class="bd-wf-kpi-v">'+f$(net)+'</div>'
+    +'<div class="bd-wf-kpi-s">Charges as invoiced, every brand, after credits and refunds · '+(c.brandsBilled||0).toLocaleString()+' brands billed</div>'
+    +'<div class="bd-wf-inv-t">'
+    +line('rec','Recurring',f$(mix.rec),mix.prepaid?'incl. '+f$(mix.prepaid)+' prepaid multi-month':'',pc(mix.rec))
+    +line('one','One-off',f$(mix.oneOff),'pilot fees, reviews, analyses, first-month traffic',pc(mix.oneOff))
+    +(mix.credits?line('cr','Credits &amp; refunds','−'+f$(-mix.credits),'',''):'')
+    +line('tot','Total',f$(net),'','')+'</div>'
+    +'<div class="bd-wf-inv-n">Recurly charges by invoice date. '+tableNote+(unfiltered?'':' Not narrowed by the filters.')+'</div></div>';
+  return '<div class="bd-wf-row2">'+card+_bdWfCatPie(mix,c)+'</div>';
 }
-function _bdWfCatPie(mix,month){
+function _bdWfCatPie(mix,c){
   var tot=mix.total;if(!tot)return '';
   var R=86,r=58,cx=100,cy=100,a0=-Math.PI/2,paths='',GAP=0.012;
   var pt=function(rad,a){return (cx+rad*Math.cos(a)).toFixed(2)+','+(cy+rad*Math.sin(a)).toFixed(2);};
   var pct=function(v){var p=v/tot*100;return (p<1&&p>0?p.toFixed(1):Math.round(p))+'%';};
-  var cnt=function(x){return x.part?'within '+x.part+' plan invoices':x.inv+' invoice'+(x.inv===1?'':'s')+' \u00b7 '+x.br+' brand'+(x.br===1?'':'s');};
-  var compact=function(v){return v>=1e6?'$'+(v/1e6).toFixed(2)+'M':v>=1e4?'$'+Math.round(v/1e3)+'K':f$(v);};
+  var cnt=function(x){return x.part?'within '+x.part+' plan invoices':x.inv+' invoice'+(x.inv===1?'':'s')+' · '+x.br+' brand'+(x.br===1?'':'s');};
   var ev=function(x){return ' data-k="'+_bdEsc(x.l)+'" data-tip="'+_bdEsc('<div style="font-weight:700;margin-bottom:3px"><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:'+x.col+';margin-right:6px"></span>'+x.l+'</div><div>'+f$(x.amt)+' · '+pct(x.amt)+' · '+x.type+'</div><div style="opacity:.8">'+cnt(x)+'</div>')+'" onmouseenter="bdBsHover(this,event)" onmousemove="bdBsHover(this,event)" onmouseleave="bdBsOut(this)"';};
   mix.rows.forEach(function(x){
     var span=x.amt/tot*2*Math.PI,full=x.amt>=tot-0.01,g=full?0:Math.min(GAP,span/4),s0=a0+g/2,s1=a0+span-g/2,big=(s1-s0)>Math.PI?1:0;
     paths+=full?'<circle class="bd-bs-sl" cx="'+cx+'" cy="'+cy+'" r="'+((R+r)/2)+'" fill="none" stroke="'+x.col+'" stroke-width="'+(R-r)+'"'+ev(x)+'/>'
       :'<path class="bd-bs-sl" d="M'+pt(R,s0)+' A'+R+','+R+' 0 '+big+' 1 '+pt(R,s1)+' L'+pt(r,s1)+' A'+r+','+r+' 0 '+big+' 0 '+pt(r,s0)+' Z" fill="'+x.col+'"'+ev(x)+'/>';
     a0+=span;});
-  var leg=mix.rows.map(function(x){
-    return '<div class="bd-bs-row"'+ev(x)+'><span class="bd-bs-dot" style="background:'+x.col+'"></span>'
-      +'<div class="bd-bs-nm">'+x.l+'<div class="bd-bs-det">'+cnt(x)+'</div></div>'
-      +'<div class="bd-bs-bar"><span style="width:'+(x.amt/tot*100).toFixed(1)+'%;background:'+x.col+'"></span></div>'
-      +'<div class="bd-bs-n">'+f$(x.amt)+'</div><div class="bd-bs-p">'+pct(x.amt)+'</div>'
-      +'<div class="bd-bs-m">'+x.type+'</div></div>';}).join('');
-  return '<div class="bd-bs bd-wf-pie" style="margin-top:0">'
-    +'<div class="bd-bs-head"><span class="bd-bs-t">Invoiced by category · '+_bdWfLbl(month)+'</span><span class="bd-bs-s">Recurly charges as invoiced, every brand'+(mix.credits?' · before '+f$(-mix.credits)+' of credits and refunds':'')+'</span></div>'
-    +'<div class="bd-bs-body"><div class="bd-bs-donut"><svg viewBox="0 0 200 200" role="img" aria-label="Invoiced by category">'+paths+'</svg>'
-    +'<div class="bd-bs-ctr"><div class="bd-bs-cn" title="'+f$(tot)+'">'+compact(tot)+'</div><div class="bd-bs-cl">invoiced in Recurly</div></div></div>'
-    +'<div class="bd-bs-leg"><div class="bd-bs-row bd-bs-hd"><span></span><div>Category</div><div>Share</div><div style="text-align:right">Amount</div><div></div><div style="text-align:right">Type</div></div>'+leg+'</div></div>'
-    +'<div class="bd-wf-pie-n">Differs from the card beside it: prepaid multi-month plans count here in full in the month billed (the card spreads them), credits are not taken off, and bill.com invoices are not included (they carry no category). Not narrowed by the filters.</div>'
+  var grp=function(type,total){
+    var rs=mix.rows.filter(function(x){return x.type===type;});if(!rs.length)return '';
+    return '<div class="bd-wf-leg-g"><span>'+type+'</span><b>'+f$(total)+'</b><i>'+pct(total)+'</i></div>'
+      +rs.map(function(x){return '<div class="bd-bs-row bd-wf-leg-r"'+ev(x)+'><span class="bd-bs-dot" style="background:'+x.col+'"></span>'
+        +'<div class="bd-bs-nm">'+x.l+'<div class="bd-bs-det">'+cnt(x)+'</div></div>'
+        +'<div class="bd-bs-bar"><span style="width:'+(x.amt/tot*100).toFixed(1)+'%;background:'+x.col+'"></span></div>'
+        +'<div class="bd-bs-n">'+f$(x.amt)+'</div><div class="bd-bs-p">'+pct(x.amt)+'</div></div>';}).join('');
+  };
+  var nb=(c.brandsBilled||0).toLocaleString();
+  return '<div class="bd-bs bd-wf-pie" data-ctr="'+nb+'" data-ctr-l="brands billed">'
+    +'<div class="bd-bs-head"><span class="bd-bs-t">Invoiced by category</span><span class="bd-bs-s">'+_bdWfLbl(c.month)+' · before credits and refunds · hover a slice</span></div>'
+    +'<div class="bd-wf-pie-b"><div class="bd-bs-donut"><svg viewBox="0 0 200 200" role="img" aria-label="Invoiced by category">'+paths+'</svg>'
+    +'<div class="bd-bs-ctr"><div class="bd-bs-cn">'+nb+'</div><div class="bd-bs-cl">brands billed</div></div></div>'
+    +'<div class="bd-wf-leg">'+grp('Recurring',mix.rec)+grp('One-off',mix.oneOff)+'</div></div>'
     +'<div class="bd-bs-tip"></div></div>';
 }
 function bdWfStick(){
@@ -2492,7 +2518,9 @@ function bdBsHover(el,e){
 function bdBsOut(el){
   var card=el.closest('.bd-bs');if(!card)return;card.classList.remove('hov');
   card.querySelectorAll('[data-k]').forEach(function(x){x.classList.remove('on');});
-  card.querySelector('.bd-bs-cn').textContent=Number(card.getAttribute('data-tot')).toLocaleString();card.querySelector('.bd-bs-cl').textContent='brands';
+  // A donut may name its own resting centre (data-ctr / data-ctr-l); the Billing Status one is brands.
+  card.querySelector('.bd-bs-cn').textContent=card.hasAttribute('data-ctr')?card.getAttribute('data-ctr'):Number(card.getAttribute('data-tot')).toLocaleString();
+  card.querySelector('.bd-bs-cl').textContent=card.getAttribute('data-ctr-l')||'brands';
   card.querySelector('.bd-bs-tip').style.display='none';
 }
 function _bdChips(ks,live){return '<div class="bd-chips">'+ks.map(function(k){return _bdChip(k,false,live);}).join('')+'</div>';}

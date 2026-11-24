@@ -3943,7 +3943,8 @@ select iff(type = 'credit', 'credits', category) as category,
   round(sum(amount), 2) as amount,
   round(sum(iff(months >= 2, amount, 0)), 2) as multi_month,
   count(distinct invoice_id) as invoices, count(distinct brand_key) as brands,
-  to_char(dateadd(month, -1, date_trunc('month', current_date)), 'YYYY-MM') as month
+  to_char(dateadd(month, -1, date_trunc('month', current_date)), 'YYYY-MM') as month,
+  (select count(distinct brand_key) from base where type <> 'credit' and line_type = 'charge' and amount > 0) as brands_billed
 from base
 where type = 'credit' or line_type = 'charge'
 group by 1
@@ -3951,7 +3952,7 @@ order by 2 desc`;
 async function bdWfCategories(env) {
   const rows = await mbQuery(env, BD_WF_CAT_SQL);
   const n = (v) => Math.round((Number(v) || 0) * 100) / 100;
-  return { month: rows.length ? String(rows[0].MONTH || '') : '', cats: rows.map(r => ({ cat: String(r.CATEGORY || 'other'), amount: n(r.AMOUNT), multi: n(r.MULTI_MONTH), invoices: Number(r.INVOICES) || 0, brands: Number(r.BRANDS) || 0 })) };
+  return { month: rows.length ? String(rows[0].MONTH || '') : '', brandsBilled: rows.length ? Number(rows[0].BRANDS_BILLED) || 0 : 0, cats: rows.map(r => ({ cat: String(r.CATEGORY || 'other'), amount: n(r.AMOUNT), multi: n(r.MULTI_MONTH), invoices: Number(r.INVOICES) || 0, brands: Number(r.BRANDS) || 0 })) };
 }
 async function fetchBdWaterfall(env, fresh) {
   if (!fresh && env.CONTENT_STORE) {
