@@ -4201,8 +4201,7 @@ async function fetchBdWaterfall(env, fresh) {
 //     stage-entry date (fetchWebinarHeldCount), folded by applyWebinarHeld.
 //   Signed Brands = the BD Tracker's All Time Summary "Signed Brands" card with
 //     that month picked as its range (Active Brands + Pilot Brands among the
-//     brands signed in it, as they stand today) + on this page only, the brands
-//     that signed in it and have since ended. Built separately, on its own
+//     brands signed in it, as they stand today). Built separately, on its own
 //     request (POST /api/growth-signed): see the SIGN BOOK below.
 // One pipeline fetch per month, NOT one wide one: a wide ASC fetch is capped at
 // 25 pages and drops the newest rows silently. A month whose HubSpot calls
@@ -4299,8 +4298,8 @@ async function fetchGrowth(env, fresh) {
 // TODAY, Active Brands (a live Recurly subscription: billing, trial, starting or
 // paused; the app's own active state when Recurly was not read) + Pilot Brands
 // (deposit paid, collecting data or live). A brand that has churned since drops
-// out of its range, as on the card; Growth Overview alone adds those back as a
-// third count (Alex, 2026-11-24).
+// out of its range, as on the card. (The book still counts them apart as
+// `churned`; no page shows it since Alex took it off Growth, 2026-11-24.)
 // It reads what the BD Tracker reads: its HubSpot deals (fetchBDData) and the
 // app brand book (fetchBdApp, without the per-account Recurly line reads that
 // only the Initiation Fees card needs). Both are heavy, so this runs on its own
