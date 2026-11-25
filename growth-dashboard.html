@@ -150,13 +150,14 @@ function doLogin(){
 // ── Tab 1: Signed Brands & Demos ──
 // The demo months with the signed half laid on by month. signPending while its
 // request is in flight; signErr when it failed or has no such month.
-// Signed Brands = the BD Tracker card (active + pilots) for the month. Churned
-// brands were added back for a while and taken out again (Alex, 2026-11-24).
+// Signed Brands = EVERY brand that signed in the month, whatever it is today
+// (active, pilot or churned since), churned ones once: the worker's `every`
+// (Alex, 2026-11-25; not split by status on the page).
 function gMonths(){
   var sm={};((G.signed&&G.signed.months)||[]).forEach(function(s){sm[s.m]=s;});
   return ((G.data&&G.data.months)||[]).map(function(r){
     var o={},s=sm[r.m];for(var k in r)o[k]=r[k];
-    if(s&&s.to===r.to){o.active=s.active;o.pilots=s.pilots;o.signed=s.active+s.pilots;}
+    if(s&&s.to===r.to&&s.every!=null){o.signed=s.every;}
     else if(!G.signed&&G.sLoading){o.signed=null;o.signPending=true;}
     else{o.signed=null;o.signErr=true;}
     return o;
@@ -172,7 +173,7 @@ function gTotals(ms){
   // the months added up: a brand that signed in two months (a pilot fee, then
   // its deal) is one brand. Only when that read is today's.
   var y=G.signed&&G.signed.ytd;
-  if(y&&G.data&&G.signed.today===G.data.today){t.active=y.active;t.pilots=y.pilots;t.signed=y.active+y.pilots;}
+  if(y&&y.every!=null&&G.data&&G.signed.today===G.data.today){t.signed=y.every;}
   return t;
 }
 var G_SIGN_COL='#172C45',G_DEMO_COL='#72A4BF';
@@ -197,7 +198,7 @@ function gChart(ms){
 function gTip(ev,i){
   var r=G.view&&G.view[i];if(!r)return;var t=document.getElementById('tip');
   t.innerHTML='<b>'+gMon(r.m,true)+(r.partial?' (to date)':'')+'</b><br>'
-    +'Signed Brands: <b>'+(r.signPending?'loading…':r.signErr?'unavailable':gN(r.signed))+'</b>'+(r.signed==null?'':'<br><span style="opacity:.75">'+gN(r.active)+' active + '+gN(r.pilots)+' pilots</span>')
+    +'Signed Brands: <b>'+(r.signPending?'loading…':r.signErr?'unavailable':gN(r.signed))+'</b>'
     +'<br>Demos Held: <b>'+(r.demoErr?'unavailable':gN(r.qd))+'</b>'+(r.adj&&!r.demoErr?' <span style="opacity:.75">(‡ '+gN(r.qdRaw)+' less ~20%)</span>':'')
     +'<br>Signed ÷ Demos: <b>'+(r.demoErr||r.signed==null?'—':gPct(r.signed,r.qd))+'</b>';
   t.style.display='block';
@@ -230,7 +231,7 @@ function gRenderDemos(){
       return '<tr'+(r.partial?' class="part"':'')+'><td>'+gMon(r.m,true)+(r.old?' †':'')+'</td><td class="big">'+sv('signed')+'</td><td class="big">'+dv('qd')+(r.adj&&!r.demoErr?'<sup>‡</sup>':'')+'</td><td class="big">'+(r.demoErr?na:r.signed==null?sn:gPct(r.signed,r.qd))+'</td></tr>';}).join('')
     +'<tr class="tot"><td>Total</td><td class="big">'+gN(t.signed)+'</td><td class="big">'+gN(t.qd)+'</td><td class="big">'+(t.signed==null||!t.qdOk?'—':gPct(t.signed,t.qd))+'</td></tr>'
     +'</tbody></table></div>'
-    +'<div class="note"><b>Signed Brands</b>: the BD Tracker’s Signed Brands card with the month picked as its range. Of the brands that signed in the month (a pilot when its fee was paid, any other brand by its HubSpot close date), those active today (a live Recurly subscription: billing, trial, starting or paused) plus those running a pilot today (deposit paid, collecting data or live). A brand that has churned since is not counted, so past months can go down. The Total row counts January 1 to today as one range, so a brand that signed in two months counts once and the Total can be less than the months added up.<br>'
+    +'<div class="note"><b>Signed Brands</b>: every brand that signed in the month (a pilot when its fee was paid, any other brand by its HubSpot close date), whether it is active or on a pilot today, or has churned since. A churned brand is counted once, and not at all when the same brand (a duplicate record or a restart) is already counted. Because churned brands stay in, a brand churning does not lower its signing month. The Total row counts January 1 to today as one range, so a brand that signed in two months counts once and the Total can be less than the months added up.<br>'
     +'<b>Demos Held</b>: demos that took place in the month (by the meeting date, or the rescheduled date) from brands that are not pre-launch and not “Very Small” web traffic, including brands that have since churned or never implemented, so a past month does not shrink when a brand leaves. Webinars are not counted. So this differs from the Brand Dashboard’s Qualified Regular Demos.<br>‡ January through June we were not explicitly asking if brands were pre-launch, but still demo’ing them. July onwards, brands were self-identifying pre-demo as “pre-launch”. Therefore, July onwards we are not counting pre-launch brands in the number of demos that occurred (because they realistically won’t sign immediately), and for January through June we decreased the number of demos occurring by ~20% given this has been the consistent typical percentage of new scheduled demos that are ‘pre-launch’.<br><b>Signed ÷ Demos</b>: the month’s Signed Brands divided by its Demos Held. The two are different brands: a brand that signed in March may have had its demo in January.</div></div>';
   return h;
 }

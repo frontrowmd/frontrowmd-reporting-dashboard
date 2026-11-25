@@ -4466,8 +4466,8 @@ function _baStatusOf(b){
 // company (h). Built once from the two heavy reads, cached 30 min, and shared by
 // Growth Overview (/api/growth-signed) and the Brand Dashboard's Revenue
 // Outcome (/api/signed-brands), so both count exactly as the card does.
-const SIGN_BOOK_KV = 'sign_book_v4';
-const SIGN_BOOK_LAST = 'sign_book_last_v4';
+const SIGN_BOOK_KV = 'sign_book_v5';
+const SIGN_BOOK_LAST = 'sign_book_last_v5';
 function signBookRows(deals, app) {
   const t = appJoinTables();
   BD_APP_JOIN_CO = t.co; BD_APP_JOIN_DEAL = t.deal;
@@ -4493,7 +4493,10 @@ function signBookRows(deals, app) {
     // co: the other HubSpot companies its joined deals sit on (a reviewed or
     // name join), so a demo deal on that company is found too.
     const co = [...new Set((join.byBrand[b.id] || []).map(x => x.companyId ? String(x.companyId) : '').filter(x => x && x !== h))];
-    rows.push({ d, a: a ? 1 : 0, p: p ? 1 : 0, c: c ? 1 : 0, h, k, j, co });
+    // t: an internal demo/test brand the exact-name list misses ('Andres Test',
+    // 'MoonBrew Demo 2'); whole words only, so Testosil or TestRX are kept.
+    const t = /\b(demo|test)\b/i.test(String(b.name || '')) ? 1 : 0;
+    rows.push({ d, a: a ? 1 : 0, p: p ? 1 : 0, c: c ? 1 : 0, t, h, k, j, co });
   }
   return rows;
 }
@@ -4505,17 +4508,24 @@ function signBookRows(deals, app) {
 function signBookKeys(r) { return (r.h ? ['h:' + r.h] : []).concat((r.k || []).map(x => 'd:' + x)); }
 function signBookCount(rows, from, to) {
   const inR = rows.filter(r => r.d.some(x => x >= from && x <= to));
-  const live = new Set(), seen = new Set();
-  inR.forEach(r => { if (r.a || r.p) signBookKeys(r).forEach(x => live.add(x)); });
-  let active = 0, pilots = 0, churned = 0;
-  for (const r of inR) {
-    active += r.a; pilots += r.p;
-    if (!r.c) continue;
-    const ks = signBookKeys(r);
-    if (ks.some(x => live.has(x) || seen.has(x))) continue;
-    ks.forEach(x => seen.add(x)); churned++;
-  }
-  return { active, pilots, signed: active + pilots, churned };
+  let active = 0, pilots = 0;
+  inR.forEach(r => { active += r.a; pilots += r.p; });
+  // Churned: ended rows that signed in the range, one per BRAND. Rows linked by
+  // a shared company or closed-won deal, directly or through a chain of rows,
+  // are one brand (union-find over every in-range row, so the count does not
+  // depend on row order); a group holding a live row is that live brand, not a
+  // churn. Internal demo/test names (t) never count.
+  const par = {};
+  const f = x => { if (par[x] === undefined) par[x] = x; while (par[x] !== x) { par[x] = par[par[x]]; x = par[x]; } return x; };
+  const u = (a, b) => { a = f(a); b = f(b); if (a !== b) par[a] = b; };
+  inR.forEach((r, i) => { const me = 'r:' + i; f(me); signBookKeys(r).forEach(k => u(me, k)); });
+  const liveRoot = new Set(), churnRoot = new Set();
+  inR.forEach((r, i) => { if (r.a || r.p) liveRoot.add(f('r:' + i)); });
+  inR.forEach((r, i) => { if (r.c && !r.t && !(r.a || r.p)) { const rt = f('r:' + i); if (!liveRoot.has(rt)) churnRoot.add(rt); } });
+  const churned = churnRoot.size;
+  // every = each brand that signed in the range, churned ones included (Growth
+  // Overview, Alex 2026-11-25): the card's active + pilots, plus the churned.
+  return { active, pilots, signed: active + pilots, churned, every: active + pilots + churned };
 }
 async function buildSignBook(env) {
   if (!env.HUBSPOT_TOKEN) throw new Error('HubSpot is not configured');
