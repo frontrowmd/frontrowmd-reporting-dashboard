@@ -198,7 +198,7 @@ function gTip(ev,i){
   var r=G.view&&G.view[i];if(!r)return;var t=document.getElementById('tip');
   t.innerHTML='<b>'+gMon(r.m,true)+(r.partial?' (to date)':'')+'</b><br>'
     +'Signed Brands: <b>'+(r.signPending?'loading…':r.signErr?'unavailable':gN(r.signed))+'</b>'+(r.signed==null?'':'<br><span style="opacity:.75">'+gN(r.active)+' active + '+gN(r.pilots)+' pilots</span>')
-    +'<br>Demos Held: <b>'+(r.demoErr?'unavailable':gN(r.qd))+'</b>'
+    +'<br>Demos Held: <b>'+(r.demoErr?'unavailable':gN(r.qd))+'</b>'+(r.adj&&!r.demoErr?' <span style="opacity:.75">(‡ '+gN(r.qdRaw)+' less ~20%)</span>':'')
     +'<br>Signed ÷ Demos: <b>'+(r.demoErr||r.signed==null?'—':gPct(r.signed,r.qd))+'</b>';
   t.style.display='block';
   var x=ev.clientX+14,y2=ev.clientY+14,w=t.offsetWidth,h=t.offsetHeight;
@@ -227,11 +227,11 @@ function gRenderDemos(){
   h+='<div class="tile"><div class="tile-h"><span class="tile-t">Monthly detail</span><span style="flex:1"></span><button class="btn" onclick="gCsv()">Download CSV</button></div><div class="tbl-w"><table><thead><tr>'
     +'<th>Month</th><th>Signed Brands</th><th>Demos Held</th><th>Signed ÷ Demos</th></tr></thead><tbody>'
     +ms.map(function(r){var na='<span class="na">n/a</span>',sn=r.signPending?'…':na,sv=function(k){return r.signed==null?sn:gN(r[k]);},dv=function(k){return r.demoErr?na:gN(r[k]);};
-      return '<tr'+(r.partial?' class="part"':'')+'><td>'+gMon(r.m,true)+(r.old?' †':'')+'</td><td class="big">'+sv('signed')+'</td><td class="big">'+dv('qd')+'</td><td class="big">'+(r.demoErr?na:r.signed==null?sn:gPct(r.signed,r.qd))+'</td></tr>';}).join('')
+      return '<tr'+(r.partial?' class="part"':'')+'><td>'+gMon(r.m,true)+(r.old?' †':'')+'</td><td class="big">'+sv('signed')+'</td><td class="big">'+dv('qd')+(r.adj&&!r.demoErr?'<sup>‡</sup>':'')+'</td><td class="big">'+(r.demoErr?na:r.signed==null?sn:gPct(r.signed,r.qd))+'</td></tr>';}).join('')
     +'<tr class="tot"><td>Total</td><td class="big">'+gN(t.signed)+'</td><td class="big">'+gN(t.qd)+'</td><td class="big">'+(t.signed==null||!t.qdOk?'—':gPct(t.signed,t.qd))+'</td></tr>'
     +'</tbody></table></div>'
     +'<div class="note"><b>Signed Brands</b>: the BD Tracker’s Signed Brands card with the month picked as its range. Of the brands that signed in the month (a pilot when its fee was paid, any other brand by its HubSpot close date), those active today (a live Recurly subscription: billing, trial, starting or paused) plus those running a pilot today (deposit paid, collecting data or live). A brand that has churned since is not counted, so past months can go down. The Total row counts January 1 to today as one range, so a brand that signed in two months counts once and the Total can be less than the months added up.<br>'
-    +'<b>Demos Held</b>: demos that took place in the month (by the meeting date, or the rescheduled date) from brands that are not pre-launch and not “Very Small” web traffic, including brands that have since churned or never implemented, so a past month does not shrink when a brand leaves. Webinars are not counted. So this differs from the Brand Dashboard’s Qualified Regular Demos.<br><b>Signed ÷ Demos</b>: the month’s Signed Brands divided by its Demos Held. The two are different brands: a brand that signed in March may have had its demo in January.</div></div>';
+    +'<b>Demos Held</b>: demos that took place in the month (by the meeting date, or the rescheduled date) from brands that are not pre-launch and not “Very Small” web traffic, including brands that have since churned or never implemented, so a past month does not shrink when a brand leaves. Webinars are not counted. So this differs from the Brand Dashboard’s Qualified Regular Demos.<br>‡ January through June we were not explicitly asking if brands were pre-launch, but still demo’ing them. July onwards, brands were self-identifying pre-demo as “pre-launch”. Therefore, July onwards we are not counting pre-launch brands in the number of demos that occurred (because they realistically won’t sign immediately), and for January through June we decreased the number of demos occurring by ~20% given this has been the consistent typical percentage of new scheduled demos that are ‘pre-launch’.<br><b>Signed ÷ Demos</b>: the month’s Signed Brands divided by its Demos Held. The two are different brands: a brand that signed in March may have had its demo in January.</div></div>';
   return h;
 }
 function gCsv(){

@@ -28,14 +28,19 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
 `);
   let g=await run(`buildGrowth({HUBSPOT_TOKEN:'t'})`);
   ck('one pipeline fetch per month and no webinar count, the current month to today',run('HUBSPOT'),['pipe 2026-01-01..2026-01-31','pipe 2026-02-01..2026-02-10']);
-  ck('Jan: held demos excl. pre-launch, Very Small traffic and no-shows, a since-churned brand INCLUDED, rescheduled in counts, rescheduled out does not; webinars not added',[g.months[0].qd,'webinars' in g.months[0]],[3,false]);
+  ck('Jan: held demos excl. pre-launch, Very Small traffic and no-shows, a since-churned brand INCLUDED, rescheduled in counts, rescheduled out does not; webinars not added; Jan-Jun cut ~20% (3 -> 2, rounded)',[g.months[0].qdRaw,g.months[0].qd,g.months[0].adj,'webinars' in g.months[0]],[3,2,true,false]);
+  {const keep=W.fetchPipelineDeals,kt=W.todayET;
+   run(`todayET=()=>new Date(Date.UTC(2026,6,20));fetchPipelineDeals=async(t,f)=>(f==='2026-06-01'||f==='2026-07-01')?[1,2,3,4,5].map(i=>({id:f+i,properties:{date_demo_booked:f.slice(0,8)+'1'+i,demo_attendance_status:'Demo Given (originally scheduled)'}})):[];`);
+   const g2=await run(`buildGrowth({HUBSPOT_TOKEN:'t'})`);
+   ck('  June is cut (5 -> 4), July onwards is not (5)',g2.months.slice(5).map(r=>[r.m,r.qd,!!r.adj]),[['2026-06',4,true],['2026-07',5,false]]);
+   W.fetchPipelineDeals=keep;W.todayET=kt;}
   ck('demo months only; the current month marked partial',g.months.map(r=>[r.m,r.partial,'signed' in r]),[['2026-01',false,false],['2026-02',true,false]]);
   ck('a clean build is ok to cache',g.ok,true);
   // Cache: a clean build is stored; a failed build serves the last good copy.
   const kv={};const env={HUBSPOT_TOKEN:'t',CONTENT_STORE:{get:async(k)=>kv[k]?JSON.parse(kv[k]):null,put:async(k,v)=>{kv[k]=v;}}};
   W.env=env;
   g=await run(`fetchGrowth(env,false)`);
-  ck('a clean build is cached and kept as the last good copy',[!!kv.growth_v6,!!kv.growth_last_v6,!!g.cached],[true,true,false]);
+  ck('a clean build is cached and kept as the last good copy',[!!kv.growth_v7,!!kv.growth_last_v7,!!g.cached],[true,true,false]);
   ck('  the next load is served from cache',!!(await run(`fetchGrowth(env,false)`)).cached,true);
   run(`fetchPipelineDeals=async()=>{throw new Error('HubSpot down');};`);
   g=await run(`fetchGrowth(env,true)`);
@@ -43,7 +48,7 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
   // HubSpot failing does not throw: failed months take the last good copy's figures.
   run(`fetchPipelineDeals=async()=>{const a=[];a.partial=true;return a;};`);
   g=await run(`fetchGrowth(env,true)`);
-  ck('a failed build fills failed months from the last good copy, marked, and does not cache',[g.months[0].qd,!!g.months[0].old,!!(g.stale&&g.stale.partialOnly),g.ok],[3,true,true,false]);
+  ck('a failed build fills failed months from the last good copy, marked, and does not cache',[g.months[0].qd,!!g.months[0].old,!!(g.stale&&g.stale.partialOnly),g.ok],[2,true,true,false]);
   ck('  the current month is filled too only if the copy ran to the same day',g.months[1].demoErr,undefined);
   run(`HS_ERR.n=0;`);
   run(`fetchPipelineDeals=async()=>{const a=[];a.partial=true;return a;};`);
@@ -168,6 +173,9 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
   P.G.sLoading=false;P.G.signed={asOf:'2026-11-24T12:00:00Z',today:'2026-03-12',ytd:{signed:15,active:11,pilots:4,churned:3},months:[
     {m:'2026-01',to:'2026-01-31',signed:8,active:6,pilots:2,churned:2},{m:'2026-02',to:'2026-02-28',signed:5,active:5,pilots:0,churned:1},{m:'2026-03',to:'2026-03-12',signed:3,active:1,pilots:2,churned:0}]};
   h=P.gRenderDemos();
+  P.G.data.months[0].adj=true;P.G.data.months[0].qdRaw=50;
+  ck('a cut month is marked ‡ and the footnote says why, word for word',[/<td class="big">40<sup>‡<\/sup><\/td>/.test(P.gRenderDemos()),/‡ January through June we were not explicitly asking if brands were pre-launch, but still demo’ing them\. July onwards, brands were self-identifying pre-demo as “pre-launch”\./.test(P.gRenderDemos())],[true,true]);
+  delete P.G.data.months[0].adj;delete P.G.data.months[0].qdRaw;
   ck('Signed Brands = active + pilots (the card); no Active, Pilots or churned columns',[/<td>Jan 2026<\/td><td class="big">8<\/td><td class="big">40<\/td><td class="big">20%<\/td><\/tr>/.test(h),/<th>Active<\/th>|<th>Pilots<\/th>|Churned/.test(h)],[true,false]);
   ck('monthly detail is Month, Signed Brands, Demos Held, Signed ÷ Demos; no cohort columns, no KPI cards',[/<th>Month<\/th><th>Signed Brands<\/th><th>Demos Held<\/th><th>Signed ÷ Demos<\/th><\/tr>/.test(h),/Demo → Signed|Since Signed/.test(h),/class="kpi/.test(h)],[true,false,false]);
   ck('totals: the year counted once (ytd), demos skip an unavailable month and say so; no year ratio then',[/<tr class="tot"><td>Total<\/td><td class="big">15<\/td><td class="big">52<\/td><td class="big">—<\/td><\/tr>/.test(h),/show as n\/a/.test(h)],[true,true]);

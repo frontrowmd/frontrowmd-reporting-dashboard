@@ -4216,8 +4216,10 @@ async function fetchBdWaterfall(env, fresh) {
 // failed is marked err (shown as unavailable), never counted as zero, and a
 // payload with any failure is not cached.
 const GROWTH_FROM = '2026-01';
-const GROWTH_KV = 'growth_v6';
-const GROWTH_LAST = 'growth_last_v6';
+const GROWTH_KV = 'growth_v7';
+const GROWTH_LAST = 'growth_last_v7';
+const GROWTH_PRELAUNCH_ADJ = 0.2;          // Demos Held cut for months before pre-launch was asked
+const GROWTH_PRELAUNCH_ADJ_TO = '2026-06';  // last month the cut applies to
 const GROWTH_TTL_SEC = 1800;
 function growthMonths(today) {
   const out = [];
@@ -4249,8 +4251,14 @@ async function buildGrowth(env) {
     // Its OWN calls' failures: the page fires /api/growth-signed alongside, and
     // the global HS_ERR counter would let one request's failure mark the other.
     const err = !!(deals && deals.partial);
-    const qd = pl.qualifiedRawCount || 0;
-    rows.push({ m: mo.m, to: mo.to, partial: mo.partial, qd, demoErr: err || undefined });
+    const raw = pl.qualifiedRawCount || 0;
+    // Jan-Jun 2026 brands were not asked whether they were pre-launch, so those
+    // demos could not be excluded; they are cut by GROWTH_PRELAUNCH_ADJ (~20%,
+    // the steady pre-launch share of new scheduled demos since July). Alex,
+    // 2026-11-25. qdRaw keeps the uncut count.
+    const adj = mo.m <= GROWTH_PRELAUNCH_ADJ_TO;
+    const qd = adj ? Math.round(raw * (1 - GROWTH_PRELAUNCH_ADJ)) : raw;
+    rows.push({ m: mo.m, to: mo.to, partial: mo.partial, qd, qdRaw: raw, adj: adj || undefined, demoErr: err || undefined });
   }
   return { months: rows, asOf: new Date().toISOString(), today, ok: !rows.some(r => r.demoErr) };
 }
@@ -4293,7 +4301,7 @@ async function fetchGrowth(env, fresh) {
   data.months.forEach(r => {
     const o = lm[r.m];
     if (!o || o.to !== r.to) return;
-    if (r.demoErr && !o.demoErr) { r.qd = o.qd; delete r.demoErr; r.old = asOf; used++; }
+    if (r.demoErr && !o.demoErr) { r.qd = o.qd; r.qdRaw = o.qdRaw; r.adj = o.adj; delete r.demoErr; r.old = asOf; used++; }
   });
   if (used) data.stale = { error: 'Some HubSpot calls failed', asOf, partialOnly: true };
   return data;
