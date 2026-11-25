@@ -4466,8 +4466,13 @@ function _baStatusOf(b){
 // company (h). Built once from the two heavy reads, cached 30 min, and shared by
 // Growth Overview (/api/growth-signed) and the Brand Dashboard's Revenue
 // Outcome (/api/signed-brands), so both count exactly as the card does.
-const SIGN_BOOK_KV = 'sign_book_v5';
-const SIGN_BOOK_LAST = 'sign_book_last_v5';
+const SIGN_BOOK_KV = 'sign_book_v6';
+const SIGN_BOOK_LAST = 'sign_book_last_v6';
+// HubSpot moves a churned brand's deal OUT of Closed Won into a churn stage, so
+// the card's _bdSignDays (closed-won deals only) finds no signing day for it and
+// it never reached the book. Its churn-stage deals' close dates are its signing
+// days for the CHURN count only (dch); the card's own days (d) are untouched.
+const SIGN_BOOK_CHURN_STAGES = ['3453925110', '3517067985'];   // Churned, Churned (Onb)
 function signBookRows(deals, app) {
   const t = appJoinTables();
   BD_APP_JOIN_CO = t.co; BD_APP_JOIN_DEAL = t.deal;
@@ -4476,27 +4481,26 @@ function signBookRows(deals, app) {
   const rows = [];
   for (const b of app.brands) {
     if (_baIsTest(b)) continue;
-    const d = _bdSignDays(b, join.byBrand[b.id]).days;
-    if (!d.length) continue;
+    const bd = join.byBrand[b.id] || [];
+    const d = _bdSignDays(b, bd).days;
+    const chd = bd.filter(x => SIGN_BOOK_CHURN_STAGES.indexOf(x.dealstage) >= 0);
+    const dch = chd.map(x => x.closedate ? _bdEtDayOf(x.closedate) : '').filter(Boolean);
+    if (!d.length && !dch.length) continue;
     let a;
     if (rcOk) { const k = _baRcClass(b); a = !!k && k !== 'ended'; }      // _baSummaryRc
     else a = !b.discardedAt && !!b.active;                                // _baSummary
     const p = !!(b.pilot && !/(demo|test)/i.test(String(b.name || '')) && BD_PILOT_COUNTED.indexOf(b.pilot.status) >= 0);   // _baPilotStatsOf
-    const c = !a && !p && _baStatusOf(b).s === 'Ended';
-    // k: its closed-won deals, so an ended row that shares a deal with another
-    // row (a restart joined by name, a reviewed join) is known to be the same brand.
-    const k = (join.byBrand[b.id] || []).filter(x => x.dealstage === 'closedwon').map(x => String(x.id));
-    // j: its other joined deals (open, lost, pilot stages), so Growth's demo
-    // cohort can find a demo deal that never went closed-won (a pilot).
-    const j = (join.byBrand[b.id] || []).filter(x => x.dealstage !== 'closedwon').map(x => String(x.id));
+    // Churned: neither live, and either the app says Ended or HubSpot has moved
+    // its deal to a churn stage.
+    const c = !a && !p && (_baStatusOf(b).s === 'Ended' || chd.length > 0);
+    // k: its closed-won and churn-stage deals, so rows that share a deal (a
+    // restart joined by name, a reviewed join) are known to be the same brand.
+    const k = bd.filter(x => x.dealstage === 'closedwon' || SIGN_BOOK_CHURN_STAGES.indexOf(x.dealstage) >= 0).map(x => String(x.id));
     const h = b.hubspotCompanyId ? String(b.hubspotCompanyId) : '';
-    // co: the other HubSpot companies its joined deals sit on (a reviewed or
-    // name join), so a demo deal on that company is found too.
-    const co = [...new Set((join.byBrand[b.id] || []).map(x => x.companyId ? String(x.companyId) : '').filter(x => x && x !== h))];
     // t: an internal demo/test brand the exact-name list misses ('Andres Test',
     // 'MoonBrew Demo 2'); whole words only, so Testosil or TestRX are kept.
-    const t = /\b(demo|test)\b/i.test(String(b.name || '')) ? 1 : 0;
-    rows.push({ d, a: a ? 1 : 0, p: p ? 1 : 0, c: c ? 1 : 0, t, h, k, j, co });
+    const tt = /\b(demo|test)\b/i.test(String(b.name || '')) ? 1 : 0;
+    rows.push({ d, dch, a: a ? 1 : 0, p: p ? 1 : 0, c: c ? 1 : 0, t: tt, h, k });
   }
   return rows;
 }
@@ -4507,20 +4511,23 @@ function signBookRows(deals, app) {
 // tied to each other count once.
 function signBookKeys(r) { return (r.h ? ['h:' + r.h] : []).concat((r.k || []).map(x => 'd:' + x)); }
 function signBookCount(rows, from, to) {
-  const inR = rows.filter(r => r.d.some(x => x >= from && x <= to));
+  const inRange = x => x >= from && x <= to;
+  // Active and pilots count on the card's own days (d) only, so `signed` stays
+  // the card. The churn count also takes the churn-stage days (dch).
+  const inR = rows.filter(r => r.d.some(inRange) || (r.c && (r.dch || []).some(inRange)));
   let active = 0, pilots = 0;
-  inR.forEach(r => { active += r.a; pilots += r.p; });
+  inR.forEach(r => { if (r.d.some(inRange)) { active += r.a; pilots += r.p; } });
   // Churned: ended rows that signed in the range, one per BRAND. Rows linked by
   // a shared company or closed-won deal, directly or through a chain of rows,
   // are one brand (union-find over every in-range row, so the count does not
   // depend on row order); a group holding a live row is that live brand, not a
   // churn. Internal demo/test names (t) never count.
   const par = {};
-  const f = x => { while (par[x] !== undefined && par[x] !== x) { par[x] = par[par[x]] === undefined ? par[x] : par[par[x]]; x = par[x]; } if (par[x] === undefined) par[x] = x; return x; };
+  const f = x => { if (par[x] === undefined) par[x] = x; while (par[x] !== x) { par[x] = par[par[x]]; x = par[x]; } return x; };
   const u = (a, b) => { a = f(a); b = f(b); if (a !== b) par[a] = b; };
   inR.forEach((r, i) => { const me = 'r:' + i; f(me); signBookKeys(r).forEach(k => u(me, k)); });
   const liveRoot = new Set(), churnRoot = new Set();
-  inR.forEach((r, i) => { if (r.a || r.p) liveRoot.add(f('r:' + i)); });
+  inR.forEach((r, i) => { if ((r.a || r.p) && r.d.some(inRange)) liveRoot.add(f('r:' + i)); });
   inR.forEach((r, i) => { if (r.c && !r.t && !(r.a || r.p)) { const rt = f('r:' + i); if (!liveRoot.has(rt)) churnRoot.add(rt); } });
   const churned = churnRoot.size;
   // every = each brand that signed in the range, churned ones included (Growth
