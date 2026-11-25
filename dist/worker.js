@@ -4466,8 +4466,8 @@ function _baStatusOf(b){
 // company (h). Built once from the two heavy reads, cached 30 min, and shared by
 // Growth Overview (/api/growth-signed) and the Brand Dashboard's Revenue
 // Outcome (/api/signed-brands), so both count exactly as the card does.
-const SIGN_BOOK_KV = 'sign_book_v6';
-const SIGN_BOOK_LAST = 'sign_book_last_v6';
+const SIGN_BOOK_KV = 'sign_book_v7';
+const SIGN_BOOK_LAST = 'sign_book_last_v7';
 // HubSpot moves a churned brand's deal OUT of Closed Won into a churn stage, so
 // the card's _bdSignDays (closed-won deals only) finds no signing day for it and
 // it never reached the book. Its churn-stage deals' close dates are its signing
@@ -4482,7 +4482,7 @@ function signBookRows(deals, app) {
   for (const b of app.brands) {
     if (_baIsTest(b)) continue;
     const bd = join.byBrand[b.id] || [];
-    const d = _bdSignDays(b, bd).days;
+    const sd = _bdSignDays(b, bd), d = sd.days;
     const chd = bd.filter(x => SIGN_BOOK_CHURN_STAGES.indexOf(x.dealstage) >= 0);
     const dch = chd.map(x => x.closedate ? _bdEtDayOf(x.closedate) : '').filter(Boolean);
     if (!d.length && !dch.length) continue;
@@ -4500,7 +4500,22 @@ function signBookRows(deals, app) {
     // t: an internal demo/test brand the exact-name list misses ('Andres Test',
     // 'MoonBrew Demo 2'); whole words only, so Testosil or TestRX are kept.
     const tt = /\b(demo|test)\b/i.test(String(b.name || '')) ? 1 : 0;
-    rows.push({ d, dch, a: a ? 1 : 0, p: p ? 1 : 0, c: c ? 1 : 0, t: tt, h, k });
+    // w: a REAL signing (a paid pilot or a closed-won / churned HubSpot deal), not
+    // the app's created-date fallback, which a never-subscribed brand also gets.
+    const w = (sd.how === 'pilot' || sd.how === 'hubspot' || dch.length > 0 || c) ? 1 : 0;
+    rows.push({ d, dch, a: a ? 1 : 0, p: p ? 1 : 0, c: c ? 1 : 0, w, t: tt, h, k });
+  }
+  // Signed HubSpot deals that reach NO app brand (signed, but no brand in the
+  // app yet, or never set up): one row each, for Growth's `every` only.
+  for (const dd of deals) {
+    if (dd.dealstage !== 'closedwon' && SIGN_BOOK_CHURN_STAGES.indexOf(dd.dealstage) < 0) continue;
+    const jd = join.byDeal[dd.id];
+    if (jd && jd.brands && jd.brands.length) continue;
+    const day = dd.closedate ? _bdEtDayOf(dd.closedate) : '';
+    if (!day) continue;
+    rows.push({ d: [day], dch: [], a: 0, p: 0, c: 0, w: 1, x: 1,
+      t: /\b(demo|test)\b/i.test(String(dd.dealname || '')) ? 1 : 0,
+      h: dd.companyId ? String(dd.companyId) : '', k: [String(dd.id)] });
   }
   return rows;
 }
@@ -4526,13 +4541,21 @@ function signBookCount(rows, from, to) {
   const f = x => { if (par[x] === undefined) par[x] = x; while (par[x] !== x) { par[x] = par[par[x]]; x = par[x]; } return x; };
   const u = (a, b) => { a = f(a); b = f(b); if (a !== b) par[a] = b; };
   inR.forEach((r, i) => { const me = 'r:' + i; f(me); signBookKeys(r).forEach(k => u(me, k)); });
-  const liveRoot = new Set(), churnRoot = new Set();
-  inR.forEach((r, i) => { if ((r.a || r.p) && r.d.some(inRange)) liveRoot.add(f('r:' + i)); });
-  inR.forEach((r, i) => { if (r.c && !r.t && !(r.a || r.p)) { const rt = f('r:' + i); if (!liveRoot.has(rt)) churnRoot.add(rt); } });
+  const liveRoot = new Set(), churnRoot = new Set(), otherRoot = new Set();
+  inR.forEach((r, i) => { if ((r.a || r.p) && !r.x && r.d.some(inRange)) liveRoot.add(f('r:' + i)); });
+  inR.forEach((r, i) => {
+    if (r.a || r.p || r.t) return;
+    const rt = f('r:' + i);
+    if (liveRoot.has(rt)) return;
+    if (r.c && !r.x) churnRoot.add(rt);
+    // every: any real signing in the range that is not live today (churned,
+    // onboarding, no plan, or a signed deal with no app brand), one per brand.
+    if ((r.w && r.d.some(inRange)) || (r.c && (r.dch || []).some(inRange))) otherRoot.add(rt);
+  });
   const churned = churnRoot.size;
-  // every = each brand that signed in the range, churned ones included (Growth
-  // Overview, Alex 2026-11-25): the card's active + pilots, plus the churned.
-  return { active, pilots, signed: active + pilots, churned, every: active + pilots + churned };
+  // every = each brand that signed in the range, whatever it is today (Growth
+  // Overview, Alex 2026-11-25): the card's active + pilots, plus the rest.
+  return { active, pilots, signed: active + pilots, churned, every: active + pilots + otherRoot.size };
 }
 async function buildSignBook(env) {
   if (!env.HUBSPOT_TOKEN) throw new Error('HubSpot is not configured');
