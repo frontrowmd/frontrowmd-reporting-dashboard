@@ -4216,8 +4216,8 @@ async function fetchBdWaterfall(env, fresh) {
 // failed is marked err (shown as unavailable), never counted as zero, and a
 // payload with any failure is not cached.
 const GROWTH_FROM = '2026-01';
-const GROWTH_KV = 'growth_v7';
-const GROWTH_LAST = 'growth_last_v7';
+const GROWTH_KV = 'growth_v8';
+const GROWTH_LAST = 'growth_last_v8';
 const GROWTH_PRELAUNCH_ADJ = 0.2;          // Demos Held cut for months before pre-launch was asked
 const GROWTH_PRELAUNCH_ADJ_TO = '2026-06';  // last month the cut applies to
 const GROWTH_TTL_SEC = 1800;
@@ -4243,11 +4243,12 @@ async function buildGrowth(env) {
   const rows = [];
   for (const mo of months) {
     const deals = await fetchPipelineDeals(tok, mo.from, mo.to);
-    // EVERY held demo except pre-launch and "Very Small" web traffic, with NO
-    // filterActiveBrands (Alex, 2026-11-25): that filter drops a deal once its
-    // brand churns or never implements, so past months shrank. So Demos Held
-    // differs from the Brand Dashboard's Qualified Regular Demos.
-    const pl = processPipelineDeals((deals || []).filter(d => (d.properties && d.properties.average_monthly_web_traffic__cloned_) !== 'Very Small'), toMsUTC(mo.from), toMsUTC(mo.to, true), toMsET(mo.from), toMsET(mo.to, true), new Set());
+    // EVERY held demo except pre-launch, with NO filterActiveBrands (Alex,
+    // 2026-11-25): that filter drops a deal once its brand churns or never
+    // implements, so past months shrank. So Demos Held differs from the Brand
+    // Dashboard's Qualified Regular Demos. "Very Small" web traffic was left out
+    // for a while and added back the same day.
+    const pl = processPipelineDeals(deals || [], toMsUTC(mo.from), toMsUTC(mo.to, true), toMsET(mo.from), toMsET(mo.to, true), new Set());
     // Its OWN calls' failures: the page fires /api/growth-signed alongside, and
     // the global HS_ERR counter would let one request's failure mark the other.
     const err = !!(deals && deals.partial);
@@ -4506,11 +4507,18 @@ function signBookRows(deals, app) {
     rows.push({ d, dch, a: a ? 1 : 0, p: p ? 1 : 0, c: c ? 1 : 0, w, t: tt, h, k });
   }
   // Signed HubSpot deals that reach NO app brand (signed, but no brand in the
-  // app yet, or never set up): one row each, for Growth's `every` only.
+  // app yet, or never set up): one row each, for Growth's `every` only. A deal
+  // whose name loosely matches exactly ONE counted brand that joined no deals
+  // (its app row is dated by the app, under a different name) is that brand,
+  // already counted: no row, or it would count twice.
+  const orphans = app.brands.filter(b => !_baIsTest(b) && !(join.byBrand[b.id] || []).length).map(b => _baNorm(b.name)).filter(n => n.length >= 4);
+  const loose = (x) => { const n = _baNorm(x); return n.length >= 4 ? orphans.filter(o => o.indexOf(n) >= 0 || n.indexOf(o) >= 0).length : 0; };
   for (const dd of deals) {
     if (dd.dealstage !== 'closedwon' && SIGN_BOOK_CHURN_STAGES.indexOf(dd.dealstage) < 0) continue;
     const jd = join.byDeal[dd.id];
-    if (jd && jd.brands && jd.brands.length) continue;
+    if (jd && jd.brands && jd.brands.some(b => !_baIsTest(b))) continue;
+    if (jd && jd.brands && jd.brands.length) continue;   // joined to an internal test brand only
+    if (loose(dd.companyName) === 1 || loose(dd.dealname) === 1) continue;
     const day = dd.closedate ? _bdEtDayOf(dd.closedate) : '';
     if (!day) continue;
     rows.push({ d: [day], dch: [], a: 0, p: 0, c: 0, w: 1, x: 1,
@@ -4529,7 +4537,7 @@ function signBookCount(rows, from, to) {
   const inRange = x => x >= from && x <= to;
   // Active and pilots count on the card's own days (d) only, so `signed` stays
   // the card. The churn count also takes the churn-stage days (dch).
-  const inR = rows.filter(r => r.d.some(inRange) || (r.c && (r.dch || []).some(inRange)));
+  const inR = rows.filter(r => r.d.some(inRange) || (r.dch || []).some(inRange));
   let active = 0, pilots = 0;
   inR.forEach(r => { if (r.d.some(inRange)) { active += r.a; pilots += r.p; } });
   // Churned: ended rows that signed in the range, one per BRAND. Rows linked by
@@ -4544,18 +4552,20 @@ function signBookCount(rows, from, to) {
   const liveRoot = new Set(), churnRoot = new Set(), otherRoot = new Set();
   inR.forEach((r, i) => { if ((r.a || r.p) && !r.x && r.d.some(inRange)) liveRoot.add(f('r:' + i)); });
   inR.forEach((r, i) => {
-    if (r.a || r.p || r.t) return;
+    if (r.t) return;
+    if ((r.a || r.p) && r.d.some(inRange)) return;    // counted live, on the card's day
     const rt = f('r:' + i);
     if (liveRoot.has(rt)) return;
-    if (r.c && !r.x) churnRoot.add(rt);
-    // every: any real signing in the range that is not live today (churned,
-    // onboarding, no plan, or a signed deal with no app brand), one per brand.
-    if ((r.w && r.d.some(inRange)) || (r.c && (r.dch || []).some(inRange))) otherRoot.add(rt);
+    if (r.c && !r.x && (r.d.some(inRange) || (r.dch || []).some(inRange))) churnRoot.add(rt);
+    // every: any real signing in the range not counted live (churned, onboarding,
+    // no plan, a signed deal with no app brand, or a live brand's earlier
+    // churned-and-restarted signing), one per brand.
+    if ((r.w && r.d.some(inRange)) || (r.dch || []).some(inRange)) otherRoot.add(rt);
   });
   const churned = churnRoot.size;
   // every = each brand that signed in the range, whatever it is today (Growth
-  // Overview, Alex 2026-11-25): the card's active + pilots, plus the rest.
-  return { active, pilots, signed: active + pilots, churned, every: active + pilots + otherRoot.size };
+  // Overview, Alex 2026-11-25), one per brand: the live groups plus the rest.
+  return { active, pilots, signed: active + pilots, churned, every: liveRoot.size + otherRoot.size };
 }
 async function buildSignBook(env) {
   if (!env.HUBSPOT_TOKEN) throw new Error('HubSpot is not configured');

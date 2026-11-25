@@ -28,7 +28,7 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
 `);
   let g=await run(`buildGrowth({HUBSPOT_TOKEN:'t'})`);
   ck('one pipeline fetch per month and no webinar count, the current month to today',run('HUBSPOT'),['pipe 2026-01-01..2026-01-31','pipe 2026-02-01..2026-02-10']);
-  ck('Jan: held demos excl. pre-launch, Very Small traffic and no-shows, a since-churned brand INCLUDED, rescheduled in counts, rescheduled out does not; webinars not added; Jan-Jun cut ~20% (3 -> 2, rounded)',[g.months[0].qdRaw,g.months[0].qd,g.months[0].adj,'webinars' in g.months[0]],[3,2,true,false]);
+  ck('Jan: held demos excl. pre-launch and no-shows, Very Small traffic and a since-churned brand INCLUDED, rescheduled in counts, rescheduled out does not; webinars not added; Jan-Jun cut ~20% (4 -> 3, rounded)',[g.months[0].qdRaw,g.months[0].qd,g.months[0].adj,'webinars' in g.months[0]],[4,3,true,false]);
   {const keep=W.fetchPipelineDeals,kt=W.todayET;
    run(`todayET=()=>new Date(Date.UTC(2026,6,20));fetchPipelineDeals=async(t,f)=>(f==='2026-06-01'||f==='2026-07-01')?[1,2,3,4,5].map(i=>({id:f+i,properties:{date_demo_booked:f.slice(0,8)+'1'+i,demo_attendance_status:'Demo Given (originally scheduled)'}})):[];`);
    const g2=await run(`buildGrowth({HUBSPOT_TOKEN:'t'})`);
@@ -40,7 +40,7 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
   const kv={};const env={HUBSPOT_TOKEN:'t',CONTENT_STORE:{get:async(k)=>kv[k]?JSON.parse(kv[k]):null,put:async(k,v)=>{kv[k]=v;}}};
   W.env=env;
   g=await run(`fetchGrowth(env,false)`);
-  ck('a clean build is cached and kept as the last good copy',[!!kv.growth_v7,!!kv.growth_last_v7,!!g.cached],[true,true,false]);
+  ck('a clean build is cached and kept as the last good copy',[!!kv.growth_v8,!!kv.growth_last_v8,!!g.cached],[true,true,false]);
   ck('  the next load is served from cache',!!(await run(`fetchGrowth(env,false)`)).cached,true);
   run(`fetchPipelineDeals=async()=>{throw new Error('HubSpot down');};`);
   g=await run(`fetchGrowth(env,true)`);
@@ -48,7 +48,7 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
   // HubSpot failing does not throw: failed months take the last good copy's figures.
   run(`fetchPipelineDeals=async()=>{const a=[];a.partial=true;return a;};`);
   g=await run(`fetchGrowth(env,true)`);
-  ck('a failed build fills failed months from the last good copy, marked, and does not cache',[g.months[0].qd,!!g.months[0].old,!!(g.stale&&g.stale.partialOnly),g.ok],[2,true,true,false]);
+  ck('a failed build fills failed months from the last good copy, marked, and does not cache',[g.months[0].qd,!!g.months[0].old,!!(g.stale&&g.stale.partialOnly),g.ok],[3,true,true,false]);
   ck('  the current month is filled too only if the copy ran to the same day',g.months[1].demoErr,undefined);
   run(`HS_ERR.n=0;`);
   run(`fetchPipelineDeals=async()=>{const a=[];a.partial=true;return a;};`);
@@ -136,12 +136,17 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
   ck('  every also counts a signed brand still onboarding, and signed deals with no app brand (two on one company = one; a churn-stage one too); never the app\u2019s created-date fallback, a test name or a lost deal; the card is unchanged',
     cnt('2026-01-01','2026-01-31'),{active:2,pilots:1,signed:3,churned:1,every:7});
   ck('  ...and the card by the page’s own code is unchanged',card('2026-01-01','2026-01-31'),[2,1]);
+  FX.brands.push({id:18,name:'Orphan Company Brand',recurly:{mrr:100,idlePrice:0,subs:[{basis:'invoice',state:'active'}]},active:true,state:'active',signDate:'2026-01-03'});
+  ck('  a signed deal loosely matching exactly one deal-less counted brand is that brand, not a second signing',cnt('2026-01-01','2026-01-31').every,7);
+  FX.brands.pop();
   FX.brands.splice(-2);FD.splice(-6);
   // Rows straight into signBookCount: chains, row order, internal test names.
   const R=(o)=>Object.assign({d:['2026-01-10'],a:0,p:0,c:1,w:1,t:0,h:'',k:[]},o);W.R=R;
   const cc=rows=>{W.RR=rows;return run(`signBookCount(RR,'2026-01-01','2026-01-31')`);};
   ck('  ended rows linked only through a third row are one churn, in any order',[cc([R({h:'1'}),R({k:['5']}),R({h:'1',k:['5']})]).churned,cc([R({h:'1'}),R({h:'1',k:['5']}),R({k:['5']})]).churned],[1,1]);
   ck('  ...and a live row anywhere in the chain makes it that live brand, not a churn',cc([R({a:1,c:0,h:'1'}),R({k:['5']}),R({h:'1',k:['5']})]),{active:1,pilots:0,signed:1,churned:0,every:1});
+  ck('  every counts live brands once: a row both live and on a pilot, two live rows of one company (the card still counts rows)',[cc([R({a:1,p:1,c:0})]),cc([R({a:1,c:0,h:'7'}),R({a:1,c:0,h:'7'})])],[{active:1,pilots:1,signed:2,churned:0,every:1},{active:2,pilots:0,signed:2,churned:0,every:1}]);
+  ck('  a live brand\u2019s earlier churned signing (a restart) counts in that month too, not in the card',cc([R({a:1,c:0,d:['2026-09-10'],dch:['2026-01-05']})]),{active:0,pilots:0,signed:0,churned:0,every:1});
   ck('  internal demo/test names never count; a never-subscribed app row (no real signing) does not either',[cc([R({t:1}),R({}),R({c:0,w:0})]).every],[1]);
   run(`TFX={brands:['Andres Test','MoonBrew Demo 2','Testosil','TestRX'].map((n,i)=>({id:90+i,name:n,signDate:'2026-01-0'+(i+2),recurly:{mrr:0,idlePrice:0,subs:[{basis:'ended',state:'expired'}]},state:'ended'})),meta:{recurly:{ok:true}}};`);
   ck('  sign book flags internal names as whole words (Andres Test, MoonBrew Demo 2 out; Testosil, TestRX in)',run(`signBookRows([],TFX).map(r=>r.t)`),[1,1,0,0]);
@@ -227,7 +232,7 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
   P.G.signed.today='2026-03-11';
   ck('a year-to-date figure from another day is not used for the Total',/<tr class="tot"><td>Total<\/td><td class="big">—<\/td>/.test(P.gRenderDemos()),true);
   ck('Demos Held has no webinars column or split',[/<th>Webinars<\/th>|webinars<\/span>/.test(h),/Webinars are not counted/.test(h)],[false,true]);
-  ck('definitions: every brand signed in the month, churned included, a churned brand once',/or has churned since/.test(h)&&/A churned brand is counted once/.test(h),true);
+  ck('definitions: every brand signed in the month whatever it is today, each once',/churned since, or a signed HubSpot deal with no brand in the app/.test(h)&&/Each brand counts once in a month/.test(h),true);
   P.G.err='Growth data unavailable';
   ck('a failed Refresh keeps the numbers on screen and says so',/Refresh failed \(Growth data unavailable\)/.test(P.gRenderDemos())&&/<td>Jan 2026<\/td>/.test(P.gRenderDemos()),true);
   P.G.data=null;P.G.err='boom';
