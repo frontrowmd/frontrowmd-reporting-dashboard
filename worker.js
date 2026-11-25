@@ -4263,8 +4263,9 @@ async function buildGrowth(env) {
   }
   return { months: rows, asOf: new Date().toISOString(), today, ok: !rows.some(r => r.demoErr) };
 }
-async function fetchGrowth(env, fresh) {
+async function fetchGrowth(env, fresh, cacheOnly) {
   const kv = env.CONTENT_STORE;
+  if (cacheOnly) { const c = await growthShareCached(env, GROWTH_KV, GROWTH_LAST, 'growth'); if (c) return c; }
   if (!fresh && kv) {
     try {
       const hit = await kv.get(GROWTH_KV, 'json');
@@ -4306,6 +4307,79 @@ async function fetchGrowth(env, fresh) {
   });
   if (used) data.stale = { error: 'Some HubSpot calls failed', asOf, partialOnly: true };
   return data;
+}
+
+// ── Growth Overview share links (Alex, 2026-11-25) ───────────────────────────
+// A signed-in teammate makes a link /g/<key> from the page's Share button; anyone
+// with it sees the page read-only, no sign-in, until it is revoked (no expiry).
+// Keys live in KV as gshare:<key>, with who made it, when and a note as list
+// metadata. The link's page and its two data routes (/api/g/growth,
+// /api/g/growth-signed) sit on their own paths so Cloudflare Access can bypass
+// exactly those and nothing else; they serve only the cached Growth payloads
+// (see growthShareCached) and check the key on every request. Revoking takes
+// up to about a minute everywhere (KV is eventually consistent).
+const GSHARE_PREFIX = 'gshare:';
+const GSHARE_RE = /^[A-Za-z0-9_-]{32}$/;
+function growthShareKey() {
+  const b = crypto.getRandomValues(new Uint8Array(24));
+  let s = ''; for (const x of b) s += String.fromCharCode(x);
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+async function growthShareValid(env, k) {
+  if (!k || !GSHARE_RE.test(String(k)) || !env.CONTENT_STORE) return false;
+  try { return (await env.CONTENT_STORE.get(GSHARE_PREFIX + k)) != null; } catch (_) { return false; }
+}
+async function growthShareCreate(env, by, note) {
+  if (!env.CONTENT_STORE) throw new Error('Storage is not configured');
+  const key = growthShareKey();
+  const meta = { created: new Date().toISOString(), by: String(by || ''), note: String(note || '').trim().slice(0, 120) };
+  await env.CONTENT_STORE.put(GSHARE_PREFIX + key, '1', { metadata: meta });
+  return Object.assign({ key, path: '/g/' + key }, meta);
+}
+async function growthShareList(env) {
+  if (!env.CONTENT_STORE) throw new Error('Storage is not configured');
+  const out = [];
+  let cursor;
+  do {
+    const r = await env.CONTENT_STORE.list({ prefix: GSHARE_PREFIX, cursor });
+    (r.keys || []).forEach(x => { const m = x.metadata || {}; out.push({ key: x.name.slice(GSHARE_PREFIX.length), path: '/g/' + x.name.slice(GSHARE_PREFIX.length), created: m.created || null, by: m.by || '', note: m.note || '' }); });
+    cursor = r.list_complete ? null : r.cursor;
+  } while (cursor);
+  return out.sort((a, b) => String(b.created).localeCompare(String(a.created)));
+}
+// Share-link reads never rebuild while ANY copy exists: the newest cached copy,
+// at any age (a signed-in load or Refresh keeps it current). With none at all,
+// one rebuild may run per minute (a KV lock), so a looped link cannot keep the
+// HubSpot / Metabase / Recurly reads busy.
+async function growthShareCached(env, mainKey, lastKey, name) {
+  const kv = env.CONTENT_STORE;
+  if (!kv) return null;
+  for (const k of [mainKey, lastKey]) {
+    try {
+      const h = await kv.get(k, 'json');
+      if (h && h.data) return Object.assign({}, h.data, { cached: true });
+    } catch (_) { /* try the next */ }
+  }
+  const lock = 'gshare_build_lock:' + name;
+  try {
+    if (await kv.get(lock)) throw new Error('Data unavailable right now, try again in a minute');
+    await kv.put(lock, '1', { expirationTtl: 60 });
+  } catch (e) { if (/try again/.test(String(e && e.message))) throw e; }
+  return null;
+}
+// What a link visitor sees: no upstream error text.
+function growthSharePublic(r) {
+  if (!r || typeof r !== 'object') return r;
+  const o = Object.assign({}, r);
+  if (o.stale) o.stale = { asOf: o.stale.asOf || null, partialOnly: o.stale.partialOnly || undefined, error: 'A data source didn\u2019t answer just now' };
+  if (o.warn) o.warn = 'Some figures may be incomplete just now';
+  if (o.coErr) delete o.coErr;
+  return o;
+}
+async function growthShareRevoke(env, k) {
+  if (!GSHARE_RE.test(String(k || ''))) throw new Error('Not a share link');
+  await env.CONTENT_STORE.delete(GSHARE_PREFIX + k);
+  return { ok: true };
 }
 
 // ── Signed Brands = the BD Tracker card (Alex, 2026-11-24) ────────────────────
@@ -4597,8 +4671,9 @@ async function buildSignBook(env) {
 // read), so this does too, flagged (warn) and not cached. A HubSpot read that
 // came back short, or a build that failed, gives way to the last good book,
 // marked stale; with none, a short read is served flagged and a failure throws.
-async function fetchSignBook(env, fresh) {
+async function fetchSignBook(env, fresh, cacheOnly) {
   const kv = env.CONTENT_STORE;
+  if (cacheOnly) { const c = await growthShareCached(env, SIGN_BOOK_KV, SIGN_BOOK_LAST, 'signbook'); if (c) return c; }
   if (!fresh && kv) {
     try {
       const hit = await kv.get(SIGN_BOOK_KV, 'json');
@@ -4641,8 +4716,8 @@ function signBookMeta(book) {
 // Growth Overview: each month since GROWTH_FROM (the current one to today) and
 // Jan 1..today (ytd, each brand once). Counted for today's ranges even when the
 // book is a last good copy from earlier.
-async function fetchGrowthSigned(env, fresh) {
-  const book = await fetchSignBook(env, fresh);
+async function fetchGrowthSigned(env, fresh, cacheOnly) {
+  const book = await fetchSignBook(env, fresh, cacheOnly);
   const today = fmt(todayET());
   const months = growthMonths(today).map(mo => Object.assign({ m: mo.m, to: mo.to, partial: mo.partial }, signBookCount(book.rows, mo.from, mo.to)));
   return Object.assign({ months, ytd: Object.assign({ m: 'ytd' }, signBookCount(book.rows, months.length ? growthMonths(today)[0].from : today, today)) }, signBookMeta(book), { today });
@@ -12980,6 +13055,36 @@ export default {
     // GET /growth → Growth Overview (month-by-month demos and signings)
     if (request.method === 'GET' && url.pathname === '/growth') {
       return new Response(GROWTH_HTML, { headers: { 'Content-Type':'text/html;charset=UTF-8','Cache-Control':'no-cache' } });
+    }
+
+    // GET /g/<key> → the same page, read-only, for a share link. The page checks
+    // nothing itself: its data routes below check the key.
+    if (request.method === 'GET' && /^\/g\/[A-Za-z0-9_-]+$/.test(url.pathname)) {
+      return new Response(GROWTH_HTML, { headers: { 'Content-Type':'text/html;charset=UTF-8','Cache-Control':'no-store','X-Robots-Tag':'noindex, nofollow','Referrer-Policy':'same-origin' } });
+    }
+
+    // POST /api/g/growth, /api/g/growth-signed → a share link's data: the key in
+    // the body, the cached payloads only (fresh is ignored), no sign-in.
+    if (request.method === 'POST' && (url.pathname === '/api/g/growth' || url.pathname === '/api/g/growth-signed')) {
+      let body;
+      try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
+      if (!sameOriginRequest(request, url) || !(await growthShareValid(env, body && body.k))) return jr({ error: 'This link is invalid or has been revoked.' }, 401);
+      try { return jr(growthSharePublic(url.pathname === '/api/g/growth' ? await fetchGrowth(env, false, true) : await fetchGrowthSigned(env, false, true))); }
+      catch (err) { console.error('Growth share endpoint error:', err); return jr({ error: 'Data unavailable right now' }, 502); }
+    }
+
+    // POST /api/growth-share → make, list or revoke share links (signed-in only).
+    if (request.method === 'POST' && url.pathname === '/api/growth-share') {
+      let body;
+      try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
+      const who = await authed();
+      if (!who) return jr({ error: 'Unauthorized' }, 401);
+      try {
+        const act = body && body.action;
+        if (act === 'create') return jr(await growthShareCreate(env, who.email, body.note));
+        if (act === 'revoke') return jr(await growthShareRevoke(env, body.key));
+        return jr({ links: await growthShareList(env) });
+      } catch (err) { console.error('Growth share admin error:', err); return jr({ error: String(err && err.message || err).slice(0, 200) }, 400); }
     }
 
     // POST /api/data → Dashboard API

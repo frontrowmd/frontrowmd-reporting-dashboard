@@ -8,7 +8,7 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
 (async()=>{
   // ── Worker ──
   const src=load(process.env.WORKER_SRC||'worker.js');
-  const W={console:{log(){},warn(){},error(){}},Date,JSON,Math};vm.createContext(W);
+  const W={console:{log(){},warn(){},error(){}},Date,JSON,Math,crypto:globalThis.crypto,btoa};vm.createContext(W);
   vm.runInContext(src.slice(0,src.indexOf('\nexport default')),W);
   const run=c=>vm.runInContext(c,W);
   ck('months run Jan 2026 to this month, the last one to today',run(`growthMonths('2026-03-17')`),[{m:'2026-01',from:'2026-01-01',to:'2026-01-31',partial:false},{m:'2026-02',from:'2026-02-01',to:'2026-02-28',partial:false},{m:'2026-03',from:'2026-03-01',to:'2026-03-17',partial:true}]);
@@ -190,6 +190,35 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
   ck('route: POST /api/growth is behind authed()',/url\.pathname === '\/api\/growth'\) \{\s*let body;\s*try \{ body = await request\.json\(\); \} catch \{ return jr\(\{ error: 'Invalid JSON' \}, 400\); \}\s*if \(!\(await authed\(\)\)\) return jr/.test(src),true);
   ck('route: GET /growth serves the page; build embeds it',[/url\.pathname === '\/growth'\) \{\s*return new Response\(GROWTH_HTML/.test(src),/growth-dashboard\.html/.test(load('build.js'))],[true,true]);
 
+  // ── Share links ──
+  const kvS={};const envS={CONTENT_STORE:{get:async k=>k in kvS?kvS[k].v:null,put:async(k,v,o)=>{kvS[k]={v,m:o&&o.metadata};},delete:async k=>{delete kvS[k];},
+    list:async({prefix})=>({keys:Object.keys(kvS).filter(k=>k.startsWith(prefix)).map(k=>({name:k,metadata:kvS[k].m})),list_complete:true})}};W.envS=envS;
+  const made=await run(`growthShareCreate(envS,'a@x.com','  Acme Ventures  ')`);
+  ck('share: a new link is a 32-char random key at /g/<key>, with who, when and the note',[/^[A-Za-z0-9_-]{32}$/.test(made.key),made.path==='/g/'+made.key,made.by,made.note,!!made.created],[true,true,'a@x.com','Acme Ventures',true]);
+  const made2=await run(`growthShareCreate(envS,'b@x.com','')`);
+  ck('  two links never share a key; both listed with their notes',[made.key!==made2.key,(await run(`growthShareList(envS)`)).map(x=>x.note).sort()],[true,['','Acme Ventures']]);
+  W.mk=made.key;W.mk2=made2.key;
+  ck('  a live key is valid; a made-up, malformed or missing one is not',[await run(`growthShareValid(envS,mk)`),await run(`growthShareValid(envS,'A'.repeat(32))`),await run(`growthShareValid(envS,'short')`),await run(`growthShareValid(envS,undefined)`)],[true,false,false,false]);
+  await run(`growthShareRevoke(envS,mk)`);
+  ck('  revoke: that link stops working at once, the other keeps working',[await run(`growthShareValid(envS,mk)`),await run(`growthShareValid(envS,mk2)`),(await run(`growthShareList(envS)`)).length],[false,true,1]);
+  ck('route: GET /g/<key> serves the page, not indexed, referrer same-origin only',/url\.pathname\)\) \{\s*return new Response\(GROWTH_HTML, \{ headers: \{[^}]*'X-Robots-Tag':'noindex, nofollow','Referrer-Policy':'same-origin'/.test(src),true);
+  ck('  the page never uses no-referrer (it makes browsers send Origin: null, which the same-origin check rejects)',[/no-referrer/.test(load('growth-dashboard.html')),/<meta name="referrer" content="same-origin">/.test(load('growth-dashboard.html'))],[false,true]);
+  ck('route: /api/g/* checks same origin and the key, and never rebuilds fresh',(()=>{const i=src.indexOf("url.pathname === '/api/g/growth' || url.pathname === '/api/g/growth-signed'");const seg=src.slice(i,i+700);return [i>0,seg.includes('if (!sameOriginRequest(request, url) || !(await growthShareValid(env, body && body.k))) return jr('),seg.includes("growthSharePublic(url.pathname === '/api/g/growth' ? await fetchGrowth(env, false, true) : await fetchGrowthSigned(env, false, true))"),/fresh\s*===\s*true/.test(seg)];})(),[true,true,true,false]);
+  // Cache-only reads for links: an old copy is served, never a rebuild; with none, one rebuild a minute.
+  {const kvC={};const envC={HUBSPOT_TOKEN:'t',CONTENT_STORE:{get:async(k,t)=>k in kvC?(t==='json'?JSON.parse(kvC[k]):kvC[k]):null,put:async(k,v)=>{kvC[k]=v;}}};W.envC=envC;
+   let builds=0;W.__b=()=>builds++;const keepB=W.buildGrowth;
+   run(`buildGrowth=async()=>{__b();return {months:[],asOf:'x',today:'t',ok:false};};`);
+   kvC.growth_last_v8=JSON.stringify({t:1,data:{months:[{m:'2026-01',qd:9}],today:'2026-01-01',asOf:'old'}});
+   const r1=await run(`fetchGrowth(envC,false,true)`);
+   ck('link read: a week-old last good copy is served, nothing rebuilt',[r1.months[0].qd,builds],[9,0]);
+   delete kvC.growth_last_v8;
+   await run(`fetchGrowth(envC,false,true)`);
+   let thr=null;try{await run(`fetchGrowth(envC,false,true)`);}catch(e){thr=e.message;}
+   ck('  with no copy at all: one rebuild, then the next within a minute is refused, not rebuilt',[builds,/try again in a minute/.test(thr||'')],[1,true]);
+   W.buildGrowth=keepB;}
+  ck('link payloads carry no upstream error text',run(`growthSharePublic({months:[],stale:{error:'Metabase 500: secret detail',asOf:'a'},warn:'Recurly could not be read'})`),{months:[],stale:{asOf:'a',error:'A data source didn\u2019t answer just now'},warn:'Some figures may be incomplete just now'});
+  ck('route: making, listing and revoking links needs a sign-in',/url\.pathname === '\/api\/growth-share'\) \{[\s\S]{0,160}const who = await authed\(\);\s*if \(!who\) return jr\(\{ error: 'Unauthorized' \}, 401\);/.test(src),true);
+
   // ── Page ──
   const html=load('growth-dashboard.html');
   const js=html.slice(html.lastIndexOf('<script>')+8,html.lastIndexOf('</script>'));
@@ -238,5 +267,18 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
   P.G.data=null;P.G.err='boom';
   ck('a failed load is an error band',/Couldn’t load the numbers: boom/.test(P.gRenderDemos()),true);
 
+  // Share mode: /g/<key> uses the key-checked routes, never asks fresh, hides Share and Refresh.
+  {const K='Ab3_'.repeat(8);const calls=[];const els2={};const el2=id=>els2[id]||(els2[id]={innerHTML:'',textContent:'',style:{},disabled:false});
+   const S={console,location:{pathname:'/g/'+K,origin:'https://x'},localStorage:{getItem(){return null;},setItem(){}},document:{getElementById:el2,addEventListener(){}},window:{innerWidth:1200,innerHeight:800},
+     fetch:(u,o)=>{calls.push([u,JSON.parse(o.body)]);return Promise.resolve({status:401,json:()=>Promise.resolve({error:'x'})});}};
+   vm.createContext(S);vm.runInContext(js,S);
+   vm.runInContext('gRefresh=gRefresh;doLogin();',S);
+   await new Promise(r=>setTimeout(r,20));
+   ck('share mode: data from /api/g with the key, never fresh; Share and Refresh hidden; a dead key says so',[calls.map(c=>c[0]).sort(),calls.every(c=>c[1].k===K&&c[1].fresh===false),els2.gShareBtn.style.display,els2.gRefBtn.style.display,els2.gerr.textContent],
+     [['/api/g/growth','/api/g/growth-signed'],true,'none','none','This link is invalid or has been revoked.']);
+   S.fetch=(u,o)=>{calls.push([u,JSON.parse(o.body)]);return Promise.resolve({status:200,json:()=>Promise.resolve({months:[]})});};calls.length=0;
+   vm.runInContext('gRefresh();',S);await new Promise(r=>setTimeout(r,20));
+   ck('  even a Refresh call in share mode never asks for a rebuild',calls.every(c=>c[1].fresh===false),true);}
+  ck('team page still uses /api with fresh on Refresh; Share button present',[vm.runInContext('G_API',P),vm.runInContext('G_SHARE',P),/id="gShareBtn"/.test(html)],['/api',null,true]);
   console.log('\n'+pass+' passed, '+fail+' failed');process.exit(fail?1:0);
 })().catch(e=>{console.error(e);process.exit(1);});
