@@ -27,19 +27,19 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
 `);
   let g=await run(`buildGrowth({HUBSPOT_TOKEN:'t'})`);
   ck('one pipeline fetch per month and no webinar count, the current month to today',run('HUBSPOT'),['pipe 2026-01-01..2026-01-31','pipe 2026-02-01..2026-02-10','assoc a,d,e']);
-  ck('  each cohort demo carries its deal and its companies (one association read for every month); the cohort keeps the churned brand’s demo that Demos Held drops',[g.months.map(r=>r.dl),g.months.map(r=>[r.qd,r.cq])],[[[['a','co1','co2'],['d'],['e']],[]],[[2,3],[0,0]]]);
-  ck('Jan: held demos excl. pre-launch, churned brands and no-shows, rescheduled in counts, rescheduled out does not; webinars not added',[g.months[0].qd,'webinars' in g.months[0]],[2,false]);
+  ck('  each cohort demo carries its deal and its companies (one association read for every month); Demos Held keeps the churned brand’s demo (no filterActiveBrands) and is the cohort denominator',[g.months.map(r=>r.dl),g.months.map(r=>[r.qd,r.cq])],[[[['a','co1','co2'],['d'],['e']],[]],[[3,3],[0,0]]]);
+  ck('Jan: held demos excl. pre-launch and no-shows, a since-churned brand INCLUDED, rescheduled in counts, rescheduled out does not; webinars not added',[g.months[0].qd,'webinars' in g.months[0]],[3,false]);
   ck('demo months only; the current month marked partial',g.months.map(r=>[r.m,r.partial,'signed' in r]),[['2026-01',false,false],['2026-02',true,false]]);
   ck('a clean build is ok to cache',g.ok,true);
   run(`fetchDealCompanyIds=async()=>{throw new Error('assoc 502');};`);
   g=await run(`buildGrowth({HUBSPOT_TOKEN:'t'})`);
-  ck('a failed association read keeps the demos, flags the cohort, and blocks caching',[g.months[0].qd,g.months[0].demoErr,/assoc 502/.test(g.coErr||''),g.ok],[2,undefined,true,false]);
+  ck('a failed association read keeps the demos, flags the cohort, and blocks caching',[g.months[0].qd,g.months[0].demoErr,/assoc 502/.test(g.coErr||''),g.ok],[3,undefined,true,false]);
   run(`fetchDealCompanyIds=async(t,ids)=>({a:['co1','co2']});`);
   // Cache: a clean build is stored; a failed build serves the last good copy.
   const kv={};const env={HUBSPOT_TOKEN:'t',CONTENT_STORE:{get:async(k)=>kv[k]?JSON.parse(kv[k]):null,put:async(k,v)=>{kv[k]=v;}}};
   W.env=env;
   g=await run(`fetchGrowth(env,false)`);
-  ck('a clean build is cached and kept as the last good copy',[!!kv.growth_v4,!!kv.growth_last_v4,!!g.cached],[true,true,false]);
+  ck('a clean build is cached and kept as the last good copy',[!!kv.growth_v5,!!kv.growth_last_v5,!!g.cached],[true,true,false]);
   ck('  the next load is served from cache',!!(await run(`fetchGrowth(env,false)`)).cached,true);
   run(`fetchDealCompanyIds=async()=>{throw new Error('assoc 429');};`);
   g=await run(`fetchGrowth(env,true)`);
@@ -52,7 +52,7 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
   // HubSpot failing does not throw: failed months take the last good copy's figures.
   run(`fetchPipelineDeals=async()=>{const a=[];a.partial=true;return a;};`);
   g=await run(`fetchGrowth(env,true)`);
-  ck('a failed build fills failed months from the last good copy, marked, and does not cache',[g.months[0].qd,!!g.months[0].old,!!(g.stale&&g.stale.partialOnly),g.ok],[2,true,true,false]);
+  ck('a failed build fills failed months from the last good copy, marked, and does not cache',[g.months[0].qd,!!g.months[0].old,!!(g.stale&&g.stale.partialOnly),g.ok],[3,true,true,false]);
   ck('  the current month is filled too only if the copy ran to the same day',g.months[1].demoErr,undefined);
   run(`HS_ERR.n=0;`);
   run(`fetchPipelineDeals=async()=>{const a=[];a.partial=true;return a;};`);
