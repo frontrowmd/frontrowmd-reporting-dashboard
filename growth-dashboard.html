@@ -25,6 +25,7 @@ body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8
 .gtab.on{background:var(--navy);color:#fff;box-shadow:0 1px 3px rgba(2,15,24,.22)}
 .gtab:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
 .main{padding:22px 24px 40px;max-width:1240px;margin:0 auto}
+.main.full{max-width:none}   /* the Retention Waterfall tab: the grid uses the whole window */
 .sec-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:0 0 14px;padding-bottom:9px;border-bottom:2px solid rgba(23,44,69,.13)}
 .sec-t{font-family:var(--font-h);font-size:19px;font-weight:700;letter-spacing:-.01em}
 .sec-s{font-size:11px;color:var(--grey);flex:1;min-width:200px}
@@ -133,7 +134,8 @@ function gTabsHtml(){return G_TABS.map(function(t){var on=t.id===G.tab;return '<
 function gRender(){
   document.getElementById('gtabs').innerHTML=gTabsHtml();
   var t=G_TABS.filter(function(x){return x.id===G.tab;})[0]||G_TABS[0];
-  document.getElementById('gmain').innerHTML=t.render();
+  var gm=document.getElementById('gmain');gm.className='main'+(t.id==='wf'?' full':'');
+  gm.innerHTML=t.render();
 }
 
 // ── Data ──

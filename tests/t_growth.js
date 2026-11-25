@@ -296,6 +296,7 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
    ck('  the tab renders W2: Churn Per Month, tier toggles, traffic columns, CSV; no flags, flagged list or footnote',
      [/Churn Per Month/.test(w),/>Web Traffic Tier<span/.test(w),/<th class="rw-x"[^>]*>0-10K %<\/th>/.test(w),/bdWfW2Csv\(\)/.test(w),/\u26a0|Flagged brands in this grid|How it is counted/.test(w)],[true,true,true,true,false]);
    ck('  Jan cohort: 2 brands, 1 at 0-10K of 1 with a value, 1 None; retained 100%, 100%, then 50%',(()=>{const i=w.indexOf('<td class="rw-c">Jan 26</td>');const r=w.slice(i,w.indexOf('</tr>',i));return [...r.matchAll(/<td[^>]*>([^<]*)<\/td>/g)].map(x=>x[1]).slice(1,9);})(),['2','1','100%','1','100%','100%','50.0%','50.0%']);
+   ck('  the waterfall tab is full width; the first tab keeps its max width',[els.gmain.className,/\.main\.full\{max-width:none\}/.test(html)],['main full',true]);
    ck('  Never Implemented excluded by default, as on Billing (Feb cohort = 1)',/<td class="rw-c">Feb 26<\/td><td class="rw-n">1<\/td>/.test(w),true);
    vm.runInContext("bdWfSet('metric','cpm');",P);w=els.gmain.innerHTML;
    ck('  its controls re-render the Growth page (Churn Per Month picked)',/aria-checked="true"[^>]*>Churn Per Month/.test(w),true);
