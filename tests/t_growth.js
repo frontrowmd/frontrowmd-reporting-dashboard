@@ -215,7 +215,7 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
   ck('Signed Brands = every brand signed in the month, churned included (every, not active + pilots); no Active, Pilots or churned columns',[/<td>Jan 2026<\/td><td class="big">8<\/td><td class="big">40<\/td><td class="big">20%<\/td><\/tr>/.test(h),/<th>Active<\/th>|<th>Pilots<\/th>|Churned/.test(h)],[true,false]);
   ck('monthly detail is Month, Signed Brands, Demos Held, Signed ÷ Demos; no cohort columns, no KPI cards',[/<th>Month<\/th><th>Signed Brands<\/th><th>Demos Held<\/th><th>Signed ÷ Demos<\/th><\/tr>/.test(h),/Demo → Signed|Since Signed/.test(h),/class="kpi/.test(h)],[true,false,false]);
   ck('totals: the year counted once (ytd), demos skip an unavailable month and say so; no year ratio then',[/<tr class="tot"><td>Total<\/td><td class="big">15<\/td><td class="big">52<\/td><td class="big">—<\/td><\/tr>/.test(h),/show as n\/a/.test(h)],[true,true]);
-  ck('the current month is marked to date',/<tr class="part"><td>Mar 2026<\/td>/.test(h)&&/runs to 2026-03-12 \(month to date\)/.test(h),true);
+  ck('the current month row is still styled to date, with no footnote for it',[/<tr class="part"><td>Mar 2026<\/td>/.test(h),/month to date/.test(h)],[true,false]);
   P.G.data.months[1]={m:'2026-02',to:'2026-02-28',qd:20};
   ck('the Total ratio shows once every month\u2019s demos were read: 15 ÷ 72',/<tr class="tot"><td>Total<\/td><td class="big">15<\/td><td class="big">72<\/td><td class="big">21%<\/td>/.test(P.gRenderDemos()),true);
   P.G.data.months[1]={m:'2026-02',to:'2026-02-28',qd:0,demoErr:true};
@@ -231,8 +231,8 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
   ck('a stale signed copy says why; a month the copy lacks is n/a',[/Signed Brands: Recurly could not be read just now/.test(h),/<td>Mar 2026<\/td><td class="big"><span class="na">n\/a<\/span><\/td>/.test(h)],[true,true]);
   P.G.signed.today='2026-03-11';
   ck('a year-to-date figure from another day is not used for the Total',/<tr class="tot"><td>Total<\/td><td class="big">—<\/td>/.test(P.gRenderDemos()),true);
-  ck('Demos Held has no webinars column or split',[/<th>Webinars<\/th>|webinars<\/span>/.test(h),/Webinars are not counted/.test(h)],[false,true]);
-  ck('definitions: every brand signed in the month whatever it is today, each once',/churned since, or a signed HubSpot deal with no brand in the app/.test(h)&&/Each brand counts once in a month/.test(h),true);
+  ck('Demos Held has no webinars column or split',/<th>Webinars<\/th>|webinars<\/span>/.test(h),false);
+  ck('only the ‡ footnote remains: no definitions notes',[(h.match(/class="note"/g)||[]).length,/<b>Signed Brands<\/b>:|<b>Demos Held<\/b>:|<b>Signed ÷ Demos<\/b>:/.test(h),/‡ January through June/.test(h)],[1,false,true]);
   P.G.err='Growth data unavailable';
   ck('a failed Refresh keeps the numbers on screen and says so',/Refresh failed \(Growth data unavailable\)/.test(P.gRenderDemos())&&/<td>Jan 2026<\/td>/.test(P.gRenderDemos()),true);
   P.G.data=null;P.G.err='boom';
