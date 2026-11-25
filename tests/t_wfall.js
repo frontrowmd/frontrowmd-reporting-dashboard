@@ -182,7 +182,7 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
   ck('  and its dropdown counts each value given the other filters',/<option value="Board Defined" selected>Board Defined \(1\)<\/option>/.test(h)&&/<option value="Not recorded">Not recorded \(4\)<\/option>/.test(h),true);
   P.bdWfReset();
   P.bdWfSet('metric','churn');P.bdWfSet('mode','n');h=R();
-  ck('Churn + Brands shows lost brands as a count',cohort.call(null,'Jul 26')!==null&&/<td class="rw-c">Jul 26<\/td><td class="rw-n">2<\/td>(?:<td class="rw-x"[^>]*>[^<]*<\/td>){3}<td[^>]*>0<\/td><td[^>]*>0<\/td><td[^>]*>−1<\/td>/.test(h),true);
+  ck('Churn + Brands shows lost brands as a count',cohort.call(null,'Jul 26')!==null&&/<td class="rw-c">Jul 26<\/td><td class="rw-n">2<\/td><td[^>]*>0<\/td><td[^>]*>0<\/td><td[^>]*>−1<\/td>/.test(h),true);
   P.bdWfSet('metric','cpm');P.bdWfSet('mode','pct');h=R();
   {const gr=h.slice(h.indexOf('id="bd-sec-wf2"'));const co=m=>{const i=gr.indexOf('<td class="rw-c">'+m+'</td>');const r=gr.slice(i,gr.indexOf('</tr>',i));return [...r.matchAll(/<td(?: class="rw-n")?(?: title="[^"]*")?(?: style="[^"]*")?>([^<]*)<\/td>/g)].map(x=>x[1]).filter(x=>x!=='');};
    ck('Churn Per Month (2nd metric): the share lost IN each month, of those active the month before',[co('Jul 26'),/Retention<\/span><span[^>]*>Churn Per Month<\/span><span[^>]*>Churn<\/span>/.test(h)],[['2','0%','0%','50.0%','0%'],true]);}
@@ -192,21 +192,19 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
   P.bdWfSet('metric','ret');P.bdWfSet('mode','pct');
   // W2 CSV (Alex, 2026-11-25): the grid as shown, no flags.
   h=R();{const rows=P._bdWfW2Rows();const jul=rows.find(r=>r[0]==='2026-07');
-   ck('W2 CSV: header, then each cohort as on screen (traffic columns, then months in the current metric); no flags',
-     [rows[0].slice(0,7),jul.slice(0,1).concat(jul.slice(5,9)),rows[rows.length-1][0],JSON.stringify(rows).includes('\u26a0'),/onclick="bdWfW2Csv\(\)">Download CSV</.test(h)],
-     [['Cohort','Brands','0-10K','0-10K %','None','Month 1','Month 2'],['2026-07','100%','100%','50.0%','50.0%'],'All cohorts',false,true]);}
+   ck('W2 CSV: header, then each cohort as on screen (months in the current metric); no flags, no traffic columns',
+     [rows[0].slice(0,4),jul.slice(0,1).concat(jul.slice(2,6)),rows[rows.length-1][0],JSON.stringify(rows).includes('\u26a0'),/onclick="bdWfW2Csv\(\)">Download CSV</.test(h)],
+     [['Cohort','Brands','Month 1','Month 2'],['2026-07','100%','100%','50.0%','50.0%'],'All cohorts',false,true]);}
   P.bdWfSet('metric','cpm');P.bdWfSet('mode','n');R();
-  ck('  ...and follows the metric and mode: Churn Per Month counts, plain minus signs',P._bdWfW2Rows().find(r=>r[0]==='2026-07').slice(5,9),['0','0','-1','0']);
+  ck('  ...and follows the metric and mode: Churn Per Month counts, plain minus signs',P._bdWfW2Rows().find(r=>r[0]==='2026-07').slice(2,6),['0','0','-1','0']);
   P.bdWfSet('metric','ret');P.bdWfSet('mode','pct');
   // Traffic columns and W2's Web Traffic Tier toggles (Alex, 2026-11-25).
   {const jul=P.BD.wf.brands.filter(b=>b.fm==='2026-07');const keep=jul.map(b=>({it:b.it,ss:b.ss,mt:b.mt,wt:b.wt}));
    jul[0].it='0-10K';Object.assign(jul[1],{it:'No traffic data',ss:'10K-25K',mt:'',wt:''});
    h=R();const gr=h.slice(h.indexOf('id="bd-sec-wf2"'));
-   ck('W2: after Brands, 0-10K count, its % of the brands WITH an implied value (None out), and the None count',
-     [/<th class="rw-n"[^>]*>Brands<\/th><th class="rw-x"[^>]*>0-10K<\/th><th class="rw-x"[^>]*>0-10K %<\/th><th class="rw-x"[^>]*>None<\/th><th>1<\/th>/.test(gr),
-      (gr.match(/<td class="rw-c">Jul 26<\/td><td class="rw-n">2<\/td><td class="rw-x"[^>]*>(\d+)<\/td><td class="rw-x"[^>]*>([^<]*)<\/td><td class="rw-x"[^>]*>(\d+)<\/td>/)||[]).slice(1)],[true,['1','100%','1']]);
+   ck('W2: no traffic columns after Brands (removed 2026-11-25); Month 1 follows Brands',[/0-10K %|class="rw-x"/.test(gr),/<th class="rw-n"[^>]*>Brands<\/th><th>1<\/th>/.test(gr)],[false,true]);
    ck('  Web Traffic Tier is W2\u2019s second filter row, as toggles with counts',[/>Web Traffic Tier<span/.test(gr),/<span role="checkbox" aria-checked="false"[^>]*>0-10K <span[^>]*>\d+<\/span>/.test(gr)&&/<span role="checkbox" aria-checked="false"[^>]*>10K-25K <span[^>]*>1<\/span>/.test(gr)],[true,true]);
-   ck('  the tenure columns keep stretching: the three new columns are the only sized ones',/<colgroup><col style="width:78px"><col style="width:58px"><col style="width:54px"><col style="width:54px"><col style="width:54px"><col>/.test(gr),true);
+   ck('  the tenure columns keep stretching (only the two label columns are sized)',/<colgroup><col style="width:78px"><col style="width:58px"><col>/.test(gr),true);
    P.bdWfW2Tier('0-10K');h=R();let g3=h.slice(h.indexOf('id="bd-sec-wf2"'));
    ck('  ticking a tier keeps only its brands in W2 (W1 untouched)',[/<td class="rw-c">Jul 26<\/td><td class="rw-n">1<\/td>/.test(g3),/aria-checked="true"[^>]*>0-10K/.test(g3),/Clear<\/span>/.test(g3)],[true,true,true]);
    P.bdWfW2Tier('10K-25K');h=R();g3=h.slice(h.indexOf('id="bd-sec-wf2"'));

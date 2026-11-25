@@ -128,7 +128,9 @@ function gPct(n,d){return (n==null||!d)?'—':Math.round(n/d*100)+'%';}
 function gMon(m,long){var p=String(m).split('-');return MON[+p[1]-1]+(long?' '+p[0]:' ’'+p[0].slice(2));}
 
 // ── Tabs: more get added here later ──
-var G_TABS=[{id:'demos',label:'Signed Brands & Demos',render:gRenderDemos},{id:'wf',label:'Retention Waterfall',render:gRenderWf}];
+// Retention Waterfall tab hidden (Alex, 2026-11-25): its code stays below; to show
+// it again add {id:'wf',label:'Retention Waterfall',render:gRenderWf} back here.
+var G_TABS=[{id:'demos',label:'Signed Brands & Demos',render:gRenderDemos}];
 function gSetTab(id){G.tab=id;try{localStorage.setItem('g_tab',id);}catch(_){}if(id==='wf'&&!G.wf&&!G.wfLoading)gFetchWf(false);gRender();}
 function gTabsHtml(){return G_TABS.map(function(t){var on=t.id===G.tab;return '<button class="gtab'+(on?' on':'')+'" role="tab" aria-selected="'+on+'" onclick="gSetTab(\''+t.id+'\')">'+gEsc(t.label)+'</button>';}).join('');}
 function gRender(){
@@ -261,7 +263,7 @@ var _bdWfW2Tier=[];
 var _bdWfW2TierOpts=[];
 var _bdWfQ='',_bdWfSort='first',_bdWfShow=100,_bdWfQT=null;
 var BD_WF_PAGE=100;
-var BD_WF_W_LBL=78,BD_WF_W_N=58,BD_WF_W_CELL=50,BD_WF_W_X=54;
+var BD_WF_W_LBL=78,BD_WF_W_N=58,BD_WF_W_CELL=50;   // 34+ tenure columns: a cell must fit "85.7%" at 11px
 var BD_WF_CPM_MAX=0.20;   // Churn Per Month colour scale: darkest red at 20%+ lost in a month
 var BD_WF_NEUTRAL=0.65,BD_WF_LOW=0.30,BD_WF_BLEND_MIN=30,BD_WF_BLEND_MIN_COHORTS=2;
 var BD_WF_MN=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -308,8 +310,6 @@ function _bdWfIsNI(b){
   if(b.impl===false)return true;
   return _bdWfChurned(b)&&b.ty==='Never Implemented';
 }
-function _bdWfItNone(b){return !b.it||/^(no traffic data|none|not recorded|not selected)$/i.test(String(b.it).trim());}
-function _bdWfIt10k(b){return !_bdWfItNone(b)&&/^0\s*-\s*10K/i.test(String(b.it).trim());}
 function _bdWfCohorts(list,from,now){
   var byM={};
   list.forEach(function(b){if(b.fm&&b.fm>=from&&b.fm<=now)(byM[b.fm]=byM[b.fm]||[]).push(b);});
@@ -324,8 +324,7 @@ function _bdWfCohorts(list,from,now){
       var prev=k===1?pool.length:cells[k-2].alive;
       cells.push({k:k,alive:alive,lost:pool.length-alive,pct:pool.length?alive/pool.length:null,prev:prev,lostM:prev-alive,mPct:prev?(prev-alive)/prev:null});
     }
-    var k10=pool.filter(_bdWfIt10k).length,none=pool.filter(_bdWfItNone).length;
-    cohorts.push({m:m,n:pool.length,cells:cells,k10:k10,none:none});
+    cohorts.push({m:m,n:pool.length,cells:cells});
     m=_bdWfAdd(m,1);
   }
   var blend=[],wide=_bdWfDiff(from,now)+1;
@@ -350,11 +349,6 @@ function _bdWfPill(cur,v,label,which,tip){
 }
 function _bdWfSeg(label,inner){return '<span style="display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em">'+label
   +'<span style="display:inline-flex;background:rgba(23,44,69,.06);border-radius:50px;padding:2px;gap:2px;text-transform:none;letter-spacing:0">'+inner+'</span></span>';}
-function _bdWfXCells(n,k10,none,st){
-  var d=n-none,sty=' style="color:var(--navy);font-weight:600;'+(st||'')+'"';
-  if(!n)return '<td class="rw-x"'+sty+'></td><td class="rw-x"'+sty+'></td><td class="rw-x"'+sty+'></td>';
-  return '<td class="rw-x"'+sty+'>'+k10+'</td><td class="rw-x"'+sty+' title="'+k10+' of '+d+' brands with an Implied Traffic value">'+(d?Math.round(k10/d*100)+'%':'—')+'</td><td class="rw-x"'+sty+'>'+none+'</td>';
-}
 function _bdWfW2Section(list,months,now,opt){
   opt=opt||{};var plain=!!opt.plain,h='';
   // Complete months only: brands added from this month's Recurly data (b.x) stay out.
@@ -408,14 +402,13 @@ function _bdWfW2Section(list,months,now,opt){
         +(on?'background:var(--navy);color:#fff;':'background:transparent;color:var(--grey);')+'">'+_bdEsc(t)+' <span style="opacity:.6;font-weight:600">'+tierN[t]+'</span></span>';}).join('')
     +(_bdWfW2Tier.length?'<span onclick="bdWfW2TierClear()" style="cursor:pointer;padding:4px 8px;font-size:11px;color:var(--teal);font-weight:600">Clear</span>':'')
     +'</span></span><button class="bd-wf-btn" style="margin-left:auto" onclick="bdWfW2Csv()">Download CSV</button></div>';
-  var W=rw.maxK,minW=BD_WF_W_LBL+BD_WF_W_N+BD_WF_W_X*3+BD_WF_W_CELL*W;
+  var W=rw.maxK,minW=BD_WF_W_LBL+BD_WF_W_N+BD_WF_W_CELL*W;
   // Cohort rows whose retention a flagged brand distorts: active brands not
   // invoiced lately keep the row high; a long gap hides a churn and a return.
   var coFl={};
   if(!plain)gl.forEach(function(b){(b._fl||[]).forEach(function(f){if(f.id==='active-not-billed'||f.id==='long-gap'||f.id==='status-conflict'){var c=coFl[b.fm]=coFl[b.fm]||{};(c[f.id]=c[f.id]||[]).push(b.n||b.k);}});});
-  var g='<div style="overflow-x:auto" onmousemove="bdWfTip(event)" onmouseleave="bdWfTipOff()"><table class="rwtbl bd-wf-rw" style="width:100%;min-width:'+minW+'px"><colgroup><col style="width:'+BD_WF_W_LBL+'px"><col style="width:'+BD_WF_W_N+'px">'+('<col style="width:'+BD_WF_W_X+'px">').repeat(3)+new Array(W+1).join('<col>')+'</colgroup>'
-    +'<thead><tr><th class="rw-c" style="text-align:left">Cohort</th><th class="rw-n" title="Brands whose first invoice was in this month — the denominator for the row">Brands</th>'
-    +'<th class="rw-x" title="Brands in the cohort whose Implied Traffic is 0-10K">0-10K</th><th class="rw-x" title="0-10K brands as a share of the cohort’s brands that have an Implied Traffic value (None left out)">0-10K %</th><th class="rw-x" title="Brands in the cohort with no Implied Traffic value">None</th>';
+  var g='<div style="overflow-x:auto" onmousemove="bdWfTip(event)" onmouseleave="bdWfTipOff()"><table class="rwtbl bd-wf-rw" style="width:100%;min-width:'+minW+'px"><colgroup><col style="width:'+BD_WF_W_LBL+'px"><col style="width:'+BD_WF_W_N+'px">'+new Array(W+1).join('<col>')+'</colgroup>'
+    +'<thead><tr><th class="rw-c" style="text-align:left">Cohort</th><th class="rw-n" title="Brands whose first invoice was in this month — the denominator for the row">Brands</th>';
   for(var k=1;k<=W;k++)g+='<th>'+k+'</th>';
   g+='</tr></thead><tbody>';
   rw.cohorts.forEach(function(co){
@@ -434,7 +427,7 @@ function _bdWfW2Section(list,months,now,opt){
         items.sort(function(x,y){return BD_WF_FLAG_SEV[y.sev]-BD_WF_FLAG_SEV[x.sev];});
         ci=' data-ti="'+_bdWfTips.length+'"';_bdWfTips.push(_bdWfCard(_bdWfLbl(co.m)+' cohort',co.n+' brands \u00b7 '+Object.keys(aff).length+' ('+Math.round(share*100)+'%) may be miscounted',items));}
     }
-    g+='<tr'+ci+(items.length?' class="fl-'+items[0].sev+'"':'')+'><td class="rw-c">'+(items.length?'<span class="bd-wf-flag '+items[0].sev+'">\u26a0</span>':'')+_bdWfLbl(co.m)+'</td><td class="rw-n">'+(co.n||'\u00b7')+'</td>'+_bdWfXCells(co.n,co.k10,co.none);
+    g+='<tr'+ci+(items.length?' class="fl-'+items[0].sev+'"':'')+'><td class="rw-c">'+(items.length?'<span class="bd-wf-flag '+items[0].sev+'">\u26a0</span>':'')+_bdWfLbl(co.m)+'</td><td class="rw-n">'+(co.n||'\u00b7')+'</td>';
     for(var k=1;k<=W;k++){
       var c=co.cells[k-1];
       if(!c||!co.n){g+='<td></td>';continue;}
@@ -446,8 +439,7 @@ function _bdWfW2Section(list,months,now,opt){
   });
   if(rw.blend.length){
     var bt='border-top:1.5px solid rgba(23,44,69,.14);';
-    var tk10=0,tnone=0;rw.cohorts.forEach(function(co){tk10+=co.k10;tnone+=co.none;});
-    g+='<tr><td class="rw-c" style="'+bt+'font-style:italic">All cohorts</td><td class="rw-n" style="'+bt+'">'+rw.blend[0].n+'</td>'+_bdWfXCells(rw.blend[0].n,tk10,tnone,bt);
+    g+='<tr><td class="rw-c" style="'+bt+'font-style:italic">All cohorts</td><td class="rw-n" style="'+bt+'">'+rw.blend[0].n+'</td>';
     rw.blend.forEach(function(b){
       var thin=(b.pct===null||b.n<BD_WF_BLEND_MIN||b.cohorts<BD_WF_BLEND_MIN_COHORTS),f=thin?'':cellFill(b);
       g+='<td style="'+bt+(f?'background:'+f+';':'')+'color:var(--navy);font-weight:700" title="'+_bdEsc('Month '+b.k+' — '+(b.pct===null?'no cohort has reached this month yet'
@@ -467,22 +459,20 @@ function _bdWfW2Section(list,months,now,opt){
     +'Active brands count as retained in every month, even when an invoice is missing'+(opt.stale?' ('+opt.stale+' active brand'+(opt.stale===1?' has':'s have')+' not been invoiced in the last two complete months)':'')+'. '
     +(_bdWfNI==='excl'?niOut+' Never Implemented churn'+(niOut===1?' is':'s are')+' left out. ':'')
     +'Complete months only, through '+_bdWfLbl(now)+': brands first invoiced this month appear next month. The All cohorts row blends every cohort that has reached each month, with its own denominator; under '
-    +BD_WF_BLEND_MIN+' brands or '+BD_WF_BLEND_MIN_COHORTS+' cohorts it is left blank. Filters above narrow both W1 and this grid; the Web Traffic Tier toggles narrow this grid only. Churn Per Month is the brands lost in each month out of those still active the month before. The 0-10K and None columns read Implied Traffic; 0-10K % leaves None out of its denominator.</div></div></section>';
+    +BD_WF_BLEND_MIN+' brands or '+BD_WF_BLEND_MIN_COHORTS+' cohorts it is left blank. Filters above narrow both W1 and this grid; the Web Traffic Tier toggles narrow this grid only. Churn Per Month is the brands lost in each month out of those still active the month before.</div></div></section>';
   return h;
 }
 function _bdWfW2Rows(){
   var o=_bdWfW2Out;if(!o||!o.rw)return null;
   var rw=o.rw,W=rw.maxK,num=function(v){return String(v).replace(/\u2212/g,'-');};
-  var pctOf=function(n,k10,none){var d=n-none;return n&&d?Math.round(k10/d*100)+'%':'';};
-  var rows=[['Cohort','Brands','0-10K','0-10K %','None'].concat(Array.from({length:W},function(_,i){return 'Month '+(i+1);}))];
+  var rows=[['Cohort','Brands'].concat(Array.from({length:W},function(_,i){return 'Month '+(i+1);}))];
   rw.cohorts.forEach(function(co){
-    var r=[co.m,co.n,co.n?co.k10:'',pctOf(co.n,co.k10,co.none),co.n?co.none:''];
+    var r=[co.m,co.n];
     for(var k=1;k<=W;k++){var c=co.cells[k-1];r.push(c&&co.n?num(o.cellVal(c)):'');}
     rows.push(r);
   });
   if(rw.blend.length){
-    var tk=0,tn=0;rw.cohorts.forEach(function(co){tk+=co.k10;tn+=co.none;});
-    var n=rw.blend[0].n,r=['All cohorts',n,tk,pctOf(n,tk,tn),tn];
+    var r=['All cohorts',rw.blend[0].n];
     rw.blend.forEach(function(b){var thin=(b.pct===null||b.n<BD_WF_BLEND_MIN||b.cohorts<BD_WF_BLEND_MIN_COHORTS);
       r.push(thin?'':num(o.cellVal({alive:b.alive,lost:b.n-b.alive,pct:b.pct,lostM:b.lostM,mPct:b.mPct})));});
     rows.push(r);

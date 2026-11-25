@@ -226,7 +226,8 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
   const P={console,localStorage:{getItem(){return null;},setItem(){}},document:{getElementById:el,addEventListener(){}},window:{innerWidth:1200,innerHeight:800}};
   vm.createContext(P);vm.runInContext(js,P);
   ck('title is Growth Overview, never "investor"',[/<title>FrontrowMD Growth Overview<\/title>/.test(html),/investor/i.test(html)],[true,false]);
-  ck('tabs: Signed Brands & Demos, then Retention Waterfall',vm.runInContext('G_TABS.map(t=>t.label)',P),['Signed Brands & Demos','Retention Waterfall']);
+  ck('tabs: only Signed Brands & Demos (Retention Waterfall hidden)',vm.runInContext('G_TABS.map(t=>t.label)',P),['Signed Brands & Demos']);
+  vm.runInContext("G_TABS.push({id:'wf',label:'Retention Waterfall',render:gRenderWf});",P);   // the hidden tab's code is still tested
   P.G.data={asOf:'2026-11-24T12:00:00Z',today:'2026-03-12',months:[
     {m:'2026-01',to:'2026-01-31',qd:40},
     {m:'2026-02',to:'2026-02-28',qd:0,demoErr:true},
@@ -293,9 +294,9 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
    P.G.wf={months:M,brands:[{fm:'2026-01',li:'2026-04',st:'Active',impl:true,it:'0-10K'},{fm:'2026-01',li:'2026-02',st:'Churned',impl:true,ty:'Board Defined',it:'No traffic data',ss:'10K-25K'},
      {fm:'2026-02',li:'2026-04',st:'Active',impl:true,it:'0-10K'},{fm:'2026-02',li:'2026-02',st:'Churned',impl:false,ty:'Never Implemented',it:'0-10K'}]};
    vm.runInContext("G.tab='wf';",P);let w=P.gRender?(P.gRender(),els.gmain.innerHTML):'';
-   ck('  the tab renders W2: Churn Per Month, tier toggles, traffic columns, CSV; no flags, flagged list or footnote',
-     [/Churn Per Month/.test(w),/>Web Traffic Tier<span/.test(w),/<th class="rw-x"[^>]*>0-10K %<\/th>/.test(w),/bdWfW2Csv\(\)/.test(w),/\u26a0|Flagged brands in this grid|How it is counted/.test(w)],[true,true,true,true,false]);
-   ck('  Jan cohort: 2 brands, 1 at 0-10K of 1 with a value, 1 None; retained 100%, 100%, then 50%',(()=>{const i=w.indexOf('<td class="rw-c">Jan 26</td>');const r=w.slice(i,w.indexOf('</tr>',i));return [...r.matchAll(/<td[^>]*>([^<]*)<\/td>/g)].map(x=>x[1]).slice(1,9);})(),['2','1','100%','1','100%','100%','50.0%','50.0%']);
+   ck('  the tab renders W2: Churn Per Month, tier toggles, no traffic columns, CSV; no flags, flagged list or footnote',
+     [/Churn Per Month/.test(w),/>Web Traffic Tier<span/.test(w),!/0-10K %/.test(w),/bdWfW2Csv\(\)/.test(w),/\u26a0|Flagged brands in this grid|How it is counted/.test(w)],[true,true,true,true,false]);
+   ck('  Jan cohort: 2 brands; retained 100%, 100%, then 50%',(()=>{const i=w.indexOf('<td class="rw-c">Jan 26</td>');const r=w.slice(i,w.indexOf('</tr>',i));return [...r.matchAll(/<td[^>]*>([^<]*)<\/td>/g)].map(x=>x[1]).slice(1,6);})(),['2','100%','100%','50.0%','50.0%']);
    ck('  the waterfall tab is full width; the first tab keeps its max width',[els.gmain.className,/\.main\.full\{max-width:none\}/.test(html)],['main full',true]);
    ck('  Never Implemented excluded by default, as on Billing (Feb cohort = 1)',/<td class="rw-c">Feb 26<\/td><td class="rw-n">1<\/td>/.test(w),true);
    vm.runInContext("bdWfSet('metric','cpm');",P);w=els.gmain.innerHTML;
