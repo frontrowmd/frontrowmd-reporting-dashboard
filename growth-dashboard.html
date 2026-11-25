@@ -1,0 +1,215 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FrontrowMD Growth Overview</title>
+<link rel="icon" href="https://raw.githubusercontent.com/frontrowmd/frontrowmd-reporting-dashboard/main/White_Graphic_Logo.png">
+<link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--navy:#172C45;--midnight:#020F18;--teal:#72A4BF;--white:#FFFFFF;--border:#D4E6EF;--grey:#64748B;--demo:#72A4BF;--sign:#172C45;--font-h:'Libre Baskerville',Georgia,serif;--font-b:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:var(--font-b);background:linear-gradient(135deg,#F5F7FA,#EBF3F8,#D8ECF5);color:var(--navy);min-height:100vh}
+#gate{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#020F18,#1D4053,#72A4BF)}
+.gbox{background:rgba(23,44,69,.7);backdrop-filter:blur(16px);border:1px solid rgba(114,164,191,.15);border-radius:16px;padding:40px 36px;width:340px;max-width:calc(100vw - 32px);text-align:center}
+.gbox button{width:100%;padding:12px;border:none;border-radius:50px;background:var(--teal);color:#fff;font-family:var(--font-h);font-weight:700;font-size:14px;cursor:pointer}
+#gerr{color:#FCA5A5;font-size:12px;margin-top:10px;display:none}
+#app{display:none;min-height:100vh}
+.header-bar{display:flex;align-items:center;gap:12px;padding:16px 24px;background:linear-gradient(135deg,#020F18,#1D4053);border-bottom:1px solid rgba(114,164,191,.1)}
+.header-bar img{height:32px}
+.header-bar .title{font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--teal);letter-spacing:.1em;text-transform:uppercase}
+.header-bar .sp1{flex:1}
+#fts{font-size:11px;color:rgba(114,164,191,.7)}
+.hbtn{padding:6px 16px;border-radius:50px;border:1.5px solid rgba(114,164,191,.3);background:transparent;color:var(--teal);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-b)}
+.hbtn:hover{background:rgba(114,164,191,.12)}
+.gnav{position:sticky;top:0;z-index:60;display:flex;align-items:center;gap:4px;padding:8px 24px;background:rgba(255,255,255,.92);backdrop-filter:blur(9px);border-bottom:1px solid var(--border);box-shadow:0 1px 8px rgba(2,15,24,.05);overflow-x:auto}
+.gtabs{display:inline-flex;gap:3px;padding:3px;background:rgba(23,44,69,.06);border:1.5px solid rgba(23,44,69,.14);border-radius:50px}
+.gtab{font-family:var(--font-h);font-size:12px;font-weight:700;padding:5px 16px;border-radius:50px;border:0;background:transparent;color:var(--grey);cursor:pointer;white-space:nowrap}
+.gtab:hover{color:var(--navy)}
+.gtab.on{background:var(--navy);color:#fff;box-shadow:0 1px 3px rgba(2,15,24,.22)}
+.gtab:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.main{padding:22px 24px 40px;max-width:1240px;margin:0 auto}
+.sec-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:0 0 14px;padding-bottom:9px;border-bottom:2px solid rgba(23,44,69,.13)}
+.sec-t{font-family:var(--font-h);font-size:19px;font-weight:700;letter-spacing:-.01em}
+.sec-s{font-size:11px;color:var(--grey);flex:1;min-width:200px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:0 0 16px}
+.kpi{background:linear-gradient(135deg,#020F18,#1D4053);color:#fff;border-radius:12px;padding:16px 18px;border-left:4px solid var(--teal)}
+.kpi.s{border-left-color:#22C55E}
+.kpi .l{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.65)}
+.kpi .v{font-family:var(--font-h);font-size:30px;font-weight:700;margin:4px 0 2px}
+.kpi .d{font-size:11px;color:rgba(255,255,255,.7)}
+.tile{background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin:0 0 16px}
+.tile-h{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:0 0 10px}
+.tile-t{font-family:var(--font-h);font-size:14px;font-weight:700}
+.leg{display:flex;gap:14px;font-size:11px;color:var(--grey)}
+.leg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.chart{width:100%;overflow-x:auto}
+.chart svg{display:block;width:100%;min-width:560px;height:auto}
+.chart .band{fill:transparent;cursor:default}
+.chart .band:hover{fill:rgba(23,44,69,.05)}
+.tbl-w{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:9px 12px;text-align:right;border-bottom:1px solid var(--border);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--grey);background:#F8FBFD;position:sticky;top:0}
+td.big{font-family:var(--font-h);font-weight:700;font-size:14px}
+td.sub{color:var(--grey);font-size:12px}
+tr.tot td{border-top:2px solid rgba(23,44,69,.25);border-bottom:0;font-weight:700}
+tr.part td:first-child::after{content:' (to date)';font-weight:400;color:var(--grey);font-size:11px}
+.na{color:#B45309}
+.btn{font-family:var(--font-b);font-size:11px;font-weight:600;padding:5px 12px;border-radius:50px;border:1px solid var(--border);background:#fff;color:var(--navy);cursor:pointer}
+.btn:hover{border-color:var(--navy)}
+.note{font-size:11px;color:var(--grey);line-height:1.55;margin-top:10px}
+.band-msg{background:#FFFBEB;border:1px solid #F59E0B;color:#92400E;border-radius:10px;padding:10px 14px;font-size:12px;margin:0 0 14px}
+.band-err{background:#FEF2F2;border-color:#FCA5A5;color:#991B1B}
+.load{display:flex;align-items:center;gap:10px;color:var(--grey);font-size:13px;padding:40px 0;justify-content:center}
+.sp{display:inline-block;width:18px;height:18px;border:3px solid rgba(114,164,191,.2);border-top-color:var(--teal);border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#tip{position:fixed;z-index:100;pointer-events:none;background:#020F18;color:#fff;border-radius:8px;padding:9px 12px;font-size:12px;line-height:1.5;box-shadow:0 6px 20px rgba(2,15,24,.25);display:none;max-width:260px}
+#tip b{font-family:var(--font-h)}
+@media (max-width:640px){.header-bar,.gnav,.main{padding-left:16px;padding-right:16px}.header-bar .title{font-size:11px}#fts{display:none}}
+</style>
+</head><body>
+<div id="gate">
+  <div class="gbox">
+    <div style="margin-bottom:12px"><img src="https://raw.githubusercontent.com/frontrowmd/frontrowmd-reporting-dashboard/main/FrontrowMD_White_Logo.png" alt="frontrowMD" style="height:36px"></div>
+    <div style="font-family:var(--font-h);font-size:13px;font-weight:700;color:var(--teal);letter-spacing:.12em;text-transform:uppercase;margin-bottom:28px">Growth Overview</div>
+    <!-- Sign-in is Google via Cloudflare Access; this is only the loading screen. -->
+    <button id="loginBtn" onclick="location.reload()">Reload &rarr;</button>
+    <div id="gerr"></div>
+  </div>
+</div>
+<div id="app">
+  <div class="header-bar">
+    <img src="https://raw.githubusercontent.com/frontrowmd/frontrowmd-reporting-dashboard/main/FrontrowMD_White_Logo.png" alt="frontrowMD">
+    <div class="title">Growth Overview</div>
+    <div class="sp1"></div>
+    <span id="fts"></span>
+    <button class="hbtn" onclick="gRefresh()">&#8635; Refresh</button>
+  </div>
+  <nav class="gnav" aria-label="Growth Overview tabs">
+    <!-- One button per tab; add a tab by adding a button and a G_TABS entry. -->
+    <span class="gtabs" role="tablist" id="gtabs"></span>
+  </nav>
+  <div class="main" id="gmain"></div>
+</div>
+<div id="tip"></div>
+<script>
+var G={tab:'demos',data:null,loading:false,err:null};
+var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function gEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function gN(n){return n==null?'—':Number(n).toLocaleString();}
+function gMon(m,long){var p=String(m).split('-');return MON[+p[1]-1]+(long?' '+p[0]:' ’'+p[0].slice(2));}
+
+// ── Tabs: more get added here later ──
+var G_TABS=[{id:'demos',label:'Demos & Signed',render:gRenderDemos}];
+function gSetTab(id){G.tab=id;try{localStorage.setItem('g_tab',id);}catch(_){}gRender();}
+function gTabsHtml(){return G_TABS.map(function(t){var on=t.id===G.tab;return '<button class="gtab'+(on?' on':'')+'" role="tab" aria-selected="'+on+'" onclick="gSetTab(\''+t.id+'\')">'+gEsc(t.label)+'</button>';}).join('');}
+function gRender(){
+  document.getElementById('gtabs').innerHTML=gTabsHtml();
+  var t=G_TABS.filter(function(x){return x.id===G.tab;})[0]||G_TABS[0];
+  document.getElementById('gmain').innerHTML=t.render();
+}
+
+// ── Data ──
+function gFetch(fresh){
+  G.loading=true;G.err=null;
+  return fetch('/api/growth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fresh:!!fresh})}).then(function(r){
+    if(r.status===401){var e=new Error('denied');e.denied=true;throw e;}
+    return r.json();
+  }).then(function(d){
+    G.loading=false;
+    if(d.error){G.err=d.detail||d.error;return d;}
+    G.data=d;
+    var ts=document.getElementById('fts');if(ts)ts.textContent='Updated '+new Date(d.stale?d.stale.asOf:d.asOf).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+    return d;
+  });
+}
+function gRefresh(){G.err=null;G.loading=true;gRender();gFetch(true).then(gRender).catch(function(e){G.loading=false;G.err=String(e&&e.message||e);gRender();});}
+function doLogin(){
+  var btn=document.getElementById('loginBtn');
+  btn.innerHTML='<span class="sp" style="width:14px;height:14px;border-width:2px;vertical-align:middle"></span> Loading…';btn.disabled=true;btn.style.opacity='.7';
+  try{var st=localStorage.getItem('g_tab');if(st&&G_TABS.some(function(t){return t.id===st;}))G.tab=st;}catch(_){}
+  gFetch(false).then(function(){
+    document.getElementById('gate').style.display='none';document.getElementById('app').style.display='block';gRender();
+  }).catch(function(e){
+    var g=document.getElementById('gerr');
+    g.textContent=(e&&e.denied)?'This Google account doesn\u2019t have access. Sign in with your @thefrontrowhealth.com account.':'Couldn’t load the page. Your sign-in may have expired — reload the page.';
+    g.style.display='block';btn.innerHTML='Reload →';btn.disabled=false;btn.style.opacity='1';
+  });
+}
+
+// ── Tab 1: Demos & Signed ──
+function gTotals(ms){
+  var t={qd:0,demos:0,webinars:0,signed:0,qdOk:true,sgOk:true,qdN:0,sgN:0};
+  ms.forEach(function(r){if(r.demoErr)t.qdOk=false;else{t.qdN++;t.qd+=r.qd;t.demos+=r.demos;t.webinars+=(r.webinars||0);}if(r.signErr)t.sgOk=false;else{t.sgN++;t.signed+=r.signed;}});
+  // A column with no month read is unavailable, never a total of 0.
+  if(!t.qdN){t.qd=t.demos=t.webinars=null;}if(!t.sgN)t.signed=null;
+  return t;
+}
+function gChart(ms){
+  var W=1000,H=300,pl=44,pr=12,pt=16,pb=34,iw=W-pl-pr,ih=H-pt-pb;
+  var mx=0;ms.forEach(function(r){if(!r.demoErr)mx=Math.max(mx,r.qd);if(!r.signErr)mx=Math.max(mx,r.signed);});
+  var step=mx<=10?2:mx<=50?10:mx<=100?20:mx<=250?50:mx<=500?100:Math.ceil(mx/5/100)*100;
+  var top=Math.max(step,Math.ceil(mx/step)*step),y=function(v){return pt+ih-(v/top)*ih;};
+  var bw=iw/ms.length,b=Math.min(28,bw*0.3),g='';
+  for(var v=0;v<=top;v+=step)g+='<line x1="'+pl+'" x2="'+(W-pr)+'" y1="'+y(v)+'" y2="'+y(v)+'" stroke="#E5EEF4"/><text x="'+(pl-8)+'" y="'+(y(v)+4)+'" text-anchor="end" font-size="11" fill="#64748B">'+v+'</text>';
+  ms.forEach(function(r,i){
+    var cx=pl+bw*i+bw/2;
+    var bar=function(val,x,col,err,lbl){if(err)return '<text x="'+(x+b/2)+'" y="'+(y(0)-4)+'" text-anchor="middle" font-size="10" fill="#B45309">n/a</text>';
+      var h=Math.max(0,y(0)-y(val));return '<rect x="'+x+'" y="'+y(val)+'" width="'+b+'" height="'+h+'" rx="3" fill="'+col+'"'+(r.partial?' fill-opacity=".55"':'')+'/>'
+        +'<text x="'+(x+b/2)+'" y="'+(y(val)-5)+'" text-anchor="middle" font-size="11" font-weight="600" fill="#172C45">'+val+'</text>';};
+    g+=bar(r.qd,cx-b-2,'#72A4BF',r.demoErr)+bar(r.signed,cx+2,'#172C45',r.signErr);
+    g+='<text x="'+cx+'" y="'+(H-12)+'" text-anchor="middle" font-size="11" fill="#64748B">'+gMon(r.m)+(r.partial?'*':'')+'</text>';
+    g+='<rect class="band" x="'+(pl+bw*i)+'" y="'+pt+'" width="'+bw+'" height="'+(ih+pb)+'" onmousemove="gTip(event,'+i+')" onmouseleave="gTipOff()"/>';
+  });
+  return '<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Qualified Regular Demos and Signed Brands by month">'+g+'</svg>';
+}
+function gTip(ev,i){
+  var r=G.data&&G.data.months[i];if(!r)return;var t=document.getElementById('tip');
+  t.innerHTML='<b>'+gMon(r.m,true)+(r.partial?' (to date)':'')+'</b><br>'
+    +'Qualified Regular Demos: <b>'+(r.demoErr?'unavailable':gN(r.qd))+'</b>'+(r.demoErr?'':'<br><span style="opacity:.75">'+gN(r.demos)+' demos held + '+gN(r.webinars)+' webinars</span>')
+    +'<br>Signed Brands: <b>'+(r.signErr?'unavailable':gN(r.signed))+'</b>';
+  t.style.display='block';
+  var x=ev.clientX+14,y2=ev.clientY+14,w=t.offsetWidth,h=t.offsetHeight;
+  if(x+w>window.innerWidth-8)x=ev.clientX-w-14;if(y2+h>window.innerHeight-8)y2=ev.clientY-h-14;
+  t.style.left=x+'px';t.style.top=y2+'px';
+}
+function gTipOff(){var t=document.getElementById('tip');if(t)t.style.display='none';}
+function gRenderDemos(){
+  var h='<div class="sec-head"><span class="sec-t">Demos &amp; Signed Brands</span><span class="sec-s">Month by month since January 2026. All dates in Eastern time.</span></div>';
+  if(!G.data){
+    if(G.err)return h+'<div class="band-msg band-err">Couldn’t load the numbers: '+gEsc(G.err)+'. Try Refresh.</div>';
+    return h+'<div class="load"><span class="sp"></span>Counting demos and signings month by month…</div>';
+  }
+  var d=G.data,ms=d.months||[],t=gTotals(ms);
+  if(G.loading)h+='<div class="load" style="padding:0 0 14px;justify-content:flex-start"><span class="sp"></span>Refreshing from HubSpot…</div>';
+  if(G.err)h+='<div class="band-msg band-err">Refresh failed ('+gEsc(G.err)+'), so these are the numbers from before. Try again shortly.</div>';
+  if(d.stale)h+='<div class="band-msg">'+(d.stale.partialOnly?'Some HubSpot calls failed just now, so the months marked † show the last good figures, from ':'HubSpot didn’t answer just now, so this is the last good copy, from ')+gEsc(d.stale.asOf?new Date(d.stale.asOf).toLocaleString():'earlier')+'.</div>';
+  if(ms.some(function(r){return r.demoErr||r.signErr;}))h+='<div class="band-msg">Some months couldn’t be read from HubSpot and show as n/a; they are left out of the totals. Refresh to try again.</div>';
+  var cur=ms[ms.length-1],prev=ms[ms.length-2];
+  var full=ms.filter(function(r){return !r.partial;});
+  var avg=function(k,e){var xs=full.filter(function(r){return !r[e];});return xs.length?Math.round(xs.reduce(function(a,r){return a+r[k];},0)/xs.length):null;};
+  h+='<div class="kpis">'
+    +'<div class="kpi"><div class="l">Qualified Regular Demos · 2026</div><div class="v">'+gN(t.qd)+'</div><div class="d">'+gN(t.demos)+' demos held + '+gN(t.webinars)+' webinars'+(t.qdOk?'':' · some months n/a')+'</div></div>'
+    +'<div class="kpi s"><div class="l">Signed Brands · 2026</div><div class="v">'+gN(t.signed)+'</div><div class="d">by HubSpot close date, pilots included'+(t.sgOk?'':' · some months n/a')+'</div></div>'
+    +'<div class="kpi"><div class="l">Avg per full month</div><div class="v">'+gN(avg('qd','demoErr'))+' <span style="font-size:15px;opacity:.7">demos</span></div><div class="d">'+gN(avg('signed','signErr'))+' brands signed · over '+full.length+' complete months</div></div>'
+    +(cur&&prev?'<div class="kpi s"><div class="l">'+gMon(cur.m,true)+' to date</div><div class="v">'+gN(cur.demoErr?null:cur.qd)+' <span style="font-size:15px;opacity:.7">demos</span></div><div class="d">'+gN(cur.signErr?null:cur.signed)+' brands signed · '+gMon(prev.m)+' full month: '+gN(prev.demoErr?null:prev.qd)+' / '+gN(prev.signErr?null:prev.signed)+'</div></div>':'')
+    +'</div>';
+  h+='<div class="tile"><div class="tile-h"><span class="tile-t">By month</span><span class="leg"><span><i style="background:#72A4BF"></i>Qualified Regular Demos</span><span><i style="background:#172C45"></i>Signed Brands</span></span></div>'
+    +'<div class="chart">'+gChart(ms)+'</div>'+(cur&&cur.partial?'<div class="note">* '+gMon(cur.m,true)+' runs to '+gEsc(cur.to)+' (month to date), so its bars are lighter.</div>':'')+'</div>';
+  h+='<div class="tile"><div class="tile-h"><span class="tile-t">Monthly detail</span><span style="flex:1"></span><button class="btn" onclick="gCsv()">Download CSV</button></div><div class="tbl-w"><table><thead><tr>'
+    +'<th>Month</th><th>Qualified Regular Demos</th><th>Demos held</th><th>Webinars happened</th><th>Signed Brands</th></tr></thead><tbody>'
+    +ms.map(function(r){var na='<span class="na">n/a</span>';
+      return '<tr'+(r.partial?' class="part"':'')+'><td>'+gMon(r.m,true)+(r.old?' †':'')+'</td><td class="big">'+(r.demoErr?na:gN(r.qd))+'</td><td class="sub">'+(r.demoErr?na:gN(r.demos))+'</td><td class="sub">'+(r.demoErr?na:gN(r.webinars))+'</td><td class="big">'+(r.signErr?na:gN(r.signed))+'</td></tr>';}).join('')
+    +'<tr class="tot"><td>Total</td><td class="big">'+gN(t.qd)+'</td><td class="sub">'+gN(t.demos)+'</td><td class="sub">'+gN(t.webinars)+'</td><td class="big">'+gN(t.signed)+'</td></tr>'
+    +'</tbody></table></div>'
+    +'<div class="note"><b>Qualified Regular Demos</b>: demos that took place in the month (by the meeting date, or the rescheduled date) from brands that are not pre-launch, plus webinars that happened in the month. Same count as the Brand Dashboard’s Qualified Regular Demos for that month.<br>'
+    +'<b>Signed Brands</b>: deals closed won in the month by HubSpot close date, pilots included, plus deals that closed in the month and have since churned. Same count as the Brand Dashboard’s Signed Brands for that month.</div></div>';
+  return h;
+}
+function gCsv(){
+  if(!G.data)return;var rows=[['Month','Qualified Regular Demos','Demos held','Webinars happened','Signed Brands','Month to date']];
+  G.data.months.forEach(function(r){rows.push([r.m,r.demoErr?'':r.qd,r.demoErr?'':r.demos,r.demoErr?'':r.webinars,r.signErr?'':r.signed,r.partial?'yes':'']);});
+  var csv=rows.map(function(r){return r.join(',');}).join('\n'),a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='growth-overview-demos-signed.csv';document.body.appendChild(a);a.click();a.remove();
+}
+document.addEventListener('DOMContentLoaded',function(){doLogin();});
+</script>
+</body></html>

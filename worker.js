@@ -1351,9 +1351,12 @@ const AZ_CREATIVE_CHUNK_DAYS = 30;
 // a Cloudflare body ("error code: 1106", i.e. HubSpot's edge blocking us, not
 // HubSpot answering) and the dashboard reported "scheduledContacts 0" with no
 // hint that anything had gone wrong.
-const HS_ERR = { n: 0, statuses: {}, sample: '' };
+const HS_ERR = { n: 0, statuses: {}, sample: '', total: 0 };
 function noteHsError(status, bodyText) {
   HS_ERR.n++;
+  // total is never reset: a long build (Growth Overview) diffs it, and another
+  // request's subreqReset zeroing n mid-build would otherwise hide a failure.
+  HS_ERR.total = (HS_ERR.total || 0) + 1;
   const k = String(status || 'network');
   HS_ERR.statuses[k] = (HS_ERR.statuses[k] || 0) + 1;
   if (!HS_ERR.sample && bodyText) HS_ERR.sample = String(bodyText).slice(0, 120).replace(/\s+/g, ' ').trim();
@@ -4182,6 +4185,122 @@ async function fetchBdWaterfall(env, fresh) {
       }
     } catch (_) { /* best effort */ }
   }
+  return data;
+}
+
+// ── Growth Overview (/growth, POST /api/growth) ─────────────────────────────
+// Month by month from 2026-01 (Alex, 2026-11-24): Qualified Regular Demos and
+// Signed Brands, each EXACTLY as the Brand Dashboard counts them for a window of
+// that one month, so any month here equals that dashboard with the month picked.
+//   Qualified Regular Demos = held demos excl. pre-launch (fetchPipelineDeals ->
+//     filterActiveBrands -> processPipelineDeals.qualifiedRawCount, bucketed on
+//     rescheduled_meeting_date || date_demo_booked) + Webinars Happened by
+//     stage-entry date (fetchWebinarHeldCount), folded by applyWebinarHeld.
+//   Signed Brands = closed-won deals (filterActiveBrands) + deals now in a churn
+//     stage, by ET close date: the dashboard's _sbCount. Pilots included.
+// One pipeline fetch per month, NOT one wide one: a wide ASC fetch is capped at
+// 25 pages and drops the newest rows silently. A month whose HubSpot calls
+// failed is marked err (shown as unavailable), never counted as zero, and a
+// payload with any failure is not cached.
+const GROWTH_FROM = '2026-01';
+const GROWTH_KV = 'growth_v1';
+const GROWTH_LAST = 'growth_last';
+const GROWTH_TTL_SEC = 1800;
+function growthMonths(today) {
+  const out = [];
+  let [y, m] = GROWTH_FROM.split('-').map(Number);
+  const end = today.slice(0, 7);
+  while (true) {
+    const key = y + '-' + String(m).padStart(2, '0');
+    if (key > end) break;
+    const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    const to = key === end ? today : key + '-' + String(last).padStart(2, '0');
+    out.push({ m: key, from: key + '-01', to, partial: key === end });
+    m++; if (m > 12) { m = 1; y++; }
+  }
+  return out;
+}
+// Signed deals bucketed by Eastern close month; ids deduped across the two sets.
+function growthSignedByMonth(closedWon, churned, from, to) {
+  const seen = new Set(), by = {};
+  for (const d of filterActiveBrands(closedWon || []).concat(churned || [])) {
+    const p = d.properties || {}, id = String(d.id);
+    if (!p.closedate || seen.has(id)) continue;
+    const day = etDayKeyOf(p.closedate);
+    if (!day || day < from || day > to) continue;
+    seen.add(id);
+    const k = day.slice(0, 7);
+    by[k] = (by[k] || 0) + 1;
+  }
+  return by;
+}
+async function buildGrowth(env) {
+  const tok = env.HUBSPOT_TOKEN;
+  if (!tok) throw new Error('HubSpot is not configured');
+  const today = fmt(todayET());
+  const months = growthMonths(today);
+  const rows = [];
+  for (const mo of months) {
+    const e0 = HS_ERR.total;
+    const deals = await fetchPipelineDeals(tok, mo.from, mo.to);
+    const pl = processPipelineDeals(filterActiveBrands(deals || []), toMsUTC(mo.from), toMsUTC(mo.to, true), toMsET(mo.from), toMsET(mo.to, true), new Set());
+    const web = await fetchWebinarHeldCount(tok, mo.from, mo.to);
+    const pd = { pipeline: pl };
+    applyWebinarHeld(pd, web);
+    const err = HS_ERR.total > e0 || web == null;
+    rows.push({ m: mo.m, to: mo.to, partial: mo.partial, qd: pl.qualifiedRawCount || 0, demos: pl.qualifiedDemoOnlyCount || 0, webinars: web == null ? null : web, demoErr: err || undefined });
+  }
+  const e1 = HS_ERR.total;
+  const from0 = months[0].from;
+  const [cw, ch] = await Promise.all([fetchClosedWonDeals(tok, from0, today), fetchChurnedByCloseDate(tok, from0, today)]);
+  const signErr = HS_ERR.total > e1;
+  const by = growthSignedByMonth(cw, ch, from0, today);
+  rows.forEach(r => { r.signed = by[r.m] || 0; if (signErr) r.signErr = true; });
+  return { months: rows, asOf: new Date().toISOString(), today, ok: !signErr && !rows.some(r => r.demoErr) };
+}
+async function fetchGrowth(env, fresh) {
+  const kv = env.CONTENT_STORE;
+  if (!fresh && kv) {
+    try {
+      const hit = await kv.get(GROWTH_KV, 'json');
+      if (hit && hit.t && Date.now() - hit.t < GROWTH_TTL_SEC * 1000 && hit.data) return Object.assign({}, hit.data, { cached: true });
+    } catch (_) { /* a cache miss is fine */ }
+  }
+  let data;
+  try { data = await buildGrowth(env); }
+  catch (e) {
+    let last = null;
+    if (kv) { try { last = await kv.get(GROWTH_LAST, 'json'); } catch (_) { /* none */ } }
+    if (!last || !last.data) throw e;
+    return Object.assign({}, last.data, { cached: true, stale: { error: String(e && e.message || e).slice(0, 300), asOf: new Date(last.t).toISOString() } });
+  }
+  if (data.ok) {
+    if (kv) {
+      try {
+        const blob = JSON.stringify({ t: Date.now(), data });
+        await kv.put(GROWTH_KV, blob, { expirationTtl: GROWTH_TTL_SEC * 6 });
+        await kv.put(GROWTH_LAST, blob, { expirationTtl: 7 * 86400 });
+      } catch (_) { /* best effort */ }
+    }
+    return data;
+  }
+  // HubSpot calls failing do not throw (hsSearch returns partial rows, hsCount
+  // null), so a failed build lands here: each failed month takes its figures
+  // from the last good copy, marked, and stays n/a only when there is none.
+  // The current month is never filled from a copy taken on another day.
+  let last = null;
+  if (kv) { try { last = await kv.get(GROWTH_LAST, 'json'); } catch (_) { /* none */ } }
+  const lm = {};
+  ((last && last.data && last.data.months) || []).forEach(r => { lm[r.m] = r; });
+  const asOf = last && last.t ? new Date(last.t).toISOString() : null;
+  let used = 0;
+  data.months.forEach(r => {
+    const o = lm[r.m];
+    if (!o || o.to !== r.to) return;
+    if (r.demoErr && !o.demoErr) { r.qd = o.qd; r.demos = o.demos; r.webinars = o.webinars; delete r.demoErr; r.old = asOf; used++; }
+    if (r.signErr && !o.signErr) { r.signed = o.signed; delete r.signErr; r.old = asOf; used++; }
+  });
+  if (used) data.stale = { error: 'Some HubSpot calls failed', asOf, partialOnly: true };
   return data;
 }
 
@@ -12502,6 +12621,11 @@ export default {
       return new Response(BD_HTML, { headers: { 'Content-Type':'text/html;charset=UTF-8','Cache-Control':'no-cache' } });
     }
 
+    // GET /growth → Growth Overview (month-by-month demos and signings)
+    if (request.method === 'GET' && url.pathname === '/growth') {
+      return new Response(GROWTH_HTML, { headers: { 'Content-Type':'text/html;charset=UTF-8','Cache-Control':'no-cache' } });
+    }
+
     // POST /api/data → Dashboard API
     // ── Slack changelog intake ───────────────────────────────────────────
     // Unauthenticated by design: Slack cannot send a password, so the SIGNATURE
@@ -13692,6 +13816,15 @@ export default {
       catch (err) { console.error('BD waterfall endpoint error:', err); return jr({ error: 'Churn Waterfall unavailable', detail: String(err && err.message || err).slice(0, 300) }, 502); }
     }
 
+    // POST /api/growth → Growth Overview months. {fresh:true} skips the 30-min cache.
+    if (request.method === 'POST' && url.pathname === '/api/growth') {
+      let body;
+      try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
+      try { return jr(await fetchGrowth(env, body && body.fresh === true)); }
+      catch (err) { console.error('Growth endpoint error:', err); return jr({ error: 'Growth data unavailable', detail: String(err && err.message || err).slice(0, 300) }, 502); }
+    }
+
     if (request.method === 'POST' && url.pathname === '/api/bd-app') {
       try { await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
       if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
@@ -13727,6 +13860,8 @@ const SALES_HTML = (() => { try { const b = atob(_SALES_B64); const bytes = new 
 
 const _BD_B64 = '';
 const BD_HTML = (() => { try { const b = atob(_BD_B64); const bytes = new Uint8Array(b.length); for(let i=0;i<b.length;i++) bytes[i]=b.charCodeAt(i); return new TextDecoder().decode(bytes); } catch(e) { return '<html><body>BD Dashboard failed to load: '+e.message+'</body></html>'; } })();
+const _GROWTH_B64 = '';
+const GROWTH_HTML = (() => { try { const b = atob(_GROWTH_B64); const bytes = new Uint8Array(b.length); for(let i=0;i<b.length;i++) bytes[i]=b.charCodeAt(i); return new TextDecoder().decode(bytes); } catch(e) { return '<html><body>Growth Overview failed to load: '+e.message+'</body></html>'; } })();
 
 function jr(data, status=200) {
   return new Response(JSON.stringify(data), { status, headers: { 'Content-Type':'application/json','Access-Control-Allow-Origin':'*' } });

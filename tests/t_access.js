@@ -96,7 +96,7 @@ const req = t => ({ headers: { get: n => (n.toLowerCase() === 'cf-access-jwt-ass
   const routes = [];
   const re = /if \(request\.method === '(GET|POST)' && \(?url\.pathname === '([^']+)'/g;
   let m; while ((m = re.exec(src))) routes.push({ method: m[1], path: m[2] });
-  const OPEN = ['GET /', 'GET /sales', 'GET /bd', 'POST /api/slack/events'];
+  const OPEN = ['GET /', 'GET /sales', 'GET /bd', 'GET /growth', 'POST /api/slack/events'];
   ck('the route list was read', routes.length > 25, true);
 
   const realFetch = globalThis.fetch;
@@ -146,7 +146,7 @@ const req = t => ({ headers: { get: n => (n.toLowerCase() === 'cf-access-jwt-ass
   globalThis.fetch = realFetch;
 
   // ── Part C: the pages ──────────────────────────────────────────────────────
-  for (const f of ['dashboard.html', 'sales-dashboard.html', 'bd-dashboard.html']) {
+  for (const f of ['dashboard.html', 'sales-dashboard.html', 'bd-dashboard.html', 'growth-dashboard.html']) {
     const h = load(f);
     ck(f + ': no password field', /type="password"|Team password/.test(h), false);
     ck(f + ': loads on its own once the script has run', /addEventListener\('DOMContentLoaded',function\(\)\{doLogin\(\);\}\)/.test(h), true);

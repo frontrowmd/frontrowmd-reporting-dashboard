@@ -20,6 +20,13 @@ if(fs.existsSync('bd-dashboard.html')){
   console.log(`  bd-dashboard: ${Math.round(fs.statSync('bd-dashboard.html').size/1024)} KB`);
 }
 
+// Growth Overview (optional)
+if(fs.existsSync('growth-dashboard.html')){
+  const gh=fs.readFileSync('growth-dashboard.html','utf8');
+  out=out.replace("const _GROWTH_B64 = '';","const _GROWTH_B64 = '"+Buffer.from(gh).toString('base64')+"';");
+  console.log(`  growth-dashboard: ${Math.round(fs.statSync('growth-dashboard.html').size/1024)} KB`);
+}
+
 fs.mkdirSync('dist',{recursive:true});
 fs.writeFileSync('dist/worker.js',out);
 console.log(`✅ Built dist/worker.js (${Math.round(out.length/1024)} KB) | worker: ${Math.round(fs.statSync('worker.js').size/1024)} KB | html: ${Math.round(fs.statSync('dashboard.html').size/1024)} KB`);
