@@ -1433,6 +1433,36 @@ function bdWfTip(e){
   tip.style.left=x+'px';tip.style.top=y+'px';
 }
 function bdWfTipOff(){var tip=document.getElementById('bd-wf-tip');if(tip){tip.style.display='none';tip._ti=null;}}
+// W2 as shown on screen: one row per cohort plus All cohorts (blank where the
+// grid leaves it blank), the three traffic columns, then Month 1..N in the
+// current metric and % / Brands mode. No abnormality flags (Alex, 2026-11-25).
+var _bdWfW2Out=null;
+function _bdWfW2Rows(){
+  var o=_bdWfW2Out;if(!o||!o.rw)return null;
+  var rw=o.rw,W=rw.maxK,num=function(v){return String(v).replace(/\u2212/g,'-');};
+  var pctOf=function(n,k10,none){var d=n-none;return n&&d?Math.round(k10/d*100)+'%':'';};
+  var rows=[['Cohort','Brands','0-10K','0-10K %','None'].concat(Array.from({length:W},function(_,i){return 'Month '+(i+1);}))];
+  rw.cohorts.forEach(function(co){
+    var r=[co.m,co.n,co.n?co.k10:'',pctOf(co.n,co.k10,co.none),co.n?co.none:''];
+    for(var k=1;k<=W;k++){var c=co.cells[k-1];r.push(c&&co.n?num(o.cellVal(c)):'');}
+    rows.push(r);
+  });
+  if(rw.blend.length){
+    var tk=0,tn=0;rw.cohorts.forEach(function(co){tk+=co.k10;tn+=co.none;});
+    var n=rw.blend[0].n,r=['All cohorts',n,tk,pctOf(n,tk,tn),tn];
+    rw.blend.forEach(function(b){var thin=(b.pct===null||b.n<BD_WF_BLEND_MIN||b.cohorts<BD_WF_BLEND_MIN_COHORTS);
+      r.push(thin?'':num(o.cellVal({alive:b.alive,lost:b.n-b.alive,pct:b.pct,lostM:b.lostM,mPct:b.mPct})));});
+    rows.push(r);
+  }
+  return rows;
+}
+function bdWfW2Csv(){
+  var rows=_bdWfW2Rows();if(!rows)return;
+  var q=function(v){v=v==null?'':String(v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
+  var o=_bdWfW2Out,name='retention-waterfall-'+({ret:'retention',cpm:'churn-per-month',churn:'churn'}[o.metric]||'retention')+(o.mode==='n'?'-brands':'-pct')+'.csv';
+  var blob=new Blob(['\ufeff'+rows.map(function(r){return r.map(q).join(',');}).join('\n')],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download=name;document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(function(){URL.revokeObjectURL(url);},200);
+}
 function bdWfCsv(){
   var wf=BD&&BD.wf;if(!wf||!wf.brands)return;
   _bdWfFlagsAll(wf);
@@ -1741,6 +1771,8 @@ function _bdWfRender(){
     if(cpmView)return _bdWfMode==='n'?(c.lostM?'−'+c.lostM:'0'):pct(c.mPct);
     if(_bdWfMode==='n')return churnView?(c.lost?'−'+c.lost:'0'):String(c.alive);return churnView?pct(1-c.pct):pct(c.pct);};
   // Monthly churn is small, so it gets its own scale: 0% green, 10% yellow, 20%+ darkest red.
+  // W2's CSV exports exactly this grid (metric, % / Brands, filters and toggles), no flags.
+  _bdWfW2Out={rw:rw,cellVal:cellVal,metric:_bdWfMetric,mode:_bdWfMode};
   var cellFill=function(c){if(!cpmView)return _bdWfFill(c.pct);return c.mPct==null?'':_bdWfFill(1-Math.min(c.mPct/BD_WF_CPM_MAX,1)*(1-BD_WF_LOW));};
   var years=[];months.forEach(function(m){var y=m.slice(0,4);if(years.indexOf(y)<0)years.push(y);});
   h+=head('W2','bd-sec-wf2','Retention Waterfall',(cpmView?'Share of each first-invoice month’s brands, still active the month before, that churned in each month since':'Share of each first-invoice month’s brands '+(churnView?'that had churned by':'still active in')+' each month since')
@@ -1772,7 +1804,7 @@ function _bdWfRender(){
       return '<span role="checkbox" aria-checked="'+on+'" tabindex="0" onclick="bdWfW2TierAt('+ti+')" style="cursor:pointer;padding:4px 11px;border-radius:50px;font-size:11px;font-weight:700;font-family:var(--font-h);border:1.5px solid '+(on?'var(--navy)':'rgba(23,44,69,.14)')+';'
         +(on?'background:var(--navy);color:#fff;':'background:transparent;color:var(--grey);')+'">'+_bdEsc(t)+' <span style="opacity:.6;font-weight:600">'+tierN[t]+'</span></span>';}).join('')
     +(_bdWfW2Tier.length?'<span onclick="bdWfW2TierClear()" style="cursor:pointer;padding:4px 8px;font-size:11px;color:var(--teal);font-weight:600">Clear</span>':'')
-    +'</span></span></div>';
+    +'</span></span><button class="bd-wf-btn" style="margin-left:auto" onclick="bdWfW2Csv()">Download CSV</button></div>';
   var W=rw.maxK,minW=BD_WF_W_LBL+BD_WF_W_N+BD_WF_W_X*3+BD_WF_W_CELL*W;
   // Cohort rows whose retention a flagged brand distorts: active brands not
   // invoiced lately keep the row high; a long gap hides a churn and a return.

@@ -190,6 +190,14 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
   {const gr=h.slice(h.indexOf('id="bd-sec-wf2"'));const i=gr.indexOf('<td class="rw-c">Jul 26</td>');const r=gr.slice(i,gr.indexOf('</tr>',i));
    ck('  ...and as counts: the brands lost that month',[...r.matchAll(/<td(?: class="rw-n")?(?: title="[^"]*")?(?: style="[^"]*")?>([^<]*)<\/td>/g)].map(x=>x[1]).filter(x=>x!==''),['2','0','0','−1','0']);}
   P.bdWfSet('metric','ret');P.bdWfSet('mode','pct');
+  // W2 CSV (Alex, 2026-11-25): the grid as shown, no flags.
+  h=R();{const rows=P._bdWfW2Rows();const jul=rows.find(r=>r[0]==='2026-07');
+   ck('W2 CSV: header, then each cohort as on screen (traffic columns, then months in the current metric); no flags',
+     [rows[0].slice(0,7),jul.slice(0,1).concat(jul.slice(5,9)),rows[rows.length-1][0],JSON.stringify(rows).includes('\u26a0'),/onclick="bdWfW2Csv\(\)">Download CSV</.test(h)],
+     [['Cohort','Brands','0-10K','0-10K %','None','Month 1','Month 2'],['2026-07','100%','100%','50.0%','50.0%'],'All cohorts',false,true]);}
+  P.bdWfSet('metric','cpm');P.bdWfSet('mode','n');R();
+  ck('  ...and follows the metric and mode: Churn Per Month counts, plain minus signs',P._bdWfW2Rows().find(r=>r[0]==='2026-07').slice(5,9),['0','0','-1','0']);
+  P.bdWfSet('metric','ret');P.bdWfSet('mode','pct');
   // Traffic columns and W2's Web Traffic Tier toggles (Alex, 2026-11-25).
   {const jul=P.BD.wf.brands.filter(b=>b.fm==='2026-07');const keep=jul.map(b=>({it:b.it,ss:b.ss,mt:b.mt,wt:b.wt}));
    jul[0].it='0-10K';Object.assign(jul[1],{it:'No traffic data',ss:'10K-25K',mt:'',wt:''});
