@@ -102,12 +102,22 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
   FX.brands.push({id:10,name:'Alpha old',hubspotCompanyId:'100',recurly:ENDED,state:'ended',discardedAt:'2026-03-01'});
   ck('  an ended row sharing its company with a counted brand is not a churn',cnt('2026-01-01','2026-01-31').churned,1);
   FX.brands.pop();
+  FX.brands.push({id:11,name:'Gone 2',hubspotCompanyId:'300',recurly:ENDED,state:'ended'});
+  ck('  two ended rows on one company are one churn',cnt('2026-01-01','2026-01-31').churned,1);
+  FX.brands.pop();
+  // A restart under a NEW company: the old deal sits on the old (discarded) row's company
+  // and reaches the live row by name (allDisc), so both rows carry it.
+  FX.brands.push({id:12,name:'Phoenix',hubspotCompanyId:'500',recurly:ENDED,state:'ended',discardedAt:'2026-01-20'},
+    {id:13,name:'Phoenix',hubspotCompanyId:'501',recurly:BILL,active:true,state:'active'});
+  FD.push({id:'d12',dealstage:'closedwon',closedate:'2026-01-12T15:00:00Z',companyId:'500',dealname:'Phoenix'});
+  ck('  a restart joined by name to the same deal is active once, never also churned',[cnt('2026-01-01','2026-01-31').active,cnt('2026-01-01','2026-01-31').churned],[3,1]);
+  FX.brands.splice(-2);FD.pop();
   // fetchSignBook / fetchGrowthSigned / fetchSignedBrands with the two readers stubbed.
   run(`fetchBDData=async()=>({deals:JSON.parse(JSON.stringify(FD)),meta:{}});fetchBdApp=async(e,o)=>{APPOPTS=o;return FX;};todayET=()=>new Date(Date.UTC(2026,1,10));
     LOOKUPS=[];lookupBDCompanies=async(e,ids)=>{LOOKUPS.push(ids);return {companies:{},deferred:0};};`);
   const kv2={};const env2={HUBSPOT_TOKEN:'t',CONTENT_STORE:{get:async(k)=>kv2[k]?JSON.parse(kv2[k]):null,put:async(k,v)=>{kv2[k]=v;}}};W.env2=env2;
   g=await run(`fetchGrowthSigned(env2,false)`);
-  ck('growth-signed: reads the app book lite (no per-account Recurly reads), caches a clean sign book',[run('APPOPTS'),g.months.map(r=>[r.signed,r.churned]),!!kv2.sign_book_v1,!!kv2.sign_book_last],[{lite:true},[[3,1],[2,0]],true,true]);
+  ck('growth-signed: reads the app book lite (no per-account Recurly reads), caches a clean sign book',[run('APPOPTS'),g.months.map(r=>[r.signed,r.churned]),!!kv2.sign_book_v2,!!kv2.sign_book_last_v2],[{lite:true},[[3,1],[2,0]],true,true]);
   ck('  year to date is Jan 1..today, each brand once',[g.ytd.m,g.ytd.signed,g.ytd.active,g.ytd.pilots,g.ytd.churned],['ytd',5,4,1,1]);
   ck('  looks up the uncached company names of closed-won deals only, as the BD page does',run('LOOKUPS'),[['100','300','400','600']]);
   ck('  next load from the cached book',!!(await run(`fetchGrowthSigned(env2,false)`)).cached,true);
@@ -124,14 +134,14 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
   g=await run(`fetchGrowthSigned(env2,true)`);
   ck('  lookups deferred: the last good book, marked',[!!g.stale,g.stale&&g.stale.error],[true,'Some HubSpot calls failed']);
   run(`lookupBDCompanies=async(e,ids)=>({companies:{},deferred:0});`);
-  const before=kv2.sign_book_last;
+  const before=kv2.sign_book_last_v2;
   FX.meta={recurly:{ok:true,stale:true}};
   g=await run(`fetchGrowthSigned(env2,true)`);
-  ck('  Recurly stale: today’s cohort on its last read, as the card shows, flagged, not cached',[!!g.stale,/last good read/.test(g.warn||''),g.months.map(r=>r.active),kv2.sign_book_last===before],[false,true,[2,2],true]);
+  ck('  Recurly stale: today’s cohort on its last read, as the card shows, flagged, not cached',[!!g.stale,/last good read/.test(g.warn||''),g.months.map(r=>r.active),kv2.sign_book_last_v2===before],[false,true,[2,2],true]);
   FX.meta={recurly:{ok:false}};
   g=await run(`fetchGrowthSigned(env2,true)`);
   ck('  Recurly unread: the app’s own count, flagged',[!!g.stale,/app’s own count/.test(g.warn||''),g.months.map(r=>r.active)],[false,true,[2,2]]);
-  FX.meta={recurly:{ok:true}};FX.pilotStats={error:'x'};delete kv2.sign_book_last;
+  FX.meta={recurly:{ok:true}};FX.pilotStats={error:'x'};delete kv2.sign_book_last_v2;
   let threw=null;try{await run(`fetchGrowthSigned(env2,true)`);}catch(e){threw=String(e.message);}
   ck('  pilot stats missing (the card is hidden then) and no copy: an error, never zeros',/Pilot stats unavailable/.test(threw||''),true);
   FX.pilotStats={n:1};

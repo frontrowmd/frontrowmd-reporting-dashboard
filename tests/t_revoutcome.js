@@ -169,7 +169,9 @@ ck('the card asks for its own live figures once per window, whatever page drew i
 ck('the worker drops the brand side when HubSpot refused a read during it',
    /const hsFailed = HS_ERR\.n > _hsErr0;/.test(src)&&/current: hsFailed \? null : tot\(cCW\)/.test(src),true);
 ck('the Executive page Brand mode fetches the live card too',/\|\|\(AP==='exec'&&_execMode\(\)==='brand'\)\)&&typeof fdRevenueOutcome==='function'/.test(cli),true);
-ck('Revenue Outcome fetches the BD Tracker card counts alongside its own live figures',/async function fdRevenueOutcome\(win,from,to,vsFrom,vsTo\)\{\s*fdSignedBrands\(win,from,to,vsFrom,vsTo\);/.test(cli)&&/'\/api\/signed-brands'/.test(cli),true);
+ck('Revenue Outcome fetches the BD Tracker card counts alongside its own live figures',/async function fdRevenueOutcome\(win,from,to,vsFrom,vsTo,fresh\)\{\s*fdSignedBrands\(win,from,to,vsFrom,vsTo,fresh\);/.test(cli)&&/'\/api\/signed-brands'/.test(cli),true);
+ck('Refresh recounts Signed Brands (fresh passed through); a retry clears the old failure',/fdRevenueOutcome\(_row,null,null,null,null,fresh\)/.test(cli)&&/if\(fresh\)b\.fresh=true;/.test(cli)&&/if\(_sbFail===key\)_sbFail=null;/.test(cli),true);
+ck('a cached render (Irfan, Executive) asks for the Signed Brands counts on their own when missing',/if\(!\(_sbCard&&_sbCard\.key===k\)&&_sbAsked!==k/.test(cli)&&/buildSectionNav\('irfan'\);[^\n]*\n[^\n]*\n[^\n]*\n\s*if\(typeof _roEnsure==='function'\)_roEnsure\(\);/.test(cli),true);
 ck('the live fetch keeps the pilot side and re-renders through one function',
    /_revOutcome=\{win:win,key:key,current:d\.current,prior:d\.prior,priorMonth:d\.priorMonth,pilots:d\.pilots\|\|null\};\s*_roRerender\(\);/.test(cli),true);
 // The worker's windowed pilot query.

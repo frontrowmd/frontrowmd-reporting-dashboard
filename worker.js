@@ -4449,8 +4449,8 @@ function _baStatusOf(b){
 // company (h). Built once from the two heavy reads, cached 30 min, and shared by
 // Growth Overview (/api/growth-signed) and the Brand Dashboard's Revenue
 // Outcome (/api/signed-brands), so both count exactly as the card does.
-const SIGN_BOOK_KV = 'sign_book_v1';
-const SIGN_BOOK_LAST = 'sign_book_last';
+const SIGN_BOOK_KV = 'sign_book_v2';
+const SIGN_BOOK_LAST = 'sign_book_last_v2';
 function signBookRows(deals, app) {
   const t = appJoinTables();
   BD_APP_JOIN_CO = t.co; BD_APP_JOIN_DEAL = t.deal;
@@ -4466,19 +4466,31 @@ function signBookRows(deals, app) {
     else a = !b.discardedAt && !!b.active;                                // _baSummary
     const p = !!(b.pilot && !/(demo|test)/i.test(String(b.name || '')) && BD_PILOT_COUNTED.indexOf(b.pilot.status) >= 0);   // _baPilotStatsOf
     const c = !a && !p && _baStatusOf(b).s === 'Ended';
-    rows.push({ d, a: a ? 1 : 0, p: p ? 1 : 0, c: c ? 1 : 0, h: b.hubspotCompanyId ? String(b.hubspotCompanyId) : '' });
+    // k: its closed-won deals, so an ended row that shares a deal with another
+    // row (a restart joined by name, a reviewed join) is known to be the same brand.
+    const k = (join.byBrand[b.id] || []).filter(x => x.dealstage === 'closedwon').map(x => String(x.id));
+    rows.push({ d, a: a ? 1 : 0, p: p ? 1 : 0, c: c ? 1 : 0, h: b.hubspotCompanyId ? String(b.hubspotCompanyId) : '', k });
   }
   return rows;
 }
 // The card for one inclusive Eastern range: active + pilots (= signed), and the
-// brands that signed in it and have since ended (churned). An ended row that
-// shares its HubSpot company with a brand counted in the same range is a
-// duplicate or restart of that brand, not a second signing, so it is left out.
+// brands that signed in it and have since ended (churned). Rows that share a
+// HubSpot company or a closed-won deal are one brand (duplicates, restarts): an
+// ended row tied to a brand counted in the range is left out, and ended rows
+// tied to each other count once.
+function signBookKeys(r) { return (r.h ? ['h:' + r.h] : []).concat((r.k || []).map(x => 'd:' + x)); }
 function signBookCount(rows, from, to) {
   const inR = rows.filter(r => r.d.some(x => x >= from && x <= to));
-  const live = new Set(inR.filter(r => (r.a || r.p) && r.h).map(r => r.h));
+  const live = new Set(), seen = new Set();
+  inR.forEach(r => { if (r.a || r.p) signBookKeys(r).forEach(x => live.add(x)); });
   let active = 0, pilots = 0, churned = 0;
-  for (const r of inR) { active += r.a; pilots += r.p; if (r.c && !(r.h && live.has(r.h))) churned++; }
+  for (const r of inR) {
+    active += r.a; pilots += r.p;
+    if (!r.c) continue;
+    const ks = signBookKeys(r);
+    if (ks.some(x => live.has(x) || seen.has(x))) continue;
+    ks.forEach(x => seen.add(x)); churned++;
+  }
   return { active, pilots, signed: active + pilots, churned };
 }
 async function buildSignBook(env) {
@@ -4491,8 +4503,9 @@ async function buildSignBook(env) {
   const deals = (bd && bd.deals) || [];
   // The BD Tracker fills in company names /api/bd only has cached
   // (bdLookupMissingCompanies) before its join matches on them; do the same for
-  // the closed-won deals, the only ones that date a signing.
-  const need = [...new Set(deals.filter(d => d.dealstage === 'closedwon' && d.companyId && !d.companyName).map(d => String(d.companyId)))];
+  // every deal, as the page does: an open or lost deal joined by its company
+  // name is what stops a brand falling back to its app date.
+  const need = [...new Set(deals.filter(d => d.companyId && !d.companyName).map(d => String(d.companyId)))];
   let deferred = 0;
   if (need.length) {
     const lk = await lookupBDCompanies(env, need, false);

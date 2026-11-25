@@ -1207,11 +1207,14 @@ function _buildRevenueOutcomeCard(d){
 // deals and the app book. Until it lands the three counts say loading; if it
 // fails they are a dash, never the old HubSpot deal count under the new name.
 var _sbCard=null,_sbSeq=0,_sbFail=null;
-async function fdSignedBrands(win,from,to,vsFrom,vsTo){
+async function fdSignedBrands(win,from,to,vsFrom,vsTo,fresh){
   var my=++_sbSeq,key=_roKey(win,from,to,vsFrom,vsTo);
+  // A retry of a window that failed shows loading again, not the old failure.
+  if(_sbFail===key)_sbFail=null;
   var fail=function(){if(my===_sbSeq){_sbFail=key;_roRerender();}};
   try{
     var b={password:PW,window:win};if(from)b.from=from;if(to)b.to=to;if(vsFrom)b.vsFrom=vsFrom;if(vsTo)b.vsTo=vsTo;
+    if(fresh)b.fresh=true;   // the page's Refresh recounts instead of reading the 30-min book
     var r=await fetch(API.replace('/api/data','/api/signed-brands'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
     if(!r.ok){fail();return;}var d=await r.json();if(!d||d.error||!d.current){fail();return;}
     if(my!==_sbSeq)return;
@@ -1219,8 +1222,9 @@ async function fdSignedBrands(win,from,to,vsFrom,vsTo){
     _roRerender();
   }catch(e){console.error('fdSignedBrands',e);fail();}
 }
-async function fdRevenueOutcome(win,from,to,vsFrom,vsTo){
-  fdSignedBrands(win,from,to,vsFrom,vsTo);
+async function fdRevenueOutcome(win,from,to,vsFrom,vsTo,fresh){
+  fdSignedBrands(win,from,to,vsFrom,vsTo,fresh);
+  if(typeof _sbAsked!=='undefined')_sbAsked=_roKey(win,from,to,vsFrom,vsTo);
   var my=++_roSeq,key=_roKey(win,from,to,vsFrom,vsTo);
   // A failed fetch is remembered for its window, so the Pilots side can say it
   // failed instead of loading forever (side 1 keeps the cached figures).
@@ -1642,8 +1646,8 @@ async function fd(w,from,to,vsFrom,vsTo,fresh){
   if(mySeq===_fdSeq&&(AP==='irfan'||AP==='dashboard'||(AP==='exec'&&_execMode()==='brand'))&&typeof fdRevenueOutcome==='function'){
     var _row=S[AP].win||'mtd';
     _roAsked=_roPageKey();
-    if(_row==='custom')fdRevenueOutcome('custom',S[AP].cFrom,S[AP].cTo,S[AP].cVsFrom,S[AP].cVsTo);
-    else fdRevenueOutcome(_row);
+    if(_row==='custom')fdRevenueOutcome('custom',S[AP].cFrom,S[AP].cTo,S[AP].cVsFrom,S[AP].cVsTo,fresh);
+    else fdRevenueOutcome(_row,null,null,null,null,fresh);
   }
 }
 // Compute the 4 cohort month labels (current + 3 prior, newest first) so the
@@ -4123,6 +4127,9 @@ function renderIrfan(){
   if(!d.irfan?.last14Error)_renderIrfanSignedPie(d);
   _renderIrfanMetaTablesLoader();
   buildSectionNav('irfan');   // headings only exist after this render
+  // A render from cached data skips fd's fetch: make sure this window's live
+  // Revenue Outcome figures and Signed Brands counts are on their way.
+  if(typeof _roEnsure==='function')_roEnsure();
   // Sync ad-channel tab UI + section labels if a non-Meta channel is active
   // (state is shared with the Brand Dashboard).
   if(typeof dashSetAdChannel==='function'&&S.dashboard?.activeAdChannel&&S.dashboard.activeAdChannel!=='meta'){
@@ -12890,13 +12897,18 @@ function _brandKeyMetricsAfter(d,sfx){
   // per window key, so a re-render never loops.
   _roEnsure();
 }
-var _roAsked='';
+var _roAsked='',_sbAsked='';
 function _roEnsure(){
   if(typeof fdRevenueOutcome!=='function'||typeof AP==='undefined'||!S[AP])return;
-  var k=_roPageKey();
+  var k=_roPageKey(),st=S[AP];
+  // The Signed Brands counts have their own request: one superseded or dropped
+  // for this window is asked again on its own (once per window, as below).
+  if(!(_sbCard&&_sbCard.key===k)&&_sbAsked!==k&&typeof fdSignedBrands==='function'){
+    _sbAsked=k;
+    if((st.win||'mtd')==='custom')fdSignedBrands('custom',st.cFrom,st.cTo,st.cVsFrom,st.cVsTo);else fdSignedBrands(st.win||'mtd');
+  }
   if((_revOutcome&&_revOutcome.key===k)||_roAsked===k)return;
   _roAsked=k;
-  var st=S[AP];
   if((st.win||'mtd')==='custom')fdRevenueOutcome('custom',st.cFrom,st.cTo,st.cVsFrom,st.cVsTo);
   else fdRevenueOutcome(st.win||'mtd');
 }
