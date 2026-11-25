@@ -279,6 +279,7 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
    S.fetch=(u,o)=>{calls.push([u,JSON.parse(o.body)]);return Promise.resolve({status:200,json:()=>Promise.resolve({months:[]})});};calls.length=0;
    vm.runInContext('gRefresh();',S);await new Promise(r=>setTimeout(r,20));
    ck('  even a Refresh call in share mode never asks for a rebuild',calls.every(c=>c[1].fresh===false),true);}
+  ck('share panel: no note box; a just-made link shows even before the lagging KV listing has it, a revoked one disappears at once',(()=>{vm.runInContext("GS.local={n1:{key:'n1',path:'/g/n1'}};GS.gone={o2:1};",P);const m=vm.runInContext("gShareMerge([{key:'o1',path:'/g/o1'},{key:'o2',path:'/g/o2'}]).map(x=>x.key)",P);vm.runInContext("GS.links=[];",P);vm.runInContext("try{gShareRender()}catch(e){}",P);return [m,/gsNote|placeholder="Note/.test(html)];})(),[['n1','o1'],false]);
   ck('team page still uses /api with fresh on Refresh; Share button present',[vm.runInContext('G_API',P),vm.runInContext('G_SHARE',P),/id="gShareBtn"/.test(html)],['/api',null,true]);
   console.log('\n'+pass+' passed, '+fail+' failed');process.exit(fail?1:0);
 })().catch(e=>{console.error(e);process.exit(1);});

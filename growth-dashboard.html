@@ -153,35 +153,54 @@ function gFetchSigned(fresh){
 }
 function gRefresh(){G.err=null;G.loading=true;gRender();gFetchSigned(true);gFetch(true).then(gRender).catch(function(e){G.loading=false;G.err=String(e&&e.message||e);gRender();});}
 // ── Share links (signed-in teammates only) ──
-var GS={links:null,err:null,busy:false,made:null};
-function gSharePost(b){return fetch('/api/growth-share',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(function(r){return r.json().catch(function(){return {error:'HTTP '+r.status};});});}
+var GS={links:null,err:null,busy:false,made:null,copied:false};
+function gSharePost(b){return fetch('/api/growth-share',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(function(r){return r.json().catch(function(){return {error:'HTTP '+r.status};}).then(function(d){if(!r.ok&&!d.error)d.error='HTTP '+r.status;return d;});});}
 function gShareUrl(path){return location.origin+path;}
-function gShareOpen(){document.getElementById('gshare').style.display='flex';GS.made=null;gShareRender();gShareLoad();}
+function gShareOpen(){document.getElementById('gshare').style.display='flex';GS.made=null;GS.copied=false;GS.err=null;gShareRender();gShareLoad();}
 function gShareClose(){document.getElementById('gshare').style.display='none';}
-function gShareLoad(){gSharePost({action:'list'}).then(function(d){GS.err=d.error||null;GS.links=d.links||GS.links||[];gShareRender();}).catch(function(e){GS.err=String(e&&e.message||e);gShareRender();});}
+// KV listings lag a new or revoked key by up to a minute, so the panel keeps
+// what it just did on top of whatever the listing says.
+GS.local={};GS.gone={};
+function gShareMerge(list){
+  var seen={},out=[];
+  (list||[]).forEach(function(x){if(!GS.gone[x.key]){seen[x.key]=1;out.push(x);}});
+  Object.keys(GS.local).forEach(function(k){if(!seen[k]&&!GS.gone[k])out.unshift(GS.local[k]);});
+  return out;
+}
+function gShareLoad(){gSharePost({action:'list'}).then(function(d){if(d.error)GS.err=d.error;GS.links=gShareMerge(d.links||[]);gShareRender();}).catch(function(e){GS.err=String(e&&e.message||e);GS.links=gShareMerge([]);gShareRender();});}
+function gCopyText(u){
+  if(navigator.clipboard&&navigator.clipboard.writeText)return navigator.clipboard.writeText(u).then(function(){return true;},function(){return false;});
+  return Promise.resolve(false);
+}
 function gShareCreate(){
-  if(GS.busy)return;var inp=document.getElementById('gsNote');var note=inp?inp.value:'';
-  GS.busy=true;gShareRender();
-  gSharePost({action:'create',note:note}).then(function(d){GS.busy=false;if(d.error){GS.err=d.error;}else{GS.made=d.key;GS.err=null;}gShareLoad();}).catch(function(e){GS.busy=false;GS.err=String(e&&e.message||e);gShareRender();});
+  if(GS.busy)return;
+  GS.busy=true;GS.err=null;GS.copied=false;gShareRender();
+  gSharePost({action:'create'}).then(function(d){
+    GS.busy=false;
+    if(d.error||!d.key){GS.err='Couldn’t create a link: '+(d.error||'no link came back');gShareRender();return;}
+    GS.local[d.key]=d;GS.made=d.key;GS.links=gShareMerge(GS.links||[]);
+    gShareRender();
+    gCopyText(gShareUrl(d.path)).then(function(ok){GS.copied=ok;gShareRender();});
+  }).catch(function(e){GS.busy=false;GS.err='Couldn’t create a link: '+String(e&&e.message||e);gShareRender();});
 }
 function gShareRevoke(k){
   if(!confirm('Revoke this link? It stops working within about a minute.'))return;
-  gSharePost({action:'revoke',key:k}).then(function(d){if(d.error)GS.err=d.error;gShareLoad();});
+  gSharePost({action:'revoke',key:k}).then(function(d){if(d.error){GS.err='Couldn’t revoke: '+d.error;gShareRender();return;}GS.gone[k]=1;delete GS.local[k];GS.links=gShareMerge(GS.links||[]);gShareRender();});
 }
 function gShareCopy(k,btn){
-  var u=gShareUrl('/g/'+k),done=function(){if(btn){btn.textContent='Copied';setTimeout(function(){btn.textContent='Copy';},1500);}};
-  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(u).then(done,function(){prompt('Copy this link:',u);});
-  else prompt('Copy this link:',u);
+  var u=gShareUrl('/g/'+k);
+  gCopyText(u).then(function(ok){if(ok){if(btn){btn.textContent='Copied';setTimeout(function(){btn.textContent='Copy';},1500);}}else prompt('Copy this link:',u);});
 }
 function gShareRender(){
   var h='<div class="gs-h"><b>Share links</b><button class="btn" onclick="gShareClose()">Close</button></div>'
-    +'<div class="gs-p">Anyone with a link can view this page without signing in, read-only, until you revoke it. Add a note so you remember who has it.</div>'
-    +'<div class="gs-new"><input id="gsNote" maxlength="120" placeholder="Note, e.g. who you are sending it to"><button class="btn" onclick="gShareCreate()"'+(GS.busy?' disabled':'')+'>'+(GS.busy?'Creating…':'Create link')+'</button></div>';
+    +'<div class="gs-p">Anyone with a link can view this page without signing in, read-only, until you revoke it.</div>'
+    +'<div class="gs-new"><button class="btn" onclick="gShareCreate()"'+(GS.busy?' disabled':'')+'>'+(GS.busy?'Creating…':'Create link')+'</button>'
+    +(GS.made?'<span class="gs-p" style="margin:0;align-self:center;color:#166534">'+(GS.copied?'New link copied to your clipboard.':'New link created. Click Copy below.')+'</span>':'')+'</div>';
   if(GS.err)h+='<div class="band-msg band-err">'+gEsc(GS.err)+'</div>';
   if(GS.links==null)h+='<div class="load" style="padding:16px 0"><span class="sp"></span>Loading links…</div>';
   else if(!GS.links.length)h+='<div class="gs-p" style="margin:0">No links yet.</div>';
   else h+=GS.links.map(function(x){
-    return '<div class="gs-row"'+(x.key===GS.made?' style="background:#F0FDF4"':'')+'><div class="m"><b>'+gEsc(x.note||'(no note)')+'</b> · made '+gEsc(x.created?new Date(x.created).toLocaleDateString([], {month:'short',day:'numeric',year:'numeric'}):'')+(x.by?' by '+gEsc(x.by):'')+'</div>'
+    return '<div class="gs-row"'+(x.key===GS.made?' style="background:#F0FDF4"':'')+'><div class="m">Made '+gEsc(x.created?new Date(x.created).toLocaleString([], {month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}):'')+(x.by?' by '+gEsc(x.by):'')+(x.note?' · '+gEsc(x.note):'')+'</div>'
       +'<div class="l"><input readonly value="'+gEsc(gShareUrl(x.path))+'" onclick="this.select()"><button class="btn" onclick="gShareCopy(\''+x.key+'\',this)">Copy</button><button class="btn dang" onclick="gShareRevoke(\''+x.key+'\')">Revoke</button></div></div>';
   }).join('');
   document.getElementById('gsbox').innerHTML=h;
