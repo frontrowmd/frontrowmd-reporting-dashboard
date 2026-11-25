@@ -421,6 +421,7 @@ circle.bd-bs-sl{stroke-width:28}
 .bd-wf-bar .bd-wf-ms-o,.bd-wf-ms-o{display:flex;width:100%;align-items:center;gap:7px;font-size:12px;padding:4px 0;cursor:pointer;text-transform:none;letter-spacing:0;font-weight:500;color:var(--navy)}
 .bd-wf-ms-o span{margin-left:auto;font-size:11px;color:var(--grey);font-variant-numeric:tabular-nums}
 .bd-wf-ms-n{font-size:10px;color:var(--grey);margin-top:6px;font-style:italic}
+.bd-wf-frows{display:flex;flex-direction:column;gap:8px}.bd-wf-frows>.bd-wf-bar{margin:0;padding-bottom:8px;border-bottom:1px solid var(--border)}.bd-wf-frows>.bd-wf-bar:last-child{border-bottom:0;padding-bottom:0}
 .bd-wf-chips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 12px}
 .bd-wf-chips-l{font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em;margin-right:4px}
 .bd-wf-chip{cursor:pointer;font-size:11px;font-weight:600;padding:3px 10px;border-radius:50px;border:1px solid;background:#fff}
@@ -909,7 +910,7 @@ function bdSetTab(t){
 //  - W2: a brand counts as retained through its churn month (it paid that
 //    month) and as lost from the month after. Month 1 = the first invoice.
 // BD.wf: null (never asked), {loading:true}, {error}, or the payload.
-var _bdWfF={src:'',grp:'',st:'',stage:'',chSrc:'',impl:'',paid:'',ty:'',seg:'',ab:'',wt:'',wts:'',ss:'',it:'',mt:'',pkg:'',pil:'',rcs:''};
+var _bdWfF={src:'',grp:'',st:'',stage:'',chSrc:'',impl:'',paid:'',ty:'',seg:'',ab:'',wt:'',wts:'',ss:'',it:'',mt:'',pkg:'',pil:'',rcs:'',wtt:''};
 var _bdWfCols='default';   // W1: 'default' (7 columns, the rest collapsed) or 'all' (Alex, 2026-11-24)
 var _bdWfSortDir=1;        // direction of a column sort ('c:<id>' / 'm:<month index>'), 1 = ascending
 // Products Ever Live / Live at Churn (Alex, 2026-11-24): intersection multi-
@@ -1037,8 +1038,15 @@ var BD_WF_FILTERS=[
   {k:'mt',l:'Measured Traffic',of:function(b){return b.mt||'No traffic data';}},
   {k:'pkg',l:'Package',of:function(b){return b.pkg||'Not recorded';}},
   {k:'pil',l:'Pilot Status',of:function(b){return b.pil||'No pilot';}},
-  {k:'rcs',l:'Recurly State',of:function(b){return _bdWfRcState(b);}}
+  {k:'rcs',l:'Recurly State',of:function(b){return _bdWfRcState(b);}},
+  // Web Traffic Tier (Alex, 2026-11-24): Implied Traffic first, Self-Selected when
+  // there is none. Both use the same tier names, so the options match Implied Traffic.
+  {k:'wtt',l:'Web Traffic Tier',of:function(b){var it=b.it&&b.it!=='No traffic data'?b.it:'';var ss=b.ss&&b.ss!=='Not selected'?b.ss:'';return it||ss||'No traffic data';}}
 ];
+// Tier order for the traffic dropdowns (a plain numeric sort puts 1M+ second).
+var BD_WF_TIER_ORD=['Pre-launch','0-10K','10K-25K','10-50K','25K-50K','50K-100K','50-200K','100K-200K','200K+','200K-500K','500K+','500K-1M','1M+'];
+// Filter bar rows (Alex, 2026-11-24). Row 1 is Possible Abnormalities; row 4 adds products and the pilot switch.
+var BD_WF_FROWS=[['seg','src','grp','st','stage','rcs','chSrc','ty','impl','paid'],['wtt','wts','it','ss','wt','mt'],['pkg','ab','pil']];
 // Filters, search and the pilot switch. skip names one filter to leave out, so
 // each dropdown can count what picking each of its values would give.
 function _bdWfFilter(brands,skip,noSearch){
@@ -1585,24 +1593,28 @@ function _bdWfRender(){
   // One chip per rule: how many brands it flags under the other filters; a click filters to them.
   var flPool=_bdWfFilter(all,'flag',true),flCnt={},flAny=0;
   flPool.forEach(function(b){var seen={};(b._fl||[]).forEach(function(f){if(!seen[f.id]){seen[f.id]=1;flCnt[f.id]=(flCnt[f.id]||0)+1;}});if(b._fl&&b._fl.length)flAny++;});
-  h+='<div class="bd-wf-chips"><span class="bd-wf-chips-l">Possible abnormalities</span>'
-    +BD_WF_FLAGS.filter(function(f){return flCnt[f.id];}).map(function(f){var on=_bdWfFlagF===f.id;
-      return '<span class="bd-wf-chip '+f.sev+(on?' on':'')+'" role="button" tabindex="0" onclick="bdWfSetFlagF(\''+(on?'':f.id)+'\')">'+_bdEsc(f.title)+' <b>'+flCnt[f.id]+'</b></span>';}).join('')
-    +(flAny?'':'<span style="font-size:11px;color:var(--grey)">none under these filters</span>')+'</div>';
   // Dropdowns: each option counts the brands it would leave, given the other filters.
-  var bar='<div class="bd-wf-bar">';
-  BD_WF_FILTERS.forEach(function(f){
+  var fsel=function(f){
     var pool=_bdWfFilter(all,f.k,true),cnt={};
     pool.forEach(function(b){var v=f.of(b);cnt[v]=(cnt[v]||0)+1;});
     var vals=Object.keys(cnt);if(_bdWfF[f.k]&&!(_bdWfF[f.k] in cnt))vals.push(_bdWfF[f.k]);
-    vals.sort(function(a,b){var na=/^(not |no )/i.test(a),nb=/^(not |no )/i.test(b);if(na!==nb)return na?1:-1;return a.localeCompare(b,undefined,{numeric:true});});
-    bar+='<label>'+f.l+'<select onchange="bdWfSetF(\''+f.k+'\',this.value)"'+(_bdWfF[f.k]?' class="on"':'')+'><option value="">All ('+pool.length+')</option>'
+    vals.sort(function(a,b){var na=/^(not |no )/i.test(a),nb=/^(not |no )/i.test(b);if(na!==nb)return na?1:-1;
+      var ta=BD_WF_TIER_ORD.indexOf(a),tb=BD_WF_TIER_ORD.indexOf(b);if(ta>=0&&tb>=0)return ta-tb;return a.localeCompare(b,undefined,{numeric:true});});
+    return '<label>'+f.l+'<select onchange="bdWfSetF(\''+f.k+'\',this.value)"'+(_bdWfF[f.k]?' class="on"':'')+'><option value="">All ('+pool.length+')</option>'
       +vals.map(function(v){return '<option value="'+_bdEsc(v)+'"'+(_bdWfF[f.k]===v?' selected':'')+'>'+_bdEsc(v)+' ('+(cnt[v]||0)+')</option>';}).join('')+'</select></label>';
-  });
-  bar+='<label>Abnormalities<select onchange="bdWfSetFlagF(this.value)"'+(_bdWfFlagF?' class="on"':'')+'><option value="">All ('+flPool.length+')</option>'
+  };
+  var fByK={};BD_WF_FILTERS.forEach(function(f){fByK[f.k]=f;});
+  var row=function(keys){return keys.map(function(k){return fByK[k]?fsel(fByK[k]):'';}).join('');};
+  var chipH='<div class="bd-wf-chips" style="margin:0">'
+    +BD_WF_FLAGS.filter(function(f){return flCnt[f.id];}).map(function(f){var on=_bdWfFlagF===f.id;
+      return '<span class="bd-wf-chip '+f.sev+(on?' on':'')+'" role="button" tabindex="0" onclick="bdWfSetFlagF(\''+(on?'':f.id)+'\')">'+_bdEsc(f.title)+' <b>'+flCnt[f.id]+'</b></span>';}).join('')
+    +(flAny?'':'<span style="font-size:11px;color:var(--grey)">none under these filters</span>')+'</div>';
+  var bar='<div class="bd-wf-frows"><div class="bd-wf-bar">';
+  bar+='<label>Possible Abnormalities<select onchange="bdWfSetFlagF(this.value)"'+(_bdWfFlagF?' class="on"':'')+'><option value="">All ('+flPool.length+')</option>'
     +'<option value="any"'+(_bdWfFlagF==='any'?' selected':'')+'>Any abnormality ('+flAny+')</option>'
     +'<option value="none"'+(_bdWfFlagF==='none'?' selected':'')+'>None ('+(flPool.length-flAny)+')</option>'
-    +BD_WF_FLAGS.map(function(f){return '<option value="'+f.id+'"'+(_bdWfFlagF===f.id?' selected':'')+'>'+_bdEsc(f.title)+' ('+(flCnt[f.id]||0)+')</option>';}).join('')+'</select></label>';
+    +BD_WF_FLAGS.map(function(f){return '<option value="'+f.id+'"'+(_bdWfFlagF===f.id?' selected':'')+'>'+_bdEsc(f.title)+' ('+(flCnt[f.id]||0)+')</option>';}).join('')+'</select></label>'+chipH+'</div>';
+  bar+='<div class="bd-wf-bar">'+row(BD_WF_FROWS[0])+'</div><div class="bd-wf-bar">'+row(BD_WF_FROWS[1])+'</div><div class="bd-wf-bar">';
   [['ever','Products Ever Live'],['churn','Products Live at Churn']].forEach(function(p){
     var w=p[0],sel=_bdWfProd[w],wg=wf.widgets;
     if(w==='churn'&&(!wg||wg.error)){bar+='<label>'+p[1]+'<select disabled><option>Widget data unavailable</option></select></label>';return;}
@@ -1617,11 +1629,12 @@ function _bdWfRender(){
       +(sel.length?'<button class="bd-wf-btn" style="margin-top:6px" onclick="bdWfProdClear(\''+w+'\')">Clear</button>':'')
       +'<div class="bd-wf-ms-n">'+(w==='ever'?'From the card\u2019s product counts (a widget seen by 10+ people in a day, or marked live). ':'From daily widget views (10+ people in a day). ')+'Widget data starts '+_bdWfLbl((wg&&wg.from)||'2025-12')+'; brands churned before then drop out while a product is ticked.</div></div></details>';
   });
+  bar+=row(BD_WF_FROWS[2]);
   var anyF=Object.keys(_bdWfF).some(function(k){return !!_bdWfF[k];})||_bdWfProd.ever.length||_bdWfProd.churn.length||_bdWfPil!=='incl'||!!_bdWfQ||!!_bdWfFlagF;
   bar+=_bdWfSeg('Pilots',_bdWfPill(_bdWfPil,'incl','Included','pil','Pilot brands count from their Pilot Initiation Fee invoice')
     +_bdWfPill(_bdWfPil,'excl','Excluded','pil','Leave out pilot brands with no plan bill yet (Metabase’s Hide Pilot Initiation Fee)'));
   if(anyF)bar+='<button class="bd-wf-btn" onclick="bdWfReset()">Reset filters</button>';
-  bar+='</div>';
+  bar+='</div></div>';
   h+=bar+'</section>';
   // ── W1: every brand, month by month ──
   var sorted=_bdWfSorted(list),shown=sorted.slice(0,_bdWfShow);

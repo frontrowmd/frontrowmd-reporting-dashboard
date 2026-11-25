@@ -280,6 +280,10 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
    P.bdWfSet('cols','all');x=R();
    ck('All Brands carries every card column, then the months',['HubSpot Stage','Source','Group','Last Invoiced','Metabase Churn Month','Churn Type','Company Segment','A/B Test','Ever Implemented','Ever Paid','Web Tier at Churn','Self-selected Traffic','Implied Traffic','Measured Traffic','Clinicians’ Choice','Clinician Reviews','Product Analysis','ClinicianAI','Products Ever Live','Products Live at Churn','Package','Pilot Status'].every(h=>x.indexOf('>'+h+'</th>')>0),true);
    ck('  and a filter for each categorical column',['Source','Group','Churn Status','HubSpot Stage','Churn Source','Web Tier Source','Measured Traffic','Pilot Status'].every(l=>x.indexOf('<label>'+l+'<select')>=0),true);
+   {const rows=(x.match(/<div class="bd-wf-frows">[\s\S]*?<\/div><\/div>(?=<\/section>)/)||[''])[0].split('<div class="bd-wf-bar">').slice(1).map(r=>(r.match(/<label>([^<]+)<select/g)||[]).map(m=>m.slice(7,-7)).concat(/bd-wf-ms/.test(r)?['(products)']:[]));
+    ck('filters sit in four rows in Alex\u2019s order (2026-11-24)',rows,[['Possible Abnormalities'],['Company Segment','Source','Group','Churn Status','HubSpot Stage','Recurly State','Churn Source','Churn Type','Ever Implemented','Ever Paid'],['Web Traffic Tier','Web Tier Source','Implied Traffic','Self-selected Traffic','Web Tier at Churn','Measured Traffic'],['Package','A/B Test','Pilot Status','(products)']]);}
+   {const f=P.BD_WF_FILTERS.find(z=>z.k==='wtt').of;
+    ck('Web Traffic Tier: Implied first, else Self-Selected, else no data',[f({it:'10K-25K',ss:'500K+'}),f({it:'No traffic data',ss:'500K+'}),f({it:'',ss:'Not selected'}),f({})],['10K-25K','500K+','No traffic data','No traffic data']);}
    P.bdWfSet('cols','default');x=R();
    ck('  collapsed by default: only the seven, the extras behind "+ more"',[x.indexOf('>Measured Traffic</th>')<0,x.indexOf('>Company Segment</th>')>0,/>\+ 25 more<\/th>/.test(x)],[true,true,true]);
    P.bdWfReset();
