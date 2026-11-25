@@ -2,7 +2,7 @@
 // Regular Demos and Signed Brands, each exactly as the Brand Dashboard counts
 // them for a one-month window.
 const fs=require('fs'),vm=require('vm');
-const {load}=require('./slice.js');
+const {load,fn}=require('./slice.js');
 let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify(w);console.log((ok?'PASS ':'FAIL ')+n+'  got='+JSON.stringify(g)+(ok?'':' want='+JSON.stringify(w)));ok?pass++:fail++;};
 
 (async()=>{
@@ -13,15 +13,6 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
   const run=c=>vm.runInContext(c,W);
   ck('months run Jan 2026 to this month, the last one to today',run(`growthMonths('2026-03-17')`),[{m:'2026-01',from:'2026-01-01',to:'2026-01-31',partial:false},{m:'2026-02',from:'2026-02-01',to:'2026-02-28',partial:false},{m:'2026-03',from:'2026-03-01',to:'2026-03-17',partial:true}]);
   ck('  crosses a year end',run(`growthMonths('2027-01-02').map(x=>x.m).slice(-2)`),['2026-12','2027-01']);
-  // Signed: closed won (active brands only) + churned, by Eastern close month, ids deduped.
-  const sb=run(`growthSignedByMonth([
-    {id:1,properties:{closedate:'2026-01-31T23:30:00Z',brand_status:'Paying'}},
-    {id:2,properties:{closedate:'2026-02-01T04:30:00Z',brand_status:''}},
-    {id:3,properties:{closedate:'2026-02-10T12:00:00Z',brand_status:'Churned'}},
-    {id:4,properties:{closedate:'',brand_status:'Signed'}},
-    {id:5,properties:{closedate:'2025-12-31T12:00:00Z',brand_status:'Signed'}}],
-   [{id:6,properties:{closedate:'2026-02-11T12:00:00Z'}},{id:1,properties:{closedate:'2026-01-31T23:30:00Z'}}],'2026-01-01','2026-02-28')`);
-  ck('signed: a close at 04:30 UTC Feb 1 is Jan 31 in Eastern; churned-status closed-won drops; churn stage counts; no closedate drops; deduped',sb,{'2026-01':2,'2026-02':1});
   // buildGrowth with HubSpot stubbed at the fetch-helper level.
   run(`HUBSPOT=[];todayET=()=>new Date(Date.UTC(2026,1,10));
     fetchPipelineDeals=async(t,f,to)=>{HUBSPOT.push('pipe '+f+'..'+to);return f==='2026-01-01'?[
@@ -32,12 +23,11 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
       {id:'e',properties:{date_demo_booked:'2025-12-20',rescheduled_meeting_date:'2026-01-09',demo_attendance_status:'Demo Given (rescheduled)'}},
       {id:'f',properties:{date_demo_booked:'2026-01-10',rescheduled_meeting_date:'2026-02-02',demo_attendance_status:'Demo Given (rescheduled)'}}]:[]};
     fetchWebinarHeldCount=async(t,f,to)=>{HUBSPOT.push('web '+f+'..'+to);return f==='2026-01-01'?3:0;};
-    fetchClosedWonDeals=async()=>[{id:9,properties:{closedate:'2026-02-03T15:00:00Z',brand_status:'Signed'}}];
-    fetchChurnedByCloseDate=async()=>[{id:8,properties:{closedate:'2026-01-20T15:00:00Z'}}];`);
+`);
   let g=await run(`buildGrowth({HUBSPOT_TOKEN:'t'})`);
   ck('one pipeline fetch and one webinar count per month, the current month to today',run('HUBSPOT'),['pipe 2026-01-01..2026-01-31','web 2026-01-01..2026-01-31','pipe 2026-02-01..2026-02-10','web 2026-02-01..2026-02-10']);
   ck('Jan: held demos excl. pre-launch, churned brands and no-shows, rescheduled in counts, rescheduled out does not; + 3 webinars',[g.months[0].demos,g.months[0].webinars,g.months[0].qd],[2,3,5]);
-  ck('signed per month; the current month marked partial',g.months.map(r=>[r.m,r.signed,r.partial]),[['2026-01',1,false],['2026-02',1,true]]);
+  ck('demo months only; the current month marked partial',g.months.map(r=>[r.m,r.partial,'signed' in r]),[['2026-01',false,false],['2026-02',true,false]]);
   ck('a clean build is ok to cache',g.ok,true);
   run(`fetchWebinarHeldCount=async()=>null;`);
   g=await run(`buildGrowth({HUBSPOT_TOKEN:'t'})`);
@@ -47,18 +37,97 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
   const kv={};const env={HUBSPOT_TOKEN:'t',CONTENT_STORE:{get:async(k)=>kv[k]?JSON.parse(kv[k]):null,put:async(k,v)=>{kv[k]=v;}}};
   W.env=env;
   g=await run(`fetchGrowth(env,false)`);
-  ck('a clean build is cached and kept as the last good copy',[!!kv.growth_v1,!!kv.growth_last,!!g.cached],[true,true,false]);
+  ck('a clean build is cached and kept as the last good copy',[!!kv.growth_v2,!!kv.growth_last,!!g.cached],[true,true,false]);
   ck('  the next load is served from cache',!!(await run(`fetchGrowth(env,false)`)).cached,true);
   run(`fetchPipelineDeals=async()=>{throw new Error('HubSpot down');};`);
   g=await run(`fetchGrowth(env,true)`);
   ck('Refresh while HubSpot fails: the last good copy, marked stale',[!!g.stale,/HubSpot down/.test(g.stale&&g.stale.error),g.months.length],[true,true,2]);
   // HubSpot failing does not throw: failed months take the last good copy's figures.
-  run(`fetchPipelineDeals=async()=>[];fetchWebinarHeldCount=async()=>null;fetchClosedWonDeals=async()=>{noteHsError(502,'x');return [];};`);
+  run(`fetchPipelineDeals=async()=>[];fetchWebinarHeldCount=async()=>null;`);
   g=await run(`fetchGrowth(env,true)`);
-  ck('a failed build fills failed months from the last good copy, marked, and does not cache',[g.months[0].qd,!!g.months[0].old,g.months[0].signed,!!(g.stale&&g.stale.partialOnly),g.ok],[3,true,1,true,false]);
+  ck('a failed build fills failed months from the last good copy, marked, and does not cache',[g.months[0].qd,!!g.months[0].old,!!(g.stale&&g.stale.partialOnly),g.ok],[3,true,true,false]);
   ck('  the current month is filled too only if the copy ran to the same day',g.months[1].demoErr,undefined);
   run(`HS_ERR.n=0;`);
-  ck('failures are counted on a total no other request resets',/HS_ERR\.total = \(HS_ERR\.total \|\| 0\) \+ 1/.test(src)&&/const e0 = HS_ERR\.total;/.test(src)&&/const signErr = HS_ERR\.total > e1;/.test(src),true);
+  run(`fetchPipelineDeals=async()=>{const a=[];a.partial=true;return a;};fetchWebinarHeldCount=async()=>1;`);
+  g=await run(`buildGrowth({HUBSPOT_TOKEN:'t'})`);
+  ck('a month whose own deal search came back short is unavailable',[g.months[0].demoErr,g.ok],[true,false]);
+  run(`fetchPipelineDeals=async()=>[];noteHsError(502,'another request');`);
+  g=await run(`buildGrowth({HUBSPOT_TOKEN:'t'})`);
+  ck('  another request\u2019s HubSpot failure (shared HS_ERR) does not mark this one',[g.months[0].demoErr,g.ok],[undefined,true]);
+  ck('  hsSearch flags its own partial results; growth reads no shared counter',[/all\.partial = true;/.test(src),/HS_ERR\.total >/.test(src)],[true,false]);
+
+  // ── Signed Brands = the BD Tracker's card, per month ──
+  const bdh=load('bd-dashboard.html');
+  const COPIED=['_bdEtToday','_bdEtDayOf','_bdSignDays','_baIsTest','_baNorm','_baJoin','_baSummary','_baRcClass','_baSummaryRc','_baPilotStatsOf'];
+  ck('the worker\u2019s copies of the BD Tracker helpers are verbatim (no drift)',COPIED.filter(n=>fn(src,n)!==fn(bdh,n)),[]);
+  const vline=(s,k)=>(new RegExp('^var '+k+'=.*$','m').exec(s)||[''])[0];
+  ck('  and so are its test-brand and counted-pilot lists',['BD_APP_TEST_BRANDS','BD_PILOT_COUNTED'].filter(k=>!vline(src,k)||vline(src,k)!==vline(bdh,k)),[]);
+  ck('  the copies sit between markers, so nobody edits them by hand unknowingly',/>>> copied from bd-dashboard\.html[\s\S]*function _baPilotStatsOf[\s\S]*<<< copied from bd-dashboard\.html/.test(src),true);
+  const BILL={mrr:100,idlePrice:0,subs:[{basis:'invoice',state:'active'}]},TRIAL={mrr:0,idlePrice:50,subs:[{basis:'trial',state:'active'}]},ENDED={mrr:0,idlePrice:0,subs:[{basis:'ended',state:'expired'}]};
+  const FX={brands:[
+    {id:1,name:'Alpha',hubspotCompanyId:'100',recurly:BILL,active:true,state:'active'},
+    {id:2,name:'Pilot Co',pilotPaid:true,pilotHist:[{status:'live',from:'2026-01-20T10:00:00Z'}],pilot:{status:'live'},state:'pilot'},
+    {id:3,name:'Gone',hubspotCompanyId:'300',recurly:ENDED,state:'ended'},
+    {id:4,name:'Vincent',hubspotCompanyId:'400',recurly:BILL,active:true,state:'active'},
+    {id:5,name:'App Only',signDate:'2026-02-03',recurly:TRIAL,active:true,state:'future'},
+    {id:6,name:'Late Night',hubspotCompanyId:'600',recurly:BILL,active:true,state:'active'},
+    {id:7,name:'Awaiting',pilot:{status:'awaiting_submit'},pilotHist:[{status:'awaiting_submit',from:'2026-01-05'}]},
+    {id:8,name:'By Name Inc',recurly:BILL,active:true,state:'active'}],
+   meta:{recurly:{ok:true}},pilotStats:{n:1}};
+  const FD=[{id:'d1',dealstage:'closedwon',closedate:'2026-01-15T15:00:00Z',companyId:'100',dealname:'Alpha'},
+    {id:'d3',dealstage:'closedwon',closedate:'2026-01-10T15:00:00Z',companyId:'300',dealname:'Gone'},
+    {id:'d4',dealstage:'closedwon',closedate:'2026-01-11T15:00:00Z',companyId:'400',dealname:'Vincent'},
+    {id:'d6',dealstage:'closedwon',closedate:'2026-02-01T04:30:00Z',companyId:'600',dealname:'Late Night'},
+    {id:'d8',dealstage:'closedwon',closedate:'2026-02-05T15:00:00Z',companyId:'999',companyName:'By Name',dealname:'By Name - New Deal'},
+    {id:'d9',dealstage:'closedlost',closedate:'2026-02-06T15:00:00Z',companyId:'100',dealname:'Alpha upsell'}];
+  W.FX=FX;W.FD=FD;
+  const sc=run(`growthSignedCount(FD,FX,growthMonths('2026-02-10'))`);
+  ck('signed per month: active + pilots among brands signed in it; churned, test, unpaid-pilot and lost deals out; Eastern close day; name join',
+    sc.map(r=>[r.m,r.active,r.pilots,r.signed,r.partial]),[['2026-01',2,1,3,false],['2026-02',2,0,2,true]]);
+  // The same fixture through the BD page's OWN render path (_bdSumIn with the
+  // range set, then the card's two counts) must give the same numbers.
+  const B={console:{log(){}},Date,Intl,JSON,Math,String,Array,Object};vm.createContext(B);
+  vm.runInContext(['_bdEtToday','_bdEtDayOf','_bdSignDays','_bdSumDayIn','_bdSumIn','_baIsTest','_baNorm','_baJoin','_baSummary','_baRcClass','_baSummaryRc','_baPilotStatsOf'].map(n=>fn(bdh,n)).join('\n')
+    +'\n'+vline(bdh,'BD_APP_TEST_BRANDS')+'\n'+vline(bdh,'BD_PILOT_COUNTED')+'\nvar BD_APP_JOIN_CO={},BD_APP_JOIN_DEAL={},_bdSumFrom="",_bdSumTo="";',B);
+  B.FX=JSON.parse(JSON.stringify(FX));B.FD=JSON.parse(JSON.stringify(FD));
+  const card=(f,to)=>vm.runInContext(`_bdSumFrom='${f}';_bdSumTo='${to}';var j=_baJoin(FD,FX.brands);var sb=FX.brands.filter(function(b){if(_baIsTest(b))return false;return !!_bdSumIn(b,j);});
+    var r=_baSummaryRc(sb,FX.meta);[r.total,_baPilotStatsOf(sb).n]`,B);
+  ck('  equals the BD Tracker card computed by the page\u2019s own code',[card('2026-01-01','2026-01-31'),card('2026-02-01','2026-02-10')],sc.map(r=>[r.active,r.pilots]));
+  FX.meta={recurly:{ok:false}};
+  ck('  Recurly unread: Active Brands falls back to the app\u2019s own active count, as the card does',run(`growthSignedCount(FD,FX,growthMonths('2026-02-10'))`).map(r=>r.active),[2,2]);
+  FX.meta={recurly:{ok:true}};
+  // buildGrowthSigned / fetchGrowthSigned with the two readers stubbed.
+  run(`fetchBDData=async()=>({deals:JSON.parse(JSON.stringify(FD)),meta:{}});fetchBdApp=async(e,o)=>{APPOPTS=o;return FX;};todayET=()=>new Date(Date.UTC(2026,1,10));
+    LOOKUPS=[];lookupBDCompanies=async(e,ids)=>{LOOKUPS.push(ids);return {companies:{},deferred:0};};`);
+  const kv2={};const env2={HUBSPOT_TOKEN:'t',CONTENT_STORE:{get:async(k)=>kv2[k]?JSON.parse(kv2[k]):null,put:async(k,v)=>{kv2[k]=v;}}};W.env2=env2;
+  g=await run(`fetchGrowthSigned(env2,false)`);
+  ck('signed endpoint: reads the app book lite (no per-account Recurly reads), caches a clean read',[run('APPOPTS'),g.months.map(r=>r.signed),!!kv2.growth_signed_v1,!!kv2.growth_signed_last],[{lite:true},[3,2],true,true]);
+  ck('  year to date is the card over Jan 1..today, each brand once',[g.ytd.m,g.ytd.signed,g.ytd.active,g.ytd.pilots],['ytd',5,4,1]);
+  ck('  looks up the uncached company names of closed-won deals only, as the BD page does',run('LOOKUPS'),[['100','300','400','600']]);
+  ck('  next load from cache',!!(await run(`fetchGrowthSigned(env2,false)`)).cached,true);
+  // A name only the company lookup supplies joins the brand (signing it on the deal's date, not its app date).
+  FX.brands.push({id:9,name:'Named Later',signDate:'2026-02-07',recurly:BILL,active:true,state:'active'});
+  FD.push({id:'d10',dealstage:'closedwon',closedate:'2026-01-25T15:00:00Z',companyId:'777',dealname:'Something Else'});
+  run(`lookupBDCompanies=async(e,ids)=>({companies:{'777':{name:'Named Later'}},deferred:0});`);
+  g=await run(`fetchGrowthSigned(env2,true)`);
+  ck('  a name from the company lookup moves the brand to its deal\u2019s month',g.months.map(r=>r.active),[3,2]);
+  FX.brands.pop();FD.pop();
+  run(`lookupBDCompanies=async(e,ids)=>({companies:{},deferred:3});`);
+  g=await run(`fetchGrowthSigned(env2,true)`);
+  ck('  lookups deferred: the last good copy, marked',[!!g.stale,g.stale&&g.stale.error],[true,'Some HubSpot calls failed']);
+  run(`lookupBDCompanies=async(e,ids)=>({companies:{},deferred:0});`);
+  const before=kv2.growth_signed_last;
+  FX.meta={recurly:{ok:true,stale:true}};
+  g=await run(`fetchGrowthSigned(env2,true)`);
+  ck('  Recurly stale: today\u2019s cohort on its last read, as the card shows, flagged, not cached',[!!g.stale,/last good read/.test(g.warn||''),g.months.map(r=>r.active),kv2.growth_signed_last===before],[false,true,[2,2],true]);
+  FX.meta={recurly:{ok:false}};
+  g=await run(`fetchGrowthSigned(env2,true)`);
+  ck('  Recurly unread: the app\u2019s own count, flagged',[!!g.stale,/app\u2019s own count/.test(g.warn||''),g.months.map(r=>r.active)],[false,true,[2,2]]);
+  FX.meta={recurly:{ok:true}};FX.pilotStats={error:'x'};delete kv2.growth_signed_last;
+  let threw=null;try{await run(`fetchGrowthSigned(env2,true)`);}catch(e){threw=String(e.message);}
+  ck('  pilot stats missing (the card is hidden then) and no copy: an error, never zeros',/Pilot stats unavailable/.test(threw||''),true);
+  FX.pilotStats={n:1};
+  ck('route: POST /api/growth-signed is behind authed()',/url\.pathname === '\/api\/growth-signed'\) \{\s*let body;\s*try \{ body = await request\.json\(\); \} catch \{ return jr\(\{ error: 'Invalid JSON' \}, 400\); \}\s*if \(!\(await authed\(\)\)\) return jr/.test(src),true);
   ck('route: POST /api/growth is behind authed()',/url\.pathname === '\/api\/growth'\) \{\s*let body;\s*try \{ body = await request\.json\(\); \} catch \{ return jr\(\{ error: 'Invalid JSON' \}, 400\); \}\s*if \(!\(await authed\(\)\)\) return jr/.test(src),true);
   ck('route: GET /growth serves the page; build embeds it',[/url\.pathname === '\/growth'\) \{\s*return new Response\(GROWTH_HTML/.test(src),/growth-dashboard\.html/.test(load('build.js'))],[true,true]);
 
@@ -70,19 +139,32 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
   vm.createContext(P);vm.runInContext(js,P);
   ck('title is Growth Overview, never "investor"',[/<title>FrontrowMD Growth Overview<\/title>/.test(html),/investor/i.test(html)],[true,false]);
   ck('first tab is Demos & Signed',vm.runInContext('G_TABS.map(t=>t.label)',P),['Demos & Signed']);
-  P.G.data={asOf:'2026-11-24T12:00:00Z',months:[
-    {m:'2026-01',to:'2026-01-31',qd:40,demos:30,webinars:10,signed:8},
-    {m:'2026-02',to:'2026-02-28',qd:0,demos:0,webinars:null,demoErr:true,signed:5},
-    {m:'2026-03',to:'2026-03-12',partial:true,qd:12,demos:10,webinars:2,signed:3}]};
+  P.G.data={asOf:'2026-11-24T12:00:00Z',today:'2026-03-12',months:[
+    {m:'2026-01',to:'2026-01-31',qd:40,demos:30,webinars:10},
+    {m:'2026-02',to:'2026-02-28',qd:0,demos:0,webinars:null,demoErr:true},
+    {m:'2026-03',to:'2026-03-12',partial:true,qd:12,demos:10,webinars:2}]};
+  P.G.sLoading=true;
   let h=P.gRenderDemos();
-  ck('totals skip an unavailable month and say so',[/<tr class="tot"><td>Total<\/td><td class="big">52<\/td><td class="sub">40<\/td><td class="sub">12<\/td><td class="big">16<\/td>/.test(h),/some months n\/a/.test(h),/show as n\/a/.test(h)],[true,true,true]);
+  ck('signed half still loading: its cells say so, never 0, and the demos show',[/Counting Signed Brands/.test(h),/<td>Jan 2026<\/td><td class="big">40<\/td><td class="sub">30<\/td><td class="sub">10<\/td><td class="big">…<\/td>/.test(h)],[true,true]);
+  ck('  the Signed KPI says loading, not n/a',/loading…/.test(h)&&!/some months n\/a<\/div><\/div><div class="kpi"><div class="l">Avg/.test(h),true);
+  P.G.sLoading=false;P.G.signed={asOf:'2026-11-24T12:00:00Z',today:'2026-03-12',ytd:{signed:15,active:11,pilots:4},months:[
+    {m:'2026-01',to:'2026-01-31',signed:8,active:6,pilots:2},{m:'2026-02',to:'2026-02-28',signed:5,active:5,pilots:0},{m:'2026-03',to:'2026-03-12',signed:3,active:1,pilots:2}]};
+  h=P.gRenderDemos();
+  ck('totals skip an unavailable month and say so',[/<tr class="tot"><td>Total<\/td><td class="big">52<\/td><td class="sub">40<\/td><td class="sub">12<\/td><td class="big">15<\/td><td class="sub">11<\/td><td class="sub">4<\/td>/.test(h),/some months n\/a/.test(h),/show as n\/a/.test(h)],[true,true,true]);
   ck('the current month is marked to date',/<tr class="part"><td>Mar 2026<\/td>/.test(h)&&/runs to 2026-03-12 \(month to date\)/.test(h),true);
   ck('an unavailable month shows n/a, not 0',/<td>Feb 2026<\/td><td class="big"><span class="na">n\/a<\/span>/.test(h),true);
   ck('chart has a column per month',(h.match(/class="band"/g)||[]).length,3);
   ck('averages use complete months only',/over 2 complete months/.test(h),true);
-  P.G.data.months.forEach(r=>{r.signErr=true;});
+  P.G.signed=null;P.G.sErr='boom';
   h=P.gRenderDemos();
+  ck('signed request failed: its band, n/a cells',[/Couldn’t load Signed Brands: boom/.test(h),/<td class="big"><span class="na">n\/a<\/span><\/td><td class="sub"><span class="na">n\/a<\/span><\/td><td class="sub"><span class="na">n\/a<\/span><\/td><\/tr>/.test(h)],[true,true]);
   ck('a column with no month read totals n/a, not 0',/<tr class="tot"><td>Total<\/td><td class="big">52<\/td><td class="sub">40<\/td><td class="sub">12<\/td><td class="big">\u2014<\/td>/.test(h),true);
+  P.G.sErr=null;P.G.signed={months:[{m:'2026-01',to:'2026-01-31',signed:8,active:6,pilots:2}],stale:{error:'Recurly could not be read just now',asOf:'2026-11-24T10:00:00Z'}};
+  h=P.gRenderDemos();
+  ck('a stale signed copy says why; a month the copy lacks is n/a',[/Signed Brands: Recurly could not be read just now/.test(h),/<td>Mar 2026<\/td>.*?<td class="big"><span class="na">n\/a<\/span><\/td><td class="sub">/.test(h)],[true,true]);
+  P.G.signed.today='2026-03-11';P.G.signed.ytd={signed:9,active:9,pilots:0};
+  ck('a year-to-date figure from another day is not used for the Total',/<tr class="tot">.*?<td class="big">\u2014<\/td><td class="sub">\u2014<\/td><td class="sub">\u2014<\/td><\/tr>/.test(P.gRenderDemos()),true);
+  ck('definitions describe the BD Tracker card, not HubSpot deals',/the BD Tracker’s Signed Brands card with the month picked as its range/.test(h)&&!/deals closed won in the month/.test(h),true);
   P.G.err='Growth data unavailable';
   ck('a failed Refresh keeps the numbers on screen and says so',/Refresh failed \(Growth data unavailable\)/.test(P.gRenderDemos())&&/<td>Jan 2026<\/td>/.test(P.gRenderDemos()),true);
   P.G.data=null;P.G.err='boom';

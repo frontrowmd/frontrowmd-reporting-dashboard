@@ -1462,13 +1462,14 @@ async function hsSearch(token, objectType, filterGroups, properties, limit = 200
             + ` cf-mitigated=${resp.headers.get('cf-mitigated')} ct=${resp.headers.get('content-type')}`
             );
           noteHsError(resp.status, _b);
+          all.partial = true;   // this caller's own failure flag (HS_ERR is shared by every request)
           return all;
         }
         break; // success
       } catch(e) { lastErr = e; if (noteSubreqError(e)) break; await sleep(500 * (attempt + 1)); }
     }
     if (!resp || !resp.ok) { console.error(`HS ${objectType} search failed after ${pages} page(s) — returning PARTIAL ${all.length}:`, (lastErr && lastErr.message) || lastErr);
-      noteHsError(resp ? resp.status : 'network', (lastErr && lastErr.message) || ''); break; }
+      noteHsError(resp ? resp.status : 'network', (lastErr && lastErr.message) || ''); all.partial = true; break; }
     const d = await resp.json();
     all.push(...(d.results || []));
     pages++;
@@ -1867,7 +1868,9 @@ async function fetchPipelineDeals(token, from, to, opts = {}) {
       { propertyName: 'hs_createdate', operator: 'LTE', value: tMsET2 },
     ]},
   ], ['dealname','date_demo_booked','demo_given_date','demo_given__status','demo_attendance_status','demo_qualification_outcome','rescheduled_meeting_date','disqualification_reason','dealstage','amount','closedate','createdate','hs_createdate','hubspot_owner_id','utm_source','utm_medium','utm_campaign','utm_content','brand_status','average_monthly_web_traffic__cloned_'], limit, sorts, maxPages);
-  return [...new Map(deals.map(d => [d.id, d])).values()]; // dedup
+  const out = [...new Map(deals.map(d => [d.id, d])).values()]; // dedup
+  if (deals.partial) out.partial = true;
+  return out;
 }
 
 // Pipeline-agnostic "won" deals by closedate. Uses HubSpot's hs_is_closed_won
@@ -4196,14 +4199,16 @@ async function fetchBdWaterfall(env, fresh) {
 //     filterActiveBrands -> processPipelineDeals.qualifiedRawCount, bucketed on
 //     rescheduled_meeting_date || date_demo_booked) + Webinars Happened by
 //     stage-entry date (fetchWebinarHeldCount), folded by applyWebinarHeld.
-//   Signed Brands = closed-won deals (filterActiveBrands) + deals now in a churn
-//     stage, by ET close date: the dashboard's _sbCount. Pilots included.
+//   Signed Brands = the BD Tracker's All Time Summary "Signed Brands" card with
+//     that month picked as its range (Active Brands + Pilot Brands among the
+//     brands signed in it, as they stand today). Built separately, on its own
+//     request (POST /api/growth-signed): see buildGrowthSigned.
 // One pipeline fetch per month, NOT one wide one: a wide ASC fetch is capped at
 // 25 pages and drops the newest rows silently. A month whose HubSpot calls
 // failed is marked err (shown as unavailable), never counted as zero, and a
 // payload with any failure is not cached.
 const GROWTH_FROM = '2026-01';
-const GROWTH_KV = 'growth_v1';
+const GROWTH_KV = 'growth_v2';
 const GROWTH_LAST = 'growth_last';
 const GROWTH_TTL_SEC = 1800;
 function growthMonths(today) {
@@ -4220,20 +4225,6 @@ function growthMonths(today) {
   }
   return out;
 }
-// Signed deals bucketed by Eastern close month; ids deduped across the two sets.
-function growthSignedByMonth(closedWon, churned, from, to) {
-  const seen = new Set(), by = {};
-  for (const d of filterActiveBrands(closedWon || []).concat(churned || [])) {
-    const p = d.properties || {}, id = String(d.id);
-    if (!p.closedate || seen.has(id)) continue;
-    const day = etDayKeyOf(p.closedate);
-    if (!day || day < from || day > to) continue;
-    seen.add(id);
-    const k = day.slice(0, 7);
-    by[k] = (by[k] || 0) + 1;
-  }
-  return by;
-}
 async function buildGrowth(env) {
   const tok = env.HUBSPOT_TOKEN;
   if (!tok) throw new Error('HubSpot is not configured');
@@ -4241,29 +4232,24 @@ async function buildGrowth(env) {
   const months = growthMonths(today);
   const rows = [];
   for (const mo of months) {
-    const e0 = HS_ERR.total;
     const deals = await fetchPipelineDeals(tok, mo.from, mo.to);
     const pl = processPipelineDeals(filterActiveBrands(deals || []), toMsUTC(mo.from), toMsUTC(mo.to, true), toMsET(mo.from), toMsET(mo.to, true), new Set());
     const web = await fetchWebinarHeldCount(tok, mo.from, mo.to);
     const pd = { pipeline: pl };
     applyWebinarHeld(pd, web);
-    const err = HS_ERR.total > e0 || web == null;
+    // Its OWN calls' failures: the page fires /api/growth-signed alongside, and
+    // the global HS_ERR counter would let one request's failure mark the other.
+    const err = !!(deals && deals.partial) || web == null;
     rows.push({ m: mo.m, to: mo.to, partial: mo.partial, qd: pl.qualifiedRawCount || 0, demos: pl.qualifiedDemoOnlyCount || 0, webinars: web == null ? null : web, demoErr: err || undefined });
   }
-  const e1 = HS_ERR.total;
-  const from0 = months[0].from;
-  const [cw, ch] = await Promise.all([fetchClosedWonDeals(tok, from0, today), fetchChurnedByCloseDate(tok, from0, today)]);
-  const signErr = HS_ERR.total > e1;
-  const by = growthSignedByMonth(cw, ch, from0, today);
-  rows.forEach(r => { r.signed = by[r.m] || 0; if (signErr) r.signErr = true; });
-  return { months: rows, asOf: new Date().toISOString(), today, ok: !signErr && !rows.some(r => r.demoErr) };
+  return { months: rows, asOf: new Date().toISOString(), today, ok: !rows.some(r => r.demoErr) };
 }
 async function fetchGrowth(env, fresh) {
   const kv = env.CONTENT_STORE;
   if (!fresh && kv) {
     try {
       const hit = await kv.get(GROWTH_KV, 'json');
-      if (hit && hit.t && Date.now() - hit.t < GROWTH_TTL_SEC * 1000 && hit.data) return Object.assign({}, hit.data, { cached: true });
+      if (hit && hit.t && Date.now() - hit.t < GROWTH_TTL_SEC * 1000 && hit.data && hit.data.today === fmt(todayET())) return Object.assign({}, hit.data, { cached: true });
     } catch (_) { /* a cache miss is fine */ }
   }
   let data;
@@ -4298,9 +4284,227 @@ async function fetchGrowth(env, fresh) {
     const o = lm[r.m];
     if (!o || o.to !== r.to) return;
     if (r.demoErr && !o.demoErr) { r.qd = o.qd; r.demos = o.demos; r.webinars = o.webinars; delete r.demoErr; r.old = asOf; used++; }
-    if (r.signErr && !o.signErr) { r.signed = o.signed; delete r.signErr; r.old = asOf; used++; }
   });
   if (used) data.stale = { error: 'Some HubSpot calls failed', asOf, partialOnly: true };
+  return data;
+}
+
+// ── Growth Overview: Signed Brands (Alex, 2026-11-24) ─────────────────────────
+// EXACTLY the BD Tracker's All Time Summary "Signed Brands" card with one month
+// picked as its range: among the brands that SIGNED in the month (_bdSignDays:
+// a paid pilot by its fee date, any other brand by its closed-won HubSpot deals'
+// Eastern close dates, an app-only sign-up by its app date), as they stand
+// TODAY, Active Brands (a live Recurly subscription: billing, trial, starting or
+// paused; the app's own active state when Recurly was not read) + Pilot Brands
+// (deposit paid, collecting data or live). A brand that has churned since drops
+// out of its month, as on the card.
+// It reads what the BD Tracker reads: its HubSpot deals (fetchBDData) and the
+// app brand book (fetchBdApp, without the per-account Recurly line reads that
+// only the Initiation Fees card needs). Both are heavy, so this runs on its own
+// request, apart from the demo counts. The helpers between the two markers are
+// COPIED VERBATIM from bd-dashboard.html; tests/t_growth.js fails if they drift.
+// The page shows the card only when the pilot stats came back; so does this.
+let BD_APP_JOIN_CO = {}, BD_APP_JOIN_DEAL = {};
+// >>> copied from bd-dashboard.html
+var BD_APP_TEST_BRANDS=['FrontrowMD Demo Account','Vincent',"Lane's 6/3 Test",'Example Brand Name'];
+var BD_PILOT_COUNTED=['deposit_paid','collecting_data','live'];
+function _bdEtToday(now){
+  var p={};new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'})
+    .formatToParts(now||new Date()).forEach(function(x){p[x.type]=x.value;});
+  return p.year+'-'+p.month+'-'+p.day;
+}
+function _bdEtDayOf(v){
+  var s=String(v||'');if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s;
+  var d=new Date(s);return isNaN(d.getTime())?'':_bdEtToday(d);
+}
+function _bdSignDays(b,bdeals){
+  var d=function(x){return /^\d{4}-\d{2}-\d{2}$/.test(x||'')?x:'';};
+  if(b.pilotPaid)return {how:'pilot',days:(b.pilotHist||[]).filter(function(p){return p.status!=='rolled_over';})
+    .map(function(p){return d(String(p.from||'').slice(0,10));}).filter(Boolean)};
+  var hs=(bdeals||[]).filter(function(x){return x.dealstage==='closedwon'&&x.closedate;})
+    .map(function(x){return _bdEtDayOf(x.closedate);}).filter(Boolean);
+  if(hs.length)return {how:'hubspot',days:hs};
+  if(!(bdeals||[]).length&&!b.pilot){var c=d(String(b.signDate||'').slice(0,10));if(c)return {how:'app',days:[c]};}
+  return {how:'',days:[]};
+}
+function _baIsTest(b){return !!b&&BD_APP_TEST_BRANDS.indexOf(String(b.name||'').trim())>=0;}
+function _baNorm(s){
+  if(!s)return '';
+  var t=String(s);
+  try{t=t.normalize('NFKD');}catch(e){}
+  t=t.replace(/[̀-ͯ]/g,'').toLowerCase().trim().replace(/&/g,' and ');
+  t=t.replace(/\.(com|co|io|net|us)$/,'').replace(/\(restart\)|-\s*new deal\b/g,'').replace(/[^a-z0-9 ]+/g,' ');
+  var k=t.split(/\s+/).filter(Boolean);
+  while(k.length&&['inc','llc','co','corp','ltd','incorporated','company'].indexOf(k[k.length-1])>=0)k.pop();
+  return k.join('');
+}
+function _baJoin(deals,brands){
+  var byHc={},byNm={},byBrand={},byDeal={},byAssoc={},byId={};
+  brands.forEach(function(b){
+    byBrand[b.id]=[];byId[b.id]=b;
+    if(b.hubspotCompanyId)(byHc[b.hubspotCompanyId]=byHc[b.hubspotCompanyId]||[]).push(b);
+    (b.hsDeals||[]).forEach(function(id){var a=byAssoc[id]=byAssoc[id]||[];if(a.indexOf(b)<0)a.push(b);});
+    var n=_baNorm(b.name);if(n)(byNm[n]=byNm[n]||[]).push(b);
+  });
+  deals.forEach(function(dd){
+    var nd=_baNorm(dd.dealname),nc=_baNorm(dd.companyName),how='',c=(dd.companyId&&byHc[String(dd.companyId)])||[];
+    var rv=BD_APP_JOIN_DEAL[dd.id]||(dd.companyId&&BD_APP_JOIN_CO[String(dd.companyId)]);
+    if(rv){
+      c=rv.map(function(id){return byId[id];}).filter(Boolean);
+      byDeal[dd.id]={brands:c,how:'reviewed'};c.forEach(function(b){byBrand[b.id].push(dd);});
+      return;
+    }
+    if(!c.length&&byAssoc[dd.id])c=byAssoc[dd.id].slice();
+    if(c.length)how='company';
+    // Name equality when no company reaches a brand, and ALSO when every brand
+    // the company reaches is discarded: a live brand row created under a new
+    // company (a restart, a re-signed account) must not lose to the dead one.
+    var allDisc=c.length&&c.every(function(b){return !!b.discardedAt;});
+    if(!c.length||allDisc){
+      [nc,nd].forEach(function(k){(k&&byNm[k]||[]).forEach(function(b){
+        if(c.indexOf(b)<0&&(!allDisc||!b.discardedAt)){c.push(b);if(!how)how='name';}});});
+    }
+    byDeal[dd.id]={brands:c,how:how};
+    c.forEach(function(b){byBrand[b.id].push(dd);});
+  });
+  return {byBrand:byBrand,byDeal:byDeal};
+}
+function _baSummary(brands){
+  var s={active:0,paused:0,starting:0,total:0,mrr:0,noPrice:0,
+    pilots:{n:0,deposit_paid:0,collecting_data:0,live:0,upfront:0,post:0},awaiting:0};
+  brands.forEach(function(b){
+    if(_baIsTest(b)||b.discardedAt)return;
+    if(b.active){
+      s.total++;s[b.state]=(s[b.state]||0)+1;
+      if(b.monthly!=null)s.mrr+=b.monthly;else s.noPrice++;
+    }
+    if(b.state==='pilot'&&b.pilot){
+      s.pilots.n++;s.pilots[b.pilot.status]=(s.pilots[b.pilot.status]||0)+1;
+      s.pilots.upfront+=b.pilot.depositTotal||0;s.pilots.post+=b.pilot.postPrice||0;
+    }
+    if(b.pilot&&b.pilot.status==='awaiting_submit'&&!b.active&&b.state!=='pilot')s.awaiting++;
+  });
+  s.mrr=Math.round(s.mrr*100)/100;
+  s.arr=s.mrr*12;s.acv=s.total?s.mrr/s.total:0;s.futureMrr=s.mrr+s.pilots.post;
+  return s;
+}
+function _baRcClass(b){
+  if(!b.recurly||b.recurly.mrr==null)return null;
+  var subs=b.recurly.subs||[],has=function(k){return subs.some(function(m){return m.basis===k;});};
+  if(subs.some(function(m){return /^(invoice|price)/.test(m.basis);}))return 'billing';
+  return has('trial')?'trial':has('future')?'starting':has('paused')?'paused':subs.length?'ended':null;
+}
+function _baSummaryRc(brands,meta){
+  if(!(meta&&meta.recurly&&meta.recurly.ok))return null;
+  var s={billing:0,trial:0,starting:0,paused:0,total:0,mrr:0,billedMrr:0,canceling:0,idlePrice:0,idle_trial:0,idle_starting:0,idle_paused:0};
+  brands.forEach(function(b){
+    if(_baIsTest(b))return;
+    var k=_baRcClass(b),subs=(b.recurly&&b.recurly.subs)||[],bill=k==='billing';
+    if(!k||k==='ended')return;
+    s[k]++;s.total++;
+    if(bill){s.billedMrr+=b.recurly.mrr;if(subs.every(function(m){return !/^(invoice|price)/.test(m.basis)||/canceled/.test(m.basis);}))s.canceling++;}
+    else{s.idlePrice+=b.recurly.idlePrice||0;s['idle_'+k]+=b.recurly.idlePrice||0;}
+  });
+  ['billedMrr','idlePrice','idle_trial','idle_starting','idle_paused'].forEach(function(k){s[k]=Math.round(s[k]*100)/100;});
+  s.mrr=Math.round((s.billedMrr+s.idlePrice)*100)/100;
+  s.arr=s.mrr*12;s.acv=s.total?s.mrr/s.total:0;
+  s.unmatched=(meta.recurly.unmatched||{});s.stale=!!meta.recurly.stale;
+  return s;
+}
+function _baPilotStatsOf(brands){
+  var s={source:'cohort',deposit_paid:0,collecting_data:0,live:0,awaiting:0,netFees:0,post:0};
+  brands.forEach(function(b){
+    var p=b.pilot;if(!p||/(demo|test)/i.test(String(b.name||'')))return;
+    if(p.status==='awaiting_submit')s.awaiting++;
+    else if(BD_PILOT_COUNTED.indexOf(p.status)>=0){s[p.status]++;s.post+=p.postPrice||0;}
+    if(p.depositPaidAt)s.netFees+=p.depositTotal||0;
+  });
+  s.waiting=s.deposit_paid+s.collecting_data;s.n=s.waiting+s.live;
+  s.post=Math.round(s.post*100)/100;s.netFees=Math.round(s.netFees*100)/100;
+  return s;
+}
+// <<< copied from bd-dashboard.html
+const GROWTH_SIGNED_KV = 'growth_signed_v1';
+const GROWTH_SIGNED_LAST = 'growth_signed_last';
+function growthSignedCount(deals, app, months) {
+  const t = appJoinTables();
+  BD_APP_JOIN_CO = t.co; BD_APP_JOIN_DEAL = t.deal;
+  const join = _baJoin(deals, app.brands);
+  return months.map(mo => {
+    const cohort = app.brands.filter(b => !_baIsTest(b)
+      && _bdSignDays(b, join.byBrand[b.id]).days.some(x => x >= mo.from && x <= mo.to));
+    const rc = _baSummaryRc(cohort, app.meta);
+    const active = rc ? rc.total : _baSummary(cohort).total;
+    const pilots = _baPilotStatsOf(cohort).n;
+    return { m: mo.m, to: mo.to, partial: mo.partial, signed: active + pilots, active, pilots };
+  });
+}
+async function buildGrowthSigned(env) {
+  if (!env.HUBSPOT_TOKEN) throw new Error('HubSpot is not configured');
+  const today = fmt(todayET());
+  const [bd, app] = await Promise.all([fetchBDData(env, false), fetchBdApp(env, { lite: true })]);
+  if (!app || !app.brands || !app.brands.length) throw new Error('No app brands came back');
+  const ps = app.pilotStats;
+  if (!ps || ps.error || ps.n == null) throw new Error('Pilot stats unavailable' + (ps && ps.detail ? ': ' + ps.detail : ''));
+  const deals = (bd && bd.deals) || [];
+  // The BD Tracker fills in company names /api/bd only has cached
+  // (bdLookupMissingCompanies) before its join matches on them; do the same for
+  // the closed-won deals, the only ones that date a signing.
+  const need = [...new Set(deals.filter(d => d.dealstage === 'closedwon' && d.companyId && !d.companyName).map(d => String(d.companyId)))];
+  let deferred = 0;
+  if (need.length) {
+    const lk = await lookupBDCompanies(env, need, false);
+    deferred = lk.deferred || 0;
+    deals.forEach(d => { const co = d.companyId && lk.companies[d.companyId]; if (co && !d.companyName) d.companyName = co.name || ''; });
+  }
+  const months = growthMonths(today);
+  const counted = growthSignedCount(deals, app, months.concat([{ m: 'ytd', from: months[0].from, to: today, partial: true }]));
+  const rcOk = !!(app.meta && app.meta.recurly && app.meta.recurly.ok);
+  return { months: counted.slice(0, -1), ytd: counted[counted.length - 1], asOf: new Date().toISOString(), today,
+    recurly: rcOk, recurlyStale: !!(rcOk && app.meta.recurly.stale), appLive: !!(app.meta && app.meta.live),
+    hsPartial: !!(bd && bd.meta && bd.meta.partial) || deferred > 0,
+    ok: !(bd && bd.meta && bd.meta.partial) && !deferred && rcOk && !app.meta.recurly.stale };
+}
+// Cached like the demo half. A read with any failure (HubSpot errors, Recurly
+// unread or stale) is not cached and gives way to the last good copy, marked;
+// with no good copy it is served as read, flagged, never as zeros.
+async function fetchGrowthSigned(env, fresh) {
+  const kv = env.CONTENT_STORE;
+  if (!fresh && kv) {
+    try {
+      const hit = await kv.get(GROWTH_SIGNED_KV, 'json');
+      if (hit && hit.t && Date.now() - hit.t < GROWTH_TTL_SEC * 1000 && hit.data && hit.data.today === fmt(todayET())) return Object.assign({}, hit.data, { cached: true });
+    } catch (_) { /* a cache miss is fine */ }
+  }
+  const lastGood = async () => { if (!kv) return null; try { return await kv.get(GROWTH_SIGNED_LAST, 'json'); } catch (_) { return null; } };
+  let data;
+  try { data = await buildGrowthSigned(env); }
+  catch (e) {
+    const last = await lastGood();
+    if (!last || !last.data) throw e;
+    return Object.assign({}, last.data, { cached: true, stale: { error: String(e && e.message || e).slice(0, 300), asOf: new Date(last.t).toISOString() } });
+  }
+  if (data.ok) {
+    if (kv) {
+      try {
+        const blob = JSON.stringify({ t: Date.now(), data });
+        await kv.put(GROWTH_SIGNED_KV, blob, { expirationTtl: GROWTH_TTL_SEC * 6 });
+        await kv.put(GROWTH_SIGNED_LAST, blob, { expirationTtl: 7 * 86400 });
+      } catch (_) { /* best effort */ }
+    }
+    return data;
+  }
+  // Recurly unread or stale: the card itself still shows today's cohort (on the
+  // app's own count, or on Recurly's last good read), so this does too, flagged
+  // and not cached. Only a HubSpot read that came back short gives way to the
+  // last good copy.
+  const rcWhy = !data.recurly ? 'Recurly could not be read, so Active Brands is the app\u2019s own count (as on the BD Tracker)' : data.recurlyStale ? 'Recurly could not be read just now, so Active Brands uses its last good read (as on the BD Tracker)' : '';
+  if (data.hsPartial) {
+    const last = await lastGood();
+    if (last && last.data) return Object.assign({}, last.data, { cached: true, stale: { error: 'Some HubSpot calls failed', asOf: new Date(last.t).toISOString() } });
+  }
+  const why = [data.hsPartial ? 'Some HubSpot calls failed, so these may be short' : '', rcWhy].filter(Boolean).join('; ');
+  data.warn = why;
   return data;
 }
 
@@ -5217,7 +5421,7 @@ async function recurlyCheck(env, brandId) {
   } catch (e) { return { ok: false, error: _rcScrub(env, (e && e.message) || e), ms: Date.now() - t0 }; }
 }
 
-async function fetchBdApp(env) {
+async function fetchBdApp(env, opts) {
   const today = etDayKeyOf(new Date().toISOString());
   // Recurly runs alongside the brand book and never takes it down.
   const recurlyP = fetchRecurlyLive(env);
@@ -5260,8 +5464,12 @@ async function fetchBdApp(env) {
   if (rc && rc.subs) meta.recurly = Object.assign({ ok: true }, rc.meta, { unmatched: recurlyAttach(brands, rc) });
   else { brands.forEach(b => { delete b.recurlySubIds; }); meta.recurly = { ok: false, error: (rc && rc.error) || 'unavailable' }; }
   // The pilot row's Initiation Fees and Post-Pilot MRR (Alex, 2026-11-16).
-  try { meta.pilotPlan = await bdPilotPlanStats(env, brands, rc && rc.subs ? rc : null); }
-  catch (e) { meta.pilotPlan = { error: _rcScrub(env, (e && e.message) || e) }; }
+  // opts.lite (Growth Overview's Signed Brands) skips it: one Recurly call per
+  // pilot account, for figures that page does not show.
+  if (!(opts && opts.lite)) {
+    try { meta.pilotPlan = await bdPilotPlanStats(env, brands, rc && rc.subs ? rc : null); }
+    catch (e) { meta.pilotPlan = { error: _rcScrub(env, (e && e.message) || e) }; }
+  }
   brands.forEach(b => { delete b.recurlyAccount; });
   return { brands, pilotStats, meta };
 }
@@ -11631,7 +11839,7 @@ async function fetchBDData(env, fresh) {
     };
   });
 
-  return { deals: mappedDeals, ownerMap, missingCompanyIds, meta: { generatedAt: new Date().toISOString(), dealCount: deals.length } };
+  return { deals: mappedDeals, ownerMap, missingCompanyIds, meta: { generatedAt: new Date().toISOString(), dealCount: deals.length, partial: !!deals.partial } };
 }
 
 // Dedicated company-lookup endpoint. Each invocation gets its own fresh
@@ -13823,6 +14031,16 @@ export default {
       if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       try { return jr(await fetchGrowth(env, body && body.fresh === true)); }
       catch (err) { console.error('Growth endpoint error:', err); return jr({ error: 'Growth data unavailable', detail: String(err && err.message || err).slice(0, 300) }, 502); }
+    }
+
+    // POST /api/growth-signed → Growth Overview's Signed Brands per month (the BD
+    // Tracker's card), on its own request: it reads the BD deals and the app book.
+    if (request.method === 'POST' && url.pathname === '/api/growth-signed') {
+      let body;
+      try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
+      try { return jr(await fetchGrowthSigned(env, body && body.fresh === true)); }
+      catch (err) { console.error('Growth signed endpoint error:', err); return jr({ error: 'Signed Brands unavailable', detail: String(err && err.message || err).slice(0, 300) }, 502); }
     }
 
     if (request.method === 'POST' && url.pathname === '/api/bd-app') {
