@@ -1078,9 +1078,17 @@ function _buildRevenueOutcomeCard(d){
   // The churned add-back is not split by pilot. Pilot brands are brand new (the
   // first signed Oct 22 2026), so it is non-pilot by construction.
   var _churnAdd=(d&&d.signedChurnedByCloseCount)||0;
-  var signedBrands=dealCount+_churnAdd;
+  var _dealBrands=dealCount+_churnAdd;   // ACV's divisor: the deals its MRR is summed over
   var signedARR=mrr*12;            // headline
-  var acv=signedBrands>0?mrr/signedBrands:null;  // per Signed Brand (incl. churned by closedate)
+  var acv=_dealBrands>0?mrr/_dealBrands:null;  // per signed deal (incl. churned by closedate)
+  // The three Signed Brands counts are the BD Tracker card's (_sbCard above):
+  // this side = its Active Brands, the pilot side = its Pilot Brands, Total =
+  // both. null while loading or failed (shown as such, never as a deal count).
+  var _sb=(_sbCard&&_sbCard.key===_roPageKey())?_sbCard:null;
+  var _sbErr=!_sb&&_sbFail===_roPageKey();
+  var _sbv=function(w,k){var o=_sb&&_sb[w];return o?o[k]:null;};
+  var _sbShow=function(v){return v!=null?fN(v):(_sbErr?'\u2014':'<span style="font-size:13px;color:rgba(255,255,255,.5)">loading\u2026</span>');};
+  var signedBrands=_sbv('current','active');
   var pSignedARR=pMRR!=null?pMRR*12:null, pmSignedARR=pmMRR!=null?pmMRR*12:null;
   var pACV=(pDeal>0&&pMRR!=null)?pMRR/pDeal:null, pmACV=(pmDeal>0&&pmMRR!=null)?pmMRR/pmDeal:null;
   function nf(n,fmt,dec){if(n==null)return '—';var s=n>=0?'+':'-';var a=Math.abs(n);var dd=dec!=null?dec:1;if(fmt==='$')return s+'$'+Math.round(a).toLocaleString();if(fmt==='#')return s+Math.round(a).toLocaleString();if(fmt==='%')return s+a.toFixed(dd)+'%';if(fmt==='x')return s+a.toFixed(2)+'x';return s+a.toFixed(dd);}
@@ -1123,7 +1131,7 @@ function _buildRevenueOutcomeCard(d){
       +'<div style="margin-top:8px">'
       +metricRow('MRR',f$(mrr),mrr,pMRR,pmMRR,'$')
       +metricRow('ACV',acv!=null?f$(acv):'—',acv,pACV,pmACV,'$')
-      +metricRow('Signed Brands',fN(signedBrands),signedBrands,pDeal,pmDeal,'#')
+      +metricRow('Signed Brands',_sbShow(signedBrands),signedBrands,_sbv('prior','active'),_sbv('priorMonth','active'),'#')
       +'</div></div>';
   var side2;
   if(!_ppOk){
@@ -1146,7 +1154,7 @@ function _buildRevenueOutcomeCard(d){
       +'<div style="margin-top:8px">'
       +metricRow('Post-Pilot MRR',f$(pc.post),pc.post,_pf(pp,'post'),_pf(pl,'post'),'$')
       +metricRow('Pilot Avg ACV',_pAcv(pc)!=null?f$(_pAcv(pc)):'—',_pAcv(pc),_pAcv(pp),_pAcv(pl),'$')
-      +metricRow('Signed Pilot Brands',fN(pc.n),pc.n,_pf(pp,'n'),_pf(pl,'n'),'#')
+      +metricRow('Signed Pilot Brands',_sbShow(_sbv('current','pilots')),_sbv('current','pilots'),_sbv('prior','pilots'),_sbv('priorMonth','pilots'),'#')
       +'</div></div>';
   }
   // Combined total (Alex, 2026-11-17): Brands + Pilots for the window. Signed
@@ -1158,7 +1166,7 @@ function _buildRevenueOutcomeCard(d){
   if(_pilotKnown&&_ppOk){
     var _add=function(a,b){return (a==null||b==null)?null:a+b;};
     var tMRR=mrr+pc.post,tpMRR=_add(pMRR,_pf(pp,'post')),tlMRR=_add(pmMRR,_pf(pl,'post'));
-    var tB=signedBrands+pc.n,tpB=_add(pDeal,_pf(pp,'n')),tlB=_add(pmDeal,_pf(pl,'n'));
+    var tB=_sbv('current','signed'),tpB=_sbv('prior','signed'),tlB=_sbv('priorMonth','signed');
     var cell=function(lbl,val,cur,p2,lm,fmt,big){
       return '<div style="flex:1 1 180px;min-width:170px">'
         +'<div style="font-family:var(--font-h);font-size:9.5px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.07em">'+lbl+'</div>'
@@ -1171,7 +1179,7 @@ function _buildRevenueOutcomeCard(d){
       +'<div style="display:flex;flex-wrap:wrap;gap:12px 28px">'
         +cell('Total Signed ARR',f$(tMRR*12),tMRR*12,tpMRR!=null?tpMRR*12:null,tlMRR!=null?tlMRR*12:null,'$',true)
         +cell('Total MRR',f$(tMRR),tMRR,tpMRR,tlMRR,'$')
-        +cell('Total Signed Brands',fN(tB),tB,tpB,tlB,'#')
+        +cell('Total Signed Brands',_sbShow(tB),tB,tpB,tlB,'#')
       +'</div></div>';
   }
   // Two sides, divided by a hairline; they stack on a narrow screen.
@@ -1183,12 +1191,36 @@ function _buildRevenueOutcomeCard(d){
       +side2
     +'</div>'
     +total
+    +'<div style="margin-top:12px;font-size:10.5px;line-height:1.5;color:rgba(255,255,255,.45)">Signed Brands counts are the BD Tracker\u2019s Signed Brands card for the window: brands that signed in it and are active (Recurly) or on a pilot today'
+      +(_sb&&_sb.stale?' \u00b7 <span style="color:#FCD34D">last good copy, '+(_sb.stale.error||'')+'</span>':_sb&&_sb.warn?' \u00b7 <span style="color:#FCD34D">'+_sb.warn+'</span>':'')
+      +(_sbErr?' \u00b7 <span style="color:#FCA5A5">unavailable just now; refresh to retry</span>':'')+'.</div>'
   +'</div>';
 }
 // Fetch the dedicated, UNCACHED Revenue Outcome data (live current/prior/LM
 // closed-won) and re-render whichever Revenue Outcome card is on screen. Fire-
 // and-forget after each /api/data load. _roSeq drops out-of-order responses.
+// Signed Brands counts (Alex, 2026-11-24): EXACTLY the BD Tracker's All Time
+// Summary "Signed Brands" card (Active Brands + Pilot Brands among the brands
+// signed in the range, as they stand today) for this window, its prior window
+// and last month, from /api/signed-brands (worker fetchSignedBrands, the same
+// windows as /api/revenue-outcome). Its own request: it reads the BD Tracker's
+// deals and the app book. Until it lands the three counts say loading; if it
+// fails they are a dash, never the old HubSpot deal count under the new name.
+var _sbCard=null,_sbSeq=0,_sbFail=null;
+async function fdSignedBrands(win,from,to,vsFrom,vsTo){
+  var my=++_sbSeq,key=_roKey(win,from,to,vsFrom,vsTo);
+  var fail=function(){if(my===_sbSeq){_sbFail=key;_roRerender();}};
+  try{
+    var b={password:PW,window:win};if(from)b.from=from;if(to)b.to=to;if(vsFrom)b.vsFrom=vsFrom;if(vsTo)b.vsTo=vsTo;
+    var r=await fetch(API.replace('/api/data','/api/signed-brands'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
+    if(!r.ok){fail();return;}var d=await r.json();if(!d||d.error||!d.current){fail();return;}
+    if(my!==_sbSeq)return;
+    _sbCard={key:key,current:d.current,prior:d.prior,priorMonth:d.priorMonth,warn:d.warn||null,stale:d.stale||null};
+    _roRerender();
+  }catch(e){console.error('fdSignedBrands',e);fail();}
+}
 async function fdRevenueOutcome(win,from,to,vsFrom,vsTo){
+  fdSignedBrands(win,from,to,vsFrom,vsTo);
   var my=++_roSeq,key=_roKey(win,from,to,vsFrom,vsTo);
   // A failed fetch is remembered for its window, so the Pilots side can say it
   // failed instead of loading forever (side 1 keeps the cached figures).

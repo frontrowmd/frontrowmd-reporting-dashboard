@@ -4201,8 +4201,9 @@ async function fetchBdWaterfall(env, fresh) {
 //     stage-entry date (fetchWebinarHeldCount), folded by applyWebinarHeld.
 //   Signed Brands = the BD Tracker's All Time Summary "Signed Brands" card with
 //     that month picked as its range (Active Brands + Pilot Brands among the
-//     brands signed in it, as they stand today). Built separately, on its own
-//     request (POST /api/growth-signed): see buildGrowthSigned.
+//     brands signed in it, as they stand today) + on this page only, the brands
+//     that signed in it and have since ended. Built separately, on its own
+//     request (POST /api/growth-signed): see the SIGN BOOK below.
 // One pipeline fetch per month, NOT one wide one: a wide ASC fetch is capped at
 // 25 pages and drops the newest rows silently. A month whose HubSpot calls
 // failed is marked err (shown as unavailable), never counted as zero, and a
@@ -4289,15 +4290,17 @@ async function fetchGrowth(env, fresh) {
   return data;
 }
 
-// ── Growth Overview: Signed Brands (Alex, 2026-11-24) ─────────────────────────
-// EXACTLY the BD Tracker's All Time Summary "Signed Brands" card with one month
-// picked as its range: among the brands that SIGNED in the month (_bdSignDays:
+// ── Signed Brands = the BD Tracker card (Alex, 2026-11-24) ────────────────────
+// Used by Growth Overview (per month) and the Brand Dashboard's Revenue Outcome
+// (per window). EXACTLY the BD Tracker's All Time Summary "Signed Brands" card
+// with that range picked: among the brands that SIGNED in the month (_bdSignDays:
 // a paid pilot by its fee date, any other brand by its closed-won HubSpot deals'
 // Eastern close dates, an app-only sign-up by its app date), as they stand
 // TODAY, Active Brands (a live Recurly subscription: billing, trial, starting or
 // paused; the app's own active state when Recurly was not read) + Pilot Brands
 // (deposit paid, collecting data or live). A brand that has churned since drops
-// out of its month, as on the card.
+// out of its range, as on the card; Growth Overview alone adds those back as a
+// third count (Alex, 2026-11-24).
 // It reads what the BD Tracker reads: its HubSpot deals (fetchBDData) and the
 // app brand book (fetchBdApp, without the per-account Recurly line reads that
 // only the Initiation Fees card needs). Both are heavy, so this runs on its own
@@ -4423,23 +4426,62 @@ function _baPilotStatsOf(brands){
   s.post=Math.round(s.post*100)/100;s.netFees=Math.round(s.netFees*100)/100;
   return s;
 }
+function _baStatusOf(b){
+  var rc=_baRcClass(b),pp=b.pilotPlan;
+  if(rc==='billing')return {s:'Billing',d:'Billing'};
+  if(rc==='paused')return {s:'Paused',d:'Paused'};
+  if(rc==='trial')return {s:'Not billing yet',d:'In trial'};
+  if(rc==='starting')return {s:'Not billing yet',d:'Starting later'};
+  if(pp&&pp.status!=='Pilot ended')return {s:'Not billing yet',d:'Pilot'};
+  if(b.onboarding)return {s:'Not billing yet',d:'Onboarding'};
+  if(rc==='ended')return {s:'Ended',d:'Recurly subscription ended'};
+  if(pp)return {s:'Ended',d:'Pilot ended'};
+  if(b.state==='ended')return {s:'Ended',d:'App subscription ended'};
+  return {s:'No plan',d:'No plan'};
+}
 // <<< copied from bd-dashboard.html
-const GROWTH_SIGNED_KV = 'growth_signed_v1';
-const GROWTH_SIGNED_LAST = 'growth_signed_last';
-function growthSignedCount(deals, app, months) {
+// The SIGN BOOK: one compact row per app brand (test accounts left out) with
+// what the card needs to count it for ANY range: its signing days (d), whether
+// the card counts it as an Active Brand (a: a live Recurly subscription, or the
+// app's own active state when Recurly was not read) or a Pilot Brand (p: its
+// pilot is deposit paid, collecting data or live, name not demo/test), whether
+// it has since ENDED (c: neither, and _baStatusOf says Ended), and its HubSpot
+// company (h). Built once from the two heavy reads, cached 30 min, and shared by
+// Growth Overview (/api/growth-signed) and the Brand Dashboard's Revenue
+// Outcome (/api/signed-brands), so both count exactly as the card does.
+const SIGN_BOOK_KV = 'sign_book_v1';
+const SIGN_BOOK_LAST = 'sign_book_last';
+function signBookRows(deals, app) {
   const t = appJoinTables();
   BD_APP_JOIN_CO = t.co; BD_APP_JOIN_DEAL = t.deal;
   const join = _baJoin(deals, app.brands);
-  return months.map(mo => {
-    const cohort = app.brands.filter(b => !_baIsTest(b)
-      && _bdSignDays(b, join.byBrand[b.id]).days.some(x => x >= mo.from && x <= mo.to));
-    const rc = _baSummaryRc(cohort, app.meta);
-    const active = rc ? rc.total : _baSummary(cohort).total;
-    const pilots = _baPilotStatsOf(cohort).n;
-    return { m: mo.m, to: mo.to, partial: mo.partial, signed: active + pilots, active, pilots };
-  });
+  const rcOk = !!(app.meta && app.meta.recurly && app.meta.recurly.ok);
+  const rows = [];
+  for (const b of app.brands) {
+    if (_baIsTest(b)) continue;
+    const d = _bdSignDays(b, join.byBrand[b.id]).days;
+    if (!d.length) continue;
+    let a;
+    if (rcOk) { const k = _baRcClass(b); a = !!k && k !== 'ended'; }      // _baSummaryRc
+    else a = !b.discardedAt && !!b.active;                                // _baSummary
+    const p = !!(b.pilot && !/(demo|test)/i.test(String(b.name || '')) && BD_PILOT_COUNTED.indexOf(b.pilot.status) >= 0);   // _baPilotStatsOf
+    const c = !a && !p && _baStatusOf(b).s === 'Ended';
+    rows.push({ d, a: a ? 1 : 0, p: p ? 1 : 0, c: c ? 1 : 0, h: b.hubspotCompanyId ? String(b.hubspotCompanyId) : '' });
+  }
+  return rows;
 }
-async function buildGrowthSigned(env) {
+// The card for one inclusive Eastern range: active + pilots (= signed), and the
+// brands that signed in it and have since ended (churned). An ended row that
+// shares its HubSpot company with a brand counted in the same range is a
+// duplicate or restart of that brand, not a second signing, so it is left out.
+function signBookCount(rows, from, to) {
+  const inR = rows.filter(r => r.d.some(x => x >= from && x <= to));
+  const live = new Set(inR.filter(r => (r.a || r.p) && r.h).map(r => r.h));
+  let active = 0, pilots = 0, churned = 0;
+  for (const r of inR) { active += r.a; pilots += r.p; if (r.c && !(r.h && live.has(r.h))) churned++; }
+  return { active, pilots, signed: active + pilots, churned };
+}
+async function buildSignBook(env) {
   if (!env.HUBSPOT_TOKEN) throw new Error('HubSpot is not configured');
   const today = fmt(todayET());
   const [bd, app] = await Promise.all([fetchBDData(env, false), fetchBdApp(env, { lite: true })]);
@@ -4457,28 +4499,28 @@ async function buildGrowthSigned(env) {
     deferred = lk.deferred || 0;
     deals.forEach(d => { const co = d.companyId && lk.companies[d.companyId]; if (co && !d.companyName) d.companyName = co.name || ''; });
   }
-  const months = growthMonths(today);
-  const counted = growthSignedCount(deals, app, months.concat([{ m: 'ytd', from: months[0].from, to: today, partial: true }]));
   const rcOk = !!(app.meta && app.meta.recurly && app.meta.recurly.ok);
-  return { months: counted.slice(0, -1), ytd: counted[counted.length - 1], asOf: new Date().toISOString(), today,
+  const hsPartial = !!(bd && bd.meta && bd.meta.partial) || deferred > 0;
+  return { rows: signBookRows(deals, app), asOf: new Date().toISOString(), today,
     recurly: rcOk, recurlyStale: !!(rcOk && app.meta.recurly.stale), appLive: !!(app.meta && app.meta.live),
-    hsPartial: !!(bd && bd.meta && bd.meta.partial) || deferred > 0,
-    ok: !(bd && bd.meta && bd.meta.partial) && !deferred && rcOk && !app.meta.recurly.stale };
+    hsPartial, ok: !hsPartial && rcOk && !app.meta.recurly.stale };
 }
-// Cached like the demo half. A read with any failure (HubSpot errors, Recurly
-// unread or stale) is not cached and gives way to the last good copy, marked;
-// with no good copy it is served as read, flagged, never as zeros.
-async function fetchGrowthSigned(env, fresh) {
+// Cached 30 min (keyed on the day). Recurly unread or stale: the card itself
+// still counts today's cohort (on the app's own count, or on Recurly's last good
+// read), so this does too, flagged (warn) and not cached. A HubSpot read that
+// came back short, or a build that failed, gives way to the last good book,
+// marked stale; with none, a short read is served flagged and a failure throws.
+async function fetchSignBook(env, fresh) {
   const kv = env.CONTENT_STORE;
   if (!fresh && kv) {
     try {
-      const hit = await kv.get(GROWTH_SIGNED_KV, 'json');
+      const hit = await kv.get(SIGN_BOOK_KV, 'json');
       if (hit && hit.t && Date.now() - hit.t < GROWTH_TTL_SEC * 1000 && hit.data && hit.data.today === fmt(todayET())) return Object.assign({}, hit.data, { cached: true });
     } catch (_) { /* a cache miss is fine */ }
   }
-  const lastGood = async () => { if (!kv) return null; try { return await kv.get(GROWTH_SIGNED_LAST, 'json'); } catch (_) { return null; } };
+  const lastGood = async () => { if (!kv) return null; try { return await kv.get(SIGN_BOOK_LAST, 'json'); } catch (_) { return null; } };
   let data;
-  try { data = await buildGrowthSigned(env); }
+  try { data = await buildSignBook(env); }
   catch (e) {
     const last = await lastGood();
     if (!last || !last.data) throw e;
@@ -4488,24 +4530,43 @@ async function fetchGrowthSigned(env, fresh) {
     if (kv) {
       try {
         const blob = JSON.stringify({ t: Date.now(), data });
-        await kv.put(GROWTH_SIGNED_KV, blob, { expirationTtl: GROWTH_TTL_SEC * 6 });
-        await kv.put(GROWTH_SIGNED_LAST, blob, { expirationTtl: 7 * 86400 });
+        await kv.put(SIGN_BOOK_KV, blob, { expirationTtl: GROWTH_TTL_SEC * 6 });
+        await kv.put(SIGN_BOOK_LAST, blob, { expirationTtl: 7 * 86400 });
       } catch (_) { /* best effort */ }
     }
     return data;
   }
-  // Recurly unread or stale: the card itself still shows today's cohort (on the
-  // app's own count, or on Recurly's last good read), so this does too, flagged
-  // and not cached. Only a HubSpot read that came back short gives way to the
-  // last good copy.
-  const rcWhy = !data.recurly ? 'Recurly could not be read, so Active Brands is the app\u2019s own count (as on the BD Tracker)' : data.recurlyStale ? 'Recurly could not be read just now, so Active Brands uses its last good read (as on the BD Tracker)' : '';
   if (data.hsPartial) {
     const last = await lastGood();
     if (last && last.data) return Object.assign({}, last.data, { cached: true, stale: { error: 'Some HubSpot calls failed', asOf: new Date(last.t).toISOString() } });
   }
-  const why = [data.hsPartial ? 'Some HubSpot calls failed, so these may be short' : '', rcWhy].filter(Boolean).join('; ');
-  data.warn = why;
+  const rcWhy = !data.recurly ? 'Recurly could not be read, so Active Brands is the app\u2019s own count (as on the BD Tracker)' : data.recurlyStale ? 'Recurly could not be read just now, so Active Brands uses its last good read (as on the BD Tracker)' : '';
+  data.warn = [data.hsPartial ? 'Some HubSpot calls failed, so these may be short' : '', rcWhy].filter(Boolean).join('; ');
   return data;
+}
+function signBookMeta(book) {
+  const o = { asOf: book.asOf, today: book.today, recurly: book.recurly, appLive: book.appLive };
+  if (book.cached) o.cached = true;
+  if (book.stale) o.stale = book.stale;
+  if (book.warn) o.warn = book.warn;
+  return o;
+}
+// Growth Overview: each month since GROWTH_FROM (the current one to today) and
+// Jan 1..today (ytd, each brand once). Counted for today's ranges even when the
+// book is a last good copy from earlier.
+async function fetchGrowthSigned(env, fresh) {
+  const book = await fetchSignBook(env, fresh);
+  const today = fmt(todayET());
+  const months = growthMonths(today).map(mo => Object.assign({ m: mo.m, to: mo.to, partial: mo.partial }, signBookCount(book.rows, mo.from, mo.to)));
+  return Object.assign({ months, ytd: Object.assign({ m: 'ytd' }, signBookCount(book.rows, months.length ? growthMonths(today)[0].from : today, today)) }, signBookMeta(book), { today });
+}
+// Brand Dashboard Revenue Outcome: the card for the page's window, its prior
+// window and last month, from the same windows /api/revenue-outcome uses.
+async function fetchSignedBrands(env, body) {
+  const w = computeWindows(body.window || 'mtd', body.from || null, body.to || null, body.vsFrom || null, body.vsTo || null);
+  const book = await fetchSignBook(env, body.fresh === true);
+  const at = x => (x && x.from && x.to) ? Object.assign({ from: x.from, to: x.to }, signBookCount(book.rows, x.from, x.to)) : null;
+  return Object.assign({ current: at(w.current), prior: at(w.prior), priorMonth: at(w.priorMonth) }, signBookMeta(book));
 }
 
 // ── BD Tracker: the app brand book via Metabase (/api/bd-app) ────────────────
@@ -14041,6 +14102,16 @@ export default {
       if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       try { return jr(await fetchGrowthSigned(env, body && body.fresh === true)); }
       catch (err) { console.error('Growth signed endpoint error:', err); return jr({ error: 'Signed Brands unavailable', detail: String(err && err.message || err).slice(0, 300) }, 502); }
+    }
+
+    // POST /api/signed-brands → the BD Tracker's Signed Brands card for the Brand
+    // Dashboard's window, prior window and last month (Revenue Outcome counts).
+    if (request.method === 'POST' && url.pathname === '/api/signed-brands') {
+      let body;
+      try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
+      try { return jr(await fetchSignedBrands(env, body || {})); }
+      catch (err) { console.error('Signed brands endpoint error:', err); return jr({ error: 'Signed Brands unavailable', detail: String(err && err.message || err).slice(0, 300) }, 502); }
     }
 
     if (request.method === 'POST' && url.pathname === '/api/bd-app') {

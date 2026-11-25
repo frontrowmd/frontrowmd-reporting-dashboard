@@ -58,11 +58,11 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
 
   // ── Signed Brands = the BD Tracker's card, per month ──
   const bdh=load('bd-dashboard.html');
-  const COPIED=['_bdEtToday','_bdEtDayOf','_bdSignDays','_baIsTest','_baNorm','_baJoin','_baSummary','_baRcClass','_baSummaryRc','_baPilotStatsOf'];
+  const COPIED=['_bdEtToday','_bdEtDayOf','_bdSignDays','_baIsTest','_baNorm','_baJoin','_baSummary','_baRcClass','_baSummaryRc','_baPilotStatsOf','_baStatusOf'];
   ck('the worker\u2019s copies of the BD Tracker helpers are verbatim (no drift)',COPIED.filter(n=>fn(src,n)!==fn(bdh,n)),[]);
   const vline=(s,k)=>(new RegExp('^var '+k+'=.*$','m').exec(s)||[''])[0];
   ck('  and so are its test-brand and counted-pilot lists',['BD_APP_TEST_BRANDS','BD_PILOT_COUNTED'].filter(k=>!vline(src,k)||vline(src,k)!==vline(bdh,k)),[]);
-  ck('  the copies sit between markers, so nobody edits them by hand unknowingly',/>>> copied from bd-dashboard\.html[\s\S]*function _baPilotStatsOf[\s\S]*<<< copied from bd-dashboard\.html/.test(src),true);
+  ck('  the copies sit between markers, so nobody edits them by hand unknowingly',/>>> copied from bd-dashboard\.html[\s\S]*function _baStatusOf[\s\S]*<<< copied from bd-dashboard\.html/.test(src),true);
   const BILL={mrr:100,idlePrice:0,subs:[{basis:'invoice',state:'active'}]},TRIAL={mrr:0,idlePrice:50,subs:[{basis:'trial',state:'active'}]},ENDED={mrr:0,idlePrice:0,subs:[{basis:'ended',state:'expired'}]};
   const FX={brands:[
     {id:1,name:'Alpha',hubspotCompanyId:'100',recurly:BILL,active:true,state:'active'},
@@ -81,53 +81,62 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
     {id:'d8',dealstage:'closedwon',closedate:'2026-02-05T15:00:00Z',companyId:'999',companyName:'By Name',dealname:'By Name - New Deal'},
     {id:'d9',dealstage:'closedlost',closedate:'2026-02-06T15:00:00Z',companyId:'100',dealname:'Alpha upsell'}];
   W.FX=FX;W.FD=FD;
-  const sc=run(`growthSignedCount(FD,FX,growthMonths('2026-02-10'))`);
-  ck('signed per month: active + pilots among brands signed in it; churned, test, unpaid-pilot and lost deals out; Eastern close day; name join',
-    sc.map(r=>[r.m,r.active,r.pilots,r.signed,r.partial]),[['2026-01',2,1,3,false],['2026-02',2,0,2,true]]);
+  const cnt=(f,to)=>run(`signBookCount(signBookRows(FD,FX),'${f}','${to}')`);
+  const sc=[cnt('2026-01-01','2026-01-31'),cnt('2026-02-01','2026-02-10')];
+  ck('sign book per range: active + pilots among brands signed in it; churned counted apart; test, unpaid-pilot and lost deals out; Eastern close day; name join',
+    sc,[{active:2,pilots:1,signed:3,churned:1},{active:2,pilots:0,signed:2,churned:0}]);
   // The same fixture through the BD page's OWN render path (_bdSumIn with the
   // range set, then the card's two counts) must give the same numbers.
   const B={console:{log(){}},Date,Intl,JSON,Math,String,Array,Object};vm.createContext(B);
   vm.runInContext(['_bdEtToday','_bdEtDayOf','_bdSignDays','_bdSumDayIn','_bdSumIn','_baIsTest','_baNorm','_baJoin','_baSummary','_baRcClass','_baSummaryRc','_baPilotStatsOf'].map(n=>fn(bdh,n)).join('\n')
     +'\n'+vline(bdh,'BD_APP_TEST_BRANDS')+'\n'+vline(bdh,'BD_PILOT_COUNTED')+'\nvar BD_APP_JOIN_CO={},BD_APP_JOIN_DEAL={},_bdSumFrom="",_bdSumTo="";',B);
-  B.FX=JSON.parse(JSON.stringify(FX));B.FD=JSON.parse(JSON.stringify(FD));
-  const card=(f,to)=>vm.runInContext(`_bdSumFrom='${f}';_bdSumTo='${to}';var j=_baJoin(FD,FX.brands);var sb=FX.brands.filter(function(b){if(_baIsTest(b))return false;return !!_bdSumIn(b,j);});
-    var r=_baSummaryRc(sb,FX.meta);[r.total,_baPilotStatsOf(sb).n]`,B);
-  ck('  equals the BD Tracker card computed by the page\u2019s own code',[card('2026-01-01','2026-01-31'),card('2026-02-01','2026-02-10')],sc.map(r=>[r.active,r.pilots]));
+  const card=(f,to)=>{B.FX=JSON.parse(JSON.stringify(FX));B.FD=JSON.parse(JSON.stringify(FD));return vm.runInContext(`_bdSumFrom='${f}';_bdSumTo='${to}';var j=_baJoin(FD,FX.brands);var sb=FX.brands.filter(function(b){if(_baIsTest(b))return false;return !!_bdSumIn(b,j);});
+    var r=_baSummaryRc(sb,FX.meta);[r?r.total:_baSummary(sb).total,_baPilotStatsOf(sb).n]`,B);};
+  ck('  active + pilots equal the BD Tracker card computed by the page’s own code',[card('2026-01-01','2026-01-31'),card('2026-02-01','2026-02-10'),card('2026-01-01','2026-02-10')],
+    [sc[0],sc[1],cnt('2026-01-01','2026-02-10')].map(r=>[r.active,r.pilots]));
   FX.meta={recurly:{ok:false}};
-  ck('  Recurly unread: Active Brands falls back to the app\u2019s own active count, as the card does',run(`growthSignedCount(FD,FX,growthMonths('2026-02-10'))`).map(r=>r.active),[2,2]);
+  ck('  Recurly unread: Active Brands falls back to the app’s own active count, as the card does',[cnt('2026-01-01','2026-01-31').active,card('2026-01-01','2026-01-31')[0]],[2,2]);
   FX.meta={recurly:{ok:true}};
-  // buildGrowthSigned / fetchGrowthSigned with the two readers stubbed.
+  // A discarded duplicate row on the same HubSpot company as a live brand joins the
+  // same deal; it is not a second signing that churned.
+  FX.brands.push({id:10,name:'Alpha old',hubspotCompanyId:'100',recurly:ENDED,state:'ended',discardedAt:'2026-03-01'});
+  ck('  an ended row sharing its company with a counted brand is not a churn',cnt('2026-01-01','2026-01-31').churned,1);
+  FX.brands.pop();
+  // fetchSignBook / fetchGrowthSigned / fetchSignedBrands with the two readers stubbed.
   run(`fetchBDData=async()=>({deals:JSON.parse(JSON.stringify(FD)),meta:{}});fetchBdApp=async(e,o)=>{APPOPTS=o;return FX;};todayET=()=>new Date(Date.UTC(2026,1,10));
     LOOKUPS=[];lookupBDCompanies=async(e,ids)=>{LOOKUPS.push(ids);return {companies:{},deferred:0};};`);
   const kv2={};const env2={HUBSPOT_TOKEN:'t',CONTENT_STORE:{get:async(k)=>kv2[k]?JSON.parse(kv2[k]):null,put:async(k,v)=>{kv2[k]=v;}}};W.env2=env2;
   g=await run(`fetchGrowthSigned(env2,false)`);
-  ck('signed endpoint: reads the app book lite (no per-account Recurly reads), caches a clean read',[run('APPOPTS'),g.months.map(r=>r.signed),!!kv2.growth_signed_v1,!!kv2.growth_signed_last],[{lite:true},[3,2],true,true]);
-  ck('  year to date is the card over Jan 1..today, each brand once',[g.ytd.m,g.ytd.signed,g.ytd.active,g.ytd.pilots],['ytd',5,4,1]);
+  ck('growth-signed: reads the app book lite (no per-account Recurly reads), caches a clean sign book',[run('APPOPTS'),g.months.map(r=>[r.signed,r.churned]),!!kv2.sign_book_v1,!!kv2.sign_book_last],[{lite:true},[[3,1],[2,0]],true,true]);
+  ck('  year to date is Jan 1..today, each brand once',[g.ytd.m,g.ytd.signed,g.ytd.active,g.ytd.pilots,g.ytd.churned],['ytd',5,4,1,1]);
   ck('  looks up the uncached company names of closed-won deals only, as the BD page does',run('LOOKUPS'),[['100','300','400','600']]);
-  ck('  next load from cache',!!(await run(`fetchGrowthSigned(env2,false)`)).cached,true);
+  ck('  next load from the cached book',!!(await run(`fetchGrowthSigned(env2,false)`)).cached,true);
+  g=await run(`fetchSignedBrands(env2,{window:'custom',from:'2026-01-01',to:'2026-01-31',vsFrom:'2026-02-01',vsTo:'2026-02-10'})`);
+  ck('signed-brands (Revenue Outcome): the card for the window and its prior window, from the same book',[g.current&&g.current.signed,g.current&&g.current.active,g.current&&g.current.pilots,g.prior&&g.prior.signed,!!g.cached],[3,2,1,2,true]);
   // A name only the company lookup supplies joins the brand (signing it on the deal's date, not its app date).
   FX.brands.push({id:9,name:'Named Later',signDate:'2026-02-07',recurly:BILL,active:true,state:'active'});
   FD.push({id:'d10',dealstage:'closedwon',closedate:'2026-01-25T15:00:00Z',companyId:'777',dealname:'Something Else'});
   run(`lookupBDCompanies=async(e,ids)=>({companies:{'777':{name:'Named Later'}},deferred:0});`);
   g=await run(`fetchGrowthSigned(env2,true)`);
-  ck('  a name from the company lookup moves the brand to its deal\u2019s month',g.months.map(r=>r.active),[3,2]);
+  ck('  a name from the company lookup moves the brand to its deal’s month',g.months.map(r=>r.active),[3,2]);
   FX.brands.pop();FD.pop();
   run(`lookupBDCompanies=async(e,ids)=>({companies:{},deferred:3});`);
   g=await run(`fetchGrowthSigned(env2,true)`);
-  ck('  lookups deferred: the last good copy, marked',[!!g.stale,g.stale&&g.stale.error],[true,'Some HubSpot calls failed']);
+  ck('  lookups deferred: the last good book, marked',[!!g.stale,g.stale&&g.stale.error],[true,'Some HubSpot calls failed']);
   run(`lookupBDCompanies=async(e,ids)=>({companies:{},deferred:0});`);
-  const before=kv2.growth_signed_last;
+  const before=kv2.sign_book_last;
   FX.meta={recurly:{ok:true,stale:true}};
   g=await run(`fetchGrowthSigned(env2,true)`);
-  ck('  Recurly stale: today\u2019s cohort on its last read, as the card shows, flagged, not cached',[!!g.stale,/last good read/.test(g.warn||''),g.months.map(r=>r.active),kv2.growth_signed_last===before],[false,true,[2,2],true]);
+  ck('  Recurly stale: today’s cohort on its last read, as the card shows, flagged, not cached',[!!g.stale,/last good read/.test(g.warn||''),g.months.map(r=>r.active),kv2.sign_book_last===before],[false,true,[2,2],true]);
   FX.meta={recurly:{ok:false}};
   g=await run(`fetchGrowthSigned(env2,true)`);
-  ck('  Recurly unread: the app\u2019s own count, flagged',[!!g.stale,/app\u2019s own count/.test(g.warn||''),g.months.map(r=>r.active)],[false,true,[2,2]]);
-  FX.meta={recurly:{ok:true}};FX.pilotStats={error:'x'};delete kv2.growth_signed_last;
+  ck('  Recurly unread: the app’s own count, flagged',[!!g.stale,/app’s own count/.test(g.warn||''),g.months.map(r=>r.active)],[false,true,[2,2]]);
+  FX.meta={recurly:{ok:true}};FX.pilotStats={error:'x'};delete kv2.sign_book_last;
   let threw=null;try{await run(`fetchGrowthSigned(env2,true)`);}catch(e){threw=String(e.message);}
   ck('  pilot stats missing (the card is hidden then) and no copy: an error, never zeros',/Pilot stats unavailable/.test(threw||''),true);
   FX.pilotStats={n:1};
   ck('route: POST /api/growth-signed is behind authed()',/url\.pathname === '\/api\/growth-signed'\) \{\s*let body;\s*try \{ body = await request\.json\(\); \} catch \{ return jr\(\{ error: 'Invalid JSON' \}, 400\); \}\s*if \(!\(await authed\(\)\)\) return jr/.test(src),true);
+  ck('route: POST /api/signed-brands is behind authed()',/url\.pathname === '\/api\/signed-brands'\) \{\s*let body;\s*try \{ body = await request\.json\(\); \} catch \{ return jr\(\{ error: 'Invalid JSON' \}, 400\); \}\s*if \(!\(await authed\(\)\)\) return jr/.test(src),true);
   ck('route: POST /api/growth is behind authed()',/url\.pathname === '\/api\/growth'\) \{\s*let body;\s*try \{ body = await request\.json\(\); \} catch \{ return jr\(\{ error: 'Invalid JSON' \}, 400\); \}\s*if \(!\(await authed\(\)\)\) return jr/.test(src),true);
   ck('route: GET /growth serves the page; build embeds it',[/url\.pathname === '\/growth'\) \{\s*return new Response\(GROWTH_HTML/.test(src),/growth-dashboard\.html/.test(load('build.js'))],[true,true]);
 
@@ -138,33 +147,35 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
   const P={console,localStorage:{getItem(){return null;},setItem(){}},document:{getElementById:el,addEventListener(){}},window:{innerWidth:1200,innerHeight:800}};
   vm.createContext(P);vm.runInContext(js,P);
   ck('title is Growth Overview, never "investor"',[/<title>FrontrowMD Growth Overview<\/title>/.test(html),/investor/i.test(html)],[true,false]);
-  ck('first tab is Demos & Signed',vm.runInContext('G_TABS.map(t=>t.label)',P),['Demos & Signed']);
+  ck('first tab is Signed Brands & Demos',vm.runInContext('G_TABS.map(t=>t.label)',P),['Signed Brands & Demos']);
   P.G.data={asOf:'2026-11-24T12:00:00Z',today:'2026-03-12',months:[
     {m:'2026-01',to:'2026-01-31',qd:40,demos:30,webinars:10},
     {m:'2026-02',to:'2026-02-28',qd:0,demos:0,webinars:null,demoErr:true},
     {m:'2026-03',to:'2026-03-12',partial:true,qd:12,demos:10,webinars:2}]};
   P.G.sLoading=true;
   let h=P.gRenderDemos();
-  ck('signed half still loading: its cells say so, never 0, and the demos show',[/Counting Signed Brands/.test(h),/<td>Jan 2026<\/td><td class="big">40<\/td><td class="sub">30<\/td><td class="sub">10<\/td><td class="big">…<\/td>/.test(h)],[true,true]);
-  ck('  the Signed KPI says loading, not n/a',/loading…/.test(h)&&!/some months n\/a<\/div><\/div><div class="kpi"><div class="l">Avg/.test(h),true);
-  P.G.sLoading=false;P.G.signed={asOf:'2026-11-24T12:00:00Z',today:'2026-03-12',ytd:{signed:15,active:11,pilots:4},months:[
-    {m:'2026-01',to:'2026-01-31',signed:8,active:6,pilots:2},{m:'2026-02',to:'2026-02-28',signed:5,active:5,pilots:0},{m:'2026-03',to:'2026-03-12',signed:3,active:1,pilots:2}]};
+  ck('signed half still loading: its cells say so, never 0, and the demos show',[/Counting Signed Brands/.test(h),/<td>Jan 2026<\/td><td class="big">…<\/td><td class="sub">…<\/td><td class="sub">…<\/td><td class="sub">…<\/td><td class="big">40<\/td><td class="sub">30<\/td><td class="sub">10<\/td>/.test(h)],[true,true]);
+  ck('  the Signed KPI says loading',/Signed Brands · 2026<\/div><div class="v">—<\/div><div class="d">loading…/.test(h),true);
+  P.G.sLoading=false;P.G.signed={asOf:'2026-11-24T12:00:00Z',today:'2026-03-12',ytd:{signed:15,active:11,pilots:4,churned:3},months:[
+    {m:'2026-01',to:'2026-01-31',signed:8,active:6,pilots:2,churned:2},{m:'2026-02',to:'2026-02-28',signed:5,active:5,pilots:0,churned:1},{m:'2026-03',to:'2026-03-12',signed:3,active:1,pilots:2,churned:0}]};
   h=P.gRenderDemos();
-  ck('totals skip an unavailable month and say so',[/<tr class="tot"><td>Total<\/td><td class="big">52<\/td><td class="sub">40<\/td><td class="sub">12<\/td><td class="big">15<\/td><td class="sub">11<\/td><td class="sub">4<\/td>/.test(h),/some months n\/a/.test(h),/show as n\/a/.test(h)],[true,true,true]);
+  ck('Signed Brands here = active + pilots + churned since, per month',/<td>Jan 2026<\/td><td class="big">10<\/td><td class="sub">6<\/td><td class="sub">2<\/td><td class="sub">2<\/td>/.test(h),true);
+  ck('KPI cards: Signed Brands, then Demos Held; no average or month-to-date card',[(h.match(/<div class="kpi[ "]/g)||[]).length,/Signed Brands · 2026<\/div><div class="v">18<\/div>[\s\S]*Demos Held · 2026<\/div><div class="v">52<\/div>/.test(h),/Avg per full month|to date<\/div><div class="v">/.test(h)],[2,true,false]);
+  ck('totals: the year counted once (ytd incl. churned), demos skip an unavailable month and say so',[/<tr class="tot"><td>Total<\/td><td class="big">18<\/td><td class="sub">11<\/td><td class="sub">4<\/td><td class="sub">3<\/td><td class="big">52<\/td><td class="sub">40<\/td><td class="sub">12<\/td>/.test(h),/some months n\/a/.test(h),/show as n\/a/.test(h)],[true,true,true]);
   ck('the current month is marked to date',/<tr class="part"><td>Mar 2026<\/td>/.test(h)&&/runs to 2026-03-12 \(month to date\)/.test(h),true);
-  ck('an unavailable month shows n/a, not 0',/<td>Feb 2026<\/td><td class="big"><span class="na">n\/a<\/span>/.test(h),true);
-  ck('chart has a column per month',(h.match(/class="band"/g)||[]).length,3);
-  ck('averages use complete months only',/over 2 complete months/.test(h),true);
+  ck('an unavailable month shows n/a, not 0',/<td>Feb 2026<\/td><td class="big">6<\/td><td class="sub">5<\/td><td class="sub">0<\/td><td class="sub">1<\/td><td class="big"><span class="na">n\/a<\/span>/.test(h),true);
+  ck('chart has a column per month; Signed bar first',[(h.match(/class="band"/g)||[]).length,/Signed Brands<\/span><span><i style="background:#72A4BF"><\/i>Demos Held/.test(h)],[3,true]);
+  ck('section renamed Signed Brands & Demos',/<span class="sec-t">Signed Brands &amp; Demos<\/span>/.test(h),true);
   P.G.signed=null;P.G.sErr='boom';
   h=P.gRenderDemos();
-  ck('signed request failed: its band, n/a cells',[/Couldn’t load Signed Brands: boom/.test(h),/<td class="big"><span class="na">n\/a<\/span><\/td><td class="sub"><span class="na">n\/a<\/span><\/td><td class="sub"><span class="na">n\/a<\/span><\/td><\/tr>/.test(h)],[true,true]);
-  ck('a column with no month read totals n/a, not 0',/<tr class="tot"><td>Total<\/td><td class="big">52<\/td><td class="sub">40<\/td><td class="sub">12<\/td><td class="big">\u2014<\/td>/.test(h),true);
-  P.G.sErr=null;P.G.signed={months:[{m:'2026-01',to:'2026-01-31',signed:8,active:6,pilots:2}],stale:{error:'Recurly could not be read just now',asOf:'2026-11-24T10:00:00Z'}};
+  ck('signed request failed: its band, n/a cells',[/Couldn’t load Signed Brands: boom/.test(h),/<td>Jan 2026<\/td><td class="big"><span class="na">n\/a<\/span><\/td><td class="sub"><span class="na">n\/a<\/span><\/td>/.test(h)],[true,true]);
+  ck('a column with no month read totals n/a, not 0',/<tr class="tot"><td>Total<\/td><td class="big">—<\/td><td class="sub">—<\/td><td class="sub">—<\/td><td class="sub">—<\/td><td class="big">52<\/td>/.test(h),true);
+  P.G.sErr=null;P.G.signed={today:'2026-03-12',ytd:{signed:1,active:1,pilots:0,churned:0},months:[{m:'2026-01',to:'2026-01-31',signed:8,active:6,pilots:2,churned:0}],stale:{error:'Recurly could not be read just now',asOf:'2026-11-24T10:00:00Z'}};
   h=P.gRenderDemos();
-  ck('a stale signed copy says why; a month the copy lacks is n/a',[/Signed Brands: Recurly could not be read just now/.test(h),/<td>Mar 2026<\/td>.*?<td class="big"><span class="na">n\/a<\/span><\/td><td class="sub">/.test(h)],[true,true]);
-  P.G.signed.today='2026-03-11';P.G.signed.ytd={signed:9,active:9,pilots:0};
-  ck('a year-to-date figure from another day is not used for the Total',/<tr class="tot">.*?<td class="big">\u2014<\/td><td class="sub">\u2014<\/td><td class="sub">\u2014<\/td><\/tr>/.test(P.gRenderDemos()),true);
-  ck('definitions describe the BD Tracker card, not HubSpot deals',/the BD Tracker’s Signed Brands card with the month picked as its range/.test(h)&&!/deals closed won in the month/.test(h),true);
+  ck('a stale signed copy says why; a month the copy lacks is n/a',[/Signed Brands: Recurly could not be read just now/.test(h),/<td>Mar 2026<\/td><td class="big"><span class="na">n\/a<\/span><\/td>/.test(h)],[true,true]);
+  P.G.signed.today='2026-03-11';
+  ck('a year-to-date figure from another day is not used for the Total',/<tr class="tot"><td>Total<\/td><td class="big">—<\/td>/.test(P.gRenderDemos()),true);
+  ck('definitions: churned since included here; active + pilots is the BD Tracker card',/have churned since/.test(h)&&/Active \+ Pilots is the BD Tracker’s Signed Brands card/.test(h),true);
   P.G.err='Growth data unavailable';
   ck('a failed Refresh keeps the numbers on screen and says so',/Refresh failed \(Growth data unavailable\)/.test(P.gRenderDemos())&&/<td>Jan 2026<\/td>/.test(P.gRenderDemos()),true);
   P.G.data=null;P.G.err='boom';

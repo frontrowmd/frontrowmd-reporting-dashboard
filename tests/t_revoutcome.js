@@ -72,10 +72,10 @@ const mkCtx=()=>{
     "const f$=v=>v==null?'—':'$'+Math.round(v).toLocaleString();",
     "const fN=v=>v==null?'—':Math.round(v).toLocaleString();",
     'function _execMode(){return "brand";}',
-    'var _revOutcome=null,_roFail=null;',
+    'var _revOutcome=null,_roFail=null,_sbCard=null,_sbFail=null;',
     fn(cli,'_roKey'),fn(cli,'_roPageKey'),
     fn(cli,'_buildRevenueOutcomeCard'),
-    'Object.assign(globalThis,{_buildRevenueOutcomeCard,_roKey,S,setRO:v=>{_revOutcome=v;},setFail:v=>{_roFail=v;}});',
+    'Object.assign(globalThis,{_buildRevenueOutcomeCard,_roKey,S,setRO:v=>{_revOutcome=v;},setFail:v=>{_roFail=v;},setSB:v=>{_sbCard=v;},setSBFail:v=>{_sbFail=v;}});',
   ].join('\n'),C);
   return C;
 };
@@ -86,11 +86,15 @@ const LIVE={win:'mtd',key:'mtd',
   prior:{mrr:20000,count:9,pilotMrr:0,pilotCount:0},
   priorMonth:{mrr:25000,count:10,pilotMrr:2500,pilotCount:1},pilots:PIL};
 const d0={signedChurnedByCloseCount:2};
+// The BD Tracker card's counts for the window (/api/signed-brands, 2026-11-24).
+const SB={key:'mtd',current:{active:11,pilots:4,signed:15,churned:1},prior:{active:9,pilots:2,signed:11},priorMonth:{active:10,pilots:5,signed:15}};
+const mkCtxSB=()=>{const C=mkCtx();C.setSB(SB);return C;};
 {
-  const C=mkCtx();C.setRO(LIVE);
+  const C=mkCtxSB();C.setRO(LIVE);
   const h=C._buildRevenueOutcomeCard(d0), t=text(h);
   ck('ROAS and the pilot toggle are gone',[/ROAS/.test(h),/roSetPilotMode|aria-pressed/.test(h)],[false,false]);
-  // Side 1 excludes pilots: 30,000 - 6,000 = 24,000 MRR; 12 - 3 + 2 churned add-back = 11 brands.
+  // Side 1 excludes pilots: 30,000 - 6,000 = 24,000 MRR; ACV over 12 - 3 + 2 churned add-back = 11 deals.
+  // Signed Brands is the BD Tracker card's Active Brands (SB.current.active = 11).
   ck('side 1: Signed ARR, MRR, ACV, Signed Brands, all excluding pilots',
      [/Brands excluding pilots/.test(t),/\$288,000/.test(t),/MRR \$24,000/.test(t),/Signed Brands 11/.test(t),/ACV \$2,182/.test(t)],[true,true,true,true,true]);
   ck('  compared against windows without THEIR pilots',[/vs LM[^v]*\+\$18,000/.test(t)],[true]);
@@ -110,10 +114,18 @@ const d0={signedChurnedByCloseCount:2};
   ck('a pilot failure leaves side 1 standing and says so on side 2',[/\$288,000/.test(t),/Pilot figures unavailable/.test(t)],[true,true]);
 }
 { // Combined total and the Recurly fee source (2026-11-17)
-  const C=mkCtx();C.setRO(LIVE);
+  const C=mkCtxSB();C.setRO(LIVE);
   const t=text(C._buildRevenueOutcomeCard(d0));
   ck('a Brands + Pilots total sits after both sides',[t.indexOf('Total Signed ARR')>t.indexOf('Signed Pilot Brands'),/Total Signed ARR \$432,000 prior \S+ \+\$120,000 \S+ LM \S+ -\$18,000/.test(t)],[true,true]);
-  ck('  Total MRR and Total Signed Brands add the pilot side',[/Total MRR \$36,000/.test(t),/Total Signed Brands 15 prior \S+ \+4/.test(t)],[true,true]);
+  ck('  Total MRR adds the pilot side; Total Signed Brands is the BD Tracker card (active + pilots)',[/Total MRR \$36,000/.test(t),/Total Signed Brands 15 prior \S+ \+4/.test(t)],[true,true]);
+  const C3=mkCtx();C3.setRO(LIVE);const t3=text(C3._buildRevenueOutcomeCard(d0));
+  ck('  the three counts say loading until the card\u2019s figures land, never a HubSpot deal count',[/Signed Brands loading…/.test(t3),/Signed Pilot Brands loading…/.test(t3),/Total Signed Brands loading…/.test(t3),/ACV \$2,182/.test(t3)],[true,true,true,true]);
+  C3.setSBFail('mtd');const t4=text(C3._buildRevenueOutcomeCard(d0));
+  ck('  a failed card read is a dash and says so',[/Total Signed Brands —/.test(t4),/unavailable just now/.test(t4)],[true,true]);
+  C3.setSBFail(null);C3.setSB(Object.assign({},SB,{key:'lastMonth'}));
+  ck('  another window\u2019s card figures are never shown',/Total Signed Brands loading…/.test(text(C3._buildRevenueOutcomeCard(d0))),true);
+  C3.setSB(Object.assign({},SB,{warn:'Recurly could not be read'}));
+  ck('  a flagged card read says why',/Recurly could not be read/.test(text(C3._buildRevenueOutcomeCard(d0))),true);
   const C2=mkCtx();C2.setRO(Object.assign({},LIVE,{pilots:Object.assign({},PIL,{feesSource:'recurly',current:Object.assign({},PIL.current,{feesFallback:2})})}));
   const t2=text(C2._buildRevenueOutcomeCard(d0));
   ck('  fees are labelled Recurly net add-ons, with the app fallbacks counted',[/fees from Recurly/.test(t2),/Initiation Fees net add-ons · 2 from app/.test(t2)],[true,true]);
@@ -142,12 +154,13 @@ const d0={signedChurnedByCloseCount:2};
   C2.setRO(Object.assign({},LIVE,{win:'custom',key:C2._roKey('custom','2026-08-01','2026-08-31')}));
   ck('a custom range never shows another custom range\u2019s live figures',/Loading pilot figures/.test(text(C2._buildRevenueOutcomeCard(d0))),true);
   C2.setRO(Object.assign({},LIVE,{win:'custom',key:C2._roKey('custom','2026-09-01','2026-09-30')}));
+  C2.setSB(Object.assign({},SB,{key:C2._roKey('custom','2026-09-01','2026-09-30')}));
   ck('  and does show its own',/Signed Pilot Brands 4/.test(text(C2._buildRevenueOutcomeCard(d0))),true);
 }
 ck('the card asks for its own live figures once per window, whatever page drew it',
    /function _brandKeyMetricsAfter\(d,sfx\)\{[\s\S]*?_roEnsure\(\);\s*\}/.test(cli)&&/if\(\(_revOutcome&&_revOutcome\.key===k\)\|\|_roAsked===k\)return;/.test(cli),true);
 { // A refused HubSpot read (worker sends current:null, hsError) never puts $0 on side 1.
-  const C=mkCtx();
+  const C=mkCtxSB();
   C.setRO(Object.assign({},LIVE,{current:null,prior:null,priorMonth:null,hsError:true}));
   const d={signedChurnedByCloseCount:0,mrrArr:{mrr:{value:30000},dealCount:{value:12},pilot:{cur:{mrr:6000,count:3},prior:{mrr:0,count:0},lm:{mrr:0,count:0}}}};
   const t=text(C._buildRevenueOutcomeCard(d));
@@ -156,6 +169,7 @@ ck('the card asks for its own live figures once per window, whatever page drew i
 ck('the worker drops the brand side when HubSpot refused a read during it',
    /const hsFailed = HS_ERR\.n > _hsErr0;/.test(src)&&/current: hsFailed \? null : tot\(cCW\)/.test(src),true);
 ck('the Executive page Brand mode fetches the live card too',/\|\|\(AP==='exec'&&_execMode\(\)==='brand'\)\)&&typeof fdRevenueOutcome==='function'/.test(cli),true);
+ck('Revenue Outcome fetches the BD Tracker card counts alongside its own live figures',/async function fdRevenueOutcome\(win,from,to,vsFrom,vsTo\)\{\s*fdSignedBrands\(win,from,to,vsFrom,vsTo\);/.test(cli)&&/'\/api\/signed-brands'/.test(cli),true);
 ck('the live fetch keeps the pilot side and re-renders through one function',
    /_revOutcome=\{win:win,key:key,current:d\.current,prior:d\.prior,priorMonth:d\.priorMonth,pilots:d\.pilots\|\|null\};\s*_roRerender\(\);/.test(cli),true);
 // The worker's windowed pilot query.
