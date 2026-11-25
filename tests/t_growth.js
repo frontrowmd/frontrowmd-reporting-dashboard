@@ -25,30 +25,26 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
     fetchWebinarHeldCount=async(t,f,to)=>{HUBSPOT.push('web '+f+'..'+to);return f==='2026-01-01'?3:0;};
 `);
   let g=await run(`buildGrowth({HUBSPOT_TOKEN:'t'})`);
-  ck('one pipeline fetch and one webinar count per month, the current month to today',run('HUBSPOT'),['pipe 2026-01-01..2026-01-31','web 2026-01-01..2026-01-31','pipe 2026-02-01..2026-02-10','web 2026-02-01..2026-02-10']);
-  ck('Jan: held demos excl. pre-launch, churned brands and no-shows, rescheduled in counts, rescheduled out does not; + 3 webinars',[g.months[0].demos,g.months[0].webinars,g.months[0].qd],[2,3,5]);
+  ck('one pipeline fetch per month and no webinar count, the current month to today',run('HUBSPOT'),['pipe 2026-01-01..2026-01-31','pipe 2026-02-01..2026-02-10']);
+  ck('Jan: held demos excl. pre-launch, churned brands and no-shows, rescheduled in counts, rescheduled out does not; webinars not added',[g.months[0].qd,'webinars' in g.months[0]],[2,false]);
   ck('demo months only; the current month marked partial',g.months.map(r=>[r.m,r.partial,'signed' in r]),[['2026-01',false,false],['2026-02',true,false]]);
   ck('a clean build is ok to cache',g.ok,true);
-  run(`fetchWebinarHeldCount=async()=>null;`);
-  g=await run(`buildGrowth({HUBSPOT_TOKEN:'t'})`);
-  ck('a failed webinar count marks the month unavailable, never demo-only, and blocks caching',[g.months[0].demoErr,g.ok],[true,false]);
-  run(`fetchWebinarHeldCount=async()=>1;`);
   // Cache: a clean build is stored; a failed build serves the last good copy.
   const kv={};const env={HUBSPOT_TOKEN:'t',CONTENT_STORE:{get:async(k)=>kv[k]?JSON.parse(kv[k]):null,put:async(k,v)=>{kv[k]=v;}}};
   W.env=env;
   g=await run(`fetchGrowth(env,false)`);
-  ck('a clean build is cached and kept as the last good copy',[!!kv.growth_v2,!!kv.growth_last,!!g.cached],[true,true,false]);
+  ck('a clean build is cached and kept as the last good copy',[!!kv.growth_v3,!!kv.growth_last_v3,!!g.cached],[true,true,false]);
   ck('  the next load is served from cache',!!(await run(`fetchGrowth(env,false)`)).cached,true);
   run(`fetchPipelineDeals=async()=>{throw new Error('HubSpot down');};`);
   g=await run(`fetchGrowth(env,true)`);
   ck('Refresh while HubSpot fails: the last good copy, marked stale',[!!g.stale,/HubSpot down/.test(g.stale&&g.stale.error),g.months.length],[true,true,2]);
   // HubSpot failing does not throw: failed months take the last good copy's figures.
-  run(`fetchPipelineDeals=async()=>[];fetchWebinarHeldCount=async()=>null;`);
+  run(`fetchPipelineDeals=async()=>{const a=[];a.partial=true;return a;};`);
   g=await run(`fetchGrowth(env,true)`);
-  ck('a failed build fills failed months from the last good copy, marked, and does not cache',[g.months[0].qd,!!g.months[0].old,!!(g.stale&&g.stale.partialOnly),g.ok],[3,true,true,false]);
+  ck('a failed build fills failed months from the last good copy, marked, and does not cache',[g.months[0].qd,!!g.months[0].old,!!(g.stale&&g.stale.partialOnly),g.ok],[2,true,true,false]);
   ck('  the current month is filled too only if the copy ran to the same day',g.months[1].demoErr,undefined);
   run(`HS_ERR.n=0;`);
-  run(`fetchPipelineDeals=async()=>{const a=[];a.partial=true;return a;};fetchWebinarHeldCount=async()=>1;`);
+  run(`fetchPipelineDeals=async()=>{const a=[];a.partial=true;return a;};`);
   g=await run(`buildGrowth({HUBSPOT_TOKEN:'t'})`);
   ck('a month whose own deal search came back short is unavailable',[g.months[0].demoErr,g.ok],[true,false]);
   run(`fetchPipelineDeals=async()=>[];noteHsError(502,'another request');`);
@@ -159,19 +155,19 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
   ck('title is Growth Overview, never "investor"',[/<title>FrontrowMD Growth Overview<\/title>/.test(html),/investor/i.test(html)],[true,false]);
   ck('first tab is Signed Brands & Demos',vm.runInContext('G_TABS.map(t=>t.label)',P),['Signed Brands & Demos']);
   P.G.data={asOf:'2026-11-24T12:00:00Z',today:'2026-03-12',months:[
-    {m:'2026-01',to:'2026-01-31',qd:40,demos:30,webinars:10},
-    {m:'2026-02',to:'2026-02-28',qd:0,demos:0,webinars:null,demoErr:true},
-    {m:'2026-03',to:'2026-03-12',partial:true,qd:12,demos:10,webinars:2}]};
+    {m:'2026-01',to:'2026-01-31',qd:40},
+    {m:'2026-02',to:'2026-02-28',qd:0,demoErr:true},
+    {m:'2026-03',to:'2026-03-12',partial:true,qd:12}]};
   P.G.sLoading=true;
   let h=P.gRenderDemos();
-  ck('signed half still loading: its cells say so, never 0, and the demos show',[/Counting Signed Brands/.test(h),/<td>Jan 2026<\/td><td class="big">…<\/td><td class="sub">…<\/td><td class="sub">…<\/td><td class="big">40<\/td><td class="sub">30<\/td><td class="sub">10<\/td>/.test(h)],[true,true]);
+  ck('signed half still loading: its cells say so, never 0, and the demos show',[/Counting Signed Brands/.test(h),/<td>Jan 2026<\/td><td class="big">…<\/td><td class="sub">…<\/td><td class="sub">…<\/td><td class="big">40<\/td><\/tr>/.test(h)],[true,true]);
   ck('  the Signed KPI says loading',/Signed Brands · 2026<\/div><div class="v">—<\/div><div class="d">loading…/.test(h),true);
   P.G.sLoading=false;P.G.signed={asOf:'2026-11-24T12:00:00Z',today:'2026-03-12',ytd:{signed:15,active:11,pilots:4,churned:3},months:[
     {m:'2026-01',to:'2026-01-31',signed:8,active:6,pilots:2,churned:2},{m:'2026-02',to:'2026-02-28',signed:5,active:5,pilots:0,churned:1},{m:'2026-03',to:'2026-03-12',signed:3,active:1,pilots:2,churned:0}]};
   h=P.gRenderDemos();
   ck('Signed Brands = active + pilots (the card); churned brands are not shown or added',[/<td>Jan 2026<\/td><td class="big">8<\/td><td class="sub">6<\/td><td class="sub">2<\/td><td class="big">40<\/td>/.test(h),/Churned/.test(h)],[true,false]);
   ck('KPI cards: Signed Brands, then Demos Held; no average or month-to-date card',[(h.match(/<div class="kpi[ "]/g)||[]).length,/Signed Brands · 2026<\/div><div class="v">15<\/div>[\s\S]*Demos Held · 2026<\/div><div class="v">52<\/div>/.test(h),/Avg per full month|to date<\/div><div class="v">/.test(h)],[2,true,false]);
-  ck('totals: the year counted once (ytd), demos skip an unavailable month and say so',[/<tr class="tot"><td>Total<\/td><td class="big">15<\/td><td class="sub">11<\/td><td class="sub">4<\/td><td class="big">52<\/td><td class="sub">40<\/td><td class="sub">12<\/td>/.test(h),/some months n\/a/.test(h),/show as n\/a/.test(h)],[true,true,true]);
+  ck('totals: the year counted once (ytd), demos skip an unavailable month and say so',[/<tr class="tot"><td>Total<\/td><td class="big">15<\/td><td class="sub">11<\/td><td class="sub">4<\/td><td class="big">52<\/td><\/tr>/.test(h),/some months n\/a/.test(h),/show as n\/a/.test(h)],[true,true,true]);
   ck('the current month is marked to date',/<tr class="part"><td>Mar 2026<\/td>/.test(h)&&/runs to 2026-03-12 \(month to date\)/.test(h),true);
   ck('an unavailable month shows n/a, not 0',/<td>Feb 2026<\/td><td class="big">5<\/td><td class="sub">5<\/td><td class="sub">0<\/td><td class="big"><span class="na">n\/a<\/span>/.test(h),true);
   ck('chart has a column per month; Signed bar first',[(h.match(/class="band"/g)||[]).length,/Signed Brands<\/span><span><i style="background:#72A4BF"><\/i>Demos Held/.test(h)],[3,true]);
@@ -185,6 +181,7 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
   ck('a stale signed copy says why; a month the copy lacks is n/a',[/Signed Brands: Recurly could not be read just now/.test(h),/<td>Mar 2026<\/td><td class="big"><span class="na">n\/a<\/span><\/td>/.test(h)],[true,true]);
   P.G.signed.today='2026-03-11';
   ck('a year-to-date figure from another day is not used for the Total',/<tr class="tot"><td>Total<\/td><td class="big">—<\/td>/.test(P.gRenderDemos()),true);
+  ck('Demos Held has no webinars column or split',[/<th>Webinars<\/th>|webinars<\/span>/.test(h),/Webinars are not counted/.test(h)],[false,true]);
   ck('definitions: the BD Tracker card; churned brands not counted',/the BD Tracker’s Signed Brands card with the month picked as its range/.test(h)&&/has churned since is not counted/.test(h),true);
   P.G.err='Growth data unavailable';
   ck('a failed Refresh keeps the numbers on screen and says so',/Refresh failed \(Growth data unavailable\)/.test(P.gRenderDemos())&&/<td>Jan 2026<\/td>/.test(P.gRenderDemos()),true);

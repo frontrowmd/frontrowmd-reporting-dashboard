@@ -4195,10 +4195,11 @@ async function fetchBdWaterfall(env, fresh) {
 // Month by month from 2026-01 (Alex, 2026-11-24): Qualified Regular Demos and
 // Signed Brands, each EXACTLY as the Brand Dashboard counts them for a window of
 // that one month, so any month here equals that dashboard with the month picked.
-//   Qualified Regular Demos = held demos excl. pre-launch (fetchPipelineDeals ->
-//     filterActiveBrands -> processPipelineDeals.qualifiedRawCount, bucketed on
-//     rescheduled_meeting_date || date_demo_booked) + Webinars Happened by
-//     stage-entry date (fetchWebinarHeldCount), folded by applyWebinarHeld.
+//   Demos Held = held demos excl. pre-launch (fetchPipelineDeals ->
+//     filterActiveBrands -> processPipelineDeals.qualifiedRawCount, no webinar fold; bucketed
+//     on rescheduled_meeting_date || date_demo_booked). Webinars are NOT counted
+//     (Alex, 2026-11-25), so this is the Brand Dashboard's Qualified Regular
+//     Demos less its Webinars Happened.
 //   Signed Brands = the BD Tracker's All Time Summary "Signed Brands" card with
 //     that month picked as its range (Active Brands + Pilot Brands among the
 //     brands signed in it, as they stand today). Built separately, on its own
@@ -4208,8 +4209,8 @@ async function fetchBdWaterfall(env, fresh) {
 // failed is marked err (shown as unavailable), never counted as zero, and a
 // payload with any failure is not cached.
 const GROWTH_FROM = '2026-01';
-const GROWTH_KV = 'growth_v2';
-const GROWTH_LAST = 'growth_last';
+const GROWTH_KV = 'growth_v3';
+const GROWTH_LAST = 'growth_last_v3';
 const GROWTH_TTL_SEC = 1800;
 function growthMonths(today) {
   const out = [];
@@ -4234,13 +4235,10 @@ async function buildGrowth(env) {
   for (const mo of months) {
     const deals = await fetchPipelineDeals(tok, mo.from, mo.to);
     const pl = processPipelineDeals(filterActiveBrands(deals || []), toMsUTC(mo.from), toMsUTC(mo.to, true), toMsET(mo.from), toMsET(mo.to, true), new Set());
-    const web = await fetchWebinarHeldCount(tok, mo.from, mo.to);
-    const pd = { pipeline: pl };
-    applyWebinarHeld(pd, web);
     // Its OWN calls' failures: the page fires /api/growth-signed alongside, and
     // the global HS_ERR counter would let one request's failure mark the other.
-    const err = !!(deals && deals.partial) || web == null;
-    rows.push({ m: mo.m, to: mo.to, partial: mo.partial, qd: pl.qualifiedRawCount || 0, demos: pl.qualifiedDemoOnlyCount || 0, webinars: web == null ? null : web, demoErr: err || undefined });
+    const err = !!(deals && deals.partial);
+    rows.push({ m: mo.m, to: mo.to, partial: mo.partial, qd: pl.qualifiedRawCount || 0, demoErr: err || undefined });
   }
   return { months: rows, asOf: new Date().toISOString(), today, ok: !rows.some(r => r.demoErr) };
 }

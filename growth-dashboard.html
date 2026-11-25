@@ -168,11 +168,11 @@ function gMonths(){
   });
 }
 function gTotals(ms){
-  var t={qd:0,demos:0,webinars:0,signed:null,active:null,pilots:null,qdOk:true,sgOk:true,qdN:0,sgPending:ms.some(function(r){return r.signPending;})};
-  ms.forEach(function(r){if(r.demoErr)t.qdOk=false;else{t.qdN++;t.qd+=r.qd;t.demos+=r.demos;t.webinars+=(r.webinars||0);}
+  var t={qd:0,signed:null,active:null,pilots:null,qdOk:true,sgOk:true,qdN:0,sgPending:ms.some(function(r){return r.signPending;})};
+  ms.forEach(function(r){if(r.demoErr)t.qdOk=false;else{t.qdN++;t.qd+=r.qd;}
     if(r.signErr)t.sgOk=false;});
   // A column with no month read is unavailable, never a total of 0.
-  if(!t.qdN){t.qd=t.demos=t.webinars=null;}
+  if(!t.qdN){t.qd=null;}
   // Signed for the year is counted over Jan 1 to today (the worker's ytd), NOT
   // the months added up: a brand that signed in two months (a pilot fee, then
   // its deal) is one brand. Only when that read is today's.
@@ -203,7 +203,7 @@ function gTip(ev,i){
   var r=G.view&&G.view[i];if(!r)return;var t=document.getElementById('tip');
   t.innerHTML='<b>'+gMon(r.m,true)+(r.partial?' (to date)':'')+'</b><br>'
     +'Signed Brands: <b>'+(r.signPending?'loading…':r.signErr?'unavailable':gN(r.signed))+'</b>'+(r.signed==null?'':'<br><span style="opacity:.75">'+gN(r.active)+' active + '+gN(r.pilots)+' pilots</span>')
-    +'<br>Demos Held: <b>'+(r.demoErr?'unavailable':gN(r.qd))+'</b>'+(r.demoErr?'':'<br><span style="opacity:.75">'+gN(r.demos)+' demos + '+gN(r.webinars)+' webinars</span>');
+    +'<br>Demos Held: <b>'+(r.demoErr?'unavailable':gN(r.qd))+'</b>';
   t.style.display='block';
   var x=ev.clientX+14,y2=ev.clientY+14,w=t.offsetWidth,h=t.offsetHeight;
   if(x+w>window.innerWidth-8)x=ev.clientX-w-14;if(y2+h>window.innerHeight-8)y2=ev.clientY-h-14;
@@ -228,23 +228,23 @@ function gRenderDemos(){
   var cur=ms[ms.length-1];
   h+='<div class="kpis">'
     +'<div class="kpi s"><div class="l">Signed Brands · 2026</div><div class="v">'+gN(t.signed)+'</div><div class="d">'+(t.sgPending?'loading…':t.signed==null?'unavailable':gN(t.active)+' active + '+gN(t.pilots)+' pilots · each brand once')+'</div></div>'
-    +'<div class="kpi"><div class="l">Demos Held · 2026</div><div class="v">'+gN(t.qd)+'</div><div class="d">'+gN(t.demos)+' demos + '+gN(t.webinars)+' webinars'+(t.qdOk?'':' · some months n/a')+'</div></div>'
+    +'<div class="kpi"><div class="l">Demos Held · 2026</div><div class="v">'+gN(t.qd)+'</div><div class="d">'+(t.qdOk?'not pre-launch · no webinars':'some months n/a')+'</div></div>'
     +'</div>';
   h+='<div class="tile"><div class="tile-h"><span class="tile-t">By month</span><span class="leg"><span><i style="background:'+G_SIGN_COL+'"></i>Signed Brands</span><span><i style="background:'+G_DEMO_COL+'"></i>Demos Held</span></span></div>'
     +'<div class="chart">'+gChart(ms)+'</div>'+(cur&&cur.partial?'<div class="note">* '+gMon(cur.m,true)+' runs to '+gEsc(cur.to)+' (month to date), so its bars are lighter.</div>':'')+'</div>';
   h+='<div class="tile"><div class="tile-h"><span class="tile-t">Monthly detail</span><span style="flex:1"></span><button class="btn" onclick="gCsv()">Download CSV</button></div><div class="tbl-w"><table><thead><tr>'
-    +'<th>Month</th><th>Signed Brands</th><th>Active</th><th>Pilots</th><th>Demos Held</th><th>Demos</th><th>Webinars</th></tr></thead><tbody>'
+    +'<th>Month</th><th>Signed Brands</th><th>Active</th><th>Pilots</th><th>Demos Held</th></tr></thead><tbody>'
     +ms.map(function(r){var na='<span class="na">n/a</span>',sn=r.signPending?'…':na,sv=function(k){return r.signed==null?sn:gN(r[k]);},dv=function(k){return r.demoErr?na:gN(r[k]);};
-      return '<tr'+(r.partial?' class="part"':'')+'><td>'+gMon(r.m,true)+(r.old?' †':'')+'</td><td class="big">'+sv('signed')+'</td><td class="sub">'+sv('active')+'</td><td class="sub">'+sv('pilots')+'</td><td class="big">'+dv('qd')+'</td><td class="sub">'+dv('demos')+'</td><td class="sub">'+dv('webinars')+'</td></tr>';}).join('')
-    +'<tr class="tot"><td>Total</td><td class="big">'+gN(t.signed)+'</td><td class="sub">'+gN(t.active)+'</td><td class="sub">'+gN(t.pilots)+'</td><td class="big">'+gN(t.qd)+'</td><td class="sub">'+gN(t.demos)+'</td><td class="sub">'+gN(t.webinars)+'</td></tr>'
+      return '<tr'+(r.partial?' class="part"':'')+'><td>'+gMon(r.m,true)+(r.old?' †':'')+'</td><td class="big">'+sv('signed')+'</td><td class="sub">'+sv('active')+'</td><td class="sub">'+sv('pilots')+'</td><td class="big">'+dv('qd')+'</td></tr>';}).join('')
+    +'<tr class="tot"><td>Total</td><td class="big">'+gN(t.signed)+'</td><td class="sub">'+gN(t.active)+'</td><td class="sub">'+gN(t.pilots)+'</td><td class="big">'+gN(t.qd)+'</td></tr>'
     +'</tbody></table></div>'
     +'<div class="note"><b>Signed Brands</b>: the BD Tracker’s Signed Brands card with the month picked as its range. Of the brands that signed in the month (a pilot when its fee was paid, any other brand by its HubSpot close date), those active today (a live Recurly subscription: billing, trial, starting or paused) plus those running a pilot today (deposit paid, collecting data or live). A brand that has churned since is not counted, so past months can go down. The Total row counts January 1 to today as one range, so a brand that signed in two months counts once and the Total can be less than the months added up.<br>'
-    +'<b>Demos Held</b>: Qualified Regular Demos. Demos that took place in the month (by the meeting date, or the rescheduled date) from brands that are not pre-launch, plus webinars that happened in the month. Same count as the Brand Dashboard’s Qualified Regular Demos for that month.</div></div>';
+    +'<b>Demos Held</b>: demos that took place in the month (by the meeting date, or the rescheduled date) from brands that are not pre-launch. Webinars are not counted, so this is the Brand Dashboard’s Qualified Regular Demos for that month less its webinars.</div></div>';
   return h;
 }
 function gCsv(){
-  if(!G.data)return;var rows=[['Month','Signed Brands','Active','Pilots','Demos Held','Demos','Webinars','Month to date']];
-  gMonths().forEach(function(r){var s=r.signed==null,e=r.demoErr;rows.push([r.m,s?'':r.signed,s?'':r.active,s?'':r.pilots,e?'':r.qd,e?'':r.demos,e?'':r.webinars,r.partial?'yes':'']);});
+  if(!G.data)return;var rows=[['Month','Signed Brands','Active','Pilots','Demos Held','Month to date']];
+  gMonths().forEach(function(r){var s=r.signed==null,e=r.demoErr;rows.push([r.m,s?'':r.signed,s?'':r.active,s?'':r.pilots,e?'':r.qd,r.partial?'yes':'']);});
   var csv=rows.map(function(r){return r.join(',');}).join('\n'),a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='growth-overview-signed-demos.csv';document.body.appendChild(a);a.click();a.remove();
 }
