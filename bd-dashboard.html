@@ -1039,9 +1039,11 @@ var BD_WF_FILTERS=[
   {k:'pkg',l:'Package',of:function(b){return b.pkg||'Not recorded';}},
   {k:'pil',l:'Pilot Status',of:function(b){return b.pil||'No pilot';}},
   {k:'rcs',l:'Recurly State',of:function(b){return _bdWfRcState(b);}},
-  // Web Traffic Tier (Alex, 2026-11-24): Implied Traffic first, Self-Selected when
-  // there is none. Both use the same tier names, so the options match Implied Traffic.
-  {k:'wtt',l:'Web Traffic Tier',of:function(b){var it=b.it&&b.it!=='No traffic data'?b.it:'';var ss=b.ss&&b.ss!=='Not selected'?b.ss:'';return it||ss||'No traffic data';}}
+  // Web Traffic Tier (Alex, 2026-11-24): the first of Implied Traffic, Self-Selected,
+  // Web Tier at Churn, Measured Traffic that has a value. Web Tier at Churn uses the
+  // coarser HubSpot tiers (10-50K, 50-200K, 200K+, Pre-launch); those pass through as-is.
+  {k:'wtt',l:'Web Traffic Tier',of:function(b){var none=/^(no traffic data|not selected|not recorded|none)$/i;
+    var v=[b.it,b.ss,b.wt,b.mt].filter(function(x){return x&&!none.test(String(x).trim());})[0];return v||'No traffic data';}}
 ];
 // Tier order for the traffic dropdowns (a plain numeric sort puts 1M+ second).
 var BD_WF_TIER_ORD=['Pre-launch','0-10K','10K-25K','10-50K','25K-50K','50K-100K','50-200K','100K-200K','200K+','200K-500K','500K+','500K-1M','1M+'];
