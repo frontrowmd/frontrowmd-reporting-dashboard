@@ -4382,6 +4382,23 @@ async function growthShareRevoke(env, k) {
   return { ok: true };
 }
 
+// Growth Overview's Retention Waterfall tab (Alex, 2026-11-25): the BD
+// Tracker's Churn Waterfall rows (fetchBdWaterfall, Metabase card 3565) cut to
+// the fields W2 reads, so no brand names, amounts or deal data leave on a share
+// link. impl false is kept (Never Implemented reads it).
+const GROWTH_WF_FIELDS = ['fm', 'li', 'st', 'impl', 'ty', 'it', 'ss', 'mt', 'wt'];
+function growthWaterfallSlim(d) {
+  const brands = ((d && d.brands) || []).map(b => { const o = {}; GROWTH_WF_FIELDS.forEach(k => { if (b[k] != null && b[k] !== '') o[k] = b[k]; }); return o; });
+  const out = { months: (d && d.months) || [], brands, asOf: (d && d.meta && d.meta.asOf) || null };
+  if (d && d.cached) out.cached = true;
+  if (d && d.stale) out.stale = { asOf: d.stale.asOf || null };
+  return out;
+}
+async function fetchGrowthWaterfall(env, fresh, cacheOnly) {
+  if (cacheOnly) { const c = await growthShareCached(env, BD_WF_KV, BD_WF_LAST, 'waterfall'); if (c) return growthWaterfallSlim(c); }
+  return growthWaterfallSlim(await fetchBdWaterfall(env, !!fresh));
+}
+
 // ── Signed Brands = the BD Tracker card (Alex, 2026-11-24) ────────────────────
 // Used by Growth Overview (per month) and the Brand Dashboard's Revenue Outcome
 // (per window). EXACTLY the BD Tracker's All Time Summary "Signed Brands" card
@@ -13065,12 +13082,21 @@ export default {
 
     // POST /api/g/growth, /api/g/growth-signed → a share link's data: the key in
     // the body, the cached payloads only (fresh is ignored), no sign-in.
-    if (request.method === 'POST' && (url.pathname === '/api/g/growth' || url.pathname === '/api/g/growth-signed')) {
+    if (request.method === 'POST' && (url.pathname === '/api/g/growth' || url.pathname === '/api/g/growth-signed' || url.pathname === '/api/g/growth-waterfall')) {
       let body;
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
       if (!sameOriginRequest(request, url) || !(await growthShareValid(env, body && body.k))) return jr({ error: 'This link is invalid or has been revoked.' }, 401);
-      try { return jr(growthSharePublic(url.pathname === '/api/g/growth' ? await fetchGrowth(env, false, true) : await fetchGrowthSigned(env, false, true))); }
+      try { return jr(growthSharePublic(url.pathname === '/api/g/growth' ? await fetchGrowth(env, false, true) : url.pathname === '/api/g/growth-waterfall' ? await fetchGrowthWaterfall(env, false, true) : await fetchGrowthSigned(env, false, true))); }
       catch (err) { console.error('Growth share endpoint error:', err); return jr({ error: 'Data unavailable right now' }, 502); }
+    }
+
+    // POST /api/growth-waterfall → Growth Overview's Retention Waterfall tab (signed-in).
+    if (request.method === 'POST' && url.pathname === '/api/growth-waterfall') {
+      let body;
+      try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
+      if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
+      try { return jr(await fetchGrowthWaterfall(env, body && body.fresh === true, false)); }
+      catch (err) { console.error('Growth waterfall endpoint error:', err); return jr({ error: 'Retention Waterfall unavailable', detail: String(err && err.message || err).slice(0, 300) }, 502); }
     }
 
     // POST /api/growth-share → make, list or revoke share links (signed-in only).

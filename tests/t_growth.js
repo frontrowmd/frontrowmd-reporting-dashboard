@@ -203,7 +203,7 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
   ck('  revoke: that link stops working at once, the other keeps working',[await run(`growthShareValid(envS,mk)`),await run(`growthShareValid(envS,mk2)`),(await run(`growthShareList(envS)`)).length],[false,true,1]);
   ck('route: GET /g/<key> serves the page, not indexed, referrer same-origin only',/url\.pathname\)\) \{\s*return new Response\(GROWTH_HTML, \{ headers: \{[^}]*'X-Robots-Tag':'noindex, nofollow','Referrer-Policy':'same-origin'/.test(src),true);
   ck('  the page never uses no-referrer (it makes browsers send Origin: null, which the same-origin check rejects)',[/no-referrer/.test(load('growth-dashboard.html')),/<meta name="referrer" content="same-origin">/.test(load('growth-dashboard.html'))],[false,true]);
-  ck('route: /api/g/* checks same origin and the key, and never rebuilds fresh',(()=>{const i=src.indexOf("url.pathname === '/api/g/growth' || url.pathname === '/api/g/growth-signed'");const seg=src.slice(i,i+700);return [i>0,seg.includes('if (!sameOriginRequest(request, url) || !(await growthShareValid(env, body && body.k))) return jr('),seg.includes("growthSharePublic(url.pathname === '/api/g/growth' ? await fetchGrowth(env, false, true) : await fetchGrowthSigned(env, false, true))"),/fresh\s*===\s*true/.test(seg)];})(),[true,true,true,false]);
+  ck('route: /api/g/* checks same origin and the key, and never rebuilds fresh',(()=>{const i=src.indexOf("url.pathname === '/api/g/growth' || url.pathname === '/api/g/growth-signed'");const seg=src.slice(i,i+700);return [i>0,seg.includes('if (!sameOriginRequest(request, url) || !(await growthShareValid(env, body && body.k))) return jr('),seg.includes("growthSharePublic(url.pathname === '/api/g/growth' ? await fetchGrowth(env, false, true) : url.pathname === '/api/g/growth-waterfall' ? await fetchGrowthWaterfall(env, false, true) : await fetchGrowthSigned(env, false, true))"),/fresh\s*===\s*true/.test(seg)];})(),[true,true,true,false]);
   // Cache-only reads for links: an old copy is served, never a rebuild; with none, one rebuild a minute.
   {const kvC={};const envC={HUBSPOT_TOKEN:'t',CONTENT_STORE:{get:async(k,t)=>k in kvC?(t==='json'?JSON.parse(kvC[k]):kvC[k]):null,put:async(k,v)=>{kvC[k]=v;}}};W.envC=envC;
    let builds=0;W.__b=()=>builds++;const keepB=W.buildGrowth;
@@ -226,7 +226,7 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
   const P={console,localStorage:{getItem(){return null;},setItem(){}},document:{getElementById:el,addEventListener(){}},window:{innerWidth:1200,innerHeight:800}};
   vm.createContext(P);vm.runInContext(js,P);
   ck('title is Growth Overview, never "investor"',[/<title>FrontrowMD Growth Overview<\/title>/.test(html),/investor/i.test(html)],[true,false]);
-  ck('first tab is Signed Brands & Demos',vm.runInContext('G_TABS.map(t=>t.label)',P),['Signed Brands & Demos']);
+  ck('tabs: Signed Brands & Demos, then Retention Waterfall',vm.runInContext('G_TABS.map(t=>t.label)',P),['Signed Brands & Demos','Retention Waterfall']);
   P.G.data={asOf:'2026-11-24T12:00:00Z',today:'2026-03-12',months:[
     {m:'2026-01',to:'2026-01-31',qd:40},
     {m:'2026-02',to:'2026-02-28',qd:0,demoErr:true},
@@ -281,5 +281,25 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
    ck('  even a Refresh call in share mode never asks for a rebuild',calls.every(c=>c[1].fresh===false),true);}
   ck('share panel: no note box; a just-made link shows even before the lagging KV listing has it, a revoked one disappears at once',(()=>{vm.runInContext("GS.local={n1:{key:'n1',path:'/g/n1'}};GS.gone={o2:1};",P);const m=vm.runInContext("gShareMerge([{key:'o1',path:'/g/o1'},{key:'o2',path:'/g/o2'}]).map(x=>x.key)",P);vm.runInContext("GS.links=[];",P);vm.runInContext("try{gShareRender()}catch(e){}",P);return [m,/gsNote|placeholder="Note/.test(html)];})(),[['n1','o1'],false]);
   ck('team page still uses /api with fresh on Refresh; Share button present',[vm.runInContext('G_API',P),vm.runInContext('G_SHARE',P),/id="gShareBtn"/.test(html)],['/api',null,true]);
+  // ── Retention Waterfall tab (Alex, 2026-11-25): the Billing W2, plain ──
+  {const {block}=require('./sync-growth-w2.js');const bdh=load('bd-dashboard.html');
+   const gi=html.indexOf('// >>> copied from bd-dashboard.html (W2)'),gj=html.indexOf('// <<< copied from bd-dashboard.html (W2)');
+   const copied=html.slice(html.indexOf('\n',gi)+1,gj).replace(/\n$/,'');
+   ck('waterfall: the W2 code is a verbatim copy of the Billing tab\u2019s (run node tests/sync-growth-w2.js after changing W2)',copied===block(bdh),true);
+   ck('  slim payload: only the fields W2 reads (no names, amounts or deals); false kept',run(`growthWaterfallSlim({months:['2026-01'],brands:[{k:'1',n:'Acme',a:[100],fm:'2026-01',li:'2026-02',st:'Churned',impl:false,ty:'',it:'0-10K',grp:'G'}],meta:{asOf:'t'},stale:{error:'secret',asOf:'s'}})`),
+     {months:['2026-01'],brands:[{fm:'2026-01',li:'2026-02',st:'Churned',impl:false,it:'0-10K'}],asOf:'t',stale:{asOf:'s'}});
+   ck('  route: POST /api/growth-waterfall needs a sign-in; the share route reads cache only',[/url\.pathname === '\/api\/growth-waterfall'\) \{\s*let body;\s*try \{ body = await request\.json\(\); \} catch \{ return jr\(\{ error: 'Invalid JSON' \}, 400\); \}\s*if \(!\(await authed\(\)\)\) return jr/.test(src),/fetchGrowthWaterfall\(env, false, true\)/.test(src)],[true,true]);
+   const M=['2026-01','2026-02','2026-03','2026-04'];
+   P.G.wf={months:M,brands:[{fm:'2026-01',li:'2026-04',st:'Active',impl:true,it:'0-10K'},{fm:'2026-01',li:'2026-02',st:'Churned',impl:true,ty:'Board Defined',it:'No traffic data',ss:'10K-25K'},
+     {fm:'2026-02',li:'2026-04',st:'Active',impl:true,it:'0-10K'},{fm:'2026-02',li:'2026-02',st:'Churned',impl:false,ty:'Never Implemented',it:'0-10K'}]};
+   vm.runInContext("G.tab='wf';",P);let w=P.gRender?(P.gRender(),els.gmain.innerHTML):'';
+   ck('  the tab renders W2: Churn Per Month, tier toggles, traffic columns, CSV; no flags, flagged list or footnote',
+     [/Churn Per Month/.test(w),/>Web Traffic Tier<span/.test(w),/<th class="rw-x"[^>]*>0-10K %<\/th>/.test(w),/bdWfW2Csv\(\)/.test(w),/\u26a0|Flagged brands in this grid|How it is counted/.test(w)],[true,true,true,true,false]);
+   ck('  Jan cohort: 2 brands, 1 at 0-10K of 1 with a value, 1 None; retained 100%, 100%, then 50%',(()=>{const i=w.indexOf('<td class="rw-c">Jan 26</td>');const r=w.slice(i,w.indexOf('</tr>',i));return [...r.matchAll(/<td[^>]*>([^<]*)<\/td>/g)].map(x=>x[1]).slice(1,9);})(),['2','1','100%','1','100%','100%','50.0%','50.0%']);
+   ck('  Never Implemented excluded by default, as on Billing (Feb cohort = 1)',/<td class="rw-c">Feb 26<\/td><td class="rw-n">1<\/td>/.test(w),true);
+   vm.runInContext("bdWfSet('metric','cpm');",P);w=els.gmain.innerHTML;
+   ck('  its controls re-render the Growth page (Churn Per Month picked)',/aria-checked="true"[^>]*>Churn Per Month/.test(w),true);
+   vm.runInContext("bdWfSet('metric','ret');G.tab='demos';",P);
+   ck('  share mode reads the waterfall from the key-checked route',/fetch\(G_API\+'\/growth-waterfall'/.test(html),true);}
   console.log('\n'+pass+' passed, '+fail+' failed');process.exit(fail?1:0);
 })().catch(e=>{console.error(e);process.exit(1);});

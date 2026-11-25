@@ -70,6 +70,21 @@ tr.part td:first-child::after{content:' (to date)';font-weight:400;color:var(--g
 @keyframes spin{to{transform:rotate(360deg)}}
 #tip{position:fixed;z-index:100;pointer-events:none;background:#020F18;color:#fff;border-radius:8px;padding:9px 12px;font-size:12px;line-height:1.5;box-shadow:0 6px 20px rgba(2,15,24,.25);display:none;max-width:260px}
 #tip b{font-family:var(--font-h)}
+
+/* Retention Waterfall: the Billing tab's W2 styles (bd-dashboard.html) */
+.bd-wf-bar{display:flex;align-items:center;gap:10px 14px;flex-wrap:wrap;font-size:11px;color:var(--grey);margin:0 0 4px}
+.bd-wf-btn{font-family:var(--font-b);font-size:11px;font-weight:700;padding:5px 14px;border-radius:50px;border:1.5px solid rgba(23,44,69,.2);background:#fff;color:var(--navy);cursor:pointer}
+.bd-wf-btn:hover{background:rgba(23,44,69,.06)}
+.rwtbl tr[data-ti] .rw-c{cursor:help}
+.rwtbl.bd-wf-rw td{font-size:11px;padding:7px 2px}
+.rwtbl{border-collapse:separate;border-spacing:0;font-size:12.5px;font-variant-numeric:tabular-nums;table-layout:fixed;width:100%}
+.rwtbl th,.rwtbl td{padding:8px 4px;text-align:center;white-space:nowrap;border-bottom:1px solid rgba(23,44,69,.04);border-left:2px solid rgba(255,255,255,.95)}
+.rwtbl thead th{font-size:9.5px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.03em;border-bottom:1.5px solid rgba(23,44,69,.16);padding-bottom:7px;vertical-align:bottom}
+.rwtbl .rw-c{position:sticky;left:0;z-index:2;background:var(--white);text-align:left;padding-left:2px;font-weight:600;color:var(--navy);box-shadow:1px 0 0 rgba(23,44,69,.08)}
+.rwtbl .rw-n{position:sticky;left:78px;z-index:2;background:var(--white);color:var(--grey);font-weight:700;box-shadow:1px 0 0 rgba(23,44,69,.12)}
+.rwtbl tbody tr:hover .rw-c{color:var(--teal)}
+.rwtbl th{background:var(--white)}
+.wf-sec{margin:0}
 @media (max-width:640px){.header-bar,.gnav,.main{padding-left:16px;padding-right:16px}.header-bar .title{font-size:11px}#fts{display:none}}
 </style>
 </head><body>
@@ -112,8 +127,8 @@ function gPct(n,d){return (n==null||!d)?'—':Math.round(n/d*100)+'%';}
 function gMon(m,long){var p=String(m).split('-');return MON[+p[1]-1]+(long?' '+p[0]:' ’'+p[0].slice(2));}
 
 // ── Tabs: more get added here later ──
-var G_TABS=[{id:'demos',label:'Signed Brands & Demos',render:gRenderDemos}];
-function gSetTab(id){G.tab=id;try{localStorage.setItem('g_tab',id);}catch(_){}gRender();}
+var G_TABS=[{id:'demos',label:'Signed Brands & Demos',render:gRenderDemos},{id:'wf',label:'Retention Waterfall',render:gRenderWf}];
+function gSetTab(id){G.tab=id;try{localStorage.setItem('g_tab',id);}catch(_){}if(id==='wf'&&!G.wf&&!G.wfLoading)gFetchWf(false);gRender();}
 function gTabsHtml(){return G_TABS.map(function(t){var on=t.id===G.tab;return '<button class="gtab'+(on?' on':'')+'" role="tab" aria-selected="'+on+'" onclick="gSetTab(\''+t.id+'\')">'+gEsc(t.label)+'</button>';}).join('');}
 function gRender(){
   document.getElementById('gtabs').innerHTML=gTabsHtml();
@@ -151,7 +166,7 @@ function gFetchSigned(fresh){
     G.signed=d;
   }).catch(function(e){if(seq!==G._sSeq)return;G.sLoading=false;G.sErr=String(e&&e.message||e);}).then(function(){if(G.data)gRender();});
 }
-function gRefresh(){G.err=null;G.loading=true;gRender();gFetchSigned(true);gFetch(true).then(gRender).catch(function(e){G.loading=false;G.err=String(e&&e.message||e);gRender();});}
+function gRefresh(){G.err=null;G.loading=true;if(G.wf||G.wfErr)gFetchWf(true);gRender();gFetchSigned(true);gFetch(true).then(gRender).catch(function(e){G.loading=false;G.err=String(e&&e.message||e);gRender();});}
 // ── Share links (signed-in teammates only) ──
 var GS={links:null,err:null,busy:false,made:null,copied:false};
 function gSharePost(b){return fetch('/api/growth-share',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(function(r){return r.json().catch(function(){return {error:'HTTP '+r.status};}).then(function(d){if(!r.ok&&!d.error)d.error='HTTP '+r.status;return d;});});}
@@ -205,12 +220,302 @@ function gShareRender(){
   }).join('');
   document.getElementById('gsbox').innerHTML=h;
 }
+// ── Tab 2: Retention Waterfall (Alex, 2026-11-25) ──
+// The Billing tab's W2 grid, the same code (copied below), without its
+// abnormality flags, flagged-brands list or footnote. Data: the BD Tracker's
+// Churn Waterfall (Metabase card 3565), slimmed by the worker to the fields the
+// grid reads (no brand names). Defaults as on Billing with no filters set:
+// Pilots included, Never Implemented excluded.
+G.wf=null;G.wfLoading=false;G.wfErr=null;
+function renderBD(){gRender();}          // the copied W2 controls re-render through this
+function bdWfTip(){}function bdWfTipOff(){}
+var _bdWfTips=[];
+function gFetchWf(fresh){
+  var seq=G._wSeq=(G._wSeq||0)+1;G.wfLoading=true;G.wfErr=null;
+  return fetch(G_API+'/growth-waterfall',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fresh:!!fresh&&!G_SHARE,k:G_SHARE||undefined})}).then(function(r){
+    return r.json().catch(function(){return {error:'HTTP '+r.status};});
+  }).then(function(d){
+    if(seq!==G._wSeq)return;G.wfLoading=false;
+    if(!d||d.error||!d.brands||!d.months){G.wfErr=(d&&(d.detail||d.error))||'No data came back';return;}
+    G.wf=d;
+  }).catch(function(e){if(seq!==G._wSeq)return;G.wfLoading=false;G.wfErr=String(e&&e.message||e);}).then(function(){if(G.tab==='wf'&&G.data)gRender();});
+}
+function gRenderWf(){
+  var w=G.wf;
+  var head=function(n,id,title,sub){return '<section class="wf-sec" id="'+id+'"><div class="sec-head"><span class="sec-t">'+title+'</span><span class="sec-s">'+sub+'</span></div>';};
+  if(!w){
+    if(G.wfErr)return head('','g-wf','Retention Waterfall','')+'<div class="band-msg band-err">Couldn’t load the Retention Waterfall: '+gEsc(G.wfErr)+'. Try again shortly.</div></section>';
+    return head('','g-wf','Retention Waterfall','')+'<div class="load"><span class="sp"></span>Loading the Retention Waterfall… this can take a minute.</div></section>';
+  }
+  var months=w.months,now=months[months.length-1],h='';
+  if(G.wfLoading)h+='<div class="load" style="padding:0 0 14px;justify-content:flex-start"><span class="sp"></span>Refreshing…</div>';
+  if(G.wfErr)h+='<div class="band-msg band-err">Refresh failed ('+gEsc(G.wfErr)+'), so this is the grid from before.</div>';
+  if(w.stale)h+='<div class="band-msg">The billing data didn’t answer just now, so this is the last good copy, from '+gEsc(w.stale.asOf?new Date(w.stale.asOf).toLocaleString():'earlier')+'.</div>';
+  return h+_bdWfW2Section(w.brands,months,now,{plain:true,head:head});
+}
+// >>> copied from bd-dashboard.html (W2) — node tests/sync-growth-w2.js
+var _bdWfPil='incl',_bdWfNI='excl',_bdWfMode='pct',_bdWfMetric='ret',_bdWfFrom='all';
+var _bdWfW2Tier=[];
+var _bdWfW2TierOpts=[];
+var _bdWfQ='',_bdWfSort='first',_bdWfShow=100,_bdWfQT=null;
+var BD_WF_PAGE=100;
+var BD_WF_W_LBL=78,BD_WF_W_N=58,BD_WF_W_CELL=50,BD_WF_W_X=54;
+var BD_WF_CPM_MAX=0.20;   // Churn Per Month colour scale: darkest red at 20%+ lost in a month
+var BD_WF_NEUTRAL=0.65,BD_WF_LOW=0.30,BD_WF_BLEND_MIN=30,BD_WF_BLEND_MIN_COHORTS=2;
+var BD_WF_MN=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+var BD_WF_TIER_ORD=['Pre-launch','0-10K','10K-25K','10-50K','25K-50K','50K-100K','50-200K','100K-200K','200K+','200K-500K','500K+','500K-1M','1M+'];
+var BD_WF_STOPS=[[0.30,[244,163,163]],[0.55,[251,227,142]],[0.85,[167,221,184]],[1.00,[111,199,147]]];
+var _bdWfW2Out=null;
+var _bdWfCols='default';   // W1: 'default' (7 columns, the rest collapsed) or 'all' (Alex, 2026-11-24)
+var BD_WF_FILTERS=[
+  {k:'src',l:'Source',of:function(b){return b.src||'Not recorded';}},
+  {k:'grp',l:'Group',of:function(b){return b.grp||'No group';}},
+  {k:'st',l:'Churn Status',of:function(b){return b.st||'Not recorded';}},
+  {k:'stage',l:'HubSpot Stage',of:function(b){return b.stage||'No deal';}},
+  {k:'chSrc',l:'Churn Source',of:function(b){return b.chSrc||'Not churned';}},
+  {k:'impl',l:'Ever Implemented',of:function(b){return b.impl?'Yes':'No';}},
+  {k:'paid',l:'Ever Paid',of:function(b){return b.paid?'Yes':'No';}},
+  {k:'ty',l:'Churn Type',of:function(b){return b.ty||'Not recorded';}},
+  {k:'seg',l:'Company Segment',of:function(b){return b.seg||'Not recorded';}},
+  {k:'ab',l:'A/B Test',of:function(b){return b.ab||'Not recorded';}},
+  {k:'wt',l:'Web Tier at Churn',of:function(b){return b.wt||'Not recorded';}},
+  {k:'wts',l:'Web Tier Source',of:function(b){return b.wts||'None';}},
+  {k:'ss',l:'Self-selected Traffic',of:function(b){return b.ss||'Not selected';}},
+  {k:'it',l:'Implied Traffic',of:function(b){return b.it||'No traffic data';}},
+  {k:'mt',l:'Measured Traffic',of:function(b){return b.mt||'No traffic data';}},
+  {k:'pkg',l:'Package',of:function(b){return b.pkg||'Not recorded';}},
+  {k:'pil',l:'Pilot Status',of:function(b){return b.pil||'No pilot';}},
+  {k:'rcs',l:'Recurly State',of:function(b){return _bdWfRcState(b);}},
+  // Web Traffic Tier (Alex, 2026-11-24): the first of Implied Traffic, Self-Selected,
+  // Measured Traffic, Web Tier at Churn that has a value. Web Tier at Churn uses the
+  // coarser HubSpot tiers (10-50K, 50-200K, 200K+, Pre-launch); those pass through as-is.
+  {k:'wtt',l:'Web Traffic Tier',of:function(b){var none=/^(no traffic data|not selected|not recorded|none)$/i;
+    var v=[b.it,b.ss,b.mt,b.wt].filter(function(x){return x&&!none.test(String(x).trim());})[0];return v||'No traffic data';}}
+];
+function _bdEsc(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function _bdWfDiff(a,b){if(!a||!b)return null;return (+b.slice(0,4)-+a.slice(0,4))*12+(+b.slice(5,7)-+a.slice(5,7));}
+function _bdWfAdd(m,n){var y=+m.slice(0,4),mo=+m.slice(5,7)-1+n;y+=Math.floor(mo/12);mo=((mo%12)+12)%12;return y+'-'+('0'+(mo+1)).slice(-2);}
+function _bdWfLbl(m){return m?BD_WF_MN[+m.slice(5,7)-1]+' '+m.slice(2,4):'';}
+function _bdWfChurned(b){return !/^active/i.test(b.st||'');}
+function _bdWfChurnMonth(b){
+  if(!_bdWfChurned(b))return '';
+  var m=b.li||b.fm;
+  return (b.fm&&m<b.fm)?b.fm:m;
+}
+function _bdWfIsNI(b){
+  if(b.impl===false)return true;
+  return _bdWfChurned(b)&&b.ty==='Never Implemented';
+}
+function _bdWfItNone(b){return !b.it||/^(no traffic data|none|not recorded|not selected)$/i.test(String(b.it).trim());}
+function _bdWfIt10k(b){return !_bdWfItNone(b)&&/^0\s*-\s*10K/i.test(String(b.it).trim());}
+function _bdWfCohorts(list,from,now){
+  var byM={};
+  list.forEach(function(b){if(b.fm&&b.fm>=from&&b.fm<=now)(byM[b.fm]=byM[b.fm]||[]).push(b);});
+  var cohorts=[],m=from,guard=0;
+  while(m<=now&&guard++<400){
+    var pool=byM[m]||[],maxK=_bdWfDiff(m,now)+1,cells=[];
+    for(var k=1;k<=maxK;k++){
+      var alive=0;
+      pool.forEach(function(b){var c=_bdWfChurnMonth(b);if(!c||_bdWfDiff(b.fm,c)>=k-1)alive++;});
+      // prev: active the month before (Month 1: the whole cohort); lostM: lost IN
+      // this month; mPct: the month's churn rate, lostM of prev (Churn Per Month).
+      var prev=k===1?pool.length:cells[k-2].alive;
+      cells.push({k:k,alive:alive,lost:pool.length-alive,pct:pool.length?alive/pool.length:null,prev:prev,lostM:prev-alive,mPct:prev?(prev-alive)/prev:null});
+    }
+    var k10=pool.filter(_bdWfIt10k).length,none=pool.filter(_bdWfItNone).length;
+    cohorts.push({m:m,n:pool.length,cells:cells,k10:k10,none:none});
+    m=_bdWfAdd(m,1);
+  }
+  var blend=[],wide=_bdWfDiff(from,now)+1;
+  for(var k=1;k<=wide;k++){
+    var a=0,d=0,c=0,pv=0;
+    cohorts.forEach(function(co){if(co.cells.length>=k&&co.n){a+=co.cells[k-1].alive;pv+=co.cells[k-1].prev;d+=co.n;c++;}});
+    blend.push({k:k,alive:a,n:d,cohorts:c,pct:d?a/d:null,prev:pv,lostM:pv-a,mPct:pv?(pv-a)/pv:null});
+  }
+  return {cohorts:cohorts,maxK:wide,blend:blend};
+}
+function _bdWfFill(pct){
+  if(pct===null||pct===undefined)return '';
+  var S=BD_WF_STOPS,p=Math.max(S[0][0],Math.min(1,pct));
+  for(var i=1;i<S.length;i++)if(p<=S[i][0]){var a=S[i-1],b=S[i],t=(p-a[0])/(b[0]-a[0]);
+    return 'rgb('+[0,1,2].map(function(j){return Math.round(a[1][j]+(b[1][j]-a[1][j])*t);}).join(',')+')';}
+  return 'rgb('+S[S.length-1][1].join(',')+')';
+}
+function _bdWfPill(cur,v,label,which,tip){
+  var on=cur===v;
+  return '<span role="radio" aria-checked="'+on+'" tabindex="0"'+(tip?' title="'+_bdEsc(tip)+'"':'')+' onclick="bdWfSet(\''+which+'\',\''+v+'\')" style="cursor:pointer;padding:4px 13px;border-radius:50px;font-size:11px;font-weight:700;font-family:var(--font-h);'
+    +(on?'background:var(--navy);color:#fff;':'background:transparent;color:var(--grey);')+'">'+label+'</span>';
+}
+function _bdWfSeg(label,inner){return '<span style="display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em">'+label
+  +'<span style="display:inline-flex;background:rgba(23,44,69,.06);border-radius:50px;padding:2px;gap:2px;text-transform:none;letter-spacing:0">'+inner+'</span></span>';}
+function _bdWfXCells(n,k10,none,st){
+  var d=n-none,sty=' style="color:var(--navy);font-weight:600;'+(st||'')+'"';
+  if(!n)return '<td class="rw-x"'+sty+'></td><td class="rw-x"'+sty+'></td><td class="rw-x"'+sty+'></td>';
+  return '<td class="rw-x"'+sty+'>'+k10+'</td><td class="rw-x"'+sty+' title="'+k10+' of '+d+' brands with an Implied Traffic value">'+(d?Math.round(k10/d*100)+'%':'—')+'</td><td class="rw-x"'+sty+'>'+none+'</td>';
+}
+function _bdWfW2Section(list,months,now,opt){
+  opt=opt||{};var plain=!!opt.plain,h='';
+  // Complete months only: brands added from this month's Recurly data (b.x) stay out.
+  var gl0=list.filter(function(b){return !b.x&&(_bdWfNI!=='excl'||!_bdWfIsNI(b));});
+  var wttF=BD_WF_FILTERS.filter(function(f){return f.k==='wtt';})[0];
+  var gl=_bdWfW2Tier.length?gl0.filter(function(b){return _bdWfW2Tier.indexOf(wttF.of(b))>=0;}):gl0;
+  var first=months[0];gl.forEach(function(b){if(b.fm&&b.fm<first)first=b.fm;});
+  var from=_bdWfFrom==='all'?first:(_bdWfFrom+'-01'>first?_bdWfFrom+'-01':first);
+  if(from>now)from=now;   // a picked year past the data would make the grid width negative
+  // Counted inside the plotted window only, as C3 does (a book-wide count overstated it).
+  var niOut=_bdWfNI==='excl'?list.filter(function(b){return _bdWfIsNI(b)&&b.fm&&b.fm>=from&&b.fm<=now&&(!_bdWfW2Tier.length||_bdWfW2Tier.indexOf(wttF.of(b))>=0);}).length:0;
+  var rw=_bdWfCohorts(gl,from,now),churnView=_bdWfMetric==='churn',cpmView=_bdWfMetric==='cpm';
+  var pct=function(p){return p===null?'':(Math.round(p*1000)/10).toFixed(p>=0.999||p<=0.001?0:1)+'%';};
+  // c: a cell ({alive,lost,pct,lostM,mPct}). Churn Per Month: the brands lost IN
+  // that month, as a share of those still active the month before.
+  var cellVal=function(c){
+    if(cpmView)return _bdWfMode==='n'?(c.lostM?'−'+c.lostM:'0'):pct(c.mPct);
+    if(_bdWfMode==='n')return churnView?(c.lost?'−'+c.lost:'0'):String(c.alive);return churnView?pct(1-c.pct):pct(c.pct);};
+  // Monthly churn is small, so it gets its own scale: 0% green, 10% yellow, 20%+ darkest red.
+  // W2's CSV exports exactly this grid (metric, % / Brands, filters and toggles), no flags.
+  _bdWfW2Out={rw:rw,cellVal:cellVal,metric:_bdWfMetric,mode:_bdWfMode};
+  var cellFill=function(c){if(!cpmView)return _bdWfFill(c.pct);return c.mPct==null?'':_bdWfFill(1-Math.min(c.mPct/BD_WF_CPM_MAX,1)*(1-BD_WF_LOW));};
+  var years=[];months.forEach(function(m){var y=m.slice(0,4);if(years.indexOf(y)<0)years.push(y);});
+  h+=opt.head('W2','bd-sec-wf2','Retention Waterfall',(cpmView?'Share of each first-invoice month’s brands, still active the month before, that churned in each month since':'Share of each first-invoice month’s brands '+(churnView?'that had churned by':'still active in')+' each month since')
+    +', Month 1 being the first invoice itself. A churned brand counts through its last invoiced month and is lost from the month after. Read DOWN a column to compare cohorts at the same age.');
+  h+='<div class="tile" style="padding:16px 18px 12px"><div class="bd-wf-bar" style="margin:0 0 12px">'
+    +_bdWfSeg('Show',_bdWfPill(_bdWfMode,'pct','%','mode')+_bdWfPill(_bdWfMode,'n','Brands','mode'))
+    +_bdWfSeg('Metric',_bdWfPill(_bdWfMetric,'ret','Retention','metric')+_bdWfPill(_bdWfMetric,'cpm','Churn Per Month','metric','Brands lost in each month, of those still active the month before')+_bdWfPill(_bdWfMetric,'churn','Churn','metric'))
+    +_bdWfSeg('Never Implemented',_bdWfPill(_bdWfNI,'incl','Included','ni','Churned brands that never launched stay in their cohorts')
+      +_bdWfPill(_bdWfNI,'excl','Excluded','ni','Leave out churned brands with a Never Implemented churn type, or no churn type and a widget that never went live'))
+    +_bdWfSeg('Cohorts from',_bdWfPill(_bdWfFrom,'all','All','from')+years.map(function(y){return _bdWfPill(_bdWfFrom,y,y,'from');}).join(''))
+    +(cpmView?'<span style="display:inline-flex;align-items:center;gap:6px;font-size:10px;color:var(--grey);margin-left:auto">0%'
+      +'<span style="width:150px;height:10px;border-radius:3px;border:1px solid rgba(23,44,69,.08);background:linear-gradient(90deg,'+[1,0.85,0.55,0.30].map(function(v){return _bdWfFill(v);}).join(',')+')"></span>'
+      +'\u2265'+Math.round(BD_WF_CPM_MAX*100)+'% <span style="opacity:.75">(yellow at '+Math.round(BD_WF_CPM_MAX*100*(1-0.55)/(1-BD_WF_LOW))+'%)</span></span>'
+    :'<span style="display:inline-flex;align-items:center;gap:6px;font-size:10px;color:var(--grey);margin-left:auto">'+(churnView?'\u226570%':'\u226430%')
+    +'<span style="width:150px;height:10px;border-radius:3px;border:1px solid rgba(23,44,69,.08);background:linear-gradient(90deg,'+(churnView?[1,0.85,0.55,0.30]:[0.30,0.55,0.85,1]).map(function(v){return _bdWfFill(v);}).join(',')+')"></span>'
+    +(churnView?'0%':'100%')+' <span style="opacity:.75">(yellow at '+(churnView?'45%':'55%')+')</span></span>')+'</div>';
+  // Row 2: Web Traffic Tier, toggles (any ticked tier), counted over the W2 brands.
+  // Counted inside the plotted window (independent of the ticks), so a chip's count is what ticking it shows.
+  var first0=months[0];gl0.forEach(function(b){if(b.fm&&b.fm<first0)first0=b.fm;});
+  var from0=_bdWfFrom==='all'?first0:(_bdWfFrom+'-01'>first0?_bdWfFrom+'-01':first0);if(from0>now)from0=now;
+  var tierN={};gl0.forEach(function(b){if(!b.fm||b.fm<from0||b.fm>now)return;var t=wttF.of(b);tierN[t]=(tierN[t]||0)+1;});
+  var tierOrd=function(t){var i=BD_WF_TIER_ORD.indexOf(t);return i<0?(t==='No traffic data'?999:500):i;};
+  var tiers=Object.keys(tierN).sort(function(a,b){return tierOrd(a)-tierOrd(b)||a.localeCompare(b);});
+  _bdWfW2Tier.forEach(function(t){if(tiers.indexOf(t)<0){tiers.push(t);tierN[t]=0;}});   // a ticked tier stays visible to untick
+  _bdWfW2TierOpts=tiers;
+  h+='<div class="bd-wf-bar" style="margin:0 0 12px"><span style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em">Web Traffic Tier'
+    +'<span style="display:inline-flex;flex-wrap:wrap;gap:4px;text-transform:none;letter-spacing:0">'
+    +tiers.map(function(t,ti){var on=_bdWfW2Tier.indexOf(t)>=0;
+      return '<span role="checkbox" aria-checked="'+on+'" tabindex="0" onclick="bdWfW2TierAt('+ti+')" style="cursor:pointer;padding:4px 11px;border-radius:50px;font-size:11px;font-weight:700;font-family:var(--font-h);border:1.5px solid '+(on?'var(--navy)':'rgba(23,44,69,.14)')+';'
+        +(on?'background:var(--navy);color:#fff;':'background:transparent;color:var(--grey);')+'">'+_bdEsc(t)+' <span style="opacity:.6;font-weight:600">'+tierN[t]+'</span></span>';}).join('')
+    +(_bdWfW2Tier.length?'<span onclick="bdWfW2TierClear()" style="cursor:pointer;padding:4px 8px;font-size:11px;color:var(--teal);font-weight:600">Clear</span>':'')
+    +'</span></span><button class="bd-wf-btn" style="margin-left:auto" onclick="bdWfW2Csv()">Download CSV</button></div>';
+  var W=rw.maxK,minW=BD_WF_W_LBL+BD_WF_W_N+BD_WF_W_X*3+BD_WF_W_CELL*W;
+  // Cohort rows whose retention a flagged brand distorts: active brands not
+  // invoiced lately keep the row high; a long gap hides a churn and a return.
+  var coFl={};
+  if(!plain)gl.forEach(function(b){(b._fl||[]).forEach(function(f){if(f.id==='active-not-billed'||f.id==='long-gap'||f.id==='status-conflict'){var c=coFl[b.fm]=coFl[b.fm]||{};(c[f.id]=c[f.id]||[]).push(b.n||b.k);}});});
+  var g='<div style="overflow-x:auto" onmousemove="bdWfTip(event)" onmouseleave="bdWfTipOff()"><table class="rwtbl bd-wf-rw" style="width:100%;min-width:'+minW+'px"><colgroup><col style="width:'+BD_WF_W_LBL+'px"><col style="width:'+BD_WF_W_N+'px">'+('<col style="width:'+BD_WF_W_X+'px">').repeat(3)+new Array(W+1).join('<col>')+'</colgroup>'
+    +'<thead><tr><th class="rw-c" style="text-align:left">Cohort</th><th class="rw-n" title="Brands whose first invoice was in this month — the denominator for the row">Brands</th>'
+    +'<th class="rw-x" title="Brands in the cohort whose Implied Traffic is 0-10K">0-10K</th><th class="rw-x" title="0-10K brands as a share of the cohort’s brands that have an Implied Traffic value (None left out)">0-10K %</th><th class="rw-x" title="Brands in the cohort with no Implied Traffic value">None</th>';
+  for(var k=1;k<=W;k++)g+='<th>'+k+'</th>';
+  g+='</tr></thead><tbody>';
+  rw.cohorts.forEach(function(co){
+    var cf=coFl[co.m],ci='',items=[];
+    if(cf&&co.n){
+      var nm=function(xs){return xs.slice(0,5).join(', ')+(xs.length>5?' and '+(xs.length-5)+' more':'');};
+      if(cf['active-not-billed'])items.push({sev:'high',title:cf['active-not-billed'].length+' active brand'+(cf['active-not-billed'].length===1?'':'s')+' not invoiced in 2+ months',why:'Counted as retained in every month although billing stopped ('+nm(cf['active-not-billed'])+'). If they really churned, this row\u2019s later months are overstated.'});
+      if(cf['long-gap'])items.push({sev:'high',title:cf['long-gap'].length+' brand'+(cf['long-gap'].length===1?'':'s')+' with a 4+ month billing gap',why:'Billing stopped for months and then restarted ('+nm(cf['long-gap'])+'). Each counts as retained throughout; a churn and a return would lower this row in the gap months.'});
+      if(cf['status-conflict'])items.push({sev:'med',title:cf['status-conflict'].length+' brand'+(cf['status-conflict'].length===1?'':'s')+' active here, but not in HubSpot',why:'HubSpot shows a different stage or a churn type ('+nm(cf['status-conflict'])+').'});
+      // Only where it could move the row: affected brands are 5%+ of the cohort
+      // (high at 10%+). One stale brand in a 60-brand cohort shifts no cell much.
+      var aff={};Object.keys(cf).forEach(function(k){cf[k].forEach(function(n){aff[n]=1;});});
+      var share=Object.keys(aff).length/co.n;
+      if(share<0.05)items=[];
+      else{items.forEach(function(it){if(it.sev==='high'&&share<0.10)it.sev='med';});
+        items.sort(function(x,y){return BD_WF_FLAG_SEV[y.sev]-BD_WF_FLAG_SEV[x.sev];});
+        ci=' data-ti="'+_bdWfTips.length+'"';_bdWfTips.push(_bdWfCard(_bdWfLbl(co.m)+' cohort',co.n+' brands \u00b7 '+Object.keys(aff).length+' ('+Math.round(share*100)+'%) may be miscounted',items));}
+    }
+    g+='<tr'+ci+(items.length?' class="fl-'+items[0].sev+'"':'')+'><td class="rw-c">'+(items.length?'<span class="bd-wf-flag '+items[0].sev+'">\u26a0</span>':'')+_bdWfLbl(co.m)+'</td><td class="rw-n">'+(co.n||'\u00b7')+'</td>'+_bdWfXCells(co.n,co.k10,co.none);
+    for(var k=1;k<=W;k++){
+      var c=co.cells[k-1];
+      if(!c||!co.n){g+='<td></td>';continue;}
+      var f=cellFill(c);
+      g+='<td title="'+_bdEsc(_bdWfLbl(co.m)+' cohort · Month '+c.k+' ('+_bdWfLbl(_bdWfAdd(co.m,c.k-1))+'): '+c.alive+' of '+co.n+' still active ('+pct(c.pct)+') · '+c.lost+' churned'+(cpmView?' · '+c.lostM+' lost this month, of '+c.prev+' active the month before ('+pct(c.mPct)+')':''))+'" style="'+(f?'background:'+f+';':'')
+        +'color:var(--navy);font-weight:'+(cpmView?'600':(c.pct>=0.999||c.pct<=BD_WF_LOW?'700':'600'))+'">'+cellVal(c)+'</td>';
+    }
+    g+='</tr>';
+  });
+  if(rw.blend.length){
+    var bt='border-top:1.5px solid rgba(23,44,69,.14);';
+    var tk10=0,tnone=0;rw.cohorts.forEach(function(co){tk10+=co.k10;tnone+=co.none;});
+    g+='<tr><td class="rw-c" style="'+bt+'font-style:italic">All cohorts</td><td class="rw-n" style="'+bt+'">'+rw.blend[0].n+'</td>'+_bdWfXCells(rw.blend[0].n,tk10,tnone,bt);
+    rw.blend.forEach(function(b){
+      var thin=(b.pct===null||b.n<BD_WF_BLEND_MIN||b.cohorts<BD_WF_BLEND_MIN_COHORTS),f=thin?'':cellFill(b);
+      g+='<td style="'+bt+(f?'background:'+f+';':'')+'color:var(--navy);font-weight:700" title="'+_bdEsc('Month '+b.k+' — '+(b.pct===null?'no cohort has reached this month yet'
+        :b.alive+' of '+b.n+' across the '+b.cohorts+(b.cohorts===1?' cohort that has':' cohorts that have')+' reached it ('+pct(b.pct)+')'+(cpmView?' · '+b.lostM+' lost this month, of '+b.prev+' active the month before ('+pct(b.mPct)+')':'')+(thin?' — too few to blend, so not shown':'')))+'">'
+        +(thin?'':cellVal({alive:b.alive,lost:b.n-b.alive,pct:b.pct,lostM:b.lostM,mPct:b.mPct}))+'</td>';
+    });
+    g+='</tr>';
+  }
+  g+='</tbody></table></div>';
+  h+=g;
+  if(plain)return h+'</div></section>';
+  h+=_bdWfW2Flagged(gl,from,now);
+  h+='<div style="font-size:10px;color:var(--grey);margin-top:14px;font-style:italic;line-height:1.6">'
+    +'<strong style="color:var(--navy)">How it is counted.</strong> Rows are the month of each brand’s first invoice above $0, in Recurly or bill.com; pilot brands start at their Pilot Initiation Fee invoice'
+    +(_bdWfPil==='excl'?' (pilots with no plan bill yet are excluded by the Pilots switch above)':'')+'. '
+    +'A brand is churned when Metabase marks it Churned or Paused (HubSpot’s stage, else an ended Recurly subscription or a discarded app brand), and its churn date is the last month it was invoiced — not HubSpot’s Pause/Churn Date, which the brand’s tooltip in W1 still shows. '
+    +'Active brands count as retained in every month, even when an invoice is missing'+(opt.stale?' ('+opt.stale+' active brand'+(opt.stale===1?' has':'s have')+' not been invoiced in the last two complete months)':'')+'. '
+    +(_bdWfNI==='excl'?niOut+' Never Implemented churn'+(niOut===1?' is':'s are')+' left out. ':'')
+    +'Complete months only, through '+_bdWfLbl(now)+': brands first invoiced this month appear next month. The All cohorts row blends every cohort that has reached each month, with its own denominator; under '
+    +BD_WF_BLEND_MIN+' brands or '+BD_WF_BLEND_MIN_COHORTS+' cohorts it is left blank. Filters above narrow both W1 and this grid; the Web Traffic Tier toggles narrow this grid only. Churn Per Month is the brands lost in each month out of those still active the month before. The 0-10K and None columns read Implied Traffic; 0-10K % leaves None out of its denominator.</div></div></section>';
+  return h;
+}
+function _bdWfW2Rows(){
+  var o=_bdWfW2Out;if(!o||!o.rw)return null;
+  var rw=o.rw,W=rw.maxK,num=function(v){return String(v).replace(/\u2212/g,'-');};
+  var pctOf=function(n,k10,none){var d=n-none;return n&&d?Math.round(k10/d*100)+'%':'';};
+  var rows=[['Cohort','Brands','0-10K','0-10K %','None'].concat(Array.from({length:W},function(_,i){return 'Month '+(i+1);}))];
+  rw.cohorts.forEach(function(co){
+    var r=[co.m,co.n,co.n?co.k10:'',pctOf(co.n,co.k10,co.none),co.n?co.none:''];
+    for(var k=1;k<=W;k++){var c=co.cells[k-1];r.push(c&&co.n?num(o.cellVal(c)):'');}
+    rows.push(r);
+  });
+  if(rw.blend.length){
+    var tk=0,tn=0;rw.cohorts.forEach(function(co){tk+=co.k10;tn+=co.none;});
+    var n=rw.blend[0].n,r=['All cohorts',n,tk,pctOf(n,tk,tn),tn];
+    rw.blend.forEach(function(b){var thin=(b.pct===null||b.n<BD_WF_BLEND_MIN||b.cohorts<BD_WF_BLEND_MIN_COHORTS);
+      r.push(thin?'':num(o.cellVal({alive:b.alive,lost:b.n-b.alive,pct:b.pct,lostM:b.lostM,mPct:b.mPct})));});
+    rows.push(r);
+  }
+  return rows;
+}
+function bdWfW2Csv(){
+  var rows=_bdWfW2Rows();if(!rows)return;
+  var q=function(v){v=v==null?'':String(v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
+  var o=_bdWfW2Out,name='retention-waterfall-'+({ret:'retention',cpm:'churn-per-month',churn:'churn'}[o.metric]||'retention')+(o.mode==='n'?'-brands':'-pct')+'.csv';
+  var blob=new Blob(['\ufeff'+rows.map(function(r){return r.map(q).join(',');}).join('\n')],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download=name;document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(function(){URL.revokeObjectURL(url);},200);
+}
+function bdWfW2Tier(v){var i=_bdWfW2Tier.indexOf(v);if(i<0)_bdWfW2Tier.push(v);else _bdWfW2Tier.splice(i,1);renderBD();}
+function bdWfW2TierAt(i){var v=_bdWfW2TierOpts[i];if(v!=null)bdWfW2Tier(v);}
+function bdWfW2TierClear(){_bdWfW2Tier=[];renderBD();}
+function bdWfSet(which,v){
+  if(which==='pil')_bdWfPil=(v==='excl')?'excl':'incl';
+  else if(which==='ni')_bdWfNI=(v==='excl')?'excl':'incl';
+  else if(which==='mode')_bdWfMode=(v==='n')?'n':'pct';
+  else if(which==='metric')_bdWfMetric=(v==='churn'||v==='cpm')?v:'ret';
+  else if(which==='from')_bdWfFrom=/^\d{4}$/.test(v)?v:'all';
+  else if(which==='sort'){if(['first','name','churn','total','last','flags'].indexOf(v)>=0)_bdWfSort=v;}
+  else if(which==='more')_bdWfShow=(v==='all')?1e9:_bdWfShow+BD_WF_PAGE;
+  else if(which==='cols')_bdWfCols=(v==='all')?'all':'default';
+  renderBD();
+}
+// <<< copied from bd-dashboard.html (W2)
 function doLogin(){
   var btn=document.getElementById('loginBtn');
   btn.innerHTML='<span class="sp" style="width:14px;height:14px;border-width:2px;vertical-align:middle"></span> Loading…';btn.disabled=true;btn.style.opacity='.7';
   if(G_SHARE){['gShareBtn','gRefBtn'].forEach(function(id){var b=document.getElementById(id);if(b)b.style.display='none';});}
   try{var st=localStorage.getItem('g_tab');if(st&&G_TABS.some(function(t){return t.id===st;}))G.tab=st;}catch(_){}
   gFetchSigned(false);
+  if(G.tab==='wf')gFetchWf(false);
   gFetch(false).then(function(){
     document.getElementById('gate').style.display='none';document.getElementById('app').style.display='block';gRender();
   }).catch(function(e){

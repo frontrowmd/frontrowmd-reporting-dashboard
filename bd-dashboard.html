@@ -1613,6 +1613,125 @@ function bdWfStick(){
     top+=rows[i].offsetHeight;
   }
 }
+// W2, the cohort grid (Alex, 2026-11-24/25), as one function so Growth Overview
+// can show the same grid: growth-dashboard.html carries a VERBATIM copy (its
+// tests fail on drift). opt.plain (Growth): no abnormality flags, no flagged-
+// brands list, no footnote. list = the brands after the page's filters.
+function _bdWfW2Section(list,months,now,opt){
+  opt=opt||{};var plain=!!opt.plain,h='';
+  // Complete months only: brands added from this month's Recurly data (b.x) stay out.
+  var gl0=list.filter(function(b){return !b.x&&(_bdWfNI!=='excl'||!_bdWfIsNI(b));});
+  var wttF=BD_WF_FILTERS.filter(function(f){return f.k==='wtt';})[0];
+  var gl=_bdWfW2Tier.length?gl0.filter(function(b){return _bdWfW2Tier.indexOf(wttF.of(b))>=0;}):gl0;
+  var first=months[0];gl.forEach(function(b){if(b.fm&&b.fm<first)first=b.fm;});
+  var from=_bdWfFrom==='all'?first:(_bdWfFrom+'-01'>first?_bdWfFrom+'-01':first);
+  if(from>now)from=now;   // a picked year past the data would make the grid width negative
+  // Counted inside the plotted window only, as C3 does (a book-wide count overstated it).
+  var niOut=_bdWfNI==='excl'?list.filter(function(b){return _bdWfIsNI(b)&&b.fm&&b.fm>=from&&b.fm<=now&&(!_bdWfW2Tier.length||_bdWfW2Tier.indexOf(wttF.of(b))>=0);}).length:0;
+  var rw=_bdWfCohorts(gl,from,now),churnView=_bdWfMetric==='churn',cpmView=_bdWfMetric==='cpm';
+  var pct=function(p){return p===null?'':(Math.round(p*1000)/10).toFixed(p>=0.999||p<=0.001?0:1)+'%';};
+  // c: a cell ({alive,lost,pct,lostM,mPct}). Churn Per Month: the brands lost IN
+  // that month, as a share of those still active the month before.
+  var cellVal=function(c){
+    if(cpmView)return _bdWfMode==='n'?(c.lostM?'−'+c.lostM:'0'):pct(c.mPct);
+    if(_bdWfMode==='n')return churnView?(c.lost?'−'+c.lost:'0'):String(c.alive);return churnView?pct(1-c.pct):pct(c.pct);};
+  // Monthly churn is small, so it gets its own scale: 0% green, 10% yellow, 20%+ darkest red.
+  // W2's CSV exports exactly this grid (metric, % / Brands, filters and toggles), no flags.
+  _bdWfW2Out={rw:rw,cellVal:cellVal,metric:_bdWfMetric,mode:_bdWfMode};
+  var cellFill=function(c){if(!cpmView)return _bdWfFill(c.pct);return c.mPct==null?'':_bdWfFill(1-Math.min(c.mPct/BD_WF_CPM_MAX,1)*(1-BD_WF_LOW));};
+  var years=[];months.forEach(function(m){var y=m.slice(0,4);if(years.indexOf(y)<0)years.push(y);});
+  h+=opt.head('W2','bd-sec-wf2','Retention Waterfall',(cpmView?'Share of each first-invoice month’s brands, still active the month before, that churned in each month since':'Share of each first-invoice month’s brands '+(churnView?'that had churned by':'still active in')+' each month since')
+    +', Month 1 being the first invoice itself. A churned brand counts through its last invoiced month and is lost from the month after. Read DOWN a column to compare cohorts at the same age.');
+  h+='<div class="tile" style="padding:16px 18px 12px"><div class="bd-wf-bar" style="margin:0 0 12px">'
+    +_bdWfSeg('Show',_bdWfPill(_bdWfMode,'pct','%','mode')+_bdWfPill(_bdWfMode,'n','Brands','mode'))
+    +_bdWfSeg('Metric',_bdWfPill(_bdWfMetric,'ret','Retention','metric')+_bdWfPill(_bdWfMetric,'cpm','Churn Per Month','metric','Brands lost in each month, of those still active the month before')+_bdWfPill(_bdWfMetric,'churn','Churn','metric'))
+    +_bdWfSeg('Never Implemented',_bdWfPill(_bdWfNI,'incl','Included','ni','Churned brands that never launched stay in their cohorts')
+      +_bdWfPill(_bdWfNI,'excl','Excluded','ni','Leave out churned brands with a Never Implemented churn type, or no churn type and a widget that never went live'))
+    +_bdWfSeg('Cohorts from',_bdWfPill(_bdWfFrom,'all','All','from')+years.map(function(y){return _bdWfPill(_bdWfFrom,y,y,'from');}).join(''))
+    +(cpmView?'<span style="display:inline-flex;align-items:center;gap:6px;font-size:10px;color:var(--grey);margin-left:auto">0%'
+      +'<span style="width:150px;height:10px;border-radius:3px;border:1px solid rgba(23,44,69,.08);background:linear-gradient(90deg,'+[1,0.85,0.55,0.30].map(function(v){return _bdWfFill(v);}).join(',')+')"></span>'
+      +'\u2265'+Math.round(BD_WF_CPM_MAX*100)+'% <span style="opacity:.75">(yellow at '+Math.round(BD_WF_CPM_MAX*100*(1-0.55)/(1-BD_WF_LOW))+'%)</span></span>'
+    :'<span style="display:inline-flex;align-items:center;gap:6px;font-size:10px;color:var(--grey);margin-left:auto">'+(churnView?'\u226570%':'\u226430%')
+    +'<span style="width:150px;height:10px;border-radius:3px;border:1px solid rgba(23,44,69,.08);background:linear-gradient(90deg,'+(churnView?[1,0.85,0.55,0.30]:[0.30,0.55,0.85,1]).map(function(v){return _bdWfFill(v);}).join(',')+')"></span>'
+    +(churnView?'0%':'100%')+' <span style="opacity:.75">(yellow at '+(churnView?'45%':'55%')+')</span></span>')+'</div>';
+  // Row 2: Web Traffic Tier, toggles (any ticked tier), counted over the W2 brands.
+  // Counted inside the plotted window (independent of the ticks), so a chip's count is what ticking it shows.
+  var first0=months[0];gl0.forEach(function(b){if(b.fm&&b.fm<first0)first0=b.fm;});
+  var from0=_bdWfFrom==='all'?first0:(_bdWfFrom+'-01'>first0?_bdWfFrom+'-01':first0);if(from0>now)from0=now;
+  var tierN={};gl0.forEach(function(b){if(!b.fm||b.fm<from0||b.fm>now)return;var t=wttF.of(b);tierN[t]=(tierN[t]||0)+1;});
+  var tierOrd=function(t){var i=BD_WF_TIER_ORD.indexOf(t);return i<0?(t==='No traffic data'?999:500):i;};
+  var tiers=Object.keys(tierN).sort(function(a,b){return tierOrd(a)-tierOrd(b)||a.localeCompare(b);});
+  _bdWfW2Tier.forEach(function(t){if(tiers.indexOf(t)<0){tiers.push(t);tierN[t]=0;}});   // a ticked tier stays visible to untick
+  _bdWfW2TierOpts=tiers;
+  h+='<div class="bd-wf-bar" style="margin:0 0 12px"><span style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em">Web Traffic Tier'
+    +'<span style="display:inline-flex;flex-wrap:wrap;gap:4px;text-transform:none;letter-spacing:0">'
+    +tiers.map(function(t,ti){var on=_bdWfW2Tier.indexOf(t)>=0;
+      return '<span role="checkbox" aria-checked="'+on+'" tabindex="0" onclick="bdWfW2TierAt('+ti+')" style="cursor:pointer;padding:4px 11px;border-radius:50px;font-size:11px;font-weight:700;font-family:var(--font-h);border:1.5px solid '+(on?'var(--navy)':'rgba(23,44,69,.14)')+';'
+        +(on?'background:var(--navy);color:#fff;':'background:transparent;color:var(--grey);')+'">'+_bdEsc(t)+' <span style="opacity:.6;font-weight:600">'+tierN[t]+'</span></span>';}).join('')
+    +(_bdWfW2Tier.length?'<span onclick="bdWfW2TierClear()" style="cursor:pointer;padding:4px 8px;font-size:11px;color:var(--teal);font-weight:600">Clear</span>':'')
+    +'</span></span><button class="bd-wf-btn" style="margin-left:auto" onclick="bdWfW2Csv()">Download CSV</button></div>';
+  var W=rw.maxK,minW=BD_WF_W_LBL+BD_WF_W_N+BD_WF_W_X*3+BD_WF_W_CELL*W;
+  // Cohort rows whose retention a flagged brand distorts: active brands not
+  // invoiced lately keep the row high; a long gap hides a churn and a return.
+  var coFl={};
+  if(!plain)gl.forEach(function(b){(b._fl||[]).forEach(function(f){if(f.id==='active-not-billed'||f.id==='long-gap'||f.id==='status-conflict'){var c=coFl[b.fm]=coFl[b.fm]||{};(c[f.id]=c[f.id]||[]).push(b.n||b.k);}});});
+  var g='<div style="overflow-x:auto" onmousemove="bdWfTip(event)" onmouseleave="bdWfTipOff()"><table class="rwtbl bd-wf-rw" style="width:100%;min-width:'+minW+'px"><colgroup><col style="width:'+BD_WF_W_LBL+'px"><col style="width:'+BD_WF_W_N+'px">'+('<col style="width:'+BD_WF_W_X+'px">').repeat(3)+new Array(W+1).join('<col>')+'</colgroup>'
+    +'<thead><tr><th class="rw-c" style="text-align:left">Cohort</th><th class="rw-n" title="Brands whose first invoice was in this month — the denominator for the row">Brands</th>'
+    +'<th class="rw-x" title="Brands in the cohort whose Implied Traffic is 0-10K">0-10K</th><th class="rw-x" title="0-10K brands as a share of the cohort’s brands that have an Implied Traffic value (None left out)">0-10K %</th><th class="rw-x" title="Brands in the cohort with no Implied Traffic value">None</th>';
+  for(var k=1;k<=W;k++)g+='<th>'+k+'</th>';
+  g+='</tr></thead><tbody>';
+  rw.cohorts.forEach(function(co){
+    var cf=coFl[co.m],ci='',items=[];
+    if(cf&&co.n){
+      var nm=function(xs){return xs.slice(0,5).join(', ')+(xs.length>5?' and '+(xs.length-5)+' more':'');};
+      if(cf['active-not-billed'])items.push({sev:'high',title:cf['active-not-billed'].length+' active brand'+(cf['active-not-billed'].length===1?'':'s')+' not invoiced in 2+ months',why:'Counted as retained in every month although billing stopped ('+nm(cf['active-not-billed'])+'). If they really churned, this row\u2019s later months are overstated.'});
+      if(cf['long-gap'])items.push({sev:'high',title:cf['long-gap'].length+' brand'+(cf['long-gap'].length===1?'':'s')+' with a 4+ month billing gap',why:'Billing stopped for months and then restarted ('+nm(cf['long-gap'])+'). Each counts as retained throughout; a churn and a return would lower this row in the gap months.'});
+      if(cf['status-conflict'])items.push({sev:'med',title:cf['status-conflict'].length+' brand'+(cf['status-conflict'].length===1?'':'s')+' active here, but not in HubSpot',why:'HubSpot shows a different stage or a churn type ('+nm(cf['status-conflict'])+').'});
+      // Only where it could move the row: affected brands are 5%+ of the cohort
+      // (high at 10%+). One stale brand in a 60-brand cohort shifts no cell much.
+      var aff={};Object.keys(cf).forEach(function(k){cf[k].forEach(function(n){aff[n]=1;});});
+      var share=Object.keys(aff).length/co.n;
+      if(share<0.05)items=[];
+      else{items.forEach(function(it){if(it.sev==='high'&&share<0.10)it.sev='med';});
+        items.sort(function(x,y){return BD_WF_FLAG_SEV[y.sev]-BD_WF_FLAG_SEV[x.sev];});
+        ci=' data-ti="'+_bdWfTips.length+'"';_bdWfTips.push(_bdWfCard(_bdWfLbl(co.m)+' cohort',co.n+' brands \u00b7 '+Object.keys(aff).length+' ('+Math.round(share*100)+'%) may be miscounted',items));}
+    }
+    g+='<tr'+ci+(items.length?' class="fl-'+items[0].sev+'"':'')+'><td class="rw-c">'+(items.length?'<span class="bd-wf-flag '+items[0].sev+'">\u26a0</span>':'')+_bdWfLbl(co.m)+'</td><td class="rw-n">'+(co.n||'\u00b7')+'</td>'+_bdWfXCells(co.n,co.k10,co.none);
+    for(var k=1;k<=W;k++){
+      var c=co.cells[k-1];
+      if(!c||!co.n){g+='<td></td>';continue;}
+      var f=cellFill(c);
+      g+='<td title="'+_bdEsc(_bdWfLbl(co.m)+' cohort · Month '+c.k+' ('+_bdWfLbl(_bdWfAdd(co.m,c.k-1))+'): '+c.alive+' of '+co.n+' still active ('+pct(c.pct)+') · '+c.lost+' churned'+(cpmView?' · '+c.lostM+' lost this month, of '+c.prev+' active the month before ('+pct(c.mPct)+')':''))+'" style="'+(f?'background:'+f+';':'')
+        +'color:var(--navy);font-weight:'+(cpmView?'600':(c.pct>=0.999||c.pct<=BD_WF_LOW?'700':'600'))+'">'+cellVal(c)+'</td>';
+    }
+    g+='</tr>';
+  });
+  if(rw.blend.length){
+    var bt='border-top:1.5px solid rgba(23,44,69,.14);';
+    var tk10=0,tnone=0;rw.cohorts.forEach(function(co){tk10+=co.k10;tnone+=co.none;});
+    g+='<tr><td class="rw-c" style="'+bt+'font-style:italic">All cohorts</td><td class="rw-n" style="'+bt+'">'+rw.blend[0].n+'</td>'+_bdWfXCells(rw.blend[0].n,tk10,tnone,bt);
+    rw.blend.forEach(function(b){
+      var thin=(b.pct===null||b.n<BD_WF_BLEND_MIN||b.cohorts<BD_WF_BLEND_MIN_COHORTS),f=thin?'':cellFill(b);
+      g+='<td style="'+bt+(f?'background:'+f+';':'')+'color:var(--navy);font-weight:700" title="'+_bdEsc('Month '+b.k+' — '+(b.pct===null?'no cohort has reached this month yet'
+        :b.alive+' of '+b.n+' across the '+b.cohorts+(b.cohorts===1?' cohort that has':' cohorts that have')+' reached it ('+pct(b.pct)+')'+(cpmView?' · '+b.lostM+' lost this month, of '+b.prev+' active the month before ('+pct(b.mPct)+')':'')+(thin?' — too few to blend, so not shown':'')))+'">'
+        +(thin?'':cellVal({alive:b.alive,lost:b.n-b.alive,pct:b.pct,lostM:b.lostM,mPct:b.mPct}))+'</td>';
+    });
+    g+='</tr>';
+  }
+  g+='</tbody></table></div>';
+  h+=g;
+  if(plain)return h+'</div></section>';
+  h+=_bdWfW2Flagged(gl,from,now);
+  h+='<div style="font-size:10px;color:var(--grey);margin-top:14px;font-style:italic;line-height:1.6">'
+    +'<strong style="color:var(--navy)">How it is counted.</strong> Rows are the month of each brand’s first invoice above $0, in Recurly or bill.com; pilot brands start at their Pilot Initiation Fee invoice'
+    +(_bdWfPil==='excl'?' (pilots with no plan bill yet are excluded by the Pilots switch above)':'')+'. '
+    +'A brand is churned when Metabase marks it Churned or Paused (HubSpot’s stage, else an ended Recurly subscription or a discarded app brand), and its churn date is the last month it was invoiced — not HubSpot’s Pause/Churn Date, which the brand’s tooltip in W1 still shows. '
+    +'Active brands count as retained in every month, even when an invoice is missing'+(opt.stale?' ('+opt.stale+' active brand'+(opt.stale===1?' has':'s have')+' not been invoiced in the last two complete months)':'')+'. '
+    +(_bdWfNI==='excl'?niOut+' Never Implemented churn'+(niOut===1?' is':'s are')+' left out. ':'')
+    +'Complete months only, through '+_bdWfLbl(now)+': brands first invoiced this month appear next month. The All cohorts row blends every cohort that has reached each month, with its own denominator; under '
+    +BD_WF_BLEND_MIN+' brands or '+BD_WF_BLEND_MIN_COHORTS+' cohorts it is left blank. Filters above narrow both W1 and this grid; the Web Traffic Tier toggles narrow this grid only. Churn Per Month is the brands lost in each month out of those still active the month before. The 0-10K and None columns read Implied Traffic; 0-10K % leaves None out of its denominator.</div></div></section>';
+  return h;
+}
 function _bdWfRender(){
   var wf=(typeof BD!=='undefined')?BD.wf:null,h='';
   var head=function(n,id,title,sub){return '<section class="bd-sec" id="'+id+'"><div class="bd-sec-head"><span class="bd-sec-n">'+n+'</span><span class="bd-sec-t">'+title+'</span><span class="bd-sec-s">'+sub+'</span></div>';};
@@ -1753,117 +1872,7 @@ function _bdWfRender(){
   h+=t;
   if(sorted.length>shown.length)h+='<div style="display:flex;gap:8px;justify-content:center;margin-top:10px"><button class="bd-wf-btn" onclick="bdWfSet(\'more\',\'\')">Show '+Math.min(BD_WF_PAGE,sorted.length-shown.length)+' more</button><button class="bd-wf-btn" onclick="bdWfSet(\'more\',\'all\')">Show all '+sorted.length.toLocaleString()+'</button></div>';
   h+='</div></section>';
-  // ── W2: the same brands as C3's cohort grid ──
-  // Complete months only: brands added from this month's Recurly data (b.x) stay out.
-  var gl0=list.filter(function(b){return !b.x&&(_bdWfNI!=='excl'||!_bdWfIsNI(b));});
-  var wttF=BD_WF_FILTERS.filter(function(f){return f.k==='wtt';})[0];
-  var gl=_bdWfW2Tier.length?gl0.filter(function(b){return _bdWfW2Tier.indexOf(wttF.of(b))>=0;}):gl0;
-  var first=months[0];gl.forEach(function(b){if(b.fm&&b.fm<first)first=b.fm;});
-  var from=_bdWfFrom==='all'?first:(_bdWfFrom+'-01'>first?_bdWfFrom+'-01':first);
-  if(from>now)from=now;   // a picked year past the data would make the grid width negative
-  // Counted inside the plotted window only, as C3 does (a book-wide count overstated it).
-  var niOut=_bdWfNI==='excl'?list.filter(function(b){return _bdWfIsNI(b)&&b.fm&&b.fm>=from&&b.fm<=now&&(!_bdWfW2Tier.length||_bdWfW2Tier.indexOf(wttF.of(b))>=0);}).length:0;
-  var rw=_bdWfCohorts(gl,from,now),churnView=_bdWfMetric==='churn',cpmView=_bdWfMetric==='cpm';
-  var pct=function(p){return p===null?'':(Math.round(p*1000)/10).toFixed(p>=0.999||p<=0.001?0:1)+'%';};
-  // c: a cell ({alive,lost,pct,lostM,mPct}). Churn Per Month: the brands lost IN
-  // that month, as a share of those still active the month before.
-  var cellVal=function(c){
-    if(cpmView)return _bdWfMode==='n'?(c.lostM?'−'+c.lostM:'0'):pct(c.mPct);
-    if(_bdWfMode==='n')return churnView?(c.lost?'−'+c.lost:'0'):String(c.alive);return churnView?pct(1-c.pct):pct(c.pct);};
-  // Monthly churn is small, so it gets its own scale: 0% green, 10% yellow, 20%+ darkest red.
-  // W2's CSV exports exactly this grid (metric, % / Brands, filters and toggles), no flags.
-  _bdWfW2Out={rw:rw,cellVal:cellVal,metric:_bdWfMetric,mode:_bdWfMode};
-  var cellFill=function(c){if(!cpmView)return _bdWfFill(c.pct);return c.mPct==null?'':_bdWfFill(1-Math.min(c.mPct/BD_WF_CPM_MAX,1)*(1-BD_WF_LOW));};
-  var years=[];months.forEach(function(m){var y=m.slice(0,4);if(years.indexOf(y)<0)years.push(y);});
-  h+=head('W2','bd-sec-wf2','Retention Waterfall',(cpmView?'Share of each first-invoice month’s brands, still active the month before, that churned in each month since':'Share of each first-invoice month’s brands '+(churnView?'that had churned by':'still active in')+' each month since')
-    +', Month 1 being the first invoice itself. A churned brand counts through its last invoiced month and is lost from the month after. Read DOWN a column to compare cohorts at the same age.');
-  h+='<div class="tile" style="padding:16px 18px 12px"><div class="bd-wf-bar" style="margin:0 0 12px">'
-    +_bdWfSeg('Show',_bdWfPill(_bdWfMode,'pct','%','mode')+_bdWfPill(_bdWfMode,'n','Brands','mode'))
-    +_bdWfSeg('Metric',_bdWfPill(_bdWfMetric,'ret','Retention','metric')+_bdWfPill(_bdWfMetric,'cpm','Churn Per Month','metric','Brands lost in each month, of those still active the month before')+_bdWfPill(_bdWfMetric,'churn','Churn','metric'))
-    +_bdWfSeg('Never Implemented',_bdWfPill(_bdWfNI,'incl','Included','ni','Churned brands that never launched stay in their cohorts')
-      +_bdWfPill(_bdWfNI,'excl','Excluded','ni','Leave out churned brands with a Never Implemented churn type, or no churn type and a widget that never went live'))
-    +_bdWfSeg('Cohorts from',_bdWfPill(_bdWfFrom,'all','All','from')+years.map(function(y){return _bdWfPill(_bdWfFrom,y,y,'from');}).join(''))
-    +(cpmView?'<span style="display:inline-flex;align-items:center;gap:6px;font-size:10px;color:var(--grey);margin-left:auto">0%'
-      +'<span style="width:150px;height:10px;border-radius:3px;border:1px solid rgba(23,44,69,.08);background:linear-gradient(90deg,'+[1,0.85,0.55,0.30].map(function(v){return _bdWfFill(v);}).join(',')+')"></span>'
-      +'\u2265'+Math.round(BD_WF_CPM_MAX*100)+'% <span style="opacity:.75">(yellow at '+Math.round(BD_WF_CPM_MAX*100*(1-0.55)/(1-BD_WF_LOW))+'%)</span></span>'
-    :'<span style="display:inline-flex;align-items:center;gap:6px;font-size:10px;color:var(--grey);margin-left:auto">'+(churnView?'\u226570%':'\u226430%')
-    +'<span style="width:150px;height:10px;border-radius:3px;border:1px solid rgba(23,44,69,.08);background:linear-gradient(90deg,'+(churnView?[1,0.85,0.55,0.30]:[0.30,0.55,0.85,1]).map(function(v){return _bdWfFill(v);}).join(',')+')"></span>'
-    +(churnView?'0%':'100%')+' <span style="opacity:.75">(yellow at '+(churnView?'45%':'55%')+')</span></span>')+'</div>';
-  // Row 2: Web Traffic Tier, toggles (any ticked tier), counted over the W2 brands.
-  // Counted inside the plotted window (independent of the ticks), so a chip's count is what ticking it shows.
-  var first0=months[0];gl0.forEach(function(b){if(b.fm&&b.fm<first0)first0=b.fm;});
-  var from0=_bdWfFrom==='all'?first0:(_bdWfFrom+'-01'>first0?_bdWfFrom+'-01':first0);if(from0>now)from0=now;
-  var tierN={};gl0.forEach(function(b){if(!b.fm||b.fm<from0||b.fm>now)return;var t=wttF.of(b);tierN[t]=(tierN[t]||0)+1;});
-  var tierOrd=function(t){var i=BD_WF_TIER_ORD.indexOf(t);return i<0?(t==='No traffic data'?999:500):i;};
-  var tiers=Object.keys(tierN).sort(function(a,b){return tierOrd(a)-tierOrd(b)||a.localeCompare(b);});
-  _bdWfW2Tier.forEach(function(t){if(tiers.indexOf(t)<0){tiers.push(t);tierN[t]=0;}});   // a ticked tier stays visible to untick
-  _bdWfW2TierOpts=tiers;
-  h+='<div class="bd-wf-bar" style="margin:0 0 12px"><span style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em">Web Traffic Tier'
-    +'<span style="display:inline-flex;flex-wrap:wrap;gap:4px;text-transform:none;letter-spacing:0">'
-    +tiers.map(function(t,ti){var on=_bdWfW2Tier.indexOf(t)>=0;
-      return '<span role="checkbox" aria-checked="'+on+'" tabindex="0" onclick="bdWfW2TierAt('+ti+')" style="cursor:pointer;padding:4px 11px;border-radius:50px;font-size:11px;font-weight:700;font-family:var(--font-h);border:1.5px solid '+(on?'var(--navy)':'rgba(23,44,69,.14)')+';'
-        +(on?'background:var(--navy);color:#fff;':'background:transparent;color:var(--grey);')+'">'+_bdEsc(t)+' <span style="opacity:.6;font-weight:600">'+tierN[t]+'</span></span>';}).join('')
-    +(_bdWfW2Tier.length?'<span onclick="bdWfW2TierClear()" style="cursor:pointer;padding:4px 8px;font-size:11px;color:var(--teal);font-weight:600">Clear</span>':'')
-    +'</span></span><button class="bd-wf-btn" style="margin-left:auto" onclick="bdWfW2Csv()">Download CSV</button></div>';
-  var W=rw.maxK,minW=BD_WF_W_LBL+BD_WF_W_N+BD_WF_W_X*3+BD_WF_W_CELL*W;
-  // Cohort rows whose retention a flagged brand distorts: active brands not
-  // invoiced lately keep the row high; a long gap hides a churn and a return.
-  var coFl={};
-  gl.forEach(function(b){(b._fl||[]).forEach(function(f){if(f.id==='active-not-billed'||f.id==='long-gap'||f.id==='status-conflict'){var c=coFl[b.fm]=coFl[b.fm]||{};(c[f.id]=c[f.id]||[]).push(b.n||b.k);}});});
-  var g='<div style="overflow-x:auto" onmousemove="bdWfTip(event)" onmouseleave="bdWfTipOff()"><table class="rwtbl bd-wf-rw" style="width:100%;min-width:'+minW+'px"><colgroup><col style="width:'+BD_WF_W_LBL+'px"><col style="width:'+BD_WF_W_N+'px">'+('<col style="width:'+BD_WF_W_X+'px">').repeat(3)+new Array(W+1).join('<col>')+'</colgroup>'
-    +'<thead><tr><th class="rw-c" style="text-align:left">Cohort</th><th class="rw-n" title="Brands whose first invoice was in this month — the denominator for the row">Brands</th>'
-    +'<th class="rw-x" title="Brands in the cohort whose Implied Traffic is 0-10K">0-10K</th><th class="rw-x" title="0-10K brands as a share of the cohort’s brands that have an Implied Traffic value (None left out)">0-10K %</th><th class="rw-x" title="Brands in the cohort with no Implied Traffic value">None</th>';
-  for(var k=1;k<=W;k++)g+='<th>'+k+'</th>';
-  g+='</tr></thead><tbody>';
-  rw.cohorts.forEach(function(co){
-    var cf=coFl[co.m],ci='',items=[];
-    if(cf&&co.n){
-      var nm=function(xs){return xs.slice(0,5).join(', ')+(xs.length>5?' and '+(xs.length-5)+' more':'');};
-      if(cf['active-not-billed'])items.push({sev:'high',title:cf['active-not-billed'].length+' active brand'+(cf['active-not-billed'].length===1?'':'s')+' not invoiced in 2+ months',why:'Counted as retained in every month although billing stopped ('+nm(cf['active-not-billed'])+'). If they really churned, this row\u2019s later months are overstated.'});
-      if(cf['long-gap'])items.push({sev:'high',title:cf['long-gap'].length+' brand'+(cf['long-gap'].length===1?'':'s')+' with a 4+ month billing gap',why:'Billing stopped for months and then restarted ('+nm(cf['long-gap'])+'). Each counts as retained throughout; a churn and a return would lower this row in the gap months.'});
-      if(cf['status-conflict'])items.push({sev:'med',title:cf['status-conflict'].length+' brand'+(cf['status-conflict'].length===1?'':'s')+' active here, but not in HubSpot',why:'HubSpot shows a different stage or a churn type ('+nm(cf['status-conflict'])+').'});
-      // Only where it could move the row: affected brands are 5%+ of the cohort
-      // (high at 10%+). One stale brand in a 60-brand cohort shifts no cell much.
-      var aff={};Object.keys(cf).forEach(function(k){cf[k].forEach(function(n){aff[n]=1;});});
-      var share=Object.keys(aff).length/co.n;
-      if(share<0.05)items=[];
-      else{items.forEach(function(it){if(it.sev==='high'&&share<0.10)it.sev='med';});
-        items.sort(function(x,y){return BD_WF_FLAG_SEV[y.sev]-BD_WF_FLAG_SEV[x.sev];});
-        ci=' data-ti="'+_bdWfTips.length+'"';_bdWfTips.push(_bdWfCard(_bdWfLbl(co.m)+' cohort',co.n+' brands \u00b7 '+Object.keys(aff).length+' ('+Math.round(share*100)+'%) may be miscounted',items));}
-    }
-    g+='<tr'+ci+(items.length?' class="fl-'+items[0].sev+'"':'')+'><td class="rw-c">'+(items.length?'<span class="bd-wf-flag '+items[0].sev+'">\u26a0</span>':'')+_bdWfLbl(co.m)+'</td><td class="rw-n">'+(co.n||'\u00b7')+'</td>'+_bdWfXCells(co.n,co.k10,co.none);
-    for(var k=1;k<=W;k++){
-      var c=co.cells[k-1];
-      if(!c||!co.n){g+='<td></td>';continue;}
-      var f=cellFill(c);
-      g+='<td title="'+_bdEsc(_bdWfLbl(co.m)+' cohort · Month '+c.k+' ('+_bdWfLbl(_bdWfAdd(co.m,c.k-1))+'): '+c.alive+' of '+co.n+' still active ('+pct(c.pct)+') · '+c.lost+' churned'+(cpmView?' · '+c.lostM+' lost this month, of '+c.prev+' active the month before ('+pct(c.mPct)+')':''))+'" style="'+(f?'background:'+f+';':'')
-        +'color:var(--navy);font-weight:'+(cpmView?'600':(c.pct>=0.999||c.pct<=BD_WF_LOW?'700':'600'))+'">'+cellVal(c)+'</td>';
-    }
-    g+='</tr>';
-  });
-  if(rw.blend.length){
-    var bt='border-top:1.5px solid rgba(23,44,69,.14);';
-    var tk10=0,tnone=0;rw.cohorts.forEach(function(co){tk10+=co.k10;tnone+=co.none;});
-    g+='<tr><td class="rw-c" style="'+bt+'font-style:italic">All cohorts</td><td class="rw-n" style="'+bt+'">'+rw.blend[0].n+'</td>'+_bdWfXCells(rw.blend[0].n,tk10,tnone,bt);
-    rw.blend.forEach(function(b){
-      var thin=(b.pct===null||b.n<BD_WF_BLEND_MIN||b.cohorts<BD_WF_BLEND_MIN_COHORTS),f=thin?'':cellFill(b);
-      g+='<td style="'+bt+(f?'background:'+f+';':'')+'color:var(--navy);font-weight:700" title="'+_bdEsc('Month '+b.k+' — '+(b.pct===null?'no cohort has reached this month yet'
-        :b.alive+' of '+b.n+' across the '+b.cohorts+(b.cohorts===1?' cohort that has':' cohorts that have')+' reached it ('+pct(b.pct)+')'+(cpmView?' · '+b.lostM+' lost this month, of '+b.prev+' active the month before ('+pct(b.mPct)+')':'')+(thin?' — too few to blend, so not shown':'')))+'">'
-        +(thin?'':cellVal({alive:b.alive,lost:b.n-b.alive,pct:b.pct,lostM:b.lostM,mPct:b.mPct}))+'</td>';
-    });
-    g+='</tr>';
-  }
-  g+='</tbody></table></div>';
-  h+=g;
-  h+=_bdWfW2Flagged(gl,from,now);
-  h+='<div style="font-size:10px;color:var(--grey);margin-top:14px;font-style:italic;line-height:1.6">'
-    +'<strong style="color:var(--navy)">How it is counted.</strong> Rows are the month of each brand’s first invoice above $0, in Recurly or bill.com; pilot brands start at their Pilot Initiation Fee invoice'
-    +(_bdWfPil==='excl'?' (pilots with no plan bill yet are excluded by the Pilots switch above)':'')+'. '
-    +'A brand is churned when Metabase marks it Churned or Paused (HubSpot’s stage, else an ended Recurly subscription or a discarded app brand), and its churn date is the last month it was invoiced — not HubSpot’s Pause/Churn Date, which the brand’s tooltip in W1 still shows. '
-    +'Active brands count as retained in every month, even when an invoice is missing'+(stale?' ('+stale+' active brand'+(stale===1?' has':'s have')+' not been invoiced in the last two complete months)':'')+'. '
-    +(_bdWfNI==='excl'?niOut+' Never Implemented churn'+(niOut===1?' is':'s are')+' left out. ':'')
-    +'Complete months only, through '+_bdWfLbl(now)+': brands first invoiced this month appear next month. The All cohorts row blends every cohort that has reached each month, with its own denominator; under '
-    +BD_WF_BLEND_MIN+' brands or '+BD_WF_BLEND_MIN_COHORTS+' cohorts it is left blank. Filters above narrow both W1 and this grid; the Web Traffic Tier toggles narrow this grid only. Churn Per Month is the brands lost in each month out of those still active the month before. The 0-10K and None columns read Implied Traffic; 0-10K % leaves None out of its denominator.</div></div></section>';
+  h+=_bdWfW2Section(list,months,now,{head:head,stale:stale});
   return h;
 }
 // C1's Board Defined / All switch. Board Defined is the default: it is the cut
