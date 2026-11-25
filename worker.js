@@ -1701,11 +1701,16 @@ async function fetchDealCompanyIds(token, ids) {
   const out = {};
   for (let i = 0; i < ids.length; i += 100) {
     const batch = ids.slice(i, i + 100);
-    SUBREQ.n++; SUBREQ.hubspot++;
-    const r = await fetch('https://api.hubapi.com/crm/v4/associations/deals/companies/batch/read', {
-      method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ inputs: batch.map(id => ({ id: String(id) })) }),
-    });
+    let r;
+    for (let a = 0; a < 3; a++) {   // a 429 or 5xx is retried, twice, before it counts as failed
+      if (a) await new Promise(res => setTimeout(res, 600 * a));
+      SUBREQ.n++; SUBREQ.hubspot++;
+      r = await fetch('https://api.hubapi.com/crm/v4/associations/deals/companies/batch/read', {
+        method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inputs: batch.map(id => ({ id: String(id) })) }),
+      });
+      if (r.ok || !(r.status === 429 || r.status >= 500)) break;
+    }
     if (!r.ok) { const t = await r.text(); throw new Error('deal-company associations ' + r.status + ': ' + t.slice(0, 120)); }
     const j = await r.json();
     for (const x of (j.results || [])) {
@@ -2439,6 +2444,7 @@ function processPipelineDeals(deals, winFromUTC, winToUTC, winFromET, winToET, l
   // Very Small, matching True CPD/CPQD.
   let noShowStrictCount=0, cancelledStrictCount=0;
   let qualifiedRawCount=0, disqualifiedRawCount=0, notYetEvalCount=0;
+  const qualifiedDealIds = [];   // which deals qualifiedRawCount counted (Growth's demo cohort)
   // Held / no-show / cancelled with PRE-LAUNCH ONLY removed. Distinct from the
   // *Strict counters below, which also drop 0-10K and Very Small.
   let heldExPre=0, noShowExPre=0, cancelledExPre=0;
@@ -2583,6 +2589,7 @@ function processPipelineDeals(deals, winFromUTC, winToUTC, winFromET, winToET, l
     if (demoDidHappen(att, rawSt) && !_isPreLaunchDeal) {
       qualifiedRawCount++;
       qualifiedRawScaleCount++;
+      qualifiedDealIds.push(String(deal.id));
     }
     // Outcome tallies, for the rate only — same population as the count above,
     // or the Qualification rate compares two different sets of demos.
@@ -2677,7 +2684,7 @@ function processPipelineDeals(deals, winFromUTC, winToUTC, winFromET, winToET, l
     totalExtended, totalExtendedStrict, demoGivenOrigCount, demoGivenReschedCount, demoGivenScaleCount, demoGivenStrictCount, noShowScaleCount,
     // Strict (small-brand-excluded) numerators for the canonical rates.
     noShowStrictCount, cancelledStrictCount,
-    qualifiedRawCount, disqualifiedRawCount, notYetEvalCount, qualifiedRawScaleCount,
+    qualifiedRawCount, qualifiedDealIds, disqualifiedRawCount, notYetEvalCount, qualifiedRawScaleCount,
     heldExPre, noShowExPre, cancelledExPre,
     extendedDealIds, supposedDealIds,
     qualOutcomeQualified,
@@ -4209,8 +4216,8 @@ async function fetchBdWaterfall(env, fresh) {
 // failed is marked err (shown as unavailable), never counted as zero, and a
 // payload with any failure is not cached.
 const GROWTH_FROM = '2026-01';
-const GROWTH_KV = 'growth_v3';
-const GROWTH_LAST = 'growth_last_v3';
+const GROWTH_KV = 'growth_v4';
+const GROWTH_LAST = 'growth_last_v4';
 const GROWTH_TTL_SEC = 1800;
 function growthMonths(today) {
   const out = [];
@@ -4237,10 +4244,24 @@ async function buildGrowth(env) {
     const pl = processPipelineDeals(filterActiveBrands(deals || []), toMsUTC(mo.from), toMsUTC(mo.to, true), toMsET(mo.from), toMsET(mo.to, true), new Set());
     // Its OWN calls' failures: the page fires /api/growth-signed alongside, and
     // the global HS_ERR counter would let one request's failure mark the other.
+    // The cohort counts EVERY held non-pre-launch demo, before filterActiveBrands:
+    // that filter drops deals whose brand later churned (or never implemented),
+    // which would take exactly the signed-then-lost brands out of the
+    // denominator and inflate Demo -> Signed. cq is that denominator.
+    const plAll = processPipelineDeals(deals || [], toMsUTC(mo.from), toMsUTC(mo.to, true), toMsET(mo.from), toMsET(mo.to, true), new Set());
     const err = !!(deals && deals.partial);
-    rows.push({ m: mo.m, to: mo.to, partial: mo.partial, qd: pl.qualifiedRawCount || 0, demoErr: err || undefined });
+    rows.push({ m: mo.m, to: mo.to, partial: mo.partial, qd: pl.qualifiedRawCount || 0, cq: plAll.qualifiedRawCount || 0, ids: plAll.qualifiedDealIds || [], demoErr: err || undefined });
   }
-  return { months: rows, asOf: new Date().toISOString(), today, ok: !rows.some(r => r.demoErr) };
+  // The demo cohort (Alex, 2026-11-25: "of the month's demos, how many have
+  // since signed"): each counted demo's deal id and its HubSpot companies, so
+  // the page can find it in the sign book (/api/growth-signed). dl[i] =
+  // [dealId, ...companyIds]. One batched association read for every month.
+  let coErr;
+  let comps = {};
+  try { comps = await fetchDealCompanyIds(tok, [...new Set(rows.flatMap(r => r.ids))]); }
+  catch (e) { coErr = String(e && e.message || e).slice(0, 200); }
+  rows.forEach(r => { r.dl = r.ids.map(id => [id].concat(comps[id] || [])); delete r.ids; });
+  return { months: rows, asOf: new Date().toISOString(), today, coErr, ok: !rows.some(r => r.demoErr) && !coErr };
 }
 async function fetchGrowth(env, fresh) {
   const kv = env.CONTENT_STORE;
@@ -4281,7 +4302,10 @@ async function fetchGrowth(env, fresh) {
   data.months.forEach(r => {
     const o = lm[r.m];
     if (!o || o.to !== r.to) return;
-    if (r.demoErr && !o.demoErr) { r.qd = o.qd; r.demos = o.demos; r.webinars = o.webinars; delete r.demoErr; r.old = asOf; used++; }
+    if (r.demoErr && !o.demoErr) { r.qd = o.qd; r.cq = o.cq; r.dl = o.dl; delete r.demoErr; r.old = asOf; used++; }
+    // Associations failed but the demos read: the last good copy's cohort for
+    // this month (same demos list), marked old.
+    else if (data.coErr && !r.demoErr && !(last.data && last.data.coErr) && o.dl && o.cq === r.cq) { r.dl = o.dl; r.coOld = asOf; used++; }
   });
   if (used) data.stale = { error: 'Some HubSpot calls failed', asOf, partialOnly: true };
   return data;
@@ -4446,8 +4470,8 @@ function _baStatusOf(b){
 // company (h). Built once from the two heavy reads, cached 30 min, and shared by
 // Growth Overview (/api/growth-signed) and the Brand Dashboard's Revenue
 // Outcome (/api/signed-brands), so both count exactly as the card does.
-const SIGN_BOOK_KV = 'sign_book_v2';
-const SIGN_BOOK_LAST = 'sign_book_last_v2';
+const SIGN_BOOK_KV = 'sign_book_v4';
+const SIGN_BOOK_LAST = 'sign_book_last_v4';
 function signBookRows(deals, app) {
   const t = appJoinTables();
   BD_APP_JOIN_CO = t.co; BD_APP_JOIN_DEAL = t.deal;
@@ -4466,7 +4490,14 @@ function signBookRows(deals, app) {
     // k: its closed-won deals, so an ended row that shares a deal with another
     // row (a restart joined by name, a reviewed join) is known to be the same brand.
     const k = (join.byBrand[b.id] || []).filter(x => x.dealstage === 'closedwon').map(x => String(x.id));
-    rows.push({ d, a: a ? 1 : 0, p: p ? 1 : 0, c: c ? 1 : 0, h: b.hubspotCompanyId ? String(b.hubspotCompanyId) : '', k });
+    // j: its other joined deals (open, lost, pilot stages), so Growth's demo
+    // cohort can find a demo deal that never went closed-won (a pilot).
+    const j = (join.byBrand[b.id] || []).filter(x => x.dealstage !== 'closedwon').map(x => String(x.id));
+    const h = b.hubspotCompanyId ? String(b.hubspotCompanyId) : '';
+    // co: the other HubSpot companies its joined deals sit on (a reviewed or
+    // name join), so a demo deal on that company is found too.
+    const co = [...new Set((join.byBrand[b.id] || []).map(x => x.companyId ? String(x.companyId) : '').filter(x => x && x !== h))];
+    rows.push({ d, a: a ? 1 : 0, p: p ? 1 : 0, c: c ? 1 : 0, h, k, j, co });
   }
   return rows;
 }
@@ -4568,7 +4599,15 @@ async function fetchGrowthSigned(env, fresh) {
   const book = await fetchSignBook(env, fresh);
   const today = fmt(todayET());
   const months = growthMonths(today).map(mo => Object.assign({ m: mo.m, to: mo.to, partial: mo.partial }, signBookCount(book.rows, mo.from, mo.to)));
-  return Object.assign({ months, ytd: Object.assign({ m: 'ytd' }, signBookCount(book.rows, months.length ? growthMonths(today)[0].from : today, today)) }, signBookMeta(book), { today });
+  return Object.assign({ months, ytd: Object.assign({ m: 'ytd' }, signBookCount(book.rows, months.length ? growthMonths(today)[0].from : today, today)), live: signBookLive(book.rows) }, signBookMeta(book), { today });
+}
+// For the demo cohort: every brand the card counts today (active or pilot), as
+// [its latest signing day, ...its keys] ('h:' company, 'd:' any joined deal).
+// The page counts a month's demo as signed when its deal or one of its
+// companies is here with a signing day on or after the demo month's first day.
+function signBookLive(rows) {
+  return rows.filter(r => r.a || r.p).map(r => [r.d.reduce((m, x) => x > m ? x : m, '')]
+    .concat(signBookKeys(r), (r.j || []).map(x => 'd:' + x), (r.co || []).map(x => 'h:' + x)));
 }
 // Brand Dashboard Revenue Outcome: the card for the page's window, its prior
 // window and last month, from the same windows /api/revenue-outcome uses.
