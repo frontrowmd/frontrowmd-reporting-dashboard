@@ -615,7 +615,16 @@ function _bdFirstOfMonth(){var _d=new Date();return _d.getFullYear()+'-'+String(
 // (Signed / Paying / Paused / Churned / Never Implemented - Churned). When
 // the toggle array is non-empty, it takes precedence over the single-select
 // bucket (the bucket auto-resets to 'all' so the two UIs don't fight).
-var _bdBrandStatusF='Active',_bdBrandStatusToggleF=[],_bdStageF='all',_bdRepF='all',_bdAcctMgrF='all',_bdSeRepF='all',_bdOpsRepF='all',_bdPkgF='all',_bdDateFrom=_bdFirstOfMonth(),_bdDateTo='',_bdDateMode='close';
+var _bdBrandStatusF='all',_bdBrandStatusToggleF=[],_bdStageF='all',_bdRepF='all',_bdAcctMgrF='all',_bdSeRepF='all',_bdOpsRepF='all',_bdPkgF='all',_bdDateFrom=_bdFirstOfMonth(),_bdDateTo='',_bdDateMode='signed';
+// In Signed Brands ('yes' | 'no' | 'fix' | 'all'). Default (Alex, 2026-11-27): the
+// table opens on exactly 01's MTD Signed Brands — Signed Date, this month, Yes,
+// Brand Status All (it used to open on Active brand status + Close Date).
+var _bdSigF='yes';
+// 'mtd' (the default and the gold button): the range is re-anchored on EVERY
+// render to 01's MTD — Eastern first of the month through Eastern today — so
+// 03 and 01 can never disagree on the dates (a local-time month start fixed at
+// page load did, across a month boundary or a time zone). Typing a date clears it.
+var _bdDateKey='mtd';
 // Active Brands / Signed ARR chart view: 'current' = cumulative of brands still
 // active today (survivors only); 'snapshot' = the book that WAS active at each
 // month (signings add, pause/churns subtract on their pausechurn_date).
@@ -802,6 +811,73 @@ function _bdSumDayIn(x){return !(_bdSumFrom&&x<_bdSumFrom)&&!(_bdSumTo&&x>_bdSum
 function _bdSumIn(b,join){
   var sd=_bdSignDays(b,join&&join.byBrand?join.byBrand[b.id]:null);
   return sd.days.some(_bdSumDayIn)?sd.how:'';
+}
+// ── 03 All Brand Deals ↔ 01 Signed Brands (Alex, 2026-11-27) ────────────────
+// 03 lists HubSpot deals; 01's Signed Brands counts APP brands (pilots by fee
+// paid, others by closed-won date, see _bdSignDays) that are active or counted
+// pilots today. Nov 2026: 93 vs 83 — 14 counted pilots had no closed-won deal
+// (still Demo Happened / Decision Maker / Scheduled / Churned, or no deal), and
+// 5 closed-won deals were brands 01 does not count (fee unpaid, no plan, unlinked).
+// So each render annotates every deal (d._sgDay / _sgIn / _sgWhy / _sgFix /
+// _sgKind) and adds one app row for each counted brand with no deal of its own.
+// "In Signed Brands = Yes" + "Signed Date" + a range = exactly 01's card for it.
+//
+// 01's count for one brand: a counted pilot (the pilot row's rule,
+// _baPilotStatsOf) or an active brand (Active Brands: a live Recurly class when
+// Recurly was read, else the app's active flag, as _baSummary). '' = not counted.
+function _bdSgKind(b,rcOk){
+  if(!b||_baIsTest(b))return '';
+  var p=b.pilot;
+  if(p&&!/(demo|test)/i.test(String(b.name||''))&&BD_PILOT_COUNTED.indexOf(p.status)>=0)return 'pilot';
+  if(rcOk){var k=_baRcClass(b);return k&&k!=='ended'?'active':'';}
+  return (b.active&&!b.discardedAt)?'active':'';
+}
+// Why 01 does not count a brand that signed in the range.
+function _bdSgWhyNot(b,rcOk){
+  var p=b.pilot;
+  if(p&&p.status==='awaiting_submit')return 'Pilot fee not paid yet';
+  if(p&&p.status&&BD_PILOT_COUNTED.indexOf(p.status)<0&&!(rcOk&&_baRcClass(b)))return 'Pilot '+String(p.status).replace(/_/g,' ');
+  if(rcOk&&_baRcClass(b)==='ended')return 'Recurly subscription ended';
+  return 'No live subscription or plan';
+}
+// from/to: YYYY-MM-DD (Eastern days), inclusive, '' = open. Returns
+// {extra: app rows to add, counted: brands 01 counts for the range}.
+function _bdSignedView(deals,brands,J,from,to,rcOk){
+  var inR=function(x){return !!x&&!(from&&x<from)&&!(to&&x>to);};
+  var byBrand=(J&&J.byBrand)||{},byDeal=(J&&J.byDeal)||{},info={},extra=[],claimed={},counted=0,bInfo={};
+  var dayOf=function(b){if(bInfo[b.id])return bInfo[b.id];var sd=_bdSignDays(b,byBrand[b.id]);
+    var ds=sd.days.filter(inR).sort();return (bInfo[b.id]={how:sd.how,day:ds[0]||''});};
+  deals.forEach(function(d){
+    var bs=((byDeal[d.id]||{}).brands||[]).filter(function(b){return !_baIsTest(b);}),day='';
+    bs.forEach(function(b){var x=dayOf(b).day;if(x&&(!day||x<day))day=x;});
+    if(!bs.length&&d.dealstage==='closedwon'){var c=_bdEtDayOf(d.closedate);if(inR(c))day=c;}
+    info[d.id]={day:day,brands:bs,yes:false,why:'',fix:'',kind:''};
+  });
+  var countedB={};
+  brands.forEach(function(b){
+    if(_baIsTest(b))return;var x=dayOf(b);if(!x.day)return;
+    var kind=_bdSgKind(b,rcOk);if(!kind)return;counted++;countedB[b.id]=1;
+    // Its row: a closed-won deal closing in the range, else any closed-won, else the latest deal.
+    var rank=function(d){return d.dealstage==='closedwon'?(inR(_bdEtDayOf(d.closedate))?3:2):1;};
+    var ds=(byBrand[b.id]||[]).filter(function(d){return info[d.id]&&!claimed[d.id];})
+      .sort(function(a,c){return rank(c)-rank(a)||String(c.closedate||c.createdate||'').localeCompare(String(a.closedate||a.createdate||''));});
+    var rep=ds[0];
+    if(rep){claimed[rep.id]=1;var i=info[rep.id];i.yes=true;i.kind=kind;i.day=x.day;
+      if(kind==='pilot'&&rep.dealstage!=='closedwon')i.fix='Pilot fee paid but the deal is '+(BD_STAGE_LABELS[rep.dealstage]||rep.dealstage||'not Closed Won')+' in HubSpot';}
+    else extra.push({id:'app-'+b.id,_app:true,_brand:b,dealname:b.name||('Brand '+b.id),companyName:b.name||'',companyId:b.hubspotCompanyId||'',
+      dealstage:'',brand_status:'',amount:0,closedate:'',createdate:'',_sgDay:x.day,_sgIn:'Yes',_sgKind:kind,_sgWhy:'',
+      _sgFix:(byBrand[b.id]||[]).length?'Its HubSpot deal is shown for another signed brand':'No HubSpot deal linked to this app brand'});
+  });
+  deals.forEach(function(d){var i=info[d.id];
+    if(!i.yes){
+      if(!i.day)i.why=i.brands.length||d.dealstage==='closedwon'?'Not signed in these dates':'Not signed';
+      else if(!i.brands.length){i.why='No app brand linked';i.fix='Closed Won deal not linked to an app brand';}
+      else if(i.brands.some(function(b){return countedB[b.id];}))i.why='The brand\u2019s other deal is the counted row';
+      else i.why=_bdSgWhyNot(i.brands[0],rcOk);
+    }
+    d._sgDay=i.day;d._sgIn=i.yes?'Yes':'No';d._sgWhy=i.why;d._sgFix=i.fix;d._sgKind=i.kind;
+  });
+  return {extra:extra,counted:counted};
 }
 // The pilot row's counts over a set of brands, one pilot per brand (b.pilot:
 // its current pilot, else its latest), with the Grafana board's rule of leaving
@@ -3311,7 +3387,10 @@ function bdExportCSV(){
   // (denoted with the "associated_company." prefix so it's unambiguous).
   var EXPORT_FIELDS=[
     {hsProp:'dealname',                              get:function(r){return r.dealname;}},
-    {hsProp:'hs_object_id',                          get:function(r){return r.id;}},
+    {hsProp:'hs_object_id',                          get:function(r){return r._app?'':r.id;}},
+    {hsProp:'in_signed_brands',                      get:function(r){return r._sgIn==='Yes'?'Yes'+(r._sgKind?' ('+r._sgKind+')':''):r._sgIn?'No'+(r._sgWhy?' - '+r._sgWhy:''):'';}},
+    {hsProp:'signed_date',                           get:function(r){return r._sgDay||'';}},
+    {hsProp:'hubspot_fix',                           get:function(r){return r._sgFix||'';}},
     {hsProp:'associated_company.name',               get:function(r){return r.companyName;}},
     {hsProp:'associated_company.hs_object_id',       get:function(r){return r.companyId;}},
     {hsProp:'associated_company.company_segment',    get:function(r){return r.companySegment;}},
@@ -3421,7 +3500,7 @@ function _bdMDY(dt){if(!dt)return '';return String(dt.getMonth()+1).padStart(2,'
 function _bdMonthEndMDY(y,m){return _bdMDY(new Date(y,m,0));}   // m is 1-based
 function fmtInput(el){var v=el.value.replace(/[^0-9]/g,'');el.value=v?parseInt(v).toLocaleString():'';}
 function parseInput(s){return parseFloat((s||'').replace(/[^0-9.]/g,''))||0;}
-function bdClearDate(){_bdDateFrom='';_bdDateTo='';renderBD();}
+function bdClearDate(){_bdDateKey='';_bdDateFrom='';_bdDateTo='';renderBD();}
 // Anchor the search box at ~25% from the top of the viewport so the user
 // can see filter context above + table results below while typing.
 // Idempotent: a no-op if the box is already at the target position
@@ -3459,16 +3538,16 @@ function bdSetSearch(v){
   },0);
 }
 function bdClearSearch(){_bdSearchQ='';renderBD();}
-// "Current Month Signed" preset — Active brand status (Signed + Paying)
-// + Close Date filter scoped to the current month. The gold always-visible
+// "Current Month Signed" preset — since 2026-11-27 the table's default: Signed
+// Date this month + In Signed Brands = Yes, i.e. exactly 01's MTD Signed Brands. The gold always-visible
 // button in the table filter row calls this; it's the most common starting
 // view of the BD Tracker.
-function bdCurrentMonthSigned(){_bdBrandStatusF='Active';_bdBrandStatusToggleF=[];_bdStageF='all';_bdRepF='all';_bdAcctMgrF='all';_bdSeRepF='all';_bdOpsRepF='all';_bdPkgF='all';_bdWebTrafficF=[];_bdDateFrom=_bdFirstOfMonth();_bdDateTo='';_bdDateMode='close';_bdSearchQ='';renderBD();}
+function bdCurrentMonthSigned(){_bdBrandStatusF='all';_bdBrandStatusToggleF=[];_bdStageF='all';_bdRepF='all';_bdAcctMgrF='all';_bdSeRepF='all';_bdOpsRepF='all';_bdPkgF='all';_bdWebTrafficF=[];_bdDateKey='mtd';_bdDateMode='signed';_bdSigF='yes';_bdSearchQ='';renderBD();}
 // "Clear All Filters" — wipes everything to a truly unfiltered state (no
 // brand status, no date range, no rep/stage/web-traffic filter). The red
 // dirty-only button calls this; only visible when at least one filter is
 // non-default.
-function bdClearAllFilters(){_bdBrandStatusF='all';_bdBrandStatusToggleF=[];_bdStageF='all';_bdRepF='all';_bdAcctMgrF='all';_bdSeRepF='all';_bdOpsRepF='all';_bdPkgF='all';_bdWebTrafficF=[];_bdDateFrom='';_bdDateTo='';_bdDateMode='close';_bdSearchQ='';renderBD();}
+function bdClearAllFilters(){_bdBrandStatusF='all';_bdBrandStatusToggleF=[];_bdStageF='all';_bdRepF='all';_bdAcctMgrF='all';_bdSeRepF='all';_bdOpsRepF='all';_bdPkgF='all';_bdWebTrafficF=[];_bdDateKey='';_bdDateFrom='';_bdDateTo='';_bdDateMode='signed';_bdSigF='all';_bdSearchQ='';renderBD();}
 // Toggle a single web-traffic tier in/out of the multi-select array.
 function bdWtToggle(tier){var i=_bdWebTrafficF.indexOf(tier);if(i>=0)_bdWebTrafficF.splice(i,1);else _bdWebTrafficF.push(tier);renderBD();}
 function bdWtClear(){_bdWebTrafficF=[];renderBD();}
@@ -4016,7 +4095,16 @@ function renderBD(){
   // Precompute lowered search query once per render so the per-row filter
   // doesn't pay toLowerCase()/trim() on each call.
   var _bdSQ=(_bdSearchQ||'').trim().toLowerCase();
-  var sharedFiltered=deals.filter(function(dd){
+  if(_bdDateKey==='mtd'){var _mr=_bdSumPresetRange('mtd',_bdEtToday());_bdDateFrom=_mr.from;_bdDateTo=_mr.to;}
+  // 01's Signed Brands for the table's date range (any date mode): see _bdSignedView.
+  var _sgRc=!!(_ba&&_ba.meta&&_ba.meta.recurly&&_ba.meta.recurly.ok);
+  var _sgV=_ba?_bdSignedView(deals,_ba.brands,_baJ,_bdDateFrom||'',_bdDateTo||'',_sgRc):{extra:[],counted:null};
+  var _sgOn=!!_ba;   // without the app data the Signed view cannot be built: those filters fall away
+  var _bdRows03=_sgOn?deals.concat(_sgV.extra):deals;
+  var sharedFiltered=_bdRows03.filter(function(dd){
+    if(_sgOn&&_bdSigF==='yes'&&dd._sgIn!=='Yes')return false;
+    if(_sgOn&&_bdSigF==='no'&&dd._sgIn==='Yes')return false;
+    if(_sgOn&&_bdSigF==='fix'&&!dd._sgFix)return false;
     // Live search: case-insensitive substring across the most useful
     // human-readable fields. Skipped entirely when the box is empty so the
     // common no-search path stays fast.
@@ -4058,7 +4146,8 @@ function renderBD(){
     if(_bdWebTrafficF.length>0&&_bdWebTrafficF.indexOf(dd.average_monthly_web_traffic__cloned_)<0)return false;
     if(_bdDateFrom||_bdDateTo){
       var _bdDf;
-      if(_bdDateMode==='create')_bdDf=(dd.createdate||dd.hs_createdate||'').substring(0,10);
+      if(_bdDateMode==='signed')_bdDf=_sgOn?(dd._sgDay||''):_bdEtDayOf(dd.dealstage==='closedwon'?dd.closedate:'');
+      else if(_bdDateMode==='create')_bdDf=(dd.createdate||dd.hs_createdate||'').substring(0,10);
       else if(_bdDateMode==='demo')_bdDf=(dd.rescheduled_meeting_date||dd.date_demo_booked||'').substring(0,10);
       else if(_bdDateMode==='churn')_bdDf=(dd.pausechurn_date||'').substring(0,10);
       else _bdDf=(dd.closedate||'').substring(0,10);
@@ -4117,7 +4206,7 @@ function renderBD(){
   // Dimension order: Plan Name first (default), Web Traffic Tier second,
   // then the other dimensions.
   var attrDims=[{k:'package_type',l:'Plan Name'},{k:'_webTraffic',l:'Web Traffic Tier'},{k:'_rep',l:'Deal Rep'},{k:'_seRep',l:'SE Rep'},{k:'_opsRep',l:'Ops Rep'},{k:'brand_status',l:'Brand Status'},{k:'dealstage',l:'Deal Stage'}];
-  var attrData={},attrMRR={};for(var ai=0;ai<sharedFiltered.length;ai++){var ad=sharedFiltered[ai];var dimVal='';
+  var attrData={},attrMRR={};for(var ai=0;ai<sharedFiltered.length;ai++){var ad=sharedFiltered[ai];if(ad._app)continue;var dimVal='';
     if(_bdAttrDim==='dealstage')dimVal=BD_STAGE_LABELS[ad.dealstage]||ad.dealstage||'(none)';
     else if(_bdAttrDim==='_rep')dimVal=ownerMap[ad.hubspot_owner_id]||'Unassigned';
     else if(_bdAttrDim==='_seRep')dimVal=ownerMap[ad.se_rep_id]||'Unassigned';
@@ -4217,25 +4306,40 @@ function renderBD(){
   h+=bdSelect('SE Rep',_bdSeRepF,'_bdSeRepF',seSorted,BD_SE_REP_HIDE);
   h+=bdSelect('Ops Rep',_bdOpsRepF,'_bdOpsRepF',opsSorted,null);
   h+='</div>';
-  // Row 6: date range (prominent) + presets
-  var anyF=_bdBrandStatusF!=='all'||_bdBrandStatusToggleF.length>0||_bdStageF!=='all'||_bdRepF!=='all'||_bdAcctMgrF!=='all'||_bdSeRepF!=='all'||_bdOpsRepF!=='all'||_bdPkgF!=='all'||_bdWebTrafficF.length>0||_bdDateFrom||_bdDateTo||_bdSearchQ;
+  // Row 6 (Alex, 2026-11-27): In Signed Brands — 01's Signed Brands card for the
+  // date range below, one row per brand (an app row when it has no deal of its own).
+  if(_sgOn){
+    var _sgFixN=_bdRows03.filter(function(dd){return dd._sgFix;}).length;
+    h+='<div style="display:flex;align-items:center;gap:4px 6px;flex-wrap:wrap;margin-top:15px">';
+    h+='<span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase;flex-shrink:0;margin-right:2px" title="The brands the 01 All Time Summary Signed Brands card counts for the date range below (signed in it, active or a pilot with its fee paid), one row each">In Signed Brands</span> ';
+    h+=fp(_bdSigF==='yes','Yes ('+_sgV.counted+')',"_bdSigF='yes';renderBD()")+' ';
+    h+=fp(_bdSigF==='no','No',"_bdSigF='no';renderBD()")+' ';
+    h+=fp(_bdSigF==='all','All',"_bdSigF='all';renderBD()")+' ';
+    h+='<span style="display:inline-block;width:1px;height:14px;background:rgba(23,44,69,.2);margin:0 4px;vertical-align:middle"></span> ';
+    h+=fp(_bdSigF==='fix','\u2691 Needs a HubSpot fix ('+_sgFixN+')',"_bdSigF='fix';renderBD()");
+    h+='<span style="font-size:10px;color:var(--grey);margin-left:6px">'+(_bdDateFrom||_bdDateTo?'Signed in the date range below':'Signed at any time')+' \u00b7 pilots by fee paid, others by closed-won date (01\u2019s rule) \u00b7 '+(_bdDateMode==='signed'?'':'switch the range to Signed Date to match 01 exactly \u00b7 ')+'\u2691 = HubSpot is behind the app</span>';
+    h+='</div>';
+  }
+  // Row 7: date range (prominent) + presets
+  var anyF=_bdSigF!=='all'||_bdBrandStatusF!=='all'||_bdBrandStatusToggleF.length>0||_bdStageF!=='all'||_bdRepF!=='all'||_bdAcctMgrF!=='all'||_bdSeRepF!=='all'||_bdOpsRepF!=='all'||_bdPkgF!=='all'||_bdWebTrafficF.length>0||_bdDateFrom||_bdDateTo||_bdSearchQ;
   h+='<div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-top:15px">';
   h+='<span style="display:inline-flex;flex-direction:column;gap:4px"><span style="font-size:9px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.03em">Date Range</span>';
   h+='<span style="display:inline-flex;align-items:center;background:rgba(23,44,69,.05);border-radius:50px;padding:3px;gap:2px;flex-shrink:0">';
+  h+=fp(_bdDateMode==='signed','Signed Date',"_bdDateMode='signed';renderBD()");
   h+=fp(_bdDateMode==='close','Close Date',"_bdDateMode='close';renderBD()");
   h+=fp(_bdDateMode==='demo','Demo Date',"_bdDateMode='demo';renderBD()");
   h+=fp(_bdDateMode==='create','Create Date',"_bdDateMode='create';renderBD()");
   h+=fp(_bdDateMode==='churn','Churn Date',"_bdDateMode='churn';renderBD()");
   h+='</span></span>';
   h+='<span style="display:inline-flex;align-items:center;gap:8px">';
-  h+='<input type="date" value="'+_bdDateFrom+'" onchange="_bdDateFrom=this.value;renderBD()" style="padding:7px 12px;border:1.5px solid '+(_bdDateFrom?'var(--teal)':'rgba(23,44,69,.18)')+';border-radius:8px;font-size:13px;font-family:var(--font-b);color:var(--navy)">';
+  h+='<input type="date" value="'+_bdDateFrom+'" onchange="_bdDateKey=\'\';_bdDateFrom=this.value;renderBD()" style="padding:7px 12px;border:1.5px solid '+(_bdDateFrom?'var(--teal)':'rgba(23,44,69,.18)')+';border-radius:8px;font-size:13px;font-family:var(--font-b);color:var(--navy)">';
   h+='<span style="font-size:12px;color:var(--grey)">to</span>';
-  h+='<input type="date" value="'+_bdDateTo+'" onchange="_bdDateTo=this.value;renderBD()" style="padding:7px 12px;border:1.5px solid '+(_bdDateTo?'var(--teal)':'rgba(23,44,69,.18)')+';border-radius:8px;font-size:13px;font-family:var(--font-b);color:var(--navy)">';
+  h+='<input type="date" value="'+_bdDateTo+'" onchange="_bdDateKey=\'\';_bdDateTo=this.value;renderBD()" style="padding:7px 12px;border:1.5px solid '+(_bdDateTo?'var(--teal)':'rgba(23,44,69,.18)')+';border-radius:8px;font-size:13px;font-family:var(--font-b);color:var(--navy)">';
   h+='<button onclick="renderBD()" style="padding:7px 16px;border-radius:8px;border:1.5px solid var(--navy);background:var(--navy);color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font-b)">Go</button>';
   if(_bdDateFrom||_bdDateTo){h+='<button onclick="bdClearDate()" style="padding:7px 14px;border-radius:8px;border:1.5px solid rgba(23,44,69,.12);background:transparent;color:var(--navy);font-size:12px;cursor:pointer;font-family:var(--font-b)">Clear</button>';}
   h+='</span>';
   h+='<span style="margin-left:auto;display:inline-flex;align-items:center;gap:8px">';
-  h+='<button onclick="bdCurrentMonthSigned()" title="Active brand status + Close Date in current month" style="padding:7px 16px;border-radius:50px;border:1.5px solid #B8860B;background:linear-gradient(135deg,#F5D896 0%,#FBE9C1 100%);color:#5A3F0A;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--font-b);box-shadow:0 1px 3px rgba(184,134,11,.25),inset 0 1px 0 rgba(255,255,255,.5);letter-spacing:.02em">Filter for Current Month Signed Deals</button>';
+  h+='<button onclick="bdCurrentMonthSigned()" title="The table\u2019s default: Signed Date this month + In Signed Brands = Yes (01\u2019s MTD Signed Brands)" style="padding:7px 16px;border-radius:50px;border:1.5px solid #B8860B;background:linear-gradient(135deg,#F5D896 0%,#FBE9C1 100%);color:#5A3F0A;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--font-b);box-shadow:0 1px 3px rgba(184,134,11,.25),inset 0 1px 0 rgba(255,255,255,.5);letter-spacing:.02em">Filter for Current Month Signed Deals</button>';
   if(anyF){h+='<button onclick="bdClearAllFilters()" title="Wipe all filters to a fully unfiltered state" style="padding:7px 14px;border-radius:50px;border:1.5px solid #C62828;background:rgba(198,40,40,.05);color:#C62828;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font-b)">Clear All Filters</button>';}
   h+='</span>';
   h+='</div></div>';
@@ -4269,14 +4373,17 @@ function renderBD(){
   // Summary Card
   // sfStatusFilled = denominator for % Paused / % Churned (deals with brand_status field filled).
   // sfDaysCount = sample size for Avg Days to Close, restricted to Closed-Won deals only.
-  var sfTotal=sharedFiltered.length,sfTotalAmt=0,sfPaused=0,sfChurned=0,sfPausedMRR=0,sfChurnedMRR=0;
+  // App rows (no HubSpot deal) are brands, not deals: the deal tiles and the
+  // attribution chart read HubSpot deals only (_sfDeals); % Paused reads brands.
+  var _sfDeals=sharedFiltered.filter(function(dd){return !dd._app;});
+  var sfTotal=_sfDeals.length,sfTotalAmt=0,sfPaused=0,sfChurned=0,sfPausedMRR=0,sfChurnedMRR=0;
   var sfDaysSum=0,sfDaysCount=0,sfStatusFilled=0;
   // "Close From Demo" companion: closedate − date_demo_booked
   var sfDemoDaysSum=0,sfDemoDaysCount=0;
   // "To Demo" companion: date_demo_booked − createdate (NOT limited to
   // closed-won — it measures speed-to-book, useful pipeline-wide)
   var sfToDemoSum=0,sfToDemoCount=0;
-  sharedFiltered.forEach(function(dd){
+  _sfDeals.forEach(function(dd){
     sfTotalAmt+=dd.amount;
     // Universe for % Paused / % Churned = deals with brand_status filled
     if(dd.brand_status){
@@ -4344,7 +4451,7 @@ function renderBD(){
   var _pzRc=!!(_ba&&_ba.meta&&_ba.meta.recurly&&_ba.meta.recurly.ok);
   if(_pzRc){
     var _pzSeen={},_pzLive=0,_pz=0,_pzMrr=0;
-    sharedFiltered.forEach(function(dd){((_baJ.byDeal[dd.id]||{}).brands||[]).forEach(function(b){
+    sharedFiltered.forEach(function(dd){(dd._app?[dd._brand]:((_baJ.byDeal[dd.id]||{}).brands||[])).forEach(function(b){
       if(_pzSeen[b.id]||_baIsTest(b))return;_pzSeen[b.id]=1;
       var k=_baRcClass(b);if(!k||k==='ended')return;_pzLive++;
       if(k==='paused'){_pz++;_pzMrr+=b.recurly.idlePrice||0;}});});
@@ -4356,7 +4463,7 @@ function renderBD(){
   h+='</div>';
   // Table
   h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:20px 24px">';
-  h+='<div style="display:flex;align-items:center;margin-bottom:0;padding-bottom:13px;border-bottom:1px solid rgba(23,44,69,.07)"><div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">All Deals</div><div style="font-size:10px;color:var(--grey);margin-left:8px">'+sharedFiltered.length+' of '+deals.length+'<span id="bd-co-hint" style="display:none;color:var(--teal);font-weight:600"></span></div>'
+  h+='<div style="display:flex;align-items:center;margin-bottom:0;padding-bottom:13px;border-bottom:1px solid rgba(23,44,69,.07)"><div style="font-family:var(--font-h);font-size:15px;font-weight:700;color:var(--navy)">All Deals</div><div style="font-size:10px;color:var(--grey);margin-left:8px">'+sharedFiltered.length+' of '+_bdRows03.length+(_sgV.extra.length?' ('+_sgV.extra.length+' app row'+(_sgV.extra.length===1?'':'s')+' with no HubSpot deal)':'')+'<span id="bd-co-hint" style="display:none;color:var(--teal);font-weight:600"></span></div>'
     // Live search box — relocated here, next to the All Deals header and made
     // more prominent. Updates `_bdSearchQ` per keystroke; bdSetSearch re-runs
     // the render and restores focus + caret immediately so typing stays smooth.
@@ -4433,6 +4540,7 @@ function renderBD(){
     var cols=[
       {k:'dealname',l:'Deal Name',w:140},
       {k:'id',l:'Deal ID',w:100,idCol:true},
+      {k:'_sgIn',l:'In Signed Brands',w:120,trackerOnly:true},
       {k:'companyName',l:'Company',w:140},
       // Sits BEFORE the hideable Company ID column so it stays adjacent to
       // Company whether or not the ID columns are shown.
@@ -4448,6 +4556,7 @@ function renderBD(){
       // Only Close Date visible by default; Demo Date + Create Date are tucked
       // behind the group-collapse chevron. Soft-purple tint distinguishes this
       // from the other groups (violet-500 family).
+      {k:'_sgDay',l:'Signed Date',w:90, group:'dates', trackerOnly:true},
       {k:'closedate',l:'Close Date',w:90, group:'dates'},
       {k:'date_demo_booked',l:'Demo Date',w:100, group:'dates', groupCollapse:true},
       {k:'createdate',l:'Create Date',w:90, group:'dates', groupCollapse:true},
@@ -4513,6 +4622,7 @@ function renderBD(){
       cols=_rest.slice(0,_di).concat(_cg,_rest.slice(_di));
     }
     cols=cols.filter(function(c){
+      if(c.trackerOnly&&_bdTab!=='tracker')return false;
       if(c.idCol&&!_bdIdsVisible)return false;
       if(!c.group||!c.groupCollapse)return true;
       if(c.group==='plan')return _bdPlanExpanded;
@@ -4599,14 +4709,22 @@ function renderBD(){
       var _safeUrl=function(u){if(!u)return '';var s=String(u).trim();if(!s)return '';if(/^https?:\/\//i.test(s))return s;return 'https://'+s;};
       var _linkCell=function(u,lbl){var url=_safeUrl(u);if(!url)return dash;return '<a href="'+url+'" target="_blank" style="color:var(--teal);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;max-width:100%" title="'+u.replace(/"/g,'&quot;')+'">'+(lbl||u)+' \u2197</a>';};
       t+='<tr>';
-      t+='<td><div style="display:flex;align-items:center;gap:4px;overflow:hidden"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+row.dealname+'">'+row.dealname+'</span><a href="https://app.hubspot.com/contacts/46815331/record/0-3/'+row.id+'" target="_blank" style="flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:4px;background:rgba(114,164,191,.1);color:var(--teal);font-size:9px;text-decoration:none">\u2197</a></div></td>';
+      // App rows (no HubSpot deal of their own) carry no deal link; ⚑ = HubSpot is behind the app.
+      var _sgFlag=row._sgFix?'<span title="'+_bdEsc(row._sgFix)+'" style="flex-shrink:0;color:#B45309;font-size:11px;cursor:help">\u2691</span>':'';
+      t+='<td><div style="display:flex;align-items:center;gap:4px;overflow:hidden">'+_sgFlag+'<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+_bdEsc(row.dealname)+'">'+(row._app?_bdEsc(row.dealname):row.dealname)+'</span>'
+        +(row._app?'<span class="pill" title="An app brand with no HubSpot deal of its own" style="flex-shrink:0;background:#F1F5F9;color:#475569;font-size:9px;padding:1px 6px">App</span>'
+          :'<a href="https://app.hubspot.com/contacts/46815331/record/0-3/'+row.id+'" target="_blank" style="flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:4px;background:rgba(114,164,191,.1);color:var(--teal);font-size:9px;text-decoration:none">\u2197</a>')+'</div></td>';
       // Deal ID cell \u2014 raw HubSpot record ID. Mono font + grey so it reads as
       // a system identifier, not a label. Click-to-copy via title hint.
-      t+=_td('id','<td style="font-family:ui-monospace,Menlo,monospace;color:var(--grey)" title="HubSpot Deal record ID">'+(row.id||dash)+'</td>');
+      t+=_td('id','<td style="font-family:ui-monospace,Menlo,monospace;color:var(--grey)" title="HubSpot Deal record ID">'+(row._app?dash:(row.id||dash))+'</td>');
+      var _sgK=row._sgKind==='pilot'?'Pilot':row._sgKind==='active'?'Active':'';
+      t+=_td('_sgIn','<td data-no-tip="1" title="'+_bdEsc(row._sgIn==='Yes'?'Counted in 01 Signed Brands'+(_sgK?' as '+_sgK.toLowerCase():''):(row._sgWhy||''))+'">'
+        +(row._sgIn==='Yes'?'<span class="pill" style="background:#16A34A18;color:#15803D">Yes'+(_sgK?' \u00b7 '+_sgK:'')+'</span>'
+          :row._sgIn==='No'?'<span style="font-size:10px;color:var(--grey);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;max-width:100%">No \u00b7 '+_bdEsc(row._sgWhy||'')+'</span>':dash)+'</td>');
       // Company cell \u2014 the name itself is now the clickable link to the
       // HubSpot company record (was a tiny arrow icon next to plain text).
       // If we have no companyId, render the name as-is or "\u2014".
-      var coName=row.companyName||'';
+      var coName=row._app?_bdEsc(row.companyName||''):(row.companyName||'');
       var coUrl=row.companyId?'https://app.hubspot.com/contacts/46815331/record/0-2/'+row.companyId:'';
       var coCell;
       if(coName&&coUrl){
@@ -4653,6 +4771,7 @@ function renderBD(){
         +_td('temporary_pause_reason','<td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+_churnBg+'" title="'+(row.temporary_pause_reason||'').replace(/"/g,'&quot;')+'">'+tEnum(row.temporary_pause_reason)+'</td>')
         +_td('paused_billing__billing_restart_date','<td style="'+_churnBg+'">'+brd+'</td>');
       if(_churnFirst)t+=_churnTd;
+      t+=_td('_sgDay','<td style="'+_datesBg+'">'+(row._sgDay||dash)+'</td>');
       t+=_td('closedate','<td style="'+_datesBg+'">'+cd+'</td>');
       // Show EFFECTIVE demo date (rescheduled overrides original). Highlight
       // rescheduled rows so the override is visible at a glance — purple/bold
