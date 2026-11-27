@@ -4086,10 +4086,9 @@ function renderBD(){
       bLbl:'New '+_bLbl.toLowerCase()+' ARR',pLbl:'New pilot ARR',aria:'New ARR by week'});
     h+='</div>';
   }
-  // Billing Status breakdown (Alex, 2026-11-16): every app brand by the Brand
-  // MRR report's Status, live (Recurly, then the app). Below ARR by Week
-  // (Alex, 2026-11-17).
-  if(_ba)h+=_bdStatusPie(_baStatusMix(_ba.brands),_appLive,!!(_ba.meta&&_ba.meta.recurly&&_ba.meta.recurly.ok));
+  // Billing Status card REMOVED from the Tracker (Alex, 2026-11-27). _bdStatusPie /
+  // _baStatusMix stay; to show it again, below ARR by Week:
+  //   if(_ba)h+=_bdStatusPie(_baStatusMix(_ba.brands),_appLive,!!(_ba.meta&&_ba.meta.recurly&&_ba.meta.recurly.ok));
   h+='</section>';
   // Shared Filtered
   // Precompute lowered search query once per render so the per-row filter

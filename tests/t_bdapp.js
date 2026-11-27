@@ -628,7 +628,7 @@ function pageToggleTests(){
       +'var closedWonDeals=deals.filter(function(dd){return dd.dealstage==="closedwon";});var h="";'
       +'var _baJ={byDeal:{}};if(_ba)deals.forEach(function(dd){_baJ.byDeal[dd.id]={brands:(_ba.map[dd.id]||[])};});'
       +block+'\nreturn {chartDeals:chartDeals.map(function(d){return d.id;}),snap:_snByMonth,app:_snByMonthApp,wk:_wkTotal,h:h,cur:_chartMonthMap};}'].join('\n'),T);
-  ck('Billing Status sits in section 02, after ARR by Week',bd.indexOf('h+=_bdStatusPie(')>bd.indexOf("aria:'New ARR by week'")&&bd.indexOf('h+=_bdStatusPie(')<b,true);
+  ck('Billing Status card is not on the Tracker (removed 2026-11-27)',/^\s*if\(_ba\)h\+=_bdStatusPie\(/m.test(bd),false);
   ck('the toggle defaults to Excluding Pilots',T._bdPilotMode,'exclude');
   const pb={id:1,name:'P',pilotPaid:true},nb={id:2,name:'N',pilotPaid:false},tb={id:3,name:'Vincent',pilotPaid:true};
   const D=[
