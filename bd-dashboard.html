@@ -1468,17 +1468,70 @@ function _bdWfW2Rows(){
   }
   return rows;
 }
-function bdWfW2Csv(){
-  var rows=_bdWfW2Rows();if(!rows)return;
-  var q=function(v){v=v==null?'':String(v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
-  var o=_bdWfW2Out,name='retention-waterfall-'+({ret:'retention',cpm:'churn-per-month',churn:'churn'}[o.metric]||'retention')+(o.mode==='n'?'-brands':'-pct')+'.csv';
-  var blob=new Blob(['\ufeff'+rows.map(function(r){return r.map(q).join(',');}).join('\n')],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+// Excel export (Alex, 2026-11-27: "change the export csv into xls"). A real
+// .xlsx built in the browser, no library: one sheet, header row bold and
+// frozen. Numbers stay numbers. With numText (W2, whose cells are formatted
+// strings) "85.7%" becomes a percentage and "-3" a number; otherwise text stays
+// text, so an all-digit brand name or key is not turned into a number.
+function _bdXlsx(sheet,rows,numText){
+  var esc=function(s){return String(s).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g,'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');};
+  var col=function(i){var s='';i++;while(i>0){var m=(i-1)%26;s=String.fromCharCode(65+m)+s;i=Math.floor((i-1)/26);}return s;};
+  var cell=function(v,r,c,hd){
+    if(v==null||v==='')return '';
+    var ref=col(c)+(r+1),st=hd?' s="1"':'';
+    if(typeof v==='number'&&isFinite(v))return '<c r="'+ref+'"'+st+'><v>'+v+'</v></c>';
+    var t=String(v).trim();
+    if(!hd&&numText&&/^-?\d+(\.\d+)?%$/.test(t))return '<c r="'+ref+'" s="2"><v>'+(parseFloat(t)/100)+'</v></c>';
+    if(!hd&&numText&&/^-?(0|[1-9]\d{0,14})(\.\d+)?$/.test(t))return '<c r="'+ref+'"><v>'+t+'</v></c>';
+    return '<c r="'+ref+'" t="inlineStr"'+st+'><is><t xml:space="preserve">'+esc(v)+'</t></is></c>';
+  };
+  var data=rows.map(function(row,r){return '<row r="'+(r+1)+'">'+row.map(function(v,c){return cell(v,r,c,r===0);}).join('')+'</row>';}).join('');
+  var X='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n',NS='http://schemas.openxmlformats.org/';
+  var files=[
+    ['[Content_Types].xml',X+'<Types xmlns="'+NS+'package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>'
+      +'<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+      +'<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>'],
+    ['_rels/.rels',X+'<Relationships xmlns="'+NS+'package/2006/relationships"><Relationship Id="rId1" Type="'+NS+'officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'],
+    ['xl/workbook.xml',X+'<workbook xmlns="'+NS+'spreadsheetml/2006/main" xmlns:r="'+NS+'officeDocument/2006/relationships"><sheets><sheet name="'+esc(String(sheet||'Sheet1').replace(/[\\\/?*\[\]:]/g,' ').slice(0,31))+'" sheetId="1" r:id="rId1"/></sheets></workbook>'],
+    ['xl/_rels/workbook.xml.rels',X+'<Relationships xmlns="'+NS+'package/2006/relationships"><Relationship Id="rId1" Type="'+NS+'officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="'+NS+'officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'],
+    ['xl/styles.xml',X+'<styleSheet xmlns="'+NS+'spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="0.0%"/></numFmts>'
+      +'<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>'
+      +'<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
+      +'<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+      +'<cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs></styleSheet>'],
+    ['xl/worksheets/sheet1.xml',X+'<worksheet xmlns="'+NS+'spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetData>'+data+'</sheetData></worksheet>']
+  ];
+  // A zip with every file stored (no compression), which Excel reads fine.
+  var enc=new TextEncoder(),T=_bdXlsx.crc;
+  if(!T){T=_bdXlsx.crc=[];for(var n=0;n<256;n++){var k=n;for(var j=0;j<8;j++)k=k&1?0xEDB88320^(k>>>1):k>>>1;T[n]=k>>>0;}}
+  var crc=function(b){var c=0xFFFFFFFF;for(var i=0;i<b.length;i++)c=T[(c^b[i])&255]^(c>>>8);return (c^0xFFFFFFFF)>>>0;};
+  var u16=function(v){return [v&255,(v>>>8)&255];},u32=function(v){return [v&255,(v>>>8)&255,(v>>>16)&255,(v>>>24)&255];};
+  var parts=[],cen=[],off=0;
+  files.forEach(function(f){
+    var nm=enc.encode(f[0]),bd=enc.encode(f[1]),c=crc(bd);
+    var meta=[].concat(u16(20),u16(0x0800),u16(0),u16(0),u16(0x21),u32(c),u32(bd.length),u32(bd.length),u16(nm.length));
+    var lh=new Uint8Array([].concat(u32(0x04034b50),meta,u16(0)));
+    parts.push(lh,nm,bd);
+    cen.push(new Uint8Array([].concat(u32(0x02014b50),u16(20),meta,u16(0),u16(0),u16(0),u16(0),u32(0),u32(off))),nm);
+    off+=lh.length+nm.length+bd.length;
+  });
+  var cs=0;cen.forEach(function(p){cs+=p.length;});
+  var end=new Uint8Array([].concat(u32(0x06054b50),u16(0),u16(0),u16(files.length),u16(files.length),u32(cs),u32(off),u16(0)));
+  return new Blob(parts.concat(cen,[end]),{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+function _bdDl(blob,name){
+  var url=URL.createObjectURL(blob),a=document.createElement('a');
   a.href=url;a.download=name;document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(function(){URL.revokeObjectURL(url);},200);
 }
-function bdWfCsv(){
+function bdWfW2Xlsx(){
+  var rows=_bdWfW2Rows();if(!rows)return;
+  var o=_bdWfW2Out,name='retention-waterfall-'+({ret:'retention',cpm:'churn-per-month',churn:'churn'}[o.metric]||'retention')+(o.mode==='n'?'-brands':'-pct');
+  _bdDl(_bdXlsx('Retention Waterfall',rows,true),name+'.xlsx');
+}
+function bdWfXlsx(){
   var wf=BD&&BD.wf;if(!wf||!wf.brands)return;
   _bdWfFlagsAll(wf);
-  var list=_bdWfSorted(_bdWfFilter(wf.brands)),q=function(v){v=v==null?'':String(v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
+  var list=_bdWfSorted(_bdWfFilter(wf.brands));
   var rows=[['Brand key','Brand','Source','Group','Churn status','HubSpot stage','First month','Last invoiced','Churn month (last invoiced)','Months until churn','Invoiced months','Total invoiced',
     'Metabase churn month','Churn source','Metabase months until churn','Ever implemented','Ever paid','Churn type','Segment','A/B test','Web tier at churn','Web tier source',
     'Self-selected traffic','Implied traffic','Implied views 30d','Measured traffic','Measured views 30d','Clinicians\u2019 Choice products','Clinician Reviews products','Product Analysis products','ClinicianAI products',
@@ -1486,8 +1539,7 @@ function bdWfCsv(){
   list.forEach(function(b){var c=_bdWfChurnMonth(b);rows.push([b.k,b.n,b.src,b.grp,b.st,b.stage,b.fm,b.li,c,c?_bdWfDiff(b.fm,c):'',b.mi,_bdWfTotal(b),
     b.hsCh,b.chSrc,b.mu,b.impl?'Yes':'No',b.paid?'Yes':'No',b.ty,b.seg,b.ab,b.wt,b.wts,b.ss,b.it,b.v30,b.mt,b.mv,b.cc,b.rv,b.ca,b.cai,b.pe,b.pc,b.pkg,b.pil,
     (b._fl||[]).map(function(f){return f.title;}).join('; ')].concat(b.a.map(function(v){return v==null?'':v;})).concat(wf.curM?[b.cur==null?'':b.cur]:[]));});
-  var blob=new Blob([rows.map(function(r){return r.map(q).join(',');}).join('\n')],{type:'text/csv'}),url=URL.createObjectURL(blob),a=document.createElement('a');
-  a.href=url;a.download='churn-waterfall.csv';document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(function(){URL.revokeObjectURL(url);},200);
+  _bdDl(_bdXlsx('All Brands',rows),'churn-waterfall.xlsx');
 }
 // The two total rows stick under the header row at its MEASURED height: a
 // hard-coded offset leaves a gap (or an overlap) wherever the font renders a
@@ -1653,7 +1705,7 @@ function _bdWfW2Section(list,months,now,opt){
     if(cpmView)return _bdWfMode==='n'?(c.lostM?'−'+c.lostM:'0'):pct(c.mPct);
     if(_bdWfMode==='n')return churnView?(c.lost?'−'+c.lost:'0'):String(c.alive);return churnView?pct(1-c.pct):pct(c.pct);};
   // Monthly churn is small, so it gets its own scale: 0% green, 10% yellow, 20%+ darkest red.
-  // W2's CSV exports exactly this grid (metric, % / Brands, filters and toggles), no flags.
+  // W2's Excel export is exactly this grid (metric, % / Brands, filters and toggles), no flags.
   _bdWfW2Out={rw:rw,cellVal:cellVal,metric:_bdWfMetric,mode:_bdWfMode};
   var cellFill=function(c){if(!cpmView)return _bdWfFill(c.pct);return c.mPct==null?'':_bdWfFill(1-Math.min(c.mPct/BD_WF_CPM_MAX,1)*(1-BD_WF_LOW));};
   var years=[];months.forEach(function(m){var y=m.slice(0,4);if(years.indexOf(y)<0)years.push(y);});
@@ -1681,7 +1733,7 @@ function _bdWfW2Section(list,months,now,opt){
   var tiers=_bdWfTierList(tierN);
   _bdWfW2TierOpts=tiers;
   h+='<div class="bd-wf-bar" style="margin:0 0 12px">'+_bdWfTierChips(tiers,tierN,'bdWfW2TierAt',plain?'':BD_WF_TIER_NOTE)
-    +'<button class="bd-wf-btn" style="margin-left:auto" onclick="bdWfW2Csv()">Download CSV</button></div>';
+    +'<button class="bd-wf-btn" style="margin-left:auto" onclick="bdWfW2Xlsx()">Download Excel</button></div>';
   var W=rw.maxK,minW=BD_WF_W_LBL+BD_WF_W_N+BD_WF_W_CELL*W;
   // Cohort rows whose retention a flagged brand distorts: active brands not
   // invoiced lately keep the row high; a long gap hides a churn and a return.
@@ -1843,7 +1895,7 @@ function _bdWfRender(){
     +'<button class="bd-wf-btn" onclick="bdWfSet(\'cols\',\''+(_bdWfCols==='all'?'default':'all')+'\')">'+(_bdWfCols==='all'?'\u2212 Hide the extra columns':'+ Show '+(_bdWfColSpec().length-7)+' more columns')+'</button>'
     +'<span style="font-size:11px;color:var(--grey)">Click a column header to sort</span>'
     +'<span style="font-size:11px;color:var(--grey)">'+sorted.length.toLocaleString()+' brand'+(sorted.length===1?'':'s')+'</span>'
-    +'<button class="bd-wf-btn" style="margin-left:auto" onclick="bdWfCsv()">Download CSV</button></div>';
+    +'<button class="bd-wf-btn" style="margin-left:auto" onclick="bdWfXlsx()">Download Excel</button></div>';
   var tot=months.map(function(){return 0;}),cntM=months.map(function(){return 0;});
   sorted.forEach(function(b){b.a.forEach(function(v,i){if(v!=null){tot[i]+=v;if(v>=0.01)cntM[i]++;}});});
   // This month so far (wf.curM): Recurly only, approximate until the month closes.

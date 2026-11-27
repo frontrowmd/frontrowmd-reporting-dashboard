@@ -295,7 +295,7 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
      {fm:'2026-02',li:'2026-04',st:'Active',impl:true,it:'0-10K'},{fm:'2026-02',li:'2026-02',st:'Churned',impl:false,ty:'Never Implemented',it:'0-10K'}]};
    vm.runInContext("G.tab='wf';",P);let w=P.gRender?(P.gRender(),els.gmain.innerHTML):'';
    ck('  the tab renders W2: Churn Per Month, tier toggles, no traffic columns, CSV; no flags, flagged list or footnote',
-     [/Churn Per Month/.test(w),/>Web Traffic Tier<span/.test(w),!/0-10K %/.test(w),/bdWfW2Csv\(\)/.test(w),/\u26a0|Flagged brands in this grid|How it is counted/.test(w)],[true,true,true,true,false]);
+     [/Churn Per Month/.test(w),/>Web Traffic Tier<span/.test(w),!/0-10K %/.test(w),/bdWfW2Xlsx\(\)/.test(w),/\u26a0|Flagged brands in this grid|How it is counted/.test(w)],[true,true,true,true,false]);
    ck('  Jan cohort: 2 brands; retained 100%, 100%, then 50%',(()=>{const i=w.indexOf('<td class="rw-c">Jan 26</td>');const r=w.slice(i,w.indexOf('</tr>',i));return [...r.matchAll(/<td[^>]*>([^<]*)<\/td>/g)].map(x=>x[1]).slice(1,6);})(),['2','100%','100%','50.0%','50.0%']);
    ck('  the waterfall tab is full width; the first tab keeps its max width',[els.gmain.className,/\.main\.full\{max-width:none\}/.test(html)],['main full',true]);
    ck('  Never Implemented excluded by default, as on Billing (Feb cohort = 1)',/<td class="rw-c">Feb 26<\/td><td class="rw-n">1<\/td>/.test(w),true);

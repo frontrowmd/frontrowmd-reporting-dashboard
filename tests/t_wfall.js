@@ -115,7 +115,7 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
     addEventListener(){},removeEventListener(){},matchMedia:()=>({matches:false,addEventListener(){}}),Chart:function(){return{destroy(){},update(){}}},
     ResizeObserver:function(){return{observe(){},disconnect(){}}},IntersectionObserver:function(){return{observe(){},disconnect(){}}},
     innerWidth:1400,innerHeight:900,scrollY:0,history:{replaceState(){}}};
-  P.window=P;P.self=P;vm.createContext(P);
+  P.window=P;P.self=P;P.TextEncoder=TextEncoder;P.Blob=Blob;vm.createContext(P);
   for(const s of scripts){try{vm.runInContext(s,P);}catch(e){console.log('script load error:',e.message);}}
   ck('the tab button and its nav anchors exist',/data-tab="waterfall"[^>]*>Billing</.test(html)&&/id="bd-nav-wf"/.test(html)&&/data-sec="bd-sec-wf1"/.test(html)&&/data-sec="bd-sec-wf2"/.test(html),true);
   P.BD.data={deals:[],ownerMap:{},meta:{generatedAt:new Date().toISOString()}};
@@ -193,7 +193,7 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
   // W2 CSV (Alex, 2026-11-25): the grid as shown, no flags.
   h=R();{const rows=P._bdWfW2Rows();const jul=rows.find(r=>r[0]==='2026-07');
    ck('W2 CSV: header, then each cohort as on screen (months in the current metric); no flags, no traffic columns',
-     [rows[0].slice(0,4),jul.slice(0,1).concat(jul.slice(2,6)),rows[rows.length-1][0],JSON.stringify(rows).includes('\u26a0'),/onclick="bdWfW2Csv\(\)">Download CSV</.test(h)],
+     [rows[0].slice(0,4),jul.slice(0,1).concat(jul.slice(2,6)),rows[rows.length-1][0],JSON.stringify(rows).includes('\u26a0'),/onclick="bdWfW2Xlsx\(\)">Download Excel</.test(h)],
      [['Cohort','Brands','Month 1','Month 2'],['2026-07','100%','100%','50.0%','50.0%'],'All cohorts',false,true]);}
   P.bdWfSet('metric','cpm');P.bdWfSet('mode','n');R();
   ck('  ...and follows the metric and mode: Churn Per Month counts, plain minus signs',P._bdWfW2Rows().find(r=>r[0]==='2026-07').slice(2,6),['0','0','-1','0']);
@@ -369,5 +369,14 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
   ck('a Metabase failure is an error band, never an empty grid',/Billing data unavailable/.test(h)&&/collection must be visible/.test(h)&&!/bd-sec-wf2/.test(h),true);
   ck('W2\u2019s first column matches .rwtbl\u2019s sticky offset',[P.BD_WF_W_LBL,+((html.match(/\.rwtbl \.rw-n\{[^}]*left:(\d+)px/)||[])[1])],[78,78]);
   ck('Refresh re-runs the card once the tab has been opened',/if\(BD\.wf\)bdWfFetch\(true\);/.test(html),true);
+  // Excel export (Alex, 2026-11-27): a real .xlsx (stored zip), numbers and percentages typed.
+  {const ex=/onclick="bdWfXlsx\(\)">Download Excel</.test(P._bdWfRender())||/bdWfXlsx\(\)">Download Excel/.test(html);
+   const zb=Buffer.from(await P._bdXlsx('A/B:c',[['Cohort','Brands','M1'],['2026-07',12,'85.7%'],['k','0123','a & <b>\uFFFE']],true).arrayBuffer());
+   const zt=Buffer.from(await P._bdXlsx('W1',[['Brand','Total'],['1922',5]]).arrayBuffer()).toString('utf8');
+   const sheet=zb.toString('utf8');
+   ck('Excel export: both buttons say Download Excel; the file is a zip with the sheet parts',[ex,/onclick="bdWfW2Xlsx\(\)">Download Excel</.test(html),zb.readUInt32LE(0)===0x04034b50,/xl\/worksheets\/sheet1\.xml/.test(sheet),/\[Content_Types\]\.xml/.test(sheet)],[true,true,true,true,true]);
+   ck('  numbers stay numbers, "85.7%" a 0.0% cell, a leading zero stays text, text escaped, sheet name cleaned',
+     [/<c r="B2"><v>12<\/v><\/c>/.test(sheet),/<c r="C2" s="2"><v>0\.857<\/v>/.test(sheet),/<c r="B3" t="inlineStr"><is><t xml:space="preserve">0123</.test(sheet),/a &amp; &lt;b&gt;/.test(sheet),/<sheet name="A B c"/.test(sheet),!sheet.includes('\uFFFE')],[true,true,true,true,true,true]);
+   ck('  without numText (W1) an all-digit name stays text; real numbers stay numbers',[/<c r="A2" t="inlineStr"><is><t xml:space="preserve">1922</.test(zt),/<c r="B2"><v>5<\/v>/.test(zt)],[true,true]);}
   console.log('\n'+pass+' passed, '+fail+' failed');process.exit(fail?1:0);
 })().catch(e=>{console.error(e);process.exit(1);});
