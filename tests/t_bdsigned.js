@@ -73,7 +73,7 @@ ck('  the app row: App badge, no deal link, flag; columns In Signed Brands + Sig
 ck('  headers carry In Signed Brands and Signed Date',[/>In Signed Brands</.test(tbl()),/>Signed Date</.test(tbl())],[true,true]);
 ck('  header counts rows over deals + app rows, never "N of fewer"',/All Deals<\/div><div[^>]*>5 of 11 \(1 app row with no HubSpot deal\)/.test(tbl()),true);
 {const tile=l=>(tbl().match(new RegExp('<div class="tlbl">'+l+'<\\/div><div class="tval">([^<]+)<'))||[])[1];
- ck('  the Deals / Avg ACV tiles count HubSpot deals only (the app row is a brand, $0 would drag Avg ACV)',[tile('Deals'),tile('Avg ACV')],['4','$1,000']);}
+ ck('  the Deals tile counts every row like 01 (5, app row included); Avg ACV divides by HubSpot deals only',[tile('Deals'),tile('Avg ACV'),/incl\. 1 app row \(no HubSpot deal\)/.test(tbl()),/MRR \u00f7 4 HubSpot deals/.test(tbl())],['5','$1,000',true,true]);}
 // a hostile brand name on an app row is escaped in every cell
 brands[2].name='<b>X</b> & Co';try{ctx.renderBD();}catch(e){}h=els['bd-content'].innerHTML;
 ck('  an app row\u2019s brand name is escaped (Deal Name and Company cells)',[tbl().includes('<b>X</b>'),(tbl().match(/&lt;b&gt;X&lt;\/b&gt; &amp; Co/g)||[]).length>=2],[false,true]);

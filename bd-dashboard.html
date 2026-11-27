@@ -4206,7 +4206,7 @@ function renderBD(){
   // Dimension order: Plan Name first (default), Web Traffic Tier second,
   // then the other dimensions.
   var attrDims=[{k:'package_type',l:'Plan Name'},{k:'_webTraffic',l:'Web Traffic Tier'},{k:'_rep',l:'Deal Rep'},{k:'_seRep',l:'SE Rep'},{k:'_opsRep',l:'Ops Rep'},{k:'brand_status',l:'Brand Status'},{k:'dealstage',l:'Deal Stage'}];
-  var attrData={},attrMRR={};for(var ai=0;ai<sharedFiltered.length;ai++){var ad=sharedFiltered[ai];if(ad._app)continue;var dimVal='';
+  var attrData={},attrMRR={};for(var ai=0;ai<sharedFiltered.length;ai++){var ad=sharedFiltered[ai];var dimVal='';
     if(_bdAttrDim==='dealstage')dimVal=BD_STAGE_LABELS[ad.dealstage]||ad.dealstage||'(none)';
     else if(_bdAttrDim==='_rep')dimVal=ownerMap[ad.hubspot_owner_id]||'Unassigned';
     else if(_bdAttrDim==='_seRep')dimVal=ownerMap[ad.se_rep_id]||'Unassigned';
@@ -4373,10 +4373,12 @@ function renderBD(){
   // Summary Card
   // sfStatusFilled = denominator for % Paused / % Churned (deals with brand_status field filled).
   // sfDaysCount = sample size for Avg Days to Close, restricted to Closed-Won deals only.
-  // App rows (no HubSpot deal) are brands, not deals: the deal tiles and the
-  // attribution chart read HubSpot deals only (_sfDeals); % Paused reads brands.
-  var _sfDeals=sharedFiltered.filter(function(dd){return !dd._app;});
-  var sfTotal=_sfDeals.length,sfTotalAmt=0,sfPaused=0,sfChurned=0,sfPausedMRR=0,sfChurnedMRR=0;
+  // The count tile and the attribution chart count EVERY row, app rows included
+  // (Alex, 2026-11-27: 03 must read 93 like 01, not 90). Sums and averages read
+  // HubSpot deals only (_sfDeals): an app row has no amount, so it would drag Avg
+  // ACV down. % Paused reads the brands behind both.
+  var _sfDeals=sharedFiltered.filter(function(dd){return !dd._app;}),_sfApp=sharedFiltered.length-_sfDeals.length;
+  var sfTotal=sharedFiltered.length,sfTotalAmt=0,sfPaused=0,sfChurned=0,sfPausedMRR=0,sfChurnedMRR=0;
   var sfDaysSum=0,sfDaysCount=0,sfStatusFilled=0;
   // "Close From Demo" companion: closedate − date_demo_booked
   var sfDemoDaysSum=0,sfDemoDaysCount=0;
@@ -4414,15 +4416,15 @@ function renderBD(){
   var sfAvgDays=_avg1(sfDaysSum,sfDaysCount);
   var sfAvgDaysFromDemo=_avg1(sfDemoDaysSum,sfDemoDaysCount);
   var sfAvgToDemo=_avg1(sfToDemoSum,sfToDemoCount);
-  var sfAvgACV=sfTotal?(sfTotalAmt/sfTotal):0;
+  var sfAvgACV=_sfDeals.length?(sfTotalAmt/_sfDeals.length):0;
   // Secondary rank: these are filter-scoped, unlike section 1's all-time heroes.
   // .sub lowers the value size so ~11 tiles on the page are not all shouting at
   // 28px, and flex-wrap stops 8 tiles from crushing on a narrow window.
   h+='<div style="display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap;align-items:stretch">';
-  h+='<div class="tile hero sub" style="flex:1;min-width:132px"><div class="tlbl">Deals</div><div class="tval">'+sfTotal+'</div><div class="tdef">Matching filters</div></div>';
+  h+='<div class="tile hero sub" style="flex:1;min-width:132px"><div class="tlbl">Deals</div><div class="tval">'+sfTotal+'</div><div class="tdef">Matching filters'+(_sfApp?' \u00b7 incl. '+_sfApp+' app row'+(_sfApp===1?'':'s')+' (no HubSpot deal)':'')+'</div></div>';
   h+='<div class="tile hero sub" style="flex:1;min-width:132px"><div class="tlbl">Total ARR</div><div class="tval">'+f$(sfTotalAmt*12)+'</div><div class="tdef">MRR \u00d7 12</div></div>';
   h+='<div class="tile hero sub" style="flex:1;min-width:132px"><div class="tlbl">Total MRR</div><div class="tval">'+f$(sfTotalAmt)+'</div><div class="tdef">Sum of amount</div></div>';
-  h+='<div class="tile hero sub" style="flex:1;min-width:132px"><div class="tlbl">Avg ACV</div><div class="tval">'+f$(sfAvgACV)+'</div><div class="tdef">MRR \u00f7 deals</div></div>';
+  h+='<div class="tile hero sub" style="flex:1;min-width:132px"><div class="tlbl">Avg ACV</div><div class="tval">'+f$(sfAvgACV)+'</div><div class="tdef">MRR \u00f7 '+(_sfApp?_sfDeals.length+' HubSpot deals':'deals')+'</div></div>';
   // Avg Days \u2014 three metrics side-by-side, card split into 3 thirds.
   //   To Demo            = date_demo_booked \u2212 createdate (any deal)
   //   Close From Demo    = closedate \u2212 date_demo_booked (Closed-Won)
