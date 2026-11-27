@@ -364,8 +364,13 @@ dctx.S.irfan.special1Data=PAY;
 ck('the section is rendered from three places',(cli.match(/_dashSignedBrandsHTML\(/g)||[]).length,4);
 ck('and every one of them redraws the donut',
    (cli.match(/innerHTML=_dashSignedBrandsHTML\([^)]*\);_renderDashSignedPie\(\);/g)||[]).length,3);
-ck('the section has its own slot on the Detailed page',
-   /id="sec-signedbrands"><div id="t-signedbrands">/.test(cli),true);
+// Removed from the Brand Dashboard 2026-11-27 (Alex): the host is commented out
+// and the page no longer prefetches the cohorts payload just for it.
+ck('the section is removed from the Brand Dashboard',
+   /<!--[^]*?<div class="sec dsec" id="sec-signedbrands"><div id="t-signedbrands"><\/div><\/div> -->/.test(cli)
+   &&!/id="sec-signedbrands"><div id="t-signedbrands"><\/div><\/div>\n/.test(cli),true);
+ck('  and the Brand Dashboard no longer prefetches its data',
+   /\(AP==='irfan'\|\|AP==='dashboard'\)&&!S\.irfan\.special1Data/.test(cli),false);
 // The Irfan page keeps its own card and its own toggle — only the Detailed
 // copy suppresses the inner pills.
 ck('the Irfan card still drives itself',/_buildIrfanSpecial1Inner\(d, S\.irfan\.special1Mode\)/.test(cli),true);

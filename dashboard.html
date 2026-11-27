@@ -714,10 +714,10 @@ tr.row-expanded td{background:rgba(114,164,191,.04);border-bottom:none}
       <!-- Marketing Funnel + Demo Acquisition + Demo Composition (1.8fr / 1fr / 1fr) -->
       <div class="sec dsec" id="sec-row2" style="display:grid;grid-template-columns:1.8fr minmax(0,1fr) minmax(0,1fr);gap:16px"><div class="sec-card"><div class="dsec-h dsec-in" id="dsec-mktfunnel">Marketing Funnel</div><div class="st"><span style="display:inline-block;width:8px;height:8px;background:var(--teal);border-radius:50%;margin-right:8px;vertical-align:middle"></span>Marketing Funnel</div><div id="t-trends"></div></div><div class="sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:#E6C55C;border-radius:50%;margin-right:8px;vertical-align:middle"></span>Demo Acquisition</div><div style="font-size:12px;color:var(--grey);margin-bottom:6px">Where demos came from · UTMs on the contact that booked</div><div id="t-demoacq"></div></div><div class="sec-card"><div class="st"><span style="display:inline-block;width:8px;height:8px;background:#9333EA;border-radius:50%;margin-right:8px;vertical-align:middle"></span>Demo Composition</div><div style="font-size:12px;color:var(--grey);margin-bottom:6px">% of demos booked in each tier · ordered Pre-launch → 500K+ clockwise</div><div id="t-webtraffic"></div></div></div>
 
-      <!-- Signed Brands — ported from the Irfan Dashboard. ONE toggle for the
-           whole section (MTD / Last Month); both tiles read the dedicated
-           /api/special1-cohorts payload, so neither follows the page selector. -->
-      <div class="sec dsec" id="sec-signedbrands"><div id="t-signedbrands"></div></div>
+      <!-- Signed Brands section removed from the Brand Dashboard (2026-11-27, Alex).
+           _dashSignedBrandsHTML / _renderDashSignedPie are kept and no-op without
+           #t-signedbrands; restore this host (and the 'dashboard' prefetch) to bring it back:
+           <div class="sec dsec" id="sec-signedbrands"><div id="t-signedbrands"></div></div> -->
 
 
 
@@ -1650,7 +1650,7 @@ async function fd(w,from,to,vsFrom,vsTo,fresh){
   // Lives on its own endpoint so it's time-bound to MTD + Last Month and never
   // shifts when the page selector changes. First call fetches; subsequent
   // calls re-use S.irfan.special1Data, so changing windows doesn't re-fetch.
-  if((AP==='irfan'||AP==='dashboard')&&!S.irfan.special1Data&&typeof fdSpecial1==='function'){fdSpecial1();}
+  if(AP==='irfan'&&!S.irfan.special1Data&&typeof fdSpecial1==='function'){fdSpecial1();}
   // Live Revenue Outcome (dedicated uncached endpoint) — fire-and-forget after
   // each successful load; re-renders the card with accurate prior/LM deltas.
   // The Executive page's Brand mode carries the same card (#t-revenue-exec), so
