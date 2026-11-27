@@ -910,7 +910,7 @@ function bdSetTab(t){
 //  - W2: a brand counts as retained through its churn month (it paid that
 //    month) and as lost from the month after. Month 1 = the first invoice.
 // BD.wf: null (never asked), {loading:true}, {error}, or the payload.
-var _bdWfF={src:'',grp:'',st:'',stage:'',chSrc:'',impl:'',paid:'',ty:'',seg:'',ab:'',wt:'',wts:'',ss:'',it:'',mt:'',pkg:'',pil:'',rcs:'',wtt:''};
+var _bdWfF={src:'',grp:'',st:'',stage:'',chSrc:'',impl:'',paid:'',ty:'',seg:'',ab:'',wt:'',wts:'',ss:'',it:'',mt:'',pkg:'',pil:'',rcs:''};
 var _bdWfCols='default';   // W1: 'default' (7 columns, the rest collapsed) or 'all' (Alex, 2026-11-24)
 var _bdWfSortDir=1;        // direction of a column sort ('c:<id>' / 'm:<month index>'), 1 = ascending
 // Products Ever Live / Live at Churn (Alex, 2026-11-24): intersection multi-
@@ -940,15 +940,19 @@ function _bdWfTypesOf(b,w){
   return Object.keys(o).filter(function(t){return o[t].indexOf(cm)>=0;});
 }
 var _bdWfPil='incl',_bdWfNI='excl',_bdWfMode='pct',_bdWfMetric='ret',_bdWfFrom='all';
-// W2's own Web Traffic Tier toggles (Alex, 2026-11-25): a multi-select of the
-// Web Traffic Tier values (BD_WF_FILTERS 'wtt'); a brand stays when its tier is
-// any ticked one. Empty = all tiers. W2 only; the top bar's dropdown still
-// narrows both views.
+// Web Traffic Tier toggles (Alex, 2026-11-25): a multi-select of the Web
+// Traffic Tier values (BD_WF_FILTERS 'wtt'); a brand stays when its tier is any
+// ticked one. Empty = all tiers. ONE selection, shown twice and kept in sync
+// (Alex, 2026-11-27): the top filter bar's toggles (filter W1, the counts and
+// W2 through _bdWfFilter) and W2's own row (the same array). The names keep
+// "W2" because Growth Overview's copy of W2 uses them.
 var _bdWfW2Tier=[];
 var _bdWfW2TierOpts=[];
+var _bdWfTierTopOpts=[];   // the top bar's chip order (bdWfTierTopAt)
 function bdWfW2TierAt(i){var v=_bdWfW2TierOpts[i];if(v!=null)bdWfW2Tier(v);}
-function bdWfW2Tier(v){var i=_bdWfW2Tier.indexOf(v);if(i<0)_bdWfW2Tier.push(v);else _bdWfW2Tier.splice(i,1);renderBD();}
-function bdWfW2TierClear(){_bdWfW2Tier=[];renderBD();}
+function bdWfTierTopAt(i){var v=_bdWfTierTopOpts[i];if(v!=null)bdWfW2Tier(v);}
+function bdWfW2Tier(v){var i=_bdWfW2Tier.indexOf(v);if(i<0)_bdWfW2Tier.push(v);else _bdWfW2Tier.splice(i,1);_bdWfShow=BD_WF_PAGE;renderBD();}
+function bdWfW2TierClear(){_bdWfW2Tier=[];_bdWfShow=BD_WF_PAGE;renderBD();}
 var _bdWfQ='',_bdWfSort='first',_bdWfShow=100,_bdWfQT=null;
 var BD_WF_PAGE=100;
 // W2 reuses C3's .rwtbl, whose sticky .rw-n offset (78px) must equal the first column's width.
@@ -974,7 +978,7 @@ function bdWfFetch(fresh){
   });
 }
 function bdWfSetF(k,v){if(!(k in _bdWfF)||_bdWfF[k]===v)return;_bdWfF[k]=v;_bdWfShow=BD_WF_PAGE;renderBD();}
-function bdWfReset(){Object.keys(_bdWfF).forEach(function(k){_bdWfF[k]='';});_bdWfProd={ever:[],churn:[]};_bdWfPil='incl';_bdWfFlagF='';_bdWfQ='';_bdWfShow=BD_WF_PAGE;renderBD();}
+function bdWfReset(){Object.keys(_bdWfF).forEach(function(k){_bdWfF[k]='';});_bdWfW2Tier=[];_bdWfProd={ever:[],churn:[]};_bdWfPil='incl';_bdWfFlagF='';_bdWfQ='';_bdWfShow=BD_WF_PAGE;renderBD();}
 function bdWfSet(which,v){
   if(which==='pil')_bdWfPil=(v==='excl')?'excl':'incl';
   else if(which==='ni')_bdWfNI=(v==='excl')?'excl':'incl';
@@ -1059,6 +1063,26 @@ var BD_WF_FILTERS=[
 var BD_WF_TIER_ORD=['Pre-launch','0-10K','10K-25K','10-50K','25K-50K','50K-100K','50-200K','100K-200K','200K+','200K-500K','500K+','500K-1M','1M+'];
 // Filter bar rows (Alex, 2026-11-24). Row 1 is Possible Abnormalities; row 4 adds products and the pilot switch.
 var BD_WF_FROWS=[['seg','src','grp','st','stage','rcs','chSrc','ty','impl','paid'],['wtt','wts','it','ss','wt','mt'],['pkg','ab','pil']];
+function _bdWfWttOf(b){for(var i=0;i<BD_WF_FILTERS.length;i++)if(BD_WF_FILTERS[i].k==='wtt')return BD_WF_FILTERS[i].of(b);return '';}
+// Web Traffic Tier chips (both rows): cnt = brands per tier; at = the click
+// handler's name, called with the chip's index in tiers.
+function _bdWfTierChips(tiers,cnt,at){
+  return '<span style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em">Web Traffic Tier'
+    +'<span style="display:inline-flex;flex-wrap:wrap;gap:4px;text-transform:none;letter-spacing:0">'
+    +tiers.map(function(t,ti){var on=_bdWfW2Tier.indexOf(t)>=0;
+      return '<span role="checkbox" aria-checked="'+on+'" tabindex="0" onclick="'+at+'('+ti+')" style="cursor:pointer;padding:4px 11px;border-radius:50px;font-size:11px;font-weight:700;font-family:var(--font-h);border:1.5px solid '+(on?'var(--navy)':'rgba(23,44,69,.14)')+';'
+        +(on?'background:var(--navy);color:#fff;':'background:transparent;color:var(--grey);')+'">'+_bdEsc(t)+' <span style="opacity:.6;font-weight:600">'+(cnt[t]||0)+'</span></span>';}).join('')
+    +(_bdWfW2Tier.length?'<span onclick="bdWfW2TierClear()" style="cursor:pointer;padding:4px 8px;font-size:11px;color:var(--teal);font-weight:600">Clear</span>':'')
+    +'</span></span>';
+}
+// Tier order for the chips: BD_WF_TIER_ORD, then other values, then No traffic data;
+// a ticked tier no brand has stays listed (at 0) so it can be unticked.
+function _bdWfTierList(cnt){
+  var ord=function(t){var i=BD_WF_TIER_ORD.indexOf(t);return i<0?(t==='No traffic data'?999:500):i;};
+  var tiers=Object.keys(cnt).sort(function(a,b){return ord(a)-ord(b)||a.localeCompare(b);});
+  _bdWfW2Tier.forEach(function(t){if(tiers.indexOf(t)<0){tiers.push(t);cnt[t]=0;}});
+  return tiers;
+}
 // Filters, search and the pilot switch. skip names one filter to leave out, so
 // each dropdown can count what picking each of its values would give.
 function _bdWfFilter(brands,skip,noSearch){
@@ -1066,6 +1090,8 @@ function _bdWfFilter(brands,skip,noSearch){
   return brands.filter(function(b){
     if(_bdWfPil==='excl'&&_bdWfIsPilotOnly(b))return false;
     for(var i=0;i<BD_WF_FILTERS.length;i++){var f=BD_WF_FILTERS[i];if(f.k===skip||!_bdWfF[f.k])continue;if(f.of(b)!==_bdWfF[f.k])return false;}
+    // Web Traffic Tier: the multi-select toggles (any ticked tier), not a dropdown.
+    if(skip!=='wtt'&&_bdWfW2Tier.length&&_bdWfW2Tier.indexOf(_bdWfWttOf(b))<0)return false;
     // Products: every picked widget type live (an intersection); no data drops out.
     for(var w in _bdWfProd){if(skip===w||!_bdWfProd[w].length)continue;var ts=_bdWfTypesOf(b,w);
       if(!ts||_bdWfProd[w].some(function(t){return ts.indexOf(t)<0;}))return false;}
@@ -1602,13 +1628,16 @@ function bdWfStick(){
 // W2, the cohort grid (Alex, 2026-11-24/25), as one function so Growth Overview
 // can show the same grid: growth-dashboard.html carries a VERBATIM copy (its
 // tests fail on drift). opt.plain (Growth): no abnormality flags, no flagged-
-// brands list, no footnote. list = the brands after the page's filters.
+// brands list, no footnote. list = the brands after the page's filters;
+// opt.tierPool = the same brands before the Web Traffic Tier toggles (Billing,
+// where _bdWfFilter applies them), so each chip counts what ticking it shows.
 function _bdWfW2Section(list,months,now,opt){
   opt=opt||{};var plain=!!opt.plain,h='';
   // Complete months only: brands added from this month's Recurly data (b.x) stay out.
-  var gl0=list.filter(function(b){return !b.x&&(_bdWfNI!=='excl'||!_bdWfIsNI(b));});
+  var w2in=function(b){return !b.x&&(_bdWfNI!=='excl'||!_bdWfIsNI(b));};
+  var gl0=(opt.tierPool||list).filter(w2in);
   var wttF=BD_WF_FILTERS.filter(function(f){return f.k==='wtt';})[0];
-  var gl=_bdWfW2Tier.length?gl0.filter(function(b){return _bdWfW2Tier.indexOf(wttF.of(b))>=0;}):gl0;
+  var gl=list.filter(w2in);if(_bdWfW2Tier.length)gl=gl.filter(function(b){return _bdWfW2Tier.indexOf(wttF.of(b))>=0;});
   var first=months[0];gl.forEach(function(b){if(b.fm&&b.fm<first)first=b.fm;});
   var from=_bdWfFrom==='all'?first:(_bdWfFrom+'-01'>first?_bdWfFrom+'-01':first);
   if(from>now)from=now;   // a picked year past the data would make the grid width negative
@@ -1645,17 +1674,10 @@ function _bdWfW2Section(list,months,now,opt){
   var first0=months[0];gl0.forEach(function(b){if(b.fm&&b.fm<first0)first0=b.fm;});
   var from0=_bdWfFrom==='all'?first0:(_bdWfFrom+'-01'>first0?_bdWfFrom+'-01':first0);if(from0>now)from0=now;
   var tierN={};gl0.forEach(function(b){if(!b.fm||b.fm<from0||b.fm>now)return;var t=wttF.of(b);tierN[t]=(tierN[t]||0)+1;});
-  var tierOrd=function(t){var i=BD_WF_TIER_ORD.indexOf(t);return i<0?(t==='No traffic data'?999:500):i;};
-  var tiers=Object.keys(tierN).sort(function(a,b){return tierOrd(a)-tierOrd(b)||a.localeCompare(b);});
-  _bdWfW2Tier.forEach(function(t){if(tiers.indexOf(t)<0){tiers.push(t);tierN[t]=0;}});   // a ticked tier stays visible to untick
+  var tiers=_bdWfTierList(tierN);
   _bdWfW2TierOpts=tiers;
-  h+='<div class="bd-wf-bar" style="margin:0 0 12px"><span style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em">Web Traffic Tier'
-    +'<span style="display:inline-flex;flex-wrap:wrap;gap:4px;text-transform:none;letter-spacing:0">'
-    +tiers.map(function(t,ti){var on=_bdWfW2Tier.indexOf(t)>=0;
-      return '<span role="checkbox" aria-checked="'+on+'" tabindex="0" onclick="bdWfW2TierAt('+ti+')" style="cursor:pointer;padding:4px 11px;border-radius:50px;font-size:11px;font-weight:700;font-family:var(--font-h);border:1.5px solid '+(on?'var(--navy)':'rgba(23,44,69,.14)')+';'
-        +(on?'background:var(--navy);color:#fff;':'background:transparent;color:var(--grey);')+'">'+_bdEsc(t)+' <span style="opacity:.6;font-weight:600">'+tierN[t]+'</span></span>';}).join('')
-    +(_bdWfW2Tier.length?'<span onclick="bdWfW2TierClear()" style="cursor:pointer;padding:4px 8px;font-size:11px;color:var(--teal);font-weight:600">Clear</span>':'')
-    +'</span></span><button class="bd-wf-btn" style="margin-left:auto" onclick="bdWfW2Csv()">Download CSV</button></div>';
+  h+='<div class="bd-wf-bar" style="margin:0 0 12px">'+_bdWfTierChips(tiers,tierN,'bdWfW2TierAt')
+    +'<button class="bd-wf-btn" style="margin-left:auto" onclick="bdWfW2Csv()">Download CSV</button></div>';
   var W=rw.maxK,minW=BD_WF_W_LBL+BD_WF_W_N+BD_WF_W_CELL*W;
   // Cohort rows whose retention a flagged brand distorts: active brands not
   // invoiced lately keep the row high; a long gap hides a churn and a return.
@@ -1764,7 +1786,13 @@ function _bdWfRender(){
       +vals.map(function(v){return '<option value="'+_bdEsc(v)+'"'+(_bdWfF[f.k]===v?' selected':'')+'>'+_bdEsc(v)+' ('+(cnt[v]||0)+')</option>';}).join('')+'</select></label>';
   };
   var fByK={};BD_WF_FILTERS.forEach(function(f){fByK[f.k]=f;});
-  var row=function(keys){return keys.map(function(k){return fByK[k]?fsel(fByK[k]):'';}).join('');};
+  // Web Traffic Tier: toggles in place of a dropdown, the same selection as W2's row.
+  var tierSel=function(){
+    var cnt={};_bdWfFilter(all,'wtt',true).forEach(function(b){var t=_bdWfWttOf(b);cnt[t]=(cnt[t]||0)+1;});
+    var tiers=_bdWfTierList(cnt);_bdWfTierTopOpts=tiers;
+    return _bdWfTierChips(tiers,cnt,'bdWfTierTopAt');
+  };
+  var row=function(keys){return keys.map(function(k){return k==='wtt'?tierSel():fByK[k]?fsel(fByK[k]):'';}).join('');};
   var chipH='<div class="bd-wf-chips" style="margin:0">'
     +BD_WF_FLAGS.filter(function(f){return flCnt[f.id];}).map(function(f){var on=_bdWfFlagF===f.id;
       return '<span class="bd-wf-chip '+f.sev+(on?' on':'')+'" role="button" tabindex="0" onclick="bdWfSetFlagF(\''+(on?'':f.id)+'\')">'+_bdEsc(f.title)+' <b>'+flCnt[f.id]+'</b></span>';}).join('')
@@ -1774,7 +1802,10 @@ function _bdWfRender(){
     +'<option value="any"'+(_bdWfFlagF==='any'?' selected':'')+'>Any abnormality ('+flAny+')</option>'
     +'<option value="none"'+(_bdWfFlagF==='none'?' selected':'')+'>None ('+(flPool.length-flAny)+')</option>'
     +BD_WF_FLAGS.map(function(f){return '<option value="'+f.id+'"'+(_bdWfFlagF===f.id?' selected':'')+'>'+_bdEsc(f.title)+' ('+(flCnt[f.id]||0)+')</option>';}).join('')+'</select></label>'+chipH+'</div>';
-  bar+='<div class="bd-wf-bar">'+row(BD_WF_FROWS[0])+'</div><div class="bd-wf-bar">'+row(BD_WF_FROWS[1])+'</div><div class="bd-wf-bar">';
+  // The tier toggles get their own line above the other traffic dropdowns (they are wide).
+  var tr=BD_WF_FROWS[1],trT=tr.indexOf('wtt')>=0;
+  bar+='<div class="bd-wf-bar">'+row(BD_WF_FROWS[0])+'</div><div class="bd-wf-bar">'+(trT?row(['wtt'])+'<span style="flex-basis:100%;height:0"></span>':'')
+    +row(tr.filter(function(k){return k!=='wtt';}))+'</div><div class="bd-wf-bar">';
   [['ever','Products Ever Live'],['churn','Products Live at Churn']].forEach(function(p){
     var w=p[0],sel=_bdWfProd[w],wg=wf.widgets;
     if(w==='churn'&&(!wg||wg.error)){bar+='<label>'+p[1]+'<select disabled><option>Widget data unavailable</option></select></label>';return;}
@@ -1790,7 +1821,7 @@ function _bdWfRender(){
       +'<div class="bd-wf-ms-n">'+(w==='ever'?'From the card\u2019s product counts (a widget seen by 10+ people in a day, or marked live). ':'From daily widget views (10+ people in a day). ')+'Widget data starts '+_bdWfLbl((wg&&wg.from)||'2025-12')+'; brands churned before then drop out while a product is ticked.</div></div></details>';
   });
   bar+=row(BD_WF_FROWS[2]);
-  var anyF=Object.keys(_bdWfF).some(function(k){return !!_bdWfF[k];})||_bdWfProd.ever.length||_bdWfProd.churn.length||_bdWfPil!=='incl'||!!_bdWfQ||!!_bdWfFlagF;
+  var anyF=Object.keys(_bdWfF).some(function(k){return !!_bdWfF[k];})||_bdWfW2Tier.length||_bdWfProd.ever.length||_bdWfProd.churn.length||_bdWfPil!=='incl'||!!_bdWfQ||!!_bdWfFlagF;
   bar+=_bdWfSeg('Pilots',_bdWfPill(_bdWfPil,'incl','Included','pil','Pilot brands count from their Pilot Initiation Fee invoice')
     +_bdWfPill(_bdWfPil,'excl','Excluded','pil','Leave out pilot brands with no plan bill yet (Metabase’s Hide Pilot Initiation Fee)'));
   if(anyF)bar+='<button class="bd-wf-btn" onclick="bdWfReset()">Reset filters</button>';
@@ -1856,7 +1887,7 @@ function _bdWfRender(){
   h+=t;
   if(sorted.length>shown.length)h+='<div style="display:flex;gap:8px;justify-content:center;margin-top:10px"><button class="bd-wf-btn" onclick="bdWfSet(\'more\',\'\')">Show '+Math.min(BD_WF_PAGE,sorted.length-shown.length)+' more</button><button class="bd-wf-btn" onclick="bdWfSet(\'more\',\'all\')">Show all '+sorted.length.toLocaleString()+'</button></div>';
   h+='</div></section>';
-  h+=_bdWfW2Section(list,months,now,{head:head,stale:stale});
+  h+=_bdWfW2Section(list,months,now,{head:head,stale:stale,tierPool:_bdWfFilter(all,'wtt')});
   return h;
 }
 // C1's Board Defined / All switch. Board Defined is the default: it is the cut

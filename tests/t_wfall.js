@@ -209,7 +209,19 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
    ck('  ticking a tier keeps only its brands in W2 (W1 untouched)',[/<td class="rw-c">Jul 26<\/td><td class="rw-n">1<\/td>/.test(g3),/aria-checked="true"[^>]*>0-10K/.test(g3),/Clear<\/span>/.test(g3)],[true,true,true]);
    P.bdWfW2Tier('10K-25K');h=R();g3=h.slice(h.indexOf('id="bd-sec-wf2"'));
    ck('  two tiers ticked = either one',/<td class="rw-c">Jul 26<\/td><td class="rw-n">2<\/td>/.test(g3),true);
-   P.bdWfW2TierClear();jul.forEach((b,i)=>Object.assign(b,keep[i]));}
+   P.bdWfW2TierClear();
+   // One selection shown twice (Alex, 2026-11-27): the top bar's toggles filter W1 + W2 and mirror W2's row.
+   const top=x=>(x.match(/<div class="bd-wf-frows">[\s\S]*?(?=<\/section>)/)||[''])[0],w1n=x=>+((x.match(/bd-wf-kpi-l">Brands<\/div><div class="bd-wf-kpi-v">([\d,]+)/)||[])[1]||'0').replace(/,/g,'');
+   h=R();const all0=w1n(h);
+   ck('  top bar: Web Traffic Tier is toggles (no dropdown), with counts',[/<label>Web Traffic Tier<select/.test(top(h)),/onclick="bdWfTierTopAt\(\d+\)"[^>]*>0-10K <span[^>]*>\d+<\/span>/.test(top(h))],[false,true]);
+   const ti=P._bdWfTierTopOpts.indexOf('0-10K');P.bdWfTierTopAt(ti);h=R();g3=h.slice(h.indexOf('id="bd-sec-wf2"'));
+   ck('  ticking it on top filters W1 and ticks the same chip in W2',[w1n(h)<all0,/aria-checked="true"[^>]*onclick="bdWfTierTopAt\(\d+\)"[^>]*>0-10K/.test(top(h)),/aria-checked="true"[^>]*onclick="bdWfW2TierAt\(\d+\)"[^>]*>0-10K/.test(g3),/<td class="rw-c">Jul 26<\/td><td class="rw-n">1<\/td>/.test(g3),P.BD.wf.brands.filter(b=>P._bdWfFilter([b]).length).every(b=>P._bdWfWttOf(b)==='0-10K')],[true,true,true,true,true]);
+   ck('  W2\u2019s chips still count every tier (the pool before the toggles)',/aria-checked="false"[^>]*onclick="bdWfW2TierAt\(\d+\)"[^>]*>10K-25K <span[^>]*>1<\/span>/.test(g3),true);
+   P.bdWfW2TierAt(P._bdWfW2TierOpts.indexOf('0-10K'));h=R();
+   ck('  unticking it in W2 unticks it on top and W1 returns to every brand',[/aria-checked="true"[^>]*onclick="bdWfTierTopAt/.test(top(h)),w1n(h)],[false,all0]);
+   P.bdWfTierTopAt(P._bdWfTierTopOpts.indexOf('10K-25K'));h=R();
+   ck('  a ticked tier shows Reset filters; Reset clears it',[/onclick="bdWfReset\(\)"/.test(top(h)),(P.bdWfReset(),P._bdWfW2Tier.length)],[true,0]);
+   jul.forEach((b,i)=>Object.assign(b,keep[i]));}
   // ── Abnormalities ──
   const M=['2026-01','2026-02','2026-03','2026-04','2026-05','2026-06','2026-07','2026-08','2026-09','2026-10'];
   const BR=(o)=>Object.assign({k:'x',n:'X',src:'Recurly',st:'Active',stage:'Closed Won',hsCh:'',chSrc:'',li:'2026-10',mi:10,impl:true,paid:true,ty:'Not recorded',pe:1,pc:1,pkg:'Pro',pil:'No pilot',fm:'2026-01',a:M.map(()=>1000)},o);
@@ -307,7 +319,8 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
    ck('All Brands carries every card column, then the months',['HubSpot Stage','Source','Group','Last Invoiced','Metabase Churn Month','Churn Type','Company Segment','A/B Test','Ever Implemented','Ever Paid','Web Tier at Churn','Self-selected Traffic','Implied Traffic','Measured Traffic','Clinicians’ Choice','Clinician Reviews','Product Analysis','ClinicianAI','Products Ever Live','Products Live at Churn','Package','Pilot Status'].every(h=>x.indexOf('>'+h+'</th>')>0),true);
    ck('  and a filter for each categorical column',['Source','Group','Churn Status','HubSpot Stage','Churn Source','Web Tier Source','Measured Traffic','Pilot Status'].every(l=>x.indexOf('<label>'+l+'<select')>=0),true);
    {const rows=(x.match(/<div class="bd-wf-frows">[\s\S]*?<\/div><\/div>(?=<\/section>)/)||[''])[0].split('<div class="bd-wf-bar">').slice(1).map(r=>(r.match(/<label>([^<]+)<select/g)||[]).map(m=>m.slice(7,-7)).concat(/bd-wf-ms/.test(r)?['(products)']:[]));
-    ck('filters sit in four rows in Alex\u2019s order (2026-11-24)',rows,[['Possible Abnormalities'],['Company Segment','Source','Group','Churn Status','HubSpot Stage','Recurly State','Churn Source','Churn Type','Ever Implemented','Ever Paid'],['Web Traffic Tier','Web Tier Source','Implied Traffic','Self-selected Traffic','Web Tier at Churn','Measured Traffic'],['Package','A/B Test','Pilot Status','(products)']]);}
+
+    ck('filters sit in four rows in Alex\u2019s order (2026-11-24); Web Traffic Tier is toggles now (2026-11-27)',rows,[['Possible Abnormalities'],['Company Segment','Source','Group','Churn Status','HubSpot Stage','Recurly State','Churn Source','Churn Type','Ever Implemented','Ever Paid'],['Web Tier Source','Implied Traffic','Self-selected Traffic','Web Tier at Churn','Measured Traffic'],['Package','A/B Test','Pilot Status','(products)']]);}
    {const f=P.BD_WF_FILTERS.find(z=>z.k==='wtt').of;
     ck('Web Traffic Tier: Implied, then Self-Selected, then Measured, then Web Tier at Churn',[f({it:'10K-25K',ss:'500K+',wt:'200K+',mt:'1M+'}),f({it:'No traffic data',ss:'500K+',wt:'200K+'}),f({it:'',ss:'Not selected',wt:'50-200K',mt:'1M+'}),f({it:'No traffic data',ss:'Not selected',wt:'50-200K',mt:'No traffic data'}),f({it:'No traffic data',ss:'Not selected',wt:'Not recorded',mt:'No traffic data'}),f({})],['10K-25K','500K+','1M+','50-200K','No traffic data','No traffic data']);}
    P.bdWfSet('cols','default');x=R();

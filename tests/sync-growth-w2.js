@@ -4,7 +4,7 @@
 // t_growth.js fails when the two drift.
 const fs=require('fs');const {fn}=require('./slice.js');
 const W2_FNS=['_bdEsc','_bdWfDiff','_bdWfAdd','_bdWfLbl','_bdWfChurned','_bdWfChurnMonth','_bdWfIsNI',
-  '_bdWfCohorts','_bdWfFill','_bdWfPill','_bdWfSeg','_bdWfW2Section','_bdWfW2Rows','bdWfW2Csv','bdWfW2Tier','bdWfW2TierAt','bdWfW2TierClear','bdWfSet'];
+  '_bdWfCohorts','_bdWfFill','_bdWfPill','_bdWfSeg','_bdWfTierChips','_bdWfTierList','_bdWfW2Section','_bdWfW2Rows','bdWfW2Csv','bdWfW2Tier','bdWfW2TierAt','bdWfW2TierClear','bdWfSet'];
 const W2_VARS=['var _bdWfPil=','var _bdWfW2Tier=','var _bdWfW2TierOpts=','var _bdWfQ=','var BD_WF_PAGE=','var BD_WF_W_LBL=','var BD_WF_CPM_MAX=','var BD_WF_NEUTRAL=','var BD_WF_MN=','var BD_WF_TIER_ORD=','var BD_WF_STOPS=','var _bdWfW2Out=','var _bdWfCols='];
 function line(src,p){const i=src.indexOf('\n'+p);if(i<0)throw new Error('missing '+p);return src.slice(i+1,src.indexOf('\n',i+1));}
 function filters(src){const i=src.indexOf('var BD_WF_FILTERS=[');return src.slice(i,src.indexOf('\n];',i)+3);}
