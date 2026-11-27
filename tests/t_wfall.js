@@ -68,7 +68,7 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
   ck('  a second load reads the cache, no Metabase run',[calls.length,again.cached],[0,true]);
   calls=[];await W.fetchBdWaterfall(env,true);
   ck('  Refresh (fresh) runs the card again',calls.length,6);
-  ck('this month so far rides along per brand',[d.current.m,d.current.byKey['901'],d.current.byKey['902'].fg],['2026-11',{v:3000,n:'Fresh Pilot',fg:'2026-11',fa:'2026-11',live:1,disc:0},'']);
+  ck('this month so far rides along per brand',[d.current.m,d.current.byKey['901'],d.current.byKey['902'].fg],['2026-11',{v:3000,n:'Fresh Pilot',fg:'2026-11',fa:'2026-11',live:1,pilot:0,plan:0,disc:0},'']);
   ck('the widget types ride along per brand, gpt variants folded',[d.widgets.from,d.widgets.byKey['1'],d.widgets.byKey['2']],['2025-12',{quant:['2026-07','2026-10'],sticker:['2026-08']},{sticker:['2026-08']}]);
   ck('the Recurly status rides along, keyed by brand',[d.recurly.today,d.recurly.byKey['1']],['2026-11-24',{lg:'2026-11-05',ca:1000,cd:'2026-11-05',bn:0,lb:'',zn:0,fz:'',ln:1,ps:'',rs:'',rn:1,nb:'2026-12-05',fn:0,te:''}]);
   ck('the categories ride along in the payload',[d.categories.month,d.categories.cats.map(c=>c.cat),d.categories.cats[0].multi],['2026-10',['plan','pilot_initiation_fee','review','credits'],1000]);
@@ -359,10 +359,25 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
    ck('the card’s brands plus the ones it leaves out: 5 + 2 = 7',W.brands.length,7);
    ck('  a brand first invoiced this month is added, marked new, active',(()=>{const b=W.brands.find(z=>z.k==='901');return [b.x,b.st,b.fm,b.cur];})(),['new','Active','2026-11',3000]);
    ck('  a brand whose every invoice was credited is added and flagged',(()=>{const b=W.brands.find(z=>z.k==='902');return [b.x,b.fm,b.st,b._fl.map(f=>f.id)];})(),['credited','2026-03','Churned (inferred)',['credited-only']]);
+   // New pilots (Alex, 2026-11-27): a Pilot Initiation Fee has no Recurly subscription, so it read as churned.
+   {const aw={months:['2026-09','2026-10'],brands:[],current:{m:'2026-11',byKey:{
+      p1:{v:500,n:'New Pilot',fg:'2026-11',fa:'2026-11',live:0,pilot:1,plan:0},
+      p2:{v:900,n:'New Plan',fg:'2026-11',fa:'2026-11',live:1,pilot:0,plan:1},
+      p3:{v:900,n:'Pilot Then Plan',fg:'2026-11',fa:'2026-11',live:1,pilot:1,plan:1},
+      c1:{v:-50,n:'Credited',fg:'',fa:'2026-08',live:0,pilot:0,plan:0},
+      o1:{v:0,n:'Old Unjoined',fg:'2026-06',fa:'2026-06',live:0,pilot:1,plan:0}}}};
+    P._bdWfAugment(aw);const by=k=>aw.brands.find(b=>b.k===k);
+    ck('  a NEW brand with no live sub is Active (inferred), not churned; pilots get the card\u2019s Pilot Status',
+      [[by('p1').st,by('p1').pil,P._bdWfChurned(by('p1'))],[by('p2').st,by('p2').pil],[by('p3').st,by('p3').pil],[by('c1').st,by('o1').st,by('o1').pil]],
+      [['Active (inferred)','Pilot (not converted)',false],['Active',''],['Active','Pilot (converted)'],['Churned (inferred)','Churned (inferred)','Pilot (not converted)']]);
+    const fl=k=>P._bdWfFlagsOf(by(k),aw.months).map(f=>f.id);
+    ck('  ...and pick up the same flags as a new brand with a live plan (nothing about churn or billing)',[fl('p1'),fl('p2')],[fl('p2'),fl('p2')]);}
    ck('W1 has a "Nov 26 so far" column with its totals',/>Nov 26 so far<\/th>/.test(x)&&/<td class="m cur">2<\/td>/.test(x)&&/<td class="m cur">4,000<\/td>/.test(x),true);
    const rowOf2=n=>{let i=x.indexOf('">'+n);if(i<0)return '';i=x.lastIndexOf('<tr',i);return x.slice(i,x.indexOf('</tr>',i));};
    ck('  the new brand’s row: badge, blank months, this month’s amount',/New this month<\/span>/.test(rowOf2('Fresh Pilot'))&&/<td class="m cur">3,000<\/td>/.test(rowOf2('Fresh Pilot')),true);
    ck('  the KPI counts the new brands',/every brand ever invoiced · 1 new in Nov 26/.test(x),true);
+   {const last=W.months[W.months.length-1],m=x.match(/(\d+) not invoiced in 2\+ months/),want=W.brands.filter(b=>!b.x&&!P._bdWfChurned(b)&&(!b.li||P._bdWfDiff(b.li,last)>=2)).length;
+    ck('  "not invoiced in 2+ months" leaves out brands not in the card yet (new this month has no last-invoiced month)',[m?+m[1]:0,W.brands.some(b=>b.x==='new'&&!P._bdWfChurned(b))],[want,true]);}
    P.bdWfSortBy('m:cur');x=R();
    ck('  sortable: largest this month first',[...x.matchAll(/<td class="bd-wf-b"[^>]*>(?:<span class="bd-wf-flag[^>]*>[^<]*<\/span>)?([^<]+)<span/g)].map(m=>m[1])[0],'Fresh Pilot');
    P.bdWfSet('sort','first');x=R();

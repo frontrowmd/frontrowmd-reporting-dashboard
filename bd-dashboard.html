@@ -1411,8 +1411,14 @@ function _bdWfAugment(wf){
   Object.keys(cur.byKey).forEach(function(k){
     if(have[k])return;var c=cur.byKey[k];
     var x=c.fg===wf.curM?'new':!c.fg?'credited':'other',fm=x==='new'?wf.curM:(c.fg||c.fa);
-    wf.brands.push({k:k,n:c.n||('Brand '+k),src:'Recurly',grp:'',st:c.live?'Active':'Churned (inferred)',stage:'',hsCh:'',chSrc:'',li:'',mi:0,mu:null,
-      impl:null,paid:null,ty:'',seg:'',ab:'',wt:'',wts:'',ss:'',it:'',v30:null,mt:'',mv:null,cc:null,rv:null,ca:null,cai:null,pe:null,pc:null,pkg:'',pil:'',
+    // Status (Alex, 2026-11-27): a brand first charged THIS month is new, so Active ("Active
+    // (inferred)" without a live Recurly sub: a pilot's initiation fee is a one-off charge with
+    // no subscription, which read as churned). Others keep the sub test. Pilot Status from its
+    // charges, in the card's words: converted once a non-pilot plan charge exists.
+    var st=c.live?'Active':x==='new'?'Active (inferred)':'Churned (inferred)';
+    var pil=c.pilot?(c.plan?'Pilot (converted)':'Pilot (not converted)'):'';
+    wf.brands.push({k:k,n:c.n||('Brand '+k),src:'Recurly',grp:'',st:st,stage:'',hsCh:'',chSrc:'',li:'',mi:0,mu:null,
+      impl:null,paid:null,ty:'',seg:'',ab:'',wt:'',wts:'',ss:'',it:'',v30:null,mt:'',mv:null,cc:null,rv:null,ca:null,cai:null,pe:null,pc:null,pkg:'',pil:pil,
       fm:fm,a:wf.months.map(function(m){return x!=='new'&&m>=fm?0:null;}),cur:c.v,x:x});
   });
 }
@@ -1833,7 +1839,7 @@ function _bdWfRender(){
   if(wf.stale)h+='<div class="bd-app-band err" role="status" style="background:#FFFBEB;border-color:#FCD34D;color:#92400E"><strong>Showing the last good copy, from '+_bdEsc(String(wf.stale.asOf||'').replace('T',' ').slice(0,16))+' UTC.</strong> <span>'+_bdEsc(wf.stale.error||'Metabase did not answer')+'. Refresh to try again.</span></div>';
   var nAct=0,nCh=0,nPa=0,nPil=0,lastInv=0,stale=0;
   list.forEach(function(b){
-    if(_bdWfChurned(b)){if(/pause/i.test(b.st))nPa++;else nCh++;}else{nAct++;if(!b.li||_bdWfDiff(b.li,now)>=2)stale++;}
+    if(_bdWfChurned(b)){if(/pause/i.test(b.st))nPa++;else nCh++;}else{nAct++;if(!b.x&&(!b.li||_bdWfDiff(b.li,now)>=2))stale++;}   // b.x: not in the card yet (no li), never "stale"
     if(b.pil&&!/no pilot/i.test(b.pil))nPil++;
     var v=b.a[nLM];if(v!=null)lastInv+=v;
   });

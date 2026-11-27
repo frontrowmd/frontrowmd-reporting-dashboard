@@ -3844,7 +3844,7 @@ async function metabaseCheck(env) {
 // card reads Snowflake copies refreshed a few times a day; a run takes a while);
 // Refresh skips the cache.
 const BD_WF_CARD = 3565;
-const BD_WF_KV = 'bd_waterfall_v4';   // v4: adds current (this month so far + brands the card leaves out)
+const BD_WF_KV = 'bd_waterfall_v5';   // v4: adds current (this month so far + brands the card leaves out); v5: current.pilot/plan
 const BD_WF_TTL_SEC = 1800;
 // The card's month columns are named "'2024-01'" (quotes included) by its PIVOT.
 const BD_WF_MONTH_RE = /^'?(\d{4}-\d{2})'?$/;
@@ -4094,7 +4094,7 @@ with cm as (select date_trunc('month', current_date)::date m),
 lines as (
   select ab.brand_key, i.type, date_trunc('month', i.created_at)::date im, il.service_start, round(il.service_months) sm,
     coalesce(il.is_fully_credited, false) fc, il.type lt, l.amount + coalesce(l.tax, 0) amt,
-    date_trunc('month', oi.created_at)::date oim
+    date_trunc('month', oi.created_at)::date oim, lower(coalesce(l.description, '')) descr, il.category cat
   from analytics_production.intermediate.int_recurly_line_items il
   join analytics_production.staging.stg_recurly_line_items l on l.id = il.line_item_id
   join analytics_production.staging.stg_recurly_invoices i on i.id = il.invoice_id
@@ -4118,6 +4118,15 @@ firsts as (
     to_char(min(iff(type <> 'credit' and lt = 'charge' and amt > 0, im, null)), 'YYYY-MM') fa
   from lines group by 1
 ),
+-- Pilots (2026-11-27): a Pilot Initiation Fee is a one-off charge with no subscription,
+-- so a new pilot has no live sub. pilot = a pilot initiation fee; plan = card 3565's
+-- "converted" test exactly: a plan, prepaid-term or traffic charge above $0, not fully credited.
+pil as (
+  select brand_key,
+    max(iff(type <> 'credit' and lt = 'charge' and amt > 0 and (cat = 'pilot_initiation_fee' or descr like '%pilot initiation%'), 1, 0)) pilot,
+    max(iff(type <> 'credit' and lt = 'charge' and amt > 0 and not fc and cat in ('plan', 'plan_one_time', 'web_traffic'), 1, 0)) plan
+  from lines group by 1
+),
 subs as (
   select ab.brand_key, count_if(s.state in ('active', 'future', 'paused')) live
   from analytics_production.staging.stg_recurly_subscriptions s
@@ -4131,11 +4140,12 @@ rnames as (
   group by 1
 )
 select f.brand_key, coalesce(trim(b.name), rn.nm || ' (Recurly only)') as name, f.fg, f.fa,
-  round(coalesce(c.cur_net, 0), 2) as cur_net, coalesce(su.live, 0) as live, iff(b.discarded_at is not null, 1, 0) as discarded,
+  round(coalesce(c.cur_net, 0), 2) as cur_net, coalesce(su.live, 0) as live, coalesce(pl.pilot, 0) as pilot, coalesce(pl.plan, 0) as plan, iff(b.discarded_at is not null, 1, 0) as discarded,
   to_char((select m from cm), 'YYYY-MM') as month
 from firsts f
 left join cur c on c.brand_key = f.brand_key
 left join subs su on su.brand_key = f.brand_key
+left join pil pl on pl.brand_key = f.brand_key
 left join analytics_production.staging.stg_brands b on b.id::varchar = f.brand_key
 left join rnames rn on rn.brand_key = f.brand_key
 where f.fa is not null`;
@@ -4143,7 +4153,7 @@ async function bdWfCurrent(env) {
   const rows = await mbQuery(env, BD_WF_CUR_SQL);
   const by = {};
   rows.forEach(r => { const k = String(r.BRAND_KEY || ''); if (!k) return;
-    by[k] = { v: Math.round((Number(r.CUR_NET) || 0) * 100) / 100, n: String(r.NAME || ''), fg: String(r.FG || ''), fa: String(r.FA || ''), live: Number(r.LIVE) || 0, disc: Number(r.DISCARDED) ? 1 : 0 }; });
+    by[k] = { v: Math.round((Number(r.CUR_NET) || 0) * 100) / 100, n: String(r.NAME || ''), fg: String(r.FG || ''), fa: String(r.FA || ''), live: Number(r.LIVE) || 0, pilot: Number(r.PILOT) ? 1 : 0, plan: Number(r.PLAN) ? 1 : 0, disc: Number(r.DISCARDED) ? 1 : 0 }; });
   return { m: rows.length ? String(rows[0].MONTH || '') : '', byKey: by };
 }
 // The last good payload, kept a week: when Metabase does not answer in time
@@ -4151,7 +4161,7 @@ async function bdWfCurrent(env) {
 // page shows this copy with a note instead of an error. Older cache keys are
 // read too, so the first failure after a key bump still has something to show.
 const BD_WF_LAST = 'bd_waterfall_last';
-const BD_WF_OLD_KEYS = ['bd_waterfall_v3', 'bd_waterfall_v2', 'bd_waterfall_v1'];
+const BD_WF_OLD_KEYS = ['bd_waterfall_v4', 'bd_waterfall_v3', 'bd_waterfall_v2', 'bd_waterfall_v1'];
 async function bdWfLastGood(env) {
   if (!env.CONTENT_STORE) return null;
   for (const k of [BD_WF_LAST, BD_WF_KV].concat(BD_WF_OLD_KEYS)) {
