@@ -373,10 +373,16 @@ function _bdWfW2Section(list,months,now,opt){
   var gl=list.filter(w2in);if(_bdWfW2Tier.length)gl=gl.filter(function(b){return _bdWfW2Tier.indexOf(wttF.of(b))>=0;});
   var first=months[0];gl.forEach(function(b){if(b.fm&&b.fm<first)first=b.fm;});
   var from=_bdWfFrom==='all'?first:(_bdWfFrom+'-01'>first?_bdWfFrom+'-01':first);
+  // opt.fmFrom / fmTo (Billing's First Month range): the grid starts and ends there, not at empty cohorts.
+  if(opt.fmFrom&&opt.fmFrom>from)from=opt.fmFrom;
   if(from>now)from=now;   // a picked year past the data would make the grid width negative
   // Counted inside the plotted window only, as C3 does (a book-wide count overstated it).
   var niOut=_bdWfNI==='excl'?list.filter(function(b){return _bdWfIsNI(b)&&b.fm&&b.fm>=from&&b.fm<=now&&(!_bdWfW2Tier.length||_bdWfW2Tier.indexOf(wttF.of(b))>=0);}).length:0;
-  var rw=_bdWfCohorts(gl,from,now),churnView=_bdWfMetric==='churn',cpmView=_bdWfMetric==='cpm';
+  // Rows outside the range go (a From in the current month clamps from back to now, so trim both ends).
+  var rw=_bdWfCohorts(gl,from,now);
+  if(opt.fmFrom||opt.fmTo)rw.cohorts=rw.cohorts.filter(function(co){return (!opt.fmFrom||co.m>=opt.fmFrom)&&(!opt.fmTo||co.m<=opt.fmTo);});
+  var noRows=!rw.cohorts.length;
+  var churnView=_bdWfMetric==='churn',cpmView=_bdWfMetric==='cpm';
   var pct=function(p){return p===null?'':(Math.round(p*1000)/10).toFixed(p>=0.999||p<=0.001?0:1)+'%';};
   // c: a cell ({alive,lost,pct,lostM,mPct}). Churn Per Month: the brands lost IN
   // that month, as a share of those still active the month before.
@@ -460,6 +466,8 @@ function _bdWfW2Section(list,months,now,opt){
     g+='</tr>';
   }
   g+='</tbody></table></div>';
+  // Nothing left (First Month range vs the Cohorts from year, or only this month's brands): say so, no empty grid.
+  if(noRows)g='<div class="bd-app-band" role="status" style="margin:4px 0 0">No cohorts to show: the First Month range and the \u201cCohorts from\u201d year leave no complete month with brands. Widen the range or pick an earlier year.</div>';
   h+=g;
   if(plain)return h+'</div></section>';
   h+=_bdWfW2Flagged(gl,from,now);
@@ -474,7 +482,7 @@ function _bdWfW2Section(list,months,now,opt){
   return h;
 }
 function _bdWfW2Rows(){
-  var o=_bdWfW2Out;if(!o||!o.rw)return null;
+  var o=_bdWfW2Out;if(!o||!o.rw||!o.rw.cohorts.length)return null;
   var rw=o.rw,W=rw.maxK,num=function(v){return String(v).replace(/\u2212/g,'-');};
   var rows=[['Cohort','Brands'].concat(Array.from({length:W},function(_,i){return 'Month '+(i+1);}))];
   rw.cohorts.forEach(function(co){

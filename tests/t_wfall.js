@@ -224,6 +224,26 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
    P.bdWfTierTopAt(P._bdWfTierTopOpts.indexOf('10K-25K'));h=R();
    ck('  a ticked tier shows Reset filters; Reset clears it',[/onclick="bdWfReset\(\)"/.test(top(h)),(P.bdWfReset(),P._bdWfW2Tier.length)],[true,0]);
    jul.forEach((b,i)=>Object.assign(b,keep[i]));}
+  // First Month range (Alex, 2026-11-27): the last top-bar row; narrows W1 and W2.
+  {const top=x=>(x.match(/<div class="bd-wf-frows">[\s\S]*?(?=<\/section>)/)||[''])[0],w1n=x=>+((x.match(/bd-wf-kpi-l">Brands<\/div><div class="bd-wf-kpi-v">([\d,]+)/)||[])[1]||'0').replace(/,/g,'');
+   P.bdWfReset();let h=R();const n0=w1n(h),fms=[...new Set(P.BD.wf.brands.map(b=>b.fm))].sort(),mid=fms[Math.floor(fms.length/2)];
+   const last=x=>{const t=top(x);return t.slice(t.lastIndexOf('<div class="bd-wf-bar">'));};
+   ck('First Month: From / To month selects (Earliest / Latest) on the last row, with Reset at its end',[/<label>First Month<select aria-label="First Month from"[^>]*><option value="">Earliest<\/option>/.test(last(h)),/aria-label="First Month to"[^>]*><option value="">Latest/.test(last(h)),/<option value="[\d-]+">[A-Z][a-z]{2} \d\d \(\d+\)<\/option>/.test(last(h))],[true,true,true]);
+   P.bdWfSetFm('from',mid);h=R();const inR=P.BD.wf.brands.filter(b=>P._bdWfFilter([b]).length);
+   ck('  From keeps brands first invoiced in or after it (W1 count drops, a count note and Clear appear, Reset shows)',[w1n(h)<n0,inR.length>0&&inR.every(b=>b.fm>=mid),/brands first invoiced in this range/.test(last(h)),/bdWfClearFm\(\)/.test(last(h)),/onclick="bdWfReset\(\)"/.test(last(h))],[true,true,true,true,true]);
+   const g=h.slice(h.indexOf('id="bd-sec-wf2"'));const lbl=m=>P._bdWfLbl(m);
+   ck('  W2 follows it: no cohort before From',fms.filter(m=>m<mid).some(m=>g.includes('<td class="rw-c">'+lbl(m)+'</td>')),false);
+   P.bdWfSetFm('to',mid);h=R();const g2=h.slice(h.indexOf('id="bd-sec-wf2"'));
+   ck('  To is inclusive (From = To keeps that one month); W2 shows just that cohort row, and its export too',[P.BD.wf.brands.filter(b=>P._bdWfFilter([b]).length).every(b=>b.fm===mid),fms.filter(m=>m!==mid).some(m=>g2.includes('<td class="rw-c">'+lbl(m)+'</td>')),g2.includes('<td class="rw-c">'+lbl(mid)+'</td>'),P._bdWfW2Rows().filter(r=>/^\d{4}-\d\d$/.test(r[0])).map(r=>r[0])],[true,false,true,[mid]]);
+   P.bdWfSetFm('to',fms[0]);ck('  a To before the From pulls the From back, never an empty range',[P._bdWfFm.from,P._bdWfFm.to],[fms[0],fms[0]]);
+   P.bdWfSetFm('from','junk');ck('  a bad value clears that bound',P._bdWfFm.from,'');
+   {const wf=P.BD.wf,hd=()=>'',now=wf.months[wf.months.length-1];
+    const late=P._bdWfW2Section(wf.brands,wf.months,now,{head:hd,fmFrom:'2099-01'});
+    ck('  a range with no complete cohort (e.g. From = this month) shows a note, not a mislabeled or empty grid; export has nothing',[/No cohorts to show/.test(late),/<td class="rw-c">/.test(late),P._bdWfW2Rows()],[true,false,null]);
+    const ok=P._bdWfW2Section(wf.brands,wf.months,now,{head:hd});
+    ck('  without a range (Growth) the grid is unchanged',[/No cohorts to show/.test(ok),/<td class="rw-c">/.test(ok)],[false,true]);}
+   ck('  each month select has its own label ("to" focuses the To select)',/<label>First Month<select aria-label="First Month from"[\s\S]*?<\/select><\/label><label[^>]*>to<select aria-label="First Month to"/.test(R()),true);
+   P.bdWfReset();ck('  Reset clears it; W1 is back to every brand',[P._bdWfFm.from+P._bdWfFm.to,w1n(R())],['',n0]);}
   // ── Abnormalities ──
   const M=['2026-01','2026-02','2026-03','2026-04','2026-05','2026-06','2026-07','2026-08','2026-09','2026-10'];
   const BR=(o)=>Object.assign({k:'x',n:'X',src:'Recurly',st:'Active',stage:'Closed Won',hsCh:'',chSrc:'',li:'2026-10',mi:10,impl:true,paid:true,ty:'Not recorded',pe:1,pc:1,pkg:'Pro',pil:'No pilot',fm:'2026-01',a:M.map(()=>1000)},o);
@@ -322,7 +342,7 @@ const kv={},KV={get:async(k,t)=>kv[k]?(t==='json'?JSON.parse(kv[k]):kv[k]):null,
    ck('  and a filter for each categorical column',['Source','Group','Churn Status','HubSpot Stage','Churn Source','Web Tier Source','Measured Traffic','Pilot Status'].every(l=>x.indexOf('<label>'+l+'<select')>=0),true);
    {const rows=(x.match(/<div class="bd-wf-frows">[\s\S]*?<\/div><\/div>(?=<\/section>)/)||[''])[0].split('<div class="bd-wf-bar">').slice(1).map(r=>(r.match(/<label>([^<]+)<select/g)||[]).map(m=>m.slice(7,-7)).concat(/bd-wf-ms/.test(r)?['(products)']:[]));
 
-    ck('filters sit in four rows in Alex\u2019s order (2026-11-24); Web Traffic Tier is toggles now (2026-11-27)',rows,[['Possible Abnormalities'],['Company Segment','Source','Group','Churn Status','HubSpot Stage','Recurly State','Churn Source','Churn Type','Ever Implemented','Ever Paid'],['Web Tier Source','Implied Traffic','Self-selected Traffic','Web Tier at Churn','Measured Traffic'],['Package','A/B Test','Pilot Status','(products)']]);}
+    ck('filters sit in five rows in Alex\u2019s order (2026-11-24); Web Traffic Tier is toggles, First Month the last row (2026-11-27)',rows,[['Possible Abnormalities'],['Company Segment','Source','Group','Churn Status','HubSpot Stage','Recurly State','Churn Source','Churn Type','Ever Implemented','Ever Paid'],['Web Tier Source','Implied Traffic','Self-selected Traffic','Web Tier at Churn','Measured Traffic'],['Package','A/B Test','Pilot Status','(products)'],['First Month']]);}
    {const f=P.BD_WF_FILTERS.find(z=>z.k==='wtt').of;
     ck('Web Traffic Tier: Implied, then Self-Selected, nothing else (2026-11-27)',[f({it:'10K-25K',ss:'500K+',wt:'200K+',mt:'1M+'}),f({it:'No traffic data',ss:'500K+',wt:'200K+'}),f({it:'',ss:'Not selected',wt:'50-200K',mt:'1M+'}),f({it:'No traffic data',ss:'Not selected',wt:'50-200K',mt:'No traffic data'}),f({it:'No traffic data',ss:'Not selected',wt:'Not recorded',mt:'No traffic data'}),f({})],['10K-25K','500K+','No traffic data','No traffic data','No traffic data','No traffic data']);}
    P.bdWfSet('cols','default');x=R();

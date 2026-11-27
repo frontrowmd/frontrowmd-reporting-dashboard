@@ -954,6 +954,14 @@ function bdWfTierTopAt(i){var v=_bdWfTierTopOpts[i];if(v!=null)bdWfW2Tier(v);}
 function bdWfW2Tier(v){var i=_bdWfW2Tier.indexOf(v);if(i<0)_bdWfW2Tier.push(v);else _bdWfW2Tier.splice(i,1);_bdWfShow=BD_WF_PAGE;renderBD();}
 function bdWfW2TierClear(){_bdWfW2Tier=[];_bdWfShow=BD_WF_PAGE;renderBD();}
 var _bdWfQ='',_bdWfSort='first',_bdWfShow=100,_bdWfQT=null;
+// First Month range (Alex, 2026-11-27): the last filter row; 'YYYY-MM' bounds, both
+// inclusive, '' = open. A top-bar filter like the rest, so it narrows W1 and W2.
+var _bdWfFm={from:'',to:''};
+function bdWfSetFm(w,v){if(w!=='from'&&w!=='to')return;v=/^\d{4}-\d{2}$/.test(v)?v:'';_bdWfFm[w]=v;
+  // A From after the To (or the reverse) pulls the other bound along, never an empty range.
+  if(_bdWfFm.from&&_bdWfFm.to&&_bdWfFm.from>_bdWfFm.to){if(w==='from')_bdWfFm.to=v;else _bdWfFm.from=v;}
+  _bdWfShow=BD_WF_PAGE;renderBD();}
+function bdWfClearFm(){_bdWfFm={from:'',to:''};_bdWfShow=BD_WF_PAGE;renderBD();}
 var BD_WF_PAGE=100;
 // W2 reuses C3's .rwtbl, whose sticky .rw-n offset (78px) must equal the first column's width.
 var BD_WF_W_LBL=78,BD_WF_W_N=58,BD_WF_W_CELL=50;   // 34+ tenure columns: a cell must fit "85.7%" at 11px
@@ -978,7 +986,7 @@ function bdWfFetch(fresh){
   });
 }
 function bdWfSetF(k,v){if(!(k in _bdWfF)||_bdWfF[k]===v)return;_bdWfF[k]=v;_bdWfShow=BD_WF_PAGE;renderBD();}
-function bdWfReset(){Object.keys(_bdWfF).forEach(function(k){_bdWfF[k]='';});_bdWfW2Tier=[];_bdWfProd={ever:[],churn:[]};_bdWfPil='incl';_bdWfFlagF='';_bdWfQ='';_bdWfShow=BD_WF_PAGE;renderBD();}
+function bdWfReset(){Object.keys(_bdWfF).forEach(function(k){_bdWfF[k]='';});_bdWfW2Tier=[];_bdWfFm={from:'',to:''};_bdWfProd={ever:[],churn:[]};_bdWfPil='incl';_bdWfFlagF='';_bdWfQ='';_bdWfShow=BD_WF_PAGE;renderBD();}
 function bdWfSet(which,v){
   if(which==='pil')_bdWfPil=(v==='excl')?'excl':'incl';
   else if(which==='ni')_bdWfNI=(v==='excl')?'excl':'incl';
@@ -1092,6 +1100,8 @@ function _bdWfFilter(brands,skip,noSearch){
     for(var i=0;i<BD_WF_FILTERS.length;i++){var f=BD_WF_FILTERS[i];if(f.k===skip||!_bdWfF[f.k])continue;if(f.of(b)!==_bdWfF[f.k])return false;}
     // Web Traffic Tier: the multi-select toggles (any ticked tier), not a dropdown.
     if(skip!=='wtt'&&_bdWfW2Tier.length&&_bdWfW2Tier.indexOf(_bdWfWttOf(b))<0)return false;
+    // First Month range (inclusive); a brand with no first month drops out while a bound is set.
+    if(skip!=='fm'&&(_bdWfFm.from||_bdWfFm.to)&&(!b.fm||(_bdWfFm.from&&b.fm<_bdWfFm.from)||(_bdWfFm.to&&b.fm>_bdWfFm.to)))return false;
     // Products: every picked widget type live (an intersection); no data drops out.
     for(var w in _bdWfProd){if(skip===w||!_bdWfProd[w].length)continue;var ts=_bdWfTypesOf(b,w);
       if(!ts||_bdWfProd[w].some(function(t){return ts.indexOf(t)<0;}))return false;}
@@ -1452,7 +1462,7 @@ function bdWfTipOff(){var tip=document.getElementById('bd-wf-tip');if(tip){tip.s
 // current metric and % / Brands mode. No abnormality flags (Alex, 2026-11-25).
 var _bdWfW2Out=null;
 function _bdWfW2Rows(){
-  var o=_bdWfW2Out;if(!o||!o.rw)return null;
+  var o=_bdWfW2Out;if(!o||!o.rw||!o.rw.cohorts.length)return null;
   var rw=o.rw,W=rw.maxK,num=function(v){return String(v).replace(/\u2212/g,'-');};
   var rows=[['Cohort','Brands'].concat(Array.from({length:W},function(_,i){return 'Month '+(i+1);}))];
   rw.cohorts.forEach(function(co){
@@ -1694,10 +1704,16 @@ function _bdWfW2Section(list,months,now,opt){
   var gl=list.filter(w2in);if(_bdWfW2Tier.length)gl=gl.filter(function(b){return _bdWfW2Tier.indexOf(wttF.of(b))>=0;});
   var first=months[0];gl.forEach(function(b){if(b.fm&&b.fm<first)first=b.fm;});
   var from=_bdWfFrom==='all'?first:(_bdWfFrom+'-01'>first?_bdWfFrom+'-01':first);
+  // opt.fmFrom / fmTo (Billing's First Month range): the grid starts and ends there, not at empty cohorts.
+  if(opt.fmFrom&&opt.fmFrom>from)from=opt.fmFrom;
   if(from>now)from=now;   // a picked year past the data would make the grid width negative
   // Counted inside the plotted window only, as C3 does (a book-wide count overstated it).
   var niOut=_bdWfNI==='excl'?list.filter(function(b){return _bdWfIsNI(b)&&b.fm&&b.fm>=from&&b.fm<=now&&(!_bdWfW2Tier.length||_bdWfW2Tier.indexOf(wttF.of(b))>=0);}).length:0;
-  var rw=_bdWfCohorts(gl,from,now),churnView=_bdWfMetric==='churn',cpmView=_bdWfMetric==='cpm';
+  // Rows outside the range go (a From in the current month clamps from back to now, so trim both ends).
+  var rw=_bdWfCohorts(gl,from,now);
+  if(opt.fmFrom||opt.fmTo)rw.cohorts=rw.cohorts.filter(function(co){return (!opt.fmFrom||co.m>=opt.fmFrom)&&(!opt.fmTo||co.m<=opt.fmTo);});
+  var noRows=!rw.cohorts.length;
+  var churnView=_bdWfMetric==='churn',cpmView=_bdWfMetric==='cpm';
   var pct=function(p){return p===null?'':(Math.round(p*1000)/10).toFixed(p>=0.999||p<=0.001?0:1)+'%';};
   // c: a cell ({alive,lost,pct,lostM,mPct}). Churn Per Month: the brands lost IN
   // that month, as a share of those still active the month before.
@@ -1781,6 +1797,8 @@ function _bdWfW2Section(list,months,now,opt){
     g+='</tr>';
   }
   g+='</tbody></table></div>';
+  // Nothing left (First Month range vs the Cohorts from year, or only this month's brands): say so, no empty grid.
+  if(noRows)g='<div class="bd-app-band" role="status" style="margin:4px 0 0">No cohorts to show: the First Month range and the \u201cCohorts from\u201d year leave no complete month with brands. Widen the range or pick an earlier year.</div>';
   h+=g;
   if(plain)return h+'</div></section>';
   h+=_bdWfW2Flagged(gl,from,now);
@@ -1878,10 +1896,28 @@ function _bdWfRender(){
       +'<div class="bd-wf-ms-n">'+(w==='ever'?'From the card\u2019s product counts (a widget seen by 10+ people in a day, or marked live). ':'From daily widget views (10+ people in a day). ')+'Widget data starts '+_bdWfLbl((wg&&wg.from)||'2025-12')+'; brands churned before then drop out while a product is ticked.</div></div></details>';
   });
   bar+=row(BD_WF_FROWS[2]);
-  var anyF=Object.keys(_bdWfF).some(function(k){return !!_bdWfF[k];})||_bdWfW2Tier.length||_bdWfProd.ever.length||_bdWfProd.churn.length||_bdWfPil!=='incl'||!!_bdWfQ||!!_bdWfFlagF;
+  var anyF=Object.keys(_bdWfF).some(function(k){return !!_bdWfF[k];})||_bdWfW2Tier.length||!!_bdWfFm.from||!!_bdWfFm.to||_bdWfProd.ever.length||_bdWfProd.churn.length||_bdWfPil!=='incl'||!!_bdWfQ||!!_bdWfFlagF;
   bar+=_bdWfSeg('Pilots',_bdWfPill(_bdWfPil,'incl','Included','pil','Pilot brands count from their Pilot Initiation Fee invoice')
     +_bdWfPill(_bdWfPil,'excl','Excluded','pil','Leave out pilot brands with no plan bill yet (Metabase’s Hide Pilot Initiation Fee)'));
-  if(anyF)bar+='<button class="bd-wf-btn" onclick="bdWfReset()">Reset filters</button>';
+  // Last row: First Month, a From / To range over every month from the earliest first
+  // invoice to the latest; each option counts the brands first invoiced that month
+  // under the other filters. Reset sits at the end of this row.
+  bar+='</div><div class="bd-wf-bar">'+(function(){
+    var pool=_bdWfFilter(all,'fm',true),cnt={},lo='',hi='';
+    all.forEach(function(b){if(!b.fm)return;if(!lo||b.fm<lo)lo=b.fm;if(!hi||b.fm>hi)hi=b.fm;});
+    pool.forEach(function(b){if(b.fm)cnt[b.fm]=(cnt[b.fm]||0)+1;});
+    var ms=[];for(var m=lo;m&&m<=hi&&ms.length<600;m=_bdWfAdd(m,1))ms.push(m);
+    [_bdWfFm.from,_bdWfFm.to].forEach(function(v){if(v&&ms.indexOf(v)<0){ms.push(v);ms.sort();}});
+    var sel=function(w,any){var cur=_bdWfFm[w];
+      return '<select aria-label="First Month '+w+'" onchange="bdWfSetFm(\''+w+'\',this.value)"'+(cur?' class="on"':'')+'><option value="">'+any+'</option>'
+        +ms.map(function(m){return '<option value="'+m+'"'+(cur===m?' selected':'')+'>'+_bdWfLbl(m)+' ('+(cnt[m]||0)+')</option>';}).join('')+'</select>';};
+    var n=pool.filter(function(b){return b.fm&&(!_bdWfFm.from||b.fm>=_bdWfFm.from)&&(!_bdWfFm.to||b.fm<=_bdWfFm.to);}).length;
+    // One label per select (a label wrapping both would send every click on its text to From).
+    return '<label>First Month'+sel('from','Earliest')+'</label><label style="margin-left:-8px;font-weight:600;text-transform:none;letter-spacing:0">to'+sel('to','Latest')+'</label>'
+      +((_bdWfFm.from||_bdWfFm.to)?'<span style="font-size:11px;color:var(--grey)">'+n.toLocaleString()+' brands first invoiced in this range</span>'
+        +'<span onclick="bdWfClearFm()" role="button" tabindex="0" style="cursor:pointer;font-size:11px;color:var(--teal);font-weight:600">Clear</span>':'');
+  })();
+  if(anyF)bar+='<button class="bd-wf-btn" style="margin-left:auto" onclick="bdWfReset()">Reset filters</button>';
   bar+='</div></div>';
   h+=bar+'</section>';
   // ── W1: every brand, month by month ──
@@ -1944,7 +1980,7 @@ function _bdWfRender(){
   h+=t;
   if(sorted.length>shown.length)h+='<div style="display:flex;gap:8px;justify-content:center;margin-top:10px"><button class="bd-wf-btn" onclick="bdWfSet(\'more\',\'\')">Show '+Math.min(BD_WF_PAGE,sorted.length-shown.length)+' more</button><button class="bd-wf-btn" onclick="bdWfSet(\'more\',\'all\')">Show all '+sorted.length.toLocaleString()+'</button></div>';
   h+='</div></section>';
-  h+=_bdWfW2Section(list,months,now,{head:head,stale:stale,tierPool:_bdWfFilter(all,'wtt'),tierCnt:tierCnt});
+  h+=_bdWfW2Section(list,months,now,{head:head,stale:stale,tierPool:_bdWfFilter(all,'wtt'),tierCnt:tierCnt,fmFrom:_bdWfFm.from,fmTo:_bdWfFm.to});
   return h;
 }
 // C1's Board Defined / All switch. Board Defined is the default: it is the cut
