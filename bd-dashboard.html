@@ -4078,7 +4078,7 @@ function renderBD(){
     h+='<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px 20px;position:relative;min-width:0;overflow:hidden;display:flex;flex-direction:column;margin-bottom:20px" class="chart-wrap">';
     h+='<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px;flex-wrap:wrap">';
     h+='<div style="font-family:var(--font-h);font-size:14px;font-weight:700;color:var(--navy)">ARR by Week <span style="font-size:11px;color:var(--grey);font-family:var(--font-b);font-weight:400">'+(_s2Billed?'new ARR per week (brands joining Recurly), new pilots by deposit week':'new ARR signed per week (HubSpot close date)')+' · '+f$(_s2WT)+' since '+mN[+_s2From.slice(5,7)-1]+' '+_s2From.slice(0,4)+'</span></div>';
-    h+='<div style="display:flex;gap:8px;flex-shrink:0">'+_s2Mini('Current Month ARR',f$(_wkMon(_s2M[_s2Last].k)),'','#2563EB')+_s2Mini('Last Month ARR',f$(_lmK?_wkMon(_lmK):0),'',null)+'</div>';
+    // Current Month ARR / Last Month ARR mini cards removed (Alex, 2026-11-27).
     h+='</div>';
     h+=_bdS2Chart({w:1400,h:260,flat:26,labels:_s2W.map(function(w){return mN[+w.k.slice(5,7)-1]+' '+w.k.slice(2,4);}),
       tips:_s2W.map(function(w){return 'Week of '+_bdMDY(new Date(+w.k.slice(0,4),+w.k.slice(5,7)-1,+w.k.slice(8,10)));}),
