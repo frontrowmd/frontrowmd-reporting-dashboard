@@ -1053,11 +1053,10 @@ var BD_WF_FILTERS=[
   {k:'pkg',l:'Package',of:function(b){return b.pkg||'Not recorded';}},
   {k:'pil',l:'Pilot Status',of:function(b){return b.pil||'No pilot';}},
   {k:'rcs',l:'Recurly State',of:function(b){return _bdWfRcState(b);}},
-  // Web Traffic Tier (Alex, 2026-11-24): the first of Implied Traffic, Self-Selected,
-  // Measured Traffic, Web Tier at Churn that has a value. Web Tier at Churn uses the
-  // coarser HubSpot tiers (10-50K, 50-200K, 200K+, Pre-launch); those pass through as-is.
+  // Web Traffic Tier (Alex, 2026-11-27): Implied Traffic, else Self-Selected; neither =
+  // No traffic data. (Until 2026-11-27 it also fell back to Measured, then Web Tier at Churn.)
   {k:'wtt',l:'Web Traffic Tier',of:function(b){var none=/^(no traffic data|not selected|not recorded|none)$/i;
-    var v=[b.it,b.ss,b.mt,b.wt].filter(function(x){return x&&!none.test(String(x).trim());})[0];return v||'No traffic data';}}
+    var v=[b.it,b.ss].filter(function(x){return x&&!none.test(String(x).trim());})[0];return v||'No traffic data';}}
 ];
 // Tier order for the traffic dropdowns (a plain numeric sort puts 1M+ second).
 var BD_WF_TIER_ORD=['Pre-launch','0-10K','10K-25K','10-50K','25K-50K','50K-100K','50-200K','100K-200K','200K+','200K-500K','500K+','500K-1M','1M+'];
@@ -1065,15 +1064,16 @@ var BD_WF_TIER_ORD=['Pre-launch','0-10K','10K-25K','10-50K','25K-50K','50K-100K'
 var BD_WF_FROWS=[['seg','src','grp','st','stage','rcs','chSrc','ty','impl','paid'],['wtt','wts','it','ss','wt','mt'],['pkg','ab','pil']];
 function _bdWfWttOf(b){for(var i=0;i<BD_WF_FILTERS.length;i++)if(BD_WF_FILTERS[i].k==='wtt')return BD_WF_FILTERS[i].of(b);return '';}
 // Web Traffic Tier chips (both rows): cnt = brands per tier; at = the click
-// handler's name, called with the chip's index in tiers.
-function _bdWfTierChips(tiers,cnt,at){
+// handler's name, called with the chip's index in tiers; note = the explainer under the chips.
+var BD_WF_TIER_NOTE='Each brand\u2019s tier is its Implied Web Traffic, or its Self-Selected Web Traffic when there is no implied figure; neither = No traffic data. Tick any number of tiers: a brand stays if it is in any ticked tier. The same selection filters All Brands (W1) and the Retention Waterfall (W2).';
+function _bdWfTierChips(tiers,cnt,at,note){
   return '<span style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:10px;font-weight:700;color:var(--grey);text-transform:uppercase;letter-spacing:.04em">Web Traffic Tier'
     +'<span style="display:inline-flex;flex-wrap:wrap;gap:4px;text-transform:none;letter-spacing:0">'
     +tiers.map(function(t,ti){var on=_bdWfW2Tier.indexOf(t)>=0;
       return '<span role="checkbox" aria-checked="'+on+'" tabindex="0" onclick="'+at+'('+ti+')" style="cursor:pointer;padding:4px 11px;border-radius:50px;font-size:11px;font-weight:700;font-family:var(--font-h);border:1.5px solid '+(on?'var(--navy)':'rgba(23,44,69,.14)')+';'
         +(on?'background:var(--navy);color:#fff;':'background:transparent;color:var(--grey);')+'">'+_bdEsc(t)+' <span style="opacity:.6;font-weight:600">'+(cnt[t]||0)+'</span></span>';}).join('')
     +(_bdWfW2Tier.length?'<span onclick="bdWfW2TierClear()" style="cursor:pointer;padding:4px 8px;font-size:11px;color:var(--teal);font-weight:600">Clear</span>':'')
-    +'</span></span>';
+    +'</span>'+(note?'<span class="bd-wf-tier-note" style="flex-basis:100%;font-size:11px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--grey);line-height:1.4">'+_bdEsc(note)+'</span>':'')+'</span>';
 }
 // Tier order for the chips: BD_WF_TIER_ORD, then other values, then No traffic data;
 // a ticked tier no brand has stays listed (at 0) so it can be unticked.
@@ -1630,7 +1630,9 @@ function bdWfStick(){
 // tests fail on drift). opt.plain (Growth): no abnormality flags, no flagged-
 // brands list, no footnote. list = the brands after the page's filters;
 // opt.tierPool = the same brands before the Web Traffic Tier toggles (Billing,
-// where _bdWfFilter applies them), so each chip counts what ticking it shows.
+// where _bdWfFilter applies them); opt.tierCnt = the top bar's chip counts, so
+// W2's row is identical to the top bar's (Alex, 2026-11-27). Without it (Growth)
+// W2 counts its own brands.
 function _bdWfW2Section(list,months,now,opt){
   opt=opt||{};var plain=!!opt.plain,h='';
   // Complete months only: brands added from this month's Recurly data (b.x) stay out.
@@ -1669,14 +1671,16 @@ function _bdWfW2Section(list,months,now,opt){
     :'<span style="display:inline-flex;align-items:center;gap:6px;font-size:10px;color:var(--grey);margin-left:auto">'+(churnView?'\u226570%':'\u226430%')
     +'<span style="width:150px;height:10px;border-radius:3px;border:1px solid rgba(23,44,69,.08);background:linear-gradient(90deg,'+(churnView?[1,0.85,0.55,0.30]:[0.30,0.55,0.85,1]).map(function(v){return _bdWfFill(v);}).join(',')+')"></span>'
     +(churnView?'0%':'100%')+' <span style="opacity:.75">(yellow at '+(churnView?'45%':'55%')+')</span></span>')+'</div>';
-  // Row 2: Web Traffic Tier, toggles (any ticked tier), counted over the W2 brands.
-  // Counted inside the plotted window (independent of the ticks), so a chip's count is what ticking it shows.
+  // Row 2: Web Traffic Tier, toggles (any ticked tier). On Billing (opt.tierCnt) the counts are the
+  // top bar's, book-wide under the other filters, so both rows match (Alex, 2026-11-27). Without
+  // it (Growth) they count the W2 brands inside the plotted window, independent of the ticks.
   var first0=months[0];gl0.forEach(function(b){if(b.fm&&b.fm<first0)first0=b.fm;});
   var from0=_bdWfFrom==='all'?first0:(_bdWfFrom+'-01'>first0?_bdWfFrom+'-01':first0);if(from0>now)from0=now;
   var tierN={};gl0.forEach(function(b){if(!b.fm||b.fm<from0||b.fm>now)return;var t=wttF.of(b);tierN[t]=(tierN[t]||0)+1;});
+  if(opt.tierCnt){tierN={};for(var tk in opt.tierCnt)tierN[tk]=opt.tierCnt[tk];}
   var tiers=_bdWfTierList(tierN);
   _bdWfW2TierOpts=tiers;
-  h+='<div class="bd-wf-bar" style="margin:0 0 12px">'+_bdWfTierChips(tiers,tierN,'bdWfW2TierAt')
+  h+='<div class="bd-wf-bar" style="margin:0 0 12px">'+_bdWfTierChips(tiers,tierN,'bdWfW2TierAt',plain?'':BD_WF_TIER_NOTE)
     +'<button class="bd-wf-btn" style="margin-left:auto" onclick="bdWfW2Csv()">Download CSV</button></div>';
   var W=rw.maxK,minW=BD_WF_W_LBL+BD_WF_W_N+BD_WF_W_CELL*W;
   // Cohort rows whose retention a flagged brand distorts: active brands not
@@ -1735,7 +1739,7 @@ function _bdWfW2Section(list,months,now,opt){
     +'Active brands count as retained in every month, even when an invoice is missing'+(opt.stale?' ('+opt.stale+' active brand'+(opt.stale===1?' has':'s have')+' not been invoiced in the last two complete months)':'')+'. '
     +(_bdWfNI==='excl'?niOut+' Never Implemented churn'+(niOut===1?' is':'s are')+' left out. ':'')
     +'Complete months only, through '+_bdWfLbl(now)+': brands first invoiced this month appear next month. The All cohorts row blends every cohort that has reached each month, with its own denominator; under '
-    +BD_WF_BLEND_MIN+' brands or '+BD_WF_BLEND_MIN_COHORTS+' cohorts it is left blank. Filters above narrow both W1 and this grid; the Web Traffic Tier toggles narrow this grid only. Churn Per Month is the brands lost in each month out of those still active the month before.</div></div></section>';
+    +BD_WF_BLEND_MIN+' brands or '+BD_WF_BLEND_MIN_COHORTS+' cohorts it is left blank. Filters above narrow both W1 and this grid; the Web Traffic Tier toggles here and in the top bar are one selection. Churn Per Month is the brands lost in each month out of those still active the month before.</div></div></section>';
   return h;
 }
 function _bdWfRender(){
@@ -1787,10 +1791,11 @@ function _bdWfRender(){
   };
   var fByK={};BD_WF_FILTERS.forEach(function(f){fByK[f.k]=f;});
   // Web Traffic Tier: toggles in place of a dropdown, the same selection as W2's row.
+  var tierCnt={};_bdWfFilter(all,'wtt',true).forEach(function(b){var t=_bdWfWttOf(b);tierCnt[t]=(tierCnt[t]||0)+1;});
   var tierSel=function(){
-    var cnt={};_bdWfFilter(all,'wtt',true).forEach(function(b){var t=_bdWfWttOf(b);cnt[t]=(cnt[t]||0)+1;});
+    var cnt={};for(var k in tierCnt)cnt[k]=tierCnt[k];
     var tiers=_bdWfTierList(cnt);_bdWfTierTopOpts=tiers;
-    return _bdWfTierChips(tiers,cnt,'bdWfTierTopAt');
+    return _bdWfTierChips(tiers,cnt,'bdWfTierTopAt',BD_WF_TIER_NOTE);
   };
   var row=function(keys){return keys.map(function(k){return k==='wtt'?tierSel():fByK[k]?fsel(fByK[k]):'';}).join('');};
   var chipH='<div class="bd-wf-chips" style="margin:0">'
@@ -1887,7 +1892,7 @@ function _bdWfRender(){
   h+=t;
   if(sorted.length>shown.length)h+='<div style="display:flex;gap:8px;justify-content:center;margin-top:10px"><button class="bd-wf-btn" onclick="bdWfSet(\'more\',\'\')">Show '+Math.min(BD_WF_PAGE,sorted.length-shown.length)+' more</button><button class="bd-wf-btn" onclick="bdWfSet(\'more\',\'all\')">Show all '+sorted.length.toLocaleString()+'</button></div>';
   h+='</div></section>';
-  h+=_bdWfW2Section(list,months,now,{head:head,stale:stale,tierPool:_bdWfFilter(all,'wtt')});
+  h+=_bdWfW2Section(list,months,now,{head:head,stale:stale,tierPool:_bdWfFilter(all,'wtt'),tierCnt:tierCnt});
   return h;
 }
 // C1's Board Defined / All switch. Board Defined is the default: it is the cut
