@@ -4568,8 +4568,8 @@ function _baStatusOf(b){
 // company (h). Built once from the two heavy reads, cached 30 min, and shared by
 // Growth Overview (/api/growth-signed) and the Brand Dashboard's Revenue
 // Outcome (/api/signed-brands), so both count exactly as the card does.
-const SIGN_BOOK_KV = 'sign_book_v7';
-const SIGN_BOOK_LAST = 'sign_book_last_v7';
+const SIGN_BOOK_KV = 'sign_book_v8';        // v8: rows carry m (the active brand's MRR)
+const SIGN_BOOK_LAST = 'sign_book_last_v8';
 // HubSpot moves a churned brand's deal OUT of Closed Won into a churn stage, so
 // the card's _bdSignDays (closed-won deals only) finds no signing day for it and
 // it never reached the book. Its churn-stage deals' close dates are its signing
@@ -4588,9 +4588,13 @@ function signBookRows(deals, app) {
     const chd = bd.filter(x => SIGN_BOOK_CHURN_STAGES.indexOf(x.dealstage) >= 0);
     const dch = chd.map(x => x.closedate ? _bdEtDayOf(x.closedate) : '').filter(Boolean);
     if (!d.length && !dch.length) continue;
-    let a;
-    if (rcOk) { const k = _baRcClass(b); a = !!k && k !== 'ended'; }      // _baSummaryRc
-    else a = !b.discardedAt && !!b.active;                                // _baSummary
+    let a, m = 0;
+    // m: the card's Current MRR for an Active Brand (Alex, 2026-11-27: Revenue
+    // Outcome's Brands MRR is the BD Tracker's): billing = the Recurly plan +
+    // traffic MRR, trial / starting / paused = the plan's list price
+    // (_baSummaryRc); without Recurly the app price (_baSummary).
+    if (rcOk) { const k = _baRcClass(b); a = !!k && k !== 'ended'; if (a) m = k === 'billing' ? (+b.recurly.mrr || 0) : (+b.recurly.idlePrice || 0); }
+    else { a = !b.discardedAt && !!b.active; if (a) m = +b.monthly || 0; }
     const p = !!(b.pilot && !/(demo|test)/i.test(String(b.name || '')) && BD_PILOT_COUNTED.indexOf(b.pilot.status) >= 0);   // _baPilotStatsOf
     // Churned: neither live, and either the app says Ended or HubSpot has moved
     // its deal to a churn stage.
@@ -4605,7 +4609,7 @@ function signBookRows(deals, app) {
     // w: a REAL signing (a paid pilot or a closed-won / churned HubSpot deal), not
     // the app's created-date fallback, which a never-subscribed brand also gets.
     const w = (sd.how === 'pilot' || sd.how === 'hubspot' || dch.length > 0 || c) ? 1 : 0;
-    rows.push({ d, dch, a: a ? 1 : 0, p: p ? 1 : 0, c: c ? 1 : 0, w, t: tt, h, k });
+    rows.push({ d, dch, a: a ? 1 : 0, m: Math.round(m * 100) / 100, p: p ? 1 : 0, c: c ? 1 : 0, w, t: tt, h, k });
   }
   // Signed HubSpot deals that reach NO app brand (signed, but no brand in the
   // app yet, or never set up): one row each, for Growth's `every` only. A deal
@@ -4639,8 +4643,8 @@ function signBookCount(rows, from, to) {
   // Active and pilots count on the card's own days (d) only, so `signed` stays
   // the card. The churn count also takes the churn-stage days (dch).
   const inR = rows.filter(r => r.d.some(inRange) || (r.dch || []).some(inRange));
-  let active = 0, pilots = 0;
-  inR.forEach(r => { if (r.d.some(inRange)) { active += r.a; pilots += r.p; } });
+  let active = 0, pilots = 0, mrr = 0;
+  inR.forEach(r => { if (r.d.some(inRange)) { active += r.a; pilots += r.p; if (r.a) mrr += r.m || 0; } });
   // Churned: ended rows that signed in the range, one per BRAND. Rows linked by
   // a shared company or closed-won deal, directly or through a chain of rows,
   // are one brand (union-find over every in-range row, so the count does not
@@ -4666,7 +4670,8 @@ function signBookCount(rows, from, to) {
   const churned = churnRoot.size;
   // every = each brand that signed in the range, whatever it is today (Growth
   // Overview, Alex 2026-11-25), one per brand: the live groups plus the rest.
-  return { active, pilots, signed: active + pilots, churned, every: liveRoot.size + otherRoot.size };
+  // mrr: the Active Brands' Current MRR (the card's), for Revenue Outcome.
+  return { active, pilots, signed: active + pilots, churned, every: liveRoot.size + otherRoot.size, mrr: Math.round(mrr * 100) / 100 };
 }
 async function buildSignBook(env) {
   if (!env.HUBSPOT_TOKEN) throw new Error('HubSpot is not configured');
@@ -4746,8 +4751,11 @@ function signBookMeta(book) {
 async function fetchGrowthSigned(env, fresh, cacheOnly) {
   const book = await fetchSignBook(env, fresh, cacheOnly);
   const today = fmt(todayET());
-  const months = growthMonths(today).map(mo => Object.assign({ m: mo.m, to: mo.to, partial: mo.partial }, signBookCount(book.rows, mo.from, mo.to)));
-  return Object.assign({ months, ytd: Object.assign({ m: 'ytd' }, signBookCount(book.rows, months.length ? growthMonths(today)[0].from : today, today)) }, signBookMeta(book), { today });
+  // Counts only: Growth Overview (and its public share links) never carries a
+  // dollar figure, so the sign book's mrr (Revenue Outcome's) is dropped here.
+  const cnt = (f, t) => { const o = signBookCount(book.rows, f, t); delete o.mrr; return o; };
+  const months = growthMonths(today).map(mo => Object.assign({ m: mo.m, to: mo.to, partial: mo.partial }, cnt(mo.from, mo.to)));
+  return Object.assign({ months, ytd: Object.assign({ m: 'ytd' }, cnt(months.length ? growthMonths(today)[0].from : today, today)) }, signBookMeta(book), { today });
 }
 // Brand Dashboard Revenue Outcome: the card for the page's window, its prior
 // window and last month, from the same windows /api/revenue-outcome uses.

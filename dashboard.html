@@ -1042,6 +1042,10 @@ function _buildRevenueOutcomeCard(d){
   // worker's HubSpot reads succeeded (current present). Otherwise side 1 keeps
   // the cached /api/data figures and only the pilot side reads the live result.
   var _roAll=(_revOutcome&&_revOutcome.key===_roPageKey())?_revOutcome:null;
+  // Brands side = the BD Tracker's Active Brands (Alex, 2026-11-27): MRR is their
+  // Current MRR (Recurly) from /api/signed-brands, for every window, not HubSpot
+  // closed-won deal amounts (Nov 2026: $26,173 Tracker vs $27,396 from deals).
+  var _sbB=(_sbCard&&_sbCard.key===_roPageKey()&&_sbCard.current&&typeof _sbCard.current.mrr==='number')?_sbCard:null;
   var _ro=(_roAll&&_roAll.current)?_roAll:null;
   var mrr=_ro?((_ro.current&&_ro.current.mrr)||0):((d.mrrArr&&d.mrrArr.mrr&&d.mrrArr.mrr.value)||0);
   var dealCount=_ro?((_ro.current&&_ro.current.count)||0):((d.mrrArr&&d.mrrArr.dealCount&&d.mrrArr.dealCount.value)||0);
@@ -1071,14 +1075,21 @@ function _buildRevenueOutcomeCard(d){
   mrr=_scope(mrr,'cur','Mrr')||0; dealCount=_scope(dealCount,'cur','Count')||0;
   pMRR=_scope(pMRR,'prior','Mrr'); pDeal=_scope(pDeal,'prior','Count');
   pmMRR=_scope(pmMRR,'lm','Mrr'); pmDeal=_scope(pmDeal,'lm','Count');
+  // The Tracker's figures replace all of the above (already pilot-free: Active
+  // Brands never include pilots). ACV = MRR ÷ Active Brands, the Tracker's Avg ACV.
+  var _sbW=function(w){var o=_sbB&&_sbB[w];return (o&&typeof o.mrr==='number')?o:null;};
+  var _brLoad=!_sbB;   // until /api/signed-brands lands: loading, never the HubSpot figure
+  if(_sbB){_mode='excl';
+    var _c=_sbW('current'),_p=_sbW('prior'),_l=_sbW('priorMonth');
+    mrr=_c.mrr;dealCount=_c.active;pMRR=_p?_p.mrr:null;pDeal=_p?_p.active:null;pmMRR=_l?_l.mrr:null;pmDeal=_l?_l.active:null;}
   // Signed Brands = closed-won + churned deals that still carry a Close Date in
   // the window (matches the Marketing Funnel "Signed Brands" calc). The churned
   // add-back is only available for the current window, so prior/LM deltas
   // compare against closed-won only (the add-back is a handful of deals).
   // The churned add-back is not split by pilot. Pilot brands are brand new (the
   // first signed Oct 22 2026), so it is non-pilot by construction.
-  var _churnAdd=(d&&d.signedChurnedByCloseCount)||0;
-  var _dealBrands=dealCount+_churnAdd;   // ACV's divisor: the deals its MRR is summed over
+  var _churnAdd=_sbB?0:((d&&d.signedChurnedByCloseCount)||0);
+  var _dealBrands=dealCount+_churnAdd;   // ACV's divisor: the Active Brands (Tracker), else the deals its MRR is summed over
   var signedARR=mrr*12;            // headline
   var acv=_dealBrands>0?mrr/_dealBrands:null;  // per signed deal (incl. churned by closedate)
   // The three Signed Brands counts are the BD Tracker card's (_sbCard above):
@@ -1125,12 +1136,13 @@ function _buildRevenueOutcomeCard(d){
       +'<div style="font-family:var(--font-h);font-size:34px;font-weight:700;color:#fff;line-height:1.05;margin-bottom:8px;font-variant-numeric:tabular-nums">'+val+'</div>'
       +hdRow('vs prior',cur,p2,'$')+hdRow('vs LM',cur,lm,'$');
   };
+  var _brV=function(v){return _brLoad?_sbShow(null):v;};   // loading / dash until the Tracker's figures land
   var side1='<div style="flex:1 1 300px;min-width:260px">'
-      +sideLbl('Brands',_pilotKnown?'excluding pilots':'<span style="color:#FCA5A5">pilot split loading — includes pilots</span>')
-      +headline('Signed ARR','MRR × 12',f$(signedARR),signedARR,pSignedARR,pmSignedARR)
+      +sideLbl('Brands','active today (Recurly) \u00b7 the BD Tracker\u2019s Active Brands')
+      +headline('Signed ARR','MRR × 12',_brV(f$(signedARR)),_brLoad?null:signedARR,pSignedARR,pmSignedARR)
       +'<div style="margin-top:8px">'
-      +metricRow('MRR',f$(mrr),mrr,pMRR,pmMRR,'$')
-      +metricRow('ACV',acv!=null?f$(acv):'—',acv,pACV,pmACV,'$')
+      +metricRow('MRR',_brV(f$(mrr)),_brLoad?null:mrr,pMRR,pmMRR,'$')
+      +metricRow('ACV',_brV(acv!=null?f$(acv):'—'),_brLoad?null:acv,pACV,pmACV,'$')
       +metricRow('Signed Brands',_sbShow(signedBrands),signedBrands,_sbv('prior','active'),_sbv('priorMonth','active'),'#')
       +'</div></div>';
   var side2;
@@ -1163,7 +1175,7 @@ function _buildRevenueOutcomeCard(d){
   // only when both sides are split cleanly, so no window is counted twice.
   // A side's missing prior/LM makes that total's delta a dash.
   var total='';
-  if(_pilotKnown&&_ppOk){
+  if(_sbB&&_ppOk){
     var _add=function(a,b){return (a==null||b==null)?null:a+b;};
     var tMRR=mrr+pc.post,tpMRR=_add(pMRR,_pf(pp,'post')),tlMRR=_add(pmMRR,_pf(pl,'post'));
     var tB=_sbv('current','signed'),tpB=_sbv('prior','signed'),tlB=_sbv('priorMonth','signed');
@@ -1191,7 +1203,7 @@ function _buildRevenueOutcomeCard(d){
       +side2
     +'</div>'
     +total
-    +'<div style="margin-top:12px;font-size:10.5px;line-height:1.5;color:rgba(255,255,255,.45)">Signed Brands counts are the BD Tracker\u2019s Signed Brands card for the window: brands that signed in it and are active (Recurly) or on a pilot today'
+    +'<div style="margin-top:12px;font-size:10.5px;line-height:1.5;color:rgba(255,255,255,.45)">Brands MRR, Signed ARR, ACV and the Signed Brands counts are the BD Tracker\u2019s for the window: brands that signed in it and are active (Recurly) or on a pilot today, at what they bill now'
       +(_sb&&_sb.stale?' \u00b7 <span style="color:#FCD34D">last good copy, '+(_sb.stale.error||'')+'</span>':_sb&&_sb.warn?' \u00b7 <span style="color:#FCD34D">'+_sb.warn+'</span>':'')
       +(_sbErr?' \u00b7 <span style="color:#FCA5A5">unavailable just now; refresh to retry</span>':'')+'.</div>'
   +'</div>';

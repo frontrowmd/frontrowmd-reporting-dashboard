@@ -87,7 +87,7 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
   const cnt=(f,to)=>run(`signBookCount(signBookRows(FD,FX),'${f}','${to}')`);
   const sc=[cnt('2026-01-01','2026-01-31'),cnt('2026-02-01','2026-02-10')];
   ck('sign book per range: active + pilots among brands signed in it; churned counted apart; test, unpaid-pilot and lost deals out; Eastern close day; name join',
-    sc,[{active:2,pilots:1,signed:3,churned:1,every:4},{active:2,pilots:0,signed:2,churned:0,every:2}]);
+    sc,[{active:2,pilots:1,signed:3,churned:1,every:4,mrr:200},{active:2,pilots:0,signed:2,churned:0,every:2,mrr:150}]);
   // The same fixture through the BD page's OWN render path (_bdSumIn with the
   // range set, then the card's two counts) must give the same numbers.
   const B={console:{log(){}},Date,Intl,JSON,Math,String,Array,Object};vm.createContext(B);
@@ -121,7 +121,7 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
   FD.push({id:'d14',dealstage:'3453925110',closedate:'2026-01-18T15:00:00Z',companyId:'1400',dealname:'Churny'},
     {id:'d15',dealstage:'3517067985',closedate:'2026-02-04T15:00:00Z',companyId:'1500',dealname:'Churny Onb'});
   ck('  a brand whose deal HubSpot moved to Churned / Churned (Onb) counts as a churned signing in its close month (whatever the app status says), never in the card',
-    [cnt('2026-01-01','2026-01-31'),cnt('2026-02-01','2026-02-10')],[{active:2,pilots:1,signed:3,churned:2,every:5},{active:2,pilots:0,signed:2,churned:1,every:3}]);
+    [cnt('2026-01-01','2026-01-31'),cnt('2026-02-01','2026-02-10')],[{active:2,pilots:1,signed:3,churned:2,every:5,mrr:200},{active:2,pilots:0,signed:2,churned:1,every:3,mrr:150}]);
   ck('  ...and the card computed by the page’s own code is unchanged by it',[card('2026-01-01','2026-01-31'),card('2026-02-01','2026-02-10')],[[2,1],[2,0]]);
   FX.brands.splice(-2);FD.splice(-2);
   // Signed but not live today and not ended (onboarding / no plan), and signed deals no app brand reaches.
@@ -134,7 +134,7 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
     {id:'d23',dealstage:'closedwon',closedate:'2026-01-24T15:00:00Z',companyId:'2200',companyName:'QA',dealname:'Demo Account Test'},
     {id:'d24',dealstage:'closedlost',closedate:'2026-01-25T15:00:00Z',companyId:'2300',companyName:'Lost Orphan',dealname:'Lost Orphan'});
   ck('  every also counts a signed brand still onboarding, and signed deals with no app brand (two on one company = one; a churn-stage one too); never the app\u2019s created-date fallback, a test name or a lost deal; the card is unchanged',
-    cnt('2026-01-01','2026-01-31'),{active:2,pilots:1,signed:3,churned:1,every:7});
+    cnt('2026-01-01','2026-01-31'),{active:2,pilots:1,signed:3,churned:1,every:7,mrr:200});
   ck('  ...and the card by the page’s own code is unchanged',card('2026-01-01','2026-01-31'),[2,1]);
   FX.brands.push({id:18,name:'Orphan Company Brand',recurly:{mrr:100,idlePrice:0,subs:[{basis:'invoice',state:'active'}]},active:true,state:'active',signDate:'2026-01-03'});
   ck('  a signed deal loosely matching exactly one deal-less counted brand is that brand, not a second signing',cnt('2026-01-01','2026-01-31').every,7);
@@ -144,20 +144,30 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
   const R=(o)=>Object.assign({d:['2026-01-10'],a:0,p:0,c:1,w:1,t:0,h:'',k:[]},o);W.R=R;
   const cc=rows=>{W.RR=rows;return run(`signBookCount(RR,'2026-01-01','2026-01-31')`);};
   ck('  ended rows linked only through a third row are one churn, in any order',[cc([R({h:'1'}),R({k:['5']}),R({h:'1',k:['5']})]).churned,cc([R({h:'1'}),R({h:'1',k:['5']}),R({k:['5']})]).churned],[1,1]);
-  ck('  ...and a live row anywhere in the chain makes it that live brand, not a churn',cc([R({a:1,c:0,h:'1'}),R({k:['5']}),R({h:'1',k:['5']})]),{active:1,pilots:0,signed:1,churned:0,every:1});
-  ck('  every counts live brands once: a row both live and on a pilot, two live rows of one company (the card still counts rows)',[cc([R({a:1,p:1,c:0})]),cc([R({a:1,c:0,h:'7'}),R({a:1,c:0,h:'7'})])],[{active:1,pilots:1,signed:2,churned:0,every:1},{active:2,pilots:0,signed:2,churned:0,every:1}]);
-  ck('  a live brand\u2019s earlier churned signing (a restart) counts in that month too, not in the card',cc([R({a:1,c:0,d:['2026-09-10'],dch:['2026-01-05']})]),{active:0,pilots:0,signed:0,churned:0,every:1});
+  ck('  ...and a live row anywhere in the chain makes it that live brand, not a churn',cc([R({a:1,c:0,h:'1'}),R({k:['5']}),R({h:'1',k:['5']})]),{active:1,pilots:0,signed:1,churned:0,every:1,mrr:0});
+  ck('  every counts live brands once: a row both live and on a pilot, two live rows of one company (the card still counts rows)',[cc([R({a:1,p:1,c:0})]),cc([R({a:1,c:0,h:'7'}),R({a:1,c:0,h:'7'})])],[{active:1,pilots:1,signed:2,churned:0,every:1,mrr:0},{active:2,pilots:0,signed:2,churned:0,every:1,mrr:0}]);
+  ck('  a live brand\u2019s earlier churned signing (a restart) counts in that month too, not in the card',cc([R({a:1,c:0,d:['2026-09-10'],dch:['2026-01-05']})]),{active:0,pilots:0,signed:0,churned:0,every:1,mrr:0});
   ck('  internal demo/test names never count; a never-subscribed app row (no real signing) does not either',[cc([R({t:1}),R({}),R({c:0,w:0})]).every],[1]);
   run(`TFX={brands:['Andres Test','MoonBrew Demo 2','Testosil','TestRX'].map((n,i)=>({id:90+i,name:n,signDate:'2026-01-0'+(i+2),recurly:{mrr:0,idlePrice:0,subs:[{basis:'ended',state:'expired'}]},state:'ended'})),meta:{recurly:{ok:true}}};`);
   ck('  sign book flags internal names as whole words (Andres Test, MoonBrew Demo 2 out; Testosil, TestRX in)',run(`signBookRows([],TFX).map(r=>r.t)`),[1,1,0,0]);
-  ck('  ...so only the real brands count as churned signings',run(`signBookCount(signBookRows([],TFX),'2026-01-01','2026-01-31')`),{active:0,pilots:0,signed:0,churned:2,every:2});
+  W.MFX={brands:[{id:91,name:'Bill Co',signDate:'2026-01-05',recurly:{mrr:500.4,subs:[{state:'active',basis:'invoice'}],idlePrice:0}},
+    {id:92,name:'Trial Co',signDate:'2026-01-06',recurly:{mrr:0,subs:[{state:'active',basis:'trial'}],idlePrice:300}},
+    {id:93,name:'Gone Co',signDate:'2026-01-07',recurly:{mrr:0,subs:[{state:'expired',basis:'expired'}],idlePrice:0}}],meta:{recurly:{ok:true}}};
+  ck('sign book rows carry m like the card: billing = Recurly MRR, trial/starting/paused = list price, ended = 0',run(`signBookRows([],MFX).map(r=>[r.a,r.m])`),[[1,500.4],[1,300],[0,0]]);
+  W.MFX2={brands:[{id:94,name:'App Co',signDate:'2026-01-05',active:true,monthly:750}],meta:{recurly:{ok:false}}};
+  ck('  without Recurly: the app price (the card\u2019s fallback)',run(`signBookRows([],MFX2).map(r=>[r.a,r.m])`),[[1,750]]);
+  ck('mrr (Revenue Outcome, 2026-11-27) = Current MRR of the Active Brands signed in the range; pilots, ended and out-of-range rows add nothing',
+    cc([R({a:1,c:0,m:1000.5}),R({a:1,c:0,m:200,d:['2025-12-30']}),R({p:1,c:0,m:999}),R({c:1,m:50}),R({a:1,c:0,m:99.25})]).mrr,1099.75);
+  ck('  ...so only the real brands count as churned signings',run(`signBookCount(signBookRows([],TFX),'2026-01-01','2026-01-31')`),{active:0,pilots:0,signed:0,churned:2,every:2,mrr:0});
   // fetchSignBook / fetchGrowthSigned / fetchSignedBrands with the two readers stubbed.
   run(`fetchBDData=async()=>({deals:JSON.parse(JSON.stringify(FD)),meta:{}});fetchBdApp=async(e,o)=>{APPOPTS=o;return FX;};todayET=()=>new Date(Date.UTC(2026,1,10));
     LOOKUPS=[];lookupBDCompanies=async(e,ids)=>{LOOKUPS.push(ids);return {companies:{},deferred:0};};`);
   const kv2={};const env2={HUBSPOT_TOKEN:'t',CONTENT_STORE:{get:async(k)=>kv2[k]?JSON.parse(kv2[k]):null,put:async(k,v)=>{kv2[k]=v;}}};W.env2=env2;
   g=await run(`fetchGrowthSigned(env2,false)`);
-  ck('growth-signed: reads the app book lite (no per-account Recurly reads), caches a clean sign book',[run('APPOPTS'),g.months.map(r=>[r.signed,r.churned]),!!kv2.sign_book_v7,!!kv2.sign_book_last_v7],[{lite:true},[[3,1],[2,0]],true,true]);
+  ck('growth-signed: reads the app book lite (no per-account Recurly reads), caches a clean sign book',[run('APPOPTS'),g.months.map(r=>[r.signed,r.churned]),!!kv2.sign_book_v8,!!kv2.sign_book_last_v8],[{lite:true},[[3,1],[2,0]],true,true]);
   ck('  no cohort list in the payload any more','live' in g,false);
+  ck('  and no dollar figure: the sign book\u2019s mrr (Revenue Outcome\u2019s) never reaches Growth or its share links',[g.months.some(r=>'mrr' in r),'mrr' in g.ytd],[false,false]);
+  {const sb=await run(`fetchSignedBrands(env2,{window:'mtd'})`);ck('  while /api/signed-brands (Revenue Outcome) does carry it',typeof sb.current.mrr,'number');}
   ck('  year to date is Jan 1..today, each brand once',[g.ytd.m,g.ytd.signed,g.ytd.active,g.ytd.pilots,g.ytd.churned],['ytd',5,4,1,1]);
   ck('  looks up the uncached company names of closed-won deals only, as the BD page does',run('LOOKUPS'),[['100','300','400','600']]);
   ck('  next load from the cached book',!!(await run(`fetchGrowthSigned(env2,false)`)).cached,true);
@@ -174,14 +184,14 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
   g=await run(`fetchGrowthSigned(env2,true)`);
   ck('  lookups deferred: the last good book, marked',[!!g.stale,g.stale&&g.stale.error],[true,'Some HubSpot calls failed']);
   run(`lookupBDCompanies=async(e,ids)=>({companies:{},deferred:0});`);
-  const before=kv2.sign_book_last_v7;
+  const before=kv2.sign_book_last_v8;
   FX.meta={recurly:{ok:true,stale:true}};
   g=await run(`fetchGrowthSigned(env2,true)`);
-  ck('  Recurly stale: today’s cohort on its last read, as the card shows, flagged, not cached',[!!g.stale,/last good read/.test(g.warn||''),g.months.map(r=>r.active),kv2.sign_book_last_v7===before],[false,true,[2,2],true]);
+  ck('  Recurly stale: today’s cohort on its last read, as the card shows, flagged, not cached',[!!g.stale,/last good read/.test(g.warn||''),g.months.map(r=>r.active),kv2.sign_book_last_v8===before],[false,true,[2,2],true]);
   FX.meta={recurly:{ok:false}};
   g=await run(`fetchGrowthSigned(env2,true)`);
   ck('  Recurly unread: the app’s own count, flagged',[!!g.stale,/app’s own count/.test(g.warn||''),g.months.map(r=>r.active)],[false,true,[2,2]]);
-  FX.meta={recurly:{ok:true}};FX.pilotStats={error:'x'};delete kv2.sign_book_last_v7;
+  FX.meta={recurly:{ok:true}};FX.pilotStats={error:'x'};delete kv2.sign_book_last_v8;
   let threw=null;try{await run(`fetchGrowthSigned(env2,true)`);}catch(e){threw=String(e.message);}
   ck('  pilot stats missing (the card is hidden then) and no copy: an error, never zeros',/Pilot stats unavailable/.test(threw||''),true);
   FX.pilotStats={n:1};

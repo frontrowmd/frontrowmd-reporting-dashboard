@@ -87,17 +87,18 @@ const LIVE={win:'mtd',key:'mtd',
   priorMonth:{mrr:25000,count:10,pilotMrr:2500,pilotCount:1},pilots:PIL};
 const d0={signedChurnedByCloseCount:2};
 // The BD Tracker card's counts for the window (/api/signed-brands, 2026-11-24).
-const SB={key:'mtd',current:{active:11,pilots:4,signed:15,churned:1},prior:{active:9,pilots:2,signed:11},priorMonth:{active:10,pilots:5,signed:15}};
+// Since 2026-11-27 it also carries mrr: the Active Brands' Current MRR, which IS side 1's MRR.
+const SB={key:'mtd',current:{active:11,pilots:4,signed:15,churned:1,mrr:22000},prior:{active:9,pilots:2,signed:11,mrr:18000},priorMonth:{active:10,pilots:5,signed:15,mrr:20000}};
 const mkCtxSB=()=>{const C=mkCtx();C.setSB(SB);return C;};
 {
   const C=mkCtxSB();C.setRO(LIVE);
   const h=C._buildRevenueOutcomeCard(d0), t=text(h);
   ck('ROAS and the pilot toggle are gone',[/ROAS/.test(h),/roSetPilotMode|aria-pressed/.test(h)],[false,false]);
-  // Side 1 excludes pilots: 30,000 - 6,000 = 24,000 MRR; ACV over 12 - 3 + 2 churned add-back = 11 deals.
-  // Signed Brands is the BD Tracker card's Active Brands (SB.current.active = 11).
-  ck('side 1: Signed ARR, MRR, ACV, Signed Brands, all excluding pilots',
-     [/Brands excluding pilots/.test(t),/\$288,000/.test(t),/MRR \$24,000/.test(t),/Signed Brands 11/.test(t),/ACV \$2,182/.test(t)],[true,true,true,true,true]);
-  ck('  compared against windows without THEIR pilots',[/vs LM[^v]*\+\$18,000/.test(t)],[true]);
+  // Side 1 = the BD Tracker's Active Brands (2026-11-27): MRR 22,000 (not HubSpot's 30,000 - 6,000),
+  // ARR 264,000, ACV = 22,000 / 11 active = 2,000, Signed Brands 11.
+  ck('side 1: Signed ARR, MRR, ACV, Signed Brands = the BD Tracker\u2019s Active Brands, not HubSpot deal amounts',
+     [/Brands active today \(Recurly\)/.test(t),/\$264,000/.test(t),/MRR \$22,000/.test(t),/Signed Brands 11/.test(t),/ACV \$2,000/.test(t),/Signed ARR MRR × 12 \$288,000|MRR \$24,000/.test(t)],[true,true,true,true,true,false]);
+  ck('  compared against the Tracker\u2019s prior and last-month windows',[/vs prior[^v]*\+\$48,000/.test(t),/vs LM[^v]*\+\$24,000/.test(t)],[true,true]);
   ck('side 2: Initiation Fees, Post-Pilot MRR, Pilot Avg ACV, Signed Pilot Brands',
      [/Initiation Fees net of refunds \$16,000/.test(t),/Post-Pilot MRR \$12,000/.test(t),/Pilot Avg ACV \$3,000/.test(t),/Signed Pilot Brands 4/.test(t)],[true,true,true,true]);
   ck('side 2 leads with Post-Pilot ARR (post x 12), Initiation Fees beside it on the same row',
@@ -107,23 +108,23 @@ const mkCtxSB=()=>{const C=mkCtx();C.setSB(SB);return C;};
   ck('  labelled live when the app read was live',/fee paid in the window · app, live/.test(t),true);
 }
 {
-  const C=mkCtx();C.setRO(Object.assign({},LIVE,{pilots:Object.assign({},PIL,{source:'nightly'})}));
+  const C=mkCtxSB();C.setRO(Object.assign({},LIVE,{pilots:Object.assign({},PIL,{source:'nightly'})}));
   ck('  and as of last night when it was not',/app, as of last night/.test(text(C._buildRevenueOutcomeCard(d0))),true);
   C.setRO(Object.assign({},LIVE,{pilots:{error:'Pilot figures unavailable'}}));
   const t=text(C._buildRevenueOutcomeCard(d0));
-  ck('a pilot failure leaves side 1 standing and says so on side 2',[/\$288,000/.test(t),/Pilot figures unavailable/.test(t)],[true,true]);
+  ck('a pilot failure leaves side 1 standing and says so on side 2',[/\$264,000/.test(t),/Pilot figures unavailable/.test(t)],[true,true]);
 }
 { // Combined total and the Recurly fee source (2026-11-17)
   const C=mkCtxSB();C.setRO(LIVE);
   const t=text(C._buildRevenueOutcomeCard(d0));
-  ck('a Brands + Pilots total sits after both sides',[t.indexOf('Total Signed ARR')>t.indexOf('Signed Pilot Brands'),/Total Signed ARR \$432,000 prior \S+ \+\$120,000 \S+ LM \S+ -\$18,000/.test(t)],[true,true]);
-  ck('  Total MRR adds the pilot side; Total Signed Brands is the BD Tracker card (active + pilots)',[/Total MRR \$36,000/.test(t),/Total Signed Brands 15 prior \S+ \+4/.test(t)],[true,true]);
+  ck('a Brands + Pilots total sits after both sides',[t.indexOf('Total Signed ARR')>t.indexOf('Signed Pilot Brands'),/Total Signed ARR \$408,000 prior \S+ \+\$120,000 \S+ LM \S+ -\$12,000/.test(t)],[true,true]);
+  ck('  Total MRR adds the pilot side; Total Signed Brands is the BD Tracker card (active + pilots)',[/Total MRR \$34,000/.test(t),/Total Signed Brands 15 prior \S+ \+4/.test(t)],[true,true]);
   const C3=mkCtx();C3.setRO(LIVE);const t3=text(C3._buildRevenueOutcomeCard(d0));
-  ck('  the three counts say loading until the card\u2019s figures land, never a HubSpot deal count',[/Signed Brands loading…/.test(t3),/Signed Pilot Brands loading…/.test(t3),/Total Signed Brands loading…/.test(t3),/ACV \$2,182/.test(t3)],[true,true,true,true]);
+  ck('  until the Tracker\u2019s figures land side 1 says loading (MRR, ARR, ACV, counts), never a HubSpot figure; no total yet',[/Signed Brands loading…/.test(t3),/Signed Pilot Brands loading…/.test(t3),/MRR loading…/.test(t3),/ACV loading…/.test(t3),/\$288,000|\$24,000|\$2,182/.test(t3),/Total Signed ARR/.test(t3)],[true,true,true,true,false,false]);
   C3.setSBFail('mtd');const t4=text(C3._buildRevenueOutcomeCard(d0));
-  ck('  a failed card read is a dash and says so',[/Total Signed Brands —/.test(t4),/unavailable just now/.test(t4)],[true,true]);
+  ck('  a failed card read is a dash and says so',[/MRR —/.test(t4),/Signed Brands —/.test(t4),/unavailable just now/.test(t4)],[true,true,true]);
   C3.setSBFail(null);C3.setSB(Object.assign({},SB,{key:'lastMonth'}));
-  ck('  another window\u2019s card figures are never shown',/Total Signed Brands loading…/.test(text(C3._buildRevenueOutcomeCard(d0))),true);
+  ck('  another window\u2019s card figures are never shown',/MRR loading…/.test(text(C3._buildRevenueOutcomeCard(d0))),true);
   C3.setSB(Object.assign({},SB,{warn:'Recurly could not be read'}));
   ck('  a flagged card read says why',/Recurly could not be read/.test(text(C3._buildRevenueOutcomeCard(d0))),true);
   const C2=mkCtx();C2.setRO(Object.assign({},LIVE,{pilots:Object.assign({},PIL,{feesSource:'recurly',current:Object.assign({},PIL.current,{feesFallback:2})})}));
@@ -139,12 +140,12 @@ const mkCtxSB=()=>{const C=mkCtx();C.setSB(SB);return C;};
     dealCount:{value:12,sameTimePrior:{value:9},lastMonth:{value:10}},
     pilot:{cur:{mrr:6000,count:3},prior:{mrr:0,count:0},lm:{mrr:2500,count:1}}}};
   const t=text(C._buildRevenueOutcomeCard(d));
-  ck('first paint: side 1 already excludes pilots, side 2 says it is loading',[/\$288,000/.test(t),/Loading pilot figures/.test(t)],[true,true]);
+  ck('first paint: side 1 waits for the Tracker (no cached HubSpot figure), side 2 says it is loading',[/\$288,000/.test(t),/MRR loading…/.test(t),/Loading pilot figures/.test(t)],[false,true,true]);
 }
 { // An older payload with no split: side 1 can only show the total, and says so.
   const C=mkCtx();
   const t=text(C._buildRevenueOutcomeCard({signedChurnedByCloseCount:0,mrrArr:{mrr:{value:30000},dealCount:{value:12}}}));
-  ck('with no pilot split side 1 shows the total and says why',[/\$360,000/.test(t),/pilot split loading/.test(t)],[true,true]);
+  ck('an old payload with no pilot split never shows HubSpot\u2019s total on side 1 either',[/\$360,000/.test(t),/MRR loading…/.test(t)],[false,true]);
 }
 { // Review fixes (2026-11-12)
   const C=mkCtx();
@@ -164,7 +165,7 @@ ck('the card asks for its own live figures once per window, whatever page drew i
   C.setRO(Object.assign({},LIVE,{current:null,prior:null,priorMonth:null,hsError:true}));
   const d={signedChurnedByCloseCount:0,mrrArr:{mrr:{value:30000},dealCount:{value:12},pilot:{cur:{mrr:6000,count:3},prior:{mrr:0,count:0},lm:{mrr:0,count:0}}}};
   const t=text(C._buildRevenueOutcomeCard(d));
-  ck('a failed HubSpot read keeps the cached brand side and the live pilot side',[/\$288,000/.test(t),/Signed Pilot Brands 4/.test(t)],[true,true]);
+  ck('a failed HubSpot read changes nothing on side 1 (the Tracker\u2019s figures) and keeps the live pilot side',[/\$264,000/.test(t),/Signed Pilot Brands 4/.test(t)],[true,true]);
 }
 ck('the worker drops the brand side when HubSpot refused a read during it',
    /const hsFailed = HS_ERR\.n > _hsErr0;/.test(src)&&/current: hsFailed \? null : tot\(cCW\)/.test(src),true);
