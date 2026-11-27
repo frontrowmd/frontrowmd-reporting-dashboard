@@ -103,6 +103,7 @@ ck('Brand reads the brand trend’s month grain',
 ck('  counting Regular Demos against the brand goal',
    /cur:_gm\?_gm\.regular:null,goal:GOAL_BRAND_REGULAR_DEMOS/.test(cli),true);
 ck('  and renders ABOVE Key Metrics',/kmEl\.innerHTML=_goal\+kmh/.test(cli),true);
+ck('  but is hidden on the Brand Dashboard',/const BRAND_SHOW_GOAL=false;/.test(cli)&&/const _goal=!BRAND_SHOW_GOAL\?'':_goalTrackerHTML\(/.test(cli),true);
 ck('Clinician reads the clinician trend’s month grain',
    /_goalMonthEntry\(d\.ads&&d\.ads\.trend&&d\.ads\.trend\.month\)/.test(cli),true);
 ck('  counting Sign Ups against the clinician goal',

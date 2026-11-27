@@ -3889,7 +3889,7 @@ function renderDash(){
   // Demos count for the current month — the same population the Key Metrics
   // tiles divide by, and independent of the page date filter.
   { const _gm=_goalMonthEntry(d.trend&&d.trend.month);
-    const _goal=_goalTrackerHTML({cur:_gm?_gm.regular:null,goal:GOAL_BRAND_REGULAR_DEMOS,
+    const _goal=!BRAND_SHOW_GOAL?'':_goalTrackerHTML({cur:_gm?_gm.regular:null,goal:GOAL_BRAND_REGULAR_DEMOS,
       noun:'Regular Demos',month:_goalMonthName(_gm&&_gm.wk),sfx:''});
     if(kmEl)kmEl.innerHTML=_goal+kmh; }
   // Rendered after the container is in the DOM, and re-rendered on its own by
@@ -12619,6 +12619,8 @@ function _goalMonthName(wk){
 }
 // opt: {cur, goal, noun, month, sfx}
 const EXEC_SHOW_BRAND_GOAL=false;
+// Hidden on the Brand Dashboard too (2026-11-27, Alex). Flip to bring it back.
+const BRAND_SHOW_GOAL=false;
 function _goalTrackerHTML(opt){
   opt=opt||{};
   const goal=opt.goal||0, noun=opt.noun||'', sfx=opt.sfx||'';

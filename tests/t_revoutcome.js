@@ -197,8 +197,8 @@ ck('the live fetch keeps the pilot side and re-renders through one function',
 ck('the Brand goal is switched off on the Executive Dashboard',/const EXEC_SHOW_BRAND_GOAL=false;/.test(cli),true);
 ck('  and only for the Brand mode there',
    /const _goal=\(!_cln&&!EXEC_SHOW_BRAND_GOAL\)\?'':_goalTrackerHTML\(\{/.test(cli),true);
-ck('  while the Brand Dashboard keeps its own',
-   /const _goal=_goalTrackerHTML\(\{cur:_gm\?_gm\.regular:null,goal:GOAL_BRAND_REGULAR_DEMOS,/.test(cli),true);
+ck('  and the Brand Dashboard hides its own too (flag kept to bring it back)',
+   /const _goal=!BRAND_SHOW_GOAL\?'':_goalTrackerHTML\(\{cur:_gm\?_gm\.regular:null,goal:GOAL_BRAND_REGULAR_DEMOS,/.test(cli),true);
 
 Promise.resolve(globalThis.__appPilotTests).then(()=>{
 console.log('\n'+pass+' passed, '+fail+' failed');
