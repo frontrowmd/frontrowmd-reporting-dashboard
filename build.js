@@ -27,6 +27,13 @@ if(fs.existsSync('growth-dashboard.html')){
   console.log(`  growth-dashboard: ${Math.round(fs.statSync('growth-dashboard.html').size/1024)} KB`);
 }
 
+// Dashboard chat bubble script (optional), served at /chat-widget.js
+if(fs.existsSync('chat-widget.js')){
+  const cw=fs.readFileSync('chat-widget.js','utf8');
+  out=out.replace("const _CHATW_B64 = '';","const _CHATW_B64 = '"+Buffer.from(cw).toString('base64')+"';");
+  console.log(`  chat-widget: ${Math.round(fs.statSync('chat-widget.js').size/1024)} KB`);
+}
+
 fs.mkdirSync('dist',{recursive:true});
 fs.writeFileSync('dist/worker.js',out);
 console.log(`✅ Built dist/worker.js (${Math.round(out.length/1024)} KB) | worker: ${Math.round(fs.statSync('worker.js').size/1024)} KB | html: ${Math.round(fs.statSync('dashboard.html').size/1024)} KB`);

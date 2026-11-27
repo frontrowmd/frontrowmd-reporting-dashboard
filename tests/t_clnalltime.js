@@ -81,7 +81,11 @@ ck('the cutover day is Eastern',
     ck('All Time starts before the earliest clinician deal (2025-06-23)',W.CLINICIAN_ALLTIME_FROM<='2025-06-23',true);
 
     // ── 3. The endpoint ──
-    const ep=src.slice(src.indexOf("url.pathname === '/api/clinician-funnel'"),src.indexOf("url.pathname === '/api/clinician')"));
+    // The route's body lives in processClinicianFunnel (2026-11-27) so the
+    // dashboard chat reads the same card; the route just calls it.
+    const ep=fn(src,'processClinicianFunnel');
+    ck('the route calls the shared function',
+       /url\.pathname === '\/api\/clinician-funnel'[\s\S]{0,300}?await processClinicianFunnel\(env, body\)/.test(src),true);
     ck('All Time ignores any range sent with it',
        /const from = allTime \? CLINICIAN_ALLTIME_FROM : /.test(ep)&&/const to = allTime \? fmt\(todayET\(\)\) : /.test(ep),true);
     ck('  and fetches month by month',/allTime \? await fetchClinicianDealsByMonth\(token, from, to\)/.test(ep),true);

@@ -7790,6 +7790,57 @@ function buildClinicianFunnel(deals, contactsByDeal, meetingStarts, opts) {
   };
 }
 
+// The Clinician Funnel card for one range (POST /api/clinician-funnel), lifted
+// out of the route so the dashboard chat's clinician tool reads the same figures.
+// body: {from, to, allTime, fresh}. Returns {status, out}.
+async function processClinicianFunnel(env, body) {
+  const _d = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null);
+  // All Time ignores any from/to sent with it: it is the funnel's own
+  // toggle, independent of the page's date filter by design.
+  const allTime = body.allTime === true;
+  const from = allTime ? CLINICIAN_ALLTIME_FROM : (_d(body.from) || CLINICIAN_HISTORY_FROM);
+  const to = allTime ? fmt(todayET()) : (_d(body.to) || fmt(todayET()));
+  if (to < from) return { status: 400, out: { error: 'Invalid range', detail: 'to is before from' } };
+  // All Time is ~100 HubSpot calls and every one of them returns the same
+  // answer for the next half hour, so it is cached. Keyed on the day and on
+  // API_CACHE_VER, so neither a new day nor a payload-shape change can serve
+  // a stale copy. ?fresh (the page's Refresh) bypasses it.
+  const _ftCk = allTime ? ('cln_funnel_alltime_' + API_CACHE_VER + '_' + to) : null;
+  if (_ftCk && !body.fresh) {
+    try {
+      const hit = await env.CONTENT_STORE.get(_ftCk, 'json');
+      if (hit) return { status: 200, out: Object.assign(hit, { cached: true }) };
+    } catch (e) { console.warn('clinician all-time cache read:', e && e.message); }
+  }
+  const token = env.HUBSPOT_TOKEN;
+  const deals = allTime ? await fetchClinicianDealsByMonth(token, from, to)
+                        : await fetchClinicianDeals(token, from, to);
+  const contactsByDeal = await fetchClinicianContacts(token, deals.map(d => d.id));
+  // Same same-day disambiguation as /api/clinician, or this endpoint would
+  // report a different Form-vs-Demo split than the main page for one range.
+  const _amb = deals.filter(d => clinicianFormVsDemo(d.properties || {}) === 'Same Day').map(d => d.id);
+  const funnel = buildClinicianFunnel(deals, contactsByDeal, await fetchClinicianMeetingStarts(token, _amb), { splits: true });
+  // Top-of-funnel + spend for THIS range, so all nine stages describe one span.
+  const topFunnel = await fetchClinicianTopFunnel(env.WINDSOR_API_KEY, from, to);
+  let clnSpend = null;
+  try {
+    const wr = await fetchWindsorAds(env.WINDSOR_API_KEY, wFrom(from), to);
+    const a = buildClinicianAds(wr, getBudgetsForMonth(from), funnel.all && funnel.all.funnel, 0, funnel.rows || [], from, to);
+    clnSpend = (a && typeof a.spend === 'number') ? a.spend : null;
+  } catch (e) { console.error('Clinician funnel spend:', e && e.message); }
+  // The funnel card's Inquiries row and its Kick Off Calls card read these;
+  // without them an All Time funnel would sit beside page-window numbers.
+  const composition = buildClinicianComposition(deals, contactsByDeal, from, to);
+  const virtualNoShow = buildClinicianVirtualNoShow(deals, from, to);
+  const _out = { range: { from, to }, allTime, topFunnel, clnSpend, composition, virtualNoShow, ...funnel,
+    meta: { generatedAt: new Date().toISOString(), dealsFetched: deals.length, cohortField: 'createdate' } };
+  if (_ftCk) {
+    try { await env.CONTENT_STORE.put(_ftCk, JSON.stringify(_out), { expirationTtl: 1800 }); }
+    catch (e) { console.warn('clinician all-time cache write:', e && e.message); }
+  }
+  return { status: 200, out: _out };
+}
+
 function buildSignUpCohorts(allDeals, cohortMonths, ownerMap) {
   // Sign-Up Rate cohorts use a single ATTENDANCE basis for all four rates. For
   // each cohort month (date_demo_booked within month):
@@ -11786,6 +11837,549 @@ async function proxyAnthropicAI(body, env) {
 }
 
 // ---------------------------------------------------------------------------
+// Dashboard chat (POST /api/chat) — the "Ask the data" bubble on every signed-in
+// page except Growth (2026-11-27, Alex). A Claude tool-use loop whose tools are
+// READ-ONLY wrappers over figures the dashboards already compute (the sign book,
+// the Brand Dashboard's Qualified Demos, the cron-warmed ad tables, the BD
+// Tracker summary, the Clinician Funnel card, the Pilot Dashboard), so an answer
+// ties out to the page. Raw HTTP, not the SDK: this worker is shipped unbundled
+// (wrangler no_bundle), so it cannot import @anthropic-ai/sdk.
+//   Sonnet answers by default; "why / analyze / recommend / plan" questions (or
+//   the panel's Deep analysis toggle) go to Opus.
+//   Streams Server-Sent Events to the page: status, text, done, error.
+//   30 questions per person per Eastern day (KV counter, approximate).
+//   Every question is logged to KV for 90 days (chat_log_*) with its thumbs.
+// ---------------------------------------------------------------------------
+const CHAT_MODELS = { quick: 'claude-sonnet-5-5', deep: 'claude-opus-5-5' };
+const CHAT_EFFORT = { quick: 'low', deep: 'high' };
+const CHAT_MAX_TOKENS = { quick: 16000, deep: 32000 };
+const CHAT_API_VERSION = '2026-10-21';
+// Refusal fallback, server side, on by default (routes by refusal category).
+const CHAT_BETAS = 'server-side-fallback-2026-07-01';
+const CHAT_DAILY_LIMIT = 30;
+const CHAT_MAX_ROUNDS = 8;               // model calls per question (tool rounds)
+const CHAT_TOOL_RESULT_MAX = 40000;      // characters of JSON per tool result
+const CHAT_HISTORY_MAX = 600000;         // characters of history the page may send back
+const CHAT_LOG_TTL = 90 * 86400;
+
+const CHAT_DEEP_RE = /\b(why|analy[sz]\w*|recommend\w*|suggest\w*|advi[cs]e|plan|planning|strateg\w*|should (we|i)|what should|budget\w*|reallocat\w*|optimi[sz]\w*|forecast\w*|project(ed|ion)?s?|improve\w*|insight\w*|explain\w*|diagnos\w*|root cause|trade-?offs?|next month|next quarter)\b/i;
+function chatTier(question, deep) {
+  if (deep === true) return 'deep';
+  return CHAT_DEEP_RE.test(String(question || '')) ? 'deep' : 'quick';
+}
+
+const CHAT_SYSTEM = `You answer questions about Frontrow's internal growth dashboards for the team that runs them. Frontrow sells brands a Clinician Certified badge (brands sign up, many start as paid pilots) and recruits clinicians. Every answer must rest on the read-only tools you have; they return the same figures the dashboards show.
+
+## Rules
+- Never invent, estimate or recall a number. Every figure you state must come from a tool result in this conversation. If no tool can answer, say so plainly and point to the dashboard page that has it.
+- Call tools before answering any question about figures. Call several in parallel when they are independent (for example two date ranges).
+- All dates are US Eastern time. Each question begins with a context line giving today's date and the page and date filter the person is looking at. When the question does not name a period, use that page's date filter. "This week" is Monday through today; "last week" is the previous Monday to Sunday. Say when a period is partial (it runs to today).
+- Label anything that is not a measured figure as inference or a judgment call ("likely", "my read"). The "why" behind ad performance is always inference: the ad data has names, spend, clicks, impressions, conversions, CPQD and fatigue flags, but no ad copy, headlines or images.
+- Be direct and short. Lead with the answer in one sentence. Use a small markdown table when comparing periods, channels or items. Quick questions: under about 150 words. Analysis and recommendations can run longer but stay structured (short headings or bullets).
+- Recommendations are options for the team to weigh, not orders. Any budget recommendation must state the attribution caveats below.
+- End every answer that uses data with one line that starts with "Source:" naming the dashboard figure(s), the dates used, and "partial" where a period runs to today. Name figures the way the dashboards do (for example "BD Tracker Signed Brands", "Brand Dashboard Qualified Demos", "Ad tables, Month to Date"), never tool names.
+- If a tool returns an error, a "not cached" note, a warning or a stale flag, say so in the answer instead of guessing.
+
+## Definitions (the dashboards' own)
+- Signed Brands: the BD Tracker's count of brands that signed in a date range, as they stand today = Active Brands (live Recurly subscription) + Pilot Brands (pilot fee paid). A brand that signed and has since churned drops out. "MRR" for a signed cohort is the Current MRR (Recurly) of its Active Brands, as on the Revenue Outcome card; ACV = MRR / Active Brands; ARR = MRR x 12.
+- Qualified Demos (Brand Dashboard "Qualified Regular Demos"): demos held in the range (deals whose brand status is paying, signed or blank, pre-launch brands excluded) plus every deal that entered Webinar Happened in the range (webinars have no brand-status or pre-launch filter). A demo counts on its rescheduled date if it has one, else its booked date.
+- BD Tracker Active Brands / Current MRR / ARR: today's totals from Recurly (or the app's own count when Recurly could not be read).
+- Ad tables: spend, impressions, clicks, platform conversions ("demos" here are the platform's own conversion counts), and UTM-attributed outcomes. At CHANNEL level, qualified = held demos matched by UTM (pre-launch not excluded, so it differs from the Brand Dashboard's Qualified Demos) and CPQD = spend / those. At campaign, ad set and creative level, qualified = UTM-matched demos whose outcome is recorded as Qualified (the page's Qual column), so rows do not add up to the channel figure, and spendPerQualified is spend / that row figure (not a dashboard number; say so if you use it). Most ad sets outside LinkedIn have no qualified figure. CPD = spend / platform conversions. Total ad spend excludes the Clinician channel (clinician recruiting), as the dashboards do.
+- Clinician figures come from the Clinician Funnel card for a range (cohort on each deal's create date).
+
+## Known data caveats (state the relevant ones)
+- Attribution is UTM-only: a demo counts toward a channel only if its contact carries UTMs. In September 2026 about 19% of demos had no UTMs at all, so channel-level qualified counts and CPQD understate every channel.
+- ChatGPT ad conversions are entered by hand per campaign; Reddit and ChatGPT ad data stopped flowing from Windsor on 2026-11-12, so recent spend for those two may read zero.
+- About $734 of "Official Test" campaign spend is counted in Clinician spend.
+- Ad tables are cached: Month to Date and Year to Date refresh every 20 minutes; other windows exist only if someone opened them on the Ad Analyzer in the last day.`;
+
+const CHAT_TOOLS = [
+  { name: 'signed_brands',
+    description: 'BD Tracker Signed Brands for one or more date ranges (Eastern, inclusive): active, pilots, signed (= active + pilots), churned (signed in range, since ended), and the Active Brands\' Current MRR. Use one call with several ranges to compare periods. Cheap.',
+    input_schema: { type: 'object', additionalProperties: false, required: ['ranges'], properties: {
+      ranges: { type: 'array', minItems: 1, maxItems: 12, items: { type: 'object', additionalProperties: false, required: ['from', 'to'], properties: {
+        from: { type: 'string', description: 'YYYY-MM-DD' }, to: { type: 'string', description: 'YYYY-MM-DD' }, label: { type: 'string' } } } } } } },
+  { name: 'qualified_demos',
+    description: 'Brand Dashboard demo counts for a date range (Eastern, inclusive; at most 186 days): Qualified Demos (held, excluding pre-launch, plus Webinars Happened), held demos excluding pre-launch, webinars happened, all demos held, no-shows. Ranges over a month are counted month by month. A few seconds per month.',
+    input_schema: { type: 'object', additionalProperties: false, required: ['from', 'to'], properties: {
+      from: { type: 'string', description: 'YYYY-MM-DD' }, to: { type: 'string', description: 'YYYY-MM-DD' } } } },
+  { name: 'ad_performance',
+    description: 'Ad tables (the Ad Analyzer\'s cached data) for a window. level "channel" gives per-channel totals; "campaign", "adset" or "creative" give rows for one channel (or all channels), sorted and limited. Fields include spend, impressions, clicks, ctr, platform conversions (demos), cpd, qualified (channel: UTM-matched held demos; rows: UTM-matched demos with outcome Qualified), cpqd (channel only), spendPerQualified (rows), closed won, status, dates, fatigue flags (creatives). Windows mtd and ytd are always cached; 7d and lastMonth only if recently opened.',
+    input_schema: { type: 'object', additionalProperties: false, required: ['window', 'level'], properties: {
+      window: { type: 'string', enum: ['mtd', 'ytd', '7d', 'lastMonth'] },
+      level: { type: 'string', enum: ['channel', 'campaign', 'adset', 'creative'] },
+      channel: { type: 'string', enum: ['all', 'meta', 'google', 'linkedin', 'tiktok', 'clinician', 'reddit', 'chatgpt'], description: 'Default all (brand channels; clinician only when named).' },
+      sort_by: { type: 'string', enum: ['spend', 'demos', 'qualified', 'cpqd', 'cpd', 'ctr', 'impressions', 'clicks'], description: 'Default spend. cpqd (spendPerQualified on rows) and cpd sort cheapest first and skip rows without qualified demos / conversions.' },
+      limit: { type: 'integer', minimum: 1, maximum: 50, description: 'Rows to return, default 15.' } } } },
+  { name: 'monthly_ad_spend',
+    description: 'Ad spend by calendar month since January 2026, total and by channel (meta, linkedin, tiktok, google). Meta here includes Clinician campaigns; Reddit and ChatGPT are not included. Runs to yesterday.',
+    input_schema: { type: 'object', additionalProperties: false, properties: {} } },
+  { name: 'bd_tracker_summary',
+    description: 'BD Tracker headline as of today: Active Brands, Current MRR, ARR, ACV, billing / trial / starting / paused counts, and pilot counts. Point in time only (use signed_brands for a date range). Several seconds.',
+    input_schema: { type: 'object', additionalProperties: false, properties: {} } },
+  { name: 'clinician_funnel',
+    description: 'Clinician Funnel card for a date range (Eastern, inclusive; cohort on deal create date): top-of-funnel, nine funnel stages overall and for MD/DO vs non-MD/DO, flow comparison, clinician ad spend, composition and virtual no-shows. Tens of seconds.',
+    input_schema: { type: 'object', additionalProperties: false, required: ['from', 'to'], properties: {
+      from: { type: 'string', description: 'YYYY-MM-DD' }, to: { type: 'string', description: 'YYYY-MM-DD' } } } },
+  { name: 'pilot_summary',
+    description: 'Pilot Dashboard, all time: pilot deals by status and stage, outreach, and won pilots (count, MRR, ARR). A few seconds.',
+    input_schema: { type: 'object', additionalProperties: false, properties: {} } },
+];
+
+const _chatDay = v => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) && !isNaN(Date.parse(v + 'T00:00:00Z'))) ? String(v) : null;
+function chatDays(from, to) { return Math.round((Date.parse(to + 'T00:00:00Z') - Date.parse(from + 'T00:00:00Z')) / 86400000) + 1; }
+// Calendar-month pieces of [from, to].
+function chatMonthChunks(from, to) {
+  const out = []; let f = from;
+  while (f <= to) {
+    const [y, m] = f.split('-').map(Number);
+    const end = fmt(new Date(Date.UTC(y, m, 0)));
+    const t = end < to ? end : to;
+    out.push({ from: f, to: t });
+    f = fmt(new Date(Date.UTC(y, m, 1)));
+  }
+  return out;
+}
+
+const CHAT_WIN_LABEL = { '7d': 'Last 7 Days', mtd: 'Month to Date', lastMonth: 'Last Month', ytd: 'Year to Date', custom: 'Custom range' };
+// The page's date filter as dates, or null when the page has none.
+function chatResolveWindow(ctx) {
+  const w = ctx && ctx.window;
+  if (w === 'custom') {
+    const f = _chatDay(ctx.from), t = _chatDay(ctx.to);
+    const lab = String(ctx.windowLabel || '').replace(/[\r\n\[\]]/g, ' ').slice(0, 40) || 'Custom range';
+    if (f && t) return f <= t ? { from: f, to: t, label: lab } : null;
+    // Open-ended (the BD Tracker allows "signed on or before"): never invent the missing end.
+    if (t) return { from: null, to: t, label: lab + ', on or before' };
+    if (f) return { from: f, to: fmt(todayET()), label: lab };
+    return null;
+  }
+  if (!CHAT_WIN_LABEL[w]) return null;
+  try { const c = computeWindows(w).current; return { from: c.from, to: c.to, label: CHAT_WIN_LABEL[w] }; } catch (_) { return null; }
+}
+function chatContextLine(ctx) {
+  const today = todayET();
+  const dow = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][today.getUTCDay()];
+  const page = String((ctx && ctx.pageLabel) || 'Dashboard').replace(/[\r\n\[\]]/g, ' ').slice(0, 80);
+  const win = chatResolveWindow(ctx);
+  return '[Context: today is ' + dow + ' ' + fmt(today) + ' (Eastern). Page: ' + page + '. Date filter: '
+    + (win ? win.label + ' (' + (win.from ? win.from + ' to ' + win.to : 'up to ' + win.to) + ')' : 'none') + '.]';
+}
+
+function chatTrim(o) {
+  const s = JSON.stringify(o);
+  if (s.length <= CHAT_TOOL_RESULT_MAX) return s;
+  return s.slice(0, CHAT_TOOL_RESULT_MAX) + ' …[truncated: result too large; ask for fewer rows or a narrower range]';
+}
+const _r2 = v => (typeof v === 'number' && isFinite(v)) ? Math.round(v * 100) / 100 : v;
+const _pct = v => (typeof v === 'number' && isFinite(v)) ? Math.round(v * 1000) / 10 : null;
+
+// ── tools ──────────────────────────────────────────────────────────────────
+async function chatToolSignedBrands(env, input) {
+  const ranges = Array.isArray(input && input.ranges) ? input.ranges.slice(0, 12) : [];
+  if (!ranges.length) return { error: 'Give at least one range.' };
+  const bad = ranges.find(r => !_chatDay(r.from) || !_chatDay(r.to) || r.from > r.to);
+  if (bad) return { error: 'Each range needs from <= to as YYYY-MM-DD.' };
+  const book = await fetchSignBook(env, false);
+  return { ranges: ranges.map(r => Object.assign({ label: r.label || null, from: r.from, to: r.to }, signBookCount(book.rows, r.from, r.to))),
+    asOf: book.asOf, recurlyRead: !!book.recurly, cached: !!book.cached, stale: book.stale || null, warn: book.warn || null };
+}
+
+async function chatToolQualifiedDemos(env, input) {
+  const from = _chatDay(input && input.from), to = _chatDay(input && input.to);
+  if (!from || !to || from > to) return { error: 'Give from <= to as YYYY-MM-DD.' };
+  if (chatDays(from, to) > 186) return { error: 'Range too long: at most 186 days. Ask for a shorter range or split it.' };
+  const token = env.HUBSPOT_TOKEN;
+  if (!token) return { error: 'HubSpot is not configured.' };
+  const chunks = chatMonthChunks(from, to);
+  const one = async (c) => {
+    const [deals, wb] = await Promise.all([fetchPipelineDeals(token, c.from, c.to), fetchWebinarHeldCount(token, c.from, c.to).catch(() => null)]);
+    const pl = processPipelineDeals(filterActiveBrands(deals || []), toMsUTC(c.from), toMsUTC(c.to, true), toMsET(c.from), toMsET(c.to, true), new Set());
+    const pd = { pipeline: pl }; applyWebinarHeld(pd, wb);
+    return { from: c.from, to: c.to, qualifiedDemos: pl.qualifiedRawCount || 0, heldExclPrelaunch: pl.qualifiedDemoOnlyCount || 0,
+      webinarsHappened: wb, allDemosHeld: (pl.demoGivenOrigCount || 0) + (pl.demoGivenReschedCount || 0), noShows: pl.noShowCount || 0,
+      qualificationRatePct: _pct(pl.qualificationRate), webinarCountFailed: wb == null };
+  };
+  const parts = [];
+  for (let i = 0; i < chunks.length; i += 3) parts.push(...await Promise.all(chunks.slice(i, i + 3).map(one)));
+  const sum = k => parts.reduce((a, p) => a + (p[k] || 0), 0);
+  const total = { from, to, qualifiedDemos: sum('qualifiedDemos'), heldExclPrelaunch: sum('heldExclPrelaunch'), webinarsHappened: sum('webinarsHappened'),
+    allDemosHeld: sum('allDemosHeld'), noShows: sum('noShows') };
+  if (parts.length === 1) total.qualificationRatePct = parts[0].qualificationRatePct;
+  const warn = parts.some(p => p.webinarCountFailed) ? 'The Webinars Happened count failed for at least one month, so Qualified Demos may be short.' : null;
+  return { total, byMonth: parts.length > 1 ? parts : undefined, warn };
+}
+
+const CHAT_AD_ROW_FIELDS = ['name', 'campaign', 'campaignName', 'adsetName', 'status', 'spend', 'impressions', 'clicks', 'ctr', 'demos', 'cpd', 'qualified', 'cpqd',
+  'noShow', 'pendingEval', 'closedWon', 'closedWonMRR', 'frequency', 'firstDate', 'lastDate', 'activeDays', 'createdDate', 'optTarget', 'fatigued', 'fatigueDecline', 'inquiries', 'cpi'];
+function chatAdRow(r, ch) {
+  const o = { channel: ch };
+  CHAT_AD_ROW_FIELDS.forEach(k => { if (r[k] != null && r[k] !== '') o[k] = _r2(r[k]); });
+  // Rows carry the outcome-Qualified count, not the channel's held demos, so
+  // the derived cost is named apart from the dashboards' CPQD.
+  delete o.cpqd;
+  if (r.qualified > 0 && r.spend != null) o.spendPerQualified = _r2(r.spend / r.qualified);
+  return o;
+}
+async function chatToolAdPerformance(env, input) {
+  const win = ['mtd', 'ytd', '7d', 'lastMonth'].includes(input && input.window) ? input.window : null;
+  const level = ['channel', 'campaign', 'adset', 'creative'].includes(input && input.level) ? input.level : null;
+  if (!win || !level) return { error: 'window must be mtd, ytd, 7d or lastMonth; level must be channel, campaign, adset or creative.' };
+  const channel = (input && input.channel) || 'all';
+  if (channel !== 'all' && !DASH_CHANNELS.includes(channel)) return { error: 'Unknown channel ' + channel };
+  let hit = null;
+  try { kvOp(); hit = await env.CONTENT_STORE.get(azCacheKey(win, null, null, null, null), 'json'); } catch (_) { hit = null; }
+  if (!hit || !hit.data || !hit.data.channels) return { notCached: true, note: 'The ad tables for ' + CHAT_WIN_LABEL[win] + ' are not cached right now. Month to Date and Year to Date refresh every 20 minutes; other windows only after someone opens them on the Ad Analyzer.' };
+  const d = hit.data, chs = d.channels;
+  const ageMin = Math.round((Date.now() - hit.t) / 60000);
+  const base = { window: CHAT_WIN_LABEL[win], period: d.period || null, dataAgeMinutes: ageMin, stale: !!d._stale || ageMin > 90 };
+  const brandChs = Object.keys(chs).filter(c => !(chs[c] && chs[c].kpiExcluded));
+  const pick = channel === 'all' ? brandChs : [channel];
+  if (level === 'channel') {
+    const rows = Object.keys(chs).map(c => { const x = chs[c] || {};
+      return { channel: c, label: x.label, spend: _r2(x.spend || 0), impressions: x.impressions || 0, clicks: x.clicks || 0, ctr: _r2(x.ctr), demos: x.demos || 0, cpd: _r2(x.cpd),
+        qualified: x.qualified || 0, cpqd: _r2(x.cpqd), noShow: x.noShow || 0, closedWon: x.closedWon || 0, closedWonMRR: _r2(x.closedWonMRR || 0),
+        budget: x.budget != null ? _r2(x.budget) : null, priorSpend: _r2(x.priorSpend), priorDemos: x.priorDemos,
+        excludedFromTotals: !!x.kpiExcluded }; });
+    const tot = rows.filter(r => !r.excludedFromTotals).reduce((a, r) => { a.spend += r.spend; a.demos += r.demos; a.qualified += r.qualified; a.clicks += r.clicks; a.impressions += r.impressions; a.closedWon += r.closedWon; return a; },
+      { spend: 0, demos: 0, qualified: 0, clicks: 0, impressions: 0, closedWon: 0 });
+    tot.spend = _r2(tot.spend); tot.cpqd = tot.qualified ? _r2(tot.spend / tot.qualified) : null; tot.cpd = tot.demos ? _r2(tot.spend / tot.demos) : null;
+    return Object.assign(base, { brandTotals: tot, channels: rows, utmMatchRatePct: d.matchRate ? d.matchRate.pct : null });
+  }
+  const key = level === 'campaign' ? 'campaigns' : level === 'adset' ? 'audiences' : 'creatives';
+  let rows = [];
+  pick.forEach(c => { ((chs[c] || {})[key] || []).forEach(r => rows.push(chatAdRow(r, c))); });
+  const sortBy = input.sort_by === 'cpqd' ? 'spendPerQualified' : (input.sort_by || 'spend');
+  const asc = sortBy === 'spendPerQualified' || sortBy === 'cpd';
+  if (asc) rows = rows.filter(r => r[sortBy] != null && r[sortBy] > 0);
+  rows.sort((a, b) => asc ? (a[sortBy] - b[sortBy]) : ((b[sortBy] || 0) - (a[sortBy] || 0)));
+  const limit = Math.max(1, Math.min(50, parseInt(input.limit, 10) || 15));
+  return Object.assign(base, { level, channels: pick, sortBy, rowCount: rows.length, rows: rows.slice(0, limit) });
+}
+
+async function chatToolMonthlyAdSpend(env) {
+  const r = await kvCachedFetch(env, `monthly_adspend_${fmt(yesterdayET())}_v1`, 43200, async () => {
+    const x = await fetchMonthlyAdSpend(env.WINDSOR_API_KEY);
+    if (!x || !x.byMonth || !Object.keys(x.byMonth).length) throw new Error('monthlyAdSpend empty — not caching');
+    return x;
+  }, null);
+  if (!r || !r.byMonth) return { error: 'Monthly ad spend could not be read just now.' };
+  const byMonth = {}; Object.keys(r.byMonth).sort().forEach(m => { byMonth[m] = _r2(r.byMonth[m]); });
+  const byChannelMonth = {}; Object.keys(r.byChannelMonth || {}).sort().forEach(m => { const o = {}; Object.keys(r.byChannelMonth[m]).forEach(c => { o[c] = _r2(r.byChannelMonth[m][c]); }); byChannelMonth[m] = o; });
+  return { through: fmt(yesterdayET()), byMonth, byChannelMonth, note: 'Meta includes Clinician campaigns; Reddit and ChatGPT are not included.' };
+}
+
+async function chatToolBdSummary(env) {
+  const key = 'chat_bdsum_v1';
+  try { kvOp(); const hit = await env.CONTENT_STORE.get(key, 'json'); if (hit && hit.t && Date.now() - hit.t < 600000) return Object.assign(hit.data, { cachedMinutesAgo: Math.round((Date.now() - hit.t) / 60000) }); } catch (_) { /* miss */ }
+  const app = await fetchBdApp(env, { lite: true });
+  if (!app || !app.brands || !app.brands.length) return { error: 'The BD Tracker\'s brand list could not be read just now.' };
+  const rc = _baSummaryRc(app.brands, app.meta), s = _baSummary(app.brands), ps = app.pilotStats || {};
+  const out = rc
+    ? { source: 'Recurly', activeBrands: rc.total, billing: rc.billing, trial: rc.trial, starting: rc.starting, paused: rc.paused, canceling: rc.canceling,
+        currentMrr: rc.mrr, billedMrr: rc.billedMrr, idlePriceMrr: rc.idlePrice, arr: _r2(rc.arr), acv: _r2(rc.acv), recurlyStale: !!rc.stale }
+    : { source: 'app (Recurly could not be read)', activeBrands: s.total, starting: s.starting, paused: s.paused, currentMrr: s.mrr, arr: _r2(s.arr), acv: _r2(s.acv) };
+  out.pilots = { counted: ps.n != null ? ps.n : null, depositPaid: ps.deposit_paid, collectingData: ps.collecting_data, live: ps.live, awaitingSubmit: ps.awaiting, error: ps.error ? String(ps.detail || 'unavailable') : undefined };
+  out.asOf = new Date().toISOString(); out.today = fmt(todayET());
+  try { kvOp(); await env.CONTENT_STORE.put(key, JSON.stringify({ t: Date.now(), data: out }), { expirationTtl: 3600 }); } catch (_) { /* best effort */ }
+  return out;
+}
+
+async function chatToolClinicianFunnel(env, input) {
+  const from = _chatDay(input && input.from), to = _chatDay(input && input.to);
+  if (!from || !to || from > to) return { error: 'Give from <= to as YYYY-MM-DD.' };
+  if (chatDays(from, to) > 400) return { error: 'Range too long: at most about 13 months.' };
+  const r = await processClinicianFunnel(env, { from, to });
+  if (r.status !== 200) return { error: (r.out && (r.out.detail || r.out.error)) || 'Clinician funnel failed' };
+  const o = r.out;
+  return { range: o.range, topFunnel: o.topFunnel, clinicianAdSpend: _r2(o.clnSpend), stageOrder: o.stageOrder, all: o.all, mdDo: o.mddo, nonMdDo: o.nonmddo,
+    flowCompare: o.flowCompare, flowMeta: o.flowMeta, composition: o.composition, virtualNoShow: o.virtualNoShow, dealsFetched: o.meta && o.meta.dealsFetched };
+}
+
+async function chatToolPilotSummary(env) {
+  const token = env.HUBSPOT_TOKEN;
+  if (!token) return { error: 'HubSpot is not configured.' };
+  const [deals, stageMeta] = await Promise.all([fetchPilotDeals(token), fetchDealStageMeta(token)]);
+  const history = await fetchPilotStatusHistory(token, deals.map(r => r.id));
+  const p = buildPilotDashboard(deals, stageMeta, history);
+  const out = Object.assign({}, p); const n = Array.isArray(p.deals) ? p.deals.length : null; delete out.deals; out.dealCount = n;
+  return out;
+}
+
+const CHAT_TOOL_FNS = { signed_brands: chatToolSignedBrands, qualified_demos: chatToolQualifiedDemos, ad_performance: chatToolAdPerformance,
+  monthly_ad_spend: chatToolMonthlyAdSpend, bd_tracker_summary: chatToolBdSummary, clinician_funnel: chatToolClinicianFunnel, pilot_summary: chatToolPilotSummary };
+const CHAT_TOOL_STATUS = { signed_brands: 'Counting signed brands', qualified_demos: 'Counting demos', ad_performance: 'Reading the ad tables',
+  monthly_ad_spend: 'Reading monthly ad spend', bd_tracker_summary: 'Reading the BD Tracker', clinician_funnel: 'Building the clinician funnel', pilot_summary: 'Reading the Pilot Dashboard' };
+function chatToolStatus(name, input) {
+  const base = CHAT_TOOL_STATUS[name] || 'Fetching data';
+  if (!input) return base;
+  if (name === 'signed_brands' && Array.isArray(input.ranges)) return base + ' for ' + input.ranges.length + (input.ranges.length === 1 ? ' date range' : ' date ranges');
+  if ((name === 'qualified_demos' || name === 'clinician_funnel') && input.from) return base + ', ' + input.from + ' to ' + input.to;
+  if (name === 'ad_performance') return base + ' (' + (CHAT_WIN_LABEL[input.window] || input.window) + ', ' + (input.level || '') + (input.channel && input.channel !== 'all' ? ', ' + input.channel : '') + ')';
+  return base;
+}
+async function chatRunTool(env, name, input, memo) {
+  const fn = CHAT_TOOL_FNS[name];
+  if (!fn) return { content: 'Unknown tool ' + name, isError: true };
+  const k = name + ':' + JSON.stringify(input || {});
+  if (!memo[k]) memo[k] = (async () => {
+    try { const r = await fn(env, input || {}); return { content: chatTrim(r), isError: !!(r && r.error) }; }
+    catch (e) { console.error('chat tool ' + name + ':', e && e.message); return { content: 'Tool failed: ' + String(e && e.message || e).slice(0, 300), isError: true }; }
+  })();
+  return memo[k];
+}
+
+// ── Anthropic streaming ────────────────────────────────────────────────────
+// Folds one SSE event into the turn being built. Content blocks keep every
+// field the API sends (thinking signatures, fallback blocks), so the history
+// the page sends back is byte-for-byte what the API produced.
+function chatApplyEvent(st, ev) {
+  switch (ev.type) {
+    case 'message_start':
+      st.model = ev.message && ev.message.model; st.usage = Object.assign({}, ev.message && ev.message.usage); break;
+    case 'content_block_start':
+      st.blocks[ev.index] = Object.assign({}, ev.content_block); break;
+    case 'content_block_delta': {
+      const b = st.blocks[ev.index]; const dl = ev.delta || {};
+      if (!b) break;
+      if (dl.type === 'text_delta') { b.text = (b.text || '') + dl.text; return { text: dl.text }; }
+      if (dl.type === 'thinking_delta') b.thinking = (b.thinking || '') + dl.thinking;
+      else if (dl.type === 'signature_delta') b.signature = dl.signature;
+      else if (dl.type === 'input_json_delta') b._json = (b._json || '') + dl.partial_json;
+      else if (dl.type === 'citations_delta') (b.citations = b.citations || []).push(dl.citation);
+      break;
+    }
+    case 'content_block_stop': {
+      const b = st.blocks[ev.index];
+      if (b && b._json !== undefined) { try { b.input = b._json ? JSON.parse(b._json) : {}; } catch (_) { b.input = {}; b._bad = true; } delete b._json; }
+      if (b && b.type === 'fallback') return { fallback: true };
+      break;
+    }
+    case 'message_delta':
+      if (ev.delta && ev.delta.stop_reason) st.stop = ev.delta.stop_reason;
+      if (ev.delta && ev.delta.stop_details) st.stopDetails = ev.delta.stop_details;
+      if (ev.usage) Object.assign(st.usage, ev.usage);
+      break;
+    case 'error':
+      st.error = (ev.error && ev.error.message) || 'Stream error'; st.errorType = ev.error && ev.error.type; break;
+  }
+  return null;
+}
+// Parses an SSE byte stream into events; onEvent(obj) for every data line.
+async function chatReadSSE(body, onEvent) {
+  const reader = body.getReader(); const dec = new TextDecoder(); let buf = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (value) buf += dec.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf('\n\n')) >= 0) {
+      const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
+      const data = chunk.split('\n').filter(l => l.startsWith('data:')).map(l => l.slice(5).replace(/^ /, '')).join('\n');
+      if (data) { try { await onEvent(JSON.parse(data)); } catch (e) { if (e && e._chatAbort) throw e; } }
+    }
+    if (done) break;
+  }
+}
+async function chatCallModel(env, payload, onText, onNote) {
+  let lastErr = '';
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let r = null;
+    try {
+      r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': CHAT_API_VERSION, 'anthropic-beta': CHAT_BETAS },
+        body: JSON.stringify(payload) });
+    } catch (e) { lastErr = String(e && e.message || e); r = null; }
+    if (r && !r.ok) {
+      let t = ''; try { t = await r.text(); } catch (_) {}
+      let m = t; try { m = JSON.parse(t).error.message; } catch (_) {}
+      lastErr = 'Claude API ' + r.status + ': ' + String(m).slice(0, 300);
+      if (![408, 429, 500, 502, 503, 504, 529].includes(r.status)) break;
+    }
+    if (r && r.ok) {
+      const st = { blocks: [], usage: {}, stop: null, model: null, error: null, errorType: null };
+      let emitted = false;
+      await chatReadSSE(r.body, async ev => { const o = chatApplyEvent(st, ev); if (o && o.text) { emitted = true; await onText(o.text); } if (o && o.fallback) await onNote('fallback'); });
+      if (!st.error) { st.blocks = st.blocks.filter(Boolean); return st; }
+      lastErr = st.error;
+      // An overload inside the stream is retried only while nothing has reached
+      // the page yet: streamed text cannot be taken back.
+      if (emitted || !['overloaded_error', 'api_error'].includes(st.errorType)) break;
+    }
+    if (attempt < 2) await sleep(1500 * (attempt + 1));
+  }
+  throw new Error(lastErr || 'Claude API unavailable');
+}
+
+// Makes one model turn safe to send back to the API (and to keep in the
+// page's history), following the API's rules:
+//  - after a mid-stream fallback, only TEXT survives before the last fallback
+//    block (the declined model's thinking and tool calls are dropped); the
+//    fallback block itself stays in place;
+//  - a turn that did not stop for tools keeps no tool_use blocks (a call cut off
+//    by max_tokens has no result to pair with) and no thinking block that never
+//    got its signature;
+//  - parse scratch (_json, _bad) never leaves the worker.
+// Returns {blocks, bad:Set of tool_use ids whose input did not parse}.
+function chatCleanTurn(blocks, stop) {
+  const bad = new Set();
+  const fb = blocks.map(b => b && b.type).lastIndexOf('fallback');
+  let out = blocks.filter((b, i) => b && (fb < 0 || i >= fb || b.type === 'text'));
+  if (stop !== 'tool_use') out = out.filter(b => b.type !== 'tool_use' && !(b.type === 'thinking' && !b.signature));
+  out = out.map(b => {
+    if (b._bad) bad.add(b.id);
+    if (b._json === undefined && b._bad === undefined) return b;
+    const c = Object.assign({}, b); delete c._json; delete c._bad; return c;
+  });
+  return { blocks: out, bad };
+}
+
+// The question loop. send(obj) writes one SSE event to the page.
+async function chatRun(env, opts, send) {
+  const tier = opts.tier, model = CHAT_MODELS[tier];
+  const messages = opts.history.concat([{ role: 'user', content: [{ type: 'text', text: chatContextLine(opts.ctx) + '\n\n' + opts.question }] }]);
+  const memo = {}, toolsUsed = [], usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  let servedBy = model, stop = null, answer = '';
+  await send({ t: 'start', tier, model });
+  for (let round = 0; round < CHAT_MAX_ROUNDS; round++) {
+    const last = round === CHAT_MAX_ROUNDS - 1;
+    const payload = { model, max_tokens: CHAT_MAX_TOKENS[tier], stream: true,
+      system: [{ type: 'text', text: CHAT_SYSTEM, cache_control: { type: 'ephemeral' } }],
+      tools: CHAT_TOOLS, messages, thinking: { type: 'adaptive' }, output_config: { effort: CHAT_EFFORT[tier] },
+      fallbacks: 'default', cache_control: { type: 'ephemeral' } };
+    if (last) payload.tool_choice = { type: 'none' };
+    const roundStart = answer.length;
+    const st = await chatCallModel(env, payload, async t => { answer += t; await send({ t: 'text', d: t }); },
+      async () => { await send({ t: 'status', id: 'fb' + round, m: 'Switched to a backup model', done: true }); });
+    if (st.model) servedBy = st.model;
+    const u = st.usage || {};
+    usage.input += u.input_tokens || 0; usage.output += u.output_tokens || 0; usage.cacheRead += u.cache_read_input_tokens || 0; usage.cacheWrite += u.cache_creation_input_tokens || 0;
+    stop = st.stop;
+    if (stop === 'refusal') {
+      // A refusal's partial output is discarded: off the page (trunc), out of
+      // the answer, and out of the history (a placeholder keeps turns alternating).
+      if (answer.length > roundStart) { answer = answer.slice(0, roundStart); await send({ t: 'trunc', n: roundStart }); }
+      messages.push({ role: 'assistant', content: [{ type: 'text', text: '(Declined.)' }] });
+      const msg = (answer ? '\n\n' : '') + 'This question was declined by the model\u2019s safety check. Try rephrasing it.';
+      answer += msg; await send({ t: 'text', d: msg });
+      break;
+    }
+    const turn = chatCleanTurn(st.blocks, stop);
+    // An empty turn can't be sent back as is.
+    messages.push({ role: 'assistant', content: turn.blocks.length ? turn.blocks : [{ type: 'text', text: '(No answer.)' }] });
+    const calls = turn.blocks.filter(b => b.type === 'tool_use');
+    if (stop !== 'tool_use' || !calls.length) break;
+    const results = await Promise.all(calls.map(async c => {
+      toolsUsed.push(c.name);
+      const sid = c.id;
+      await send({ t: 'status', id: sid, m: chatToolStatus(c.name, c.input) });
+      const res = turn.bad.has(c.id) ? { content: 'Tool input was not valid JSON. Call the tool again.', isError: true } : await chatRunTool(env, c.name, c.input, memo);
+      await send({ t: 'status', id: sid, m: chatToolStatus(c.name, c.input), done: true, err: res.isError || undefined });
+      return { type: 'tool_result', tool_use_id: c.id, content: res.content, is_error: res.isError || undefined };
+    }));
+    messages.push({ role: 'user', content: results });
+    if (answer && !/\n$/.test(answer)) { answer += '\n\n'; await send({ t: 'text', d: '\n\n' }); }
+  }
+  if (stop === 'max_tokens') await send({ t: 'text', d: '\n\n_(The answer hit its length limit.)_' });
+  return { messages, toolsUsed, usage, servedBy, stop, answer };
+}
+
+// Validates the history the page sends back: alternating user/assistant
+// turns, starting with a user turn, within size. Content is passed through
+// unchanged (thinking blocks must reach the API exactly as produced).
+function chatCheckHistory(h) {
+  if (h == null) return [];
+  if (!Array.isArray(h)) return null;
+  if (JSON.stringify(h).length > CHAT_HISTORY_MAX) return 'too_long';
+  for (let i = 0; i < h.length; i++) {
+    const m = h[i];
+    if (!m || (m.role !== 'user' && m.role !== 'assistant') || (m.content == null)) return null;
+    if (i === 0 && m.role !== 'user') return null;
+  }
+  if (h.length && h[h.length - 1].role !== 'assistant') return null;
+  return h;
+}
+async function chatRateCheck(env, email) {
+  const key = 'chat_rl_' + email + '_' + fmt(todayET());
+  let n = 0;
+  try { kvOp(); n = parseInt(await env.CONTENT_STORE.get(key), 10) || 0; } catch (_) { n = 0; }
+  if (n >= CHAT_DAILY_LIMIT) return { ok: false, n };
+  try { kvOp(); await env.CONTENT_STORE.put(key, String(n + 1), { expirationTtl: 2 * 86400 }); } catch (_) { /* best effort */ }
+  return { ok: true, n: n + 1 };
+}
+// A question that failed upstream (not one the person stopped) gives its count back.
+async function chatRateRefund(env, email) {
+  const key = 'chat_rl_' + email + '_' + fmt(todayET());
+  try { kvOp(); const n = parseInt(await env.CONTENT_STORE.get(key), 10) || 0; if (n > 0) { kvOp(); await env.CONTENT_STORE.put(key, String(n - 1), { expirationTtl: 2 * 86400 }); } } catch (_) { /* best effort */ }
+}
+function chatLogId() { return 'chat_log_' + fmt(todayET()) + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8); }
+
+// POST /api/chat handler body (auth already checked). Returns a Response.
+async function handleChat(env, ctx, body, who) {
+  if (!env.ANTHROPIC_API_KEY) return jr({ error: 'The chat is not configured (no API key).' }, 503);
+  const question = String((body && body.question) || '').trim();
+  if (!question) return jr({ error: 'Ask a question first.' }, 400);
+  if (question.length > 2000) return jr({ error: 'That question is too long (2,000 characters at most).' }, 400);
+  const history = chatCheckHistory(body.messages);
+  if (history === 'too_long') return jr({ error: 'This chat is too long. Start a new chat.', code: 'too_long' }, 413);
+  if (!history) return jr({ error: 'The chat history was not valid. Start a new chat.', code: 'bad_history' }, 400);
+  const pageCtx = { pageLabel: body.page && body.page.label, window: body.page && body.page.window, windowLabel: body.page && body.page.windowLabel, from: body.page && body.page.from, to: body.page && body.page.to };
+  const rl = await chatRateCheck(env, who.email);
+  if (!rl.ok) return jr({ error: 'You have used today’s ' + CHAT_DAILY_LIMIT + ' questions. The limit resets at midnight Eastern.', code: 'limit' }, 429);
+  const tier = chatTier(question, body.deep === true);
+  const logId = chatLogId();
+  const t0 = Date.now();
+  const { readable, writable } = new TransformStream();
+  const writer = writable.getWriter(); const enc = new TextEncoder();
+  let closed = false;
+  const send = async o => {
+    if (closed) { const e = new Error('client gone'); e._chatAbort = true; throw e; }
+    try { await writer.write(enc.encode('data: ' + JSON.stringify(o) + '\n\n')); }
+    catch (_) { closed = true; const e = new Error('client gone'); e._chatAbort = true; throw e; }
+  };
+  const writeLog = async (res, err) => {
+    try {
+      kvOp();
+      await env.CONTENT_STORE.put(logId, JSON.stringify({ at: new Date().toISOString(), email: who.email, page: pageCtx.pageLabel || null, window: pageCtx.window || null,
+        q: question.slice(0, 1000), tier, model: res && res.servedBy, tools: res && res.toolsUsed, stop: res && res.stop, ms: Date.now() - t0,
+        usage: res && res.usage, answer: res && String(res.answer || '').slice(0, 4000), err: err || undefined }), { expirationTtl: CHAT_LOG_TTL });
+    } catch (_) { /* best effort */ }
+  };
+  const job = (async () => {
+    try {
+      const res = await chatRun(env, { tier, question, history, ctx: pageCtx }, send);
+      // Logged BEFORE "done", so the answer's thumbs always find their record.
+      await writeLog(res, null);
+      await send({ t: 'done', id: logId, tier, model: res.servedBy, messages: res.messages, remaining: CHAT_DAILY_LIMIT - rl.n });
+    } catch (e) {
+      const err = String(e && e.message || e);
+      if (e && e._chatAbort) await writeLog(null, 'stopped');
+      else {
+        console.error('chat:', err);
+        await writeLog(null, err.slice(0, 300));
+        await chatRateRefund(env, who.email);
+        try { await send({ t: 'error', m: 'Something went wrong answering that: ' + err.slice(0, 200) }); } catch (_) { /* gone */ }
+      }
+    } finally { try { await writer.close(); } catch (_) { /* gone */ } }
+  })();
+  if (ctx && ctx.waitUntil) ctx.waitUntil(job);
+  return new Response(readable, { headers: { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no' } });
+}
+// POST /api/chat/feedback {id, v: 'up' | 'down'} — the thumbs on an answer.
+async function handleChatFeedback(env, body, who) {
+  const id = String((body && body.id) || '');
+  const v = body && body.v;
+  if (!/^chat_log_\d{4}-\d{2}-\d{2}_\d+_[a-z0-9]+$/.test(id) || (v !== 'up' && v !== 'down')) return jr({ error: 'Bad feedback' }, 400);
+  let rec = null;
+  try { rec = await env.CONTENT_STORE.get(id, 'json'); } catch (_) { rec = null; }
+  if (!rec) return jr({ error: 'Not found' }, 404);
+  if (rec.email !== who.email) return jr({ error: 'Not yours' }, 403);
+  rec.fb = v; rec.fbAt = new Date().toISOString();
+  if (body.note) rec.fbNote = String(body.note).slice(0, 500);
+  try { await env.CONTENT_STORE.put(id, JSON.stringify(rec), { expirationTtl: CHAT_LOG_TTL }); } catch (_) { return jr({ error: 'Could not save' }, 500); }
+  return jr({ ok: true });
+}
+
+// ---------------------------------------------------------------------------
 // Sales Dashboard — Data Fetching
 // ---------------------------------------------------------------------------
 const COMPANY_PROPS = ['name','domain','industry','company_time_zone','company_size_bucket','revenue_tier','monthly_visitor_tier','demo_prep_briefing','main_products','target_customer_description','description'];
@@ -13092,6 +13686,32 @@ export default {
       return new Response(GROWTH_HTML, { headers: { 'Content-Type':'text/html;charset=UTF-8','Cache-Control':'no-cache' } });
     }
 
+    // GET /chat-widget.js → the "Ask the data" bubble (dashboard, BD Tracker and
+    // Sales pages load it; Growth and its share links never do). Signed-in only.
+    if (request.method === 'GET' && url.pathname === '/chat-widget.js') {
+      if (!(await authed())) return new Response('/* signed out */', { status: 401, headers: { 'Content-Type': 'application/javascript;charset=UTF-8', 'Cache-Control': 'no-store' } });
+      return new Response(CHAT_WIDGET_JS, { headers: { 'Content-Type': 'application/javascript;charset=UTF-8', 'Cache-Control': 'no-cache' } });
+    }
+
+    // POST /api/chat → one question to the dashboard chat (SSE stream). See handleChat.
+    if (request.method === 'POST' && url.pathname === '/api/chat') {
+      let body;
+      try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
+      const who = await authed();
+      if (!who) return jr({ error: 'Unauthorized' }, 401);
+      try { return await handleChat(env, ctx, body, who); }
+      catch (err) { console.error('chat endpoint error:', err); return jr({ error: 'Internal error', detail: err.message }, 500); }
+    }
+
+    // POST /api/chat/feedback → thumbs up / down on one answer.
+    if (request.method === 'POST' && url.pathname === '/api/chat/feedback') {
+      let body;
+      try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
+      const who = await authed();
+      if (!who) return jr({ error: 'Unauthorized' }, 401);
+      return handleChatFeedback(env, body, who);
+    }
+
     // GET /g/<key> → the same page, read-only, for a share link. The page checks
     // nothing itself: its data routes below check the key.
     if (request.method === 'GET' && /^\/g\/[A-Za-z0-9_-]+$/.test(url.pathname)) {
@@ -13306,51 +13926,8 @@ export default {
       try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
       if (!(await authed())) return jr({ error: 'Unauthorized' }, 401);
       try {
-        const _d = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null);
-        // All Time ignores any from/to sent with it: it is the funnel's own
-        // toggle, independent of the page's date filter by design.
-        const allTime = body.allTime === true;
-        const from = allTime ? CLINICIAN_ALLTIME_FROM : (_d(body.from) || CLINICIAN_HISTORY_FROM);
-        const to = allTime ? fmt(todayET()) : (_d(body.to) || fmt(todayET()));
-        if (to < from) return jr({ error: 'Invalid range', detail: 'to is before from' }, 400);
-        // All Time is ~100 HubSpot calls and every one of them returns the same
-        // answer for the next half hour, so it is cached. Keyed on the day and on
-        // API_CACHE_VER, so neither a new day nor a payload-shape change can serve
-        // a stale copy. ?fresh (the page's Refresh) bypasses it.
-        const _ftCk = allTime ? ('cln_funnel_alltime_' + API_CACHE_VER + '_' + to) : null;
-        if (_ftCk && !body.fresh) {
-          try {
-            const hit = await env.CONTENT_STORE.get(_ftCk, 'json');
-            if (hit) return jr(Object.assign(hit, { cached: true }));
-          } catch (e) { console.warn('clinician all-time cache read:', e && e.message); }
-        }
-        const token = env.HUBSPOT_TOKEN;
-        const deals = allTime ? await fetchClinicianDealsByMonth(token, from, to)
-                              : await fetchClinicianDeals(token, from, to);
-        const contactsByDeal = await fetchClinicianContacts(token, deals.map(d => d.id));
-        // Same same-day disambiguation as /api/clinician, or this endpoint would
-        // report a different Form-vs-Demo split than the main page for one range.
-        const _amb = deals.filter(d => clinicianFormVsDemo(d.properties || {}) === 'Same Day').map(d => d.id);
-        const funnel = buildClinicianFunnel(deals, contactsByDeal, await fetchClinicianMeetingStarts(token, _amb), { splits: true });
-        // Top-of-funnel + spend for THIS range, so all nine stages describe one span.
-        const topFunnel = await fetchClinicianTopFunnel(env.WINDSOR_API_KEY, from, to);
-        let clnSpend = null;
-        try {
-          const wr = await fetchWindsorAds(env.WINDSOR_API_KEY, wFrom(from), to);
-          const a = buildClinicianAds(wr, getBudgetsForMonth(from), funnel.all && funnel.all.funnel, 0, funnel.rows || [], from, to);
-          clnSpend = (a && typeof a.spend === 'number') ? a.spend : null;
-        } catch (e) { console.error('Clinician funnel spend:', e && e.message); }
-        // The funnel card's Inquiries row and its Kick Off Calls card read these;
-        // without them an All Time funnel would sit beside page-window numbers.
-        const composition = buildClinicianComposition(deals, contactsByDeal, from, to);
-        const virtualNoShow = buildClinicianVirtualNoShow(deals, from, to);
-        const _out = { range: { from, to }, allTime, topFunnel, clnSpend, composition, virtualNoShow, ...funnel,
-          meta: { generatedAt: new Date().toISOString(), dealsFetched: deals.length, cohortField: 'createdate' } };
-        if (_ftCk) {
-          try { await env.CONTENT_STORE.put(_ftCk, JSON.stringify(_out), { expirationTtl: 1800 }); }
-          catch (e) { console.warn('clinician all-time cache write:', e && e.message); }
-        }
-        return jr(_out);
+        const r = await processClinicianFunnel(env, body);
+        return jr(r.out, r.status);
       } catch(err) { console.error('Clinician funnel endpoint error:', err); return jr({ error: 'Internal error', detail: err.message }, 500); }
     }
 
@@ -14387,6 +14964,9 @@ const _BD_B64 = '';
 const BD_HTML = (() => { try { const b = atob(_BD_B64); const bytes = new Uint8Array(b.length); for(let i=0;i<b.length;i++) bytes[i]=b.charCodeAt(i); return new TextDecoder().decode(bytes); } catch(e) { return '<html><body>BD Dashboard failed to load: '+e.message+'</body></html>'; } })();
 const _GROWTH_B64 = '';
 const GROWTH_HTML = (() => { try { const b = atob(_GROWTH_B64); const bytes = new Uint8Array(b.length); for(let i=0;i<b.length;i++) bytes[i]=b.charCodeAt(i); return new TextDecoder().decode(bytes); } catch(e) { return '<html><body>Growth Overview failed to load: '+e.message+'</body></html>'; } })();
+// The chat bubble's script (chat-widget.js), inlined by build.js.
+const _CHATW_B64 = '';
+const CHAT_WIDGET_JS = (() => { try { const b = atob(_CHATW_B64); const bytes = new Uint8Array(b.length); for(let i=0;i<b.length;i++) bytes[i]=b.charCodeAt(i); return new TextDecoder().decode(bytes); } catch(e) { return '/* chat widget failed to load */'; } })();
 
 function jr(data, status=200) {
   return new Response(JSON.stringify(data), { status, headers: { 'Content-Type':'application/json','Access-Control-Allow-Origin':'*' } });
