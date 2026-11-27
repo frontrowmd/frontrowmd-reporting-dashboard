@@ -223,7 +223,7 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
   const html=load('growth-dashboard.html');
   const js=html.slice(html.lastIndexOf('<script>')+8,html.lastIndexOf('</script>'));
   const els={};const el=id=>els[id]||(els[id]={innerHTML:'',textContent:'',style:{}});
-  const P={console,localStorage:{getItem(){return null;},setItem(){}},document:{getElementById:el,addEventListener(){}},window:{innerWidth:1200,innerHeight:800}};
+  const P={console,localStorage:{getItem(){return null;},setItem(){}},document:{getElementById:el,addEventListener(){}},window:{innerWidth:1200,innerHeight:800},TextEncoder,Blob};
   vm.createContext(P);vm.runInContext(js,P);
   ck('title is Growth Overview, never "investor"',[/<title>FrontrowMD Growth Overview<\/title>/.test(html),/investor/i.test(html)],[true,false]);
   ck('tabs: only Signed Brands & Demos (Retention Waterfall hidden)',vm.runInContext('G_TABS.map(t=>t.label)',P),['Signed Brands & Demos']);
@@ -244,6 +244,11 @@ let pass=0,fail=0;const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify
   delete P.G.data.months[0].adj;delete P.G.data.months[0].qdRaw;
   ck('Signed Brands = every brand signed in the month, churned included (every, not active + pilots); no Active, Pilots or churned columns',[/<td>Jan 2026<\/td><td class="big">8<\/td><td class="big">40<\/td><td class="big">20%<\/td><\/tr>/.test(h),/<th>Active<\/th>|<th>Pilots<\/th>|Churned/.test(h)],[true,false]);
   ck('monthly detail is Month, Signed Brands, Demos Held, Signed ÷ Demos; no cohort columns, no KPI cards',[/<th>Month<\/th><th>Signed Brands<\/th><th>Demos Held<\/th><th>Signed ÷ Demos<\/th><\/tr>/.test(h),/Demo → Signed|Since Signed/.test(h),/class="kpi/.test(h)],[true,false,false]);
+  {vm.runInContext("var __x=null;_bdDl=function(b,n){__x={b:b,n:n};};gXlsx();",P);
+   const sh=P.__x?Buffer.from(await P.__x.b.arrayBuffer()).toString('utf8'):'';
+   ck('Monthly detail downloads Excel (2026-11-27): button, .xlsx name, header row, months as text, rate as a % cell',
+     [/onclick="gXlsx\(\)">Download Excel</.test(h),P.__x&&P.__x.n,/<c r="A1" t="inlineStr" s="1"><is><t xml:space="preserve">Month</.test(sh),/<c r="A2" t="inlineStr"><is><t xml:space="preserve">20\d\d-\d\d</.test(sh),/ s="2"><v>0?\.\d+<\/v>|s="2"><v>[01]<\/v>/.test(sh)],
+     [true,'growth-overview-signed-demos.xlsx',true,true,true]);}
   ck('totals: the year counted once (ytd), demos skip an unavailable month and say so; no year ratio then',[/<tr class="tot"><td>Total<\/td><td class="big">15<\/td><td class="big">52<\/td><td class="big">—<\/td><\/tr>/.test(h),/show as n\/a/.test(h)],[true,true]);
   ck('the current month row is still styled to date, with no footnote for it',[/<tr class="part"><td>Mar 2026<\/td>/.test(h),/month to date/.test(h)],[true,false]);
   P.G.data.months[1]={m:'2026-02',to:'2026-02-28',qd:20};
