@@ -4568,8 +4568,8 @@ function _baStatusOf(b){
 // company (h). Built once from the two heavy reads, cached 30 min, and shared by
 // Growth Overview (/api/growth-signed) and the Brand Dashboard's Revenue
 // Outcome (/api/signed-brands), so both count exactly as the card does.
-const SIGN_BOOK_KV = 'sign_book_v8';        // v8: rows carry m (the active brand's MRR)
-const SIGN_BOOK_LAST = 'sign_book_last_v8';
+const SIGN_BOOK_KV = 'sign_book_v9';        // v9: rows carry n (the brand's name); v8: m (the active brand's MRR)
+const SIGN_BOOK_LAST = 'sign_book_last_v9';
 // HubSpot moves a churned brand's deal OUT of Closed Won into a churn stage, so
 // the card's _bdSignDays (closed-won deals only) finds no signing day for it and
 // it never reached the book. Its churn-stage deals' close dates are its signing
@@ -4609,7 +4609,8 @@ function signBookRows(deals, app) {
     // w: a REAL signing (a paid pilot or a closed-won / churned HubSpot deal), not
     // the app's created-date fallback, which a never-subscribed brand also gets.
     const w = (sd.how === 'pilot' || sd.how === 'hubspot' || dch.length > 0 || c) ? 1 : 0;
-    rows.push({ d, dch, a: a ? 1 : 0, m: Math.round(m * 100) / 100, p: p ? 1 : 0, c: c ? 1 : 0, w, t: tt, h, k });
+    // n: the brand's name, for the dashboard chat's brand lists (signBookList).
+    rows.push({ d, dch, a: a ? 1 : 0, m: Math.round(m * 100) / 100, p: p ? 1 : 0, c: c ? 1 : 0, w, t: tt, h, k, n: String(b.name || '').slice(0, 120) });
   }
   // Signed HubSpot deals that reach NO app brand (signed, but no brand in the
   // app yet, or never set up): one row each, for Growth's `every` only. A deal
@@ -4628,7 +4629,7 @@ function signBookRows(deals, app) {
     if (!day) continue;
     rows.push({ d: [day], dch: [], a: 0, p: 0, c: 0, w: 1, x: 1,
       t: /\b(demo|test)\b/i.test(String(dd.dealname || '')) ? 1 : 0,
-      h: dd.companyId ? String(dd.companyId) : '', k: [String(dd.id)] });
+      h: dd.companyId ? String(dd.companyId) : '', k: [String(dd.id)], n: String(dd.companyName || dd.dealname || '').slice(0, 120) });
   }
   return rows;
 }
@@ -4672,6 +4673,40 @@ function signBookCount(rows, from, to) {
   // Overview, Alex 2026-11-25), one per brand: the live groups plus the rest.
   // mrr: the Active Brands' Current MRR (the card's), for Revenue Outcome.
   return { active, pilots, signed: active + pilots, churned, every: liveRoot.size + otherRoot.size, mrr: Math.round(mrr * 100) / 100 };
+}
+// The brands behind signBookCount for one range, by the same rules: active and
+// pilots on the card's own days, churned one per brand (the same union-find).
+// For the dashboard chat ("which brand churned?"). Names come from the rows' n.
+function signBookList(rows, from, to) {
+  const inRange = x => x >= from && x <= to;
+  const firstIn = r => r.d.filter(inRange).sort()[0] || (r.dch || []).filter(inRange).sort()[0] || '';
+  const inR = rows.filter(r => r.d.some(inRange) || (r.dch || []).some(inRange));
+  const active = [], pilots = [];
+  inR.forEach(r => { if (r.d.some(inRange)) {
+    if (r.a) active.push({ name: r.n || '(no name)', signed: firstIn(r), mrr: r.m || 0 });
+    if (r.p) pilots.push({ name: r.n || '(no name)', signed: firstIn(r) });
+  } });
+  const par = {};
+  const f = x => { if (par[x] === undefined) par[x] = x; while (par[x] !== x) { par[x] = par[par[x]]; x = par[x]; } return x; };
+  const u = (a, b) => { a = f(a); b = f(b); if (a !== b) par[a] = b; };
+  inR.forEach((r, i) => { const me = 'r:' + i; f(me); signBookKeys(r).forEach(k => u(me, k)); });
+  const liveRoot = new Set(), churn = new Map();
+  inR.forEach((r, i) => { if ((r.a || r.p) && !r.x && r.d.some(inRange)) liveRoot.add(f('r:' + i)); });
+  inR.forEach((r, i) => {
+    if (r.t) return;
+    if ((r.a || r.p) && r.d.some(inRange)) return;
+    const rt = f('r:' + i);
+    if (liveRoot.has(rt)) return;
+    if (r.c && !r.x && (r.d.some(inRange) || (r.dch || []).some(inRange))) {
+      const g = churn.get(rt) || { names: [], signed: '' };
+      if (r.n && g.names.indexOf(r.n) < 0) g.names.push(r.n);
+      const day = firstIn(r); if (day && (!g.signed || day < g.signed)) g.signed = day;
+      churn.set(rt, g);
+    }
+  });
+  const byDay = (x, y) => String(x.signed).localeCompare(String(y.signed)) || String(x.name).localeCompare(String(y.name));
+  const churned = [...churn.values()].map(g => ({ name: g.names.join(' / ') || '(no name)', signed: g.signed }));
+  return { active: active.sort(byDay), pilots: pilots.sort(byDay), churned: churned.sort(byDay) };
 }
 async function buildSignBook(env) {
   if (!env.HUBSPOT_TOKEN) throw new Error('HubSpot is not configured');
@@ -11875,9 +11910,11 @@ const CHAT_SYSTEM = `You answer questions about Frontrow's internal growth dashb
 - Call tools before answering any question about figures. Call several in parallel when they are independent (for example two date ranges).
 - All dates are US Eastern time. Each question begins with a context line giving today's date and the page and date filter the person is looking at. When the question does not name a period, use that page's date filter. "This week" is Monday through today; "last week" is the previous Monday to Sunday. Say when a period is partial (it runs to today).
 - Label anything that is not a measured figure as inference or a judgment call ("likely", "my read"). The "why" behind ad performance is always inference: the ad data has names, spend, clicks, impressions, conversions, CPQD and fatigue flags, but no ad copy, headlines or images.
-- Be direct and short. Lead with the answer in one sentence. Use a small markdown table when comparing periods, channels or items. Quick questions: under about 150 words. Analysis and recommendations can run longer but stay structured (short headings or bullets).
+- Answers show in a narrow chat panel. Be direct and short: the first sentence is the answer. Never restate the question or re-explain the date ranges in prose; state each date range once (in the table or the Source line). Do not repeat a table's numbers in bullets beneath it. Quick questions: under about 100 words. Analysis and recommendations can run longer but stay structured (short headings or bullets).
+- Tables: use one when comparing periods, channels or items. At most 4 columns. Short row labels ("This week", "Last week", "Meta") and short headers ("MRR", not "Current MRR (Active)"). Put dates in the Source line, not in cells. Dollars as whole dollars with no cents ($15,523); $1.2M style only from $1M up.
 - Recommendations are options for the team to weigh, not orders. Any budget recommendation must state the attribution caveats below.
 - End every answer that uses data with one line that starts with "Source:" naming the dashboard figure(s), the dates used, and "partial" where a period runs to today. Name figures the way the dashboards do (for example "BD Tracker Signed Brands", "Brand Dashboard Qualified Demos", "Ad tables, Month to Date"), never tool names.
+- After the Source line, add one final line that starts with "Follow-ups:" and gives 2 or 3 short follow-up questions the person might ask next, separated by " | " (for example "Follow-ups: Which brands churned? | Same for last month"). Each under 8 words, answerable with your tools. Nothing after it.
 - If a tool returns an error, a "not cached" note, a warning or a stale flag, say so in the answer instead of guessing.
 
 ## Definitions (the dashboards' own)
@@ -11895,10 +11932,11 @@ const CHAT_SYSTEM = `You answer questions about Frontrow's internal growth dashb
 
 const CHAT_TOOLS = [
   { name: 'signed_brands',
-    description: 'BD Tracker Signed Brands for one or more date ranges (Eastern, inclusive): active, pilots, signed (= active + pilots), churned (signed in range, since ended), and the Active Brands\' Current MRR. Use one call with several ranges to compare periods. Cheap.',
+    description: 'BD Tracker Signed Brands for one or more date ranges (Eastern, inclusive): active, pilots, signed (= active + pilots), churned (signed in range, since ended), and the Active Brands\' Current MRR. Set list true to also get the brand names in each group (active with MRR, pilots, churned) with their signing day. Use one call with several ranges to compare periods. Cheap.',
     input_schema: { type: 'object', additionalProperties: false, required: ['ranges'], properties: {
       ranges: { type: 'array', minItems: 1, maxItems: 12, items: { type: 'object', additionalProperties: false, required: ['from', 'to'], properties: {
-        from: { type: 'string', description: 'YYYY-MM-DD' }, to: { type: 'string', description: 'YYYY-MM-DD' }, label: { type: 'string' } } } } } } },
+        from: { type: 'string', description: 'YYYY-MM-DD' }, to: { type: 'string', description: 'YYYY-MM-DD' }, label: { type: 'string' } } } },
+      list: { type: 'boolean', description: 'Include brand names per group. Default false.' } } } },
   { name: 'qualified_demos',
     description: 'Brand Dashboard demo counts for a date range (Eastern, inclusive; at most 186 days): Qualified Demos (held, excluding pre-launch, plus Webinars Happened), held demos excluding pre-launch, webinars happened, all demos held, no-shows. Ranges over a month are counted month by month. A few seconds per month.',
     input_schema: { type: 'object', additionalProperties: false, required: ['from', 'to'], properties: {
@@ -11981,7 +12019,13 @@ async function chatToolSignedBrands(env, input) {
   const bad = ranges.find(r => !_chatDay(r.from) || !_chatDay(r.to) || r.from > r.to);
   if (bad) return { error: 'Each range needs from <= to as YYYY-MM-DD.' };
   const book = await fetchSignBook(env, false);
-  return { ranges: ranges.map(r => Object.assign({ label: r.label || null, from: r.from, to: r.to }, signBookCount(book.rows, r.from, r.to))),
+  const LIST_MAX = 150;
+  const cap = a => a.length > LIST_MAX ? a.slice(0, LIST_MAX).concat([{ name: '\u2026and ' + (a.length - LIST_MAX) + ' more' }]) : a;
+  return { ranges: ranges.map(r => {
+      const o = Object.assign({ label: r.label || null, from: r.from, to: r.to }, signBookCount(book.rows, r.from, r.to));
+      if (input.list === true) { const l = signBookList(book.rows, r.from, r.to); o.brands = { active: cap(l.active), pilots: cap(l.pilots), churned: cap(l.churned) };
+        if (book.rows.length && !book.rows.some(x => x.n)) o.brands.note = 'Brand names are not in this cached copy yet; they appear after the next refresh.'; }
+      return o; }),
     asOf: book.asOf, recurlyRead: !!book.recurly, cached: !!book.cached, stale: book.stale || null, warn: book.warn || null };
 }
 

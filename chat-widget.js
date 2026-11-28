@@ -101,7 +101,7 @@
       }
       var h = RE_H.exec(l);
       if (h) { out.push('<div class="frc-h">' + inl(h[2]) + '</div>'); i++; continue; }
-      if (RE_SRC.test(l)) { out.push('<div class="frc-src">' + inl(l.trim().replace(/\*\*/g, '')) + '</div>'); i++; continue; }
+      if (RE_SRC.test(l)) { var sl = l.trim().replace(/\*\*/g, ''); out.push('<div class="frc-src" title="' + esc(sl) + '">' + inl(sl) + '</div>'); i++; continue; }
       if (RE_UL.test(l) || RE_OL.test(l)) {
         var ol = RE_OL.test(l), re = ol ? RE_OL : RE_UL, it = [];
         while (i < lines.length && re.test(lines[i])) { it.push(lines[i].replace(re, '')); i++; }
@@ -117,12 +117,12 @@
 
   // ── state ────────────────────────────────────────────────────────────────
   var KEY = 'frchat_v1';
-  var st = { messages: [], items: [], deep: false, busy: false, open: false, remaining: null, ctrl: null };
+  var st = { messages: [], items: [], deep: false, wide: false, busy: false, open: false, remaining: null, ctrl: null };
   function load() {
-    try { var j = JSON.parse(window.sessionStorage.getItem(KEY) || 'null'); if (j && Array.isArray(j.items)) { st.messages = j.messages || []; st.items = j.items; st.deep = !!j.deep; st.remaining = j.remaining == null ? null : j.remaining; } } catch (e) { /* none */ }
+    try { var j = JSON.parse(window.sessionStorage.getItem(KEY) || 'null'); if (j && Array.isArray(j.items)) { st.messages = j.messages || []; st.items = j.items; st.deep = !!j.deep; st.wide = !!j.wide; st.remaining = j.remaining == null ? null : j.remaining; } } catch (e) { /* none */ }
   }
   function save() {
-    try { window.sessionStorage.setItem(KEY, JSON.stringify({ messages: st.messages, items: st.items, deep: st.deep, remaining: st.remaining })); }
+    try { window.sessionStorage.setItem(KEY, JSON.stringify({ messages: st.messages, items: st.items, deep: st.deep, wide: st.wide, remaining: st.remaining })); }
     catch (e) { try { window.sessionStorage.setItem(KEY, JSON.stringify({ messages: [], items: st.items, deep: st.deep })); } catch (_) { /* full */ } }
   }
 
@@ -201,9 +201,11 @@
 
   // ── DOM ──────────────────────────────────────────────────────────────────
   var CSS = ''
-    + '.frc-btn{position:fixed;right:20px;bottom:20px;width:52px;height:52px;border-radius:50%;background:var(--navy,#172C45);border:2px solid var(--teal,#72A4BF);color:#BFDCEB;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:190;box-shadow:0 4px 14px rgba(2,15,24,.28);padding:0;transition:transform .15s}'
-    + '.frc-btn:hover{transform:scale(1.06)}.frc-btn:focus-visible{outline:3px solid #BFDCEB;outline-offset:2px}.frc-btn svg{width:24px;height:24px}'
-    + '.frc-panel{position:fixed;right:20px;bottom:84px;width:400px;height:min(640px,calc(100vh - 110px));background:#fff;border:1px solid var(--border,#D4E6EF);border-radius:14px;box-shadow:0 12px 40px rgba(2,15,24,.22);z-index:190;display:none;flex-direction:column;overflow:hidden;font-family:var(--font-b,Inter,system-ui,sans-serif);color:#172C45;font-size:13px;line-height:1.5}'
+    + '.frc-btn{position:fixed;right:20px;bottom:20px;width:60px;height:60px;border-radius:50%;background:var(--navy,#172C45);border:2px solid var(--teal,#72A4BF);color:#BFDCEB;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:190;box-shadow:0 4px 14px rgba(2,15,24,.28);padding:0;transition:transform .15s}'
+    + '.frc-btn:hover{transform:scale(1.06)}.frc-btn:focus-visible{outline:3px solid #BFDCEB;outline-offset:2px}.frc-btn svg{width:28px;height:28px}'
+    + '.frc-panel{position:fixed;right:20px;bottom:92px;width:460px;height:min(660px,calc(100vh - 110px));background:#fff;border:1px solid var(--border,#D4E6EF);border-radius:14px;box-shadow:0 12px 40px rgba(2,15,24,.22);z-index:190;display:none;flex-direction:column;overflow:hidden;font-family:var(--font-b,Inter,system-ui,sans-serif);color:#172C45;font-size:12.5px;line-height:1.5}'
+    + '.frc-panel.wide{top:12px;bottom:12px;right:12px;width:min(680px,calc(100vw - 24px));height:auto}'
+    + '.frc-panel.open.wide~.frc-btn{display:none}'
     + '.frc-panel.open{display:flex}'
     + '.frc-hd{background:var(--navy,#172C45);border-left:4px solid var(--teal,#72A4BF);padding:11px 12px 11px 14px;display:flex;align-items:center;gap:10px;flex:none}'
     + '.frc-hd .t{color:#fff;font-weight:600;font-size:14px}.frc-hd .c{color:#B9C8DE;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
@@ -212,15 +214,19 @@
     + '.frc-u{align-self:flex-end;background:#E9F3F8;color:#0F2C3F;padding:8px 12px;border-radius:12px 12px 2px 12px;max-width:85%;white-space:pre-wrap;word-wrap:break-word}'
     + '.frc-a{max-width:100%;word-wrap:break-word}.frc-a p{margin:0 0 8px}.frc-a p:last-child{margin-bottom:0}.frc-a ul,.frc-a ol{margin:0 0 8px;padding-left:18px}.frc-a li{margin:2px 0}'
     + '.frc-a code{background:#F1F5F8;padding:1px 4px;border-radius:4px;font-size:12px}.frc-h{font-weight:700;margin:10px 0 4px;font-size:13px}'
-    + '.frc-tw{overflow-x:auto;margin:4px 0 10px}.frc-a table{border-collapse:collapse;width:100%;font-size:12px}.frc-a th{text-align:left;color:#64748B;font-weight:600;border-bottom:1px solid var(--border,#D4E6EF);padding:4px 8px 4px 0;white-space:nowrap}'
-    + '.frc-a td{padding:4px 8px 4px 0;border-bottom:1px solid #EEF3F6;vertical-align:top}.frc-a td.n,.frc-a th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}'
-    + '.frc-src{font-size:11px;color:#64748B;margin-top:8px;padding-top:6px;border-top:1px dashed #E2EAF0}'
+    + '.frc-tw{overflow-x:auto;margin:4px 0 10px}.frc-a table{border-collapse:collapse;width:100%;font-size:11.5px}.frc-a th{text-align:left;color:#64748B;font-weight:600;border-bottom:1px solid var(--border,#D4E6EF);padding:3px 10px 3px 0;white-space:nowrap}.frc-a th:last-child,.frc-a td:last-child{padding-right:0}'
+    + '.frc-a td{padding:3px 10px 3px 0;border-bottom:1px solid #EEF3F6;vertical-align:top}.frc-a td:first-child{white-space:nowrap}.frc-a td.n,.frc-a th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}'
+    + '.frc-src{font-size:11px;color:#64748B;margin-top:8px;padding-top:6px;border-top:1px dashed #E2EAF0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:help}.frc-src.open{white-space:normal}'
     + '.frc-st{display:flex;flex-direction:column;gap:3px;margin-bottom:8px}.frc-st div{display:flex;align-items:center;gap:6px;color:#64748B;font-size:11px}.frc-st .x{color:#B45309}'
     + '.frc-sp{width:10px;height:10px;border:2px solid #CFE0EA;border-top-color:var(--teal,#72A4BF);border-radius:50%;animation:frcspin .8s linear infinite;flex:none}@keyframes frcspin{to{transform:rotate(360deg)}}'
     + '.frc-ok{color:#10B981;font-weight:700;width:10px;text-align:center;flex:none}'
     + '.frc-ft{display:flex;align-items:center;gap:10px;margin-top:8px;font-size:11px;color:#94A3B8}.frc-badge{background:#F1F5F8;color:#475569;padding:2px 8px;border-radius:50px}.frc-badge.d{background:#EEF0FB;color:#3C3489}'
-    + '.frc-ft button{background:none;border:0;cursor:pointer;color:#94A3B8;padding:2px;display:flex}.frc-ft button:hover{color:#172C45}.frc-ft button.on{color:var(--teal,#4F8AA8)}.frc-ft svg{width:14px;height:14px}'
+    + '.frc-ft button{background:none;border:0;cursor:pointer;color:#94A3B8;padding:2px;display:flex}.frc-ft button:hover{color:#172C45}.frc-ft button.ok{color:#10B981}.frc-ft button.on{color:var(--teal,#4F8AA8)}.frc-ft svg{width:14px;height:14px}'
     + '.frc-err{color:#B91C1C;font-size:12px}.frc-err button{margin-left:6px;background:none;border:1px solid #FCA5A5;color:#B91C1C;border-radius:6px;padding:1px 8px;cursor:pointer;font-size:11px}'
+    + '.frc-fu{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.frc-fu .frc-chip{padding:4px 10px;font-size:11.5px}'
+    + '.frc-tip{position:fixed;right:90px;bottom:35px;background:var(--navy,#172C45);color:#fff;font-family:var(--font-b,Inter,system-ui,sans-serif);font-size:12px;font-weight:600;padding:7px 12px;border-radius:50px;z-index:190;box-shadow:0 4px 14px rgba(2,15,24,.22);cursor:pointer;display:flex;align-items:center;gap:8px;animation:frcin .4s ease-out}'
+    + '.frc-tip kbd{background:rgba(255,255,255,.14);border-radius:4px;padding:0 5px;font:inherit;font-size:11px;font-weight:500}.frc-tip button{background:none;border:0;color:#B9C8DE;cursor:pointer;padding:0 0 0 2px;font-size:14px;line-height:1}'
+    + '@keyframes frcin{from{opacity:0;transform:translateX(8px)}to{opacity:1;transform:none}}'
     + '.frc-note{color:#94A3B8;font-size:11px;font-style:italic}'
     + '.frc-empty{color:#475569}.frc-empty p{margin:0 0 10px}.frc-chips{display:flex;flex-direction:column;gap:6px;align-items:flex-start}'
     + '.frc-chip{background:#fff;border:1px solid var(--border,#D4E6EF);border-radius:50px;padding:6px 12px;font-size:12px;color:#1D4053;cursor:pointer;text-align:left;font-family:inherit}.frc-chip:hover{border-color:var(--teal,#72A4BF);background:#F5FAFC}'
@@ -230,8 +236,8 @@
     + '.frc-deep{background:none;border:1px solid #D4E2EA;border-radius:50px;padding:3px 10px;font-size:11px;color:#475569;cursor:pointer;font-family:inherit}.frc-deep.on{background:#EEF0FB;border-color:#AFA9EC;color:#3C3489}'
     + '.frc-left{font-size:11px;color:#94A3B8;flex:1;text-align:right}'
     + '.frc-send{background:var(--navy,#172C45);color:#fff;border:0;border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px}.frc-send:hover{background:#1D4053}.frc-send.stop{background:#64748B}'
-    + '@media (max-width:640px){.frc-panel{right:0;left:0;bottom:0;top:0;width:auto;height:auto;border-radius:0}.frc-btn{right:14px;bottom:14px;width:48px;height:48px}.frc-panel.open~.frc-btn{display:none}}'
-    + '.cs-copied{right:84px!important}'
+    + '@media (max-width:640px){.frc-tip{display:none!important}.frc-panel,.frc-panel.wide{right:0;left:0;bottom:0;top:0;width:auto;height:auto;border-radius:0}.frc-btn{right:14px;bottom:14px;width:54px;height:54px}.frc-panel.open~.frc-btn{display:none}}'
+    + '.cs-copied{right:92px!important}'
     + '@media print{.frc-btn,.frc-panel{display:none!important}}';
   var I = {
     chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.4A8 8 0 1 1 21 12z"/><path d="M8.5 10.5h7M8.5 13.5h4.5"/></svg>',
@@ -240,6 +246,9 @@
     copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></svg>',
     up: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 11v9H4v-9zM7 11l4-7a2 2 0 0 1 3 2l-1 4h5a2 2 0 0 1 2 2.3l-1.2 6A2 2 0 0 1 16.8 20H7"/></svg>',
     down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 13V4h3v9zM17 13l-4 7a2 2 0 0 1-3-2l1-4H6a2 2 0 0 1-2-2.3l1.2-6A2 2 0 0 1 7.2 4H17"/></svg>',
+    expand: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>',
+    shrink: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/></svg>',
+    check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>',
     send: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>'
   };
   var els = {};
@@ -248,6 +257,7 @@
     var panel = document.createElement('div'); panel.className = 'frc-panel'; panel.id = 'frc-panel';
     panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'Ask the data');
     panel.innerHTML = '<div class="frc-hd"><div class="tt"><div class="t">Ask the data</div><div class="c" id="frc-ctx"></div></div>'
+      + '<button class="frc-ib" id="frc-wide" title="Expand" aria-label="Expand">' + I.expand + '</button>'
       + '<button class="frc-ib" id="frc-new" title="New chat" aria-label="New chat">' + I.plus + '</button>'
       + '<button class="frc-ib" id="frc-close" title="Close (Esc)" aria-label="Close">' + I.x + '</button></div>'
       + '<div class="frc-log" id="frc-log" aria-live="polite"></div>'
@@ -257,7 +267,9 @@
     var btn = document.createElement('button'); btn.className = 'frc-btn'; btn.id = 'frc-btn'; btn.title = 'Ask the data ( / )'; btn.setAttribute('aria-label', 'Ask the data'); btn.innerHTML = I.chat;
     document.body.appendChild(panel); document.body.appendChild(btn);
     els = { panel: panel, btn: btn, log: panel.querySelector('#frc-log'), input: panel.querySelector('#frc-input'), ctx: panel.querySelector('#frc-ctx'),
-      deep: panel.querySelector('#frc-deep'), send: panel.querySelector('#frc-send'), left: panel.querySelector('#frc-left') };
+      deep: panel.querySelector('#frc-deep'), send: panel.querySelector('#frc-send'), left: panel.querySelector('#frc-left'), wide: panel.querySelector('#frc-wide') };
+    els.wide.addEventListener('click', function () { st.wide = !st.wide; save(); renderChrome(); scrollEnd(true); });
+    tip();
     btn.addEventListener('click', function () { toggle(); });
     panel.querySelector('#frc-close').addEventListener('click', function () { toggle(false); });
     panel.querySelector('#frc-new').addEventListener('click', newChat);
@@ -276,16 +288,30 @@
       }
     });
   }
+  // First visit: a label beside the bubble until the chat has been opened once.
+  var SEEN = 'frchat_seen';
+  function seen() { try { return !!window.localStorage.getItem(SEEN); } catch (e) { return true; } }
+  function markSeen() { try { window.localStorage.setItem(SEEN, '1'); } catch (e) { /* private window */ } if (els.tip) { els.tip.remove(); els.tip = null; } }
+  function tip() {
+    if (seen()) return;
+    var t = document.createElement('div'); t.className = 'frc-tip'; t.id = 'frc-tip';
+    t.innerHTML = 'Ask the data <kbd>/</kbd><button aria-label="Dismiss" title="Dismiss">\u00d7</button>';
+    t.addEventListener('click', function (e) { if (e.target.tagName === 'BUTTON') { markSeen(); return; } toggle(true); });
+    document.body.appendChild(t); els.tip = t;
+  }
   function grow() { var t = els.input; t.style.height = 'auto'; t.style.height = Math.min(120, t.scrollHeight) + 'px'; }
   function toggle(on) {
     st.open = on === undefined ? !st.open : !!on;
     els.panel.classList.toggle('open', st.open);
     els.btn.setAttribute('aria-expanded', st.open ? 'true' : 'false');
-    if (st.open) { renderChrome(); render(); scrollEnd(true); setTimeout(function () { els.input.focus(); }, 30); }
+    if (st.open) { markSeen(); renderChrome(); render(); scrollEnd(true); setTimeout(function () { els.input.focus(); }, 30); }
   }
   function renderChrome() {
     var p = pageCtx();
     els.ctx.textContent = p.label + (p.window ? ' · ' + winLabel(p) : '');
+    els.panel.classList.toggle('wide', st.wide);
+    els.wide.innerHTML = st.wide ? I.shrink : I.expand;
+    els.wide.title = st.wide ? 'Shrink' : 'Expand'; els.wide.setAttribute('aria-label', els.wide.title);
     els.deep.textContent = 'Deep analysis: ' + (st.deep ? 'On' : 'Auto');
     els.deep.classList.toggle('on', st.deep);
     els.left.textContent = st.remaining == null ? '' : (st.remaining <= 0 ? 'No questions left today' : st.remaining + (st.remaining === 1 ? ' question' : ' questions') + ' left today');
@@ -297,6 +323,14 @@
     if (p.window !== 'custom') return WL[p.window] || p.window;
     var range = p.from && p.to ? p.from + ' to ' + p.to : p.to ? 'on or before ' + p.to : p.from ? 'from ' + p.from : '';
     return p.windowLabel && p.windowLabel !== 'Signed' ? p.windowLabel + (range && p.windowLabel === 'Custom range' ? ' (' + range + ')' : '') : (range || 'Custom');
+  }
+  // The model ends with "Follow-ups: a | b | c"; shown as chips, not text.
+  var RE_FU = /(^|\n)\s*\**follow-?ups?:?\**\s*([^\n]*)\s*$/i;
+  function splitFollowUps(text) {
+    var m = RE_FU.exec(text || '');
+    if (!m) return { body: text || '', fu: [] };
+    var fu = m[2].split('|').map(function (x) { return x.replace(/^[\s\-*\u2022"]+|[\s"]+$/g, ''); }).filter(function (x) { return x && x.length <= 90; }).slice(0, 3);
+    return { body: (text || '').slice(0, m.index), fu: fu };
   }
   function itemHTML(it, idx) {
     if (it.role === 'user') return '<div class="frc-u">' + esc(it.text) + '</div>';
@@ -310,15 +344,18 @@
     if (!it.text && working && !(it.status || []).some(function (s) { return !s.done; })) {
       h += '<div class="frc-st"><div><span class="frc-sp"></span>' + (it.tier === 'deep' ? 'Deep analysis — this takes about a minute' : 'Working on it…') + '</div></div>';
     } else if (it.tier === 'deep' && working && !it.text) h += '<div class="frc-note">Deep analysis — this takes about a minute.</div>';
-    if (it.text) h += md(it.text);
+    var sp = splitFollowUps(it.text);
+    if (sp.body) h += md(sp.body);
     if (it.stopped) h += '<div class="frc-note">Stopped.</div>';
     if (it.error) h += '<div class="frc-err">' + esc(it.error) + (it.offerNew ? '<button data-act="new">New chat</button>' : '') + '</div>';
     if (it.done) {
       h += '<div class="frc-ft"><span class="frc-badge' + (it.tier === 'deep' ? ' d' : '') + '">' + (it.tier === 'deep' ? 'Deep analysis' : 'Quick answer') + '</span>'
-        + '<button data-act="copy" title="Copy" aria-label="Copy answer">' + I.copy + '</button>'
+        + '<button data-act="copy" class="' + (it.copied ? 'ok' : '') + '" title="' + (it.copied ? 'Copied' : 'Copy') + '" aria-label="Copy answer">' + (it.copied ? I.check : I.copy) + '</button>'
         + '<button data-act="up" class="' + (it.fb === 'up' ? 'on' : '') + '" title="Helpful" aria-label="Helpful">' + I.up + '</button>'
         + '<button data-act="down" class="' + (it.fb === 'down' ? 'on' : '') + '" title="Not helpful" aria-label="Not helpful">' + I.down + '</button>'
-        + (it.copied ? '<span>Copied</span>' : '') + '</div>';
+        + '</div>';
+      if (sp.fu.length && idx === st.items.length - 1 && !st.busy)
+        h += '<div class="frc-fu">' + sp.fu.map(function (q) { return '<button class="frc-chip" data-q="' + esc(q) + '">' + esc(q) + '</button>'; }).join('') + '</div>';
     }
     return h + '</div>';
   }
@@ -346,6 +383,8 @@
     if (force || l.scrollHeight - l.scrollTop - l.clientHeight < 140) l.scrollTop = l.scrollHeight;
   }
   function onLogClick(e) {
+    var src = e.target.closest && e.target.closest('.frc-src');
+    if (src) { src.classList.toggle('open'); return; }
     var chip = e.target.closest && e.target.closest('.frc-chip');
     if (chip) { ask(chip.getAttribute('data-q')); return; }
     var b = e.target.closest && e.target.closest('button[data-act]');
@@ -356,11 +395,11 @@
     if (!a) return;
     if (act === 'copy') {
       var done = function () { a.copied = true; renderItem(a); setTimeout(function () { a.copied = false; renderItem(a); }, 1500); };
-      try { navigator.clipboard.writeText(a.text).then(done, function () {}); } catch (_) { /* no clipboard */ }
+      try { navigator.clipboard.writeText(splitFollowUps(a.text).body.trim()).then(done, function () {}); } catch (_) { /* no clipboard */ }
     } else if (act === 'up' || act === 'down') feedback(a, act);
   }
 
-  window.FRChat = { _md: md, _esc: esc, _pageCtx: pageCtx, _suggestFor: suggestFor, _applyEvent: applyEvent, open: function () { if (els.panel) toggle(true); }, ask: function (q) { if (els.panel) { toggle(true); ask(q); } } };
+  window.FRChat = { _md: md, _esc: esc, _splitFollowUps: splitFollowUps, _pageCtx: pageCtx, _suggestFor: suggestFor, _applyEvent: applyEvent, open: function () { if (els.panel) toggle(true); }, ask: function (q) { if (els.panel) { toggle(true); ask(q); } } };
   if (BLOCKED) return;
   var boot = function () { load(); build(); render(); };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();

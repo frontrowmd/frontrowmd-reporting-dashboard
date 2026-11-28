@@ -8,7 +8,7 @@ const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify(w);console.log((o
 const src=fs.readFileSync(process.env.WORKER_SRC||'worker.js','utf8');
 const W={console:{log(){},warn(){},error(){}},TextEncoder,TextDecoder,TransformStream,ReadableStream,Response,setTimeout};
 vm.createContext(W);
-vm.runInContext(src.slice(0,src.indexOf('\nexport default'))+'\nObject.assign(globalThis,{chatTier,chatResolveWindow,chatContextLine,chatMonthChunks,chatCheckHistory,chatApplyEvent,chatRun,chatToolAdPerformance,chatToolSignedBrands,chatToolQualifiedDemos,chatRateCheck,chatRateRefund,chatCleanTurn,handleChat,handleChatFeedback,azCacheKey,CHAT_TOOLS,CHAT_SYSTEM,CHAT_MODELS,CHAT_DAILY_LIMIT,fmt,todayET});',W);
+vm.runInContext(src.slice(0,src.indexOf('\nexport default'))+'\nObject.assign(globalThis,{chatTier,chatResolveWindow,chatContextLine,chatMonthChunks,chatCheckHistory,chatApplyEvent,chatRun,chatToolAdPerformance,chatToolSignedBrands,chatToolQualifiedDemos,chatRateCheck,chatRateRefund,signBookList,signBookCount,chatCleanTurn,handleChat,handleChatFeedback,azCacheKey,CHAT_TOOLS,CHAT_SYSTEM,CHAT_MODELS,CHAT_DAILY_LIMIT,fmt,todayET});',W);
 W.sleep=async()=>{};
 vm.runInContext(fn(src,'jr')+';globalThis.jr=jr;',W);
 
@@ -41,6 +41,9 @@ ck('seven tools',W.CHAT_TOOLS.map(t=>t.name),['signed_brands','qualified_demos',
 ck('every tool has a closed schema',W.CHAT_TOOLS.every(t=>t.input_schema&&t.input_schema.additionalProperties===false),true);
 ck('the system prompt forbids invented numbers',/Never invent, estimate or recall a number/.test(W.CHAT_SYSTEM),true);
 ck('  asks for a Source line',/starts with "Source:"/.test(W.CHAT_SYSTEM),true);
+ck('  keeps tables to 4 columns with dates in the Source line',/At most 4 columns/.test(W.CHAT_SYSTEM)&&/Put dates in the Source line/.test(W.CHAT_SYSTEM),true);
+ck('  never restates the question',/Never restate the question/.test(W.CHAT_SYSTEM),true);
+ck('  ends with follow-ups',/"Follow-ups:"/.test(W.CHAT_SYSTEM),true);
 ck('  and states the attribution caveats',/UTM-only/.test(W.CHAT_SYSTEM)&&/19%/.test(W.CHAT_SYSTEM),true);
 ck('no tool writes: no put/delete in a tool other than caches',/chatTool\w+[\s\S]*?\.delete\(/.test(src.slice(src.indexOf('// ── tools ──'),src.indexOf('const CHAT_TOOL_FNS'))),false);
 
@@ -71,13 +74,37 @@ ck('an uncached window says so instead of rebuilding',nc.notCached,true);
 ck('a bad window is an error',!!(await W.chatToolAdPerformance(env,{window:'allTime',level:'channel'})).error,true);
 
 // signed_brands reads the sign book (one cached book for every range).
-store['sign_book_v8']=JSON.stringify({t:Date.now(),data:{today,asOf:'x',recurly:true,rows:[
+store['sign_book_v9']=JSON.stringify({t:Date.now(),data:{today,asOf:'x',recurly:true,rows:[
   {d:['2026-11-03'],a:1,p:0,m:1200,c:0,w:1,h:'h1',k:['d1']},
   {d:['2026-11-10'],a:0,p:1,m:0,c:0,w:1,h:'h2',k:['d2']},
   {d:['2026-10-20'],a:1,p:0,m:800,c:0,w:1,h:'h3',k:['d3']}]}});
 const sb=await W.chatToolSignedBrands(env,{ranges:[{from:'2026-11-01',to:'2026-11-30',label:'Nov'},{from:'2026-10-01',to:'2026-10-31'}]});
 ck('signed brands per range',sb.ranges.map(r=>[r.label,r.active,r.pilots,r.signed,r.mrr]),[['Nov',1,1,2,1200],[null,1,0,1,800]]);
 ck('  from the cached book',sb.cached,true);
+// Brand names on request, by the card's own rules.
+store['sign_book_v9']=JSON.stringify({t:Date.now(),data:{today,asOf:'x',recurly:true,rows:[
+  {d:['2026-11-03'],a:1,p:0,m:1200,c:0,w:1,h:'h1',k:['d1'],n:'Acme'},
+  {d:['2026-11-10'],a:0,p:1,m:0,c:0,w:1,h:'h2',k:['d2'],n:'Bolt'},
+  {d:['2026-11-12'],dch:['2026-11-20'],a:0,p:0,m:0,c:1,w:1,h:'h4',k:['d4'],n:'Gone Co'},
+  {d:['2026-11-14'],a:0,p:0,m:0,c:1,w:1,h:'h1',k:['d5'],n:'Acme (old)'},
+  {d:['2026-11-15'],a:0,p:0,m:0,c:1,w:1,t:1,h:'h6',k:['d6'],n:'Andres Test'}]}});
+const sl=await W.chatToolSignedBrands(env,{ranges:[{from:'2026-11-01',to:'2026-11-30'}],list:true});
+const R=sl.ranges[0];
+ck('list: active with MRR, pilots, churned',[R.brands.active,R.brands.pilots.map(b=>b.name),R.brands.churned],[[{name:'Acme',signed:'2026-11-03',mrr:1200}],['Bolt'],[{name:'Gone Co',signed:'2026-11-12'}]]);
+ck('  a churned row tied to a live brand is not listed, nor a test brand',R.brands.churned.length,R.churned);
+ck('  list sizes equal the counts',[R.brands.active.length,R.brands.pilots.length,R.brands.churned.length],[R.active,R.pilots,R.churned]);
+// Fuzz: on random books the lists always match signBookCount's numbers.
+{ let seed=7;const rnd=()=>{seed=(seed*1103515245+12345)%2147483648;return seed/2147483648;};
+  const day=()=>'2026-'+String(1+Math.floor(rnd()*3)+9).padStart(2,'0')+'-'+String(1+Math.floor(rnd()*28)).padStart(2,'0');
+  let bad=0;
+  for(let t=0;t<300;t++){
+    const rows=[];const n=3+Math.floor(rnd()*10);
+    for(let i=0;i<n;i++){const a=rnd()<.3?1:0,p=!a&&rnd()<.3?1:0;rows.push({d:rnd()<.9?[day()]:[],dch:rnd()<.2?[day()]:[],a,p,m:a?100:0,c:!a&&!p&&rnd()<.6?1:0,w:1,x:rnd()<.1?1:0,t:rnd()<.05?1:0,h:'h'+Math.floor(rnd()*4),k:['d'+Math.floor(rnd()*6)],n:'B'+i});}
+    const f='2026-10-01',to='2026-11-15';const c=W.signBookCount(rows,f,to),l=W.signBookList(rows,f,to);
+    if(c.active!==l.active.length||c.pilots!==l.pilots.length||c.churned!==l.churned.length)bad++;
+  }
+  ck('fuzz: lists match the counts on 300 random books',bad,0); }
+ck('without list, no names are returned',!!(await W.chatToolSignedBrands(env,{ranges:[{from:'2026-11-01',to:'2026-11-30'}]})).ranges[0].brands,false);
 ck('a reversed range is refused',!!(await W.chatToolSignedBrands(env,{ranges:[{from:'2026-11-30',to:'2026-11-01'}]})).error,true);
 ck('qualified_demos refuses ranges over 186 days',!!(await W.chatToolQualifiedDemos(env,{from:'2026-01-01',to:'2026-11-01'})).error,true);
 
@@ -189,7 +216,7 @@ const envF={CONTENT_STORE:{get:async(k,t)=>fb[k]?(t==='json'?JSON.parse(fb[k]):f
 ck('feedback is saved on the log',(await (await W.handleChatFeedback(envF,{id,v:'up'},{email:'a@x.com'})).json()).ok,true);
 ck('  as up',JSON.parse(fb[id]).fb,'up');
 ck('  only by the person who asked',(await W.handleChatFeedback(envF,{id,v:'down'},{email:'b@x.com'})).status,403);
-ck('  with a well-formed id',(await W.handleChatFeedback(envF,{id:'sign_book_v8',v:'up'},{email:'a@x.com'})).status,400);
+ck('  with a well-formed id',(await W.handleChatFeedback(envF,{id:'sign_book_v9',v:'up'},{email:'a@x.com'})).status,400);
 const noKey=await W.handleChat({CONTENT_STORE:envR.CONTENT_STORE},null,{question:'x'},{email:'a@x.com'});
 ck('no API key: a clear 503',noKey.status,503);
 const tooLong=await W.handleChat({ANTHROPIC_API_KEY:'k',CONTENT_STORE:envR.CONTENT_STORE},null,{question:'x'.repeat(2001)},{email:'c@x.com'});
@@ -213,8 +240,14 @@ const md=C.FRChat._md;
 ck('markdown escapes HTML',md('<img src=x onerror=alert(1)> **ok**'),'<p>&lt;img src=x onerror=alert(1)&gt; <strong>ok</strong></p>');
 ck('tables render with numeric cells right-aligned',md('| Week | Total |\n|---|---|\n| Nov 24 | 9 |'),'<div class="frc-tw"><table><thead><tr><th>Week</th><th class="n">Total</th></tr></thead><tbody><tr><td>Nov 24</td><td class="n">9</td></tr></tbody></table></div>');
 ck('lists',md('- a\n- b'),'<ul><li>a</li><li>b</li></ul>');
+const fu=C.FRChat._splitFollowUps('9 signed.\n\nSource: BD Tracker\nFollow-ups: Which brands? | Same for last month | "By owner"');
+ck('follow-ups come off the end of the answer as chips',[fu.body.trim(),fu.fu],['9 signed.\n\nSource: BD Tracker',['Which brands?','Same for last month','By owner']]);
+ck('  an answer without them is left alone',C.FRChat._splitFollowUps('Just text').fu,[]);
+ck('the panel can expand to a tall drawer',/\.frc-panel\.wide\{/.test(wsrc)&&/id="frc-wide"/.test(wsrc),true);
+ck('  hiding the bubble so it never covers Send',/\.frc-panel\.open\.wide~\.frc-btn\{display:none\}/.test(wsrc),true);
+ck('a first-visit label sits beside the bubble until it is opened',/frchat_seen/.test(wsrc)&&/markSeen\(\); renderChrome/.test(wsrc),true);
 ck('an escaped pipe stays inside its cell',md('| Campaign | Spend |\n|---|---|\n| FrontrowMD \\| Brand | $5,879 |').includes('<td>FrontrowMD | Brand</td><td class="n">$5,879</td>'),true);
-ck('the Source line is styled apart',md('Hi\nSource: BD Tracker'),'<p>Hi</p><div class="frc-src">Source: BD Tracker</div>');
+ck('the Source line is styled apart',md('Hi\nSource: BD Tracker'),'<p>Hi</p><div class="frc-src" title="Source: BD Tracker">Source: BD Tracker</div>');
 ck('no raw HTML survives in a table cell',md('| a |\n|---|\n| <b>x</b> |').includes('<b>'),false);
 // Page context from the host page's own globals (let/const included).
 const D=mkCtx('/',{});vm.runInContext('let AP="clinician";const S={clinician:{win:"custom",cFrom:"2026-10-01",cTo:"2026-10-31"}};const T={};',D);
