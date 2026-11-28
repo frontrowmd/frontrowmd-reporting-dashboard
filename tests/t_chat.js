@@ -8,7 +8,7 @@ const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify(w);console.log((o
 const src=fs.readFileSync(process.env.WORKER_SRC||'worker.js','utf8');
 const W={console:{log(){},warn(){},error(){}},TextEncoder,TextDecoder,TransformStream,ReadableStream,Response,setTimeout};
 vm.createContext(W);
-vm.runInContext(src.slice(0,src.indexOf('\nexport default'))+'\nObject.assign(globalThis,{chatTier,chatResolveWindow,chatContextLine,chatMonthChunks,chatCheckHistory,chatApplyEvent,chatRun,chatToolAdPerformance,chatToolSignedBrands,chatToolQualifiedDemos,chatRateCheck,chatRateRefund,signBookList,signBookCount,chatCleanTurn,handleChat,handleChatFeedback,azCacheKey,CHAT_TOOLS,CHAT_SYSTEM,CHAT_MODELS,CHAT_DAILY_LIMIT,fmt,todayET});',W);
+vm.runInContext(src.slice(0,src.indexOf('\nexport default'))+'\nObject.assign(globalThis,{chatTier,chatResolveWindow,chatContextLine,chatMonthChunks,chatCheckHistory,chatApplyEvent,chatRun,chatToolAdPerformance,chatToolSignedBrands,chatToolQualifiedDemos,chatRateCheck,chatRateRefund,handleChatSave,handleChatList,handleChatGet,handleChatDelete,signBookList,signBookCount,chatCleanTurn,handleChat,handleChatFeedback,azCacheKey,CHAT_TOOLS,CHAT_SYSTEM,CHAT_MODELS,CHAT_DAILY_LIMIT,fmt,todayET});',W);
 W.sleep=async()=>{};
 vm.runInContext(fn(src,'jr')+';globalThis.jr=jr;',W);
 
@@ -43,6 +43,7 @@ ck('the system prompt forbids invented numbers',/Never invent, estimate or recal
 ck('  asks for a Source line',/starts with "Source:"/.test(W.CHAT_SYSTEM),true);
 ck('  keeps tables to 4 columns with dates in the Source line',/At most 4 columns/.test(W.CHAT_SYSTEM)&&/Put dates in the Source line/.test(W.CHAT_SYSTEM),true);
 ck('  never restates the question',/Never restate the question/.test(W.CHAT_SYSTEM),true);
+ck('  and never spells out the dates in prose',/Never open with, or write anywhere in prose, what the dates are/.test(W.CHAT_SYSTEM)&&/the dates appear only in the Source line/.test(W.CHAT_SYSTEM),true);
 ck('  ends with follow-ups',/"Follow-ups:"/.test(W.CHAT_SYSTEM),true);
 ck('  and states the attribution caveats',/UTM-only/.test(W.CHAT_SYSTEM)&&/19%/.test(W.CHAT_SYSTEM),true);
 ck('no tool writes: no put/delete in a tool other than caches',/chatTool\w+[\s\S]*?\.delete\(/.test(src.slice(src.indexOf('// ── tools ──'),src.indexOf('const CHAT_TOOL_FNS'))),false);
@@ -224,6 +225,30 @@ ck('an over-long question is refused',tooLong.status,400);
 const lim=await W.handleChat({ANTHROPIC_API_KEY:'k',CONTENT_STORE:envR.CONTENT_STORE},null,{question:'x'},{email:'a@x.com'});
 ck('over the daily limit: 429 with a reason',[lim.status,(await lim.json()).code],[429,'limit']);
 
+// ── 6b. Saved chats ─────────────────────────────────────────────────────
+{ const kvs={},meta={};
+  const envC={CONTENT_STORE:{get:async(k,ty)=>kvs[k]==null?null:(ty==='json'?JSON.parse(kvs[k]):kvs[k]),put:async(k,v,o)=>{kvs[k]=v;meta[k]=o&&o.metadata;},delete:async k=>{delete kvs[k];delete meta[k];},
+    list:async({prefix})=>({keys:Object.keys(kvs).filter(k=>k.startsWith(prefix)).map(k=>({name:k,metadata:meta[k]})),list_complete:true})}};
+  const A={email:'a@x.com'},B={email:'b@x.com'};
+  const conv={id:'cabc12345',title:'How many brands signed this week vs last week?',page:'Brand Dashboard',items:[{role:'user',text:'q'},{role:'a',text:'ans',done:true}],messages:[{role:'user',content:'q'},{role:'assistant',content:[{type:'text',text:'ans'}]}]};
+  ck('a chat saves',(await (await W.handleChatSave(envC,conv,A)).json()).ok,true);
+  ck('  under the person’s own key, 90 days',Object.keys(kvs),['chat_conv_a@x.com_cabc12345']);
+  await new Promise(r=>setTimeout(r,5));
+  await W.handleChatSave(envC,Object.assign({},conv,{id:'cdef67890',title:'Second'}),A);
+  const ls=await (await W.handleChatList(envC,A)).json();
+  ck('the list is newest first, from metadata',ls.chats.map(c=>[c.title,c.n]),[['Second',1],['How many brands signed this week vs last week?',1]]);
+  ck('another person sees none of them',(await (await W.handleChatList(envC,B)).json()).chats,[]);
+  ck('  and cannot open one',(await W.handleChatGet(envC,{id:'cabc12345'},B)).status,404);
+  ck('its owner reopens it whole',(await (await W.handleChatGet(envC,{id:'cabc12345'},A)).json()).messages,conv.messages);
+  ck('a bad id is refused',(await W.handleChatSave(envC,Object.assign({},conv,{id:'../x'}),A)).status,400);
+  ck('bad history is refused',(await W.handleChatSave(envC,Object.assign({},conv,{messages:[{role:'assistant',content:'x'}]}),A)).status,400);
+  await W.handleChatDelete(envC,{id:'cabc12345'},B);
+  ck('another person cannot delete it',!!kvs['chat_conv_a@x.com_cabc12345'],true);
+  await W.handleChatDelete(envC,{id:'cabc12345'},A);
+  ck('its owner can',!!kvs['chat_conv_a@x.com_cabc12345'],false);
+}
+ck('saved-chat routes check sign-in',['list','get','save','delete'].every(n=>new RegExp("url\\.pathname === '/api/chat/"+n+"'\\) \\{[\\s\\S]{0,200}?const who = await authed\\(\\);\\s*if \\(!who\\)").test(src)),true);
+
 // ── 7. Routes and pages ──────────────────────────────────────────────────
 ck('/api/chat checks sign-in',/url\.pathname === '\/api\/chat'\) \{[\s\S]{0,200}?const who = await authed\(\);\s*if \(!who\) return jr\(\{ error: 'Unauthorized' \}, 401\);/.test(src),true);
 ck('/chat-widget.js is signed-in only',/url\.pathname === '\/chat-widget\.js'\) \{\s*if \(!\(await authed\(\)\)\)/.test(src),true);
@@ -252,6 +277,12 @@ ck('no raw HTML survives in a table cell',md('| a |\n|---|\n| <b>x</b> |').inclu
 // Page context from the host page's own globals (let/const included).
 const D=mkCtx('/',{});vm.runInContext('let AP="clinician";const S={clinician:{win:"custom",cFrom:"2026-10-01",cTo:"2026-10-31"}};const T={};',D);
 ck('dashboard: page and filter from AP / S',D.FRChat._pageCtx(),{key:'dash:clinician',label:'Clinician Dashboard',window:'custom',windowLabel:null,from:'2026-10-01',to:'2026-10-31'});
+{ const dash=fs.readFileSync('dashboard.html','utf8');const Tm=/const T=\{([^}]*)\}/.exec(dash)[1];const keys=[...Tm.matchAll(/(\w+):'/g)].map(m=>m[1]).filter(k=>k!=='resources');
+  const sg=k=>D.FRChat._suggestFor(k);
+  ck('every dashboard page has its own starter questions',keys.filter(k=>sg('dash:'+k)===sg('dash:__none__')&&!['exec','outbound'].includes(k)),[]);
+  ck('  BD Tracker tabs differ from each other',new Set(['tracker','churn','recon','waterfall'].map(k=>sg('bd:'+k)[0])).size,4);
+  ck('  Pilot Dashboard asks about pilots',/pilot/i.test(sg('dash:pilot').join(' ')),true);
+  ck('  Sales pre- and post-demo differ',sg('sales:preDemo')[0]!==sg('sales:postDemo')[0],true); }
 ck('  clinician pages get clinician suggestions',/clinician/i.test(D.FRChat._suggestFor('dash:clinician')[0]),true);
 const B=mkCtx('/bd',{});vm.runInContext('var _bdTab="waterfall";',B);
 ck('BD Tracker: the tab names the page',B.FRChat._pageCtx().label,'BD Tracker · Billing');

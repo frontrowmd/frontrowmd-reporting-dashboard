@@ -40,19 +40,41 @@
     } catch (e) { /* context is best effort */ }
     return o;
   }
+  // Starter questions per page / tab, each answerable with the chat's tools.
+  var S_BRAND = ['How many brands signed this week vs last week?', 'Qualified Demos this month vs last month', 'Which ad creatives are performing best this month, and why?', 'Analyze our ad budget and recommend what to do next month'];
+  var S_CLN = ['How many clinician sign ups this month vs last month?', 'Break down this month\u2019s clinician funnel by MD/DO vs non-MD/DO', 'What did we spend on clinician ads this month?', 'Where is the clinician funnel losing the most people, and why?'];
+  var S_ADS = ['Which creatives have the best cost per demo this month?', 'Which ads are showing fatigue right now?', 'Compare spend and CPQD by channel, month to date', 'Analyze our ad budget and recommend what to do next month'];
+  var S_BD = ['Which brands signed this week?', 'What\u2019s our current MRR and how many active brands?', 'Signed brands by month this year', 'How many pilots signed this month?'];
   var SUGGEST = {
-    brand: ['How many brands signed this week vs last week?', 'Qualified Demos by month this year', 'Which ad creatives are performing best this month, and why?', 'Analyze our ad budget and recommend what to do next month'],
-    clinician: ['How many clinician sign ups this month vs last month?', 'Break down this month’s clinician funnel by MD/DO vs non-MD/DO', 'Which clinician campaigns have the lowest cost per conversion this month?', 'Where is the clinician funnel losing the most people, and why?'],
-    ads: ['Which creatives have the best CPQD this month?', 'Which ads are showing fatigue right now?', 'Compare spend and CPQD by channel, month to date', 'Analyze our ad budget and recommend what to do next month'],
-    bd: ['How many brands signed this week vs last week?', 'What’s our current MRR and how many active brands?', 'How many pilots signed this month?', 'Signed brands by month this year'],
-    sales: ['How many Qualified Demos this week vs last week?', 'How many brands signed this month?', 'Qualified Demos by month this year', 'How many pilots signed this month?']
+    'dash:exec': S_BRAND,
+    'dash:exec:clinician': S_CLN,
+    'dash:dashboard': ['Qualified Demos this month vs last month', 'Which channel has the best CPQD this month?', 'How many brands signed this month, and what\u2019s their MRR?', 'Analyze our ad budget and recommend what to do next month'],
+    'dash:pilot': ['How many pilots are live right now?', 'Which pilots signed this month?', 'What MRR have won pilots brought in?', 'How many pilots are still collecting data?'],
+    'dash:skincare': ['Which brands signed this month?', 'How many active brands do we have, and what\u2019s our MRR?', 'Signed brands by month this year'],
+    'dash:irfan': ['Qualified Demos this week vs last week', 'Which Meta creatives have the lowest cost per demo this month?', 'How has ad spend changed month to month this year?'],
+    'dash:signup': ['Signed brands vs Qualified Demos by month this year', 'How many brands signed this month vs last month?', 'Qualified Demos by month this year'],
+    'dash:calculator': ['What\u2019s our current ARR and ACV?', 'How many active brands do we have, and what\u2019s our MRR?', 'What MRR did this month\u2019s signed brands add?'],
+    'dash:strategy': ['How did last month compare with the month before?', 'Ad spend by month this year', 'Analyze last month\u2019s performance and what to change next month'],
+    'dash:demoQuality': ['Qualified Demos and no-shows this month vs last month', 'What share of demos held this month were qualified?', 'Which channel brought the most qualified demos this month?'],
+    'dash:webinarPerf': ['How many webinars happened this month vs last month?', 'Qualified Demos with and without webinars this month', 'How many webinars happened each month this year?'],
+    'dash:clinician': S_CLN,
+    'dash:analyzer': S_ADS,
+    'dash:csession': S_ADS,
+    'dash:content': S_ADS,
+    'dash:outbound': S_BRAND,
+    'bd:tracker': S_BD,
+    'bd:churn': ['Which brands that signed this year have since churned?', 'How many brands that signed last month have churned?', 'What\u2019s our current MRR and how many active brands?'],
+    'bd:recon': ['How many active brands are there today?', 'Which brands signed this week?', 'What\u2019s our current MRR and ARR?'],
+    'bd:waterfall': ['What\u2019s our current MRR and ARR?', 'How many brands are billing vs on trial?', 'Which pilots signed this month?'],
+    'sales:preDemo': ['How many Qualified Demos this week vs last week?', 'How many no-shows this month?', 'Qualified Demos by month this year'],
+    'sales:postDemo': ['Which brands signed this week?', 'How many brands signed this week vs last week?', 'Qualified Demos this month vs last month']
   };
   function suggestFor(key) {
-    if (/^bd:/.test(key)) return SUGGEST.bd;
-    if (/^sales:/.test(key)) return SUGGEST.sales;
-    if (/clinician/.test(key)) return SUGGEST.clinician;
-    if (/analyzer|demoQuality|csession/.test(key)) return SUGGEST.ads;
-    return SUGGEST.brand;
+    if (SUGGEST[key]) return SUGGEST[key];
+    if (/^bd:/.test(key)) return S_BD;
+    if (/^sales:/.test(key)) return SUGGEST['sales:postDemo'];
+    if (/clinician/.test(key)) return S_CLN;
+    return S_BRAND;
   }
 
   // ── markdown (escape first, then a small subset) ─────────────────────────
@@ -117,13 +139,13 @@
 
   // ── state ────────────────────────────────────────────────────────────────
   var KEY = 'frchat_v1';
-  var st = { messages: [], items: [], deep: false, wide: false, busy: false, open: false, remaining: null, ctrl: null };
+  var st = { messages: [], items: [], convId: null, deep: false, wide: false, view: 'chat', chats: null, busy: false, open: false, remaining: null, ctrl: null };
   function load() {
-    try { var j = JSON.parse(window.sessionStorage.getItem(KEY) || 'null'); if (j && Array.isArray(j.items)) { st.messages = j.messages || []; st.items = j.items; st.deep = !!j.deep; st.wide = !!j.wide; st.remaining = j.remaining == null ? null : j.remaining; } } catch (e) { /* none */ }
+    try { var j = JSON.parse(window.sessionStorage.getItem(KEY) || 'null'); if (j && Array.isArray(j.items)) { st.messages = j.messages || []; st.items = j.items; st.convId = j.convId || null; st.deep = !!j.deep; st.wide = !!j.wide; st.remaining = j.remaining == null ? null : j.remaining; } } catch (e) { /* none */ }
   }
   function save() {
-    try { window.sessionStorage.setItem(KEY, JSON.stringify({ messages: st.messages, items: st.items, deep: st.deep, wide: st.wide, remaining: st.remaining })); }
-    catch (e) { try { window.sessionStorage.setItem(KEY, JSON.stringify({ messages: [], items: st.items, deep: st.deep })); } catch (_) { /* full */ } }
+    try { window.sessionStorage.setItem(KEY, JSON.stringify({ messages: st.messages, items: st.items, convId: st.convId, deep: st.deep, wide: st.wide, remaining: st.remaining })); }
+    catch (e) { try { window.sessionStorage.setItem(KEY, JSON.stringify({ messages: [], items: st.items, convId: st.convId, deep: st.deep })); } catch (_) { /* full */ } }
   }
 
   // ── SSE ──────────────────────────────────────────────────────────────────
@@ -156,16 +178,64 @@
     return null;
   }
 
+  // ── saved chats (server, per person, 90 days) ────────────────────────────
+  function post(path, body) {
+    return fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', redirect: 'manual', body: JSON.stringify(body || {}) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(j.error || ('Request failed (' + r.status + ')')); return j; }); });
+  }
+  function newConvId() { return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+  function saveRemote() {
+    if (!st.convId || !st.messages.length) return;
+    var first = null; for (var i = 0; i < st.items.length; i++) if (st.items[i].role === 'user') { first = st.items[i].text; break; }
+    var items = st.items.map(function (it) { var c = {}; for (var k in it) if (k !== 'copied') c[k] = it[k]; return c; });
+    post('/api/chat/save', { id: st.convId, title: first || 'Chat', page: pageCtx().label, items: items, messages: st.messages })
+      .then(function () { st.chats = null; }, function () { /* the chat still lives in this tab */ });
+  }
+  function openHistory() {
+    if (st.busy) return;
+    st.view = 'history'; render();
+    post('/api/chat/list', {}).then(function (j) {
+      st.chats = j.chats || [];
+      // A just-saved chat can take a minute to show in the store's list.
+      if (st.convId && st.messages.length && !st.chats.some(function (c) { return c.id === st.convId; })) {
+        var q = st.items.filter(function (x) { return x.role === 'user'; });
+        st.chats.unshift({ id: st.convId, title: (q[0] && q[0].text) || 'Chat', page: pageCtx().label, updated: new Date().toISOString(), n: q.length });
+      }
+      if (st.view === 'history') render(); },
+      function (e) { st.chats = { error: e.message }; if (st.view === 'history') render(); });
+  }
+  function openChat(id) {
+    post('/api/chat/get', { id: id }).then(function (c) {
+      st.convId = c.id; st.items = c.items || []; st.messages = c.messages || []; st.view = 'chat'; save(); render(); scrollEnd(true);
+    }, function (e) { st.chats = { error: e.message }; render(); });
+  }
+  function deleteChat(id) {
+    if (Array.isArray(st.chats)) st.chats = st.chats.filter(function (c) { return c.id !== id; });
+    if (st.convId === id) { st.convId = null; st.messages = []; st.items = []; save(); }
+    render();
+    post('/api/chat/delete', { id: id }).catch(function () {});
+  }
+  function ago(iso) {
+    var t = Date.parse(iso); if (isNaN(t)) return '';
+    var m = Math.round((Date.now() - t) / 60000);
+    if (m < 1) return 'just now'; if (m < 60) return m + ' min ago';
+    var h = Math.round(m / 60); if (h < 24) return h + (h === 1 ? ' hour ago' : ' hours ago');
+    var d = Math.round(h / 24); if (d < 7) return d + (d === 1 ? ' day ago' : ' days ago');
+    return new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+
   // ── network ──────────────────────────────────────────────────────────────
   function ask(q) {
     q = String(q || '').trim();
     if (!q || st.busy) return;
+    if (!st.convId) st.convId = newConvId();
+    st.view = 'chat';
     var a = { role: 'a', text: '', status: [], tier: null };
     st.items.push({ role: 'user', text: q }); st.items.push(a);
     st.busy = true; render(); scrollEnd(true);
     var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null; st.ctrl = ctrl;
     var page = pageCtx();
-    var finish = function () { st.busy = false; st.ctrl = null; if (!a.done && !a.error && !a.stopped) a.error = 'The answer was cut off. Try again.'; save(); render(); scrollEnd(); };
+    var finish = function () { st.busy = false; st.ctrl = null; if (!a.done && !a.error && !a.stopped) a.error = 'The answer was cut off. Try again.'; save(); render(); scrollEnd(); if (a.done) saveRemote(); };
     fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', redirect: 'manual', signal: ctrl ? ctrl.signal : undefined,
       body: JSON.stringify({ question: q, messages: st.messages, page: { key: page.key, label: page.label, window: page.window, windowLabel: page.windowLabel, from: page.from, to: page.to }, deep: st.deep }) })
       .then(function (r) {
@@ -190,12 +260,12 @@
   }
   function feedback(a, v) {
     if (!a.id || a.fb === v) return;
-    a.fb = v; save(); renderItem(a);
+    a.fb = v; save(); renderItem(a); saveRemote();
     fetch('/api/chat/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ id: a.id, v: v }) }).catch(function () {});
   }
   function newChat() {
     if (st.ctrl) { try { st.ctrl.abort(); } catch (e) {} }
-    st.messages = []; st.items = []; st.busy = false; save(); render();
+    st.messages = []; st.items = []; st.convId = null; st.view = 'chat'; st.busy = false; save(); render();
     if (els.input) els.input.focus();
   }
 
@@ -227,6 +297,11 @@
     + '.frc-tip{position:fixed;right:90px;bottom:35px;background:var(--navy,#172C45);color:#fff;font-family:var(--font-b,Inter,system-ui,sans-serif);font-size:12px;font-weight:600;padding:7px 12px;border-radius:50px;z-index:190;box-shadow:0 4px 14px rgba(2,15,24,.22);cursor:pointer;display:flex;align-items:center;gap:8px;animation:frcin .4s ease-out}'
     + '.frc-tip kbd{background:rgba(255,255,255,.14);border-radius:4px;padding:0 5px;font:inherit;font-size:11px;font-weight:500}.frc-tip button{background:none;border:0;color:#B9C8DE;cursor:pointer;padding:0 0 0 2px;font-size:14px;line-height:1}'
     + '@keyframes frcin{from{opacity:0;transform:translateX(8px)}to{opacity:1;transform:none}}'
+    + '.frc-hl{display:flex;flex-direction:column;gap:2px}.frc-hl .h{font-weight:600;font-size:12px;color:#475569;margin:0 0 6px}'
+    + '.frc-row2{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;border:1px solid transparent}.frc-row2:hover{background:#F5FAFC;border-color:#E2EEF4}.frc-row2.cur{background:#EEF6FA}'
+    + '.frc-row2 .tx{flex:1;min-width:0}.frc-row2 .ti{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#172C45}.frc-row2 .mt{font-size:11px;color:#94A3B8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+    + '.frc-row2 .del{background:none;border:0;color:#CBD5E1;cursor:pointer;font-size:15px;line-height:1;padding:2px 4px;border-radius:4px}.frc-row2 .del:hover{color:#B91C1C;background:#FEF2F2}'
+    + '.frc-ib.on{color:#fff;background:rgba(255,255,255,.12)}'
     + '.frc-note{color:#94A3B8;font-size:11px;font-style:italic}'
     + '.frc-empty{color:#475569}.frc-empty p{margin:0 0 10px}.frc-chips{display:flex;flex-direction:column;gap:6px;align-items:flex-start}'
     + '.frc-chip{background:#fff;border:1px solid var(--border,#D4E6EF);border-radius:50px;padding:6px 12px;font-size:12px;color:#1D4053;cursor:pointer;text-align:left;font-family:inherit}.frc-chip:hover{border-color:var(--teal,#72A4BF);background:#F5FAFC}'
@@ -246,6 +321,7 @@
     copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></svg>',
     up: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 11v9H4v-9zM7 11l4-7a2 2 0 0 1 3 2l-1 4h5a2 2 0 0 1 2 2.3l-1.2 6A2 2 0 0 1 16.8 20H7"/></svg>',
     down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 13V4h3v9zM17 13l-4 7a2 2 0 0 1-3-2l1-4H6a2 2 0 0 1-2-2.3l1.2-6A2 2 0 0 1 7.2 4H17"/></svg>',
+    hist: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg>',
     expand: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>',
     shrink: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/></svg>',
     check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>',
@@ -257,6 +333,7 @@
     var panel = document.createElement('div'); panel.className = 'frc-panel'; panel.id = 'frc-panel';
     panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'Ask the data');
     panel.innerHTML = '<div class="frc-hd"><div class="tt"><div class="t">Ask the data</div><div class="c" id="frc-ctx"></div></div>'
+      + '<button class="frc-ib" id="frc-hist" title="Previous chats" aria-label="Previous chats">' + I.hist + '</button>'
       + '<button class="frc-ib" id="frc-wide" title="Expand" aria-label="Expand">' + I.expand + '</button>'
       + '<button class="frc-ib" id="frc-new" title="New chat" aria-label="New chat">' + I.plus + '</button>'
       + '<button class="frc-ib" id="frc-close" title="Close (Esc)" aria-label="Close">' + I.x + '</button></div>'
@@ -273,6 +350,8 @@
     btn.addEventListener('click', function () { toggle(); });
     panel.querySelector('#frc-close').addEventListener('click', function () { toggle(false); });
     panel.querySelector('#frc-new').addEventListener('click', newChat);
+    els.hist = panel.querySelector('#frc-hist');
+    els.hist.addEventListener('click', function () { if (st.view === 'history') { st.view = 'chat'; render(); } else openHistory(); });
     els.deep.addEventListener('click', function () { st.deep = !st.deep; save(); renderChrome(); });
     els.send.addEventListener('click', function () { if (st.busy) { if (st.ctrl) st.ctrl.abort(); return; } var v = els.input.value; els.input.value = ''; grow(); ask(v); });
     els.input.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (!st.busy) { var v = els.input.value; els.input.value = ''; grow(); ask(v); } } });
@@ -310,6 +389,7 @@
     var p = pageCtx();
     els.ctx.textContent = p.label + (p.window ? ' · ' + winLabel(p) : '');
     els.panel.classList.toggle('wide', st.wide);
+    if (els.hist) els.hist.classList.toggle('on', st.view === 'history');
     els.wide.innerHTML = st.wide ? I.shrink : I.expand;
     els.wide.title = st.wide ? 'Shrink' : 'Expand'; els.wide.setAttribute('aria-label', els.wide.title);
     els.deep.textContent = 'Deep analysis: ' + (st.deep ? 'On' : 'Auto');
@@ -362,6 +442,19 @@
   function render() {
     if (!els.log) return;
     renderChrome();
+    if (st.view === 'history') {
+      var h = '<div class="frc-hl"><div class="h">Previous chats</div>';
+      if (st.chats == null) h += '<div class="frc-st"><div><span class="frc-sp"></span>Loading\u2026</div></div>';
+      else if (!Array.isArray(st.chats)) h += '<div class="frc-err">' + esc(st.chats.error || 'Could not load your chats.') + '</div>';
+      else if (!st.chats.length) h += '<div class="frc-note">No saved chats yet. Chats are saved after each answer and kept for 90 days.</div>';
+      else h += st.chats.map(function (c) {
+        return '<div class="frc-row2' + (c.id === st.convId ? ' cur' : '') + '" data-open="' + esc(c.id) + '"><div class="tx"><div class="ti">' + esc(c.title) + '</div>'
+          + '<div class="mt">' + esc([c.page, ago(c.updated), c.n ? c.n + (c.n === 1 ? ' question' : ' questions') : ''].filter(Boolean).join(' \u00b7 ')) + '</div></div>'
+          + '<button class="del" data-del="' + esc(c.id) + '" title="Delete" aria-label="Delete chat">\u00d7</button></div>';
+      }).join('');
+      els.log.innerHTML = h + '</div>';
+      return;
+    }
     if (!st.items.length) {
       var p = pageCtx();
       els.log.innerHTML = '<div class="frc-empty"><p>Ask about the numbers on these dashboards. Answers use the same figures as the pages, and each one says where its numbers came from.</p><div class="frc-chips">'
@@ -383,6 +476,10 @@
     if (force || l.scrollHeight - l.scrollTop - l.clientHeight < 140) l.scrollTop = l.scrollHeight;
   }
   function onLogClick(e) {
+    var del = e.target.closest && e.target.closest('[data-del]');
+    if (del) { e.stopPropagation(); if (window.confirm('Delete this chat? This can\u2019t be undone.')) deleteChat(del.getAttribute('data-del')); return; }
+    var row = e.target.closest && e.target.closest('[data-open]');
+    if (row) { openChat(row.getAttribute('data-open')); return; }
     var src = e.target.closest && e.target.closest('.frc-src');
     if (src) { src.classList.toggle('open'); return; }
     var chip = e.target.closest && e.target.closest('.frc-chip');

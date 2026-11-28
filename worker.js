@@ -11910,7 +11910,7 @@ const CHAT_SYSTEM = `You answer questions about Frontrow's internal growth dashb
 - Call tools before answering any question about figures. Call several in parallel when they are independent (for example two date ranges).
 - All dates are US Eastern time. Each question begins with a context line giving today's date and the page and date filter the person is looking at. When the question does not name a period, use that page's date filter. "This week" is Monday through today; "last week" is the previous Monday to Sunday. Say when a period is partial (it runs to today).
 - Label anything that is not a measured figure as inference or a judgment call ("likely", "my read"). The "why" behind ad performance is always inference: the ad data has names, spend, clicks, impressions, conversions, CPQD and fatigue flags, but no ad copy, headlines or images.
-- Answers show in a narrow chat panel. Be direct and short: the first sentence is the answer. Never restate the question or re-explain the date ranges in prose; state each date range once (in the table or the Source line). Do not repeat a table's numbers in bullets beneath it. Quick questions: under about 100 words. Analysis and recommendations can run longer but stay structured (short headings or bullets).
+- Answers show in a narrow chat panel. Be direct and short: the first sentence is the answer. Never restate the question. Never open with, or write anywhere in prose, what the dates are or what "this week" / "last week" / "this month" means (wrong: "This week is Monday 2026-11-23 to today."); the dates appear only in the Source line. Do not repeat a table's numbers in bullets beneath it. Quick questions: under about 100 words. Analysis and recommendations can run longer but stay structured (short headings or bullets).
 - Tables: use one when comparing periods, channels or items. At most 4 columns. Short row labels ("This week", "Last week", "Meta") and short headers ("MRR", not "Current MRR (Active)"). Put dates in the Source line, not in cells. Dollars as whole dollars with no cents ($15,523); $1.2M style only from $1M up.
 - Recommendations are options for the team to weigh, not orders. Any budget recommendation must state the attribution caveats below.
 - End every answer that uses data with one line that starts with "Source:" naming the dashboard figure(s), the dates used, and "partial" where a period runs to today. Name figures the way the dashboards do (for example "BD Tracker Signed Brands", "Brand Dashboard Qualified Demos", "Ad tables, Month to Date"), never tool names.
@@ -12407,6 +12407,59 @@ async function handleChat(env, ctx, body, who) {
   })();
   if (ctx && ctx.waitUntil) ctx.waitUntil(job);
   return new Response(readable, { headers: { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no' } });
+}
+// ── Saved chats (2026-11-27, Alex): each person's chats, kept 90 days ──────
+// KV chat_conv_<email>_<id> = {id, title, page, updated, items, messages}; the
+// key's metadata (title, page, updated, n) lets the history list skip the bodies.
+// Keyed on the signed-in email, so nobody can list, open or delete another's.
+const CHAT_CONV_TTL = 90 * 86400;
+const CHAT_CONV_MAX = 2 * 1024 * 1024;
+const CHAT_CONV_LIST_MAX = 50;
+const chatConvId = v => (/^c[a-z0-9]{6,24}$/.test(String(v || '')) ? String(v) : null);
+const chatConvKey = (email, id) => 'chat_conv_' + email + '_' + id;
+async function handleChatSave(env, body, who) {
+  const id = chatConvId(body && body.id);
+  if (!id) return jr({ error: 'Bad chat id' }, 400);
+  const items = Array.isArray(body.items) ? body.items : null;
+  const messages = chatCheckHistory(body.messages);
+  if (!items || !messages || messages === 'too_long') return jr({ error: 'Bad chat' }, 400);
+  const title = String(body.title || 'Chat').replace(/\s+/g, ' ').trim().slice(0, 100) || 'Chat';
+  const page = String(body.page || '').slice(0, 80);
+  const updated = new Date().toISOString();
+  const blob = JSON.stringify({ id, title, page, updated, items, messages });
+  if (blob.length > CHAT_CONV_MAX) return jr({ error: 'This chat is too long to save. Start a new chat.', code: 'too_long' }, 413);
+  const n = items.filter(x => x && x.role === 'user').length;
+  try { await env.CONTENT_STORE.put(chatConvKey(who.email, id), blob, { expirationTtl: CHAT_CONV_TTL, metadata: { title, page, updated, n } }); }
+  catch (e) { return jr({ error: 'Could not save the chat' }, 500); }
+  return jr({ ok: true, id, updated });
+}
+async function handleChatList(env, who) {
+  const prefix = 'chat_conv_' + who.email + '_';
+  const out = []; let cursor;
+  try {
+    for (let page = 0; page < 5; page++) {
+      const r = await env.CONTENT_STORE.list({ prefix, cursor, limit: 1000 });
+      (r.keys || []).forEach(k => { const m = k.metadata || {}; out.push({ id: k.name.slice(prefix.length), title: m.title || 'Chat', page: m.page || '', updated: m.updated || '', n: m.n || 0 }); });
+      if (r.list_complete || !r.cursor) break;
+      cursor = r.cursor;
+    }
+  } catch (e) { return jr({ error: 'Could not list chats' }, 500); }
+  out.sort((a, b) => String(b.updated).localeCompare(String(a.updated)));
+  return jr({ chats: out.slice(0, CHAT_CONV_LIST_MAX) });
+}
+async function handleChatGet(env, body, who) {
+  const id = chatConvId(body && body.id);
+  if (!id) return jr({ error: 'Bad chat id' }, 400);
+  let c = null;
+  try { c = await env.CONTENT_STORE.get(chatConvKey(who.email, id), 'json'); } catch (_) { c = null; }
+  if (!c) return jr({ error: 'That chat is no longer saved.' }, 404);
+  return jr(c);
+}
+async function handleChatDelete(env, body, who) {
+  const id = chatConvId(body && body.id);
+  if (!id) return jr({ error: 'Bad chat id' }, 400);
+  try { await env.CONTENT_STORE.delete(chatConvKey(who.email, id)); } catch (_) { return jr({ error: 'Could not delete' }, 500); }
+  return jr({ ok: true });
 }
 // POST /api/chat/feedback {id, v: 'up' | 'down'} — the thumbs on an answer.
 async function handleChatFeedback(env, body, who) {
@@ -13745,6 +13798,42 @@ export default {
       if (!who) return jr({ error: 'Unauthorized' }, 401);
       try { return await handleChat(env, ctx, body, who); }
       catch (err) { console.error('chat endpoint error:', err); return jr({ error: 'Internal error', detail: err.message }, 500); }
+    }
+
+    // POST /api/chat/list → saved chats (list); the signed-in person's own only.
+    if (request.method === 'POST' && url.pathname === '/api/chat/list') {
+      let body;
+      try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
+      const who = await authed();
+      if (!who) return jr({ error: 'Unauthorized' }, 401);
+      return handleChatList(env, who);
+    }
+
+    // POST /api/chat/get → saved chats (get); the signed-in person's own only.
+    if (request.method === 'POST' && url.pathname === '/api/chat/get') {
+      let body;
+      try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
+      const who = await authed();
+      if (!who) return jr({ error: 'Unauthorized' }, 401);
+      return handleChatGet(env, body, who);
+    }
+
+    // POST /api/chat/save → saved chats (save); the signed-in person's own only.
+    if (request.method === 'POST' && url.pathname === '/api/chat/save') {
+      let body;
+      try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
+      const who = await authed();
+      if (!who) return jr({ error: 'Unauthorized' }, 401);
+      return handleChatSave(env, body, who);
+    }
+
+    // POST /api/chat/delete → saved chats (delete); the signed-in person's own only.
+    if (request.method === 'POST' && url.pathname === '/api/chat/delete') {
+      let body;
+      try { body = await request.json(); } catch { return jr({ error: 'Invalid JSON' }, 400); }
+      const who = await authed();
+      if (!who) return jr({ error: 'Unauthorized' }, 401);
+      return handleChatDelete(env, body, who);
     }
 
     // POST /api/chat/feedback → thumbs up / down on one answer.
