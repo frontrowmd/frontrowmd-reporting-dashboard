@@ -11908,7 +11908,7 @@ const CHAT_SYSTEM = `You answer questions about Frontrow's internal growth dashb
 ## Rules
 - Never invent, estimate or recall a number. Every figure you state must come from a tool result in this conversation. If no tool can answer, say so plainly and point to the dashboard page that has it.
 - Call tools before answering any question about figures. Call several in parallel when they are independent (for example two date ranges).
-- All dates are US Eastern time. Each question begins with a context line giving today's date and the page and date filter the person is looking at. When the question does not name a period, use that page's date filter. "This week" is Monday through today; "last week" is the previous Monday to Sunday. Say when a period is partial (it runs to today).
+- All dates are US Eastern time. Each question begins with a context line giving today's date and the page and date filter the person is looking at. When the question does not name a period, use that page's date filter. For your date math only (never write it out): this week = Monday through today, last week = the previous Monday to Sunday. Mark a period that runs to today as partial in the Source line.
 - Label anything that is not a measured figure as inference or a judgment call ("likely", "my read"). The "why" behind ad performance is always inference: the ad data has names, spend, clicks, impressions, conversions, CPQD and fatigue flags, but no ad copy, headlines or images.
 - Answers show in a narrow chat panel. Be direct and short: the first sentence is the answer. Never restate the question. Never open with, or write anywhere in prose, what the dates are or what "this week" / "last week" / "this month" means (wrong: "This week is Monday 2026-11-23 to today."); the dates appear only in the Source line. Do not repeat a table's numbers in bullets beneath it. Quick questions: under about 100 words. Analysis and recommendations can run longer but stay structured (short headings or bullets).
 - Tables: use one when comparing periods, channels or items. At most 4 columns. Short row labels ("This week", "Last week", "Meta") and short headers ("MRR", not "Current MRR (Active)"). Put dates in the Source line, not in cells. Dollars as whole dollars with no cents ($15,523); $1.2M style only from $1M up.
@@ -11919,7 +11919,8 @@ const CHAT_SYSTEM = `You answer questions about Frontrow's internal growth dashb
 
 ## Definitions (the dashboards' own)
 - Signed Brands: the BD Tracker's count of brands that signed in a date range, as they stand today = Active Brands (live Recurly subscription) + Pilot Brands (pilot fee paid). A brand that signed and has since churned drops out. "MRR" for a signed cohort is the Current MRR (Recurly) of its Active Brands, as on the Revenue Outcome card; ACV = MRR / Active Brands; ARR = MRR x 12.
-- Qualified Demos (Brand Dashboard "Qualified Regular Demos"): demos held in the range (deals whose brand status is paying, signed or blank, pre-launch brands excluded) plus every deal that entered Webinar Happened in the range (webinars have no brand-status or pre-launch filter). A demo counts on its rescheduled date if it has one, else its booked date.
+- Regular Demos (the Brand Dashboard's Key Metrics headline and monthly goal): demos booked in the range, by the booking contact's create date, including webinar registrants, from brands that are not pre-launch. When someone says "demos" without saying held or qualified, they mean Regular Demos. Pre-Launch Demos are the same count for pre-launch brands.
+- Qualified Demos (Brand Dashboard "Qualified Regular Demos"), only when asked for qualified or held demos: demos held in the range (deals whose brand status is paying, signed or blank, pre-launch brands excluded) plus every deal that entered Webinar Happened in the range (webinars have no brand-status or pre-launch filter). A demo counts on its rescheduled date if it has one, else its booked date.
 - BD Tracker Active Brands / Current MRR / ARR: today's totals from Recurly (or the app's own count when Recurly could not be read).
 - Ad tables: spend, impressions, clicks, platform conversions ("demos" here are the platform's own conversion counts), and UTM-attributed outcomes. At CHANNEL level, qualified = held demos matched by UTM (pre-launch not excluded, so it differs from the Brand Dashboard's Qualified Demos) and CPQD = spend / those. At campaign, ad set and creative level, qualified = UTM-matched demos whose outcome is recorded as Qualified (the page's Qual column), so rows do not add up to the channel figure, and spendPerQualified is spend / that row figure (not a dashboard number; say so if you use it). Most ad sets outside LinkedIn have no qualified figure. CPD = spend / platform conversions. Total ad spend excludes the Clinician channel (clinician recruiting), as the dashboards do.
 - Clinician figures come from the Clinician Funnel card for a range (cohort on each deal's create date).
@@ -11937,8 +11938,8 @@ const CHAT_TOOLS = [
       ranges: { type: 'array', minItems: 1, maxItems: 12, items: { type: 'object', additionalProperties: false, required: ['from', 'to'], properties: {
         from: { type: 'string', description: 'YYYY-MM-DD' }, to: { type: 'string', description: 'YYYY-MM-DD' }, label: { type: 'string' } } } },
       list: { type: 'boolean', description: 'Include brand names per group. Default false.' } } } },
-  { name: 'qualified_demos',
-    description: 'Brand Dashboard demo counts for a date range (Eastern, inclusive; at most 186 days): Qualified Demos (held, excluding pre-launch, plus Webinars Happened), held demos excluding pre-launch, webinars happened, all demos held, no-shows. Ranges over a month are counted month by month. A few seconds per month.',
+  { name: 'demo_counts',
+    description: 'Brand Dashboard demo counts for a date range (Eastern, inclusive; at most 186 days): Regular Demos (booked, not pre-launch; the default "demos"), Pre-Launch Demos, paid-UTM Regular Demos, Qualified Demos (held, excluding pre-launch, plus Webinars Happened), held demos excluding pre-launch, webinars happened, all demos held, no-shows. Ranges over a month are counted month by month. A few seconds per month.',
     input_schema: { type: 'object', additionalProperties: false, required: ['from', 'to'], properties: {
       from: { type: 'string', description: 'YYYY-MM-DD' }, to: { type: 'string', description: 'YYYY-MM-DD' } } } },
   { name: 'ad_performance',
@@ -12001,7 +12002,8 @@ function chatContextLine(ctx) {
   const page = String((ctx && ctx.pageLabel) || 'Dashboard').replace(/[\r\n\[\]]/g, ' ').slice(0, 80);
   const win = chatResolveWindow(ctx);
   return '[Context: today is ' + dow + ' ' + fmt(today) + ' (Eastern). Page: ' + page + '. Date filter: '
-    + (win ? win.label + ' (' + (win.from ? win.from + ' to ' + win.to : 'up to ' + win.to) + ')' : 'none') + '.]';
+    + (win ? win.label + ' (' + (win.from ? win.from + ' to ' + win.to : 'up to ' + win.to) + ')' : 'none') + '.'
+    + ' Answer directly: do not restate these dates or say what this week / last week means; dates go only in the Source line.]';
 }
 
 function chatTrim(o) {
@@ -12029,7 +12031,7 @@ async function chatToolSignedBrands(env, input) {
     asOf: book.asOf, recurlyRead: !!book.recurly, cached: !!book.cached, stale: book.stale || null, warn: book.warn || null };
 }
 
-async function chatToolQualifiedDemos(env, input) {
+async function chatToolDemoCounts(env, input) {
   const from = _chatDay(input && input.from), to = _chatDay(input && input.to);
   if (!from || !to || from > to) return { error: 'Give from <= to as YYYY-MM-DD.' };
   if (chatDays(from, to) > 186) return { error: 'Range too long: at most 186 days. Ask for a shorter range or split it.' };
@@ -12037,20 +12039,25 @@ async function chatToolQualifiedDemos(env, input) {
   if (!token) return { error: 'HubSpot is not configured.' };
   const chunks = chatMonthChunks(from, to);
   const one = async (c) => {
-    const [deals, wb] = await Promise.all([fetchPipelineDeals(token, c.from, c.to), fetchWebinarHeldCount(token, c.from, c.to).catch(() => null)]);
+    const [deals, wb, sch] = await Promise.all([fetchPipelineDeals(token, c.from, c.to), fetchWebinarHeldCount(token, c.from, c.to).catch(() => null),
+      fetchScheduledContacts(token, c.from, c.to).catch(() => null)]);
+    // Regular Demos: the Key Metrics count (processScheduledContacts' regularTotal).
+    const sc = sch ? processScheduledContacts(sch) : null;
     const pl = processPipelineDeals(filterActiveBrands(deals || []), toMsUTC(c.from), toMsUTC(c.to, true), toMsET(c.from), toMsET(c.to, true), new Set());
     const pd = { pipeline: pl }; applyWebinarHeld(pd, wb);
-    return { from: c.from, to: c.to, qualifiedDemos: pl.qualifiedRawCount || 0, heldExclPrelaunch: pl.qualifiedDemoOnlyCount || 0,
+    return { from: c.from, to: c.to, regularDemos: sc ? sc.regularTotal : null, preLaunchDemos: sc ? sc.preTotal : null, regularPaidDemos: sc ? sc.regularPaid : null,
+      regularCountFailed: !sc, qualifiedDemos: pl.qualifiedRawCount || 0, heldExclPrelaunch: pl.qualifiedDemoOnlyCount || 0,
       webinarsHappened: wb, allDemosHeld: (pl.demoGivenOrigCount || 0) + (pl.demoGivenReschedCount || 0), noShows: pl.noShowCount || 0,
       qualificationRatePct: _pct(pl.qualificationRate), webinarCountFailed: wb == null };
   };
   const parts = [];
   for (let i = 0; i < chunks.length; i += 3) parts.push(...await Promise.all(chunks.slice(i, i + 3).map(one)));
   const sum = k => parts.reduce((a, p) => a + (p[k] || 0), 0);
-  const total = { from, to, qualifiedDemos: sum('qualifiedDemos'), heldExclPrelaunch: sum('heldExclPrelaunch'), webinarsHappened: sum('webinarsHappened'),
+  const total = { from, to, regularDemos: sum('regularDemos'), preLaunchDemos: sum('preLaunchDemos'), regularPaidDemos: sum('regularPaidDemos'), qualifiedDemos: sum('qualifiedDemos'), heldExclPrelaunch: sum('heldExclPrelaunch'), webinarsHappened: sum('webinarsHappened'),
     allDemosHeld: sum('allDemosHeld'), noShows: sum('noShows') };
   if (parts.length === 1) total.qualificationRatePct = parts[0].qualificationRatePct;
-  const warn = parts.some(p => p.webinarCountFailed) ? 'The Webinars Happened count failed for at least one month, so Qualified Demos may be short.' : null;
+  const warn = [parts.some(p => p.regularCountFailed) ? 'The booked-demo count failed for at least one month, so Regular Demos may be short.' : '',
+    parts.some(p => p.webinarCountFailed) ? 'The Webinars Happened count failed for at least one month, so Qualified Demos may be short.' : ''].filter(Boolean).join(' ') || null;
   return { total, byMonth: parts.length > 1 ? parts : undefined, warn };
 }
 
@@ -12150,15 +12157,15 @@ async function chatToolPilotSummary(env) {
   return out;
 }
 
-const CHAT_TOOL_FNS = { signed_brands: chatToolSignedBrands, qualified_demos: chatToolQualifiedDemos, ad_performance: chatToolAdPerformance,
+const CHAT_TOOL_FNS = { signed_brands: chatToolSignedBrands, demo_counts: chatToolDemoCounts, ad_performance: chatToolAdPerformance,
   monthly_ad_spend: chatToolMonthlyAdSpend, bd_tracker_summary: chatToolBdSummary, clinician_funnel: chatToolClinicianFunnel, pilot_summary: chatToolPilotSummary };
-const CHAT_TOOL_STATUS = { signed_brands: 'Counting signed brands', qualified_demos: 'Counting demos', ad_performance: 'Reading the ad tables',
+const CHAT_TOOL_STATUS = { signed_brands: 'Counting signed brands', demo_counts: 'Counting demos', ad_performance: 'Reading the ad tables',
   monthly_ad_spend: 'Reading monthly ad spend', bd_tracker_summary: 'Reading the BD Tracker', clinician_funnel: 'Building the clinician funnel', pilot_summary: 'Reading the Pilot Dashboard' };
 function chatToolStatus(name, input) {
   const base = CHAT_TOOL_STATUS[name] || 'Fetching data';
   if (!input) return base;
   if (name === 'signed_brands' && Array.isArray(input.ranges)) return base + ' for ' + input.ranges.length + (input.ranges.length === 1 ? ' date range' : ' date ranges');
-  if ((name === 'qualified_demos' || name === 'clinician_funnel') && input.from) return base + ', ' + input.from + ' to ' + input.to;
+  if ((name === 'demo_counts' || name === 'clinician_funnel') && input.from) return base + ', ' + input.from + ' to ' + input.to;
   if (name === 'ad_performance') return base + ' (' + (CHAT_WIN_LABEL[input.window] || input.window) + ', ' + (input.level || '') + (input.channel && input.channel !== 'all' ? ', ' + input.channel : '') + ')';
   return base;
 }

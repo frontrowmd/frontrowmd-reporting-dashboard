@@ -41,22 +41,22 @@
     return o;
   }
   // Starter questions per page / tab, each answerable with the chat's tools.
-  var S_BRAND = ['How many brands signed this week vs last week?', 'Qualified Demos this month vs last month', 'Which ad creatives are performing best this month, and why?', 'Analyze our ad budget and recommend what to do next month'];
+  var S_BRAND = ['How many brands signed this week vs last week?', 'Regular Demos this month vs last month', 'Which ad creatives are performing best this month, and why?', 'Analyze our ad budget and recommend what to do next month'];
   var S_CLN = ['How many clinician sign ups this month vs last month?', 'Break down this month\u2019s clinician funnel by MD/DO vs non-MD/DO', 'What did we spend on clinician ads this month?', 'Where is the clinician funnel losing the most people, and why?'];
   var S_ADS = ['Which creatives have the best cost per demo this month?', 'Which ads are showing fatigue right now?', 'Compare spend and CPQD by channel, month to date', 'Analyze our ad budget and recommend what to do next month'];
   var S_BD = ['Which brands signed this week?', 'What\u2019s our current MRR and how many active brands?', 'Signed brands by month this year', 'How many pilots signed this month?'];
   var SUGGEST = {
     'dash:exec': S_BRAND,
     'dash:exec:clinician': S_CLN,
-    'dash:dashboard': ['Qualified Demos this month vs last month', 'Which channel has the best CPQD this month?', 'How many brands signed this month, and what\u2019s their MRR?', 'Analyze our ad budget and recommend what to do next month'],
+    'dash:dashboard': ['Regular Demos this month vs last month', 'Which channel has the best CPQD this month?', 'How many brands signed this month, and what\u2019s their MRR?', 'Analyze our ad budget and recommend what to do next month'],
     'dash:pilot': ['How many pilots are live right now?', 'Which pilots signed this month?', 'What MRR have won pilots brought in?', 'How many pilots are still collecting data?'],
     'dash:skincare': ['Which brands signed this month?', 'How many active brands do we have, and what\u2019s our MRR?', 'Signed brands by month this year'],
-    'dash:irfan': ['Qualified Demos this week vs last week', 'Which Meta creatives have the lowest cost per demo this month?', 'How has ad spend changed month to month this year?'],
-    'dash:signup': ['Signed brands vs Qualified Demos by month this year', 'How many brands signed this month vs last month?', 'Qualified Demos by month this year'],
+    'dash:irfan': ['Regular Demos this week vs last week', 'Which Meta creatives have the lowest cost per demo this month?', 'How has ad spend changed month to month this year?'],
+    'dash:signup': ['Signed brands vs Regular Demos by month this year', 'How many brands signed this month vs last month?', 'Regular Demos by month this year'],
     'dash:calculator': ['What\u2019s our current ARR and ACV?', 'How many active brands do we have, and what\u2019s our MRR?', 'What MRR did this month\u2019s signed brands add?'],
     'dash:strategy': ['How did last month compare with the month before?', 'Ad spend by month this year', 'Analyze last month\u2019s performance and what to change next month'],
-    'dash:demoQuality': ['Qualified Demos and no-shows this month vs last month', 'What share of demos held this month were qualified?', 'Which channel brought the most qualified demos this month?'],
-    'dash:webinarPerf': ['How many webinars happened this month vs last month?', 'Qualified Demos with and without webinars this month', 'How many webinars happened each month this year?'],
+    'dash:demoQuality': ['Regular Demos and no-shows this month vs last month', 'What share of demos held this month were qualified?', 'Which channel brought the most qualified demos this month?'],
+    'dash:webinarPerf': ['How many webinars happened this month vs last month?', 'Regular Demos and webinars happened this month', 'How many webinars happened each month this year?'],
     'dash:clinician': S_CLN,
     'dash:analyzer': S_ADS,
     'dash:csession': S_ADS,
@@ -66,8 +66,8 @@
     'bd:churn': ['Which brands that signed this year have since churned?', 'How many brands that signed last month have churned?', 'What\u2019s our current MRR and how many active brands?'],
     'bd:recon': ['How many active brands are there today?', 'Which brands signed this week?', 'What\u2019s our current MRR and ARR?'],
     'bd:waterfall': ['What\u2019s our current MRR and ARR?', 'How many brands are billing vs on trial?', 'Which pilots signed this month?'],
-    'sales:preDemo': ['How many Qualified Demos this week vs last week?', 'How many no-shows this month?', 'Qualified Demos by month this year'],
-    'sales:postDemo': ['Which brands signed this week?', 'How many brands signed this week vs last week?', 'Qualified Demos this month vs last month']
+    'sales:preDemo': ['How many Regular Demos this week vs last week?', 'How many no-shows this month?', 'Regular Demos by month this year'],
+    'sales:postDemo': ['Which brands signed this week?', 'How many brands signed this week vs last week?', 'Regular Demos this month vs last month']
   };
   function suggestFor(key) {
     if (SUGGEST[key]) return SUGGEST[key];
@@ -412,6 +412,22 @@
     var fu = m[2].split('|').map(function (x) { return x.replace(/^[\s\-*\u2022"]+|[\s"]+$/g, ''); }).filter(function (x) { return x && x.length <= 90; }).slice(0, 3);
     return { body: (text || '').slice(0, m.index), fu: fu };
   }
+  // Backstop for the prompt rule: an opening paragraph that only spells out the
+  // periods ("This week: Monday 2026-11-23 to 2026-11-27; last week: ...") is
+  // dropped. Only when it holds a date, mentions week/month/today, and has no
+  // other number in it, so a real first sentence is never removed.
+  var RE_DATE = /\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}-\d{1,2}\b/g;
+  function stripDateLead(body) {
+    var m = /^\s*([^\n]+(?:\n(?!\s*\n)[^\n]+)*)\s*(?:\n\s*\n|$)/.exec(body || '');
+    if (!m) return body;
+    var p = m[1];
+    if (p.length > 260 || !RE_DATE.test(p)) { RE_DATE.lastIndex = 0; return body; }
+    RE_DATE.lastIndex = 0;
+    var rest = p.replace(RE_DATE, '');
+    if (/\d/.test(rest) || !/\b(week|month|today)\b/i.test(rest)) return body;
+    var after = body.slice(m[0].length);
+    return after.trim() ? after : body;
+  }
   function itemHTML(it, idx) {
     if (it.role === 'user') return '<div class="frc-u">' + esc(it.text) + '</div>';
     var h = '<div class="frc-a" data-i="' + idx + '">';
@@ -425,6 +441,7 @@
       h += '<div class="frc-st"><div><span class="frc-sp"></span>' + (it.tier === 'deep' ? 'Deep analysis — this takes about a minute' : 'Working on it…') + '</div></div>';
     } else if (it.tier === 'deep' && working && !it.text) h += '<div class="frc-note">Deep analysis — this takes about a minute.</div>';
     var sp = splitFollowUps(it.text);
+    sp.body = stripDateLead(sp.body);
     if (sp.body) h += md(sp.body);
     if (it.stopped) h += '<div class="frc-note">Stopped.</div>';
     if (it.error) h += '<div class="frc-err">' + esc(it.error) + (it.offerNew ? '<button data-act="new">New chat</button>' : '') + '</div>';
@@ -492,11 +509,11 @@
     if (!a) return;
     if (act === 'copy') {
       var done = function () { a.copied = true; renderItem(a); setTimeout(function () { a.copied = false; renderItem(a); }, 1500); };
-      try { navigator.clipboard.writeText(splitFollowUps(a.text).body.trim()).then(done, function () {}); } catch (_) { /* no clipboard */ }
+      try { navigator.clipboard.writeText(stripDateLead(splitFollowUps(a.text).body).trim()).then(done, function () {}); } catch (_) { /* no clipboard */ }
     } else if (act === 'up' || act === 'down') feedback(a, act);
   }
 
-  window.FRChat = { _md: md, _esc: esc, _splitFollowUps: splitFollowUps, _pageCtx: pageCtx, _suggestFor: suggestFor, _applyEvent: applyEvent, open: function () { if (els.panel) toggle(true); }, ask: function (q) { if (els.panel) { toggle(true); ask(q); } } };
+  window.FRChat = { _md: md, _esc: esc, _splitFollowUps: splitFollowUps, _stripDateLead: stripDateLead, _pageCtx: pageCtx, _suggestFor: suggestFor, _applyEvent: applyEvent, open: function () { if (els.panel) toggle(true); }, ask: function (q) { if (els.panel) { toggle(true); ask(q); } } };
   if (BLOCKED) return;
   var boot = function () { load(); build(); render(); };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();

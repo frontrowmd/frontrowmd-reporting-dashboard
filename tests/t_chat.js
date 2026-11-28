@@ -8,7 +8,7 @@ const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify(w);console.log((o
 const src=fs.readFileSync(process.env.WORKER_SRC||'worker.js','utf8');
 const W={console:{log(){},warn(){},error(){}},TextEncoder,TextDecoder,TransformStream,ReadableStream,Response,setTimeout};
 vm.createContext(W);
-vm.runInContext(src.slice(0,src.indexOf('\nexport default'))+'\nObject.assign(globalThis,{chatTier,chatResolveWindow,chatContextLine,chatMonthChunks,chatCheckHistory,chatApplyEvent,chatRun,chatToolAdPerformance,chatToolSignedBrands,chatToolQualifiedDemos,chatRateCheck,chatRateRefund,handleChatSave,handleChatList,handleChatGet,handleChatDelete,signBookList,signBookCount,chatCleanTurn,handleChat,handleChatFeedback,azCacheKey,CHAT_TOOLS,CHAT_SYSTEM,CHAT_MODELS,CHAT_DAILY_LIMIT,fmt,todayET});',W);
+vm.runInContext(src.slice(0,src.indexOf('\nexport default'))+'\nObject.assign(globalThis,{chatTier,chatResolveWindow,chatContextLine,chatMonthChunks,chatCheckHistory,chatApplyEvent,chatRun,chatToolAdPerformance,chatToolSignedBrands,chatToolDemoCounts,chatRateCheck,chatRateRefund,handleChatSave,handleChatList,handleChatGet,handleChatDelete,signBookList,signBookCount,chatCleanTurn,handleChat,handleChatFeedback,azCacheKey,CHAT_TOOLS,CHAT_SYSTEM,CHAT_MODELS,CHAT_DAILY_LIMIT,fmt,todayET});',W);
 W.sleep=async()=>{};
 vm.runInContext(fn(src,'jr')+';globalThis.jr=jr;',W);
 
@@ -37,12 +37,14 @@ ck('  and cannot be broken out of by the page label',W.chatContextLine({pageLabe
 ck('month chunks split on calendar months',W.chatMonthChunks('2026-09-15','2026-11-03'),[{from:'2026-09-15',to:'2026-09-30'},{from:'2026-10-01',to:'2026-10-31'},{from:'2026-11-01',to:'2026-11-03'}]);
 
 // ── 3. Tools are read-only and named for the dashboards ──────────────────
-ck('seven tools',W.CHAT_TOOLS.map(t=>t.name),['signed_brands','qualified_demos','ad_performance','monthly_ad_spend','bd_tracker_summary','clinician_funnel','pilot_summary']);
+ck('seven tools',W.CHAT_TOOLS.map(t=>t.name),['signed_brands','demo_counts','ad_performance','monthly_ad_spend','bd_tracker_summary','clinician_funnel','pilot_summary']);
 ck('every tool has a closed schema',W.CHAT_TOOLS.every(t=>t.input_schema&&t.input_schema.additionalProperties===false),true);
 ck('the system prompt forbids invented numbers',/Never invent, estimate or recall a number/.test(W.CHAT_SYSTEM),true);
 ck('  asks for a Source line',/starts with "Source:"/.test(W.CHAT_SYSTEM),true);
 ck('  keeps tables to 4 columns with dates in the Source line',/At most 4 columns/.test(W.CHAT_SYSTEM)&&/Put dates in the Source line/.test(W.CHAT_SYSTEM),true);
 ck('  never restates the question',/Never restate the question/.test(W.CHAT_SYSTEM),true);
+ck('  the context line itself says not to restate the dates',W.chatContextLine({window:'mtd'}).includes('do not restate these dates'),true);
+ck('  and the week definition is marked as date math only',/For your date math only \(never write it out\)/.test(W.CHAT_SYSTEM),true);
 ck('  and never spells out the dates in prose',/Never open with, or write anywhere in prose, what the dates are/.test(W.CHAT_SYSTEM)&&/the dates appear only in the Source line/.test(W.CHAT_SYSTEM),true);
 ck('  ends with follow-ups',/"Follow-ups:"/.test(W.CHAT_SYSTEM),true);
 ck('  and states the attribution caveats',/UTM-only/.test(W.CHAT_SYSTEM)&&/19%/.test(W.CHAT_SYSTEM),true);
@@ -107,7 +109,19 @@ ck('  list sizes equal the counts',[R.brands.active.length,R.brands.pilots.lengt
   ck('fuzz: lists match the counts on 300 random books',bad,0); }
 ck('without list, no names are returned',!!(await W.chatToolSignedBrands(env,{ranges:[{from:'2026-11-01',to:'2026-11-30'}]})).ranges[0].brands,false);
 ck('a reversed range is refused',!!(await W.chatToolSignedBrands(env,{ranges:[{from:'2026-11-30',to:'2026-11-01'}]})).error,true);
-ck('qualified_demos refuses ranges over 186 days',!!(await W.chatToolQualifiedDemos(env,{from:'2026-01-01',to:'2026-11-01'})).error,true);
+ck('demo_counts refuses ranges over 186 days',!!(await W.chatToolDemoCounts(env,{from:'2026-01-01',to:'2026-11-01'})).error,true);
+// Regular Demos = the Key Metrics count (processScheduledContacts' regularTotal), per month, summed.
+{ const keep={fp:W.fetchPipelineDeals,fw:W.fetchWebinarHeldCount,fs:W.fetchScheduledContacts,ps:W.processScheduledContacts};
+  W.fetchPipelineDeals=async()=>[];W.fetchWebinarHeldCount=async()=>2;
+  W.fetchScheduledContacts=async(tk,f,t)=>[{f}];W.processScheduledContacts=c=>({regularTotal:c[0].f.slice(5,7)==='10'?40:25,preTotal:5,regularPaid:10});
+  const dc=await W.chatToolDemoCounts({HUBSPOT_TOKEN:'t'},{from:'2026-10-15',to:'2026-11-10'});
+  ck('Regular Demos are counted per month and summed',[dc.total.regularDemos,dc.total.preLaunchDemos,dc.total.regularPaidDemos,dc.byMonth.map(m=>m.regularDemos)],[65,10,20,[40,25]]);
+  ck('  alongside Qualified Demos (webinars folded in)',dc.total.qualifiedDemos,4);
+  W.fetchScheduledContacts=async()=>{throw new Error('429');};
+  const dc2=await W.chatToolDemoCounts({HUBSPOT_TOKEN:'t'},{from:'2026-11-01',to:'2026-11-10'});
+  ck('  a failed booked-demo count is flagged, not shown as zero',[dc2.total.regularDemos,/Regular Demos may be short/.test(dc2.warn)],[0,true]);
+  Object.assign(W,{fetchPipelineDeals:keep.fp,fetchWebinarHeldCount:keep.fw,fetchScheduledContacts:keep.fs,processScheduledContacts:keep.ps}); }
+ck('the prompt makes Regular Demos the default "demos"',/When someone says "demos" without saying held or qualified, they mean Regular Demos/.test(W.CHAT_SYSTEM),true);
 
 // ── 4. Stream folding keeps every block field ────────────────────────────
 const s0={blocks:[],usage:{}};
@@ -268,6 +282,12 @@ ck('lists',md('- a\n- b'),'<ul><li>a</li><li>b</li></ul>');
 const fu=C.FRChat._splitFollowUps('9 signed.\n\nSource: BD Tracker\nFollow-ups: Which brands? | Same for last month | "By owner"');
 ck('follow-ups come off the end of the answer as chips',[fu.body.trim(),fu.fu],['9 signed.\n\nSource: BD Tracker',['Which brands?','Same for last month','By owner']]);
 ck('  an answer without them is left alone',C.FRChat._splitFollowUps('Just text').fu,[]);
+const sdl=C.FRChat._stripDateLead;
+ck('an opening line that only restates the dates is dropped',sdl('This week: Monday 2026-11-23 to 2026-11-27; last week: 2026-11-16 to 2026-11-22.\n\nMore brands signed last week (31).'),'More brands signed last week (31).');
+ck('  a real first sentence with numbers stays',sdl('This week 18 brands signed (2026-11-23 to 2026-11-27).\n\nMore.'),'This week 18 brands signed (2026-11-23 to 2026-11-27).\n\nMore.');
+ck('  a first sentence with no dates stays',sdl('This week is down from last week.\n\nMore.'),'This week is down from last week.\n\nMore.');
+ck('  a one-paragraph answer is never emptied',sdl('This week: 2026-11-23 to 2026-11-27.'),'This week: 2026-11-23 to 2026-11-27.');
+ck('starter questions say Regular Demos, not Qualified',/Qualified Demos/.test(wsrc.slice(wsrc.indexOf('var S_BRAND'),wsrc.indexOf('function suggestFor'))),false);
 ck('the panel can expand to a tall drawer',/\.frc-panel\.wide\{/.test(wsrc)&&/id="frc-wide"/.test(wsrc),true);
 ck('  hiding the bubble so it never covers Send',/\.frc-panel\.open\.wide~\.frc-btn\{display:none\}/.test(wsrc),true);
 ck('a first-visit label sits beside the bubble until it is opened',/frchat_seen/.test(wsrc)&&/markSeen\(\); renderChrome/.test(wsrc),true);
