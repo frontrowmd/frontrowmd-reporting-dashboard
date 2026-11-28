@@ -271,8 +271,19 @@
 
   // ── DOM ──────────────────────────────────────────────────────────────────
   var CSS = ''
-    + '.frc-btn{position:fixed;right:20px;bottom:20px;width:60px;height:60px;border-radius:50%;background:var(--navy,#172C45);border:2px solid var(--teal,#72A4BF);color:#BFDCEB;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:190;box-shadow:0 4px 14px rgba(2,15,24,.28);padding:0;transition:transform .15s}'
-    + '.frc-btn:hover{transform:scale(1.06)}.frc-btn:focus-visible{outline:3px solid #BFDCEB;outline-offset:2px}.frc-btn svg{width:28px;height:28px}'
+    // The bubble: a slowly turning teal gradient ring around a lit navy core. It
+    // pulses until the chat has been opened once (.fresh); motion stops for
+    // people who ask for reduced motion.
+    + '.frc-btn{position:fixed;right:20px;bottom:20px;width:60px;height:60px;border-radius:50%;background:transparent;border:0;color:#E3F3FA;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:190;box-shadow:0 6px 18px rgba(2,15,24,.32);padding:0;transition:transform .2s ease,box-shadow .2s ease}'
+    + '.frc-btn::before{content:"";position:absolute;inset:0;border-radius:50%;z-index:0;background:conic-gradient(from 0deg,#5EC8E5,#E4F7FD,#2EC4B6,#72A4BF,#1D4053,#5EC8E5);animation:frcring 7s linear infinite}'
+    + '.frc-btn::after{content:"";position:absolute;inset:4px;border-radius:50%;z-index:1;background:radial-gradient(circle at 32% 26%,#3A6E8C 0%,#1D4053 38%,#172C45 66%,#0B1A2B 100%)}'
+    + '.frc-btn svg{position:relative;z-index:2;width:28px;height:28px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35));transition:transform .2s ease}'
+    + '.frc-btn:hover{transform:translateY(-2px) scale(1.05);box-shadow:0 10px 24px rgba(2,15,24,.38),0 0 18px rgba(114,164,191,.45)}.frc-btn:hover::before{animation-duration:2.2s}.frc-btn:hover svg{transform:rotate(-8deg) scale(1.06)}'
+    + '.frc-btn:active{transform:scale(.97)}.frc-btn:focus-visible{outline:3px solid #BFDCEB;outline-offset:3px}'
+    + '.frc-btn.fresh{animation:frcpulse 2.6s ease-out infinite}'
+    + '@keyframes frcring{to{transform:rotate(360deg)}}'
+    + '@keyframes frcpulse{0%{box-shadow:0 6px 18px rgba(2,15,24,.32),0 0 0 0 rgba(114,164,191,.55)}70%{box-shadow:0 6px 18px rgba(2,15,24,.32),0 0 0 14px rgba(114,164,191,0)}100%{box-shadow:0 6px 18px rgba(2,15,24,.32),0 0 0 0 rgba(114,164,191,0)}}'
+    + '@media (prefers-reduced-motion:reduce){.frc-btn,.frc-btn::before,.frc-btn.fresh,.frc-tip{animation:none!important}.frc-btn,.frc-btn svg{transition:none}}'
     + '.frc-panel{position:fixed;right:20px;bottom:92px;width:460px;height:min(660px,calc(100vh - 110px));background:#fff;border:1px solid var(--border,#D4E6EF);border-radius:14px;box-shadow:0 12px 40px rgba(2,15,24,.22);z-index:190;display:none;flex-direction:column;overflow:hidden;font-family:var(--font-b,Inter,system-ui,sans-serif);color:#172C45;font-size:12.5px;line-height:1.5}'
     + '.frc-panel.wide{top:12px;bottom:12px;right:12px;width:min(680px,calc(100vw - 24px));height:auto}'
     + '.frc-panel.open.wide~.frc-btn{display:none}'
@@ -370,9 +381,10 @@
   // First visit: a label beside the bubble until the chat has been opened once.
   var SEEN = 'frchat_seen';
   function seen() { try { return !!window.localStorage.getItem(SEEN); } catch (e) { return true; } }
-  function markSeen() { try { window.localStorage.setItem(SEEN, '1'); } catch (e) { /* private window */ } if (els.tip) { els.tip.remove(); els.tip = null; } }
+  function markSeen() { try { window.localStorage.setItem(SEEN, '1'); } catch (e) { /* private window */ } if (els.tip) { els.tip.remove(); els.tip = null; } if (els.btn) els.btn.classList.remove('fresh'); }
   function tip() {
     if (seen()) return;
+    els.btn.classList.add('fresh');
     var t = document.createElement('div'); t.className = 'frc-tip'; t.id = 'frc-tip';
     t.innerHTML = 'Ask the data <kbd>/</kbd><button aria-label="Dismiss" title="Dismiss">\u00d7</button>';
     t.addEventListener('click', function (e) { if (e.target.tagName === 'BUTTON') { markSeen(); return; } toggle(true); });
