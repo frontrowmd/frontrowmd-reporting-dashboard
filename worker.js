@@ -11921,6 +11921,7 @@ const CHAT_SYSTEM = `You answer questions about Frontrow's internal growth dashb
 - Signed Brands: the BD Tracker's count of brands that signed in a date range, as they stand today = Active Brands (live Recurly subscription) + Pilot Brands (pilot fee paid). A brand that signed and has since churned drops out. "MRR" for a signed cohort is the Current MRR (Recurly) of its Active Brands, as on the Revenue Outcome card; ACV = MRR / Active Brands; ARR = MRR x 12.
 - Regular Demos (the Brand Dashboard's Key Metrics headline and monthly goal): demos booked in the range, by the booking contact's create date, including webinar registrants, from brands that are not pre-launch. When someone says "demos" without saying held or qualified, they mean Regular Demos. Pre-Launch Demos are the same count for pre-launch brands.
 - Qualified Demos (Brand Dashboard "Qualified Regular Demos"), only when asked for qualified or held demos: demos held in the range (deals whose brand status is paying, signed or blank, pre-launch brands excluded) plus every deal that entered Webinar Happened in the range (webinars have no brand-status or pre-launch filter). A demo counts on its rescheduled date if it has one, else its booked date.
+- Qualification rate (Brand Dashboard): Qualified Demos / (Qualified Demos + disqualified demos) x 100. Disqualified demos are held demos whose outcome was recorded as disqualified (too early, too small, not a fit); demos not yet evaluated and no-shows are not in it. It is not Qualified Demos / Regular Demos.
 - BD Tracker Active Brands / Current MRR / ARR: today's totals from Recurly (or the app's own count when Recurly could not be read).
 - Ad tables: spend, impressions, clicks, platform conversions ("demos" here are the platform's own conversion counts), and UTM-attributed outcomes. At CHANNEL level, qualified = held demos matched by UTM (pre-launch not excluded, so it differs from the Brand Dashboard's Qualified Demos) and CPQD = spend / those. At campaign, ad set and creative level, qualified = UTM-matched demos whose outcome is recorded as Qualified (the page's Qual column), so rows do not add up to the channel figure, and spendPerQualified is spend / that row figure (not a dashboard number; say so if you use it). Most ad sets outside LinkedIn have no qualified figure. CPD = spend / platform conversions. Total ad spend excludes the Clinician channel (clinician recruiting), as the dashboards do.
 - Clinician figures come from the Clinician Funnel card for a range (cohort on each deal's create date).
@@ -11939,7 +11940,7 @@ const CHAT_TOOLS = [
         from: { type: 'string', description: 'YYYY-MM-DD' }, to: { type: 'string', description: 'YYYY-MM-DD' }, label: { type: 'string' } } } },
       list: { type: 'boolean', description: 'Include brand names per group. Default false.' } } } },
   { name: 'demo_counts',
-    description: 'Brand Dashboard demo counts for a date range (Eastern, inclusive; at most 186 days): Regular Demos (booked, not pre-launch; the default "demos"), Pre-Launch Demos, paid-UTM Regular Demos, Qualified Demos (held, excluding pre-launch, plus Webinars Happened), held demos excluding pre-launch, webinars happened, all demos held, no-shows. Ranges over a month are counted month by month. A few seconds per month.',
+    description: 'Brand Dashboard demo counts for a date range (Eastern, inclusive; at most 186 days): Regular Demos (booked, not pre-launch; the default "demos"), Pre-Launch Demos, paid-UTM Regular Demos, Qualified Demos (held, excluding pre-launch, plus Webinars Happened), disqualified demos, qualification rate, held demos excluding pre-launch, webinars happened, all demos held, no-shows. Ranges over a month are counted month by month. A few seconds per month.',
     input_schema: { type: 'object', additionalProperties: false, required: ['from', 'to'], properties: {
       from: { type: 'string', description: 'YYYY-MM-DD' }, to: { type: 'string', description: 'YYYY-MM-DD' } } } },
   { name: 'ad_performance',
@@ -12045,7 +12046,7 @@ async function chatToolDemoCounts(env, input) {
     const pl = processPipelineDeals(filterActiveBrands(deals || []), toMsUTC(c.from), toMsUTC(c.to, true), toMsET(c.from), toMsET(c.to, true), new Set());
     const pd = { pipeline: pl }; applyWebinarHeld(pd, wb);
     return { from: c.from, to: c.to, regularDemos: sc ? sc.regularTotal : null, preLaunchDemos: sc ? sc.preTotal : null, regularPaidDemos: sc ? sc.regularPaid : null,
-      regularCountFailed: !sc, qualifiedDemos: pl.qualifiedRawCount || 0, heldExclPrelaunch: pl.qualifiedDemoOnlyCount || 0,
+      regularCountFailed: !sc, qualifiedDemos: pl.qualifiedRawCount || 0, disqualifiedDemos: pl.disqualifiedRawCount || 0, heldExclPrelaunch: pl.qualifiedDemoOnlyCount || 0,
       webinarsHappened: wb, allDemosHeld: (pl.demoGivenOrigCount || 0) + (pl.demoGivenReschedCount || 0), noShows: pl.noShowCount || 0,
       // qualificationRate is already a percentage (applyWebinarHeld: ... * 100).
       qualificationRatePct: (typeof pl.qualificationRate === 'number' && isFinite(pl.qualificationRate)) ? Math.round(pl.qualificationRate * 10) / 10 : null, webinarCountFailed: wb == null };
@@ -12053,9 +12054,10 @@ async function chatToolDemoCounts(env, input) {
   const parts = [];
   for (let i = 0; i < chunks.length; i += 3) parts.push(...await Promise.all(chunks.slice(i, i + 3).map(one)));
   const sum = k => parts.reduce((a, p) => a + (p[k] || 0), 0);
-  const total = { from, to, regularDemos: sum('regularDemos'), preLaunchDemos: sum('preLaunchDemos'), regularPaidDemos: sum('regularPaidDemos'), qualifiedDemos: sum('qualifiedDemos'), heldExclPrelaunch: sum('heldExclPrelaunch'), webinarsHappened: sum('webinarsHappened'),
+  const total = { from, to, regularDemos: sum('regularDemos'), preLaunchDemos: sum('preLaunchDemos'), regularPaidDemos: sum('regularPaidDemos'), qualifiedDemos: sum('qualifiedDemos'), disqualifiedDemos: sum('disqualifiedDemos'), heldExclPrelaunch: sum('heldExclPrelaunch'), webinarsHappened: sum('webinarsHappened'),
     allDemosHeld: sum('allDemosHeld'), noShows: sum('noShows') };
-  if (parts.length === 1) total.qualificationRatePct = parts[0].qualificationRatePct;
+  // The rate over the whole range, on the dashboard's definition (one month: the month's own).
+  { const den = total.qualifiedDemos + total.disqualifiedDemos; total.qualificationRatePct = parts.length === 1 ? parts[0].qualificationRatePct : (den > 0 ? Math.round(total.qualifiedDemos / den * 1000) / 10 : null); }
   const warn = [parts.some(p => p.regularCountFailed) ? 'The booked-demo count failed for at least one month, so Regular Demos may be short.' : '',
     parts.some(p => p.webinarCountFailed) ? 'The Webinars Happened count failed for at least one month, so Qualified Demos may be short.' : ''].filter(Boolean).join(' ') || null;
   return { total, byMonth: parts.length > 1 ? parts : undefined, warn };
