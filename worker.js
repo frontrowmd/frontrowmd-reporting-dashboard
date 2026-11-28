@@ -12012,7 +12012,6 @@ function chatTrim(o) {
   return s.slice(0, CHAT_TOOL_RESULT_MAX) + ' …[truncated: result too large; ask for fewer rows or a narrower range]';
 }
 const _r2 = v => (typeof v === 'number' && isFinite(v)) ? Math.round(v * 100) / 100 : v;
-const _pct = v => (typeof v === 'number' && isFinite(v)) ? Math.round(v * 1000) / 10 : null;
 
 // ── tools ──────────────────────────────────────────────────────────────────
 async function chatToolSignedBrands(env, input) {
@@ -12048,7 +12047,8 @@ async function chatToolDemoCounts(env, input) {
     return { from: c.from, to: c.to, regularDemos: sc ? sc.regularTotal : null, preLaunchDemos: sc ? sc.preTotal : null, regularPaidDemos: sc ? sc.regularPaid : null,
       regularCountFailed: !sc, qualifiedDemos: pl.qualifiedRawCount || 0, heldExclPrelaunch: pl.qualifiedDemoOnlyCount || 0,
       webinarsHappened: wb, allDemosHeld: (pl.demoGivenOrigCount || 0) + (pl.demoGivenReschedCount || 0), noShows: pl.noShowCount || 0,
-      qualificationRatePct: _pct(pl.qualificationRate), webinarCountFailed: wb == null };
+      // qualificationRate is already a percentage (applyWebinarHeld: ... * 100).
+      qualificationRatePct: (typeof pl.qualificationRate === 'number' && isFinite(pl.qualificationRate)) ? Math.round(pl.qualificationRate * 10) / 10 : null, webinarCountFailed: wb == null };
   };
   const parts = [];
   for (let i = 0; i < chunks.length; i += 3) parts.push(...await Promise.all(chunks.slice(i, i + 3).map(one)));

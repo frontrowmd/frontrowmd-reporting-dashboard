@@ -117,6 +117,7 @@ ck('demo_counts refuses ranges over 186 days',!!(await W.chatToolDemoCounts(env,
   const dc=await W.chatToolDemoCounts({HUBSPOT_TOKEN:'t'},{from:'2026-10-15',to:'2026-11-10'});
   ck('Regular Demos are counted per month and summed',[dc.total.regularDemos,dc.total.preLaunchDemos,dc.total.regularPaidDemos,dc.byMonth.map(m=>m.regularDemos)],[65,10,20,[40,25]]);
   ck('  alongside Qualified Demos (webinars folded in)',dc.total.qualifiedDemos,4);
+  ck('  the qualification rate is a percentage, not ×100 again',dc.byMonth.every(m=>m.qualificationRatePct==null||m.qualificationRatePct<=100),true);
   W.fetchScheduledContacts=async()=>{throw new Error('429');};
   const dc2=await W.chatToolDemoCounts({HUBSPOT_TOKEN:'t'},{from:'2026-11-01',to:'2026-11-10'});
   ck('  a failed booked-demo count is flagged, not shown as zero',[dc2.total.regularDemos,/Regular Demos may be short/.test(dc2.warn)],[0,true]);
