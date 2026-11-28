@@ -213,6 +213,7 @@ const md=C.FRChat._md;
 ck('markdown escapes HTML',md('<img src=x onerror=alert(1)> **ok**'),'<p>&lt;img src=x onerror=alert(1)&gt; <strong>ok</strong></p>');
 ck('tables render with numeric cells right-aligned',md('| Week | Total |\n|---|---|\n| Nov 24 | 9 |'),'<div class="frc-tw"><table><thead><tr><th>Week</th><th class="n">Total</th></tr></thead><tbody><tr><td>Nov 24</td><td class="n">9</td></tr></tbody></table></div>');
 ck('lists',md('- a\n- b'),'<ul><li>a</li><li>b</li></ul>');
+ck('an escaped pipe stays inside its cell',md('| Campaign | Spend |\n|---|---|\n| FrontrowMD \\| Brand | $5,879 |').includes('<td>FrontrowMD | Brand</td><td class="n">$5,879</td>'),true);
 ck('the Source line is styled apart',md('Hi\nSource: BD Tracker'),'<p>Hi</p><div class="frc-src">Source: BD Tracker</div>');
 ck('no raw HTML survives in a table cell',md('| a |\n|---|\n| <b>x</b> |').includes('<b>'),false);
 // Page context from the host page's own globals (let/const included).

@@ -66,7 +66,21 @@
     return s;
   }
   var RE_TROW = /^\s*\|/, RE_TSEP = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/, RE_H = /^(#{1,4})\s+(.*)$/, RE_UL = /^\s*[-*•]\s+/, RE_OL = /^\s*\d+[.)]\s+/, RE_SRC = /^\s*(\*\*)?sources?:/i;
-  function cells(r) { return r.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(function (c) { return c.trim(); }); }
+  // Splits a table row on unescaped pipes; "\|" is a literal pipe in a cell
+  // (campaign names like "FrontrowMD | Brand").
+  function cells(r) {
+    var s = r.trim(), out = [], cur = '';
+    if (s.charAt(0) === '|') s = s.slice(1);
+    if (s.slice(-1) === '|' && s.slice(-2) !== '\\|') s = s.slice(0, -1);
+    for (var i = 0; i < s.length; i++) {
+      var ch = s.charAt(i);
+      if (ch === '\\' && s.charAt(i + 1) === '|') { cur += '|'; i++; }
+      else if (ch === '|') { out.push(cur.trim()); cur = ''; }
+      else cur += ch;
+    }
+    out.push(cur.trim());
+    return out;
+  }
   function isNum(c) { return /^[-+−]?[$€£]?\(?[\d,.]+\)?%?[kKmM]?$|^—$|^n\/a$/i.test(c.replace(/\*\*/g, '')); }
   function md(text) {
     var lines = String(text || '').replace(/\r/g, '').split('\n'), out = [], i = 0;
