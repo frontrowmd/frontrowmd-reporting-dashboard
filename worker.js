@@ -11924,6 +11924,7 @@ const CHAT_SYSTEM = `You answer questions about Frontrow's internal growth dashb
 - Qualification rate (Brand Dashboard): Qualified Demos / (Qualified Demos + disqualified demos) x 100. Disqualified demos are held demos whose outcome was recorded as disqualified (too early, too small, not a fit); demos not yet evaluated and no-shows are not in it. It is not Qualified Demos / Regular Demos.
 - BD Tracker Active Brands / Current MRR / ARR: today's totals from Recurly (or the app's own count when Recurly could not be read).
 - Ad tables: spend, impressions, clicks, platform conversions ("demos" here are the platform's own conversion counts), and UTM-attributed outcomes. At CHANNEL level, qualified = held demos matched by UTM (pre-launch not excluded, so it differs from the Brand Dashboard's Qualified Demos) and CPQD = spend / those. At campaign, ad set and creative level, qualified = UTM-matched demos whose outcome is recorded as Qualified (the page's Qual column), so rows do not add up to the channel figure, and spendPerQualified is spend / that row figure (not a dashboard number; say so if you use it). Most ad sets outside LinkedIn have no qualified figure. CPD = spend / platform conversions. Total ad spend excludes the Clinician channel (clinician recruiting), as the dashboards do.
+- Churn waterfall (BD Tracker Billing tab): a brand's churn month is its last invoiced month; anything not Active counts as churned, Paused included (shown apart). Retention = share of each first-invoice cohort still active by month (Never Implemented brands excluded, as on the page). Invoiced amounts are net of credits, complete months only. This is a billing view and differs from Signed Brands, which counts signings.
 - Clinician figures come from the Clinician Funnel card for a range (cohort on each deal's create date).
 
 ## Known data caveats (state the relevant ones)
@@ -11961,6 +11962,13 @@ const CHAT_TOOLS = [
     description: 'Clinician Funnel card for a date range (Eastern, inclusive; cohort on deal create date): top-of-funnel, nine funnel stages overall and for MD/DO vs non-MD/DO, flow comparison, clinician ad spend, composition and virtual no-shows. Tens of seconds.',
     input_schema: { type: 'object', additionalProperties: false, required: ['from', 'to'], properties: {
       from: { type: 'string', description: 'YYYY-MM-DD' }, to: { type: 'string', description: 'YYYY-MM-DD' } } } },
+  { name: 'churn_waterfall',
+    description: 'BD Tracker Billing tab (churn waterfall), from its cached copy. view "summary": brands, active, churned, paused, pilot brands, and per month invoiced $, brands invoiced, brands churned / paused (churn month = last invoiced month), plus this month so far. view "churned_brands": the brands that churned (or paused) in a month range, with churn type and months until churn. view "retention": the Retention Waterfall, share of each first-invoice cohort still active by month (Never Implemented excluded, as on the page). Months are YYYY-MM, complete months only.',
+    input_schema: { type: 'object', additionalProperties: false, required: ['view'], properties: {
+      view: { type: 'string', enum: ['summary', 'churned_brands', 'retention'] },
+      from_month: { type: 'string', description: 'YYYY-MM. Summary / churned_brands: default 12 months back. Retention: first cohort, default all.' },
+      to_month: { type: 'string', description: 'YYYY-MM, default the last complete month.' },
+      pilots: { type: 'string', enum: ['incl', 'excl'], description: 'Unconverted pilots, default incl (as on the page).' } } } },
   { name: 'pilot_summary',
     description: 'Pilot Dashboard, all time: pilot deals by status and stage, outreach, and won pilots (count, MRR, ARR). A few seconds.',
     input_schema: { type: 'object', additionalProperties: false, properties: {} } },
@@ -12159,10 +12167,114 @@ async function chatToolPilotSummary(env) {
   return out;
 }
 
+// Billing tab (churn waterfall) by the page's own rules (bd-dashboard.html
+// _bdWfAugment, _bdWfChurned, _bdWfChurnMonth, _bdWfIsNI, _bdWfCohorts,
+// _bdWfW2Section), over the cached payload only: a cold build is a 60-100s+
+// Metabase run, so on a miss the chat says to open the Billing tab instead.
+const _wfDiff = (a, b) => (+b.slice(0, 4) - +a.slice(0, 4)) * 12 + (+b.slice(5, 7) - +a.slice(5, 7));
+const _wfAdd = (m, n) => { let y = +m.slice(0, 4), mo = +m.slice(5, 7) - 1 + n; y += Math.floor(mo / 12); mo = ((mo % 12) + 12) % 12; return y + '-' + String(mo + 1).padStart(2, '0'); };
+const _wfChurned = b => !/^active/i.test(b.st || '');
+const _wfChurnMonth = b => { if (!_wfChurned(b)) return ''; const m = b.li || b.fm; return (b.fm && m < b.fm) ? b.fm : m; };
+const _wfIsNI = b => b.impl === false || (_wfChurned(b) && b.ty === 'Never Implemented');
+const _wfPct = p => p == null ? null : Math.round(p * 1000) / 10;
+function chatWfAugment(d) {
+  const months = d.months || [], last = months[months.length - 1];
+  const brands = (d.brands || []).map(b => Object.assign({}, b));
+  const cur = d.current;
+  const curM = (cur && !cur.error && cur.byKey && cur.m && cur.m > last) ? cur.m : '';
+  if (curM) {
+    const have = new Set(brands.map(b => b.k));
+    brands.forEach(b => { const c = cur.byKey[b.k]; b.cur = c ? c.v : null; });
+    Object.keys(cur.byKey).forEach(k => {
+      if (have.has(k)) return;
+      const c = cur.byKey[k];
+      const x = c.fg === curM ? 'new' : !c.fg ? 'credited' : 'other';
+      const fm = x === 'new' ? curM : (c.fg || c.fa);
+      brands.push({ k, n: c.n || ('Brand ' + k), src: 'Recurly', st: c.live ? 'Active' : x === 'new' ? 'Active (inferred)' : 'Churned (inferred)',
+        pil: c.pilot ? (c.plan ? 'Pilot (converted)' : 'Pilot (not converted)') : '', li: '', mi: 0, impl: null, ty: '', it: '', ss: '', fm,
+        a: months.map(m => (x !== 'new' && m >= fm) ? 0 : null), cur: c.v, x });
+    });
+  }
+  return { months, last, curM, brands };
+}
+async function chatToolChurnWaterfall(env, input) {
+  let hit = null;
+  for (const k of [BD_WF_KV, BD_WF_LAST]) {
+    try { kvOp(); const h = await env.CONTENT_STORE.get(k, 'json'); if (h && h.data && Array.isArray(h.data.brands) && Array.isArray(h.data.months) && h.data.months.length) { hit = h; break; } } catch (_) { /* next */ }
+  }
+  if (!hit) return { notCached: true, note: 'The Billing tab’s data is not built right now. Open the BD Tracker Billing tab once (it takes a minute or two), then ask again.' };
+  const d = hit.data, view = input && input.view;
+  const { months, last, curM, brands } = chatWfAugment(d);
+  const mo = v => (/^\d{4}-\d{2}$/.test(String(v || '')) ? String(v) : null);
+  let list = brands;
+  if (input.pilots === 'excl') list = list.filter(b => !/not converted/i.test(b.pil || ''));
+  const meta = { asOf: (d.meta && d.meta.asOf) || new Date(hit.t).toISOString(), stale: d.stale ? (d.stale.asOf || true) : undefined,
+    lastCompleteMonth: last, pilots: input.pilots === 'excl' ? 'unconverted pilots excluded' : 'pilots included' };
+  if (view === 'retention') {
+    const now = last;
+    const gl = list.filter(b => b.k && b.fm && !b.x && !_wfIsNI(b));
+    let first = months[0]; gl.forEach(b => { if (b.fm < first) first = b.fm; });
+    let from = mo(input.from_month) && mo(input.from_month) > first ? mo(input.from_month) : first;
+    if (from > now) from = now;
+    const byM = {}; gl.forEach(b => { if (b.fm >= from && b.fm <= now) (byM[b.fm] = byM[b.fm] || []).push(b); });
+    const cohorts = [];
+    for (let m = from; m <= now; m = _wfAdd(m, 1)) {
+      const pool = byM[m] || [], cells = [];
+      for (let k = 1; k <= _wfDiff(m, now) + 1; k++) {
+        const alive = pool.filter(b => { const c = _wfChurnMonth(b); return !c || _wfDiff(b.fm, c) >= k - 1; }).length;
+        const prev = k === 1 ? pool.length : cells[k - 2].alive;
+        cells.push({ alive, prev, pct: pool.length ? alive / pool.length : null });
+      }
+      cohorts.push({ m, n: pool.length, cells });
+    }
+    const W = _wfDiff(from, now) + 1, blend = [];
+    for (let k = 1; k <= W; k++) {
+      let a = 0, n = 0, pv = 0, c = 0;
+      cohorts.forEach(co => { if (co.cells.length >= k && co.n) { a += co.cells[k - 1].alive; pv += co.cells[k - 1].prev; n += co.n; c++; } });
+      const pct = n ? a / n : null;
+      blend.push((pct === null || n < 30 || c < 2) ? null : { retainedPct: _wfPct(pct), churnedThisMonthPct: _wfPct(pv ? (pv - a) / pv : null), brands: n, cohorts: c });
+    }
+    const toM = mo(input.to_month);
+    return Object.assign(meta, { view: 'retention', rule: 'Share of each first-invoice cohort still active in month 1, 2, 3...; a churned brand counts through its last invoiced month. Never Implemented excluded (page default). Cohort month 1 is the first invoiced month.',
+      cohorts: cohorts.filter(co => co.n && (!toM || co.m <= toM)).map(co => ({ cohort: co.m, brands: co.n, retainedPctByMonth: co.cells.map(c => _wfPct(c.pct)) })),
+      allCohorts: blend, neverImplementedExcluded: list.filter(b => !b.x && b.fm && b.fm >= from && b.fm <= now && _wfIsNI(b)).length });
+  }
+  const toM = mo(input.to_month) && mo(input.to_month) <= last ? mo(input.to_month) : last;
+  const fromM = mo(input.from_month) || _wfAdd(toM, -11);
+  if (view === 'churned_brands') {
+    const rows = list.filter(b => { const c = _wfChurnMonth(b); return c && c >= fromM && c <= toM; })
+      .map(b => ({ name: b.n || b.k, churnMonth: _wfChurnMonth(b), status: b.st || '(blank)', churnType: b.ty || null, firstMonth: b.fm,
+        monthsUntilChurn: b.fm ? _wfDiff(b.fm, _wfChurnMonth(b)) : null, totalInvoiced: Math.round((b.a || []).reduce((s, v) => s + (v || 0), 0) * 100) / 100, pilot: b.pil || null }))
+      .sort((x, y) => x.churnMonth.localeCompare(y.churnMonth) || String(x.name).localeCompare(String(y.name)));
+    const MAX = 150;
+    return Object.assign(meta, { view: 'churned_brands', from: fromM, to: toM, rule: 'Churn month = last invoiced month; anything not Active counts as churned, Paused included.',
+      count: rows.length, churned: rows.filter(r => !/pause/i.test(r.status)).length, paused: rows.filter(r => /pause/i.test(r.status)).length,
+      brands: rows.length > MAX ? rows.slice(0, MAX).concat([{ name: '…and ' + (rows.length - MAX) + ' more' }]) : rows });
+  }
+  // summary (the tiles + the table's month totals)
+  let active = 0, ch = 0, pa = 0, pil = 0, stale = 0;
+  list.forEach(b => {
+    if (_wfChurned(b)) { if (/pause/i.test(b.st)) pa++; else ch++; }
+    else { active++; if (!b.x && (!b.li || _wfDiff(b.li, last) >= 2)) stale++; }
+    if (b.pil && !/no pilot/i.test(b.pil)) pil++;
+  });
+  const byMonth = months.map((m, i) => {
+    if (m < fromM || m > toM) return null;
+    let inv = 0, n = 0, chN = 0, paN = 0;
+    list.forEach(b => { const v = b.a ? b.a[i] : null; if (v != null) { inv += v; if (v >= 0.01) n++; } if (_wfChurnMonth(b) === m) { if (/pause/i.test(b.st)) paN++; else chN++; } });
+    return { month: m, invoiced: Math.round(inv * 100) / 100, brandsInvoiced: n, churned: chN, paused: paN };
+  }).filter(Boolean);
+  const sumCur = list.reduce((s, b) => s + (b.cur != null ? b.cur : 0), 0);
+  return Object.assign(meta, { view: 'summary', rule: 'Churn month = last invoiced month (Paused counted as churned, shown apart); amounts are net invoiced (credits included); complete months only.',
+    brands: list.length, active, activeNotInvoiced2Months: stale, churned: ch, paused: pa, pilotBrands: pil,
+    newThisMonth: list.filter(b => b.x === 'new').length, notInMetabase: list.filter(b => b.x === 'credited' || b.x === 'other').length,
+    byMonth, currentMonthSoFar: curM ? { month: curM, invoiced: Math.round(sumCur * 100) / 100, brandsInvoiced: list.filter(b => b.cur != null && b.cur >= 0.01).length, note: 'Recurly only, approximate' } : null });
+}
+
 const CHAT_TOOL_FNS = { signed_brands: chatToolSignedBrands, demo_counts: chatToolDemoCounts, ad_performance: chatToolAdPerformance,
-  monthly_ad_spend: chatToolMonthlyAdSpend, bd_tracker_summary: chatToolBdSummary, clinician_funnel: chatToolClinicianFunnel, pilot_summary: chatToolPilotSummary };
+  monthly_ad_spend: chatToolMonthlyAdSpend, bd_tracker_summary: chatToolBdSummary, clinician_funnel: chatToolClinicianFunnel, pilot_summary: chatToolPilotSummary, churn_waterfall: chatToolChurnWaterfall };
 const CHAT_TOOL_STATUS = { signed_brands: 'Counting signed brands', demo_counts: 'Counting demos', ad_performance: 'Reading the ad tables',
-  monthly_ad_spend: 'Reading monthly ad spend', bd_tracker_summary: 'Reading the BD Tracker', clinician_funnel: 'Building the clinician funnel', pilot_summary: 'Reading the Pilot Dashboard' };
+  monthly_ad_spend: 'Reading monthly ad spend', bd_tracker_summary: 'Reading the BD Tracker', clinician_funnel: 'Building the clinician funnel', pilot_summary: 'Reading the Pilot Dashboard', churn_waterfall: 'Reading the churn waterfall' };
 function chatToolStatus(name, input) {
   const base = CHAT_TOOL_STATUS[name] || 'Fetching data';
   if (!input) return base;

@@ -63,9 +63,9 @@
     'dash:content': S_ADS,
     'dash:outbound': S_BRAND,
     'bd:tracker': S_BD,
-    'bd:churn': ['Which brands that signed this year have since churned?', 'How many brands that signed last month have churned?', 'What\u2019s our current MRR and how many active brands?'],
+    'bd:churn': ['Which brands churned last month, and why?', 'How many brands churned each month this year?', 'Which brands that signed this year have since churned?', 'What\u2019s our 6-month retention?'],
     'bd:recon': ['How many active brands are there today?', 'Which brands signed this week?', 'What\u2019s our current MRR and ARR?'],
-    'bd:waterfall': ['What\u2019s our current MRR and ARR?', 'How many brands are billing vs on trial?', 'Which pilots signed this month?'],
+    'bd:waterfall': ['How much did we invoice each month this year?', 'Which brands churned last month?', 'What share of each cohort is still active after 6 months?', 'How many active brands haven\u2019t been invoiced in 2+ months?'],
     'sales:preDemo': ['How many Regular Demos this week vs last week?', 'How many no-shows this month?', 'Regular Demos by month this year'],
     'sales:postDemo': ['Which brands signed this week?', 'How many brands signed this week vs last week?', 'Regular Demos this month vs last month']
   };
@@ -305,7 +305,7 @@
     + '.frc-ft{display:flex;align-items:center;gap:10px;margin-top:8px;font-size:11px;color:#94A3B8}.frc-badge{background:#F1F5F8;color:#475569;padding:2px 8px;border-radius:50px}.frc-badge.d{background:#EEF0FB;color:#3C3489}'
     + '.frc-ft button{background:none;border:0;cursor:pointer;color:#94A3B8;padding:2px;display:flex}.frc-ft button:hover{color:#172C45}.frc-ft button.ok{color:#10B981}.frc-ft button.on{color:var(--teal,#4F8AA8)}.frc-ft svg{width:14px;height:14px}'
     + '.frc-err{color:#B91C1C;font-size:12px}.frc-err button{margin-left:6px;background:none;border:1px solid #FCA5A5;color:#B91C1C;border-radius:6px;padding:1px 8px;cursor:pointer;font-size:11px}'
-    + '.frc-fu{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.frc-fu .frc-chip{padding:4px 10px;font-size:11.5px}'
+    + '.frc-fu{margin-top:10px;padding-top:8px;border-top:1px dashed #E2EAF0}.frc-fu .frc-chips{display:flex;flex-wrap:wrap;gap:6px}.frc-fu .frc-chip{padding:5px 8px 5px 10px;font-size:11.5px}'
     + '.frc-tip{position:fixed;right:90px;bottom:35px;background:var(--navy,#172C45);color:#fff;font-family:var(--font-b,Inter,system-ui,sans-serif);font-size:12px;font-weight:600;padding:7px 12px;border-radius:50px;z-index:190;box-shadow:0 4px 14px rgba(2,15,24,.22);cursor:pointer;display:flex;align-items:center;gap:8px;animation:frcin .4s ease-out}'
     + '.frc-tip kbd{background:rgba(255,255,255,.14);border-radius:4px;padding:0 5px;font:inherit;font-size:11px;font-weight:500}.frc-tip button{background:none;border:0;color:#B9C8DE;cursor:pointer;padding:0 0 0 2px;font-size:14px;line-height:1}'
     + '@keyframes frcin{from{opacity:0;transform:translateX(8px)}to{opacity:1;transform:none}}'
@@ -313,14 +313,22 @@
     + '.frc-row2{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;border:1px solid transparent}.frc-row2:hover{background:#F5FAFC;border-color:#E2EEF4}.frc-row2.cur{background:#EEF6FA}'
     + '.frc-row2 .tx{flex:1;min-width:0}.frc-row2 .ti{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#172C45}.frc-row2 .mt{font-size:11px;color:#94A3B8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
     + '.frc-row2 .del{background:none;border:0;color:#CBD5E1;cursor:pointer;font-size:15px;line-height:1;padding:2px 4px;border-radius:4px}.frc-row2 .del:hover{color:#B91C1C;background:#FEF2F2}'
-    + '.frc-ib.on{color:#fff;background:rgba(255,255,255,.12)}'
+    + '.frc-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 12px;background:#F5F9FB;border-bottom:1px solid var(--border,#D4E6EF);flex:none}'
+    + '.frc-tb{display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid #CFDFE8;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:600;color:#1D4053;cursor:pointer;font-family:inherit}.frc-tb svg{width:14px;height:14px}.frc-tb:hover{border-color:var(--teal,#72A4BF);background:#EEF6FA}'
+    + '.frc-tb.on{background:var(--navy,#172C45);border-color:var(--navy,#172C45);color:#fff}.frc-tb.pri{color:#fff;background:var(--navy,#172C45);border-color:var(--navy,#172C45)}.frc-tb.pri:hover{background:#1D4053}'
     + '.frc-note{color:#94A3B8;font-size:11px;font-style:italic}'
     + '.frc-empty{color:#475569}.frc-empty p{margin:0 0 10px}.frc-chips{display:flex;flex-direction:column;gap:6px;align-items:flex-start}'
-    + '.frc-chip{background:#fff;border:1px solid var(--border,#D4E6EF);border-radius:50px;padding:6px 12px;font-size:12px;color:#1D4053;cursor:pointer;text-align:left;font-family:inherit}.frc-chip:hover{border-color:var(--teal,#72A4BF);background:#F5FAFC}'
+    + '.frc-chip{display:inline-flex;align-items:center;gap:8px;background:#F3F9FC;border:1px solid #C9DFEA;border-radius:10px;padding:7px 10px 7px 12px;font-size:12px;color:#1D4053;cursor:pointer;text-align:left;font-family:inherit;transition:background .15s,border-color .15s,transform .15s}'
+    + '.frc-chip .ar{flex:none;width:18px;height:18px;border-radius:50%;background:#fff;border:1px solid #C9DFEA;display:flex;align-items:center;justify-content:center;color:var(--teal,#4F8AA8);transition:background .15s,color .15s}.frc-chip .ar svg{width:10px;height:10px}'
+    + '.frc-chip:hover{border-color:var(--teal,#72A4BF);background:#E6F3F9;transform:translateX(2px)}.frc-chip:hover .ar{background:var(--navy,#172C45);border-color:var(--navy,#172C45);color:#fff}'
+    + '.frc-lab{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#64748B;margin:4px 0 6px}.frc-lab span{font-weight:400;letter-spacing:0;text-transform:none;color:#94A3B8}'
     + '.frc-in{border-top:1px solid var(--border,#D4E6EF);padding:10px 12px;flex:none}'
     + '.frc-in textarea{width:100%;box-sizing:border-box;border:1px solid #CBD9E3;border-radius:10px;padding:8px 10px;font:inherit;font-size:13px;resize:none;max-height:120px;min-height:38px;color:#172C45;outline:none}.frc-in textarea:focus{border-color:var(--teal,#72A4BF);box-shadow:0 0 0 3px rgba(114,164,191,.18)}'
     + '.frc-row{display:flex;align-items:center;justify-content:space-between;margin-top:8px;gap:8px}'
-    + '.frc-deep{background:none;border:1px solid #D4E2EA;border-radius:50px;padding:3px 10px;font-size:11px;color:#475569;cursor:pointer;font-family:inherit}.frc-deep.on{background:#EEF0FB;border-color:#AFA9EC;color:#3C3489}'
+    + '.frc-deep{display:inline-flex;align-items:center;gap:8px;background:none;border:0;padding:2px 4px 2px 0;cursor:pointer;font-family:inherit;text-align:left;color:#475569}'
+    + '.frc-deep .sw{flex:none;position:relative;width:30px;height:17px;border-radius:50px;background:#CBD5E1;transition:background .2s}.frc-deep .kn{position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .2s}'
+    + '.frc-deep.on .sw{background:#5B4FD1}.frc-deep.on .kn{transform:translateX(13px)}.frc-deep:focus-visible .sw{outline:2px solid #AFA9EC;outline-offset:2px}'
+    + '.frc-deep .tx{display:flex;flex-direction:column;line-height:1.2}.frc-deep b{font-size:11.5px;font-weight:600;color:#1D4053}.frc-deep i{font-style:normal;font-size:10.5px;color:#94A3B8}.frc-deep.on b{color:#3C3489}'
     + '.frc-left{font-size:11px;color:#94A3B8;flex:1;text-align:right}'
     + '.frc-send{background:var(--navy,#172C45);color:#fff;border:0;border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px}.frc-send:hover{background:#1D4053}.frc-send.stop{background:#64748B}'
     + '@media (max-width:640px){.frc-tip{display:none!important}.frc-panel,.frc-panel.wide{right:0;left:0;bottom:0;top:0;width:auto;height:auto;border-radius:0}.frc-btn{right:14px;bottom:14px;width:54px;height:54px}.frc-panel.open~.frc-btn{display:none}}'
@@ -333,10 +341,12 @@
     copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></svg>',
     up: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 11v9H4v-9zM7 11l4-7a2 2 0 0 1 3 2l-1 4h5a2 2 0 0 1 2 2.3l-1.2 6A2 2 0 0 1 16.8 20H7"/></svg>',
     down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 13V4h3v9zM17 13l-4 7a2 2 0 0 1-3-2l1-4H6a2 2 0 0 1-2-2.3l1.2-6A2 2 0 0 1 7.2 4H17"/></svg>',
+    back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>',
     hist: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg>',
     expand: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>',
     shrink: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/></svg>',
     check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>',
+    go: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
     send: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>'
   };
   var els = {};
@@ -345,13 +355,13 @@
     var panel = document.createElement('div'); panel.className = 'frc-panel'; panel.id = 'frc-panel';
     panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'Ask the data');
     panel.innerHTML = '<div class="frc-hd"><div class="tt"><div class="t">Ask the data</div><div class="c" id="frc-ctx"></div></div>'
-      + '<button class="frc-ib" id="frc-hist" title="Previous chats" aria-label="Previous chats">' + I.hist + '</button>'
       + '<button class="frc-ib" id="frc-wide" title="Expand" aria-label="Expand">' + I.expand + '</button>'
-      + '<button class="frc-ib" id="frc-new" title="New chat" aria-label="New chat">' + I.plus + '</button>'
       + '<button class="frc-ib" id="frc-close" title="Close (Esc)" aria-label="Close">' + I.x + '</button></div>'
+      + '<div class="frc-bar"><button class="frc-tb" id="frc-hist">' + I.hist + '<span>Previous chats</span></button>'
+      + '<button class="frc-tb pri" id="frc-new">' + I.plus + '<span>New chat</span></button></div>'
       + '<div class="frc-log" id="frc-log" aria-live="polite"></div>'
       + '<div class="frc-in"><textarea id="frc-input" rows="1" placeholder="Ask about this data…" aria-label="Your question"></textarea>'
-      + '<div class="frc-row"><button class="frc-deep" id="frc-deep" title="Auto sends why / analyze / recommend questions to the deeper model. On sends every question there (slower).">Deep analysis: Auto</button>'
+      + '<div class="frc-row"><button class="frc-deep" id="frc-deep" role="switch" aria-checked="false"><span class="sw"><span class="kn"></span></span><span class="tx"><b>Deep analysis</b><i id="frc-deep-sub"></i></span></button>'
       + '<span class="frc-left" id="frc-left"></span><button class="frc-send" id="frc-send">Send ' + I.send + '</button></div></div>';
     var btn = document.createElement('button'); btn.className = 'frc-btn'; btn.id = 'frc-btn'; btn.title = 'Ask the data ( / )'; btn.setAttribute('aria-label', 'Ask the data'); btn.innerHTML = I.chat;
     document.body.appendChild(panel); document.body.appendChild(btn);
@@ -402,11 +412,13 @@
     var p = pageCtx();
     els.ctx.textContent = p.label + (p.window ? ' · ' + winLabel(p) : '');
     els.panel.classList.toggle('wide', st.wide);
-    if (els.hist) els.hist.classList.toggle('on', st.view === 'history');
+    if (els.hist) { var hv = st.view === 'history'; els.hist.classList.toggle('on', hv); els.hist.innerHTML = (hv ? I.back : I.hist) + '<span>' + (hv ? 'Back to chat' : 'Previous chats') + '</span>'; }
     els.wide.innerHTML = st.wide ? I.shrink : I.expand;
     els.wide.title = st.wide ? 'Shrink' : 'Expand'; els.wide.setAttribute('aria-label', els.wide.title);
-    els.deep.textContent = 'Deep analysis: ' + (st.deep ? 'On' : 'Auto');
     els.deep.classList.toggle('on', st.deep);
+    els.deep.setAttribute('aria-checked', st.deep ? 'true' : 'false');
+    els.deep.title = st.deep ? 'On: every question gets the slower, more thorough model. Click to switch back to Auto.' : 'Auto: the more thorough model is used only for why / analyze / recommend questions. Click to use it for every question.';
+    var ds = els.panel.querySelector('#frc-deep-sub'); if (ds) ds.textContent = st.deep ? 'On \u00b7 every question, slower' : 'Auto \u00b7 only for why / analysis questions';
     els.left.textContent = st.remaining == null ? '' : (st.remaining <= 0 ? 'No questions left today' : st.remaining + (st.remaining === 1 ? ' question' : ' questions') + ' left today');
     els.send.innerHTML = st.busy ? 'Stop' : ('Send ' + I.send);
     els.send.classList.toggle('stop', st.busy);
@@ -441,6 +453,7 @@
     var after = body.slice(m[0].length);
     return after.trim() ? after : body;
   }
+  function chipHTML(q) { return '<button class="frc-chip" data-q="' + esc(q) + '" title="Ask this">' + esc(q) + '<span class="ar">' + I.go + '</span></button>'; }
   function itemHTML(it, idx) {
     if (it.role === 'user') return '<div class="frc-u">' + esc(it.text) + '</div>';
     var h = '<div class="frc-a" data-i="' + idx + '">';
@@ -465,7 +478,7 @@
         + '<button data-act="down" class="' + (it.fb === 'down' ? 'on' : '') + '" title="Not helpful" aria-label="Not helpful">' + I.down + '</button>'
         + '</div>';
       if (sp.fu.length && idx === st.items.length - 1 && !st.busy)
-        h += '<div class="frc-fu">' + sp.fu.map(function (q) { return '<button class="frc-chip" data-q="' + esc(q) + '">' + esc(q) + '</button>'; }).join('') + '</div>';
+        h += '<div class="frc-fu"><div class="frc-lab">Ask next <span>\u00b7 click to ask</span></div><div class="frc-chips">' + sp.fu.map(chipHTML).join('') + '</div></div>';
     }
     return h + '</div>';
   }
@@ -473,7 +486,7 @@
     if (!els.log) return;
     renderChrome();
     if (st.view === 'history') {
-      var h = '<div class="frc-hl"><div class="h">Previous chats</div>';
+      var h = '<div class="frc-hl"><div class="frc-lab">Your chats <span>\u00b7 click one to reopen it \u00b7 kept 90 days</span></div>';
       if (st.chats == null) h += '<div class="frc-st"><div><span class="frc-sp"></span>Loading\u2026</div></div>';
       else if (!Array.isArray(st.chats)) h += '<div class="frc-err">' + esc(st.chats.error || 'Could not load your chats.') + '</div>';
       else if (!st.chats.length) h += '<div class="frc-note">No saved chats yet. Chats are saved after each answer and kept for 90 days.</div>';
@@ -487,8 +500,9 @@
     }
     if (!st.items.length) {
       var p = pageCtx();
-      els.log.innerHTML = '<div class="frc-empty"><p>Ask about the numbers on these dashboards. Answers use the same figures as the pages, and each one says where its numbers came from.</p><div class="frc-chips">'
-        + suggestFor(p.key).map(function (q) { return '<button class="frc-chip" data-q="' + esc(q) + '">' + esc(q) + '</button>'; }).join('') + '</div></div>';
+      els.log.innerHTML = '<div class="frc-empty"><p>Ask about the numbers on these dashboards. Answers use the same figures as the pages, and each one says where its numbers came from.</p>'
+        + '<div class="frc-lab">Try asking <span>\u00b7 click a question to ask it</span></div><div class="frc-chips">'
+        + suggestFor(p.key).map(chipHTML).join('') + '</div></div>';
       return;
     }
     els.log.innerHTML = st.items.map(itemHTML).join('');

@@ -8,7 +8,7 @@ const ck=(n,g,w)=>{const ok=JSON.stringify(g)===JSON.stringify(w);console.log((o
 const src=fs.readFileSync(process.env.WORKER_SRC||'worker.js','utf8');
 const W={console:{log(){},warn(){},error(){}},TextEncoder,TextDecoder,TransformStream,ReadableStream,Response,setTimeout};
 vm.createContext(W);
-vm.runInContext(src.slice(0,src.indexOf('\nexport default'))+'\nObject.assign(globalThis,{chatTier,chatResolveWindow,chatContextLine,chatMonthChunks,chatCheckHistory,chatApplyEvent,chatRun,chatToolAdPerformance,chatToolSignedBrands,chatToolDemoCounts,chatRateCheck,chatRateRefund,handleChatSave,handleChatList,handleChatGet,handleChatDelete,signBookList,signBookCount,chatCleanTurn,handleChat,handleChatFeedback,azCacheKey,CHAT_TOOLS,CHAT_SYSTEM,CHAT_MODELS,CHAT_DAILY_LIMIT,fmt,todayET});',W);
+vm.runInContext(src.slice(0,src.indexOf('\nexport default'))+'\nObject.assign(globalThis,{chatTier,chatResolveWindow,chatContextLine,chatMonthChunks,chatCheckHistory,chatApplyEvent,chatRun,chatToolAdPerformance,chatToolSignedBrands,chatToolDemoCounts,chatRateCheck,chatRateRefund,chatToolChurnWaterfall,handleChatSave,handleChatList,handleChatGet,handleChatDelete,signBookList,signBookCount,chatCleanTurn,handleChat,handleChatFeedback,azCacheKey,CHAT_TOOLS,CHAT_SYSTEM,CHAT_MODELS,CHAT_DAILY_LIMIT,fmt,todayET});',W);
 W.sleep=async()=>{};
 vm.runInContext(fn(src,'jr')+';globalThis.jr=jr;',W);
 
@@ -37,7 +37,7 @@ ck('  and cannot be broken out of by the page label',W.chatContextLine({pageLabe
 ck('month chunks split on calendar months',W.chatMonthChunks('2026-09-15','2026-11-03'),[{from:'2026-09-15',to:'2026-09-30'},{from:'2026-10-01',to:'2026-10-31'},{from:'2026-11-01',to:'2026-11-03'}]);
 
 // ── 3. Tools are read-only and named for the dashboards ──────────────────
-ck('seven tools',W.CHAT_TOOLS.map(t=>t.name),['signed_brands','demo_counts','ad_performance','monthly_ad_spend','bd_tracker_summary','clinician_funnel','pilot_summary']);
+ck('eight tools',W.CHAT_TOOLS.map(t=>t.name),['signed_brands','demo_counts','ad_performance','monthly_ad_spend','bd_tracker_summary','clinician_funnel','churn_waterfall','pilot_summary']);
 ck('every tool has a closed schema',W.CHAT_TOOLS.every(t=>t.input_schema&&t.input_schema.additionalProperties===false),true);
 ck('the system prompt forbids invented numbers',/Never invent, estimate or recall a number/.test(W.CHAT_SYSTEM),true);
 ck('  asks for a Source line',/starts with "Source:"/.test(W.CHAT_SYSTEM),true);
@@ -242,6 +242,37 @@ ck('an over-long question is refused',tooLong.status,400);
 const lim=await W.handleChat({ANTHROPIC_API_KEY:'k',CONTENT_STORE:envR.CONTENT_STORE},null,{question:'x'},{email:'a@x.com'});
 ck('over the daily limit: 429 with a reason',[lim.status,(await lim.json()).code],[429,'limit']);
 
+// ── 6a. Churn waterfall (Billing tab rules) ──────────────────────────────
+{ const kvW={};
+  const envW={CONTENT_STORE:{get:async(k,ty)=>kvW[k]==null?null:(ty==='json'?JSON.parse(kvW[k]):kvW[k])}};
+  ck('waterfall not cached: says to open the Billing tab',(await W.chatToolChurnWaterfall(envW,{view:'summary'})).notCached,true);
+  const months=['2026-07','2026-08','2026-09','2026-10'];
+  kvW['bd_waterfall_v5']=JSON.stringify({t:Date.now(),data:{months,meta:{asOf:'2026-11-27T00:00:00Z'},brands:[
+    {k:'a',n:'Alpha',st:'Active',fm:'2026-07',li:'2026-10',impl:true,pil:'No pilot',a:[100,100,100,100]},
+    {k:'b',n:'Beta',st:'Churned',fm:'2026-07',li:'2026-08',impl:true,ty:'Budget',a:[50,50,null,null]},
+    {k:'c',n:'Gamma',st:'Paused',fm:'2026-08',li:'2026-09',impl:true,pil:'Pilot (converted)',a:[null,80,80,null]},
+    {k:'d',n:'Delta',st:'Churned',fm:'2026-08',li:'2026-08',impl:false,ty:'Never Implemented',a:[null,30,null,null]},
+    {k:'e',n:'Eps',st:'Active',fm:'2026-09',li:'',impl:true,pil:'Pilot (not converted)',a:[null,null,-10,null]}],
+    current:{m:'2026-11',byKey:{a:{v:100},z:{v:40,n:'Zed',fg:'2026-11',live:1}}}}});
+  const sm=await W.chatToolChurnWaterfall(envW,{view:'summary',from_month:'2026-07'});
+  ck('summary tiles: brands incl. this month’s new, active, churned, paused, pilots',[sm.brands,sm.active,sm.churned,sm.paused,sm.pilotBrands,sm.newThisMonth],[6,3,2,1,2,1]);
+  ck('  stale = active but not invoiced in 2+ months (never the new rows)',sm.activeNotInvoiced2Months,1);
+  ck('  per month: invoiced $ (credits included), brands invoiced, churned by last invoiced month',sm.byMonth.map(m=>[m.month,m.invoiced,m.brandsInvoiced,m.churned,m.paused]),
+     [['2026-07',150,2,0,0],['2026-08',260,4,2,0],['2026-09',170,2,0,1],['2026-10',100,1,0,0]]);
+  ck('  this month so far',sm.currentMonthSoFar,{month:'2026-11',invoiced:140,brandsInvoiced:2,note:'Recurly only, approximate'});
+  const cb=await W.chatToolChurnWaterfall(envW,{view:'churned_brands',from_month:'2026-08',to_month:'2026-09'});
+  ck('churned brands in a range, by last invoiced month',cb.brands.map(b=>[b.name,b.churnMonth,b.monthsUntilChurn]),[['Beta','2026-08',1],['Delta','2026-08',0],['Gamma','2026-09',1]]);
+  ck('  paused shown apart',[cb.churned,cb.paused],[2,1]);
+  const rt=await W.chatToolChurnWaterfall(envW,{view:'retention'});
+  ck('retention: Never Implemented excluded, new rows excluded',[rt.cohorts.map(c=>[c.cohort,c.brands]),rt.neverImplementedExcluded],[[['2026-07',2],['2026-08',1],['2026-09',1]],1]);
+  ck('  a churned brand counts through its last invoiced month',rt.cohorts[0].retainedPctByMonth,[100,100,50,50]);
+  ck('  a brand with no invoices above $0 still counts in its first month',rt.cohorts[2].retainedPctByMonth,[100,100]);
+  ck('  the all-cohorts row is blank below 30 brands, as on the page',rt.allCohorts.every(x=>x===null),true);
+  const ex=await W.chatToolChurnWaterfall(envW,{view:'summary',pilots:'excl',from_month:'2026-07'});
+  ck('pilots excl drops unconverted pilots only',ex.brands,5);
+  ck('the cached payload is never mutated',JSON.parse(kvW['bd_waterfall_v5']).data.brands.length,5);
+}
+
 // ── 6b. Saved chats ─────────────────────────────────────────────────────
 { const kvs={},meta={};
   const envC={CONTENT_STORE:{get:async(k,ty)=>kvs[k]==null?null:(ty==='json'?JSON.parse(kvs[k]):kvs[k]),put:async(k,v,o)=>{kvs[k]=v;meta[k]=o&&o.metadata;},delete:async k=>{delete kvs[k];delete meta[k];},
@@ -291,6 +322,10 @@ ck('  a real first sentence with numbers stays',sdl('This week 18 brands signed 
 ck('  a first sentence with no dates stays',sdl('This week is down from last week.\n\nMore.'),'This week is down from last week.\n\nMore.');
 ck('  a one-paragraph answer is never emptied',sdl('This week: 2026-11-23 to 2026-11-27.'),'This week: 2026-11-23 to 2026-11-27.');
 ck('starter questions say Regular Demos, not Qualified',/Qualified Demos/.test(wsrc.slice(wsrc.indexOf('var S_BRAND'),wsrc.indexOf('function suggestFor'))),false);
+ck('starter and follow-up questions are labeled as clickable',/Try asking <span>\\u00b7 click a question to ask it/.test(wsrc)&&/Ask next <span>\\u00b7 click to ask/.test(wsrc),true);
+ck('  each chip carries an arrow',/function chipHTML\(q\)[^\n]*class="ar"/.test(wsrc),true);
+ck('Deep analysis is a labeled switch',/role="switch"/.test(wsrc)&&/Auto \\u00b7 only for why \/ analysis questions/.test(wsrc),true);
+ck('Previous chats and New chat are labeled buttons in their own bar',/class="frc-bar"><button class="frc-tb" id="frc-hist">/.test(wsrc)&&/<span>New chat<\/span>/.test(wsrc),true);
 ck('the panel can expand to a tall drawer',/\.frc-panel\.wide\{/.test(wsrc)&&/id="frc-wide"/.test(wsrc),true);
 ck('  hiding the bubble so it never covers Send',/\.frc-panel\.open\.wide~\.frc-btn\{display:none\}/.test(wsrc),true);
 ck('a first-visit label sits beside the bubble until it is opened',/frchat_seen/.test(wsrc)&&/markSeen\(\); renderChrome/.test(wsrc),true);
