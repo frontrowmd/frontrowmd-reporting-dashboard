@@ -11924,7 +11924,7 @@ const CHAT_SYSTEM = `You answer questions about Frontrow's internal growth dashb
 - Qualification rate (Brand Dashboard): Qualified Demos / (Qualified Demos + disqualified demos) x 100. Disqualified demos are held demos whose outcome was recorded as disqualified (too early, too small, not a fit); demos not yet evaluated and no-shows are not in it. It is not Qualified Demos / Regular Demos.
 - BD Tracker Active Brands / Current MRR / ARR: today's totals from Recurly (or the app's own count when Recurly could not be read).
 - Ad tables: spend, impressions, clicks, platform conversions ("demos" here are the platform's own conversion counts), and UTM-attributed outcomes. At CHANNEL level, qualified = held demos matched by UTM (pre-launch not excluded, so it differs from the Brand Dashboard's Qualified Demos) and CPQD = spend / those. At campaign, ad set and creative level, qualified = UTM-matched demos whose outcome is recorded as Qualified (the page's Qual column), so rows do not add up to the channel figure, and spendPerQualified is spend / that row figure (not a dashboard number; say so if you use it). Most ad sets outside LinkedIn have no qualified figure. CPD = spend / platform conversions. Total ad spend excludes the Clinician channel (clinician recruiting), as the dashboards do.
-- Churn waterfall (BD Tracker Billing tab): a brand's churn month is its last invoiced month; anything not Active counts as churned, Paused included (shown apart). Retention = share of each first-invoice cohort still active by month (Never Implemented brands excluded, as on the page). Invoiced amounts are net of credits, complete months only. This is a billing view and differs from Signed Brands, which counts signings.
+- Churned brands: a brand is churned when its Churn Status is exactly "Churned" (Paused is reported apart; "Churned (inferred)" is not a churn), dated by the Billing tab's Churn Month column (the last month invoiced). "Churned since September" means churn month September or later (from_month), not brands first invoiced since September (that is the First Month filter). Use churn_waterfall for churn questions. Billing / retention view (BD Tracker Billing tab): Retention = share of each first-invoice cohort still active by month (Never Implemented brands excluded, as on the page). Invoiced amounts are net of credits, complete months only. This is a billing view and differs from Signed Brands, which counts signings.
 - Clinician figures come from the Clinician Funnel card for a range (cohort on each deal's create date).
 
 ## Known data caveats (state the relevant ones)
@@ -11963,12 +11963,14 @@ const CHAT_TOOLS = [
     input_schema: { type: 'object', additionalProperties: false, required: ['from', 'to'], properties: {
       from: { type: 'string', description: 'YYYY-MM-DD' }, to: { type: 'string', description: 'YYYY-MM-DD' } } } },
   { name: 'churn_waterfall',
-    description: 'BD Tracker Billing tab (churn waterfall), from its cached copy. view "summary": brands, active, churned, paused, pilot brands, and per month invoiced $, brands invoiced, brands churned / paused (churn month = last invoiced month), plus this month so far. view "churned_brands": the brands that churned (or paused) in a month range, with churn type and months until churn. view "retention": the Retention Waterfall, share of each first-invoice cohort still active by month (Never Implemented excluded, as on the page). Months are YYYY-MM, complete months only.',
+    description: 'BD Tracker Billing tab (churn waterfall), from its cached copy. view "summary": brands, active, churned, paused, pilot brands, and per month invoiced $, brands invoiced, brands churned / paused (Churn Status "Churned" / "Paused", by the record\u2019s Churn Month), plus this month so far. view "churned_brands": the brands with Churn Status Churned or Paused whose Churn Month falls in a month range, with churn type, months until churn and last invoiced month. view "retention": the Retention Waterfall, share of each first-invoice cohort still active by month (Never Implemented excluded, as on the page). Months are YYYY-MM, complete months only.',
     input_schema: { type: 'object', additionalProperties: false, required: ['view'], properties: {
       view: { type: 'string', enum: ['summary', 'churned_brands', 'retention'] },
       from_month: { type: 'string', description: 'YYYY-MM. Summary / churned_brands: default 12 months back. Retention: first cohort, default all.' },
       to_month: { type: 'string', description: 'YYYY-MM, default the last complete month.' },
-      pilots: { type: 'string', enum: ['incl', 'excl'], description: 'Unconverted pilots, default incl (as on the page).' } } } },
+      pilots: { type: 'string', enum: ['incl', 'excl'], description: 'Unconverted pilots, default incl (as on the page).' },
+      first_month_from: { type: 'string', description: 'YYYY-MM. The page\u2019s First Month filter: keep only brands first invoiced from this month. Use it only when asked about brands that STARTED in a period; "churned since X" uses from_month instead.' },
+      first_month_to: { type: 'string', description: 'YYYY-MM, end of the First Month filter.' } } } },
   { name: 'pilot_summary',
     description: 'Pilot Dashboard, all time: pilot deals by status and stage, outreach, and won pilots (count, MRR, ARR). A few seconds.',
     input_schema: { type: 'object', additionalProperties: false, properties: {} } },
@@ -12177,6 +12179,14 @@ const _wfChurned = b => !/^active/i.test(b.st || '');
 const _wfChurnMonth = b => { if (!_wfChurned(b)) return ''; const m = b.li || b.fm; return (b.fm && m < b.fm) ? b.fm : m; };
 const _wfIsNI = b => b.impl === false || (_wfChurned(b) && b.ty === 'Never Implemented');
 const _wfPct = p => p == null ? null : Math.round(p * 1000) / 10;
+// The chat's churn (Alex, 2026-11-27): a brand is churned when its Churn Status
+// is exactly "Churned" (Paused counted apart; "Churned (inferred)" and Active
+// are not churns), dated by the Billing tab's own Churn Month column: the last
+// month invoiced (never before the first). The record's CHURN_MONTH (hsCh) is
+// returned for reference only. The Retention view keeps the page's W2 rules.
+const _wfIsChurnedSt = b => String(b.st || '').trim().toLowerCase() === 'churned';
+const _wfIsPausedSt = b => /pause/i.test(b.st || '');
+const _wfStMonth = b => { const m = b.li || b.fm || ''; return (b.fm && m < b.fm) ? b.fm : m; };
 function chatWfAugment(d) {
   const months = d.months || [], last = months[months.length - 1];
   const brands = (d.brands || []).map(b => Object.assign({}, b));
@@ -12208,8 +12218,12 @@ async function chatToolChurnWaterfall(env, input) {
   const mo = v => (/^\d{4}-\d{2}$/.test(String(v || '')) ? String(v) : null);
   let list = brands;
   if (input.pilots === 'excl') list = list.filter(b => !/not converted/i.test(b.pil || ''));
+  // The page's First Month filter: brands FIRST INVOICED in a month range (both ends inclusive).
+  const ff = mo(input.first_month_from), ft = mo(input.first_month_to);
+  if (ff || ft) list = list.filter(b => b.fm && (!ff || b.fm >= ff) && (!ft || b.fm <= ft));
   const meta = { asOf: (d.meta && d.meta.asOf) || new Date(hit.t).toISOString(), stale: d.stale ? (d.stale.asOf || true) : undefined,
-    lastCompleteMonth: last, pilots: input.pilots === 'excl' ? 'unconverted pilots excluded' : 'pilots included' };
+    lastCompleteMonth: last, pilots: input.pilots === 'excl' ? 'unconverted pilots excluded' : 'pilots included',
+    firstMonthFilter: (ff || ft) ? { from: ff || null, to: ft || null, note: 'Only brands first invoiced in this range (the page\u2019s First Month filter), not brands that churned in it.' } : undefined };
   if (view === 'retention') {
     const now = last;
     const gl = list.filter(b => b.k && b.fm && !b.x && !_wfIsNI(b));
@@ -12242,31 +12256,35 @@ async function chatToolChurnWaterfall(env, input) {
   const toM = mo(input.to_month) && mo(input.to_month) <= last ? mo(input.to_month) : last;
   const fromM = mo(input.from_month) || _wfAdd(toM, -11);
   if (view === 'churned_brands') {
-    const rows = list.filter(b => { const c = _wfChurnMonth(b); return c && c >= fromM && c <= toM; })
-      .map(b => ({ name: b.n || b.k, churnMonth: _wfChurnMonth(b), status: b.st || '(blank)', churnType: b.ty || null, firstMonth: b.fm,
-        monthsUntilChurn: b.fm ? _wfDiff(b.fm, _wfChurnMonth(b)) : null, totalInvoiced: Math.round((b.a || []).reduce((s, v) => s + (v || 0), 0) * 100) / 100, pilot: b.pil || null }))
+    const rows = list.filter(b => { if (!_wfIsChurnedSt(b) && !_wfIsPausedSt(b)) return false; const c = _wfStMonth(b); return c && c >= fromM && c <= toM; })
+      .map(b => ({ name: b.n || b.k, churnMonth: _wfStMonth(b), status: b.st, churnType: b.ty || null, firstMonth: b.fm,
+        recordChurnMonth: /^\d{4}-\d{2}/.test(String(b.hsCh || '')) ? String(b.hsCh).slice(0, 7) : null,
+        monthsUntilChurn: b.fm ? _wfDiff(b.fm, _wfStMonth(b)) : null, totalInvoiced: Math.round((b.a || []).reduce((s, v) => s + (v || 0), 0) * 100) / 100, pilot: b.pil || null }))
       .sort((x, y) => x.churnMonth.localeCompare(y.churnMonth) || String(x.name).localeCompare(String(y.name)));
     const MAX = 150;
-    return Object.assign(meta, { view: 'churned_brands', from: fromM, to: toM, rule: 'Churn month = last invoiced month; anything not Active counts as churned, Paused included.',
+    return Object.assign(meta, { view: 'churned_brands', from: fromM, to: toM, rule: 'Churned = Churn Status exactly "Churned" (Paused listed apart; "Churned (inferred)" is not a churn), dated by the Billing tab\u2019s Churn Month column (the last month invoiced). recordChurnMonth is the HubSpot / Metabase churn month, for reference.',
       count: rows.length, churned: rows.filter(r => !/pause/i.test(r.status)).length, paused: rows.filter(r => /pause/i.test(r.status)).length,
       brands: rows.length > MAX ? rows.slice(0, MAX).concat([{ name: '…and ' + (rows.length - MAX) + ' more' }]) : rows });
   }
   // summary (the tiles + the table's month totals)
-  let active = 0, ch = 0, pa = 0, pil = 0, stale = 0;
+  let active = 0, ch = 0, pa = 0, inf = 0, pil = 0, stale = 0;
   list.forEach(b => {
-    if (_wfChurned(b)) { if (/pause/i.test(b.st)) pa++; else ch++; }
-    else { active++; if (!b.x && (!b.li || _wfDiff(b.li, last) >= 2)) stale++; }
+    if (!_wfChurned(b)) { active++; if (!b.x && (!b.li || _wfDiff(b.li, last) >= 2)) stale++; }
+    else if (_wfIsChurnedSt(b)) ch++;
+    else if (_wfIsPausedSt(b)) pa++;
+    else inf++;
     if (b.pil && !/no pilot/i.test(b.pil)) pil++;
   });
   const byMonth = months.map((m, i) => {
     if (m < fromM || m > toM) return null;
     let inv = 0, n = 0, chN = 0, paN = 0;
-    list.forEach(b => { const v = b.a ? b.a[i] : null; if (v != null) { inv += v; if (v >= 0.01) n++; } if (_wfChurnMonth(b) === m) { if (/pause/i.test(b.st)) paN++; else chN++; } });
+    list.forEach(b => { const v = b.a ? b.a[i] : null; if (v != null) { inv += v; if (v >= 0.01) n++; }
+      if ((_wfIsChurnedSt(b) || _wfIsPausedSt(b)) && _wfStMonth(b) === m) { if (_wfIsPausedSt(b)) paN++; else chN++; } });
     return { month: m, invoiced: Math.round(inv * 100) / 100, brandsInvoiced: n, churned: chN, paused: paN };
   }).filter(Boolean);
   const sumCur = list.reduce((s, b) => s + (b.cur != null ? b.cur : 0), 0);
-  return Object.assign(meta, { view: 'summary', rule: 'Churn month = last invoiced month (Paused counted as churned, shown apart); amounts are net invoiced (credits included); complete months only.',
-    brands: list.length, active, activeNotInvoiced2Months: stale, churned: ch, paused: pa, pilotBrands: pil,
+  return Object.assign(meta, { view: 'summary', rule: 'Churned = Churn Status exactly "Churned", dated by the Billing tab\u2019s Churn Month column (the last month invoiced); Paused apart; "Churned (inferred)" (Recurly-only brands with no plan) is not counted as churned. The Billing tab\u2019s Churned tile also counts the inferred ones, so it reads higher. Amounts are net invoiced (credits included); complete months only.',
+    brands: list.length, active, activeNotInvoiced2Months: stale, churned: ch, paused: pa, churnedInferredNotCounted: inf, pilotBrands: pil,
     newThisMonth: list.filter(b => b.x === 'new').length, notInMetabase: list.filter(b => b.x === 'credited' || b.x === 'other').length,
     byMonth, currentMonthSoFar: curM ? { month: curM, invoiced: Math.round(sumCur * 100) / 100, brandsInvoiced: list.filter(b => b.cur != null && b.cur >= 0.01).length, note: 'Recurly only, approximate' } : null });
 }

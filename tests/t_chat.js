@@ -271,6 +271,19 @@ ck('over the daily limit: 429 with a reason',[lim.status,(await lim.json()).code
   const ex=await W.chatToolChurnWaterfall(envW,{view:'summary',pilots:'excl',from_month:'2026-07'});
   ck('pilots excl drops unconverted pilots only',ex.brands,5);
   ck('the cached payload is never mutated',JSON.parse(kvW['bd_waterfall_v5']).data.brands.length,5);
+  // Churned = Churn Status exactly "Churned", dated by the record's Churn Month.
+  kvW['bd_waterfall_v5']=JSON.stringify({t:Date.now(),data:{months,meta:{},brands:[
+    {k:'d1',n:'Doveras',st:'Churned',fm:'2024-06',li:'2024-12',hsCh:'2026-09',chSrc:'HubSpot deal',impl:true,a:[null,null,null,null]},
+    {k:'d2',n:'Lastbill',st:'Churned',fm:'2026-07',li:'2026-08',hsCh:'',impl:true,a:[10,10,null,null]},
+    {k:'d3',n:'Pausy',st:'Paused',fm:'2026-07',li:'2026-09',hsCh:'2026-10',impl:true,a:[10,10,10,null]}],
+    current:{m:'2026-11',byKey:{q:{v:0,n:'Inferred Co',fg:'2026-09',live:0}}}}});
+  const s2=await W.chatToolChurnWaterfall(envW,{view:'summary',from_month:'2026-07'});
+  ck('churned counts Churn Status "Churned" only; inferred is not counted',[s2.churned,s2.paused,s2.churnedInferredNotCounted],[2,1,1]);
+  ck('  each dated by the page\u2019s Churn Month column (last invoiced month)',s2.byMonth.map(m=>[m.month,m.churned,m.paused]),[['2026-07',0,0],['2026-08',1,0],['2026-09',0,1],['2026-10',0,0]]);
+  const c2=await W.chatToolChurnWaterfall(envW,{view:'churned_brands',from_month:'2024-01',to_month:'2026-10'});
+  ck('  the record\u2019s own churn month comes along for reference',c2.brands.filter(b=>b.name==='Doveras').map(b=>[b.churnMonth,b.recordChurnMonth]),[['2024-12','2026-09']]);
+  const c3=await W.chatToolChurnWaterfall(envW,{view:'churned_brands',from_month:'2024-01',to_month:'2026-10',first_month_from:'2026-07'});
+  ck('the First Month filter keeps only brands first invoiced in the range',[c3.brands.map(b=>b.name).sort(),!!c3.firstMonthFilter],[['Lastbill','Pausy'],true]);
 }
 
 // ── 6b. Saved chats ─────────────────────────────────────────────────────
